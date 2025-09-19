@@ -1,8 +1,14 @@
+import { setCorsHeaders, handlePreflight, validateMethod } from './lib/utils/cors';
+
 export default async function handler(req: any, res: any) {
+  // Set CORS headers
+  setCorsHeaders(req, res);
+
+  // Handle preflight OPTIONS request
+  if (handlePreflight(req, res)) return;
+
   // Only allow GET requests
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (!validateMethod(req, res, ['GET'])) return;
 
   try {
     // Health check response

@@ -1,5 +1,5 @@
-import { ExportService } from '../lib/services/exportService';
-import { SaveExportSeam } from '../lib/types/contracts';
+import { StoryService } from '../lib/services/storyService';
+import { ChapterContinuationSeam } from '../lib/types/contracts';
 import { setCorsHeaders, handlePreflight, validateMethod } from '../lib/utils/cors';
 
 export default async function handler(req: any, res: any) {
@@ -13,31 +13,31 @@ export default async function handler(req: any, res: any) {
   if (!validateMethod(req, res, ['POST'])) return;
 
   try {
-    const input: SaveExportSeam['input'] = req.body;
+    const input: ChapterContinuationSeam['input'] = req.body;
 
     // Validate required fields
-    if (!input.storyId || !input.content || !input.title || !input.format) {
+    if (!input.storyId || !input.existingContent || typeof input.currentChapterCount !== 'number') {
       return res.status(400).json({
         success: false,
         error: {
           code: 'INVALID_INPUT',
-          message: 'Missing required fields: storyId, content, title, format'
+          message: 'Missing required fields: storyId, existingContent, currentChapterCount'
         }
       });
     }
 
-    const exportService = new ExportService();
-    const result = await exportService.saveAndExport(input);
+    const storyService = new StoryService();
+    const result = await storyService.continueStory(input);
     
     res.status(200).json(result);
 
   } catch (error: any) {
-    console.error('Export serverless function error:', error);
+    console.error('Chapter continuation serverless function error:', error);
     res.status(500).json({
       success: false,
       error: {
         code: 'INTERNAL_ERROR',
-        message: 'Export failed'
+        message: 'Chapter continuation failed'
       }
     });
   }
