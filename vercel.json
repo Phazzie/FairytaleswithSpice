@@ -4,6 +4,11 @@
   "installCommand": "cd story-generator && npm install && npm install --prefix .",
   "outputDirectory": "story-generator/dist/story-generator/browser",
   "framework": null,
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs22.x"
+    }
+  },
   "env": {
     "NODE_ENV": "production",
     "FRONTEND_URL": "https://fairytaleswithspice.vercel.app"
