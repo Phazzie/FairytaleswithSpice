@@ -24,11 +24,11 @@
       <div class="form-group">
         <label>Story Themes ({{getSelectedThemesCount()}}/5 selected):</label>
         <div class="checkbox-group">
-          <label class="checkbox-option" 
-                 *ngFor="let theme of themes" 
+          <label class="checkbox-option"
+                 *ngFor="let theme of themes"
                  [class.selected]="isThemeSelected(theme.value)"
                  [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)">
-            <input type="checkbox" 
+            <input type="checkbox"
                    [checked]="isThemeSelected(theme.value)"
                    [disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
                    (change)="toggleTheme(theme.value)">

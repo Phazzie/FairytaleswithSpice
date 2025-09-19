@@ -400,7 +400,7 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
       'revenge': ['revenge', 'vengeance', 'retribution', 'payback', 'avenge'],
       'power_dynamics': ['power', 'control', 'dominance', 'authority', 'command'],
       'obsession': ['obsessed', 'possessed', 'consumed', 'fixated', 'addicted'],
-      'dark_secrets': ['secret', 'hidden', 'mysterious', 'concealed', 'buried'],
+      'dark_secrets': ['secret', 'hidden', 'mysterious', 'concealed', 'buried'],x mm m
       'seduction': ['seduced', 'tempted', 'allured', 'enticed', 'charmed'],
       'corruption': ['corrupted', 'tainted', 'fallen', 'darkness', 'evil'],
       'jealousy': ['jealous', 'envious', 'possessive', 'resentful', 'covetous'],

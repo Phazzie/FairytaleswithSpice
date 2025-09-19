@@ -35,22 +35,22 @@ export class DebugPanel implements OnInit, OnDestroy {
   private storyService = inject(StoryService);
   private platformId = inject(PLATFORM_ID);
   private isBrowser = isPlatformBrowser(this.platformId);
-  
+
   // Debug panel state
   isVisible = false;
   errors: DebugError[] = [];
-  
+
   // API Health Check
   healthStatus: 'checking' | 'healthy' | 'unhealthy' | 'unknown' = 'unknown';
   healthResponse?: HealthCheckResponse;
   lastHealthCheck?: Date;
-  
+
   // Network Status
   networkStatus: NetworkStatus = {
     online: this.isBrowser ? navigator.onLine : true,
     lastChecked: new Date()
   };
-  
+
   // Environment Info
   environmentInfo = {
     url: this.isBrowser ? window.location.href : 'SSR',
@@ -59,14 +59,14 @@ export class DebugPanel implements OnInit, OnDestroy {
     angularVersion: '20.x',
     buildMode: 'development'
   };
-  
+
   // Sample story generation states
   generating200 = false;
   generating400 = false;
   generating800 = false;
-  
+
   private networkCheckInterval?: number;
-  
+
   ngOnInit() {
     if (this.isBrowser) {
       this.loadDebugState();
@@ -75,23 +75,23 @@ export class DebugPanel implements OnInit, OnDestroy {
       this.loadStoredErrors();
     }
   }
-  
+
   ngOnDestroy() {
     if (this.isBrowser && this.networkCheckInterval) {
       clearInterval(this.networkCheckInterval);
     }
   }
-  
+
   // ==================== VISIBILITY CONTROL ====================
-  
+
   toggleVisibility() {
     this.isVisible = !this.isVisible;
     this.saveDebugState();
   }
-  
+
   private loadDebugState() {
     if (!this.isBrowser) return;
-    
+
     const saved = localStorage.getItem('debug-panel-state');
     if (saved) {
       try {
@@ -102,10 +102,10 @@ export class DebugPanel implements OnInit, OnDestroy {
       }
     }
   }
-  
+
   private saveDebugState() {
     if (!this.isBrowser) return;
-    
+
     try {
       localStorage.setItem('debug-panel-state', JSON.stringify({
         isVisible: this.isVisible,
@@ -115,15 +115,15 @@ export class DebugPanel implements OnInit, OnDestroy {
       console.warn('Failed to save debug panel state:', error);
     }
   }
-  
+
   // ==================== API HEALTH CHECK ====================
-  
+
   checkApiHealth() {
     this.healthStatus = 'checking';
     this.lastHealthCheck = new Date();
-    
+
     const startTime = Date.now();
-    
+
     this.http.get<HealthCheckResponse>('/api/health').subscribe({
       next: (response) => {
         this.healthStatus = 'healthy';
@@ -137,18 +137,18 @@ export class DebugPanel implements OnInit, OnDestroy {
       }
     });
   }
-  
+
   // ==================== SAMPLE STORY GENERATION ====================
-  
+
   generateSampleStory(wordCount: 200 | 400 | 800) {
     const stateMap = {
       200: 'generating200',
-      400: 'generating400', 
+      400: 'generating400',
       800: 'generating800'
     };
-    
+
     (this as any)[stateMap[wordCount]] = true;
-    
+
     const sampleInput: StoryGenerationSeam['input'] = {
       creature: 'vampire',
       themes: ['forbidden_love'],
@@ -156,7 +156,7 @@ export class DebugPanel implements OnInit, OnDestroy {
       spicyLevel: 3,
       wordCount: wordCount === 200 ? 700 : wordCount === 400 ? 900 : 1200 // Map to available options
     };
-    
+
     this.storyService.generateStory(sampleInput).subscribe({
       next: (response) => {
         (this as any)[stateMap[wordCount]] = false;
@@ -172,9 +172,9 @@ export class DebugPanel implements OnInit, OnDestroy {
       }
     });
   }
-  
+
   // ==================== ERROR MANAGEMENT ====================
-  
+
   private addError(type: DebugError['type'], message: string, details?: any, endpoint?: string) {
     const error: DebugError = {
       timestamp: new Date(),
@@ -183,34 +183,34 @@ export class DebugPanel implements OnInit, OnDestroy {
       details,
       endpoint
     };
-    
+
     this.errors.unshift(error); // Add to beginning
     this.saveErrors();
-    
+
     // Limit to 100 errors
     if (this.errors.length > 100) {
       this.errors = this.errors.slice(0, 100);
     }
   }
-  
+
   clearErrors() {
     this.errors = [];
     this.saveErrors();
   }
-  
+
   private saveErrors() {
     if (!this.isBrowser) return;
-    
+
     try {
       localStorage.setItem('debug-panel-errors', JSON.stringify(this.errors));
     } catch (error) {
       console.warn('Failed to save debug errors:', error);
     }
   }
-  
+
   private loadStoredErrors() {
     if (!this.isBrowser) return;
-    
+
     try {
       const stored = localStorage.getItem('debug-panel-errors');
       if (stored) {
@@ -224,10 +224,10 @@ export class DebugPanel implements OnInit, OnDestroy {
       console.warn('Failed to load stored errors:', error);
     }
   }
-  
+
   exportErrorsAsJson() {
     if (!this.isBrowser) return;
-    
+
     const exportData = {
       exportedAt: new Date().toISOString(),
       environmentInfo: this.environmentInfo,
@@ -235,7 +235,7 @@ export class DebugPanel implements OnInit, OnDestroy {
       healthStatus: this.healthStatus,
       errors: this.errors
     };
-    
+
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -246,37 +246,37 @@ export class DebugPanel implements OnInit, OnDestroy {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
-  
+
   // ==================== NETWORK MONITORING ====================
-  
+
   private startNetworkMonitoring() {
     if (!this.isBrowser) return;
-    
+
     // Check every 30 seconds
     this.networkCheckInterval = window.setInterval(() => {
       this.networkStatus.online = navigator.onLine;
       this.networkStatus.lastChecked = new Date();
     }, 30000);
-    
+
     // Listen for online/offline events
     window.addEventListener('online', () => {
       this.networkStatus.online = true;
       this.networkStatus.lastChecked = new Date();
       this.addError('NETWORK', '🟢 Network connection restored', null);
     });
-    
+
     window.addEventListener('offline', () => {
       this.networkStatus.online = false;
       this.networkStatus.lastChecked = new Date();
       this.addError('NETWORK', '🔴 Network connection lost', null);
     });
   }
-  
+
   // ==================== ERROR HANDLING ====================
-  
+
   private setupGlobalErrorHandler() {
     if (!this.isBrowser) return;
-    
+
     // Capture runtime errors
     window.addEventListener('error', (event) => {
       this.addError('RUNTIME', `Runtime error: ${event.message}`, {
@@ -286,7 +286,7 @@ export class DebugPanel implements OnInit, OnDestroy {
         stack: event.error?.stack
       });
     });
-    
+
     // Capture unhandled promise rejections
     window.addEventListener('unhandledrejection', (event) => {
       this.addError('RUNTIME', `Unhandled promise rejection: ${event.reason}`, {
@@ -294,9 +294,9 @@ export class DebugPanel implements OnInit, OnDestroy {
       });
     });
   }
-  
+
   // ==================== UTILITY METHODS ====================
-  
+
   getErrorTypeColor(type: DebugError['type']): string {
     switch (type) {
       case 'API': return '#ff6b6b';
@@ -305,14 +305,14 @@ export class DebugPanel implements OnInit, OnDestroy {
       default: return '#95a5a6';
     }
   }
-  
+
   formatTimestamp(timestamp: Date): string {
     return timestamp.toLocaleTimeString();
   }
-  
+
   refreshEnvironmentInfo() {
     if (!this.isBrowser) return;
-    
+
     this.environmentInfo = {
       ...this.environmentInfo,
       url: window.location.href,
