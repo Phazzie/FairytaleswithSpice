@@ -1,17 +1,21 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy, ViewChild, Inject, PLATFORM_ID, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CommonModule } from '@angular/common';
+import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { StoryService } from './story.service';
 import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
+import { DebugPanel } from './debug-panel/debug-panel';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, CommonModule],
+  imports: [FormsModule, CommonModule, DebugPanel],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
-export class App {
+export class App implements OnInit, OnDestroy {
   protected readonly title = signal('story-generator');
+  private isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  
+  @ViewChild(DebugPanel) debugPanel!: DebugPanel;
 
   // Inject the service
   constructor(private storyService: StoryService) {}
@@ -192,6 +196,34 @@ export class App {
       this.selectedThemes.splice(index, 1);
     } else {
       this.selectedThemes.push(themeValue);
+    }
+  }
+  
+  // ==================== DEBUG PANEL LIFECYCLE ====================
+  
+  ngOnInit() {
+    if (this.isBrowser) {
+      this.setupKeyboardShortcuts();
+    }
+  }
+  
+  ngOnDestroy() {
+    if (this.isBrowser) {
+      document.removeEventListener('keydown', this.handleKeyDown);
+    }
+  }
+  
+  private setupKeyboardShortcuts() {
+    document.addEventListener('keydown', this.handleKeyDown.bind(this));
+  }
+  
+  private handleKeyDown(event: KeyboardEvent) {
+    // Ctrl+Shift+D to toggle debug panel
+    if (event.ctrlKey && event.shiftKey && event.key === 'D') {
+      event.preventDefault();
+      if (this.debugPanel) {
+        this.debugPanel.toggleVisibility();
+      }
     }
   }
 }
