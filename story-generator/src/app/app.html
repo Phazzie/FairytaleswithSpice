@@ -13,7 +13,7 @@
       <div class="form-group">
         <label>Choose Your Creature:</label>
         <div class="radio-group">
-          <label class="radio-option" *ngFor="let creature of creatures">
+          <label class="radio-option" *ngFor="let creature of creatures; trackBy: trackByCreature">
             <input type="radio" name="creature" [value]="creature.value" [(ngModel)]="selectedCreature">
             <span class="radio-label">{{creature.label}}</span>
           </label>
@@ -25,7 +25,7 @@
         <label>Story Themes ({{getSelectedThemesCount()}}/5 selected):</label>
         <div class="checkbox-group">
           <label class="checkbox-option" 
-                 *ngFor="let theme of themes" 
+                 *ngFor="let theme of themes; trackBy: trackByTheme" 
                  [class.selected]="isThemeSelected(theme.value)"
                  [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)">
             <input type="checkbox" 

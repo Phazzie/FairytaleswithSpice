@@ -119,6 +119,15 @@ export class App implements OnInit, OnDestroy {
     return this.selectedThemes.size > 0;
   }
 
+  // TrackBy functions to prevent duplicate rendering
+  trackByCreature(index: number, creature: any): string {
+    return creature.value;
+  }
+
+  trackByTheme(index: number, theme: any): string {
+    return theme.value;
+  }
+
   // Methods
   generateStory() {
     if (!this.canGenerateStory()) {
