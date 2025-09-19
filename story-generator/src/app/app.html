@@ -1,0 +1,153 @@
+<div class="story-generator">
+  <header class="header">
+    <h1>🧚‍♀️ Fairytales with Spice</h1>
+    <p>Create spicy fantasy stories with your favorite creatures</p>
+  </header>
+
+  <div class="main-content">
+    <!-- Story Generation Form -->
+    <div class="form-section">
+      <h2>Story Configuration</h2>
+
+      <!-- Creature Selector -->
+      <div class="form-group">
+        <label>Choose Your Creature:</label>
+        <div class="radio-group">
+          <label class="radio-option" *ngFor="let creature of creatures">
+            <input type="radio" name="creature" [value]="creature.value" [(ngModel)]="selectedCreature">
+            <span class="radio-label">{{creature.label}}</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Theme Checkboxes -->
+      <div class="form-group">
+        <label>Story Themes:</label>
+        <div class="checkbox-group">
+          <label class="checkbox-option" *ngFor="let theme of themes">
+            <input type="checkbox" [value]="theme.value" [(ngModel)]="selectedThemes">
+            <span class="checkbox-label">{{theme.label}}</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- User Input -->
+      <div class="form-group">
+        <label for="userInput">Your Ideas (Optional):</label>
+        <textarea
+          id="userInput"
+          [(ngModel)]="userInput"
+          placeholder="Describe characters, settings, or plot elements you'd like to include..."
+          rows="4">
+        </textarea>
+      </div>
+
+      <!-- Spicy Level Slider -->
+      <div class="form-group">
+        <label>Spicy Level: {{spicyLevelLabels[spicyLevel - 1]}}</label>
+        <div class="slider-container">
+          <input
+            type="range"
+            min="1"
+            max="5"
+            [(ngModel)]="spicyLevel"
+            class="spicy-slider">
+          <div class="slider-labels">
+            <span>Mild</span>
+            <span>Warm</span>
+            <span>Hot</span>
+            <span>Spicy</span>
+            <span>Fire 🔥</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Word Count Dropdown -->
+      <div class="form-group">
+        <label for="wordCount">Word Count:</label>
+        <select id="wordCount" [(ngModel)]="wordCount">
+          <option *ngFor="let option of wordCountOptions" [value]="option.value">
+            {{option.label}}
+          </option>
+        </select>
+      </div>
+
+      <!-- Generate Button -->
+      <button
+        class="generate-btn"
+        (click)="generateStory()"
+        [disabled]="isGenerating">
+        <span *ngIf="!isGenerating">✨ Generate Story</span>
+        <span *ngIf="isGenerating" class="loading">
+          <span class="spinner"></span>
+          Crafting your tale...
+        </span>
+      </button>
+    </div>
+
+    <!-- Story Display -->
+    <div class="story-section" *ngIf="currentStory">
+      <div class="story-header">
+        <h2>Your Spicy {{getCreatureName()}} Story</h2>
+        <div class="story-actions">
+          <button
+            class="action-btn audio-btn"
+            (click)="convertToAudio()"
+            [disabled]="isConvertingAudio">
+            <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
+            <span *ngIf="isConvertingAudio" class="loading">
+              <span class="spinner"></span>
+              Converting...
+            </span>
+          </button>
+
+          <button
+            class="action-btn save-btn"
+            (click)="saveStory()"
+            [disabled]="isSaving">
+            <span *ngIf="!isSaving">💾 Save Story</span>
+            <span *ngIf="isSaving" class="loading">
+              <span class="spinner"></span>
+              Saving...
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="story-content" [innerHTML]="currentStory"></div>
+
+      <div class="story-footer">
+        <button
+          class="continue-btn"
+          (click)="generateNextChapter()"
+          [disabled]="isGeneratingNext">
+          <span *ngIf="!isGeneratingNext">📖 Generate Next Chapter</span>
+          <span *ngIf="isGeneratingNext" class="loading">
+            <span class="spinner"></span>
+            Writing next chapter...
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Audio Progress -->
+    <div class="audio-progress" *ngIf="audioProgress > 0">
+      <h3>Audio Conversion Progress</h3>
+      <div class="progress-bar">
+        <div class="progress-fill" [style.width.%]="audioProgress"></div>
+      </div>
+      <p>{{audioProgress}}% complete</p>
+    </div>
+
+    <!-- Success Messages -->
+    <div class="success-message" *ngIf="saveSuccess">
+      ✅ Story saved successfully!
+    </div>
+
+    <div class="success-message" *ngIf="audioSuccess">
+      🎵 Audio conversion completed! Download ready.
+    </div>
+  </div>
+</div>
+
+
