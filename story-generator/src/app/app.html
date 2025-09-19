@@ -22,10 +22,18 @@
 
       <!-- Theme Checkboxes -->
       <div class="form-group">
-        <label>Story Themes:</label>
+        <label>Story Themes ({{getSelectedThemesCount()}}/5 selected):</label>
         <div class="checkbox-group">
-          <label class="checkbox-option" *ngFor="let theme of themes">
-            <input type="checkbox" [value]="theme.value" [(ngModel)]="selectedThemes">
+          <label class="checkbox-option" 
+                 *ngFor="let theme of themes" 
+                 [class.selected]="isThemeSelected(theme.value)"
+                 [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
+                 (click)="toggleTheme(theme.value)">
+            <input type="checkbox" 
+                   [checked]="isThemeSelected(theme.value)"
+                   [disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
+                   (click)="$event.preventDefault(); toggleTheme(theme.value)"
+                   readonly>
             <span class="checkbox-label">{{theme.label}}</span>
           </label>
         </div>
@@ -76,8 +84,9 @@
       <button
         class="generate-btn"
         (click)="generateStory()"
-        [disabled]="isGenerating">
-        <span *ngIf="!isGenerating">✨ Generate Story</span>
+        [disabled]="isGenerating || !canGenerateStory()">
+        <span *ngIf="!isGenerating && canGenerateStory()">✨ Generate Story</span>
+        <span *ngIf="!isGenerating && !canGenerateStory()">❌ Select at least one theme</span>
         <span *ngIf="isGenerating" class="loading">
           <span class="spinner"></span>
           Crafting your tale...
