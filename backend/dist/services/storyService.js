@@ -119,7 +119,7 @@ class StoryService {
         const prompt = this.buildStoryPrompt(input);
         try {
             const response = await axios_1.default.post(this.grokApiUrl, {
-                model: 'grok-beta',
+                model: 'grok-4-0709',
                 messages: [
                     {
                         role: 'system',
@@ -152,7 +152,7 @@ class StoryService {
         const prompt = this.buildContinuationPrompt(input);
         try {
             const response = await axios_1.default.post(this.grokApiUrl, {
-                model: 'grok-beta',
+                model: 'grok-4-0709',
                 messages: [
                     {
                         role: 'system',

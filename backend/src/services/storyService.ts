@@ -135,7 +135,7 @@ export class StoryService {
 
     try {
       const response = await axios.post(this.grokApiUrl, {
-        model: 'grok-beta',
+        model: 'grok-4-0709',
         messages: [
           {
             role: 'system',
@@ -172,7 +172,7 @@ export class StoryService {
 
     try {
       const response = await axios.post(this.grokApiUrl, {
-        model: 'grok-beta',
+        model: 'grok-4-0709',
         messages: [
           {
             role: 'system',

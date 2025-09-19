@@ -329,7 +329,7 @@ npm run build && npm start
 
 ### Environment Variables
 ```bash
-GROK_API_KEY=your_grok_key
+XAI_API_KEY=your_grok_key
 ELEVENLABS_API_KEY=your_elevenlabs_key
 NODE_ENV=development|production
 ```

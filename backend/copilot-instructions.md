@@ -138,7 +138,7 @@ app.post('/api/generate-story', async (req, res) => {
 ```typescript
 // Service factory pattern for seamless switching
 const createStoryService = () => {
-  const hasGrokKey = !!process.env.GROK_API_KEY;
+  const hasGrokKey = !!process.env.XAI_API_KEY;
   
   if (hasGrokKey && process.env.NODE_ENV === 'production') {
     return new GrokStoryService();
@@ -311,7 +311,7 @@ describe('Mock Services', () => {
 ### Environment Variables
 ```bash
 # Required for production
-GROK_API_KEY=your_grok_api_key
+XAI_API_KEY=your_grok_api_key
 ELEVENLABS_API_KEY=your_elevenlabs_key
 
 # Optional configuration
@@ -331,7 +331,7 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     services: {
-      grok: !!process.env.GROK_API_KEY ? 'configured' : 'mock',
+      grok: !!process.env.XAI_API_KEY ? 'configured' : 'mock',
       elevenlabs: !!process.env.ELEVENLABS_API_KEY ? 'configured' : 'mock'
     },
     version: process.env.npm_package_version || '1.0.0'
