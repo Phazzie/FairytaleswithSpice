@@ -31,7 +31,7 @@ Set these environment variables in your Vercel dashboard:
 
 ```bash
 # AI Service API Keys
-XAI_AI_KEY=your_xai_api_key_here
+XAI_API_KEY=your_xai_api_key_here
 ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 
 # Frontend Configuration

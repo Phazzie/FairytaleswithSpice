@@ -9,11 +9,11 @@ import {
 
 export class StoryService {
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
-  private grokApiKey = process.env.XAI_AI_KEY;
+  private grokApiKey = process.env.XAI_API_KEY;
 
   constructor() {
     if (!this.grokApiKey) {
-      console.warn('⚠️  XAI_AI_KEY not found in environment variables');
+      console.warn('⚠️  XAI_API_KEY not found in environment variables');
     }
   }
 
@@ -294,7 +294,7 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
 
 <p>In that moment, Lady Arabella Worthington ceased to be a proper Victorian lady and became something far more dangerous - the willing consort of a creature of the night.</p>
 
-<p><em>This is a mock story generated without AI. Add XAI_AI_KEY to use real AI generation.</em></p>`;
+<p><em>This is a mock story generated without AI. Add XAI_API_KEY to use real AI generation.</em></p>`;
   }
 
   private generateMockChapter(input: ChapterContinuationSeam['input']): string {

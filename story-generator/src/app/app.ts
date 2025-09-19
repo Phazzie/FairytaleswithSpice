@@ -2,12 +2,14 @@ import { Component, signal, OnInit, OnDestroy, ViewChild, Inject, PLATFORM_ID, i
 import { FormsModule } from '@angular/forms';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { StoryService } from './story.service';
+import { ErrorLoggingService } from './error-logging';
+import { ErrorDisplayComponent } from './error-display/error-display';
 import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
 import { DebugPanel } from './debug-panel/debug-panel';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, CommonModule, DebugPanel],
+  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -17,8 +19,11 @@ export class App implements OnInit, OnDestroy {
   
   @ViewChild(DebugPanel) debugPanel!: DebugPanel;
 
-  // Inject the service
-  constructor(private storyService: StoryService) {}
+  // Inject the services
+  constructor(
+    private storyService: StoryService,
+    private errorLogging: ErrorLoggingService
+  ) {}
 
   // Form data
   selectedCreature: string = 'vampire';
@@ -71,6 +76,13 @@ export class App implements OnInit, OnDestroy {
     this.saveSuccess = false;
     this.audioSuccess = false;
 
+    this.errorLogging.logInfo('User initiated story generation', 'App.generateStory', {
+      creature: this.selectedCreature,
+      themes: this.selectedThemes,
+      spicyLevel: this.spicyLevel,
+      wordCount: this.wordCount
+    });
+
     const request: StoryGenerationSeam['input'] = {
       creature: this.selectedCreature as any,
       themes: this.selectedThemes as any,
@@ -84,10 +96,17 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.currentStory = response.data.content;
           this.isGenerating = false;
+          this.errorLogging.logInfo('Story generation completed successfully', 'App.generateStory', {
+            storyId: response.data.storyId,
+            wordCount: response.data.actualWordCount
+          });
         }
       },
       error: (error) => {
-        console.error('Story generation failed:', error);
+        this.errorLogging.logError(error, 'App.generateStory', 'error', {
+          request,
+          userAction: 'story_generation'
+        });
         this.isGenerating = false;
       }
     });
@@ -95,6 +114,8 @@ export class App implements OnInit, OnDestroy {
 
   generateNextChapter() {
     this.isGeneratingNext = true;
+
+    this.errorLogging.logInfo('User initiated chapter continuation', 'App.generateNextChapter');
 
     const request: ChapterContinuationSeam['input'] = {
       storyId: 'current-story', // In a real app, this would be the actual story ID
@@ -109,10 +130,17 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.currentStory = response.data.appendedToStory;
           this.isGeneratingNext = false;
+          this.errorLogging.logInfo('Chapter continuation completed successfully', 'App.generateNextChapter', {
+            chapterId: response.data.chapterId,
+            chapterNumber: response.data.chapterNumber
+          });
         }
       },
       error: (error) => {
-        console.error('Chapter generation failed:', error);
+        this.errorLogging.logError(error, 'App.generateNextChapter', 'error', {
+          request,
+          userAction: 'chapter_continuation'
+        });
         this.isGeneratingNext = false;
       }
     });
@@ -122,6 +150,10 @@ export class App implements OnInit, OnDestroy {
     this.isConvertingAudio = true;
     this.audioProgress = 0;
     this.audioSuccess = false;
+
+    this.errorLogging.logInfo('User initiated audio conversion', 'App.convertToAudio', {
+      contentLength: this.currentStory.length
+    });
 
     const request: AudioConversionSeam['input'] = {
       storyId: 'current-story', // In a real app, this would be the actual story ID
@@ -136,11 +168,19 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
+          this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
+            audioId: response.data.audioId,
+            duration: response.data.duration,
+            fileSize: response.data.fileSize
+          });
           setTimeout(() => this.audioSuccess = false, 3000);
         }
       },
       error: (error) => {
-        console.error('Audio conversion failed:', error);
+        this.errorLogging.logError(error, 'App.convertToAudio', 'error', {
+          request,
+          userAction: 'audio_conversion'
+        });
         this.isConvertingAudio = false;
       }
     });
@@ -148,6 +188,10 @@ export class App implements OnInit, OnDestroy {
 
   saveStory() {
     this.isSaving = true;
+
+    this.errorLogging.logInfo('User initiated story save/export', 'App.saveStory', {
+      contentLength: this.currentStory.length
+    });
 
     const request: SaveExportSeam['input'] = {
       storyId: 'current-story', // In a real app, this would be the actual story ID
@@ -163,11 +207,19 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.isSaving = false;
           this.saveSuccess = true;
+          this.errorLogging.logInfo('Story save/export completed successfully', 'App.saveStory', {
+            exportId: response.data.exportId,
+            format: response.data.format,
+            fileSize: response.data.fileSize
+          });
           setTimeout(() => this.saveSuccess = false, 3000);
         }
       },
       error: (error) => {
-        console.error('Save failed:', error);
+        this.errorLogging.logError(error, 'App.saveStory', 'error', {
+          request,
+          userAction: 'story_export'
+        });
         this.isSaving = false;
       }
     });
@@ -177,6 +229,30 @@ export class App implements OnInit, OnDestroy {
     const creature = this.creatures.find(c => c.value === this.selectedCreature);
     return creature ? creature.label.split(' ')[1] : 'Creature';
   }
+<<<<<<< HEAD
+
+  // ==================== DEBUG METHODS FOR ERROR LOGGING DEMO ====================
+  
+  testErrorLogging() {
+    // Simulate different types of errors for demonstration
+    this.errorLogging.logInfo('Demo info message', 'App.testErrorLogging', { action: 'demo_test' });
+    this.errorLogging.logWarning('Demo warning message', 'App.testErrorLogging', { action: 'demo_test' });
+    this.errorLogging.logError(new Error('Demo error message'), 'App.testErrorLogging', 'error', { action: 'demo_test' });
+    this.errorLogging.logCritical(new Error('Demo critical error'), 'App.testErrorLogging', { action: 'demo_test' });
+  }
+
+  simulateHttpError() {
+    // Simulate an HTTP error to test error logging integration
+    this.errorLogging.logError({
+      status: 404,
+      statusText: 'Not Found',
+      message: 'Simulated HTTP 404 error',
+      url: '/api/fake-endpoint'
+    }, 'App.simulateHttpError', 'error', {
+      type: 'simulated_http_error',
+      endpoint: '/api/fake-endpoint'
+    });
+=======
   
   // ==================== DEBUG PANEL LIFECYCLE ====================
   
@@ -204,5 +280,6 @@ export class App implements OnInit, OnDestroy {
         this.debugPanel.toggleVisibility();
       }
     }
+>>>>>>> origin/feat/debugging-and-ui-fixes
   }
 }

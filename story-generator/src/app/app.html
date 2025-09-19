@@ -85,6 +85,28 @@
       </button>
     </div>
 
+    <!-- Debug Section for Error Logging Demo -->
+    <div class="debug-section" style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px dashed #dee2e6;">
+      <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #6c757d;">🐛 Error Logging Debug Panel</h3>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button 
+          class="debug-btn" 
+          (click)="testErrorLogging()"
+          style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
+          Test All Severities
+        </button>
+        <button 
+          class="debug-btn" 
+          (click)="simulateHttpError()"
+          style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
+          Simulate HTTP Error
+        </button>
+      </div>
+      <p style="margin: 8px 0 0 0; font-size: 11px; color: #6c757d;">
+        Click buttons above to generate test errors. Check the error display widget in the bottom-right corner.
+      </p>
+    </div>
+
     <!-- Story Display -->
     <div class="story-section" *ngIf="currentStory">
       <div class="story-header">
@@ -148,6 +170,9 @@
       🎵 Audio conversion completed! Download ready.
     </div>
   </div>
+
+  <!-- Error Display Component -->
+  <app-error-display></app-error-display>
 </div>
 
 <!-- Debug Panel Component -->
