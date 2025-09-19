@@ -131,19 +131,20 @@ export class StoryService {
       return this.generateMockStory(input);
     }
 
-    const prompt = this.buildStoryPrompt(input);
+    const systemPrompt = this.buildSystemPrompt();
+    const userPrompt = this.buildUserPrompt(input);
 
     try {
       const response = await axios.post(this.grokApiUrl, {
-        model: 'grok-beta',
+        model: 'grok-3',
         messages: [
           {
             role: 'system',
-            content: 'You are a master storyteller specializing in spicy, romantic fantasy tales. Create engaging, well-structured stories with vivid descriptions and emotional depth.'
+            content: systemPrompt
           },
           {
             role: 'user',
-            content: prompt
+            content: userPrompt
           }
         ],
         max_tokens: input.wordCount * 2, // Allow some buffer
@@ -172,11 +173,11 @@ export class StoryService {
 
     try {
       const response = await axios.post(this.grokApiUrl, {
-        model: 'grok-beta',
+        model: 'grok-3',
         messages: [
           {
             role: 'system',
-            content: 'Continue this story in the same style and tone. Maintain character development and plot progression.'
+            content: 'Continue this story in the same style and tone. Maintain character development, spice level, and plot progression. Keep the same supernatural atmosphere and romantic intensity.'
           },
           {
             role: 'user',
@@ -200,35 +201,52 @@ export class StoryService {
     }
   }
 
-  private buildStoryPrompt(input: StoryGenerationSeam['input']): string {
+  private buildSystemPrompt(): string {
+    return `You are a master storyteller specializing in romantic fantasy tales with supernatural creatures. Your expertise includes:
+
+STORY STRUCTURE:
+- Create compelling 3-act stories with strong pacing
+- Develop atmospheric settings (Victorian/Gothic/Urban Fantasy)
+- Build character depth and emotional arcs
+- Integrate supernatural elements naturally
+- Create satisfying resolutions that could continue
+
+SPICINESS LEVELS (1-5 scale):
+Level 1 (Mild): Sweet romance, tender moments, passionate kisses, emotional intimacy
+Level 2 (Warm): Heated embraces, sensual tension, implied intimacy, romantic chemistry  
+Level 3 (Hot): Passionate encounters, detailed attraction, steamy scenes with tasteful descriptions
+Level 4 (Spicy): Explicit romantic scenes, detailed physical intimacy, erotic tension
+Level 5 (Fire): Intense erotic content, detailed explicit scenes, maximum heat
+
+CREATURE CHARACTERISTICS:
+- Vampires: Seductive, powerful, immortal, blood bonds, dark allure
+- Werewolves: Primal, protective, pack dynamics, transformation tension
+- Fairies: Magical, ethereal, otherworldly, nature connections, ancient wisdom
+
+WRITING STYLE:
+- Rich, sensual descriptions using all five senses
+- Emotional depth with internal monologue
+- Natural dialogue that reveals character
+- Vivid imagery and atmospheric details
+- Smooth transitions between scenes
+- HTML formatting: <h3> for titles, <p> for paragraphs, <em> for emphasis
+
+Always match the requested spice level precisely and create stories that feel complete yet could continue.`;
+  }
+
+  private buildUserPrompt(input: StoryGenerationSeam['input']): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const themesText = input.themes.join(', ');
     const spicyLabel = this.getSpicyLabel(input.spicyLevel);
 
-    return `Write a ${input.wordCount}-word spicy romantic fantasy story featuring a ${creatureName} as the main character.
+    return `Write a ${input.wordCount}-word romantic fantasy story with these specifications:
 
-Key Requirements:
-- Creature: ${creatureName}
-- Themes: ${themesText}
-- Spice Level: ${spicyLabel} (${input.spicyLevel}/5)
-- Custom Ideas: ${input.userInput || 'None provided'}
+MAIN CHARACTER: ${creatureName}
+THEMES: ${themesText}
+SPICE LEVEL: ${spicyLabel} (Level ${input.spicyLevel}/5)
+${input.userInput ? `CUSTOM IDEAS: ${input.userInput}` : ''}
 
-Story Structure:
-1. Introduction with atmospheric setting
-2. Character introduction and initial attraction
-3. Building tension and romantic development
-4. Spicy intimate scenes with emotional depth
-5. Climax with supernatural elements
-6. Ending that could lead to continuation
-
-Style Guidelines:
-- Vivid, sensual descriptions
-- Emotional depth and character development
-- Victorian/Edwardian atmosphere
-- Blend romance with supernatural elements
-- Natural dialogue and internal monologue
-
-Format the story with HTML tags for structure (h3 for chapter titles, p for paragraphs).`;
+Create a complete story that incorporates all themes naturally while maintaining the specified spice level throughout.`;
   }
 
   private buildContinuationPrompt(input: ChapterContinuationSeam['input']): string {

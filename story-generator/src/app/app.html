@@ -168,26 +168,6 @@
     </div>
   </div>
 
-  <!-- Debug Section (Outside Grid) -->
-  <div class="debug-section">
-    <h3>🐛 Error Logging Debug Panel</h3>
-    <div class="debug-buttons">
-      <button 
-        class="debug-btn" 
-        (click)="testErrorLogging()">
-        Test All Severities
-      </button>
-      <button 
-        class="debug-btn error-btn" 
-        (click)="simulateHttpError()">
-        Simulate HTTP Error
-      </button>
-    </div>
-    <p class="debug-help">
-      Click buttons above to generate test errors. Check the error display widget in the bottom-right corner.
-    </p>
-  </div>
-
   <!-- Error Display Component -->
   <app-error-display></app-error-display>
 </div>
