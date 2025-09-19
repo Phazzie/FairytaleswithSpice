@@ -103,10 +103,10 @@
               class="action-btn audio-btn"
               (click)="convertToAudio()"
               [disabled]="isConvertingAudio">
-              <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
+              <span *ngIf="!isConvertingAudio">🎭 Generate Multi-Voice Audiobook</span>
               <span *ngIf="isConvertingAudio" class="loading">
                 <span class="spinner"></span>
-                Converting...
+                Generating character voices...
               </span>
             </button>
 
@@ -150,11 +150,11 @@
 
       <!-- Audio Progress -->
       <div class="audio-progress" *ngIf="audioProgress > 0">
-        <h3>Audio Conversion Progress</h3>
+        <h3>🎭 Multi-Voice Audio Generation</h3>
         <div class="progress-bar">
           <div class="progress-fill" [style.width.%]="audioProgress"></div>
         </div>
-        <p>{{audioProgress}}% complete</p>
+        <p>{{audioProgress}}% complete - Creating character voices and stitching audiobook...</p>
       </div>
 
       <!-- Success Messages -->
@@ -163,7 +163,7 @@
       </div>
 
       <div class="success-message" *ngIf="audioSuccess">
-        🎵 Audio conversion completed! Download ready.
+        🎵 Multi-voice audiobook completed! Your story now features character-specific voices with emotional inflection.
       </div>
     </div>
   </div>

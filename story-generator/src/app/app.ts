@@ -4,7 +4,7 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import { ErrorDisplayComponent } from './error-display/error-display';
-import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
+import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam, CreatureType } from './contracts';
 import { DebugPanel } from './debug-panel/debug-panel';
 
 @Component({
@@ -213,16 +213,19 @@ export class App implements OnInit, OnDestroy {
     this.audioProgress = 0;
     this.audioSuccess = false;
 
-    this.errorLogging.logInfo('User initiated audio conversion', 'App.convertToAudio', {
-      contentLength: this.currentStory.length
+    this.errorLogging.logInfo('User initiated multi-voice audio conversion', 'App.convertToAudio', {
+      contentLength: this.currentStory.length,
+      creature: this.selectedCreature
     });
 
     const request: AudioConversionSeam['input'] = {
       storyId: this.currentStoryId,
       content: this.currentStory,
-      voice: 'female',
+      voice: 'neutral', // Fallback voice
       speed: 1.0,
-      format: 'mp3'
+      format: 'mp3',
+      multiVoice: true, // Enable multi-voice generation
+      creatureType: this.selectedCreature as CreatureType // Pass creature type for intelligent voice assignment
     };
 
     this.storyService.convertToAudio(request).subscribe({
@@ -230,18 +233,28 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
-          this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
+          
+          // Enhanced logging for multi-voice results
+          const logData: any = {
             audioId: response.data.audioId,
             duration: response.data.duration,
-            fileSize: response.data.fileSize
-          });
+            fileSize: response.data.fileSize,
+            isMultiVoice: response.data.isMultiVoice
+          };
+
+          if (response.data.multiVoiceResult) {
+            logData.characterCount = Object.keys(response.data.multiVoiceResult.characterVoices).length;
+            logData.segmentCount = response.data.multiVoiceResult.segments.length;
+          }
+
+          this.errorLogging.logInfo('Multi-voice audio conversion completed successfully', 'App.convertToAudio', logData);
           setTimeout(() => this.audioSuccess = false, 3000);
         }
       },
       error: (error) => {
         this.errorLogging.logError(error, 'App.convertToAudio', 'error', {
           request,
-          userAction: 'audio_conversion'
+          userAction: 'multi_voice_audio_conversion'
         });
         this.isConvertingAudio = false;
       }
