@@ -36,6 +36,7 @@ export class App {
   audioProgress: number = 0;
   saveSuccess: boolean = false;
   audioSuccess: boolean = false;
+  lastAudioResponse?: any; // Store the last audio response for displaying details
 
   // Options data
   creatures = [
@@ -124,7 +125,9 @@ export class App {
       content: this.currentStory,
       voice: 'female',
       speed: 1.0,
-      format: 'mp3'
+      format: 'mp3',
+      multiVoice: true, // Enable multi-voice generation
+      creatureType: this.selectedCreature as any
     };
 
     this.storyService.convertToAudio(request).subscribe({
@@ -132,7 +135,9 @@ export class App {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
-          setTimeout(() => this.audioSuccess = false, 3000);
+          this.lastAudioResponse = response.data; // Store response for display
+          console.log('Multi-voice audio conversion completed:', response.data);
+          setTimeout(() => this.audioSuccess = false, 5000); // Show longer for multi-voice
         }
       },
       error: (error) => {

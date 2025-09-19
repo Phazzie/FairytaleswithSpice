@@ -94,10 +94,10 @@
             class="action-btn audio-btn"
             (click)="convertToAudio()"
             [disabled]="isConvertingAudio">
-            <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
+            <span *ngIf="!isConvertingAudio">🎭 Multi-Voice Audio</span>
             <span *ngIf="isConvertingAudio" class="loading">
               <span class="spinner"></span>
-              Converting...
+              Generating voices...
             </span>
           </button>
 
@@ -144,8 +144,16 @@
       ✅ Story saved successfully!
     </div>
 
-    <div class="success-message" *ngIf="audioSuccess">
-      🎵 Audio conversion completed! Download ready.
+    <div class="success-message audio-success" *ngIf="audioSuccess">
+      <div class="success-header">🎭 Multi-Voice Audio Generated!</div>
+      <div class="success-details" *ngIf="lastAudioResponse">
+        <p>✨ <strong>{{lastAudioResponse.segments?.length || 0}} voice segments</strong> created</p>
+        <p *ngIf="lastAudioResponse.charactersDetected?.length">
+          🎯 Characters detected: <strong>{{lastAudioResponse.charactersDetected.join(', ')}}</strong>
+        </p>
+        <p>⏱️ Total duration: <strong>{{lastAudioResponse.duration}}s</strong></p>
+        <p>📂 <a [href]="lastAudioResponse.audioUrl" target="_blank">Download Complete Audio</a></p>
+      </div>
     </div>
   </div>
 </div>
