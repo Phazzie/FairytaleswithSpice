@@ -356,6 +356,153 @@ select:focus {
   border: 1px solid #c3e6cb;
 }
 
+/* Form Validation Styles */
+.required {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+.error-message {
+  color: #dc3545;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.error-message::before {
+  content: "⚠️";
+  font-size: 0.75rem;
+}
+
+.field-hint {
+  color: #6c757d;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+.form-validation-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 0.75rem;
+  border-radius: 8px;
+  margin-top: 1rem;
+  text-align: center;
+  border: 1px solid #f5c6cb;
+  font-size: 0.9rem;
+}
+
+/* Enhanced Input States */
+input:invalid, select:invalid, textarea:invalid {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+input:valid, select:valid, textarea:valid {
+  border-color: #28a745;
+}
+
+input:focus:invalid, select:focus:invalid, textarea:focus:invalid {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+/* Enhanced Button States */
+.generate-btn:disabled:not(.loading) {
+  background: #6c757d !important;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.action-btn:disabled:not(.loading) {
+  background: #6c757d !important;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.continue-btn:disabled:not(.loading) {
+  background: #6c757d !important;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Improved Loading Animation */
+.spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Focus Management */
+*:focus {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+button:focus, input:focus, select:focus, textarea:focus {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+/* Improved Radio and Checkbox States */
+.radio-option input:focus + .radio-label,
+.checkbox-option input:focus + .checkbox-label {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+/* Enhanced Slider */
+.spicy-slider:focus {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+/* Character Counter Styling */
+.field-hint.character-warning {
+  color: #856404;
+}
+
+.field-hint.character-error {
+  color: #dc3545;
+}
+
+/* Loading Overlay for Form */
+.form-section.loading-overlay {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.form-section.loading-overlay::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(2px);
+  border-radius: 15px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .main-content {

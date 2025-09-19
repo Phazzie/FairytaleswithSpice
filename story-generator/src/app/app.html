@@ -1,4 +1,7 @@
 <div class="story-generator">
+  <!-- Notification Component -->
+  <app-notifications></app-notifications>
+
   <header class="header">
     <h1>🧚‍♀️ Fairytales with Spice</h1>
     <p>Create spicy fantasy stories with your favorite creatures</p>
@@ -6,29 +9,47 @@
 
   <div class="main-content">
     <!-- Story Generation Form -->
-    <div class="form-section">
+    <div class="form-section" [class.loading-overlay]="isGenerating || isGeneratingNext">
       <h2>Story Configuration</h2>
 
       <!-- Creature Selector -->
       <div class="form-group">
-        <label>Choose Your Creature:</label>
-        <div class="radio-group">
+        <label for="creature-selection">Choose Your Creature: <span class="required">*</span></label>
+        <div class="radio-group" role="radiogroup" aria-labelledby="creature-selection">
           <label class="radio-option" *ngFor="let creature of creatures">
-            <input type="radio" name="creature" [value]="creature.value" [(ngModel)]="selectedCreature">
+            <input 
+              type="radio" 
+              name="creature" 
+              [value]="creature.value" 
+              [(ngModel)]="selectedCreature"
+              (change)="onCreatureChange()"
+              [attr.aria-describedby]="fieldErrors['selectedCreature'] ? 'creature-error' : null">
             <span class="radio-label">{{creature.label}}</span>
           </label>
+        </div>
+        <div *ngIf="fieldErrors['selectedCreature']" class="error-message" id="creature-error" role="alert">
+          {{fieldErrors['selectedCreature']}}
         </div>
       </div>
 
       <!-- Theme Checkboxes -->
       <div class="form-group">
-        <label>Story Themes:</label>
-        <div class="checkbox-group">
+        <label>Story Themes: <span class="required">*</span></label>
+        <div class="checkbox-group" role="group" aria-label="Select story themes">
           <label class="checkbox-option" *ngFor="let theme of themes">
-            <input type="checkbox" [value]="theme.value" [(ngModel)]="selectedThemes">
+            <input 
+              type="checkbox" 
+              [value]="theme.value" 
+              [checked]="selectedThemes.includes(theme.value)"
+              (change)="onThemeToggle(theme.value, $event)"
+              [attr.aria-describedby]="fieldErrors['selectedThemes'] ? 'themes-error' : null">
             <span class="checkbox-label">{{theme.label}}</span>
           </label>
         </div>
+        <div *ngIf="fieldErrors['selectedThemes']" class="error-message" id="themes-error" role="alert">
+          {{fieldErrors['selectedThemes']}}
+        </div>
+        <div class="field-hint">Select 1-5 themes for your story</div>
       </div>
 
       <!-- User Input -->
@@ -37,20 +58,31 @@
         <textarea
           id="userInput"
           [(ngModel)]="userInput"
+          (input)="onUserInputChange()"
           placeholder="Describe characters, settings, or plot elements you'd like to include..."
-          rows="4">
+          rows="4"
+          [attr.aria-describedby]="fieldErrors['userInput'] ? 'userInput-error' : 'userInput-hint'"
+          [disabled]="isGenerating || isGeneratingNext">
         </textarea>
+        <div *ngIf="fieldErrors['userInput']" class="error-message" id="userInput-error" role="alert">
+          {{fieldErrors['userInput']}}
+        </div>
+        <div class="field-hint" id="userInput-hint">Up to 1000 characters ({{userInput.length}}/1000)</div>
       </div>
 
       <!-- Spicy Level Slider -->
       <div class="form-group">
-        <label>Spicy Level: {{spicyLevelLabels[spicyLevel - 1]}}</label>
+        <label for="spicyLevel">Spicy Level: <span class="required">*</span> {{spicyLevelLabels[spicyLevel - 1]}}</label>
         <div class="slider-container">
           <input
             type="range"
+            id="spicyLevel"
             min="1"
             max="5"
             [(ngModel)]="spicyLevel"
+            (input)="onSpicyLevelChange()"
+            [disabled]="isGenerating || isGeneratingNext"
+            [attr.aria-describedby]="fieldErrors['spicyLevel'] ? 'spicyLevel-error' : 'spicyLevel-hint'"
             class="spicy-slider">
           <div class="slider-labels">
             <span>Mild</span>
@@ -60,29 +92,47 @@
             <span>Fire 🔥</span>
           </div>
         </div>
+        <div *ngIf="fieldErrors['spicyLevel']" class="error-message" id="spicyLevel-error" role="alert">
+          {{fieldErrors['spicyLevel']}}
+        </div>
+        <div class="field-hint" id="spicyLevel-hint">Set the intensity level for your story</div>
       </div>
 
       <!-- Word Count Dropdown -->
       <div class="form-group">
-        <label for="wordCount">Word Count:</label>
-        <select id="wordCount" [(ngModel)]="wordCount">
+        <label for="wordCount">Word Count: <span class="required">*</span></label>
+        <select 
+          id="wordCount" 
+          [(ngModel)]="wordCount"
+          (change)="onWordCountChange()"
+          [disabled]="isGenerating || isGeneratingNext"
+          [attr.aria-describedby]="fieldErrors['wordCount'] ? 'wordCount-error' : 'wordCount-hint'">
           <option *ngFor="let option of wordCountOptions" [value]="option.value">
             {{option.label}}
           </option>
         </select>
+        <div *ngIf="fieldErrors['wordCount']" class="error-message" id="wordCount-error" role="alert">
+          {{fieldErrors['wordCount']}}
+        </div>
+        <div class="field-hint" id="wordCount-hint">Choose your preferred story length</div>
       </div>
 
       <!-- Generate Button -->
       <button
         class="generate-btn"
         (click)="generateStory()"
-        [disabled]="isGenerating">
+        [disabled]="isGenerating || !isFormValid()"
+        [attr.aria-describedby]="!isFormValid() ? 'form-validation-message' : null">
         <span *ngIf="!isGenerating">✨ Generate Story</span>
         <span *ngIf="isGenerating" class="loading">
-          <span class="spinner"></span>
+          <span class="spinner" aria-hidden="true"></span>
           Crafting your tale...
         </span>
       </button>
+      
+      <div *ngIf="!isFormValid()" class="form-validation-message" id="form-validation-message" role="alert">
+        Please fix all form errors before generating your story
+      </div>
     </div>
 
     <!-- Story Display -->
@@ -93,10 +143,11 @@
           <button
             class="action-btn audio-btn"
             (click)="convertToAudio()"
-            [disabled]="isConvertingAudio">
+            [disabled]="isConvertingAudio || isGenerating || isGeneratingNext"
+            aria-label="Convert story to audio">
             <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
             <span *ngIf="isConvertingAudio" class="loading">
-              <span class="spinner"></span>
+              <span class="spinner" aria-hidden="true"></span>
               Converting...
             </span>
           </button>
@@ -104,26 +155,28 @@
           <button
             class="action-btn save-btn"
             (click)="saveStory()"
-            [disabled]="isSaving">
+            [disabled]="isSaving || isGenerating || isGeneratingNext"
+            aria-label="Save story to file">
             <span *ngIf="!isSaving">💾 Save Story</span>
             <span *ngIf="isSaving" class="loading">
-              <span class="spinner"></span>
+              <span class="spinner" aria-hidden="true"></span>
               Saving...
             </span>
           </button>
         </div>
       </div>
 
-      <div class="story-content" [innerHTML]="currentStory"></div>
+      <div class="story-content" [innerHTML]="currentStory" role="main" aria-label="Generated story content"></div>
 
       <div class="story-footer">
         <button
           class="continue-btn"
           (click)="generateNextChapter()"
-          [disabled]="isGeneratingNext">
+          [disabled]="isGeneratingNext || isGenerating"
+          aria-label="Generate next chapter for the story">
           <span *ngIf="!isGeneratingNext">📖 Generate Next Chapter</span>
           <span *ngIf="isGeneratingNext" class="loading">
-            <span class="spinner"></span>
+            <span class="spinner" aria-hidden="true"></span>
             Writing next chapter...
           </span>
         </button>
