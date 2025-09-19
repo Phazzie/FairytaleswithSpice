@@ -3,5 +3,15 @@
   "buildCommand": "cd story-generator && npm run build",
   "installCommand": "cd story-generator && npm install",
   "outputDirectory": "story-generator/dist/story-generator/browser",
-  "framework": "angular"
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
