@@ -123,7 +123,7 @@ class StoryService {
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are a master storyteller specializing in spicy, romantic fantasy tales. Create engaging, well-structured stories with vivid descriptions and emotional depth.'
+                        content: 'You are a master storyteller specializing in spicy, romantic fantasy tales. Create engaging, well-structured stories with vivid descriptions and emotional depth. CRITICAL: Always use the [Speaker]: format for ALL dialogue and [Narrator]: for ALL descriptive text. This is essential for multi-voice audio generation. Example: [Vampire Lord, seductive]: "Welcome to my domain." [Narrator]: She felt his dark presence overwhelming her senses.'
                     },
                     {
                         role: 'user',
@@ -156,7 +156,7 @@ class StoryService {
                 messages: [
                     {
                         role: 'system',
-                        content: 'Continue this story in the same style and tone. Maintain character development and plot progression.'
+                        content: 'Continue this story in the same style and tone. Maintain character development and plot progression. CRITICAL: Use [Speaker]: format for ALL dialogue and [Narrator]: for descriptive text to enable multi-voice audio generation.'
                     },
                     {
                         role: 'user',
@@ -252,36 +252,44 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
         const spicyLabel = this.getSpicyLabel(input.spicyLevel);
         return `<h3>The ${creatureName}'s Forbidden Passion</h3>
 
-<p>In the shadowed alleys of Victorian London, Lady Arabella Worthington found herself drawn to the mysterious stranger who haunted her dreams. His eyes, crimson as fresh-spilled wine, held secrets that both terrified and exhilarated her.</p>
+<p>[Narrator]: In the shadowed alleys of Victorian London, Lady Arabella Worthington found herself drawn to the mysterious stranger who haunted her dreams. His eyes, crimson as fresh-spilled wine, held secrets that both terrified and exhilarated her.</p>
 
-<p>"You shouldn't be here," he whispered, his voice like velvet over steel. But Arabella, with her corset straining against propriety and her heart pounding with forbidden desire, stepped closer.</p>
+<p>[Mysterious Stranger, seductive]: "You shouldn't be here, my lady. These streets hold dangers for someone of your... delicate nature."</p>
 
-<p>The ${creatureName.toLowerCase()} prince revealed himself slowly, each layer of deception peeling away like the petals of a night-blooming flower. His touch was electric, sending sparks through her veins that made her gasp with a pleasure bordering on pain.</p>
+<p>[Arabella, breathless]: "I'm not afraid. There's something about you that calls to me, something I can't resist."</p>
 
-<p>As the gas lamps flickered in the fog-shrouded streets, their bodies entwined in a dance as old as time itself. Arabella discovered that some hungers could never be satisfied, only temporarily sated.</p>
+<p>[Narrator]: The ${creatureName.toLowerCase()} prince revealed himself slowly, each layer of deception peeling away like the petals of a night-blooming flower. His touch was electric, sending sparks through her veins that made her gasp with forbidden pleasure.</p>
 
-<p>The ${spicyLabel.toLowerCase()} intensity of their encounter left her breathless, her skin flushed and marked by his passionate embrace. She knew she should run, should scream for help, but the pull was too strong.</p>
+<p>[${creatureName}, passionate]: "You don't know what you're asking for. Once you cross this threshold, there's no returning to your innocent world."</p>
 
-<p>In that moment, Lady Arabella Worthington ceased to be a proper Victorian lady and became something far more dangerous - the willing consort of a creature of the night.</p>
+<p>[Arabella, defiant]: "Then let me fall into darkness. I choose this, I choose you, whatever the cost."</p>
 
-<p><em>This is a mock story generated without AI. Add XAI_AI_KEY to use real AI generation.</em></p>`;
+<p>[Narrator]: As the gas lamps flickered in the fog-shrouded streets, their bodies entwined in a dance as old as time itself. Arabella discovered that some hungers could never be satisfied, only temporarily sated. The ${spicyLabel.toLowerCase()} intensity of their encounter left her breathless, her skin flushed and marked by his passionate embrace.</p>
+
+<p>[Narrator]: In that moment, Lady Arabella Worthington ceased to be a proper Victorian lady and became something far more dangerous - the willing consort of a creature of the night.</p>
+
+<p><em>[Narrator]: This is a mock story generated without AI. Add XAI_API_KEY to use real AI generation with proper multi-voice dialogue formatting.</em></p>`;
     }
     generateMockChapter(input) {
         return `<h3>Chapter ${input.currentChapterCount + 1}: The Deeper Shadows</h3>
 
-<p>The morning light pierced through heavy velvet curtains, but Arabella felt no warmth from its golden rays. Instead, a strange energy coursed through her veins, awakening senses she never knew existed.</p>
+<p>[Narrator]: The morning light pierced through heavy velvet curtains, but Arabella felt no warmth from its golden rays. Instead, a strange energy coursed through her veins, awakening senses she never knew existed.</p>
 
-<p>Every sound was amplified - the distant clip-clop of carriage horses, the rustle of leaves in the garden, even the steady beat of her own heart. And beneath it all, a hunger that gnawed at her very soul.</p>
+<p>[Arabella, confused]: "What's happening to me? I feel... different. Stronger, yet hungrier than I've ever been."</p>
 
-<p>Her reflection in the mirror showed a woman transformed. Her skin glowed with an otherworldly luminescence, her eyes held a predatory gleam. The creature had given her a gift... or was it a curse?</p>
+<p>[Narrator]: Every sound was amplified - the distant clip-clop of carriage horses, the rustle of leaves in the garden, even the steady beat of her own heart. And beneath it all, a hunger that gnawed at her very soul.</p>
 
-<p>As night fell once more, she waited impatiently for his return. The hours stretched like taffy, each minute an eternity of anticipation. When he finally appeared at her balcony, silent as a shadow, Arabella knew there was no turning back.</p>
+<p>[Mysterious Stranger, approaching]: "The transformation has begun, my dear. You're becoming something magnificent, something eternal."</p>
 
-<p>Their second encounter was even more intense than the first. His hands explored her body with a possessiveness that made her arch and cry out. The passion burned hotter, threatening to consume them both.</p>
+<p>[Arabella, fearful yet excited]: "Is this what you intended? Am I becoming like you?"</p>
 
-<p>But in the aftermath, as they lay entwined in sweat-dampened sheets, Arabella began to question the true cost of her transformation. What price would she pay for eternal passion?</p>
+<p>[Narrator]: Her reflection in the mirror showed a woman transformed. Her skin glowed with an otherworldly luminescence, her eyes held a predatory gleam. The creature had given her a gift... or was it a curse?</p>
 
-<p><em>This is a mock chapter generated without AI.</em></p>`;
+<p>[Mysterious Stranger, passionate]: "You are mine now, in ways that mortal bonds could never achieve. Feel the power flowing through you."</p>
+
+<p>[Narrator]: As night fell once more, their second encounter was even more intense than the first. The passion burned hotter, threatening to consume them both. But in the aftermath, Arabella began to question the true cost of her transformation.</p>
+
+<p><em>[Narrator]: This is a mock chapter generated without AI featuring proper dialogue formatting for multi-voice audio.</em></p>`;
     }
     getCreatureDisplayName(creature) {
         const names = {

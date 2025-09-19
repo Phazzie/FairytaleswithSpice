@@ -12,11 +12,27 @@ export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 
+// New types for multi-voice audio generation
+export type CharacterVoiceType = 'vampire_male' | 'vampire_female' | 'werewolf_male' | 'werewolf_female' | 'fairy_male' | 'fairy_female' | 'human_male' | 'human_female' | 'narrator';
+export type EmotionType = 'neutral' | 'seductive' | 'angry' | 'fearful' | 'passionate' | 'tender' | 'commanding' | 'playful' | 'mysterious' | 'intimate';
+
+export interface DialogueSegment {
+  speaker: string; // Character name extracted from [Speaker]: format
+  text: string; // The dialogue text
+  emotion?: EmotionType; // Parsed from [Speaker, emotion]: format
+  voiceType: CharacterVoiceType; // Assigned based on character analysis
+  startTime?: number; // Position in final audio (seconds)
+  duration?: number; // Segment duration (seconds)
+  audioUrl?: string; // URL to individual segment audio
+}
+
 export interface AudioProgress {
   percentage: number; // 0-100
   status: 'queued' | 'processing' | 'completed' | 'failed';
   message: string;
   estimatedTimeRemaining?: number; // in seconds
+  currentSegment?: number; // Current dialogue segment being processed
+  totalSegments?: number; // Total number of dialogue segments
 }
 
 // ==================== SEAM 1: USER INPUT → STORY GENERATOR ====================
@@ -122,27 +138,34 @@ export interface ChapterContinuationSeam {
 // ==================== SEAM 3: STORY TEXT → AUDIO CONVERTER ====================
 export interface AudioConversionSeam {
   seamName: "Story Text → Audio Converter";
-  description: "Converts story text to audio format with progress tracking";
+  description: "Converts story text to multi-voice audio format with character-specific voices";
 
   input: {
     storyId: string;
-    content: string; // Full story HTML content
-    voice?: VoiceType;
+    content: string; // Full story HTML content with [Speaker]: dialogue format
+    voice?: VoiceType; // Fallback voice for non-dialogue content
     speed?: AudioSpeed;
     format?: AudioFormat;
+    enableMultiVoice?: boolean; // Enable multi-voice generation (default: true)
+    creatureType?: CreatureType; // Used for character voice assignment
   };
 
   output: {
     audioId: string;
     storyId: string;
-    audioUrl: string; // Download URL for UI
+    audioUrl: string; // Download URL for compiled multi-voice audio
     duration: number; // in seconds
     fileSize: number; // in bytes
     format: AudioFormat;
-    voice: VoiceType;
+    voice: VoiceType; // Primary voice used
     speed: AudioSpeed;
     progress: AudioProgress; // For real-time UI updates
     completedAt: Date;
+    // Multi-voice specific outputs
+    isMultiVoice: boolean; // Whether multi-voice generation was used
+    dialogueSegments?: DialogueSegment[]; // Individual voice segments
+    characterVoices?: Record<string, CharacterVoiceType>; // Character to voice mapping
+    segmentCount?: number; // Number of audio segments generated
   };
 
   errors: {
@@ -150,7 +173,7 @@ export interface AudioConversionSeam {
       code: "CONVERSION_FAILED";
       message: string;
       retryable: boolean;
-      stage: "text_processing" | "audio_generation" | "file_creation";
+      stage: "text_processing" | "dialogue_parsing" | "audio_generation" | "file_creation" | "audio_compilation";
     };
     UNSUPPORTED_CONTENT: {
       code: "UNSUPPORTED_CONTENT";
@@ -162,6 +185,17 @@ export interface AudioConversionSeam {
       message: string;
       quotaRemaining: number;
       resetTime: Date;
+    };
+    VOICE_ASSIGNMENT_FAILED: {
+      code: "VOICE_ASSIGNMENT_FAILED";
+      message: string;
+      failedCharacters: string[];
+    };
+    AUDIO_COMPILATION_FAILED: {
+      code: "AUDIO_COMPILATION_FAILED";
+      message: string;
+      completedSegments: number;
+      totalSegments: number;
     };
   };
 }
