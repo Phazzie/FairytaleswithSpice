@@ -356,6 +356,107 @@ select:focus {
   border: 1px solid #c3e6cb;
 }
 
+/* Form Validation Styles */
+.form-group.has-error input,
+.form-group.has-error select,
+.form-group.has-error textarea {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.2);
+}
+
+.form-group.has-error .radio-label,
+.form-group.has-error .checkbox-label {
+  border-color: #dc3545;
+}
+
+.field-error {
+  margin-top: 0.5rem;
+}
+
+.error-message {
+  display: block;
+  color: #dc3545;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 0.25rem;
+}
+
+.error-message:last-child {
+  margin-bottom: 0;
+}
+
+.form-validation-summary {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.validation-title {
+  color: #721c24;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.form-validation-summary ul {
+  color: #721c24;
+  margin: 0;
+  padding-left: 1.5rem;
+  font-size: 0.875rem;
+}
+
+.form-validation-summary li {
+  margin-bottom: 0.25rem;
+}
+
+/* Enhanced Focus States for Accessibility */
+input:focus,
+select:focus,
+textarea:focus,
+button:focus {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+.radio-option input:focus + .radio-label,
+.checkbox-option input:focus + .checkbox-label {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+/* Enhanced disabled states */
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f8f9fa;
+}
+
+.radio-option input:disabled + .radio-label,
+.checkbox-option input:disabled + .checkbox-label {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f8f9fa;
+}
+
+/* Better loading animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .main-content {

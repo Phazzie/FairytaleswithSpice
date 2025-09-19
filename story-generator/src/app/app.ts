@@ -1,33 +1,54 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { StoryService } from './story.service';
-import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
+import { NotificationService } from './notification.service';
+import { NotificationsComponent } from './notifications.component';
+import { FormValidator, FormValidationState } from './form-validator';
+import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam, UIState } from './contracts';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, CommonModule],
+  imports: [FormsModule, CommonModule, NotificationsComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
 export class App {
   protected readonly title = signal('story-generator');
 
-  // Inject the service
-  constructor(private storyService: StoryService) {}
+  // Inject services
+  private notificationService = inject(NotificationService);
+  
+  constructor(private storyService: StoryService) {
+    // Set up reactive validation
+    this.formValidation = computed(() => {
+      return FormValidator.validateForm(
+        this.selectedCreature,
+        this.selectedThemes,
+        this.userInput,
+        this.spicyLevel,
+        this.wordCount
+      );
+    });
+  }
 
   // Form data
   selectedCreature: string = 'vampire';
-  selectedThemes: string[] = [];
+  selectedThemes: string[] = ['romance']; // Start with just one theme selected
   userInput: string = '';
   spicyLevel: number = 3;
   wordCount: number = 900;
 
-  // UI state
+  // UI state - enhanced with better error handling
   isGenerating: boolean = false;
   isConvertingAudio: boolean = false;
   isSaving: boolean = false;
   isGeneratingNext: boolean = false;
+  lastError: string | null = null;
+
+  // Form validation
+  formValidation: any; // Will be properly typed in constructor
+  showValidationErrors: boolean = false;
 
   // Story data
   currentStory: string = '';
@@ -60,12 +81,23 @@ export class App {
 
   spicyLevelLabels = ['Mild', 'Warm', 'Hot', 'Spicy', 'Fire 🔥'];
 
-  // Methods
+  // Methods with enhanced error handling and validation
   generateStory() {
+    // Validate form before generation
+    this.showValidationErrors = true;
+    const validation = this.formValidation();
+    
+    if (!validation.overall.isValid) {
+      this.notificationService.showError(
+        'Please fix the form errors',
+        validation.overall.errors.join('. ')
+      );
+      return;
+    }
+
     this.isGenerating = true;
     this.currentStory = '';
-    this.saveSuccess = false;
-    this.audioSuccess = false;
+    this.lastError = null;
 
     const request: StoryGenerationSeam['input'] = {
       creature: this.selectedCreature as any,
@@ -80,17 +112,28 @@ export class App {
         if (response.success && response.data) {
           this.currentStory = response.data.content;
           this.isGenerating = false;
+          this.notificationService.showSuccess(
+            'Story Generated!',
+            'Your spicy tale is ready to read.'
+          );
+          this.showValidationErrors = false; // Hide validation errors on success
         }
       },
       error: (error) => {
         console.error('Story generation failed:', error);
         this.isGenerating = false;
+        this.lastError = 'Failed to generate story. Please try again.';
+        this.notificationService.showError(
+          'Generation Failed',
+          'There was an error creating your story. Please check your settings and try again.'
+        );
       }
     });
   }
 
   generateNextChapter() {
     this.isGeneratingNext = true;
+    this.lastError = null;
 
     const request: ChapterContinuationSeam['input'] = {
       storyId: 'current-story', // In a real app, this would be the actual story ID
@@ -105,11 +148,20 @@ export class App {
         if (response.success && response.data) {
           this.currentStory = response.data.appendedToStory;
           this.isGeneratingNext = false;
+          this.notificationService.showSuccess(
+            'Chapter Added!',
+            'Your story continues with a new exciting chapter.'
+          );
         }
       },
       error: (error) => {
         console.error('Chapter generation failed:', error);
         this.isGeneratingNext = false;
+        this.lastError = 'Failed to generate next chapter. Please try again.';
+        this.notificationService.showError(
+          'Chapter Generation Failed',
+          'Unable to continue your story. Please try again.'
+        );
       }
     });
   }
@@ -117,7 +169,7 @@ export class App {
   convertToAudio() {
     this.isConvertingAudio = true;
     this.audioProgress = 0;
-    this.audioSuccess = false;
+    this.lastError = null;
 
     const request: AudioConversionSeam['input'] = {
       storyId: 'current-story', // In a real app, this would be the actual story ID
@@ -131,19 +183,27 @@ export class App {
       next: (response) => {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
-          this.audioSuccess = true;
-          setTimeout(() => this.audioSuccess = false, 3000);
+          this.notificationService.showSuccess(
+            'Audio Ready!',
+            'Your story has been converted to audio and is ready for download.'
+          );
         }
       },
       error: (error) => {
         console.error('Audio conversion failed:', error);
         this.isConvertingAudio = false;
+        this.lastError = 'Failed to convert to audio. Please try again.';
+        this.notificationService.showError(
+          'Audio Conversion Failed',
+          'Unable to create audio version. Please try again later.'
+        );
       }
     });
   }
 
   saveStory() {
     this.isSaving = true;
+    this.lastError = null;
 
     const request: SaveExportSeam['input'] = {
       storyId: 'current-story', // In a real app, this would be the actual story ID
@@ -158,15 +218,52 @@ export class App {
       next: (response) => {
         if (response.success && response.data) {
           this.isSaving = false;
-          this.saveSuccess = true;
-          setTimeout(() => this.saveSuccess = false, 3000);
+          this.notificationService.showSuccess(
+            'Story Saved!',
+            'Your story has been saved and is ready for download.'
+          );
         }
       },
       error: (error) => {
         console.error('Save failed:', error);
         this.isSaving = false;
+        this.lastError = 'Failed to save story. Please try again.';
+        this.notificationService.showError(
+          'Save Failed',
+          'Unable to save your story. Please try again.'
+        );
       }
     });
+  }
+
+  // Helper methods for validation
+  getFieldValidation(field: keyof FormValidationState) {
+    return this.formValidation()[field];
+  }
+
+  hasFieldError(field: keyof FormValidationState): boolean {
+    if (!this.showValidationErrors) return false;
+    const validation = this.getFieldValidation(field);
+    return !validation.isValid && validation.errors.length > 0;
+  }
+
+  getFieldErrors(field: keyof FormValidationState): string[] {
+    if (!this.showValidationErrors) return [];
+    const validation = this.getFieldValidation(field);
+    return validation.isValid ? [] : validation.errors;
+  }
+
+  isFormValid(): boolean {
+    return this.formValidation().overall.isValid;
+  }
+
+  // TrackBy functions for performance
+  trackByCreature(index: number, creature: any): string {
+    return creature.value;
+  }
+
+  trackByTheme(index: number, theme: any): string {
+    return theme.value;
   }
 
   getCreatureName(): string {
