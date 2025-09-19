@@ -177,7 +177,7 @@ export class StoryService {
         messages: [
           {
             role: 'system',
-            content: 'Continue this story in the same style and tone. Maintain character development, spice level, and plot progression. Keep the same supernatural atmosphere and romantic intensity.'
+            content: 'Continue this story in the same style and tone. Maintain character development, spice level, and plot progression. Keep the same supernatural atmosphere and romantic intensity. CRITICAL: Use [Character Name]: "dialogue" format for all speech and [Narrator]: for descriptive text to match the existing story format.'
           },
           {
             role: 'user',
@@ -211,6 +211,23 @@ STORY STRUCTURE:
 - Integrate supernatural elements naturally
 - Create satisfying resolutions that could continue
 
+DIALOGUE FORMATTING (CRITICAL for audio generation):
+- Use clear speaker tags: [Character Name]: "dialogue here"
+- Use [Narrator]: for all descriptive text and scene setting
+- Include emotional context: [Character Name, emotion]: "dialogue"
+- Each speaker should have distinct voice/personality in their speech patterns
+- Example format:
+  [Narrator]: The moonlight cast eerie shadows across the castle courtyard.
+  [Vampire Lord, seductive]: "You shouldn't have come here alone, my dear."
+  [Sarah, fearful but defiant]: "I'm not afraid of you!"
+  [Narrator, intimate]: Her voice trembled despite her brave words, and she could feel his dark eyes piercing through her soul.
+
+CHARACTER VOICE PATTERNS:
+- Vampires: Elegant, formal speech with seductive undertones
+- Werewolves: Gruff, direct, protective, sometimes growling speech patterns  
+- Fairies: Lyrical, mystical, otherworldly speech with nature references
+- Humans: Realistic, emotional, relatable dialogue
+
 SPICINESS LEVELS (1-5 scale):
 Level 1 (Mild): Sweet romance, tender moments, passionate kisses, emotional intimacy
 Level 2 (Warm): Heated embraces, sensual tension, implied intimacy, romantic chemistry  
@@ -231,7 +248,7 @@ WRITING STYLE:
 - Smooth transitions between scenes
 - HTML formatting: <h3> for titles, <p> for paragraphs, <em> for emphasis
 
-Always match the requested spice level precisely and create stories that feel complete yet could continue.`;
+CRITICAL: Always use the [Speaker]: format for ALL dialogue and [Narrator]: for ALL descriptive text. This is essential for audio generation. Always match the requested spice level precisely and create stories that feel complete yet could continue.`;
   }
 
   private buildUserPrompt(input: StoryGenerationSeam['input']): string {
@@ -245,6 +262,12 @@ MAIN CHARACTER: ${creatureName}
 THEMES: ${themesText}
 SPICE LEVEL: ${spicyLabel} (Level ${input.spicyLevel}/5)
 ${input.userInput ? `CUSTOM IDEAS: ${input.userInput}` : ''}
+
+CRITICAL FORMATTING REQUIREMENTS:
+- Use [Character Name]: "dialogue" for all speech
+- Use [Narrator]: for all descriptive text
+- Give each character a distinct personality in their dialogue
+- Include emotional context when needed: [Character, emotion]: "dialogue"
 
 Create a complete story that incorporates all themes naturally while maintaining the specified spice level throughout.`;
   }
