@@ -5,7 +5,7 @@
   </header>
 
   <div class="main-content">
-    <!-- Story Generation Form -->
+    <!-- Left Column: Story Generation Form -->
     <div class="form-section">
       <h2>Story Configuration</h2>
 
@@ -92,90 +92,100 @@
       </button>
     </div>
 
-    <!-- Debug Section for Error Logging Demo -->
-    <div class="debug-section" style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px dashed #dee2e6;">
-      <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #6c757d;">🐛 Error Logging Debug Panel</h3>
-      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-        <button 
-          class="debug-btn" 
-          (click)="testErrorLogging()"
-          style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
-          Test All Severities
-        </button>
-        <button 
-          class="debug-btn" 
-          (click)="simulateHttpError()"
-          style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
-          Simulate HTTP Error
-        </button>
-      </div>
-      <p style="margin: 8px 0 0 0; font-size: 11px; color: #6c757d;">
-        Click buttons above to generate test errors. Check the error display widget in the bottom-right corner.
-      </p>
-    </div>
+    <!-- Right Column: Story Display -->
+    <div class="story-column">
+      <!-- Story Display -->
+      <div class="story-section" *ngIf="currentStory">
+        <div class="story-header">
+          <h2>Your Spicy {{getCreatureName()}} Story</h2>
+          <div class="story-actions">
+            <button
+              class="action-btn audio-btn"
+              (click)="convertToAudio()"
+              [disabled]="isConvertingAudio">
+              <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
+              <span *ngIf="isConvertingAudio" class="loading">
+                <span class="spinner"></span>
+                Converting...
+              </span>
+            </button>
 
-    <!-- Story Display -->
-    <div class="story-section" *ngIf="currentStory">
-      <div class="story-header">
-        <h2>Your Spicy {{getCreatureName()}} Story</h2>
-        <div class="story-actions">
-          <button
-            class="action-btn audio-btn"
-            (click)="convertToAudio()"
-            [disabled]="isConvertingAudio">
-            <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
-            <span *ngIf="isConvertingAudio" class="loading">
-              <span class="spinner"></span>
-              Converting...
-            </span>
-          </button>
+            <button
+              class="action-btn save-btn"
+              (click)="saveStory()"
+              [disabled]="isSaving">
+              <span *ngIf="!isSaving">💾 Save Story</span>
+              <span *ngIf="isSaving" class="loading">
+                <span class="spinner"></span>
+                Saving...
+              </span>
+            </button>
+          </div>
+        </div>
 
+        <div class="story-content" [innerHTML]="currentStory"></div>
+
+        <div class="story-footer">
           <button
-            class="action-btn save-btn"
-            (click)="saveStory()"
-            [disabled]="isSaving">
-            <span *ngIf="!isSaving">💾 Save Story</span>
-            <span *ngIf="isSaving" class="loading">
+            class="continue-btn"
+            (click)="generateNextChapter()"
+            [disabled]="isGeneratingNext">
+            <span *ngIf="!isGeneratingNext">📖 Generate Next Chapter</span>
+            <span *ngIf="isGeneratingNext" class="loading">
               <span class="spinner"></span>
-              Saving...
+              Writing next chapter...
             </span>
           </button>
         </div>
       </div>
 
-      <div class="story-content" [innerHTML]="currentStory"></div>
+      <!-- Placeholder when no story -->
+      <div class="story-placeholder" *ngIf="!currentStory">
+        <div class="placeholder-content">
+          <h2>Your Story Will Appear Here</h2>
+          <p>Configure your story settings on the left and click "Generate Story" to begin!</p>
+          <div class="placeholder-icon">📚✨</div>
+        </div>
+      </div>
 
-      <div class="story-footer">
-        <button
-          class="continue-btn"
-          (click)="generateNextChapter()"
-          [disabled]="isGeneratingNext">
-          <span *ngIf="!isGeneratingNext">📖 Generate Next Chapter</span>
-          <span *ngIf="isGeneratingNext" class="loading">
-            <span class="spinner"></span>
-            Writing next chapter...
-          </span>
-        </button>
+      <!-- Audio Progress -->
+      <div class="audio-progress" *ngIf="audioProgress > 0">
+        <h3>Audio Conversion Progress</h3>
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width.%]="audioProgress"></div>
+        </div>
+        <p>{{audioProgress}}% complete</p>
+      </div>
+
+      <!-- Success Messages -->
+      <div class="success-message" *ngIf="saveSuccess">
+        ✅ Story saved successfully!
+      </div>
+
+      <div class="success-message" *ngIf="audioSuccess">
+        🎵 Audio conversion completed! Download ready.
       </div>
     </div>
+  </div>
 
-    <!-- Audio Progress -->
-    <div class="audio-progress" *ngIf="audioProgress > 0">
-      <h3>Audio Conversion Progress</h3>
-      <div class="progress-bar">
-        <div class="progress-fill" [style.width.%]="audioProgress"></div>
-      </div>
-      <p>{{audioProgress}}% complete</p>
+  <!-- Debug Section (Outside Grid) -->
+  <div class="debug-section">
+    <h3>🐛 Error Logging Debug Panel</h3>
+    <div class="debug-buttons">
+      <button 
+        class="debug-btn" 
+        (click)="testErrorLogging()">
+        Test All Severities
+      </button>
+      <button 
+        class="debug-btn error-btn" 
+        (click)="simulateHttpError()">
+        Simulate HTTP Error
+      </button>
     </div>
-
-    <!-- Success Messages -->
-    <div class="success-message" *ngIf="saveSuccess">
-      ✅ Story saved successfully!
-    </div>
-
-    <div class="success-message" *ngIf="audioSuccess">
-      🎵 Audio conversion completed! Download ready.
-    </div>
+    <p class="debug-help">
+      Click buttons above to generate test errors. Check the error display widget in the bottom-right corner.
+    </p>
   </div>
 
   <!-- Error Display Component -->
