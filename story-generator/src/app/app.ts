@@ -84,6 +84,9 @@ export class App {
       console.log('Added theme:', theme);
     }
     console.log('Current themes:', Array.from(this.selectedThemes));
+    
+    // Force update by reassigning to trigger change detection
+    this.selectedThemes = new Set(this.selectedThemes);
   }
 
   isThemeSelected(theme: string): boolean {
