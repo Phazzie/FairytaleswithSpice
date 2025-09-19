@@ -1,24 +1,33 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy, ViewChild, Inject, PLATFORM_ID, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CommonModule } from '@angular/common';
+import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { StoryService } from './story.service';
+import { ErrorLoggingService } from './error-logging';
+import { ErrorDisplayComponent } from './error-display/error-display';
 import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
+import { DebugPanel } from './debug-panel/debug-panel';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, CommonModule],
+  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
-export class App {
+export class App implements OnInit, OnDestroy {
   protected readonly title = signal('story-generator');
+  private isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  
+  @ViewChild(DebugPanel) debugPanel!: DebugPanel;
 
-  // Inject the service
-  constructor(private storyService: StoryService) {}
+  // Inject the services
+  constructor(
+    private storyService: StoryService,
+    private errorLogging: ErrorLoggingService
+  ) {}
 
   // Form data
   selectedCreature: string = 'vampire';
-  selectedThemes: string[] = [];
+  selectedThemes: Set<string> = new Set();
   userInput: string = '';
   spicyLevel: number = 3;
   wordCount: number = 900;
@@ -31,6 +40,11 @@ export class App {
 
   // Story data
   currentStory: string = '';
+  currentStoryId: string = '';
+  currentStoryTitle: string = '';
+  currentChapterCount: number = 0;
+  currentStoryThemes: string[] = [];
+  currentStorySpicyLevel: number = 3;
 
   // Progress tracking
   audioProgress: number = 0;
@@ -45,11 +59,24 @@ export class App {
   ];
 
   themes = [
-    { value: 'romance', label: '💕 Romance' },
-    { value: 'adventure', label: '🗺️ Adventure' },
-    { value: 'mystery', label: '🔍 Mystery' },
-    { value: 'comedy', label: '😂 Comedy' },
-    { value: 'dark', label: '🌑 Dark' }
+    { value: 'betrayal', label: '🗡️ Betrayal' },
+    { value: 'obsession', label: '🖤 Obsession' },
+    { value: 'power_dynamics', label: '⚡ Power Dynamics' },
+    { value: 'forbidden_love', label: '🚫 Forbidden Love' },
+    { value: 'revenge', label: '💀 Revenge' },
+    { value: 'manipulation', label: '🕷️ Manipulation' },
+    { value: 'seduction', label: '💋 Seduction' },
+    { value: 'dark_secrets', label: '🔐 Dark Secrets' },
+    { value: 'corruption', label: '🌑 Corruption' },
+    { value: 'dominance', label: '👑 Dominance' },
+    { value: 'submission', label: '⛓️ Submission' },
+    { value: 'jealousy', label: '💚 Jealousy' },
+    { value: 'temptation', label: '🍎 Temptation' },
+    { value: 'sin', label: '😈 Sin' },
+    { value: 'desire', label: '🔥 Desire' },
+    { value: 'passion', label: '❤️‍🔥 Passion' },
+    { value: 'lust', label: '💦 Lust' },
+    { value: 'deceit', label: '🎭 Deceit' }
   ];
 
   wordCountOptions = [
@@ -60,16 +87,59 @@ export class App {
 
   spicyLevelLabels = ['Mild', 'Warm', 'Hot', 'Spicy', 'Fire 🔥'];
 
+  // Theme selection methods
+  toggleTheme(theme: string) {
+    console.log('toggleTheme called with:', theme);
+    if (this.selectedThemes.has(theme)) {
+      this.selectedThemes.delete(theme);
+      console.log('Removed theme:', theme);
+    } else if (this.selectedThemes.size < 5) {
+      this.selectedThemes.add(theme);
+      console.log('Added theme:', theme);
+    }
+    console.log('Current themes:', Array.from(this.selectedThemes));
+    
+    // Force update by reassigning to trigger change detection
+    this.selectedThemes = new Set(this.selectedThemes);
+  }
+
+  isThemeSelected(theme: string): boolean {
+    return this.selectedThemes.has(theme);
+  }
+
+  getSelectedThemesCount(): number {
+    return this.selectedThemes.size;
+  }
+
+  canSelectMoreThemes(): boolean {
+    return this.selectedThemes.size < 5;
+  }
+
+  canGenerateStory(): boolean {
+    return this.selectedThemes.size > 0;
+  }
+
   // Methods
   generateStory() {
+    if (!this.canGenerateStory()) {
+      return; // Prevent generation with no themes
+    }
+
     this.isGenerating = true;
     this.currentStory = '';
     this.saveSuccess = false;
     this.audioSuccess = false;
 
+    this.errorLogging.logInfo('User initiated story generation', 'App.generateStory', {
+      creature: this.selectedCreature,
+      themes: this.selectedThemes,
+      spicyLevel: this.spicyLevel,
+      wordCount: this.wordCount
+    });
+
     const request: StoryGenerationSeam['input'] = {
       creature: this.selectedCreature as any,
-      themes: this.selectedThemes as any,
+      themes: Array.from(this.selectedThemes) as any,
       userInput: this.userInput,
       spicyLevel: this.spicyLevel as any,
       wordCount: this.wordCount as any
@@ -78,12 +148,26 @@ export class App {
     this.storyService.generateStory(request).subscribe({
       next: (response) => {
         if (response.success && response.data) {
+          // Store complete story data
           this.currentStory = response.data.content;
+          this.currentStoryId = response.data.storyId;
+          this.currentStoryTitle = response.data.title;
+          this.currentChapterCount = 1;
+          this.currentStoryThemes = response.data.themes;
+          this.currentStorySpicyLevel = response.data.spicyLevel;
+          
           this.isGenerating = false;
+          this.errorLogging.logInfo('Story generation completed successfully', 'App.generateStory', {
+            storyId: response.data.storyId,
+            wordCount: response.data.actualWordCount
+          });
         }
       },
       error: (error) => {
-        console.error('Story generation failed:', error);
+        this.errorLogging.logError(error, 'App.generateStory', 'error', {
+          request,
+          userAction: 'story_generation'
+        });
         this.isGenerating = false;
       }
     });
@@ -92,9 +176,11 @@ export class App {
   generateNextChapter() {
     this.isGeneratingNext = true;
 
+    this.errorLogging.logInfo('User initiated chapter continuation', 'App.generateNextChapter');
+
     const request: ChapterContinuationSeam['input'] = {
-      storyId: 'current-story', // In a real app, this would be the actual story ID
-      currentChapterCount: 1, // In a real app, this would be tracked
+      storyId: this.currentStoryId,
+      currentChapterCount: this.currentChapterCount,
       existingContent: this.currentStory,
       userInput: '',
       maintainTone: true
@@ -104,11 +190,19 @@ export class App {
       next: (response) => {
         if (response.success && response.data) {
           this.currentStory = response.data.appendedToStory;
+          this.currentChapterCount = response.data.chapterNumber;
           this.isGeneratingNext = false;
+          this.errorLogging.logInfo('Chapter continuation completed successfully', 'App.generateNextChapter', {
+            chapterId: response.data.chapterId,
+            chapterNumber: response.data.chapterNumber
+          });
         }
       },
       error: (error) => {
-        console.error('Chapter generation failed:', error);
+        this.errorLogging.logError(error, 'App.generateNextChapter', 'error', {
+          request,
+          userAction: 'chapter_continuation'
+        });
         this.isGeneratingNext = false;
       }
     });
@@ -119,8 +213,12 @@ export class App {
     this.audioProgress = 0;
     this.audioSuccess = false;
 
+    this.errorLogging.logInfo('User initiated audio conversion', 'App.convertToAudio', {
+      contentLength: this.currentStory.length
+    });
+
     const request: AudioConversionSeam['input'] = {
-      storyId: 'current-story', // In a real app, this would be the actual story ID
+      storyId: this.currentStoryId,
       content: this.currentStory,
       voice: 'female',
       speed: 1.0,
@@ -132,11 +230,19 @@ export class App {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
+          this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
+            audioId: response.data.audioId,
+            duration: response.data.duration,
+            fileSize: response.data.fileSize
+          });
           setTimeout(() => this.audioSuccess = false, 3000);
         }
       },
       error: (error) => {
-        console.error('Audio conversion failed:', error);
+        this.errorLogging.logError(error, 'App.convertToAudio', 'error', {
+          request,
+          userAction: 'audio_conversion'
+        });
         this.isConvertingAudio = false;
       }
     });
@@ -145,10 +251,14 @@ export class App {
   saveStory() {
     this.isSaving = true;
 
+    this.errorLogging.logInfo('User initiated story save/export', 'App.saveStory', {
+      contentLength: this.currentStory.length
+    });
+
     const request: SaveExportSeam['input'] = {
-      storyId: 'current-story', // In a real app, this would be the actual story ID
+      storyId: this.currentStoryId,
       content: this.currentStory,
-      title: 'Spicy Story', // In a real app, this would be extracted from the story
+      title: this.currentStoryTitle,
       format: 'pdf',
       includeMetadata: true,
       includeChapters: true
@@ -159,11 +269,19 @@ export class App {
         if (response.success && response.data) {
           this.isSaving = false;
           this.saveSuccess = true;
+          this.errorLogging.logInfo('Story save/export completed successfully', 'App.saveStory', {
+            exportId: response.data.exportId,
+            format: response.data.format,
+            fileSize: response.data.fileSize
+          });
           setTimeout(() => this.saveSuccess = false, 3000);
         }
       },
       error: (error) => {
-        console.error('Save failed:', error);
+        this.errorLogging.logError(error, 'App.saveStory', 'error', {
+          request,
+          userAction: 'story_export'
+        });
         this.isSaving = false;
       }
     });
@@ -172,5 +290,56 @@ export class App {
   getCreatureName(): string {
     const creature = this.creatures.find(c => c.value === this.selectedCreature);
     return creature ? creature.label.split(' ')[1] : 'Creature';
+  }
+
+  // ==================== DEBUG PANEL LIFECYCLE ====================
+  
+  ngOnInit() {
+    if (this.isBrowser) {
+      this.setupKeyboardShortcuts();
+    }
+  }
+  
+  ngOnDestroy() {
+    if (this.isBrowser) {
+      document.removeEventListener('keydown', this.handleKeyDown);
+    }
+  }
+  
+  private setupKeyboardShortcuts() {
+    document.addEventListener('keydown', this.handleKeyDown.bind(this));
+  }
+  
+  private handleKeyDown(event: KeyboardEvent) {
+    // Ctrl+Shift+D to toggle debug panel
+    if (event.ctrlKey && event.shiftKey && event.key === 'D') {
+      event.preventDefault();
+      if (this.debugPanel) {
+        this.debugPanel.toggleVisibility();
+      }
+    }
+  }
+
+  // ==================== DEBUG METHODS FOR ERROR LOGGING DEMO ====================
+  
+  testErrorLogging() {
+    // Simulate different types of errors for demonstration
+    this.errorLogging.logInfo('Demo info message', 'App.testErrorLogging', { action: 'demo_test' });
+    this.errorLogging.logWarning('Demo warning message', 'App.testErrorLogging', { action: 'demo_test' });
+    this.errorLogging.logError(new Error('Demo error message'), 'App.testErrorLogging', 'error', { action: 'demo_test' });
+    this.errorLogging.logCritical(new Error('Demo critical error'), 'App.testErrorLogging', { action: 'demo_test' });
+  }
+
+  simulateHttpError() {
+    // Simulate an HTTP error to test error logging integration
+    this.errorLogging.logError({
+      status: 404,
+      statusText: 'Not Found',
+      message: 'Simulated HTTP 404 error',
+      url: '/api/fake-endpoint'
+    }, 'App.simulateHttpError', 'error', {
+      type: 'simulated_http_error',
+      endpoint: '/api/fake-endpoint'
+    });
   }
 }

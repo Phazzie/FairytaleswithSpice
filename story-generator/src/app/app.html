@@ -1,11 +1,11 @@
-<div class="story-generator">
+<div class="story-generator" ngSkipHydration>
   <header class="header">
     <h1>🧚‍♀️ Fairytales with Spice</h1>
     <p>Create spicy fantasy stories with your favorite creatures</p>
   </header>
 
   <div class="main-content">
-    <!-- Story Generation Form -->
+    <!-- Left Column: Story Generation Form -->
     <div class="form-section">
       <h2>Story Configuration</h2>
 
@@ -22,10 +22,16 @@
 
       <!-- Theme Checkboxes -->
       <div class="form-group">
-        <label>Story Themes:</label>
+        <label>Story Themes ({{getSelectedThemesCount()}}/5 selected):</label>
         <div class="checkbox-group">
-          <label class="checkbox-option" *ngFor="let theme of themes">
-            <input type="checkbox" [value]="theme.value" [(ngModel)]="selectedThemes">
+          <label class="checkbox-option" 
+                 *ngFor="let theme of themes" 
+                 [class.selected]="isThemeSelected(theme.value)"
+                 [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)">
+            <input type="checkbox" 
+                   [checked]="isThemeSelected(theme.value)"
+                   [disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
+                   (change)="toggleTheme(theme.value)">
             <span class="checkbox-label">{{theme.label}}</span>
           </label>
         </div>
@@ -76,8 +82,9 @@
       <button
         class="generate-btn"
         (click)="generateStory()"
-        [disabled]="isGenerating">
-        <span *ngIf="!isGenerating">✨ Generate Story</span>
+        [disabled]="isGenerating || !canGenerateStory()">
+        <span *ngIf="!isGenerating && canGenerateStory()">✨ Generate Story</span>
+        <span *ngIf="!isGenerating && !canGenerateStory()">❌ Select at least one theme</span>
         <span *ngIf="isGenerating" class="loading">
           <span class="spinner"></span>
           Crafting your tale...
@@ -85,69 +92,87 @@
       </button>
     </div>
 
-    <!-- Story Display -->
-    <div class="story-section" *ngIf="currentStory">
-      <div class="story-header">
-        <h2>Your Spicy {{getCreatureName()}} Story</h2>
-        <div class="story-actions">
-          <button
-            class="action-btn audio-btn"
-            (click)="convertToAudio()"
-            [disabled]="isConvertingAudio">
-            <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
-            <span *ngIf="isConvertingAudio" class="loading">
-              <span class="spinner"></span>
-              Converting...
-            </span>
-          </button>
+    <!-- Right Column: Story Display -->
+    <div class="story-column">
+      <!-- Story Display -->
+      <div class="story-section" *ngIf="currentStory">
+        <div class="story-header">
+          <h2>Your Spicy {{getCreatureName()}} Story</h2>
+          <div class="story-actions">
+            <button
+              class="action-btn audio-btn"
+              (click)="convertToAudio()"
+              [disabled]="isConvertingAudio">
+              <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
+              <span *ngIf="isConvertingAudio" class="loading">
+                <span class="spinner"></span>
+                Converting...
+              </span>
+            </button>
 
+            <button
+              class="action-btn save-btn"
+              (click)="saveStory()"
+              [disabled]="isSaving">
+              <span *ngIf="!isSaving">💾 Save Story</span>
+              <span *ngIf="isSaving" class="loading">
+                <span class="spinner"></span>
+                Saving...
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div class="story-content" [innerHTML]="currentStory"></div>
+
+        <div class="story-footer">
           <button
-            class="action-btn save-btn"
-            (click)="saveStory()"
-            [disabled]="isSaving">
-            <span *ngIf="!isSaving">💾 Save Story</span>
-            <span *ngIf="isSaving" class="loading">
+            class="continue-btn"
+            (click)="generateNextChapter()"
+            [disabled]="isGeneratingNext">
+            <span *ngIf="!isGeneratingNext">📖 Generate Next Chapter</span>
+            <span *ngIf="isGeneratingNext" class="loading">
               <span class="spinner"></span>
-              Saving...
+              Writing next chapter...
             </span>
           </button>
         </div>
       </div>
 
-      <div class="story-content" [innerHTML]="currentStory"></div>
-
-      <div class="story-footer">
-        <button
-          class="continue-btn"
-          (click)="generateNextChapter()"
-          [disabled]="isGeneratingNext">
-          <span *ngIf="!isGeneratingNext">📖 Generate Next Chapter</span>
-          <span *ngIf="isGeneratingNext" class="loading">
-            <span class="spinner"></span>
-            Writing next chapter...
-          </span>
-        </button>
+      <!-- Placeholder when no story -->
+      <div class="story-placeholder" *ngIf="!currentStory">
+        <div class="placeholder-content">
+          <h2>Your Story Will Appear Here</h2>
+          <p>Configure your story settings on the left and click "Generate Story" to begin!</p>
+          <div class="placeholder-icon">📚✨</div>
+        </div>
       </div>
-    </div>
 
-    <!-- Audio Progress -->
-    <div class="audio-progress" *ngIf="audioProgress > 0">
-      <h3>Audio Conversion Progress</h3>
-      <div class="progress-bar">
-        <div class="progress-fill" [style.width.%]="audioProgress"></div>
+      <!-- Audio Progress -->
+      <div class="audio-progress" *ngIf="audioProgress > 0">
+        <h3>Audio Conversion Progress</h3>
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width.%]="audioProgress"></div>
+        </div>
+        <p>{{audioProgress}}% complete</p>
       </div>
-      <p>{{audioProgress}}% complete</p>
-    </div>
 
-    <!-- Success Messages -->
-    <div class="success-message" *ngIf="saveSuccess">
-      ✅ Story saved successfully!
-    </div>
+      <!-- Success Messages -->
+      <div class="success-message" *ngIf="saveSuccess">
+        ✅ Story saved successfully!
+      </div>
 
-    <div class="success-message" *ngIf="audioSuccess">
-      🎵 Audio conversion completed! Download ready.
+      <div class="success-message" *ngIf="audioSuccess">
+        🎵 Audio conversion completed! Download ready.
+      </div>
     </div>
   </div>
+
+  <!-- Error Display Component -->
+  <app-error-display></app-error-display>
 </div>
+
+<!-- Debug Panel Component -->
+<app-debug-panel #debugPanel></app-debug-panel>
 
 

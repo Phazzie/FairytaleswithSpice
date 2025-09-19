@@ -4,7 +4,7 @@
 
 // ==================== TYPE DEFINITIONS ====================
 export type CreatureType = 'vampire' | 'werewolf' | 'fairy';
-export type ThemeType = 'romance' | 'adventure' | 'mystery' | 'comedy' | 'dark';
+export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden_love' | 'revenge' | 'manipulation' | 'seduction' | 'dark_secrets' | 'corruption' | 'dominance' | 'submission' | 'jealousy' | 'temptation' | 'sin' | 'desire' | 'passion' | 'lust' | 'deceit';
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
 export type WordCount = 700 | 900 | 1200;
 export type VoiceType = 'female' | 'male' | 'neutral';
@@ -245,6 +245,46 @@ export interface UIState {
   saveSuccess: boolean;
   audioSuccess: boolean;
   lastError?: string;
+}
+
+// ==================== ERROR LOGGING SEAM ====================
+export type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+export interface ErrorLog {
+  id: string;
+  timestamp: Date;
+  message: string;
+  context: string;
+  severity: ErrorSeverity;
+  stack?: string;
+  details?: any;
+}
+
+export interface ErrorLoggingSeam {
+  seamName: "Error Tracking → Logging System";
+  description: "Captures and manages application errors for debugging";
+
+  input: {
+    error: any;
+    context: string;
+    severity?: ErrorSeverity;
+    additionalDetails?: any;
+  };
+
+  output: {
+    errorId: string;
+    logged: boolean;
+    timestamp: Date;
+    severity: ErrorSeverity;
+  };
+
+  errors: {
+    LOGGING_FAILED: {
+      code: "LOGGING_FAILED";
+      message: string;
+      originalError: any;
+    };
+  };
 }
 
 // ==================== UNIFIED API RESPONSE ====================
