@@ -27,13 +27,27 @@
   margin: 0.5rem 0 0 0;
 }
 
-.main-content {
+.main-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 2rem;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   gap: 3rem;
+}
+
+.config-panel {
+  width: 400px;
+  flex-shrink: 0;
+}
+
+.story-panel {
+  flex: 1;
+  min-width: 0; /* Prevents flex item from overflowing */
+}
+
+.story-display {
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .form-section {
@@ -358,10 +372,23 @@ select:focus {
 
 /* Responsive Design */
 @media (max-width: 768px) {
-  .main-content {
-    grid-template-columns: 1fr;
+  .main-container {
+    flex-direction: column;
     gap: 2rem;
     padding: 1rem;
+  }
+
+  .config-panel {
+    width: 100%;
+  }
+
+  .story-panel {
+    width: 100%;
+  }
+
+  .story-display {
+    max-height: none;
+    overflow-y: visible;
   }
 
   .header h1 {

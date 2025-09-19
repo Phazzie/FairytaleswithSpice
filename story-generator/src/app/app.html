@@ -4,9 +4,10 @@
     <p>Create spicy fantasy stories with your favorite creatures</p>
   </header>
 
-  <div class="main-content">
-    <!-- Story Generation Form -->
-    <div class="form-section">
+  <div class="main-container">
+    <!-- Configuration Panel -->
+    <div class="config-panel">
+      <div class="form-section">
       <h2>Story Configuration</h2>
 
       <!-- Creature Selector -->
@@ -83,10 +84,14 @@
           Crafting your tale...
         </span>
       </button>
+      </div>
     </div>
 
-    <!-- Story Display -->
-    <div class="story-section" *ngIf="currentStory">
+    <!-- Story Panel -->
+    <div class="story-panel">
+      <!-- Story Display -->
+      <div class="story-display">
+        <div class="story-section" *ngIf="currentStory">
       <div class="story-header">
         <h2>Your Spicy {{getCreatureName()}} Story</h2>
         <div class="story-actions">
@@ -128,24 +133,26 @@
           </span>
         </button>
       </div>
-    </div>
+        </div>
 
-    <!-- Audio Progress -->
-    <div class="audio-progress" *ngIf="audioProgress > 0">
-      <h3>Audio Conversion Progress</h3>
-      <div class="progress-bar">
-        <div class="progress-fill" [style.width.%]="audioProgress"></div>
+        <!-- Audio Progress -->
+        <div class="audio-progress" *ngIf="audioProgress > 0">
+          <h3>Audio Conversion Progress</h3>
+          <div class="progress-bar">
+            <div class="progress-fill" [style.width.%]="audioProgress"></div>
+          </div>
+          <p>{{audioProgress}}% complete</p>
+        </div>
+
+        <!-- Success Messages -->
+        <div class="success-message" *ngIf="saveSuccess">
+          ✅ Story saved successfully!
+        </div>
+
+        <div class="success-message" *ngIf="audioSuccess">
+          🎵 Audio conversion completed! Download ready.
+        </div>
       </div>
-      <p>{{audioProgress}}% complete</p>
-    </div>
-
-    <!-- Success Messages -->
-    <div class="success-message" *ngIf="saveSuccess">
-      ✅ Story saved successfully!
-    </div>
-
-    <div class="success-message" *ngIf="audioSuccess">
-      🎵 Audio conversion completed! Download ready.
     </div>
   </div>
 </div>
