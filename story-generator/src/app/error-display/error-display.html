@@ -1,0 +1,55 @@
+<div class="error-display" *ngIf="hasErrors">
+  <!-- Error Summary Bar -->
+  <div class="error-summary" [class.has-important]="hasImportantErrors" (click)="toggleExpanded()">
+    <div class="error-counts">
+      <span *ngIf="errorCounts.critical > 0" class="count critical">
+        🔥 {{ errorCounts.critical }}
+      </span>
+      <span *ngIf="errorCounts.error > 0" class="count error">
+        ❌ {{ errorCounts.error }}
+      </span>
+      <span *ngIf="errorCounts.warning > 0" class="count warning">
+        ⚠️ {{ errorCounts.warning }}
+      </span>
+      <span *ngIf="errorCounts.info > 0" class="count info">
+        ℹ️ {{ errorCounts.info }}
+      </span>
+    </div>
+    <div class="error-actions">
+      <button class="clear-all" (click)="clearAllErrors(); $event.stopPropagation()">
+        Clear All
+      </button>
+      <span class="toggle-icon">{{ isExpanded ? '▼' : '▶' }}</span>
+    </div>
+  </div>
+
+  <!-- Error Details (expandable) -->
+  <div class="error-details" [class.expanded]="isExpanded">
+    <div class="error-list">
+      <div *ngFor="let error of errors; trackBy: trackByErrorId" 
+           class="error-item" 
+           [ngClass]="getSeverityClass(error.severity)">
+        <div class="error-header">
+          <span class="error-icon">{{ getSeverityIcon(error.severity) }}</span>
+          <span class="error-context">{{ error.context }}</span>
+          <span class="error-time">{{ formatTime(error.timestamp) }}</span>
+          <button class="clear-error" (click)="clearError(error.id)" title="Clear this error">
+            ✕
+          </button>
+        </div>
+        <div class="error-message">{{ error.message }}</div>
+        <div *ngIf="error.stack && isExpanded" class="error-stack">
+          <details>
+            <summary>Stack Trace</summary>
+            <pre>{{ error.stack }}</pre>
+          </details>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Debug Mode Notice -->
+<div class="debug-notice" *ngIf="!hasErrors">
+  <small>🐛 Error logging is active - errors will appear here</small>
+</div>
