@@ -9,9 +9,9 @@ const contracts_1 = require("../types/contracts");
 class StoryService {
     constructor() {
         this.grokApiUrl = 'https://api.x.ai/v1/chat/completions';
-        this.grokApiKey = process.env.GROK_API_KEY;
+        this.grokApiKey = process.env.XAI_AI_KEY;
         if (!this.grokApiKey) {
-            console.warn('⚠️  GROK_API_KEY not found in environment variables');
+            console.warn('⚠️  XAI_AI_KEY not found in environment variables');
         }
     }
     async generateStory(input) {
@@ -119,7 +119,7 @@ class StoryService {
         const prompt = this.buildStoryPrompt(input);
         try {
             const response = await axios_1.default.post(this.grokApiUrl, {
-                model: 'grok-beta',
+                model: 'grok-4-0709',
                 messages: [
                     {
                         role: 'system',
@@ -152,7 +152,7 @@ class StoryService {
         const prompt = this.buildContinuationPrompt(input);
         try {
             const response = await axios_1.default.post(this.grokApiUrl, {
-                model: 'grok-beta',
+                model: 'grok-4-0709',
                 messages: [
                     {
                         role: 'system',
@@ -264,7 +264,7 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
 
 <p>In that moment, Lady Arabella Worthington ceased to be a proper Victorian lady and became something far more dangerous - the willing consort of a creature of the night.</p>
 
-<p><em>This is a mock story generated without AI. Add GROK_API_KEY to use real AI generation.</em></p>`;
+<p><em>This is a mock story generated without AI. Add XAI_AI_KEY to use real AI generation.</em></p>`;
     }
     generateMockChapter(input) {
         return `<h3>Chapter ${input.currentChapterCount + 1}: The Deeper Shadows</h3>

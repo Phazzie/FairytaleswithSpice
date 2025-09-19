@@ -62,7 +62,7 @@ This backend follows **Seam-Driven Development** principles:
 | `PORT` | Server port | No | `3001` |
 | `NODE_ENV` | Environment | No | `development` |
 | `FRONTEND_URL` | Frontend URL for CORS | No | `http://localhost:4200` |
-| `GROK_API_KEY` | Grok AI API key | No | Mock mode |
+| `XAI_API_KEY` | Grok AI API key | No | Mock mode |
 | `ELEVENLABS_API_KEY` | ElevenLabs API key | No | Mock mode |
 | `STORAGE_BASE_URL` | File storage base URL | No | `https://storage.example.com` |
 
