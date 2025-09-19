@@ -4,6 +4,17 @@
   "installCommand": "cd story-generator && npm install",
   "outputDirectory": "story-generator/dist/story-generator/browser",
   "framework": null,
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "@vercel/node"
+    }
+  },
+  "env": {
+    "XAI_AI_KEY": "@xai_ai_key",
+    "ELEVENLABS_API_KEY": "@elevenlabs_api_key",
+    "NODE_ENV": "production",
+    "STORAGE_BASE_URL": "https://storage.fairytaleswithspice.com"
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",

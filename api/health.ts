@@ -5,13 +5,19 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // Health check response
-    res.status(200).json({
+    // Health check response with service configuration status
+    const health = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
+      services: {
+        grok: !!process.env.XAI_AI_KEY ? 'configured' : 'mock',
+        elevenlabs: !!process.env.ELEVENLABS_API_KEY ? 'configured' : 'mock'
+      },
       version: '1.0.0',
       environment: process.env.NODE_ENV || 'development'
-    });
+    };
+
+    res.status(200).json(health);
   } catch (error) {
     console.error('Health check error:', error);
     res.status(500).json({
