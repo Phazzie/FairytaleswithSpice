@@ -1,4 +1,4 @@
-<div class="story-generator">
+<div class="story-generator" ngSkipHydration>
   <header class="header">
     <h1>🧚‍♀️ Fairytales with Spice</h1>
     <p>Create spicy fantasy stories with your favorite creatures</p>
@@ -27,13 +27,11 @@
           <label class="checkbox-option" 
                  *ngFor="let theme of themes" 
                  [class.selected]="isThemeSelected(theme.value)"
-                 [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
-                 (click)="toggleTheme(theme.value)">
+                 [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)">
             <input type="checkbox" 
                    [checked]="isThemeSelected(theme.value)"
                    [disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
-                   (click)="$event.preventDefault(); toggleTheme(theme.value)"
-                   readonly>
+                   (change)="toggleTheme(theme.value)">
             <span class="checkbox-label">{{theme.label}}</span>
           </label>
         </div>
