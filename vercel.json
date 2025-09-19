@@ -5,9 +5,7 @@
   "outputDirectory": "story-generator/dist/story-generator/browser",
   "framework": null,
   "functions": {
-    "api/**/*.ts": {
-      "runtime": "@vercel/node@3"
-    }
+    "api/**/*.ts": {}
   },
   "env": {
     "NODE_ENV": "production",

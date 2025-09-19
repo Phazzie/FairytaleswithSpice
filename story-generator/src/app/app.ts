@@ -40,6 +40,11 @@ export class App implements OnInit, OnDestroy {
 
   // Story data
   currentStory: string = '';
+  currentStoryId: string = '';
+  currentStoryTitle: string = '';
+  currentChapterCount: number = 0;
+  currentStoryThemes: string[] = [];
+  currentStorySpicyLevel: number = 3;
 
   // Progress tracking
   audioProgress: number = 0;
@@ -143,7 +148,14 @@ export class App implements OnInit, OnDestroy {
     this.storyService.generateStory(request).subscribe({
       next: (response) => {
         if (response.success && response.data) {
+          // Store complete story data
           this.currentStory = response.data.content;
+          this.currentStoryId = response.data.storyId;
+          this.currentStoryTitle = response.data.title;
+          this.currentChapterCount = 1;
+          this.currentStoryThemes = response.data.themes;
+          this.currentStorySpicyLevel = response.data.spicyLevel;
+          
           this.isGenerating = false;
           this.errorLogging.logInfo('Story generation completed successfully', 'App.generateStory', {
             storyId: response.data.storyId,
@@ -167,8 +179,8 @@ export class App implements OnInit, OnDestroy {
     this.errorLogging.logInfo('User initiated chapter continuation', 'App.generateNextChapter');
 
     const request: ChapterContinuationSeam['input'] = {
-      storyId: 'current-story', // In a real app, this would be the actual story ID
-      currentChapterCount: 1, // In a real app, this would be tracked
+      storyId: this.currentStoryId,
+      currentChapterCount: this.currentChapterCount,
       existingContent: this.currentStory,
       userInput: '',
       maintainTone: true
@@ -178,6 +190,7 @@ export class App implements OnInit, OnDestroy {
       next: (response) => {
         if (response.success && response.data) {
           this.currentStory = response.data.appendedToStory;
+          this.currentChapterCount = response.data.chapterNumber;
           this.isGeneratingNext = false;
           this.errorLogging.logInfo('Chapter continuation completed successfully', 'App.generateNextChapter', {
             chapterId: response.data.chapterId,
@@ -205,7 +218,7 @@ export class App implements OnInit, OnDestroy {
     });
 
     const request: AudioConversionSeam['input'] = {
-      storyId: 'current-story', // In a real app, this would be the actual story ID
+      storyId: this.currentStoryId,
       content: this.currentStory,
       voice: 'female',
       speed: 1.0,
@@ -243,9 +256,9 @@ export class App implements OnInit, OnDestroy {
     });
 
     const request: SaveExportSeam['input'] = {
-      storyId: 'current-story', // In a real app, this would be the actual story ID
+      storyId: this.currentStoryId,
       content: this.currentStory,
-      title: 'Spicy Story', // In a real app, this would be extracted from the story
+      title: this.currentStoryTitle,
       format: 'pdf',
       includeMetadata: true,
       includeChapters: true

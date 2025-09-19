@@ -367,14 +367,64 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
   }
 
   private extractThemesFromContent(content: string): any[] {
-    // Simple theme extraction - in real implementation, this would be more sophisticated
-    return ['romance', 'dark'];
+    const lowerContent = content.toLowerCase();
+    const detectedThemes: string[] = [];
+    
+    // Define theme keywords for detection
+    const themeKeywords = {
+      'forbidden_love': ['forbidden', 'secret love', 'star-crossed', 'illicit', 'taboo'],
+      'betrayal': ['betrayed', 'deceived', 'backstabbed', 'treachery', 'double-crossed'],
+      'revenge': ['revenge', 'vengeance', 'retribution', 'payback', 'avenge'],
+      'power_dynamics': ['power', 'control', 'dominance', 'authority', 'command'],
+      'obsession': ['obsessed', 'possessed', 'consumed', 'fixated', 'addicted'],
+      'dark_secrets': ['secret', 'hidden', 'mysterious', 'concealed', 'buried'],
+      'seduction': ['seduced', 'tempted', 'allured', 'enticed', 'charmed'],
+      'corruption': ['corrupted', 'tainted', 'fallen', 'darkness', 'evil'],
+      'jealousy': ['jealous', 'envious', 'possessive', 'resentful', 'covetous'],
+      'desire': ['desire', 'yearning', 'craving', 'longing', 'lust'],
+      'passion': ['passionate', 'intense', 'burning', 'fiery', 'ardent'],
+      'manipulation': ['manipulated', 'controlled', 'used', 'exploited', 'influenced']
+    };
+    
+    // Check for each theme
+    for (const [theme, keywords] of Object.entries(themeKeywords)) {
+      if (keywords.some(keyword => lowerContent.includes(keyword))) {
+        detectedThemes.push(theme);
+      }
+    }
+    
+    return detectedThemes.length > 0 ? detectedThemes : ['romance', 'fantasy'];
   }
 
   private extractSpicyLevelFromContent(content: string): SpicyLevel {
-    // Simple spicy level extraction - in real implementation, this would analyze content
-    // For now, return a default value that matches the SpicyLevel type
-    return 4 as SpicyLevel;
+    const lowerContent = content.toLowerCase();
+    
+    // Level 5 - Very Explicit
+    const level5Keywords = ['explicit', 'graphic', 'intense passion', 'climax', 'ecstasy'];
+    if (level5Keywords.some(keyword => lowerContent.includes(keyword))) {
+      return 5 as SpicyLevel;
+    }
+    
+    // Level 4 - Passionate
+    const level4Keywords = ['passionate', 'breathless', 'desire', 'yearning', 'heat'];
+    if (level4Keywords.some(keyword => lowerContent.includes(keyword))) {
+      return 4 as SpicyLevel;
+    }
+    
+    // Level 3 - Romantic with Heat
+    const level3Keywords = ['kiss', 'embrace', 'caress', 'touch', 'intimate'];
+    if (level3Keywords.some(keyword => lowerContent.includes(keyword))) {
+      return 3 as SpicyLevel;
+    }
+    
+    // Level 2 - Sweet Romance
+    const level2Keywords = ['love', 'affection', 'tender', 'gentle', 'heart'];
+    if (level2Keywords.some(keyword => lowerContent.includes(keyword))) {
+      return 2 as SpicyLevel;
+    }
+    
+    // Default to Level 1 - Mild
+    return 1 as SpicyLevel;
   }
 
   private formatStoryContent(content: string): string {
