@@ -24,6 +24,14 @@ export class App {
   lastError = signal<string | null>(null);
   hasError = computed(() => this.lastError() !== null);
 
+  // Simple validation computed signal
+  isValidForm = computed(() => {
+    return this.selectedThemes.length > 0 && 
+           this.selectedThemes.length <= 5 &&
+           this.selectedCreature &&
+           this.userInput.length <= 1000;
+  });
+
   // Inject the services
   constructor(
     private storyService: StoryService,
@@ -96,10 +104,10 @@ export class App {
     this.lastError.set(null);
     
     // Validate form before proceeding
-    if (!this.isFormValid()) {
+    if (!this.isValidForm()) {
       this.notificationService.error(
         'Form Validation Error',
-        'Please fix the form errors before generating your story.'
+        'Please select at least one theme and ensure all fields are valid.'
       );
       return;
     }
@@ -319,13 +327,6 @@ export class App {
       this.selectedThemes = this.selectedThemes.filter(theme => theme !== themeValue);
     }
     
-    // Manually trigger validation after themes change
-    this.formValidationService.updateFormData({
-      selectedCreature: this.selectedCreature,
-      selectedThemes: this.selectedThemes,
-      userInput: this.userInput,
-      spicyLevel: this.spicyLevel,
-      wordCount: this.wordCount
-    });
+    console.log('Theme changed:', themeValue, 'Selected themes:', this.selectedThemes);
   }
 }

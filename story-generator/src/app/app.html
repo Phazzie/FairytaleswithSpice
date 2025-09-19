@@ -55,8 +55,11 @@
             </span>
           </label>
         </div>
-        <div class="field-error" *ngIf="!isFieldValid('themes')" role="alert">
-          {{ getFieldError('themes') }}
+        <div class="field-error" *ngIf="selectedThemes.length === 0" role="alert">
+          ⚠️ Please select at least one theme
+        </div>
+        <div class="field-error" *ngIf="selectedThemes.length > 5" role="alert">
+          ⚠️ Please select no more than 5 themes
         </div>
       </div>
 
@@ -122,7 +125,7 @@
       <button
         class="generate-btn"
         (click)="generateStory()"
-        [disabled]="isGenerating || !isFormValid()"
+        [disabled]="isGenerating || !isValidForm()"
         [attr.aria-describedby]="'generate-button-description'">
         <span *ngIf="!isGenerating">✨ Generate Story</span>
         <span *ngIf="isGenerating" class="loading">
@@ -130,8 +133,8 @@
           Crafting your tale...
         </span>
       </button>
-      <div id="generate-button-description" class="field-description" *ngIf="!isFormValid()">
-        Please fix the form errors before generating your story
+      <div id="generate-button-description" class="field-description" *ngIf="!isValidForm()">
+        Please select at least one theme to generate your story
       </div>
       
       <!-- Retry button for failed generation -->
