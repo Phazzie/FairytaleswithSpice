@@ -50,6 +50,11 @@ export class App implements OnInit, OnDestroy {
   audioProgress: number = 0;
   saveSuccess: boolean = false;
   audioSuccess: boolean = false;
+  
+  // Multi-voice audio tracking
+  lastAudioIsMultiVoice: boolean = false;
+  lastAudioCharacterCount: number = 0;
+  lastAudioUrl: string = '';
 
   // Options data
   creatures = [
@@ -222,7 +227,8 @@ export class App implements OnInit, OnDestroy {
       content: this.currentStory,
       voice: 'female',
       speed: 1.0,
-      format: 'mp3'
+      format: 'mp3',
+      enableMultiVoice: true // Enable multi-voice audio generation
     };
 
     this.storyService.convertToAudio(request).subscribe({
@@ -230,10 +236,18 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
+          
+          // Store multi-voice audio information
+          this.lastAudioIsMultiVoice = response.data.isMultiVoice || false;
+          this.lastAudioCharacterCount = response.data.characterProfiles?.length || 0;
+          this.lastAudioUrl = response.data.audioUrl;
+          
           this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
             audioId: response.data.audioId,
             duration: response.data.duration,
-            fileSize: response.data.fileSize
+            fileSize: response.data.fileSize,
+            isMultiVoice: response.data.isMultiVoice,
+            characterCount: response.data.characterProfiles?.length || 0
           });
           setTimeout(() => this.audioSuccess = false, 3000);
         }

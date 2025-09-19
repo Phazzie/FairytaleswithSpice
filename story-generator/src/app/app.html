@@ -103,7 +103,7 @@
               class="action-btn audio-btn"
               (click)="convertToAudio()"
               [disabled]="isConvertingAudio">
-              <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
+              <span *ngIf="!isConvertingAudio">🎭 Convert to Multi-Voice Audio</span>
               <span *ngIf="isConvertingAudio" class="loading">
                 <span class="spinner"></span>
                 Converting...
@@ -163,7 +163,16 @@
       </div>
 
       <div class="success-message" *ngIf="audioSuccess">
-        🎵 Audio conversion completed! Download ready.
+        <div *ngIf="lastAudioIsMultiVoice; else singleVoiceMessage">
+          🎭 Multi-voice audio with {{lastAudioCharacterCount}} characters completed! 
+          <br><small>Each character has their own distinct voice</small>
+        </div>
+        <ng-template #singleVoiceMessage>
+          🎵 Audio conversion completed! Download ready.
+        </ng-template>
+        <div class="audio-download-link" *ngIf="lastAudioUrl">
+          <a [href]="lastAudioUrl" download>📥 Download Audio</a>
+        </div>
       </div>
     </div>
   </div>
