@@ -1,20 +1,58 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, computed, effect } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { StoryService } from './story.service';
+import { NotificationService } from './notification.service';
+import { FormValidationService } from './form-validation.service';
+import { NotificationsComponent } from './notifications.component';
 import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, CommonModule],
+  imports: [FormsModule, CommonModule, NotificationsComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
 export class App {
   protected readonly title = signal('story-generator');
 
-  // Inject the service
-  constructor(private storyService: StoryService) {}
+  // Validation and error states - define after constructor
+  readonly isFormValid;
+  readonly validationErrors;
+  
+  // Error states for better UX
+  lastError = signal<string | null>(null);
+  hasError = computed(() => this.lastError() !== null);
+
+  // Simple validation computed signal
+  isValidForm = computed(() => {
+    return this.selectedThemes.length > 0 && 
+           this.selectedThemes.length <= 5 &&
+           this.selectedCreature &&
+           this.userInput.length <= 1000;
+  });
+
+  // Inject the services
+  constructor(
+    private storyService: StoryService,
+    private notificationService: NotificationService,
+    private formValidationService: FormValidationService
+  ) {
+    // Initialize computed values after services are injected
+    this.isFormValid = this.formValidationService.isFormValid$;
+    this.validationErrors = this.formValidationService.validationErrors$;
+    
+    // Set up reactive form validation
+    effect(() => {
+      this.formValidationService.updateFormData({
+        selectedCreature: this.selectedCreature,
+        selectedThemes: this.selectedThemes,
+        userInput: this.userInput,
+        spicyLevel: this.spicyLevel,
+        wordCount: this.wordCount
+      });
+    });
+  }
 
   // Form data
   selectedCreature: string = 'vampire';
@@ -62,6 +100,18 @@ export class App {
 
   // Methods
   generateStory() {
+    // Reset previous errors
+    this.lastError.set(null);
+    
+    // Validate form before proceeding
+    if (!this.isValidForm()) {
+      this.notificationService.error(
+        'Form Validation Error',
+        'Please select at least one theme and ensure all fields are valid.'
+      );
+      return;
+    }
+
     this.isGenerating = true;
     this.currentStory = '';
     this.saveSuccess = false;
@@ -80,17 +130,33 @@ export class App {
         if (response.success && response.data) {
           this.currentStory = response.data.content;
           this.isGenerating = false;
+          this.notificationService.success(
+            'Story Generated!',
+            'Your spicy tale has been crafted successfully!'
+          );
+        } else {
+          this.handleGenerationError(response.error?.message || 'Unknown error occurred');
         }
       },
       error: (error) => {
-        console.error('Story generation failed:', error);
-        this.isGenerating = false;
+        this.handleGenerationError(error.error?.message || 'Story generation failed');
       }
     });
   }
 
+  private handleGenerationError(message: string) {
+    this.isGenerating = false;
+    this.lastError.set(message);
+    this.notificationService.error(
+      'Generation Failed',
+      message,
+      { autoHide: false } // Keep error visible until manually dismissed
+    );
+  }
+
   generateNextChapter() {
     this.isGeneratingNext = true;
+    this.lastError.set(null);
 
     const request: ChapterContinuationSeam['input'] = {
       storyId: 'current-story', // In a real app, this would be the actual story ID
@@ -105,19 +171,34 @@ export class App {
         if (response.success && response.data) {
           this.currentStory = response.data.appendedToStory;
           this.isGeneratingNext = false;
+          this.notificationService.success(
+            'Chapter Added!',
+            'Your story continues with an exciting new chapter!'
+          );
+        } else {
+          this.handleChapterError(response.error?.message || 'Unknown error occurred');
         }
       },
       error: (error) => {
-        console.error('Chapter generation failed:', error);
-        this.isGeneratingNext = false;
+        this.handleChapterError(error.error?.message || 'Chapter generation failed');
       }
     });
+  }
+
+  private handleChapterError(message: string) {
+    this.isGeneratingNext = false;
+    this.lastError.set(message);
+    this.notificationService.error(
+      'Chapter Generation Failed',
+      message
+    );
   }
 
   convertToAudio() {
     this.isConvertingAudio = true;
     this.audioProgress = 0;
     this.audioSuccess = false;
+    this.lastError.set(null);
 
     const request: AudioConversionSeam['input'] = {
       storyId: 'current-story', // In a real app, this would be the actual story ID
@@ -132,18 +213,34 @@ export class App {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
+          this.notificationService.success(
+            'Audio Ready!',
+            'Your story has been converted to audio successfully!'
+          );
           setTimeout(() => this.audioSuccess = false, 3000);
+        } else {
+          this.handleAudioError(response.error?.message || 'Unknown error occurred');
         }
       },
       error: (error) => {
-        console.error('Audio conversion failed:', error);
-        this.isConvertingAudio = false;
+        this.handleAudioError(error.error?.message || 'Audio conversion failed');
       }
     });
   }
 
+  private handleAudioError(message: string) {
+    this.isConvertingAudio = false;
+    this.audioProgress = 0;
+    this.lastError.set(message);
+    this.notificationService.error(
+      'Audio Conversion Failed',
+      message
+    );
+  }
+
   saveStory() {
     this.isSaving = true;
+    this.lastError.set(null);
 
     const request: SaveExportSeam['input'] = {
       storyId: 'current-story', // In a real app, this would be the actual story ID
@@ -159,18 +256,77 @@ export class App {
         if (response.success && response.data) {
           this.isSaving = false;
           this.saveSuccess = true;
+          this.notificationService.success(
+            'Story Saved!',
+            'Your story has been saved successfully and is ready for download!'
+          );
           setTimeout(() => this.saveSuccess = false, 3000);
+        } else {
+          this.handleSaveError(response.error?.message || 'Unknown error occurred');
         }
       },
       error: (error) => {
-        console.error('Save failed:', error);
-        this.isSaving = false;
+        this.handleSaveError(error.error?.message || 'Save failed');
       }
     });
+  }
+
+  private handleSaveError(message: string) {
+    this.isSaving = false;
+    this.lastError.set(message);
+    this.notificationService.error(
+      'Save Failed',
+      message
+    );
   }
 
   getCreatureName(): string {
     const creature = this.creatures.find(c => c.value === this.selectedCreature);
     return creature ? creature.label.split(' ')[1] : 'Creature';
+  }
+
+  // Validation utility methods
+  getFieldError(field: string): string | undefined {
+    const errors = this.validationErrors();
+    return errors[field as keyof typeof errors];
+  }
+
+  isFieldValid(field: string): boolean {
+    return !this.getFieldError(field);
+  }
+
+  // Retry methods for failed operations
+  retryGeneration() {
+    this.lastError.set(null);
+    this.generateStory();
+  }
+
+  retryAudioConversion() {
+    this.lastError.set(null);
+    this.convertToAudio();
+  }
+
+  retrySave() {
+    this.lastError.set(null);
+    this.saveStory();
+  }
+
+  retryChapter() {
+    this.lastError.set(null);
+    this.generateNextChapter();
+  }
+
+  // Handle theme checkbox changes
+  onThemeChange(themeValue: string, event: Event) {
+    const checkbox = event.target as HTMLInputElement;
+    if (checkbox.checked) {
+      if (!this.selectedThemes.includes(themeValue)) {
+        this.selectedThemes = [...this.selectedThemes, themeValue];
+      }
+    } else {
+      this.selectedThemes = this.selectedThemes.filter(theme => theme !== themeValue);
+    }
+    
+    console.log('Theme changed:', themeValue, 'Selected themes:', this.selectedThemes);
   }
 }
