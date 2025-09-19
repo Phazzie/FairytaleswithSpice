@@ -457,6 +457,42 @@ textarea:disabled {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
+/* Smooth form transitions */
+.form-group {
+  transition: all 0.3s ease;
+}
+
+.form-group.has-error {
+  background: rgba(220, 53, 69, 0.05);
+  border-radius: 8px;
+  padding: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+/* Generate button enhancement */
+.generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.generate-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+/* Hover effects for better interaction feedback */
+.radio-option:hover .radio-label,
+.checkbox-option:hover .checkbox-label {
+  background: #f8f9fa;
+  transform: translateY(-1px);
+}
+
+.radio-option input:checked + .radio-label:hover,
+.checkbox-option input:checked + .checkbox-label:hover {
+  transform: scale(1.02) translateY(-1px);
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .main-content {

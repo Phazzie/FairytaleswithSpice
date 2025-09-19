@@ -266,6 +266,17 @@ export class App {
     return theme.value;
   }
 
+  // Theme selection handler
+  onThemeChange(themeValue: string, event: any): void {
+    if (event.target.checked) {
+      if (!this.selectedThemes.includes(themeValue)) {
+        this.selectedThemes.push(themeValue);
+      }
+    } else {
+      this.selectedThemes = this.selectedThemes.filter(theme => theme !== themeValue);
+    }
+  }
+
   getCreatureName(): string {
     const creature = this.creatures.find(c => c.value === this.selectedCreature);
     return creature ? creature.label.split(' ')[1] : 'Creature';

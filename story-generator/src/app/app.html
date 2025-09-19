@@ -40,7 +40,8 @@
             <input 
               type="checkbox" 
               [value]="theme.value" 
-              [(ngModel)]="selectedThemes"
+              [checked]="selectedThemes.includes(theme.value)"
+              (change)="onThemeChange(theme.value, $event)"
               [attr.aria-describedby]="hasFieldError('themes') ? 'themes-error' : null"
               [attr.aria-invalid]="hasFieldError('themes')">
             <span class="checkbox-label">{{theme.label}}</span>
