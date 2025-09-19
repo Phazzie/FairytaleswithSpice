@@ -27,7 +27,7 @@ export class App implements OnInit, OnDestroy {
 
   // Form data
   selectedCreature: string = 'vampire';
-  selectedThemes: string[] = [];
+  selectedThemes: Set<string> = new Set();
   userInput: string = '';
   spicyLevel: number = 3;
   wordCount: number = 900;
@@ -54,11 +54,24 @@ export class App implements OnInit, OnDestroy {
   ];
 
   themes = [
-    { value: 'romance', label: '💕 Romance' },
-    { value: 'adventure', label: '🗺️ Adventure' },
-    { value: 'mystery', label: '🔍 Mystery' },
-    { value: 'comedy', label: '😂 Comedy' },
-    { value: 'dark', label: '🌑 Dark' }
+    { value: 'betrayal', label: '🗡️ Betrayal' },
+    { value: 'obsession', label: '🖤 Obsession' },
+    { value: 'power_dynamics', label: '⚡ Power Dynamics' },
+    { value: 'forbidden_love', label: '🚫 Forbidden Love' },
+    { value: 'revenge', label: '💀 Revenge' },
+    { value: 'manipulation', label: '🕷️ Manipulation' },
+    { value: 'seduction', label: '💋 Seduction' },
+    { value: 'dark_secrets', label: '🔐 Dark Secrets' },
+    { value: 'corruption', label: '🌑 Corruption' },
+    { value: 'dominance', label: '👑 Dominance' },
+    { value: 'submission', label: '⛓️ Submission' },
+    { value: 'jealousy', label: '💚 Jealousy' },
+    { value: 'temptation', label: '🍎 Temptation' },
+    { value: 'sin', label: '😈 Sin' },
+    { value: 'desire', label: '🔥 Desire' },
+    { value: 'passion', label: '❤️‍🔥 Passion' },
+    { value: 'lust', label: '💦 Lust' },
+    { value: 'deceit', label: '🎭 Deceit' }
   ];
 
   wordCountOptions = [
@@ -69,8 +82,44 @@ export class App implements OnInit, OnDestroy {
 
   spicyLevelLabels = ['Mild', 'Warm', 'Hot', 'Spicy', 'Fire 🔥'];
 
+  // Theme selection methods
+  toggleTheme(theme: string) {
+    console.log('toggleTheme called with:', theme);
+    if (this.selectedThemes.has(theme)) {
+      this.selectedThemes.delete(theme);
+      console.log('Removed theme:', theme);
+    } else if (this.selectedThemes.size < 5) {
+      this.selectedThemes.add(theme);
+      console.log('Added theme:', theme);
+    }
+    console.log('Current themes:', Array.from(this.selectedThemes));
+    
+    // Force update by reassigning to trigger change detection
+    this.selectedThemes = new Set(this.selectedThemes);
+  }
+
+  isThemeSelected(theme: string): boolean {
+    return this.selectedThemes.has(theme);
+  }
+
+  getSelectedThemesCount(): number {
+    return this.selectedThemes.size;
+  }
+
+  canSelectMoreThemes(): boolean {
+    return this.selectedThemes.size < 5;
+  }
+
+  canGenerateStory(): boolean {
+    return this.selectedThemes.size > 0;
+  }
+
   // Methods
   generateStory() {
+    if (!this.canGenerateStory()) {
+      return; // Prevent generation with no themes
+    }
+
     this.isGenerating = true;
     this.currentStory = '';
     this.saveSuccess = false;
@@ -85,7 +134,7 @@ export class App implements OnInit, OnDestroy {
 
     const request: StoryGenerationSeam['input'] = {
       creature: this.selectedCreature as any,
-      themes: this.selectedThemes as any,
+      themes: Array.from(this.selectedThemes) as any,
       userInput: this.userInput,
       spicyLevel: this.spicyLevel as any,
       wordCount: this.wordCount as any
