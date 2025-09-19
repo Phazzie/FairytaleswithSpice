@@ -25,7 +25,10 @@
         <label>Story Themes:</label>
         <div class="checkbox-group">
           <label class="checkbox-option" *ngFor="let theme of themes">
-            <input type="checkbox" [value]="theme.value" [(ngModel)]="selectedThemes">
+            <input 
+              type="checkbox" 
+              [checked]="isThemeSelected(theme.value)"
+              (change)="toggleTheme(theme.value)">
             <span class="checkbox-label">{{theme.label}}</span>
           </label>
         </div>
@@ -38,8 +41,7 @@
           id="userInput"
           [(ngModel)]="userInput"
           placeholder="Describe characters, settings, or plot elements you'd like to include..."
-          rows="4">
-        </textarea>
+          rows="4"></textarea>
       </div>
 
       <!-- Spicy Level Slider -->

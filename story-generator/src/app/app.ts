@@ -18,10 +18,10 @@ export class App {
 
   // Form data
   selectedCreature: string = 'vampire';
-  selectedThemes: string[] = [];
+  selectedThemes: string[] = ['romance', 'adventure', 'mystery', 'comedy', 'dark'];
   userInput: string = '';
   spicyLevel: number = 3;
-  wordCount: number = 900;
+  wordCount: number = 700;
 
   // UI state
   isGenerating: boolean = false;
@@ -62,6 +62,10 @@ export class App {
 
   // Methods
   generateStory() {
+    console.log('🚀 Generate Story button clicked!');
+    console.log('Selected themes:', this.selectedThemes);
+    console.log('Selected creature:', this.selectedCreature);
+    
     this.isGenerating = true;
     this.currentStory = '';
     this.saveSuccess = false;
@@ -75,15 +79,18 @@ export class App {
       wordCount: this.wordCount as any
     };
 
+    console.log('📤 Sending story generation request:', request);
+
     this.storyService.generateStory(request).subscribe({
       next: (response) => {
+        console.log('📥 Story generation response:', response);
         if (response.success && response.data) {
           this.currentStory = response.data.content;
           this.isGenerating = false;
         }
       },
       error: (error) => {
-        console.error('Story generation failed:', error);
+        console.error('❌ Story generation failed:', error);
         this.isGenerating = false;
       }
     });
@@ -172,5 +179,19 @@ export class App {
   getCreatureName(): string {
     const creature = this.creatures.find(c => c.value === this.selectedCreature);
     return creature ? creature.label.split(' ')[1] : 'Creature';
+  }
+
+  // Theme management
+  isThemeSelected(themeValue: string): boolean {
+    return this.selectedThemes.includes(themeValue);
+  }
+
+  toggleTheme(themeValue: string): void {
+    const index = this.selectedThemes.indexOf(themeValue);
+    if (index > -1) {
+      this.selectedThemes.splice(index, 1);
+    } else {
+      this.selectedThemes.push(themeValue);
+    }
   }
 }
