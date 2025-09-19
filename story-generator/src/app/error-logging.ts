@@ -124,6 +124,19 @@ export class ErrorLoggingService {
     if (typeof error === 'string') {
       return error;
     }
+    
+    // HTTP Error Response handling
+    if (error?.status && error?.statusText) {
+      const baseMessage = `HTTP ${error.status}: ${error.statusText}`;
+      if (error?.error?.message) {
+        return `${baseMessage} - ${error.error.message}`;
+      }
+      if (error?.error && typeof error.error === 'string') {
+        return `${baseMessage} - ${error.error}`;
+      }
+      return baseMessage;
+    }
+    
     if (error?.message) {
       return error.message;
     }
@@ -152,7 +165,26 @@ export class ErrorLoggingService {
     switch (errorLog.severity) {
       case 'critical':
       case 'error':
-        console.error(prefix, errorLog.message, errorLog.details);
+        console.error(prefix, errorLog.message);
+        console.error('Error details:', errorLog.details);
+        
+        // Enhanced HTTP error logging
+        if (errorLog.details?.originalError) {
+          const error = errorLog.details.originalError;
+          if (error?.status) {
+            console.error(`HTTP Status: ${error.status}`);
+          }
+          if (error?.url) {
+            console.error(`Request URL: ${error.url}`);
+          }
+          if (error?.error) {
+            console.error('Response Body:', error.error);
+          }
+          if (error?.headers) {
+            console.error('Response Headers:', error.headers);
+          }
+        }
+        
         if (errorLog.stack) {
           console.error('Stack trace:', errorLog.stack);
         }

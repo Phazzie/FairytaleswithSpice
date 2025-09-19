@@ -124,7 +124,7 @@ export class DebugPanel implements OnInit, OnDestroy {
     
     const startTime = Date.now();
     
-    this.http.get<HealthCheckResponse>('http://localhost:3001/health').subscribe({
+    this.http.get<HealthCheckResponse>('/api/health').subscribe({
       next: (response) => {
         this.healthStatus = 'healthy';
         this.healthResponse = response;
