@@ -356,6 +356,34 @@ select:focus {
   border: 1px solid #c3e6cb;
 }
 
+.audio-success {
+  background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+  color: white;
+  border: none;
+  text-align: left;
+}
+
+.success-header {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.success-details {
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.success-details p {
+  margin: 0.25rem 0;
+}
+
+.success-details a {
+  color: white;
+  text-decoration: underline;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .main-content {
