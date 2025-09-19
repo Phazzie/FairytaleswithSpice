@@ -3,8 +3,9 @@ import { StoryGenerationSeam } from '../lib/types/contracts';
 
 export default async function handler(req: any, res: any) {
   // Set CORS headers
+  const origin = process.env.FRONTEND_URL || 'http://localhost:4200';
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',
