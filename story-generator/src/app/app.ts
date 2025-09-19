@@ -278,31 +278,7 @@ export class App implements OnInit, OnDestroy {
     const creature = this.creatures.find(c => c.value === this.selectedCreature);
     return creature ? creature.label.split(' ')[1] : 'Creature';
   }
-<<<<<<< HEAD
 
-  // ==================== DEBUG METHODS FOR ERROR LOGGING DEMO ====================
-  
-  testErrorLogging() {
-    // Simulate different types of errors for demonstration
-    this.errorLogging.logInfo('Demo info message', 'App.testErrorLogging', { action: 'demo_test' });
-    this.errorLogging.logWarning('Demo warning message', 'App.testErrorLogging', { action: 'demo_test' });
-    this.errorLogging.logError(new Error('Demo error message'), 'App.testErrorLogging', 'error', { action: 'demo_test' });
-    this.errorLogging.logCritical(new Error('Demo critical error'), 'App.testErrorLogging', { action: 'demo_test' });
-  }
-
-  simulateHttpError() {
-    // Simulate an HTTP error to test error logging integration
-    this.errorLogging.logError({
-      status: 404,
-      statusText: 'Not Found',
-      message: 'Simulated HTTP 404 error',
-      url: '/api/fake-endpoint'
-    }, 'App.simulateHttpError', 'error', {
-      type: 'simulated_http_error',
-      endpoint: '/api/fake-endpoint'
-    });
-=======
-  
   // ==================== DEBUG PANEL LIFECYCLE ====================
   
   ngOnInit() {
@@ -329,6 +305,28 @@ export class App implements OnInit, OnDestroy {
         this.debugPanel.toggleVisibility();
       }
     }
->>>>>>> origin/feat/debugging-and-ui-fixes
+  }
+
+  // ==================== DEBUG METHODS FOR ERROR LOGGING DEMO ====================
+  
+  testErrorLogging() {
+    // Simulate different types of errors for demonstration
+    this.errorLogging.logInfo('Demo info message', 'App.testErrorLogging', { action: 'demo_test' });
+    this.errorLogging.logWarning('Demo warning message', 'App.testErrorLogging', { action: 'demo_test' });
+    this.errorLogging.logError(new Error('Demo error message'), 'App.testErrorLogging', 'error', { action: 'demo_test' });
+    this.errorLogging.logCritical(new Error('Demo critical error'), 'App.testErrorLogging', { action: 'demo_test' });
+  }
+
+  simulateHttpError() {
+    // Simulate an HTTP error to test error logging integration
+    this.errorLogging.logError({
+      status: 404,
+      statusText: 'Not Found',
+      message: 'Simulated HTTP 404 error',
+      url: '/api/fake-endpoint'
+    }, 'App.simulateHttpError', 'error', {
+      type: 'simulated_http_error',
+      endpoint: '/api/fake-endpoint'
+    });
   }
 }

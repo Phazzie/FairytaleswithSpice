@@ -151,7 +151,7 @@ export class DebugPanel implements OnInit, OnDestroy {
     
     const sampleInput: StoryGenerationSeam['input'] = {
       creature: 'vampire',
-      themes: ['romance'],
+      themes: ['forbidden_love'],
       userInput: `Debug test story - ${wordCount} words`,
       spicyLevel: 3,
       wordCount: wordCount === 200 ? 700 : wordCount === 400 ? 900 : 1200 // Map to available options
