@@ -15,7 +15,7 @@ export class ErrorLoggingService {
   constructor() {}
 
   // ==================== PUBLIC API ====================
-  
+
   /**
    * Log an error with context and severity
    */
@@ -52,7 +52,7 @@ export class ErrorLoggingService {
       // Fallback logging if the service itself fails
       console.error('ErrorLoggingService failed to log error:', loggingError);
       console.error('Original error that failed to log:', error);
-      
+
       return {
         errorId: 'failed-' + Date.now(),
         logged: false,
@@ -124,7 +124,7 @@ export class ErrorLoggingService {
     if (typeof error === 'string') {
       return error;
     }
-    
+
     // HTTP Error Response handling
     if (error?.status && error?.statusText) {
       const baseMessage = `HTTP ${error.status}: ${error.statusText}`;
@@ -136,7 +136,7 @@ export class ErrorLoggingService {
       }
       return baseMessage;
     }
-    
+
     if (error?.message) {
       return error.message;
     }
@@ -161,13 +161,13 @@ export class ErrorLoggingService {
 
   private logToConsole(errorLog: ErrorLog): void {
     const prefix = `[${errorLog.severity.toUpperCase()}] ${errorLog.context}:`;
-    
+
     switch (errorLog.severity) {
       case 'critical':
       case 'error':
         console.error(prefix, errorLog.message);
         console.error('Error details:', errorLog.details);
-        
+
         // Enhanced HTTP error logging
         if (errorLog.details?.originalError) {
           const error = errorLog.details.originalError;
@@ -184,7 +184,7 @@ export class ErrorLoggingService {
             console.error('Response Headers:', error.headers);
           }
         }
-        
+
         if (errorLog.stack) {
           console.error('Stack trace:', errorLog.stack);
         }

@@ -16,7 +16,7 @@ import { DebugPanel } from './debug-panel/debug-panel';
 export class App implements OnInit, OnDestroy {
   protected readonly title = signal('story-generator');
   private isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
-  
+
   @ViewChild(DebugPanel) debugPanel!: DebugPanel;
 
   // Inject the services
@@ -50,6 +50,11 @@ export class App implements OnInit, OnDestroy {
   audioProgress: number = 0;
   saveSuccess: boolean = false;
   audioSuccess: boolean = false;
+  
+  // Multi-voice audio tracking
+  lastAudioIsMultiVoice: boolean = false;
+  lastAudioCharacterCount: number = 0;
+  lastAudioUrl: string = '';
 
   // Options data
   creatures = [
@@ -98,7 +103,7 @@ export class App implements OnInit, OnDestroy {
       console.log('Added theme:', theme);
     }
     console.log('Current themes:', Array.from(this.selectedThemes));
-    
+
     // Force update by reassigning to trigger change detection
     this.selectedThemes = new Set(this.selectedThemes);
   }
@@ -155,7 +160,7 @@ export class App implements OnInit, OnDestroy {
           this.currentChapterCount = 1;
           this.currentStoryThemes = response.data.themes;
           this.currentStorySpicyLevel = response.data.spicyLevel;
-          
+
           this.isGenerating = false;
           this.errorLogging.logInfo('Story generation completed successfully', 'App.generateStory', {
             storyId: response.data.storyId,
@@ -222,7 +227,8 @@ export class App implements OnInit, OnDestroy {
       content: this.currentStory,
       voice: 'female',
       speed: 1.0,
-      format: 'mp3'
+      format: 'mp3',
+      enableMultiVoice: true // Enable multi-voice audio generation
     };
 
     this.storyService.convertToAudio(request).subscribe({
@@ -230,10 +236,18 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
+          
+          // Store multi-voice audio information
+          this.lastAudioIsMultiVoice = response.data.isMultiVoice || false;
+          this.lastAudioCharacterCount = response.data.characterProfiles?.length || 0;
+          this.lastAudioUrl = response.data.audioUrl;
+          
           this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
             audioId: response.data.audioId,
             duration: response.data.duration,
-            fileSize: response.data.fileSize
+            fileSize: response.data.fileSize,
+            isMultiVoice: response.data.isMultiVoice,
+            characterCount: response.data.characterProfiles?.length || 0
           });
           setTimeout(() => this.audioSuccess = false, 3000);
         }
@@ -293,23 +307,23 @@ export class App implements OnInit, OnDestroy {
   }
 
   // ==================== DEBUG PANEL LIFECYCLE ====================
-  
+
   ngOnInit() {
     if (this.isBrowser) {
       this.setupKeyboardShortcuts();
     }
   }
-  
+
   ngOnDestroy() {
     if (this.isBrowser) {
       document.removeEventListener('keydown', this.handleKeyDown);
     }
   }
-  
+
   private setupKeyboardShortcuts() {
     document.addEventListener('keydown', this.handleKeyDown.bind(this));
   }
-  
+
   private handleKeyDown(event: KeyboardEvent) {
     // Ctrl+Shift+D to toggle debug panel
     if (event.ctrlKey && event.shiftKey && event.key === 'D') {
@@ -321,7 +335,7 @@ export class App implements OnInit, OnDestroy {
   }
 
   // ==================== DEBUG METHODS FOR ERROR LOGGING DEMO ====================
-  
+
   testErrorLogging() {
     // Simulate different types of errors for demonstration
     this.errorLogging.logInfo('Demo info message', 'App.testErrorLogging', { action: 'demo_test' });

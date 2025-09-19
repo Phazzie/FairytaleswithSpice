@@ -24,11 +24,11 @@
       <div class="form-group">
         <label>Story Themes ({{getSelectedThemesCount()}}/5 selected):</label>
         <div class="checkbox-group">
-          <label class="checkbox-option" 
-                 *ngFor="let theme of themes" 
+          <label class="checkbox-option"
+                 *ngFor="let theme of themes"
                  [class.selected]="isThemeSelected(theme.value)"
                  [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)">
-            <input type="checkbox" 
+            <input type="checkbox"
                    [checked]="isThemeSelected(theme.value)"
                    [disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
                    (change)="toggleTheme(theme.value)">
@@ -103,7 +103,7 @@
               class="action-btn audio-btn"
               (click)="convertToAudio()"
               [disabled]="isConvertingAudio">
-              <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
+              <span *ngIf="!isConvertingAudio">🎭 Convert to Multi-Voice Audio</span>
               <span *ngIf="isConvertingAudio" class="loading">
                 <span class="spinner"></span>
                 Converting...
@@ -163,7 +163,16 @@
       </div>
 
       <div class="success-message" *ngIf="audioSuccess">
-        🎵 Audio conversion completed! Download ready.
+        <div *ngIf="lastAudioIsMultiVoice; else singleVoiceMessage">
+          🎭 Multi-voice audio with {{lastAudioCharacterCount}} characters completed! 
+          <br><small>Each character has their own distinct voice</small>
+        </div>
+        <ng-template #singleVoiceMessage>
+          🎵 Audio conversion completed! Download ready.
+        </ng-template>
+        <div class="audio-download-link" *ngIf="lastAudioUrl">
+          <a [href]="lastAudioUrl" download>📥 Download Audio</a>
+        </div>
       </div>
     </div>
   </div>
