@@ -1,5 +1,5 @@
-import { ExportService } from '../lib/services/exportService';
-import { SaveExportSeam } from '../lib/types/contracts';
+import { StoryService } from '../lib/services/storyService';
+import { ChapterContinuationSeam } from '../lib/types/contracts';
 
 export default async function handler(req: any, res: any) {
   // Set comprehensive CORS headers for Vercel deployment
@@ -41,38 +41,38 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const input: SaveExportSeam['input'] = req.body;
+    const input: ChapterContinuationSeam['input'] = req.body;
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    console.log(`[${requestId}] Export request:`, input);
+    console.log(`[${requestId}] Story continuation request:`, input);
 
     // Validate required fields
-    if (!input.storyId || !input.content || !input.title || !input.format) {
+    if (!input.storyId || typeof input.currentChapterCount !== 'number' || !input.existingContent) {
       console.error(`[${requestId}] Validation failed - missing fields`);
       return res.status(400).json({
         success: false,
         error: {
           code: 'INVALID_INPUT',
-          message: 'Missing required fields: storyId, content, title, format'
+          message: 'Missing required fields: storyId, currentChapterCount, existingContent'
         },
         metadata: { requestId }
       });
     }
 
-    const exportService = new ExportService();
-    const result = await exportService.saveAndExport(input);
+    const storyService = new StoryService();
+    const result = await storyService.continueStory(input);
     
-    console.log(`[${requestId}] Export response:`, { success: result.success });
+    console.log(`[${requestId}] Story continuation response:`, { success: result.success });
     res.status(200).json(result);
 
   } catch (error: any) {
     const requestId = `req_${Date.now()}_error`;
-    console.error(`[${requestId}] Export serverless function error:`, error);
+    console.error(`[${requestId}] Story continuation serverless function error:`, error);
     res.status(500).json({
       success: false,
       error: {
         code: 'INTERNAL_ERROR',
-        message: 'Export failed'
+        message: 'Story continuation failed'
       },
       metadata: { requestId }
     });
