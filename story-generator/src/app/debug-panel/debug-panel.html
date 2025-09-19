@@ -1,0 +1,143 @@
+<div class="debug-panel" [class.visible]="isVisible">
+  <div class="debug-header">
+    <div class="debug-title">
+      <span class="debug-icon">🧪</span>
+      <h3>Debug Panel</h3>
+      <span class="network-indicator" [class.online]="networkStatus.online" [class.offline]="!networkStatus.online">
+        {{ networkStatus.online ? '🟢' : '🔴' }}
+      </span>
+    </div>
+    <button class="close-btn" (click)="toggleVisibility()" title="Close Debug Panel">✕</button>
+  </div>
+
+  <div class="debug-content">
+    <!-- API Health Check Section -->
+    <div class="debug-section">
+      <h4>🏥 API Health Check</h4>
+      <div class="health-check">
+        <button 
+          class="debug-btn health-btn" 
+          (click)="checkApiHealth()"
+          [disabled]="healthStatus === 'checking'">
+          <span *ngIf="healthStatus === 'checking'">⏳ Checking...</span>
+          <span *ngIf="healthStatus !== 'checking'">🔍 Check API Health</span>
+        </button>
+        
+        <div class="health-status" *ngIf="healthStatus !== 'unknown'">
+          <div class="status-indicator" [ngClass]="healthStatus">
+            <span *ngIf="healthStatus === 'healthy'">✅ Healthy</span>
+            <span *ngIf="healthStatus === 'unhealthy'">❌ Unhealthy</span>
+            <span *ngIf="healthStatus === 'checking'">⏳ Checking...</span>
+          </div>
+          
+          <div class="health-details" *ngIf="healthResponse">
+            <small>Version: {{ healthResponse.version }}</small>
+            <small>Last checked: {{ formatTimestamp(lastHealthCheck!) }}</small>
+            <small *ngIf="networkStatus.latency">Latency: {{ networkStatus.latency }}ms</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sample Story Generation Section -->
+    <div class="debug-section">
+      <h4>📚 Generate Sample Stories</h4>
+      <div class="sample-stories">
+        <button 
+          class="debug-btn story-btn" 
+          (click)="generateSampleStory(200)"
+          [disabled]="generating200">
+          <span *ngIf="generating200">⏳ Generating...</span>
+          <span *ngIf="!generating200">📖 Generate 200 Words</span>
+        </button>
+        
+        <button 
+          class="debug-btn story-btn" 
+          (click)="generateSampleStory(400)"
+          [disabled]="generating400">
+          <span *ngIf="generating400">⏳ Generating...</span>
+          <span *ngIf="!generating400">📚 Generate 400 Words</span>
+        </button>
+        
+        <button 
+          class="debug-btn story-btn" 
+          (click)="generateSampleStory(800)"
+          [disabled]="generating800">
+          <span *ngIf="generating800">⏳ Generating...</span>
+          <span *ngIf="!generating800">📜 Generate 800 Words</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Environment Info Section -->
+    <div class="debug-section">
+      <h4>🌍 Environment Info</h4>
+      <div class="env-info">
+        <div class="env-item">
+          <strong>URL:</strong> 
+          <span class="url-text">{{ environmentInfo.url }}</span>
+          <button class="mini-btn" (click)="refreshEnvironmentInfo()" title="Refresh">🔄</button>
+        </div>
+        <div class="env-item">
+          <strong>Timestamp:</strong> {{ environmentInfo.timestamp }}
+        </div>
+        <div class="env-item">
+          <strong>Network:</strong> 
+          <span [class.online]="networkStatus.online" [class.offline]="!networkStatus.online">
+            {{ networkStatus.online ? 'Online' : 'Offline' }}
+          </span>
+          <small>(checked: {{ formatTimestamp(networkStatus.lastChecked) }})</small>
+        </div>
+        <div class="env-item">
+          <strong>Angular:</strong> {{ environmentInfo.angularVersion }}
+        </div>
+        <div class="env-item">
+          <strong>Build:</strong> {{ environmentInfo.buildMode }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Error Log Section -->
+    <div class="debug-section">
+      <h4>🐛 Error Log ({{ errors.length }})</h4>
+      <div class="error-controls">
+        <button class="debug-btn clear-btn" (click)="clearErrors()" [disabled]="errors.length === 0">
+          🗑️ Clear Errors
+        </button>
+        <button class="debug-btn export-btn" (click)="exportErrorsAsJson()" [disabled]="errors.length === 0">
+          💾 Export JSON
+        </button>
+      </div>
+      
+      <div class="error-log">
+        <div *ngIf="errors.length === 0" class="no-errors">
+          ✅ No errors logged
+        </div>
+        
+        <div *ngFor="let error of errors" class="error-item" [style.border-left-color]="getErrorTypeColor(error.type)">
+          <div class="error-header">
+            <span class="error-type" [style.color]="getErrorTypeColor(error.type)">{{ error.type }}</span>
+            <span class="error-time">{{ formatTimestamp(error.timestamp) }}</span>
+            <span class="error-endpoint" *ngIf="error.endpoint">{{ error.endpoint }}</span>
+          </div>
+          <div class="error-message">{{ error.message }}</div>
+          <div class="error-details" *ngIf="error.details && error.details !== null">
+            <details>
+              <summary>Details</summary>
+              <pre>{{ error.details | json }}</pre>
+            </details>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Debug Panel Toggle Button (Fixed Position) -->
+<button 
+  class="debug-toggle" 
+  (click)="toggleVisibility()"
+  [class.active]="isVisible"
+  title="Toggle Debug Panel (Ctrl+Shift+D)">
+  🧪
+</button>

@@ -18,7 +18,7 @@ import { ErrorLoggingService } from './error-logging';
   providedIn: 'root'
 })
 export class StoryService {
-  private apiUrl = 'http://localhost:3001/api'; // Backend URL
+  private apiUrl = '/api'; // Serverless API endpoints
 
   constructor(
     private http: HttpClient,

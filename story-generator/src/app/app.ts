@@ -1,19 +1,23 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy, ViewChild, Inject, PLATFORM_ID, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CommonModule } from '@angular/common';
+import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import { ErrorDisplayComponent } from './error-display/error-display';
 import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
+import { DebugPanel } from './debug-panel/debug-panel';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, CommonModule, ErrorDisplayComponent],
+  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
-export class App {
+export class App implements OnInit, OnDestroy {
   protected readonly title = signal('story-generator');
+  private isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  
+  @ViewChild(DebugPanel) debugPanel!: DebugPanel;
 
   // Inject the services
   constructor(
@@ -225,6 +229,7 @@ export class App {
     const creature = this.creatures.find(c => c.value === this.selectedCreature);
     return creature ? creature.label.split(' ')[1] : 'Creature';
   }
+<<<<<<< HEAD
 
   // ==================== DEBUG METHODS FOR ERROR LOGGING DEMO ====================
   
@@ -247,5 +252,34 @@ export class App {
       type: 'simulated_http_error',
       endpoint: '/api/fake-endpoint'
     });
+=======
+  
+  // ==================== DEBUG PANEL LIFECYCLE ====================
+  
+  ngOnInit() {
+    if (this.isBrowser) {
+      this.setupKeyboardShortcuts();
+    }
+  }
+  
+  ngOnDestroy() {
+    if (this.isBrowser) {
+      document.removeEventListener('keydown', this.handleKeyDown);
+    }
+  }
+  
+  private setupKeyboardShortcuts() {
+    document.addEventListener('keydown', this.handleKeyDown.bind(this));
+  }
+  
+  private handleKeyDown(event: KeyboardEvent) {
+    // Ctrl+Shift+D to toggle debug panel
+    if (event.ctrlKey && event.shiftKey && event.key === 'D') {
+      event.preventDefault();
+      if (this.debugPanel) {
+        this.debugPanel.toggleVisibility();
+      }
+    }
+>>>>>>> origin/feat/debugging-and-ui-fixes
   }
 }
