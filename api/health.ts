@@ -12,7 +12,7 @@ export default async function handler(req: any, res: any) {
       version: '1.0.0',
       environment: process.env.NODE_ENV || 'development',
       services: {
-        grok: !!process.env.XAI_AI_KEY ? 'configured' : 'mock',
+        grok: !!process.env.XAI_API_KEY ? 'configured' : 'mock',
         elevenlabs: !!process.env.ELEVENLABS_API_KEY ? 'configured' : 'mock'
       },
       cors: {
