@@ -1,0 +1,43 @@
+<div class="error-display" *ngIf="hasErrors()">
+  <div class="error-header" (click)="toggleExpanded()">
+    <div class="error-title">
+      <span class="error-icon">🐛</span>
+      <span>Debug Errors</span>
+      <span class="error-counts">
+        <span *ngIf="getErrorCounts().critical > 0" class="count critical">{{getErrorCounts().critical}}🔴</span>
+        <span *ngIf="getErrorCounts().error > 0" class="count error">{{getErrorCounts().error}}❌</span>
+        <span *ngIf="getErrorCounts().warning > 0" class="count warning">{{getErrorCounts().warning}}⚠️</span>
+        <span *ngIf="getErrorCounts().info > 0" class="count info">{{getErrorCounts().info}}ℹ️</span>
+      </span>
+    </div>
+    <div class="error-actions">
+      <button class="clear-btn" (click)="clearErrors(); $event.stopPropagation()">Clear</button>
+      <span class="toggle-icon">{{isExpanded ? '▼' : '▶'}}</span>
+    </div>
+  </div>
+
+  <div class="error-list" [class.expanded]="isExpanded">
+    <div *ngFor="let error of errors; trackBy: trackByErrorId" 
+         class="error-item" 
+         [class]="getSeverityClass(error.severity)">
+      <div class="error-item-header">
+        <span class="severity-icon">{{getSeverityIcon(error.severity)}}</span>
+        <span class="error-time">{{formatTimestamp(error.timestamp)}}</span>
+        <span class="error-context">{{error.context}}</span>
+      </div>
+      <div class="error-message">{{error.message}}</div>
+      <div class="error-details" *ngIf="error.details && isExpanded">
+        <details>
+          <summary>Details</summary>
+          <pre>{{error.details | json}}</pre>
+        </details>
+      </div>
+      <div class="error-stack" *ngIf="error.stack && isExpanded">
+        <details>
+          <summary>Stack Trace</summary>
+          <pre>{{error.stack}}</pre>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
