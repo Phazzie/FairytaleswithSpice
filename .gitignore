@@ -16,6 +16,11 @@ dist/
 build/
 .next/
 
+# Coverage reports
+coverage/
+backend/coverage/
+story-generator/coverage/
+
 # Vercel
 .vercel
 
