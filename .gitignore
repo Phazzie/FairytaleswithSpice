@@ -37,3 +37,7 @@ Thumbs.db
 # Logs
 logs
 *.log
+
+# Test files
+**/test-*.ts
+**/test-*.js
