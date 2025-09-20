@@ -1,19 +1,19 @@
-# AI Agents Guide: Fairytales with Spice
+# World-Class AI Agents Guide: Fairytales with Spice
 
 ## 🎯 Project Overview
 
-**Fairytales with Spice** is an AI-powered story generation platform that creates spicy fairy tales using **Seam-Driven Development** methodology. This guide provides comprehensive instructions for AI agents working on this codebase.
+**Fairytales with Spice** is an AI-powered story generation platform that creates spicy fairy tales using a **Seam-Driven Development** methodology. This guide provides comprehensive, world-class instructions for AI agents working on this codebase.
 
 ### Core Domain Concepts
-- **Spicy Fairy Tales**: Adult-oriented reimaginings of classic fairy tales
-- **Creature-Based Stories**: Vampire, werewolf, and fairy protagonists
-- **Content Rating System**: 1-5 spicy levels for content intensity
-- **Multi-Modal Output**: Text stories, audio narration, multiple export formats
+- **Spicy Fairy Tales**: Adult-oriented reimaginings of classic fairy tales.
+- **Creature-Based Stories**: Vampire, werewolf, and fairy protagonists.
+- **Content Rating System**: 1-5 spicy levels for content intensity.
+- **Multi-Modal Output**: Text stories, audio narration, and multiple export formats.
 
 ## 🏗️ Architecture: Seam-Driven Development
 
 ### What is Seam-Driven Development?
-Every data boundary (seam) is explicitly defined with TypeScript contracts **before** implementation. This prevents integration failures and enables seamless mock-to-real service transitions.
+Every data boundary (seam) is explicitly defined with TypeScript contracts **before** implementation. This prevents integration failures and enables seamless mock-to-real service transitions. It is the cornerstone of this project's architecture.
 
 ### Project Structure
 ```
@@ -23,12 +23,13 @@ Every data boundary (seam) is explicitly defined with TypeScript contracts **bef
 ├── 📁 backend/                  # Express.js backend
 │   └── src/types/contracts.ts   # Backend seam contracts (identical)
 └── 📁 .github/
-    └── copilot-instructions.md  # Development methodology
+    └── copilot-instructions.md  # Development methodology for Copilot
 ```
 
 ## 📋 Established Seam Contracts
 
 ### Type Definitions (Domain Language)
+This is the single source of truth for all data types in the application.
 ```typescript
 export type CreatureType = 'vampire' | 'werewolf' | 'fairy';
 export type ThemeType = 'romance' | 'adventure' | 'mystery' | 'comedy' | 'dark';
@@ -41,13 +42,13 @@ export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 ```
 
 ### SEAM 1: User Input → Story Generator
-**Purpose**: Transform form inputs into AI-generated story content
+**Purpose**: Transforms user input from the frontend form into a fully-formed, AI-generated story.
 ```typescript
 interface StoryGenerationSeam {
   input: {
     creature: CreatureType;
     themes: ThemeType[];
-    userInput: string; // Optional custom ideas
+    userInput: string; // Optional custom ideas from the user
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
   };
@@ -58,22 +59,22 @@ interface StoryGenerationSeam {
     content: string; // HTML formatted for [innerHTML] binding
     actualWordCount: number;
     estimatedReadTime: number; // in minutes
-    hasCliffhanger: boolean; // controls "Continue Chapter" button
+    hasCliffhanger: boolean; // controls "Continue Chapter" button visibility
     generatedAt: Date;
   };
 }
 ```
 
 ### SEAM 2: Story → Chapter Continuation
-**Purpose**: Extend existing stories with new chapters maintaining tone/style
+**Purpose**: Extends an existing story with a new chapter, maintaining the established tone and style.
 ```typescript
 interface ChapterContinuationSeam {
   input: {
     storyId: string;
     currentChapterCount: number;
     existingContent: string; // Full story HTML
-    userInput?: string; // Optional continuation hints
-    maintainTone: boolean; // Keep same spicy level and themes
+    userInput?: string; // Optional continuation hints from the user
+    maintainTone: boolean; // Flag to keep the same spicy level and themes
   };
   
   output: {
@@ -82,18 +83,18 @@ interface ChapterContinuationSeam {
     title: string;
     content: string; // New chapter HTML
     cliffhangerEnding: boolean;
-    appendedToStory: string; // Full updated story
+    appendedToStory: string; // The full, updated story including the new chapter
   };
 }
 ```
 
 ### SEAM 3: Story Text → Audio Converter
-**Purpose**: Convert HTML story content to audio narration
+**Purpose**: Converts the HTML content of a story into an audio narration.
 ```typescript
 interface AudioConversionSeam {
   input: {
     storyId: string;
-    content: string; // HTML content (cleaned for TTS)
+    content: string; // HTML content (which will be cleaned for TTS)
     voice: VoiceType;
     speed: AudioSpeed;
     format: AudioFormat;
@@ -102,7 +103,7 @@ interface AudioConversionSeam {
   output: {
     audioId: string;
     storyId: string;
-    downloadUrl: string; // Direct download URL
+    downloadUrl: string; // Direct download URL for the audio file
     duration: number; // in seconds
     fileSize: number; // in bytes
   };
@@ -110,7 +111,7 @@ interface AudioConversionSeam {
 ```
 
 ### SEAM 4: Story Data → Save/Export System
-**Purpose**: Export stories in various formats for download
+**Purpose**: Exports a story into various downloadable formats.
 ```typescript
 interface SaveExportSeam {
   input: {
@@ -133,9 +134,12 @@ interface SaveExportSeam {
 }
 ```
 
-## 🚦 Standardized Error Handling
+## 🚦 Standardized API Responses
 
-All seams use consistent error patterns:
+All API interactions adhere to a standardized response structure to ensure consistency and predictability.
+
+### The `ApiResponse` Wrapper
+Every API response is wrapped in an `ApiResponse<T>` object, where `T` is the specific seam's output type.
 
 ```typescript
 interface ApiResponse<T> {
@@ -146,53 +150,82 @@ interface ApiResponse<T> {
     message: string;
     details?: any;
   };
-  metadata?: {
+  metadata: {
     requestId: string;
-    processingTime: number;
+    processingTime: number; // in milliseconds
     rateLimitRemaining?: number;
   };
 }
 ```
 
-Common error codes:
-- `GENERATION_FAILED`: AI story generation failed
-- `STORY_NOT_FOUND`: Referenced story doesn't exist
-- `AUDIO_QUOTA_EXCEEDED`: TTS API limits reached
-- `FORMAT_NOT_SUPPORTED`: Export format unavailable
-
-## 🔧 Development Workflow for Agents
-
-### 1. **Understanding Existing Seams**
-- Always examine `contracts.ts` files first
-- Understand data flow: Form → API → AI Services → Response
-- Note the mock/real service switching mechanism
-
-### 2. **Adding New Features**
-```bash
-# Step 1: Define the contract
-# Edit contracts.ts with new seam interface
-
-# Step 2: Implement UI with mocks
-# Create components using contract types
-
-# Step 3: Generate backend service
-# Implement service conforming to contract
-
-# Step 4: Connect real APIs
-# Replace mocks with Grok AI / ElevenLabs integration
+### Example: Successful Response (`200 OK`)
+```json
+{
+  "success": true,
+  "data": {
+    "storyId": "story_1678886400000_abcdef123",
+    "title": "The Vampire's Kiss",
+    "content": "<h3>Chapter 1</h3><p>Once upon a time...</p>",
+    "actualWordCount": 750,
+    "estimatedReadTime": 4,
+    "hasCliffhanger": true,
+    "generatedAt": "2023-03-15T12:00:00.000Z"
+  },
+  "metadata": {
+    "requestId": "req_1678886400000_xyz",
+    "processingTime": 1500
+  }
+}
 ```
 
-### 3. **Mock-First Development**
-The backend includes mock implementations for all services:
-- **Story Generation**: Realistic fake stories with proper HTML structure
-- **Audio Conversion**: Mock audio URLs with realistic processing times
-- **Export System**: Mock download URLs for all formats
+### Example: Error Response (`4xx` or `5xx`)
+```json
+{
+  "success": false,
+  "error": {
+    "code": "GENERATION_FAILED",
+    "message": "The AI model failed to generate a story.",
+    "details": "Upstream API returned a 503 error."
+  },
+  "metadata": {
+    "requestId": "req_1678886400000_abc",
+    "processingTime": 250
+  }
+}
+```
 
-Development works fully without external API keys.
+### Common Error Codes
+- `INVALID_INPUT`: The request payload failed validation.
+- `GENERATION_FAILED`: The AI story generation service failed.
+- `STORY_NOT_FOUND`: The requested story ID does not exist.
+- `AUDIO_QUOTA_EXCEEDED`: The text-to-speech API quota has been reached.
+- `FORMAT_NOT_SUPPORTED`: The requested export format is not available.
+- `INTERNAL_ERROR`: A generic server-side error occurred.
+
+## 🔧 Contributor's Guide & Development Workflow
+
+### 1. Understanding Existing Seams
+- **Always start with `contracts.ts`**: These files are the single source of truth.
+- **Trace the data flow**: Understand how data moves from the user's form, through the API, to the AI services, and back to the user.
+- **Note the mock/real service switching**: The backend is designed to work seamlessly with or without real API keys.
+
+### 2. How to Add a New Feature (Seam)
+1.  **Define the Contract**: Open `contracts.ts` and define a new `YourNewFeatureSeam` interface with clear `input` and `output` shapes.
+2.  **Implement the UI with Mocks**: Build your Angular component and service. Use the new contract type and create a mock implementation of the service that returns realistic data.
+3.  **Implement the Backend Service**: Create a new service in the `backend/src/services` directory that implements the new seam. Start with a mock implementation.
+4.  **Connect to Real APIs**: Once the mock implementation is working, connect your backend service to the real APIs (e.g., Grok AI, ElevenLabs).
+
+### 3. Mock-First Development
+The backend includes mock implementations for all services. This is a core principle of our development process.
+- **Story Generation**: Generates realistic fake stories with proper HTML structure.
+- **Audio Conversion**: Provides mock audio URLs with realistic processing times.
+- **Export System**: Creates mock download URLs for all supported formats.
+This allows for full end-to-end testing without incurring API costs or requiring API keys for every developer.
 
 ## 🧪 Testing Strategy
 
 ### Contract Validation
+Use type guards to validate that the data moving across seams conforms to the contracts.
 ```typescript
 // Example: Validate story generation output
 const validateStoryOutput = (output: any): output is StoryGenerationSeam['output'] => {
@@ -205,133 +238,84 @@ const validateStoryOutput = (output: any): output is StoryGenerationSeam['output
 ```
 
 ### Integration Testing
-1. **Mock Mode**: Test all features without external APIs
-2. **Real Mode**: Test with actual API keys for production validation
-3. **Contract Adherence**: Ensure responses match seam contracts exactly
-
-## 🎨 UI/UX Considerations
-
-### Content Rating Display
-- Spicy Level 1-2: "Mild" (🌶️)
-- Spicy Level 3: "Medium" (🌶️🌶️)
-- Spicy Level 4-5: "Hot" (🌶️🌶️🌶️)
-
-### Progress Indicators
-- Story generation: Show AI thinking with creature-themed animations
-- Audio conversion: Display waveform progress
-- Export: Show format-specific progress messages
-
-### Responsive Design
-- Mobile-first approach for story reading
-- Touch-friendly controls for audio playback
-- Swipe gestures for chapter navigation
+1.  **Mock Mode**: Run the full test suite against the mock services to ensure the application logic is correct.
+2.  **Real Mode**: Run a smaller set of tests against the real APIs to validate the integration. This is typically done in a staging environment.
+3.  **Contract Adherence**: Write tests that explicitly check if API responses match the seam contracts.
 
 ## 🔍 Troubleshooting Guide
 
 ### Common Integration Issues
 
-**❌ Problem**: Frontend receives different data structure than expected
-**✅ Solution**: Check contract definitions match exactly between frontend/backend
+**❌ Problem**: The frontend receives a different data structure than expected.
+**✅ Solution**:
+1.  Verify that the `contracts.ts` files in the frontend and backend are identical.
+2.  Check the network tab in your browser's developer tools to inspect the actual API response.
+3.  Ensure your backend service is correctly implementing the seam's `output` contract.
 
-**❌ Problem**: Audio conversion fails silently
-**✅ Solution**: Verify HTML content is properly cleaned for TTS processing
+**❌ Problem**: Audio conversion fails silently.
+**✅ Solution**:
+1.  Check the backend logs for errors from the text-to-speech service.
+2.  Verify that the HTML content being sent is properly cleaned and sanitized for TTS processing.
 
-**❌ Problem**: Export downloads return 404
-**✅ Solution**: Check storage URL configuration and file expiration times
+**❌ Problem**: Story generation produces malformed HTML.
+**✅ Solution**:
+1.  Inspect the prompt being sent to the AI model.
+2.  Validate the AI's response before parsing and sanitizing it.
+3.  Improve the HTML sanitization logic to handle more edge cases.
 
-**❌ Problem**: Story generation produces malformed HTML
-**✅ Solution**: Validate AI response parsing and HTML sanitization
-
-### API Key Issues
-
-**Development Mode (No Keys)**:
-- All features work with realistic mocks
-- Processing delays simulate real API response times
-- Generated content follows proper content rating guidelines
-
-**Production Mode (With Keys)**:
-- Grok API: Used for story and chapter generation
-- ElevenLabs API: Used for text-to-speech conversion
-- Rate limiting and quota management handled automatically
+**❌ Problem**: Environment variables are not being loaded.
+**✅ Solution**:
+1.  Ensure you have a `.env` file in the `backend` directory.
+2.  Verify that the variable names in your `.env` file match the ones used in the code (e.g., `XAI_API_KEY`).
+3.  Restart the backend server after making changes to the `.env` file.
 
 ## 🚀 Performance Considerations
 
 ### Story Generation
-- Cache common prompt templates
-- Implement request deduplication
-- Use streaming for long story generation
+- Cache common prompt templates to reduce redundant computations.
+- Implement request deduplication for identical story requests.
+- Use streaming for generating very long stories to improve perceived performance.
 
 ### Audio Processing
-- Process audio in chunks for long stories
-- Compress audio files for faster downloads
-- Implement progressive download for playback
+- Process long stories in audio chunks.
+- Compress audio files to reduce their size and speed up downloads.
+- Implement progressive download for audio playback.
 
 ### Export System
-- Generate exports asynchronously
-- Cache popular export formats
-- Implement cleanup for expired downloads
-
-## 📝 Code Quality Standards
-
-### TypeScript Strictness
-- All seam interfaces must be strictly typed
-- No `any` types in contract definitions
-- Use type guards for runtime validation
-
-### Error Handling
-- Every API call must handle all defined error cases
-- User-friendly error messages for all spicy levels
-- Graceful degradation when external services fail
-
-### Documentation
-- All seam contracts include JSDoc comments
-- API endpoints documented with OpenAPI/Swagger
-- Component props documented with examples
-
-## 🎯 Project-Specific Best Practices
-
-### Content Generation
-- Always respect the spicy level constraints
-- Maintain character consistency within stories
-- Ensure appropriate content warnings are displayed
-
-### User Experience
-- Provide content previews before full generation
-- Allow users to adjust spicy levels mid-story
-- Implement "safe mode" for shared devices
-
-### Data Privacy
-- Never log user story inputs or generated content
-- Implement proper session management
-- Clear temporary files after processing
+- Generate exports asynchronously in the background.
+- Cache popular export formats to serve them instantly.
+- Implement a cleanup mechanism for expired download links.
 
 ---
 
 ## 📚 Quick Reference
 
 ### Essential Files
-- `contracts.ts`: All seam definitions
-- `storyService.ts`: AI integration logic
-- `audioService.ts`: TTS processing
-- `exportService.ts`: File format handling
+- `story-generator/src/app/contracts.ts`: Frontend seam definitions.
+- `backend/src/types/contracts.ts`: Backend seam definitions.
+- `backend/src/services/storyService.ts`: AI integration logic.
+- `backend/src/services/audioService.ts`: TTS processing logic.
+- `backend/src/services/exportService.ts`: File format handling logic.
 
 ### Key Commands
 ```bash
-# Frontend development
-cd story-generator && npm run dev
+# To run the frontend development server
+cd story-generator && npm start
 
-# Backend development  
+# To run the backend development server
 cd backend && npm run dev
-
-# Build for production
-npm run build && npm start
 ```
 
 ### Environment Variables
-```bash
+Create a `.env` file in the `backend` directory with the following variables:
+```
+NODE_ENV=development
+PORT=3001
+FRONTEND_URL=http://localhost:4200
+
+# Optional: For real AI services
 XAI_API_KEY=your_grok_key
 ELEVENLABS_API_KEY=your_elevenlabs_key
-NODE_ENV=development|production
 ```
 
 **Remember**: This is a seam-driven codebase. When in doubt, check the contracts first! 🚀

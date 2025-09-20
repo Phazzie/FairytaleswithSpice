@@ -1,54 +1,115 @@
-# Copilot Instructions
+# World-Class Copilot Instructions: Seam-Driven Development for Fairytales with Spice
 
-## DEVELOPMENT METHODOLOGY: Seam-Driven Development
+## 🚀 PRIMARY DIRECTIVE: ADHERE TO SEAM-DRIVEN DEVELOPMENT
 
-This methodology prevents the common problem where apps work 70% but fail during integration, specifically adapted for the **Fairytales with Spice** AI story generation platform.
+Your main goal is to help me build and maintain the **Fairytales with Spice** AI story generator by strictly following the **Seam-Driven Development** methodology. This means we define explicit TypeScript contracts for all data boundaries *before* writing any implementation code.
 
-### CORE PRINCIPLES:
-1. **SEAMS FIRST**: Identify all data boundaries before writing code. A "seam" is anywhere data crosses from one component to another (UI→API, API→Database, etc.)
+### 📜 Core Principles
+1.  **SEAMS FIRST**: Before any coding, we identify the "seams" where data is exchanged (e.g., UI to API, API to AI service).
+2.  **UI-FIRST, MOCK-DRIVEN**: We build the user interface first, using mock data. This reveals the exact data contracts we need.
+3.  **CONTRACTS ARE LAW**: Every seam is defined by a TypeScript interface in `contracts.ts`. This is the single source of truth.
+4.  **REGENERATE, DON'T DEBUG**: If there's an integration issue, we fix the contract and regenerate the code. We do not manually debug generated code.
 
-2. **UI-FIRST**: Build complete working user interface with mock data first. This reveals all the seams I actually need.
+### 🌶️ Project-Specific Context
+This is a **spicy fairy tale story generator**. Remember these key domain concepts:
+-   **Creatures**: `'vampire' | 'werewolf' | 'fairy'`
+-   **Themes**: `'romance' | 'adventure' | 'mystery' | 'comedy' | 'dark'`
+-   **Spicy Levels**: `1 | 2 | 3 | 4 | 5`
+-   **Core Process**: Story Generation → Chapter Continuation → Audio Conversion → Export
 
-3. **CONTRACTS DEFINE EVERYTHING**: Every seam gets an explicit TypeScript interface defining exact inputs, outputs, and errors before any implementation.
+### Established Seam Contracts
+These are the foundational contracts of our application. All new features should follow these patterns.
+1.  `StoryGenerationSeam`
+2.  `ChapterContinuationSeam`
+3.  `AudioConversionSeam`
+4.  `SaveExportSeam`
 
-4. **REGENERATE DON'T DEBUG**: If integration fails, fix the contract and regenerate code. Never manually debug generated code.
+---
 
-5. **ONE COMPLETE THING AT A TIME**: Build one fully working feature before adding the next. Each increment should be complete and shippable.
+## 🛠️ YOUR WORKFLOW: HOW TO HELP ME
 
-### PROJECT-SPECIFIC CONTEXT:
-This is a **spicy fairy tale story generator** with these key domain concepts:
-- **Creatures**: `'vampire' | 'werewolf' | 'fairy'`
-- **Themes**: `'romance' | 'adventure' | 'mystery' | 'comedy' | 'dark'`
-- **Spicy Levels**: `1 | 2 | 3 | 4 | 5` (content intensity rating)
-- **Story Processing**: Generation → Chapter Continuation → Audio Conversion → Export
+### Step 1: Define the Seam Contract
+When I ask you to create a new feature, your first step is to define the contract in `backend/src/types/contracts.ts`.
 
-### ESTABLISHED SEAMS:
-The project already implements these proven seam contracts:
+**Example Prompt**: "Jules, I need a feature to let users rate a story."
 
-1. **User Input → Story Generator**: Form data to AI-generated story content
-2. **Story → Chapter Continuation**: Existing story to additional chapters
-3. **Story Text → Audio Converter**: HTML content to TTS audio files
-4. **Story Data → Save/Export**: Story content to various download formats
+**Your Response**:
+```typescript
+// In backend/src/types/contracts.ts
 
-### WORKFLOW:
-1. Build UI with mocks using existing `contracts.ts` types
-2. Extract seams from UI interactions following established patterns
-3. Define TypeScript contracts matching existing seam interfaces
-4. Generate backend services conforming to contract specifications
-5. Replace mocks with real API calls (Grok AI, ElevenLabs)
+export interface StoryRatingSeam {
+  input: {
+    storyId: string;
+    rating: 1 | 2 | 3 | 4 | 5;
+    userId: string;
+  };
+  output: {
+    storyId: string;
+    newAverageRating: number;
+    totalRatings: number;
+  };
+}
+```
 
-### ALWAYS:
-- Reference existing contracts in `story-generator/src/app/contracts.ts` and `backend/src/types/contracts.ts`
-- Use established type definitions (`CreatureType`, `ThemeType`, `SpicyLevel`, etc.)
-- Follow the `ApiResponse<T>` pattern for all API responses
-- Implement mock fallbacks for development without API keys
-- Ask me to define contracts before implementing new seams
-- Focus on making integration impossible to break
+### Step 2: Create the Backend Route and Service
+Next, you will create a new route in the `backend/src/routes` directory and a new service method in the corresponding service file in `backend/src/services`.
 
-### NEVER:
-- Start with database design
-- Build backend before UI
-- Skip contract definitions
-- Suggest debugging generated code
-- Create new types that conflict with existing domain types
-- Ignore the spicy content rating system
+**Your Action**:
+1.  **Create the route** in a file like `storyRoutes.ts`:
+    ```typescript
+    // In backend/src/routes/storyRoutes.ts
+    router.post('/story/:storyId/rate', async (req, res, next) => {
+      try {
+        const service = new StoryService();
+        const response = await service.rateStory(req.body);
+        res.json(response);
+      } catch (error) {
+        next(error);
+      }
+    });
+    ```
+2.  **Implement the service method** in `storyService.ts`, starting with a mock:
+    ```typescript
+    // In backend/src/services/storyService.ts
+
+    async rateStory(input: StoryRatingSeam['input']): Promise<ApiResponse<StoryRatingSeam['output']>> {
+      // MOCK IMPLEMENTATION
+      const output: StoryRatingSeam['output'] = {
+        storyId: input.storyId,
+        newAverageRating: 4.5,
+        totalRatings: 100,
+      };
+
+      return {
+        success: true,
+        data: output,
+        metadata: {
+          requestId: this.generateRequestId(),
+          processingTime: 10,
+        },
+      };
+    }
+    ```
+
+### Step 3: Connect to the Frontend
+Finally, you will help me create or modify the Angular service in `story-generator/src/app` to call the new endpoint.
+
+---
+
+## ✅ ALWAYS DO THIS
+
+*   **Reference `contracts.ts`**: This is your bible. All types must come from here.
+*   **Use the `ApiResponse<T>` wrapper**: Every single API response must use this pattern.
+*   **Implement Mock Fallbacks**: If an API key is missing, the service should return mock data that conforms to the contract.
+*   **Ask Me to Define Contracts First**: If I forget, remind me. "Boss, what should the contract for this look like?"
+*   **Keep Frontend and Backend Contracts Identical**: The `contracts.ts` files in `story-generator` and `backend` should be perfect copies.
+*   **Focus on Integration-Proof Code**: Your primary goal is to prevent integration errors by enforcing contracts.
+
+## ❌ NEVER DO THIS
+
+*   **Never Start with the Database**: We design from the UI inwards, not from the database outwards.
+*   **Never Build the Backend Before the UI Contract is Clear**: The UI's needs define the contract.
+*   **Never Skip Contract Definitions**: This is the most important rule.
+*   **Never Suggest Debugging Generated Code**: If generated code is wrong, the contract or the generator is wrong. Fix that.
+*   **Never Create Conflicting Types**: Do not invent new types for `CreatureType`, `ThemeType`, etc. Use the existing ones.
+*   **Never Ignore the Spicy Content Rating System**: It is a core feature of the application.

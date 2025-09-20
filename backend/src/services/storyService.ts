@@ -7,21 +7,33 @@ import {
   SpicyLevel
 } from '../types/contracts';
 
+/**
+ * Service class for handling story generation and continuation.
+ * This class encapsulates all the logic for interacting with the AI model,
+ * validating input, and formatting the output.
+ */
 export class StoryService {
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
   private grokApiKey = process.env.XAI_AI_KEY;
 
   constructor() {
+    // Warn the developer if the API key is missing, as the service will run in mock mode.
     if (!this.grokApiKey) {
-      console.warn('⚠️  XAI_AI_KEY not found in environment variables');
+      console.warn('⚠️  XAI_AI_KEY not found in environment variables. StoryService will run in mock mode.');
     }
   }
 
+  /**
+   * Generates a new story based on the provided input.
+   * This method conforms to the StoryGenerationSeam contract.
+   * @param input - The input object containing the story parameters.
+   * @returns A promise that resolves to an ApiResponse containing the generated story.
+   */
   async generateStory(input: StoryGenerationSeam['input']): Promise<ApiResponse<StoryGenerationSeam['output']>> {
     const startTime = Date.now();
 
     try {
-      // Validate input
+      // 1. Validate the user's input against the defined rules.
       const validationError = this.validateStoryInput(input);
       if (validationError) {
         return {
@@ -34,10 +46,10 @@ export class StoryService {
         };
       }
 
-      // Generate story using Grok AI
+      // 2. Generate the story content by calling the AI model (or a mock).
       const storyContent = await this.callGrokAI(input);
 
-      // Create response
+      // 3. Assemble the final output object, conforming to the seam contract.
       const output: StoryGenerationSeam['output'] = {
         storyId: this.generateStoryId(),
         title: this.generateTitle(input),
@@ -46,11 +58,12 @@ export class StoryService {
         themes: input.themes,
         spicyLevel: input.spicyLevel,
         actualWordCount: this.countWords(storyContent),
-        estimatedReadTime: Math.ceil(this.countWords(storyContent) / 200),
+        estimatedReadTime: Math.ceil(this.countWords(storyContent) / 200), // Avg reading speed
         hasCliffhanger: this.detectCliffhanger(storyContent),
         generatedAt: new Date()
       };
 
+      // 4. Return a successful response.
       return {
         success: true,
         data: output,
@@ -62,7 +75,7 @@ export class StoryService {
 
     } catch (error: any) {
       console.error('Story generation error:', error);
-
+      // Return a standardized error response in case of failure.
       return {
         success: false,
         error: {
@@ -78,14 +91,20 @@ export class StoryService {
     }
   }
 
+  /**
+   * Continues an existing story with a new chapter.
+   * This method conforms to the ChapterContinuationSeam contract.
+   * @param input - The input object containing the existing story and continuation parameters.
+   * @returns A promise that resolves to an ApiResponse containing the new chapter.
+   */
   async continueStory(input: ChapterContinuationSeam['input']): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
     const startTime = Date.now();
 
     try {
-      // Generate continuation using Grok AI
+      // 1. Generate the new chapter content.
       const chapterContent = await this.callGrokAIForContinuation(input);
 
-      // Create response
+      // 2. Assemble the final output object.
       const output: ChapterContinuationSeam['output'] = {
         chapterId: this.generateChapterId(),
         chapterNumber: input.currentChapterCount + 1,
@@ -95,9 +114,10 @@ export class StoryService {
         cliffhangerEnding: this.detectCliffhanger(chapterContent),
         themesContinued: this.extractThemesFromContent(input.existingContent),
         spicyLevelMaintained: this.extractSpicyLevelFromContent(input.existingContent),
-        appendedToStory: input.existingContent + '\n\n<hr>\n\n' + chapterContent
+        appendedToStory: `${input.existingContent}\n\n<hr>\n\n${chapterContent}`
       };
 
+      // 3. Return a successful response.
       return {
         success: true,
         data: output,
@@ -109,7 +129,7 @@ export class StoryService {
 
     } catch (error: any) {
       console.error('Chapter continuation error:', error);
-
+      // Return a standardized error response.
       return {
         success: false,
         error: {
@@ -125,9 +145,14 @@ export class StoryService {
     }
   }
 
+  /**
+   * Calls the Grok AI service to generate a story.
+   * If no API key is present, it falls back to a mock story.
+   * @param input - The story generation parameters.
+   * @returns A promise that resolves to the generated story content as an HTML string.
+   */
   private async callGrokAI(input: StoryGenerationSeam['input']): Promise<string> {
     if (!this.grokApiKey) {
-      // Fallback to mock generation if no API key
       return this.generateMockStory(input);
     }
 
@@ -137,16 +162,10 @@ export class StoryService {
       const response = await axios.post(this.grokApiUrl, {
         model: 'grok-4-0709',
         messages: [
-          {
-            role: 'system',
-            content: 'You are a master storyteller specializing in spicy, romantic fantasy tales. Create engaging, well-structured stories with vivid descriptions and emotional depth.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
+          { role: 'system', content: 'You are a master storyteller specializing in spicy, romantic fantasy tales. Create engaging, well-structured stories with vivid descriptions and emotional depth.' },
+          { role: 'user', content: prompt }
         ],
-        max_tokens: input.wordCount * 2, // Allow some buffer
+        max_tokens: input.wordCount * 2, // Allow a buffer for longer stories
         temperature: 0.8
       }, {
         headers: {
@@ -163,6 +182,12 @@ export class StoryService {
     }
   }
 
+  /**
+   * Calls the Grok AI service to continue a story.
+   * Falls back to a mock chapter if no API key is available.
+   * @param input - The chapter continuation parameters.
+   * @returns A promise that resolves to the new chapter content as an HTML string.
+   */
   private async callGrokAIForContinuation(input: ChapterContinuationSeam['input']): Promise<string> {
     if (!this.grokApiKey) {
       return this.generateMockChapter(input);
@@ -174,14 +199,8 @@ export class StoryService {
       const response = await axios.post(this.grokApiUrl, {
         model: 'grok-4-0709',
         messages: [
-          {
-            role: 'system',
-            content: 'Continue this story in the same style and tone. Maintain character development and plot progression.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
+          { role: 'system', content: 'Continue this story in the same style and tone. Maintain character development and plot progression.' },
+          { role: 'user', content: prompt }
         ],
         max_tokens: 1000,
         temperature: 0.8
@@ -200,6 +219,11 @@ export class StoryService {
     }
   }
 
+  /**
+   * Builds the prompt for generating a new story.
+   * @param input - The story generation parameters.
+   * @returns The complete prompt string.
+   */
   private buildStoryPrompt(input: StoryGenerationSeam['input']): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const themesText = input.themes.join(', ');
@@ -231,6 +255,11 @@ Style Guidelines:
 Format the story with HTML tags for structure (h3 for chapter titles, p for paragraphs).`;
   }
 
+  /**
+   * Builds the prompt for continuing an existing story.
+   * @param input - The chapter continuation parameters.
+   * @returns The complete prompt string for continuation.
+   */
   private buildContinuationPrompt(input: ChapterContinuationSeam['input']): string {
     return `Continue this story with a new chapter. Maintain the same tone, character development, and spicy level.
 
@@ -242,78 +271,54 @@ Additional Instructions: ${input.userInput || 'Continue naturally'}
 Write approximately 400-600 words for this chapter. Format with HTML tags.`;
   }
 
+  /**
+   * Validates the input for story generation.
+   * @param input - The story generation parameters.
+   * @returns An error object if validation fails, otherwise null.
+   */
   private validateStoryInput(input: StoryGenerationSeam['input']): any {
     if (!input.creature || !['vampire', 'werewolf', 'fairy'].includes(input.creature)) {
-      return {
-        code: 'INVALID_INPUT',
-        message: 'Invalid creature type',
-        field: 'creature',
-        providedValue: input.creature,
-        expectedType: 'CreatureType'
-      };
+      return { code: 'INVALID_INPUT', message: 'Invalid creature type', field: 'creature', providedValue: input.creature, expectedType: 'CreatureType' };
     }
 
     if (input.themes.length > VALIDATION_RULES.themes.maxCount) {
-      return {
-        code: 'INVALID_INPUT',
-        message: `Too many themes (max ${VALIDATION_RULES.themes.maxCount})`,
-        field: 'themes',
-        providedValue: input.themes,
-        expectedType: 'ThemeType[]'
-      };
+      return { code: 'INVALID_INPUT', message: `Too many themes (max ${VALIDATION_RULES.themes.maxCount})`, field: 'themes', providedValue: input.themes, expectedType: 'ThemeType[]' };
     }
 
     if (input.userInput && input.userInput.length > VALIDATION_RULES.userInput.maxLength) {
-      return {
-        code: 'INVALID_INPUT',
-        message: `User input too long (max ${VALIDATION_RULES.userInput.maxLength} characters)`,
-        field: 'userInput',
-        providedValue: input.userInput,
-        expectedType: 'string'
-      };
+      return { code: 'INVALID_INPUT', message: `User input too long (max ${VALIDATION_RULES.userInput.maxLength} characters)`, field: 'userInput', providedValue: input.userInput, expectedType: 'string' };
     }
 
     return null;
   }
 
+  /**
+   * Generates a mock story for development when no API key is available.
+   * @param input - The story generation parameters.
+   * @returns A mock story as an HTML string.
+   */
   private generateMockStory(input: StoryGenerationSeam['input']): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const spicyLabel = this.getSpicyLabel(input.spicyLevel);
 
-    return `<h3>The ${creatureName}'s Forbidden Passion</h3>
-
+    return `<h3>The ${creatureName}'s Forbidden Passion (Mock)</h3>
+<p>This is a mock story generated for development purposes. The requested creature was a ${creatureName.toLowerCase()} and the spice level was "${spicyLabel}".</p>
 <p>In the shadowed alleys of Victorian London, Lady Arabella Worthington found herself drawn to the mysterious stranger who haunted her dreams. His eyes, crimson as fresh-spilled wine, held secrets that both terrified and exhilarated her.</p>
-
-<p>"You shouldn't be here," he whispered, his voice like velvet over steel. But Arabella, with her corset straining against propriety and her heart pounding with forbidden desire, stepped closer.</p>
-
-<p>The ${creatureName.toLowerCase()} prince revealed himself slowly, each layer of deception peeling away like the petals of a night-blooming flower. His touch was electric, sending sparks through her veins that made her gasp with a pleasure bordering on pain.</p>
-
-<p>As the gas lamps flickered in the fog-shrouded streets, their bodies entwined in a dance as old as time itself. Arabella discovered that some hungers could never be satisfied, only temporarily sated.</p>
-
-<p>The ${spicyLabel.toLowerCase()} intensity of their encounter left her breathless, her skin flushed and marked by his passionate embrace. She knew she should run, should scream for help, but the pull was too strong.</p>
-
-<p>In that moment, Lady Arabella Worthington ceased to be a proper Victorian lady and became something far more dangerous - the willing consort of a creature of the night.</p>
-
-<p><em>This is a mock story generated without AI. Add XAI_AI_KEY to use real AI generation.</em></p>`;
+<p><em>To see a real AI-generated story, please add your XAI_AI_KEY to the .env file.</em></p>`;
   }
 
+  /**
+   * Generates a mock chapter for development.
+   * @param input - The chapter continuation parameters.
+   * @returns A mock chapter as an HTML string.
+   */
   private generateMockChapter(input: ChapterContinuationSeam['input']): string {
-    return `<h3>Chapter ${input.currentChapterCount + 1}: The Deeper Shadows</h3>
-
-<p>The morning light pierced through heavy velvet curtains, but Arabella felt no warmth from its golden rays. Instead, a strange energy coursed through her veins, awakening senses she never knew existed.</p>
-
-<p>Every sound was amplified - the distant clip-clop of carriage horses, the rustle of leaves in the garden, even the steady beat of her own heart. And beneath it all, a hunger that gnawed at her very soul.</p>
-
-<p>Her reflection in the mirror showed a woman transformed. Her skin glowed with an otherworldly luminescence, her eyes held a predatory gleam. The creature had given her a gift... or was it a curse?</p>
-
-<p>As night fell once more, she waited impatiently for his return. The hours stretched like taffy, each minute an eternity of anticipation. When he finally appeared at her balcony, silent as a shadow, Arabella knew there was no turning back.</p>
-
-<p>Their second encounter was even more intense than the first. His hands explored her body with a possessiveness that made her arch and cry out. The passion burned hotter, threatening to consume them both.</p>
-
-<p>But in the aftermath, as they lay entwined in sweat-dampened sheets, Arabella began to question the true cost of her transformation. What price would she pay for eternal passion?</p>
-
-<p><em>This is a mock chapter generated without AI.</em></p>`;
+    return `<h3>Chapter ${input.currentChapterCount + 1}: The Deeper Shadows (Mock)</h3>
+<p>This is a mock chapter. The story continues with even more intrigue and passion, as the shadows of the past begin to lengthen.</p>
+<p>Arabella soon discovered that her mysterious lover was not the only one with secrets. A new danger emerges, threatening to tear them apart forever.</p>`;
   }
+
+  // --- Utility Methods ---
 
   private getCreatureDisplayName(creature: string): string {
     const names: Record<string, string> = {
@@ -330,8 +335,7 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
   }
 
   private generateTitle(input: StoryGenerationSeam['input']): string {
-    const creatureName = this.getCreatureDisplayName(input.creature);
-    return `The ${creatureName}'s Forbidden Passion`;
+    return `The ${this.getCreatureDisplayName(input.creature)}'s Forbidden Passion`;
   }
 
   private generateChapterTitle(input: ChapterContinuationSeam['input']): string {
@@ -339,7 +343,7 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
   }
 
   private countWords(content: string): number {
-    return content.replace(/<[^>]*>/g, '').split(/\s+/).filter(word => word.length > 0).length;
+    return content.replace(/<[^>]*>/g, '').trim().split(/\s+/).filter(Boolean).length;
   }
 
   private detectCliffhanger(content: string): boolean {
@@ -349,30 +353,24 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
   }
 
   private extractThemesFromContent(content: string): any[] {
-    // Simple theme extraction - in real implementation, this would be more sophisticated
+    // In a real implementation, this would use NLP to extract themes.
     return ['romance', 'dark'];
   }
 
   private extractSpicyLevelFromContent(content: string): SpicyLevel {
-    // Simple spicy level extraction - in real implementation, this would analyze content
-    // For now, return a default value that matches the SpicyLevel type
+    // In a real implementation, this would use content analysis.
     return 4 as SpicyLevel;
   }
 
   private formatStoryContent(content: string): string {
-    // Add basic HTML formatting if not already present
-    if (!content.includes('<h3>') && !content.includes('<p>')) {
-      return `<h3>Generated Story</h3>\n\n<p>${content.replace(/\n\n/g, '</p>\n\n<p>')}</p>`;
+    if (!content.includes('<p>')) {
+      return `<p>${content.replace(/\n\n/g, '</p><p>')}</p>`;
     }
     return content;
   }
 
   private formatChapterContent(content: string): string {
-    // Add basic HTML formatting if not already present
-    if (!content.includes('<h3>') && !content.includes('<p>')) {
-      return `<p>${content.replace(/\n\n/g, '</p>\n\n<p>')}</p>`;
-    }
-    return content;
+    return this.formatStoryContent(content);
   }
 
   private stripHtml(content: string): string {
@@ -380,14 +378,14 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
   }
 
   private generateStoryId(): string {
-    return `story_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `story_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private generateChapterId(): string {
-    return `chapter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `chapter_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `req_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 }
