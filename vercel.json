@@ -22,6 +22,18 @@
       "destination": "/api/export/save"
     },
     {
+      "source": "/api/continue-story",
+      "destination": "/api/story/continue"
+    },
+    {
+      "source": "/api/manage-story-arc",
+      "destination": "/api/story/arc"
+    },
+    {
+      "source": "/api/compile-audiobook",
+      "destination": "/api/audio/compile"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },

@@ -11,12 +11,64 @@ export type VoiceType = 'female' | 'male' | 'neutral';
 export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
+export type CliffhangerType = 'romantic_tension' | 'plot_twist' | 'danger' | 'mystery' | 'character_revelation' | 'emotional_conflict';
 
 export interface AudioProgress {
   percentage: number; // 0-100
   status: 'queued' | 'processing' | 'completed' | 'failed';
   message: string;
   estimatedTimeRemaining?: number; // in seconds
+}
+
+// ==================== STORY ARC TYPES ====================
+export interface StoryArc {
+  arcId: string;
+  userId?: string;
+  title: string;
+  chapters: Chapter[];
+  characters: Character[];
+  worldState: WorldState;
+  currentSpiceLevel: SpicyLevel;
+  totalWordCount: number;
+  totalAudioDuration: number;
+  createdAt: Date;
+  lastUpdatedAt: Date;
+}
+
+export interface Chapter {
+  chapterId: string;
+  chapterNumber: number;
+  title: string;
+  content: string;
+  wordCount: number;
+  audioUrl?: string;
+  audioDuration?: number;
+  cliffhangerType: CliffhangerType;
+  characterDevelopments: CharacterGrowth[];
+  generatedAt: Date;
+}
+
+export interface Character {
+  name: string;
+  description: string;
+  relationships: Record<string, string>; // character name -> relationship type
+  traits: string[];
+  development: CharacterGrowth[];
+}
+
+export interface CharacterGrowth {
+  chapterNumber: number;
+  development: string;
+  emotionalState: string;
+  relationshipChanges: Record<string, string>;
+}
+
+export interface WorldState {
+  location: string;
+  timeOfDay: string;
+  atmosphere: string;
+  importantEvents: string[];
+  availableLocations: string[];
 }
 
 // ==================== SEAM 1: USER INPUT → STORY GENERATOR ====================
@@ -208,6 +260,141 @@ export interface SaveExportSeam {
       code: "STORAGE_QUOTA_EXCEEDED";
       message: string;
       quotaRemaining: number;
+    };
+  };
+}
+
+// ==================== SEAM 5: STORY ARC MANAGEMENT ====================
+export interface StoryArcSeam {
+  seamName: "Story Arc Management";
+  description: "Manages multi-chapter story arcs with character development and world state";
+
+  input: {
+    storyId: string;
+    operation: 'create' | 'update' | 'get' | 'delete';
+    arcData?: Partial<StoryArc>;
+    chapterData?: Partial<Chapter>;
+  };
+
+  output: {
+    storyArc: StoryArc;
+    totalChapters: number;
+    canContinue: boolean;
+    nextSuggestedActions: string[];
+    characterDevelopmentSummary: Record<string, string>;
+    plotThreads: string[];
+  };
+
+  errors: {
+    ARC_NOT_FOUND: {
+      code: "ARC_NOT_FOUND";
+      message: string;
+      arcId: string;
+    };
+    MAX_CHAPTERS_REACHED: {
+      code: "MAX_CHAPTERS_REACHED";
+      message: string;
+      maxChapters: number;
+      currentChapters: number;
+    };
+    INVALID_ARC_DATA: {
+      code: "INVALID_ARC_DATA";
+      message: string;
+      invalidFields: string[];
+    };
+  };
+}
+
+// ==================== SEAM 6: AUDIOBOOK COMPILATION ====================
+export interface AudiobookCompilationSeam {
+  seamName: "Audiobook Compilation";
+  description: "Compiles chapter audio files into complete audiobooks with navigation";
+
+  input: {
+    storyArcId: string;
+    chapterIds: string[];
+    compilationOptions: {
+      includeChapterMarkers: boolean;
+      addIntroOutro: boolean;
+      normalizeVolume: boolean;
+      format: AudioFormat;
+    };
+  };
+
+  output: {
+    audiobookId: string;
+    storyArcId: string;
+    downloadUrl: string;
+    streamingUrl?: string;
+    totalDuration: number;
+    fileSize: number;
+    chapterMarkers: ChapterMarker[];
+    format: AudioFormat;
+    compiledAt: Date;
+  };
+
+  errors: {
+    COMPILATION_FAILED: {
+      code: "COMPILATION_FAILED";
+      message: string;
+      failedChapters: string[];
+      retryable: boolean;
+    };
+    MISSING_AUDIO_FILES: {
+      code: "MISSING_AUDIO_FILES";
+      message: string;
+      missingChapterIds: string[];
+    };
+    COMPILATION_QUOTA_EXCEEDED: {
+      code: "COMPILATION_QUOTA_EXCEEDED";
+      message: string;
+      quotaRemaining: number;
+      resetTime: Date;
+    };
+  };
+}
+
+export interface ChapterMarker {
+  chapterNumber: number;
+  title: string;
+  startTime: number; // seconds from start of audiobook
+  duration: number;
+}
+
+// ==================== SEAM 7: ENHANCED CLIFFHANGER ENGINE ====================
+export interface CliffhangerEngineSeam {
+  seamName: "Enhanced Cliffhanger Engine";
+  description: "Analyzes and generates compelling cliffhangers with variety";
+
+  input: {
+    chapterContent: string;
+    previousCliffhangers: CliffhangerType[];
+    storyContext: {
+      spiceLevel: SpicyLevel;
+      themes: ThemeType[];
+      characterRelationships: Record<string, string>;
+    };
+  };
+
+  output: {
+    cliffhangerDetected: boolean;
+    cliffhangerType: CliffhangerType;
+    cliffhangerStrength: number; // 1-10 scale
+    cliffhangerText: string;
+    suggestedContinuations: string[];
+    varietyScore: number; // How different from previous cliffhangers
+  };
+
+  errors: {
+    ANALYSIS_FAILED: {
+      code: "ANALYSIS_FAILED";
+      message: string;
+      retryable: boolean;
+    };
+    INSUFFICIENT_CONTENT: {
+      code: "INSUFFICIENT_CONTENT";
+      message: string;
+      minimumWordCount: number;
     };
   };
 }
