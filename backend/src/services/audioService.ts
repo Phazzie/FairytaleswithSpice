@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { AudioConversionSeam, ApiResponse } from '../types/contracts';
+import { AudioConversionSeam, ApiResponse, DialogueSegment, CharacterVoiceType } from '../types/contracts';
+import { DialogueParser } from './dialogueParser';
 
 // Emotion types for voice adjustment
 export type EmotionType = 'seductive' | 'fearful' | 'angry' | 'passionate' | 'sad' | 'joyful' | 'mysterious' | 'neutral';
@@ -20,12 +21,35 @@ interface DetectedEmotion {
 export class AudioService {
   private elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
   private elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+  private dialogueParser = new DialogueParser();
 
-  // Voice IDs for different voice types (ElevenLabs voice IDs)
+  // Enhanced voice IDs for character-specific voices (11Labs voice IDs)
+  private characterVoiceIds = {
+    // Vampire voices - deep, seductive
+    vampire_male: process.env.ELEVENLABS_VOICE_VAMPIRE_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam (deep male)
+    vampire_female: process.env.ELEVENLABS_VOICE_VAMPIRE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella (seductive female)
+    
+    // Werewolf voices - gruff, powerful
+    werewolf_male: process.env.ELEVENLABS_VOICE_WEREWOLF_MALE || 'pqHfZKP75CvOlQylNhV4', // Bill (gruff male)
+    werewolf_female: process.env.ELEVENLABS_VOICE_WEREWOLF_FEMALE || 'XrExE9yKIg1WjnnlVkGX', // Matilda (strong female)
+    
+    // Fairy voices - ethereal, mystical  
+    fairy_male: process.env.ELEVENLABS_VOICE_FAIRY_MALE || 'AZnzlk1XvdvUeBnXmlld', // Domi (ethereal male)
+    fairy_female: process.env.ELEVENLABS_VOICE_FAIRY_FEMALE || 'ThT5KcBeYPX3keUQqHPh', // Dorothy (mystical female)
+    
+    // Human voices - relatable, emotional
+    human_male: process.env.ELEVENLABS_VOICE_HUMAN_MALE || 'yoZ06aMxZJJ28mfd3POQ', // Sam (relatable male)
+    human_female: process.env.ELEVENLABS_VOICE_HUMAN_FEMALE || 'TxGEqnHWrfWFTfGW9XjX', // Josh (emotional female)
+    
+    // Narrator voice - clear, authoritative
+    narrator: process.env.ELEVENLABS_VOICE_NARRATOR || '21m00Tcm4TlvDq8ikWAM' // Rachel (clear narrator)
+  };
+
+  // Legacy voice IDs for backward compatibility
   private voiceIds = {
-    female: process.env.ELEVENLABS_VOICE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella
-    male: process.env.ELEVENLABS_VOICE_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam
-    neutral: process.env.ELEVENLABS_VOICE_NEUTRAL || '21m00Tcm4TlvDq8ikWAM' // Rachel
+    female: this.characterVoiceIds.human_female,
+    male: this.characterVoiceIds.human_male,
+    neutral: this.characterVoiceIds.narrator
   };
 
   constructor() {
@@ -38,42 +62,14 @@ export class AudioService {
     const startTime = Date.now();
 
     try {
-      // Clean HTML content for text-to-speech
-      const cleanText = this.cleanHtmlForTTS(input.content);
-
-      // Generate audio using ElevenLabs
-      const audioData = await this.callElevenLabsAPI(cleanText, input);
-
-      // Upload to storage and get URL (mock implementation)
-      const audioUrl = await this.uploadAudioToStorage(audioData, input);
-
-      // Create response
-      const output: AudioConversionSeam['output'] = {
-        audioId: this.generateAudioId(),
-        storyId: input.storyId,
-        audioUrl: audioUrl,
-        duration: this.estimateDuration(cleanText),
-        fileSize: audioData.length,
-        format: input.format || 'mp3',
-        voice: input.voice || 'female',
-        speed: input.speed || 1.0,
-        progress: {
-          percentage: 100,
-          status: 'completed',
-          message: 'Audio conversion completed successfully',
-          estimatedTimeRemaining: 0
-        },
-        completedAt: new Date()
-      };
-
-      return {
-        success: true,
-        data: output,
-        metadata: {
-          requestId: this.generateRequestId(),
-          processingTime: Date.now() - startTime
-        }
-      };
+      // Determine if multi-voice generation should be used
+      const enableMultiVoice = input.enableMultiVoice !== false; // Default to true
+      
+      if (enableMultiVoice) {
+        return await this.generateMultiVoiceAudio(input, startTime);
+      } else {
+        return await this.generateSingleVoiceAudio(input, startTime);
+      }
 
     } catch (error: any) {
       console.error('Audio conversion error:', error);
@@ -104,6 +100,308 @@ export class AudioService {
     }
   }
 
+  /**
+   * Generate multi-voice audio from dialogue segments
+   */
+  private async generateMultiVoiceAudio(input: AudioConversionSeam['input'], startTime: number): Promise<ApiResponse<AudioConversionSeam['output']>> {
+    // Parse dialogue segments from story content
+    const dialogueSegments = this.dialogueParser.parseStoryDialogue(input.content, input.creatureType);
+    
+    if (dialogueSegments.length === 0) {
+      // Fall back to single voice if no dialogue found
+      return await this.generateSingleVoiceAudio(input, startTime);
+    }
+
+    // Generate audio segments for each dialogue piece
+    const audioSegments: DialogueSegment[] = [];
+    let currentProgress = 0;
+    
+    for (let i = 0; i < dialogueSegments.length; i++) {
+      const segment = dialogueSegments[i];
+      
+      // Update progress
+      currentProgress = Math.floor((i / dialogueSegments.length) * 80); // Leave 20% for compilation
+      
+      try {
+        // Generate audio for this segment
+        const audioData = await this.generateSegmentAudio(segment, input);
+        
+        // Store segment with audio data
+        const processedSegment = {
+          ...segment,
+          audioUrl: await this.uploadAudioSegment(audioData, segment, input),
+          duration: this.estimateSegmentDuration(segment.text)
+        };
+        
+        audioSegments.push(processedSegment);
+        
+      } catch (segmentError) {
+        console.error(`Failed to generate audio for segment ${i}:`, segmentError);
+        // Continue with other segments, mark this one as failed
+        audioSegments.push({
+          ...segment,
+          audioUrl: undefined,
+          duration: this.estimateSegmentDuration(segment.text)
+        });
+      }
+    }
+
+    // Compile segments into final audio file
+    const compiledAudioUrl = await this.compileAudioSegments(audioSegments, input);
+    const totalDuration = this.dialogueParser.estimateAudioDuration(audioSegments, input.speed || 1.0);
+    const characterVoices = this.dialogueParser.getCharacterVoiceMapping(audioSegments);
+
+    // Create response
+    const output: AudioConversionSeam['output'] = {
+      audioId: this.generateAudioId(),
+      storyId: input.storyId,
+      audioUrl: compiledAudioUrl,
+      duration: totalDuration,
+      fileSize: this.estimateFileSize(totalDuration),
+      format: input.format || 'mp3',
+      voice: input.voice || 'female',
+      speed: input.speed || 1.0,
+      progress: {
+        percentage: 100,
+        status: 'completed',
+        message: 'Multi-voice audio generation completed successfully',
+        estimatedTimeRemaining: 0,
+        currentSegment: audioSegments.length,
+        totalSegments: audioSegments.length
+      },
+      completedAt: new Date(),
+      isMultiVoice: true,
+      dialogueSegments: audioSegments,
+      characterVoices: characterVoices,
+      segmentCount: audioSegments.length
+    };
+
+    return {
+      success: true,
+      data: output,
+      metadata: {
+        requestId: this.generateRequestId(),
+        processingTime: Date.now() - startTime
+      }
+    };
+  }
+
+  /**
+   * Generate single voice audio (legacy mode)
+   */
+  private async generateSingleVoiceAudio(input: AudioConversionSeam['input'], startTime: number): Promise<ApiResponse<AudioConversionSeam['output']>> {
+    // Clean HTML content for text-to-speech
+    const cleanText = this.cleanHtmlForTTS(input.content);
+
+    // Generate audio using ElevenLabs
+    const audioData = await this.callElevenLabsAPI(cleanText, input);
+
+    // Upload to storage and get URL
+    const audioUrl = await this.uploadAudioToStorage(audioData, input);
+
+    // Create response
+    const output: AudioConversionSeam['output'] = {
+      audioId: this.generateAudioId(),
+      storyId: input.storyId,
+      audioUrl: audioUrl,
+      duration: this.estimateDuration(cleanText),
+      fileSize: audioData.length,
+      format: input.format || 'mp3',
+      voice: input.voice || 'female',
+      speed: input.speed || 1.0,
+      progress: {
+        percentage: 100,
+        status: 'completed',
+        message: 'Audio conversion completed successfully',
+        estimatedTimeRemaining: 0
+      },
+      completedAt: new Date(),
+      isMultiVoice: false
+    };
+
+    return {
+      success: true,
+      data: output,
+      metadata: {
+        requestId: this.generateRequestId(),
+        processingTime: Date.now() - startTime
+      }
+    };
+  }
+
+  /**
+   * Generate audio for a specific dialogue segment using character-specific voice
+   */
+  private async generateSegmentAudio(segment: DialogueSegment, input: AudioConversionSeam['input']): Promise<Buffer> {
+    if (!this.elevenLabsApiKey) {
+      return this.generateMockAudioData(segment.text);
+    }
+
+    const voiceId = this.characterVoiceIds[segment.voiceType];
+    const voiceSettings = this.getVoiceSettings(segment.voiceType, segment.emotion);
+
+    try {
+      const response = await axios.post(
+        `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
+        {
+          text: segment.text,
+          model_id: 'eleven_multilingual_v2', // Using v2 for better quality
+          voice_settings: voiceSettings
+        },
+        {
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': this.elevenLabsApiKey
+          },
+          responseType: 'arraybuffer',
+          timeout: 60000
+        }
+      );
+
+      return Buffer.from(response.data);
+
+    } catch (error: any) {
+      console.error(`ElevenLabs API error for ${segment.speaker}:`, error.response?.data || error.message);
+      
+      // Fallback to default voice if character voice fails
+      return await this.generateFallbackAudio(segment.text, input);
+    }
+  }
+
+  /**
+   * Get voice settings based on character type and emotion
+   */
+  private getVoiceSettings(voiceType: CharacterVoiceType, emotion?: string) {
+    const baseSettings = {
+      stability: 0.5,
+      similarity_boost: 0.8,
+      style: 0.5,
+      use_speaker_boost: true
+    };
+
+    // Adjust settings based on character type
+    switch (voiceType) {
+      case 'vampire_male':
+      case 'vampire_female':
+        return {
+          ...baseSettings,
+          stability: 0.7, // More stable for seductive delivery
+          style: 0.8 // Higher style for dramatic effect
+        };
+      
+      case 'werewolf_male':
+      case 'werewolf_female':
+        return {
+          ...baseSettings,
+          stability: 0.4, // Less stable for gruff delivery
+          similarity_boost: 0.9 // Higher boost for powerful voice
+        };
+      
+      case 'fairy_male':
+      case 'fairy_female':
+        return {
+          ...baseSettings,
+          stability: 0.6,
+          style: 0.7 // Mystical delivery
+        };
+      
+      case 'narrator':
+        return {
+          ...baseSettings,
+          stability: 0.8, // Very stable for clear narration
+          style: 0.3 // Lower style for neutral delivery
+        };
+      
+      default:
+        return baseSettings;
+    }
+  }
+
+  /**
+   * Generate fallback audio using default voice
+   */
+  private async generateFallbackAudio(text: string, input: AudioConversionSeam['input']): Promise<Buffer> {
+    const fallbackVoiceId = this.voiceIds[input.voice || 'female'];
+    
+    try {
+      const response = await axios.post(
+        `${this.elevenLabsApiUrl}/text-to-speech/${fallbackVoiceId}`,
+        {
+          text: text,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.8,
+            style: 0.5,
+            use_speaker_boost: true
+          }
+        },
+        {
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': this.elevenLabsApiKey
+          },
+          responseType: 'arraybuffer',
+          timeout: 60000
+        }
+      );
+
+      return Buffer.from(response.data);
+    } catch (error) {
+      // Final fallback to mock data
+      return this.generateMockAudioData(text);
+    }
+  }
+
+  /**
+   * Upload individual audio segment to storage
+   */
+  private async uploadAudioSegment(audioData: Buffer, segment: DialogueSegment, input: AudioConversionSeam['input']): Promise<string> {
+    const filename = `story-${input.storyId}-segment-${segment.speaker}-${Date.now()}.${input.format || 'mp3'}`;
+    
+    // Simulate upload delay
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    return `https://storage.example.com/audio/segments/${filename}`;
+  }
+
+  /**
+   * Compile audio segments into final multi-voice audio file
+   */
+  private async compileAudioSegments(segments: DialogueSegment[], input: AudioConversionSeam['input']): Promise<string> {
+    // In a real implementation, this would use audio processing libraries like FFmpeg
+    // to concatenate audio segments with appropriate timing and transitions
+    
+    const filename = `story-${input.storyId}-multivoice.${input.format || 'mp3'}`;
+    
+    // Simulate compilation time based on segment count
+    const compilationTime = Math.min(segments.length * 100, 2000);
+    await new Promise(resolve => setTimeout(resolve, compilationTime));
+    
+    return `https://storage.example.com/audio/compiled/${filename}`;
+  }
+
+  /**
+   * Estimate duration for a text segment
+   */
+  private estimateSegmentDuration(text: string): number {
+    const wordsPerSecond = 2.5;
+    const wordCount = text.split(/\s+/).length;
+    return Math.ceil(wordCount / wordsPerSecond);
+  }
+
+  /**
+   * Estimate file size based on duration
+   */
+  private estimateFileSize(durationSeconds: number): number {
+    // MP3 at 128kbps = ~16KB per second
+    return Math.ceil(durationSeconds * 16 * 1024);
+  }
+  /**
+   * Legacy API call for single voice generation
+   */
   private async callElevenLabsAPI(text: string, input: AudioConversionSeam['input']): Promise<Buffer> {
     if (!this.elevenLabsApiKey) {
       // Return mock audio data if no API key

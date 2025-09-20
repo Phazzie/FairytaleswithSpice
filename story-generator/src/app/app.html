@@ -99,15 +99,37 @@
         <div class="story-header">
           <h2>Your Spicy {{getCreatureName()}} Story</h2>
           <div class="story-actions">
+            <!-- Multi-voice toggle -->
+            <div class="audio-options">
+              <label class="toggle-option">
+                <input 
+                  type="checkbox" 
+                  [(ngModel)]="enableMultiVoice"
+                  (change)="toggleMultiVoice()">
+                <span class="toggle-text">🎭 Multi-Voice Audio</span>
+              </label>
+            </div>
+
             <button
               class="action-btn audio-btn"
               (click)="convertToAudio()"
               [disabled]="isConvertingAudio">
-              <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
+              <span *ngIf="!isConvertingAudio && !enableMultiVoice">🔊 Convert to Audio</span>
+              <span *ngIf="!isConvertingAudio && enableMultiVoice">🎭 Generate Multi-Voice Audio</span>
               <span *ngIf="isConvertingAudio" class="loading">
                 <span class="spinner"></span>
-                Converting...
+                <span *ngIf="!enableMultiVoice">Converting...</span>
+                <span *ngIf="enableMultiVoice">Generating Voices...</span>
               </span>
+            </button>
+
+            <!-- Download audio button (shown after successful conversion) -->
+            <button
+              *ngIf="currentAudioData"
+              class="action-btn download-btn"
+              (click)="downloadAudio()">
+              <span>⬇️ Download Audio</span>
+              <small>({{getFormattedFileSize()}}, {{getFormattedDuration()}})</small>
             </button>
 
             <button
@@ -148,13 +170,29 @@
         </div>
       </div>
 
-      <!-- Audio Progress -->
-      <div class="audio-progress" *ngIf="audioProgress > 0">
-        <h3>Audio Conversion Progress</h3>
+      <!-- Audio Progress with enhanced multi-voice info -->
+      <div class="audio-progress" *ngIf="isConvertingAudio">
+        <h3 *ngIf="!enableMultiVoice">Audio Conversion Progress</h3>
+        <h3 *ngIf="enableMultiVoice">Multi-Voice Generation Progress</h3>
         <div class="progress-bar">
           <div class="progress-fill" [style.width.%]="audioProgress"></div>
         </div>
-        <p>{{audioProgress}}% complete</p>
+        <p *ngIf="!enableMultiVoice">{{audioProgress}}% complete</p>
+        <p *ngIf="enableMultiVoice">Generating character voices... {{audioProgress}}% complete</p>
+      </div>
+
+      <!-- Character Voice Information -->
+      <div class="character-voices" *ngIf="currentAudioData && currentAudioData.isMultiVoice">
+        <h3>🎭 Character Voices Generated</h3>
+        <div class="voice-list">
+          <div class="voice-item" *ngFor="let voiceInfo of getCharacterVoiceInfo()">
+            <span class="character-name">{{voiceInfo.character}}</span>
+            <span class="voice-type">{{voiceInfo.voice}}</span>
+          </div>
+        </div>
+        <p class="voice-stats">
+          <strong>{{currentAudioData?.segmentCount}}</strong> dialogue segments generated
+        </p>
       </div>
 
       <!-- Success Messages -->
@@ -162,8 +200,9 @@
         ✅ Story saved successfully!
       </div>
 
-      <div class="success-message" *ngIf="audioSuccess">
-        🎵 Audio conversion completed! Download ready.
+      <div class="success-message audio-success" *ngIf="audioSuccess">
+        <span *ngIf="!currentAudioData?.isMultiVoice">🎵 Audio conversion completed! Download ready.</span>
+        <span *ngIf="currentAudioData?.isMultiVoice">🎭 Multi-voice audio generated! {{currentAudioData?.segmentCount}} character voices created.</span>
       </div>
     </div>
   </div>

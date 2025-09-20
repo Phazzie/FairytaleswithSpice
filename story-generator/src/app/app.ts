@@ -51,6 +51,10 @@ export class App implements OnInit, OnDestroy {
   saveSuccess: boolean = false;
   audioSuccess: boolean = false;
 
+  // Multi-voice audio data
+  currentAudioData: AudioConversionSeam['output'] | null = null;
+  enableMultiVoice: boolean = true; // Default to multi-voice enabled
+
   // Options data
   creatures = [
     { value: 'vampire', label: '🧛 Vampire' },
@@ -221,9 +225,11 @@ export class App implements OnInit, OnDestroy {
     this.isConvertingAudio = true;
     this.audioProgress = 0;
     this.audioSuccess = false;
+    this.currentAudioData = null;
 
     this.errorLogging.logInfo('User initiated audio conversion', 'App.convertToAudio', {
-      contentLength: this.currentStory.length
+      contentLength: this.currentStory.length,
+      enableMultiVoice: this.enableMultiVoice
     });
 
     const request: AudioConversionSeam['input'] = {
@@ -231,7 +237,9 @@ export class App implements OnInit, OnDestroy {
       content: this.currentStory,
       voice: 'female',
       speed: 1.0,
-      format: 'mp3'
+      format: 'mp3',
+      enableMultiVoice: this.enableMultiVoice,
+      creatureType: this.selectedCreature as any
     };
 
     this.storyService.convertToAudio(request).subscribe({
@@ -239,12 +247,17 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
+          this.currentAudioData = response.data;
+          
           this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
             audioId: response.data.audioId,
             duration: response.data.duration,
-            fileSize: response.data.fileSize
+            fileSize: response.data.fileSize,
+            isMultiVoice: response.data.isMultiVoice,
+            segmentCount: response.data.segmentCount
           });
-          setTimeout(() => this.audioSuccess = false, 3000);
+          
+          setTimeout(() => this.audioSuccess = false, 5000); // Show success longer for multi-voice
         }
       },
       error: (error) => {
@@ -255,6 +268,88 @@ export class App implements OnInit, OnDestroy {
         this.isConvertingAudio = false;
       }
     });
+  }
+
+  /**
+   * Download the generated audio file
+   */
+  downloadAudio() {
+    if (this.currentAudioData?.audioUrl) {
+      // Create a temporary link to trigger download
+      const link = document.createElement('a');
+      link.href = this.currentAudioData.audioUrl;
+      link.download = `${this.currentStoryTitle || 'story'}-audio.${this.currentAudioData.format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      this.errorLogging.logInfo('User downloaded audio file', 'App.downloadAudio', {
+        audioId: this.currentAudioData.audioId,
+        filename: link.download
+      });
+    }
+  }
+
+  /**
+   * Toggle multi-voice audio generation
+   */
+  toggleMultiVoice() {
+    this.enableMultiVoice = !this.enableMultiVoice;
+    this.errorLogging.logInfo('User toggled multi-voice setting', 'App.toggleMultiVoice', {
+      enableMultiVoice: this.enableMultiVoice
+    });
+  }
+
+  /**
+   * Get character voice display info for UI
+   */
+  getCharacterVoiceInfo(): Array<{character: string, voice: string}> {
+    if (!this.currentAudioData?.characterVoices) return [];
+    
+    return Object.entries(this.currentAudioData.characterVoices).map(([character, voiceType]) => ({
+      character,
+      voice: this.getVoiceDisplayName(voiceType)
+    }));
+  }
+
+  /**
+   * Convert voice type to user-friendly display name
+   */
+  private getVoiceDisplayName(voiceType: string): string {
+    const voiceMap: Record<string, string> = {
+      'vampire_male': '🧛‍♂️ Vampire (Male)',
+      'vampire_female': '🧛‍♀️ Vampire (Female)',
+      'werewolf_male': '🐺 Werewolf (Male)',
+      'werewolf_female': '🐺 Werewolf (Female)',
+      'fairy_male': '🧚‍♂️ Fairy (Male)',
+      'fairy_female': '🧚‍♀️ Fairy (Female)',
+      'human_male': '👨 Human (Male)',
+      'human_female': '👩 Human (Female)',
+      'narrator': '🎙️ Narrator'
+    };
+    
+    return voiceMap[voiceType] || voiceType;
+  }
+
+  /**
+   * Get formatted audio duration for display
+   */
+  getFormattedDuration(): string {
+    if (!this.currentAudioData?.duration) return '';
+    
+    const minutes = Math.floor(this.currentAudioData.duration / 60);
+    const seconds = this.currentAudioData.duration % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Get formatted file size for display
+   */
+  getFormattedFileSize(): string {
+    if (!this.currentAudioData?.fileSize) return '';
+    
+    const sizeInMB = (this.currentAudioData.fileSize / (1024 * 1024)).toFixed(1);
+    return `${sizeInMB} MB`;
   }
 
   saveStory() {
