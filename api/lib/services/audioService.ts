@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { AudioConversionSeam, ApiResponse } from '../types/contracts';
+import { AudioConversionSeam, ApiResponse, CharacterVoiceType } from '../types/contracts';
 
 export class AudioService {
   private elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
@@ -414,6 +414,46 @@ export class AudioService {
     }
   }
 
+  private async callElevenLabsAPIForVoice(text: string, input: AudioConversionSeam['input'], voice: CharacterVoiceType): Promise<Buffer> {
+    if (!this.elevenLabsApiKey) {
+      // Return mock audio data if no API key
+      return this.generateMockAudioData(text);
+    }
+
+    const voiceId = this.voiceIds[voice];
+    
+    try {
+      const response = await axios.post(
+        `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
+        {
+          text: text,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.8,
+            style: 0.5,
+            use_speaker_boost: true
+          }
+        },
+        {
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': this.elevenLabsApiKey
+          },
+          responseType: 'arraybuffer',
+          timeout: 60000 // 60 seconds timeout
+        }
+      );
+
+      return Buffer.from(response.data);
+
+    } catch (error: any) {
+      console.error('ElevenLabs API error:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
   private extractEmotionFromSpeakerTag(speakerTag: string): { speaker: string; emotion?: string } {
     // Parse speaker tags with advanced emotion support:
     // [Character Name]: normal speech
@@ -756,7 +796,7 @@ export class AudioService {
       } else if (segment.length > 0) {
         // This is dialogue or narrative text
         try {
-          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice);
+          const audioData = await this.callElevenLabsAPIForVoice(segment, input, currentVoice);
           chunks.push({
             speaker: currentSpeaker,
             text: segment,
