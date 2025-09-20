@@ -1,178 +1,235 @@
-<div class="story-generator">
-  <header class="header">
-    <h1>🧚‍♀️ Fairytales with Spice</h1>
-    <p>Create spicy fantasy stories with your favorite creatures</p>
+<!-- Mystical Spell Crafting Interface -->
+<div class="mystical-realm" [class.spell-casting]="isGenerating" ngSkipHydration>
+  <!-- Floating Particles Background -->
+  <div class="particle-field">
+    <div class="particle" *ngFor="let p of [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]"></div>
+  </div>
+
+  <!-- Mystical Header -->
+  <header class="mystical-header">
+    <div class="title-constellation">
+      <h1 class="enchanted-title">
+        <span class="title-rune">✨</span>
+        <span class="title-text">Fairytales with Spice</span>
+        <span class="title-rune">🔮</span>
+      </h1>
+      <p class="mystical-subtitle">Weave enchanted tales with supernatural beings</p>
+    </div>
   </header>
 
-  <div class="main-content">
-    <!-- Left Column: Story Generation Form -->
-    <div class="form-section" ngSkipHydration>
-      <h2>Story Configuration</h2>
-
-      <!-- Creature Selector -->
-      <div class="form-group">
-        <label>Choose Your Creature:</label>
-        <div class="radio-group">
-          <label class="radio-option" *ngFor="let creature of creatures; trackBy: trackByCreature">
-            <input type="radio" name="creature" [value]="creature.value" [(ngModel)]="selectedCreature">
-            <span class="radio-label">{{creature.label}}</span>
-          </label>
+  <!-- Mystical Spell Circle Interface -->
+  <main class="spell-circle-container">
+    
+    <!-- Central Mystical Core -->
+    <div class="mystical-core" [class.active]="isGenerating">
+      <div class="core-inner">
+        <div class="rune-circle">
+          <div class="rune" *ngFor="let r of [1,2,3,4,5,6,7,8]"></div>
+        </div>
+        <div class="core-text">
+          <span *ngIf="!isGenerating">Ready to Cast</span>
+          <span *ngIf="isGenerating" class="casting-text">Weaving Magic...</span>
         </div>
       </div>
+    </div>
 
-      <!-- Theme Checkboxes -->
-      <div class="form-group">
-        <label>Story Themes ({{getSelectedThemesCount()}}/5 selected):</label>
-        <div class="checkbox-group">
-          <label class="checkbox-option" 
-                 *ngFor="let theme of themes; trackBy: trackByTheme" 
-                 [class.selected]="isThemeSelected(theme.value)"
-                 [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)">
-            <input type="checkbox" 
-                   [checked]="isThemeSelected(theme.value)"
-                   [disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
-                   (change)="toggleTheme(theme.value)">
-            <span class="checkbox-label">{{theme.label}}</span>
-          </label>
-        </div>
-      </div>
-
-      <!-- User Input -->
-      <div class="form-group">
-        <label for="userInput">Your Ideas (Optional):</label>
-        <textarea
-          id="userInput"
-          [(ngModel)]="userInput"
-          placeholder="Describe characters, settings, or plot elements you'd like to include..."
-          rows="4">
-        </textarea>
-      </div>
-
-      <!-- Spicy Level Slider -->
-      <div class="form-group">
-        <label>Spicy Level: {{spicyLevelLabels[spicyLevel - 1]}}</label>
-        <div class="slider-container">
-          <input
-            type="range"
-            min="1"
-            max="5"
-            [(ngModel)]="spicyLevel"
-            class="spicy-slider">
-          <div class="slider-labels">
-            <span>Mild</span>
-            <span>Warm</span>
-            <span>Hot</span>
-            <span>Spicy</span>
-            <span>Fire 🔥</span>
+    <!-- Floating Creature Summoning Cards -->
+    <div class="creature-realm">
+      <h2 class="realm-title">Choose Your Mystical Being</h2>
+      <div class="creature-cards">
+        <div class="creature-card" 
+             *ngFor="let creature of creatures; trackBy: trackByCreature"
+             [class.selected]="selectedCreature === creature.value"
+             (click)="selectedCreature = creature.value">
+          <div class="card-face card-front">
+            <div class="creature-icon">{{creature.label.split(' ')[0]}}</div>
+            <div class="creature-name">{{creature.label.split(' ')[1]}}</div>
+          </div>
+          <div class="card-face card-back">
+            <div class="creature-essence"></div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Word Count Dropdown -->
-      <div class="form-group">
-        <label for="wordCount">Word Count:</label>
-        <select id="wordCount" [(ngModel)]="wordCount">
-          <option *ngFor="let option of wordCountOptions" [value]="option.value">
-            {{option.label}}
-          </option>
-        </select>
+    <!-- Mystical Rune Theme Selection -->
+    <div class="theme-constellation">
+      <h2 class="constellation-title">
+        Mystical Themes 
+        <span class="theme-counter">({{getSelectedThemesCount()}}/5)</span>
+      </h2>
+      <div class="rune-stones">
+        <div class="rune-stone" 
+             *ngFor="let theme of themes; trackBy: trackByTheme"
+             [class.selected]="isThemeSelected(theme.value)"
+             [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
+             (click)="toggleTheme(theme.value)">
+          <div class="rune-symbol">{{theme.label.split(' ')[0]}}</div>
+          <div class="rune-name">{{theme.label.split(' ').slice(1).join(' ')}}</div>
+          <div class="rune-glow"></div>
+        </div>
       </div>
+    </div>
 
-      <!-- Generate Button -->
+    <!-- Mystical Inspiration Scroll -->
+    <div class="inspiration-scroll">
+      <h2 class="scroll-title">Mystical Inspiration</h2>
+      <textarea
+        class="inspiration-parchment"
+        [(ngModel)]="userInput"
+        placeholder="Whisper your mystical visions into the ether..."
+        rows="4"></textarea>
+    </div>
+
+    <!-- Spell Intensity Crystal -->
+    <div class="intensity-crystal">
+      <h2 class="crystal-title">Spell Intensity</h2>
+      <div class="crystal-container">
+        <div class="crystal-core" [style.--intensity]="spicyLevel / 5">
+          <div class="intensity-level">{{spicyLevelLabels[spicyLevel - 1]}}</div>
+        </div>
+        <input
+          type="range"
+          min="1"
+          max="5"
+          [(ngModel)]="spicyLevel"
+          class="crystal-slider">
+        <div class="intensity-labels">
+          <span *ngFor="let label of spicyLevelLabels; let i = index" 
+                [class.active]="i === spicyLevel - 1">{{label}}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mystical Word Count Tome -->
+    <div class="word-tome">
+      <h2 class="tome-title">Tome Length</h2>
+      <select [(ngModel)]="wordCount" class="mystical-select">
+        <option *ngFor="let option of wordCountOptions" [value]="option.value">
+          {{option.label}}
+        </option>
+      </select>
+    </div>
+
+    <!-- Central Spell Casting Button -->
+    <div class="spell-casting-circle">
       <button
-        class="generate-btn"
+        class="cast-spell-btn"
         (click)="generateStory()"
-        [disabled]="isGenerating || !canGenerateStory()">
-        <span *ngIf="!isGenerating && canGenerateStory()">✨ Generate Story</span>
-        <span *ngIf="!isGenerating && !canGenerateStory()">❌ Select at least one theme</span>
-        <span *ngIf="isGenerating" class="loading">
-          <span class="spinner"></span>
-          Crafting your tale...
-        </span>
+        [disabled]="isGenerating || !canGenerateStory()"
+        [class.ready]="canGenerateStory()"
+        [class.casting]="isGenerating">
+        
+        <div class="btn-inner">
+          <div class="btn-runes"></div>
+          <span class="btn-text" *ngIf="!isGenerating && canGenerateStory()">
+            ⚡ Cast Spell ⚡
+          </span>
+          <span class="btn-text" *ngIf="!isGenerating && !canGenerateStory()">
+            🔒 Select Themes to Unlock
+          </span>
+          <span class="btn-text casting" *ngIf="isGenerating">
+            <span class="mystical-spinner"></span>
+            Weaving Enchantment...
+          </span>
+        </div>
       </button>
     </div>
 
-    <!-- Right Column: Story Display -->
-    <div class="story-column">
-      <!-- Story Display -->
-      <div class="story-section" *ngIf="currentStory">
-        <div class="story-header">
-          <h2>Your Spicy {{getCreatureName()}} Story</h2>
-          <div class="story-actions">
-            <button
-              class="action-btn audio-btn"
-              (click)="convertToAudio()"
-              [disabled]="isConvertingAudio">
-              <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
-              <span *ngIf="isConvertingAudio" class="loading">
-                <span class="spinner"></span>
-                Converting...
-              </span>
-            </button>
+  </main>
 
-            <button
-              class="action-btn save-btn"
-              (click)="saveStory()"
-              [disabled]="isSaving">
-              <span *ngIf="!isSaving">💾 Save Story</span>
-              <span *ngIf="isSaving" class="loading">
-                <span class="spinner"></span>
-                Saving...
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <div class="story-content" [innerHTML]="currentStory"></div>
-
-        <div class="story-footer">
-          <button
-            class="continue-btn"
-            (click)="generateNextChapter()"
-            [disabled]="isGeneratingNext">
-            <span *ngIf="!isGeneratingNext">📖 Generate Next Chapter</span>
-            <span *ngIf="isGeneratingNext" class="loading">
-              <span class="spinner"></span>
-              Writing next chapter...
+  <!-- Mystical Story Scroll -->
+  <section class="story-realm" *ngIf="currentStory || audioProgress > 0 || saveSuccess || audioSuccess">
+    
+    <!-- Story Parchment -->
+    <div class="mystical-parchment" *ngIf="currentStory">
+      <div class="parchment-header">
+        <h2 class="story-title">
+          <span class="title-ornament">⚜️</span>
+          Tale of the {{getCreatureName()}}
+          <span class="title-ornament">⚜️</span>
+        </h2>
+        <div class="parchment-actions">
+          <button class="mystical-action-btn audio"
+                  (click)="convertToAudio()"
+                  [disabled]="isConvertingAudio">
+            <span *ngIf="!isConvertingAudio">🎵 Enchant with Voice</span>
+            <span *ngIf="isConvertingAudio" class="action-loading">
+              <span class="action-spinner"></span>
+              Enchanting...
+            </span>
+          </button>
+          
+          <button class="mystical-action-btn save"
+                  (click)="saveStory()"
+                  [disabled]="isSaving">
+            <span *ngIf="!isSaving">📜 Preserve in Tome</span>
+            <span *ngIf="isSaving" class="action-loading">
+              <span class="action-spinner"></span>
+              Inscribing...
             </span>
           </button>
         </div>
       </div>
 
-      <!-- Placeholder when no story -->
-      <div class="story-placeholder" *ngIf="!currentStory">
-        <div class="placeholder-content">
-          <h2>Your Story Will Appear Here</h2>
-          <p>Configure your story settings on the left and click "Generate Story" to begin!</p>
-          <div class="placeholder-icon">📚✨</div>
-        </div>
-      </div>
+      <div class="parchment-content" [innerHTML]="currentStory"></div>
 
-      <!-- Audio Progress -->
-      <div class="audio-progress" *ngIf="audioProgress > 0">
-        <h3>Audio Conversion Progress</h3>
-        <div class="progress-bar">
-          <div class="progress-fill" [style.width.%]="audioProgress"></div>
-        </div>
-        <p>{{audioProgress}}% complete</p>
-      </div>
-
-      <!-- Success Messages -->
-      <div class="success-message" *ngIf="saveSuccess">
-        ✅ Story saved successfully!
-      </div>
-
-      <div class="success-message" *ngIf="audioSuccess">
-        🎵 Audio conversion completed! Download ready.
+      <div class="parchment-footer">
+        <button class="continue-spell-btn"
+                (click)="generateNextChapter()"
+                [disabled]="isGeneratingNext">
+          <span *ngIf="!isGeneratingNext">✨ Weave Next Chapter ✨</span>
+          <span *ngIf="isGeneratingNext" class="continue-loading">
+            <span class="continue-spinner"></span>
+            Continuing the Tale...
+          </span>
+        </button>
       </div>
     </div>
-  </div>
 
-  <!-- Error Display Component -->
-  <app-error-display></app-error-display>
+    <!-- Mystical Progress Orb -->
+    <div class="progress-orb" *ngIf="audioProgress > 0">
+      <div class="orb-container">
+        <div class="orb-inner" [style.--progress]="audioProgress + '%'">
+          <div class="orb-text">Voice Enchantment</div>
+          <div class="orb-percentage">{{audioProgress}}%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Success Enchantments -->
+    <div class="success-enchantment save" *ngIf="saveSuccess">
+      <div class="enchantment-icon">✨</div>
+      <div class="enchantment-text">Tale Preserved in the Mystical Tome!</div>
+    </div>
+
+    <div class="success-enchantment audio" *ngIf="audioSuccess">
+      <div class="enchantment-icon">🎵</div>
+      <div class="enchantment-text">Voice Enchantment Complete!</div>
+    </div>
+
+  </section>
+
+  <!-- Story Summoning Portal (when no story) -->
+  <section class="summoning-portal" *ngIf="!currentStory">
+    <div class="portal-content">
+      <div class="portal-circle">
+        <div class="portal-inner">
+          <div class="portal-runes"></div>
+          <div class="portal-text">
+            <h3>Your Tale Awaits</h3>
+            <p>Configure your mystical elements and cast your spell!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Error Enchantment -->
+  <app-error-display class="error-enchantment"></app-error-display>
 </div>
 
-<!-- Debug Panel Component -->
-<app-debug-panel #debugPanel></app-debug-panel>
+<!-- Debug Panel (Mystical Diagnostics) -->
+<app-debug-panel #debugPanel class="mystical-diagnostics"></app-debug-panel>
 
 
