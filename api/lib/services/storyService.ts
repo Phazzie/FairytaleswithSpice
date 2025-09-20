@@ -2,6 +2,8 @@ import axios from 'axios';
 import {
   StoryGenerationSeam,
   ChapterContinuationSeam,
+  CliffhangerEngineSeam,
+  CliffhangerType,
   ApiResponse,
   VALIDATION_RULES,
   SpicyLevel
@@ -85,6 +87,9 @@ export class StoryService {
       // Generate continuation using Grok AI
       const chapterContent = await this.callGrokAIForContinuation(input);
 
+      // Analyze cliffhanger in the generated content
+      const cliffhangerAnalysis = this.analyzeCliffhanger(chapterContent);
+
       // Create response
       const output: ChapterContinuationSeam['output'] = {
         chapterId: this.generateChapterId(),
@@ -92,7 +97,7 @@ export class StoryService {
         title: `Chapter ${input.currentChapterCount + 1}: ${this.generateChapterTitle(input)}`,
         content: chapterContent,
         wordCount: this.countWords(chapterContent),
-        cliffhangerEnding: this.detectCliffhanger(chapterContent),
+        cliffhangerEnding: cliffhangerAnalysis.cliffhangerDetected,
         themesContinued: this.extractThemesFromContent(input.existingContent),
         spicyLevelMaintained: this.extractSpicyLevelFromContent(input.existingContent),
         appendedToStory: input.existingContent + '\n\n<hr>\n\n' + chapterContent
@@ -273,14 +278,75 @@ Create a complete story that incorporates all themes naturally while maintaining
   }
 
   private buildContinuationPrompt(input: ChapterContinuationSeam['input']): string {
-    return `Continue this story with a new chapter. Maintain the same tone, character development, and spicy level.
+    const chapterNumber = input.currentChapterCount + 1;
+    const existingText = this.stripHtml(input.existingContent);
+    
+    // Extract character names and relationships from existing content
+    const characters = this.extractCharacterInfo(existingText);
+    const themes = this.extractThemesFromContent(input.existingContent);
+    const spicyLevel = this.extractSpicyLevelFromContent(input.existingContent);
+    
+    return `Continue this multi-chapter story with Chapter ${chapterNumber}. You are building a compelling story arc that should leave readers wanting more.
 
-Existing Story:
-${this.stripHtml(input.existingContent)}
+EXISTING STORY CONTEXT:
+${existingText}
 
-Additional Instructions: ${input.userInput || 'Continue naturally'}
+CONTINUATION REQUIREMENTS:
+• Chapter Number: ${chapterNumber}
+• Character Development: Build on established characters: ${characters.join(', ')}
+• Maintain Spicy Level: ${spicyLevel}/5 intensity
+• Themes to Continue: ${themes.map(t => t.toString()).join(', ')}
+• Word Count: 400-600 words
+• Format: Use HTML tags (h3 for chapter title, p for paragraphs)
 
-Write approximately 400-600 words for this chapter. Format with HTML tags.`;
+CHAPTER STRUCTURE:
+1. Build on the previous chapter's momentum
+2. Deepen character relationships and emotional stakes
+3. Advance the plot with meaningful developments
+4. Include rich sensory details and emotional depth
+5. End with a compelling cliffhanger that creates anticipation
+
+CLIFFHANGER REQUIREMENT:
+Your chapter MUST end with one of these cliffhanger types:
+- Romantic tension (unresolved feelings, interrupted moments)
+- Plot twist (unexpected revelation or surprise)
+- Danger (threat to characters, suspenseful situation)
+- Mystery (unanswered questions, hidden secrets)
+- Character revelation (truth about identity or past)
+- Emotional conflict (difficult choices, internal struggle)
+
+ADDITIONAL CONTEXT: ${input.userInput || 'Continue the story naturally, building tension and character development'}
+
+Create Chapter ${chapterNumber} that feels essential to the overall story arc while ending on a note that makes readers eager for the next chapter.`;
+  }
+
+  private extractCharacterInfo(content: string): string[] {
+    // Simple character extraction - look for quoted dialogue and common names
+    const characters = new Set<string>();
+    
+    // Extract names from dialogue patterns
+    const dialogueMatches = content.match(/"[^"]*"/g) || [];
+    
+    // Look for common character name patterns
+    const namePatterns = [
+      /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g, // Capitalized names
+    ];
+    
+    namePatterns.forEach(pattern => {
+      const matches = content.match(pattern) || [];
+      matches.forEach(match => {
+        if (match.length > 2 && !this.isCommonWord(match)) {
+          characters.add(match);
+        }
+      });
+    });
+    
+    return Array.from(characters).slice(0, 5); // Limit to 5 main characters
+  }
+
+  private isCommonWord(word: string): boolean {
+    const commonWords = ['The', 'And', 'But', 'For', 'Not', 'With', 'You', 'This', 'That', 'Have', 'Had', 'Are', 'Was', 'Were', 'Been', 'Have', 'Has', 'She', 'Her', 'His', 'Him'];
+    return commonWords.includes(word);
   }
 
   private validateStoryInput(input: StoryGenerationSeam['input']): any {
@@ -384,9 +450,119 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
   }
 
   private detectCliffhanger(content: string): boolean {
-    const cliffhangerWords = ['suddenly', 'but then', 'just as', 'what happened next', 'to be continued'];
+    return this.analyzeCliffhanger(content).cliffhangerDetected;
+  }
+
+  private analyzeCliffhanger(content: string, previousCliffhangers: CliffhangerType[] = []): CliffhangerEngineSeam['output'] {
     const lowerContent = content.toLowerCase();
-    return cliffhangerWords.some(word => lowerContent.includes(word));
+    const lastParagraph = this.getLastParagraph(content);
+    
+    // Enhanced cliffhanger detection patterns
+    const cliffhangerPatterns = {
+      'romantic_tension': [
+        'pulled away', 'hesitated', 'almost kissed', 'tension between',
+        'unspoken desire', 'locked eyes', 'breath caught', 'heart raced'
+      ],
+      'plot_twist': [
+        'suddenly', 'but then', 'however', 'unexpectedly',
+        'little did', 'unbeknownst', 'revealed', 'discovered'
+      ],
+      'danger': [
+        'footsteps', 'shadow', 'threatening', 'danger',
+        'hunted', 'pursued', 'stalked', 'trapped'
+      ],
+      'mystery': [
+        'wondered', 'question', 'secret', 'mystery',
+        'hidden', 'concealed', 'truth', 'revelation'
+      ],
+      'character_revelation': [
+        'realized', 'understood', 'dawned on', 'recognition',
+        'identity', 'true nature', 'confession', 'admission'
+      ],
+      'emotional_conflict': [
+        'torn between', 'conflicted', 'struggled', 'dilemma',
+        'choice', 'decision', 'consequences', 'price'
+      ]
+    };
+
+    let detectedType: CliffhangerType | null = null;
+    let strength = 0;
+    let cliffhangerText = '';
+
+    // Analyze for cliffhanger patterns
+    for (const [type, patterns] of Object.entries(cliffhangerPatterns)) {
+      const matchCount = patterns.filter(pattern => lowerContent.includes(pattern)).length;
+      if (matchCount > 0) {
+        const currentStrength = matchCount * 2 + (lastParagraph.toLowerCase().includes('?') ? 2 : 0);
+        if (currentStrength > strength) {
+          detectedType = type as CliffhangerType;
+          strength = currentStrength;
+          cliffhangerText = lastParagraph;
+        }
+      }
+    }
+
+    // Calculate variety score
+    const varietyScore = detectedType ? 
+      (previousCliffhangers.includes(detectedType) ? 3 : 8) : 0;
+
+    return {
+      cliffhangerDetected: detectedType !== null,
+      cliffhangerType: detectedType || 'plot_twist',
+      cliffhangerStrength: Math.min(10, strength),
+      cliffhangerText,
+      suggestedContinuations: this.generateContinuationSuggestions(detectedType),
+      varietyScore
+    };
+  }
+
+  private getLastParagraph(content: string): string {
+    const paragraphs = content.split('</p>');
+    if (paragraphs.length > 1) {
+      return paragraphs[paragraphs.length - 2].replace(/<[^>]*>/g, '').trim();
+    }
+    return content.substring(Math.max(0, content.length - 200));
+  }
+
+  private generateContinuationSuggestions(cliffhangerType: CliffhangerType | null): string[] {
+    const suggestions = {
+      'romantic_tension': [
+        'Explore the unresolved romantic tension',
+        'Have the characters finally confront their feelings',
+        'Add an interruption that prevents their moment'
+      ],
+      'plot_twist': [
+        'Reveal the consequences of the twist',
+        'Show characters adapting to new reality',
+        'Introduce complications from the revelation'
+      ],
+      'danger': [
+        'Show the characters escaping or confronting the threat',
+        'Reveal the source of the danger',
+        'Have characters make difficult survival choices'
+      ],
+      'mystery': [
+        'Provide clues to solve the mystery',
+        'Deepen the mystery with more questions',
+        'Have characters investigate further'
+      ],
+      'character_revelation': [
+        'Explore the impact of the revelation',
+        'Show how relationships change',
+        'Address the consequences of the truth'
+      ],
+      'emotional_conflict': [
+        'Force the character to make a choice',
+        'Show the internal struggle continuing',
+        'Introduce external factors affecting the decision'
+      ]
+    };
+
+    return suggestions[cliffhangerType || 'plot_twist'] || [
+      'Continue the narrative naturally',
+      'Develop character relationships',
+      'Advance the main plot'
+    ];
   }
 
   private extractThemesFromContent(content: string): any[] {

@@ -7,6 +7,8 @@ import {
   ChapterContinuationSeam,
   AudioConversionSeam,
   SaveExportSeam,
+  StoryArcSeam,
+  AudiobookCompilationSeam,
   ApiResponse
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
@@ -90,6 +92,40 @@ export class StoryService {
         }
       }),
       catchError(error => this.handleError(error, 'generateNextChapter'))
+    );
+  }
+
+  // ==================== STORY ARC MANAGEMENT ====================
+  manageStoryArc(input: StoryArcSeam['input']): Observable<ApiResponse<StoryArcSeam['output']>> {
+    this.errorLogging.logInfo('Story arc management', 'StoryService.manageStoryArc', { storyId: input.storyId, operation: input.operation });
+    
+    return this.http.post<ApiResponse<StoryArcSeam['output']>>(
+      `${this.apiUrl}/manage-story-arc`,
+      input
+    ).pipe(
+      tap(response => {
+        if (response.success) {
+          this.errorLogging.logInfo('Story arc management successful', 'StoryService.manageStoryArc', { operation: input.operation });
+        }
+      }),
+      catchError(error => this.handleError(error, 'manageStoryArc'))
+    );
+  }
+
+  // ==================== AUDIOBOOK COMPILATION ====================
+  compileAudiobook(input: AudiobookCompilationSeam['input']): Observable<ApiResponse<AudiobookCompilationSeam['output']>> {
+    this.errorLogging.logInfo('Starting audiobook compilation', 'StoryService.compileAudiobook', { storyArcId: input.storyArcId });
+    
+    return this.http.post<ApiResponse<AudiobookCompilationSeam['output']>>(
+      `${this.apiUrl}/compile-audiobook`,
+      input
+    ).pipe(
+      tap(response => {
+        if (response.success) {
+          this.errorLogging.logInfo('Audiobook compilation successful', 'StoryService.compileAudiobook', { audiobookId: response.data?.audiobookId });
+        }
+      }),
+      catchError(error => this.handleError(error, 'compileAudiobook'))
     );
   }
 

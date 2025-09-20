@@ -4,7 +4,16 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import { ErrorDisplayComponent } from './error-display/error-display';
-import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
+import { 
+  StoryGenerationSeam, 
+  ChapterContinuationSeam, 
+  AudioConversionSeam, 
+  SaveExportSeam,
+  StoryArcSeam,
+  AudiobookCompilationSeam,
+  StoryArc,
+  CliffhangerType
+} from './contracts';
 import { DebugPanel } from './debug-panel/debug-panel';
 
 @Component({
@@ -46,10 +55,18 @@ export class App implements OnInit, OnDestroy {
   currentStoryThemes: string[] = [];
   currentStorySpicyLevel: number = 3;
 
+  // Story Arc data
+  currentStoryArc: StoryArc | null = null;
+  isCompilingAudiobook: boolean = false;
+  compiledAudiobooks: string[] = [];
+  cliffhangerHistory: CliffhangerType[] = [];
+
   // Progress tracking
   audioProgress: number = 0;
   saveSuccess: boolean = false;
   audioSuccess: boolean = false;
+  audiobookCompilationProgress: number = 0;
+  audiobookCompilationSuccess: boolean = false;
 
   // Options data
   creatures = [
@@ -164,6 +181,9 @@ export class App implements OnInit, OnDestroy {
           this.currentChapterCount = 1;
           this.currentStoryThemes = response.data.themes;
           this.currentStorySpicyLevel = response.data.spicyLevel;
+          
+          // Create story arc for multi-chapter management
+          this.createStoryArc(response.data);
           
           this.isGenerating = false;
           this.errorLogging.logInfo('Story generation completed successfully', 'App.generateStory', {
@@ -299,6 +319,102 @@ export class App implements OnInit, OnDestroy {
   getCreatureName(): string {
     const creature = this.creatures.find(c => c.value === this.selectedCreature);
     return creature ? creature.label.split(' ')[1] : 'Creature';
+  }
+
+  // ==================== STORY ARC MANAGEMENT ====================
+
+  createStoryArc(storyData: StoryGenerationSeam['output']) {
+    const request: StoryArcSeam['input'] = {
+      storyId: storyData.storyId,
+      operation: 'create',
+      arcData: {
+        title: storyData.title,
+        currentSpiceLevel: storyData.spicyLevel,
+        totalWordCount: storyData.actualWordCount,
+        totalAudioDuration: 0
+      }
+    };
+
+    this.storyService.manageStoryArc(request).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          this.currentStoryArc = response.data.storyArc;
+          this.errorLogging.logInfo('Story arc created', 'App.createStoryArc', {
+            arcId: this.currentStoryArc.arcId
+          });
+        }
+      },
+      error: (error) => {
+        this.errorLogging.logError(error, 'App.createStoryArc', 'warning');
+      }
+    });
+  }
+
+  compileAudiobook() {
+    if (!this.currentStoryArc || this.currentStoryArc.chapters.length < 2) {
+      this.errorLogging.logInfo('Not enough chapters for audiobook compilation', 'App.compileAudiobook');
+      return;
+    }
+
+    this.isCompilingAudiobook = true;
+    this.audiobookCompilationProgress = 0;
+
+    const request: AudiobookCompilationSeam['input'] = {
+      storyArcId: this.currentStoryArc.arcId,
+      chapterIds: this.currentStoryArc.chapters.map(c => c.chapterId),
+      compilationOptions: {
+        includeChapterMarkers: true,
+        addIntroOutro: false,
+        normalizeVolume: true,
+        format: 'mp3'
+      }
+    };
+
+    this.storyService.compileAudiobook(request).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          this.audiobookCompilationProgress = 100;
+          this.audiobookCompilationSuccess = true;
+          this.compiledAudiobooks.push(response.data.downloadUrl);
+          
+          this.errorLogging.logInfo('Audiobook compilation completed', 'App.compileAudiobook', {
+            audiobookId: response.data.audiobookId,
+            totalDuration: response.data.totalDuration
+          });
+          
+          setTimeout(() => {
+            this.audiobookCompilationSuccess = false;
+            this.audiobookCompilationProgress = 0;
+          }, 3000);
+        }
+        this.isCompilingAudiobook = false;
+      },
+      error: (error) => {
+        this.errorLogging.logError(error, 'App.compileAudiobook', 'error');
+        this.isCompilingAudiobook = false;
+        this.audiobookCompilationProgress = 0;
+      }
+    });
+  }
+
+  canCompileAudiobook(): boolean {
+    return this.currentStoryArc !== null && 
+           this.currentStoryArc.chapters.length >= 2 && 
+           !this.isCompilingAudiobook;
+  }
+
+  getChapterCount(): number {
+    return this.currentStoryArc?.chapters.length || this.currentChapterCount;
+  }
+
+  getStoryArcInfo(): string {
+    if (!this.currentStoryArc) return '';
+    
+    const chapters = this.currentStoryArc.chapters.length;
+    const words = this.currentStoryArc.totalWordCount;
+    const duration = Math.round(this.currentStoryArc.totalAudioDuration / 60);
+    
+    return `${chapters} chapters • ${words} words • ${duration}min audio`;
   }
 
   // ==================== DEBUG PANEL LIFECYCLE ====================
