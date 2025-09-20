@@ -6,10 +6,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StoryService = void 0;
 const axios_1 = __importDefault(require("axios"));
 const contracts_1 = require("../types/contracts");
+const tropeSubversionService_1 = require("./tropeSubversionService");
 class StoryService {
     constructor() {
         this.grokApiUrl = 'https://api.x.ai/v1/chat/completions';
         this.grokApiKey = process.env.XAI_AI_KEY;
+        this.tropeService = new tropeSubversionService_1.TropeSubversionService();
         if (!this.grokApiKey) {
             console.warn('⚠️  XAI_AI_KEY not found in environment variables');
         }
@@ -29,9 +31,14 @@ class StoryService {
                     }
                 };
             }
-            // Generate story using Grok AI
-            const storyContent = await this.callGrokAI(input);
-            // Create response
+            // Select tropes for subversion (invisible to user)
+            const tropeSelection = this.tropeService.selectTropesForSubversion({
+                creature: input.creature,
+                tropeCount: Math.random() > 0.3 ? 3 : 2 // 70% chance of 3 tropes, 30% chance of 2
+            });
+            // Generate story using Grok AI with trope subversions
+            const storyContent = await this.callGrokAI(input, tropeSelection);
+            // Create response with trope metadata (for chapter continuation)
             const output = {
                 storyId: this.generateStoryId(),
                 title: this.generateTitle(input),
@@ -42,7 +49,9 @@ class StoryService {
                 actualWordCount: this.countWords(storyContent),
                 estimatedReadTime: Math.ceil(this.countWords(storyContent) / 200),
                 hasCliffhanger: this.detectCliffhanger(storyContent),
-                generatedAt: new Date()
+                generatedAt: new Date(),
+                // Store trope selection for chapter continuations (invisible metadata)
+                tropeMetadata: this.tropeService.serializeTropeSelection(tropeSelection)
             };
             return {
                 success: true,
@@ -72,7 +81,7 @@ class StoryService {
     async continueStory(input) {
         const startTime = Date.now();
         try {
-            // Generate continuation using Grok AI
+            // Generate continuation using Grok AI with trope consistency
             const chapterContent = await this.callGrokAIForContinuation(input);
             // Create response
             const output = {
@@ -111,19 +120,19 @@ class StoryService {
             };
         }
     }
-    async callGrokAI(input) {
+    async callGrokAI(input, tropeSelection) {
         if (!this.grokApiKey) {
             // Fallback to mock generation if no API key
-            return this.generateMockStory(input);
+            return this.generateMockStory(input, tropeSelection);
         }
-        const prompt = this.buildStoryPrompt(input);
+        const prompt = this.buildStoryPrompt(input, tropeSelection);
         try {
             const response = await axios_1.default.post(this.grokApiUrl, {
                 model: 'grok-4-0709',
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are a master storyteller specializing in spicy, romantic fantasy tales. Create engaging, well-structured stories with vivid descriptions and emotional depth.'
+                        content: 'You are a master storyteller specializing in spicy, romantic fantasy tales. Create engaging, well-structured stories with vivid descriptions and emotional depth. When given trope subversion instructions, integrate them seamlessly into the narrative for maximum surprise and uniqueness.'
                     },
                     {
                         role: 'user',
@@ -156,7 +165,7 @@ class StoryService {
                 messages: [
                     {
                         role: 'system',
-                        content: 'Continue this story in the same style and tone. Maintain character development and plot progression.'
+                        content: 'Continue this story in the same style and tone. Maintain character development, plot progression, and any established trope subversions from the original story.'
                     },
                     {
                         role: 'user',
@@ -178,11 +187,11 @@ class StoryService {
             throw new Error('AI service temporarily unavailable');
         }
     }
-    buildStoryPrompt(input) {
+    buildStoryPrompt(input, tropeSelection) {
         const creatureName = this.getCreatureDisplayName(input.creature);
         const themesText = input.themes.join(', ');
         const spicyLabel = this.getSpicyLabel(input.spicyLevel);
-        return `Write a ${input.wordCount}-word spicy romantic fantasy story featuring a ${creatureName} as the main character.
+        let basePrompt = `Write a ${input.wordCount}-word spicy romantic fantasy story featuring a ${creatureName} as the main character.
 
 Key Requirements:
 - Creature: ${creatureName}
@@ -206,9 +215,14 @@ Style Guidelines:
 - Natural dialogue and internal monologue
 
 Format the story with HTML tags for structure (h3 for chapter titles, p for paragraphs).`;
+        // Add trope subversion instructions if provided
+        if (tropeSelection && tropeSelection.selectedTropes.length > 0) {
+            basePrompt = this.tropeService.enhancePromptWithSubversions(basePrompt, tropeSelection, input.creature);
+        }
+        return basePrompt;
     }
     buildContinuationPrompt(input) {
-        return `Continue this story with a new chapter. Maintain the same tone, character development, and spicy level.
+        let basePrompt = `Continue this story with a new chapter. Maintain the same tone, character development, and spicy level.
 
 Existing Story:
 ${this.stripHtml(input.existingContent)}
@@ -216,6 +230,14 @@ ${this.stripHtml(input.existingContent)}
 Additional Instructions: ${input.userInput || 'Continue naturally'}
 
 Write approximately 400-600 words for this chapter. Format with HTML tags.`;
+        // Add trope continuation instructions if metadata exists
+        if (input.tropeMetadata && input.creature) {
+            const tropeSelection = this.tropeService.deserializeTropeSelection(input.tropeMetadata, input.creature);
+            if (tropeSelection) {
+                basePrompt = this.tropeService.enhanceContinuationPrompt(basePrompt, tropeSelection.selectedTropeIds, input.creature);
+            }
+        }
+        return basePrompt;
     }
     validateStoryInput(input) {
         if (!input.creature || !['vampire', 'werewolf', 'fairy'].includes(input.creature)) {
@@ -247,22 +269,25 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
         }
         return null;
     }
-    generateMockStory(input) {
+    generateMockStory(input, tropeSelection) {
         const creatureName = this.getCreatureDisplayName(input.creature);
         const spicyLabel = this.getSpicyLabel(input.spicyLevel);
+        // Get base story elements based on trope subversions
+        const characterTraits = this.getMockCharacterTraits(input.creature, tropeSelection);
+        const plotElements = this.getMockPlotElements(input.creature, tropeSelection);
         return `<h3>The ${creatureName}'s Forbidden Passion</h3>
 
-<p>In the shadowed alleys of Victorian London, Lady Arabella Worthington found herself drawn to the mysterious stranger who haunted her dreams. His eyes, crimson as fresh-spilled wine, held secrets that both terrified and exhilarated her.</p>
+<p>In the shadowed alleys of Victorian London, Lady Arabella Worthington found herself drawn to the mysterious stranger who haunted her dreams. ${characterTraits.appearance}</p>
 
-<p>"You shouldn't be here," he whispered, his voice like velvet over steel. But Arabella, with her corset straining against propriety and her heart pounding with forbidden desire, stepped closer.</p>
+<p>${characterTraits.personality} ${plotElements.initialInteraction}</p>
 
-<p>The ${creatureName.toLowerCase()} prince revealed himself slowly, each layer of deception peeling away like the petals of a night-blooming flower. His touch was electric, sending sparks through her veins that made her gasp with a pleasure bordering on pain.</p>
+<p>The ${creatureName.toLowerCase()} ${characterTraits.creatureQuirk} ${plotElements.supernaturalReveal}</p>
 
-<p>As the gas lamps flickered in the fog-shrouded streets, their bodies entwined in a dance as old as time itself. Arabella discovered that some hungers could never be satisfied, only temporarily sated.</p>
+<p>${plotElements.romanticDevelopment}</p>
 
-<p>The ${spicyLabel.toLowerCase()} intensity of their encounter left her breathless, her skin flushed and marked by his passionate embrace. She knew she should run, should scream for help, but the pull was too strong.</p>
+<p>The ${spicyLabel.toLowerCase()} intensity of their encounter ${plotElements.intimateScene} ${characterTraits.unexpectedTrait}</p>
 
-<p>In that moment, Lady Arabella Worthington ceased to be a proper Victorian lady and became something far more dangerous - the willing consort of a creature of the night.</p>
+<p>${plotElements.conclusion}</p>
 
 <p><em>This is a mock story generated without AI. Add XAI_AI_KEY to use real AI generation.</em></p>`;
     }
@@ -344,6 +369,63 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
     }
     generateRequestId() {
         return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    getMockCharacterTraits(creature, tropeSelection) {
+        const subversions = tropeSelection?.subversionInstructions || [];
+        // Apply trope subversions to character traits
+        if (subversions.some(s => s.includes('cheerful') || s.includes('optimistic'))) {
+            return {
+                appearance: 'His eyes sparkled with genuine warmth and mischief, not the brooding darkness she expected.',
+                personality: '"Isn\'t this exciting?" he beamed, practically bouncing on his feet.',
+                creatureQuirk: 'introduced himself with an enthusiastic handshake and a business card.',
+                unexpectedTrait: 'He apologized profusely and offered her cookies afterward.'
+            };
+        }
+        if (subversions.some(s => s.includes('annoying') || s.includes('incompatible'))) {
+            return {
+                appearance: 'His eyes held an intensity that immediately irritated her.',
+                personality: '"You\'re doing it wrong," he said critically, making her blood boil.',
+                creatureQuirk: 'corrected her posture with an air of supernatural superiority.',
+                unexpectedTrait: 'Despite their constant bickering, she found herself drawn to his stubborn confidence.'
+            };
+        }
+        // Default mysterious traits
+        return {
+            appearance: 'His eyes, crimson as fresh-spilled wine, held secrets that both terrified and exhilarated her.',
+            personality: '"You shouldn\'t be here," he whispered, his voice like velvet over steel.',
+            creatureQuirk: 'prince revealed himself slowly, each layer of deception peeling away like the petals of a night-blooming flower.',
+            unexpectedTrait: 'She knew she should run, should scream for help, but the pull was too strong.'
+        };
+    }
+    getMockPlotElements(creature, tropeSelection) {
+        const subversions = tropeSelection?.subversionInstructions || [];
+        // Apply trope subversions to plot elements
+        if (subversions.some(s => s.includes('oblivious') || s.includes('gardening'))) {
+            return {
+                initialInteraction: 'But Arabella was more concerned about the state of her garden than his mysterious aura.',
+                supernaturalReveal: 'tried to demonstrate his supernatural powers, but she was distracted by his poor horticultural knowledge.',
+                romanticDevelopment: 'As the gas lamps flickered, she lectured him about proper rose pruning techniques.',
+                intimateScene: 'left her breathless, though she couldn\'t help but notice he had dirt under his fingernails.',
+                conclusion: 'In that moment, Lady Arabella realized she had found not just a lover, but someone who truly needed her gardening expertise.'
+            };
+        }
+        if (subversions.some(s => s.includes('awkward') || s.includes('apologizes'))) {
+            return {
+                initialInteraction: 'But Arabella stepped closer, despite his nervous fidgeting.',
+                supernaturalReveal: 'apologetically revealed his nature, constantly asking if she was okay with each supernatural trait.',
+                romanticDevelopment: 'As they drew closer, he kept apologizing for his cold skin and asking permission for every touch.',
+                intimateScene: 'was interrupted by his constant "Is this okay?" and offers of refreshments.',
+                conclusion: 'Lady Arabella had never met a supernatural being so considerate and endearingly anxious.'
+            };
+        }
+        // Default dramatic elements
+        return {
+            initialInteraction: 'But Arabella, with her corset straining against propriety and her heart pounding with forbidden desire, stepped closer.',
+            supernaturalReveal: 'His touch was electric, sending sparks through her veins that made her gasp with a pleasure bordering on pain.',
+            romanticDevelopment: 'As the gas lamps flickered in the fog-shrouded streets, their bodies entwined in a dance as old as time itself.',
+            intimateScene: 'left her breathless, her skin flushed and marked by his passionate embrace.',
+            conclusion: 'In that moment, Lady Arabella Worthington ceased to be a proper Victorian lady and became something far more dangerous - the willing consort of a creature of the night.'
+        };
     }
 }
 exports.StoryService = StoryService;
