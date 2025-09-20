@@ -98,6 +98,9 @@
       <div class="story-section" *ngIf="currentStory">
         <div class="story-header">
           <h2>Your Spicy {{getCreatureName()}} Story</h2>
+          <div class="story-info" *ngIf="currentStoryArc">
+            <p class="story-arc-info">{{getStoryArcInfo()}}</p>
+          </div>
           <div class="story-actions">
             <button
               class="action-btn audio-btn"
@@ -107,6 +110,18 @@
               <span *ngIf="isConvertingAudio" class="loading">
                 <span class="spinner"></span>
                 Converting...
+              </span>
+            </button>
+
+            <button
+              class="action-btn audiobook-btn"
+              (click)="compileAudiobook()"
+              [disabled]="!canCompileAudiobook()"
+              title="Compile all chapters into an audiobook">
+              <span *ngIf="!isCompilingAudiobook">🎧 Create Audiobook</span>
+              <span *ngIf="isCompilingAudiobook" class="loading">
+                <span class="spinner"></span>
+                Compiling...
               </span>
             </button>
 
@@ -157,6 +172,15 @@
         <p>{{audioProgress}}% complete</p>
       </div>
 
+      <!-- Audiobook Compilation Progress -->
+      <div class="audiobook-progress" *ngIf="audiobookCompilationProgress > 0">
+        <h3>Audiobook Compilation Progress</h3>
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width.%]="audiobookCompilationProgress"></div>
+        </div>
+        <p>{{audiobookCompilationProgress}}% complete</p>
+      </div>
+
       <!-- Success Messages -->
       <div class="success-message" *ngIf="saveSuccess">
         ✅ Story saved successfully!
@@ -164,6 +188,10 @@
 
       <div class="success-message" *ngIf="audioSuccess">
         🎵 Audio conversion completed! Download ready.
+      </div>
+
+      <div class="success-message" *ngIf="audiobookCompilationSuccess">
+        🎧 Audiobook compilation completed! Your multi-chapter audiobook is ready for download.
       </div>
     </div>
   </div>

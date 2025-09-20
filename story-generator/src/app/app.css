@@ -495,3 +495,101 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==================== STORY ARC & AUDIOBOOK FEATURES ==================== */
+
+.story-info {
+  margin: 0.5rem 0 1rem 0;
+}
+
+.story-arc-info {
+  color: #666;
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 5px;
+  text-align: center;
+}
+
+.audiobook-btn {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.audiobook-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+}
+
+.audiobook-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.audiobook-progress {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  margin: 1rem 0;
+}
+
+.audiobook-progress h3 {
+  color: #6366f1;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.audiobook-progress .progress-bar {
+  background: #f0f0f0;
+  border-radius: 20px;
+  height: 20px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.audiobook-progress .progress-fill {
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 20px;
+}
+
+.audiobook-progress p {
+  color: #666;
+  text-align: center;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Enhanced story actions layout */
+.story-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .story-actions {
+    flex-direction: column;
+  }
+  
+  .audiobook-btn,
+  .action-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
