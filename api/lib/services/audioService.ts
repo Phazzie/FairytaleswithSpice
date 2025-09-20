@@ -12,9 +12,9 @@ export class AudioService {
     neutral: process.env.ELEVENLABS_VOICE_NEUTRAL || '21m00Tcm4TlvDq8ikWAM' // Rachel
   };
 
-  // Comprehensive emotion to voice settings mapping
+  // Comprehensive emotion to voice settings mapping (90+ emotions)
   private emotionVoiceSettings = {
-    // Basic emotions
+    // Basic emotions (7)
     'neutral': { stability: 0.7, similarity_boost: 0.8, style: 0.2 },
     'happy': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
     'sad': { stability: 0.8, similarity_boost: 0.9, style: 0.6 },
@@ -23,7 +23,7 @@ export class AudioService {
     'surprised': { stability: 0.1, similarity_boost: 0.6, style: 0.9 },
     'disgusted': { stability: 0.6, similarity_boost: 0.7, style: 0.5 },
     
-    // Romantic/intimate emotions
+    // Romantic/intimate emotions (16)
     'seductive': { stability: 0.2, similarity_boost: 0.7, style: 0.8 },
     'passionate': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
     'tender': { stability: 0.8, similarity_boost: 0.9, style: 0.4 },
@@ -32,8 +32,30 @@ export class AudioService {
     'intimate': { stability: 0.6, similarity_boost: 0.8, style: 0.6 },
     'yearning': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
     'breathless': { stability: 0.2, similarity_boost: 0.6, style: 0.9 },
+    'aroused': { stability: 0.1, similarity_boost: 0.5, style: 0.9 },
+    'devoted': { stability: 0.7, similarity_boost: 0.8, style: 0.5 },
+    'adoring': { stability: 0.5, similarity_boost: 0.8, style: 0.7 },
+    'longing': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
+    'satisfied': { stability: 0.6, similarity_boost: 0.8, style: 0.4 },
+    'craving': { stability: 0.2, similarity_boost: 0.6, style: 0.9 },
+    'worshiping': { stability: 0.5, similarity_boost: 0.8, style: 0.6 },
+    'desiring': { stability: 0.3, similarity_boost: 0.7, style: 0.8 },
     
-    // Complex emotional states
+    // Physical/sensual emotions (12)
+    'panting': { stability: 0.1, similarity_boost: 0.4, style: 0.8 },
+    'gasping': { stability: 0.1, similarity_boost: 0.3, style: 0.9 },
+    'trembling': { stability: 0.2, similarity_boost: 0.5, style: 0.7 },
+    'shivering': { stability: 0.3, similarity_boost: 0.6, style: 0.6 },
+    'aching': { stability: 0.4, similarity_boost: 0.7, style: 0.7 },
+    'tingling': { stability: 0.2, similarity_boost: 0.6, style: 0.8 },
+    'feverish': { stability: 0.2, similarity_boost: 0.5, style: 0.8 },
+    'dizzy': { stability: 0.3, similarity_boost: 0.6, style: 0.7 },
+    'exhausted': { stability: 0.8, similarity_boost: 0.8, style: 0.3 },
+    'invigorated': { stability: 0.3, similarity_boost: 0.7, style: 0.8 },
+    'weakened': { stability: 0.7, similarity_boost: 0.8, style: 0.4 },
+    'energized': { stability: 0.2, similarity_boost: 0.6, style: 0.9 },
+    
+    // Complex emotional states (26)
     'anxious': { stability: 0.2, similarity_boost: 0.5, style: 0.8 },
     'excited': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
     'confident': { stability: 0.6, similarity_boost: 0.8, style: 0.5 },
@@ -52,8 +74,30 @@ export class AudioService {
     'sultry': { stability: 0.2, similarity_boost: 0.6, style: 0.9 },
     'whispering': { stability: 0.9, similarity_boost: 0.9, style: 0.2 },
     'shouting': { stability: 0.1, similarity_boost: 0.4, style: 1.0 },
+    'desperate': { stability: 0.2, similarity_boost: 0.5, style: 0.9 },
+    'hopeful': { stability: 0.5, similarity_boost: 0.7, style: 0.6 },
+    'devastated': { stability: 0.6, similarity_boost: 0.8, style: 0.7 },
+    'elated': { stability: 0.2, similarity_boost: 0.6, style: 0.9 },
+    'melancholy': { stability: 0.7, similarity_boost: 0.8, style: 0.5 },
+    'euphoric': { stability: 0.1, similarity_boost: 0.5, style: 1.0 },
+    'bitter': { stability: 0.5, similarity_boost: 0.7, style: 0.7 },
+    'envious': { stability: 0.4, similarity_boost: 0.6, style: 0.8 },
     
-    // Supernatural/fantasy emotions
+    // Social/power dynamics (12)
+    'dominant': { stability: 0.6, similarity_boost: 0.8, style: 0.7 },
+    'submissive': { stability: 0.7, similarity_boost: 0.8, style: 0.4 },
+    'possessive': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
+    'jealous': { stability: 0.3, similarity_boost: 0.6, style: 0.8 },
+    'vulnerable': { stability: 0.6, similarity_boost: 0.8, style: 0.6 },
+    'manipulative': { stability: 0.5, similarity_boost: 0.7, style: 0.8 },
+    'trusting': { stability: 0.7, similarity_boost: 0.8, style: 0.4 },
+    'betrayed': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
+    'loyal': { stability: 0.8, similarity_boost: 0.9, style: 0.4 },
+    'rebellious': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
+    'obedient': { stability: 0.8, similarity_boost: 0.8, style: 0.3 },
+    'independent': { stability: 0.6, similarity_boost: 0.8, style: 0.5 },
+    
+    // Supernatural/fantasy emotions (18)
     'otherworldly': { stability: 0.3, similarity_boost: 0.5, style: 0.9 },
     'ethereal': { stability: 0.7, similarity_boost: 0.6, style: 0.8 },
     'sinister': { stability: 0.4, similarity_boost: 0.6, style: 0.8 },
@@ -64,8 +108,16 @@ export class AudioService {
     'primal': { stability: 0.2, similarity_boost: 0.5, style: 1.0 },
     'magical': { stability: 0.4, similarity_boost: 0.6, style: 0.8 },
     'ancient': { stability: 0.8, similarity_boost: 0.9, style: 0.4 },
+    'bloodthirsty': { stability: 0.2, similarity_boost: 0.5, style: 0.9 },
+    'feral': { stability: 0.1, similarity_boost: 0.4, style: 1.0 },
+    'enchanted': { stability: 0.5, similarity_boost: 0.7, style: 0.8 },
+    'cursed': { stability: 0.4, similarity_boost: 0.6, style: 0.8 },
+    'blessed': { stability: 0.7, similarity_boost: 0.8, style: 0.5 },
+    'haunted': { stability: 0.5, similarity_boost: 0.7, style: 0.7 },
+    'possessed': { stability: 0.2, similarity_boost: 0.5, style: 0.9 },
+    'transcendent': { stability: 0.6, similarity_boost: 0.8, style: 0.6 },
     
-    // Intensity variations
+    // Intensity variations (16)
     'gentle': { stability: 0.8, similarity_boost: 0.9, style: 0.3 },
     'fierce': { stability: 0.2, similarity_boost: 0.5, style: 1.0 },
     'intense': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
@@ -75,7 +127,24 @@ export class AudioService {
     'aggressive': { stability: 0.2, similarity_boost: 0.5, style: 0.9 },
     'calm': { stability: 0.9, similarity_boost: 0.9, style: 0.2 },
     'wild': { stability: 0.1, similarity_boost: 0.4, style: 1.0 },
-    'controlled': { stability: 0.8, similarity_boost: 0.9, style: 0.3 }
+    'controlled': { stability: 0.8, similarity_boost: 0.9, style: 0.3 },
+    'regal': { stability: 0.8, similarity_boost: 0.9, style: 0.5 },
+    'noble': { stability: 0.7, similarity_boost: 0.8, style: 0.4 },
+    'common': { stability: 0.6, similarity_boost: 0.7, style: 0.6 },
+    'formal': { stability: 0.8, similarity_boost: 0.8, style: 0.3 },
+    'casual': { stability: 0.5, similarity_boost: 0.7, style: 0.6 },
+    'refined': { stability: 0.7, similarity_boost: 0.8, style: 0.4 }
+  };
+
+  // Intensity modifiers for dynamic emotion scaling
+  private intensityModifiers = {
+    'slightly': { stabilityMod: 0.1, styleMod: -0.1 },
+    'somewhat': { stabilityMod: 0.05, styleMod: -0.05 },
+    'very': { stabilityMod: -0.1, styleMod: 0.15 },
+    'extremely': { stabilityMod: -0.2, styleMod: 0.25 },
+    'utterly': { stabilityMod: -0.3, styleMod: 0.3 },
+    'barely': { stabilityMod: 0.2, styleMod: -0.2 },
+    'overwhelmingly': { stabilityMod: -0.25, styleMod: 0.35 }
   };
 
   constructor() {
@@ -298,19 +367,8 @@ export class AudioService {
 
     const voiceId = this.voiceIds[input.voice || 'female'];
     
-    // Get emotion-specific voice settings
-    const emotionKey = emotion?.toLowerCase() as keyof typeof this.emotionVoiceSettings;
-    const emotionSettings = emotionKey ? this.emotionVoiceSettings[emotionKey] : null;
-    const defaultSettings = {
-      stability: 0.5,
-      similarity_boost: 0.8,
-      style: 0.5,
-      use_speaker_boost: true
-    };
-
-    const voiceSettings = emotionSettings 
-      ? { ...defaultSettings, ...emotionSettings, use_speaker_boost: true }
-      : defaultSettings;
+    // Get dynamic emotion-specific voice settings using new system
+    const voiceSettings = this.getEmotionVoiceSettings(emotion);
 
     try {
       const response = await axios.post(
@@ -340,9 +398,11 @@ export class AudioService {
   }
 
   private extractEmotionFromSpeakerTag(speakerTag: string): { speaker: string; emotion?: string } {
-    // Parse speaker tags like:
+    // Parse speaker tags with advanced emotion support:
     // [Character Name]: normal speech
-    // [Character Name, emotion]: emotional speech
+    // [Character Name, emotion]: single emotion
+    // [Character Name, emotion1+emotion2]: emotion blend
+    // [Character Name, very_emotion]: intensity modifier
     // [Narrator]: descriptive text
     // [Narrator, intimate]: intimate narration
     
@@ -350,11 +410,170 @@ export class AudioService {
     
     if (match) {
       const speaker = match[1].trim();
-      const emotion = match[2] ? match[2].trim() : undefined;
-      return { speaker, emotion };
+      const emotionStr = match[2] ? match[2].trim() : undefined;
+      
+      if (emotionStr) {
+        // Process dynamic emotions (blends, intensities, etc.)
+        const processedEmotion = this.processDynamicEmotion(emotionStr);
+        return { speaker, emotion: processedEmotion };
+      }
+      
+      return { speaker, emotion: emotionStr };
     }
     
     return { speaker: speakerTag };
+  }
+
+  private processDynamicEmotion(emotionStr: string): string {
+    // Handle various emotion formats:
+    // "passionate+desperate" -> emotion blend
+    // "very_seductive" -> intensity modifier
+    // "extremely_angry" -> strong intensity
+    // "slightly_nervous" -> weak intensity
+    
+    // Check for intensity modifiers
+    const intensityMatch = emotionStr.match(/^(slightly|somewhat|very|extremely|utterly|barely|overwhelmingly)_(.+)$/);
+    if (intensityMatch) {
+      const [, intensity, baseEmotion] = intensityMatch;
+      return `${intensity}_${baseEmotion}`;
+    }
+    
+    // Check for emotion blends
+    if (emotionStr.includes('+')) {
+      const emotions = emotionStr.split('+').map(e => e.trim());
+      return `blend_${emotions.join('_')}`;
+    }
+    
+    return emotionStr;
+  }
+
+  private getEmotionVoiceSettings(emotion?: string): any {
+    if (!emotion) {
+      return {
+        stability: 0.7,
+        similarity_boost: 0.8,
+        style: 0.2,
+        use_speaker_boost: true
+      };
+    }
+
+    // Handle intensity modifiers
+    const intensityMatch = emotion.match(/^(slightly|somewhat|very|extremely|utterly|barely|overwhelmingly)_(.+)$/);
+    if (intensityMatch) {
+      const [, intensity, baseEmotion] = intensityMatch;
+      return this.applyIntensityModifier(baseEmotion, intensity);
+    }
+
+    // Handle emotion blends
+    if (emotion.startsWith('blend_')) {
+      const emotions = emotion.replace('blend_', '').split('_');
+      return this.blendEmotions(emotions);
+    }
+
+    // Handle regular emotions
+    const emotionKey = emotion.toLowerCase() as keyof typeof this.emotionVoiceSettings;
+    const emotionSettings = this.emotionVoiceSettings[emotionKey];
+    
+    if (emotionSettings) {
+      return {
+        ...emotionSettings,
+        use_speaker_boost: true
+      };
+    }
+
+    // Fallback for unknown emotions - try to infer from similar emotions
+    return this.inferEmotionSettings(emotion);
+  }
+
+  private applyIntensityModifier(baseEmotion: string, intensity: string): any {
+    const baseSettings = this.emotionVoiceSettings[baseEmotion.toLowerCase() as keyof typeof this.emotionVoiceSettings];
+    const modifier = this.intensityModifiers[intensity as keyof typeof this.intensityModifiers];
+    
+    if (!baseSettings || !modifier) {
+      return {
+        stability: 0.7,
+        similarity_boost: 0.8,
+        style: 0.2,
+        use_speaker_boost: true
+      };
+    }
+
+    return {
+      stability: Math.max(0.1, Math.min(0.9, baseSettings.stability + modifier.stabilityMod)),
+      similarity_boost: Math.max(0.1, Math.min(0.9, baseSettings.similarity_boost)),
+      style: Math.max(0.1, Math.min(1.0, baseSettings.style + modifier.styleMod)),
+      use_speaker_boost: true
+    };
+  }
+
+  private blendEmotions(emotions: string[]): any {
+    // Blend multiple emotions by averaging their parameters
+    const validEmotions = emotions
+      .map(e => e.toLowerCase())
+      .filter(e => e in this.emotionVoiceSettings)
+      .slice(0, 3); // Max 3 emotions for performance
+
+    if (validEmotions.length === 0) {
+      return {
+        stability: 0.7,
+        similarity_boost: 0.8,
+        style: 0.2,
+        use_speaker_boost: true
+      };
+    }
+
+    const blended = validEmotions.reduce((acc, emotion) => {
+      const settings = this.emotionVoiceSettings[emotion as keyof typeof this.emotionVoiceSettings];
+      acc.stability += settings.stability;
+      acc.similarity_boost += settings.similarity_boost;
+      acc.style += settings.style;
+      return acc;
+    }, { stability: 0, similarity_boost: 0, style: 0 });
+
+    const count = validEmotions.length;
+    return {
+      stability: Math.max(0.1, Math.min(0.9, blended.stability / count)),
+      similarity_boost: Math.max(0.1, Math.min(0.9, blended.similarity_boost / count)),
+      style: Math.max(0.1, Math.min(1.0, blended.style / count)),
+      use_speaker_boost: true
+    };
+  }
+
+  private inferEmotionSettings(emotion: string): any {
+    // AI-like inference for unknown emotions based on keywords
+    const emotionLower = emotion.toLowerCase();
+    
+    // Romantic/sensual keywords
+    if (emotionLower.includes('love') || emotionLower.includes('desire') || 
+        emotionLower.includes('warm') || emotionLower.includes('soft')) {
+      return { stability: 0.5, similarity_boost: 0.8, style: 0.7, use_speaker_boost: true };
+    }
+    
+    // Aggressive/intense keywords
+    if (emotionLower.includes('rage') || emotionLower.includes('fury') || 
+        emotionLower.includes('harsh') || emotionLower.includes('violent')) {
+      return { stability: 0.2, similarity_boost: 0.5, style: 0.9, use_speaker_boost: true };
+    }
+    
+    // Mysterious/supernatural keywords
+    if (emotionLower.includes('dark') || emotionLower.includes('shadow') || 
+        emotionLower.includes('mystic') || emotionLower.includes('spell')) {
+      return { stability: 0.6, similarity_boost: 0.7, style: 0.8, use_speaker_boost: true };
+    }
+    
+    // Sad/melancholy keywords
+    if (emotionLower.includes('sorrow') || emotionLower.includes('grief') || 
+        emotionLower.includes('mourn') || emotionLower.includes('weep')) {
+      return { stability: 0.8, similarity_boost: 0.9, style: 0.6, use_speaker_boost: true };
+    }
+    
+    // Default fallback
+    return {
+      stability: 0.7,
+      similarity_boost: 0.8,
+      style: 0.2,
+      use_speaker_boost: true
+    };
   }
 
   private getVoiceForSpeaker(speaker: string, fallbackVoice: string = 'female'): string {
@@ -410,18 +629,55 @@ export class AudioService {
       totalEmotions: emotions.length,
       categories: {
         basic: ['neutral', 'happy', 'sad', 'angry', 'fearful', 'surprised', 'disgusted'],
-        romantic: ['seductive', 'passionate', 'tender', 'lustful', 'romantic', 'intimate', 'yearning', 'breathless'],
-        complex: ['anxious', 'excited', 'confident', 'nervous', 'amused', 'confused', 'determined', 'defiant', 'pleading', 'threatening', 'mocking', 'sarcastic', 'playful', 'serious', 'mysterious', 'sultry', 'whispering', 'shouting'],
-        supernatural: ['otherworldly', 'ethereal', 'sinister', 'enchanting', 'hypnotic', 'predatory', 'protective', 'primal', 'magical', 'ancient'],
-        intensity: ['gentle', 'fierce', 'intense', 'subtle', 'bold', 'timid', 'aggressive', 'calm', 'wild', 'controlled']
+        romantic: ['seductive', 'passionate', 'tender', 'lustful', 'romantic', 'intimate', 'yearning', 'breathless', 'aroused', 'devoted', 'adoring', 'longing', 'satisfied', 'craving', 'worshiping', 'desiring'],
+        physical: ['panting', 'gasping', 'trembling', 'shivering', 'aching', 'tingling', 'feverish', 'dizzy', 'exhausted', 'invigorated', 'weakened', 'energized'],
+        complex: ['anxious', 'excited', 'confident', 'nervous', 'amused', 'confused', 'determined', 'defiant', 'pleading', 'threatening', 'mocking', 'sarcastic', 'playful', 'serious', 'mysterious', 'sultry', 'whispering', 'shouting', 'desperate', 'hopeful', 'devastated', 'elated', 'melancholy', 'euphoric', 'bitter', 'envious'],
+        social: ['dominant', 'submissive', 'possessive', 'jealous', 'vulnerable', 'manipulative', 'trusting', 'betrayed', 'loyal', 'rebellious', 'obedient', 'independent'],
+        supernatural: ['otherworldly', 'ethereal', 'sinister', 'enchanting', 'hypnotic', 'predatory', 'protective', 'primal', 'magical', 'ancient', 'bloodthirsty', 'feral', 'enchanted', 'cursed', 'blessed', 'haunted', 'possessed', 'transcendent'],
+        intensity: ['gentle', 'fierce', 'intense', 'subtle', 'bold', 'timid', 'aggressive', 'calm', 'wild', 'controlled', 'regal', 'noble', 'common', 'formal', 'casual', 'refined']
+      },
+      dynamicFeatures: {
+        emotionBlends: {
+          description: 'Combine multiple emotions with + syntax',
+          examples: ['passionate+desperate', 'seductive+mysterious', 'angry+hurt'],
+          maxBlend: 3
+        },
+        intensityModifiers: {
+          description: 'Modify emotion intensity with prefixes',
+          modifiers: Object.keys(this.intensityModifiers),
+          examples: ['very_seductive', 'extremely_angry', 'slightly_nervous', 'utterly_devastated']
+        },
+        aiInference: {
+          description: 'System can infer settings for unknown emotions',
+          examples: ['lovesick', 'heartbroken', 'spellbound', 'enchantress-like']
+        }
       },
       allEmotions: emotions,
       exampleUsage: [
         '[Character, seductive]: "Come closer..."',
-        '[Narrator, mysterious]: The shadows seemed to move...',
-        '[Vampire Lord, threatening]: "You will regret this."',
-        '[Sarah, breathless]: "I can\'t... I can\'t resist..."'
-      ]
+        '[Vampire Lord, very_threatening]: "You will regret this."',
+        '[Sarah, passionate+desperate]: "I need you..."',
+        '[Narrator, mysterious+ancient]: Long ago, in shadows deep...',
+        '[Fairy Queen, extremely_regal]: "Bow before your queen."',
+        '[Werewolf, feral+bloodthirsty]: "The hunt begins."',
+        '[Character, slightly_nervous]: "I think... maybe..."'
+      ],
+      totalPossibleCombinations: 'Infinite (90+ base emotions × 7 intensities × unlimited blends)'
+    };
+  }
+
+  // Method for testing emotion combinations
+  public testEmotionCombination(emotionString: string): any {
+    const processed = this.processDynamicEmotion(emotionString);
+    const settings = this.getEmotionVoiceSettings(processed);
+    
+    return {
+      original: emotionString,
+      processed: processed,
+      voiceSettings: settings,
+      isBlend: processed.startsWith('blend_'),
+      hasIntensity: processed.includes('_') && !processed.startsWith('blend_'),
+      isInferred: !Object.keys(this.emotionVoiceSettings).includes(emotionString.toLowerCase())
     };
   }
 
