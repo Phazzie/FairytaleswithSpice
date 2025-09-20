@@ -1,0 +1,357 @@
+name: 🚀 Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      skip_tests:
+        description: 'Skip test validation'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '20.x'
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  # ================================================================
+  # PRE-DEPLOYMENT VALIDATION
+  # ================================================================
+  pre-deployment-checks:
+    name: 🔍 Pre-deployment Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should-deploy: ${{ steps.validation.outputs.should-deploy }}
+      target-env: ${{ steps.validation.outputs.target-env }}
+      
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 🔍 Validate deployment conditions
+        id: validation
+        run: |
+          # Determine target environment
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET_ENV="${{ github.event.inputs.environment }}"
+            SKIP_TESTS="${{ github.event.inputs.skip_tests }}"
+          else
+            TARGET_ENV="staging"
+            SKIP_TESTS="false"
+          fi
+          
+          echo "target-env=$TARGET_ENV" >> $GITHUB_OUTPUT
+          
+          # Check if we should proceed with deployment
+          if [ "$SKIP_TESTS" = "true" ]; then
+            echo "⚠️ Deployment validation skipped by user request"
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Full validation required"
+            echo "should-deploy=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "🎯 Target Environment: $TARGET_ENV"
+          echo "🧪 Skip Tests: $SKIP_TESTS"
+
+  # ================================================================
+  # TRIGGER CI VALIDATION (if needed)
+  # ================================================================
+  run-ci-validation:
+    name: 🧪 CI Validation
+    if: needs.pre-deployment-checks.outputs.should-deploy == 'false'
+    needs: pre-deployment-checks
+    uses: ./.github/workflows/ci.yml
+
+  # ================================================================
+  # STAGING DEPLOYMENT
+  # ================================================================
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [pre-deployment-checks]
+    if: |
+      always() &&
+      (needs.pre-deployment-checks.outputs.should-deploy == 'true' ||
+       needs.run-ci-validation.result == 'success') &&
+      (needs.pre-deployment-checks.outputs.target-env == 'staging' || 
+       github.ref == 'refs/heads/main')
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.preview-url }}
+      
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 📦 Install Vercel CLI
+        run: npm install --global vercel@latest
+        
+      - name: 🔧 Pull Vercel Environment Information
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+        
+      - name: 🏗️ Build Project Artifacts
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+        
+      - name: 🚀 Deploy to Staging (Preview)
+        id: deploy
+        run: |
+          PREVIEW_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          echo "preview-url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+          echo "🌐 Staging URL: $PREVIEW_URL"
+          
+      - name: 📝 Update deployment status
+        run: |
+          echo "✅ Staging deployment completed successfully"
+          echo "🌐 Preview URL: ${{ steps.deploy.outputs.preview-url }}"
+
+  # ================================================================
+  # SMOKE TESTS
+  # ================================================================
+  smoke-tests:
+    name: 💨 Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [deploy-staging]
+    if: always() && needs.deploy-staging.result == 'success'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install test dependencies
+        run: |
+          cd tests
+          npm ci --ignore-scripts
+          
+      - name: 💨 Run smoke tests
+        run: |
+          cd tests
+          npm run test:integration
+        env:
+          API_BASE_URL: ${{ needs.deploy-staging.outputs.preview-url }}/api
+          TEST_TIMEOUT: 30000
+          
+      - name: 🏥 Health check
+        run: |
+          HEALTH_URL="${{ needs.deploy-staging.outputs.preview-url }}/api/health"
+          echo "🏥 Checking health endpoint: $HEALTH_URL"
+          
+          # Wait for deployment to be ready
+          for i in {1..10}; do
+            if curl -f -s "$HEALTH_URL" > /dev/null; then
+              echo "✅ Health check passed"
+              break
+            else
+              echo "⏳ Waiting for deployment... (attempt $i/10)"
+              sleep 10
+            fi
+          done
+          
+          # Final health check
+          RESPONSE=$(curl -s "$HEALTH_URL" || echo "FAILED")
+          if echo "$RESPONSE" | grep -q "healthy"; then
+            echo "✅ Smoke tests passed - Application is healthy"
+          else
+            echo "❌ Smoke tests failed - Health check failed"
+            echo "Response: $RESPONSE"
+            exit 1
+          fi
+
+  # ================================================================
+  # PRODUCTION DEPLOYMENT
+  # ================================================================
+  deploy-production:
+    name: 🌟 Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [pre-deployment-checks, deploy-staging, smoke-tests]
+    if: |
+      always() &&
+      needs.smoke-tests.result == 'success' &&
+      (needs.pre-deployment-checks.outputs.target-env == 'production' ||
+       (github.ref == 'refs/heads/main' && github.event_name == 'push'))
+    environment:
+      name: production
+      url: https://fairytaleswithspice.vercel.app
+      
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 📦 Install Vercel CLI
+        run: npm install --global vercel@latest
+        
+      - name: 🔧 Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        
+      - name: 🏗️ Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        
+      - name: 🌟 Deploy to Production
+        id: deploy
+        run: |
+          PRODUCTION_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "production-url=$PRODUCTION_URL" >> $GITHUB_OUTPUT
+          echo "🌟 Production URL: $PRODUCTION_URL"
+          
+      - name: 📝 Update deployment status
+        run: |
+          echo "🌟 Production deployment completed successfully"
+          echo "🌐 Production URL: https://fairytaleswithspice.vercel.app"
+
+  # ================================================================
+  # POST-DEPLOYMENT MONITORING
+  # ================================================================
+  post-deployment-monitoring:
+    name: 📊 Post-deployment Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [deploy-production]
+    if: always() && needs.deploy-production.result == 'success'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 🏥 Production health checks
+        run: |
+          PROD_URL="https://fairytaleswithspice.vercel.app"
+          HEALTH_URL="$PROD_URL/api/health"
+          
+          echo "🏥 Running post-deployment health checks..."
+          echo "🌐 Production URL: $PROD_URL"
+          echo "🏥 Health endpoint: $HEALTH_URL"
+          
+          # Wait for deployment to propagate
+          sleep 30
+          
+          # Comprehensive health checks
+          for i in {1..5}; do
+            echo "🔍 Health check attempt $i/5"
+            
+            # Basic health check
+            if curl -f -s "$HEALTH_URL" -o health_response.json; then
+              echo "✅ Health endpoint responsive"
+              
+              # Validate health response
+              if grep -q "healthy" health_response.json; then
+                echo "✅ Application reports healthy status"
+                
+                # Check service status
+                if grep -q "services" health_response.json; then
+                  echo "✅ Services configuration detected"
+                fi
+                
+                break
+              else
+                echo "⚠️ Health endpoint responded but status unclear"
+              fi
+            else
+              echo "❌ Health check failed (attempt $i/5)"
+              if [ $i -eq 5 ]; then
+                echo "❌ All health checks failed"
+                exit 1
+              fi
+              sleep 15
+            fi
+          done
+          
+          echo "✅ Post-deployment monitoring completed successfully"
+          
+      - name: 📊 Performance baseline check
+        run: |
+          PROD_URL="https://fairytaleswithspice.vercel.app"
+          
+          echo "⚡ Running performance baseline checks..."
+          
+          # Simple response time check
+          START_TIME=$(date +%s%N)
+          curl -f -s "$PROD_URL" > /dev/null
+          END_TIME=$(date +%s%N)
+          
+          RESPONSE_TIME=$((($END_TIME - $START_TIME) / 1000000))
+          echo "⚡ Homepage response time: ${RESPONSE_TIME}ms"
+          
+          if [ $RESPONSE_TIME -lt 5000 ]; then
+            echo "✅ Response time within acceptable range"
+          else
+            echo "⚠️ Response time above 5 seconds - consider optimization"
+          fi
+
+  # ================================================================
+  # DEPLOYMENT STATUS SUMMARY
+  # ================================================================
+  deployment-status:
+    name: 📋 Deployment Status Summary
+    runs-on: ubuntu-latest
+    needs: [
+      pre-deployment-checks,
+      deploy-staging,
+      smoke-tests,
+      deploy-production,
+      post-deployment-monitoring
+    ]
+    if: always()
+    
+    steps:
+      - name: 📋 Generate deployment summary
+        run: |
+          echo "=== 🚀 DEPLOYMENT PIPELINE SUMMARY ==="
+          echo ""
+          echo "🎯 Target Environment: ${{ needs.pre-deployment-checks.outputs.target-env }}"
+          echo ""
+          echo "📊 Job Results:"
+          echo "  Pre-deployment Checks: ${{ needs.pre-deployment-checks.result }}"
+          echo "  Staging Deployment: ${{ needs.deploy-staging.result }}"
+          echo "  Smoke Tests: ${{ needs.smoke-tests.result }}"
+          echo "  Production Deployment: ${{ needs.deploy-production.result }}"
+          echo "  Post-deployment Monitoring: ${{ needs.post-deployment-monitoring.result }}"
+          echo ""
+          
+          # Determine overall status
+          if [[ "${{ needs.deploy-production.result }}" == "success" &&
+                "${{ needs.post-deployment-monitoring.result }}" == "success" ]]; then
+            echo "🌟 DEPLOYMENT SUCCESSFUL - Production is live!"
+            echo "🌐 Production URL: https://fairytaleswithspice.vercel.app"
+          elif [[ "${{ needs.deploy-staging.result }}" == "success" &&
+                  "${{ needs.smoke-tests.result }}" == "success" ]]; then
+            echo "🚀 STAGING DEPLOYMENT SUCCESSFUL"
+          elif [[ "${{ needs.deploy-staging.result }}" == "failure" ||
+                  "${{ needs.smoke-tests.result }}" == "failure" ]]; then
+            echo "❌ DEPLOYMENT FAILED - Check logs for details"
+            exit 1
+          else
+            echo "⚠️ DEPLOYMENT PARTIALLY COMPLETED"
+          fi

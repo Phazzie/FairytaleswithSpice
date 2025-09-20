@@ -1,0 +1,403 @@
+name: 🔒 Security & Code Quality
+
+on:
+  schedule:
+    # Run security scans daily at 3 AM UTC
+    - cron: '0 3 * * *'
+  push:
+    branches: [main, develop]
+    paths:
+      - '**/*.ts'
+      - '**/*.js'
+      - '**/*.json'
+      - '**/package*.json'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - '**/*.ts'
+      - '**/*.js'
+      - '**/*.json'
+      - '**/package*.json'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  # ================================================================
+  # CODE QUALITY ANALYSIS
+  # ================================================================
+  code-quality-analysis:
+    name: 📊 Advanced Code Quality Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for SonarCloud analysis
+          
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install dependencies
+        run: |
+          # Install all project dependencies
+          cd story-generator && npm ci --ignore-scripts && cd ..
+          cd backend && npm ci --ignore-scripts && cd ..
+          cd api && npm ci --ignore-scripts && cd ..
+          
+      - name: 📊 ESLint Analysis
+        run: |
+          echo "📊 Running ESLint analysis..."
+          
+          # Frontend ESLint
+          cd story-generator
+          npx eslint src/ --ext .ts,.html --format json --output-file ../eslint-frontend.json || true
+          cd ..
+          
+          # Backend ESLint (if configured)
+          if [ -f "backend/.eslintrc*" ]; then
+            cd backend
+            npx eslint src/ --ext .ts --format json --output-file ../eslint-backend.json || true
+            cd ..
+          fi
+          
+      - name: 🎨 Prettier Format Check
+        run: |
+          echo "🎨 Checking code formatting..."
+          
+          # Frontend formatting
+          cd story-generator
+          npx prettier --check src/ --list-different > ../prettier-frontend.txt || true
+          cd ..
+          
+      - name: 🔍 TypeScript Strict Mode Analysis
+        run: |
+          echo "🔍 Running TypeScript strict analysis..."
+          
+          # Frontend TypeScript
+          cd story-generator
+          npx tsc --noEmit --strict > ../typescript-frontend.log 2>&1 || true
+          cd ..
+          
+          # Backend TypeScript
+          cd backend
+          npx tsc --noEmit --strict > ../typescript-backend.log 2>&1 || true
+          cd ..
+          
+          # API TypeScript
+          cd api
+          npx tsc --noEmit --strict > ../typescript-api.log 2>&1 || true
+          cd ..
+          
+      - name: 📊 Upload code quality reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: code-quality-reports
+          path: |
+            eslint-*.json
+            prettier-*.txt
+            typescript-*.log
+          retention-days: 30
+
+  # ================================================================
+  # SECURITY SCANNING
+  # ================================================================
+  security-scanning:
+    name: 🔒 Advanced Security Scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔒 CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript,typescript
+          config-file: ./.github/codeql/codeql-config.yml
+          
+      - name: 🔧 Install dependencies for CodeQL
+        run: |
+          cd story-generator && npm ci --ignore-scripts && cd ..
+          cd backend && npm ci --ignore-scripts && cd ..
+          cd api && npm ci --ignore-scripts && cd ..
+          
+      - name: 🔒 Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript"
+          
+      - name: 🔍 Secret Scanning
+        run: |
+          echo "🔍 Running secret scanning..."
+          
+          # Basic secret pattern scanning
+          echo "🔍 Scanning for potential secrets..."
+          
+          # Check for API keys, passwords, tokens
+          SECRET_PATTERNS=(
+            "api[_-]?key.*['\"][a-zA-Z0-9]{20,}['\"]"
+            "password.*['\"][^'\"]{8,}['\"]"
+            "secret.*['\"][a-zA-Z0-9]{20,}['\"]"
+            "token.*['\"][a-zA-Z0-9]{20,}['\"]"
+            "AKIA[0-9A-Z]{16}"  # AWS Access Key
+            "sk_live_[0-9a-zA-Z]{24}"  # Stripe Live Key
+          )
+          
+          for pattern in "${SECRET_PATTERNS[@]}"; do
+            if grep -r -E "$pattern" . --exclude-dir=node_modules --exclude-dir=.git --exclude="*.log" --exclude="*.json" | grep -v ".github/workflows"; then
+              echo "⚠️ Potential secret found matching pattern: $pattern"
+            fi
+          done
+          
+          echo "✅ Secret scanning completed"
+          
+      - name: 🛡️ Dependency Vulnerability Scan
+        run: |
+          echo "🛡️ Running comprehensive vulnerability scan..."
+          
+          # Use npm audit for all packages
+          scan_package() {
+            local dir=$1
+            local name=$2
+            
+            if [ -f "$dir/package.json" ]; then
+              echo "🛡️ Scanning $name in $dir..."
+              cd "$dir"
+              
+              # Generate detailed audit report
+              npm audit --audit-level low --json > "../security-audit-${name}.json" 2>&1 || true
+              
+              # Check for high/critical vulnerabilities
+              if npm audit --audit-level high >/dev/null 2>&1; then
+                echo "✅ No high/critical vulnerabilities in $name"
+              else
+                echo "⚠️ High/critical vulnerabilities found in $name"
+              fi
+              
+              cd ..
+            fi
+          }
+          
+          scan_package "story-generator" "frontend"
+          scan_package "backend" "backend"
+          scan_package "api" "api"
+          scan_package "tests" "integration-tests"
+          
+      - name: 📊 Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-reports
+          path: security-audit-*.json
+          retention-days: 90
+
+  # ================================================================
+  # ACCESSIBILITY TESTING
+  # ================================================================
+  accessibility-testing:
+    name: ♿ Accessibility Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install dependencies
+        run: |
+          cd story-generator
+          npm ci --ignore-scripts
+          
+      - name: 🏗️ Build application
+        run: |
+          cd story-generator
+          npm run build
+          
+      - name: 📦 Install accessibility tools
+        run: |
+          npm install -g @axe-core/cli
+          npm install -g lighthouse
+          
+      - name: ♿ Run accessibility tests
+        run: |
+          echo "♿ Running accessibility tests..."
+          
+          # Start a simple server for the built app
+          cd story-generator/dist/story-generator/browser
+          python3 -m http.server 8080 &
+          SERVER_PID=$!
+          
+          # Wait for server to start
+          sleep 5
+          
+          # Run axe-core accessibility tests
+          axe http://localhost:8080 --save accessibility-report.json || true
+          
+          # Run Lighthouse accessibility audit
+          lighthouse http://localhost:8080 \
+            --only-categories=accessibility \
+            --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+            --output json \
+            --output-path ../../../lighthouse-accessibility.json || true
+          
+          # Stop server
+          kill $SERVER_PID || true
+          
+          cd ../../../
+          
+          echo "✅ Accessibility testing completed"
+          
+      - name: 📊 Upload accessibility reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: accessibility-reports
+          path: |
+            story-generator/dist/story-generator/browser/accessibility-report.json
+            lighthouse-accessibility.json
+          retention-days: 30
+
+  # ================================================================
+  # PERFORMANCE TESTING
+  # ================================================================
+  performance-testing:
+    name: ⚡ Performance Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install dependencies
+        run: |
+          cd story-generator
+          npm ci --ignore-scripts
+          
+      - name: 🏗️ Build application
+        run: |
+          cd story-generator
+          npm run build
+          
+      - name: 📦 Install performance tools
+        run: |
+          npm install -g lighthouse
+          npm install -g @lhci/cli
+          
+      - name: ⚡ Run performance tests
+        run: |
+          echo "⚡ Running performance tests..."
+          
+          # Start a simple server
+          cd story-generator/dist/story-generator/browser
+          python3 -m http.server 8080 &
+          SERVER_PID=$!
+          
+          # Wait for server to start
+          sleep 5
+          
+          # Run comprehensive Lighthouse audit
+          lighthouse http://localhost:8080 \
+            --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+            --output json \
+            --output html \
+            --output-path ../../../lighthouse-report || true
+          
+          # Stop server
+          kill $SERVER_PID || true
+          
+          cd ../../../
+          
+          echo "✅ Performance testing completed"
+          
+      - name: 📊 Upload performance reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-reports
+          path: |
+            lighthouse-report.json
+            lighthouse-report.html
+          retention-days: 30
+
+  # ================================================================
+  # SECURITY & QUALITY SUMMARY
+  # ================================================================
+  security-quality-summary:
+    name: 📋 Security & Quality Summary
+    runs-on: ubuntu-latest
+    needs: [
+      code-quality-analysis,
+      security-scanning,
+      accessibility-testing,
+      performance-testing
+    ]
+    if: always()
+    
+    steps:
+      - name: 📋 Generate comprehensive summary
+        run: |
+          echo "=== 🔒 SECURITY & CODE QUALITY SUMMARY ==="
+          echo ""
+          echo "📊 Analysis Results:"
+          echo "  Code Quality Analysis: ${{ needs.code-quality-analysis.result }}"
+          echo "  Security Scanning: ${{ needs.security-scanning.result }}"
+          echo "  Accessibility Testing: ${{ needs.accessibility-testing.result }}"
+          echo "  Performance Testing: ${{ needs.performance-testing.result }}"
+          echo ""
+          
+          # Check for critical issues
+          CRITICAL_ISSUES=false
+          
+          if [[ "${{ needs.security-scanning.result }}" == "failure" ]]; then
+            echo "🚨 CRITICAL: Security scanning failed"
+            CRITICAL_ISSUES=true
+          fi
+          
+          if [[ "${{ needs.code-quality-analysis.result }}" == "failure" ]]; then
+            echo "⚠️ WARNING: Code quality issues detected"
+          fi
+          
+          if [[ "${{ needs.accessibility-testing.result }}" == "failure" ]]; then
+            echo "♿ WARNING: Accessibility issues detected"
+          fi
+          
+          if [[ "${{ needs.performance-testing.result }}" == "failure" ]]; then
+            echo "⚡ WARNING: Performance issues detected"
+          fi
+          
+          echo ""
+          if [ "$CRITICAL_ISSUES" = "true" ]; then
+            echo "🚨 ACTION REQUIRED: Critical security issues detected!"
+            exit 1
+          else
+            echo "✅ Security and quality checks completed"
+            echo "📊 Review detailed reports in job artifacts"
+          fi

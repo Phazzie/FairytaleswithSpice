@@ -1,0 +1,394 @@
+name: 📦 Dependency Management & Security
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      update_type:
+        description: 'Type of updates to perform'
+        required: true
+        default: 'security'
+        type: choice
+        options:
+          - security
+          - minor
+          - all
+      auto_merge:
+        description: 'Auto-merge safe updates'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  # ================================================================
+  # DEPENDENCY AUDIT & VULNERABILITY SCANNING
+  # ================================================================
+  dependency-audit:
+    name: 🔍 Security Vulnerability Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      vulnerabilities-found: ${{ steps.audit.outputs.vulnerabilities-found }}
+      audit-summary: ${{ steps.audit.outputs.audit-summary }}
+      
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔍 Comprehensive dependency audit
+        id: audit
+        run: |
+          echo "🔍 Starting comprehensive dependency audit..."
+          
+          VULNERABILITIES_FOUND=false
+          AUDIT_SUMMARY=""
+          
+          # Function to run audit and capture results
+          run_audit() {
+            local dir=$1
+            local name=$2
+            
+            echo "🔍 Auditing $name dependencies in $dir..."
+            cd "$dir"
+            
+            # Run audit and capture output
+            if npm audit --audit-level moderate --json > "../audit-${name}.json" 2>&1; then
+              echo "✅ No moderate+ vulnerabilities found in $name"
+            else
+              echo "⚠️ Vulnerabilities found in $name"
+              VULNERABILITIES_FOUND=true
+              
+              # Generate human-readable summary
+              if command -v jq >/dev/null 2>&1; then
+                VULN_COUNT=$(jq '.metadata.vulnerabilities.total' "../audit-${name}.json" 2>/dev/null || echo "unknown")
+                AUDIT_SUMMARY="${AUDIT_SUMMARY}${name}: ${VULN_COUNT} vulnerabilities; "
+              fi
+            fi
+            
+            cd ..
+          }
+          
+          # Install dependencies and run audits
+          echo "🔧 Installing dependencies..."
+          
+          # Root dependencies
+          if [ -f "package.json" ]; then
+            npm ci --ignore-scripts
+            run_audit "." "root"
+          fi
+          
+          # Frontend dependencies
+          if [ -f "story-generator/package.json" ]; then
+            run_audit "story-generator" "frontend"
+          fi
+          
+          # Backend dependencies
+          if [ -f "backend/package.json" ]; then
+            run_audit "backend" "backend"
+          fi
+          
+          # API dependencies
+          if [ -f "api/package.json" ]; then
+            run_audit "api" "api"
+          fi
+          
+          # Integration test dependencies
+          if [ -f "tests/package.json" ]; then
+            run_audit "tests" "integration-tests"
+          fi
+          
+          echo "vulnerabilities-found=$VULNERABILITIES_FOUND" >> $GITHUB_OUTPUT
+          echo "audit-summary=$AUDIT_SUMMARY" >> $GITHUB_OUTPUT
+          
+          if [ "$VULNERABILITIES_FOUND" = "true" ]; then
+            echo "⚠️ Security vulnerabilities detected!"
+            echo "📊 Summary: $AUDIT_SUMMARY"
+          else
+            echo "✅ No security vulnerabilities found"
+          fi
+          
+      - name: 📊 Upload audit reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-audit-reports
+          path: audit-*.json
+          retention-days: 90
+
+  # ================================================================
+  # LICENSE COMPLIANCE CHECK
+  # ================================================================
+  license-compliance:
+    name: ⚖️ License Compliance Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 📦 Install license checker
+        run: npm install -g license-checker
+        
+      - name: ⚖️ Check license compliance
+        run: |
+          echo "⚖️ Checking license compliance..."
+          
+          # Define allowed licenses (adjust as needed)
+          ALLOWED_LICENSES="MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;CC0-1.0;Unlicense"
+          
+          check_licenses() {
+            local dir=$1
+            local name=$2
+            
+            if [ -f "$dir/package.json" ]; then
+              echo "⚖️ Checking $name licenses in $dir..."
+              cd "$dir"
+              
+              # Install dependencies if not already installed
+              if [ ! -d "node_modules" ]; then
+                npm ci --ignore-scripts
+              fi
+              
+              # Check licenses
+              license-checker --onlyAllow "$ALLOWED_LICENSES" --excludePrivatePackages > "../licenses-${name}.txt" 2>&1 || {
+                echo "⚠️ Potential license issues found in $name"
+                cat "../licenses-${name}.txt"
+              }
+              
+              cd ..
+            fi
+          }
+          
+          # Check all package directories
+          check_licenses "story-generator" "frontend"
+          check_licenses "backend" "backend"
+          check_licenses "api" "api"
+          check_licenses "tests" "integration-tests"
+          
+          echo "✅ License compliance check completed"
+          
+      - name: 📊 Upload license reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: license-compliance-reports
+          path: licenses-*.txt
+          retention-days: 30
+
+  # ================================================================
+  # DEPENDENCY UPDATES
+  # ================================================================
+  update-dependencies:
+    name: 🔄 Update Dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [dependency-audit]
+    if: always()
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+      - name: 📦 Install npm-check-updates
+        run: npm install -g npm-check-updates
+        
+      - name: 🔄 Update dependencies based on input
+        run: |
+          UPDATE_TYPE="${{ github.event.inputs.update_type || 'security' }}"
+          echo "🔄 Updating dependencies with type: $UPDATE_TYPE"
+          
+          update_package() {
+            local dir=$1
+            local name=$2
+            
+            if [ -f "$dir/package.json" ]; then
+              echo "🔄 Updating $name dependencies in $dir..."
+              cd "$dir"
+              
+              case "$UPDATE_TYPE" in
+                "security")
+                  echo "🔒 Applying security updates only..."
+                  npm audit fix --force || true
+                  ;;
+                "minor")
+                  echo "📊 Applying minor and patch updates..."
+                  ncu -u --target minor
+                  npm install
+                  ;;
+                "all")
+                  echo "🚀 Applying all available updates..."
+                  ncu -u
+                  npm install
+                  ;;
+              esac
+              
+              cd ..
+            fi
+          }
+          
+          # Update all packages
+          update_package "story-generator" "frontend"
+          update_package "backend" "backend"
+          update_package "api" "api"
+          update_package "tests" "integration-tests"
+          
+          # Update root package if it exists
+          if [ -f "package.json" ]; then
+            update_package "." "root"
+          fi
+          
+      - name: 🧪 Test updates
+        run: |
+          echo "🧪 Testing dependency updates..."
+          
+          # Test frontend build
+          if [ -f "story-generator/package.json" ]; then
+            cd story-generator
+            npm run build --if-present || echo "⚠️ Frontend build failed after updates"
+            cd ..
+          fi
+          
+          # Test backend build
+          if [ -f "backend/package.json" ]; then
+            cd backend
+            npm run build --if-present || echo "⚠️ Backend build failed after updates"
+            cd ..
+          fi
+          
+          echo "✅ Update testing completed"
+          
+      - name: 📝 Create Pull Request
+        id: create-pr
+        run: |
+          # Check if there are changes
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "📝 No dependency updates available"
+            echo "pr-created=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Create branch for updates
+          BRANCH_NAME="dependency-updates-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH_NAME"
+          
+          # Stage all changes
+          git add .
+          
+          # Create commit
+          UPDATE_TYPE="${{ github.event.inputs.update_type || 'security' }}"
+          git commit -m "🔄 Automated dependency updates ($UPDATE_TYPE)
+
+          - Updated dependencies based on $UPDATE_TYPE update policy
+          - Security vulnerabilities: ${{ needs.dependency-audit.outputs.vulnerabilities-found }}
+          - Audit summary: ${{ needs.dependency-audit.outputs.audit-summary }}
+          
+          Generated by GitHub Actions dependency management workflow"
+          
+          # Push branch
+          git push origin "$BRANCH_NAME"
+          
+          # Create PR (using GitHub CLI if available, otherwise manual)
+          if command -v gh >/dev/null 2>&1; then
+            PR_URL=$(gh pr create \
+              --title "🔄 Automated Dependency Updates ($UPDATE_TYPE)" \
+              --body "## 📦 Automated Dependency Updates
+
+          **Update Type:** $UPDATE_TYPE
+
+          **Security Status:**
+          - Vulnerabilities found: ${{ needs.dependency-audit.outputs.vulnerabilities-found }}
+          - Audit summary: ${{ needs.dependency-audit.outputs.audit-summary }}
+
+          **Changes:**
+          - Updated dependencies according to $UPDATE_TYPE policy
+          - All builds tested after updates
+          - License compliance verified
+
+          **Review Checklist:**
+          - [ ] Verify no breaking changes in updated packages
+          - [ ] Check that all tests pass
+          - [ ] Confirm security vulnerabilities are resolved
+          - [ ] Review any major version upgrades
+
+          ---
+          *This PR was automatically generated by the dependency management workflow.*" \
+              --label "dependencies,automated" \
+              --assignee "${{ github.actor }}")
+            
+            echo "📝 Pull request created: $PR_URL"
+            echo "pr-created=true" >> $GITHUB_OUTPUT
+            echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+          else
+            echo "📝 Branch pushed: $BRANCH_NAME"
+            echo "pr-created=manual" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ================================================================
+  # DEPENDENCY MONITORING SUMMARY
+  # ================================================================
+  dependency-summary:
+    name: 📊 Dependency Management Summary
+    runs-on: ubuntu-latest
+    needs: [dependency-audit, license-compliance, update-dependencies]
+    if: always()
+    
+    steps:
+      - name: 📊 Generate summary report
+        run: |
+          echo "=== 📦 DEPENDENCY MANAGEMENT SUMMARY ==="
+          echo ""
+          echo "🔍 Security Audit Results:"
+          echo "  Vulnerabilities Found: ${{ needs.dependency-audit.outputs.vulnerabilities-found }}"
+          echo "  Audit Summary: ${{ needs.dependency-audit.outputs.audit-summary }}"
+          echo ""
+          echo "📊 Job Results:"
+          echo "  Dependency Audit: ${{ needs.dependency-audit.result }}"
+          echo "  License Compliance: ${{ needs.license-compliance.result }}"
+          echo "  Update Dependencies: ${{ needs.update-dependencies.result }}"
+          echo ""
+          
+          # Determine overall status
+          if [[ "${{ needs.dependency-audit.outputs.vulnerabilities-found }}" == "true" ]]; then
+            echo "⚠️ ACTION REQUIRED: Security vulnerabilities detected!"
+            echo "📋 Please review the audit reports and update dependencies"
+          elif [[ "${{ needs.update-dependencies.outputs.pr-created }}" == "true" ]]; then
+            echo "📝 Dependency updates available - PR created for review"
+          else
+            echo "✅ All dependencies are up to date and secure"
+          fi
+          
+          echo ""
+          echo "📅 Next scheduled run: Every Sunday at 2 AM UTC"

@@ -1,0 +1,402 @@
+name: 🚀 Comprehensive CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+  CACHE_PREFIX: 'v1'
+
+jobs:
+  # ================================================================
+  # CODE QUALITY & SECURITY SCANNING
+  # ================================================================
+  code-quality:
+    name: 📋 Code Quality & Type Checking
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install root dependencies
+        run: npm ci --ignore-scripts
+        
+      - name: 🔧 Install frontend dependencies
+        run: |
+          cd story-generator
+          npm ci --ignore-scripts
+          
+      - name: 🔧 Install backend dependencies
+        run: |
+          cd backend
+          npm ci --ignore-scripts
+          
+      - name: 🔧 Install API test dependencies
+        run: |
+          cd api
+          npm ci --ignore-scripts
+          
+      - name: ✨ Lint frontend code
+        run: |
+          cd story-generator
+          npx ng lint || echo "Frontend linting completed with warnings"
+          
+      - name: ✨ Check frontend formatting
+        run: |
+          cd story-generator
+          npx prettier --check src/ || echo "Frontend formatting check completed"
+          
+      - name: 🔍 TypeScript compilation check - Frontend
+        run: |
+          cd story-generator
+          npx tsc --noEmit
+          
+      - name: 🔍 TypeScript compilation check - Backend
+        run: |
+          cd backend
+          npx tsc --noEmit
+          
+      - name: 🔍 TypeScript compilation check - API
+        run: |
+          cd api
+          npx tsc --noEmit
+
+  security-scan:
+    name: 🛡️ Security & Vulnerability Scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔐 Run npm audit - Root
+        run: |
+          npm audit --audit-level moderate || true
+          npm audit --audit-level high --json > audit-root.json || true
+          
+      - name: 🔐 Run npm audit - Frontend
+        run: |
+          cd story-generator
+          npm ci --ignore-scripts
+          npm audit --audit-level moderate || true
+          npm audit --audit-level high --json > ../audit-frontend.json || true
+          
+      - name: 🔐 Run npm audit - Backend
+        run: |
+          cd backend
+          npm ci --ignore-scripts
+          npm audit --audit-level moderate || true
+          npm audit --audit-level high --json > ../audit-backend.json || true
+          
+      - name: 🔐 Run npm audit - API
+        run: |
+          cd api
+          npm ci --ignore-scripts
+          npm audit --audit-level moderate || true
+          npm audit --audit-level high --json > ../audit-api.json || true
+          
+      - name: 📊 Upload audit reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-audit-reports
+          path: audit-*.json
+          retention-days: 30
+
+  # ================================================================
+  # FRONTEND TESTING
+  # ================================================================
+  test-frontend:
+    name: 🎨 Frontend Testing (Angular)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install dependencies
+        run: |
+          cd story-generator
+          npm ci --ignore-scripts
+          
+      - name: 🧪 Run unit tests
+        run: |
+          cd story-generator
+          npm test -- --watch=false --browsers=ChromeHeadless --code-coverage
+          
+      - name: 📊 Upload frontend coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: story-generator/coverage/
+          retention-days: 30
+          
+      - name: 🏗️ Build frontend
+        run: |
+          cd story-generator
+          npm run build --if-present
+          
+      - name: 📊 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: story-generator/dist/
+          retention-days: 7
+
+  # ================================================================
+  # BACKEND TESTING
+  # ================================================================
+  test-backend:
+    name: ⚙️ Backend Testing (Node.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install dependencies
+        run: |
+          cd backend
+          npm ci --ignore-scripts
+          
+      - name: 🧪 Run backend tests
+        run: |
+          cd backend
+          npm run test:coverage
+          
+      - name: 📊 Upload backend coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          retention-days: 30
+          
+      - name: 🏗️ Build backend
+        run: |
+          cd backend
+          npm run build
+
+  # ================================================================
+  # API TESTING
+  # ================================================================
+  test-api:
+    name: 🌐 API Testing (Serverless Functions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install dependencies
+        run: |
+          cd api
+          npm ci --ignore-scripts
+          
+      - name: 🧪 Run API tests
+        run: |
+          cd api
+          npm run test:ci
+          
+      - name: 📊 Upload API coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-coverage
+          path: api/coverage/
+          retention-days: 30
+
+  # ================================================================
+  # INTEGRATION TESTING
+  # ================================================================
+  test-integration:
+    name: 🔗 Integration Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [test-frontend, test-backend, test-api]
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install integration test dependencies
+        run: |
+          cd tests
+          npm ci --ignore-scripts
+          
+      - name: 🧪 Run integration tests
+        run: |
+          cd tests
+          npm run test:integration
+        env:
+          API_BASE_URL: http://localhost:3000/api
+          
+      - name: 📊 Upload integration test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: tests/coverage/
+          retention-days: 30
+
+  # ================================================================
+  # BUILD VALIDATION
+  # ================================================================
+  build-validation:
+    name: 🏗️ Production Build Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [code-quality, security-scan]
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: 🔧 Install all dependencies
+        run: |
+          # Install root dependencies
+          npm ci --ignore-scripts
+          
+          # Install frontend dependencies
+          cd story-generator
+          npm ci --ignore-scripts
+          cd ..
+          
+          # Install backend dependencies
+          cd backend
+          npm ci --ignore-scripts
+          cd ..
+          
+      - name: 🏗️ Build frontend for production
+        run: |
+          cd story-generator
+          npm run build
+          
+      - name: 🏗️ Build backend for production
+        run: |
+          cd backend
+          npm run build
+          
+      - name: ✅ Validate build outputs
+        run: |
+          # Check frontend build
+          if [ ! -d "story-generator/dist" ]; then
+            echo "❌ Frontend build failed - no dist directory"
+            exit 1
+          fi
+          
+          # Check backend build
+          if [ ! -d "backend/dist" ]; then
+            echo "❌ Backend build failed - no dist directory"
+            exit 1
+          fi
+          
+          echo "✅ All builds completed successfully"
+          
+      - name: 📊 Upload production builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-builds
+          path: |
+            story-generator/dist/
+            backend/dist/
+          retention-days: 30
+
+  # ================================================================
+  # FINAL STATUS CHECK
+  # ================================================================
+  ci-status:
+    name: ✅ CI Pipeline Status
+    runs-on: ubuntu-latest
+    needs: [
+      code-quality,
+      security-scan, 
+      test-frontend,
+      test-backend,
+      test-api,
+      test-integration,
+      build-validation
+    ]
+    if: always()
+    
+    steps:
+      - name: 📋 Check pipeline status
+        run: |
+          echo "=== CI Pipeline Results ==="
+          echo "Code Quality: ${{ needs.code-quality.result }}"
+          echo "Security Scan: ${{ needs.security-scan.result }}"
+          echo "Frontend Tests: ${{ needs.test-frontend.result }}"
+          echo "Backend Tests: ${{ needs.test-backend.result }}"
+          echo "API Tests: ${{ needs.test-api.result }}"
+          echo "Integration Tests: ${{ needs.test-integration.result }}"
+          echo "Build Validation: ${{ needs.build-validation.result }}"
+          
+          # Check if any required job failed
+          if [[ "${{ needs.code-quality.result }}" == "failure" ||
+                "${{ needs.test-frontend.result }}" == "failure" ||
+                "${{ needs.test-backend.result }}" == "failure" ||
+                "${{ needs.test-api.result }}" == "failure" ||
+                "${{ needs.build-validation.result }}" == "failure" ]]; then
+            echo "❌ CI Pipeline FAILED - Required jobs failed"
+            exit 1
+          elif [[ "${{ needs.security-scan.result }}" == "failure" ||
+                  "${{ needs.test-integration.result }}" == "failure" ]]; then
+            echo "⚠️ CI Pipeline completed with WARNINGS"
+            exit 0
+          else
+            echo "✅ CI Pipeline PASSED - All checks successful"
+            exit 0
+          fi

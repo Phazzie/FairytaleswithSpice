@@ -1,0 +1,313 @@
+name: 📊 Production Monitoring
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      check_type:
+        description: 'Type of monitoring check'
+        required: true
+        default: 'health'
+        type: choice
+        options:
+          - health
+          - performance
+          - full
+
+env:
+  PRODUCTION_URL: https://fairytaleswithspice.vercel.app
+  STAGING_URL: https://fairytaleswithspice-git-main.vercel.app
+
+jobs:
+  # ================================================================
+  # HEALTH MONITORING
+  # ================================================================
+  health-check:
+    name: 🏥 Health Check Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      health-status: ${{ steps.health.outputs.health-status }}
+      response-time: ${{ steps.health.outputs.response-time }}
+      
+    steps:
+      - name: 🏥 Production health check
+        id: health
+        run: |
+          echo "🏥 Checking production health..."
+          
+          HEALTH_URL="${{ env.PRODUCTION_URL }}/api/health"
+          START_TIME=$(date +%s%N)
+          
+          # Perform health check with timeout
+          if RESPONSE=$(curl -f -s --max-time 10 "$HEALTH_URL" 2>&1); then
+            END_TIME=$(date +%s%N)
+            RESPONSE_TIME=$((($END_TIME - $START_TIME) / 1000000))
+            
+            echo "✅ Health check successful"
+            echo "⏱️ Response time: ${RESPONSE_TIME}ms"
+            echo "📋 Response: $RESPONSE"
+            
+            # Validate response structure
+            if echo "$RESPONSE" | grep -q "healthy"; then
+              echo "health-status=healthy" >> $GITHUB_OUTPUT
+              echo "response-time=$RESPONSE_TIME" >> $GITHUB_OUTPUT
+              
+              # Check service status
+              if echo "$RESPONSE" | grep -q "services"; then
+                echo "🔧 Services status detected in response"
+              fi
+            else
+              echo "⚠️ Health endpoint responded but status unclear"
+              echo "health-status=unknown" >> $GITHUB_OUTPUT
+              echo "response-time=$RESPONSE_TIME" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "❌ Health check failed"
+            echo "🔍 Error details: $RESPONSE"
+            echo "health-status=unhealthy" >> $GITHUB_OUTPUT
+            echo "response-time=timeout" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+      - name: 🌐 Frontend availability check
+        run: |
+          echo "🌐 Checking frontend availability..."
+          
+          FRONTEND_URL="${{ env.PRODUCTION_URL }}"
+          
+          if curl -f -s --max-time 10 "$FRONTEND_URL" > /dev/null; then
+            echo "✅ Frontend is accessible"
+          else
+            echo "❌ Frontend is not accessible"
+            exit 1
+          fi
+          
+      - name: 🔗 API endpoints availability
+        run: |
+          echo "🔗 Checking critical API endpoints..."
+          
+          BASE_URL="${{ env.PRODUCTION_URL }}/api"
+          
+          # Test health endpoint (already done above)
+          echo "✅ Health endpoint: Already verified"
+          
+          # Test story generation endpoint (POST - just check it responds to invalid requests properly)
+          if curl -f -s --max-time 10 -X POST "$BASE_URL/story/generate" \
+             -H "Content-Type: application/json" \
+             -d '{}' | grep -q "success.*false"; then
+            echo "✅ Story generation endpoint responding correctly to invalid requests"
+          else
+            echo "⚠️ Story generation endpoint may have issues"
+          fi
+          
+          # Test emotions info endpoint
+          if curl -f -s --max-time 10 "$BASE_URL/emotions/info" > /dev/null; then
+            echo "✅ Emotions info endpoint accessible"
+          else
+            echo "⚠️ Emotions info endpoint may have issues"
+          fi
+
+  # ================================================================
+  # PERFORMANCE MONITORING
+  # ================================================================
+  performance-check:
+    name: ⚡ Performance Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ github.event.inputs.check_type == 'performance' || github.event.inputs.check_type == 'full' || github.event_name == 'schedule' }}
+    
+    steps:
+      - name: 📦 Install performance tools
+        run: |
+          npm install -g lighthouse
+          
+      - name: ⚡ Run performance audit
+        run: |
+          echo "⚡ Running performance audit..."
+          
+          FRONTEND_URL="${{ env.PRODUCTION_URL }}"
+          
+          # Run lightweight Lighthouse audit
+          lighthouse "$FRONTEND_URL" \
+            --only-categories=performance \
+            --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+            --output json \
+            --output-path lighthouse-performance.json \
+            --quiet || echo "⚠️ Lighthouse audit completed with warnings"
+          
+          # Extract key metrics
+          if [ -f "lighthouse-performance.json" ]; then
+            # Parse performance score (requires jq)
+            if command -v jq >/dev/null 2>&1; then
+              PERF_SCORE=$(jq '.categories.performance.score * 100' lighthouse-performance.json 2>/dev/null || echo "unknown")
+              FCP=$(jq '.audits["first-contentful-paint"].numericValue' lighthouse-performance.json 2>/dev/null || echo "unknown")
+              LCP=$(jq '.audits["largest-contentful-paint"].numericValue' lighthouse-performance.json 2>/dev/null || echo "unknown")
+              
+              echo "📊 Performance Score: ${PERF_SCORE}%"
+              echo "🎨 First Contentful Paint: ${FCP}ms"
+              echo "🖼️ Largest Contentful Paint: ${LCP}ms"
+              
+              # Performance thresholds
+              if (( $(echo "$PERF_SCORE >= 90" | bc -l 2>/dev/null || echo 0) )); then
+                echo "✅ Performance score is excellent"
+              elif (( $(echo "$PERF_SCORE >= 70" | bc -l 2>/dev/null || echo 0) )); then
+                echo "⚠️ Performance score needs improvement"
+              else
+                echo "❌ Performance score is poor"
+                exit 1
+              fi
+            else
+              echo "📊 Performance audit completed (jq not available for detailed metrics)"
+            fi
+          fi
+          
+      - name: 📊 Upload performance report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-monitoring-report
+          path: lighthouse-performance.json
+          retention-days: 7
+
+  # ================================================================
+  # API FUNCTIONALITY MONITORING
+  # ================================================================
+  api-functionality-check:
+    name: 🔧 API Functionality Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ github.event.inputs.check_type == 'full' || (github.event_name == 'schedule' && github.event.schedule == '0 */6 * * *') }}
+    
+    steps:
+      - name: 📥 Checkout code (for test utilities)
+        uses: actions/checkout@v4
+        
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          
+      - name: 🔧 Install test dependencies
+        run: |
+          cd tests
+          npm ci --ignore-scripts
+          
+      - name: 🧪 Run production API tests
+        run: |
+          cd tests
+          npm run test:integration
+        env:
+          API_BASE_URL: ${{ env.PRODUCTION_URL }}/api
+          TEST_TIMEOUT: 15000
+          
+      - name: 📊 Upload API test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-functionality-results
+          path: tests/coverage/
+          retention-days: 7
+
+  # ================================================================
+  # UPTIME TRACKING
+  # ================================================================
+  uptime-tracking:
+    name: 📈 Uptime Tracking
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [health-check]
+    if: always()
+    
+    steps:
+      - name: 📈 Calculate uptime metrics
+        run: |
+          echo "📈 Calculating uptime metrics..."
+          
+          HEALTH_STATUS="${{ needs.health-check.outputs.health-status }}"
+          CURRENT_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          echo "🕐 Check Time: $CURRENT_TIME"
+          echo "🏥 Health Status: $HEALTH_STATUS"
+          echo "⏱️ Response Time: ${{ needs.health-check.outputs.response-time }}ms"
+          
+          # Log status for tracking (in a real scenario, this would go to a monitoring system)
+          if [ "$HEALTH_STATUS" = "healthy" ]; then
+            echo "✅ System is operational"
+            echo "STATUS=UP" >> uptime.log
+          else
+            echo "❌ System is experiencing issues"
+            echo "STATUS=DOWN" >> uptime.log
+          fi
+          
+          echo "$(date -u +%s),$HEALTH_STATUS,${{ needs.health-check.outputs.response-time }}" >> metrics.csv
+          
+      - name: 📊 Upload uptime data
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: uptime-tracking-data
+          path: |
+            uptime.log
+            metrics.csv
+          retention-days: 30
+
+  # ================================================================
+  # MONITORING SUMMARY & ALERTS
+  # ================================================================
+  monitoring-summary:
+    name: 📋 Monitoring Summary
+    runs-on: ubuntu-latest
+    needs: [health-check, performance-check, api-functionality-check, uptime-tracking]
+    if: always()
+    
+    steps:
+      - name: 📋 Generate monitoring summary
+        run: |
+          echo "=== 📊 PRODUCTION MONITORING SUMMARY ==="
+          echo ""
+          echo "🕐 Monitoring Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          echo ""
+          echo "📊 Check Results:"
+          echo "  Health Check: ${{ needs.health-check.result }}"
+          echo "  Performance Check: ${{ needs.performance-check.result }}"
+          echo "  API Functionality: ${{ needs.api-functionality-check.result }}"
+          echo "  Uptime Tracking: ${{ needs.uptime-tracking.result }}"
+          echo ""
+          echo "🏥 Health Details:"
+          echo "  Status: ${{ needs.health-check.outputs.health-status }}"
+          echo "  Response Time: ${{ needs.health-check.outputs.response-time }}ms"
+          echo ""
+          
+          # Determine alert level
+          ALERT_LEVEL="INFO"
+          
+          if [[ "${{ needs.health-check.result }}" == "failure" ]]; then
+            ALERT_LEVEL="CRITICAL"
+            echo "🚨 CRITICAL ALERT: Production health check failed!"
+          elif [[ "${{ needs.performance-check.result }}" == "failure" ]]; then
+            ALERT_LEVEL="WARNING"
+            echo "⚠️ WARNING: Performance issues detected"
+          elif [[ "${{ needs.api-functionality-check.result }}" == "failure" ]]; then
+            ALERT_LEVEL="WARNING"
+            echo "⚠️ WARNING: API functionality issues detected"
+          else
+            echo "✅ All monitoring checks passed"
+          fi
+          
+          echo "🚨 Alert Level: $ALERT_LEVEL"
+          
+          # In a real implementation, this would trigger alerts to Slack, email, etc.
+          if [ "$ALERT_LEVEL" = "CRITICAL" ]; then
+            echo "🚨 Would trigger immediate alerts to on-call team"
+          elif [ "$ALERT_LEVEL" = "WARNING" ]; then
+            echo "⚠️ Would trigger warning notifications"
+          fi
+          
+      - name: 🔔 Status notification
+        run: |
+          echo "🔔 Monitoring cycle completed"
+          echo "📅 Next check: In 15 minutes (for health) or as scheduled"
+          echo "📊 Detailed reports available in job artifacts"

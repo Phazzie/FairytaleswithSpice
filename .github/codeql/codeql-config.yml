@@ -1,0 +1,26 @@
+name: "Fairytales with Spice CodeQL Config"
+
+disable-default-queries: false
+
+queries:
+  - uses: security-and-quality
+  - uses: security-extended
+
+paths-ignore:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/coverage/**"
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "**/*.d.ts"
+
+paths:
+  - "story-generator/src/**"
+  - "backend/src/**"
+  - "api/**"
+  - "!api/lib/**"  # Exclude shared libraries already tested
+
+packs:
+  - codeql/javascript-queries
+  - codeql/javascript-security-queries
