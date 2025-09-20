@@ -47,7 +47,7 @@ describe('StoryService', () => {
   describe('generateStory', () => {
     const mockInput: StoryGenerationSeam['input'] = {
       creature: 'vampire' as CreatureType,
-      themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
+      themes: ['romance', 'mystery'] as ThemeType[],
       userInput: 'Victorian setting',
       spicyLevel: 3 as SpicyLevel,
       wordCount: 900 as const
@@ -60,7 +60,7 @@ describe('StoryService', () => {
         title: "The Vampire's Forbidden Passion",
         content: '<h3>Chapter 1</h3><p>Story content...</p>',
         creature: 'vampire' as CreatureType,
-        themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
+        themes: ['romance', 'mystery'] as ThemeType[],
         spicyLevel: 3 as SpicyLevel,
         actualWordCount: 150,
         estimatedReadTime: 1,
@@ -80,7 +80,7 @@ describe('StoryService', () => {
         expect(response.data).toBeDefined();
         expect(response.data!.storyId).toBe('story_123');
         expect(response.data!.creature).toBe('vampire');
-        expect(response.data!.themes).toEqual(['forbidden_love', 'dark_secrets']);
+        expect(response.data!.themes).toEqual(['romance', 'mystery']);
       });
 
       const req = httpMock.expectOne('/api/generate-story');
@@ -251,7 +251,7 @@ describe('StoryService', () => {
         exportId: 'export_789',
         storyId: 'story_123',
         downloadUrl: 'https://storage.example.com/export_789.pdf',
-        filename: 'the-vampires-forbidden-passion.pdf',
+        filename: 'the-vampires-forbidden-adventure.pdf',
         format: 'pdf' as ExportFormat,
         fileSize: 2048000,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -302,7 +302,7 @@ describe('StoryService', () => {
         content: '<h3>Chapter 2</h3><p>Continuation...</p>',
         wordCount: 120,
         cliffhangerEnding: true,
-        themesContinued: ['forbidden_love', 'dark_secrets'] as ThemeType[],
+        themesContinued: ['romance', 'mystery'] as ThemeType[],
         spicyLevelMaintained: 3 as SpicyLevel,
         appendedToStory: '<h3>Chapter 1</h3><p>Existing content...</p>\n\n<hr>\n\n<h3>Chapter 2</h3><p>Continuation...</p>'
       },
@@ -337,7 +337,7 @@ describe('StoryService', () => {
     it('should handle empty error response', () => {
       const mockInput: StoryGenerationSeam['input'] = {
         creature: 'vampire' as CreatureType,
-        themes: ['passion'] as ThemeType[],
+        themes: ['adventure'] as ThemeType[],
         userInput: '',
         spicyLevel: 1 as SpicyLevel,
         wordCount: 700 as const
@@ -358,7 +358,7 @@ describe('StoryService', () => {
     it('should handle malformed error response', () => {
       const mockInput: StoryGenerationSeam['input'] = {
         creature: 'fairy' as CreatureType,
-        themes: ['desire'] as ThemeType[],
+        themes: ['comedy'] as ThemeType[],
         userInput: '',
         spicyLevel: 2 as SpicyLevel,
         wordCount: 900 as const
@@ -379,7 +379,7 @@ describe('StoryService', () => {
     it('should handle network timeout', () => {
       const mockInput: StoryGenerationSeam['input'] = {
         creature: 'werewolf' as CreatureType,
-        themes: ['lust'] as ThemeType[],
+        themes: ['dark'] as ThemeType[],
         userInput: 'Forest setting',
         spicyLevel: 4 as SpicyLevel,
         wordCount: 1200 as const
@@ -421,7 +421,7 @@ describe('StoryService', () => {
     it('should consistently log operations', () => {
       const mockStoryInput: StoryGenerationSeam['input'] = {
         creature: 'vampire' as CreatureType,
-        themes: ['passion'] as ThemeType[],
+        themes: ['adventure'] as ThemeType[],
         userInput: 'Test',
         spicyLevel: 1 as SpicyLevel,
         wordCount: 700 as const

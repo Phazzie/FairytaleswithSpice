@@ -64,17 +64,17 @@ describe('App', () => {
     it('should toggle themes correctly', () => {
       expect(component.selectedThemes.size).toBe(0);
       
-      component.toggleTheme('forbidden_love');
-      expect(component.selectedThemes.has('forbidden_love')).toBe(true);
+      component.toggleTheme('romance');
+      expect(component.selectedThemes.has('romance')).toBe(true);
       expect(component.selectedThemes.size).toBe(1);
       
-      component.toggleTheme('forbidden_love');
-      expect(component.selectedThemes.has('forbidden_love')).toBe(false);
+      component.toggleTheme('romance');
+      expect(component.selectedThemes.has('romance')).toBe(false);
       expect(component.selectedThemes.size).toBe(0);
     });
 
     it('should not allow more than 5 themes', () => {
-      const themes = ['forbidden_love', 'dark_secrets', 'passion', 'desire', 'lust', 'obsession'];
+      const themes = ['romance', 'mystery', 'adventure', 'comedy', 'dark', 'romance']; // 6 themes to test limit
       
       themes.forEach(theme => component.toggleTheme(theme));
       
@@ -114,8 +114,8 @@ describe('App', () => {
 
   describe('generateStory', () => {
     beforeEach(() => {
-      component.toggleTheme('forbidden_love');
-      component.toggleTheme('dark_secrets');
+      component.toggleTheme('romance');
+      component.toggleTheme('mystery');
     });
 
     it('should generate story successfully', () => {
@@ -126,7 +126,7 @@ describe('App', () => {
           title: 'Test Story',
           content: '<h3>Chapter 1</h3><p>Story content...</p>',
           creature: 'vampire' as CreatureType,
-          themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
+          themes: ['romance', 'mystery'] as ThemeType[],
           spicyLevel: 3 as SpicyLevel,
           actualWordCount: 150,
           estimatedReadTime: 1,
@@ -146,7 +146,7 @@ describe('App', () => {
       expect(component.isGenerating).toBe(true);
       expect(storyService.generateStory).toHaveBeenCalledWith({
         creature: 'vampire',
-        themes: ['forbidden_love', 'dark_secrets'],
+        themes: ['romance', 'mystery'],
         userInput: '',
         spicyLevel: 3,
         wordCount: 900
@@ -201,7 +201,7 @@ describe('App', () => {
           content: '<h3>Chapter 2</h3><p>New content...</p>',
           wordCount: 120,
           cliffhangerEnding: true,
-          themesContinued: ['forbidden_love'] as ThemeType[],
+          themesContinued: ['romance'] as ThemeType[],
           spicyLevelMaintained: 3 as SpicyLevel,
           appendedToStory: '<h3>Chapter 1</h3><p>Existing content...</p><hr><h3>Chapter 2</h3><p>New content...</p>'
         },
@@ -419,9 +419,9 @@ describe('App', () => {
     });
 
     it('should have correct theme options', () => {
-      expect(component.themes.length).toBe(18);
-      expect(component.themes.some(t => t.value === 'forbidden_love')).toBe(true);
-      expect(component.themes.some(t => t.value === 'passion')).toBe(true);
+      expect(component.themes.length).toBe(5);
+      expect(component.themes.some(t => t.value === 'romance')).toBe(true);
+      expect(component.themes.some(t => t.value === 'adventure')).toBe(true);
     });
 
     it('should have correct word count options', () => {
