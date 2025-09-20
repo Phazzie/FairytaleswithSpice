@@ -226,6 +226,19 @@ DIALOGUE FORMATTING (CRITICAL for audio generation):
   [Sarah, fearful but defiant]: "I'm not afraid of you!"
   [Narrator, intimate]: Her voice trembled despite her brave words, and she could feel his dark eyes piercing through her soul.
 
+EMOTION SYSTEM (52+ supported emotions):
+Basic emotions: neutral, happy, sad, angry, fearful, surprised, disgusted
+Romantic emotions: seductive, passionate, tender, lustful, romantic, intimate, yearning, breathless
+Complex emotions: anxious, excited, confident, nervous, amused, confused, determined, defiant, pleading, threatening, mocking, sarcastic, playful, serious, mysterious, sultry, whispering, shouting
+Supernatural emotions: otherworldly, ethereal, sinister, enchanting, hypnotic, predatory, protective, primal, magical, ancient
+Intensity variations: gentle, fierce, intense, subtle, bold, timid, aggressive, calm, wild, controlled
+
+Use emotions generously to enhance the audio experience:
+- [Character, breathless]: for passionate moments
+- [Character, whispering]: for intimate secrets
+- [Character, threatening]: for confrontations
+- [Narrator, mysterious]: for atmospheric descriptions
+
 CHARACTER VOICE PATTERNS:
 - Vampires: Elegant, formal speech with seductive undertones
 - Werewolves: Gruff, direct, protective, sometimes growling speech patterns  

@@ -16,7 +16,7 @@ import { DebugPanel } from './debug-panel/debug-panel';
 export class App implements OnInit, OnDestroy {
   protected readonly title = signal('story-generator');
   private isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
-  
+
   @ViewChild(DebugPanel) debugPanel!: DebugPanel;
 
   // Inject the services
@@ -101,7 +101,7 @@ export class App implements OnInit, OnDestroy {
       console.log('Added theme:', theme);
     }
     console.log('Current themes:', Array.from(this.selectedThemes));
-    
+
     // Force update by reassigning to trigger change detection
     this.selectedThemes = new Set(this.selectedThemes);
   }
@@ -168,7 +168,7 @@ export class App implements OnInit, OnDestroy {
           // Complete progress
           this.generationProgress = 100;
           this.generationStatus = 'Story generated successfully!';
-          
+
           // Store complete story data
           this.currentStory = response.data.content;
           this.currentStoryRaw = response.data.rawContent || response.data.content; // Fallback to regular content
@@ -177,7 +177,7 @@ export class App implements OnInit, OnDestroy {
           this.currentChapterCount = 1;
           this.currentStoryThemes = response.data.themes;
           this.currentStorySpicyLevel = response.data.spicyLevel;
-          
+
           this.isGenerating = false;
           this.errorLogging.logInfo('Story generation completed successfully', 'App.generateStory', {
             storyId: response.data.storyId,
@@ -199,7 +199,7 @@ export class App implements OnInit, OnDestroy {
         this.isGenerating = false;
         this.generationProgress = 0;
         this.generationStatus = 'Story generation failed';
-        
+
         // Reset error status after delay
         setTimeout(() => {
           this.generationStatus = '';
@@ -226,7 +226,7 @@ export class App implements OnInit, OnDestroy {
         this.generationProgress = step.progress;
         this.generationStatus = step.status;
         currentStep++;
-        
+
         setTimeout(executeNextStep, step.delay);
       }
     };
@@ -359,23 +359,23 @@ export class App implements OnInit, OnDestroy {
   }
 
   // ==================== DEBUG PANEL LIFECYCLE ====================
-  
+
   ngOnInit() {
     if (this.isBrowser) {
       this.setupKeyboardShortcuts();
     }
   }
-  
+
   ngOnDestroy() {
     if (this.isBrowser) {
       document.removeEventListener('keydown', this.handleKeyDown);
     }
   }
-  
+
   private setupKeyboardShortcuts() {
     document.addEventListener('keydown', this.handleKeyDown.bind(this));
   }
-  
+
   private handleKeyDown(event: KeyboardEvent) {
     // Ctrl+Shift+D to toggle debug panel
     if (event.ctrlKey && event.shiftKey && event.key === 'D') {
@@ -387,7 +387,7 @@ export class App implements OnInit, OnDestroy {
   }
 
   // ==================== DEBUG METHODS FOR ERROR LOGGING DEMO ====================
-  
+
   testErrorLogging() {
     // Simulate different types of errors for demonstration
     this.errorLogging.logInfo('Demo info message', 'App.testErrorLogging', { action: 'demo_test' });

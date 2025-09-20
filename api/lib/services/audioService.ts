@@ -12,6 +12,72 @@ export class AudioService {
     neutral: process.env.ELEVENLABS_VOICE_NEUTRAL || '21m00Tcm4TlvDq8ikWAM' // Rachel
   };
 
+  // Comprehensive emotion to voice settings mapping
+  private emotionVoiceSettings = {
+    // Basic emotions
+    'neutral': { stability: 0.7, similarity_boost: 0.8, style: 0.2 },
+    'happy': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
+    'sad': { stability: 0.8, similarity_boost: 0.9, style: 0.6 },
+    'angry': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
+    'fearful': { stability: 0.2, similarity_boost: 0.5, style: 0.7 },
+    'surprised': { stability: 0.1, similarity_boost: 0.6, style: 0.9 },
+    'disgusted': { stability: 0.6, similarity_boost: 0.7, style: 0.5 },
+    
+    // Romantic/intimate emotions
+    'seductive': { stability: 0.2, similarity_boost: 0.7, style: 0.8 },
+    'passionate': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
+    'tender': { stability: 0.8, similarity_boost: 0.9, style: 0.4 },
+    'lustful': { stability: 0.1, similarity_boost: 0.5, style: 1.0 },
+    'romantic': { stability: 0.5, similarity_boost: 0.8, style: 0.7 },
+    'intimate': { stability: 0.6, similarity_boost: 0.8, style: 0.6 },
+    'yearning': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
+    'breathless': { stability: 0.2, similarity_boost: 0.6, style: 0.9 },
+    
+    // Complex emotional states
+    'anxious': { stability: 0.2, similarity_boost: 0.5, style: 0.8 },
+    'excited': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
+    'confident': { stability: 0.6, similarity_boost: 0.8, style: 0.5 },
+    'nervous': { stability: 0.1, similarity_boost: 0.4, style: 0.7 },
+    'amused': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
+    'confused': { stability: 0.3, similarity_boost: 0.6, style: 0.6 },
+    'determined': { stability: 0.7, similarity_boost: 0.8, style: 0.6 },
+    'defiant': { stability: 0.4, similarity_boost: 0.6, style: 0.8 },
+    'pleading': { stability: 0.3, similarity_boost: 0.7, style: 0.9 },
+    'threatening': { stability: 0.5, similarity_boost: 0.7, style: 0.8 },
+    'mocking': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
+    'sarcastic': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
+    'playful': { stability: 0.3, similarity_boost: 0.7, style: 0.9 },
+    'serious': { stability: 0.8, similarity_boost: 0.9, style: 0.3 },
+    'mysterious': { stability: 0.6, similarity_boost: 0.8, style: 0.7 },
+    'sultry': { stability: 0.2, similarity_boost: 0.6, style: 0.9 },
+    'whispering': { stability: 0.9, similarity_boost: 0.9, style: 0.2 },
+    'shouting': { stability: 0.1, similarity_boost: 0.4, style: 1.0 },
+    
+    // Supernatural/fantasy emotions
+    'otherworldly': { stability: 0.3, similarity_boost: 0.5, style: 0.9 },
+    'ethereal': { stability: 0.7, similarity_boost: 0.6, style: 0.8 },
+    'sinister': { stability: 0.4, similarity_boost: 0.6, style: 0.8 },
+    'enchanting': { stability: 0.4, similarity_boost: 0.7, style: 0.9 },
+    'hypnotic': { stability: 0.5, similarity_boost: 0.8, style: 0.7 },
+    'predatory': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
+    'protective': { stability: 0.6, similarity_boost: 0.8, style: 0.5 },
+    'primal': { stability: 0.2, similarity_boost: 0.5, style: 1.0 },
+    'magical': { stability: 0.4, similarity_boost: 0.6, style: 0.8 },
+    'ancient': { stability: 0.8, similarity_boost: 0.9, style: 0.4 },
+    
+    // Intensity variations
+    'gentle': { stability: 0.8, similarity_boost: 0.9, style: 0.3 },
+    'fierce': { stability: 0.2, similarity_boost: 0.5, style: 1.0 },
+    'intense': { stability: 0.3, similarity_boost: 0.6, style: 0.9 },
+    'subtle': { stability: 0.9, similarity_boost: 0.9, style: 0.1 },
+    'bold': { stability: 0.4, similarity_boost: 0.7, style: 0.8 },
+    'timid': { stability: 0.8, similarity_boost: 0.8, style: 0.3 },
+    'aggressive': { stability: 0.2, similarity_boost: 0.5, style: 0.9 },
+    'calm': { stability: 0.9, similarity_boost: 0.9, style: 0.2 },
+    'wild': { stability: 0.1, similarity_boost: 0.4, style: 1.0 },
+    'controlled': { stability: 0.8, similarity_boost: 0.9, style: 0.3 }
+  };
+
   constructor() {
     if (!this.elevenLabsApiKey) {
       console.warn('⚠️  ELEVENLABS_API_KEY not found in environment variables');
@@ -26,11 +92,19 @@ export class AudioService {
       // This allows us to process speaker-tagged content for multi-voice audio
       const sourceContent = (input as any).rawContent || input.content;
       
-      // Clean HTML content for text-to-speech
-      const cleanText = this.cleanHtmlForTTS(sourceContent);
-
-      // Generate audio using ElevenLabs
-      const audioData = await this.callElevenLabsAPI(cleanText, input);
+      // Check if content has speaker tags for multi-voice processing
+      const hasSpaekerTags = sourceContent.includes('[') && sourceContent.includes(']:');
+      
+      let audioData: Buffer;
+      
+      if (hasSpaekerTags) {
+        // Process with multi-voice and emotion support
+        audioData = await this.processMultiVoiceAudio(sourceContent, input);
+      } else {
+        // Standard single-voice processing
+        const cleanText = this.cleanHtmlForTTS(sourceContent);
+        audioData = await this.callElevenLabsAPI(cleanText, input);
+      }
 
       // Upload to storage and get URL (mock implementation)
       const audioUrl = await this.uploadAudioToStorage(audioData, input);
@@ -40,7 +114,7 @@ export class AudioService {
         audioId: this.generateAudioId(),
         storyId: input.storyId,
         audioUrl: audioUrl,
-        duration: this.estimateDuration(cleanText),
+        duration: this.estimateDuration(this.cleanHtmlForTTS(sourceContent)),
         fileSize: audioData.length,
         format: input.format || 'mp3',
         voice: input.voice || 'female',
@@ -92,6 +166,90 @@ export class AudioService {
     }
   }
 
+  private async processMultiVoiceAudio(taggedContent: string, input: AudioConversionSeam['input']): Promise<Buffer> {
+    // Split content by speaker tags and process each segment with appropriate voice and emotion
+    const segments = this.splitBySpeakerTags(taggedContent);
+    const audioSegments: Buffer[] = [];
+    
+    for (const segment of segments) {
+      if (!segment.text.trim()) continue;
+      
+      // Determine voice for this speaker
+      const voice = this.getVoiceForSpeaker(segment.speaker, input.voice || 'female');
+      
+      // Create input for this segment
+      const segmentInput = {
+        ...input,
+        voice: voice as any
+      };
+      
+      // Generate audio with emotion
+      const segmentAudio = await this.callElevenLabsAPIWithEmotion(
+        segment.text,
+        segmentInput,
+        segment.emotion
+      );
+      
+      audioSegments.push(segmentAudio);
+      
+      // Add small pause between speakers (except for last segment)
+      if (segments.indexOf(segment) < segments.length - 1) {
+        const pauseAudio = this.generatePauseAudio(0.3); // 300ms pause
+        audioSegments.push(pauseAudio);
+      }
+    }
+    
+    // Combine all audio segments
+    return this.combineAudioBuffers(audioSegments);
+  }
+
+  private splitBySpeakerTags(content: string): Array<{ speaker: string; emotion?: string; text: string }> {
+    const segments: Array<{ speaker: string; emotion?: string; text: string }> = [];
+    
+    // Split by speaker tags using regex
+    const parts = content.split(/(\[[^\]]+\]:)/);
+    
+    let currentSpeaker = 'Narrator';
+    let currentEmotion: string | undefined;
+    
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim();
+      
+      if (part.match(/^\[[^\]]+\]:$/)) {
+        // This is a speaker tag
+        const parsed = this.extractEmotionFromSpeakerTag(part);
+        currentSpeaker = parsed.speaker;
+        currentEmotion = parsed.emotion;
+      } else if (part && !part.match(/^\[[^\]]+\]:$/)) {
+        // This is text content
+        segments.push({
+          speaker: currentSpeaker,
+          emotion: currentEmotion,
+          text: this.optimizeForSpeech(part)
+        });
+      }
+    }
+    
+    return segments.filter(seg => seg.text.trim().length > 0);
+  }
+
+  private generatePauseAudio(durationSeconds: number): Buffer {
+    // Generate silent audio buffer for pauses between speakers
+    const sampleRate = 44100;
+    const channels = 2;
+    const bitsPerSample = 16;
+    const numSamples = Math.floor(durationSeconds * sampleRate);
+    
+    // Create buffer filled with zeros (silence)
+    return Buffer.alloc(numSamples * channels * (bitsPerSample / 8));
+  }
+
+  private combineAudioBuffers(buffers: Buffer[]): Buffer {
+    // Simple concatenation of audio buffers
+    // In a real implementation, you might want to handle audio headers properly
+    return Buffer.concat(buffers);
+  }
+
   private async callElevenLabsAPI(text: string, input: AudioConversionSeam['input']): Promise<Buffer> {
     if (!this.elevenLabsApiKey) {
       // Return mock audio data if no API key
@@ -130,6 +288,141 @@ export class AudioService {
       console.error('ElevenLabs API error:', error.response?.data || error.message);
       throw error;
     }
+  }
+
+  private async callElevenLabsAPIWithEmotion(text: string, input: AudioConversionSeam['input'], emotion?: string): Promise<Buffer> {
+    if (!this.elevenLabsApiKey) {
+      // Return mock audio data if no API key
+      return this.generateMockAudioData(text);
+    }
+
+    const voiceId = this.voiceIds[input.voice || 'female'];
+    
+    // Get emotion-specific voice settings
+    const emotionKey = emotion?.toLowerCase() as keyof typeof this.emotionVoiceSettings;
+    const emotionSettings = emotionKey ? this.emotionVoiceSettings[emotionKey] : null;
+    const defaultSettings = {
+      stability: 0.5,
+      similarity_boost: 0.8,
+      style: 0.5,
+      use_speaker_boost: true
+    };
+
+    const voiceSettings = emotionSettings 
+      ? { ...defaultSettings, ...emotionSettings, use_speaker_boost: true }
+      : defaultSettings;
+
+    try {
+      const response = await axios.post(
+        `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
+        {
+          text: text,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: voiceSettings
+        },
+        {
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': this.elevenLabsApiKey
+          },
+          responseType: 'arraybuffer',
+          timeout: 60000 // 60 seconds timeout
+        }
+      );
+
+      return Buffer.from(response.data);
+
+    } catch (error: any) {
+      console.error('ElevenLabs API error:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  private extractEmotionFromSpeakerTag(speakerTag: string): { speaker: string; emotion?: string } {
+    // Parse speaker tags like:
+    // [Character Name]: normal speech
+    // [Character Name, emotion]: emotional speech
+    // [Narrator]: descriptive text
+    // [Narrator, intimate]: intimate narration
+    
+    const match = speakerTag.match(/\[([^,\]]+)(?:,\s*([^,\]]+))?\]/);
+    
+    if (match) {
+      const speaker = match[1].trim();
+      const emotion = match[2] ? match[2].trim() : undefined;
+      return { speaker, emotion };
+    }
+    
+    return { speaker: speakerTag };
+  }
+
+  private getVoiceForSpeaker(speaker: string, fallbackVoice: string = 'female'): string {
+    // Map different speaker types to appropriate voices
+    const speakerLower = speaker.toLowerCase();
+    
+    // Narrator always uses neutral voice
+    if (speakerLower.includes('narrator')) {
+      return 'neutral';
+    }
+    
+    // Character voice assignment based on creature type and gender cues
+    if (speakerLower.includes('vampire') || speakerLower.includes('lord') || 
+        speakerLower.includes('king') || speakerLower.includes('duke') ||
+        speakerLower.includes('prince') || speakerLower.includes('master')) {
+      return 'male';
+    }
+    
+    if (speakerLower.includes('werewolf') || speakerLower.includes('alpha') ||
+        speakerLower.includes('beta') || speakerLower.includes('pack')) {
+      return 'male';
+    }
+    
+    if (speakerLower.includes('fairy') || speakerLower.includes('fae') ||
+        speakerLower.includes('lady') || speakerLower.includes('queen') ||
+        speakerLower.includes('duchess') || speakerLower.includes('princess')) {
+      return 'female';
+    }
+    
+    // Common female names and titles
+    const femaleNames = ['sarah', 'emma', 'aria', 'luna', 'aurora', 'isabelle', 'elena', 'sophia'];
+    const maleNames = ['drake', 'alexander', 'damien', 'gabriel', 'lucien', 'adrian', 'marcus', 'sebastian'];
+    
+    if (femaleNames.some(name => speakerLower.includes(name))) {
+      return 'female';
+    }
+    
+    if (maleNames.some(name => speakerLower.includes(name))) {
+      return 'male';
+    }
+    
+    return fallbackVoice;
+  }
+
+  private getSupportedEmotions(): string[] {
+    return Object.keys(this.emotionVoiceSettings);
+  }
+
+  // Public method to get emotion information for frontend/debugging
+  public getEmotionInfo() {
+    const emotions = this.getSupportedEmotions();
+    return {
+      totalEmotions: emotions.length,
+      categories: {
+        basic: ['neutral', 'happy', 'sad', 'angry', 'fearful', 'surprised', 'disgusted'],
+        romantic: ['seductive', 'passionate', 'tender', 'lustful', 'romantic', 'intimate', 'yearning', 'breathless'],
+        complex: ['anxious', 'excited', 'confident', 'nervous', 'amused', 'confused', 'determined', 'defiant', 'pleading', 'threatening', 'mocking', 'sarcastic', 'playful', 'serious', 'mysterious', 'sultry', 'whispering', 'shouting'],
+        supernatural: ['otherworldly', 'ethereal', 'sinister', 'enchanting', 'hypnotic', 'predatory', 'protective', 'primal', 'magical', 'ancient'],
+        intensity: ['gentle', 'fierce', 'intense', 'subtle', 'bold', 'timid', 'aggressive', 'calm', 'wild', 'controlled']
+      },
+      allEmotions: emotions,
+      exampleUsage: [
+        '[Character, seductive]: "Come closer..."',
+        '[Narrator, mysterious]: The shadows seemed to move...',
+        '[Vampire Lord, threatening]: "You will regret this."',
+        '[Sarah, breathless]: "I can\'t... I can\'t resist..."'
+      ]
+    };
   }
 
   private async uploadAudioToStorage(audioData: Buffer, input: AudioConversionSeam['input']): Promise<string> {
