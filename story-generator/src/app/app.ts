@@ -47,6 +47,8 @@ export class App implements OnInit, OnDestroy {
   currentStorySpicyLevel: number = 3;
 
   // Progress tracking
+  generationProgress: number = 0;
+  generationStatus: string = '';
   audioProgress: number = 0;
   saveSuccess: boolean = false;
   audioSuccess: boolean = false;
@@ -135,6 +137,8 @@ export class App implements OnInit, OnDestroy {
     }
 
     this.isGenerating = true;
+    this.generationProgress = 0;
+    this.generationStatus = 'Preparing your story...';
     this.currentStory = '';
     this.saveSuccess = false;
     this.audioSuccess = false;
@@ -145,6 +149,9 @@ export class App implements OnInit, OnDestroy {
       spicyLevel: this.spicyLevel,
       wordCount: this.wordCount
     });
+
+    // Start progress simulation
+    this.simulateGenerationProgress();
 
     const request: StoryGenerationSeam['input'] = {
       creature: this.selectedCreature as any,
@@ -157,6 +164,10 @@ export class App implements OnInit, OnDestroy {
     this.storyService.generateStory(request).subscribe({
       next: (response) => {
         if (response.success && response.data) {
+          // Complete progress
+          this.generationProgress = 100;
+          this.generationStatus = 'Story generated successfully!';
+          
           // Store complete story data
           this.currentStory = response.data.content;
           this.currentStoryId = response.data.storyId;
@@ -170,6 +181,12 @@ export class App implements OnInit, OnDestroy {
             storyId: response.data.storyId,
             wordCount: response.data.actualWordCount
           });
+
+          // Reset progress after a short delay
+          setTimeout(() => {
+            this.generationProgress = 0;
+            this.generationStatus = '';
+          }, 2000);
         }
       },
       error: (error) => {
@@ -178,8 +195,41 @@ export class App implements OnInit, OnDestroy {
           userAction: 'story_generation'
         });
         this.isGenerating = false;
+        this.generationProgress = 0;
+        this.generationStatus = 'Story generation failed';
+        
+        // Reset error status after delay
+        setTimeout(() => {
+          this.generationStatus = '';
+        }, 3000);
       }
     });
+  }
+
+  private simulateGenerationProgress() {
+    // Simulate realistic story generation progress
+    const steps = [
+      { progress: 10, status: 'Analyzing your preferences...', delay: 300 },
+      { progress: 25, status: 'Creating character profiles...', delay: 800 },
+      { progress: 40, status: 'Building the world...', delay: 1200 },
+      { progress: 60, status: 'Crafting the plot...', delay: 1500 },
+      { progress: 80, status: 'Adding spicy details...', delay: 1000 },
+      { progress: 90, status: 'Polishing the narrative...', delay: 500 }
+    ];
+
+    let currentStep = 0;
+    const executeNextStep = () => {
+      if (currentStep < steps.length && this.isGenerating) {
+        const step = steps[currentStep];
+        this.generationProgress = step.progress;
+        this.generationStatus = step.status;
+        currentStep++;
+        
+        setTimeout(executeNextStep, step.delay);
+      }
+    };
+
+    setTimeout(executeNextStep, 500);
   }
 
   generateNextChapter() {

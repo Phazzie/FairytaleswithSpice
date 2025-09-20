@@ -278,6 +278,51 @@ select:focus {
   to { transform: rotate(360deg); }
 }
 
+/* Story Generation Progress */
+.generation-progress {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 10px;
+  border-left: 4px solid #667eea;
+}
+
+.generation-progress .progress-label {
+  font-size: 0.9rem;
+  color: #667eea;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.generation-progress .progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(102, 126, 234, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.generation-progress .progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.generation-progress .progress-percentage {
+  text-align: right;
+  font-size: 0.8rem;
+  color: #667eea;
+  font-weight: 600;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 /* Story Section */
 .story-column {
   display: flex;

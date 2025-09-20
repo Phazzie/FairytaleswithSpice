@@ -35,19 +35,23 @@ export class StoryService {
       }
 
       // Generate story using Grok AI
-      const storyContent = await this.callGrokAI(input);
+      const rawStoryContent = await this.callGrokAI(input);
+
+      // Process content: keep raw version for audio, clean version for display
+      const displayContent = this.stripSpeakerTagsForDisplay(rawStoryContent);
 
       // Create response
       const output: StoryGenerationSeam['output'] = {
         storyId: this.generateStoryId(),
         title: this.generateTitle(input),
-        content: storyContent,
+        content: displayContent, // Clean content for user display
+        rawContent: rawStoryContent, // Tagged content for audio processing
         creature: input.creature,
         themes: input.themes,
         spicyLevel: input.spicyLevel,
-        actualWordCount: this.countWords(storyContent),
-        estimatedReadTime: Math.ceil(this.countWords(storyContent) / 200),
-        hasCliffhanger: this.detectCliffhanger(storyContent),
+        actualWordCount: this.countWords(displayContent),
+        estimatedReadTime: Math.ceil(this.countWords(displayContent) / 200),
+        hasCliffhanger: this.detectCliffhanger(displayContent),
         generatedAt: new Date()
       };
 
@@ -451,23 +455,135 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
   }
 
   private formatStoryContent(content: string): string {
-    // Add basic HTML formatting if not already present
+    // Enhanced formatting for better readability
+    let formatted = content;
+
+    // If no HTML formatting exists, apply smart formatting
     if (!content.includes('<h3>') && !content.includes('<p>')) {
-      return `<h3>Generated Story</h3>\n\n<p>${content.replace(/\n\n/g, '</p>\n\n<p>')}</p>`;
+      // Extract title if present (first line typically)
+      const lines = content.split('\n').filter(line => line.trim());
+      const firstLine = lines[0]?.trim();
+      
+      // Check if first line looks like a title (short, no punctuation except colon)
+      const isTitle = firstLine && firstLine.length < 80 && !firstLine.endsWith('.') && !firstLine.startsWith('[');
+      
+      if (isTitle) {
+        formatted = `<h3>${firstLine}</h3>\n\n` + lines.slice(1).join('\n');
+      }
+
+      // Split into paragraphs based on multiple newlines or speaker changes
+      formatted = formatted
+        .replace(/\n\s*\n/g, '\n\n') // Normalize line breaks
+        .split('\n\n')
+        .filter(para => para.trim())
+        .map(para => para.trim())
+        .map(para => {
+          // Skip if already has HTML tags
+          if (para.includes('<')) return para;
+          
+          // Wrap in paragraph tags
+          return `<p>${para}</p>`;
+        })
+        .join('\n\n');
     }
-    return content;
+
+    return formatted;
   }
 
   private formatChapterContent(content: string): string {
-    // Add basic HTML formatting if not already present
+    // Enhanced chapter formatting to match story formatting
+    let formatted = content;
+
+    // If no HTML formatting exists, apply smart formatting
     if (!content.includes('<h3>') && !content.includes('<p>')) {
-      return `<p>${content.replace(/\n\n/g, '</p>\n\n<p>')}</p>`;
+      // Split into paragraphs based on multiple newlines
+      formatted = formatted
+        .replace(/\n\s*\n/g, '\n\n') // Normalize line breaks
+        .split('\n\n')
+        .filter(para => para.trim())
+        .map(para => para.trim())
+        .map(para => {
+          // Skip if already has HTML tags
+          if (para.includes('<')) return para;
+          
+          // Wrap in paragraph tags
+          return `<p>${para}</p>`;
+        })
+        .join('\n\n');
     }
-    return content;
+
+    return formatted;
   }
 
   private stripHtml(content: string): string {
     return content.replace(/<[^>]*>/g, '');
+  }
+
+  private stripSpeakerTagsForDisplay(content: string): string {
+    // Enhanced speaker tag removal with better text formatting
+    let displayContent = content;
+
+    // Remove speaker tags but preserve structure
+    displayContent = displayContent
+      .replace(/\[([^\]]+?)\]:\s*/g, '') // Remove speaker tags like [Narrator]: [Character, emotion]:
+      .replace(/\n\s*\n/g, '\n\n') // Normalize multiple newlines
+      .trim();
+
+    // Smart paragraph creation based on content structure
+    const lines = displayContent.split('\n').filter(line => line.trim());
+    const paragraphs = [];
+    let currentParagraph = '';
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Empty line indicates paragraph break
+      if (!trimmedLine) {
+        if (currentParagraph) {
+          paragraphs.push(currentParagraph.trim());
+          currentParagraph = '';
+        }
+        continue;
+      }
+
+      // Start new paragraph for dialogue or narrative shifts
+      const isDialogue = trimmedLine.startsWith('"') || trimmedLine.includes('"');
+      const isNarrativeShift = trimmedLine.length < 50 && (
+        trimmedLine.includes('Later') || 
+        trimmedLine.includes('Meanwhile') || 
+        trimmedLine.includes('Suddenly') ||
+        trimmedLine.includes('Then') ||
+        /^(The|As|But|However|Still)/i.test(trimmedLine)
+      );
+
+      if (currentParagraph && (isNarrativeShift || (isDialogue && !currentParagraph.includes('"')))) {
+        paragraphs.push(currentParagraph.trim());
+        currentParagraph = trimmedLine;
+      } else {
+        currentParagraph += (currentParagraph ? ' ' : '') + trimmedLine;
+      }
+    }
+
+    // Add final paragraph
+    if (currentParagraph) {
+      paragraphs.push(currentParagraph.trim());
+    }
+
+    // Format paragraphs with proper HTML
+    const formattedParagraphs = paragraphs
+      .filter(para => para.length > 0)
+      .map(para => {
+        // Clean up any extra spacing
+        para = para.replace(/\s+/g, ' ').trim();
+        
+        // Wrap in paragraph tags if not already formatted
+        if (!para.startsWith('<') && !para.includes('<p>')) {
+          return `<p>${para}</p>`;
+        }
+        return para;
+      });
+
+    return formattedParagraphs.join('\n\n');
   }
 
   private generateStoryId(): string {

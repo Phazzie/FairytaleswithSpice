@@ -87,9 +87,18 @@
         <span *ngIf="!isGenerating && !canGenerateStory()">❌ Select at least one theme</span>
         <span *ngIf="isGenerating" class="loading">
           <span class="spinner"></span>
-          Crafting your tale...
+          {{ generationStatus || 'Crafting your tale...' }}
         </span>
       </button>
+
+      <!-- Story Generation Progress -->
+      <div class="generation-progress" *ngIf="isGenerating && generationProgress > 0">
+        <div class="progress-label">{{ generationStatus }}</div>
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width.%]="generationProgress"></div>
+        </div>
+        <div class="progress-percentage">{{ generationProgress }}%</div>
+      </div>
     </div>
 
     <!-- Right Column: Story Display -->

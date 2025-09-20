@@ -39,32 +39,16 @@
       </div>
     </div>
 
-    <!-- Sample Story Generation Section -->
+    <!-- API Test Section -->
     <div class="debug-section">
-      <h4>📚 Generate Sample Stories</h4>
+      <h4>� API Test</h4>
       <div class="sample-stories">
         <button 
           class="debug-btn story-btn" 
-          (click)="generateSampleStory(200)"
-          [disabled]="generating200">
-          <span *ngIf="generating200">⏳ Generating...</span>
-          <span *ngIf="!generating200">📖 Generate 200 Words</span>
-        </button>
-        
-        <button 
-          class="debug-btn story-btn" 
-          (click)="generateSampleStory(400)"
-          [disabled]="generating400">
-          <span *ngIf="generating400">⏳ Generating...</span>
-          <span *ngIf="!generating400">📚 Generate 400 Words</span>
-        </button>
-        
-        <button 
-          class="debug-btn story-btn" 
-          (click)="generateSampleStory(800)"
-          [disabled]="generating800">
-          <span *ngIf="generating800">⏳ Generating...</span>
-          <span *ngIf="!generating800">📜 Generate 800 Words</span>
+          (click)="testAPIConnection()"
+          [disabled]="testingAPI">
+          <span *ngIf="testingAPI">⏳ Testing...</span>
+          <span *ngIf="!testingAPI">� Test API Connection</span>
         </button>
       </div>
     </div>

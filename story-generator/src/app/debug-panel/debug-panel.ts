@@ -10,6 +10,13 @@ interface DebugError {
   message: string;
   details?: any;
   endpoint?: string;
+  severity: 'info' | 'warning' | 'error' | 'critical';
+  userAgent?: string;
+  url?: string;
+  stackTrace?: string;
+  httpStatus?: number;
+  requestHeaders?: any;
+  responseHeaders?: any;
 }
 
 interface HealthCheckResponse {
@@ -60,10 +67,8 @@ export class DebugPanel implements OnInit, OnDestroy {
     buildMode: 'development'
   };
   
-  // Sample story generation states
-  generating200 = false;
-  generating400 = false;
-  generating800 = false;
+  // API test state
+  testingAPI = false;
   
   private networkCheckInterval?: number;
   
@@ -140,52 +145,58 @@ export class DebugPanel implements OnInit, OnDestroy {
   
   // ==================== SAMPLE STORY GENERATION ====================
   
-  generateSampleStory(wordCount: 200 | 400 | 800) {
-    const stateMap = {
-      200: 'generating200',
-      400: 'generating400', 
-      800: 'generating800'
-    };
+  testAPIConnection() {
+    this.testingAPI = true;
     
-    (this as any)[stateMap[wordCount]] = true;
+    // Simple health check test
+    this.checkApiHealth();
     
-    const sampleInput: StoryGenerationSeam['input'] = {
-      creature: 'vampire',
-      themes: ['forbidden_love'],
-      userInput: `Debug test story - ${wordCount} words`,
-      spicyLevel: 3,
-      wordCount: wordCount === 200 ? 700 : wordCount === 400 ? 900 : 1200 // Map to available options
-    };
-    
-    this.storyService.generateStory(sampleInput).subscribe({
-      next: (response) => {
-        (this as any)[stateMap[wordCount]] = false;
-        if (response.success && response.data) {
-          this.addError('API', `✅ Sample story (${wordCount} words) generated successfully`, response.data, '/api/story/generate');
-        } else {
-          this.addError('API', `❌ Sample story generation failed: ${response.error?.message}`, response.error, '/api/story/generate');
-        }
-      },
-      error: (error) => {
-        (this as any)[stateMap[wordCount]] = false;
-        this.addError('API', `Sample story (${wordCount} words) generation error: ${error.message}`, error, '/api/story/generate');
+    // Set a timeout to reset the testing state
+    setTimeout(() => {
+      this.testingAPI = false;
+      if (this.healthStatus === 'healthy') {
+        this.addError('API', '✅ API connection test successful', this.healthResponse, '/api/health');
+      } else {
+        this.addError('API', '❌ API connection test failed - API not responding', null, '/api/health');
       }
-    });
+    }, 3000);
   }
   
   // ==================== ERROR MANAGEMENT ====================
   
-  private addError(type: DebugError['type'], message: string, details?: any, endpoint?: string) {
+  private addError(type: DebugError['type'], message: string, details?: any, endpoint?: string, severity: DebugError['severity'] = 'error') {
     const error: DebugError = {
       timestamp: new Date(),
       type,
       message,
       details,
-      endpoint
+      endpoint,
+      severity,
+      userAgent: this.isBrowser ? navigator.userAgent : 'SSR',
+      url: this.isBrowser ? window.location.href : 'SSR',
+      stackTrace: new Error().stack,
+      httpStatus: details?.status || details?.response?.status,
+      requestHeaders: details?.config?.headers,
+      responseHeaders: details?.response?.headers
     };
     
     this.errors.unshift(error); // Add to beginning
     this.saveErrors();
+    
+    // Enhanced console logging based on severity
+    const logMessage = `[${type}] ${message}`;
+    switch (severity) {
+      case 'critical':
+      case 'error':
+        console.error(logMessage, details);
+        break;
+      case 'warning':
+        console.warn(logMessage, details);
+        break;
+      case 'info':
+        console.info(logMessage, details);
+        break;
+    }
     
     // Limit to 100 errors
     if (this.errors.length > 100) {
