@@ -47,6 +47,10 @@ export class App implements OnInit, OnDestroy {
   currentStoryThemes: string[] = [];
   currentStorySpicyLevel: number = 3;
 
+  // Audio data
+  currentAudioUrl: string = '';
+  currentAudioDuration: number = 0;
+
   // Progress tracking
   generationProgress: number = 0;
   generationStatus: string = '';
@@ -143,6 +147,10 @@ export class App implements OnInit, OnDestroy {
     this.currentStory = '';
     this.saveSuccess = false;
     this.audioSuccess = false;
+    
+    // Clear audio data when generating new story
+    this.currentAudioUrl = '';
+    this.currentAudioDuration = 0;
 
     this.errorLogging.logInfo('User initiated story generation', 'App.generateStory', {
       creature: this.selectedCreature,
@@ -296,6 +304,11 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
+          
+          // Store audio data
+          this.currentAudioUrl = response.data.audioUrl;
+          this.currentAudioDuration = response.data.duration;
+          
           this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
             audioId: response.data.audioId,
             duration: response.data.duration,
@@ -356,6 +369,12 @@ export class App implements OnInit, OnDestroy {
   getCreatureName(): string {
     const creature = this.creatures.find(c => c.value === this.selectedCreature);
     return creature ? creature.label.split(' ')[1] : 'Creature';
+  }
+
+  formatDuration(seconds: number): string {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   }
 
   // ==================== DEBUG PANEL LIFECYCLE ====================

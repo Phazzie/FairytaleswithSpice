@@ -30,7 +30,7 @@ export class StoryService {
     this.errorLogging.logInfo('Starting story generation', 'StoryService.generateStory', { input });
     
     return this.http.post<ApiResponse<StoryGenerationSeam['output']>>(
-      `${this.apiUrl}/generate-story`,
+      `${this.apiUrl}/story/generate`,
       input
     ).pipe(
       tap(response => {
@@ -47,7 +47,7 @@ export class StoryService {
     this.errorLogging.logInfo('Starting audio conversion', 'StoryService.convertToAudio', { storyId: input.storyId });
     
     return this.http.post<ApiResponse<AudioConversionSeam['output']>>(
-      `${this.apiUrl}/convert-audio`,
+      `${this.apiUrl}/audio/convert`,
       input
     ).pipe(
       tap(response => {
@@ -64,7 +64,7 @@ export class StoryService {
     this.errorLogging.logInfo('Starting story save/export', 'StoryService.saveStory', { storyId: input.storyId, format: input.format });
     
     return this.http.post<ApiResponse<SaveExportSeam['output']>>(
-      `${this.apiUrl}/save-story`,
+      `${this.apiUrl}/export/save`,
       input
     ).pipe(
       tap(response => {
@@ -81,7 +81,7 @@ export class StoryService {
     this.errorLogging.logInfo('Starting chapter continuation', 'StoryService.generateNextChapter', { storyId: input.storyId });
     
     return this.http.post<ApiResponse<ChapterContinuationSeam['output']>>(
-      `${this.apiUrl}/continue-story`,
+      `${this.apiUrl}/story/continue`,
       input
     ).pipe(
       tap(response => {
