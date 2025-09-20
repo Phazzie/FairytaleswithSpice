@@ -87,16 +87,17 @@ class AudioService {
             return this.generateMockAudioData(text);
         }
         const voiceId = this.voiceIds[input.voice || 'female'];
+        // Detect emotions in the text and get appropriate voice settings
+        const detectedEmotions = this.detectEmotion(text);
+        // Use the first detected emotion for voice settings, fallback to neutral
+        const primaryEmotion = detectedEmotions.length > 0 ? detectedEmotions[0].emotion : 'neutral';
+        const voiceSettings = this.getEmotionalVoiceSettings(primaryEmotion);
+        console.log(`🎭 Detected emotion: ${primaryEmotion} for audio generation`);
         try {
             const response = await axios_1.default.post(`${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`, {
                 text: text,
                 model_id: 'eleven_monolingual_v1',
-                voice_settings: {
-                    stability: 0.5,
-                    similarity_boost: 0.8,
-                    style: 0.5,
-                    use_speaker_boost: true
-                }
+                voice_settings: voiceSettings
             }, {
                 headers: {
                     'Accept': 'audio/mpeg',
@@ -112,6 +113,120 @@ class AudioService {
             console.error('ElevenLabs API error:', error.response?.data || error.message);
             throw error;
         }
+    }
+    /**
+     * Detects emotion from text containing emotion tags in format: [Character, emotion]: "dialogue"
+     * Also attempts to infer emotion from context if no explicit tags are found
+     */
+    detectEmotion(text) {
+        const emotions = [];
+        // Regex to match emotion tags: [Character Name, emotion]: "dialogue"
+        const emotionTagRegex = /\[([^,]+),\s*([^\]]+)\]:\s*(.+?)(?=\s*\[|$)/gi;
+        let match;
+        while ((match = emotionTagRegex.exec(text)) !== null) {
+            const character = match[1].trim();
+            const emotion = match[2].trim().toLowerCase();
+            const dialogue = match[3].trim();
+            // Validate emotion type
+            const validEmotions = ['seductive', 'fearful', 'angry', 'passionate', 'sad', 'joyful', 'mysterious', 'neutral'];
+            if (validEmotions.includes(emotion)) {
+                emotions.push({ character, emotion, dialogue });
+            }
+            else {
+                // If emotion not recognized, infer from context
+                const inferredEmotion = this.inferEmotionFromContext(dialogue);
+                emotions.push({ character, emotion: inferredEmotion, dialogue });
+            }
+        }
+        // If no emotion tags found, infer emotion from general content
+        if (emotions.length === 0) {
+            const inferredEmotion = this.inferEmotionFromContext(text);
+            emotions.push({ emotion: inferredEmotion, dialogue: text });
+        }
+        return emotions;
+    }
+    /**
+     * Infers emotion from dialogue content using keyword analysis
+     */
+    inferEmotionFromContext(text) {
+        const lowerText = text.toLowerCase();
+        // Define emotion keywords
+        const emotionKeywords = {
+            seductive: ['seduce', 'tempt', 'allure', 'entice', 'charm', 'sultry', 'breathe', 'whisper'],
+            fearful: ['fear', 'afraid', 'scared', 'terrified', 'trembling', 'shaking', 'panic', 'horror'],
+            angry: ['angry', 'furious', 'rage', 'mad', 'enraged', 'livid', 'scream', 'yell', 'growl'],
+            passionate: ['passionate', 'intense', 'burning', 'desire', 'love', 'heart', 'yearning'],
+            sad: ['sad', 'sorrow', 'weep', 'cry', 'tears', 'melancholy', 'grief', 'mourn'],
+            joyful: ['joy', 'happy', 'laugh', 'cheerful', 'delighted', 'excited', 'gleeful', 'bright'],
+            mysterious: ['mysterious', 'secret', 'hidden', 'whisper', 'shadow', 'dark', 'enigmatic']
+        };
+        // Count emotion keyword matches
+        let maxMatches = 0;
+        let detectedEmotion = 'neutral';
+        for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
+            const matches = keywords.filter(keyword => lowerText.includes(keyword)).length;
+            if (matches > maxMatches) {
+                maxMatches = matches;
+                detectedEmotion = emotion;
+            }
+        }
+        return detectedEmotion;
+    }
+    /**
+     * Maps emotions to appropriate ElevenLabs voice settings
+     */
+    getEmotionalVoiceSettings(emotion) {
+        const emotionSettings = {
+            seductive: {
+                stability: 0.3, // Lower stability for more variation
+                similarity_boost: 0.9, // High similarity to maintain voice
+                style: 0.8, // Higher style for sultry delivery
+                use_speaker_boost: true
+            },
+            fearful: {
+                stability: 0.1, // Very low stability for trembling effect
+                similarity_boost: 0.7, // Moderate similarity
+                style: 0.3, // Lower style for more natural fear
+                use_speaker_boost: false
+            },
+            angry: {
+                stability: 0.2, // Low stability for aggressive variation
+                similarity_boost: 0.8, // Good similarity
+                style: 0.9, // High style for emphasis
+                use_speaker_boost: true
+            },
+            passionate: {
+                stability: 0.4, // Moderate stability
+                similarity_boost: 0.9, // High similarity
+                style: 0.7, // High style for intensity
+                use_speaker_boost: true
+            },
+            sad: {
+                stability: 0.7, // Higher stability for consistent low energy
+                similarity_boost: 0.8, // Good similarity
+                style: 0.2, // Lower style for softer tone
+                use_speaker_boost: false
+            },
+            joyful: {
+                stability: 0.3, // Lower stability for energetic variation
+                similarity_boost: 0.8, // Good similarity
+                style: 0.6, // Moderate style for upbeat delivery
+                use_speaker_boost: true
+            },
+            mysterious: {
+                stability: 0.6, // Moderate stability
+                similarity_boost: 0.9, // High similarity
+                style: 0.8, // High style for dramatic effect
+                use_speaker_boost: false
+            },
+            neutral: {
+                stability: 0.5, // Default settings
+                similarity_boost: 0.8,
+                style: 0.5,
+                use_speaker_boost: true
+            }
+        };
+        return emotionSettings[emotion] || emotionSettings.neutral;
     }
     async uploadAudioToStorage(audioData, input) {
         // Mock storage upload - in real implementation, this would upload to S3, Cloudinary, etc.
