@@ -35,7 +35,8 @@ export interface StoryGenerationSeam {
   output: {
     storyId: string;
     title: string;
-    content: string; // HTML formatted content for [innerHTML] binding
+    content: string; // HTML formatted content for [innerHTML] binding (speaker tags removed)
+    rawContent?: string; // Content with speaker tags for audio processing
     creature: CreatureType;
     themes: ThemeType[];
     spicyLevel: SpicyLevel;

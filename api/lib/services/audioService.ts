@@ -22,8 +22,12 @@ export class AudioService {
     const startTime = Date.now();
 
     try {
+      // Use rawContent if available (with speaker tags), otherwise fall back to content
+      // This allows us to process speaker-tagged content for multi-voice audio
+      const sourceContent = (input as any).rawContent || input.content;
+      
       // Clean HTML content for text-to-speech
-      const cleanText = this.cleanHtmlForTTS(input.content);
+      const cleanText = this.cleanHtmlForTTS(sourceContent);
 
       // Generate audio using ElevenLabs
       const audioData = await this.callElevenLabsAPI(cleanText, input);
@@ -140,20 +144,117 @@ export class AudioService {
   }
 
   private cleanHtmlForTTS(htmlContent: string): string {
-    // Remove HTML tags and clean up content for text-to-speech
-    let cleanText = htmlContent
-      .replace(/<[^>]*>/g, '') // Remove HTML tags
-      .replace(/\n\s*\n/g, '\n') // Remove extra newlines
-      .replace(/\s+/g, ' ') // Normalize whitespace
+    // Enhanced text processing for multi-voice TTS with speaker tag support
+    
+    // Step 1: Extract and preserve speaker tags for voice assignment
+    const speakerTaggedContent = this.preserveSpeakerTags(htmlContent);
+    
+    // Step 2: Remove HTML tags but keep structure
+    let cleanText = speakerTaggedContent
+      .replace(/<h[1-6][^>]*>/gi, '\n\n') // Headers become paragraph breaks
+      .replace(/<\/h[1-6]>/gi, '\n\n')
+      .replace(/<p[^>]*>/gi, '\n') // Paragraphs become line breaks
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<br[^>]*>/gi, '\n') // Line breaks
+      .replace(/<[^>]*>/g, '') // Remove remaining HTML tags
+      .replace(/\n\s*\n/g, '\n\n') // Normalize multiple newlines
+      .replace(/\s+/g, ' ') // Normalize whitespace within lines
       .trim();
 
-    // Add pauses for better speech flow
-    cleanText = cleanText
-      .replace(/\.\s/g, '. ') // Ensure space after periods
-      .replace(/\?\s/g, '? ') // Ensure space after question marks
-      .replace(/\!\s/g, '! '); // Ensure space after exclamation marks
+    // Step 3: Split into processable chunks respecting character limits
+    const chunks = this.splitIntoChunks(cleanText);
+    
+    // Step 4: Add speech optimization
+    const processedChunks = chunks.map(chunk => this.optimizeForSpeech(chunk));
+    
+    return processedChunks.join('\n\n');
+  }
 
-    return cleanText;
+  private preserveSpeakerTags(htmlContent: string): string {
+    // Preserve speaker tags in rawContent if available, otherwise extract from HTML
+    // This method handles both clean HTML and tagged content from the story service
+    
+    // If content already has speaker tags, return as-is
+    if (htmlContent.includes('[') && htmlContent.includes(']:')) {
+      return htmlContent;
+    }
+    
+    // Otherwise, try to identify dialogue and add basic speaker tags
+    let taggedContent = htmlContent;
+    
+    // Basic dialogue detection and tagging
+    taggedContent = taggedContent.replace(/"([^"]+)"/g, (match, dialogue) => {
+      return `[Character]: "${dialogue}"`;
+    });
+    
+    // Tag narrative content
+    taggedContent = taggedContent.replace(/^(?!\[)([^"\n]+)$/gm, (match, text) => {
+      if (text.trim() && !text.includes('[') && !text.includes('"')) {
+        return `[Narrator]: ${text}`;
+      }
+      return text;
+    });
+    
+    return taggedContent;
+  }
+
+  private splitIntoChunks(text: string, maxChunkSize: number = 2500): string[] {
+    // Split text into chunks respecting ElevenLabs character limits
+    // ElevenLabs has a ~5000 character limit per request, we use 2500 for safety
+    
+    const chunks: string[] = [];
+    const lines = text.split('\n');
+    let currentChunk = '';
+    
+    for (const line of lines) {
+      const lineWithBreak = line + '\n';
+      
+      // If adding this line would exceed limit, save current chunk and start new one
+      if (currentChunk.length + lineWithBreak.length > maxChunkSize && currentChunk.trim()) {
+        chunks.push(currentChunk.trim());
+        currentChunk = lineWithBreak;
+      } else {
+        currentChunk += lineWithBreak;
+      }
+    }
+    
+    // Add final chunk if not empty
+    if (currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
+    }
+    
+    return chunks;
+  }
+
+  private optimizeForSpeech(text: string): string {
+    // Optimize text for natural speech synthesis
+    let optimized = text;
+    
+    // Add pauses for better speech flow
+    optimized = optimized
+      .replace(/\.\s/g, '. ') // Ensure space after periods
+      .replace(/\?\s/g, '? ') // Ensure space after question marks  
+      .replace(/\!\s/g, '! ') // Ensure space after exclamation marks
+      .replace(/:\s/g, ': ') // Ensure space after colons
+      .replace(/;\s/g, '; ') // Ensure space after semicolons
+      .replace(/,\s/g, ', '); // Ensure space after commas
+    
+    // Add longer pauses for scene transitions
+    optimized = optimized
+      .replace(/\.\n/g, '...\n') // Add pause after sentence at line end
+      .replace(/\n\n/g, '\n...\n'); // Add pause between paragraphs
+    
+    // Expand abbreviations for better pronunciation
+    optimized = optimized
+      .replace(/\bMr\./g, 'Mister')
+      .replace(/\bMrs\./g, 'Missus') 
+      .replace(/\bMs\./g, 'Miss')
+      .replace(/\bDr\./g, 'Doctor')
+      .replace(/\bSt\./g, 'Saint')
+      .replace(/\b([0-9]+)am\b/g, '$1 A M')
+      .replace(/\b([0-9]+)pm\b/g, '$1 P M');
+    
+    return optimized;
   }
 
   private estimateDuration(text: string): number {

@@ -40,6 +40,7 @@ export class App implements OnInit, OnDestroy {
 
   // Story data
   currentStory: string = '';
+  currentStoryRaw: string = ''; // Raw content with speaker tags for audio processing
   currentStoryId: string = '';
   currentStoryTitle: string = '';
   currentChapterCount: number = 0;
@@ -170,6 +171,7 @@ export class App implements OnInit, OnDestroy {
           
           // Store complete story data
           this.currentStory = response.data.content;
+          this.currentStoryRaw = response.data.rawContent || response.data.content; // Fallback to regular content
           this.currentStoryId = response.data.storyId;
           this.currentStoryTitle = response.data.title;
           this.currentChapterCount = 1;
@@ -283,6 +285,11 @@ export class App implements OnInit, OnDestroy {
       speed: 1.0,
       format: 'mp3'
     };
+
+    // Add rawContent if available for enhanced audio processing
+    if (this.currentStoryRaw && this.currentStoryRaw !== this.currentStory) {
+      (request as any).rawContent = this.currentStoryRaw;
+    }
 
     this.storyService.convertToAudio(request).subscribe({
       next: (response) => {
