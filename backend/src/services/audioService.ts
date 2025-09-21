@@ -1,21 +1,5 @@
 import axios from 'axios';
-import { AudioConversionSeam, ApiResponse } from '../types/contracts';
-
-// Emotion types for voice adjustment
-export type EmotionType = 'seductive' | 'fearful' | 'angry' | 'passionate' | 'sad' | 'joyful' | 'mysterious' | 'neutral';
-
-interface EmotionalVoiceSettings {
-  stability: number;
-  similarity_boost: number;
-  style: number;
-  use_speaker_boost: boolean;
-}
-
-interface DetectedEmotion {
-  character?: string;
-  emotion: EmotionType;
-  dialogue: string;
-}
+import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
 
 export class AudioService {
   private elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
@@ -23,9 +7,21 @@ export class AudioService {
 
   // Voice IDs for different voice types (ElevenLabs voice IDs)
   private voiceIds = {
+    // Basic voices (backwards compatibility)
     female: process.env.ELEVENLABS_VOICE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella
     male: process.env.ELEVENLABS_VOICE_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam
-    neutral: process.env.ELEVENLABS_VOICE_NEUTRAL || '21m00Tcm4TlvDq8ikWAM' // Rachel
+    neutral: process.env.ELEVENLABS_VOICE_NEUTRAL || '21m00Tcm4TlvDq8ikWAM', // Rachel
+    
+    // Character-specific voices for multi-voice narratives
+    vampire_male: process.env.ELEVENLABS_VOICE_VAMPIRE_MALE || 'ErXwobaYiN019PkySvjV', // Antoni (deep, seductive)
+    vampire_female: process.env.ELEVENLABS_VOICE_VAMPIRE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella (alluring)
+    werewolf_male: process.env.ELEVENLABS_VOICE_WEREWOLF_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam (rough, powerful)
+    werewolf_female: process.env.ELEVENLABS_VOICE_WEREWOLF_FEMALE || 'AZnzlk1XvdvUeBnXmlld', // Domi (strong, wild)
+    fairy_male: process.env.ELEVENLABS_VOICE_FAIRY_MALE || 'VR6AewLTigWG4xSOukaG', // Josh (light, ethereal)
+    fairy_female: process.env.ELEVENLABS_VOICE_FAIRY_FEMALE || 'jsCqWAovK2LkecY7zXl4', // Freya (magical, delicate)
+    human_male: process.env.ELEVENLABS_VOICE_HUMAN_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam (natural, warm)
+    human_female: process.env.ELEVENLABS_VOICE_HUMAN_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella (natural, warm)
+    narrator: process.env.ELEVENLABS_VOICE_NARRATOR || '21m00Tcm4TlvDq8ikWAM' // Rachel (neutral, storytelling)
   };
 
   constructor() {
@@ -41,8 +37,24 @@ export class AudioService {
       // Clean HTML content for text-to-speech
       const cleanText = this.cleanHtmlForTTS(input.content);
 
-      // Generate audio using ElevenLabs
-      const audioData = await this.callElevenLabsAPI(cleanText, input);
+      // Check if content has speaker tags for multi-voice processing
+      const hasSpeakerTags = this.hasSpeakerTags(cleanText);
+      
+      let audioData: Buffer;
+      
+      if (hasSpeakerTags) {
+        // Use multi-voice processing
+        try {
+          audioData = await this.generateMultiVoiceAudio(cleanText, input);
+        } catch (multiVoiceError) {
+          console.warn('Multi-voice generation failed, falling back to single voice:', multiVoiceError);
+          // Fallback to single voice
+          audioData = await this.callElevenLabsAPI(cleanText, input);
+        }
+      } else {
+        // Use single voice processing
+        audioData = await this.callElevenLabsAPI(cleanText, input);
+      }
 
       // Upload to storage and get URL (mock implementation)
       const audioUrl = await this.uploadAudioToStorage(audioData, input);
@@ -104,22 +116,20 @@ export class AudioService {
     }
   }
 
-  private async callElevenLabsAPI(text: string, input: AudioConversionSeam['input']): Promise<Buffer> {
+  private async callElevenLabsAPI(text: string, input: AudioConversionSeam['input'], voiceOverride?: CharacterVoiceType): Promise<Buffer> {
     if (!this.elevenLabsApiKey) {
       // Return mock audio data if no API key
       return this.generateMockAudioData(text);
     }
 
-    const voiceId = this.voiceIds[input.voice || 'female'];
-    
-    // Detect emotions in the text and get appropriate voice settings
-    const detectedEmotions = this.detectEmotion(text);
-    
-    // Use the first detected emotion for voice settings, fallback to neutral
-    const primaryEmotion = detectedEmotions.length > 0 ? detectedEmotions[0].emotion : 'neutral';
-    const voiceSettings = this.getEmotionalVoiceSettings(primaryEmotion);
-    
-    console.log(`🎭 Detected emotion: ${primaryEmotion} for audio generation`);
+    // Use voice override if provided, otherwise fall back to input voice or default
+    const voiceKey = voiceOverride || input.voice || 'female';
+    let voiceId = this.voiceIds[voiceKey];
+
+    if (!voiceId) {
+      console.warn(`Voice ID not found for ${voiceKey}, using default female voice`);
+      voiceId = this.voiceIds['female'];
+    }
 
     try {
       const response = await axios.post(
@@ -127,7 +137,12 @@ export class AudioService {
         {
           text: text,
           model_id: 'eleven_monolingual_v1',
-          voice_settings: voiceSettings
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.8,
+            style: 0.5,
+            use_speaker_boost: true
+          }
         },
         {
           headers: {
@@ -148,132 +163,6 @@ export class AudioService {
     }
   }
 
-  /**
-   * Detects emotion from text containing emotion tags in format: [Character, emotion]: "dialogue"
-   * Also attempts to infer emotion from context if no explicit tags are found
-   */
-  private detectEmotion(text: string): DetectedEmotion[] {
-    const emotions: DetectedEmotion[] = [];
-    
-    // Regex to match emotion tags: [Character Name, emotion]: "dialogue"
-    const emotionTagRegex = /\[([^,]+),\s*([^\]]+)\]:\s*(.+?)(?=\s*\[|$)/gi;
-    let match;
-    
-    while ((match = emotionTagRegex.exec(text)) !== null) {
-      const character = match[1].trim();
-      const emotion = match[2].trim().toLowerCase() as EmotionType;
-      const dialogue = match[3].trim();
-      
-      // Validate emotion type
-      const validEmotions: EmotionType[] = ['seductive', 'fearful', 'angry', 'passionate', 'sad', 'joyful', 'mysterious', 'neutral'];
-      if (validEmotions.includes(emotion)) {
-        emotions.push({ character, emotion, dialogue });
-      } else {
-        // If emotion not recognized, infer from context
-        const inferredEmotion = this.inferEmotionFromContext(dialogue);
-        emotions.push({ character, emotion: inferredEmotion, dialogue });
-      }
-    }
-    
-    // If no emotion tags found, infer emotion from general content
-    if (emotions.length === 0) {
-      const inferredEmotion = this.inferEmotionFromContext(text);
-      emotions.push({ emotion: inferredEmotion, dialogue: text });
-    }
-    
-    return emotions;
-  }
-
-  /**
-   * Infers emotion from dialogue content using keyword analysis
-   */
-  private inferEmotionFromContext(text: string): EmotionType {
-    const lowerText = text.toLowerCase();
-    
-    // Define emotion keywords
-    const emotionKeywords = {
-      seductive: ['seduce', 'tempt', 'allure', 'entice', 'charm', 'sultry', 'breathe', 'whisper'],
-      fearful: ['fear', 'afraid', 'scared', 'terrified', 'trembling', 'shaking', 'panic', 'horror'],
-      angry: ['angry', 'furious', 'rage', 'mad', 'enraged', 'livid', 'scream', 'yell', 'growl'],
-      passionate: ['passionate', 'intense', 'burning', 'desire', 'love', 'heart', 'yearning'],
-      sad: ['sad', 'sorrow', 'weep', 'cry', 'tears', 'melancholy', 'grief', 'mourn'],
-      joyful: ['joy', 'happy', 'laugh', 'cheerful', 'delighted', 'excited', 'gleeful', 'bright'],
-      mysterious: ['mysterious', 'secret', 'hidden', 'whisper', 'shadow', 'dark', 'enigmatic']
-    };
-    
-    // Count emotion keyword matches
-    let maxMatches = 0;
-    let detectedEmotion: EmotionType = 'neutral';
-    
-    for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
-      const matches = keywords.filter(keyword => lowerText.includes(keyword)).length;
-      if (matches > maxMatches) {
-        maxMatches = matches;
-        detectedEmotion = emotion as EmotionType;
-      }
-    }
-    
-    return detectedEmotion;
-  }
-
-  /**
-   * Maps emotions to appropriate ElevenLabs voice settings
-   */
-  private getEmotionalVoiceSettings(emotion: EmotionType): EmotionalVoiceSettings {
-    const emotionSettings: Record<EmotionType, EmotionalVoiceSettings> = {
-      seductive: {
-        stability: 0.3,        // Lower stability for more variation
-        similarity_boost: 0.9, // High similarity to maintain voice
-        style: 0.8,           // Higher style for sultry delivery
-        use_speaker_boost: true
-      },
-      fearful: {
-        stability: 0.1,        // Very low stability for trembling effect
-        similarity_boost: 0.7, // Moderate similarity
-        style: 0.3,           // Lower style for more natural fear
-        use_speaker_boost: false
-      },
-      angry: {
-        stability: 0.2,        // Low stability for aggressive variation
-        similarity_boost: 0.8, // Good similarity
-        style: 0.9,           // High style for emphasis
-        use_speaker_boost: true
-      },
-      passionate: {
-        stability: 0.4,        // Moderate stability
-        similarity_boost: 0.9, // High similarity
-        style: 0.7,           // High style for intensity
-        use_speaker_boost: true
-      },
-      sad: {
-        stability: 0.7,        // Higher stability for consistent low energy
-        similarity_boost: 0.8, // Good similarity
-        style: 0.2,           // Lower style for softer tone
-        use_speaker_boost: false
-      },
-      joyful: {
-        stability: 0.3,        // Lower stability for energetic variation
-        similarity_boost: 0.8, // Good similarity
-        style: 0.6,           // Moderate style for upbeat delivery
-        use_speaker_boost: true
-      },
-      mysterious: {
-        stability: 0.6,        // Moderate stability
-        similarity_boost: 0.9, // High similarity
-        style: 0.8,           // High style for dramatic effect
-        use_speaker_boost: false
-      },
-      neutral: {
-        stability: 0.5,        // Default settings
-        similarity_boost: 0.8,
-        style: 0.5,
-        use_speaker_boost: true
-      }
-    };
-    
-    return emotionSettings[emotion] || emotionSettings.neutral;
-  }
-
   private async uploadAudioToStorage(audioData: Buffer, input: AudioConversionSeam['input']): Promise<string> {
     // Mock storage upload - in real implementation, this would upload to S3, Cloudinary, etc.
     const filename = `story-${input.storyId}-audio.${input.format || 'mp3'}`;
@@ -283,6 +172,207 @@ export class AudioService {
 
     // Return mock URL
     return `https://storage.example.com/audio/${filename}`;
+  }
+
+  // ==================== MULTI-VOICE PROCESSING METHODS ====================
+
+  private hasSpeakerTags(text: string): boolean {
+    // Check if text contains speaker tags in format [Speaker]: or [Speaker, emotion]:
+    return /\[([^\]]+)\]:\s*/.test(text);
+  }
+
+  private async generateMultiVoiceAudio(text: string, input: AudioConversionSeam['input']): Promise<Buffer> {
+    const audioChunks = await this.parseAndAssignVoices(text, input);
+    
+    if (audioChunks.length === 0) {
+      throw new Error('No audio chunks generated from multi-voice processing');
+    }
+
+    if (audioChunks.length === 1) {
+      return audioChunks[0].audioData;
+    }
+
+    // Merge multiple audio chunks into single output
+    return this.mergeAudioChunks(audioChunks);
+  }
+
+  private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input']): Promise<Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}>> {
+    const chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}> = [];
+    
+    // Split text by speaker tags while preserving the tags
+    const segments = text.split(/(\[([^\]]+)\]:\s*)/);
+    
+    let currentSpeaker = 'Narrator';
+    let currentVoice: CharacterVoiceType = 'narrator';
+    
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i].trim();
+      
+      if (!segment) continue;
+      
+      // Check if this segment is a speaker tag
+      const speakerMatch = segment.match(/\[([^\]]+)\]:\s*/);
+      
+      if (speakerMatch) {
+        // This is a speaker tag - update current speaker and voice
+        const speakerInfo = speakerMatch[1];
+        currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove emotion if present
+        currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
+      } else if (segment.length > 0) {
+        // This is dialogue or narrative text
+        try {
+          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice);
+          chunks.push({
+            speaker: currentSpeaker,
+            text: segment,
+            voice: currentVoice,
+            audioData: audioData
+          });
+        } catch (error) {
+          console.warn(`Failed to generate audio for ${currentSpeaker}: ${error}`);
+          // Continue with other chunks rather than failing completely
+        }
+      }
+    }
+    
+    return chunks;
+  }
+
+  private assignVoiceToSpeaker(speakerName: string): CharacterVoiceType {
+    const lowerName = speakerName.toLowerCase();
+    
+    // Handle narrator specifically
+    if (lowerName.includes('narrator')) {
+      return 'narrator';
+    }
+    
+    // Infer gender from name patterns (basic implementation)
+    const isFemale = this.inferGenderFromName(speakerName);
+    
+    // Detect character type from name patterns
+    const characterType = this.detectCharacterType(speakerName);
+    
+    // Build voice key
+    const voiceKey = `${characterType}_${isFemale ? 'female' : 'male'}` as CharacterVoiceType;
+    
+    // Ensure the voice exists in our mapping
+    if (this.voiceIds[voiceKey]) {
+      return voiceKey;
+    }
+    
+    // Fallback to human voices
+    return isFemale ? 'human_female' : 'human_male';
+  }
+
+  private detectCharacterType(speakerName: string): 'vampire' | 'werewolf' | 'fairy' | 'human' {
+    const lowerName = speakerName.toLowerCase();
+    
+    // Look for creature type indicators in the name
+    if (lowerName.includes('vampire') || lowerName.includes('vamp') || lowerName.includes('lord') || lowerName.includes('count')) {
+      return 'vampire';
+    }
+    
+    if (lowerName.includes('werewolf') || lowerName.includes('wolf') || lowerName.includes('lycan') || lowerName.includes('alpha')) {
+      return 'werewolf';
+    }
+    
+    if (lowerName.includes('fairy') || lowerName.includes('fae') || lowerName.includes('sprite') || lowerName.includes('pixie')) {
+      return 'fairy';
+    }
+    
+    // Default to human for unrecognized types
+    return 'human';
+  }
+
+  private inferGenderFromName(name: string): boolean {
+    const lowerName = name.toLowerCase();
+    
+    // Common female name patterns and indicators
+    const femaleIndicators = [
+      'lady', 'queen', 'princess', 'duchess', 'miss', 'mrs', 'ms',
+      'sarah', 'emma', 'olivia', 'ava', 'isabella', 'sophia', 'mia',
+      'charlotte', 'amelia', 'harper', 'evelyn', 'abigail', 'emily',
+      'elizabeth', 'mila', 'ella', 'avery', 'sofia', 'camila', 'aria',
+      'scarlett', 'victoria', 'madison', 'luna', 'grace', 'chloe',
+      'penelope', 'layla', 'riley', 'zoey', 'nora', 'lily', 'eleanor',
+      'hanna', 'lillian', 'addison', 'aubrey', 'ellie', 'stella',
+      'natalie', 'zoe', 'leah', 'hazel', 'violet', 'aurora', 'savannah',
+      'audrey', 'brooklyn', 'bella', 'claire', 'skylar', 'lucia',
+      'aaliyah', 'josephine', 'anna', 'leilani', 'ivy', 'everly'
+    ];
+    
+    // Common male name patterns and indicators
+    const maleIndicators = [
+      'lord', 'king', 'prince', 'duke', 'sir', 'mr', 'count', 'baron',
+      'james', 'robert', 'john', 'michael', 'david', 'william', 'richard',
+      'joseph', 'thomas', 'christopher', 'charles', 'daniel', 'matthew',
+      'anthony', 'mark', 'donald', 'steven', 'paul', 'andrew', 'joshua',
+      'kenneth', 'kevin', 'brian', 'george', 'timothy', 'ronald', 'jason',
+      'edward', 'jeffrey', 'ryan', 'jacob', 'gary', 'nicholas', 'eric',
+      'jonathan', 'stephen', 'larry', 'justin', 'scott', 'brandon', 'benjamin',
+      'samuel', 'gregory', 'alexander', 'patrick', 'frank', 'raymond',
+      'jack', 'dennis', 'jerry', 'tyler', 'aaron', 'jose', 'henry',
+      'adam', 'douglas', 'nathan', 'peter', 'zachary', 'kyle', 'noah',
+      'alan', 'ethan', 'jeremy', 'lionel', 'christian', 'andrew', 'elijah',
+      'wayne', 'liam', 'roy', 'eugene', 'louis', 'arthur', 'sean',
+      'austin', 'carl', 'harold', 'jordan', 'mason', 'owen', 'luke'
+    ];
+    
+    // Check for explicit indicators
+    for (const indicator of femaleIndicators) {
+      if (lowerName.includes(indicator)) {
+        return true;
+      }
+    }
+    
+    for (const indicator of maleIndicators) {
+      if (lowerName.includes(indicator)) {
+        return false;
+      }
+    }
+    
+    // Default to female if uncertain (can be adjusted based on preferences)
+    return true;
+  }
+
+  private mergeAudioChunks(chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}>): Buffer {
+    // Simple concatenation for MP3 files
+    // In a real implementation, you would use audio processing libraries 
+    // to properly merge audio with appropriate spacing and transitions
+    
+    let totalSize = 0;
+    for (const chunk of chunks) {
+      totalSize += chunk.audioData.length;
+    }
+    
+    // Add small silence between chunks (simulated)
+    const silenceBuffer = this.generateSilenceBuffer(500); // 500ms silence
+    const totalSizeWithSilence = totalSize + (silenceBuffer.length * (chunks.length - 1));
+    
+    const mergedBuffer = Buffer.alloc(totalSizeWithSilence);
+    let offset = 0;
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      chunk.audioData.copy(mergedBuffer, offset);
+      offset += chunk.audioData.length;
+      
+      // Add silence between chunks (except after the last one)
+      if (i < chunks.length - 1) {
+        silenceBuffer.copy(mergedBuffer, offset);
+        offset += silenceBuffer.length;
+      }
+    }
+    
+    return mergedBuffer;
+  }
+
+  private generateSilenceBuffer(durationMs: number): Buffer {
+    // Generate a small buffer of silence
+    // This is a simplified implementation - in production you'd want proper audio silence
+    const sampleRate = 44100;
+    const samples = Math.floor((durationMs / 1000) * sampleRate * 2); // stereo
+    return Buffer.alloc(samples * 2); // 16-bit samples
   }
 
   private cleanHtmlForTTS(htmlContent: string): string {
