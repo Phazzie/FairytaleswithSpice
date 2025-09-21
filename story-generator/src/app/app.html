@@ -20,120 +20,134 @@
   <!-- Mystical Spell Circle Interface -->
   <main class="spell-circle-container">
     
-    <!-- Central Mystical Core -->
-    <div class="mystical-core" [class.active]="isGenerating">
-      <div class="core-inner">
-        <div class="rune-circle">
-          <div class="rune" *ngFor="let r of [1,2,3,4,5,6,7,8]"></div>
-        </div>
-        <div class="core-text">
-          <span *ngIf="!isGenerating">Ready to Cast</span>
-          <span *ngIf="isGenerating" class="casting-text">Weaving Magic...</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Floating Creature Summoning Cards -->
-    <div class="creature-realm">
-      <h2 class="realm-title">Choose Your Mystical Being</h2>
-      <div class="creature-cards">
-        <div class="creature-card" 
-             *ngFor="let creature of creatures; trackBy: trackByCreature"
-             [class.selected]="selectedCreature === creature.value"
-             (click)="selectedCreature = creature.value">
-          <div class="card-face card-front">
-            <div class="creature-icon">{{creature.label.split(' ')[0]}}</div>
-            <div class="creature-name">{{creature.label.split(' ')[1]}}</div>
+    <!-- Top Section: Central Mystical Core -->
+    <div class="mystical-top-section">
+      <div class="mystical-core" [class.active]="isGenerating">
+        <div class="core-inner">
+          <div class="rune-circle">
+            <div class="rune" *ngFor="let r of [1,2,3,4,5,6,7,8]"></div>
           </div>
-          <div class="card-face card-back">
-            <div class="creature-essence"></div>
+          <div class="core-text">
+            <span *ngIf="!isGenerating">Ready to Cast</span>
+            <span *ngIf="isGenerating" class="casting-text">Weaving Magic...</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Mystical Rune Theme Selection -->
-    <div class="theme-constellation">
-      <h2 class="constellation-title">
-        Mystical Themes 
-        <span class="theme-counter">({{getSelectedThemesCount()}}/5)</span>
-      </h2>
-      <div class="rune-stones">
-        <div class="rune-stone" 
-             *ngFor="let theme of themes; trackBy: trackByTheme"
-             [class.selected]="isThemeSelected(theme.value)"
-             [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
-             (click)="toggleTheme(theme.value)">
-          <div class="rune-symbol">{{theme.label.split(' ')[0]}}</div>
-          <div class="rune-name">{{theme.label.split(' ').slice(1).join(' ')}}</div>
-          <div class="rune-glow"></div>
+    <!-- Middle Section: Main Controls -->
+    <div class="mystical-middle-section">
+      
+      <!-- Left Column: Creature Selection -->
+      <div class="creature-realm">
+        <h2 class="realm-title">Choose Your Mystical Being</h2>
+        <div class="creature-cards">
+          <div class="creature-card" 
+               *ngFor="let creature of creatures; trackBy: trackByCreature"
+               [class.selected]="selectedCreature === creature.value"
+               (click)="selectedCreature = creature.value">
+            <div class="card-face card-front">
+              <div class="creature-icon">{{creature.label.split(' ')[0]}}</div>
+              <div class="creature-name">{{creature.label.split(' ')[1]}}</div>
+            </div>
+            <div class="card-face card-back">
+              <div class="creature-essence"></div>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Mystical Inspiration Scroll -->
-    <div class="inspiration-scroll">
-      <h2 class="scroll-title">Mystical Inspiration</h2>
-      <textarea
-        class="inspiration-parchment"
-        [(ngModel)]="userInput"
-        placeholder="Whisper your mystical visions into the ether..."
-        rows="4"></textarea>
-    </div>
-
-    <!-- Spell Intensity Crystal -->
-    <div class="intensity-crystal">
-      <h2 class="crystal-title">Spell Intensity</h2>
-      <div class="crystal-container">
-        <div class="crystal-core" [style.--intensity]="spicyLevel / 5">
-          <div class="intensity-level">{{spicyLevelLabels[spicyLevel - 1]}}</div>
-        </div>
-        <input
-          type="range"
-          min="1"
-          max="5"
-          [(ngModel)]="spicyLevel"
-          class="crystal-slider">
-        <div class="intensity-labels">
-          <span *ngFor="let label of spicyLevelLabels; let i = index" 
-                [class.active]="i === spicyLevel - 1">{{label}}</span>
+      <!-- Center Column: Mystical Rune Theme Selection -->
+      <div class="theme-constellation">
+        <h2 class="constellation-title">
+          Mystical Themes 
+          <span class="theme-counter">({{getSelectedThemesCount()}}/5)</span>
+        </h2>
+        <div class="rune-stones">
+          <div class="rune-stone" 
+               *ngFor="let theme of themes; trackBy: trackByTheme"
+               [class.selected]="isThemeSelected(theme.value)"
+               [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
+               (click)="toggleTheme(theme.value)">
+            <div class="rune-symbol">{{theme.label.split(' ')[0]}}</div>
+            <div class="rune-name">{{theme.label.split(' ').slice(1).join(' ')}}</div>
+            <div class="rune-glow"></div>
+          </div>
         </div>
       </div>
+
+      <!-- Right Column Top: Mystical Inspiration -->
+      <div class="inspiration-scroll">
+        <h2 class="scroll-title">Mystical Inspiration</h2>
+        <textarea
+          class="inspiration-parchment"
+          [(ngModel)]="userInput"
+          placeholder="Whisper your mystical visions into the ether..."
+          rows="4"></textarea>
+      </div>
+
     </div>
 
-    <!-- Mystical Word Count Tome -->
-    <div class="word-tome">
-      <h2 class="tome-title">Tome Length</h2>
-      <select [(ngModel)]="wordCount" class="mystical-select">
-        <option *ngFor="let option of wordCountOptions" [value]="option.value">
-          {{option.label}}
-        </option>
-      </select>
-    </div>
-
-    <!-- Central Spell Casting Button -->
-    <div class="spell-casting-circle">
-      <button
-        class="cast-spell-btn"
-        (click)="generateStory()"
-        [disabled]="isGenerating || !canGenerateStory()"
-        [class.ready]="canGenerateStory()"
-        [class.casting]="isGenerating">
-        
-        <div class="btn-inner">
-          <div class="btn-runes"></div>
-          <span class="btn-text" *ngIf="!isGenerating && canGenerateStory()">
-            ⚡ Cast Spell ⚡
-          </span>
-          <span class="btn-text" *ngIf="!isGenerating && !canGenerateStory()">
-            🔒 Select Themes to Unlock
-          </span>
-          <span class="btn-text casting" *ngIf="isGenerating">
-            <span class="mystical-spinner"></span>
-            Weaving Enchantment...
-          </span>
+    <!-- Bottom Controls Row -->
+    <div class="mystical-controls-row">
+      
+      <!-- Spell Intensity Crystal -->
+      <div class="intensity-crystal">
+        <h2 class="crystal-title">Spell Intensity</h2>
+        <div class="crystal-container">
+          <div class="crystal-core" [style.--intensity]="spicyLevel / 5">
+            <div class="intensity-level">{{spicyLevelLabels[spicyLevel - 1]}}</div>
+          </div>
+          <input
+            type="range"
+            min="1"
+            max="5"
+            [(ngModel)]="spicyLevel"
+            class="crystal-slider">
+          <div class="intensity-labels">
+            <span *ngFor="let label of spicyLevelLabels; let i = index" 
+                  [class.active]="i === spicyLevel - 1">{{label}}</span>
+          </div>
         </div>
-      </button>
+      </div>
+
+      <!-- Mystical Word Count Tome -->
+      <div class="word-tome">
+        <h2 class="tome-title">Tome Length</h2>
+        <select [(ngModel)]="wordCount" class="mystical-select">
+          <option *ngFor="let option of wordCountOptions" [value]="option.value">
+            {{option.label}}
+          </option>
+        </select>
+      </div>
+
+    </div>
+
+    <!-- Bottom Section: Spell Casting -->
+    <div class="mystical-bottom-section">
+      <div class="spell-casting-circle">
+        <button
+          class="cast-spell-btn"
+          (click)="generateStory()"
+          [disabled]="isGenerating || !canGenerateStory()"
+          [class.ready]="canGenerateStory()"
+          [class.casting]="isGenerating">
+          
+          <div class="btn-inner">
+            <div class="btn-runes"></div>
+            <span class="btn-text" *ngIf="!isGenerating && canGenerateStory()">
+              ⚡ Cast Spell ⚡
+            </span>
+            <span class="btn-text" *ngIf="!isGenerating && !canGenerateStory()">
+              🔒 Select Themes to Unlock
+            </span>
+            <span class="btn-text casting" *ngIf="isGenerating">
+              <span class="mystical-spinner"></span>
+              Weaving Enchantment...
+            </span>
+          </div>
+        </button>
+      </div>
     </div>
 
   </main>

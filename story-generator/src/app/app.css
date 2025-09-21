@@ -227,14 +227,47 @@ body {
 .spell-circle-container {
   position: relative;
   z-index: 5;
-  max-width: 1400px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: var(--space-xl);
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  grid-gap: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xl);
   min-height: 80vh;
-  place-items: center;
+}
+
+/* Reorganized layout sections */
+.mystical-top-section {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: var(--space-lg);
+}
+
+.mystical-middle-section {
+  display: grid;
+  grid-template-columns: 300px 1fr 300px;
+  gap: var(--space-xl);
+  width: 100%;
+  max-width: 1000px;
+  align-items: start;
+}
+
+.mystical-controls-row {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-xl);
+  width: 100%;
+  margin: var(--space-lg) 0;
+}
+
+.mystical-bottom-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+  width: 100%;
 }
 
 /* ========================================
@@ -451,7 +484,6 @@ body {
   backdrop-filter: blur(10px);
   border: 1px solid rgba(212, 175, 55, 0.3);
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-  grid-column: 1 / -1;
 }
 
 .constellation-title {
@@ -471,8 +503,8 @@ body {
 
 .rune-stones {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--space-md);
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
   max-width: 100%;
 }
 
@@ -803,12 +835,10 @@ body {
    CENTRAL SPELL CASTING BUTTON
 ======================================== */
 .spell-casting-circle {
-  grid-column: 1 / -1;
   position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
-  margin: var(--space-xl) 0;
 }
 
 .cast-spell-btn {
@@ -1353,13 +1383,20 @@ body {
    RESPONSIVE MYSTICAL DESIGN
 ======================================== */
 @media (max-width: 1200px) {
-  .spell-circle-container {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  .mystical-middle-section {
+    grid-template-columns: 1fr 1fr 1fr;
     gap: var(--space-lg);
   }
   
   .rune-stones {
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-xs);
+  }
+
+  .mystical-controls-row {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-lg);
   }
 }
 
@@ -1375,44 +1412,35 @@ body {
   }
   
   .spell-circle-container {
-    grid-template-columns: 1fr;
     padding: var(--space-lg);
+    gap: var(--space-lg);
+  }
+
+  .mystical-middle-section {
+    grid-template-columns: 1fr;
     gap: var(--space-lg);
   }
   
   .creature-cards {
-    flex-direction: column;
-    align-items: center;
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
   }
   
   .rune-stones {
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-    gap: var(--space-sm);
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-xs);
   }
-  
-  .parchment-header {
+
+  .mystical-controls-row {
     flex-direction: column;
-    text-align: center;
-  }
-  
-  .parchment-actions {
-    justify-content: center;
-    width: 100%;
-  }
-  
-  .mystical-action-btn {
-    flex: 1;
-    justify-content: center;
+    align-items: center;
+    gap: var(--space-md);
   }
   
   .cast-spell-btn {
     width: 150px;
     height: 150px;
-  }
-  
-  .portal-circle {
-    width: 250px;
-    height: 250px;
   }
 }
 
@@ -1437,6 +1465,10 @@ body {
   
   .btn-text {
     font-size: 0.9rem;
+  }
+
+  .rune-stones {
+    grid-template-columns: 1fr;
   }
 }
 
