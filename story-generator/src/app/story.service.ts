@@ -8,7 +8,7 @@ import {
   AudioConversionSeam,
   SaveExportSeam,
   ApiResponse
-} from './contracts';
+} from '@fairytales-with-spice/contracts';
 import { ErrorLoggingService } from './error-logging';
 
 // Seam-Driven Service Implementation

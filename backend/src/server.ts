@@ -5,6 +5,14 @@ import dotenv from 'dotenv';
 import { storyRoutes } from './routes/storyRoutes';
 import { audioRoutes } from './routes/audioRoutes';
 import { exportRoutes } from './routes/exportRoutes';
+import { StoryService } from './services/storyService';
+import { GrokAIService } from './services/ai/GrokAIService';
+import { MockAIService } from './services/ai/MockAIService';
+import { AxiosHttpClient } from './lib/http/AxiosHttpClient';
+import { StoryInputValidator } from './lib/validation/StoryInputValidator';
+import { AIService } from './services/ai/AIService';
+import { AudioService } from './services/audioService';
+import { ExportService } from './services/exportService';
 
 // Load environment variables
 dotenv.config();
@@ -30,10 +38,27 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Dependency Injection
+const httpClient = new AxiosHttpClient();
+const storyInputValidator = new StoryInputValidator();
+let aiService: AIService;
+
+if (process.env.XAI_AI_KEY) {
+  console.log('🚀 Using GrokAIService');
+  aiService = new GrokAIService(process.env.XAI_AI_KEY, httpClient);
+} else {
+  console.log('⚠️ Using MockAIService. Set XAI_AI_KEY to use real AI.');
+  aiService = new MockAIService();
+}
+
+const storyService = new StoryService(aiService, storyInputValidator);
+const audioService = new AudioService(httpClient, process.env.ELEVENLABS_API_KEY);
+const exportService = new ExportService();
+
 // API Routes
-app.use('/api', storyRoutes);
-app.use('/api', audioRoutes);
-app.use('/api', exportRoutes);
+app.use('/api', storyRoutes(storyService));
+app.use('/api', audioRoutes(audioService));
+app.use('/api', exportRoutes(exportService));
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

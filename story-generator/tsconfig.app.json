@@ -6,7 +6,11 @@
     "outDir": "./out-tsc/app",
     "types": [
       "node"
-    ]
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@fairytales-with-spice/contracts": ["../../packages/contracts/src"]
+    }
   },
   "include": [
     "src/**/*.ts"
