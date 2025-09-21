@@ -1,0 +1,20 @@
+export const themes = [
+  { value: 'betrayal', label: '🗡️ Betrayal' },
+  { value: 'obsession', label: '🖤 Obsession' },
+  { value: 'power_dynamics', label: '⚡ Power Dynamics' },
+  { value: 'forbidden_love', label: '🚫 Forbidden Love' },
+  { value: 'revenge', label: '💀 Revenge' },
+  { value: 'manipulation', label: '🕷️ Manipulation' },
+  { value: 'seduction', label: '💋 Seduction' },
+  { value: 'dark_secrets', label: '🔐 Dark Secrets' },
+  { value: 'corruption', label: '🌑 Corruption' },
+  { value: 'dominance', label: '👑 Dominance' },
+  { value: 'submission', label: '⛓️ Submission' },
+  { value: 'jealousy', label: '💚 Jealousy' },
+  { value: 'temptation', label: '🍎 Temptation' },
+  { value: 'sin', label: '😈 Sin' },
+  { value: 'desire', label: '🔥 Desire' },
+  { value: 'passion', label: '❤️‍🔥 Passion' },
+  { value: 'lust', label: '💦 Lust' },
+  { value: 'deceit', label: '🎭 Deceit' }
+];

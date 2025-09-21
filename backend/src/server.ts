@@ -13,6 +13,10 @@ import { StoryInputValidator } from './lib/validation/StoryInputValidator';
 import { AIService } from './services/ai/AIService';
 import { AudioService } from './services/audioService';
 import { ExportService } from './services/exportService';
+import { IAudioConversionService } from './services/audio/AudioConversionService';
+import { ElevenLabsService } from './services/audio/ElevenLabsService';
+import { MockAudioConversionService } from './services/audio/MockAudioConversionService';
+import { FormatGeneratorFactory } from './services/export/FormatGeneratorFactory';
 
 // Load environment variables
 dotenv.config();
@@ -42,6 +46,7 @@ app.get('/health', (req, res) => {
 const httpClient = new AxiosHttpClient();
 const storyInputValidator = new StoryInputValidator();
 let aiService: AIService;
+let audioConversionService: IAudioConversionService;
 
 if (process.env.XAI_AI_KEY) {
   console.log('🚀 Using GrokAIService');
@@ -51,9 +56,17 @@ if (process.env.XAI_AI_KEY) {
   aiService = new MockAIService();
 }
 
+if (process.env.ELEVENLABS_API_KEY) {
+  console.log('🚀 Using ElevenLabsService');
+  audioConversionService = new ElevenLabsService(httpClient, process.env.ELEVENLABS_API_KEY);
+} else {
+  console.log('⚠️ Using MockAudioConversionService. Set ELEVENLABS_API_KEY to use real audio conversion.');
+  audioConversionService = new MockAudioConversionService();
+}
+
 const storyService = new StoryService(aiService, storyInputValidator);
-const audioService = new AudioService(httpClient, process.env.ELEVENLABS_API_KEY);
-const exportService = new ExportService();
+const audioService = new AudioService(audioConversionService);
+const exportService = new ExportService(new FormatGeneratorFactory());
 
 // API Routes
 app.use('/api', storyRoutes(storyService));

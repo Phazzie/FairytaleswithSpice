@@ -1,16 +1,24 @@
-import { SaveExportSeam, ApiResponse, ExportFormat } from '@fairytales-with-spice/contracts';
+import { SaveExportSeam, ApiResponse } from '@fairytales-with-spice/contracts';
+import { FormatGeneratorFactory } from './export/FormatGeneratorFactory';
 
 export interface IExportService {
   saveAndExport(input: SaveExportSeam['input']): Promise<ApiResponse<SaveExportSeam['output']>>;
 }
 
 export class ExportService implements IExportService {
+  private formatGeneratorFactory: FormatGeneratorFactory;
+
+  constructor(formatGeneratorFactory: FormatGeneratorFactory) {
+    this.formatGeneratorFactory = formatGeneratorFactory;
+  }
+
   async saveAndExport(input: SaveExportSeam['input']): Promise<ApiResponse<SaveExportSeam['output']>> {
     const startTime = Date.now();
     const requestId = `req_${Date.now()}`;
 
     try {
-      const exportContent = await this.generateExportContent(input);
+      const generator = this.formatGeneratorFactory.create(input.format);
+      const exportContent = await generator.generate(input);
       const fileUrl = await this.saveToStorage(exportContent, input);
 
       const output: SaveExportSeam['output'] = {
@@ -32,23 +40,6 @@ export class ExportService implements IExportService {
         error: { code: 'EXPORT_FAILED', message: 'Failed to export story', details: error.message },
         metadata: { requestId, processingTime: Date.now() - startTime }
       };
-    }
-  }
-
-  private async generateExportContent(input: SaveExportSeam['input']): Promise<string> {
-    switch (input.format) {
-      case 'pdf':
-        return 'mock pdf content';
-      case 'html':
-        return '<html>mock html content</html>';
-      case 'txt':
-        return 'mock text content';
-      case 'epub':
-        return 'mock epub content';
-      case 'docx':
-        return 'mock docx content';
-      default:
-        throw new Error(`Unsupported format: ${input.format}`);
     }
   }
 
