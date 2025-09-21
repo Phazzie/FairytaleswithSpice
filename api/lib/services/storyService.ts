@@ -157,7 +157,8 @@ export class StoryService {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 45000 // 45 second timeout
       });
 
       return this.formatStoryContent(response.data.choices[0].message.content);
@@ -194,7 +195,8 @@ export class StoryService {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 30000 // 30 second timeout for continuations
       });
 
       return this.formatChapterContent(response.data.choices[0].message.content);
@@ -212,7 +214,7 @@ CRITICAL FORMAT REQUIREMENTS (AUDIO GENERATION):
 - Use [Character Name]: "dialogue" for ALL spoken words
 - Use [Narrator]: for ALL descriptive text, scene setting, and non-dialogue content
 - For emotional dialogue, use [Character, emotion]: "dialogue" format
-- Available emotions include: ${this.getAvailableEmotions()}
+- Available emotions include: angry, sad, happy, excited, seductive, mysterious, playful, nervous, confident, passionate
 - NEVER mix formats - dialogue must have speaker tags, descriptions must use [Narrator]:
 
 CHARACTER VOICE MASTERY:
