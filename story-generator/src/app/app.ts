@@ -7,6 +7,30 @@ import { ErrorDisplayComponent } from './error-display/error-display';
 import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
 import { DebugPanel } from './debug-panel/debug-panel';
 
+/**
+ * Fairytales with Spice - Main Application Component
+ * 
+ * This is the core component that orchestrates the entire spicy fairy tale generation experience.
+ * It implements a seam-driven architecture where each data boundary (UI->API, API->Services) 
+ * is explicitly defined through TypeScript contracts.
+ * 
+ * Key Features:
+ * - Multi-creature story generation (vampires, werewolves, fairies)
+ * - Real-time generation progress with realistic status updates
+ * - Multi-voice audio narration with character-specific voices
+ * - Multiple export formats (PDF, EPUB, DOCX, etc.)
+ * - Comprehensive error logging and debugging tools
+ * - Responsive two-column layout for configuration and story display
+ * 
+ * Architecture: Follows Seam-Driven Development methodology
+ * - Each API interaction goes through defined seam contracts
+ * - Mock services available for development without external APIs
+ * - Error boundaries prevent integration failures
+ * 
+ * @author Fairytales with Spice Development Team
+ * @version 2.1.0
+ * @since 2025-09-21
+ */
 @Component({
   selector: 'app-root',
   imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel],
@@ -14,47 +38,95 @@ import { DebugPanel } from './debug-panel/debug-panel';
   styleUrl: './app.css'
 })
 export class App implements OnInit, OnDestroy {
+  /** Application title signal for reactive updates */
   protected readonly title = signal('story-generator');
+  
+  /** Browser detection for platform-specific features (SSR compatibility) */
   private isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
+  /** Reference to debug panel for programmatic control */
   @ViewChild(DebugPanel) debugPanel!: DebugPanel;
 
-  // Inject the services
+  // ==================== DEPENDENCY INJECTION ====================
+  
+  /**
+   * Constructor injects core services using Angular's DI system
+   * @param storyService - Handles all API communication for story operations
+   * @param errorLogging - Centralized error tracking and logging service
+   */
   constructor(
     private storyService: StoryService,
     private errorLogging: ErrorLoggingService
   ) {}
 
-  // Form data
+  // ==================== FORM STATE MANAGEMENT ====================
+  
+  /** Selected creature type for story generation */
   selectedCreature: string = 'vampire';
+  
+  /** Set of selected themes (max 5 allowed) */
   selectedThemes: Set<string> = new Set();
+  
+  /** Optional user input for story customization */
   userInput: string = '';
+  
+  /** Spicy level (1-5) determining content intensity */
   spicyLevel: number = 3;
+  
+  /** Target word count for story generation */
   wordCount: number = 900;
 
-  // UI state
+  // ==================== UI STATE MANAGEMENT ====================
+  
+  /** Loading states for different operations */
   isGenerating: boolean = false;
   isConvertingAudio: boolean = false;
   isSaving: boolean = false;
   isGeneratingNext: boolean = false;
 
-  // Story data
+  // ==================== STORY DATA MANAGEMENT ====================
+  
+  /** Generated story content (HTML formatted for display) */
   currentStory: string = '';
-  currentStoryRaw: string = ''; // Raw content with speaker tags for audio processing
+  
+  /** Raw story content with speaker tags for multi-voice audio processing */
+  currentStoryRaw: string = '';
+  
+  /** Unique identifier for the current story */
   currentStoryId: string = '';
+  
+  /** Generated story title */
   currentStoryTitle: string = '';
+  
+  /** Number of chapters in current story */
   currentChapterCount: number = 0;
+  
+  /** Themes used in current story generation */
   currentStoryThemes: string[] = [];
+  
+  /** Spicy level of current story */
   currentStorySpicyLevel: number = 3;
 
-  // Audio data
+  // ==================== AUDIO DATA MANAGEMENT ====================
+  
+  /** URL of generated audio file for playback */
   currentAudioUrl: string = '';
+  
+  /** Duration of audio file in seconds */
   currentAudioDuration: number = 0;
 
-  // Progress tracking
+  // ==================== PROGRESS TRACKING ====================
+  
+  /** Real-time generation progress (0-100) */
   generationProgress: number = 0;
+  
+  /** Current status message for generation process */
   generationStatus: string = '';
+  
+  /** Audio conversion progress (0-100) */
   audioProgress: number = 0;
+  
+  /** Success flags for user feedback */
   saveSuccess: boolean = false;
   audioSuccess: boolean = false;
 

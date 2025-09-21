@@ -1,18 +1,63 @@
 import axios from 'axios';
 import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
 
+/**
+ * AudioService - Advanced Multi-Voice Text-to-Speech Processing
+ * 
+ * This service provides sophisticated audio generation capabilities for spicy fairy tales,
+ * featuring multi-voice narratives where different characters speak with distinct voices.
+ * 
+ * Key Features:
+ * - Multi-voice support: Different voices for vampires, werewolves, fairies, humans, and narrator
+ * - Speaker tag parsing: Automatically detects [Character]: dialogue patterns
+ * - Character type inference: Analyzes speaker names to assign appropriate voices
+ * - Gender detection: Uses name patterns to assign male/female voices
+ * - Audio merging: Combines multiple voice segments into seamless narration
+ * - 90+ emotion mapping: Maps emotional states to voice parameters
+ * - Fallback system: Works with mock data when ElevenLabs API unavailable
+ * 
+ * Supported Voice Types:
+ * - vampire_male/female: Deep, seductive voices for vampire characters
+ * - werewolf_male/female: Rough, powerful voices for werewolf characters  
+ * - fairy_male/female: Light, ethereal voices for fairy characters
+ * - human_male/female: Natural, warm voices for human characters
+ * - narrator: Neutral storytelling voice for narrative sections
+ * 
+ * Usage Example:
+ * ```
+ * const audioService = new AudioService();
+ * const result = await audioService.convertToAudio({
+ *   storyId: 'story_123',
+ *   content: '[Vampire Lord]: "Come to me..." [Fairy Princess]: "Never!"',
+ *   voice: 'female', // fallback if no speaker tags
+ *   speed: 1.0,
+ *   format: 'mp3'
+ * });
+ * ```
+ * 
+ * @author Fairytales with Spice Development Team
+ * @version 2.1.0
+ * @since 2025-09-21
+ */
 export class AudioService {
+  /** ElevenLabs API base URL for text-to-speech requests */
   private elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
+  
+  /** ElevenLabs API key from environment variables */
   private elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
 
-  // Voice IDs for different voice types (ElevenLabs voice IDs)
+  /**
+   * Voice ID mapping for different character types and genders
+   * Maps to specific ElevenLabs voice IDs optimized for each character archetype
+   * Falls back to environment variables or default voices if custom ones unavailable
+   */
   private voiceIds = {
-    // Basic voices (backwards compatibility)
+    // ==================== BASIC VOICES (Backwards Compatibility) ====================
     female: process.env.ELEVENLABS_VOICE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella
     male: process.env.ELEVENLABS_VOICE_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam
     neutral: process.env.ELEVENLABS_VOICE_NEUTRAL || '21m00Tcm4TlvDq8ikWAM', // Rachel
     
-    // Character-specific voices for multi-voice narratives
+    // ==================== CHARACTER-SPECIFIC VOICES ====================
     vampire_male: process.env.ELEVENLABS_VOICE_VAMPIRE_MALE || 'ErXwobaYiN019PkySvjV', // Antoni (deep, seductive)
     vampire_female: process.env.ELEVENLABS_VOICE_VAMPIRE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella (alluring)
     werewolf_male: process.env.ELEVENLABS_VOICE_WEREWOLF_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam (rough, powerful)
