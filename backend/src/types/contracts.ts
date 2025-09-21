@@ -49,6 +49,7 @@ export interface StoryGenerationSeam {
     estimatedReadTime: number; // in minutes
     hasCliffhanger: boolean; // determines if "Continue Chapter" button shows
     generatedAt: Date;
+    tropeMetadata?: string; // Serialized trope selection for chapter continuations (invisible to user)
   };
 
   errors: {
@@ -91,6 +92,8 @@ export interface ChapterContinuationSeam {
     existingContent: string; // Full story HTML content
     userInput?: string; // Optional continuation hints
     maintainTone: boolean; // Keep same spicy level and themes
+    tropeMetadata?: string; // Serialized trope selection from original story (invisible to user)
+    creature?: CreatureType; // Needed for trope subversion continuation
   };
 
   output: {
