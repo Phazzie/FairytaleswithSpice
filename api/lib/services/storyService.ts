@@ -212,7 +212,7 @@ CRITICAL FORMAT REQUIREMENTS (AUDIO GENERATION):
 - Use [Character Name]: "dialogue" for ALL spoken words
 - Use [Narrator]: for ALL descriptive text, scene setting, and non-dialogue content
 - For emotional dialogue, use [Character, emotion]: "dialogue" format
-- Available emotions include: ${this.getAvailableEmotions()}
+- Available emotions include: seductive, fearful, angry, passionate, sad, joyful, mysterious, neutral
 - NEVER mix formats - dialogue must have speaker tags, descriptions must use [Narrator]:
 
 CHARACTER VOICE MASTERY:
@@ -282,6 +282,7 @@ TECHNICAL REQUIREMENTS:
 Remember: You're not just writing stories - you're crafting experiences that make readers forget they're reading. Every word should pull them deeper into a world where the impossible feels inevitable and desire burns eternal.
 
 CRITICAL: Always use the [Speaker]: format for ALL dialogue and [Narrator]: for ALL descriptive text. This is essential for audio generation. Never break this format.`;
+  }
 
   private buildUserPrompt(input: StoryGenerationSeam['input']): string {
     const creatureName = this.getCreatureDisplayName(input.creature);

@@ -1,7 +1,7 @@
 {
   "version": 2,
   "buildCommand": "cd story-generator && npm run build",
-  "installCommand": "cd story-generator && npm install && npm install --prefix .",
+  "installCommand": "npm install && cd api && npm install && cd ../story-generator && npm install",
   "outputDirectory": "story-generator/dist/story-generator/browser",
   "framework": null,
   "env": {
