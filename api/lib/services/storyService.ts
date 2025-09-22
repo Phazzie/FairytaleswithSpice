@@ -129,6 +129,144 @@ export class StoryService {
     }
   }
 
+  /**
+   * Generate story with streaming support for real-time updates
+   */
+  async generateStoryStreaming(
+    input: StoryGenerationSeam['input'], 
+    onChunk: (chunk: {
+      content: string;
+      isComplete: boolean;
+      wordsGenerated: number;
+      estimatedWordsRemaining: number;
+      generationSpeed: number;
+    }) => void
+  ): Promise<void> {
+    if (!this.grokApiKey) {
+      // For mock mode, simulate streaming
+      await this.simulateStreamingGeneration(input, onChunk);
+      return;
+    }
+
+    const systemPrompt = this.buildSystemPrompt(input);
+    const userPrompt = this.buildUserPrompt(input);
+
+    try {
+      const response = await axios.post(
+        this.grokApiUrl,
+        {
+          model: 'grok-beta',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          stream: true, // Enable streaming
+          temperature: 0.8,
+          max_tokens: input.wordCount * 2, // Allow some buffer for streaming
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.grokApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          responseType: 'stream'
+        }
+      );
+
+      let accumulatedContent = '';
+      let wordsGenerated = 0;
+      const targetWords = input.wordCount;
+      const startTime = Date.now();
+
+      response.data.on('data', (chunk: Buffer) => {
+        const lines = chunk.toString().split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') {
+              onChunk({
+                content: accumulatedContent,
+                isComplete: true,
+                wordsGenerated: wordsGenerated,
+                estimatedWordsRemaining: 0,
+                generationSpeed: wordsGenerated / ((Date.now() - startTime) / 1000)
+              });
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed.choices?.[0]?.delta?.content;
+              
+              if (delta) {
+                accumulatedContent += delta;
+                wordsGenerated = accumulatedContent.split(/\s+/).length;
+                
+                onChunk({
+                  content: accumulatedContent,
+                  isComplete: false,
+                  wordsGenerated: wordsGenerated,
+                  estimatedWordsRemaining: Math.max(0, targetWords - wordsGenerated),
+                  generationSpeed: wordsGenerated / ((Date.now() - startTime) / 1000)
+                });
+              }
+            } catch (e) {
+              // Skip malformed chunks
+            }
+          }
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Streaming generation error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Simulate streaming for mock mode (when no API key)
+   */
+  private async simulateStreamingGeneration(
+    input: StoryGenerationSeam['input'],
+    onChunk: (chunk: any) => void
+  ): Promise<void> {
+    const mockStory = this.generateMockStory(input);
+    const words = mockStory.split(' ');
+    const totalWords = words.length;
+    let accumulatedContent = '';
+    
+    const startTime = Date.now();
+    
+    // Stream words in batches to simulate real generation
+    for (let i = 0; i < words.length; i += 3) {
+      const batch = words.slice(i, i + 3).join(' ') + ' ';
+      accumulatedContent += batch;
+      
+      const wordsGenerated = i + 3;
+      
+      onChunk({
+        content: accumulatedContent,
+        isComplete: false,
+        wordsGenerated: Math.min(wordsGenerated, totalWords),
+        estimatedWordsRemaining: Math.max(0, totalWords - wordsGenerated),
+        generationSpeed: wordsGenerated / ((Date.now() - startTime) / 1000)
+      });
+      
+      // Simulate generation delay
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    // Send final complete chunk
+    onChunk({
+      content: accumulatedContent.trim(),
+      isComplete: true,
+      wordsGenerated: totalWords,
+      estimatedWordsRemaining: 0,
+      generationSpeed: totalWords / ((Date.now() - startTime) / 1000)
+    });
+  }
+
   private async callGrokAI(input: StoryGenerationSeam['input']): Promise<string> {
     if (!this.grokApiKey) {
       // Fallback to mock generation if no API key
