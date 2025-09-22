@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
+import { getVoiceSettingsForEmotion, adjustVoiceForEmotionalIntensity, VoiceSettings } from './emotionMapping';
 
 /**
  * AudioService - Advanced Multi-Voice Text-to-Speech Processing
@@ -380,7 +381,56 @@ export class AudioService {
     return true;
   }
 
-  private mergeAudioChunks(chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}>): Buffer {
+  /**
+   * Analyzes emotional intensity in text to adjust voice parameters
+   * Returns intensity multiplier (0.5 = mild, 1.0 = normal, 2.0 = extreme)
+   */
+  private analyzeEmotionalIntensity(text: string, emotion: string): number {
+    const lowerText = text.toLowerCase();
+    let intensity = 1.0;
+    
+    // Look for intensity indicators in the text
+    const highIntensityWords = ['screamed', 'shouted', 'roared', 'hissed', 'snarled', 'demanded', 'commanded'];
+    const mediumIntensityWords = ['exclaimed', 'cried', 'gasped', 'moaned', 'growled', 'whispered urgently'];
+    const lowIntensityWords = ['murmured', 'whispered', 'sighed', 'breathed', 'said softly'];
+    
+    // Punctuation intensity indicators
+    const exclamationCount = (text.match(/!/g) || []).length;
+    const questionCount = (text.match(/\?/g) || []).length;
+    const capsCount = (text.match(/[A-Z]{2,}/g) || []).length;
+    
+    // Adjust intensity based on word indicators
+    if (highIntensityWords.some(word => lowerText.includes(word))) {
+      intensity += 0.5;
+    } else if (mediumIntensityWords.some(word => lowerText.includes(word))) {
+      intensity += 0.2;
+    } else if (lowIntensityWords.some(word => lowerText.includes(word))) {
+      intensity -= 0.3;
+    }
+    
+    // Adjust for punctuation
+    intensity += (exclamationCount * 0.2);
+    intensity += (questionCount * 0.1);
+    intensity += (capsCount * 0.3);
+    
+    // Emotion-specific intensity adjustments
+    const emotionIntensityMap: Record<string, number> = {
+      'anger': 1.3, 'rage': 1.8, 'fury': 2.0,
+      'fear': 1.2, 'terror': 1.8, 'panic': 1.6,
+      'passionate': 1.4, 'lustful': 1.3, 'seductive': 1.1,
+      'commanding': 1.3, 'dominant': 1.2, 'submissive': 0.8,
+      'whispering': 0.6, 'calm': 0.7, 'serene': 0.5
+    };
+    
+    if (emotionIntensityMap[emotion]) {
+      intensity *= emotionIntensityMap[emotion];
+    }
+    
+    // Clamp between reasonable bounds
+    return Math.max(0.5, Math.min(2.0, intensity));
+  }
+
+  private mergeAudioChunks(chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, emotion?: string, audioData: Buffer}>): Buffer {
     // Simple concatenation for MP3 files
     // In a real implementation, you would use audio processing libraries 
     // to properly merge audio with appropriate spacing and transitions
