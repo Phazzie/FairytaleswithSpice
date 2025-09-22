@@ -1,26 +1,10 @@
 {
   "version": 2,
   "buildCommand": "cd story-generator && npm run build",
-  "installCommand": "cd story-generator && npm install",
   "outputDirectory": "story-generator/dist/story-generator/browser",
+  "installCommand": "cd story-generator && npm install",
   "framework": null,
-  "env": {
-    "NODE_ENV": "production",
-    "FRONTEND_URL": "https://fairytaleswithspice.vercel.app"
-  },
   "rewrites": [
-    {
-      "source": "/api/generate-story",
-      "destination": "/api/story/generate"
-    },
-    {
-      "source": "/api/convert-audio", 
-      "destination": "/api/audio/convert"
-    },
-    {
-      "source": "/api/save-story",
-      "destination": "/api/export/save"
-    },
     {
       "source": "/api/(.*)",
       "destination": "/api/$1"
