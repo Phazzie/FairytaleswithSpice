@@ -83,6 +83,8 @@ export class App implements OnInit, OnDestroy {
   isConvertingAudio: boolean = false;
   isSaving: boolean = false;
   isGeneratingNext: boolean = false;
+  isContinuing: boolean = false;
+  isExporting: boolean = false;
 
   // ==================== STORY DATA MANAGEMENT ====================
   
@@ -114,20 +116,6 @@ export class App implements OnInit, OnDestroy {
   
   /** Duration of audio file in seconds */
   currentAudioDuration: number = 0;
-
-  // ==================== PROGRESS TRACKING ====================
-  
-  /** Real-time generation progress (0-100) */
-  generationProgress: number = 0;
-  
-  /** Current status message for generation process */
-  generationStatus: string = '';
-  
-  /** Audio conversion progress (0-100) */
-  audioProgress: number = 0;
-  
-  /** Timeout ID for progress simulation to allow cancellation */
-  private progressTimeoutId: any = null;
   
   /** Success flags for user feedback */
   saveSuccess: boolean = false;
@@ -217,8 +205,6 @@ export class App implements OnInit, OnDestroy {
     }
 
     this.isGenerating = true;
-    this.generationProgress = 0;
-    this.generationStatus = 'Preparing your story...';
     this.currentStory = '';
     this.saveSuccess = false;
     this.audioSuccess = false;
@@ -234,9 +220,6 @@ export class App implements OnInit, OnDestroy {
       wordCount: this.wordCount
     });
 
-    // Start progress simulation
-    this.simulateGenerationProgress();
-
     const request: StoryGenerationSeam['input'] = {
       creature: this.selectedCreature as any,
       themes: Array.from(this.selectedThemes) as any,
@@ -248,16 +231,6 @@ export class App implements OnInit, OnDestroy {
     this.storyService.generateStory(request).subscribe({
       next: (response) => {
         if (response.success && response.data) {
-          // Clear any pending progress simulation
-          if (this.progressTimeoutId) {
-            clearTimeout(this.progressTimeoutId);
-            this.progressTimeoutId = null;
-          }
-          
-          // Complete progress
-          this.generationProgress = 100;
-          this.generationStatus = 'Story generated successfully!';
-
           // Store complete story data
           this.currentStory = response.data.content;
           this.currentStoryRaw = response.data.rawContent || response.data.content; // Fallback to regular content
@@ -272,12 +245,6 @@ export class App implements OnInit, OnDestroy {
             storyId: response.data.storyId,
             wordCount: response.data.actualWordCount
           });
-
-          // Reset progress after a short delay
-          setTimeout(() => {
-            this.generationProgress = 0;
-            this.generationStatus = '';
-          }, 2000);
         }
       },
       error: (error) => {
@@ -286,82 +253,13 @@ export class App implements OnInit, OnDestroy {
           userAction: 'story_generation'
         });
         
-        // Clear any pending progress simulation
-        if (this.progressTimeoutId) {
-          clearTimeout(this.progressTimeoutId);
-          this.progressTimeoutId = null;
-        }
-        
         this.isGenerating = false;
-        this.generationProgress = 0;
-        this.generationStatus = 'Story generation failed';
-
-        // Reset error status after delay
-        setTimeout(() => {
-          this.generationStatus = '';
-        }, 3000);
       }
     });
   }
 
-  private simulateGenerationProgress() {
-    // Simulate realistic story generation progress
-    const steps = [
-      { progress: 10, status: 'Analyzing your preferences...', delay: 300 },
-      { progress: 25, status: 'Creating character profiles...', delay: 800 },
-      { progress: 40, status: 'Building the world...', delay: 1200 },
-      { progress: 60, status: 'Crafting the plot...', delay: 1500 },
-      { progress: 80, status: 'Adding spicy details...', delay: 1000 },
-      { progress: 90, status: 'Polishing the narrative...', delay: 500 },
-      { progress: 95, status: 'Final touches...', delay: 1000 }
-    ];
-
-    let currentStep = 0;
-    let progressInterval: any;
-    
-    const executeNextStep = () => {
-      if (currentStep < steps.length && this.isGenerating) {
-        const step = steps[currentStep];
-        this.generationProgress = step.progress;
-        this.generationStatus = step.status;
-        currentStep++;
-
-        progressInterval = setTimeout(executeNextStep, step.delay);
-      }
-    };
-
-    // Store the progress timeout so we can cancel it if needed
-    this.progressTimeoutId = progressInterval;
-
-    // Timeout protection - if still generating after 30 seconds, show error
-    setTimeout(() => {
-      if (this.isGenerating && this.generationProgress < 100) {
-        this.errorLogging.logError(
-          new Error('Story generation timeout'), 
-          'App.simulateGenerationProgress', 
-          'error',
-          { progress: this.generationProgress }
-        );
-        this.isGenerating = false;
-        this.generationProgress = 0;
-        this.generationStatus = 'Generation timed out. Please try again.';
-        
-        // Clear any pending progress updates
-        if (progressInterval) {
-          clearTimeout(progressInterval);
-        }
-        
-        setTimeout(() => {
-          this.generationStatus = '';
-        }, 5000);
-      }
-    }, 30000);
-
-    setTimeout(executeNextStep, 500);
-  }
-
   generateNextChapter() {
-    this.isGeneratingNext = true;
+    this.isContinuing = true;
 
     this.errorLogging.logInfo('User initiated chapter continuation', 'App.generateNextChapter');
 
@@ -397,7 +295,6 @@ export class App implements OnInit, OnDestroy {
 
   convertToAudio() {
     this.isConvertingAudio = true;
-    this.audioProgress = 0;
     this.audioSuccess = false;
 
     this.errorLogging.logInfo('User initiated audio conversion', 'App.convertToAudio', {

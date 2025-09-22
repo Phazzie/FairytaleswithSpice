@@ -87,18 +87,9 @@
         <span *ngIf="!isGenerating && !canGenerateStory()">❌ Select at least one theme</span>
         <span *ngIf="isGenerating" class="loading">
           <span class="spinner"></span>
-          {{ generationStatus || 'Crafting your tale...' }}
+          Crafting your tale...
         </span>
       </button>
-
-      <!-- Story Generation Progress -->
-      <div class="generation-progress" *ngIf="isGenerating && generationProgress > 0">
-        <div class="progress-label">{{ generationStatus }}</div>
-        <div class="progress-bar">
-          <div class="progress-fill" [style.width.%]="generationProgress"></div>
-        </div>
-        <div class="progress-percentage">{{ generationProgress }}%</div>
-      </div>
     </div>
 
     <!-- Right Column: Story Display -->
@@ -157,13 +148,11 @@
         </div>
       </div>
 
-      <!-- Audio Progress -->
-      <div class="audio-progress" *ngIf="audioProgress > 0">
-        <h3>Audio Conversion Progress</h3>
-        <div class="progress-bar">
-          <div class="progress-fill" [style.width.%]="audioProgress"></div>
-        </div>
-        <p>{{audioProgress}}% complete</p>
+      <!-- Audio Loading -->
+      <div class="audio-loading" *ngIf="isConvertingAudio">
+        <h3>Converting to Audio...</h3>
+        <div class="spinner"></div>
+        <p>Please wait while we create your audio story...</p>
       </div>
 
       <!-- Success Messages -->
