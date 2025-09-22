@@ -44,7 +44,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const storyService = new StoryService();
-    const result = await storyService.continueStory(input);
+    const result = await storyService.continueChapter(input);
     
     res.status(200).json(result);
 
