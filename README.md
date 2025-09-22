@@ -9,10 +9,14 @@
 
 ## 🌟 Features
 
-### 📚 **Intelligent Story Generation**
+### 📚 **Enhanced Story Generation v2.0** 🆕
 - **Multi-Creature Stories**: Choose from vampires, werewolves, and fairies
 - **5 Distinct Themes**: Romance, Adventure, Mystery, Comedy, and Dark narratives
-- **AI-Powered Writing**: Advanced prompts produce TV-quality storylines
+- **🎭 10 Unconventional Beat Structures**: Temptation Cascade, Power Exchange, Seduction Trap, Ritual Binding, Vulnerability Spiral, Hunt and Claim, Bargain's Price, Memory Fracture, Transformation Hunger, Mirror Souls
+- **👥 Dynamic Author Style Blending**: 2+1 selection system combines voices from 15 renowned authors (Anne Rice, Patricia Briggs, Holly Black, etc.)
+- **🎯 Invisible Randomization**: Each story gets unexpected combinations completely hidden from users
+- **📚 Chekhov Element Tracking**: Automatically plants story elements for future chapter payoffs
+- **🌶️ Spice-Aware Adaptation**: Beat structures intelligently adapt to content intensity (1-5 levels)
 - **Real-time Progress**: Watch your story unfold with live generation updates
 - **Chapter Continuation**: Extend stories with seamless chapter additions
 - **Customizable Length**: 700, 900, or 1200 word options
