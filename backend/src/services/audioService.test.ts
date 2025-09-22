@@ -101,6 +101,40 @@ describe('AudioService', () => {
       }
     });
 
+    it('should handle multi-voice content with speaker tags', async () => {
+      const multiVoiceInput: AudioConversionSeam['input'] = {
+        storyId: 'story_123',
+        content: `
+          [Narrator]: Once upon a time in a dark forest...
+          [Vampire Lord]: "Welcome to my domain, mortal."
+          [Fairy Princess]: "I'm not afraid of you!"
+          [Narrator]: The tension in the air was palpable.
+        `
+      };
+
+      const result = await audioService.convertToAudio(multiVoiceInput);
+
+      expect(result.success).toBe(true);
+      expect(result.data!.duration).toBeGreaterThan(0);
+      expect(result.data!.fileSize).toBeGreaterThan(0);
+    });
+
+    it('should handle multi-voice content with emotions', async () => {
+      const emotionalInput: AudioConversionSeam['input'] = {
+        storyId: 'story_123',
+        content: `
+          [Vampire Lord, seductive]: "Come closer, my dear."
+          [Fairy Princess, defiant]: "Never!"
+          [Vampire Lord, amused]: "Such spirit..."
+        `
+      };
+
+      const result = await audioService.convertToAudio(emotionalInput);
+
+      expect(result.success).toBe(true);
+      expect(result.data!.duration).toBeGreaterThan(0);
+    });
+
     it('should handle all speed settings correctly', async () => {
       const speeds: AudioSpeed[] = [0.5, 0.75, 1.0, 1.25, 1.5];
 
@@ -256,6 +290,34 @@ describe('AudioService', () => {
       expect(fastResult.data!.duration).toBeLessThan(baseResult.data!.duration);
       // Slower speed should result in longer duration
       expect(slowResult.data!.duration).toBeGreaterThan(baseResult.data!.duration);
+    });
+  });
+
+  describe('emotion mapping', () => {
+    it('should provide emotion testing capabilities', () => {
+      const result = audioService.testEmotionCombination('seductive');
+      
+      expect(result).toBeDefined();
+      expect(result.emotion).toBe('seductive');
+      expect(result.isSupported).toBe(true);
+      expect(result.parameters).toBeDefined();
+    });
+
+    it('should provide emotion information', () => {
+      const info = audioService.getEmotionInfo();
+      
+      expect(info).toBeDefined();
+      expect(info.totalEmotions).toBeGreaterThan(70);
+      expect(info.categories).toBeDefined();
+      expect(info.recentlyUsed).toBeDefined();
+    });
+
+    it('should suggest similar emotions for unsupported ones', () => {
+      const result = audioService.testEmotionCombination('flirty');
+      
+      expect(result.isSupported).toBe(false);
+      expect(result.suggestions).toBeDefined();
+      expect(result.suggestions!.length).toBeGreaterThan(0);
     });
   });
 });

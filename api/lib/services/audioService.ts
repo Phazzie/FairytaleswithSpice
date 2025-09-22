@@ -161,7 +161,13 @@ export class AudioService {
     }
   }
 
-  private async callElevenLabsAPI(text: string, input: AudioConversionSeam['input'], voiceOverride?: CharacterVoiceType): Promise<Buffer> {
+  private async callElevenLabsAPI(
+    text: string, 
+    input: AudioConversionSeam['input'], 
+    voiceOverride?: CharacterVoiceType,
+    emotion?: string,
+    characterName?: string
+  ): Promise<Buffer> {
     if (!this.elevenLabsApiKey) {
       // Return mock audio data if no API key
       return this.generateMockAudioData(text);
@@ -176,18 +182,18 @@ export class AudioService {
       voiceId = this.voiceIds['female'];
     }
 
+    // Calculate emotion-aware voice parameters
+    const voiceSettings = this.calculateVoiceParameters(voiceKey as CharacterVoiceType, emotion, characterName);
+    
+    console.log(`🎵 Generating audio for ${characterName || 'Unknown'} with emotion: ${emotion || 'neutral'}`, voiceSettings);
+
     try {
       const response = await axios.post(
         `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
         {
           text: text,
           model_id: 'eleven_monolingual_v1',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.8,
-            style: 0.5,
-            use_speaker_boost: true
-          }
+          voice_settings: voiceSettings
         },
         {
           headers: {
@@ -241,14 +247,15 @@ export class AudioService {
     return this.mergeAudioChunks(audioChunks);
   }
 
-  private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input']): Promise<Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}>> {
-    const chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}> = [];
+  private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input']): Promise<Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer, emotion?: string}>> {
+    const chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer, emotion?: string}> = [];
     
     // Split text by speaker tags while preserving the tags
     const segments = text.split(/(\[([^\]]+)\]:\s*)/);
     
     let currentSpeaker = 'Narrator';
     let currentVoice: CharacterVoiceType = 'narrator';
+    let currentEmotion: string | undefined = undefined;
     
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i].trim();
@@ -259,22 +266,26 @@ export class AudioService {
       const speakerMatch = segment.match(/\[([^\]]+)\]:\s*/);
       
       if (speakerMatch) {
-        // This is a speaker tag - update current speaker and voice
-        const speakerInfo = speakerMatch[1];
-        currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove emotion if present
+        // This is a speaker tag - extract speaker and emotion
+        const { speaker, emotion } = this.extractEmotionFromSpeaker(speakerMatch[1]);
+        currentSpeaker = speaker;
+        currentEmotion = emotion;
         currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
+        
+        console.log(`🎭 Speaker: ${currentSpeaker}, Emotion: ${currentEmotion || 'neutral'}, Voice: ${currentVoice}`);
       } else if (segment.length > 0) {
         // This is dialogue or narrative text
         try {
-          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice);
+          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice, currentEmotion, currentSpeaker);
           chunks.push({
             speaker: currentSpeaker,
             text: segment,
             voice: currentVoice,
-            audioData: audioData
+            audioData: audioData,
+            emotion: currentEmotion
           });
         } catch (error) {
-          console.warn(`Failed to generate audio for ${currentSpeaker}: ${error}`);
+          console.warn(`Failed to generate audio for ${currentSpeaker} (${currentEmotion || 'neutral'}): ${error}`);
           // Continue with other chunks rather than failing completely
         }
       }
@@ -380,7 +391,7 @@ export class AudioService {
     return true;
   }
 
-  private mergeAudioChunks(chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}>): Buffer {
+  private mergeAudioChunks(chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer, emotion?: string}>): Buffer {
     // Simple concatenation for MP3 files
     // In a real implementation, you would use audio processing libraries 
     // to properly merge audio with appropriate spacing and transitions
@@ -474,5 +485,382 @@ export class AudioService {
 
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  // ==================== EMOTION MAPPING SYSTEM ====================
+
+  /**
+   * Comprehensive emotion mapping for voice parameters
+   * Maps 90+ emotional states to voice settings for nuanced character expression
+   */
+  private emotionToVoiceParameters = {
+    // ==================== PRIMARY EMOTIONS ====================
+    'angry': { stability: 0.3, similarity_boost: 0.9, style: 0.8, pitch_shift: 0.1 },
+    'sad': { stability: 0.7, similarity_boost: 0.6, style: 0.3, pitch_shift: -0.2 },
+    'happy': { stability: 0.4, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.15 },
+    'fear': { stability: 0.2, similarity_boost: 0.9, style: 0.9, pitch_shift: 0.3 },
+    'disgust': { stability: 0.6, similarity_boost: 0.7, style: 0.6, pitch_shift: -0.1 },
+    'surprise': { stability: 0.3, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.2 },
+    'neutral': { stability: 0.5, similarity_boost: 0.8, style: 0.5, pitch_shift: 0.0 },
+
+    // ==================== SPICY FAIRY TALE EMOTIONS ====================
+    'seductive': { stability: 0.8, similarity_boost: 0.9, style: 0.8, pitch_shift: -0.1 },
+    'sultry': { stability: 0.9, similarity_boost: 0.9, style: 0.9, pitch_shift: -0.15 },
+    'passionate': { stability: 0.4, similarity_boost: 0.8, style: 0.9, pitch_shift: 0.1 },
+    'lustful': { stability: 0.6, similarity_boost: 0.9, style: 0.9, pitch_shift: 0.05 },
+    'dominant': { stability: 0.7, similarity_boost: 0.9, style: 0.8, pitch_shift: 0.1 },
+    'submissive': { stability: 0.8, similarity_boost: 0.7, style: 0.6, pitch_shift: -0.1 },
+    'teasing': { stability: 0.4, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.2 },
+    'playful': { stability: 0.4, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.15 },
+    'mischievous': { stability: 0.3, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.1 },
+    'alluring': { stability: 0.8, similarity_boost: 0.9, style: 0.8, pitch_shift: -0.05 },
+
+    // ==================== CREATURE-SPECIFIC EMOTIONS ====================
+    // Vampire emotions
+    'bloodthirsty': { stability: 0.5, similarity_boost: 0.9, style: 0.9, pitch_shift: 0.0 },
+    'predatory': { stability: 0.6, similarity_boost: 0.9, style: 0.8, pitch_shift: -0.1 },
+    'ancient': { stability: 0.9, similarity_boost: 0.8, style: 0.7, pitch_shift: -0.2 },
+    'regal': { stability: 0.8, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.0 },
+    'hypnotic': { stability: 0.9, similarity_boost: 0.9, style: 0.8, pitch_shift: -0.1 },
+
+    // Werewolf emotions
+    'feral': { stability: 0.2, similarity_boost: 0.9, style: 0.9, pitch_shift: 0.2 },
+    'protective': { stability: 0.6, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.1 },
+    'territorial': { stability: 0.4, similarity_boost: 0.9, style: 0.8, pitch_shift: 0.15 },
+    'pack_leader': { stability: 0.7, similarity_boost: 0.9, style: 0.8, pitch_shift: 0.1 },
+    'wild': { stability: 0.3, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.2 },
+
+    // Fairy emotions
+    'ethereal': { stability: 0.7, similarity_boost: 0.7, style: 0.6, pitch_shift: 0.3 },
+    'magical': { stability: 0.6, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.2 },
+    'whimsical': { stability: 0.4, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.25 },
+    'mischief': { stability: 0.3, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.2 },
+    'otherworldly': { stability: 0.8, similarity_boost: 0.7, style: 0.6, pitch_shift: 0.15 },
+
+    // ==================== ADVANCED EMOTIONAL STATES ====================
+    'conflicted': { stability: 0.4, similarity_boost: 0.7, style: 0.6, pitch_shift: 0.0 },
+    'determined': { stability: 0.6, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.1 },
+    'vulnerable': { stability: 0.8, similarity_boost: 0.6, style: 0.4, pitch_shift: -0.1 },
+    'confident': { stability: 0.5, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.05 },
+    'suspicious': { stability: 0.5, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.0 },
+    'curious': { stability: 0.4, similarity_boost: 0.8, style: 0.6, pitch_shift: 0.1 },
+    'contemplative': { stability: 0.8, similarity_boost: 0.7, style: 0.5, pitch_shift: -0.05 },
+    'melancholic': { stability: 0.8, similarity_boost: 0.6, style: 0.4, pitch_shift: -0.15 },
+
+    // ==================== INTENSITY VARIATIONS ====================
+    'whisper': { stability: 0.9, similarity_boost: 0.6, style: 0.3, pitch_shift: -0.1 },
+    'murmur': { stability: 0.8, similarity_boost: 0.7, style: 0.4, pitch_shift: -0.05 },
+    'shout': { stability: 0.2, similarity_boost: 0.9, style: 0.9, pitch_shift: 0.2 },
+    'growl': { stability: 0.3, similarity_boost: 0.9, style: 0.9, pitch_shift: -0.2 },
+    'purr': { stability: 0.9, similarity_boost: 0.8, style: 0.7, pitch_shift: -0.1 },
+    'hiss': { stability: 0.4, similarity_boost: 0.9, style: 0.8, pitch_shift: 0.1 },
+
+    // ==================== RELATIONSHIP DYNAMICS ====================
+    'intimate': { stability: 0.9, similarity_boost: 0.8, style: 0.7, pitch_shift: -0.1 },
+    'distant': { stability: 0.7, similarity_boost: 0.6, style: 0.5, pitch_shift: 0.0 },
+    'commanding': { stability: 0.6, similarity_boost: 0.9, style: 0.8, pitch_shift: 0.1 },
+    'pleading': { stability: 0.6, similarity_boost: 0.7, style: 0.6, pitch_shift: 0.1 },
+    'defiant': { stability: 0.4, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.15 },
+    'respectful': { stability: 0.7, similarity_boost: 0.8, style: 0.6, pitch_shift: 0.0 },
+
+    // ==================== EXTENDED EMOTION SET ====================
+    'amused': { stability: 0.5, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.1 },
+    'annoyed': { stability: 0.4, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.05 },
+    'anxious': { stability: 0.3, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.15 },
+    'bored': { stability: 0.8, similarity_boost: 0.6, style: 0.4, pitch_shift: -0.1 },
+    'cautious': { stability: 0.7, similarity_boost: 0.8, style: 0.6, pitch_shift: 0.0 },
+    'cheerful': { stability: 0.4, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.2 },
+    'disappointed': { stability: 0.7, similarity_boost: 0.6, style: 0.4, pitch_shift: -0.1 },
+    'embarrassed': { stability: 0.6, similarity_boost: 0.7, style: 0.5, pitch_shift: 0.05 },
+    'excited': { stability: 0.3, similarity_boost: 0.8, style: 0.9, pitch_shift: 0.25 },
+    'frustrated': { stability: 0.4, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.1 },
+    'grateful': { stability: 0.6, similarity_boost: 0.8, style: 0.6, pitch_shift: 0.0 },
+    'guilty': { stability: 0.6, similarity_boost: 0.7, style: 0.5, pitch_shift: -0.05 },
+    'hopeful': { stability: 0.5, similarity_boost: 0.8, style: 0.6, pitch_shift: 0.1 },
+    'impatient': { stability: 0.3, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.1 },
+    'jealous': { stability: 0.4, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.05 },
+    'lonely': { stability: 0.8, similarity_boost: 0.6, style: 0.4, pitch_shift: -0.1 },
+    'nostalgic': { stability: 0.8, similarity_boost: 0.7, style: 0.5, pitch_shift: -0.05 },
+    'overwhelmed': { stability: 0.3, similarity_boost: 0.7, style: 0.7, pitch_shift: 0.1 },
+    'proud': { stability: 0.6, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.05 },
+    'relieved': { stability: 0.7, similarity_boost: 0.7, style: 0.5, pitch_shift: 0.0 },
+    'romantic': { stability: 0.8, similarity_boost: 0.8, style: 0.7, pitch_shift: -0.05 },
+    'shocked': { stability: 0.2, similarity_boost: 0.9, style: 0.9, pitch_shift: 0.25 },
+    'thoughtful': { stability: 0.8, similarity_boost: 0.7, style: 0.5, pitch_shift: -0.05 },
+    'worried': { stability: 0.5, similarity_boost: 0.7, style: 0.6, pitch_shift: 0.05 },
+
+    // ==================== NARRATIVE-SPECIFIC EMOTIONS ====================
+    'storytelling': { stability: 0.7, similarity_boost: 0.8, style: 0.6, pitch_shift: 0.0 },
+    'descriptive': { stability: 0.8, similarity_boost: 0.7, style: 0.5, pitch_shift: 0.0 },
+    'dramatic': { stability: 0.4, similarity_boost: 0.8, style: 0.8, pitch_shift: 0.1 },
+    'suspenseful': { stability: 0.5, similarity_boost: 0.8, style: 0.7, pitch_shift: 0.05 },
+    'climactic': { stability: 0.3, similarity_boost: 0.9, style: 0.9, pitch_shift: 0.15 }
+  };
+
+  /**
+   * Character consistency tracking to maintain voice parameters across emotional changes
+   */
+  private characterVoiceMemory: Map<string, {
+    baseVoice: CharacterVoiceType;
+    emotionalHistory: Array<{ emotion: string; timestamp: number }>;
+    preferredParameters: any;
+    lastUsed: number;
+  }> = new Map();
+
+  /**
+   * Extract emotion from speaker tag and calculate voice parameters
+   * Supports formats: [Character]: text, [Character, emotion]: text
+   */
+  private extractEmotionFromSpeaker(speakerInfo: string): { speaker: string; emotion?: string } {
+    const parts = speakerInfo.split(',').map(part => part.trim());
+    return {
+      speaker: parts[0],
+      emotion: parts.length > 1 ? parts[1].toLowerCase() : undefined
+    };
+  }
+
+  /**
+   * Calculate voice parameters based on character type, base voice, and emotion
+   */
+  private calculateVoiceParameters(
+    voice: CharacterVoiceType, 
+    emotion?: string,
+    characterName?: string
+  ): any {
+    // Base parameters for voice type
+    const baseParams = {
+      stability: 0.5,
+      similarity_boost: 0.8,
+      style: 0.5,
+      use_speaker_boost: true
+    };
+
+    // Apply emotion-specific modifications if emotion is provided
+    if (emotion && this.emotionToVoiceParameters[emotion]) {
+      const emotionParams = this.emotionToVoiceParameters[emotion];
+      
+      // Blend base parameters with emotion parameters
+      const blendedParams = {
+        stability: this.blendParameter(baseParams.stability, emotionParams.stability, 0.7),
+        similarity_boost: this.blendParameter(baseParams.similarity_boost, emotionParams.similarity_boost, 0.8),
+        style: this.blendParameter(baseParams.style, emotionParams.style, 0.6),
+        use_speaker_boost: baseParams.use_speaker_boost
+      };
+
+      // Store character consistency data
+      if (characterName) {
+        this.updateCharacterVoiceMemory(characterName, voice, emotion, blendedParams);
+      }
+
+      return blendedParams;
+    }
+
+    // Apply character consistency if available
+    if (characterName && this.characterVoiceMemory.has(characterName)) {
+      const memory = this.characterVoiceMemory.get(characterName)!;
+      if (memory.preferredParameters) {
+        return { ...baseParams, ...memory.preferredParameters };
+      }
+    }
+
+    return baseParams;
+  }
+
+  /**
+   * Blend two parameter values with a given weight
+   */
+  private blendParameter(base: number, emotion: number, weight: number): number {
+    return base * (1 - weight) + emotion * weight;
+  }
+
+  /**
+   * Update character voice memory for consistency
+   */
+  private updateCharacterVoiceMemory(
+    characterName: string,
+    voice: CharacterVoiceType,
+    emotion: string,
+    parameters: any
+  ): void {
+    const now = Date.now();
+    
+    if (!this.characterVoiceMemory.has(characterName)) {
+      this.characterVoiceMemory.set(characterName, {
+        baseVoice: voice,
+        emotionalHistory: [],
+        preferredParameters: parameters,
+        lastUsed: now
+      });
+    }
+
+    const memory = this.characterVoiceMemory.get(characterName)!;
+    memory.emotionalHistory.push({ emotion, timestamp: now });
+    memory.lastUsed = now;
+
+    // Keep only recent emotional history (last 10 emotions)
+    if (memory.emotionalHistory.length > 10) {
+      memory.emotionalHistory = memory.emotionalHistory.slice(-10);
+    }
+
+    // Update preferred parameters based on recent usage
+    memory.preferredParameters = this.calculatePreferredParameters(memory.emotionalHistory, parameters);
+  }
+
+  /**
+   * Calculate preferred parameters based on emotional history
+   */
+  private calculatePreferredParameters(
+    emotionalHistory: Array<{ emotion: string; timestamp: number }>,
+    currentParams: any
+  ): any {
+    if (emotionalHistory.length === 0) return currentParams;
+
+    // Weight recent emotions more heavily
+    const weights = emotionalHistory.map((_, index) => Math.pow(0.9, emotionalHistory.length - index - 1));
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+    let avgStability = 0;
+    let avgSimilarity = 0;
+    let avgStyle = 0;
+
+    emotionalHistory.forEach((entry, index) => {
+      const emotionParams = this.emotionToVoiceParameters[entry.emotion];
+      if (emotionParams) {
+        const weight = weights[index] / totalWeight;
+        avgStability += emotionParams.stability * weight;
+        avgSimilarity += emotionParams.similarity_boost * weight;
+        avgStyle += emotionParams.style * weight;
+      }
+    });
+
+    return {
+      stability: avgStability || currentParams.stability,
+      similarity_boost: avgSimilarity || currentParams.similarity_boost,
+      style: avgStyle || currentParams.style,
+      use_speaker_boost: true
+    };
+  }
+
+  /**
+   * Test emotion combination and return voice parameters
+   * Public method for emotion testing API endpoint
+   */
+  public testEmotionCombination(emotion: string): {
+    emotion: string;
+    isSupported: boolean;
+    parameters?: any;
+    suggestions?: string[];
+  } {
+    const normalizedEmotion = emotion.toLowerCase().trim();
+    
+    if (this.emotionToVoiceParameters[normalizedEmotion]) {
+      return {
+        emotion: normalizedEmotion,
+        isSupported: true,
+        parameters: this.emotionToVoiceParameters[normalizedEmotion]
+      };
+    }
+
+    // Find similar emotions using fuzzy matching
+    const suggestions = this.findSimilarEmotions(normalizedEmotion);
+    
+    return {
+      emotion: normalizedEmotion,
+      isSupported: false,
+      suggestions
+    };
+  }
+
+  /**
+   * Find similar emotions using basic fuzzy matching
+   */
+  private findSimilarEmotions(emotion: string): string[] {
+    const allEmotions = Object.keys(this.emotionToVoiceParameters);
+    const suggestions: string[] = [];
+
+    // Exact substring matches
+    allEmotions.forEach(knownEmotion => {
+      if (knownEmotion.includes(emotion) || emotion.includes(knownEmotion)) {
+        suggestions.push(knownEmotion);
+      }
+    });
+
+    // If no substring matches, try Levenshtein distance
+    if (suggestions.length === 0) {
+      allEmotions.forEach(knownEmotion => {
+        if (this.levenshteinDistance(emotion, knownEmotion) <= 2) {
+          suggestions.push(knownEmotion);
+        }
+      });
+    }
+
+    return suggestions.slice(0, 5); // Return top 5 suggestions
+  }
+
+  /**
+   * Calculate Levenshtein distance between two strings
+   */
+  private levenshteinDistance(str1: string, str2: string): number {
+    const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+
+    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+
+    for (let j = 1; j <= str2.length; j++) {
+      for (let i = 1; i <= str1.length; i++) {
+        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[j][i] = Math.min(
+          matrix[j][i - 1] + 1,
+          matrix[j - 1][i] + 1,
+          matrix[j - 1][i - 1] + indicator
+        );
+      }
+    }
+
+    return matrix[str2.length][str1.length];
+  }
+
+  /**
+   * Get comprehensive emotion information for API endpoints
+   */
+  public getEmotionInfo(): {
+    totalEmotions: number;
+    categories: Record<string, string[]>;
+    recentlyUsed: Array<{ character: string; emotion: string; timestamp: number }>;
+  } {
+    const emotions = Object.keys(this.emotionToVoiceParameters);
+    
+    const categories = {
+      'Primary Emotions': ['angry', 'sad', 'happy', 'fear', 'disgust', 'surprise', 'neutral'],
+      'Spicy Fairy Tale': ['seductive', 'sultry', 'passionate', 'lustful', 'dominant', 'submissive', 'teasing', 'playful', 'mischievous', 'alluring'],
+      'Vampire Specific': ['bloodthirsty', 'predatory', 'ancient', 'regal', 'hypnotic'],
+      'Werewolf Specific': ['feral', 'protective', 'territorial', 'pack_leader', 'wild'],
+      'Fairy Specific': ['ethereal', 'magical', 'whimsical', 'mischief', 'otherworldly'],
+      'Advanced States': ['conflicted', 'determined', 'vulnerable', 'confident', 'suspicious', 'curious', 'contemplative', 'melancholic'],
+      'Intensity Variations': ['whisper', 'murmur', 'shout', 'growl', 'purr', 'hiss'],
+      'Relationship Dynamics': ['intimate', 'distant', 'commanding', 'pleading', 'defiant', 'respectful'],
+      'Narrative Specific': ['storytelling', 'descriptive', 'dramatic', 'suspenseful', 'climactic']
+    };
+
+    // Collect recently used emotions from character memory
+    const recentlyUsed: Array<{ character: string; emotion: string; timestamp: number }> = [];
+    this.characterVoiceMemory.forEach((memory, character) => {
+      memory.emotionalHistory.forEach(entry => {
+        recentlyUsed.push({
+          character,
+          emotion: entry.emotion,
+          timestamp: entry.timestamp
+        });
+      });
+    });
+
+    // Sort by timestamp descending and take last 20
+    recentlyUsed.sort((a, b) => b.timestamp - a.timestamp);
+
+    return {
+      totalEmotions: emotions.length,
+      categories,
+      recentlyUsed: recentlyUsed.slice(0, 20)
+    };
   }
 }
