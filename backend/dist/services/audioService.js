@@ -5,10 +5,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AudioService = void 0;
 const axios_1 = __importDefault(require("axios"));
+const audioEnhancementService_1 = require("./audioEnhancementService");
 class AudioService {
     constructor() {
         this.elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
         this.elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        this.audioEnhancementService = new audioEnhancementService_1.AudioEnhancementService();
         // Voice IDs for different voice types (ElevenLabs voice IDs)
         this.voiceIds = {
             // Basic voices (backwards compatibility)
@@ -35,6 +37,11 @@ class AudioService {
         try {
             // Clean HTML content for text-to-speech
             const cleanText = this.cleanHtmlForTTS(input.content);
+            // Analyze voice consistency and provide feedback
+            const analysisResult = this.audioEnhancementService.analyzeVoiceConsistency(cleanText);
+            if (analysisResult.recommendations.length > 0) {
+                console.log('Voice consistency recommendations:', analysisResult.recommendations);
+            }
             // Check if content has speaker tags for multi-voice processing
             const hasSpeakerTags = this.hasSpeakerTags(cleanText);
             let audioData;
@@ -55,6 +62,8 @@ class AudioService {
             }
             // Upload to storage and get URL (mock implementation)
             const audioUrl = await this.uploadAudioToStorage(audioData, input);
+            // Generate voice analysis data for the frontend
+            const finalVoiceAnalysis = this.audioEnhancementService.analyzeVoiceConsistency(cleanText);
             // Create response
             const output = {
                 audioId: this.generateAudioId(),
@@ -71,7 +80,13 @@ class AudioService {
                     message: 'Audio conversion completed successfully',
                     estimatedTimeRemaining: 0
                 },
-                completedAt: new Date()
+                completedAt: new Date(),
+                voiceAnalysis: {
+                    charactersDetected: finalVoiceAnalysis.speakers,
+                    emotionsUsed: Object.keys(finalVoiceAnalysis.emotionDistribution),
+                    speakerCount: Object.keys(finalVoiceAnalysis.speakerCount).length,
+                    recommendations: finalVoiceAnalysis.recommendations
+                }
             };
             return {
                 success: true,
@@ -108,7 +123,7 @@ class AudioService {
             };
         }
     }
-    async callElevenLabsAPI(text, input, voiceOverride) {
+    async callElevenLabsAPI(text, input, voiceOverride, emotion) {
         if (!this.elevenLabsApiKey) {
             // Return mock audio data if no API key
             return this.generateMockAudioData(text);
@@ -120,16 +135,31 @@ class AudioService {
             console.warn(`Voice ID not found for ${voiceKey}, using default female voice`);
             voiceId = this.voiceIds['female'];
         }
+        // Calculate emotion-aware voice parameters
+        let voiceSettings;
+        if (emotion && voiceOverride) {
+            const emotionParams = this.audioEnhancementService.calculateVoiceParameters(emotion, voiceOverride);
+            voiceSettings = {
+                stability: emotionParams.stability,
+                similarity_boost: emotionParams.similarityBoost,
+                style: emotionParams.style,
+                use_speaker_boost: emotionParams.speakerBoost
+            };
+        }
+        else {
+            // Use default settings
+            voiceSettings = {
+                stability: 0.5,
+                similarity_boost: 0.8,
+                style: 0.5,
+                use_speaker_boost: true
+            };
+        }
         try {
             const response = await axios_1.default.post(`${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`, {
                 text: text,
                 model_id: 'eleven_monolingual_v1',
-                voice_settings: {
-                    stability: 0.5,
-                    similarity_boost: 0.8,
-                    style: 0.5,
-                    use_speaker_boost: true
-                }
+                voice_settings: voiceSettings
             }, {
                 headers: {
                     'Accept': 'audio/mpeg',
@@ -176,6 +206,7 @@ class AudioService {
         const segments = text.split(/(\[([^\]]+)\]:\s*)/);
         let currentSpeaker = 'Narrator';
         let currentVoice = 'narrator';
+        let currentEmotion = 'neutral';
         for (let i = 0; i < segments.length; i++) {
             const segment = segments[i].trim();
             if (!segment)
@@ -183,15 +214,17 @@ class AudioService {
             // Check if this segment is a speaker tag
             const speakerMatch = segment.match(/\[([^\]]+)\]:\s*/);
             if (speakerMatch) {
-                // This is a speaker tag - update current speaker and voice
+                // This is a speaker tag - extract speaker and emotion
                 const speakerInfo = speakerMatch[1];
-                currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove emotion if present
+                const { speaker, emotion } = this.audioEnhancementService.extractEmotionFromSpeakerTag(speakerInfo);
+                currentSpeaker = speaker;
+                currentEmotion = emotion;
                 currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
             }
             else if (segment.length > 0) {
                 // This is dialogue or narrative text
                 try {
-                    const audioData = await this.callElevenLabsAPI(segment, input, currentVoice);
+                    const audioData = await this.callElevenLabsAPI(segment, input, currentVoice, currentEmotion);
                     chunks.push({
                         speaker: currentSpeaker,
                         text: segment,
@@ -200,7 +233,7 @@ class AudioService {
                     });
                 }
                 catch (error) {
-                    console.warn(`Failed to generate audio for ${currentSpeaker}: ${error}`);
+                    console.warn(`Failed to generate audio for ${currentSpeaker} (${currentEmotion}): ${error}`);
                     // Continue with other chunks rather than failing completely
                 }
             }
