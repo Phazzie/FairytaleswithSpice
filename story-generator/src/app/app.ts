@@ -318,7 +318,7 @@ export class App implements OnInit, OnDestroy {
         this.errorLogging.logError(
           new Error('Story generation timeout'), 
           'App.simulateGenerationProgress', 
-          'timeout',
+          'error',
           { progress: this.generationProgress }
         );
         this.isGenerating = false;
