@@ -1,0 +1,371 @@
+/*
+ * ALTERNATIVE SOLUTION: Complete removal of progress meter
+ * 
+ * This file shows how to completely remove the progress simulation
+ * as mentioned in the user's request "can you fix or remove it".
+ * 
+ * To use this version:
+ * 1. Replace the content of app.ts with this file
+ * 2. Remove the progress-related HTML from app.html (lines 94-101)
+ * 3. Remove progress-related CSS from app.css
+ */
+
+import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { CommonModule } from '@angular/common';
+
+import { StoryService } from './story.service';
+import {
+  StoryGenerationSeam,
+  ChapterContinuationSeam,
+  AudioConversionSeam,
+  SaveExportSeam,
+  CreatureType,
+  ThemeType,
+  SpicyLevel,
+  WordCount
+} from './contracts';
+import { ErrorLoggingService } from './error-logging';
+import { ErrorDisplayComponent } from './error-display/error-display.component';
+import { DebugPanel } from './debug-panel/debug-panel.component';
+
+@Component({
+  selector: 'app-root',
+  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel],
+  templateUrl: './app.html',
+  styleUrl: './app.css'
+})
+export class App implements OnInit, OnDestroy {
+  @ViewChild('debugPanel') debugPanel!: DebugPanel;
+
+  // Form state
+  selectedCreature: CreatureType = 'vampire';
+  selectedThemes: Set<ThemeType> = new Set();
+  userInput: string = '';
+  spicyLevel: SpicyLevel = 3;
+  wordCount: WordCount = 700;
+
+  // UI state flags
+  isGenerating: boolean = false;
+  isConvertingAudio: boolean = false;
+  isSaving: boolean = false;
+  isGeneratingNext: boolean = false;
+
+  // Current story data
+  currentStory: string = '';
+  currentStoryRaw: string = '';
+  currentStoryId: string = '';
+  currentStoryTitle: string = '';
+  currentStoryThemes: ThemeType[] = [];
+  currentStorySpicyLevel: SpicyLevel = 1;
+  currentChapterCount: number = 1;
+
+  // Audio state
+  audioProgress: number = 0;
+  currentAudioUrl: string = '';
+  currentAudioDuration: number = 0;
+
+  // Success flags for user feedback
+  saveSuccess: boolean = false;
+  audioSuccess: boolean = false;
+
+  // Options data
+  creatures = [
+    { value: 'vampire', label: '🧛 Vampire' },
+    { value: 'werewolf', label: '🐺 Werewolf' },
+    { value: 'fairy', label: '🧚 Fairy' }
+  ];
+
+  themes = [
+    { value: 'betrayal', label: '🗡️ Betrayal' },
+    { value: 'obsession', label: '🖤 Obsession' },
+    { value: 'power_dynamics', label: '⚡ Power Dynamics' },
+    { value: 'forbidden_love', label: '🚫 Forbidden Love' },
+    { value: 'revenge', label: '💀 Revenge' },
+    { value: 'manipulation', label: '🕷️ Manipulation' },
+    { value: 'seduction', label: '💋 Seduction' },
+    { value: 'dark_secrets', label: '🔐 Dark Secrets' },
+    { value: 'corruption', label: '🌑 Corruption' },
+    { value: 'dominance', label: '👑 Dominance' },
+    { value: 'submission', label: '⛓️ Submission' },
+    { value: 'jealousy', label: '💚 Jealousy' },
+    { value: 'temptation', label: '🍎 Temptation' },
+    { value: 'sin', label: '😈 Sin' },
+    { value: 'desire', label: '🔥 Desire' },
+    { value: 'passion', label: '❤️‍🔥 Passion' },
+    { value: 'lust', label: '💦 Lust' },
+    { value: 'deceit', label: '🎭 Deceit' }
+  ];
+
+  spicyLevelLabels = ['Mild', 'Warm', 'Hot', 'Spicy', 'Fire 🔥'];
+
+  wordCountOptions = [
+    { value: 700, label: '700 words' },
+    { value: 900, label: '900 words' },
+    { value: 1200, label: '1200 words' }
+  ];
+
+  constructor(
+    private storyService: StoryService,
+    private errorLogging: ErrorLoggingService
+  ) {}
+
+  ngOnInit() {
+    this.errorLogging.logInfo('App component initialized', 'App.ngOnInit');
+  }
+
+  ngOnDestroy() {
+    // No progress simulation to clean up
+  }
+
+  // Theme management methods
+  toggleTheme(theme: string) {
+    console.log('toggleTheme called with:', theme);
+    if (this.selectedThemes.has(theme)) {
+      this.selectedThemes.delete(theme);
+      console.log('Removed theme:', theme);
+    } else if (this.selectedThemes.size < 5) {
+      this.selectedThemes.add(theme);
+      console.log('Added theme:', theme);
+    }
+    console.log('Current themes:', Array.from(this.selectedThemes));
+
+    // Force update by reassigning to trigger change detection
+    this.selectedThemes = new Set(this.selectedThemes);
+  }
+
+  isThemeSelected(theme: string): boolean {
+    return this.selectedThemes.has(theme);
+  }
+
+  getSelectedThemesCount(): number {
+    return this.selectedThemes.size;
+  }
+
+  canSelectMoreThemes(): boolean {
+    return this.selectedThemes.size < 5;
+  }
+
+  canGenerateStory(): boolean {
+    return this.selectedThemes.size > 0;
+  }
+
+  // TrackBy functions to prevent duplicate rendering
+  trackByCreature(index: number, creature: any): string {
+    return creature.value;
+  }
+
+  trackByTheme(index: number, theme: any): string {
+    return theme.value;
+  }
+
+  // Methods
+  generateStory() {
+    if (!this.canGenerateStory()) {
+      return; // Prevent generation with no themes
+    }
+
+    this.isGenerating = true;
+    this.currentStory = '';
+    this.saveSuccess = false;
+    this.audioSuccess = false;
+    
+    // Clear audio data when generating new story
+    this.currentAudioUrl = '';
+    this.currentAudioDuration = 0;
+
+    this.errorLogging.logInfo('User initiated story generation', 'App.generateStory', {
+      creature: this.selectedCreature,
+      themes: this.selectedThemes,
+      spicyLevel: this.spicyLevel,
+      wordCount: this.wordCount
+    });
+
+    // NO PROGRESS SIMULATION - direct API call
+
+    const request: StoryGenerationSeam['input'] = {
+      creature: this.selectedCreature as any,
+      themes: Array.from(this.selectedThemes) as any,
+      userInput: this.userInput,
+      spicyLevel: this.spicyLevel as any,
+      wordCount: this.wordCount as any
+    };
+
+    this.storyService.generateStory(request).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          // Store complete story data
+          this.currentStory = response.data.content;
+          this.currentStoryRaw = response.data.rawContent || response.data.content;
+          this.currentStoryId = response.data.storyId;
+          this.currentStoryTitle = response.data.title;
+          this.currentChapterCount = 1;
+          this.currentStoryThemes = response.data.themes;
+          this.currentStorySpicyLevel = response.data.spicyLevel;
+
+          this.isGenerating = false;
+          this.errorLogging.logInfo('Story generation completed successfully', 'App.generateStory', {
+            storyId: response.data.storyId,
+            wordCount: response.data.actualWordCount
+          });
+        }
+      },
+      error: (error) => {
+        this.errorLogging.logError(error, 'App.generateStory', 'error', {
+          request,
+          userAction: 'story_generation'
+        });
+        
+        this.isGenerating = false;
+      }
+    });
+  }
+
+  // Rest of the methods remain the same...
+  generateNextChapter() {
+    this.isGeneratingNext = true;
+
+    this.errorLogging.logInfo('User initiated chapter continuation', 'App.generateNextChapter');
+
+    const request: ChapterContinuationSeam['input'] = {
+      storyId: this.currentStoryId,
+      currentChapterCount: this.currentChapterCount,
+      existingContent: this.currentStoryRaw || this.currentStory,
+      userInput: '',
+      maintainTone: true
+    };
+
+    this.storyService.generateNextChapter(request).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          // Append new chapter to existing story
+          this.currentStory = response.data.appendedToStory;
+          this.currentStoryRaw = response.data.appendedToStory;
+          this.currentChapterCount = response.data.chapterNumber;
+
+          this.isGeneratingNext = false;
+          this.errorLogging.logInfo('Chapter generation completed successfully', 'App.generateNextChapter', {
+            chapterId: response.data.chapterId,
+            chapterNumber: response.data.chapterNumber
+          });
+        }
+      },
+      error: (error) => {
+        this.errorLogging.logError(error, 'App.generateNextChapter', 'error', {
+          request,
+          userAction: 'chapter_continuation'
+        });
+        this.isGeneratingNext = false;
+      }
+    });
+  }
+
+  convertToAudio() {
+    if (!this.currentStoryId) {
+      return;
+    }
+
+    this.isConvertingAudio = true;
+    this.audioProgress = 0;
+    this.audioSuccess = false;
+
+    this.errorLogging.logInfo('User initiated audio conversion', 'App.convertToAudio');
+
+    const request: AudioConversionSeam['input'] = {
+      storyId: this.currentStoryId,
+      content: this.currentStoryRaw || this.currentStory,
+      voice: 'narrator',
+      speed: 1.0,
+      format: 'mp3'
+    };
+
+    this.storyService.convertToAudio(request).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          this.currentAudioUrl = response.data.audioUrl;
+          this.currentAudioDuration = response.data.duration;
+          this.audioProgress = 100;
+          this.audioSuccess = true;
+          this.isConvertingAudio = false;
+
+          this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
+            audioId: response.data.audioId,
+            duration: response.data.duration
+          });
+
+          setTimeout(() => {
+            this.audioSuccess = false;
+          }, 3000);
+        }
+      },
+      error: (error) => {
+        this.errorLogging.logError(error, 'App.convertToAudio', 'error', {
+          request,
+          userAction: 'audio_conversion'
+        });
+        this.isConvertingAudio = false;
+        this.audioProgress = 0;
+      }
+    });
+  }
+
+  saveStory() {
+    if (!this.currentStoryId) {
+      return;
+    }
+
+    this.isSaving = true;
+    this.saveSuccess = false;
+
+    this.errorLogging.logInfo('User initiated story save', 'App.saveStory');
+
+    const request: SaveExportSeam['input'] = {
+      storyId: this.currentStoryId,
+      content: this.currentStory,
+      format: 'html',
+      includeMetadata: true
+    };
+
+    this.storyService.saveStory(request).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          this.saveSuccess = true;
+          this.isSaving = false;
+
+          this.errorLogging.logInfo('Story save completed successfully', 'App.saveStory', {
+            exportId: response.data.exportId,
+            downloadUrl: response.data.downloadUrl
+          });
+
+          // Trigger download
+          const link = document.createElement('a');
+          link.href = response.data.downloadUrl;
+          link.download = response.data.filename;
+          link.click();
+
+          setTimeout(() => {
+            this.saveSuccess = false;
+          }, 3000);
+        }
+      },
+      error: (error) => {
+        this.errorLogging.logError(error, 'App.saveStory', 'error', {
+          request,
+          userAction: 'story_save'
+        });
+        this.isSaving = false;
+      }
+    });
+  }
+
+  getCreatureName(): string {
+    const creature = this.creatures.find(c => c.value === this.selectedCreature);
+    return creature ? creature.label : '';
+  }
+
+  formatDuration(seconds: number): string {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+}
