@@ -13,7 +13,7 @@ describe('StoryService', () => {
     storyService = new StoryService();
     jest.clearAllMocks();
     // Clear environment variable for consistent testing
-    delete process.env.XAI_AI_KEY;
+    delete process.env.XAI_API_KEY;
   });
 
   describe('generateStory', () => {
@@ -47,7 +47,7 @@ describe('StoryService', () => {
     });
 
     it('should handle API mode with successful response', async () => {
-      process.env.XAI_AI_KEY = 'test-api-key';
+      process.env.XAI_API_KEY = 'test-api-key';
       storyService = new StoryService(); // Recreate to pick up env var
 
       const mockResponse = {
@@ -73,7 +73,7 @@ describe('StoryService', () => {
           messages: expect.arrayContaining([
             expect.objectContaining({
               role: 'system',
-              content: expect.stringContaining('master storyteller')
+              content: expect.stringContaining('DYNAMIC STYLE SELECTION')
             }),
             expect.objectContaining({
               role: 'user',
@@ -93,7 +93,7 @@ describe('StoryService', () => {
     });
 
     it('should handle API errors gracefully', async () => {
-      process.env.XAI_AI_KEY = 'test-api-key';
+      process.env.XAI_API_KEY = 'test-api-key';
       storyService = new StoryService();
 
       mockedAxios.post.mockRejectedValueOnce(new Error('API Error'));
@@ -214,7 +214,7 @@ describe('StoryService', () => {
     });
 
     it('should handle API mode for continuation', async () => {
-      process.env.XAI_AI_KEY = 'test-api-key';
+      process.env.XAI_API_KEY = 'test-api-key';
       storyService = new StoryService();
 
       const mockResponse = {
@@ -259,7 +259,7 @@ describe('StoryService', () => {
     });
 
     it('should handle continuation API errors', async () => {
-      process.env.XAI_AI_KEY = 'test-api-key';
+      process.env.XAI_API_KEY = 'test-api-key';
       storyService = new StoryService();
 
       mockedAxios.post.mockRejectedValueOnce(new Error('Continuation API Error'));

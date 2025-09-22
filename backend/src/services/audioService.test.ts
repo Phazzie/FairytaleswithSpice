@@ -16,14 +16,15 @@ describe('AudioService', () => {
     delete process.env.ELEVENLABS_API_KEY;
   });
 
+  const validInput: AudioConversionSeam['input'] = {
+    storyId: 'story_123',
+    content: '<h3>Chapter 1</h3><p>This is a test story content with <em>emphasis</em> and other HTML tags.</p>',
+    voice: 'female',
+    speed: 1.0,
+    format: 'mp3'
+  };
+
   describe('convertToAudio', () => {
-    const validInput: AudioConversionSeam['input'] = {
-      storyId: 'story_123',
-      content: '<h3>Chapter 1</h3><p>This is a test story content with <em>emphasis</em> and other HTML tags.</p>',
-      voice: 'female',
-      speed: 1.0,
-      format: 'mp3'
-    };
 
     it('should convert audio with valid input (mock mode)', async () => {
       const result = await audioService.convertToAudio(validInput);
