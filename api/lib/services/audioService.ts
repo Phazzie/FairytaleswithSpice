@@ -493,7 +493,12 @@ export class AudioService {
    * Comprehensive emotion mapping for voice parameters
    * Maps 90+ emotional states to voice settings for nuanced character expression
    */
-  private emotionToVoiceParameters = {
+  private emotionToVoiceParameters: Record<string, {
+    stability: number;
+    similarity_boost: number;
+    style: number;
+    pitch_shift: number;
+  }> = {
     // ==================== PRIMARY EMOTIONS ====================
     'angry': { stability: 0.3, similarity_boost: 0.9, style: 0.8, pitch_shift: 0.1 },
     'sad': { stability: 0.7, similarity_boost: 0.6, style: 0.3, pitch_shift: -0.2 },
@@ -785,13 +790,34 @@ export class AudioService {
       }
     });
 
-    // If no substring matches, try Levenshtein distance
+    // If no substring matches, try partial word matches
     if (suggestions.length === 0) {
+      const emotionWords = emotion.toLowerCase().split(/[^a-z]+/);
+      allEmotions.forEach(knownEmotion => {
+        const knownWords = knownEmotion.toLowerCase().split(/[^a-z]+/);
+        const hasCommonWord = emotionWords.some(word => 
+          word.length > 2 && knownWords.some(knownWord => 
+            knownWord.includes(word) || word.includes(knownWord)
+          )
+        );
+        if (hasCommonWord && !suggestions.includes(knownEmotion)) {
+          suggestions.push(knownEmotion);
+        }
+      });
+    }
+
+    // If still no matches, try Levenshtein distance for shorter strings
+    if (suggestions.length === 0 && emotion.length <= 10) {
       allEmotions.forEach(knownEmotion => {
         if (this.levenshteinDistance(emotion, knownEmotion) <= 2) {
           suggestions.push(knownEmotion);
         }
       });
+    }
+
+    // Fallback: suggest some common emotions if nothing found
+    if (suggestions.length === 0) {
+      suggestions.push('happy', 'sad', 'angry', 'seductive', 'playful');
     }
 
     return suggestions.slice(0, 5); // Return top 5 suggestions

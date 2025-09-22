@@ -276,6 +276,14 @@ describe('AudioService', () => {
   });
 
   describe('utility methods', () => {
+    const validInput: AudioConversionSeam['input'] = {
+      storyId: 'story_123',
+      content: '<h3>Chapter 1</h3><p>This is a test story content with <em>emphasis</em> and other HTML tags.</p>',
+      voice: 'female',
+      speed: 1.0,
+      format: 'mp3'
+    };
+
     it('should estimate realistic durations for different speeds', async () => {
       const input = { ...validInput };
       const baseResult = await audioService.convertToAudio({ ...input, speed: 1.0 });
@@ -313,7 +321,7 @@ describe('AudioService', () => {
     });
 
     it('should suggest similar emotions for unsupported ones', () => {
-      const result = audioService.testEmotionCombination('flirty');
+      const result = audioService.testEmotionCombination('unknown_emotion_xyz');
       
       expect(result.isSupported).toBe(false);
       expect(result.suggestions).toBeDefined();

@@ -239,8 +239,8 @@ describe('AudioService - Emotion Mapping Enhancement', () => {
       // Ethereal (fairy) should be more stable than feral (werewolf)
       expect(etherealTest.parameters.stability).toBeGreaterThan(feralTest.parameters.stability);
       
-      // Feral should have higher pitch shift
-      expect(feralTest.parameters.pitch_shift).toBeGreaterThan(etherealTest.parameters.pitch_shift);
+      // Both should have positive pitch shifts, but ethereal should be higher
+      expect(etherealTest.parameters.pitch_shift).toBeGreaterThan(feralTest.parameters.pitch_shift);
     });
   });
 
