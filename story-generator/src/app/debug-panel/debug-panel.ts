@@ -69,6 +69,8 @@ export class DebugPanel implements OnInit, OnDestroy {
   
   // API test state
   testingAPI = false;
+  generatingTestStory = false;
+  lastTestStoryId?: string;
   
   private networkCheckInterval?: number;
   
@@ -138,7 +140,25 @@ export class DebugPanel implements OnInit, OnDestroy {
       },
       error: (error: HttpErrorResponse) => {
         this.healthStatus = 'unhealthy';
-        this.addError('API', `Health check failed: ${error.message}`, error, '/health');
+        if (error.status === 404) {
+          this.addError(
+            'API',
+            'Health endpoint 404 – Likely deployment routing issue (check vercel.json and that serverless functions were included in build).',
+            { status: error.status, message: error.message },
+            '/api/health',
+            'critical'
+          );
+        } else if (error.status === 0) {
+          this.addError(
+            'NETWORK',
+            'Health check failed – Network unreachable or CORS blocked.',
+            { status: error.status, message: error.message },
+            '/api/health',
+            'warning'
+          );
+        } else {
+          this.addError('API', `Health check failed: HTTP ${error.status} ${error.statusText}`, error, '/api/health');
+        }
       }
     });
   }
@@ -160,6 +180,58 @@ export class DebugPanel implements OnInit, OnDestroy {
         this.addError('API', '❌ API connection test failed - API not responding', null, '/api/health');
       }
     }, 3000);
+  }
+
+  // ==================== DIRECT STORY GENERATION TEST ====================
+
+  testStoryGeneration() {
+    if (this.generatingTestStory) return;
+    this.generatingTestStory = true;
+    const payload: StoryGenerationSeam['input'] = {
+      creature: 'vampire',
+      // Use existing ThemeType value(s) from contract (e.g., 'desire')
+      themes: ['desire'],
+      userInput: '',
+      spicyLevel: 2,
+      wordCount: 700
+    };
+
+    const start = performance.now();
+    this.storyService.generateStory(payload).subscribe({
+      next: (resp: ApiResponse<StoryGenerationSeam['output']>) => {
+        if (resp.success && resp.data) {
+          this.lastTestStoryId = resp.data.storyId;
+          const duration = Math.round(performance.now() - start);
+            this.addError(
+              'API',
+              `✅ Test story generation succeeded in ${duration}ms (id=${resp.data.storyId})`,
+              { storyId: resp.data.storyId, title: resp.data.title, duration },
+              '/api/story/generate',
+              'info'
+            );
+        } else {
+          this.addError(
+            'API',
+            '❌ Test story generation returned unsuccessful response',
+            resp,
+            '/api/story/generate'
+          );
+        }
+        this.generatingTestStory = false;
+      },
+      error: (err) => {
+        const code = err?.error?.code || err?.error || 'UNKNOWN';
+        const severity = code === 'ENDPOINT_NOT_FOUND' ? 'critical' : 'error';
+        this.addError(
+          'API',
+          `❌ Test story generation failed (${code})`,
+          err,
+          '/api/story/generate',
+          severity
+        );
+        this.generatingTestStory = false;
+      }
+    });
   }
   
   // ==================== ERROR MANAGEMENT ====================

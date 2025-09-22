@@ -123,12 +123,24 @@ export class StoryService {
         errorCode: error.error.error?.code
       });
     } else {
-      // HTTP error
-      errorResponse.error = {
-        code: 'HTTP_ERROR',
-        message: `HTTP ${error.status}: ${error.message}`
-      };
-      this.errorLogging.logError(error, `${context} - HTTP Error`, 'error', {
+      // HTTP / transport issues or unexpected payload shape
+      if (error.status === 404) {
+        errorResponse.error = {
+          code: 'ENDPOINT_NOT_FOUND',
+          message: 'API endpoint not found (404). Possible deployment routing issue: ensure /api functions are deployed and vercel.json rewrites are correct.'
+        };
+      } else if (error.status === 0) {
+        errorResponse.error = {
+          code: 'NETWORK_ERROR',
+          message: 'Network unreachable or CORS blocked. Check connectivity and response headers.'
+        };
+      } else {
+        errorResponse.error = {
+          code: 'HTTP_ERROR',
+          message: `HTTP ${error.status}: ${error.message}`
+        };
+      }
+      this.errorLogging.logError(error, `${context} - HTTP/Transport Error`, 'error', {
         type: 'http_error',
         status: error.status,
         statusText: error.statusText,
