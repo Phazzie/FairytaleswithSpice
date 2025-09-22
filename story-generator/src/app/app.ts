@@ -6,6 +6,7 @@ import { ErrorLoggingService } from './error-logging';
 import { ErrorDisplayComponent } from './error-display/error-display';
 import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
 import { DebugPanel } from './debug-panel/debug-panel';
+import { EnhancedAudioPlayerComponent } from './enhanced-audio-player/enhanced-audio-player.component';
 
 /**
  * Fairytales with Spice - Main Application Component
@@ -33,7 +34,7 @@ import { DebugPanel } from './debug-panel/debug-panel';
  */
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel],
+  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel, EnhancedAudioPlayerComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -114,6 +115,9 @@ export class App implements OnInit, OnDestroy {
   
   /** Duration of audio file in seconds */
   currentAudioDuration: number = 0;
+
+  /** Whether to use the enhanced audio player */
+  useEnhancedAudioPlayer: boolean = true;
 
   // ==================== PROGRESS TRACKING ====================
   
@@ -318,7 +322,7 @@ export class App implements OnInit, OnDestroy {
         this.errorLogging.logError(
           new Error('Story generation timeout'), 
           'App.simulateGenerationProgress', 
-          'timeout',
+          'error',
           { progress: this.generationProgress }
         );
         this.isGenerating = false;
@@ -467,6 +471,33 @@ export class App implements OnInit, OnDestroy {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  // ==================== ENHANCED AUDIO PLAYER EVENT HANDLERS ====================
+
+  onAudioPlayStateChanged(isPlaying: boolean) {
+    this.errorLogging.logInfo(`Audio playback ${isPlaying ? 'started' : 'paused'}`, 'App.onAudioPlayStateChanged', {
+      audioUrl: this.currentAudioUrl,
+      duration: this.currentAudioDuration
+    });
+  }
+
+  onAudioProgressChanged(currentTime: number) {
+    // Log progress every 30 seconds to avoid spam
+    if (Math.floor(currentTime) % 30 === 0) {
+      this.errorLogging.logInfo('Audio playback progress', 'App.onAudioProgressChanged', {
+        currentTime,
+        duration: this.currentAudioDuration,
+        percentComplete: (currentTime / this.currentAudioDuration * 100).toFixed(1)
+      });
+    }
+  }
+
+  onAudioSettingsChanged(settings: any) {
+    this.errorLogging.logInfo('Audio player settings changed', 'App.onAudioSettingsChanged', {
+      settings,
+      previousSettings: 'not tracked' // Could track previous state if needed
+    });
   }
 
   // ==================== DEBUG PANEL LIFECYCLE ====================

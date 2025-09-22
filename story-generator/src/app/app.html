@@ -175,8 +175,19 @@
         🎵 Audio conversion completed! Use the player below to listen.
       </div>
       
-      <!-- Audio Player -->
-      <div class="audio-player" *ngIf="currentAudioUrl">
+      <!-- Enhanced Audio Player -->
+      <app-enhanced-audio-player 
+        *ngIf="currentAudioUrl && useEnhancedAudioPlayer"
+        [audioUrl]="currentAudioUrl"
+        [duration]="currentAudioDuration"
+        [title]="currentStoryTitle"
+        (playStateChanged)="onAudioPlayStateChanged($event)"
+        (progressChanged)="onAudioProgressChanged($event)"
+        (settingsChanged)="onAudioSettingsChanged($event)">
+      </app-enhanced-audio-player>
+
+      <!-- Basic Audio Player (fallback) -->
+      <div class="audio-player" *ngIf="currentAudioUrl && !useEnhancedAudioPlayer">
         <h3>🎧 Audio Narration</h3>
         <div class="audio-controls">
           <audio controls preload="metadata" [src]="currentAudioUrl">
