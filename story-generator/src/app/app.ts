@@ -1,4 +1,4 @@
-import { Component, signal, OnInit, OnDestroy, ViewChild, Inject, PLATFORM_ID, inject } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy, ViewChild, Inject, PLATFORM_ID, inject, ChangeDetectorRef } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { StoryService } from './story.service';
@@ -53,10 +53,12 @@ export class App implements OnInit, OnDestroy {
    * Constructor injects core services using Angular's DI system
    * @param storyService - Handles all API communication for story operations
    * @param errorLogging - Centralized error tracking and logging service
+   * @param cdr - Change detection reference for manual change detection triggers
    */
   constructor(
     private storyService: StoryService,
-    private errorLogging: ErrorLoggingService
+    private errorLogging: ErrorLoggingService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   // ==================== FORM STATE MANAGEMENT ====================
@@ -174,8 +176,8 @@ export class App implements OnInit, OnDestroy {
     }
     console.log('Current themes:', Array.from(this.selectedThemes));
 
-    // Force update by reassigning to trigger change detection
-    this.selectedThemes = new Set(this.selectedThemes);
+    // Manually trigger change detection to ensure UI updates
+    this.cdr.detectChanges();
   }
 
   isThemeSelected(theme: string): boolean {
