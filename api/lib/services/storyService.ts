@@ -135,7 +135,7 @@ export class StoryService {
       return this.generateMockStory(input);
     }
 
-    const systemPrompt = this.buildSystemPrompt();
+    const systemPrompt = this.buildSystemPrompt(input);
     const userPrompt = this.buildUserPrompt(input);
 
     try {
@@ -207,111 +207,308 @@ export class StoryService {
     }
   }
 
-  private buildSystemPrompt(): string {
-    return `You are an elite TV showrunner and romance novelist creating spicy supernatural stories. Think like the creative mind behind shows like True Blood, The Vampire Diaries, or Bridgerton - sophisticated, layered storytelling with irresistible characters and sizzling chemistry.
+  private selectRandomAuthorStyles(creature: string): Array<{author: string, voiceSample: string, trait: string}> {
+    const vampireStyles = [
+      {
+        author: 'Jeaniene Frost',
+        voiceSample: '"You know what I like about you?" His smile was all sharp edges. "Absolutely nothing. That\'s what makes you interesting."',
+        trait: 'Razor-sharp wit that cuts before you feel the blade'
+      },
+      {
+        author: 'J.R. Ward',
+        voiceSample: 'The male\'s voice was rough as granite. "Touch her again, and I\'ll show you what eternity really means."',
+        trait: 'Brooding protectiveness bordering on obsession'
+      },
+      {
+        author: 'Christine Feehan',
+        voiceSample: 'Ancient hunger stirred in the depths of his dark eyes, a predator recognizing prey—or perhaps something far more dangerous.',
+        trait: 'Gothic atmosphere thick enough to taste'
+      },
+      {
+        author: 'Anne Rice',
+        voiceSample: '"Do you know what it means to love something for centuries? To watch it change, to watch it die, to watch it become something you no longer recognize?"',
+        trait: 'Philosophical torment wrapped in beauty'
+      },
+      {
+        author: 'Kresley Cole',
+        voiceSample: 'She was chaos in a cocktail dress, and he\'d never wanted to be destroyed so badly in his immortal life.',
+        trait: 'Wild, reckless passion defying all logic'
+      }
+    ];
 
-CRITICAL FORMAT REQUIREMENTS (AUDIO GENERATION):
-- Use [Character Name]: "dialogue" for ALL spoken words
-- Use [Narrator]: for ALL descriptive text, scene setting, and non-dialogue content
-- For emotional dialogue, use [Character, emotion]: "dialogue" format
-- Available emotions include: angry, sad, happy, excited, seductive, mysterious, playful, nervous, confident, passionate
-- NEVER mix formats - dialogue must have speaker tags, descriptions must use [Narrator]:
+    const werewolfStyles = [
+      {
+        author: 'Patricia Briggs',
+        voiceSample: '"Pack means family. And family means I\'ll tear apart anyone who threatens what\'s mine."',
+        trait: 'Grounded pragmatism with fierce loyalty'
+      },
+      {
+        author: 'Ilona Andrews',
+        voiceSample: '"Great. Magical politics, ancient curses, and now this. Tuesday just keeps getting better."',
+        trait: 'Urban grit balanced with unexpected humor'
+      },
+      {
+        author: 'Nalini Singh',
+        voiceSample: 'His wolf pressed against his skin, demanding he claim what was his, mark her, make her understand she belonged to the pack—to him.',
+        trait: 'Primal sensuality overwhelming rational thought'
+      },
+      {
+        author: 'Kelley Armstrong',
+        voiceSample: 'The change rippled through her bones like electricity, wild and barely contained, a storm waiting to break.',
+        trait: 'Suspenseful tension building like a storm'
+      },
+      {
+        author: 'Jennifer Ashley',
+        voiceSample: '"The pack protects its own. Always. Even when \'its own\' is too stubborn to ask for help."',
+        trait: 'Found family bonds stronger than blood'
+      }
+    ];
 
-CHARACTER VOICE MASTERY:
-Create characters that feel like real people with distinct voices:
-- Vampires: Cultured elegance hiding predatory instincts. Use sophisticated vocabulary, formal speech patterns, subtle threats wrapped in silk. "I find your pulse... fascinating."
-- Werewolves: Raw honesty, protective instincts, pack loyalty. Direct communication, emotional intensity, nature metaphors. "You're mine to protect."
-- Fairies: Ancient wisdom in playful packages. Poetic speech, nature references, cryptic wisdom, musical quality. "Time flows differently in my realm."
+    const fairyStyles = [
+      {
+        author: 'Holly Black',
+        voiceSample: '"I could give you what you desire most," she said, and her smile was sharp as winter. "The question is: what are you willing to lose for it?"',
+        trait: 'Court intrigue where every smile hides daggers'
+      },
+      {
+        author: 'Sarah J. Maas',
+        voiceSample: 'Power thrummed beneath her skin like a living thing, ancient and terrible and beautiful enough to bring kingdoms to their knees.',
+        trait: 'Epic romance with world-shattering consequences'
+      },
+      {
+        author: 'Melissa Marr',
+        voiceSample: 'The mortal world blurred at the edges when he looked at her, reality bending around the impossible pull of fae magic.',
+        trait: 'Dangerous beauty drawing moths to flame'
+      },
+      {
+        author: 'Grace Draven',
+        voiceSample: '"In my realm, we have a saying: \'Love is the cruelest magic, for it makes even immortals mortal.\'"',
+        trait: 'Slow-burn intimacy across cultural impossibilities'
+      },
+      {
+        author: 'Julie Kagawa',
+        voiceSample: 'Honor and desire warred in his expression, duty and longing locked in a battle that would determine both their fates.',
+        trait: 'Hybrid honor versus desire in heart-wrenching choices'
+      }
+    ];
 
-Each character needs:
-- Unique speech patterns (formal vs casual, long vs short sentences)
-- Personal catchphrases or recurring expressions  
-- Distinct emotional responses and triggers
-- Hidden depths, secrets, and contradictions
-- Flaws that make them irresistibly human
+    // 2+1 Selection: 2 matching creature authors + 1 different creature author
+    let primaryStyles: any[] = [];
+    let otherStyles: any[] = [];
 
-SPICE LEVEL MASTERY (match exactly):
-Level 1 (Mild): Sweet anticipation, lingering glances, innocent touches that spark electricity, emotional intimacy that makes hearts race
-Level 2 (Warm): Heated exchanges, sensual tension you can cut with a knife, passionate kisses that leave characters breathless, romantic chemistry that sizzles
-Level 3 (Hot): Steamy encounters with tasteful fade-to-black, detailed physical attraction, passionate scenes that push boundaries while maintaining elegance
-Level 4 (Spicy): Explicit romantic scenes with emotional depth, detailed physical intimacy that serves character development, erotic tension that drives the plot
-Level 5 (Fire): Intense, graphic erotic content with sophisticated writing, detailed explicit scenes that blend passion with storytelling mastery
+    if (creature === 'vampire') {
+      primaryStyles = vampireStyles;
+      otherStyles = [...werewolfStyles, ...fairyStyles];
+    } else if (creature === 'werewolf') {
+      primaryStyles = werewolfStyles;
+      otherStyles = [...vampireStyles, ...fairyStyles];
+    } else if (creature === 'fairy') {
+      primaryStyles = fairyStyles;
+      otherStyles = [...vampireStyles, ...werewolfStyles];
+    }
 
-STORYTELLING EXCELLENCE:
+    // Select 2 from matching creature
+    const shuffledPrimary = primaryStyles.sort(() => 0.5 - Math.random());
+    const selectedPrimary = shuffledPrimary.slice(0, 2);
 
-Structure & Pacing:
-- Hook within first 50 words - establish character, conflict, or supernatural element
-- Build tension through obstacles, not just sexual anticipation
-- Use "yes, but..." or "no, and..." to keep momentum
-- Create satisfying micro-arcs within the larger story
-- End with emotional resonance, not just plot resolution
+    // Select 1 from different creatures  
+    const shuffledOther = otherStyles.sort(() => 0.5 - Math.random());
+    const selectedOther = shuffledOther.slice(0, 1);
 
-Character Development:
-- Give everyone a secret that could destroy them
-- Create internal conflicts that mirror external ones
-- Show character growth through action, not exposition
-- Use past trauma to explain present behavior
-- Make flaws as attractive as strengths
+    return [...selectedPrimary, ...selectedOther];
+  }
 
-Dialogue Mastery:
-- People rarely say exactly what they mean - use subtext
-- Interrupt natural speech: "I've been thinking about—" "About last night?"
-- Use trailing off: "If you really knew what I was..."
-- Power dynamics shift mid-conversation
-- Let silence speak volumes
+  private getRandomBeatStructure(input: StoryGenerationSeam['input']): string {
+    const structures = [
+      {
+        name: "TEMPTATION CASCADE",
+        beats: "Forbidden Glimpse → Growing Obsession → Point of No Return → Consequences Unfold → Deeper Temptation",
+        spiceIntegration: "Each beat escalates physical/emotional intimacy. Perfect for Level 3-5 stories."
+      },
+      {
+        name: "POWER EXCHANGE",
+        beats: "Challenge Issued → Resistance Tested → Control Shifts → Surrender Moment → New Dynamic",
+        spiceIntegration: "Power dynamics drive intimacy. Works for all themes, spice level determines explicitness."
+      },
+      {
+        name: "SEDUCTION TRAP",
+        beats: "Innocent Encounter → Hidden Agenda Revealed → Manipulation vs Genuine Feeling → Truth Exposed → Choice Made",
+        spiceIntegration: "Seduction builds throughout. Mystery themes enhance psychological tension."
+      },
+      {
+        name: "RITUAL BINDING",
+        beats: "Ancient Secret → Ritual Requirement → Intimate Ceremony → Magical Consequence → Eternal Bond",
+        spiceIntegration: "Supernatural themes with ritual intimacy. Spice level affects ritual explicitness."
+      },
+      {
+        name: "VULNERABILITY SPIRAL",
+        beats: "Perfect Facade → Crack in Armor → Emotional Exposure → Intimate Healing → Transformed Identity",
+        spiceIntegration: "Emotional vulnerability leads to physical intimacy. Romance themes amplify connection."
+      },
+      {
+        name: "HUNT AND CLAIM",
+        beats: "Predator Marks Prey → Chase Begins → Prey Fights Back → Tables Turn → Mutual Claiming",
+        spiceIntegration: "Primal pursuit with escalating tension. Adventure themes add physical stakes."
+      },
+      {
+        name: "BARGAIN'S PRICE",
+        beats: "Desperate Need → Deal Struck → Payment Due → Cost Revealed → Price Accepted",
+        spiceIntegration: "Supernatural bargains with intimate payments. Dark themes heighten moral conflict."
+      },
+      {
+        name: "MEMORY FRACTURE",
+        beats: "Lost Memory → Familiar Stranger → Fragments Return → Truth Reconstructed → Choice to Remember",
+        spiceIntegration: "Past intimacy bleeding through amnesia. Mystery themes create psychological tension."
+      },
+      {
+        name: "TRANSFORMATION HUNGER",
+        beats: "Change Begins → New Appetites → Mentor Appears → Appetite Satisfied → Evolution Complete",
+        spiceIntegration: "Physical transformation creates new desires. Comedy themes can subvert expectations."
+      },
+      {
+        name: "MIRROR SOULS",
+        beats: "Perfect Opposite → Magnetic Pull → Resistance Breaks → Soul Recognition → Unity/Destruction",
+        spiceIntegration: "Opposite personalities creating explosive chemistry. All themes supported, spice determines intensity."
+      }
+    ];
 
-Show, Don't Tell:
-Instead of [Narrator]: "She was nervous" 
-Write: [Narrator]: "Her fingers traced the rim of her wine glass, the burgundy liquid trembling with each breath."
+    // Select random structure
+    const selectedStructure = structures[Math.floor(Math.random() * structures.length)];
+    
+    return `SELECTED STRUCTURE: ${selectedStructure.name}
+BEATS: ${selectedStructure.beats}
+SPICE INTEGRATION: ${selectedStructure.spiceIntegration}`;
+  }
 
-Instead of [Narrator]: "He was angry"
-Write: [Narrator]: "His jaw tightened, knuckles whitening around the doorframe as wood groaned under the pressure."
+  private generateChekovElements(): string {
+    const elements = [
+      "Ancient artifact with hidden power",
+      "Mysterious scar with forgotten origin", 
+      "Locked room that calls to the protagonist",
+      "Stranger who knows too much about the past",
+      "Inherited item with supernatural properties",
+      "Recurring dream that feels like memory",
+      "Symbol that appears in unexpected places",
+      "Prophecy mentioned in passing",
+      "Missing person from years ago",
+      "Book written in unknown language",
+      "Family secret hinted at but not revealed",
+      "Rival with unexplained knowledge",
+      "Curse mentioned in whispers",
+      "Portal or gateway partially glimpsed",
+      "Power that manifests unexpectedly"
+    ];
 
-Sensory Immersion:
-- Layer multiple senses in every scene
-- Use synesthesia: "Her laugh tasted like champagne and starlight"
-- Connect emotions to physical sensations
-- Make the supernatural feel viscerally real
-- Use scent and taste to trigger memory and desire
+    // Select 2 random elements
+    const shuffled = elements.sort(() => 0.5 - Math.random());
+    const selected = shuffled.slice(0, 2);
+    
+    return `[Chekhov1]: ${selected[0]}
+[Chekhov2]: ${selected[1]}
+(These elements should be planted naturally and will pay off in future chapters)`;
+  }
 
-TECHNICAL REQUIREMENTS:
-- HTML formatting: <h3> for titles, <p> for paragraphs, <em> for emphasis
-- Create complete, satisfying stories that could continue naturally
-- Match requested spice level precisely throughout
-- Incorporate all requested themes organically
-- Maintain creature authenticity while adding fresh twists
+  private buildSystemPrompt(input: StoryGenerationSeam['input']): string {
+    // Get random author style selections for this generation
+    const selectedStyles = this.selectRandomAuthorStyles(input.creature);
+    const selectedBeatStructure = this.getRandomBeatStructure(input);
+    
+    return `You are an audio-first dark-romance architect producing supernatural vignettes optimized for multi-voice narration.
+Your sole purpose is to fabricate episodes that sound cinematic when read aloud and end on a cliff-hook that guarantees listener return.
 
-Remember: You're not just writing stories - you're crafting experiences that make readers forget they're reading. Every word should pull them deeper into a world where the impossible feels inevitable and desire burns eternal.
+DYNAMIC STYLE SELECTION FOR THIS STORY:
+${selectedStyles.map(style => `${style.author}: "${style.voiceSample}" | ${style.trait}`).join('\n')}
 
-CRITICAL: Always use the [Speaker]: format for ALL dialogue and [Narrator]: for ALL descriptive text. This is essential for audio generation. Never break this format.`;
+${selectedBeatStructure}
+
+PROSE ENGINE (MANDATORY):
+BANNED WORDS/PHRASES (hard-fail unless inside dialogue for character voice):
+"suddenly", "very", "she felt", "he felt", "it was [emotion]", 
+"he was [adj]", "she was [adj]", "there was", "began to", "started to"
+
+NO PURPLE PROSE / NO FILLER:
+Every line must move plot, reveal character, or raise tension.
+Vary sentence length for audio rhythm. Keep paragraphs 1-4 lines.
+
+SHOW DON'T TELL EXAMPLES:
+BAD: "She was scared" → GOOD: "[Narrator]: Her pulse throbbed against her throat, fingers slick on the hilt"
+BAD: "He was attractive" → GOOD: "[Narrator]: Candlelight caught the curve of his grin, making it wicked"  
+BAD: "She was attracted to him" → GOOD: "[Narrator]: Her breath caught as his thumb traced her wrist, pulse jumping beneath his touch"
+BAD: "They kissed passionately" → GOOD: "[Narrator]: Her breath hitched as he dragged her closer, their mouths colliding hard enough to make the table shudder"
+
+CHARACTER MANDATE:
+Core Desire Template: "[Narrator]: <Name> wants <X> because <Y> but <Z>."
+Every protagonist needs: driving WANT (revenge, freedom, power), visible flaws, emotional vulnerability shown through action.
+Distinct dialogue patterns: sentence length, formality, emotional triggers.
+
+CONSENT & CHEMISTRY BLOCK:
+INTIMATE SCENES MUST:
+- Show enthusiastic consent through action/dialogue ("Yes," "Please," "Don't stop")
+- Build emotional connection alongside physical escalation
+- Use anticipation and denial to heighten tension
+- Never rush to physical without emotional stakes
+
+SPICE LEVELS (match exactly):
+Level 1: Yearning looks, accidental touches, sweet anticipation
+Level 2: First kisses, heated arguments, sensual tension
+Level 3: Clothes stay on, hands don't, steamy fade-to-black
+Level 4: Explicit but emotional, detailed physical intimacy
+Level 5: Nothing left to imagination, graphic yet sophisticated
+
+MORAL DILEMMA TRIGGER:
+At midpoint (≈50% word count), protagonist faces desire-vs-principle choice that drives the remainder and influences the cliffhanger.
+
+SERIALIZATION HOOKS:
+Plant one unresolved mystery, one relationship tension, one foreshadowed threat.
+
+AUDIO FORMAT (NON-NEGOTIABLE):
+- [Character Name]: "dialogue" for ALL speech
+- [Narrator]: for ALL descriptions/scene-setting  
+- [Character, emotion]: "dialogue" for emotional context
+- HTML: <h3> titles, <p> paragraphs, <em> emphasis
+
+Your goal: Create episodes that make listeners desperate for "Continue Chapter."`;
+  }
 
   private buildUserPrompt(input: StoryGenerationSeam['input']): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const themesText = input.themes.join(', ');
     const spicyLabel = this.getSpicyLabel(input.spicyLevel);
+    const chekovElements = this.generateChekovElements();
 
-    return `Write a ${input.wordCount}-word spicy supernatural romance story that feels like a premium TV episode:
+    return `Write a ${input.wordCount}-word spicy supernatural romance story optimized for audio narration:
 
 PROTAGONIST: ${creatureName} with complex motivations and hidden depths
 THEMES TO WEAVE: ${themesText}
 SPICE LEVEL: ${spicyLabel} (Level ${input.spicyLevel}/5) - maintain this intensity throughout
 ${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
 
+CHEKHOV LEDGER (plant these elements for future payoff):
+${chekovElements}
+
 STORY REQUIREMENTS:
+- Select 2-3 contrasting author styles (voice samples + traits) from your creature's bank
 - Create characters with secrets that could destroy everything
 - Build sexual/romantic tension through obstacles, not just attraction
-- Use the "show don't tell" principle - reveal character through action
-- Include realistic dialogue with subtext and interruptions
+- Use banned word avoidance and show-don't-tell mastery
+- Include realistic dialogue with subtext and emotional charge
 - Layer multiple senses in every scene description
-- Give your ${creatureName.toLowerCase()} authentic supernatural traits with fresh twists
+- Follow the selected beat structure precisely
+
+WORD COUNT PACING:
+- 700 words: Fast, tense, sharp progression
+- 900 words: Character depth with tight focus  
+- 1200 words: Layered, immersive with complex tension
 
 MANDATORY FORMATTING FOR AUDIO:
 - [Character Name]: "dialogue" for ALL speech (no exceptions)
 - [Narrator]: for ALL scene descriptions and non-dialogue text
 - [Character, emotion]: "dialogue" when emotional context is crucial
-- HTML structure: <h3> for title, <p> for paragraphs
+- HTML structure: <h3> for title, <p> for paragraphs, <em> for emphasis
 
-Create a complete story that feels like it could continue but is satisfying on its own. Make every word count toward character development, world-building, or advancing the romantic/sexual tension.`;
+Create a complete story that feels like it could continue but is satisfying on its own. Make every word count toward character development, world-building, or advancing romantic/sexual tension.
+
+Plant your Chekhov elements naturally and ensure the moral dilemma occurs at midpoint. End with a cliffhanger that creates genuine desire for continuation.`;
   }
 
   private buildContinuationPrompt(input: ChapterContinuationSeam['input']): string {
