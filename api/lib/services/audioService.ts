@@ -177,11 +177,12 @@ export class AudioService {
     }
 
     // Merge default voice settings with emotion-specific settings
+    // Optimized default settings for turbo_v2_5 model
     const defaultSettings = {
-      stability: 0.5,
-      similarity_boost: 0.8,
-      style: 0.5,
-      use_speaker_boost: true
+      stability: 0.6,        // Higher for consistency
+      similarity_boost: 0.85, // Better character voice preservation
+      style: 0.4,            // More natural delivery
+      use_speaker_boost: true // Character distinction
     };
 
     const voiceSettings = emotionSettings ? { ...defaultSettings, ...emotionSettings } : defaultSettings;
@@ -191,7 +192,7 @@ export class AudioService {
         `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
         {
           text: text,
-          model_id: 'eleven_monolingual_v1',
+          model_id: 'eleven_turbo_v2_5', // Updated to latest fast model
           voice_settings: voiceSettings
         },
         {

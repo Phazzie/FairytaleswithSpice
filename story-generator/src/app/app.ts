@@ -6,6 +6,7 @@ import { ErrorLoggingService } from './error-logging';
 import { ErrorDisplayComponent } from './error-display/error-display';
 import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
 import { DebugPanel } from './debug-panel/debug-panel';
+import { EnhancedAudioPlayerComponent, AudioMetadata, AudioCharacter } from './enhanced-audio-player.component';
 
 /**
  * Fairytales with Spice - Main Application Component
@@ -33,7 +34,7 @@ import { DebugPanel } from './debug-panel/debug-panel';
  */
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel],
+  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel, EnhancedAudioPlayerComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -114,6 +115,15 @@ export class App implements OnInit, OnDestroy {
   
   /** Duration of audio file in seconds */
   currentAudioDuration: number = 0;
+
+  /** Enhanced audio metadata for character-driven player */
+  audioMetadata: AudioMetadata = {
+    totalDuration: 0,
+    characters: [],
+    emotions: [],
+    model: 'ElevenLabs Turbo v2.5',
+    quality: 'High Quality'
+  };
 
   // ==================== PROGRESS TRACKING ====================
   
@@ -429,9 +439,14 @@ export class App implements OnInit, OnDestroy {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
           
-          // Store audio data
+          // Store audio data with enhanced metadata
           this.currentAudioUrl = response.data.audioUrl;
           this.currentAudioDuration = response.data.duration;
+          
+          // Extract and update audio metadata for enhanced player
+          this.audioMetadata = this.extractAudioMetadata(request.content);
+          this.audioMetadata.totalDuration = response.data.duration;
+          this.audioMetadata.quality = this.determineAudioQuality(response.data);
           
           this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
             audioId: response.data.audioId,
@@ -550,5 +565,179 @@ export class App implements OnInit, OnDestroy {
       type: 'simulated_http_error',
       endpoint: '/api/fake-endpoint'
     });
+  }
+
+  // ==================== ENHANCED AUDIO PLAYER METHODS ====================
+
+  /**
+   * Extract audio metadata from story content for enhanced player
+   */
+  extractAudioMetadata(content: string): AudioMetadata {
+    const characters: AudioCharacter[] = [];
+    const emotions = new Set<string>();
+    
+    // Parse speaker tags to extract characters and emotions
+    const speakerRegex = /\[([^\]]+)\]:/g;
+    let match;
+    
+    const characterCounts = new Map<string, number>();
+    
+    while ((match = speakerRegex.exec(content)) !== null) {
+      const speakerInfo = match[1];
+      
+      // Extract character name and emotion
+      let characterName = speakerInfo;
+      let emotion = '';
+      
+      // Handle different formats: [Character, emotion] or [Character: emotion]
+      if (speakerInfo.includes(',')) {
+        const parts = speakerInfo.split(',');
+        characterName = parts[0].trim();
+        emotion = parts[1].trim();
+      } else if (speakerInfo.includes(':')) {
+        const parts = speakerInfo.split(':');
+        characterName = parts[0].trim();
+        emotion = parts[1].trim();
+      }
+      
+      // Normalize character name
+      characterName = this.normalizeCharacterName(characterName);
+      
+      // Count character segments
+      const currentCount = characterCounts.get(characterName) || 0;
+      characterCounts.set(characterName, currentCount + 1);
+      
+      // Add emotion to set
+      if (emotion) {
+        emotions.add(emotion);
+      }
+    }
+    
+    // Convert character counts to AudioCharacter objects
+    characterCounts.forEach((segments, name) => {
+      const voice = this.getVoiceForCharacter(name);
+      const characterEmotions = this.getEmotionsForCharacter(name, content);
+      
+      characters.push({
+        name,
+        voice,
+        emotionsUsed: characterEmotions,
+        segments
+      });
+    });
+    
+    return {
+      totalDuration: 0, // Will be set when audio loads
+      characters,
+      emotions: Array.from(emotions),
+      model: 'ElevenLabs Turbo v2.5',
+      quality: 'High Quality'
+    };
+  }
+
+  /**
+   * Normalize character names for consistent voice assignment
+   */
+  private normalizeCharacterName(name: string): string {
+    // Remove common titles and normalize
+    return name.toLowerCase()
+      .replace(/^(lord|lady|count|baron|duke|prince|princess|king|queen|master|mistress)\s+/i, '')
+      .replace(/\s+the\s+/i, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Get voice type for a character based on patterns
+   */
+  private getVoiceForCharacter(characterName: string): string {
+    const lowerName = characterName.toLowerCase();
+    
+    // Vampire detection
+    if (lowerName.includes('vampire') || lowerName.includes('dracula') || 
+        lowerName.includes('bloodsucker') || lowerName.includes('fang')) {
+      return this.isFemaleName(characterName) ? 'vampire_female' : 'vampire_male';
+    }
+    
+    // Werewolf detection  
+    if (lowerName.includes('werewolf') || lowerName.includes('wolf') || 
+        lowerName.includes('lycan') || lowerName.includes('alpha') || lowerName.includes('pack')) {
+      return this.isFemaleName(characterName) ? 'werewolf_female' : 'werewolf_male';
+    }
+    
+    // Fairy detection
+    if (lowerName.includes('fairy') || lowerName.includes('fae') || 
+        lowerName.includes('sprite') || lowerName.includes('pixie') || lowerName.includes('nymph')) {
+      return this.isFemaleName(characterName) ? 'fairy_female' : 'fairy_male';
+    }
+    
+    // Default to human
+    return this.isFemaleName(characterName) ? 'human_female' : 'human_male';
+  }
+
+  /**
+   * Simple gender detection based on name patterns
+   */
+  private isFemaleName(name: string): boolean {
+    const femaleIndicators = ['princess', 'queen', 'lady', 'bella', 'luna', 'aria', 'elena', 'sophia'];
+    const lowerName = name.toLowerCase();
+    
+    return femaleIndicators.some(indicator => lowerName.includes(indicator)) ||
+           name.endsWith('a') || name.endsWith('e') || name.endsWith('ina');
+  }
+
+  /**
+   * Extract emotions used by a specific character
+   */
+  private getEmotionsForCharacter(characterName: string, content: string): string[] {
+    const emotions = new Set<string>();
+    const regex = new RegExp(`\\[${characterName}[^\\]]*,\\s*([^\\]]+)\\]:`, 'gi');
+    let match;
+    
+    while ((match = regex.exec(content)) !== null) {
+      emotions.add(match[1].trim());
+    }
+    
+    return Array.from(emotions);
+  }
+
+  /**
+   * Determine audio quality based on response data
+   */
+  determineAudioQuality(audioData: any): string {
+    if (audioData.duration > 300) return 'Epic Length';
+    if (audioData.fileSize > 5000000) return 'Premium Quality';
+    return 'High Quality';
+  }
+
+  /**
+   * Handle audio regeneration with different voices
+   */
+  regenerateAudioWithDifferentVoices() {
+    console.log('🎭 Regenerating audio with different voice selections');
+    this.errorLogging.logInfo('User requested audio regeneration', 'App.regenerateAudioWithDifferentVoices');
+    
+    // Could implement voice selection modal here
+    alert('Audio regeneration with different voices is coming soon! This would allow you to select different voice actors for each character.');
+  }
+
+  /**
+   * Handle audio sharing
+   */
+  shareAudio(audioUrl: string) {
+    console.log('🔗 Sharing audio:', audioUrl);
+    this.errorLogging.logInfo('User shared audio', 'App.shareAudio', { audioUrl });
+  }
+
+  /**
+   * Handle character voice preview
+   */
+  previewCharacterVoice(character: AudioCharacter) {
+    console.log('🎭 Previewing voice for character:', character);
+    this.errorLogging.logInfo('User previewed character voice', 'App.previewCharacterVoice', { character: character.name });
+    
+    // Could implement actual voice preview here
+    // For now, just show an alert
+    alert(`Preview for ${character.name} (${character.voice}) would play a sample phrase like: "Hello, this is how I sound in the story."`);
   }
 }

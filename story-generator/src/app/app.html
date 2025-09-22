@@ -175,21 +175,15 @@
         🎵 Audio conversion completed! Use the player below to listen.
       </div>
       
-      <!-- Audio Player -->
-      <div class="audio-player" *ngIf="currentAudioUrl">
-        <h3>🎧 Audio Narration</h3>
-        <div class="audio-controls">
-          <audio controls preload="metadata" [src]="currentAudioUrl">
-            Your browser does not support the audio element.
-          </audio>
-          <div class="audio-info">
-            <p><strong>Duration:</strong> {{ formatDuration(currentAudioDuration) }}</p>
-            <a [href]="currentAudioUrl" download class="download-btn">
-              💾 Download Audio
-            </a>
-          </div>
-        </div>
-      </div>
+      <!-- Enhanced Audio Player -->
+      <enhanced-audio-player 
+        *ngIf="currentAudioUrl"
+        [audioUrl]="currentAudioUrl"
+        [metadata]="audioMetadata"
+        (regenerateRequested)="regenerateAudioWithDifferentVoices()"
+        (shareRequested)="shareAudio($event)"
+        (previewRequested)="previewCharacterVoice($event)">
+      </enhanced-audio-player>
     </div>
   </div>
 
