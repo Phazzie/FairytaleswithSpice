@@ -278,12 +278,23 @@ export class App implements OnInit, OnDestroy {
         });
         this.isGenerating = false;
         this.generationProgress = 0;
-        this.generationStatus = 'Story generation failed';
+        
+        // Provide specific error messages based on error type
+        if (error.status === 0) {
+          // Network error - likely API server not available
+          this.generationStatus = 'Unable to connect to story generation service. Please check your connection and try again.';
+        } else if (error.status === 404) {
+          this.generationStatus = 'Story generation service not found. Please try again later.';
+        } else if (error.status >= 500) {
+          this.generationStatus = 'Story generation service temporarily unavailable. Please try again.';
+        } else {
+          this.generationStatus = 'Story generation failed. Please try again.';
+        }
 
         // Reset error status after delay
         setTimeout(() => {
           this.generationStatus = '';
-        }, 3000);
+        }, 5000); // Increased delay for longer error messages
       }
     });
   }
@@ -312,13 +323,34 @@ export class App implements OnInit, OnDestroy {
       }
     };
 
-    // Timeout protection - if still generating after 30 seconds, show error
+    // Fallback completion - if API hasn't responded after reaching 95%, 
+    // wait a bit longer then show an error
+    setTimeout(() => {
+      if (this.isGenerating && this.generationProgress >= 95 && this.generationProgress < 100) {
+        // API call is taking too long after simulation completed
+        this.errorLogging.logError(
+          new Error('Story generation API timeout - simulation completed but no response'), 
+          'App.simulateGenerationProgress', 
+          'warning',
+          { progress: this.generationProgress }
+        );
+        this.isGenerating = false;
+        this.generationProgress = 0;
+        this.generationStatus = 'API connection failed. Please check your internet connection and try again.';
+        
+        setTimeout(() => {
+          this.generationStatus = '';
+        }, 5000);
+      }
+    }, 15000); // Give API 15 seconds after simulation completes
+
+    // Final timeout protection - if still generating after 30 seconds, show error
     setTimeout(() => {
       if (this.isGenerating && this.generationProgress < 100) {
         this.errorLogging.logError(
           new Error('Story generation timeout'), 
           'App.simulateGenerationProgress', 
-          'timeout',
+          'error',
           { progress: this.generationProgress }
         );
         this.isGenerating = false;
