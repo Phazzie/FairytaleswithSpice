@@ -285,6 +285,16 @@ Remember: You're not just writing stories - you're crafting experiences that mak
 
 CRITICAL: Always use the [Speaker]: format for ALL dialogue and [Narrator]: for ALL descriptive text. This is essential for audio generation. Never break this format.`;
 
+  }
+
+  /**
+   * Gets available emotions for story generation with enhanced emotion vocabulary
+   */
+  getAvailableEmotions(): string {
+    const emotions = getAvailableEmotions();
+    return emotions.join(', ');
+  }
+
   private buildUserPrompt(input: StoryGenerationSeam['input']): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const themesText = input.themes.join(', ');
@@ -309,6 +319,7 @@ MANDATORY FORMATTING FOR AUDIO:
 - [Character Name]: "dialogue" for ALL speech (no exceptions)
 - [Narrator]: for ALL scene descriptions and non-dialogue text
 - [Character, emotion]: "dialogue" when emotional context is crucial
+- Available emotions: ${this.getAvailableEmotions()}
 - HTML structure: <h3> for title, <p> for paragraphs
 
 Create a complete story that feels like it could continue but is satisfying on its own. Make every word count toward character development, world-building, or advancing the romantic/sexual tension.`;

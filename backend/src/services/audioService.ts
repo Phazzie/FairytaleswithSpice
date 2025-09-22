@@ -1,9 +1,35 @@
 import axios from 'axios';
 import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
 
+/**
+ * AudioService - Enhanced with Latest ElevenLabs API Features
+ * Updated to use current models and optimal settings for supernatural romance narration
+ * 
+ * @version 3.0.0 - Updated for latest ElevenLabs API features
+ * @since 2025-09-22
+ */
 export class AudioService {
   private elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
   private elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+
+  /**
+   * ElevenLabs models configuration with fallback strategy
+   */
+  private models = {
+    high_quality: 'eleven_multilingual_v2',     // Best quality, supports emotions
+    fast_generation: 'eleven_turbo_v2_5',       // Latest turbo model
+    streaming: 'eleven_turbo_v2',               // Optimized for real-time
+    fallback: 'eleven_monolingual_v1'           // Backup for compatibility
+  };
+
+  /**
+   * Output format options for different use cases
+   */
+  private outputFormats = {
+    streaming: 'mp3_22050_32',    // Smaller files for real-time
+    download: 'mp3_44100_128',    // High quality for downloads
+    processing: 'pcm_16000'       // Raw PCM for manipulation
+  };
 
   // Voice IDs for different voice types (ElevenLabs voice IDs)
   private voiceIds = {
@@ -136,13 +162,14 @@ export class AudioService {
         `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
         {
           text: text,
-          model_id: 'eleven_monolingual_v1',
+          model_id: this.models.high_quality, // Use the latest model
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.8,
-            style: 0.5,
+            style: 0.4,  // Optimized for multilingual model
             use_speaker_boost: true
-          }
+          },
+          output_format: this.outputFormats.download // High quality output
         },
         {
           headers: {

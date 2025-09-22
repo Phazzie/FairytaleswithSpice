@@ -296,7 +296,8 @@ export class App implements OnInit, OnDestroy {
       { progress: 40, status: 'Building the world...', delay: 1200 },
       { progress: 60, status: 'Crafting the plot...', delay: 1500 },
       { progress: 80, status: 'Adding spicy details...', delay: 1000 },
-      { progress: 90, status: 'Polishing the narrative...', delay: 500 }
+      { progress: 90, status: 'Polishing the narrative...', delay: 500 },
+      { progress: 95, status: 'Final touches...', delay: 1000 }
     ];
 
     let currentStep = 0;
@@ -310,6 +311,25 @@ export class App implements OnInit, OnDestroy {
         setTimeout(executeNextStep, step.delay);
       }
     };
+
+    // Timeout protection - if still generating after 30 seconds, show error
+    setTimeout(() => {
+      if (this.isGenerating && this.generationProgress < 100) {
+        this.errorLogging.logError(
+          new Error('Story generation timeout'), 
+          'App.simulateGenerationProgress', 
+          'error',
+          { progress: this.generationProgress }
+        );
+        this.isGenerating = false;
+        this.generationProgress = 0;
+        this.generationStatus = 'Generation timed out. Please try again.';
+        
+        setTimeout(() => {
+          this.generationStatus = '';
+        }, 5000);
+      }
+    }, 30000);
 
     setTimeout(executeNextStep, 500);
   }
