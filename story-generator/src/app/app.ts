@@ -115,6 +115,36 @@ export class App implements OnInit, OnDestroy {
   /** Duration of audio file in seconds */
   currentAudioDuration: number = 0;
 
+  // ==================== ENHANCED AUDIO PLAYER CONTROLS ====================
+  
+  /** Current playback speed (0.5x, 1x, 1.25x, 1.5x, 2x) */
+  playbackSpeed: number = 1.0;
+  
+  /** Available playback speeds */
+  playbackSpeeds = [
+    { value: 0.5, label: '0.5x' },
+    { value: 0.75, label: '0.75x' },
+    { value: 1.0, label: '1x' },
+    { value: 1.25, label: '1.25x' },
+    { value: 1.5, label: '1.5x' },
+    { value: 2.0, label: '2x' }
+  ];
+  
+  /** Current audio playback time (in seconds) */
+  currentTime: number = 0;
+  
+  /** Whether audio is currently playing */
+  isPlaying: boolean = false;
+  
+  /** Current volume (0-100) */
+  volume: number = 100;
+  
+  /** Current speaker during playback (for multi-voice visualization) */
+  currentSpeaker: string = 'Narrator';
+  
+  /** Reference to the HTML audio element */
+  private audioElement: HTMLAudioElement | null = null;
+
   // ==================== PROGRESS TRACKING ====================
   
   /** Real-time generation progress (0-100) */
@@ -427,6 +457,9 @@ export class App implements OnInit, OnDestroy {
           this.currentAudioUrl = response.data.audioUrl;
           this.currentAudioDuration = response.data.duration;
           
+          // Initialize enhanced audio player
+          this.initializeAudioPlayer();
+          
           this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
             audioId: response.data.audioId,
             duration: response.data.duration,
@@ -520,6 +553,12 @@ export class App implements OnInit, OnDestroy {
       if (this.debugPanel) {
         this.debugPanel.toggleVisibility();
       }
+      return;
+    }
+
+    // Audio controls (only when audio is available)
+    if (this.currentAudioUrl) {
+      this.onKeyboardShortcut(event);
     }
   }
 
@@ -544,5 +583,159 @@ export class App implements OnInit, OnDestroy {
       type: 'simulated_http_error',
       endpoint: '/api/fake-endpoint'
     });
+  }
+
+  // ==================== ENHANCED AUDIO PLAYER METHODS ====================
+
+  /**
+   * Initialize audio element reference and set up event listeners
+   * Called after audio URL is set
+   */
+  initializeAudioPlayer() {
+    if (this.isBrowser && this.currentAudioUrl) {
+      // Find the audio element
+      setTimeout(() => {
+        this.audioElement = document.querySelector('audio');
+        if (this.audioElement) {
+          this.setupAudioEventListeners();
+          this.audioElement.playbackRate = this.playbackSpeed;
+          this.audioElement.volume = this.volume / 100;
+        }
+      }, 100);
+    }
+  }
+
+  /**
+   * Set up audio event listeners for enhanced controls
+   */
+  private setupAudioEventListeners() {
+    if (!this.audioElement) return;
+
+    this.audioElement.addEventListener('timeupdate', () => {
+      this.currentTime = this.audioElement!.currentTime;
+    });
+
+    this.audioElement.addEventListener('play', () => {
+      this.isPlaying = true;
+    });
+
+    this.audioElement.addEventListener('pause', () => {
+      this.isPlaying = false;
+    });
+
+    this.audioElement.addEventListener('ended', () => {
+      this.isPlaying = false;
+      this.currentTime = 0;
+    });
+
+    this.audioElement.addEventListener('loadedmetadata', () => {
+      if (this.audioElement) {
+        this.currentAudioDuration = this.audioElement.duration;
+      }
+    });
+  }
+
+  /**
+   * Rewind audio by 10 seconds
+   */
+  rewind() {
+    this.seekTo(Math.max(0, this.currentTime - 10));
+  }
+
+  /**
+   * Fast forward audio by 10 seconds
+   */
+  fastForward() {
+    this.seekTo(Math.min(this.currentAudioDuration, this.currentTime + 10));
+  }
+
+  /**
+   * Toggle play/pause for audio
+   */
+  togglePlayback() {
+    if (!this.audioElement) return;
+
+    if (this.isPlaying) {
+      this.audioElement.pause();
+    } else {
+      this.audioElement.play();
+    }
+  }
+
+  /**
+   * Set playback speed
+   */
+  setPlaybackSpeed(speed: number) {
+    this.playbackSpeed = speed;
+    if (this.audioElement) {
+      this.audioElement.playbackRate = speed;
+    }
+  }
+
+  /**
+   * Seek to specific time in audio
+   */
+  seekTo(time: number) {
+    if (this.audioElement) {
+      this.audioElement.currentTime = time;
+      this.currentTime = time;
+    }
+  }
+
+  /**
+   * Set volume (0-100)
+   */
+  setVolume(volume: number) {
+    this.volume = Math.max(0, Math.min(100, volume));
+    if (this.audioElement) {
+      this.audioElement.volume = this.volume / 100;
+    }
+  }
+
+  /**
+   * Handle keyboard shortcuts for audio control
+   */
+  onKeyboardShortcut(event: KeyboardEvent) {
+    if (!this.currentAudioUrl || !this.audioElement) return;
+
+    switch (event.code) {
+      case 'Space':
+        event.preventDefault();
+        this.togglePlayback();
+        break;
+      case 'ArrowLeft':
+        event.preventDefault();
+        this.rewind();
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        this.fastForward();
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        this.setVolume(this.volume + 10);
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        this.setVolume(this.volume - 10);
+        break;
+    }
+  }
+
+  /**
+   * Format time in MM:SS format
+   */
+  formatTime(seconds: number): string {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Get progress percentage for visual indicator
+   */
+  getProgressPercentage(): number {
+    if (!this.currentAudioDuration) return 0;
+    return (this.currentTime / this.currentAudioDuration) * 100;
   }
 }

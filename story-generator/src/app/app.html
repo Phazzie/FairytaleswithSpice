@@ -175,19 +175,112 @@
         🎵 Audio conversion completed! Use the player below to listen.
       </div>
       
-      <!-- Audio Player -->
-      <div class="audio-player" *ngIf="currentAudioUrl">
+      <!-- Enhanced Audio Player -->
+      <div class="enhanced-audio-player" *ngIf="currentAudioUrl">
         <h3>🎧 Audio Narration</h3>
-        <div class="audio-controls">
-          <audio controls preload="metadata" [src]="currentAudioUrl">
-            Your browser does not support the audio element.
-          </audio>
-          <div class="audio-info">
-            <p><strong>Duration:</strong> {{ formatDuration(currentAudioDuration) }}</p>
-            <a [href]="currentAudioUrl" download class="download-btn">
-              💾 Download Audio
-            </a>
+        
+        <!-- Speaker Indicator -->
+        <div class="speaker-indicator" *ngIf="currentSpeaker">
+          <span class="speaker-icon">🎭</span>
+          <span class="speaker-name">{{ currentSpeaker }}</span>
+          <span class="voice-type">(Narrator)</span>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="audio-progress-bar">
+          <div class="progress-background">
+            <div class="progress-fill" [style.width.%]="getProgressPercentage()"></div>
+            <input 
+              type="range" 
+              class="seek-slider"
+              [value]="currentTime" 
+              [max]="currentAudioDuration" 
+              step="0.1"
+              (input)="seekTo(+$event.target.value)"
+              />
           </div>
+          <div class="time-display">
+            <span class="current-time">{{ formatTime(currentTime) }}</span>
+            <span class="separator"> / </span>
+            <span class="total-time">{{ formatTime(currentAudioDuration) }}</span>
+          </div>
+        </div>
+
+        <!-- Main Controls -->
+        <div class="audio-controls-main">
+          <button 
+            class="control-btn rewind-btn" 
+            (click)="rewind()"
+            title="Rewind 10s (←)">
+            ⏪
+          </button>
+          
+          <button 
+            class="control-btn play-pause-btn" 
+            (click)="togglePlayback()"
+            title="Play/Pause (Space)">
+            {{ isPlaying ? '⏸️' : '▶️' }}
+          </button>
+          
+          <button 
+            class="control-btn forward-btn" 
+            (click)="fastForward()"
+            title="Forward 10s (→)">
+            ⏩
+          </button>
+        </div>
+
+        <!-- Advanced Controls -->
+        <div class="audio-controls-advanced">
+          <!-- Speed Control -->
+          <div class="control-group">
+            <label for="speed-control">Speed:</label>
+            <select 
+              id="speed-control"
+              class="speed-selector"
+              [(ngModel)]="playbackSpeed" 
+              (change)="setPlaybackSpeed(playbackSpeed)">
+              <option *ngFor="let speed of playbackSpeeds" [value]="speed.value">
+                {{ speed.label }}
+              </option>
+            </select>
+          </div>
+
+          <!-- Volume Control -->
+          <div class="control-group">
+            <label for="volume-control">🔊</label>
+            <input 
+              id="volume-control"
+              type="range" 
+              class="volume-slider"
+              min="0" 
+              max="100" 
+              step="1"
+              [(ngModel)]="volume"
+              (input)="setVolume(volume)"
+              title="Volume (↑/↓)">
+            <span class="volume-display">{{ volume }}%</span>
+          </div>
+
+          <!-- Download Button -->
+          <a [href]="currentAudioUrl" download class="download-btn">
+            💾 Download
+          </a>
+        </div>
+
+        <!-- Hidden HTML5 Audio Element -->
+        <audio 
+          [src]="currentAudioUrl" 
+          preload="metadata"
+          style="display: none;">
+          Your browser does not support the audio element.
+        </audio>
+
+        <!-- Keyboard Shortcuts Help -->
+        <div class="keyboard-shortcuts">
+          <small>
+            🎹 <strong>Shortcuts:</strong> Space=Play/Pause, ←/→=Seek, ↑/↓=Volume
+          </small>
         </div>
       </div>
     </div>

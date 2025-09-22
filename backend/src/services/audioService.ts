@@ -5,6 +5,18 @@ export class AudioService {
   private elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
   private elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
 
+  /** ElevenLabs model fallback system (v3 → v2 → v1) */
+  private elevenLabsModels = [
+    'eleven_turbo_v2_5',      // v3 - fastest
+    'eleven_multilingual_v2', // v3 - best quality  
+    'eleven_monolingual_v1'   // v1 - fallback
+  ];
+
+  /** Get the preferred model (can be overridden by environment variable) */
+  private getPreferredModel(): string {
+    return process.env.ELEVENLABS_MODEL_V3 || this.elevenLabsModels[0];
+  }
+
   // Voice IDs for different voice types (ElevenLabs voice IDs)
   private voiceIds = {
     // Basic voices (backwards compatibility)
@@ -132,26 +144,16 @@ export class AudioService {
     }
 
     try {
-      const response = await axios.post(
+      const response = await this.callElevenLabsAPIWithFallback(
         `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
         {
           text: text,
-          model_id: 'eleven_monolingual_v1',
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.8,
             style: 0.5,
             use_speaker_boost: true
           }
-        },
-        {
-          headers: {
-            'Accept': 'audio/mpeg',
-            'Content-Type': 'application/json',
-            'xi-api-key': this.elevenLabsApiKey
-          },
-          responseType: 'arraybuffer',
-          timeout: 60000 // 60 seconds timeout
         }
       );
 
@@ -429,5 +431,53 @@ export class AudioService {
 
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Call ElevenLabs API with model fallback system
+   * Tries v3 models first, falls back to v2, then v1 if needed
+   */
+  private async callElevenLabsAPIWithFallback(url: string, requestData: any): Promise<any> {
+    const models = [this.getPreferredModel(), ...this.elevenLabsModels.filter(m => m !== this.getPreferredModel())];
+    
+    for (const modelId of models) {
+      try {
+        console.log(`Attempting ElevenLabs API call with model: ${modelId}`);
+        
+        const response = await axios.post(
+          url,
+          {
+            ...requestData,
+            model_id: modelId
+          },
+          {
+            headers: {
+              'Accept': 'audio/mpeg',
+              'Content-Type': 'application/json',
+              'xi-api-key': this.elevenLabsApiKey
+            },
+            responseType: 'arraybuffer',
+            timeout: 60000 // 60 seconds timeout
+          }
+        );
+        
+        console.log(`✅ Successfully used ElevenLabs model: ${modelId}`);
+        return response;
+        
+      } catch (error: any) {
+        console.warn(`❌ Model ${modelId} failed:`, error.response?.data || error.message);
+        
+        // If this was the last model, throw the error
+        if (modelId === this.elevenLabsModels[this.elevenLabsModels.length - 1]) {
+          throw error;
+        }
+        
+        // Otherwise, continue to next model
+        console.log(`🔄 Falling back to next available model...`);
+      }
+    }
+    
+    // This should never be reached, but just in case
+    throw new Error('All ElevenLabs models failed');
   }
 }
