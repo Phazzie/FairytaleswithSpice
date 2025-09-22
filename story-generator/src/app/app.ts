@@ -126,6 +126,9 @@ export class App implements OnInit, OnDestroy {
   /** Audio conversion progress (0-100) */
   audioProgress: number = 0;
   
+  /** Timeout ID for progress simulation to allow cancellation */
+  private progressTimeoutId: any = null;
+  
   /** Success flags for user feedback */
   saveSuccess: boolean = false;
   audioSuccess: boolean = false;
@@ -245,6 +248,12 @@ export class App implements OnInit, OnDestroy {
     this.storyService.generateStory(request).subscribe({
       next: (response) => {
         if (response.success && response.data) {
+          // Clear any pending progress simulation
+          if (this.progressTimeoutId) {
+            clearTimeout(this.progressTimeoutId);
+            this.progressTimeoutId = null;
+          }
+          
           // Complete progress
           this.generationProgress = 100;
           this.generationStatus = 'Story generated successfully!';
@@ -276,6 +285,13 @@ export class App implements OnInit, OnDestroy {
           request,
           userAction: 'story_generation'
         });
+        
+        // Clear any pending progress simulation
+        if (this.progressTimeoutId) {
+          clearTimeout(this.progressTimeoutId);
+          this.progressTimeoutId = null;
+        }
+        
         this.isGenerating = false;
         this.generationProgress = 0;
         this.generationStatus = 'Story generation failed';
@@ -296,10 +312,13 @@ export class App implements OnInit, OnDestroy {
       { progress: 40, status: 'Building the world...', delay: 1200 },
       { progress: 60, status: 'Crafting the plot...', delay: 1500 },
       { progress: 80, status: 'Adding spicy details...', delay: 1000 },
-      { progress: 90, status: 'Polishing the narrative...', delay: 500 }
+      { progress: 90, status: 'Polishing the narrative...', delay: 500 },
+      { progress: 95, status: 'Final touches...', delay: 1000 }
     ];
 
     let currentStep = 0;
+    let progressInterval: any;
+    
     const executeNextStep = () => {
       if (currentStep < steps.length && this.isGenerating) {
         const step = steps[currentStep];
@@ -307,9 +326,36 @@ export class App implements OnInit, OnDestroy {
         this.generationStatus = step.status;
         currentStep++;
 
-        setTimeout(executeNextStep, step.delay);
+        progressInterval = setTimeout(executeNextStep, step.delay);
       }
     };
+
+    // Store the progress timeout so we can cancel it if needed
+    this.progressTimeoutId = progressInterval;
+
+    // Timeout protection - if still generating after 30 seconds, show error
+    setTimeout(() => {
+      if (this.isGenerating && this.generationProgress < 100) {
+        this.errorLogging.logError(
+          new Error('Story generation timeout'), 
+          'App.simulateGenerationProgress', 
+          'error',
+          { progress: this.generationProgress }
+        );
+        this.isGenerating = false;
+        this.generationProgress = 0;
+        this.generationStatus = 'Generation timed out. Please try again.';
+        
+        // Clear any pending progress updates
+        if (progressInterval) {
+          clearTimeout(progressInterval);
+        }
+        
+        setTimeout(() => {
+          this.generationStatus = '';
+        }, 5000);
+      }
+    }, 30000);
 
     setTimeout(executeNextStep, 500);
   }
