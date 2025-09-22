@@ -9,11 +9,11 @@ import { DebugPanel } from './debug-panel/debug-panel';
 
 /**
  * Fairytales with Spice - Main Application Component
- * 
+ *
  * This is the core component that orchestrates the entire spicy fairy tale generation experience.
- * It implements a seam-driven architecture where each data boundary (UI->API, API->Services) 
+ * It implements a seam-driven architecture where each data boundary (UI->API, API->Services)
  * is explicitly defined through TypeScript contracts.
- * 
+ *
  * Key Features:
  * - Multi-creature story generation (vampires, werewolves, fairies)
  * - Real-time generation progress with realistic status updates
@@ -21,12 +21,12 @@ import { DebugPanel } from './debug-panel/debug-panel';
  * - Multiple export formats (PDF, EPUB, DOCX, etc.)
  * - Comprehensive error logging and debugging tools
  * - Responsive two-column layout for configuration and story display
- * 
+ *
  * Architecture: Follows Seam-Driven Development methodology
  * - Each API interaction goes through defined seam contracts
  * - Mock services available for development without external APIs
  * - Error boundaries prevent integration failures
- * 
+ *
  * @author Fairytales with Spice Development Team
  * @version 2.1.0
  * @since 2025-09-21
@@ -40,7 +40,7 @@ import { DebugPanel } from './debug-panel/debug-panel';
 export class App implements OnInit, OnDestroy {
   /** Application title signal for reactive updates */
   protected readonly title = signal('story-generator');
-  
+
   /** Browser detection for platform-specific features (SSR compatibility) */
   private isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
@@ -48,7 +48,7 @@ export class App implements OnInit, OnDestroy {
   @ViewChild(DebugPanel) debugPanel!: DebugPanel;
 
   // ==================== DEPENDENCY INJECTION ====================
-  
+
   /**
    * Constructor injects core services using Angular's DI system
    * @param storyService - Handles all API communication for story operations
@@ -60,24 +60,24 @@ export class App implements OnInit, OnDestroy {
   ) {}
 
   // ==================== FORM STATE MANAGEMENT ====================
-  
+
   /** Selected creature type for story generation */
   selectedCreature: string = 'vampire';
-  
+
   /** Set of selected themes (max 5 allowed) */
   selectedThemes: Set<string> = new Set();
-  
+
   /** Optional user input for story customization */
   userInput: string = '';
-  
+
   /** Spicy level (1-5) determining content intensity */
   spicyLevel: number = 3;
-  
+
   /** Target word count for story generation */
   wordCount: number = 900;
 
   // ==================== UI STATE MANAGEMENT ====================
-  
+
   /** Loading states for different operations */
   isGenerating: boolean = false;
   isConvertingAudio: boolean = false;
@@ -85,43 +85,43 @@ export class App implements OnInit, OnDestroy {
   isGeneratingNext: boolean = false;
   isContinuing: boolean = false;
   isExporting: boolean = false;
-  
+
   /** Error states for user feedback */
   generationError: string = '';
   audioError: string = '';
   exportError: string = '';
 
   // ==================== STORY DATA MANAGEMENT ====================
-  
+
   /** Generated story content (HTML formatted for display) */
   currentStory: string = '';
-  
+
   /** Raw story content with speaker tags for multi-voice audio processing */
   currentStoryRaw: string = '';
-  
+
   /** Unique identifier for the current story */
   currentStoryId: string = '';
-  
+
   /** Generated story title */
   currentStoryTitle: string = '';
-  
+
   /** Number of chapters in current story */
   currentChapterCount: number = 0;
-  
+
   /** Themes used in current story generation */
   currentStoryThemes: string[] = [];
-  
+
   /** Spicy level of current story */
   currentStorySpicyLevel: number = 3;
 
   // ==================== AUDIO DATA MANAGEMENT ====================
-  
+
   /** URL of generated audio file for playback */
   currentAudioUrl: string = '';
-  
+
   /** Duration of audio file in seconds */
   currentAudioDuration: number = 0;
-  
+
   /** Success flags for user feedback */
   saveSuccess: boolean = false;
   audioSuccess: boolean = false;
@@ -214,7 +214,7 @@ export class App implements OnInit, OnDestroy {
     this.currentStory = '';
     this.saveSuccess = false;
     this.audioSuccess = false;
-    
+
     // Clear audio data when generating new story
     this.currentAudioUrl = '';
     this.currentAudioDuration = 0;
@@ -257,8 +257,8 @@ export class App implements OnInit, OnDestroy {
           this.isGenerating = false;
           this.generationError = response.error?.message || 'Story generation failed. Please try again.';
           this.errorLogging.logError(
-            new Error('Empty response data'), 
-            'App.generateStory', 
+            new Error('Empty response data'),
+            'App.generateStory',
             'error',
             { response }
           );
@@ -266,14 +266,14 @@ export class App implements OnInit, OnDestroy {
       },
       error: (error) => {
         console.error('Story generation error:', error);
-        
+
         this.errorLogging.logError(error, 'App.generateStory', 'error', {
           request,
           userAction: 'story_generation'
         });
-        
+
         this.isGenerating = false;
-        
+
         // Provide user-friendly error messages
         if (error.error?.code === 'GENERATION_FAILED') {
           this.generationError = 'Our AI storyteller is having trouble. Please try again in a moment.';
@@ -286,7 +286,7 @@ export class App implements OnInit, OnDestroy {
         } else {
           this.generationError = 'Something went wrong. Please try again or contact support if this continues.';
         }
-        
+
         // Auto-clear error after 10 seconds
         setTimeout(() => {
           this.generationError = '';
@@ -357,11 +357,11 @@ export class App implements OnInit, OnDestroy {
         if (response.success && response.data) {
           this.isConvertingAudio = false;
           this.audioSuccess = true;
-          
+
           // Store audio data
           this.currentAudioUrl = response.data.audioUrl;
           this.currentAudioDuration = response.data.duration;
-          
+
           this.errorLogging.logInfo('Audio conversion completed successfully', 'App.convertToAudio', {
             audioId: response.data.audioId,
             duration: response.data.duration,
@@ -372,14 +372,14 @@ export class App implements OnInit, OnDestroy {
       },
       error: (error) => {
         console.error('Audio conversion error:', error);
-        
+
         this.errorLogging.logError(error, 'App.convertToAudio', 'error', {
           request,
           userAction: 'audio_conversion'
         });
-        
+
         this.isConvertingAudio = false;
-        
+
         // User-friendly audio error messages
         if (error.error?.code === 'AUDIO_GENERATION_FAILED') {
           this.audioError = 'Audio conversion failed. Please try again.';
@@ -390,7 +390,7 @@ export class App implements OnInit, OnDestroy {
         } else {
           this.audioError = 'Audio conversion failed. Please try again later.';
         }
-        
+
         // Auto-clear error after 8 seconds
         setTimeout(() => {
           this.audioError = '';

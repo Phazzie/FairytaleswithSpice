@@ -62,9 +62,6 @@ npm install
 
 # Install frontend dependencies
 cd story-generator && npm install && cd ..
-
-# Install API dependencies
-cd api && npm install && cd ..
 ```
 
 ### 3. Environment Setup
@@ -85,13 +82,13 @@ NODE_ENV=development
 # Start frontend (Angular dev server)
 cd story-generator && npm run dev
 
-# In another terminal, start API server (if using local backend)
-cd api && npm run dev
+# API functions are automatically deployed to Vercel
+# No local backend server needed - uses Vercel serverless functions
 ```
 
 ### 5. Access the Application
 - **Frontend**: http://localhost:4200
-- **API Health**: http://localhost:3000/api/health (if running local backend)
+- **API**: Deployed automatically to Vercel (https://fairytaleswithspice.vercel.app/api/)
 - **Production**: https://fairytaleswithspice.vercel.app
 
 ## 🏗️ Architecture Overview
@@ -191,7 +188,9 @@ npm run lint         # Code quality checks
 
 **API (api/)**
 ```bash
-npm run dev          # Local API development server
+# API functions are deployed to Vercel automatically
+# Use Vercel CLI for local API testing if needed:
+vercel dev           # Test API functions locally (optional)
 npm run test         # Run API tests
 npm run test:ci      # CI-optimized test run
 ```

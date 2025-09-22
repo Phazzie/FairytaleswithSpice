@@ -4,7 +4,7 @@
 
 // ==================== TYPE DEFINITIONS ====================
 export type CreatureType = 'vampire' | 'werewolf' | 'fairy';
-export type ThemeType = 'romance' | 'adventure' | 'mystery' | 'comedy' | 'dark';
+export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden_love' | 'revenge' | 'manipulation' | 'seduction' | 'dark_secrets' | 'corruption' | 'dominance' | 'submission' | 'jealousy' | 'temptation' | 'sin' | 'desire' | 'passion' | 'lust' | 'deceit';
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
 export type WordCount = 700 | 900 | 1200;
 export type VoiceType = 'female' | 'male' | 'neutral';
@@ -227,7 +227,7 @@ export const VALIDATION_RULES = {
   },
   themes: {
     maxCount: 5,
-    allowedValues: ['romance', 'adventure', 'mystery', 'comedy', 'dark']
+    allowedValues: ['betrayal', 'obsession', 'power_dynamics', 'forbidden_love', 'revenge', 'manipulation', 'seduction', 'dark_secrets', 'corruption', 'dominance', 'submission', 'jealousy', 'temptation', 'sin', 'desire', 'passion', 'lust', 'deceit']
   },
   spicyLevel: {
     min: 1,

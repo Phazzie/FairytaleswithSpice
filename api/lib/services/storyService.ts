@@ -82,7 +82,7 @@ export class StoryService {
     }
   }
 
-  async continueStory(input: ChapterContinuationSeam['input']): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
+  async continueChapter(input: ChapterContinuationSeam['input']): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
     const startTime = Date.now();
 
     try {
