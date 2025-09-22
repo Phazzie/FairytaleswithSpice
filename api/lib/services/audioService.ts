@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
+import { getVoiceSettingsForEmotion, getAvailableEmotions, VoiceSettings } from './emotionMapping';
 
 /**
  * AudioService - Advanced Multi-Voice Text-to-Speech Processing
@@ -474,5 +475,62 @@ export class AudioService {
 
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  // ==================== EMOTION METHODS FOR API ENDPOINTS ====================
+  
+  /**
+   * Get comprehensive emotion information and voice capabilities
+   */
+  getEmotionInfo() {
+    const supportedEmotions = getAvailableEmotions();
+
+    return {
+      supportedEmotions,
+      emotionCount: supportedEmotions.length,
+      voiceTypes: Object.keys(this.voiceIds),
+      audioFormats: ['mp3', 'wav', 'aac'],
+      speedRange: { min: 0.5, max: 1.5 },
+      description: 'Advanced multi-voice emotion mapping for spicy fairy tale narration'
+    };
+  }
+
+  /**
+   * Test emotion combination and return voice parameters
+   */
+  testEmotionCombination(emotion: string) {
+    const supportedEmotions = getAvailableEmotions();
+    const isValid = supportedEmotions.includes(emotion.toLowerCase());
+    
+    if (!isValid) {
+      return {
+        valid: false,
+        error: `Emotion '${emotion}' not found in mapping`,
+        availableEmotions: supportedEmotions.slice(0, 10) // First 10 for brevity
+      };
+    }
+
+    const voiceSettings = getVoiceSettingsForEmotion(emotion);
+
+    return {
+      valid: true,
+      emotion: emotion.toLowerCase(),
+      parameters: voiceSettings,
+      testVoice: 'narrator',
+      sampleText: this.generateSampleTextForEmotion(emotion),
+      usage: `Use this emotion in speaker tags like: [Character:${emotion}]: "dialogue text"`
+    };
+  }
+
+  private generateSampleTextForEmotion(emotion: string): string {
+    const samples: Record<string, string> = {
+      'seductive': '"Come closer, darling... I won\'t bite... much."',
+      'menacing': '"You dare to defy me? Your blood will pay the price."',
+      'passionate': '"I burn for you with the fire of a thousand suns."',
+      'mysterious': '"Some secrets are better left buried in the shadows."',
+      'playful': '"Oh, what fun we shall have tonight, my dear prey."'
+    };
+    
+    return samples[emotion.toLowerCase()] || '"This emotion carries great power in our tales."';
   }
 }
