@@ -92,6 +92,12 @@ class AudioService {
             'terrified': { stability: 0.1, similarity_boost: 0.8, style: 0.8, use_speaker_boost: true },
             'serene': { stability: 0.9, similarity_boost: 0.7, style: 0.2, use_speaker_boost: false }
         };
+        // ==================== VOICE CONSISTENCY & PREVIEW SYSTEM ====================
+        /**
+         * Voice consistency verification system
+         * Tracks character voice assignments across a story to ensure consistency
+         */
+        this.characterVoiceMap = new Map();
         if (!this.elevenLabsApiKey) {
             console.warn('⚠️  ELEVENLABS_API_KEY not found in environment variables');
         }
@@ -256,7 +262,7 @@ class AudioService {
                 // This is a speaker tag - update current speaker and voice
                 const speakerInfo = speakerMatch[1];
                 currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove emotion if present
-                currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
+                currentVoice = this.getConsistentVoice(currentSpeaker);
                 // Extract emotion settings if present
                 const emotionData = this.extractEmotionFromSpeaker(speakerInfo);
                 currentEmotionSettings = emotionData.voiceSettings;
@@ -289,7 +295,16 @@ class AudioService {
         if (lowerName.includes('narrator')) {
             return 'narrator';
         }
-        // Infer gender from name patterns (basic implementation)
+        // Use consistent voice assignment
+        return this.getConsistentVoiceAssignment(speakerName);
+    }
+    /**
+     * Core voice assignment logic (used by consistency system)
+     * @param speakerName Speaker name
+     * @returns Voice type assignment
+     */
+    getConsistentVoiceAssignment(speakerName) {
+        // Infer gender from name patterns
         const isFemale = this.inferGenderFromName(speakerName);
         // Detect character type from name patterns
         const characterType = this.detectCharacterType(speakerName);
@@ -304,24 +319,60 @@ class AudioService {
     }
     detectCharacterType(speakerName) {
         const lowerName = speakerName.toLowerCase();
-        // Look for creature type indicators in the name
-        if (lowerName.includes('vampire') || lowerName.includes('vamp') || lowerName.includes('lord') || lowerName.includes('count')) {
-            return 'vampire';
+        // Enhanced vampire detection patterns
+        const vampirePatterns = [
+            'vampire', 'vamp', 'bloodsucker', 'nosferatu', 'dracula',
+            'lord', 'count', 'baron', 'duke', 'prince', 'king', 'master',
+            'dark lord', 'night walker', 'blood', 'fang', 'undead',
+            'immortal', 'ancient', 'elder', 'sire', 'lestat', 'alucard'
+        ];
+        // Enhanced werewolf detection patterns  
+        const werewolfPatterns = [
+            'werewolf', 'wolf', 'lycan', 'lycanthrope', 'shapeshifter',
+            'alpha', 'beta', 'omega', 'pack', 'moon', 'howl',
+            'feral', 'wild', 'beast', 'hunter', 'predator',
+            'lone wolf', 'pack leader', 'moon child', 'silver bane'
+        ];
+        // Enhanced fairy detection patterns
+        const fairyPatterns = [
+            'fairy', 'fae', 'faerie', 'sprite', 'pixie', 'nymph',
+            'sylph', 'dryad', 'naiad', 'queen', 'princess', 'court',
+            'wing', 'flutter', 'glow', 'shimmer', 'ethereal',
+            'nature', 'forest', 'garden', 'flower', 'petal',
+            'tinker', 'magic', 'enchant', 'mystical', 'otherworld'
+        ];
+        // Check vampire patterns
+        for (const pattern of vampirePatterns) {
+            if (lowerName.includes(pattern)) {
+                return 'vampire';
+            }
         }
-        if (lowerName.includes('werewolf') || lowerName.includes('wolf') || lowerName.includes('lycan') || lowerName.includes('alpha')) {
-            return 'werewolf';
+        // Check werewolf patterns
+        for (const pattern of werewolfPatterns) {
+            if (lowerName.includes(pattern)) {
+                return 'werewolf';
+            }
         }
-        if (lowerName.includes('fairy') || lowerName.includes('fae') || lowerName.includes('sprite') || lowerName.includes('pixie')) {
-            return 'fairy';
+        // Check fairy patterns
+        for (const pattern of fairyPatterns) {
+            if (lowerName.includes(pattern)) {
+                return 'fairy';
+            }
         }
         // Default to human for unrecognized types
         return 'human';
     }
     inferGenderFromName(name) {
         const lowerName = name.toLowerCase();
-        // Common female name patterns and indicators
+        // Enhanced female name patterns and indicators
         const femaleIndicators = [
-            'lady', 'queen', 'princess', 'duchess', 'miss', 'mrs', 'ms',
+            // Titles and honorifics
+            'lady', 'queen', 'princess', 'duchess', 'countess', 'baroness',
+            'miss', 'mrs', 'ms', 'dame', 'mistress', 'goddess', 'enchantress',
+            // Fantasy/supernatural female terms
+            'maiden', 'sorceress', 'witch', 'priestess', 'oracle', 'seer',
+            'temptress', 'seductress', 'huntress', 'assassin', 'warrior maiden',
+            // Common female names (expanded list)
             'sarah', 'emma', 'olivia', 'ava', 'isabella', 'sophia', 'mia',
             'charlotte', 'amelia', 'harper', 'evelyn', 'abigail', 'emily',
             'elizabeth', 'mila', 'ella', 'avery', 'sofia', 'camila', 'aria',
@@ -330,11 +381,26 @@ class AudioService {
             'hanna', 'lillian', 'addison', 'aubrey', 'ellie', 'stella',
             'natalie', 'zoe', 'leah', 'hazel', 'violet', 'aurora', 'savannah',
             'audrey', 'brooklyn', 'bella', 'claire', 'skylar', 'lucia',
-            'aaliyah', 'josephine', 'anna', 'leilani', 'ivy', 'everly'
+            'aaliyah', 'josephine', 'anna', 'leilani', 'ivy', 'everly',
+            // Fantasy female names
+            'ariel', 'luna', 'diana', 'iris', 'rose', 'lily', 'jasmine',
+            'crystal', 'ruby', 'pearl', 'sapphire', 'amber', 'jade',
+            'raven', 'roseita', 'seraphina', 'celestine', 'morgana',
+            'guinevere', 'isolde', 'titania', 'obelia', 'lyralei',
+            // Name endings that typically indicate female
+            'ina', 'ette', 'elle', 'anna', 'aria', 'lia', 'tia', 'nia'
         ];
-        // Common male name patterns and indicators
+        // Enhanced male name patterns and indicators
         const maleIndicators = [
-            'lord', 'king', 'prince', 'duke', 'sir', 'mr', 'count', 'baron',
+            // Titles and honorifics
+            'lord', 'king', 'prince', 'duke', 'count', 'baron', 'earl',
+            'sir', 'mr', 'master', 'captain', 'general', 'commander',
+            'emperor', 'god', 'deity', 'champion', 'overlord',
+            // Fantasy/supernatural male terms
+            'warlock', 'sorcerer', 'wizard', 'mage', 'priest', 'monk',
+            'paladin', 'knight', 'warrior', 'hunter', 'assassin', 'ranger',
+            'guardian', 'protector', 'slayer', 'destroyer', 'conqueror',
+            // Common male names (expanded list)
             'james', 'robert', 'john', 'michael', 'david', 'william', 'richard',
             'joseph', 'thomas', 'christopher', 'charles', 'daniel', 'matthew',
             'anthony', 'mark', 'donald', 'steven', 'paul', 'andrew', 'joshua',
@@ -346,18 +412,36 @@ class AudioService {
             'adam', 'douglas', 'nathan', 'peter', 'zachary', 'kyle', 'noah',
             'alan', 'ethan', 'jeremy', 'lionel', 'christian', 'andrew', 'elijah',
             'wayne', 'liam', 'roy', 'eugene', 'louis', 'arthur', 'sean',
-            'austin', 'carl', 'harold', 'jordan', 'mason', 'owen', 'luke'
+            'austin', 'carl', 'harold', 'jordan', 'mason', 'owen', 'luke',
+            // Fantasy male names
+            'thor', 'odin', 'aragorn', 'legolas', 'gandalf', 'merlin',
+            'arthur', 'lancelot', 'percival', 'galahad', 'gareth',
+            'dante', 'romeo', 'orlando', 'sebastian', 'adrian',
+            'magnus', 'viktor', 'dmitri', 'nikolai', 'alexei',
+            'dracula', 'vladimir', 'lucifer', 'damien', 'adrian'
         ];
-        // Check for explicit indicators
+        // Check for explicit female indicators first (higher priority)
         for (const indicator of femaleIndicators) {
             if (lowerName.includes(indicator)) {
-                return true;
+                return true; // Female
             }
         }
+        // Then check for male indicators
         for (const indicator of maleIndicators) {
             if (lowerName.includes(indicator)) {
-                return false;
+                return false; // Male
             }
+        }
+        // Enhanced heuristic: check name endings
+        if (lowerName.endsWith('a') || lowerName.endsWith('e') ||
+            lowerName.endsWith('ie') || lowerName.endsWith('ette') ||
+            lowerName.endsWith('ina') || lowerName.endsWith('elle')) {
+            return true; // Likely female
+        }
+        if (lowerName.endsWith('us') || lowerName.endsWith('or') ||
+            lowerName.endsWith('er') || lowerName.endsWith('on') ||
+            lowerName.endsWith('an') || lowerName.endsWith('en')) {
+            return false; // Likely male
         }
         // Default to female if uncertain (can be adjusted based on preferences)
         return true;
@@ -574,6 +658,152 @@ class AudioService {
             }
         }
         return {};
+    }
+    /**
+     * Get or assign a consistent voice for a character
+     * @param speakerName The character name
+     * @returns Consistent voice type for this character
+     */
+    getConsistentVoice(speakerName) {
+        // Normalize speaker name (remove titles, cleanup)
+        const normalizedName = this.normalizeCharacterName(speakerName);
+        // Check if we already have a voice assigned for this character
+        if (this.characterVoiceMap.has(normalizedName)) {
+            return this.characterVoiceMap.get(normalizedName);
+        }
+        // Assign new voice and cache it
+        const assignedVoice = this.assignVoiceToSpeaker(speakerName);
+        this.characterVoiceMap.set(normalizedName, assignedVoice);
+        console.log(`🎭 Voice assigned: "${speakerName}" → ${assignedVoice}`);
+        return assignedVoice;
+    }
+    /**
+     * Normalize character names for consistency tracking
+     * @param speakerName Raw speaker name from story
+     * @returns Normalized name for tracking
+     */
+    normalizeCharacterName(speakerName) {
+        let normalized = speakerName.toLowerCase().trim();
+        // Remove common titles and honorifics
+        const titlesToRemove = [
+            'lord', 'lady', 'king', 'queen', 'prince', 'princess',
+            'duke', 'duchess', 'count', 'countess', 'baron', 'baroness',
+            'sir', 'master', 'mistress', 'captain', 'general', 'commander'
+        ];
+        for (const title of titlesToRemove) {
+            normalized = normalized.replace(new RegExp(`\\b${title}\\b`, 'g'), '').trim();
+        }
+        // Remove extra whitespace
+        normalized = normalized.replace(/\s+/g, ' ').trim();
+        return normalized;
+    }
+    /**
+     * Clear character voice mapping (use at start of new story)
+     */
+    clearCharacterVoiceMap() {
+        this.characterVoiceMap.clear();
+        console.log('🔄 Character voice map cleared for new story');
+    }
+    /**
+     * Get current character voice assignments
+     * @returns Map of character names to assigned voices
+     */
+    getCharacterVoiceAssignments() {
+        const assignments = {};
+        for (const [character, voice] of this.characterVoiceMap.entries()) {
+            assignments[character] = voice;
+        }
+        return assignments;
+    }
+    /**
+     * Preview voice assignment for a character without audio generation
+     * @param speakerName Character name to preview
+     * @param emotion Optional emotion for voice parameter preview
+     * @returns Voice preview information
+     */
+    previewCharacterVoice(speakerName, emotion) {
+        const characterType = this.detectCharacterType(speakerName);
+        const gender = this.inferGenderFromName(speakerName);
+        const voiceType = this.getConsistentVoice(speakerName);
+        let emotionSettings = undefined;
+        if (emotion) {
+            const emotionData = this.extractEmotionFromSpeaker(`${speakerName}, ${emotion}`);
+            emotionSettings = emotionData.voiceSettings;
+        }
+        return {
+            speakerName,
+            normalizedName: this.normalizeCharacterName(speakerName),
+            characterType,
+            gender: gender ? 'female' : 'male',
+            voiceType,
+            voiceId: this.voiceIds[voiceType],
+            emotion: emotion || 'neutral',
+            emotionSettings: emotionSettings || {
+                stability: 0.5,
+                similarity_boost: 0.8,
+                style: 0.5,
+                use_speaker_boost: true
+            },
+            consistency: {
+                isConsistent: this.characterVoiceMap.has(this.normalizeCharacterName(speakerName)),
+                previousAssignments: this.getCharacterVoiceAssignments()
+            }
+        };
+    }
+    /**
+     * Validate voice consistency across story content
+     * @param storyContent Story content with speaker tags
+     * @returns Consistency report
+     */
+    validateVoiceConsistency(storyContent) {
+        const speakers = this.extractSpeakersFromContent(storyContent);
+        const consistencyReport = {
+            totalSpeakers: speakers.length,
+            consistentAssignments: 0,
+            inconsistencies: [],
+            recommendations: []
+        };
+        for (const speaker of speakers) {
+            const preview = this.previewCharacterVoice(speaker);
+            const issues = [];
+            // Check for naming inconsistencies
+            const variations = speakers.filter(s => this.normalizeCharacterName(s) === this.normalizeCharacterName(speaker) && s !== speaker);
+            if (variations.length > 0) {
+                issues.push(`Name variations detected: ${variations.join(', ')}`);
+            }
+            // Check for character type ambiguity
+            if (preview.characterType === 'human' &&
+                (speaker.toLowerCase().includes('creature') || speaker.toLowerCase().includes('being'))) {
+                issues.push('Character type may be ambiguous - consider more specific naming');
+            }
+            if (issues.length > 0) {
+                consistencyReport.inconsistencies.push({ speaker, issues });
+            }
+            else {
+                consistencyReport.consistentAssignments++;
+            }
+        }
+        // Generate recommendations
+        if (consistencyReport.inconsistencies.length > 0) {
+            consistencyReport.recommendations.push('Consider using consistent character names throughout the story');
+            consistencyReport.recommendations.push('Add creature type indicators to character names for better voice assignment');
+        }
+        return consistencyReport;
+    }
+    /**
+     * Extract all speakers from story content
+     * @param content Story content with speaker tags
+     * @returns Array of unique speaker names
+     */
+    extractSpeakersFromContent(content) {
+        const speakerMatches = content.match(/\[([^\]]+)\]:/g);
+        if (!speakerMatches)
+            return [];
+        const speakers = speakerMatches
+            .map(match => match.slice(1, -2)) // Remove [ and ]:
+            .map(speaker => speaker.split(',')[0].trim()) // Remove emotion tags
+            .filter(speaker => speaker.toLowerCase() !== 'narrator'); // Remove narrator
+        return [...new Set(speakers)]; // Remove duplicates
     }
 }
 exports.AudioService = AudioService;
