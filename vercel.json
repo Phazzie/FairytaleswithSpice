@@ -1,17 +1,30 @@
 {
   "version": 2,
+  "installCommand": "npm install && cd story-generator && npm install",
   "buildCommand": "cd story-generator && npm run build",
   "outputDirectory": "story-generator/dist/story-generator/browser",
-  "installCommand": "cd story-generator && npm install",
   "framework": null,
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
+  "trailingSlash": false,
+  "functions": {
+    "api/**.ts": {
+      "runtime": "nodejs20.x"
     },
+    "api/**/*.ts": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "headers": [
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "headers": [
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
     }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
