@@ -17,6 +17,7 @@ import { StreamingAudioProcessor, StreamingAudioJob } from './streamingAudioServ
  * - Audio merging: Combines multiple voice segments into seamless narration
  * - 90+ emotion mapping: Maps emotional states to voice parameters
  * - Fallback system: Works with mock data when ElevenLabs API unavailable
+ * - Latest ElevenLabs models: Uses current v2 models for enhanced quality
  * 
  * Supported Voice Types:
  * - vampire_male/female: Deep, seductive voices for vampire characters
@@ -38,8 +39,8 @@ import { StreamingAudioProcessor, StreamingAudioJob } from './streamingAudioServ
  * ```
  * 
  * @author Fairytales with Spice Development Team
- * @version 2.1.0
- * @since 2025-09-21
+ * @version 3.0.0 - Updated for latest ElevenLabs API features
+ * @since 2025-09-22
  */
 export class AudioService {
   /** ElevenLabs API base URL for text-to-speech requests */
@@ -50,6 +51,26 @@ export class AudioService {
 
   /** Streaming audio processor for background generation */
   private streamingProcessor = new StreamingAudioProcessor();
+
+  /**
+   * ElevenLabs models configuration with fallback strategy
+   * Using latest models for enhanced quality and performance
+   */
+  private models = {
+    high_quality: 'eleven_multilingual_v2',     // Best quality, supports emotions
+    fast_generation: 'eleven_turbo_v2_5',       // Latest turbo model, good balance
+    streaming: 'eleven_turbo_v2',               // Optimized for real-time streaming
+    fallback: 'eleven_monolingual_v1'           // Backup for compatibility
+  };
+
+  /**
+   * Output format options for different use cases
+   */
+  private outputFormats = {
+    streaming: 'mp3_22050_32',    // Smaller files for real-time streaming
+    download: 'mp3_44100_128',    // High quality for final downloads
+    processing: 'pcm_16000'       // Raw PCM for audio manipulation
+  };
 
   /**
    * Voice ID mapping for different character types and genders
@@ -74,9 +95,70 @@ export class AudioService {
     narrator: process.env.ELEVENLABS_VOICE_NARRATOR || '21m00Tcm4TlvDq8ikWAM' // Rachel (neutral, storytelling)
   };
 
+  /**
+   * Gets optimal model for the given use case
+   */
+  private getOptimalModel(useCase: 'streaming' | 'high_quality' | 'fast_generation' = 'high_quality'): string {
+    return this.models[useCase] || this.models.high_quality;
+  }
+
+  /**
+   * Gets optimal output format for the given use case
+   */
+  private getOptimalFormat(useCase: 'streaming' | 'download' | 'processing' = 'download'): string {
+    return this.outputFormats[useCase];
+  }
+
+  /**
+   * Gets enhanced voice settings optimized for the specific model and emotion
+   */
+  private getEnhancedVoiceSettings(model: string, emotion?: string): VoiceSettings {
+    // Base settings optimized for each model
+    const modelSettings: Record<string, VoiceSettings> = {
+      'eleven_multilingual_v2': {
+        stability: 0.5,
+        similarity_boost: 0.8,
+        style: 0.4,
+        use_speaker_boost: true
+      },
+      'eleven_turbo_v2_5': {
+        stability: 0.6,
+        similarity_boost: 0.75,
+        style: 0.3,
+        use_speaker_boost: true
+      },
+      'eleven_turbo_v2': {
+        stability: 0.65,
+        similarity_boost: 0.75,
+        style: 0.25,
+        use_speaker_boost: true
+      },
+      'eleven_monolingual_v1': {
+        stability: 0.5,
+        similarity_boost: 0.75,
+        style: 0.5,
+        use_speaker_boost: true
+      }
+    };
+
+    let baseSettings = modelSettings[model] || modelSettings['eleven_multilingual_v2'];
+
+    // Apply emotion-specific adjustments if emotion is provided
+    if (emotion) {
+      const emotionSettings = getVoiceSettingsForEmotion(emotion);
+      const emotionalIntensity = 1.0; // Default intensity, could be calculated from text
+      baseSettings = adjustVoiceForEmotionalIntensity(emotionSettings, emotionalIntensity);
+    }
+
+    return baseSettings;
+  }
+
   constructor() {
     if (!this.elevenLabsApiKey) {
       console.warn('⚠️  ELEVENLABS_API_KEY not found in environment variables');
+      console.warn('🔄 Audio service will use mock data for development');
+    } else {
+      console.log('✅ ElevenLabs API initialized with latest models and features');
     }
   }
 
@@ -225,19 +307,30 @@ export class AudioService {
       voiceId = this.voiceIds['female'];
     }
 
+    // Determine optimal model and format for this request
+    const useCase = input.format === 'streaming' ? 'streaming' : 'high_quality';
+    const model = this.getOptimalModel(useCase);
+    const outputFormat = this.getOptimalFormat('download');
+
+    // Get enhanced voice settings optimized for model
+    const voiceSettings = this.getEnhancedVoiceSettings(model);
+
     try {
+      const requestBody: any = {
+        text: text,
+        model_id: model,
+        voice_settings: voiceSettings,
+        output_format: outputFormat
+      };
+
+      // Add streaming optimization for turbo models
+      if (model.includes('turbo')) {
+        requestBody.voice_settings.optimize_streaming_latency = useCase === 'streaming' ? 3 : 1;
+      }
+
       const response = await axios.post(
         `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
-        {
-          text: text,
-          model_id: 'eleven_monolingual_v1',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.8,
-            style: 0.5,
-            use_speaker_boost: true
-          }
-        },
+        requestBody,
         {
           headers: {
             'Accept': 'audio/mpeg',
@@ -249,11 +342,62 @@ export class AudioService {
         }
       );
 
+      console.log(`🎵 Generated audio using model ${model} for voice ${voiceKey}`);
       return Buffer.from(response.data);
 
     } catch (error: any) {
-      console.error('ElevenLabs API error:', error.response?.data || error.message);
+      console.error(`ElevenLabs API error for voice ${voiceKey} with model ${model}:`, error.response?.data || error.message);
+      
+      // Try fallback model if the current model fails
+      if (error.response?.status === 400 && model !== this.models.fallback) {
+        console.warn(`🔄 Retrying with fallback model: ${this.models.fallback}`);
+        return this.callElevenLabsAPIWithFallback(text, input, voiceOverride);
+      }
+      
       throw error;
+    }
+  }
+
+  /**
+   * Fallback API call using the older, more compatible model
+   */
+  private async callElevenLabsAPIWithFallback(text: string, input: AudioConversionSeam['input'], voiceOverride?: CharacterVoiceType): Promise<Buffer> {
+    const voiceKey = voiceOverride || input.voice || 'female';
+    const voiceId = this.voiceIds[voiceKey];
+    
+    // Use fallback model with conservative settings
+    const fallbackSettings = {
+      stability: 0.5,
+      similarity_boost: 0.75,
+      style: 0.5,
+      use_speaker_boost: true
+    };
+
+    try {
+      const response = await axios.post(
+        `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
+        {
+          text: text,
+          model_id: this.models.fallback,
+          voice_settings: fallbackSettings
+        },
+        {
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': this.elevenLabsApiKey
+          },
+          responseType: 'arraybuffer',
+          timeout: 60000
+        }
+      );
+
+      console.log(`🔄 Successfully generated audio using fallback model: ${this.models.fallback}`);
+      return Buffer.from(response.data);
+      
+    } catch (fallbackError: any) {
+      console.error('Fallback model also failed:', fallbackError.response?.data || fallbackError.message);
+      throw new Error('All ElevenLabs models failed, API may be unavailable');
     }
   }
 
