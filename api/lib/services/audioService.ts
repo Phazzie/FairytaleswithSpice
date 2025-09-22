@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
 import { getVoiceSettingsForEmotion, adjustVoiceForEmotionalIntensity, VoiceSettings } from './emotionMapping';
+import { StreamingAudioProcessor, StreamingAudioJob } from './streamingAudioService';
 
 /**
  * AudioService - Advanced Multi-Voice Text-to-Speech Processing
@@ -46,6 +47,9 @@ export class AudioService {
   
   /** ElevenLabs API key from environment variables */
   private elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+
+  /** Streaming audio processor for background generation */
+  private streamingProcessor = new StreamingAudioProcessor();
 
   /**
    * Voice ID mapping for different character types and genders
@@ -160,6 +164,50 @@ export class AudioService {
         }
       };
     }
+  }
+
+  /**
+   * Starts streaming audio generation for better UX with long stories
+   */
+  async startStreamingAudio(
+    input: AudioConversionSeam['input'],
+    progressCallback?: (progress: any) => void
+  ): Promise<{ jobId: string; estimatedDuration: number }> {
+    const cleanText = this.cleanHtmlForTTS(input.content);
+    const estimatedDuration = this.estimateDuration(cleanText);
+    
+    const jobId = await this.streamingProcessor.startStreamingJob(
+      { ...input, content: cleanText },
+      progressCallback
+    );
+
+    console.log(`🎵 Started streaming audio generation for story ${input.storyId}, job ${jobId}`);
+    
+    return {
+      jobId,
+      estimatedDuration
+    };
+  }
+
+  /**
+   * Gets streaming job status
+   */
+  getStreamingJobStatus(jobId: string): StreamingAudioJob | null {
+    return this.streamingProcessor.getJobStatus(jobId);
+  }
+
+  /**
+   * Gets final audio URL for completed streaming job
+   */
+  getStreamingAudioUrl(jobId: string): string | null {
+    return this.streamingProcessor.getAudioUrl(jobId);
+  }
+
+  /**
+   * Cancels a streaming audio job
+   */
+  cancelStreamingJob(jobId: string): boolean {
+    return this.streamingProcessor.cancelJob(jobId);
   }
 
   private async callElevenLabsAPI(text: string, input: AudioConversionSeam['input'], voiceOverride?: CharacterVoiceType): Promise<Buffer> {
