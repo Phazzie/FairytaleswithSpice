@@ -9,6 +9,15 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 describe('AudioService', () => {
   let audioService: AudioService;
 
+  // Common test input used across all test cases
+  const validInput: AudioConversionSeam['input'] = {
+    storyId: 'story_123',
+    content: '<h3>Chapter 1</h3><p>This is a test story content with <em>emphasis</em> and other HTML tags.</p>',
+    voice: 'female',
+    speed: 1.0,
+    format: 'mp3'
+  };
+
   beforeEach(() => {
     audioService = new AudioService();
     jest.clearAllMocks();
@@ -17,13 +26,6 @@ describe('AudioService', () => {
   });
 
   describe('convertToAudio', () => {
-    const validInput: AudioConversionSeam['input'] = {
-      storyId: 'story_123',
-      content: '<h3>Chapter 1</h3><p>This is a test story content with <em>emphasis</em> and other HTML tags.</p>',
-      voice: 'female',
-      speed: 1.0,
-      format: 'mp3'
-    };
 
     it('should convert audio with valid input (mock mode)', async () => {
       const result = await audioService.convertToAudio(validInput);

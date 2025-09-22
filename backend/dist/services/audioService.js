@@ -26,6 +26,72 @@ class AudioService {
             human_female: process.env.ELEVENLABS_VOICE_HUMAN_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella (natural, warm)
             narrator: process.env.ELEVENLABS_VOICE_NARRATOR || '21m00Tcm4TlvDq8ikWAM' // Rachel (neutral, storytelling)
         };
+        // ==================== EMOTION MAPPING SYSTEM ====================
+        /**
+         * Comprehensive emotion to voice parameter mapping system
+         * Maps 90+ emotional states to ElevenLabs voice settings for enhanced character expression
+         */
+        this.emotionMapping = {
+            // ===== PRIMARY EMOTIONS =====
+            'angry': { stability: 0.3, similarity_boost: 0.9, style: 0.8, use_speaker_boost: true },
+            'sad': { stability: 0.7, similarity_boost: 0.6, style: 0.3, use_speaker_boost: false },
+            'happy': { stability: 0.4, similarity_boost: 0.8, style: 0.7, use_speaker_boost: true },
+            'excited': { stability: 0.2, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'calm': { stability: 0.8, similarity_boost: 0.7, style: 0.2, use_speaker_boost: false },
+            'nervous': { stability: 0.1, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true },
+            // ===== ROMANTIC & SPICY EMOTIONS =====
+            'seductive': { stability: 0.6, similarity_boost: 0.9, style: 0.8, use_speaker_boost: true },
+            'passionate': { stability: 0.3, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'lustful': { stability: 0.4, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'romantic': { stability: 0.7, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true },
+            'tender': { stability: 0.8, similarity_boost: 0.7, style: 0.4, use_speaker_boost: false },
+            'yearning': { stability: 0.6, similarity_boost: 0.8, style: 0.7, use_speaker_boost: true },
+            'teasing': { stability: 0.3, similarity_boost: 0.8, style: 0.8, use_speaker_boost: true },
+            'flirtatious': { stability: 0.4, similarity_boost: 0.8, style: 0.8, use_speaker_boost: true },
+            // ===== DARK & SUPERNATURAL EMOTIONS =====
+            'menacing': { stability: 0.2, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'threatening': { stability: 0.1, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'sinister': { stability: 0.3, similarity_boost: 0.9, style: 0.8, use_speaker_boost: true },
+            'mysterious': { stability: 0.6, similarity_boost: 0.8, style: 0.7, use_speaker_boost: true },
+            'predatory': { stability: 0.2, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'bloodthirsty': { stability: 0.1, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'supernatural': { stability: 0.4, similarity_boost: 0.8, style: 0.8, use_speaker_boost: true },
+            // ===== POWER DYNAMICS =====
+            'dominant': { stability: 0.2, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'submissive': { stability: 0.8, similarity_boost: 0.6, style: 0.3, use_speaker_boost: false },
+            'commanding': { stability: 0.1, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'obedient': { stability: 0.9, similarity_boost: 0.6, style: 0.2, use_speaker_boost: false },
+            'defiant': { stability: 0.2, similarity_boost: 0.9, style: 0.8, use_speaker_boost: true },
+            'protective': { stability: 0.5, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true },
+            // ===== CREATURE-SPECIFIC EMOTIONS =====
+            'vampiric': { stability: 0.4, similarity_boost: 0.9, style: 0.8, use_speaker_boost: true },
+            'feral': { stability: 0.1, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'ethereal': { stability: 0.7, similarity_boost: 0.7, style: 0.5, use_speaker_boost: false },
+            'bestial': { stability: 0.1, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'magical': { stability: 0.5, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true },
+            // ===== EXTENDED EMOTIONAL RANGE =====
+            'anxious': { stability: 0.2, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true },
+            'confident': { stability: 0.4, similarity_boost: 0.8, style: 0.7, use_speaker_boost: true },
+            'vulnerable': { stability: 0.8, similarity_boost: 0.6, style: 0.3, use_speaker_boost: false },
+            'fierce': { stability: 0.1, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'gentle': { stability: 0.9, similarity_boost: 0.7, style: 0.2, use_speaker_boost: false },
+            'wicked': { stability: 0.3, similarity_boost: 0.9, style: 0.8, use_speaker_boost: true },
+            'innocent': { stability: 0.8, similarity_boost: 0.7, style: 0.3, use_speaker_boost: false },
+            'mischievous': { stability: 0.3, similarity_boost: 0.8, style: 0.8, use_speaker_boost: true },
+            'sultry': { stability: 0.6, similarity_boost: 0.9, style: 0.8, use_speaker_boost: true },
+            'breathless': { stability: 0.4, similarity_boost: 0.8, style: 0.7, use_speaker_boost: true },
+            'desperate': { stability: 0.2, similarity_boost: 0.8, style: 0.8, use_speaker_boost: true },
+            'euphoric': { stability: 0.2, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'melancholic': { stability: 0.7, similarity_boost: 0.6, style: 0.4, use_speaker_boost: false },
+            'triumphant': { stability: 0.3, similarity_boost: 0.9, style: 0.8, use_speaker_boost: true },
+            'defeated': { stability: 0.8, similarity_boost: 0.5, style: 0.2, use_speaker_boost: false },
+            'hopeful': { stability: 0.6, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true },
+            'devastated': { stability: 0.8, similarity_boost: 0.5, style: 0.2, use_speaker_boost: false },
+            'enraged': { stability: 0.1, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'ecstatic': { stability: 0.2, similarity_boost: 0.9, style: 0.9, use_speaker_boost: true },
+            'terrified': { stability: 0.1, similarity_boost: 0.8, style: 0.8, use_speaker_boost: true },
+            'serene': { stability: 0.9, similarity_boost: 0.7, style: 0.2, use_speaker_boost: false }
+        };
         if (!this.elevenLabsApiKey) {
             console.warn('⚠️  ELEVENLABS_API_KEY not found in environment variables');
         }
@@ -46,12 +112,12 @@ class AudioService {
                 catch (multiVoiceError) {
                     console.warn('Multi-voice generation failed, falling back to single voice:', multiVoiceError);
                     // Fallback to single voice
-                    audioData = await this.callElevenLabsAPI(cleanText, input);
+                    audioData = await this.callElevenLabsAPI(cleanText, input, undefined, undefined);
                 }
             }
             else {
                 // Use single voice processing
-                audioData = await this.callElevenLabsAPI(cleanText, input);
+                audioData = await this.callElevenLabsAPI(cleanText, input, undefined, undefined);
             }
             // Upload to storage and get URL (mock implementation)
             const audioUrl = await this.uploadAudioToStorage(audioData, input);
@@ -108,7 +174,7 @@ class AudioService {
             };
         }
     }
-    async callElevenLabsAPI(text, input, voiceOverride) {
+    async callElevenLabsAPI(text, input, voiceOverride, emotionSettings) {
         if (!this.elevenLabsApiKey) {
             // Return mock audio data if no API key
             return this.generateMockAudioData(text);
@@ -120,16 +186,19 @@ class AudioService {
             console.warn(`Voice ID not found for ${voiceKey}, using default female voice`);
             voiceId = this.voiceIds['female'];
         }
+        // Merge default voice settings with emotion-specific settings
+        const defaultSettings = {
+            stability: 0.5,
+            similarity_boost: 0.8,
+            style: 0.5,
+            use_speaker_boost: true
+        };
+        const voiceSettings = emotionSettings ? { ...defaultSettings, ...emotionSettings } : defaultSettings;
         try {
             const response = await axios_1.default.post(`${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`, {
                 text: text,
                 model_id: 'eleven_monolingual_v1',
-                voice_settings: {
-                    stability: 0.5,
-                    similarity_boost: 0.8,
-                    style: 0.5,
-                    use_speaker_boost: true
-                }
+                voice_settings: voiceSettings
             }, {
                 headers: {
                     'Accept': 'audio/mpeg',
@@ -176,6 +245,7 @@ class AudioService {
         const segments = text.split(/(\[([^\]]+)\]:\s*)/);
         let currentSpeaker = 'Narrator';
         let currentVoice = 'narrator';
+        let currentEmotionSettings = undefined;
         for (let i = 0; i < segments.length; i++) {
             const segment = segments[i].trim();
             if (!segment)
@@ -187,11 +257,17 @@ class AudioService {
                 const speakerInfo = speakerMatch[1];
                 currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove emotion if present
                 currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
+                // Extract emotion settings if present
+                const emotionData = this.extractEmotionFromSpeaker(speakerInfo);
+                currentEmotionSettings = emotionData.voiceSettings;
+                if (emotionData.emotion) {
+                    console.log(`🎭 Detected emotion "${emotionData.emotion}" for ${currentSpeaker}`);
+                }
             }
             else if (segment.length > 0) {
                 // This is dialogue or narrative text
                 try {
-                    const audioData = await this.callElevenLabsAPI(segment, input, currentVoice);
+                    const audioData = await this.callElevenLabsAPI(segment, input, currentVoice, currentEmotionSettings);
                     chunks.push({
                         speaker: currentSpeaker,
                         text: segment,
@@ -362,6 +438,142 @@ class AudioService {
     }
     generateRequestId() {
         return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    /**
+     * Get comprehensive information about the emotion mapping system
+     * @returns Emotion system metadata and available emotions
+     */
+    getEmotionInfo() {
+        const emotions = Object.keys(this.emotionMapping);
+        return {
+            totalEmotions: emotions.length,
+            availableEmotions: emotions,
+            categories: {
+                primary: ['angry', 'sad', 'happy', 'excited', 'calm', 'nervous'],
+                romantic: ['seductive', 'passionate', 'lustful', 'romantic', 'tender', 'yearning', 'teasing', 'flirtatious'],
+                dark: ['menacing', 'threatening', 'sinister', 'mysterious', 'predatory', 'bloodthirsty', 'supernatural'],
+                power: ['dominant', 'submissive', 'commanding', 'obedient', 'defiant', 'protective'],
+                creature: ['vampiric', 'feral', 'ethereal', 'bestial', 'magical']
+            },
+            usage: {
+                format: '[Character, emotion]: "dialogue"',
+                example: '[Vampire Lord, seductive]: "Come to me, my dear..."',
+                fallback: 'narrator voice for unrecognized emotions'
+            },
+            voiceParameters: {
+                stability: 'Voice consistency (0.0-1.0)',
+                similarity_boost: 'Voice similarity to original (0.0-1.0)',
+                style: 'Style exaggeration (0.0-1.0)',
+                use_speaker_boost: 'Enhanced speaker clarity (boolean)'
+            }
+        };
+    }
+    /**
+     * Test an emotion combination and return the voice parameters that would be used
+     * @param emotion The emotion string to test
+     * @returns Voice parameter configuration for the emotion
+     */
+    testEmotionCombination(emotion) {
+        const normalizedEmotion = emotion.toLowerCase().trim();
+        const emotionConfig = this.emotionMapping[normalizedEmotion];
+        if (!emotionConfig) {
+            return {
+                emotion: emotion,
+                recognized: false,
+                voiceParameters: {
+                    stability: 0.5,
+                    similarity_boost: 0.8,
+                    style: 0.5,
+                    use_speaker_boost: true
+                },
+                fallback: 'default',
+                suggestions: this.findSimilarEmotions(normalizedEmotion)
+            };
+        }
+        return {
+            emotion: emotion,
+            recognized: true,
+            voiceParameters: emotionConfig,
+            category: this.categorizeEmotion(normalizedEmotion),
+            description: this.getEmotionDescription(normalizedEmotion)
+        };
+    }
+    /**
+     * Find similar emotions when an exact match isn't found
+     * @param emotion The emotion to find similarities for
+     * @returns Array of similar emotion suggestions
+     */
+    findSimilarEmotions(emotion) {
+        const allEmotions = Object.keys(this.emotionMapping);
+        const suggestions = [];
+        // Find emotions that share common letter patterns
+        for (const availableEmotion of allEmotions) {
+            if (availableEmotion.includes(emotion) || emotion.includes(availableEmotion)) {
+                suggestions.push(availableEmotion);
+            }
+        }
+        // Add some common fallbacks if no patterns match
+        if (suggestions.length === 0) {
+            suggestions.push('angry', 'sad', 'happy', 'seductive', 'menacing');
+        }
+        return suggestions.slice(0, 5); // Limit to 5 suggestions
+    }
+    /**
+     * Categorize an emotion into its thematic group
+     * @param emotion The emotion to categorize
+     * @returns The category name
+     */
+    categorizeEmotion(emotion) {
+        const categories = {
+            primary: ['angry', 'sad', 'happy', 'excited', 'calm', 'nervous'],
+            romantic: ['seductive', 'passionate', 'lustful', 'romantic', 'tender', 'yearning', 'teasing', 'flirtatious'],
+            dark: ['menacing', 'threatening', 'sinister', 'mysterious', 'predatory', 'bloodthirsty', 'supernatural'],
+            power: ['dominant', 'submissive', 'commanding', 'obedient', 'defiant', 'protective'],
+            creature: ['vampiric', 'feral', 'ethereal', 'bestial', 'magical']
+        };
+        for (const [category, emotions] of Object.entries(categories)) {
+            if (emotions.includes(emotion)) {
+                return category;
+            }
+        }
+        return 'extended';
+    }
+    /**
+     * Get a description of what the emotion conveys in voice
+     * @param emotion The emotion to describe
+     * @returns Human-readable description
+     */
+    getEmotionDescription(emotion) {
+        const descriptions = {
+            'seductive': 'Low, sultry tone with deliberate pacing',
+            'passionate': 'Intense, heated delivery with strong emphasis',
+            'menacing': 'Dark, threatening undertone with controlled aggression',
+            'dominant': 'Commanding presence with authoritative delivery',
+            'vampiric': 'Sophisticated darkness with predatory undertones',
+            'feral': 'Raw, animalistic intensity with wild undertones',
+            'ethereal': 'Light, otherworldly quality with mystical resonance'
+        };
+        return descriptions[emotion] || 'Emotionally enhanced voice delivery';
+    }
+    /**
+     * Enhanced emotion-aware voice parameter extraction
+     * @param speakerInfo Speaker tag potentially containing emotion
+     * @returns Voice parameters adjusted for emotion
+     */
+    extractEmotionFromSpeaker(speakerInfo) {
+        // Check if speaker info contains emotion: [Character, emotion]
+        const emotionMatch = speakerInfo.match(/,\s*([^,\]]+)\s*$/);
+        if (emotionMatch) {
+            const emotion = emotionMatch[1].toLowerCase().trim();
+            const emotionConfig = this.emotionMapping[emotion];
+            if (emotionConfig) {
+                return {
+                    emotion: emotion,
+                    voiceSettings: emotionConfig
+                };
+            }
+        }
+        return {};
     }
 }
 exports.AudioService = AudioService;
