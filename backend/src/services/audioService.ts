@@ -197,55 +197,44 @@ export class AudioService {
       return audioChunks[0].audioData;
     }
 
-    // Merge multiple audio chunks into single output
-    return this.mergeAudioChunks(audioChunks);
+    // Use enhanced merging with smart transitions
+    return this.mergeAudioChunksEnhanced(audioChunks as any);
   }
 
   private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input']): Promise<Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}>> {
     const chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}> = [];
     
-    // Split text by speaker tags while preserving the tags
-    const segments = text.split(/(\[([^\]]+)\]:\s*)/);
+    // Use enhanced parsing for better emotion and speaker detection
+    const segments = this.parseEnhancedSpeakerTags(text);
     
-    let currentSpeaker = 'Narrator';
-    let currentVoice: CharacterVoiceType = 'narrator';
-    let currentEmotionSettings: any = undefined;
-    
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i].trim();
+    for (const segment of segments) {
+      if (segment.text.length === 0) continue;
       
-      if (!segment) continue;
+      // Get consistent voice for character
+      const voice = this.getConsistentVoice(segment.speaker);
       
-      // Check if this segment is a speaker tag
-      const speakerMatch = segment.match(/\[([^\]]+)\]:\s*/);
-      
-      if (speakerMatch) {
-        // This is a speaker tag - update current speaker and voice
-        const speakerInfo = speakerMatch[1];
-        currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove emotion if present
-        currentVoice = this.getConsistentVoice(currentSpeaker);
-        
-        // Extract emotion settings if present
-        const emotionData = this.extractEmotionFromSpeaker(speakerInfo);
-        currentEmotionSettings = emotionData.voiceSettings;
+      // Extract emotion settings if present
+      let emotionSettings: any = undefined;
+      if (segment.emotion) {
+        const emotionData = this.extractEmotionFromSpeaker(`${segment.speaker}, ${segment.emotion}`);
+        emotionSettings = emotionData.voiceSettings;
         
         if (emotionData.emotion) {
-          console.log(`🎭 Detected emotion "${emotionData.emotion}" for ${currentSpeaker}`);
+          console.log(`🎭 Enhanced parsing detected emotion "${emotionData.emotion}" for ${segment.speaker}`);
         }
-      } else if (segment.length > 0) {
-        // This is dialogue or narrative text
-        try {
-          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice, currentEmotionSettings);
-          chunks.push({
-            speaker: currentSpeaker,
-            text: segment,
-            voice: currentVoice,
-            audioData: audioData
-          });
-        } catch (error) {
-          console.warn(`Failed to generate audio for ${currentSpeaker}: ${error}`);
-          // Continue with other chunks rather than failing completely
-        }
+      }
+      
+      try {
+        const audioData = await this.callElevenLabsAPI(segment.text, input, voice, emotionSettings);
+        chunks.push({
+          speaker: segment.speaker,
+          text: segment.text,
+          voice: voice,
+          audioData: audioData
+        });
+      } catch (error) {
+        console.warn(`Failed to generate audio for ${segment.speaker}: ${error}`);
+        // Continue with other chunks rather than failing completely
       }
     }
     
@@ -927,6 +916,221 @@ export class AudioService {
     }
 
     return consistencyReport;
+  }
+
+  // ==================== ENHANCED AUDIO PROCESSING METHODS ====================
+
+  /**
+   * Enhanced speaker tag parsing with better emotion extraction
+   * Supports multiple formats: [Character], [Character, emotion], [Character: emotion]
+   */
+  private parseEnhancedSpeakerTags(text: string): Array<{
+    speaker: string;
+    emotion?: string;
+    text: string;
+    startIndex: number;
+    endIndex: number;
+  }> {
+    const segments: Array<{
+      speaker: string;
+      emotion?: string;
+      text: string;
+      startIndex: number;
+      endIndex: number;
+    }> = [];
+    
+    // Enhanced regex to capture different speaker tag formats
+    const speakerTagRegex = /\[([^\]]+)\]:\s*/g;
+    const textSegments = text.split(speakerTagRegex);
+    
+    let currentSpeaker = 'Narrator';
+    let currentEmotion: string | undefined = undefined;
+    let currentIndex = 0;
+    
+    for (let i = 0; i < textSegments.length; i++) {
+      const segment = textSegments[i];
+      
+      if (!segment) {
+        currentIndex += segment.length;
+        continue;
+      }
+      
+      // Check if this is a speaker tag (odd indices after split)
+      if (i % 2 === 1) {
+        // This is a speaker tag - parse speaker and emotion
+        const parsedSpeaker = this.parseAdvancedSpeakerInfo(segment);
+        currentSpeaker = parsedSpeaker.speaker;
+        currentEmotion = parsedSpeaker.emotion;
+        currentIndex += segment.length + 3; // +3 for []and :
+      } else if (segment.trim().length > 0) {
+        // This is dialogue or narrative text
+        const startIndex = currentIndex;
+        const endIndex = currentIndex + segment.length;
+        
+        segments.push({
+          speaker: currentSpeaker,
+          emotion: currentEmotion,
+          text: segment.trim(),
+          startIndex,
+          endIndex
+        });
+        
+        currentIndex = endIndex;
+      } else {
+        currentIndex += segment.length;
+      }
+    }
+    
+    return segments;
+  }
+
+  /**
+   * Advanced speaker info parsing supporting multiple formats
+   * @param speakerInfo Raw speaker tag content
+   * @returns Parsed speaker and emotion information
+   */
+  private parseAdvancedSpeakerInfo(speakerInfo: string): { speaker: string; emotion?: string } {
+    // Support formats:
+    // "Character" - basic format
+    // "Character, emotion" - comma-separated emotion
+    // "Character: emotion" - colon-separated emotion
+    // "Character (emotion)" - parentheses emotion
+    
+    let speaker: string;
+    let emotion: string | undefined;
+    
+    // Check for parentheses format: Character (emotion)
+    const parenthesesMatch = speakerInfo.match(/^([^(]+)\s*\(([^)]+)\)\s*$/);
+    if (parenthesesMatch) {
+      speaker = parenthesesMatch[1].trim();
+      emotion = parenthesesMatch[2].trim();
+      return { speaker, emotion };
+    }
+    
+    // Check for colon format: Character: emotion
+    const colonMatch = speakerInfo.match(/^([^:]+):\s*(.+)$/);
+    if (colonMatch) {
+      speaker = colonMatch[1].trim();
+      emotion = colonMatch[2].trim();
+      return { speaker, emotion };
+    }
+    
+    // Check for comma format: Character, emotion
+    const commaMatch = speakerInfo.match(/^([^,]+),\s*(.+)$/);
+    if (commaMatch) {
+      speaker = commaMatch[1].trim();
+      emotion = commaMatch[2].trim();
+      return { speaker, emotion };
+    }
+    
+    // Default: just speaker name
+    speaker = speakerInfo.trim();
+    return { speaker };
+  }
+
+  /**
+   * Enhanced audio chunk merging with proper timing and transitions
+   * @param chunks Array of audio chunks with metadata
+   * @returns Merged audio buffer with smooth transitions
+   */
+  private mergeAudioChunksEnhanced(chunks: Array<{
+    speaker: string;
+    text: string;
+    voice: CharacterVoiceType;
+    audioData: Buffer;
+    emotion?: string;
+  }>): Buffer {
+    if (chunks.length === 0) {
+      throw new Error('No audio chunks to merge');
+    }
+    
+    if (chunks.length === 1) {
+      return chunks[0].audioData;
+    }
+    
+    let totalSize = 0;
+    const transitions: Buffer[] = [];
+    
+    // Calculate total size including smart pauses
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      totalSize += chunk.audioData.length;
+      
+      // Add transition pause between chunks (except after the last one)
+      if (i < chunks.length - 1) {
+        const nextChunk = chunks[i + 1];
+        const pauseDuration = this.calculateOptimalPause(chunk, nextChunk);
+        const pauseBuffer = this.generateSilenceBuffer(pauseDuration);
+        transitions.push(pauseBuffer);
+        totalSize += pauseBuffer.length;
+      }
+    }
+    
+    // Merge chunks with calculated pauses
+    const mergedBuffer = Buffer.alloc(totalSize);
+    let offset = 0;
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      
+      // Copy audio data
+      chunk.audioData.copy(mergedBuffer, offset);
+      offset += chunk.audioData.length;
+      
+      // Add transition pause if not the last chunk
+      if (i < chunks.length - 1) {
+        const transitionBuffer = transitions[i];
+        transitionBuffer.copy(mergedBuffer, offset);
+        offset += transitionBuffer.length;
+      }
+    }
+    
+    return mergedBuffer;
+  }
+
+  /**
+   * Calculate optimal pause duration between audio chunks
+   * @param currentChunk Current audio chunk
+   * @param nextChunk Next audio chunk
+   * @returns Pause duration in milliseconds
+   */
+  private calculateOptimalPause(
+    currentChunk: { speaker: string; emotion?: string; text: string },
+    nextChunk: { speaker: string; emotion?: string; text: string }
+  ): number {
+    let basePause = 300; // Default 300ms pause
+    
+    // Longer pause for speaker changes
+    if (currentChunk.speaker !== nextChunk.speaker) {
+      basePause += 200; // +200ms for speaker change
+    }
+    
+    // Longer pause for emotional transitions
+    if (currentChunk.emotion !== nextChunk.emotion) {
+      basePause += 100; // +100ms for emotion change
+    }
+    
+    // Longer pause after dramatic emotions
+    const dramaticEmotions = ['menacing', 'threatening', 'enraged', 'devastated', 'terrified'];
+    if (currentChunk.emotion && dramaticEmotions.includes(currentChunk.emotion)) {
+      basePause += 150; // +150ms after dramatic moments
+    }
+    
+    // Shorter pause for quick dialogue exchanges
+    const quickEmotions = ['excited', 'nervous', 'breathless', 'desperate'];
+    if (currentChunk.emotion && quickEmotions.includes(currentChunk.emotion) &&
+        nextChunk.emotion && quickEmotions.includes(nextChunk.emotion)) {
+      basePause = Math.max(100, basePause - 100); // Reduce pause but minimum 100ms
+    }
+    
+    // Pause based on punctuation in current text
+    if (currentChunk.text.endsWith('...')) {
+      basePause += 200; // Longer pause for trailing ellipsis
+    } else if (currentChunk.text.endsWith('!') || currentChunk.text.endsWith('?')) {
+      basePause += 100; // Medium pause for exclamation/question
+    }
+    
+    return Math.min(basePause, 800); // Cap at 800ms maximum
   }
 
   /**
