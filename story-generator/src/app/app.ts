@@ -327,14 +327,14 @@ export class App implements OnInit, OnDestroy {
         currentStep++;
 
         progressInterval = setTimeout(executeNextStep, step.delay);
+        
+        // Store the current timeout so we can cancel it if needed
+        this.progressTimeoutId = progressInterval;
       }
     };
 
-    // Store the progress timeout so we can cancel it if needed
-    this.progressTimeoutId = progressInterval;
-
     // Timeout protection - if still generating after 30 seconds, show error
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (this.isGenerating && this.generationProgress < 100) {
         this.errorLogging.logError(
           new Error('Story generation timeout'), 
@@ -347,8 +347,9 @@ export class App implements OnInit, OnDestroy {
         this.generationStatus = 'Generation timed out. Please try again.';
         
         // Clear any pending progress updates
-        if (progressInterval) {
-          clearTimeout(progressInterval);
+        if (this.progressTimeoutId) {
+          clearTimeout(this.progressTimeoutId);
+          this.progressTimeoutId = null;
         }
         
         setTimeout(() => {
@@ -357,6 +358,7 @@ export class App implements OnInit, OnDestroy {
       }
     }, 30000);
 
+    // Start the progress simulation
     setTimeout(executeNextStep, 500);
   }
 
