@@ -1,4 +1,11 @@
 {
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --no-audit --no-fund && cd story-generator && npm install --no-audit --no-fund",
+    "build": "cd story-generator && npm run build",
+    "build:verify": "[ -f story-generator/dist/story-generator/browser/index.html ] || (echo 'Missing build output' && exit 1)",
+    "build:full": "npm run build && npm run build:verify"
+  },
   "devDependencies": {
     "@types/node": "^24.5.2"
   },
