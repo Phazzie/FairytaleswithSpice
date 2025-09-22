@@ -1,12 +1,12 @@
-import axios from 'axios';
+import { ElevenLabsClient } from 'elevenlabs';
 import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
 
 /**
  * AudioService - Advanced Multi-Voice Text-to-Speech Processing
- * 
+ *
  * This service provides sophisticated audio generation capabilities for spicy fairy tales,
  * featuring multi-voice narratives where different characters speak with distinct voices.
- * 
+ *
  * Key Features:
  * - Multi-voice support: Different voices for vampires, werewolves, fairies, humans, and narrator
  * - Speaker tag parsing: Automatically detects [Character]: dialogue patterns
@@ -15,14 +15,14 @@ import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } fr
  * - Audio merging: Combines multiple voice segments into seamless narration
  * - 90+ emotion mapping: Maps emotional states to voice parameters
  * - Fallback system: Works with mock data when ElevenLabs API unavailable
- * 
+ *
  * Supported Voice Types:
  * - vampire_male/female: Deep, seductive voices for vampire characters
- * - werewolf_male/female: Rough, powerful voices for werewolf characters  
+ * - werewolf_male/female: Rough, powerful voices for werewolf characters
  * - fairy_male/female: Light, ethereal voices for fairy characters
  * - human_male/female: Natural, warm voices for human characters
  * - narrator: Neutral storytelling voice for narrative sections
- * 
+ *
  * Usage Example:
  * ```
  * const audioService = new AudioService();
@@ -34,42 +34,34 @@ import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } fr
  *   format: 'mp3'
  * });
  * ```
- * 
+ *
  * @author Fairytales with Spice Development Team
- * @version 2.1.0
- * @since 2025-09-21
+ * @version 3.0.0
+ * @since 2025-09-22
  */
 export class AudioService {
-  /** ElevenLabs API base URL for text-to-speech requests */
-  private elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
-  
+  /** ElevenLabs API client */
+  private elevenLabsClient: ElevenLabsClient;
+
   /** ElevenLabs API key from environment variables */
   private elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
 
   /**
-   * Voice ID mapping for different character types and genders
-   * Maps to specific ElevenLabs voice IDs optimized for each character archetype
-   * Falls back to environment variables or default voices if custom ones unavailable
+   * Stores generated voice IDs for characters to maintain consistency.
+   * In a production environment, this should be replaced with a persistent
+   * storage solution (e.g., a database) to avoid regenerating voices
+   * on every application restart.
+   *
+   * Key: Character Name (e.g., "Vampire Lord")
+   * Value: ElevenLabs Voice ID
    */
-  private voiceIds = {
-    // ==================== BASIC VOICES (Backwards Compatibility) ====================
-    female: process.env.ELEVENLABS_VOICE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella
-    male: process.env.ELEVENLABS_VOICE_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam
-    neutral: process.env.ELEVENLABS_VOICE_NEUTRAL || '21m00Tcm4TlvDq8ikWAM', // Rachel
-    
-    // ==================== CHARACTER-SPECIFIC VOICES ====================
-    vampire_male: process.env.ELEVENLABS_VOICE_VAMPIRE_MALE || 'ErXwobaYiN019PkySvjV', // Antoni (deep, seductive)
-    vampire_female: process.env.ELEVENLABS_VOICE_VAMPIRE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella (alluring)
-    werewolf_male: process.env.ELEVENLABS_VOICE_WEREWOLF_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam (rough, powerful)
-    werewolf_female: process.env.ELEVENLABS_VOICE_WEREWOLF_FEMALE || 'AZnzlk1XvdvUeBnXmlld', // Domi (strong, wild)
-    fairy_male: process.env.ELEVENLABS_VOICE_FAIRY_MALE || 'VR6AewLTigWG4xSOukaG', // Josh (light, ethereal)
-    fairy_female: process.env.ELEVENLABS_VOICE_FAIRY_FEMALE || 'jsCqWAovK2LkecY7zXl4', // Freya (magical, delicate)
-    human_male: process.env.ELEVENLABS_VOICE_HUMAN_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam (natural, warm)
-    human_female: process.env.ELEVENLABS_VOICE_HUMAN_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella (natural, warm)
-    narrator: process.env.ELEVENLABS_VOICE_NARRATOR || '21m00Tcm4TlvDq8ikWAM' // Rachel (neutral, storytelling)
-  };
+  private characterVoices = new Map<string, string>();
 
   constructor() {
+    this.elevenLabsClient = new ElevenLabsClient({
+      apiKey: this.elevenLabsApiKey,
+    });
+
     if (!this.elevenLabsApiKey) {
       console.warn('⚠️  ELEVENLABS_API_KEY not found in environment variables');
     }
@@ -161,49 +153,35 @@ export class AudioService {
     }
   }
 
-  private async callElevenLabsAPI(text: string, input: AudioConversionSeam['input'], voiceOverride?: CharacterVoiceType): Promise<Buffer> {
+  private async callElevenLabsAPI(
+    text: string,
+    voiceId: string
+  ): Promise<Buffer> {
     if (!this.elevenLabsApiKey) {
-      // Return mock audio data if no API key
       return this.generateMockAudioData(text);
     }
 
-    // Use voice override if provided, otherwise fall back to input voice or default
-    const voiceKey = voiceOverride || input.voice || 'female';
-    let voiceId = this.voiceIds[voiceKey];
-
-    if (!voiceId) {
-      console.warn(`Voice ID not found for ${voiceKey}, using default female voice`);
-      voiceId = this.voiceIds['female'];
-    }
-
     try {
-      const response = await axios.post(
-        `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
-        {
-          text: text,
-          model_id: 'eleven_monolingual_v1',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.8,
-            style: 0.5,
-            use_speaker_boost: true
-          }
+      // NOTE: eleven_v3_alpha is an alpha model. For production, consider
+      // evaluating its stability or using a stable model.
+      const response = await this.elevenLabsClient.generate({
+        voice: voiceId,
+        text,
+        model_id: 'eleven_v3_alpha',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.8,
+          use_speaker_boost: true,
         },
-        {
-          headers: {
-            'Accept': 'audio/mpeg',
-            'Content-Type': 'application/json',
-            'xi-api-key': this.elevenLabsApiKey
-          },
-          responseType: 'arraybuffer',
-          timeout: 60000 // 60 seconds timeout
-        }
-      );
+      });
 
-      return Buffer.from(response.data);
-
+      const chunks: Buffer[] = [];
+      for await (const chunk of response) {
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
     } catch (error: any) {
-      console.error('ElevenLabs API error:', error.response?.data || error.message);
+      console.error('ElevenLabs API error:', error.message);
       throw error;
     }
   }
@@ -241,73 +219,81 @@ export class AudioService {
     return this.mergeAudioChunks(audioChunks);
   }
 
-  private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input']): Promise<Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}>> {
-    const chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}> = [];
-    
-    // Split text by speaker tags while preserving the tags
+  private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input']): Promise<Array<{speaker: string, text: string, voiceId: string, audioData: Buffer}>> {
+    const chunks: Array<{speaker: string, text: string, voiceId: string, audioData: Buffer}> = [];
     const segments = text.split(/(\[([^\]]+)\]:\s*)/);
-    
     let currentSpeaker = 'Narrator';
-    let currentVoice: CharacterVoiceType = 'narrator';
-    
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i].trim();
-      
-      if (!segment) continue;
-      
-      // Check if this segment is a speaker tag
-      const speakerMatch = segment.match(/\[([^\]]+)\]:\s*/);
-      
+
+    for (const segment of segments) {
+      const trimmedSegment = segment.trim();
+      if (!trimmedSegment) continue;
+
+      const speakerMatch = trimmedSegment.match(/\[([^\]]+)\]:\s*/);
       if (speakerMatch) {
-        // This is a speaker tag - update current speaker and voice
-        const speakerInfo = speakerMatch[1];
-        currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove emotion if present
-        currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
-      } else if (segment.length > 0) {
-        // This is dialogue or narrative text
+        currentSpeaker = speakerMatch[1].trim();
+      } else if (trimmedSegment.length > 0) {
         try {
-          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice);
+          const voiceId = await this.assignVoiceToSpeaker(currentSpeaker);
+          const audioData = await this.callElevenLabsAPI(trimmedSegment, voiceId);
           chunks.push({
             speaker: currentSpeaker,
-            text: segment,
-            voice: currentVoice,
-            audioData: audioData
+            text: trimmedSegment,
+            voiceId: voiceId,
+            audioData: audioData,
           });
         } catch (error) {
           console.warn(`Failed to generate audio for ${currentSpeaker}: ${error}`);
-          // Continue with other chunks rather than failing completely
         }
       }
     }
-    
     return chunks;
   }
 
-  private assignVoiceToSpeaker(speakerName: string): CharacterVoiceType {
-    const lowerName = speakerName.toLowerCase();
-    
-    // Handle narrator specifically
-    if (lowerName.includes('narrator')) {
-      return 'narrator';
+  private async assignVoiceToSpeaker(speakerName: string): Promise<string> {
+    if (this.characterVoices.has(speakerName)) {
+      return this.characterVoices.get(speakerName)!;
+    }
+
+    // Use a default narrator voice
+    if (speakerName.toLowerCase().includes('narrator')) {
+        const narratorVoiceId = process.env.ELEVENLABS_VOICE_NARRATOR || '21m00Tcm4TlvDq8ikWAM'; // Rachel
+        this.characterVoices.set(speakerName, narratorVoiceId);
+        return narratorVoiceId;
     }
     
-    // Infer gender from name patterns (basic implementation)
-    const isFemale = this.inferGenderFromName(speakerName);
-    
-    // Detect character type from name patterns
-    const characterType = this.detectCharacterType(speakerName);
-    
-    // Build voice key
-    const voiceKey = `${characterType}_${isFemale ? 'female' : 'male'}` as CharacterVoiceType;
-    
-    // Ensure the voice exists in our mapping
-    if (this.voiceIds[voiceKey]) {
-      return voiceKey;
-    }
-    
-    // Fallback to human voices
-    return isFemale ? 'human_female' : 'human_male';
+    const voiceId = await this.getOrCreateVoiceId(speakerName);
+    this.characterVoices.set(speakerName, voiceId);
+    return voiceId;
   }
+
+  private async getOrCreateVoiceId(characterName: string): Promise<string> {
+    try {
+      const isFemale = this.inferGenderFromName(characterName);
+      const generatedVoice = await this.elevenLabsClient.voices.generate({
+        gender: isFemale ? 'female' : 'male',
+        accent: this.getRandomAccent(),
+        age: this.getRandomAge(),
+        accent_strength: 1.5,
+        text: `This is the voice of ${characterName}.`,
+      });
+      return generatedVoice.voice_id;
+    } catch (error) {
+        console.error(`Failed to create voice for ${characterName}:`, error);
+        // Fallback to a default voice
+        return process.env.ELEVENLABS_VOICE_FEMALE || 'EXAVITQu4vr4xnSDxMaL';
+    }
+  }
+
+  private getRandomAccent(): 'american' | 'british' | 'african' | 'australian' | 'indian' {
+      const accents: ('american' | 'british' | 'african' | 'australian' | 'indian')[] = ['american', 'british', 'african', 'australian', 'indian'];
+      return accents[Math.floor(Math.random() * accents.length)];
+  }
+
+  private getRandomAge(): 'young' | 'middle_aged' | 'old' {
+        const ages: ('young' | 'middle_aged' | 'old')[] = ['young', 'middle_aged', 'old'];
+        return ages[Math.floor(Math.random() * ages.length)];
+  }
+
 
   private detectCharacterType(speakerName: string): 'vampire' | 'werewolf' | 'fairy' | 'human' {
     const lowerName = speakerName.toLowerCase();
