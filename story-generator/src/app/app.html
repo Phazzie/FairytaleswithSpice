@@ -90,6 +90,11 @@
           Crafting your tale...
         </span>
       </button>
+
+      <!-- Generation Error Display -->
+      <div class="error-message" *ngIf="generationError">
+        ❌ {{ generationError }}
+      </div>
     </div>
 
     <!-- Right Column: Story Display -->
@@ -153,6 +158,11 @@
         <h3>Converting to Audio...</h3>
         <div class="spinner"></div>
         <p>Please wait while we create your audio story...</p>
+      </div>
+
+      <!-- Error Messages -->
+      <div class="error-message" *ngIf="audioError">
+        ❌ {{ audioError }}
       </div>
 
       <!-- Success Messages -->

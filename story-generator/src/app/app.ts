@@ -85,6 +85,11 @@ export class App implements OnInit, OnDestroy {
   isGeneratingNext: boolean = false;
   isContinuing: boolean = false;
   isExporting: boolean = false;
+  
+  /** Error states for user feedback */
+  generationError: string = '';
+  audioError: string = '';
+  exportError: string = '';
 
   // ==================== STORY DATA MANAGEMENT ====================
   
@@ -205,6 +210,7 @@ export class App implements OnInit, OnDestroy {
     }
 
     this.isGenerating = true;
+    this.generationError = ''; // Clear previous errors
     this.currentStory = '';
     this.saveSuccess = false;
     this.audioSuccess = false;
@@ -241,19 +247,50 @@ export class App implements OnInit, OnDestroy {
           this.currentStorySpicyLevel = response.data.spicyLevel;
 
           this.isGenerating = false;
+          this.generationError = ''; // Clear any previous errors
           this.errorLogging.logInfo('Story generation completed successfully', 'App.generateStory', {
             storyId: response.data.storyId,
             wordCount: response.data.actualWordCount
           });
+        } else {
+          // Handle successful response but no data
+          this.isGenerating = false;
+          this.generationError = response.error?.message || 'Story generation failed. Please try again.';
+          this.errorLogging.logError(
+            new Error('Empty response data'), 
+            'App.generateStory', 
+            'error',
+            { response }
+          );
         }
       },
       error: (error) => {
+        console.error('Story generation error:', error);
+        
         this.errorLogging.logError(error, 'App.generateStory', 'error', {
           request,
           userAction: 'story_generation'
         });
         
         this.isGenerating = false;
+        
+        // Provide user-friendly error messages
+        if (error.error?.code === 'GENERATION_FAILED') {
+          this.generationError = 'Our AI storyteller is having trouble. Please try again in a moment.';
+        } else if (error.error?.code === 'INVALID_INPUT') {
+          this.generationError = 'Please check your story settings and try again.';
+        } else if (error.name === 'TimeoutError' || error.message?.includes('timeout')) {
+          this.generationError = 'Story generation is taking longer than expected. Please try again.';
+        } else if (error.status === 0) {
+          this.generationError = 'Unable to connect to our story service. Please check your internet connection.';
+        } else {
+          this.generationError = 'Something went wrong. Please try again or contact support if this continues.';
+        }
+        
+        // Auto-clear error after 10 seconds
+        setTimeout(() => {
+          this.generationError = '';
+        }, 10000);
       }
     });
   }
@@ -295,6 +332,7 @@ export class App implements OnInit, OnDestroy {
 
   convertToAudio() {
     this.isConvertingAudio = true;
+    this.audioError = ''; // Clear previous errors
     this.audioSuccess = false;
 
     this.errorLogging.logInfo('User initiated audio conversion', 'App.convertToAudio', {
@@ -333,11 +371,30 @@ export class App implements OnInit, OnDestroy {
         }
       },
       error: (error) => {
+        console.error('Audio conversion error:', error);
+        
         this.errorLogging.logError(error, 'App.convertToAudio', 'error', {
           request,
           userAction: 'audio_conversion'
         });
+        
         this.isConvertingAudio = false;
+        
+        // User-friendly audio error messages
+        if (error.error?.code === 'AUDIO_GENERATION_FAILED') {
+          this.audioError = 'Audio conversion failed. Please try again.';
+        } else if (error.error?.code === 'STORY_TOO_LONG') {
+          this.audioError = 'Your story is too long for audio conversion. Try a shorter story.';
+        } else if (error.status === 0) {
+          this.audioError = 'Unable to connect to audio service. Please check your connection.';
+        } else {
+          this.audioError = 'Audio conversion failed. Please try again later.';
+        }
+        
+        // Auto-clear error after 8 seconds
+        setTimeout(() => {
+          this.audioError = '';
+        }, 8000);
       }
     });
   }
