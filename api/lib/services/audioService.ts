@@ -1178,6 +1178,321 @@ export class AudioService {
     return Math.min(basePause, 800); // Cap at 800ms maximum
   }
 
+  // ==================== SOUND EFFECTS INTEGRATION SYSTEM ====================
+
+  /**
+   * Sound effect definitions for different creatures and scenarios
+   */
+  private soundEffectLibrary = {
+    vampire: {
+      entrance: ['swoosh', 'bat_wings', 'mist_settling'],
+      dialogue: ['whisper_echo', 'seductive_breath'],
+      action: ['vampire_hiss', 'cape_flutter', 'supernatural_move'],
+      transformation: ['mist_form', 'bat_screech'],
+      exit: ['dissolve_mist', 'wing_beats_fade']
+    },
+    werewolf: {
+      entrance: ['heavy_footsteps', 'low_growl', 'sniffing'],
+      dialogue: ['growl_undertone', 'heavy_breathing'],
+      action: ['claws_scraping', 'powerful_movement', 'snarl'],
+      transformation: ['bone_cracking', 'howl', 'clothing_tear'],
+      exit: ['powerful_leap', 'distant_howl']
+    },
+    fairy: {
+      entrance: ['magical_chimes', 'sparkle_sounds', 'gentle_breeze'],
+      dialogue: ['magic_whispers', 'ethereal_echo'],
+      action: ['magic_casting', 'pixie_dust', 'nature_sounds'],
+      magic: ['spell_effects', 'enchantment_chimes'],
+      exit: ['magical_fade', 'nature_harmony']
+    },
+    human: {
+      entrance: ['footsteps', 'door_open', 'clothing_rustle'],
+      dialogue: ['breath', 'subtle_movement'],
+      action: ['movement', 'object_interaction'],
+      exit: ['footsteps_fade', 'door_close']
+    },
+    ambient: {
+      forest: ['wind_through_trees', 'distant_animals', 'leaves_rustling'],
+      castle: ['stone_echo', 'distant_thunder', 'cold_wind'],
+      chamber: ['fireplace_crackle', 'candle_flicker', 'silk_rustle'],
+      night: ['owl_hoot', 'cricket_chirp', 'mysterious_whispers']
+    }
+  };
+
+  /**
+   * Sound effect keywords that trigger specific audio enhancements
+   */
+  private soundTriggerKeywords = {
+    // Action keywords
+    'growl': { creature: 'werewolf', category: 'action', effect: 'low_growl' },
+    'hiss': { creature: 'vampire', category: 'action', effect: 'vampire_hiss' },
+    'flutter': { creature: 'fairy', category: 'action', effect: 'wing_flutter' },
+    'swoosh': { creature: 'vampire', category: 'action', effect: 'cape_flutter' },
+    'sparkle': { creature: 'fairy', category: 'magic', effect: 'pixie_dust' },
+    'howl': { creature: 'werewolf', category: 'transformation', effect: 'howl' },
+    'whisper': { creature: 'any', category: 'dialogue', effect: 'whisper_echo' },
+    
+    // Environment keywords
+    'forest': { creature: 'any', category: 'ambient', effect: 'wind_through_trees' },
+    'castle': { creature: 'any', category: 'ambient', effect: 'stone_echo' },
+    'chamber': { creature: 'any', category: 'ambient', effect: 'fireplace_crackle' },
+    'night': { creature: 'any', category: 'ambient', effect: 'owl_hoot' },
+    
+    // Transformation keywords
+    'transform': { creature: 'werewolf', category: 'transformation', effect: 'bone_cracking' },
+    'change': { creature: 'werewolf', category: 'transformation', effect: 'bone_cracking' },
+    'shift': { creature: 'werewolf', category: 'transformation', effect: 'bone_cracking' },
+    'vanish': { creature: 'vampire', category: 'transformation', effect: 'mist_form' },
+    'disappear': { creature: 'vampire', category: 'transformation', effect: 'dissolve_mist' }
+  };
+
+  /**
+   * Detect sound effects needed for a piece of dialogue or narrative
+   * @param text The text content to analyze
+   * @param speaker The character speaking
+   * @param characterType The type of character
+   * @returns Array of sound effects to apply
+   */
+  private detectSoundEffects(text: string, speaker: string, characterType: 'vampire' | 'werewolf' | 'fairy' | 'human'): Array<{
+    effect: string;
+    category: string;
+    timing: 'before' | 'during' | 'after';
+    volume: number;
+  }> {
+    const effects: Array<{
+      effect: string;
+      category: string;
+      timing: 'before' | 'during' | 'after';
+      volume: number;
+    }> = [];
+    
+    const lowerText = text.toLowerCase();
+    
+    // Check for specific sound trigger keywords
+    for (const [keyword, config] of Object.entries(this.soundTriggerKeywords)) {
+      if (lowerText.includes(keyword)) {
+        if (config.creature === 'any' || config.creature === characterType) {
+          effects.push({
+            effect: config.effect,
+            category: config.category,
+            timing: this.determineSoundTiming(config.category),
+            volume: this.calculateSoundVolume(config.category, keyword)
+          });
+        }
+      }
+    }
+    
+    // Add character-specific entrance/exit effects
+    if (this.isCharacterEntrance(lowerText, speaker)) {
+      const entranceEffects = this.soundEffectLibrary[characterType]?.entrance || [];
+      if (entranceEffects.length > 0) {
+        effects.push({
+          effect: entranceEffects[0], // Use first entrance effect
+          category: 'entrance',
+          timing: 'before',
+          volume: 0.6
+        });
+      }
+    }
+    
+    if (this.isCharacterExit(lowerText, speaker)) {
+      const exitEffects = this.soundEffectLibrary[characterType]?.exit || [];
+      if (exitEffects.length > 0) {
+        effects.push({
+          effect: exitEffects[0], // Use first exit effect
+          category: 'exit',
+          timing: 'after',
+          volume: 0.4
+        });
+      }
+    }
+    
+    return effects;
+  }
+
+  /**
+   * Determine when a sound effect should play relative to the voice
+   * @param category The category of sound effect
+   * @returns Timing specification
+   */
+  private determineSoundTiming(category: string): 'before' | 'during' | 'after' {
+    const timingMap: Record<string, 'before' | 'during' | 'after'> = {
+      'entrance': 'before',
+      'exit': 'after',
+      'transformation': 'during',
+      'action': 'during',
+      'dialogue': 'during',
+      'magic': 'during',
+      'ambient': 'during'
+    };
+    
+    return timingMap[category] || 'during';
+  }
+
+  /**
+   * Calculate appropriate volume for a sound effect
+   * @param category The category of sound effect
+   * @param keyword The trigger keyword
+   * @returns Volume level (0.0 - 1.0)
+   */
+  private calculateSoundVolume(category: string, keyword: string): number {
+    // Volume based on category
+    const categoryVolumes: Record<string, number> = {
+      'ambient': 0.3,
+      'dialogue': 0.4,
+      'action': 0.7,
+      'transformation': 0.8,
+      'entrance': 0.6,
+      'exit': 0.4,
+      'magic': 0.5
+    };
+    
+    let baseVolume = categoryVolumes[category] || 0.5;
+    
+    // Adjust for specific keywords
+    const loudKeywords = ['howl', 'growl', 'hiss', 'transform'];
+    const quietKeywords = ['whisper', 'sparkle', 'flutter'];
+    
+    if (loudKeywords.includes(keyword)) {
+      baseVolume = Math.min(1.0, baseVolume + 0.2);
+    } else if (quietKeywords.includes(keyword)) {
+      baseVolume = Math.max(0.1, baseVolume - 0.2);
+    }
+    
+    return baseVolume;
+  }
+
+  /**
+   * Check if text indicates character entrance
+   * @param text Lowercase text to analyze
+   * @param speaker Character name
+   * @returns True if this appears to be an entrance
+   */
+  private isCharacterEntrance(text: string, speaker: string): boolean {
+    const entranceKeywords = [
+      'entered', 'arrived', 'appeared', 'materialized', 'emerged',
+      'stepped into', 'walked in', 'came in', 'approached'
+    ];
+    
+    return entranceKeywords.some(keyword => text.includes(keyword));
+  }
+
+  /**
+   * Check if text indicates character exit
+   * @param text Lowercase text to analyze
+   * @param speaker Character name
+   * @returns True if this appears to be an exit
+   */
+  private isCharacterExit(text: string, speaker: string): boolean {
+    const exitKeywords = [
+      'left', 'departed', 'vanished', 'disappeared', 'faded',
+      'walked away', 'stepped out', 'retreated', 'dissolved'
+    ];
+    
+    return exitKeywords.some(keyword => text.includes(keyword));
+  }
+
+  /**
+   * Generate mock sound effect audio data
+   * @param effectName Name of the sound effect
+   * @param duration Duration in milliseconds
+   * @returns Mock audio buffer representing the sound effect
+   */
+  private generateMockSoundEffect(effectName: string, duration: number = 1000): Buffer {
+    // Generate a simple sine wave pattern for different sound types
+    const sampleRate = 44100;
+    const samples = Math.floor((duration / 1000) * sampleRate);
+    const buffer = Buffer.alloc(samples * 4); // Stereo 16-bit
+    
+    // Different frequency patterns for different effects
+    const effectFrequencies: Record<string, number> = {
+      'low_growl': 120,
+      'vampire_hiss': 8000,
+      'magical_chimes': 800,
+      'wing_flutter': 400,
+      'footsteps': 200,
+      'whisper_echo': 300,
+      'wind_through_trees': 100
+    };
+    
+    const frequency = effectFrequencies[effectName] || 440;
+    
+    for (let i = 0; i < samples; i++) {
+      // Create a fading effect
+      const fadeIn = Math.min(1, i / (sampleRate * 0.1)); // 100ms fade in
+      const fadeOut = Math.min(1, (samples - i) / (sampleRate * 0.1)); // 100ms fade out
+      const envelope = fadeIn * fadeOut;
+      
+      const sample = Math.sin(2 * Math.PI * frequency * i / sampleRate) * 0.3 * envelope;
+      const intSample = Math.max(-32768, Math.min(32767, Math.floor(sample * 32767)));
+      
+      // Write stereo samples
+      buffer.writeInt16LE(intSample, i * 4);
+      buffer.writeInt16LE(intSample, i * 4 + 2);
+    }
+    
+    return buffer;
+  }
+
+  /**
+   * Enhanced audio processing with sound effects integration
+   * @param text Story content
+   * @param input Audio conversion parameters
+   * @returns Audio with integrated sound effects
+   */
+  async generateAudioWithSoundEffects(text: string, input: AudioConversionSeam['input']): Promise<Buffer> {
+    // Check if sound effects are enabled (could be a parameter in the future)
+    const soundEffectsEnabled = false; // Disabled by default for now
+    
+    if (!soundEffectsEnabled) {
+      // Fall back to standard audio generation
+      return this.hasSpeakerTags(text) 
+        ? await this.generateMultiVoiceAudio(text, input)
+        : await this.callElevenLabsAPI(text, input, undefined, undefined);
+    }
+    
+    // Future implementation for sound effects integration
+    // This would involve:
+    // 1. Parse story content for sound effect triggers
+    // 2. Generate voice audio as normal
+    // 3. Generate or retrieve sound effects
+    // 4. Mix voice and sound effects with proper timing
+    // 5. Return combined audio buffer
+    
+    console.log('🎵 Sound effects system initialized (currently disabled)');
+    return this.hasSpeakerTags(text) 
+      ? await this.generateMultiVoiceAudio(text, input)
+      : await this.callElevenLabsAPI(text, input, undefined, undefined);
+  }
+
+  /**
+   * Get information about available sound effects
+   * @returns Sound effects system information
+   */
+  public getSoundEffectsInfo() {
+    return {
+      enabled: false, // Currently disabled
+      totalEffects: Object.values(this.soundEffectLibrary).reduce((total, category) => {
+        return total + Object.values(category).reduce((sum, effects) => sum + effects.length, 0);
+      }, 0),
+      creatures: Object.keys(this.soundEffectLibrary).filter(key => key !== 'ambient'),
+      categories: ['entrance', 'dialogue', 'action', 'transformation', 'exit', 'ambient'],
+      triggerKeywords: Object.keys(this.soundTriggerKeywords),
+      features: {
+        contextualDetection: true,
+        volumeControl: true,
+        timingControl: true,
+        creatureSpecific: true,
+        mockGeneration: true
+      },
+      implementation: {
+        status: 'research_complete',
+        nextSteps: ['API integration', 'browser audio mixing', 'user controls'],
+        limitations: ['mock effects only', 'no real audio mixing', 'performance untested']
+      }
+    };
+  }
+
   /**
    * Extract all speakers from story content
    * @param content Story content with speaker tags

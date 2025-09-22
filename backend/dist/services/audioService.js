@@ -98,6 +98,69 @@ class AudioService {
          * Tracks character voice assignments across a story to ensure consistency
          */
         this.characterVoiceMap = new Map();
+        // ==================== SOUND EFFECTS INTEGRATION SYSTEM ====================
+        /**
+         * Sound effect definitions for different creatures and scenarios
+         */
+        this.soundEffectLibrary = {
+            vampire: {
+                entrance: ['swoosh', 'bat_wings', 'mist_settling'],
+                dialogue: ['whisper_echo', 'seductive_breath'],
+                action: ['vampire_hiss', 'cape_flutter', 'supernatural_move'],
+                transformation: ['mist_form', 'bat_screech'],
+                exit: ['dissolve_mist', 'wing_beats_fade']
+            },
+            werewolf: {
+                entrance: ['heavy_footsteps', 'low_growl', 'sniffing'],
+                dialogue: ['growl_undertone', 'heavy_breathing'],
+                action: ['claws_scraping', 'powerful_movement', 'snarl'],
+                transformation: ['bone_cracking', 'howl', 'clothing_tear'],
+                exit: ['powerful_leap', 'distant_howl']
+            },
+            fairy: {
+                entrance: ['magical_chimes', 'sparkle_sounds', 'gentle_breeze'],
+                dialogue: ['magic_whispers', 'ethereal_echo'],
+                action: ['magic_casting', 'pixie_dust', 'nature_sounds'],
+                magic: ['spell_effects', 'enchantment_chimes'],
+                exit: ['magical_fade', 'nature_harmony']
+            },
+            human: {
+                entrance: ['footsteps', 'door_open', 'clothing_rustle'],
+                dialogue: ['breath', 'subtle_movement'],
+                action: ['movement', 'object_interaction'],
+                exit: ['footsteps_fade', 'door_close']
+            },
+            ambient: {
+                forest: ['wind_through_trees', 'distant_animals', 'leaves_rustling'],
+                castle: ['stone_echo', 'distant_thunder', 'cold_wind'],
+                chamber: ['fireplace_crackle', 'candle_flicker', 'silk_rustle'],
+                night: ['owl_hoot', 'cricket_chirp', 'mysterious_whispers']
+            }
+        };
+        /**
+         * Sound effect keywords that trigger specific audio enhancements
+         */
+        this.soundTriggerKeywords = {
+            // Action keywords
+            'growl': { creature: 'werewolf', category: 'action', effect: 'low_growl' },
+            'hiss': { creature: 'vampire', category: 'action', effect: 'vampire_hiss' },
+            'flutter': { creature: 'fairy', category: 'action', effect: 'wing_flutter' },
+            'swoosh': { creature: 'vampire', category: 'action', effect: 'cape_flutter' },
+            'sparkle': { creature: 'fairy', category: 'magic', effect: 'pixie_dust' },
+            'howl': { creature: 'werewolf', category: 'transformation', effect: 'howl' },
+            'whisper': { creature: 'any', category: 'dialogue', effect: 'whisper_echo' },
+            // Environment keywords
+            'forest': { creature: 'any', category: 'ambient', effect: 'wind_through_trees' },
+            'castle': { creature: 'any', category: 'ambient', effect: 'stone_echo' },
+            'chamber': { creature: 'any', category: 'ambient', effect: 'fireplace_crackle' },
+            'night': { creature: 'any', category: 'ambient', effect: 'owl_hoot' },
+            // Transformation keywords
+            'transform': { creature: 'werewolf', category: 'transformation', effect: 'bone_cracking' },
+            'change': { creature: 'werewolf', category: 'transformation', effect: 'bone_cracking' },
+            'shift': { creature: 'werewolf', category: 'transformation', effect: 'bone_cracking' },
+            'vanish': { creature: 'vampire', category: 'transformation', effect: 'mist_form' },
+            'disappear': { creature: 'vampire', category: 'transformation', effect: 'dissolve_mist' }
+        };
         if (!this.elevenLabsApiKey) {
             console.warn('⚠️  ELEVENLABS_API_KEY not found in environment variables');
         }
@@ -943,6 +1006,33 @@ class AudioService {
             basePause += 100; // Medium pause for exclamation/question
         }
         return Math.min(basePause, 800); // Cap at 800ms maximum
+    }
+    /**
+     * Get information about available sound effects
+     * @returns Sound effects system information
+     */
+    getSoundEffectsInfo() {
+        return {
+            enabled: false, // Currently disabled
+            totalEffects: Object.values(this.soundEffectLibrary).reduce((total, category) => {
+                return total + Object.values(category).reduce((sum, effects) => sum + effects.length, 0);
+            }, 0),
+            creatures: Object.keys(this.soundEffectLibrary).filter(key => key !== 'ambient'),
+            categories: ['entrance', 'dialogue', 'action', 'transformation', 'exit', 'ambient'],
+            triggerKeywords: Object.keys(this.soundTriggerKeywords),
+            features: {
+                contextualDetection: true,
+                volumeControl: true,
+                timingControl: true,
+                creatureSpecific: true,
+                mockGeneration: true
+            },
+            implementation: {
+                status: 'research_complete',
+                nextSteps: ['API integration', 'browser audio mixing', 'user controls'],
+                limitations: ['mock effects only', 'no real audio mixing', 'performance untested']
+            }
+        };
     }
     /**
      * Extract all speakers from story content
