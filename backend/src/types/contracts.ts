@@ -14,6 +14,24 @@ export type CharacterVoiceType =
   | 'fairy_male' | 'fairy_female'
   | 'human_male' | 'human_female'
   | 'narrator';
+
+export type EmotionType = 
+  | 'angry' | 'sad' | 'happy' | 'excited' | 'seductive' | 'mysterious' | 'playful' 
+  | 'nervous' | 'confident' | 'passionate' | 'joyful' | 'euphoric' | 'elated'
+  | 'cheerful' | 'content' | 'satisfied' | 'pleased' | 'delighted' | 'romantic'
+  | 'sensual' | 'lustful' | 'desire' | 'yearning' | 'longing' | 'infatuated'
+  | 'aroused' | 'furious' | 'enraged' | 'livid' | 'irate' | 'indignant'
+  | 'outraged' | 'hostile' | 'aggressive' | 'violent' | 'enigmatic' | 'cryptic'
+  | 'secretive' | 'scheming' | 'devious' | 'sinister' | 'ominous' | 'foreboding'
+  | 'menacing' | 'melancholic' | 'sorrowful' | 'mournful' | 'devastated'
+  | 'heartbroken' | 'vulnerable' | 'fragile' | 'tender' | 'gentle' | 'determined'
+  | 'resolute' | 'commanding' | 'authoritative' | 'dominant' | 'powerful'
+  | 'bold' | 'fearless' | 'brave' | 'anxious' | 'worried' | 'fearful'
+  | 'terrified' | 'panicked' | 'jittery' | 'restless' | 'uneasy' | 'apprehensive'
+  | 'mischievous' | 'teasing' | 'flirtatious' | 'coy' | 'impish' | 'sassy'
+  | 'cheeky' | 'witty' | 'amusing' | 'conflicted' | 'torn' | 'ambivalent'
+  | 'resigned' | 'defeated' | 'overwhelmed' | 'exhausted' | 'drained' | 'weary'
+  | 'nostalgic' | 'neutral';
 export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
@@ -128,7 +146,7 @@ export interface ChapterContinuationSeam {
 // ==================== SEAM 3: STORY TEXT → AUDIO CONVERTER ====================
 export interface AudioConversionSeam {
   seamName: "Story Text → Audio Converter";
-  description: "Converts story text to audio format with progress tracking";
+  description: "Converts story text to audio format with progress tracking and multi-voice support";
 
   input: {
     storyId: string;
@@ -136,6 +154,7 @@ export interface AudioConversionSeam {
     voice?: VoiceType;
     speed?: AudioSpeed;
     format?: AudioFormat;
+    enhancedMode?: boolean; // Enable emotion-aware voice processing
   };
 
   output: {
@@ -149,6 +168,12 @@ export interface AudioConversionSeam {
     speed: AudioSpeed;
     progress: AudioProgress; // For real-time UI updates
     completedAt: Date;
+    voiceAnalysis?: {
+      charactersDetected: string[];
+      emotionsUsed: EmotionType[];
+      speakerCount: number;
+      recommendations: string[];
+    };
   };
 
   errors: {

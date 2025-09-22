@@ -242,8 +242,16 @@ describe('AudioService', () => {
   });
 
   describe('utility methods', () => {
+    const testInput: AudioConversionSeam['input'] = {
+      storyId: 'story_123',
+      content: '<h3>Chapter 1</h3><p>This is a test story content for speed testing.</p>',
+      voice: 'female',
+      speed: 1.0,
+      format: 'mp3'
+    };
+
     it('should estimate realistic durations for different speeds', async () => {
-      const input = { ...validInput };
+      const input = { ...testInput };
       const baseResult = await audioService.convertToAudio({ ...input, speed: 1.0 });
       const fastResult = await audioService.convertToAudio({ ...input, speed: 1.5 });
       const slowResult = await audioService.convertToAudio({ ...input, speed: 0.5 });
