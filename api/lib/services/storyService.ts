@@ -307,12 +307,22 @@ export class StoryService {
       otherStyles = [...vampireStyles, ...werewolfStyles];
     }
 
+    // Fisher-Yates shuffle for uniform distribution
+    const fisherYatesShuffle = <T>(array: T[]): T[] => {
+      const shuffled = [...array];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    };
+
     // Select 2 from matching creature
-    const shuffledPrimary = primaryStyles.sort(() => 0.5 - Math.random());
+    const shuffledPrimary = fisherYatesShuffle(primaryStyles);
     const selectedPrimary = shuffledPrimary.slice(0, 2);
 
     // Select 1 from different creatures  
-    const shuffledOther = otherStyles.sort(() => 0.5 - Math.random());
+    const shuffledOther = fisherYatesShuffle(otherStyles);
     const selectedOther = shuffledOther.slice(0, 1);
 
     return [...selectedPrimary, ...selectedOther];
