@@ -6,6 +6,7 @@ import {
   VALIDATION_RULES,
   SpicyLevel
 } from '../types/contracts';
+import { getAvailableEmotions } from './emotionMapping';
 
 export class StoryService {
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
@@ -609,13 +610,28 @@ At midpoint (≈50% word count), protagonist faces desire-vs-principle choice th
 SERIALIZATION HOOKS:
 Plant one unresolved mystery, one relationship tension, one foreshadowed threat.
 
-AUDIO FORMAT (NON-NEGOTIABLE):
+ENHANCED AUDIO FORMAT (NON-NEGOTIABLE):
 - [Character Name]: "dialogue" for ALL speech
 - [Narrator]: for ALL descriptions/scene-setting  
-- [Character, emotion]: "dialogue" for emotional context
+- [Character, emotion]: "dialogue" for emotional context using specific emotions
+- [Character, voice evolution]: "dialogue" for character development moments
 - HTML: <h3> titles, <p> paragraphs, <em> emphasis
 
-Your goal: Create episodes that make listeners desperate for "Continue Chapter."`;
+AVAILABLE EMOTIONS (use specific names for precise voice control):
+${this.getEmotionVocabulary()}
+
+VOICE EVOLUTION GUIDANCE:
+- Character voices should evolve as relationships/power dynamics change
+- Use evolution patterns: [Character, confident→vulnerable], [Character, cold→passionate]
+- Show voice changes during character development moments
+- Match vocal intensity to emotional stakes
+
+ATMOSPHERIC VOICE CUES:
+- [Narrator, tension]: for building suspense
+- [Narrator, intimacy]: for romantic moments  
+- [Narrator, danger]: for threatening scenes
+
+Your goal: Create episodes with compelling character voice arcs that make listeners desperate for "Continue Chapter."`;
   }
 
   private buildUserPrompt(input: StoryGenerationSeam['input']): string {
@@ -652,7 +668,18 @@ MANDATORY FORMATTING FOR AUDIO:
 - [Character Name]: "dialogue" for ALL speech (no exceptions)
 - [Narrator]: for ALL scene descriptions and non-dialogue text
 - [Character, emotion]: "dialogue" when emotional context is crucial
+- [Character, voice evolution]: "dialogue" for character development moments
 - HTML structure: <h3> for title, <p> for paragraphs, <em> for emphasis
+
+ENHANCED EMOTION VOCABULARY:
+Use specific emotions from this curated list for precise voice control:
+${this.getEmotionVocabulary()}
+
+CHARACTER VOICE EVOLUTION:
+- Show how character voices change as they develop emotionally
+- Use evolution cues: [Character, guarded→trusting], [Character, formal→intimate]
+- Voice should reflect power dynamics, relationship changes, vulnerability shifts
+- Match voice intensity to emotional stakes and story progression
 
 Create a complete story that feels like it could continue but is satisfying on its own. Make every word count toward character development, world-building, or advancing romantic/sexual tension.
 
@@ -979,5 +1006,31 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
 
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Gets curated emotion vocabulary for enhanced voice control
+   */
+  private getEmotionVocabulary(): string {
+    const availableEmotions = getAvailableEmotions();
+    
+    // Select curated emotions most relevant for storytelling
+    const curatedEmotions = [
+      // Basic emotions
+      'passionate', 'seductive', 'vulnerable', 'dangerous', 'tender', 
+      // Intensity emotions
+      'desperate', 'furious', 'ecstatic', 'terrified', 'devoted',
+      // Nuanced emotions  
+      'conflicted', 'yearning', 'guilty', 'protective', 'betrayed',
+      // Vocal qualities
+      'whispering', 'growling', 'purring', 'breathless', 'commanding'
+    ].filter(emotion => availableEmotions.includes(emotion));
+
+    // Fallback to first 20 available emotions if curated list not available
+    const emotionsToShow = curatedEmotions.length > 10 
+      ? curatedEmotions 
+      : availableEmotions.slice(0, 20);
+
+    return emotionsToShow.join(', ');
   }
 }
