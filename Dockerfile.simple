@@ -1,0 +1,50 @@
+# Simplified Dockerfile for Digital Ocean deployment
+# Optimized for production deployment with minimal dependencies
+
+FROM node:20-alpine AS production
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S fairytales -u 1001
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files and install dependencies
+COPY package.json package-lock.json ./
+COPY story-generator/package.json ./story-generator/
+RUN npm ci --only=production --no-audit --no-fund && \
+    cd story-generator && npm ci --only=production --no-audit --no-fund
+
+# Copy source code and build
+COPY . .
+RUN cd story-generator && npm run build
+
+# Clean up unnecessary files to reduce image size
+RUN rm -rf story-generator/src story-generator/node_modules/.cache
+
+# Copy startup and health check scripts
+COPY docker/start.sh /usr/local/bin/start.sh
+COPY docker/healthcheck.sh /usr/local/bin/healthcheck.sh
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/start.sh /usr/local/bin/healthcheck.sh
+
+# Change ownership to non-root user
+RUN chown -R fairytales:nodejs /app
+
+# Switch to non-root user
+USER fairytales
+
+# Expose port (configurable via environment variable)
+EXPOSE ${PORT:-8080}
+
+# Health check configuration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD /usr/local/bin/healthcheck.sh
+
+# Set production environment
+ENV NODE_ENV=production
+
+# Start the application
+CMD ["/usr/local/bin/start.sh"]

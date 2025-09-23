@@ -4,7 +4,12 @@
     "install:all": "npm install --no-audit --no-fund && cd story-generator && npm install --no-audit --no-fund",
     "build": "cd story-generator && npm run build",
     "build:verify": "[ -f story-generator/dist/story-generator/browser/index.html ] || (echo 'Missing build output' && exit 1)",
-    "build:full": "npm run build && npm run build:verify"
+    "build:full": "npm run build && npm run build:verify",
+    "start": "node server.js",
+    "docker:build": "docker build -t fairytales-spice .",
+    "docker:run": "docker run -p 8080:8080 fairytales-spice",
+    "docker:dev": "docker-compose up --build",
+    "docker:prod": "docker-compose --profile prod up --build"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
@@ -12,6 +17,7 @@
   },
   "dependencies": {
     "axios": "^1.12.2",
-    "dotenv": "^17.2.2"
+    "dotenv": "^17.2.2",
+    "express": "^4.21.1"
   }
 }

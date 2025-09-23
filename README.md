@@ -232,7 +232,48 @@ Access with `Ctrl+Shift+D` or click the debug button:
 
 ## 🚀 Deployment
 
-### **Vercel Deployment** (Recommended)
+### **Digital Ocean Deployment** (Recommended)
+
+Deploy to Digital Ocean App Platform with one command:
+
+```bash
+# Quick deploy (requires doctl CLI)
+./deploy.sh
+
+# Or use the app.yaml configuration
+# 1. Fork this repository  
+# 2. Create new app in Digital Ocean dashboard
+# 3. Connect your GitHub repository
+# 4. Use the included app.yaml configuration
+# 5. Set optional environment variables:
+#    XAI_API_KEY=your_grok_key (optional - uses mocks)
+#    ELEVENLABS_API_KEY=your_elevenlabs_key (optional - uses mocks)
+```
+
+**Features:**
+- 🐳 **Docker containerized** for consistency
+- 🔄 **Auto-scaling** based on traffic  
+- 💰 **$5/month** minimum cost
+- 🔐 **Automatic HTTPS/SSL**
+- 📊 **Built-in monitoring**
+
+[📚 Complete Deployment Guide](./DEPLOY.md) | [✅ Deployment Checklist](./DEPLOYMENT_CHECKLIST.md)
+
+### **Docker Deployment**
+
+```bash
+# Local testing
+docker-compose up --build
+
+# Production-like testing  
+docker-compose --profile prod up --build
+
+# Manual Docker
+docker build -t fairytales-spice .
+docker run -p 8080:8080 fairytales-spice
+```
+
+### **Vercel Deployment** (Alternative)
 
 1. **Fork this repository**
 2. **Connect to Vercel**: Import your fork in Vercel dashboard
@@ -247,10 +288,12 @@ Access with `Ctrl+Shift+D` or click the debug button:
 
 ```bash
 # Build for production
-cd story-generator && npm run build
+npm run build:full
 
-# Deploy the dist/ folder to your hosting service
-# API endpoints deploy as serverless functions
+# Start production server
+npm start
+
+# Or deploy the dist/ folder to your hosting service
 ```
 
 ## 📊 Testing
