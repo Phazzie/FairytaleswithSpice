@@ -1,0 +1,107 @@
+# Digital Ocean App Platform Configuration
+# Fairytales with Spice Deployment Specification
+
+name: fairytales-with-spice
+region: nyc1
+
+services:
+  - name: fairytales-web
+    source_dir: /
+    github:
+      repo: Phazzie/FairytaleswithSpice
+      branch: main
+      deploy_on_push: true
+    
+    # Container configuration
+    dockerfile_path: Dockerfile
+    
+    # Resource allocation
+    instance_count: 1
+    instance_size_slug: basic-xxs  # $5/month tier
+    
+    # Port configuration
+    http_port: 8080
+    
+    # Environment variables
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+      - key: FRONTEND_URL
+        value: ${APP_URL}
+      # Optional API keys (set in Digital Ocean dashboard)
+      - key: XAI_API_KEY
+        type: SECRET
+        value: ""  # Set this in DO dashboard
+      - key: ELEVENLABS_API_KEY
+        type: SECRET
+        value: ""  # Set this in DO dashboard
+    
+    # Health check configuration
+    health_check:
+      http_path: "/api/health"
+      initial_delay_seconds: 30
+      period_seconds: 30
+      timeout_seconds: 10
+      failure_threshold: 3
+      success_threshold: 1
+    
+    # Build configuration
+    build_command: |
+      echo "🔧 Installing dependencies..."
+      npm ci --only=production --no-audit --no-fund
+      cd story-generator && npm ci --only=production --no-audit --no-fund
+      echo "🏗️ Building application..."
+      npm run build
+    
+    # Routes configuration
+    routes:
+      - path: /api
+        preserve_path_prefix: true
+      - path: /
+        preserve_path_prefix: false
+
+# Optional: Add a database if needed in the future
+# databases:
+#   - engine: PG
+#     name: fairytales-db
+#     num_nodes: 1
+#     size: db-s-dev-database
+#     version: "14"
+
+# Static site alternative (if you prefer CDN hosting)
+static_sites:
+  - name: fairytales-static
+    source_dir: /story-generator/dist/story-generator/browser
+    github:
+      repo: Phazzie/FairytaleswithSpice
+      branch: main
+      deploy_on_push: true
+    build_command: |
+      cd story-generator && npm ci && npm run build
+    output_dir: /story-generator/dist/story-generator/browser
+    index_document: index.html
+    error_document: index.html
+    # Use this instead of the service above for static-only hosting
+    disabled: true
+
+# Domain configuration (optional)
+domains:
+  - domain: fairytaleswithspice.com
+    type: PRIMARY
+    wildcard: false
+    zone: fairytaleswithspice.com
+  # Uncomment when you have a custom domain
+  # - domain: www.fairytaleswithspice.com
+  #   type: ALIAS
+  #   wildcard: false
+
+# Alerts configuration
+alerts:
+  - rule: CPU_UTILIZATION
+    value: 80
+  - rule: MEM_UTILIZATION  
+    value: 80
+  - rule: RESTART_COUNT
+    value: 5

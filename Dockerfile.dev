@@ -1,0 +1,35 @@
+# Development Dockerfile for Fairytales with Spice
+# Used for local development with hot reload
+
+FROM node:20-alpine AS development
+
+# Install system dependencies
+RUN apk add --no-cache git curl
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S fairytales -u 1001
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json ./
+COPY story-generator/package.json ./story-generator/
+RUN npm ci --include=dev && \
+    cd story-generator && npm ci --include=dev
+
+# Copy source code
+COPY . .
+
+# Change ownership
+RUN chown -R fairytales:nodejs /app
+
+# Switch to non-root user
+USER fairytales
+
+# Expose ports for development
+EXPOSE 4200 3000
+
+# Development command
+CMD ["sh", "-c", "cd story-generator && npm run start"]
