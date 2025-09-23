@@ -5,109 +5,90 @@ All notable changes to the Fairytales with Spice project will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.0] - 2025-09-21
-
-### 🎉 Major Features Added
-
-#### Multi-Voice Audio System
-- **Advanced Character Voices**: Implemented character-specific voices for vampires, werewolves, fairies, and humans
-- **Speaker Tag Recognition**: Automatically detects `[Character]:` patterns in generated stories
-- **Gender Detection**: Intelligently assigns male/female voices based on character names
-- **Seamless Audio Merging**: Combines multiple voice segments with proper timing and silence
-- **90+ Emotion Mapping**: Maps emotional states to voice parameters for enhanced expressiveness
-
-#### Enhanced Story Generation
-- **TV-Quality Prompts**: Upgraded story generation with professional narrative structures
-- **Real-Time Progress**: Added progress indicators with realistic status updates during generation
-- **Character Development**: Enhanced character depth and interaction patterns
-- **Chapter Continuity**: Improved chapter continuation with theme and tone consistency
-
-#### Audio Player Integration
-- **Built-in Audio Player**: Added native HTML5 audio player with controls
-- **Download Functionality**: Direct download links for generated audio files
-- **Duration Display**: Shows audio length and playback information
-- **Format Support**: MP3, WAV, and AAC audio format options
-
-### 🛠️ Technical Improvements
-
-#### Deployment & Infrastructure
-- **Angular Budget Fixes**: Resolved CSS bundle size limits for successful Vercel deployment
-- **Serverless Optimization**: Enhanced API endpoints for better Vercel serverless function performance
-- **Environment Configuration**: Improved environment variable handling across development and production
-- **Build Optimization**: Streamlined build process with better dependency management
-
-#### Code Quality & Documentation
-- **Comprehensive Comments**: Added detailed JSDoc documentation throughout codebase
-- **Type Safety**: Enhanced TypeScript strict mode compliance
-- **Error Handling**: Improved error logging and user feedback systems
-- **Debug Panel**: Enhanced debugging tools with API health checks and error monitoring
-
-#### User Experience
-- **Responsive Design**: Improved mobile and tablet compatibility
-- **Loading States**: Added visual feedback for all async operations
-- **Success Messages**: Clear confirmation for completed actions
-- **Progress Visualization**: Real-time progress bars with percentage indicators
-
-### 🔧 Technical Details
-
-#### Frontend (Angular 20.3)
-- Enhanced form validation and user input handling
-- Improved component lifecycle management
-- Better state management for complex UI operations
-- Optimized bundle size and performance
-
-#### Backend (Serverless Functions)
-- Advanced audio processing with multi-voice support
-- Enhanced story generation with improved prompts
-- Better error handling and logging
-- Optimized API response times
-
-#### Infrastructure
-- Vercel deployment configuration updates
-- Environment variable management improvements
-- Build process optimization
-- Dependency management streamlining
+## [Unreleased]
 
 ### 🐛 Bug Fixes
-- Fixed Angular CSS budget warnings during build
-- Resolved TypeScript compilation errors in API services
-- Fixed Vercel install command sequence
-- Corrected audio player display issues
-- Resolved theme selection state management
+- Fixed TypeScript compilation errors in story components
+- Resolved theme type mismatches in streaming story contracts
+- Fixed template literal syntax issues
+- Added comprehensive error logging for debugging
 
-### 📚 Documentation Updates
-- Comprehensive README.md with feature overview
-- Detailed API documentation
-- Code comments and JSDoc additions
-- Development setup instructions
-- Troubleshooting guide
+### 🔧 Technical Improvements  
+- Implemented streaming story generation seam contracts
+- Enhanced debug panel with Heather vampire story demo
+- Added validation rules for story generation contracts
+
+## [2.1.0] - 2025-09-23 
+
+### 🎉 Major Features
+
+#### Enhanced Story Generation System v2.0
+- **10 Unconventional Beat Structures**: Temptation Cascade, Power Exchange, Seduction Trap, Ritual Binding, Vulnerability Spiral, Hunt and Claim, Bargain's Price, Memory Fracture, Transformation Hunger, Mirror Souls
+- **Dynamic Author Style Blending**: 2+1 selection system combining 15 renowned authors (Anne Rice, Patricia Briggs, Holly Black, etc.)
+- **Chekhov Element Tracking**: Automatic story element planting for future chapter continuity
+- **Spice-Aware Adaptation**: Beat structures intelligently adapt to content intensity levels
+- **Character-Specific Story Generation**: Enhanced vampire, werewolf, and fairy story archetypes
+
+#### Multi-Voice Audio System
+- **Advanced Character Voices**: Character-specific voices for different creature types and genders
+- **Speaker Tag Recognition**: Automatically detects `[Character]:` patterns in generated stories
+- **90+ Emotion Mapping**: Maps emotional states to voice parameters for enhanced expressiveness
+- **Professional Audio Integration**: ElevenLabs text-to-speech with multiple voice options
+- **Seamless Audio Merging**: Combines multiple speakers into flowing narration
+
+#### Professional Export System
+- **Multiple Format Support**: PDF, EPUB, DOCX, HTML, and TXT export options
+- **Metadata Integration**: Author, title, themes, and generation details included
+- **Chapter Organization**: Properly formatted multi-chapter story exports
+- **Download Management**: Secure links with expiration handling
+
+### 🏗️ Architecture
+
+#### Serverless Architecture
+- **Vercel Serverless Functions**: Complete migration from Express.js backend to serverless API
+- **Seam-Driven Development**: Explicit TypeScript contracts prevent integration failures
+- **Mock Service Layer**: Full functionality without external API dependencies
+- **Environment Configuration**: Seamless switching between mock and production modes
+
+#### Frontend (Angular 20.3)
+- **Enhanced Form Validation**: Improved user input handling and validation
+- **Real-time Progress Indicators**: Live generation updates with status feedback
+- **Responsive Design**: Mobile and tablet compatibility improvements
+- **Debug Panel**: Built-in tools for API testing and error monitoring
+
+### 🔧 Development & Infrastructure
+
+#### Build System
+- **Angular Budget Optimization**: Resolved CSS bundle size limits for Vercel deployment
+- **TypeScript Strict Mode**: Enhanced type safety throughout the codebase
+- **CI/CD Pipeline**: Automated testing and deployment workflows
+- **Dependency Management**: Streamlined package management and security updates
+
+#### Testing & Quality
+- **Comprehensive Test Coverage**: 95%+ coverage across frontend and API
+- **Integration Test Suites**: Complete workflow validation
+- **Mock Testing Infrastructure**: Isolated unit tests with realistic mocks
+- **Error Handling**: Improved error logging and user feedback systems
+
+### 📚 Documentation
+
+#### Developer Resources
+- **Comprehensive README**: Complete setup and usage instructions
+- **API Documentation**: Detailed endpoint documentation with examples
+- **AI Agents Guide**: Specialized guide for AI development workflow
+- **Code Documentation**: JSDoc comments throughout codebase
 
 ### 🔄 Migration Notes
-- No breaking changes for existing users
-- Enhanced theme system (compatible with previous selections)
-- Audio features are additive (backward compatible)
-- Environment variables are optional (defaults to mock mode)
 
----
+#### Breaking Changes
+- **Backend Migration**: Express.js backend replaced with Vercel serverless functions
+- **Contract Updates**: Enhanced seam contracts with additional properties
+- **Environment Variables**: Updated configuration for serverless deployment
 
-## [2.0.0] - 2025-09-15 (Previous Release)
-
-### Major Features
-- Initial seam-driven architecture implementation
-- Basic story generation with creature selection
-- Theme-based story customization
-- Export functionality (PDF, EPUB, DOCX, etc.)
-- Debug panel for development
-- Comprehensive test coverage (95%+)
-- Enterprise CI/CD pipeline
-- Vercel deployment integration
-
-### Technical Foundation
-- Angular 20.3 frontend framework
-- TypeScript strict mode compliance
-- Serverless API architecture
-- Mock service implementations
-- Contract-based development approach
+#### Compatibility
+- **API Compatibility**: Maintained identical API interfaces during migration
+- **Feature Parity**: All previous functionality preserved in serverless architecture
+- **Mock Fallbacks**: Development works fully without external API keys
 
 ---
 
@@ -115,7 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Version Numbering
 - **Major (X.0.0)**: Breaking changes or significant architectural updates
-- **Minor (X.Y.0)**: New features, enhancements, backward-compatible changes
+- **Minor (X.Y.0)**: New features, enhancements, backward-compatible changes  
 - **Patch (X.Y.Z)**: Bug fixes, documentation updates, minor improvements
 
 ### Release Process
@@ -123,19 +104,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 2. Update this CHANGELOG.md
 3. Create release branch
 4. Run full test suite
-5. Deploy to staging
-6. Merge to main
+5. Deploy to staging environment
+6. Merge to main branch
 7. Tag release
 8. Deploy to production
 
-### Contributing
+### Contributing Guidelines
 When contributing, please:
 - Add entries to the "Unreleased" section
-- Follow the established format
+- Follow the established format and emoji conventions
 - Include technical details for developers
-- Note any breaking changes
+- Note any breaking changes clearly
 - Reference issue numbers when applicable
+- Follow seam-driven development methodology
+
+### Documentation Standards
+- Update README.md for user-facing changes
+- Update API documentation for endpoint changes
+- Update AGENTS.md for development workflow changes
+- Include JSDoc comments for new functions/classes
+- Add examples for complex features
 
 ---
 
-*For detailed technical documentation, see the [API Documentation](./api/README.md) and [Development Guide](./DEVELOPMENT.md).*
+*For detailed technical documentation, see the [API Documentation](./api/README.md) and [AGENTS.md](./AGENTS.md) development guide.*

@@ -20,8 +20,8 @@ Every data boundary (seam) is explicitly defined with TypeScript contracts **bef
 📁 FairytaleswithSpice/
 ├── 📁 story-generator/          # Angular frontend
 │   └── src/app/contracts.ts     # Frontend seam contracts
-├── 📁 backend/                  # Express.js backend
-│   └── src/types/contracts.ts   # Backend seam contracts (identical)
+├── 📁 api/                      # Vercel serverless functions
+│   └── lib/types/contracts.ts   # API seam contracts (identical)
 └── 📁 .github/
     └── copilot-instructions.md  # Development methodology
 ```
@@ -175,15 +175,15 @@ Common error codes:
 # Step 2: Implement UI with mocks
 # Create components using contract types
 
-# Step 3: Generate backend service
-# Implement service conforming to contract
+# Step 3: Generate API service
+# Implement serverless function conforming to contract
 
 # Step 4: Connect real APIs
 # Replace mocks with Grok AI / ElevenLabs integration
 ```
 
 ### 3. **Mock-First Development**
-The backend includes mock implementations for all services:
+The API includes mock implementations for all services:
 - **Story Generation**: Realistic fake stories with proper HTML structure
 - **Audio Conversion**: Mock audio URLs with realistic processing times
 - **Export System**: Mock download URLs for all formats
@@ -231,7 +231,7 @@ const validateStoryOutput = (output: any): output is StoryGenerationSeam['output
 ### Common Integration Issues
 
 **❌ Problem**: Frontend receives different data structure than expected
-**✅ Solution**: Check contract definitions match exactly between frontend/backend
+**✅ Solution**: Check contract definitions match exactly between frontend/API
 
 **❌ Problem**: Audio conversion fails silently
 **✅ Solution**: Verify HTML content is properly cleaned for TTS processing
@@ -320,8 +320,8 @@ const validateStoryOutput = (output: any): output is StoryGenerationSeam['output
 # Frontend development
 cd story-generator && npm run dev
 
-# Backend development  
-cd backend && npm run dev
+# API development (Vercel local dev)
+vercel dev
 
 # Build for production
 npm run build && npm start
