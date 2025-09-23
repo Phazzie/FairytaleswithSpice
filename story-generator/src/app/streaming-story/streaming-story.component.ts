@@ -6,7 +6,7 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StoryService } from '../story.service';
-import { StoryGenerationSeam } from '../contracts';
+import { StoryGenerationSeam, CreatureType, ThemeType, WordCount } from '../contracts';
 
 @Component({
   selector: 'app-streaming-story',
@@ -236,15 +236,15 @@ export class StreamingStoryComponent {
     // Example story generation input
     const input: StoryGenerationSeam['input'] = {
       creature: 'vampire',
-      themes: ['romance', 'mystery'],
+      themes: ['forbidden_love', 'seduction'],
       userInput: 'A vampire lord meets a curious human in a moonlit garden',
       spicyLevel: 3,
-      wordCount: this.targetWords
+      wordCount: this.targetWords as WordCount
     };
 
     try {
       // Connect to streaming endpoint
-      this.eventSource = new EventSource(\`/api/story/stream\`, {
+      this.eventSource = new EventSource(`/api/story/stream`, {
         // Note: POST data would need to be sent differently for SSE
         // This is a simplified example - in reality, you might:
         // 1. Use a WebSocket connection instead
@@ -325,7 +325,7 @@ export class StreamingStoryComponent {
 
     // Extract title if it appears in the content
     if (!this.storyTitle.includes('Generating') && data.content.includes('<h3>')) {
-      const titleMatch = data.content.match(/<h3>(.*?)<\\/h3>/);
+      const titleMatch = data.content.match(/<h3>(.*?)<\/h3>/);
       if (titleMatch) {
         this.storyTitle = titleMatch[1];
       }
@@ -361,9 +361,9 @@ export class StreamingStoryComponent {
     // Basic HTML formatting for story content
     // In production, you'd want more sophisticated formatting
     return content
-      .replace(/\\n\\n/g, '</p><p>')
+      .replace(/\n\n/g, '</p><p>')
       .replace(/^/, '<p>')
       .replace(/$/, '</p>')
-      .replace(/<p><\\/p>/g, '');
+      .replace(/<p><\/p>/g, '');
   }
 }

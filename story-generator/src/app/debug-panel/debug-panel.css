@@ -125,6 +125,38 @@
   margin: 2px;
 }
 
+.heather-btn {
+  background: linear-gradient(45deg, #8B5CF6, #EC4899);
+  margin: 2px;
+}
+
+.heather-story-result {
+  margin-top: 10px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 4px solid #8B5CF6;
+}
+
+.story-preview h5 {
+  color: #8B5CF6;
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.story-preview p {
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+  font-size: 13px;
+  color: #374151;
+}
+
+.story-preview small {
+  color: #6B7280;
+  font-style: italic;
+}
+
 .clear-btn {
   background: linear-gradient(45deg, #dc3545, #c82333);
 }

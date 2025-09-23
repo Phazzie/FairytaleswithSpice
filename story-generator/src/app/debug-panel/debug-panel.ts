@@ -70,7 +70,9 @@ export class DebugPanel implements OnInit, OnDestroy {
   // API test state
   testingAPI = false;
   generatingTestStory = false;
+  generatingHeatherStory = false;
   lastTestStoryId?: string;
+  heatherStoryResult?: StoryGenerationSeam['output'];
   
   private networkCheckInterval?: number;
   
@@ -230,6 +232,58 @@ export class DebugPanel implements OnInit, OnDestroy {
           severity
         );
         this.generatingTestStory = false;
+      }
+    });
+  }
+  
+  // ==================== HEATHER VAMPIRE STORY GENERATION ====================
+  
+  generateHeatherStory() {
+    if (this.generatingHeatherStory) return;
+    this.generatingHeatherStory = true;
+    this.heatherStoryResult = undefined;
+    
+    const payload: StoryGenerationSeam['input'] = {
+      creature: 'vampire',
+      themes: ['forbidden_love', 'desire', 'passion'],
+      userInput: 'Write a 250-word story about Heather, an immortal vampire who has lived for centuries. Focus on a moment of vulnerability when she encounters something that reminds her of her lost humanity.',
+      spicyLevel: 3,
+      wordCount: 700 // Using minimum word count for shorter story
+    };
+
+    const start = performance.now();
+    this.storyService.generateStory(payload).subscribe({
+      next: (resp: ApiResponse<StoryGenerationSeam['output']>) => {
+        if (resp.success && resp.data) {
+          this.heatherStoryResult = resp.data;
+          const duration = Math.round(performance.now() - start);
+          this.addError(
+            'API',
+            `✅ Heather's story generated successfully in ${duration}ms (${resp.data.actualWordCount} words)`,
+            { storyId: resp.data.storyId, title: resp.data.title, duration, wordCount: resp.data.actualWordCount },
+            '/api/story/generate',
+            'info'
+          );
+        } else {
+          this.addError(
+            'API',
+            '❌ Heather story generation returned unsuccessful response',
+            resp,
+            '/api/story/generate'
+          );
+        }
+        this.generatingHeatherStory = false;
+      },
+      error: (err) => {
+        const code = err?.error?.code || err?.error || 'UNKNOWN';
+        this.addError(
+          'API',
+          `❌ Heather story generation failed (${code})`,
+          err,
+          '/api/story/generate',
+          'error'
+        );
+        this.generatingHeatherStory = false;
       }
     });
   }

@@ -120,6 +120,67 @@ export interface ChapterContinuationSeam {
   };
 }
 
+// ==================== SEAM 2.5: REAL-TIME STORY GENERATION ====================
+export interface StreamingStoryGenerationSeam {
+  seamName: "Real-Time Story Generation";
+  description: "Provides real-time updates during story generation for better UX";
+
+  input: {
+    // Same as StoryGenerationSeam input
+    creature: CreatureType;
+    themes: ThemeType[];
+    userInput: string;
+    spicyLevel: SpicyLevel;
+    wordCount: WordCount;
+  };
+
+  progressUpdate: {
+    streamId: string;
+    storyId?: string; // Generated after stream starts
+    type: 'connected' | 'progress' | 'chunk' | 'complete' | 'error';
+    content?: string; // Accumulated content so far
+    isComplete: boolean;
+    metadata: {
+      wordsGenerated: number;
+      totalWordsTarget: number;
+      estimatedWordsRemaining: number;
+      generationSpeed: number; // words per second
+      percentage: number; // 0-100
+      estimatedTimeRemaining?: number; // seconds
+    };
+  };
+
+  finalOutput: {
+    // Same as StoryGenerationSeam output
+    storyId: string;
+    title: string;
+    content: string;
+    rawContent?: string;
+    creature: CreatureType;
+    themes: ThemeType[];
+    spicyLevel: SpicyLevel;
+    actualWordCount: number;
+    estimatedReadTime: number;
+    hasCliffhanger: boolean;
+    generatedAt: Date;
+  };
+
+  errors: {
+    STREAMING_CONNECTION_FAILED: {
+      code: "STREAMING_CONNECTION_FAILED";
+      message: string;
+      retryable: boolean;
+    };
+    STREAM_INTERRUPTED: {
+      code: "STREAM_INTERRUPTED";
+      message: string;
+      recoveryOptions: string[];
+      partialContent?: string;
+    };
+    // Inherits all errors from StoryGenerationSeam
+  };
+}
+
 // ==================== SEAM 3: STORY TEXT → AUDIO CONVERTER ====================
 export interface AudioConversionSeam {
   seamName: "Story Text → Audio Converter";
@@ -221,7 +282,7 @@ export const VALIDATION_RULES = {
   },
   themes: {
     maxCount: 5,
-    allowedValues: ['romance', 'adventure', 'mystery', 'comedy', 'dark']
+    allowedValues: ['betrayal', 'obsession', 'power_dynamics', 'forbidden_love', 'revenge', 'manipulation', 'seduction', 'dark_secrets', 'corruption', 'dominance', 'submission', 'jealousy', 'temptation', 'sin', 'desire', 'passion', 'lust', 'deceit']
   },
   spicyLevel: {
     min: 1,

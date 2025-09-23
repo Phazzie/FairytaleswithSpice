@@ -41,6 +41,76 @@
 
     <!-- API Test Section -->
     <div class="debug-section">
+      <h4>🧪 API Test</h4>
+      <div class="sample-stories">
+        <button 
+          class="debug-btn story-btn" 
+          (click)="testAPIConnection()"
+          [disabled]="testingAPI">
+          <span *ngIf="testingAPI">⏳ Testing...</span>
+          <span *ngIf="!testingAPI">🔍 Test API Connection</span>
+        </button>
+        
+        <button 
+          class="debug-btn heather-btn" 
+          (click)="generateHeatherStory()"
+          [disabled]="generatingHeatherStory">
+          <span *ngIf="generatingHeatherStory">⏳ Generating...</span>
+          <span *ngIf="!generatingHeatherStory">🧛‍♀️ Generate Heather's Story</span>
+        </button>
+        
+        <div class="heather-story-result" *ngIf="heatherStoryResult">
+          <div class="story-preview">
+            <h5>{{ heatherStoryResult.title }}</h5>
+            <p [innerHTML]="heatherStoryResult.content | slice:0:200"></p>
+            <small *ngIf="heatherStoryResult.content.length > 200">
+              ...{{ heatherStoryResult.actualWordCount }} words total
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>  <div class="debug-header">
+    <div class="debug-title">
+      <span class="debug-icon">🧪</span>
+      <h3>Debug Panel</h3>
+      <span class="network-indicator" [class.online]="networkStatus.online" [class.offline]="!networkStatus.online">
+        {{ networkStatus.online ? '🟢' : '🔴' }}
+      </span>
+    </div>
+    <button class="close-btn" (click)="toggleVisibility()" title="Close Debug Panel">✕</button>
+  </div>
+
+  <div class="debug-content">
+    <!-- API Health Check Section -->
+    <div class="debug-section">
+      <h4>🏥 API Health Check</h4>
+      <div class="health-check">
+        <button 
+          class="debug-btn health-btn" 
+          (click)="checkApiHealth()"
+          [disabled]="healthStatus === 'checking'">
+          <span *ngIf="healthStatus === 'checking'">⏳ Checking...</span>
+          <span *ngIf="healthStatus !== 'checking'">🔍 Check API Health</span>
+        </button>
+        
+        <div class="health-status" *ngIf="healthStatus !== 'unknown'">
+          <div class="status-indicator" [ngClass]="healthStatus">
+            <span *ngIf="healthStatus === 'healthy'">✅ Healthy</span>
+            <span *ngIf="healthStatus === 'unhealthy'">❌ Unhealthy</span>
+            <span *ngIf="healthStatus === 'checking'">⏳ Checking...</span>
+          </div>
+          
+          <div class="health-details" *ngIf="healthResponse">
+            <small>Version: {{ healthResponse.version }}</small>
+            <small>Last checked: {{ formatTimestamp(lastHealthCheck!) }}</small>
+            <small *ngIf="networkStatus.latency">Latency: {{ networkStatus.latency }}ms</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- API Test Section -->
+    <div class="debug-section">
       <h4>� API Test</h4>
       <div class="sample-stories">
         <button 

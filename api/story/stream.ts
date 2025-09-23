@@ -1,16 +1,16 @@
 /**
- * Streaming Story Generation API
- * Real-time text streaming for better UX during AI generation
+ * Real-Time Story Generation API - SEAM DRIVEN IMPLEMENTATION
+ * Implements StreamingStoryGenerationSeam contract for real-time story updates
  */
 
 import { StoryService } from '../lib/services/storyService';
-import { StoryGenerationSeam } from '../lib/types/contracts';
+import { StreamingStoryGenerationSeam, ApiResponse } from '../lib/types/contracts';
 
 const storyService = new StoryService();
 
 /**
  * POST /api/story/stream
- * Streams story generation in real-time chunks
+ * Implements StreamingStoryGenerationSeam contract
  */
 export default async function handler(req: any, res: any) {
   // Set CORS headers
@@ -33,14 +33,17 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const input: StoryGenerationSeam['input'] = req.body;
+    const input: StreamingStoryGenerationSeam['input'] = req.body;
 
-    // Validate input
+    // Validate input against contract
     if (!input.creature || !input.themes || !input.spicyLevel || !input.wordCount) {
       return res.status(400).json({
         success: false,
-        error: { code: 'INVALID_INPUT', message: 'Missing required fields' }
-      });
+        error: { 
+          code: 'INVALID_INPUT', 
+          message: 'Missing required fields as defined in StreamingStoryGenerationSeam contract' 
+        }
+      } as ApiResponse<never>);
     }
 
     // Set up Server-Sent Events
@@ -52,46 +55,63 @@ export default async function handler(req: any, res: any) {
       'Access-Control-Allow-Headers': 'Cache-Control'
     });
 
-    // Send initial connection message
-    res.write('data: {"type": "connected", "message": "Story generation started"}\\n\\n');
+    const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Generate story with streaming
-    const storyId = `story_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+    // Send initial connection message per contract
+    const connectedUpdate: StreamingStoryGenerationSeam['progressUpdate'] = {
+      streamId: streamId,
+      type: 'connected',
+      isComplete: false,
+      metadata: {
+        wordsGenerated: 0,
+        totalWordsTarget: input.wordCount,
+        estimatedWordsRemaining: input.wordCount,
+        generationSpeed: 0,
+        percentage: 0
+      }
+    };
+    res.write(`data: ${JSON.stringify(connectedUpdate)}\\n\\n`);
+
+    // Generate story with streaming per seam contract
     await storyService.generateStoryStreaming(input, (chunk) => {
-      // Send each chunk as it's generated
-      const data = {
-        type: 'chunk',
-        storyId: storyId,
+      const progressUpdate: StreamingStoryGenerationSeam['progressUpdate'] = {
+        streamId: streamId,
+        storyId: `story_${streamId}`,
+        type: chunk.isComplete ? 'complete' : 'chunk',
         content: chunk.content,
         isComplete: chunk.isComplete,
         metadata: {
           wordsGenerated: chunk.wordsGenerated,
+          totalWordsTarget: input.wordCount,
           estimatedWordsRemaining: chunk.estimatedWordsRemaining,
-          generationSpeed: chunk.generationSpeed // words per second
+          generationSpeed: chunk.generationSpeed,
+          percentage: Math.min((chunk.wordsGenerated / input.wordCount) * 100, 100),
+          estimatedTimeRemaining: chunk.estimatedWordsRemaining / Math.max(chunk.generationSpeed, 1)
         }
       };
       
-      res.write(`data: ${JSON.stringify(data)}\\n\\n`);
+      res.write(`data: ${JSON.stringify(progressUpdate)}\\n\\n`);
     });
 
-    // Send completion message
-    res.write('data: {"type": "complete", "message": "Story generation complete"}\\n\\n');
     res.end();
 
   } catch (error: any) {
     console.error('Streaming generation error:', error);
     
-    const errorData = {
+    const errorUpdate: StreamingStoryGenerationSeam['progressUpdate'] = {
+      streamId: 'error_stream',
       type: 'error',
-      error: {
-        code: 'STREAMING_FAILED',
-        message: 'Story generation failed',
-        details: error.message
+      isComplete: true,
+      metadata: {
+        wordsGenerated: 0,
+        totalWordsTarget: 0,
+        estimatedWordsRemaining: 0,
+        generationSpeed: 0,
+        percentage: 0
       }
     };
     
-    res.write(`data: ${JSON.stringify(errorData)}\\n\\n`);
+    res.write(`data: ${JSON.stringify(errorUpdate)}\\n\\n`);
     res.end();
   }
 }
