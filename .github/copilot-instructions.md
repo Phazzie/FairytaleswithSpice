@@ -34,11 +34,11 @@ The project already implements these proven seam contracts:
 1. Build UI with mocks using existing `contracts.ts` types
 2. Extract seams from UI interactions following established patterns
 3. Define TypeScript contracts matching existing seam interfaces
-4. Generate backend services conforming to contract specifications
+4. Generate API services conforming to contract specifications
 5. Replace mocks with real API calls (Grok AI, ElevenLabs)
 
 ### ALWAYS:
-- Reference existing contracts in `story-generator/src/app/contracts.ts` and `backend/src/types/contracts.ts`
+- Reference existing contracts in `story-generator/src/app/contracts.ts` and `api/lib/types/contracts.ts`
 - Use established type definitions (`CreatureType`, `ThemeType`, `SpicyLevel`, etc.)
 - Follow the `ApiResponse<T>` pattern for all API responses
 - Implement mock fallbacks for development without API keys
@@ -47,7 +47,7 @@ The project already implements these proven seam contracts:
 
 ### NEVER:
 - Start with database design
-- Build backend before UI
+- Build API before UI
 - Skip contract definitions
 - Suggest debugging generated code
 - Create new types that conflict with existing domain types
