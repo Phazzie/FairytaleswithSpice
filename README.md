@@ -186,13 +186,21 @@ npm run test         # Run unit tests
 npm run lint         # Code quality checks
 ```
 
-**API (api/)**
+**API Development (now integrated with frontend)**
 ```bash
-# API functions are deployed to Vercel automatically
-# Use Vercel CLI for local API testing if needed:
-vercel dev           # Test API functions locally (optional)
-npm run test         # Run API tests
-npm run test:ci      # CI-optimized test run
+# Build and run locally (all-in-one Express server)
+cd story-generator
+npm run build
+PORT=3000 node dist/story-generator/server/server.mjs
+
+# Or use Docker for local development
+docker compose up --build
+
+# Test API endpoints
+curl http://localhost:3000/api/health
+curl -X POST http://localhost:3000/api/story/generate \
+  -H "Content-Type: application/json" \
+  -d '{"creature":"vampire","themes":["romance"],"spicyLevel":2,"wordCount":700}'
 ```
 
 **Integration Tests (tests/)**
@@ -232,25 +240,54 @@ Access with `Ctrl+Shift+D` or click the debug button:
 
 ## 🚀 Deployment
 
-### **Vercel Deployment** (Recommended)
+### **Digital Ocean Deployment** (Recommended)
+
+Deploy to Digital Ocean App Platform for scalable, cost-effective hosting:
+
+1. **Fork this repository**
+2. **Connect to Digital Ocean**:
+   - Login to Digital Ocean dashboard
+   - Go to Apps → Create App
+   - Connect your GitHub repository
+3. **Deploy with one-click**:
+   - Use the provided `.do/app.yaml` configuration
+   - Or manually configure Docker deployment
+4. **Set Environment Variables**:
+   ```
+   XAI_API_KEY=your_grok_key
+   ELEVENLABS_API_KEY=your_elevenlabs_key
+   ```
+5. **Deploy**: Digital Ocean builds and deploys automatically
+
+**Cost**: Starting at $5/month (Basic plan) - much cheaper than Vercel for production!
+
+📋 **[Complete Digital Ocean Deployment Guide](./DIGITAL_OCEAN_DEPLOYMENT.md)**
+
+### **Alternative: Vercel Deployment** (Legacy)
+
+⚠️ **Note**: This app has been migrated to work better with Digital Ocean, but Vercel still works:
 
 1. **Fork this repository**
 2. **Connect to Vercel**: Import your fork in Vercel dashboard
-3. **Set Environment Variables** (optional):
+3. **Set Environment Variables**:
    ```
    XAI_API_KEY=your_grok_key
    ELEVENLABS_API_KEY=your_elevenlabs_key
    ```
 4. **Deploy**: Vercel automatically builds and deploys
 
-### **Manual Deployment**
+### **Docker Deployment**
 
 ```bash
-# Build for production
-cd story-generator && npm run build
+# Local Docker development
+docker compose up --build
 
-# Deploy the dist/ folder to your hosting service
-# API endpoints deploy as serverless functions
+# Production Docker deployment
+docker build -t fairytales-with-spice .
+docker run -p 8080:8080 \
+  -e XAI_API_KEY=your_key \
+  -e ELEVENLABS_API_KEY=your_key \
+  fairytales-with-spice
 ```
 
 ## 📊 Testing
@@ -328,7 +365,22 @@ Content-Type: application/json
 }
 ```
 
-[View complete API documentation](./api/README.md)
+### **Image Generation** (New!)
+```http
+POST /api/image/generate
+Content-Type: application/json
+
+{
+  "storyId": "story_123",
+  "content": "A vampire prince in Victorian London",
+  "creature": "vampire",
+  "themes": ["romance", "dark_secrets"],
+  "style": "dark",
+  "aspectRatio": "16:9"
+}
+```
+
+[View complete API documentation](./DIGITAL_OCEAN_DEPLOYMENT.md#api-endpoints)
 
 ## 🎨 Customization
 
@@ -389,9 +441,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - **ElevenLabs** for premium text-to-speech technology
-- **Grok/XAI** for advanced AI story generation
-- **Vercel** for seamless serverless deployment
+- **Grok/XAI** for advanced AI story generation and image generation
+- **Digital Ocean** for scalable, cost-effective cloud deployment  
 - **Angular Team** for the robust frontend framework
+- **Docker** for containerized deployment simplicity
 
 ## 📞 Support
 
@@ -403,7 +456,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-**[🌐 Live Demo](https://fairytaleswithspice.vercel.app)** | **[📖 Documentation](./docs/)** | **[🚀 Quick Start](#-quick-start)**
+**[🚀 Digital Ocean Deployment Guide](./DIGITAL_OCEAN_DEPLOYMENT.md)** | **[📖 Documentation](./docs/)** | **[🐳 Docker Setup](#docker-deployment)**
 
 *Made with ❤️ and a touch of spice*
 
