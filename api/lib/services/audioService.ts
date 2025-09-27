@@ -41,7 +41,7 @@ import { getVoiceSettingsForEmotion, getAvailableEmotions, VoiceSettings } from 
  * @since 2025-09-21
  */
 export class AudioService {
-  /** ElevenLabs API base URL for text-to-speech requests */
+  /** ElevenLabs API base URL for text-to-speech requests - Using latest v2.5 turbo model */
   private elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
   
   /** ElevenLabs API key from environment variables */
@@ -182,7 +182,7 @@ export class AudioService {
         `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
         {
           text: text,
-          model_id: 'eleven_monolingual_v1',
+          model_id: 'eleven_turbo_v2_5',
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.8,
