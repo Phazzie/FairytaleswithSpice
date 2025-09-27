@@ -4,9 +4,10 @@
     <p>Create spicy fantasy stories with your favorite creatures</p>
   </header>
 
-  <div class="main-content">
-    <!-- Left Column: Story Generation Form -->
-    <div class="form-section">
+  <div class="main-container">
+    <!-- Fixed Configuration Panel -->
+    <div class="config-panel">
+      <div class="form-section">
       <h2>Story Configuration</h2>
 
       <!-- Creature Selector -->
@@ -95,10 +96,13 @@
       <div class="error-message" *ngIf="generationError">
         ❌ {{ generationError }}
       </div>
+      </div>
     </div>
 
-    <!-- Right Column: Story Display -->
-    <div class="story-column">
+    <!-- Flexible Story Display Panel -->
+    <div class="story-panel">
+      <div class="story-display">
+        <div class="story-column">
       <!-- Story Display -->
       <div class="story-section" *ngIf="currentStory">
         <div class="story-header">
@@ -178,16 +182,20 @@
       <div class="audio-player" *ngIf="currentAudioUrl">
         <h3>🎧 Audio Narration</h3>
         <div class="audio-controls">
-          <audio controls preload="metadata" [src]="currentAudioUrl">
+          <audio controls preload="metadata" [src]="currentAudioUrl" 
+                 (loadedmetadata)="onAudioLoaded($event)"
+                 (timeupdate)="onAudioProgress($event)"
+                 (ended)="onAudioEnded()">
             Your browser does not support the audio element.
           </audio>
           <div class="audio-info">
-            <p><strong>Duration:</strong> {{ formatDuration(currentAudioDuration) }}</p>
+            <p><strong>Multi-Voice Narration</strong> • Duration: {{ formatDuration(currentAudioDuration) }}</p>
             <a [href]="currentAudioUrl" download class="download-btn">
               💾 Download Audio
             </a>
           </div>
         </div>
+      </div>
       </div>
     </div>
   </div>

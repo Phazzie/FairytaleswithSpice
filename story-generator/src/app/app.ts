@@ -451,6 +451,28 @@ export class App implements OnInit, OnDestroy {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   }
 
+  // ==================== ENHANCED AUDIO CONTROLS ====================
+
+  onAudioLoaded(event: Event): void {
+    const audio = event.target as HTMLAudioElement;
+    this.currentAudioDuration = audio.duration;
+    this.errorLogging.logInfo('Audio loaded successfully', 'App.onAudioLoaded', {
+      duration: audio.duration,
+      src: audio.src
+    });
+  }
+
+  onAudioProgress(event: Event): void {
+    // Enhanced audio progress tracking - ready for future features
+    const audio = event.target as HTMLAudioElement;
+    const progress = (audio.currentTime / audio.duration) * 100;
+    // Could be extended with progress bar in future versions
+  }
+
+  onAudioEnded(): void {
+    this.errorLogging.logInfo('Audio playback completed', 'App.onAudioEnded');
+  }
+
   // ==================== DEBUG PANEL LIFECYCLE ====================
 
   ngOnInit() {
