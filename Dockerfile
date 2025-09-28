@@ -1,9 +1,5 @@
-# Docker build for Digital Ocean deployment
-# Single stage that includes build process
+# Single stage Docker build for Digital Ocean deployment
 FROM node:20-alpine
-
-# Install build dependencies
-RUN apk add --no-cache git
 
 # Set working directory
 WORKDIR /app

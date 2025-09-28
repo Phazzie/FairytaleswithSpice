@@ -6,8 +6,14 @@ region: nyc1
 
 services:
 - name: web
+  # Option 1: Use Dockerfile (current configuration)
   dockerfile_path: Dockerfile
   source_dir: /
+  
+  # Option 2: Use buildpack (uncomment these lines and comment out dockerfile_path)
+  # build_command: npm run install:all && npm run build
+  # run_command: cd story-generator && node dist/story-generator/server/server.mjs
+  
   github:
     repo: Phazzie/FairytaleswithSpice
     branch: main
