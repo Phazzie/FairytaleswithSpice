@@ -11,9 +11,9 @@ services:
       - NODE_ENV=development
       - PORT=8080
       - FRONTEND_URL=http://localhost:3000
-      - XAI_API_KEY=${XAI_API_KEY}
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
-    volumes:
+      - XAI_API_KEY=${XAI_API_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+    # volumes:
       # For development, mount source for live reload (optional)
       # - ./story-generator/src:/app/src:ro
     restart: unless-stopped

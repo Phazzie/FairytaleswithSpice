@@ -6,18 +6,17 @@ region: nyc1
 
 services:
 - name: web
-  # Option 1: Use Dockerfile (current configuration)
-  dockerfile_path: Dockerfile
+  # Use buildpack approach instead of Dockerfile for better compatibility
+  # dockerfile_path: Dockerfile  # Commented out to use buildpack
   source_dir: /
-  
-  # Option 2: Use buildpack (uncomment these lines and comment out dockerfile_path)
-  # build_command: npm run install:all && npm run build
-  # run_command: cd story-generator && node dist/story-generator/server/server.mjs
-  
   github:
     repo: Phazzie/FairytaleswithSpice
     branch: main
     deploy_on_push: true
+  
+  # Build configuration for buildpack
+  build_command: npm run install:all && npm run build
+  run_command: cd story-generator && node dist/story-generator/server/server.mjs
   
   # Resource allocation
   instance_count: 1
