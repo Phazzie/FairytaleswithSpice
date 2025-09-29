@@ -1,8 +1,15 @@
 {
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "story-generator",
+    "api"
+  ],
   "scripts": {
-    "install:all": "npm install --no-audit --no-fund && cd story-generator && npm install --no-audit --no-fund",
-    "build": "cd story-generator && npm run build",
+    "install:all": "npm install --no-audit --no-fund",
+    "build": "npm run build:api && npm run build:app",
+    "build:api": "tsc -p api/tsconfig.json",
+    "build:app": "cd story-generator && npm run build",
     "build:verify": "[ -f story-generator/dist/story-generator/browser/index.html ] || (echo 'Missing build output' && exit 1)",
     "build:full": "npm run build && npm run build:verify"
   },

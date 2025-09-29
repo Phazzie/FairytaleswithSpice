@@ -1,36 +1,49 @@
-# Single stage Docker build for Digital Ocean deployment
-FROM node:20-alpine
+# Stage 1: Build
+FROM node:20-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files first for better layer caching
-COPY package*.json ./
-COPY story-generator/package*.json ./story-generator/
+# Copy all package.json files from workspaces to leverage Docker cache
+COPY package.json package-lock.json ./
+COPY api/package.json ./api/
+COPY story-generator/package.json ./story-generator/
+COPY packages/contracts/package.json ./packages/contracts/
 
-# Install dependencies at root level
-RUN npm ci --only=production
-
-# Install dependencies for story-generator (including dev deps for build)
-WORKDIR /app/story-generator
+# Install all dependencies (including devDependencies for building)
 RUN npm ci
 
-# Copy source code
-WORKDIR /app
+# Copy the rest of the source code
 COPY . .
 
-# Build the application
-WORKDIR /app/story-generator
+# Run the unified build script to compile both API and the Angular app
 RUN npm run build
 
-# Clean up dev dependencies after build
-RUN npm ci --only=production && npm cache clean --force
+# Prune development dependencies
+RUN npm prune --production
 
-# Create app user for security
+
+# Stage 2: Production
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Create a non-root user for security
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
-# Set permissions
+# Copy production node_modules and package files from the builder stage
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/story-generator/package.json ./story-generator/package.json
+
+# Copy compiled application code from the builder stage
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/story-generator/dist ./story-generator/dist
+
+# Set permissions for the entire app directory
 RUN chown -R nodejs:nodejs /app
+
+# Switch to the non-root user
+USER nodejs
 
 # Set environment variables
 ENV NODE_ENV=production
@@ -39,12 +52,9 @@ ENV PORT=8080
 # Expose port
 EXPOSE 8080
 
-# Switch to app user
-USER nodejs
-
-# Health check
+# Health check (will fail until API is integrated, but the check is correct)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:8080/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1))"
 
 # Start the application
-CMD ["node", "dist/story-generator/server/server.mjs"]
+CMD ["node", "story-generator/dist/story-generator/server/main.js"]

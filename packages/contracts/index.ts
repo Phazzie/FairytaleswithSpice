@@ -1,6 +1,6 @@
 // ==================== SEAM-DRIVEN DEVELOPMENT CONTRACTS ====================
-// These contracts are derived directly from UI interactions and data flows
-// Each seam represents a boundary where data crosses between components
+// This is the single source of truth for all data contracts.
+// Each seam represents a boundary where data crosses between components.
 
 // ==================== TYPE DEFINITIONS ====================
 export type CreatureType = 'vampire' | 'werewolf' | 'fairy';
