@@ -6,18 +6,17 @@
     "outDir": "./out-tsc/app",
     "types": [
       "node"
-    ],
-    "baseUrl": "./",
-    "paths": {
-      "@project/contracts": [
-        "../../packages/contracts"
-      ]
-    }
+    ]
   },
   "include": [
     "src/**/*.ts"
   ],
   "exclude": [
     "src/**/*.spec.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/contracts"
+    }
   ]
 }

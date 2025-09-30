@@ -3,14 +3,14 @@
 // Generates images using Grok-2-Image based on story content
 
 import axios from 'axios';
-import { ImageGenerationSeam, ApiResponse } from '../types/contracts.js';
+import { ImageGenerationSeam, ApiResponse } from '@project/contracts';
 
 export class ImageService {
   private grokApiKey: string | undefined;
   private grokApiUrl: string;
 
   constructor() {
-    this.grokApiKey = process.env.XAI_API_KEY;
+    this.grokApiKey = process.env['XAI_API_KEY'];
     this.grokApiUrl = 'https://api.x.ai/v1/images/generations';
   }
 

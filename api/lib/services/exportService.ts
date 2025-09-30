@@ -1,7 +1,7 @@
-import { SaveExportSeam, ApiResponse, ExportFormat } from '../types/contracts';
+import { SaveExportSeam, ApiResponse, ExportFormat } from '@project/contracts';
 
 export class ExportService {
-  private storageBaseUrl = process.env.STORAGE_BASE_URL || 'https://storage.example.com';
+  private storageBaseUrl = process.env['STORAGE_BASE_URL'] || 'https://storage.example.com';
 
   async saveAndExport(input: SaveExportSeam['input']): Promise<ApiResponse<SaveExportSeam['output']>> {
     const startTime = Date.now();

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
+import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '@project/contracts';
 import { getVoiceSettingsForEmotion, getAvailableEmotions, VoiceSettings } from './emotionMapping';
 
 /**
@@ -41,11 +41,11 @@ import { getVoiceSettingsForEmotion, getAvailableEmotions, VoiceSettings } from 
  * @since 2025-09-21
  */
 export class AudioService {
-  /** ElevenLabs API base URL for text-to-speech requests - Using latest v2.5 turbo model */
+  /** ElevenLabs API base URL for text-to-speech requests */
   private elevenLabsApiUrl = 'https://api.elevenlabs.io/v1';
   
   /** ElevenLabs API key from environment variables */
-  private elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+  private elevenLabsApiKey = process.env['ELEVENLABS_API_KEY'];
 
   /**
    * Voice ID mapping for different character types and genders
@@ -54,20 +54,20 @@ export class AudioService {
    */
   private voiceIds = {
     // ==================== BASIC VOICES (Backwards Compatibility) ====================
-    female: process.env.ELEVENLABS_VOICE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella
-    male: process.env.ELEVENLABS_VOICE_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam
-    neutral: process.env.ELEVENLABS_VOICE_NEUTRAL || '21m00Tcm4TlvDq8ikWAM', // Rachel
+    female: process.env['ELEVENLABS_VOICE_FEMALE'] || 'EXAVITQu4vr4xnSDxMaL', // Bella
+    male: process.env['ELEVENLABS_VOICE_MALE'] || 'pNInz6obpgDQGcFmaJgB', // Adam
+    neutral: process.env['ELEVENLABS_VOICE_NEUTRAL'] || '21m00Tcm4TlvDq8ikWAM', // Rachel
     
     // ==================== CHARACTER-SPECIFIC VOICES ====================
-    vampire_male: process.env.ELEVENLABS_VOICE_VAMPIRE_MALE || 'ErXwobaYiN019PkySvjV', // Antoni (deep, seductive)
-    vampire_female: process.env.ELEVENLABS_VOICE_VAMPIRE_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella (alluring)
-    werewolf_male: process.env.ELEVENLABS_VOICE_WEREWOLF_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam (rough, powerful)
-    werewolf_female: process.env.ELEVENLABS_VOICE_WEREWOLF_FEMALE || 'AZnzlk1XvdvUeBnXmlld', // Domi (strong, wild)
-    fairy_male: process.env.ELEVENLABS_VOICE_FAIRY_MALE || 'VR6AewLTigWG4xSOukaG', // Josh (light, ethereal)
-    fairy_female: process.env.ELEVENLABS_VOICE_FAIRY_FEMALE || 'jsCqWAovK2LkecY7zXl4', // Freya (magical, delicate)
-    human_male: process.env.ELEVENLABS_VOICE_HUMAN_MALE || 'pNInz6obpgDQGcFmaJgB', // Adam (natural, warm)
-    human_female: process.env.ELEVENLABS_VOICE_HUMAN_FEMALE || 'EXAVITQu4vr4xnSDxMaL', // Bella (natural, warm)
-    narrator: process.env.ELEVENLABS_VOICE_NARRATOR || '21m00Tcm4TlvDq8ikWAM' // Rachel (neutral, storytelling)
+    vampire_male: process.env['ELEVENLABS_VOICE_VAMPIRE_MALE'] || 'ErXwobaYiN019PkySvjV', // Antoni (deep, seductive)
+    vampire_female: process.env['ELEVENLABS_VOICE_VAMPIRE_FEMALE'] || 'EXAVITQu4vr4xnSDxMaL', // Bella (alluring)
+    werewolf_male: process.env['ELEVENLABS_VOICE_WEREWOLF_MALE'] || 'pNInz6obpgDQGcFmaJgB', // Adam (rough, powerful)
+    werewolf_female: process.env['ELEVENLABS_VOICE_WEREWOLF_FEMALE'] || 'AZnzlk1XvdvUeBnXmlld', // Domi (strong, wild)
+    fairy_male: process.env['ELEVENLABS_VOICE_FAIRY_MALE'] || 'VR6AewLTigWG4xSOukaG', // Josh (light, ethereal)
+    fairy_female: process.env['ELEVENLABS_VOICE_FAIRY_FEMALE'] || 'jsCqWAovK2LkecY7zXl4', // Freya (magical, delicate)
+    human_male: process.env['ELEVENLABS_VOICE_HUMAN_MALE'] || 'pNInz6obpgDQGcFmaJgB', // Adam (natural, warm)
+    human_female: process.env['ELEVENLABS_VOICE_HUMAN_FEMALE'] || 'EXAVITQu4vr4xnSDxMaL', // Bella (natural, warm)
+    narrator: process.env['ELEVENLABS_VOICE_NARRATOR'] || '21m00Tcm4TlvDq8ikWAM' // Rachel (neutral, storytelling)
   };
 
   constructor() {
@@ -182,7 +182,7 @@ export class AudioService {
         `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
         {
           text: text,
-          model_id: 'eleven_turbo_v2_5',
+          model_id: 'eleven_monolingual_v1',
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.8,

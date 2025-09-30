@@ -5,11 +5,11 @@ import {
   ApiResponse,
   VALIDATION_RULES,
   SpicyLevel
-} from '../types/contracts';
+} from '@project/contracts';
 
 export class StoryService {
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
-  private grokApiKey = process.env.XAI_API_KEY;
+  private grokApiKey = process.env['XAI_API_KEY'];
 
   constructor() {
     if (!this.grokApiKey) {

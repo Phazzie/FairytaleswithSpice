@@ -1,63 +1,27 @@
-/**
- * Real-Time Story Generation API - SEAM DRIVEN IMPLEMENTATION
- * Implements StreamingStoryGenerationSeam contract for real-time story updates
- */
-
+import { Router, Request, Response } from 'express';
 import { StoryService } from '../lib/services/storyService';
-import { StreamingStoryGenerationSeam, ApiResponse } from '../lib/types/contracts';
+import { StreamingStoryGenerationSeam } from '@project/contracts';
 
+const router = Router();
 const storyService = new StoryService();
 
-/**
- * POST /api/story/stream
- * Implements StreamingStoryGenerationSeam contract
- */
-export default async function handler(req: any, res: any) {
-  // Set CORS headers
-  const origin = process.env.FRONTEND_URL || 'http://localhost:4200';
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({
-      success: false,
-      error: { code: 'METHOD_NOT_ALLOWED', message: 'Only POST allowed' }
-    });
-  }
-
+router.post('/', async (req: Request, res: Response) => {
   try {
     const input: StreamingStoryGenerationSeam['input'] = req.body;
 
-    // Validate input against contract
     if (!input.creature || !input.themes || !input.spicyLevel || !input.wordCount) {
-      return res.status(400).json({
-        success: false,
-        error: { 
-          code: 'INVALID_INPUT', 
-          message: 'Missing required fields as defined in StreamingStoryGenerationSeam contract' 
-        }
-      } as ApiResponse<never>);
+      console.error('Invalid input for stream:', input);
+      return res.status(400).end('Invalid input');
     }
 
-    // Set up Server-Sent Events
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Cache-Control'
     });
 
     const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Send initial connection message per contract
     const connectedUpdate: StreamingStoryGenerationSeam['progressUpdate'] = {
       streamId: streamId,
       type: 'connected',
@@ -70,9 +34,8 @@ export default async function handler(req: any, res: any) {
         percentage: 0
       }
     };
-    res.write(`data: ${JSON.stringify(connectedUpdate)}\\n\\n`);
+    res.write(`data: ${JSON.stringify(connectedUpdate)}\n\n`);
 
-    // Generate story with streaming per seam contract
     await storyService.generateStoryStreaming(input, (chunk) => {
       const progressUpdate: StreamingStoryGenerationSeam['progressUpdate'] = {
         streamId: streamId,
@@ -90,13 +53,13 @@ export default async function handler(req: any, res: any) {
         }
       };
       
-      res.write(`data: ${JSON.stringify(progressUpdate)}\\n\\n`);
+      res.write(`data: ${JSON.stringify(progressUpdate)}\n\n`);
     });
 
-    res.end();
+    return res.end();
 
   } catch (error: any) {
-    console.error('Streaming generation error:', error);
+    console.error('Streaming generation API error:', error);
     
     const errorUpdate: StreamingStoryGenerationSeam['progressUpdate'] = {
       streamId: 'error_stream',
@@ -111,7 +74,13 @@ export default async function handler(req: any, res: any) {
       }
     };
     
-    res.write(`data: ${JSON.stringify(errorUpdate)}\\n\\n`);
-    res.end();
+    if (!res.headersSent) {
+      return res.status(500).json({ success: false, error: { code: 'STREAM_SETUP_FAILED', message: (error as Error).message }});
+    } else {
+      res.write(`data: ${JSON.stringify(errorUpdate)}\n\n`);
+      return res.end();
+    }
   }
-}
+});
+
+export default router;

@@ -1,38 +1,17 @@
-import { ImageService } from '../lib/services/imageService.js';
+import { Router, Request, Response } from 'express';
+import { ImageService } from '../lib/services/imageService';
+import { ImageGenerationSeam } from '@project/contracts';
 
+const router = Router();
 const imageService = new ImageService();
 
-export default async function handler(req: any, res: any) {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:4200');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
-  // Only allow POST requests
-  if (req.method !== 'POST') {
-    return res.status(405).json({ 
-      success: false, 
-      error: { 
-        code: 'METHOD_NOT_ALLOWED', 
-        message: 'Only POST requests are allowed' 
-      } 
-    });
-  }
-
+router.post('/', async (req: Request, res: Response) => {
   try {
-    const result = await imageService.generateImage(req.body);
+    const input: ImageGenerationSeam['input'] = req.body;
+    const result = await imageService.generateImage(input);
     res.status(result.success ? 200 : 400).json(result);
   } catch (error: any) {
-    console.error('Image generation endpoint error:', error);
+    console.error('Image generation API error:', error);
     res.status(500).json({
       success: false,
       error: {
@@ -41,4 +20,6 @@ export default async function handler(req: any, res: any) {
       }
     });
   }
-}
+});
+
+export default router;

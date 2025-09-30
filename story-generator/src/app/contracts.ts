@@ -8,16 +8,9 @@ export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
 export type WordCount = 700 | 900 | 1200;
 export type VoiceType = 'female' | 'male' | 'neutral';
-export type CharacterVoiceType = 
-  | 'vampire_male' | 'vampire_female' 
-  | 'werewolf_male' | 'werewolf_female'
-  | 'fairy_male' | 'fairy_female'
-  | 'human_male' | 'human_female'
-  | 'narrator';
 export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
-export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
 
 export interface AudioProgress {
   percentage: number; // 0-100
@@ -281,56 +274,6 @@ export interface SaveExportSeam {
   };
 }
 
-// ==================== SEAM 5: STORY → IMAGE GENERATION ====================
-export interface ImageGenerationSeam {
-  seamName: "Story → Image Generation";
-  description: "Generates images based on story content using Grok-2-Image";
-
-  input: {
-    storyId: string;
-    content: string; // Story content or specific scene
-    imagePrompt?: string; // Optional custom prompt
-    creature: CreatureType;
-    themes: ThemeType[];
-    style: ImageStyle;
-    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3';
-  };
-
-  output: {
-    imageId: string;
-    storyId: string;
-    imageUrl: string; // URL to generated image
-    prompt: string; // The actual prompt sent to AI
-    style: ImageStyle;
-    aspectRatio: string;
-    width: number;
-    height: number;
-    fileSize: number; // in bytes
-    generatedAt: Date;
-  };
-
-  errors: {
-    IMAGE_GENERATION_FAILED: {
-      code: "IMAGE_GENERATION_FAILED";
-      message: string;
-      retryable: boolean;
-      reason: "content_policy" | "quota_exceeded" | "service_error";
-    };
-    UNSUPPORTED_STYLE: {
-      code: "UNSUPPORTED_STYLE";
-      message: string;
-      requestedStyle: ImageStyle;
-      supportedStyles: ImageStyle[];
-    };
-    IMAGE_QUOTA_EXCEEDED: {
-      code: "IMAGE_QUOTA_EXCEEDED";
-      message: string;
-      quotaRemaining: number;
-      resetTime: Date;
-    };
-  };
-}
-
 // ==================== VALIDATION RULES ====================
 export const VALIDATION_RULES = {
   userInput: {
@@ -351,12 +294,6 @@ export const VALIDATION_RULES = {
   audioSpeed: {
     min: 0.5,
     max: 1.5
-  },
-  imageStyle: {
-    allowedValues: ['artistic', 'photorealistic', 'fantasy', 'dark', 'romantic']
-  },
-  aspectRatio: {
-    allowedValues: ['1:1', '16:9', '9:16', '4:3']
   }
 } as const;
 
@@ -366,12 +303,50 @@ export interface UIState {
   isConvertingAudio: boolean;
   isSaving: boolean;
   isGeneratingNext: boolean;
-  isGeneratingImage: boolean;
   audioProgress: number;
   saveSuccess: boolean;
   audioSuccess: boolean;
-  imageSuccess: boolean;
   lastError?: string;
+}
+
+// ==================== ERROR LOGGING SEAM ====================
+export type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+export interface ErrorLog {
+  id: string;
+  timestamp: Date;
+  message: string;
+  context: string;
+  severity: ErrorSeverity;
+  stack?: string;
+  details?: any;
+}
+
+export interface ErrorLoggingSeam {
+  seamName: "Error Tracking → Logging System";
+  description: "Captures and manages application errors for debugging";
+
+  input: {
+    error: any;
+    context: string;
+    severity?: ErrorSeverity;
+    additionalDetails?: any;
+  };
+
+  output: {
+    errorId: string;
+    logged: boolean;
+    timestamp: Date;
+    severity: ErrorSeverity;
+  };
+
+  errors: {
+    LOGGING_FAILED: {
+      code: "LOGGING_FAILED";
+      message: string;
+      originalError: any;
+    };
+  };
 }
 
 // ==================== UNIFIED API RESPONSE ====================
