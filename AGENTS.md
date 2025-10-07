@@ -18,10 +18,10 @@ Every data boundary (seam) is explicitly defined with TypeScript contracts **bef
 ### Project Structure
 ```
 📁 FairytaleswithSpice/
-├── 📁 story-generator/          # Angular frontend
-│   └── src/app/contracts.ts     # Frontend seam contracts
-├── 📁 backend/                  # Express.js backend
-│   └── src/types/contracts.ts   # Backend seam contracts (identical)
+├── 📁 story-generator/          # Angular Universal App (Frontend + Backend)
+│   ├── src/app/                # Frontend components and contracts
+│   ├── src/api/                # Backend services and contracts
+│   └── server.ts               # Express.js server for API and SSR
 └── 📁 .github/
     └── copilot-instructions.md  # Development methodology
 ```
@@ -317,13 +317,10 @@ const validateStoryOutput = (output: any): output is StoryGenerationSeam['output
 
 ### Key Commands
 ```bash
-# Frontend development
+# Run local development server (frontend + backend)
 cd story-generator && npm run dev
 
-# Backend development  
-cd backend && npm run dev
-
-# Build for production
+# Build for production and start server
 npm run build && npm start
 ```
 

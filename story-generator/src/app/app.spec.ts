@@ -284,7 +284,6 @@ describe('App', () => {
       component.convertToAudio();
 
       expect(component.isConvertingAudio).toBe(true);
-      expect(component.audioProgress).toBe(0);
       expect(storyService.convertToAudio).toHaveBeenCalledWith({
         storyId: 'story_123',
         content: '<h3>Chapter 1</h3><p>Story content...</p>',

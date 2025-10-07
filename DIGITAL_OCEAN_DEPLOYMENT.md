@@ -142,21 +142,6 @@ databases:
 doctl apps logs <app-id> --type=run
 ```
 
-## 🚧 Migration from Vercel
-
-### What Changed
-- ✅ **Serverless → Express.js**: All API functions converted to Express routes
-- ✅ **Environment Variables**: Same names, different configuration method
-- ✅ **CORS**: Configured for new domain
-- ✅ **Build Process**: Optimized for containerized deployment
-
-### Migration Steps
-1. **Export environment variables** from Vercel dashboard
-2. **Update frontend URL** references (if hardcoded)
-3. **Configure new domain** in Digital Ocean
-4. **Test all API endpoints** after deployment
-5. **Update DNS records** to point to new domain
-
 ## 💰 Cost Estimation
 
 ### Digital Ocean App Platform
