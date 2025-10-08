@@ -4,7 +4,7 @@ import {
   isMainModule,
   writeResponseToNodeResponse,
 } from '@angular/ssr/node';
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { join } from 'node:path';
 import { StoryService } from '../../api/lib/services/storyService';
 import { AudioService } from '../../api/lib/services/audioService';
@@ -22,7 +22,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // CORS
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   const origin = process.env['ALLOWED_ORIGINS'] || process.env['FRONTEND_URL'] || 'http://localhost:4200';
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', origin);
@@ -42,7 +42,7 @@ app.use((req, res, next) => {
 // ==================== API ROUTES ====================
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -57,7 +57,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Story generation
-app.post('/api/story/generate', async (req, res) => {
+app.post('/api/story/generate', async (req: Request, res: Response) => {
   try {
     const input = req.body;
 
@@ -89,7 +89,7 @@ app.post('/api/story/generate', async (req, res) => {
 });
 
 // Chapter continuation
-app.post('/api/story/continue', async (req, res) => {
+app.post('/api/story/continue', async (req: Request, res: Response) => {
   try {
     const input = req.body;
 
@@ -121,7 +121,7 @@ app.post('/api/story/continue', async (req, res) => {
 });
 
 // Audio conversion
-app.post('/api/audio/convert', async (req, res) => {
+app.post('/api/audio/convert', async (req: Request, res: Response) => {
   try {
     const input = req.body;
 
@@ -153,7 +153,7 @@ app.post('/api/audio/convert', async (req, res) => {
 });
 
 // Export/Save
-app.post('/api/export/save', async (req, res) => {
+app.post('/api/export/save', async (req: Request, res: Response) => {
   try {
     const input = req.body;
 
@@ -200,7 +200,7 @@ app.use(
 /**
  * Handle all other requests by rendering the Angular application.
  */
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   angularApp
     .handle(req)
     .then((response) =>
