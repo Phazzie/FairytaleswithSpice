@@ -5,6 +5,42 @@ All notable changes to the Fairytales with Spice project will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2025-01-XX
+
+### 🚀 Digital Ocean Migration
+
+#### Zero Technical Debt Migration
+- **Express Server Integration**: Added API routes to existing SSR server (no adapter pattern, no abstraction layer)
+- **Service Layer Preservation**: All seam contracts remain unchanged in `api/lib/services/` (seam-driven compliance)
+- **Direct Route Implementation**: Copy-pasted serverless function logic into Express routes (5 endpoints: health, generate, continue, audio, export)
+- **Buildpack Deployment**: Digital Ocean auto-detection (no Dockerfile needed)
+
+#### Changed Files (3 total, ~180 lines)
+- `story-generator/src/server.ts`: Added middleware (JSON, CORS) + 5 API routes (142 lines added)
+- `story-generator/package.json`: Added `build:prod`, `start:prod` scripts + Node 20 engine requirement (3 lines added)
+- `.do/app.yaml`: Digital Ocean App Platform configuration (buildpack, health checks, environment variables) (new file, 47 lines)
+
+#### Deployment Details
+- **Method**: Digital Ocean App Platform with Node.js buildpack
+- **Build**: `cd story-generator && npm install && npm run build:prod`
+- **Runtime**: `cd story-generator && npm run start:prod`
+- **Port**: 8080 (configurable via PORT env var)
+- **Cost**: $5/month (basic-xxs tier)
+- **Region**: NYC (configurable to SFO, AMS, etc.)
+
+#### Technical Approach
+- **Seam-Driven Compliance**: Service layer untouched, only HTTP transport changed (Vercel functions → Express routes)
+- **Mock Fallbacks**: Development mode works without API keys
+- **Zero Refactoring**: Direct code copy-paste, no architectural changes
+- **Simple Migration**: ~150 lines of actual code changes
+
+### 🔧 Technical Debt Status
+**Created**: 0 new items  
+**Deferred**: Root package.json TypeScript dependency (non-critical, scale-only issue)  
+**Maintained**: All existing seam contracts and service layer architecture
+
+---
+
 ## [2.1.0] - 2025-09-21
 
 ### 🎉 Major Features Added

@@ -1,72 +1,55 @@
-# Digital Ocean App Platform specification
-# Deploy with: doctl apps create --spec .do/app.yaml
-
 name: fairytales-with-spice
-region: nyc1
+
+# Digital Ocean App Platform Configuration
+# Uses buildpack auto-detection (Node.js) - no Dockerfile needed
 
 services:
-- name: web
-  # Option 1: Use Dockerfile (current configuration)
-  dockerfile_path: Dockerfile
-  source_dir: /
-  
-  # Option 2: Use buildpack (uncomment these lines and comment out dockerfile_path)
-  # build_command: npm run install:all && npm run build
-  # run_command: cd story-generator && node dist/story-generator/server/server.mjs
-  
-  github:
-    repo: Phazzie/FairytaleswithSpice
-    branch: main
-    deploy_on_push: true
-  
-  # Resource allocation
-  instance_count: 1
-  instance_size_slug: basic-xxs  # 512MB RAM, 1 vCPU - can upgrade as needed
-  
-  # Environment variables
-  envs:
-  - key: NODE_ENV
-    value: production
-  - key: PORT
-    value: "8080"
-  - key: FRONTEND_URL
-    scope: RUN_AND_BUILD_TIME
-    value: "${APP_URL}"  # Will be auto-populated by DO
-  
-  # External environment variables (set these in DO dashboard)
-  # - key: XAI_API_KEY
-  #   scope: RUN_TIME
-  #   type: SECRET
-  # - key: ELEVENLABS_API_KEY  
-  #   scope: RUN_TIME
-  #   type: SECRET
-  
-  # Health check
-  health_check:
-    http_path: /api/health
-    initial_delay_seconds: 10
-    period_seconds: 30
-    timeout_seconds: 5
-    success_threshold: 1
-    failure_threshold: 3
-  
-  # HTTP configuration
-  http_port: 8080
-  
-  # Resource limits (optional - can be adjusted)
-  # cpu_kind: "shared"  # or "dedicated" for better performance
-  
-# Domain configuration (optional)
-domains:
-- name: fairytaleswithspice.com
-  type: PRIMARY
-- name: www.fairytaleswithspice.com
-  type: ALIAS
-  
-# Database (if needed in future)
-# databases:
-# - name: fairytales-db
-#   engine: PG
-#   num_nodes: 1
-#   size: db-s-dev-database
-#   version: "14"
+  - name: web
+    # GitHub source configuration
+    github:
+      repo: Phazzie/FairytaleswithSpice
+      branch: main
+      deploy_on_push: true
+    
+    # Digital Ocean will auto-detect Node.js and use the appropriate buildpack
+    build_command: cd story-generator && npm install && npm run build:prod
+    run_command: cd story-generator && npm run start:prod
+    
+    # Environment configuration
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+      - key: XAI_API_KEY
+        value: ${XAI_API_KEY}
+        type: SECRET
+      - key: ELEVENLABS_API_KEY
+        value: ${ELEVENLABS_API_KEY}
+        type: SECRET
+      - key: ALLOWED_ORIGINS
+        value: ${APP_URL}
+        type: SECRET
+    
+    # Instance configuration
+    instance_count: 1
+    instance_size_slug: basic-xxs  # $5/month tier
+    
+    # Health check
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 10
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+    
+    # HTTP configuration
+    http_port: 8080
+    
+    # Routes
+    routes:
+      - path: /
+
+# Region selection (choose closest to your users)
+region: nyc  # New York - change to sfo (San Francisco), ams (Amsterdam), etc. as needed
