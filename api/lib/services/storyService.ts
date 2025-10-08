@@ -646,6 +646,48 @@ AUDIO FORMAT (NON-NEGOTIABLE):
 - [Character, emotion]: "dialogue" for emotional context
 - HTML: <h3> titles, <p> paragraphs, <em> emphasis
 
+VOICE METADATA FOR AUDIO NARRATION (CRITICAL):
+For EACH major character's FIRST appearance, include voice characteristics:
+FORMAT: [CharacterName, voice: 4-word description]: "dialogue"
+
+VOICE CREATIVITY RULES:
+✅ Use UNCONVENTIONAL, VIVID, SPECIFIC descriptors (velvet-smoke, starlight-tinkling, thunder-low)
+✅ Mix unexpected combinations for uniqueness (whiskey-rough hypnotic, dewdrop-delicate mischievous)
+✅ Use synesthetic descriptions - sounds like colors/textures (moonlight-pale, crimson-rich, frost-kiss)
+✅ VARY vocabulary across characters - NO REPEATED WORDS!
+❌ NO generic words (nice, good, normal)
+❌ NO repeating descriptors across characters
+❌ NO only common adjectives
+
+VOICE VOCABULARY CATEGORIES:
+• TEXTURES: velvet, silk, gravel, smoke, honey, mercury, glass, steel, wine, cream, frost, ember
+• EMOTIONS: haunting, intoxicating, devastating, mesmerizing, electrifying, soul-piercing
+• SYNESTHETIC: moonlight-pale, twilight-dark, crimson-rich, midnight-blue, thunder-low, whisper-soft
+• MUSICAL: staccato, crescendo, harmonious, dissonant, rhythmic, melodic
+• MYSTICAL: ethereal, spectral, celestial, infernal, arcane, otherworldly
+• MOVEMENT: cascading, rippling, pulsing, trembling, undulating, flowing
+• PRECIOUS: diamond-cut, pearl-smooth, obsidian-dark, amber-warm, jade-cool, ruby-rich
+
+CREATIVE EXAMPLES (vary for each character):
+Vampire: "velvet-smoke whiskey-rough hypnotic" OR "midnight-silk knife-sharp intoxicating"
+Werewolf: "thunder-low earth-raw moonlit ferocious" OR "gravel-deep forest-wild heart-pounding"
+Fairy: "starlight-tinkling dewdrop-delicate mischievous quicksilver" OR "windchime-bright petal-soft playful"
+Human: "autumn-rich coffee-warm strength-touched hopeful" OR "sunrise-bright ocean-deep resilient"
+
+VOICE VARIETY ENFORCEMENT:
+- 3-5 major characters per story
+- EACH gets COMPLETELY DIFFERENT descriptors
+- NO WORD appears twice across all character voices
+- Mix 2+ categories per character (texture + emotion, musical + mystical)
+- Prioritize SURPRISING combinations over expected ones
+
+EXAMPLE STORY START:
+<p>[Lord Damien, voice: velvet-smoke whiskey-rough hypnotic]: "Welcome to my domain."</p>
+<p>[Princess Elena, voice: autumn-rich steel-core fierce-gentle]: "I'm not afraid of you."</p>
+<p>[Alpha Marcus, voice: thunder-low earth-raw moonlit]: "Both of you. Explain. Now."</p>
+
+NOTE: After first appearance, use simple [CharacterName]: format for subsequent dialogue.
+
 Your goal: Create episodes that make listeners desperate for "Continue Chapter."`;
   }
 
@@ -680,10 +722,17 @@ WORD COUNT PACING:
 - 1200 words: Layered, immersive with complex tension
 
 MANDATORY FORMATTING FOR AUDIO:
-- [Character Name]: "dialogue" for ALL speech (no exceptions)
+- [Character Name, voice: 4-word description]: "dialogue" for FIRST appearance of each major character
+- [Character Name]: "dialogue" for ALL subsequent speech (no exceptions)
 - [Narrator]: for ALL scene descriptions and non-dialogue text
 - [Character, emotion]: "dialogue" when emotional context is crucial
 - HTML structure: <h3> for title, <p> for paragraphs, <em> for emphasis
+
+VOICE METADATA REMINDER:
+First appearance: [Lord Damien, voice: velvet-smoke whiskey-rough hypnotic]: "dialogue"
+Subsequent: [Lord Damien]: "dialogue"
+
+USE CREATIVE, UNCONVENTIONAL VOICE DESCRIPTORS - NO REPEATED WORDS ACROSS CHARACTERS!
 
 Create a complete story that feels like it could continue but is satisfying on its own. Make every word count toward character development, world-building, or advancing romantic/sexual tension.
 

@@ -167,7 +167,12 @@ export class AudioService {
     }
   }
 
-  private async callElevenLabsAPI(text: string, input: AudioConversionSeam['input'], voiceOverride?: CharacterVoiceType): Promise<Buffer> {
+  private async callElevenLabsAPI(
+    text: string, 
+    input: AudioConversionSeam['input'], 
+    voiceOverride?: CharacterVoiceType,
+    customSettings?: { stability: number; similarity_boost: number; style: number }
+  ): Promise<Buffer> {
     if (!this.elevenLabsApiKey) {
       // Return mock audio data if no API key
       return this.generateMockAudioData(text);
@@ -183,17 +188,23 @@ export class AudioService {
     }
 
     try {
+      // Use custom settings if provided, otherwise use defaults
+      const voiceSettings = customSettings ? {
+        ...customSettings,
+        use_speaker_boost: true
+      } : {
+        stability: 0.5,
+        similarity_boost: 0.8,
+        style: 0.5,
+        use_speaker_boost: true
+      };
+      
       const response = await axios.post(
         `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
         {
           text: text,
           model_id: 'eleven_turbo_v2_5',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.8,
-            style: 0.5,
-            use_speaker_boost: true
-          }
+          voice_settings: voiceSettings
         },
         {
           headers: {
@@ -261,14 +272,26 @@ export class AudioService {
     return this.mergeAudioChunks(audioChunks);
   }
 
-  private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input']): Promise<Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}>> {
-    const chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer}> = [];
+  private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input']): Promise<Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer, settings?: any}>> {
+    const chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer, settings?: any}> = [];
+    
+    // Extract voice metadata from story content
+    const voiceMetadata = this.extractVoiceMetadata(text);
+    
+    // Log extracted voice metadata for debugging
+    if (voiceMetadata.size > 0) {
+      console.log(`✅ Extracted voice metadata for ${voiceMetadata.size} characters:`);
+      for (const [name, data] of voiceMetadata) {
+        console.log(`   ${name}: ${data.description} (${data.characterType} ${data.gender})`);
+      }
+    }
     
     // Split text by speaker tags while preserving the tags
     const segments = text.split(/(\[([^\]]+)\]:\s*)/);
     
     let currentSpeaker = 'Narrator';
     let currentVoice: CharacterVoiceType = 'narrator';
+    let currentSettings: any = undefined;
     
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i].trim();
@@ -281,17 +304,31 @@ export class AudioService {
       if (speakerMatch) {
         // This is a speaker tag - update current speaker and voice
         const speakerInfo = speakerMatch[1];
-        currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove emotion if present
-        currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
+        currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove voice/emotion metadata
+        
+        // Check if we have voice metadata for this character
+        const metadata = voiceMetadata.get(currentSpeaker);
+        if (metadata) {
+          // Use smart voice assignment based on AI-generated metadata
+          const voiceKey = `${metadata.characterType}_${metadata.gender}` as CharacterVoiceType;
+          currentVoice = this.voiceIds[voiceKey] ? voiceKey : this.assignVoiceToSpeaker(currentSpeaker);
+          currentSettings = metadata.settings;
+          console.log(`   🎙️  ${currentSpeaker}: Using ${currentVoice} with optimized settings`);
+        } else {
+          // Fallback to heuristic assignment
+          currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
+          currentSettings = undefined;
+        }
       } else if (segment.length > 0) {
         // This is dialogue or narrative text
         try {
-          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice);
+          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice, currentSettings);
           chunks.push({
             speaker: currentSpeaker,
             text: segment,
             voice: currentVoice,
-            audioData: audioData
+            audioData: audioData,
+            settings: currentSettings
           });
         } catch (error) {
           console.warn(`Failed to generate audio for ${currentSpeaker}: ${error}`);
@@ -303,6 +340,116 @@ export class AudioService {
     return chunks;
   }
 
+  /**
+   * Extract voice metadata from story content
+   * Parses [CharacterName, voice: description]: format from first appearances
+   */
+  private extractVoiceMetadata(content: string): Map<string, {
+    description: string;
+    characterType: 'vampire' | 'werewolf' | 'fairy' | 'human';
+    gender: 'male' | 'female' | 'neutral';
+    traits: string[];
+    settings: { stability: number; similarity_boost: number; style: number };
+  }> {
+    const voiceMetadata = new Map();
+    
+    // Regex to find: [CharacterName, voice: description]: "dialogue"
+    const voiceTagRegex = /\[([^,\]]+),\s*voice:\s*([^\]]+)\]:/g;
+    
+    let match;
+    while ((match = voiceTagRegex.exec(content)) !== null) {
+      const characterName = match[1].trim();
+      const voiceDescription = match[2].trim();
+      
+      // Parse the description to extract characteristics
+      const analysis = this.analyzeVoiceDescription(voiceDescription);
+      
+      voiceMetadata.set(characterName, {
+        description: voiceDescription,
+        ...analysis
+      });
+    }
+    
+    return voiceMetadata;
+  }
+  
+  /**
+   * Analyze voice description to extract characteristics and optimize settings
+   */
+  private analyzeVoiceDescription(description: string): {
+    characterType: 'vampire' | 'werewolf' | 'fairy' | 'human';
+    gender: 'male' | 'female' | 'neutral';
+    traits: string[];
+    settings: { stability: number; similarity_boost: number; style: number };
+  } {
+    const words = description.toLowerCase().split(/[\s-]+/);
+    
+    // Detect character type from keywords
+    const vampireWords = ['seductive', 'ancient', 'commanding', 'hypnotic', 'velvet', 'dark', 'eternal', 'midnight', 'crimson', 'obsidian'];
+    const werewolfWords = ['primal', 'rough', 'growling', 'powerful', 'wild', 'fierce', 'feral', 'thunder', 'earth', 'moonlit', 'forest'];
+    const fairyWords = ['ethereal', 'musical', 'light', 'tinkling', 'magical', 'delicate', 'airy', 'starlight', 'dewdrop', 'windchime', 'crystal'];
+    
+    let characterType: 'vampire' | 'werewolf' | 'fairy' | 'human' = 'human';
+    if (words.some(w => vampireWords.includes(w))) characterType = 'vampire';
+    else if (words.some(w => werewolfWords.includes(w))) characterType = 'werewolf';
+    else if (words.some(w => fairyWords.includes(w))) characterType = 'fairy';
+    
+    // Detect gender from keywords
+    const maleWords = ['deep', 'gravelly', 'commanding', 'authoritative', 'bass', 'rough', 'thunder', 'granite', 'steel'];
+    const femaleWords = ['soft', 'melodic', 'sultry', 'silky', 'soprano', 'delicate', 'gentle', 'pearl', 'silk'];
+    
+    let gender: 'male' | 'female' | 'neutral' = 'neutral';
+    if (words.some(w => maleWords.includes(w))) gender = 'male';
+    else if (words.some(w => femaleWords.includes(w))) gender = 'female';
+    
+    // Optimize voice settings based on traits
+    let stability = 0.5;
+    let similarity_boost = 0.8;
+    let style = 0.5;
+    
+    // Adjust for character type
+    if (characterType === 'vampire') {
+      stability = 0.6; // More controlled
+      style = 0.7; // More stylized
+    } else if (characterType === 'werewolf') {
+      stability = 0.4; // More variable
+      similarity_boost = 0.9; // Stronger presence
+    } else if (characterType === 'fairy') {
+      stability = 0.3; // More expressive
+      style = 0.8; // Highly stylized
+    }
+    
+    // Adjust for specific traits
+    if (words.some(w => ['seductive', 'hypnotic', 'intoxicating', 'mesmerizing'].includes(w))) {
+      style += 0.2; // More expressive
+      stability -= 0.1; // More variation
+    }
+    if (words.some(w => ['commanding', 'authoritative', 'powerful'].includes(w))) {
+      stability += 0.1; // More controlled
+      similarity_boost += 0.1; // Stronger presence
+    }
+    if (words.some(w => ['ethereal', 'musical', 'delicate', 'tinkling'].includes(w))) {
+      style += 0.3; // Very expressive
+      stability -= 0.2; // More fluid
+    }
+    if (words.some(w => ['rough', 'growling', 'gravelly', 'primal'].includes(w))) {
+      stability += 0.2; // Consistent roughness
+      style -= 0.1; // Less refined
+    }
+    
+    // Clamp to valid range [0, 1]
+    stability = Math.max(0, Math.min(1, stability));
+    similarity_boost = Math.max(0, Math.min(1, similarity_boost));
+    style = Math.max(0, Math.min(1, style));
+    
+    return {
+      characterType,
+      gender,
+      traits: words,
+      settings: { stability, similarity_boost, style }
+    };
+  }
+  
   private assignVoiceToSpeaker(speakerName: string): CharacterVoiceType {
     const lowerName = speakerName.toLowerCase();
     
