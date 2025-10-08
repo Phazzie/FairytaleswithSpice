@@ -2,6 +2,14 @@
   <header class="header">
     <h1>🧚‍♀️ Fairytales with Spice</h1>
     <p>Create spicy fantasy stories with your favorite creatures</p>
+    <button 
+      class="quick-test-btn" 
+      (click)="quickTest()"
+      [disabled]="isGenerating"
+      title="Generate a quick 150-word test story to verify API connection">
+      <span *ngIf="!isGenerating">🧪 Quick Test (150 words)</span>
+      <span *ngIf="isGenerating">⏳ Testing...</span>
+    </button>
   </header>
 
   <div class="main-container">

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { StoryService } from '../../api/lib/services/storyService';
 import { AudioService } from '../../api/lib/services/audioService';
 import { ExportService } from '../../api/lib/services/exportService';
+import { ImageService } from '../../api/lib/services/imageService';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -179,6 +180,38 @@ app.post('/api/export/save', async (req: Request, res: Response) => {
       error: {
         code: 'INTERNAL_ERROR',
         message: 'Export failed'
+      }
+    });
+  }
+});
+
+// Image generation
+app.post('/api/image/generate', async (req: Request, res: Response) => {
+  try {
+    const input = req.body;
+
+    if (!input.storyId || !input.content || !input.creature || !input.themes || !input.style) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Missing required fields: storyId, content, creature, themes, style'
+        }
+      });
+      return;
+    }
+
+    const imageService = new ImageService();
+    const result = await imageService.generateImage(input);
+
+    res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Image generation error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Image generation failed'
       }
     });
   }

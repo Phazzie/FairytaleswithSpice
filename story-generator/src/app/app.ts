@@ -297,6 +297,72 @@ export class App implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Quick test method to verify API connectivity with a minimal 150-word story
+   * This bypasses the form and generates a simple vampire romance story
+   */
+  quickTest() {
+    this.isGenerating = true;
+    this.generationError = '';
+    this.currentStory = '';
+    this.saveSuccess = false;
+    this.audioSuccess = false;
+    this.currentAudioUrl = '';
+    this.currentAudioDuration = 0;
+
+    this.errorLogging.logInfo('Quick test initiated', 'App.quickTest');
+
+    // Minimal test request: vampire, romance, spicy level 2, 150 words (using 700 as closest)
+    const testRequest: StoryGenerationSeam['input'] = {
+      creature: 'vampire',
+      themes: ['forbidden_love'],
+      userInput: 'A brief encounter in a moonlit garden. Keep it under 200 words.',
+      spicyLevel: 2,
+      wordCount: 700 // API will be instructed to keep it short via userInput
+    };
+
+    this.storyService.generateStory(testRequest).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          this.currentStory = response.data.content;
+          this.currentStoryRaw = response.data.rawContent || response.data.content;
+          this.currentStoryId = response.data.storyId;
+          this.currentStoryTitle = response.data.title;
+          this.currentChapterCount = 1;
+          this.currentStoryThemes = response.data.themes;
+          this.currentStorySpicyLevel = response.data.spicyLevel;
+          
+          this.isGenerating = false;
+          this.generationError = '';
+          this.errorLogging.logInfo('Quick test completed successfully', 'App.quickTest', {
+            storyId: response.data.storyId,
+            wordCount: response.data.actualWordCount
+          });
+        } else {
+          this.isGenerating = false;
+          this.generationError = `Test failed: ${response.error?.message || 'Unknown error'}`;
+          this.errorLogging.logError(
+            new Error('Quick test failed'),
+            'App.quickTest',
+            'error',
+            { response }
+          );
+        }
+      },
+      error: (error) => {
+        console.error('Quick test error:', error);
+        this.errorLogging.logError(error, 'App.quickTest', 'error');
+        this.isGenerating = false;
+        this.generationError = `API Test Failed: ${error.error?.message || error.message || 'Check API keys in Digital Ocean settings'}`;
+        
+        // Auto-clear error after 15 seconds
+        setTimeout(() => {
+          this.generationError = '';
+        }, 15000);
+      }
+    });
+  }
+
   generateNextChapter() {
     this.isContinuing = true;
 
