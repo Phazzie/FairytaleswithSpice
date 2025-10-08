@@ -12,6 +12,20 @@ export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 
+// ==================== CHAPTER MANAGEMENT ====================
+export interface Chapter {
+  chapterId: string;
+  chapterNumber: number;
+  title: string;
+  content: string; // HTML for this chapter only
+  rawContent?: string; // With speaker tags for audio
+  wordCount: number;
+  generatedAt: Date;
+  hasAudio: boolean;
+  audioUrl?: string;
+  audioDuration?: number;
+}
+
 export interface AudioProgress {
   percentage: number; // 0-100
   status: 'queued' | 'processing' | 'completed' | 'failed';

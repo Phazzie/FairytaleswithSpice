@@ -112,9 +112,39 @@
       <div class="story-display">
         <div class="story-column">
       <!-- Story Display -->
-      <div class="story-section" *ngIf="currentStory">
+      <div class="story-section" *ngIf="chapters.length > 0">
+        <!-- Chapter Navigation Header -->
+        <div class="chapter-navigation" *ngIf="chapters.length > 1">
+          <button
+            class="nav-btn"
+            (click)="previousChapter()"
+            [disabled]="isFirstChapter()">
+            ← Previous
+          </button>
+          
+          <div class="chapter-selector">
+            <select [(ngModel)]="currentChapterIndex" (change)="navigateToChapter(currentChapterIndex)">
+              <option *ngFor="let chapter of chapters; let i = index" [value]="i">
+                Chapter {{chapter.chapterNumber}}: {{chapter.title}}
+              </option>
+            </select>
+          </div>
+          
+          <button
+            class="nav-btn"
+            (click)="nextChapter()"
+            [disabled]="isLastChapter()">
+            Next →
+          </button>
+        </div>
+
         <div class="story-header">
-          <h2>Your Spicy {{getCreatureName()}} Story</h2>
+          <h2>Chapter {{getCurrentChapter()?.chapterNumber}}: {{getCurrentChapter()?.title}}</h2>
+          <div class="story-meta">
+            <span>{{getCurrentChapter()?.wordCount}} words</span>
+            <span *ngIf="chapters.length > 1">• {{getTotalWordCount()}} total words</span>
+            <span>• {{chapters.length}} {{chapters.length === 1 ? 'chapter' : 'chapters'}}</span>
+          </div>
           <div class="story-actions">
             <button
               class="action-btn audio-btn"
@@ -146,18 +176,19 @@
           <button
             class="continue-btn"
             (click)="generateNextChapter()"
-            [disabled]="isGeneratingNext">
+            [disabled]="isGeneratingNext || !isLastChapter()">
             <span *ngIf="!isGeneratingNext">📖 Generate Next Chapter</span>
             <span *ngIf="isGeneratingNext" class="loading">
               <span class="spinner"></span>
               Writing next chapter...
             </span>
           </button>
+          <p *ngIf="!isLastChapter()" class="hint">Navigate to last chapter to continue story</p>
         </div>
       </div>
 
       <!-- Placeholder when no story -->
-      <div class="story-placeholder" *ngIf="!currentStory">
+      <div class="story-placeholder" *ngIf="chapters.length === 0">
         <div class="placeholder-content">
           <h2>Your Story Will Appear Here</h2>
           <p>Configure your story settings on the left and click "Generate Story" to begin!</p>

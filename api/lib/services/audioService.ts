@@ -215,14 +215,28 @@ export class AudioService {
   }
 
   private async uploadAudioToStorage(audioData: Buffer, input: AudioConversionSeam['input']): Promise<string> {
-    // Mock storage upload - in real implementation, this would upload to S3, Cloudinary, etc.
-    const filename = `story-${input.storyId}-audio.${input.format || 'mp3'}`;
-
-    // Simulate upload delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Return mock URL
-    return `https://storage.example.com/audio/${filename}`;
+    // Convert audio buffer to base64 data URL for immediate browser playback
+    // This eliminates need for external storage in production
+    // Format: data:audio/mp3;base64,{base64EncodedData}
+    
+    const format = input.format || 'mp3';
+    const mimeType = format === 'mp3' ? 'audio/mpeg' : 
+                    format === 'wav' ? 'audio/wav' : 
+                    format === 'aac' ? 'audio/aac' : 'audio/mpeg';
+    
+    const base64Audio = audioData.toString('base64');
+    const dataUrl = `data:${mimeType};base64,${base64Audio}`;
+    
+    // Log file size for debugging
+    const fileSizeMB = (audioData.length / 1024 / 1024).toFixed(2);
+    console.log(`✅ Audio generated: ${fileSizeMB} MB as ${format} data URL`);
+    
+    // Future: For production scaling, could switch to cloud storage here
+    // if (process.env.AUDIO_STORAGE === 'cloud') {
+    //   return await uploadToS3(audioData, input.storyId, format);
+    // }
+    
+    return dataUrl;
   }
 
   // ==================== MULTI-VOICE PROCESSING METHODS ====================

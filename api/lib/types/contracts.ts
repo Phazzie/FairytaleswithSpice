@@ -19,6 +19,20 @@ export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
 
+// ==================== CHAPTER MANAGEMENT ====================
+export interface Chapter {
+  chapterId: string;
+  chapterNumber: number;
+  title: string;
+  content: string; // HTML for this chapter only
+  rawContent?: string; // With speaker tags for audio
+  wordCount: number;
+  generatedAt: Date;
+  hasAudio: boolean;
+  audioUrl?: string;
+  audioDuration?: number;
+}
+
 export interface AudioProgress {
   percentage: number; // 0-100
   status: 'queued' | 'processing' | 'completed' | 'failed';

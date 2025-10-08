@@ -4,7 +4,7 @@ import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import { ErrorDisplayComponent } from './error-display/error-display';
-import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam } from './contracts';
+import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam, Chapter } from './contracts';
 import { DebugPanel } from './debug-panel/debug-panel';
 
 /**
@@ -95,11 +95,28 @@ export class App implements OnInit, OnDestroy {
 
   // ==================== STORY DATA MANAGEMENT ====================
 
-  /** Generated story content (HTML formatted for display) */
-  currentStory: string = '';
+  /** Array of chapters for serialized navigation */
+  chapters: Chapter[] = [];
 
-  /** Raw story content with speaker tags for multi-voice audio processing */
-  currentStoryRaw: string = '';
+  /** Currently selected chapter index for viewing */
+  currentChapterIndex: number = 0;
+
+  /** Generated story content (HTML formatted for display) - computed from current chapter */
+  get currentStory(): string {
+    return this.chapters.length > 0 ? this.chapters[this.currentChapterIndex].content : '';
+  }
+
+  /** Set current story (for backward compatibility) */
+  set currentStory(value: string) {
+    if (this.chapters.length > 0) {
+      this.chapters[this.currentChapterIndex].content = value;
+    }
+  }
+
+  /** Raw story content with speaker tags - computed from current chapter */
+  get currentStoryRaw(): string {
+    return this.chapters.length > 0 ? (this.chapters[this.currentChapterIndex].rawContent || '') : '';
+  }
 
   /** Unique identifier for the current story */
   currentStoryId: string = '';
@@ -108,7 +125,9 @@ export class App implements OnInit, OnDestroy {
   currentStoryTitle: string = '';
 
   /** Number of chapters in current story */
-  currentChapterCount: number = 0;
+  get currentChapterCount(): number {
+    return this.chapters.length;
+  }
 
   /** Themes used in current story generation */
   currentStoryThemes: string[] = [];
@@ -239,12 +258,25 @@ export class App implements OnInit, OnDestroy {
     this.storyService.generateStory(request).subscribe({
       next: (response) => {
         if (response.success && response.data) {
-          // Store complete story data
-          this.currentStory = response.data.content;
-          this.currentStoryRaw = response.data.rawContent || response.data.content; // Fallback to regular content
+          // Create first chapter from generated story
+          const firstChapter: Chapter = {
+            chapterId: `chapter_1_${Date.now()}`,
+            chapterNumber: 1,
+            title: response.data.title,
+            content: response.data.content,
+            rawContent: response.data.rawContent || response.data.content,
+            wordCount: response.data.actualWordCount,
+            generatedAt: new Date(),
+            hasAudio: false
+          };
+
+          // Initialize chapters array with first chapter
+          this.chapters = [firstChapter];
+          this.currentChapterIndex = 0;
+
+          // Store story metadata
           this.currentStoryId = response.data.storyId;
           this.currentStoryTitle = response.data.title;
-          this.currentChapterCount = 1;
           this.currentStoryThemes = response.data.themes;
           this.currentStorySpicyLevel = response.data.spicyLevel;
 
@@ -324,11 +356,23 @@ export class App implements OnInit, OnDestroy {
     this.storyService.generateStory(testRequest).subscribe({
       next: (response) => {
         if (response.success && response.data) {
-          this.currentStory = response.data.content;
-          this.currentStoryRaw = response.data.rawContent || response.data.content;
+          // Create quick test chapter
+          const testChapter: Chapter = {
+            chapterId: `chapter_test_${Date.now()}`,
+            chapterNumber: 1,
+            title: response.data.title,
+            content: response.data.content,
+            rawContent: response.data.rawContent || response.data.content,
+            wordCount: response.data.actualWordCount,
+            generatedAt: new Date(),
+            hasAudio: false
+          };
+
+          // Initialize with test chapter
+          this.chapters = [testChapter];
+          this.currentChapterIndex = 0;
           this.currentStoryId = response.data.storyId;
           this.currentStoryTitle = response.data.title;
-          this.currentChapterCount = 1;
           this.currentStoryThemes = response.data.themes;
           this.currentStorySpicyLevel = response.data.spicyLevel;
 
@@ -370,8 +414,8 @@ export class App implements OnInit, OnDestroy {
 
     const request: ChapterContinuationSeam['input'] = {
       storyId: this.currentStoryId,
-      currentChapterCount: this.currentChapterCount,
-      existingContent: this.currentStory,
+      currentChapterCount: this.chapters.length,
+      existingContent: this.chapters.map(ch => ch.content).join('\n\n'),
       userInput: '',
       maintainTone: true
     };
@@ -379,8 +423,24 @@ export class App implements OnInit, OnDestroy {
     this.storyService.generateNextChapter(request).subscribe({
       next: (response) => {
         if (response.success && response.data) {
-          this.currentStory = response.data.appendedToStory;
-          this.currentChapterCount = response.data.chapterNumber;
+          // Create new chapter
+          const newChapter: Chapter = {
+            chapterId: response.data.chapterId,
+            chapterNumber: response.data.chapterNumber,
+            title: response.data.title,
+            content: response.data.content,
+            rawContent: response.data.content, // Backend should provide rawContent
+            wordCount: response.data.content.split(/\s+/).length,
+            generatedAt: new Date(),
+            hasAudio: false
+          };
+
+          // Add to chapters array
+          this.chapters.push(newChapter);
+          
+          // Navigate to new chapter
+          this.currentChapterIndex = this.chapters.length - 1;
+
           this.isGeneratingNext = false;
           this.errorLogging.logInfo('Chapter continuation completed successfully', 'App.generateNextChapter', {
             chapterId: response.data.chapterId,
@@ -515,6 +575,46 @@ export class App implements OnInit, OnDestroy {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  // ==================== CHAPTER NAVIGATION METHODS ====================
+
+  navigateToChapter(index: number): void {
+    if (index >= 0 && index < this.chapters.length) {
+      this.currentChapterIndex = index;
+      this.errorLogging.logInfo('User navigated to chapter', 'App.navigateToChapter', {
+        chapterIndex: index,
+        chapterNumber: this.chapters[index].chapterNumber
+      });
+    }
+  }
+
+  previousChapter(): void {
+    if (this.currentChapterIndex > 0) {
+      this.navigateToChapter(this.currentChapterIndex - 1);
+    }
+  }
+
+  nextChapter(): void {
+    if (this.currentChapterIndex < this.chapters.length - 1) {
+      this.navigateToChapter(this.currentChapterIndex + 1);
+    }
+  }
+
+  isFirstChapter(): boolean {
+    return this.currentChapterIndex === 0;
+  }
+
+  isLastChapter(): boolean {
+    return this.currentChapterIndex === this.chapters.length - 1;
+  }
+
+  getCurrentChapter(): Chapter | null {
+    return this.chapters.length > 0 ? this.chapters[this.currentChapterIndex] : null;
+  }
+
+  getTotalWordCount(): number {
+    return this.chapters.reduce((sum, ch) => sum + ch.wordCount, 0);
   }
 
   // ==================== ENHANCED AUDIO CONTROLS ====================
