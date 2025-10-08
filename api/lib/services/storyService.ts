@@ -416,7 +416,7 @@ export class StoryService {
       },
       {
         author: 'Gena Showalter',
-        voiceSample: '"Oh, you want to play?' Her grin was pure mischief. 'Lords of the Underworld Rule #1: Never challenge what you can\'t handle."',
+        voiceSample: '"Oh, you want to play?" Her grin was pure mischief. "Lords of the Underworld Rule #1: Never challenge what you can\'t handle."',
         trait: 'Playful banter masking Lords of the Underworld intensity'
       },
       {
