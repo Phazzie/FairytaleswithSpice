@@ -186,8 +186,8 @@ export class StoryService {
           temperature: 0.8,
           max_tokens: this.calculateOptimalTokens(input.wordCount),
           top_p: 0.95,
-          frequency_penalty: 0.3,
-          presence_penalty: 0.2
+          frequency_penalty: 0.3
+          // Note: Grok-4 doesn't support presence_penalty parameter
         },
         {
           headers: {
@@ -317,8 +317,8 @@ export class StoryService {
         max_tokens: this.calculateOptimalTokens(input.wordCount),
         temperature: 0.8,
         top_p: 0.95,              // Focus on high-quality tokens
-        frequency_penalty: 0.3,   // Reduce repetitive phrasing
-        presence_penalty: 0.2     // Encourage topic diversity
+        frequency_penalty: 0.3    // Reduce repetitive phrasing
+        // Note: Grok-4 doesn't support presence_penalty parameter
       }, {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,
@@ -358,8 +358,8 @@ export class StoryService {
         max_tokens: this.calculateOptimalTokens(500), // ~500 words per chapter
         temperature: 0.8,
         top_p: 0.95,
-        frequency_penalty: 0.3,
-        presence_penalty: 0.2
+        frequency_penalty: 0.3
+        // Note: Grok-4 doesn't support presence_penalty parameter
       }, {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,
@@ -377,6 +377,7 @@ export class StoryService {
   }
 
   private selectRandomAuthorStyles(creature: string): Array<{author: string, voiceSample: string, trait: string}> {
+    // EXPANDED: 12 authors per creature type for massive style variety
     const vampireStyles = [
       {
         author: 'Jeaniene Frost',
@@ -402,6 +403,41 @@ export class StoryService {
         author: 'Kresley Cole',
         voiceSample: 'She was chaos in a cocktail dress, and he\'d never wanted to be destroyed so badly in his immortal life.',
         trait: 'Wild, reckless passion defying all logic'
+      },
+      {
+        author: 'Charlaine Harris',
+        voiceSample: '"Sugar, in the South, we don\'t hide our fangs behind pretty words. We smile real sweet and strike when you least expect it."',
+        trait: 'Southern charm masking vampire politics and cozy mystery'
+      },
+      {
+        author: 'Sherrilyn Kenyon',
+        voiceSample: 'Eleven thousand years of existence, and nothing—nothing—had prepared him for the way she looked at him like he might still be worth saving.',
+        trait: 'Dark-Hunter mythology with tortured immortal warriors'
+      },
+      {
+        author: 'Gena Showalter',
+        voiceSample: '"Oh, you want to play?' Her grin was pure mischief. 'Lords of the Underworld Rule #1: Never challenge what you can\'t handle."',
+        trait: 'Playful banter masking Lords of the Underworld intensity'
+      },
+      {
+        author: 'L.J. Smith',
+        voiceSample: 'The triangle between them crackled with impossible tension—human, vampire, and the question of who would claim her heart first.',
+        trait: 'Teen angst meets vampire romance with love triangle mastery'
+      },
+      {
+        author: 'Kim Harrison',
+        voiceSample: '"I\'m a bounty hunter who dates a vampire and pisses off ancient demons before breakfast. What could possibly go wrong?"',
+        trait: 'Urban fantasy vampire world-building with sassy protagonist'
+      },
+      {
+        author: 'Laurell K. Hamilton',
+        voiceSample: 'Power and blood and dark eroticism wound between them like a living thing, necromancy and vampirism dancing on the edge of corruption.',
+        trait: 'Dark eroticism blending vampire power dynamics with necromancy'
+      },
+      {
+        author: 'Richelle Mead',
+        voiceSample: 'Dhampir guardian or forbidden vampire lover? The academy taught her to stake first and ask questions never. But he made her want to break every rule.',
+        trait: 'Vampire academy vibes with forbidden romance and dhampir tension'
       }
     ];
 
@@ -430,6 +466,41 @@ export class StoryService {
         author: 'Jennifer Ashley',
         voiceSample: '"The pack protects its own. Always. Even when \'its own\' is too stubborn to ask for help."',
         trait: 'Found family bonds stronger than blood'
+      },
+      {
+        author: 'Carrie Ann Ryan',
+        voiceSample: 'The mating bond snapped into place like fate clicking its final lock, and suddenly "mine" wasn\'t just a word—it was a destiny.',
+        trait: 'Fated mates with pack loyalty and emotional werewolf bonds'
+      },
+      {
+        author: 'Shelly Laurenston',
+        voiceSample: '"Did you just challenge me to an alpha battle in the middle of brunch? Honey, I haven\'t even had my coffee yet."',
+        trait: 'Comedic werewolf chaos with irreverent alpha battles'
+      },
+      {
+        author: 'Suzanne Wright',
+        voiceSample: 'Possessive didn\'t begin to cover it. His wolf wanted to wrap around her, claim her, make sure every shifter within a hundred miles knew she was his.',
+        trait: 'Possessive alpha wolves with pack mentality and steamy romance'
+      },
+      {
+        author: 'Faith Hunter',
+        voiceSample: 'The skinwalker magic crawled across her skin, werewolf and vampire scents mixing in the humid Southern night like a supernatural storm brewing.',
+        trait: 'Southern Gothic werewolves with vampire-werewolf tension and skinwalker magic'
+      },
+      {
+        author: 'Keri Arthur',
+        voiceSample: 'Werewolf detective, vampire lover, and a murder case that smelled like death and dark magic. Just another night in the Riley Jenson universe.',
+        trait: 'Werewolf detective noir with Riley Jenson vibes and hybrid powers'
+      },
+      {
+        author: 'Rachel Vincent',
+        voiceSample: 'Territory. Dominance. Pride. The werecat politics translated perfectly to werewolf pack law—fight for your place or lose everything.',
+        trait: 'Werecats/shifter politics crossover with territorial dominance and family saga'
+      },
+      {
+        author: 'Chloe Neill',
+        voiceSample: '"Chicago werewolf packs play by different rules. Less howling at the moon, more political maneuvering with a side of violence."',
+        trait: 'Chicago werewolf packs with urban fantasy setting and political intrigue'
       }
     ];
 
@@ -458,6 +529,41 @@ export class StoryService {
         author: 'Julie Kagawa',
         voiceSample: 'Honor and desire warred in his expression, duty and longing locked in a battle that would determine both their fates.',
         trait: 'Hybrid honor versus desire in heart-wrenching choices'
+      },
+      {
+        author: 'Karen Marie Moning',
+        voiceSample: '"Welcome to Dublin, where the Unseelie princes play and humans are just pretty toys to break." She should run. She should definitely run.',
+        trait: 'Fever series Fae with dark Unseelie princes and Dublin setting'
+      },
+      {
+        author: 'Elise Kova',
+        voiceSample: 'Air magic sang through her veins, elemental power awakening with each breath, the fairy prince watching like he knew exactly what she was becoming.',
+        trait: 'Air Awakens fairy magic with elemental powers and fantasy romance'
+      },
+      {
+        author: 'Jennifer Estep',
+        voiceSample: '"Mythos Academy Rule #1: Never trust a fairy. Rule #2: Especially not one who offers to teach you assassination techniques."',
+        trait: 'Mythos Academy fae with assassin protagonist and snarky tone'
+      },
+      {
+        author: 'Cassandra Clare',
+        voiceSample: 'Shadowhunter meets Seelie Court, and the lines between ally and enemy blur like glamour in moonlight—forbidden and intoxicating.',
+        trait: 'Shadowhunter fae crossover with Seelie/Unseelie courts and forbidden romance'
+      },
+      {
+        author: 'Sylvia Mercedes',
+        voiceSample: 'Bride of the Shadow King—the bargain was simple: her life for her kingdom. What she didn\'t expect was wanting to stay in the darkness.',
+        trait: 'Bride of the Shadow King vibes with dark fairy bargains and enemies-to-lovers'
+      },
+      {
+        author: 'Roshani Chokshi',
+        voiceSample: 'Indian mythology wove through the fairy realm like silk and starlight, lush magic painting the air in colors that had no earthly names.',
+        trait: 'Indian mythology fae with lush descriptions and magical realism'
+      },
+      {
+        author: 'Laura Thalassa',
+        voiceSample: '"The Bargainer collects debts, siren. And you\'ve owed me for a very long time." His smile promised wicked payments and dangerous pleasures.',
+        trait: 'Bargainer series vibes with siren fae, debts and deals'
       }
     ];
 
@@ -498,56 +604,127 @@ export class StoryService {
   }
 
   private getRandomBeatStructure(input: StoryGenerationSeam['input']): string {
+    // EXPANDED: 20 beat structures with avoid warnings for quality control
     const structures = [
       {
         name: "TEMPTATION CASCADE",
         beats: "Forbidden Glimpse → Growing Obsession → Point of No Return → Consequences Unfold → Deeper Temptation",
-        spiceIntegration: "Each beat escalates physical/emotional intimacy. Perfect for Level 3-5 stories."
+        spiceIntegration: "Each beat escalates physical/emotional intimacy. Perfect for Level 3-5 stories.",
+        avoid: "Repetitive seduction scenes with no emotional progression, instant capitulation without internal conflict"
       },
       {
         name: "POWER EXCHANGE",
         beats: "Challenge Issued → Resistance Tested → Control Shifts → Surrender Moment → New Dynamic",
-        spiceIntegration: "Power dynamics drive intimacy. Works for all themes, spice level determines explicitness."
+        spiceIntegration: "Power dynamics drive intimacy. Works for all themes, spice level determines explicitness.",
+        avoid: "Non-consensual power plays, one-sided dominance, no mutual respect underneath the dynamic"
       },
       {
         name: "SEDUCTION TRAP",
         beats: "Innocent Encounter → Hidden Agenda Revealed → Manipulation vs Genuine Feeling → Truth Exposed → Choice Made",
-        spiceIntegration: "Seduction builds throughout. Mystery themes enhance psychological tension."
+        spiceIntegration: "Seduction builds throughout. Mystery themes enhance psychological tension.",
+        avoid: "Villain without nuance, manipulation without genuine feelings bleeding through, easy forgiveness"
       },
       {
         name: "RITUAL BINDING",
         beats: "Ancient Secret → Ritual Requirement → Intimate Ceremony → Magical Consequence → Eternal Bond",
-        spiceIntegration: "Supernatural themes with ritual intimacy. Spice level affects ritual explicitness."
+        spiceIntegration: "Supernatural themes with ritual intimacy. Spice level affects ritual explicitness.",
+        avoid: "Magic solves everything, no cost to the ritual, bond accepted instantly without conflict"
       },
       {
         name: "VULNERABILITY SPIRAL",
         beats: "Perfect Facade → Crack in Armor → Emotional Exposure → Intimate Healing → Transformed Identity",
-        spiceIntegration: "Emotional vulnerability leads to physical intimacy. Romance themes amplify connection."
+        spiceIntegration: "Emotional vulnerability leads to physical intimacy. Romance themes amplify connection.",
+        avoid: "Trauma magically healed by love, no lasting scars, instant emotional breakthroughs"
       },
       {
         name: "HUNT AND CLAIM",
         beats: "Predator Marks Prey → Chase Begins → Prey Fights Back → Tables Turn → Mutual Claiming",
-        spiceIntegration: "Primal pursuit with escalating tension. Adventure themes add physical stakes."
+        spiceIntegration: "Primal pursuit with escalating tension. Adventure themes add physical stakes.",
+        avoid: "Prey with no agency or power, stalking romanticized without consequences, one-way claiming"
       },
       {
         name: "BARGAIN'S PRICE",
         beats: "Desperate Need → Deal Struck → Payment Due → Cost Revealed → Price Accepted",
-        spiceIntegration: "Supernatural bargains with intimate payments. Dark themes heighten moral conflict."
+        spiceIntegration: "Supernatural bargains with intimate payments. Dark themes heighten moral conflict.",
+        avoid: "Loopholes that negate the price, convenient escapes, bargain forgotten after payment"
       },
       {
         name: "MEMORY FRACTURE",
         beats: "Lost Memory → Familiar Stranger → Fragments Return → Truth Reconstructed → Choice to Remember",
-        spiceIntegration: "Past intimacy bleeding through amnesia. Mystery themes create psychological tension."
+        spiceIntegration: "Past intimacy bleeding through amnesia. Mystery themes create psychological tension.",
+        avoid: "Convenient amnesia, memories return all at once, no emotional fallout from truth"
       },
       {
         name: "TRANSFORMATION HUNGER",
         beats: "Change Begins → New Appetites → Mentor Appears → Appetite Satisfied → Evolution Complete",
-        spiceIntegration: "Physical transformation creates new desires. Comedy themes can subvert expectations."
+        spiceIntegration: "Physical transformation creates new desires. Comedy themes can subvert expectations.",
+        avoid: "Easy control of new form, mentor appears exactly when needed, no cost to transformation"
       },
       {
         name: "MIRROR SOULS",
         beats: "Perfect Opposite → Magnetic Pull → Resistance Breaks → Soul Recognition → Unity/Destruction",
-        spiceIntegration: "Opposite personalities creating explosive chemistry. All themes supported, spice determines intensity."
+        spiceIntegration: "Opposite personalities creating explosive chemistry. All themes supported, spice determines intensity.",
+        avoid: "Opposites attract without friction, perfect compatibility solves conflict, no sacrifice required"
+      },
+      {
+        name: "FORBIDDEN TERRITORY DANCE",
+        beats: "Trespass → Discovery → Risk Escalation → Claimed Space",
+        spiceIntegration: "Cross enemy lines, stolen moments in forbidden spaces. Spice level determines intimacy of encounters.",
+        avoid: "Repetitive 'sneaking around' scenes, predictable guards, no real danger of discovery"
+      },
+      {
+        name: "SACRIFICE NEGOTIATION",
+        beats: "Demand → Counter-offer → Stakes Raise → Blood Price Paid",
+        spiceIntegration: "What will you give up for what you desire? Supernatural costs escalate with spice level.",
+        avoid: "Easy sacrifices, no real loss, immediate rewards, sacrifice undone later"
+      },
+      {
+        name: "JEALOUSY IGNITION",
+        beats: "Rival Appears → Tension Spikes → Possessive Display → Claim Solidified",
+        spiceIntegration: "Third party interference, possessive claims, territorial marking. Perfect for pack/clan dynamics.",
+        avoid: "Love triangle clichés, unnecessary drama, weak rival threats, toxic possessiveness"
+      },
+      {
+        name: "TRUST SHATTERING REVEAL",
+        beats: "Hint of Deception → Clues Accumulate → Revelation Hits → Rebuild Begins",
+        spiceIntegration: "Secret exposed, betrayal discovered, foundation crumbles. Intimacy becomes weapon or healing.",
+        avoid: "Convenient misunderstandings, easy forgiveness, no lasting consequences, immediate trust restoration"
+      },
+      {
+        name: "PROTECTOR INSTINCT TRIGGER",
+        beats: "Danger Looms → Instinct Overrides → Fierce Protection → Aftermath Intimacy",
+        spiceIntegration: "Threat emerges, protective fury unleashed, vulnerable moment follows. Violence into tenderness.",
+        avoid: "Damsel in distress tropes, victim with no agency, protector never vulnerable"
+      },
+      {
+        name: "ANCIENT ENEMY RESURFACES",
+        beats: "Warning Signs → Threat Materializes → Old Trauma Surfaces → Stand Together",
+        spiceIntegration: "Old wounds reopened, past threatens present, united front. Shared danger forges bonds.",
+        avoid: "Convenient villain timing, no backstory weight, easy defeat, enemy without real threat"
+      },
+      {
+        name: "MATE BOND AWAKENING",
+        beats: "Attraction Intensifies → Bond Manifests → Fight Connection → Surrender",
+        spiceIntegration: "Supernatural connection snaps into place, resistance futile. Biology meets choice.",
+        avoid: "Instant acceptance, no conflict about loss of choice, magic solves all relationship issues"
+      },
+      {
+        name: "BLOOD OATH CONSEQUENCES",
+        beats: "Oath Sworn → Consequences Revealed → Loophole Sought → Price Paid",
+        spiceIntegration: "Words have power, vows bind, magic enforces promises. Spice level affects payment type.",
+        avoid: "Convenient escapes, no real magical binding, oath forgotten, loophole negates consequences"
+      },
+      {
+        name: "SANCTUARY INVASION",
+        beats: "Haven Established → Warning Breach → Invasion → Defend or Flee",
+        spiceIntegration: "Safe space violated, nowhere to hide, forced confrontation. Intimacy in crisis.",
+        avoid: "Easy victory defending sanctuary, no lasting damage, rebuilt overnight"
+      },
+      {
+        name: "ECLIPSE OF CONTROL",
+        beats: "Control Frays → Transformation Begins → Beast Emerges → Aftermath Reckoning",
+        spiceIntegration: "Monster takes over, humanity slips, beast claims dominance. Spice level affects beast's actions.",
+        avoid: "No consequences from loss of control, easy regain of composure, victim unaffected or trauma ignored"
       }
     ];
 
@@ -556,35 +733,42 @@ export class StoryService {
     
     return `SELECTED STRUCTURE: ${selectedStructure.name}
 BEATS: ${selectedStructure.beats}
-SPICE INTEGRATION: ${selectedStructure.spiceIntegration}`;
+SPICE INTEGRATION: ${selectedStructure.spiceIntegration}
+AVOID: ${selectedStructure.avoid}`;
   }
 
   private generateChekovElements(): string {
+    // ENHANCED: 20 specific, actionable Chekhov's gun elements for serialized payoff
     const elements = [
-      "Ancient artifact with hidden power",
-      "Mysterious scar with forgotten origin", 
-      "Locked room that calls to the protagonist",
-      "Stranger who knows too much about the past",
-      "Inherited item with supernatural properties",
-      "Recurring dream that feels like memory",
-      "Symbol that appears in unexpected places",
-      "Prophecy mentioned in passing",
-      "Missing person from years ago",
-      "Book written in unknown language",
-      "Family secret hinted at but not revealed",
-      "Rival with unexplained knowledge",
-      "Curse mentioned in whispers",
-      "Portal or gateway partially glimpsed",
-      "Power that manifests unexpectedly"
+      "Cursed relic with three uses, each more dangerous than the last",
+      "Sealed chamber that opens only under blood moon, contains ancestral secrets",
+      "Stranger knows protagonist's real name, disappears before questioned",
+      "Prophecy has dual interpretation, one path leads to salvation, other to doom",
+      "Contract has hidden clause activated by first kiss/blood/betrayal",
+      "Debt collects in three parts: memory, power, then firstborn/soul",
+      "Weakness is also their greatest strength under specific moon phase",
+      "Enemy shares same bloodline, mirror image of protagonist's dark side",
+      "Ritual bonds two souls, cannot be undone except by mutual death",
+      "True identity revealed only when protagonist speaks their real name aloud",
+      "Mirror that shows true desires, protagonist avoids looking until crisis forces confrontation",
+      "Three drop blood vial, each drop grants one wish but extracts equivalent payment",
+      "Tattoo that moves, shifts location based on danger proximity, bleeds when enemy near",
+      "Song that compels truth, melody hummed innocently early, later breaks through lies/glamour",
+      "Key without a lock, lock reveals itself at moment of greatest need",
+      "Shadow with its own will, later revealed as tether to dark realm",
+      "Clock that runs backwards, counts down to unknown event, speeds up with dangerous choices",
+      "Flower that blooms at death, rare plant blooms only when someone nearby will die",
+      "Name that cannot be spoken, saying it thrice summons ancient being",
+      "Scar that burns, old wound aches in presence of specific person, reveals hidden connection"
     ];
 
-    // Select 2 random elements
+    // Select 2 random elements for this story
     const shuffled = elements.sort(() => 0.5 - Math.random());
     const selected = shuffled.slice(0, 2);
     
     return `[Chekhov1]: ${selected[0]}
 [Chekhov2]: ${selected[1]}
-(These elements should be planted naturally and will pay off in future chapters)`;
+(These elements MUST be planted naturally in the story and will pay off in future chapters. They should feel organic, not forced.)`;
   }
 
   private buildSystemPrompt(input: StoryGenerationSeam['input']): string {
@@ -637,8 +821,34 @@ Level 5: Nothing left to imagination, graphic yet sophisticated
 MORAL DILEMMA TRIGGER:
 At midpoint (≈50% word count), protagonist faces desire-vs-principle choice that drives the remainder and influences the cliffhanger.
 
-SERIALIZATION HOOKS:
-Plant one unresolved mystery, one relationship tension, one foreshadowed threat.
+SERIALIZATION HOOKS - ENGINEERED ADDICTION:
+End with ONE of these 8 cliffhanger types:
+1. REVELATION CLIFFHANGER - Truth bomb drops in last sentence
+   Example: "She turned, and he saw the bite marks. Old ones."
+2. DANGER ESCALATION - Threat level jumps exponentially
+   Example: "The howls weren't coming from outside. They were in the walls."
+3. BETRAYAL CLIFFHANGER - Trusted ally revealed as enemy
+   Example: "He smiled, fangs extended. 'Did you really think I loved you?'"
+4. IMPOSSIBLE CHOICE - Must decide between two disasters
+   Example: "Save him or save yourself. Choose. Now."
+5. IDENTITY CRISIS - Everything they knew about themselves is wrong
+   Example: "The prophecy didn't mean her enemy. It meant her."
+6. LOST CONTROL - Character's power/beast takes over
+   Example: "She felt her bones break and reform. The wolf was done waiting."
+7. ARRIVAL CLIFFHANGER - Someone/something arrives to change everything
+   Example: "The door exploded inward. Her maker had found her."
+8. DEADLINE SLAM - Time runs out, consequences immediate
+   Example: "The moon reached its peak. The curse was permanent now."
+
+HOOK PLACEMENT:
+- Mid-Point Twist: Subvert expectation, new complication emerges at ~50% mark
+- Closing Hook: Use one of the 8 cliffhanger types above in final paragraph
+- Emotional Hook: Leave character in vulnerable/intense emotional state
+
+SERIALIZATION PROMISE:
+- Answer 1 question and raise 2 new ones
+- Foreshadow future conflict within current resolution
+- Plant mystery elements for later chapters
 
 AUDIO FORMAT (NON-NEGOTIABLE):
 - [Character Name]: "dialogue" for ALL speech
@@ -650,11 +860,41 @@ VOICE METADATA FOR AUDIO NARRATION (CRITICAL):
 For EACH major character's FIRST appearance, include voice characteristics:
 FORMAT: [CharacterName, voice: 4-word description]: "dialogue"
 
+ENHANCED VOICE SYSTEM - ACCENT + EMOTION + TEXTURE:
+You can now include ACCENT markers for richer character voices:
+
+ACCENT OPTIONS (Choose fitting accents for characters):
+• Celtic-lilt (Irish fairy energy)
+• Edinburgh-burr (Scottish werewolf growl)
+• Parisian-silk (French vampire seduction)
+• Transylvanian-depth (Classic vampire authority)
+• Louisiana-drawl (Southern Gothic vampire charm)
+• Moscow-ice (Russian vampire coldness)
+• Tokyo-precision (Japanese formality + supernatural edge)
+• Cockney-rasp (London street werewolf)
+• Outback-rough (Australian werewolf wildness)
+• Icelandic-mystery (Nordic fae otherworldliness)
+• Spanish-passion (Mediterranean vampire intensity)
+• Welsh-melody (Celtic fairy musicality)
+• Bavarian-strength (German werewolf power)
+• Canadian-friendly-threat (Polite but dangerous)
+• Bronx-attitude (New York vampire street smart)
+• Texas-authority (Southern alpha werewolf command)
+• Oxford-refinement (British academic vampire)
+• Mumbai-musical (Indian fae lyrical quality)
+• Seoul-modern (K-drama vampire sophistication)
+• Jamaican-rhythm (Caribbean werewolf vitality)
+
+EMOTION STATES (Per Scene):
+Amused-dangerous, furious-controlled, tender-guarded, seductive-threatening, 
+playful-deadly, vulnerable-fierce, mocking-affectionate, cold-passionate, wild-precise
+
 VOICE CREATIVITY RULES:
 ✅ Use UNCONVENTIONAL, VIVID, SPECIFIC descriptors (velvet-smoke, starlight-tinkling, thunder-low)
 ✅ Mix unexpected combinations for uniqueness (whiskey-rough hypnotic, dewdrop-delicate mischievous)
 ✅ Use synesthetic descriptions - sounds like colors/textures (moonlight-pale, crimson-rich, frost-kiss)
 ✅ VARY vocabulary across characters - NO REPEATED WORDS!
+✅ Optional: Include accent for extra flavor (Moscow-ice velvet-smoke, Celtic-lilt starlight-bright)
 ❌ NO generic words (nice, good, normal)
 ❌ NO repeating descriptors across characters
 ❌ NO only common adjectives
@@ -669,10 +909,10 @@ VOICE VOCABULARY CATEGORIES:
 • PRECIOUS: diamond-cut, pearl-smooth, obsidian-dark, amber-warm, jade-cool, ruby-rich
 
 CREATIVE EXAMPLES (vary for each character):
-Vampire: "velvet-smoke whiskey-rough hypnotic" OR "midnight-silk knife-sharp intoxicating"
-Werewolf: "thunder-low earth-raw moonlit ferocious" OR "gravel-deep forest-wild heart-pounding"
-Fairy: "starlight-tinkling dewdrop-delicate mischievous quicksilver" OR "windchime-bright petal-soft playful"
-Human: "autumn-rich coffee-warm strength-touched hopeful" OR "sunrise-bright ocean-deep resilient"
+Vampire: "velvet-smoke whiskey-rough hypnotic" OR "Moscow-ice midnight-silk knife-sharp" OR "Parisian-silk intoxicating amused-dangerous"
+Werewolf: "thunder-low earth-raw moonlit" OR "Edinburgh-burr gravel-deep fierce" OR "Texas-authority commanding wild-precise"
+Fairy: "starlight-tinkling dewdrop-delicate mischievous" OR "Celtic-lilt windchime-bright playful" OR "Icelandic-mystery ethereal cold-passionate"
+Human: "autumn-rich coffee-warm hopeful" OR "Bronx-attitude steel-core resilient" OR "Louisiana-drawl honey-smooth tender-guarded"
 
 VOICE VARIETY ENFORCEMENT:
 - 3-5 major characters per story
