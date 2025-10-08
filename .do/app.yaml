@@ -5,6 +5,12 @@ name: fairytales-with-spice
 
 services:
   - name: web
+    # GitHub source configuration
+    github:
+      repo: Phazzie/FairytaleswithSpice
+      branch: codespace-didactic-guide-5grrgjqqpx4v3vq75
+      deploy_on_push: true
+    
     # Digital Ocean will auto-detect Node.js and use the appropriate buildpack
     build_command: cd story-generator && npm install && npm run build:prod
     run_command: cd story-generator && npm run start:prod
