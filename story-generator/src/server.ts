@@ -74,7 +74,7 @@ app.post('/api/story/generate', async (req, res) => {
 
     const storyService = new StoryService();
     const result = await storyService.generateStory(input);
-    
+
     res.status(200).json(result);
   } catch (error: any) {
     console.error('Story generation error:', error);
@@ -106,7 +106,7 @@ app.post('/api/story/continue', async (req, res) => {
 
     const storyService = new StoryService();
     const result = await storyService.continueChapter(input);
-    
+
     res.status(200).json(result);
   } catch (error: any) {
     console.error('Chapter continuation error:', error);
@@ -138,7 +138,7 @@ app.post('/api/audio/convert', async (req, res) => {
 
     const audioService = new AudioService();
     const result = await audioService.convertToAudio(input);
-    
+
     res.status(200).json(result);
   } catch (error: any) {
     console.error('Audio conversion error:', error);
@@ -170,7 +170,7 @@ app.post('/api/export/save', async (req, res) => {
 
     const exportService = new ExportService();
     const result = await exportService.saveAndExport(input);
-    
+
     res.status(200).json(result);
   } catch (error: any) {
     console.error('Export error:', error);

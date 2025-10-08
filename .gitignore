@@ -11,6 +11,11 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# MCP Server Configuration (contains API tokens)
+.mcp/
+*-mcp-config.json
+digitalocean-config.json
+
 # Build outputs
 dist/
 build/
