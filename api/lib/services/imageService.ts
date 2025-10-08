@@ -10,7 +10,7 @@ export class ImageService {
   private grokApiUrl: string;
 
   constructor() {
-    this.grokApiKey = process.env.XAI_API_KEY;
+    this.grokApiKey = process.env['XAI_API_KEY'];
     this.grokApiUrl = 'https://api.x.ai/v1/images/generations';
   }
 

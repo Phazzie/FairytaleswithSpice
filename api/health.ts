@@ -10,13 +10,13 @@ export default async function handler(req: any, res: any) {
       status: 'healthy',
       timestamp: new Date().toISOString(),
       version: '1.0.0',
-      environment: process.env.NODE_ENV || 'development',
+      environment: process.env['NODE_ENV'] || 'development',
       services: {
-        grok: !!process.env.XAI_API_KEY ? 'configured' : 'mock',
-        elevenlabs: !!process.env.ELEVENLABS_API_KEY ? 'configured' : 'mock'
+        grok: !!process.env['XAI_API_KEY'] ? 'configured' : 'mock',
+        elevenlabs: !!process.env['ELEVENLABS_API_KEY'] ? 'configured' : 'mock'
       },
       cors: {
-        allowedOrigin: process.env.FRONTEND_URL || 'http://localhost:4200'
+        allowedOrigin: process.env['FRONTEND_URL'] || 'http://localhost:4200'
       }
     };
     

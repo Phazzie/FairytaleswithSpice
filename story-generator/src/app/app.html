@@ -2,8 +2,8 @@
   <header class="header">
     <h1>🧚‍♀️ Fairytales with Spice</h1>
     <p>Create spicy fantasy stories with your favorite creatures</p>
-    <button 
-      class="quick-test-btn" 
+    <button
+      class="quick-test-btn"
       (click)="quickTest()"
       [disabled]="isGenerating"
       title="Generate a quick 150-word test story to verify API connection">
@@ -190,7 +190,7 @@
       <div class="audio-player" *ngIf="currentAudioUrl">
         <h3>🎧 Audio Narration</h3>
         <div class="audio-controls">
-          <audio controls preload="metadata" [src]="currentAudioUrl" 
+          <audio controls preload="metadata" [src]="currentAudioUrl"
                  (loadedmetadata)="onAudioLoaded($event)"
                  (timeupdate)="onAudioProgress($event)"
                  (ended)="onAudioEnded()">

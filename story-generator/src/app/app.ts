@@ -331,7 +331,7 @@ export class App implements OnInit, OnDestroy {
           this.currentChapterCount = 1;
           this.currentStoryThemes = response.data.themes;
           this.currentStorySpicyLevel = response.data.spicyLevel;
-          
+
           this.isGenerating = false;
           this.generationError = '';
           this.errorLogging.logInfo('Quick test completed successfully', 'App.quickTest', {
@@ -354,7 +354,7 @@ export class App implements OnInit, OnDestroy {
         this.errorLogging.logError(error, 'App.quickTest', 'error');
         this.isGenerating = false;
         this.generationError = `API Test Failed: ${error.error?.message || error.message || 'Check API keys in Digital Ocean settings'}`;
-        
+
         // Auto-clear error after 15 seconds
         setTimeout(() => {
           this.generationError = '';
