@@ -1,0 +1,49 @@
+name: fairytales-with-spice
+
+# Digital Ocean App Platform Configuration
+# Uses buildpack auto-detection (Node.js) - no Dockerfile needed
+
+services:
+  - name: web
+    # Digital Ocean will auto-detect Node.js and use the appropriate buildpack
+    build_command: cd story-generator && npm install && npm run build:prod
+    run_command: cd story-generator && npm run start:prod
+    
+    # Environment configuration
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+      - key: XAI_API_KEY
+        value: ${XAI_API_KEY}
+        type: SECRET
+      - key: ELEVENLABS_API_KEY
+        value: ${ELEVENLABS_API_KEY}
+        type: SECRET
+      - key: ALLOWED_ORIGINS
+        value: ${APP_URL}
+        type: SECRET
+    
+    # Instance configuration
+    instance_count: 1
+    instance_size_slug: basic-xxs  # $5/month tier
+    
+    # Health check
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 10
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+    
+    # HTTP configuration
+    http_port: 8080
+    
+    # Routes
+    routes:
+      - path: /
+
+# Region selection (choose closest to your users)
+region: nyc  # New York - change to sfo (San Francisco), ams (Amsterdam), etc. as needed

@@ -3,11 +3,16 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
+    "start": "ng serve --proxy-config proxy.conf.json",
     "build": "ng build",
+    "build:prod": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "serve:ssr:story-generator": "node dist/story-generator/server/server.mjs"
+    "serve:ssr:story-generator": "node dist/story-generator/server/server.mjs",
+    "start:prod": "node dist/story-generator/server/server.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "prettier": {
     "printWidth": 100,
