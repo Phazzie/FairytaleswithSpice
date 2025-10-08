@@ -33,10 +33,10 @@ export default async function handler(req: any, res: any) {
     });
 
     // Send initial connection message
-    res.write('data: {"type": "connected", "message": "Demo streaming started"}\\n\\n');
+    res.write('data: {"type": "connected", "message": "Demo streaming started"}\n\n');
 
     // Demo story text
-    const demoStory = \`Once upon a time, in a dark forest where moonlight danced through ancient oak trees, a mysterious figure emerged from the shadows. The vampire lord Damien had roamed these woods for centuries, but tonight felt different. Tonight, he sensed something—someone—calling to him through the ethereal mist.\`;
+    const demoStory = 'Once upon a time, in a dark forest where moonlight danced through ancient oak trees, a mysterious figure emerged from the shadows. The vampire lord Damien had roamed these woods for centuries, but tonight felt different. Tonight, he sensed something—someone—calling to him through the ethereal mist.';
 
     const words = demoStory.split(' ');
     let accumulatedText = '';
@@ -58,14 +58,14 @@ export default async function handler(req: any, res: any) {
         }
       };
 
-      res.write(\`data: \${JSON.stringify(progress)}\\n\\n\`);
+      res.write('data: ' + JSON.stringify(progress) + '\n\n');
       
       // Simulate realistic typing speed (adjust for demo)
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
     // Send completion message
-    res.write('data: {"type": "complete", "message": "Demo story complete"}\\n\\n');
+    res.write('data: {"type": "complete", "message": "Demo story complete"}\n\n');
     res.end();
 
   } catch (error: any) {
@@ -80,7 +80,7 @@ export default async function handler(req: any, res: any) {
       }
     };
     
-    res.write(\`data: \${JSON.stringify(errorData)}\\n\\n\`);
+    res.write('data: ' + JSON.stringify(errorData) + '\n\n');
     res.end();
   }
 }

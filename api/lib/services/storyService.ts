@@ -691,14 +691,110 @@ Plant your Chekhov elements naturally and ensure the moral dilemma occurs at mid
   }
 
   private buildContinuationPrompt(input: ChapterContinuationSeam['input']): string {
-    return `Continue this story with a new chapter. Maintain the same tone, character development, and spicy level.
+    // Extract intelligent context from previous chapters
+    const characterNames = this.extractCharacterNames(input.existingContent);
+    const lastChapterSummary = this.extractLastChapterSummary(input.existingContent);
+    const activePlotThreads = this.extractPlotThreads(input.existingContent);
+    const emotionalTone = this.analyzeEmotionalTone(input.existingContent);
+    
+    return `Continue this story as Chapter ${input.currentChapterCount + 1}.
 
-Existing Story:
-${this.stripHtml(input.existingContent)}
+CONTEXT FROM PREVIOUS CHAPTERS:
+- Established Characters: ${characterNames.join(', ') || 'Continue developing existing characters'}
+- Last Chapter Summary: ${lastChapterSummary}
+- Active Plot Threads: ${activePlotThreads.join(', ') || 'Develop new complications'}
+- Emotional Tone: ${emotionalTone}
 
-Additional Instructions: ${input.userInput || 'Continue naturally'}
+CONTINUATION REQUIREMENTS:
+1. Resolve or escalate the previous cliffhanger within first 100 words
+2. Advance at least one relationship dynamic or plot thread
+3. Introduce one new complication, revelation, or twist
+4. Maintain character voices and established dynamics
+5. Build tension toward a new cliffhanger for next chapter
+6. Use same audio format: [Character Name]: "dialogue" and [Narrator]: descriptions
 
-Write approximately 400-600 words for this chapter. Format with HTML tags.`;
+${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+
+PREVIOUS CHAPTER(S) FOR CONTINUITY:
+${this.stripHtml(input.existingContent).slice(-1500)} // Last ~300 words for immediate context
+
+Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for paragraphs, <em> for emphasis.`;
+  }
+
+  /**
+   * Extract character names from story content
+   */
+  private extractCharacterNames(content: string): string[] {
+    const speakerMatches = content.match(/\[([^\],]+)(?:,\s*[^\]]+)?\]:/g) || [];
+    const names = speakerMatches
+      .map(match => match.replace(/\[([^\],]+).*/, '$1').trim())
+      .filter(name => name !== 'Narrator');
+    
+    // Deduplicate and return
+    return [...new Set(names)];
+  }
+
+  /**
+   * Extract summary of last chapter/section
+   */
+  private extractLastChapterSummary(content: string): string {
+    const stripped = this.stripHtml(content);
+    const paragraphs = stripped.split('\n\n').filter(p => p.trim().length > 0);
+    
+    if (paragraphs.length === 0) return 'Story beginning';
+    
+    // Get last 2-3 paragraphs as summary
+    const lastParagraphs = paragraphs.slice(-3).join(' ');
+    
+    // Truncate to ~150 words
+    const words = lastParagraphs.split(/\s+/);
+    const summary = words.slice(0, 150).join(' ');
+    
+    return summary.length < lastParagraphs.length ? summary + '...' : summary;
+  }
+
+  /**
+   * Extract active plot threads and unresolved elements
+   */
+  private extractPlotThreads(content: string): string[] {
+    const threads: string[] = [];
+    const lowerContent = content.toLowerCase();
+    
+    // Check for common plot thread indicators
+    if (lowerContent.includes('secret') || lowerContent.includes('mystery')) {
+      threads.push('Unresolved mystery or secret');
+    }
+    if (lowerContent.includes('danger') || lowerContent.includes('threat')) {
+      threads.push('Active threat or danger');
+    }
+    if (lowerContent.includes('forbidden') || lowerContent.includes('impossible')) {
+      threads.push('Forbidden relationship tension');
+    }
+    if (lowerContent.includes('power') || lowerContent.includes('control')) {
+      threads.push('Power dynamics in play');
+    }
+    if (lowerContent.match(/\bwhat\s+(if|would|could)\b/)) {
+      threads.push('Unresolved questions');
+    }
+    
+    return threads.length > 0 ? threads : ['Character development', 'Relationship progression'];
+  }
+
+  /**
+   * Analyze emotional tone of existing content
+   */
+  private analyzeEmotionalTone(content: string): string {
+    const lowerContent = content.toLowerCase();
+    const tones: string[] = [];
+    
+    // Emotional indicators
+    if (lowerContent.match(/\b(desire|passion|want|need|crave)\b/)) tones.push('passionate');
+    if (lowerContent.match(/\b(dark|shadow|danger|fear|threat)\b/)) tones.push('dark/suspenseful');
+    if (lowerContent.match(/\b(tease|playful|smile|grin|laugh)\b/)) tones.push('playful');
+    if (lowerContent.match(/\b(pain|ache|hurt|wound|scar)\b/)) tones.push('angsty');
+    if (lowerContent.match(/\b(power|control|dominan|command)\b/)) tones.push('intense');
+    
+    return tones.length > 0 ? tones.join(', ') : 'romantic with building tension';
   }
 
   private validateStoryInput(input: StoryGenerationSeam['input']): any {
