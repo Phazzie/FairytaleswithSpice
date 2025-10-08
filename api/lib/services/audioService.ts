@@ -279,14 +279,25 @@ export class AudioService {
       const speakerMatch = segment.match(/\[([^\]]+)\]:\s*/);
       
       if (speakerMatch) {
-        // This is a speaker tag - update current speaker and voice
+        // This is a speaker tag - parse enhanced format
         const speakerInfo = speakerMatch[1];
-        currentSpeaker = speakerInfo.split(',')[0].trim(); // Remove emotion if present
+        const enhancedSpeakerData = this.parseEnhancedSpeakerTag(speakerInfo);
+        
+        currentSpeaker = enhancedSpeakerData.name;
         currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
       } else if (segment.length > 0) {
         // This is dialogue or narrative text
         try {
-          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice);
+          // Get voice parameters with enhanced emotion support
+          const voiceParams = this.getEnhancedVoiceParameters(segment, currentSpeaker);
+          
+          const audioData = await this.callElevenLabsAPIWithParams(
+            segment, 
+            input, 
+            currentVoice,
+            voiceParams
+          );
+          
           chunks.push({
             speaker: currentSpeaker,
             text: segment,
@@ -301,6 +312,173 @@ export class AudioService {
     }
     
     return chunks;
+  }
+
+  /**
+   * Parses enhanced speaker tags supporting emotions and voice evolution
+   * Supports: [Character], [Character, emotion], [Character, evolution], [Character, voice state]
+   */
+  private parseEnhancedSpeakerTag(speakerInfo: string): {
+    name: string;
+    emotion?: string;
+    voiceEvolution?: string;
+    atmosphereic?: string;
+  } {
+    const parts = speakerInfo.split(',').map(part => part.trim());
+    const name = parts[0];
+    
+    let emotion: string | undefined;
+    let voiceEvolution: string | undefined;
+    let atmospheric: string | undefined;
+    
+    // Process additional parts
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i].toLowerCase();
+      
+      // Check for voice evolution patterns (contain →)
+      if (part.includes('→')) {
+        voiceEvolution = parts[i]; // Keep original case
+      }
+      // Check for atmospheric cues  
+      else if (part.includes('tension') || part.includes('intimacy') || part.includes('danger')) {
+        atmospheric = parts[i];
+      }
+      // Assume it's an emotion
+      else {
+        emotion = parts[i];
+      }
+    }
+    
+    return { name, emotion, voiceEvolution, atmospheric };
+  }
+
+  /**
+   * Gets enhanced voice parameters based on context and speaker state
+   */
+  private getEnhancedVoiceParameters(text: string, speaker: string): any {
+    // Base voice parameters
+    let baseParams = {
+      stability: 0.5,
+      similarity_boost: 0.8,
+      style: 0.5,
+      use_speaker_boost: true
+    };
+    
+    // Analyze text for emotional cues and intensity
+    const textAnalysis = this.analyzeTextEmotionalContext(text);
+    
+    if (textAnalysis.hasWhispering) {
+      baseParams.stability = 0.8;
+      baseParams.style = 0.3;
+    }
+    
+    if (textAnalysis.hasIntensity) {
+      baseParams.stability = Math.max(0.2, baseParams.stability - 0.3);
+      baseParams.style = Math.min(0.9, baseParams.style + 0.4);
+    }
+    
+    return baseParams;
+  }
+
+  /**
+   * Analyzes text content for emotional context cues
+   */
+  private analyzeTextEmotionalContext(text: string): {
+    hasWhispering: boolean;
+    hasIntensity: boolean;
+    emotionalTone: string;
+  } {
+    const lowerText = text.toLowerCase();
+    
+    const whisperCues = ['whisper', 'murmur', 'breathe', 'soft', 'quiet'];
+    const intensityCues = ['shout', 'scream', 'roar', 'growl', 'fierce', 'powerful'];
+    
+    return {
+      hasWhispering: whisperCues.some(cue => lowerText.includes(cue)),
+      hasIntensity: intensityCues.some(cue => lowerText.includes(cue)),
+      emotionalTone: this.detectEmotionalTone(text)
+    };
+  }
+
+  /**
+   * Enhanced version of callElevenLabsAPI with custom voice parameters
+   */
+  private async callElevenLabsAPIWithParams(
+    text: string, 
+    input: AudioConversionSeam['input'], 
+    voiceOverride?: CharacterVoiceType,
+    customParams?: any
+  ): Promise<Buffer> {
+    if (!this.elevenLabsApiKey) {
+      // Return mock audio data if no API key
+      return this.generateMockAudioData(text);
+    }
+
+    // Use voice override if provided, otherwise fall back to input voice or default
+    const voiceKey = voiceOverride || input.voice || 'female';
+    let voiceId = this.voiceIds[voiceKey];
+
+    if (!voiceId) {
+      console.warn(`Voice ID not found for ${voiceKey}, using default female voice`);
+      voiceId = this.voiceIds['female'];
+    }
+
+    // Merge custom parameters with defaults
+    const voiceSettings = {
+      stability: customParams?.stability ?? 0.5,
+      similarity_boost: customParams?.similarity_boost ?? 0.8,
+      style: customParams?.style ?? 0.5,
+      use_speaker_boost: customParams?.use_speaker_boost ?? true
+    };
+
+    try {
+      const response = await axios.post(
+        `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
+        {
+          text: text,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: voiceSettings
+        },
+        {
+          headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': this.elevenLabsApiKey
+          },
+          responseType: 'arraybuffer',
+          timeout: 60000 // 60 seconds timeout
+        }
+      );
+
+      return Buffer.from(response.data);
+
+    } catch (error: any) {
+      console.error('ElevenLabs API error:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Detects emotional tone from text content
+   */
+  private detectEmotionalTone(text: string): string {
+    const lowerText = text.toLowerCase();
+    
+    // Simple emotional tone detection
+    if (lowerText.includes('love') || lowerText.includes('tender') || lowerText.includes('gentle')) {
+      return 'tender';
+    }
+    if (lowerText.includes('angry') || lowerText.includes('furious') || lowerText.includes('rage')) {
+      return 'angry';
+    }
+    if (lowerText.includes('scared') || lowerText.includes('terrified') || lowerText.includes('afraid')) {
+      return 'fearful';
+    }
+    if (lowerText.includes('seduct') || lowerText.includes('allur') || lowerText.includes('enticing')) {
+      return 'seductive';
+    }
+    
+    return 'neutral';
   }
 
   private assignVoiceToSpeaker(speakerName: string): CharacterVoiceType {
