@@ -6,6 +6,7 @@ import {
   VALIDATION_RULES,
   SpicyLevel
 } from '../types/contracts';
+import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 
 export class StoryService {
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
@@ -13,7 +14,10 @@ export class StoryService {
 
   constructor() {
     if (!this.grokApiKey) {
-      console.warn('⚠️  XAI_API_KEY not found in environment variables');
+      logWarn('XAI_API_KEY not found in environment variables', {
+        endpoint: 'StoryService',
+        method: 'constructor'
+      });
     }
   }
 
@@ -38,23 +42,40 @@ export class StoryService {
 
   async generateStory(input: StoryGenerationSeam['input']): Promise<ApiResponse<StoryGenerationSeam['output']>> {
     const startTime = Date.now();
+    const requestId = logger.generateRequestId();
+    
+    const context: LogContext = {
+      requestId,
+      endpoint: 'generateStory',
+      method: 'POST',
+      userInput: {
+        creature: input.creature,
+        themes: input.themes,
+        spicyLevel: input.spicyLevel,
+        wordCount: input.wordCount
+      }
+    };
+
+    logInfo('Story generation request received', context);
 
     try {
       // Validate input
       const validationError = this.validateStoryInput(input);
       if (validationError) {
+        logWarn('Story input validation failed', context, { validationError });
+        
         return {
           success: false,
           error: validationError,
           metadata: {
-            requestId: this.generateRequestId(),
+            requestId,
             processingTime: Date.now() - startTime
           }
         };
       }
 
       // Generate story using Grok AI
-      const rawStoryContent = await this.callGrokAI(input);
+      const rawStoryContent = await this.callGrokAI(input, context);
 
       // Process content: keep raw version for audio, clean version for display
       const displayContent = this.stripSpeakerTagsForDisplay(rawStoryContent);
@@ -74,17 +95,35 @@ export class StoryService {
         generatedAt: new Date()
       };
 
+      const duration = Date.now() - startTime;
+      logPerformance('Story generation', duration, {
+        ...context,
+        responseTime: duration
+      }, {
+        actualWordCount: output.actualWordCount,
+        hasCliffhanger: output.hasCliffhanger
+      });
+
       return {
         success: true,
         data: output,
         metadata: {
-          requestId: this.generateRequestId(),
+          requestId,
           processingTime: Date.now() - startTime
         }
       };
 
     } catch (error: any) {
-      console.error('Story generation error:', error);
+      const duration = Date.now() - startTime;
+      
+      logError('Story generation failed', error, {
+        ...context,
+        responseTime: duration,
+        statusCode: error.response?.status || 500
+      }, {
+        errorType: error.name,
+        isApiError: !!error.response
+      });
 
       return {
         success: false,
@@ -103,10 +142,24 @@ export class StoryService {
 
   async continueChapter(input: ChapterContinuationSeam['input']): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
     const startTime = Date.now();
+    const requestId = logger.generateRequestId();
+    
+    const context: LogContext = {
+      requestId,
+      endpoint: 'continueChapter',
+      method: 'POST',
+      userInput: {
+        currentChapterCount: input.currentChapterCount,
+        existingContentLength: input.existingContent?.length || 0,
+        maintainTone: input.maintainTone
+      }
+    };
+
+    logInfo('Chapter continuation request received', context);
 
     try {
       // Generate continuation using Grok AI
-      const chapterContent = await this.callGrokAIForContinuation(input);
+      const chapterContent = await this.callGrokAIForContinuation(input, context);
 
       // Create response
       const output: ChapterContinuationSeam['output'] = {
@@ -121,17 +174,32 @@ export class StoryService {
         appendedToStory: input.existingContent + '\n\n<hr>\n\n' + chapterContent
       };
 
+      const duration = Date.now() - startTime;
+      logPerformance('Chapter continuation', duration, {
+        ...context,
+        responseTime: duration
+      }, {
+        chapterNumber: output.chapterNumber,
+        wordCount: output.wordCount
+      });
+
       return {
         success: true,
         data: output,
         metadata: {
-          requestId: this.generateRequestId(),
-          processingTime: Date.now() - startTime
+          requestId,
+          processingTime: duration
         }
       };
 
     } catch (error: any) {
-      console.error('Chapter continuation error:', error);
+      const duration = Date.now() - startTime;
+      
+      logError('Chapter continuation failed', error, {
+        ...context,
+        responseTime: duration,
+        statusCode: error.response?.status || 500
+      });
 
       return {
         success: false,
@@ -141,8 +209,8 @@ export class StoryService {
           details: error.message
         },
         metadata: {
-          requestId: this.generateRequestId(),
-          processingTime: Date.now() - startTime
+          requestId,
+          processingTime: duration
         }
       };
     }
@@ -185,9 +253,8 @@ export class StoryService {
           },
           temperature: 0.8,
           max_tokens: this.calculateOptimalTokens(input.wordCount),
-          top_p: 0.95,
-          frequency_penalty: 0.3
-          // Note: Grok-4 doesn't support presence_penalty parameter
+          top_p: 0.95
+          // Note: Grok-4 doesn't support frequency_penalty or presence_penalty parameters
         },
         {
           headers: {
@@ -292,16 +359,23 @@ export class StoryService {
     });
   }
 
-  private async callGrokAI(input: StoryGenerationSeam['input']): Promise<string> {
+  private async callGrokAI(input: StoryGenerationSeam['input'], context?: LogContext): Promise<string> {
     if (!this.grokApiKey) {
+      logWarn('No API key found, using mock generation', context);
       // Fallback to mock generation if no API key
       return this.generateMockStory(input);
     }
 
     const systemPrompt = this.buildSystemPrompt(input);
     const userPrompt = this.buildUserPrompt(input);
+    const requestStartTime = Date.now();
 
     try {
+      logInfo('Calling Grok API', context, {
+        model: 'grok-4-fast-reasoning',
+        maxTokens: this.calculateOptimalTokens(input.wordCount)
+      });
+
       const response = await axios.post(this.grokApiUrl, {
         model: 'grok-4-fast-reasoning',
         messages: [
@@ -316,9 +390,8 @@ export class StoryService {
         ],
         max_tokens: this.calculateOptimalTokens(input.wordCount),
         temperature: 0.8,
-        top_p: 0.95,              // Focus on high-quality tokens
-        frequency_penalty: 0.3    // Reduce repetitive phrasing
-        // Note: Grok-4 doesn't support presence_penalty parameter
+        top_p: 0.95              // Focus on high-quality tokens
+        // Note: Grok-4 doesn't support frequency_penalty or presence_penalty parameters
       }, {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,
@@ -327,22 +400,40 @@ export class StoryService {
         timeout: 45000 // 45 second timeout
       });
 
+      const apiDuration = Date.now() - requestStartTime;
+      
+      logPerformance('Grok API call', apiDuration, {
+        ...context,
+        promptTokens: response.data.usage?.prompt_tokens,
+        completionTokens: response.data.usage?.completion_tokens
+      });
+
       return this.formatStoryContent(response.data.choices[0].message.content);
 
     } catch (error: any) {
-      console.error('Grok API error:', error.response?.data || error.message);
+      logApiError('Grok AI', error, context, {
+        model: 'grok-4-fast-reasoning',
+        wordCount: input.wordCount,
+        creature: input.creature,
+        spicyLevel: input.spicyLevel
+      });
+      
       throw new Error('AI service temporarily unavailable');
     }
   }
 
-  private async callGrokAIForContinuation(input: ChapterContinuationSeam['input']): Promise<string> {
+  private async callGrokAIForContinuation(input: ChapterContinuationSeam['input'], context?: LogContext): Promise<string> {
     if (!this.grokApiKey) {
+      logWarn('No API key found, using mock chapter generation', context);
       return this.generateMockChapter(input);
     }
 
     const prompt = this.buildContinuationPrompt(input);
+    const requestStartTime = Date.now();
 
     try {
+      logInfo('Calling Grok API for chapter continuation', context);
+
       const response = await axios.post(this.grokApiUrl, {
         model: 'grok-4-fast-reasoning',
         messages: [
@@ -357,9 +448,8 @@ export class StoryService {
         ],
         max_tokens: this.calculateOptimalTokens(500), // ~500 words per chapter
         temperature: 0.8,
-        top_p: 0.95,
-        frequency_penalty: 0.3
-        // Note: Grok-4 doesn't support presence_penalty parameter
+        top_p: 0.95
+        // Note: Grok-4 doesn't support frequency_penalty or presence_penalty parameters
       }, {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,
@@ -368,10 +458,22 @@ export class StoryService {
         timeout: 30000 // 30 second timeout for continuations
       });
 
+      const apiDuration = Date.now() - requestStartTime;
+      
+      logPerformance('Grok API continuation call', apiDuration, {
+        ...context,
+        promptTokens: response.data.usage?.prompt_tokens,
+        completionTokens: response.data.usage?.completion_tokens
+      });
+
       return this.formatChapterContent(response.data.choices[0].message.content);
 
     } catch (error: any) {
-      console.error('Grok API error:', error.response?.data || error.message);
+      logApiError('Grok AI (Continuation)', error, context, {
+        model: 'grok-4-fast-reasoning',
+        chapterNumber: input.currentChapterCount + 1
+      });
+      
       throw new Error('AI service temporarily unavailable');
     }
   }

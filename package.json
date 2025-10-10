@@ -4,10 +4,15 @@
     "install:all": "npm install --no-audit --no-fund && cd story-generator && npm install --no-audit --no-fund",
     "build": "cd story-generator && npm run build",
     "build:verify": "[ -f story-generator/dist/story-generator/browser/index.html ] || (echo 'Missing build output' && exit 1)",
-    "build:full": "npm run build && npm run build:verify"
+    "build:full": "npm run build && npm run build:verify",
+    "test": "npm run test:story && npm run test:audio",
+    "test:story": "tsx tests/story-service-improved.test.ts",
+    "test:audio": "tsx tests/audio-service-improved.test.ts",
+    "test:all": "tsx tests/story-service-improved.test.ts && tsx tests/audio-service-improved.test.ts"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.2"
   },
   "dependencies": {

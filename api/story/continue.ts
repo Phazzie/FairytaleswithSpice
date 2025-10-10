@@ -1,7 +1,10 @@
 import { StoryService } from '../lib/services/storyService';
 import { ChapterContinuationSeam } from '../lib/types/contracts';
+import { logInfo, logError, logWarn } from '../lib/utils/logger';
 
 export default async function handler(req: any, res: any) {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   // Set CORS headers
   const origin = process.env['FRONTEND_URL'] || 'http://localhost:4200';
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -20,6 +23,7 @@ export default async function handler(req: any, res: any) {
 
   // Only allow POST requests
   if (req.method !== 'POST') {
+    logWarn('Method not allowed', { requestId, endpoint: '/api/story/continue', method: req.method });
     return res.status(405).json({ 
       success: false,
       error: {
@@ -34,6 +38,12 @@ export default async function handler(req: any, res: any) {
 
     // Validate required fields
     if (!input.storyId || !input.existingContent || typeof input.currentChapterCount !== 'number') {
+      logWarn('Invalid input - missing required fields', {
+        requestId,
+        endpoint: '/api/story/continue',
+        method: 'POST'
+      }, { receivedFields: Object.keys(input) });
+      
       return res.status(400).json({
         success: false,
         error: {
@@ -43,13 +53,30 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    logInfo('Chapter continuation endpoint called', {
+      requestId,
+      endpoint: '/api/story/continue',
+      method: 'POST',
+      userInput: {
+        storyId: input.storyId,
+        currentChapterCount: input.currentChapterCount,
+        existingContentLength: input.existingContent.length
+      }
+    });
+
     const storyService = new StoryService();
     const result = await storyService.continueChapter(input);
     
     res.status(200).json(result);
 
   } catch (error: any) {
-    console.error('Chapter continuation serverless function error:', error);
+    logError('Chapter continuation endpoint error', error, {
+      requestId,
+      endpoint: '/api/story/continue',
+      method: 'POST',
+      statusCode: 500
+    });
+    
     res.status(500).json({
       success: false,
       error: {

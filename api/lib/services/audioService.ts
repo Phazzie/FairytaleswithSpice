@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
 import { getVoiceSettingsForEmotion, getAvailableEmotions, VoiceSettings } from './emotionMapping';
+import { logger, logError, logWarn, logApiError, logInfo, logPerformance, logDebug, LogContext } from '../utils/logger';
 
 /**
  * AudioService - Advanced Multi-Voice Text-to-Speech Processing
@@ -77,12 +78,31 @@ export class AudioService {
 
   constructor() {
     if (!this.elevenLabsApiKey) {
-      console.warn('⚠️  ELEVENLABS_API_KEY not found in environment variables');
+      logWarn('ELEVENLABS_API_KEY not found in environment variables', {
+        endpoint: 'AudioService',
+        method: 'constructor'
+      });
     }
   }
 
   async convertToAudio(input: AudioConversionSeam['input']): Promise<ApiResponse<AudioConversionSeam['output']>> {
     const startTime = Date.now();
+    const requestId = logger.generateRequestId();
+    
+    const context: LogContext = {
+      requestId,
+      endpoint: 'convertToAudio',
+      method: 'POST',
+      userInput: {
+        storyId: input.storyId,
+        voice: input.voice,
+        speed: input.speed,
+        format: input.format,
+        contentLength: input.content?.length || 0
+      }
+    };
+
+    logInfo('Audio conversion request received', context);
 
     try {
       // Clean HTML content for text-to-speech
@@ -91,20 +111,29 @@ export class AudioService {
       // Check if content has speaker tags for multi-voice processing
       const hasSpeakerTags = this.hasSpeakerTags(cleanText);
       
+      logDebug(`Content has speaker tags: ${hasSpeakerTags}`, context, {
+        textLength: cleanText.length,
+        processingMode: hasSpeakerTags ? 'multi-voice' : 'single-voice'
+      });
+      
       let audioData: Buffer;
       
       if (hasSpeakerTags) {
         // Use multi-voice processing
         try {
-          audioData = await this.generateMultiVoiceAudio(cleanText, input);
+          logInfo('Using multi-voice processing', context);
+          audioData = await this.generateMultiVoiceAudio(cleanText, input, context);
         } catch (multiVoiceError) {
-          console.warn('Multi-voice generation failed, falling back to single voice:', multiVoiceError);
+          logWarn('Multi-voice generation failed, falling back to single voice', context, {
+            error: multiVoiceError
+          });
           // Fallback to single voice
-          audioData = await this.callElevenLabsAPI(cleanText, input);
+          audioData = await this.callElevenLabsAPI(cleanText, input, undefined, undefined, context);
         }
       } else {
         // Use single voice processing
-        audioData = await this.callElevenLabsAPI(cleanText, input);
+        logInfo('Using single voice processing', context);
+        audioData = await this.callElevenLabsAPI(cleanText, input, undefined, undefined, context);
       }
 
       // Upload to storage and get URL (mock implementation)
@@ -129,17 +158,37 @@ export class AudioService {
         completedAt: new Date()
       };
 
+      const duration = Date.now() - startTime;
+      logPerformance('Audio conversion', duration, {
+        ...context,
+        responseTime: duration
+      }, {
+        fileSize: output.fileSize,
+        duration: output.duration,
+        format: output.format,
+        hasSpeakerTags
+      });
+
       return {
         success: true,
         data: output,
         metadata: {
-          requestId: this.generateRequestId(),
-          processingTime: Date.now() - startTime
+          requestId,
+          processingTime: duration
         }
       };
 
     } catch (error: any) {
-      console.error('Audio conversion error:', error);
+      const duration = Date.now() - startTime;
+      
+      logError('Audio conversion failed', error, {
+        ...context,
+        responseTime: duration,
+        statusCode: error.response?.status || 500
+      }, {
+        errorType: error.name,
+        isApiError: !!error.response
+      });
 
       let errorCode = 'CONVERSION_FAILED';
       let errorMessage = 'Failed to convert story to audio';
@@ -160,8 +209,8 @@ export class AudioService {
           details: error.message
         },
         metadata: {
-          requestId: this.generateRequestId(),
-          processingTime: Date.now() - startTime
+          requestId,
+          processingTime: duration
         }
       };
     }
@@ -171,9 +220,11 @@ export class AudioService {
     text: string, 
     input: AudioConversionSeam['input'], 
     voiceOverride?: CharacterVoiceType,
-    customSettings?: { stability: number; similarity_boost: number; style: number }
+    customSettings?: { stability: number; similarity_boost: number; style: number },
+    context?: LogContext
   ): Promise<Buffer> {
     if (!this.elevenLabsApiKey) {
+      logWarn('No API key found, using mock audio generation', context);
       // Return mock audio data if no API key
       return this.generateMockAudioData(text);
     }
@@ -183,10 +234,12 @@ export class AudioService {
     let voiceId = this.voiceIds[voiceKey];
 
     if (!voiceId) {
-      console.warn(`Voice ID not found for ${voiceKey}, using default female voice`);
+      logWarn(`Voice ID not found for ${voiceKey}, using default female voice`, context);
       voiceId = this.voiceIds['female'];
     }
 
+    const requestStartTime = Date.now();
+    
     try {
       // Use custom settings if provided, otherwise use defaults
       const voiceSettings = customSettings ? {
@@ -198,6 +251,13 @@ export class AudioService {
         style: 0.5,
         use_speaker_boost: true
       };
+      
+      logDebug('Calling ElevenLabs API', context, {
+        voiceKey,
+        voiceId,
+        textLength: text.length,
+        settings: voiceSettings
+      });
       
       const response = await axios.post(
         `${this.elevenLabsApiUrl}/text-to-speech/${voiceId}`,
@@ -217,10 +277,22 @@ export class AudioService {
         }
       );
 
+      const apiDuration = Date.now() - requestStartTime;
+      
+      logPerformance('ElevenLabs API call', apiDuration, context, {
+        voiceKey,
+        textLength: text.length,
+        audioSize: response.data.byteLength
+      });
+      
       return Buffer.from(response.data);
 
     } catch (error: any) {
-      console.error('ElevenLabs API error:', error.response?.data || error.message);
+      logApiError('ElevenLabs', error, context, {
+        voiceKey,
+        textLength: text.length,
+        model: 'eleven_turbo_v2_5'
+      });
       throw error;
     }
   }
@@ -240,7 +312,11 @@ export class AudioService {
     
     // Log file size for debugging
     const fileSizeMB = (audioData.length / 1024 / 1024).toFixed(2);
-    console.log(`✅ Audio generated: ${fileSizeMB} MB as ${format} data URL`);
+    logDebug(`Audio generated: ${fileSizeMB} MB as ${format} data URL`, undefined, {
+      fileSizeMB,
+      format,
+      fileSize: audioData.length
+    });
     
     // Future: For production scaling, could switch to cloud storage here
     // if (process.env.AUDIO_STORAGE === 'cloud') {
@@ -257,8 +333,9 @@ export class AudioService {
     return /\[([^\]]+)\]:\s*/.test(text);
   }
 
-  private async generateMultiVoiceAudio(text: string, input: AudioConversionSeam['input']): Promise<Buffer> {
-    const audioChunks = await this.parseAndAssignVoices(text, input);
+  private async generateMultiVoiceAudio(text: string, input: AudioConversionSeam['input'], context?: LogContext): Promise<Buffer> {
+    logDebug('Starting multi-voice audio generation', context);
+    const audioChunks = await this.parseAndAssignVoices(text, input, context);
     
     if (audioChunks.length === 0) {
       throw new Error('No audio chunks generated from multi-voice processing');
@@ -272,7 +349,7 @@ export class AudioService {
     return this.mergeAudioChunks(audioChunks);
   }
 
-  private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input']): Promise<Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer, settings?: any}>> {
+  private async parseAndAssignVoices(text: string, input: AudioConversionSeam['input'], context?: LogContext): Promise<Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer, settings?: any}>> {
     const chunks: Array<{speaker: string, text: string, voice: CharacterVoiceType, audioData: Buffer, settings?: any}> = [];
     
     // Extract voice metadata from story content
@@ -280,10 +357,16 @@ export class AudioService {
     
     // Log extracted voice metadata for debugging
     if (voiceMetadata.size > 0) {
-      console.log(`✅ Extracted voice metadata for ${voiceMetadata.size} characters:`);
+      const charactersInfo: Record<string, any> = {};
       for (const [name, data] of voiceMetadata) {
-        console.log(`   ${name}: ${data.description} (${data.characterType} ${data.gender})`);
+        charactersInfo[name] = {
+          description: data.description,
+          type: `${data.characterType} ${data.gender}`
+        };
       }
+      logInfo(`Extracted voice metadata for ${voiceMetadata.size} characters`, context, {
+        characters: charactersInfo
+      });
     }
     
     // Split text by speaker tags while preserving the tags
@@ -313,7 +396,11 @@ export class AudioService {
           const voiceKey = `${metadata.characterType}_${metadata.gender}` as CharacterVoiceType;
           currentVoice = this.voiceIds[voiceKey] ? voiceKey : this.assignVoiceToSpeaker(currentSpeaker);
           currentSettings = metadata.settings;
-          console.log(`   🎙️  ${currentSpeaker}: Using ${currentVoice} with optimized settings`);
+          logDebug(`Character voice assignment: ${currentSpeaker}`, context, {
+            voice: currentVoice,
+            hasOptimizedSettings: true,
+            metadata
+          });
         } else {
           // Fallback to heuristic assignment
           currentVoice = this.assignVoiceToSpeaker(currentSpeaker);
@@ -322,7 +409,7 @@ export class AudioService {
       } else if (segment.length > 0) {
         // This is dialogue or narrative text
         try {
-          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice, currentSettings);
+          const audioData = await this.callElevenLabsAPI(segment, input, currentVoice, currentSettings, context);
           chunks.push({
             speaker: currentSpeaker,
             text: segment,
@@ -331,7 +418,7 @@ export class AudioService {
             settings: currentSettings
           });
         } catch (error) {
-          console.warn(`Failed to generate audio for ${currentSpeaker}: ${error}`);
+          logWarn(`Failed to generate audio for speaker: ${currentSpeaker}`, context, { error });
           // Continue with other chunks rather than failing completely
         }
       }

@@ -1,7 +1,10 @@
 import { AudioService } from '../lib/services/audioService';
 import { AudioConversionSeam } from '../lib/types/contracts';
+import { logInfo, logError, logWarn } from '../lib/utils/logger';
 
 export default async function handler(req: any, res: any) {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   // Set CORS headers
   const origin = process.env['FRONTEND_URL'] || 'http://localhost:4200';
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -20,6 +23,7 @@ export default async function handler(req: any, res: any) {
 
   // Only allow POST requests
   if (req.method !== 'POST') {
+    logWarn('Method not allowed', { requestId, endpoint: '/api/audio/convert', method: req.method });
     return res.status(405).json({ 
       success: false,
       error: {
@@ -34,6 +38,12 @@ export default async function handler(req: any, res: any) {
 
     // Validate required fields
     if (!input.storyId || !input.content) {
+      logWarn('Invalid input - missing required fields', {
+        requestId,
+        endpoint: '/api/audio/convert',
+        method: 'POST'
+      }, { receivedFields: Object.keys(input) });
+      
       return res.status(400).json({
         success: false,
         error: {
@@ -43,13 +53,31 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    logInfo('Audio conversion endpoint called', {
+      requestId,
+      endpoint: '/api/audio/convert',
+      method: 'POST',
+      userInput: {
+        storyId: input.storyId,
+        voice: input.voice,
+        format: input.format,
+        contentLength: input.content.length
+      }
+    });
+
     const audioService = new AudioService();
     const result = await audioService.convertToAudio(input);
     
     res.status(200).json(result);
 
   } catch (error: any) {
-    console.error('Audio conversion serverless function error:', error);
+    logError('Audio conversion endpoint error', error, {
+      requestId,
+      endpoint: '/api/audio/convert',
+      method: 'POST',
+      statusCode: 500
+    });
+    
     res.status(500).json({
       success: false,
       error: {
