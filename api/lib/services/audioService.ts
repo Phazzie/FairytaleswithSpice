@@ -241,8 +241,8 @@ export class AudioService {
 
   private async uploadAudioToStorage(audioData: Buffer, input: AudioConversionSeam['input']): Promise<string> {
     // Validate audio buffer
-    const MAX_AUDIO_SIZE_MB = 10; // 10MB limit
-    const fileSizeMB = audioData.length / 1024 / 1024;
+    const MAX_AUDIO_SIZE_MB = FILE_SIZE.MAX_AUDIO_SIZE_MB;
+    const fileSizeMB = audioData.length / FILE_SIZE.BYTES_PER_MB;
     
     // Validate size
     if (fileSizeMB > MAX_AUDIO_SIZE_MB) {
