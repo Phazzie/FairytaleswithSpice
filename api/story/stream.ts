@@ -46,13 +46,15 @@ export default async function handler(req: any, res: any) {
       } as ApiResponse<never>);
     }
 
-    // Set up Server-Sent Events
+    // Set up Server-Sent Events with proper CORS
+    const origin = process.env['FRONTEND_URL'] || 'http://localhost:4200';
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Cache-Control'
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Headers': 'Cache-Control, X-API-Key, Authorization'
     });
 
     const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

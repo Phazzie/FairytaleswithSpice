@@ -8,6 +8,12 @@ export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
 export type WordCount = 700 | 900 | 1200;
 export type VoiceType = 'female' | 'male' | 'neutral';
+export type CharacterVoiceType = 
+  | 'vampire_male' | 'vampire_female' 
+  | 'werewolf_male' | 'werewolf_female'
+  | 'fairy_male' | 'fairy_female'
+  | 'human_male' | 'human_female'
+  | 'narrator';
 export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';

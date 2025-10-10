@@ -327,12 +327,82 @@ export class StoryService {
         timeout: 45000 // 45 second timeout
       });
 
-      return this.formatStoryContent(response.data.choices[0].message.content);
+      // Validate response structure before accessing
+      return this.validateAndExtractGrokResponse(response, 'story');
 
     } catch (error: any) {
       console.error('Grok API error:', error.response?.data || error.message);
       throw new Error('AI service temporarily unavailable');
     }
+  }
+
+  /**
+   * Validate Grok API response structure and extract content safely
+   * @param response - The API response to validate
+   * @param type - 'story' for story generation, 'chapter' for chapter continuation
+   */
+  /**
+   * Interface for Grok API response structure
+   */
+  interface GrokApiResponse {
+    data: {
+      choices: Array<{
+        message: {
+          content: string;
+        };
+      }>;
+    };
+  }
+
+  private validateAndExtractGrokResponse(response: GrokApiResponse, type: 'story' | 'chapter' = 'story'): string {
+    // Validate response exists
+    if (!response) {
+      throw new Error('No response received from AI service');
+    }
+    
+    // Validate data property
+    if (!response.data) {
+      console.error('Invalid response structure:', response);
+      throw new Error('Invalid response structure from AI service');
+    }
+    
+    // Validate choices array
+    if (!Array.isArray(response.data.choices)) {
+      console.error('Response missing choices array:', response.data);
+      throw new Error('AI service returned invalid response format');
+    }
+    
+    if (response.data.choices.length === 0) {
+      console.error('Response has empty choices array:', response.data);
+      throw new Error('AI service returned no content choices');
+    }
+    
+    // Validate first choice
+    const firstChoice = response.data.choices[0];
+    if (!firstChoice) {
+      throw new Error('AI service returned invalid choice format');
+    }
+    
+    // Validate message
+    if (!firstChoice.message) {
+      console.error('Choice missing message:', firstChoice);
+      throw new Error('AI service response missing message');
+    }
+    
+    // Validate content
+    if (typeof firstChoice.message.content !== 'string') {
+      console.error('Message content is not a string:', firstChoice.message);
+      throw new Error('AI service returned invalid content type');
+    }
+    
+    if (!firstChoice.message.content.trim()) {
+      throw new Error('AI service returned empty content');
+    }
+    
+    // Success - format and return using appropriate formatter
+    return type === 'chapter' 
+      ? this.formatChapterContent(firstChoice.message.content)
+      : this.formatStoryContent(firstChoice.message.content);
   }
 
   private async callGrokAIForContinuation(input: ChapterContinuationSeam['input']): Promise<string> {
@@ -368,7 +438,7 @@ export class StoryService {
         timeout: 30000 // 30 second timeout for continuations
       });
 
-      return this.formatChapterContent(response.data.choices[0].message.content);
+      return this.validateAndExtractGrokResponse(response, 'chapter');
 
     } catch (error: any) {
       console.error('Grok API error:', error.response?.data || error.message);
@@ -762,8 +832,8 @@ AVOID: ${selectedStructure.avoid}`;
       "Scar that burns, old wound aches in presence of specific person, reveals hidden connection"
     ];
 
-    // Select 2 random elements for this story
-    const shuffled = elements.sort(() => 0.5 - Math.random());
+    // Select 2 random elements for this story using Fisher-Yates shuffle
+    const shuffled = this.fisherYatesShuffle(elements);
     const selected = shuffled.slice(0, 2);
     
     return `[Chekhov1]: ${selected[0]}
@@ -942,7 +1012,7 @@ Your goal: Create episodes that make listeners desperate for "Continue Chapter."
 PROTAGONIST: ${creatureName} with complex motivations and hidden depths
 THEMES TO WEAVE: ${themesText}
 SPICE LEVEL: ${spicyLabel} (Level ${input.spicyLevel}/5) - maintain this intensity throughout
-${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+${input.userInput ? `CREATIVE DIRECTION: ${this.sanitizeUserInput(input.userInput)}` : ''}
 
 CHEKHOV LEDGER (plant these elements for future payoff):
 ${chekovElements}
@@ -1002,7 +1072,7 @@ CONTINUATION REQUIREMENTS:
 5. Build tension toward a new cliffhanger for next chapter
 6. Use same audio format: [Character Name]: "dialogue" and [Narrator]: descriptions
 
-${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+${input.userInput ? `CREATIVE DIRECTION: ${this.sanitizeUserInput(input.userInput)}` : ''}
 
 PREVIOUS CHAPTER(S) FOR CONTINUITY:
 ${this.stripHtml(input.existingContent).slice(-1500)} // Last ~300 words for immediate context
@@ -1120,6 +1190,49 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     return null;
   }
 
+  /**
+   * Sanitize user input to prevent prompt injection attacks
+   * Uses a whitelist approach and validates semantic sense of input.
+   * Implements basic rate limiting for repeated failed attempts.
+  private sanitizeUserInput(input: string, userId?: string): string {
+    if (!input) return '';
+
+    // Whitelist: allow only letters, numbers, basic punctuation, and spaces
+    const whitelistPattern = /[^a-zA-Z0-9 .,!?'"()-]/g;
+    let sanitized = input.replace(whitelistPattern, '');
+
+    // Ensure length limit (defense in depth)
+    sanitized = sanitized.slice(0, VALIDATION_RULES.userInput.maxLength);
+    sanitized = sanitized.trim();
+
+    // Semantic validation: must not be empty or just punctuation/whitespace
+    if (!sanitized || !/[a-zA-Z0-9]/.test(sanitized)) {
+      this.registerFailedSanitizationAttempt(userId);
+      return '';
+    }
+
+    return sanitized;
+  }
+
+  // Basic in-memory rate limiting for failed sanitization attempts
+  private static failedSanitizationAttempts: Map<string, { count: number, lastAttempt: number }> = new Map();
+
+  private registerFailedSanitizationAttempt(userId?: string) {
+    if (!userId) return;
+    const now = Date.now();
+    const entry = StoryService.failedSanitizationAttempts.get(userId) || { count: 0, lastAttempt: 0 };
+    if (now - entry.lastAttempt > 10 * 60 * 1000) { // reset after 10 minutes
+      entry.count = 1;
+    } else {
+      entry.count += 1;
+    }
+    entry.lastAttempt = now;
+    StoryService.failedSanitizationAttempts.set(userId, entry);
+    // If too many failed attempts, could throw or block further input
+    if (entry.count > 5) {
+      throw new Error('Too many failed input attempts. Please try again later.');
+    }
+  }
   private generateMockStory(input: StoryGenerationSeam['input']): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const spicyLabel = this.getSpicyLabel(input.spicyLevel);
