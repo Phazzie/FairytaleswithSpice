@@ -1188,45 +1188,47 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
 
   /**
    * Sanitize user input to prevent prompt injection attacks
-   * Removes dangerous patterns that could manipulate AI behavior
-   */
-  private sanitizeUserInput(input: string): string {
+   * Uses a whitelist approach and validates semantic sense of input.
+   * Implements basic rate limiting for repeated failed attempts.
+  private sanitizeUserInput(input: string, userId?: string): string {
     if (!input) return '';
-    
-    // Remove potential prompt injection patterns
-    const dangerousPatterns = [
-      /ignore\s+all\s+previous\s+instructions/gi,
-      /system\s+override/gi,
-      /disregard\s+all/gi,
-      /new\s+instruction/gi,
-      /###\s*\w+:/gi,  // Markdown headers that could be interpreted as instructions
-      /<\/?system>/gi,
-      /<\/?user>/gi,
-      /<\/?assistant>/gi,
-      /\[INST\]/gi,
-      /\[\/INST\]/gi,
-      /{{.*?}}/g,  // Template injection
-      /\$\{.*?\}/g  // JavaScript template literals
-    ];
-    
-    let sanitized = input;
-    dangerousPatterns.forEach(pattern => {
-      sanitized = sanitized.replace(pattern, '');
-    });
-    
-    // Remove HTML/script tags
-    sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-    sanitized = sanitized.replace(/<[^>]+>/g, '');
-    
-    // Limit special characters that could be used for injection
-    sanitized = sanitized.replace(/[<>{}[\]]/g, '');
-    
+
+    // Whitelist: allow only letters, numbers, basic punctuation, and spaces
+    const whitelistPattern = /[^a-zA-Z0-9 .,!?'"()-]/g;
+    let sanitized = input.replace(whitelistPattern, '');
+
     // Ensure length limit (defense in depth)
     sanitized = sanitized.slice(0, VALIDATION_RULES.userInput.maxLength);
-    
-    return sanitized.trim();
+    sanitized = sanitized.trim();
+
+    // Semantic validation: must not be empty or just punctuation/whitespace
+    if (!sanitized || !/[a-zA-Z0-9]/.test(sanitized)) {
+      this.registerFailedSanitizationAttempt(userId);
+      return '';
+    }
+
+    return sanitized;
   }
 
+  // Basic in-memory rate limiting for failed sanitization attempts
+  private static failedSanitizationAttempts: Map<string, { count: number, lastAttempt: number }> = new Map();
+
+  private registerFailedSanitizationAttempt(userId?: string) {
+    if (!userId) return;
+    const now = Date.now();
+    const entry = StoryService.failedSanitizationAttempts.get(userId) || { count: 0, lastAttempt: 0 };
+    if (now - entry.lastAttempt > 10 * 60 * 1000) { // reset after 10 minutes
+      entry.count = 1;
+    } else {
+      entry.count += 1;
+    }
+    entry.lastAttempt = now;
+    StoryService.failedSanitizationAttempts.set(userId, entry);
+    // If too many failed attempts, could throw or block further input
+    if (entry.count > 5) {
+      throw new Error('Too many failed input attempts. Please try again later.');
+    }
+  }
   private generateMockStory(input: StoryGenerationSeam['input']): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const spicyLabel = this.getSpicyLabel(input.spicyLevel);
