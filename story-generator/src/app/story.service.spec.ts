@@ -154,7 +154,7 @@ describe('StoryService', () => {
       });
 
       const req = httpMock.expectOne('/api/story/generate');
-      req.error(new ProgressEvent('error'));
+      req.error(new ErrorEvent('error', { message: 'Client error occurred' }));
 
       expect(errorLoggingService.logError).toHaveBeenCalled();
     });
@@ -347,7 +347,7 @@ describe('StoryService', () => {
         next: () => fail('Should have failed'),
         error: (error) => {
           expect(error.success).toBe(false);
-          expect(error.error.code).toBe('HTTP_ERROR');
+          expect(error.error.code).toBe('ENDPOINT_NOT_FOUND');
         }
       });
 
@@ -389,7 +389,7 @@ describe('StoryService', () => {
         next: () => fail('Should have failed'),
         error: (error) => {
           expect(error.success).toBe(false);
-          expect(error.error.code).toBe('CLIENT_ERROR');
+          expect(error.error.code).toBe('NETWORK_ERROR');
         }
       });
 

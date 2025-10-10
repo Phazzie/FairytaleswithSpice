@@ -232,7 +232,7 @@ describe('App', () => {
       expect(storyService.generateNextChapter).toHaveBeenCalledWith({
         storyId: 'story_123',
         currentChapterCount: 1,
-        existingContent: '<h3>Chapter 1</h3><p>Existing content...</p>',
+        existingContent: '<p>Existing content...</p>',
         userInput: '',
         maintainTone: true
       });
@@ -264,7 +264,16 @@ describe('App', () => {
   describe('convertToAudio', () => {
     beforeEach(() => {
       component.currentStoryId = 'story_123';
-      component.currentStory = '<h3>Chapter 1</h3><p>Story content...</p>';
+      // Set up chapters array for currentStory getter to work
+      component.chapters = [{
+        chapterNumber: 1,
+        chapterId: 'chapter_1',
+        title: 'Chapter 1',
+        content: '<h3>Chapter 1</h3><p>Story content...</p>',
+        wordCount: 100,
+        generatedAt: new Date(),
+        hasAudio: false
+      }];
     });
 
     it('should convert to audio successfully', (done) => {
@@ -316,8 +325,17 @@ describe('App', () => {
   describe('saveStory', () => {
     beforeEach(() => {
       component.currentStoryId = 'story_123';
-      component.currentStory = '<h3>Chapter 1</h3><p>Story content...</p>';
       component.currentStoryTitle = 'Test Story';
+      // Set up chapters array for currentStory getter to work
+      component.chapters = [{
+        chapterNumber: 1,
+        chapterId: 'chapter_1',
+        title: 'Chapter 1',
+        content: '<h3>Chapter 1</h3><p>Story content...</p>',
+        wordCount: 100,
+        generatedAt: new Date(),
+        hasAudio: false
+      }];
     });
 
     it('should save story successfully', (done) => {
