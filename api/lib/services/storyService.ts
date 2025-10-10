@@ -328,7 +328,7 @@ export class StoryService {
       });
 
       // Validate response structure before accessing
-      return this.validateAndExtractGrokResponse(response);
+      return this.validateAndExtractGrokResponse(response, 'story');
 
     } catch (error: any) {
       console.error('Grok API error:', error.response?.data || error.message);
@@ -338,6 +338,8 @@ export class StoryService {
 
   /**
    * Validate Grok API response structure and extract content safely
+   * @param response - The API response to validate
+   * @param type - 'story' for story generation, 'chapter' for chapter continuation
    */
   /**
    * Interface for Grok API response structure
@@ -352,7 +354,7 @@ export class StoryService {
     };
   }
 
-  private validateAndExtractGrokResponse(response: GrokApiResponse): string {
+  private validateAndExtractGrokResponse(response: GrokApiResponse, type: 'story' | 'chapter' = 'story'): string {
     // Validate response exists
     if (!response) {
       throw new Error('No response received from AI service');
@@ -397,8 +399,10 @@ export class StoryService {
       throw new Error('AI service returned empty content');
     }
     
-    // Success - format and return
-    return this.formatStoryContent(firstChoice.message.content);
+    // Success - format and return using appropriate formatter
+    return type === 'chapter' 
+      ? this.formatChapterContent(firstChoice.message.content)
+      : this.formatStoryContent(firstChoice.message.content);
   }
 
   private async callGrokAIForContinuation(input: ChapterContinuationSeam['input']): Promise<string> {
@@ -434,7 +438,7 @@ export class StoryService {
         timeout: 30000 // 30 second timeout for continuations
       });
 
-      return this.validateAndExtractGrokResponse(response);
+      return this.validateAndExtractGrokResponse(response, 'chapter');
 
     } catch (error: any) {
       console.error('Grok API error:', error.response?.data || error.message);
