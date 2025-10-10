@@ -43,6 +43,20 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // Validate content length (max 500KB)
+    const MAX_CONTENT_LENGTH = 500000; // 500KB
+    if (input.content.length > MAX_CONTENT_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'CONTENT_TOO_LARGE',
+          message: `Content exceeds maximum size of ${MAX_CONTENT_LENGTH / 1000}KB`,
+          contentLength: input.content.length,
+          maxLength: MAX_CONTENT_LENGTH
+        }
+      });
+    }
+
     const exportService = new ExportService();
     const result = await exportService.saveAndExport(input);
     

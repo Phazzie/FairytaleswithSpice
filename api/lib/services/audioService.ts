@@ -226,11 +226,36 @@ export class AudioService {
   }
 
   private async uploadAudioToStorage(audioData: Buffer, input: AudioConversionSeam['input']): Promise<string> {
+    // Validate audio buffer
+    const MAX_AUDIO_SIZE_MB = 10; // 10MB limit
+    const fileSizeMB = audioData.length / 1024 / 1024;
+    
+    // Validate size
+    if (fileSizeMB > MAX_AUDIO_SIZE_MB) {
+      throw new Error(`Audio file too large: ${fileSizeMB.toFixed(2)}MB (max ${MAX_AUDIO_SIZE_MB}MB)`);
+    }
+    
+    // Validate buffer is not empty
+    if (audioData.length === 0) {
+      throw new Error('Audio generation produced empty buffer');
+    }
+    
+    // Validate audio format signature
+    const format = input.format || 'mp3';
+    if (format === 'mp3') {
+      // MP3 starts with ID3 tag (0x49 0x44 0x33) or sync byte (0xFF)
+      const isValidMP3 = audioData[0] === 0xFF || 
+                         (audioData[0] === 0x49 && audioData[1] === 0x44 && audioData[2] === 0x33);
+      
+      if (!isValidMP3) {
+        throw new Error('Generated audio does not appear to be valid MP3 format');
+      }
+    }
+    
     // Convert audio buffer to base64 data URL for immediate browser playback
     // This eliminates need for external storage in production
     // Format: data:audio/mp3;base64,{base64EncodedData}
     
-    const format = input.format || 'mp3';
     const mimeType = format === 'mp3' ? 'audio/mpeg' : 
                     format === 'wav' ? 'audio/wav' : 
                     format === 'aac' ? 'audio/aac' : 'audio/mpeg';
@@ -239,8 +264,12 @@ export class AudioService {
     const dataUrl = `data:${mimeType};base64,${base64Audio}`;
     
     // Log file size for debugging
-    const fileSizeMB = (audioData.length / 1024 / 1024).toFixed(2);
-    console.log(`✅ Audio generated: ${fileSizeMB} MB as ${format} data URL`);
+    console.log(`✅ Audio generated: ${fileSizeMB.toFixed(2)} MB as ${format} data URL`);
+    
+    // Warn about large files
+    if (fileSizeMB > 2) {
+      console.warn(`⚠️  Large audio file (${fileSizeMB.toFixed(2)}MB). Consider using cloud storage for production scaling.`);
+    }
     
     // Future: For production scaling, could switch to cloud storage here
     // if (process.env.AUDIO_STORAGE === 'cloud') {

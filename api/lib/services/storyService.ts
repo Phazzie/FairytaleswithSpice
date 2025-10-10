@@ -327,12 +327,65 @@ export class StoryService {
         timeout: 45000 // 45 second timeout
       });
 
-      return this.formatStoryContent(response.data.choices[0].message.content);
+      // Validate response structure before accessing
+      return this.validateAndExtractGrokResponse(response);
 
     } catch (error: any) {
       console.error('Grok API error:', error.response?.data || error.message);
       throw new Error('AI service temporarily unavailable');
     }
+  }
+
+  /**
+   * Validate Grok API response structure and extract content safely
+   */
+  private validateAndExtractGrokResponse(response: any): string {
+    // Validate response exists
+    if (!response) {
+      throw new Error('No response received from AI service');
+    }
+    
+    // Validate data property
+    if (!response.data) {
+      console.error('Invalid response structure:', response);
+      throw new Error('Invalid response structure from AI service');
+    }
+    
+    // Validate choices array
+    if (!Array.isArray(response.data.choices)) {
+      console.error('Response missing choices array:', response.data);
+      throw new Error('AI service returned invalid response format');
+    }
+    
+    if (response.data.choices.length === 0) {
+      console.error('Response has empty choices array:', response.data);
+      throw new Error('AI service returned no content choices');
+    }
+    
+    // Validate first choice
+    const firstChoice = response.data.choices[0];
+    if (!firstChoice) {
+      throw new Error('AI service returned invalid choice format');
+    }
+    
+    // Validate message
+    if (!firstChoice.message) {
+      console.error('Choice missing message:', firstChoice);
+      throw new Error('AI service response missing message');
+    }
+    
+    // Validate content
+    if (typeof firstChoice.message.content !== 'string') {
+      console.error('Message content is not a string:', firstChoice.message);
+      throw new Error('AI service returned invalid content type');
+    }
+    
+    if (!firstChoice.message.content.trim()) {
+      throw new Error('AI service returned empty content');
+    }
+    
+    // Success - format and return
+    return this.formatStoryContent(firstChoice.message.content);
   }
 
   private async callGrokAIForContinuation(input: ChapterContinuationSeam['input']): Promise<string> {
@@ -368,7 +421,7 @@ export class StoryService {
         timeout: 30000 // 30 second timeout for continuations
       });
 
-      return this.formatChapterContent(response.data.choices[0].message.content);
+      return this.validateAndExtractGrokResponse(response);
 
     } catch (error: any) {
       console.error('Grok API error:', error.response?.data || error.message);
@@ -762,8 +815,8 @@ AVOID: ${selectedStructure.avoid}`;
       "Scar that burns, old wound aches in presence of specific person, reveals hidden connection"
     ];
 
-    // Select 2 random elements for this story
-    const shuffled = elements.sort(() => 0.5 - Math.random());
+    // Select 2 random elements for this story using Fisher-Yates shuffle
+    const shuffled = this.fisherYatesShuffle(elements);
     const selected = shuffled.slice(0, 2);
     
     return `[Chekhov1]: ${selected[0]}
@@ -942,7 +995,7 @@ Your goal: Create episodes that make listeners desperate for "Continue Chapter."
 PROTAGONIST: ${creatureName} with complex motivations and hidden depths
 THEMES TO WEAVE: ${themesText}
 SPICE LEVEL: ${spicyLabel} (Level ${input.spicyLevel}/5) - maintain this intensity throughout
-${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+${input.userInput ? `CREATIVE DIRECTION: ${this.sanitizeUserInput(input.userInput)}` : ''}
 
 CHEKHOV LEDGER (plant these elements for future payoff):
 ${chekovElements}
@@ -1002,7 +1055,7 @@ CONTINUATION REQUIREMENTS:
 5. Build tension toward a new cliffhanger for next chapter
 6. Use same audio format: [Character Name]: "dialogue" and [Narrator]: descriptions
 
-${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+${input.userInput ? `CREATIVE DIRECTION: ${this.sanitizeUserInput(input.userInput)}` : ''}
 
 PREVIOUS CHAPTER(S) FOR CONTINUITY:
 ${this.stripHtml(input.existingContent).slice(-1500)} // Last ~300 words for immediate context
@@ -1118,6 +1171,47 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     }
 
     return null;
+  }
+
+  /**
+   * Sanitize user input to prevent prompt injection attacks
+   * Removes dangerous patterns that could manipulate AI behavior
+   */
+  private sanitizeUserInput(input: string): string {
+    if (!input) return '';
+    
+    // Remove potential prompt injection patterns
+    const dangerousPatterns = [
+      /ignore\s+all\s+previous\s+instructions/gi,
+      /system\s+override/gi,
+      /disregard\s+all/gi,
+      /new\s+instruction/gi,
+      /###\s*\w+:/gi,  // Markdown headers that could be interpreted as instructions
+      /<\/?system>/gi,
+      /<\/?user>/gi,
+      /<\/?assistant>/gi,
+      /\[INST\]/gi,
+      /\[\/INST\]/gi,
+      /{{.*?}}/g,  // Template injection
+      /\$\{.*?\}/g  // JavaScript template literals
+    ];
+    
+    let sanitized = input;
+    dangerousPatterns.forEach(pattern => {
+      sanitized = sanitized.replace(pattern, '');
+    });
+    
+    // Remove HTML/script tags
+    sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+    sanitized = sanitized.replace(/<[^>]+>/g, '');
+    
+    // Limit special characters that could be used for injection
+    sanitized = sanitized.replace(/[<>{}[\]]/g, '');
+    
+    // Ensure length limit (defense in depth)
+    sanitized = sanitized.slice(0, VALIDATION_RULES.userInput.maxLength);
+    
+    return sanitized.trim();
   }
 
   private generateMockStory(input: StoryGenerationSeam['input']): string {
