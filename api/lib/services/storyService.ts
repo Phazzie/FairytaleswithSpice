@@ -339,7 +339,20 @@ export class StoryService {
   /**
    * Validate Grok API response structure and extract content safely
    */
-  private validateAndExtractGrokResponse(response: any): string {
+  /**
+   * Interface for Grok API response structure
+   */
+  interface GrokApiResponse {
+    data: {
+      choices: Array<{
+        message: {
+          content: string;
+        };
+      }>;
+    };
+  }
+
+  private validateAndExtractGrokResponse(response: GrokApiResponse): string {
     // Validate response exists
     if (!response) {
       throw new Error('No response received from AI service');
