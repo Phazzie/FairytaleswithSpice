@@ -281,7 +281,7 @@ export class AudioService {
     console.log(`✅ Audio generated: ${fileSizeMB.toFixed(2)} MB as ${format} data URL`);
     
     // Warn about large files
-    if (fileSizeMB > 2) {
+    if (fileSizeMB > FILE_SIZE.DATA_URL_WARNING_THRESHOLD_MB) {
       console.warn(`⚠️  Large audio file (${fileSizeMB.toFixed(2)}MB). Consider using cloud storage for production scaling.`);
     }
     
