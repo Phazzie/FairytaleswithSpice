@@ -7,6 +7,19 @@ import {
   SpicyLevel
 } from '../types/contracts';
 
+/**
+ * Interface for Grok API response structure
+ */
+interface GrokApiResponse {
+  data: {
+    choices: Array<{
+      message: {
+        content: string;
+      };
+    }>;
+  };
+}
+
 export class StoryService {
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
   private grokApiKey = process.env['XAI_API_KEY'];
@@ -341,19 +354,6 @@ export class StoryService {
    * @param response - The API response to validate
    * @param type - 'story' for story generation, 'chapter' for chapter continuation
    */
-  /**
-   * Interface for Grok API response structure
-   */
-  interface GrokApiResponse {
-    data: {
-      choices: Array<{
-        message: {
-          content: string;
-        };
-      }>;
-    };
-  }
-
   private validateAndExtractGrokResponse(response: GrokApiResponse, type: 'story' | 'chapter' = 'story'): string {
     // Validate response exists
     if (!response) {
@@ -652,22 +652,13 @@ export class StoryService {
       otherStyles = [...vampireStyles, ...werewolfStyles];
     }
 
-    // Fisher-Yates shuffle for uniform distribution
-    const fisherYatesShuffle = <T>(array: T[]): T[] => {
-      const shuffled = [...array];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      return shuffled;
-    };
 
     // Select 2 from matching creature
-    const shuffledPrimary = fisherYatesShuffle(primaryStyles);
+    const shuffledPrimary = this.fisherYatesShuffle(primaryStyles);
     const selectedPrimary = shuffledPrimary.slice(0, 2);
 
     // Select 1 from different creatures  
-    const shuffledOther = fisherYatesShuffle(otherStyles);
+    const shuffledOther = this.fisherYatesShuffle(otherStyles);
     const selectedOther = shuffledOther.slice(0, 1);
 
     return [...selectedPrimary, ...selectedOther];
@@ -1167,6 +1158,26 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
       };
     }
 
+    if (!input.themes || !Array.isArray(input.themes)) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'Themes must be an array',
+        field: 'themes',
+        providedValue: input.themes,
+        expectedType: 'ThemeType[]'
+      };
+    }
+
+    if (input.themes.length === 0) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'At least one theme is required',
+        field: 'themes',
+        providedValue: input.themes,
+        expectedType: 'ThemeType[]'
+      };
+    }
+
     if (input.themes.length > VALIDATION_RULES.themes.maxCount) {
       return {
         code: 'INVALID_INPUT',
@@ -1174,6 +1185,26 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
         field: 'themes',
         providedValue: input.themes,
         expectedType: 'ThemeType[]'
+      };
+    }
+
+    if (typeof input.spicyLevel !== 'number' || input.spicyLevel < 1 || input.spicyLevel > 5) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'Spicy level must be between 1 and 5',
+        field: 'spicyLevel',
+        providedValue: input.spicyLevel,
+        expectedType: 'number (1-5)'
+      };
+    }
+
+    if (typeof input.wordCount !== 'number' || input.wordCount < 150 || input.wordCount > 2000) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'Word count must be between 150 and 2000',
+        field: 'wordCount',
+        providedValue: input.wordCount,
+        expectedType: 'number (150-2000)'
       };
     }
 
@@ -1194,6 +1225,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
    * Sanitize user input to prevent prompt injection attacks
    * Uses a whitelist approach and validates semantic sense of input.
    * Implements basic rate limiting for repeated failed attempts.
+   */
   private sanitizeUserInput(input: string, userId?: string): string {
     if (!input) return '';
 
@@ -1433,18 +1465,29 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
 
   private stripSpeakerTagsForDisplay(content: string): string {
     // Enhanced speaker tag removal with better text formatting
-    let displayContent = content;
+    let displayContent: string = content;
 
-    // Remove speaker tags but preserve structure
-    displayContent = displayContent
-      .replace(/\[([^\]]+?)\]:\s*/g, '') // Remove speaker tags like [Narrator]: [Character, emotion]:
-      .replace(/\n\s*\n/g, '\n\n') // Normalize multiple newlines
-      .trim();
-
-    // Smart paragraph creation based on content structure
-    const lines = displayContent.split('\n').filter(line => line.trim());
-    const paragraphs = [];
-    let currentParagraph = '';
+    // Remove speaker tags using regex for robustness
+    const rawLines = content.split('\n');
+    const cleanedLines: string[] = [];
+    
+    for (const line of rawLines) {
+      // Remove all [Speaker]: patterns (handles multiple per line, nested brackets, etc.)
+      // Example pattern: [Alice]:, [Bob]:, [Narrator]:
+      const cleaned = line.replace(/\[[^\]]+\]:\s*/g, '').trim();
+      cleanedLines.push(cleaned);
+    }
+    
+    displayContent = cleanedLines.join('\n').trim();
+    
+    // Normalize multiple newlines
+    while (displayContent.includes('\n\n\n')) {
+      displayContent = displayContent.replace('\n\n\n', '\n\n');
+    }
+    
+    const paragraphs: string[] = [];
+    let currentParagraph: string = '';
+    const lines: string[] = displayContent.split('\n').filter((l: string) => l.trim());
 
     for (const line of lines) {
       const trimmedLine = line.trim();
@@ -1508,5 +1551,17 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
 
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Fisher-Yates shuffle algorithm for uniform random distribution
+   */
+  private fisherYatesShuffle<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
   }
 }

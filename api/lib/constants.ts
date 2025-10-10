@@ -12,7 +12,8 @@ export const FILE_SIZE = {
   BYTES_PER_KB: 1024,
   BYTES_PER_MB: 1024 * 1024,
   MAX_AUDIO_SIZE_MB: 10,        // 10MB maximum audio file size
-  MAX_CONTENT_LENGTH_KB: 500    // 500KB maximum content length (~75,000 words)
+  MAX_CONTENT_LENGTH_KB: 500,    // 500KB maximum content length (~75,000 words)
+  DATA_URL_WARNING_THRESHOLD_MB: 5  // Warn when data URL exceeds 5MB
 } as const;
 
 export const TIMEOUTS = {
