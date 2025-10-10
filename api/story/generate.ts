@@ -3,7 +3,12 @@ import { StoryGenerationSeam } from '../lib/types/contracts';
 import { logInfo, logError, logWarn } from '../lib/utils/logger';
 
 export default async function handler(req: any, res: any) {
-  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // Generate or extract request ID for tracking
+  const requestId = req.headers['x-request-id'] || 
+                    `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  // Set request ID in response header for client tracking
+  res.setHeader('X-Request-ID', requestId);
   
   // Set CORS headers
   const origin = process.env['FRONTEND_URL'] || 'http://localhost:4200';
@@ -12,7 +17,7 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, X-Request-ID'
   );
 
   // Handle preflight OPTIONS request
@@ -34,6 +39,8 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    console.log(`[${requestId}] POST /api/story/generate - Request received`);
+    
     const input: StoryGenerationSeam['input'] = req.body;
 
     // Validate required fields
@@ -68,9 +75,11 @@ export default async function handler(req: any, res: any) {
     const storyService = new StoryService();
     const result = await storyService.generateStory(input);
     
+    console.log(`[${requestId}] Story generation ${result.success ? 'succeeded' : 'failed'}`);
     res.status(200).json(result);
 
   } catch (error: any) {
+<<<<<<< HEAD
     logError('Story generation endpoint error', error, {
       requestId,
       endpoint: '/api/story/generate',
@@ -78,6 +87,9 @@ export default async function handler(req: any, res: any) {
       statusCode: 500
     });
     
+=======
+    console.error(`[${requestId}] Story generation serverless function error:`, error);
+>>>>>>> c07c20875b1643c77ba40490b75daf80504c0651
     res.status(500).json({
       success: false,
       error: {
