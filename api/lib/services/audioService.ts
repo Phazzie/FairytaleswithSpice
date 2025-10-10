@@ -93,14 +93,26 @@ export class AudioService {
       
       let audioData: Buffer;
       
+      let usedMultiVoice = false;
+      let voiceCount = 1;
+      
       if (hasSpeakerTags) {
         // Use multi-voice processing
         try {
           audioData = await this.generateMultiVoiceAudio(cleanText, input);
+          usedMultiVoice = true;
+          // Count unique speakers for metadata
+          const speakerMatches = cleanText.match(/\[([^\],]+)(?:,\s*[^\]]+)?\]:/g) || [];
+          const uniqueSpeakers = new Set(speakerMatches.map(match => 
+            match.replace(/\[([^\],]+).*/, '$1').trim()
+          ));
+          voiceCount = uniqueSpeakers.size;
         } catch (multiVoiceError) {
           console.warn('Multi-voice generation failed, falling back to single voice:', multiVoiceError);
           // Fallback to single voice
           audioData = await this.callElevenLabsAPI(cleanText, input);
+          usedMultiVoice = false;
+          voiceCount = 1;
         }
       } else {
         // Use single voice processing
@@ -123,7 +135,9 @@ export class AudioService {
         progress: {
           percentage: 100,
           status: 'completed',
-          message: 'Audio conversion completed successfully',
+          message: usedMultiVoice 
+            ? `Audio conversion completed with ${voiceCount} character voices` 
+            : 'Audio conversion completed successfully',
           estimatedTimeRemaining: 0
         },
         completedAt: new Date()
