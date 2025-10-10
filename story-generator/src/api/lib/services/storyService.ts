@@ -547,8 +547,8 @@ SPICE INTEGRATION: ${selectedStructure.spiceIntegration}`;
       "Power that manifests unexpectedly"
     ];
 
-    // Select 2 random elements
-    const shuffled = elements.sort(() => 0.5 - Math.random());
+    // Select 2 random elements using Fisher-Yates shuffle
+    const shuffled = this.fisherYatesShuffle(elements);
     const selected = shuffled.slice(0, 2);
     
     return `[Chekhov1]: ${selected[0]}
@@ -979,5 +979,17 @@ Write approximately 400-600 words for this chapter. Format with HTML tags.`;
 
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Fisher-Yates shuffle algorithm for uniform random distribution
+   */
+  private fisherYatesShuffle<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
   }
 }

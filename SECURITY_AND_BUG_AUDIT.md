@@ -811,23 +811,27 @@ if (input.content.length > MAX_CONTENT_LENGTH) {
 
 ---
 
-### 12. **BIASED RANDOMIZATION (Fixed but worth noting)** 🟡 MEDIUM
+### 12. **BIASED RANDOMIZATION** 🟡 MEDIUM
 **File:** `api/lib/services/storyService.ts`  
-**Lines:** 586-593, 766  
-**Status:** ✅ FIXED (Fisher-Yates implemented)  
+**Lines:** 586-593, 827  
+**Status:** ✅ FULLY FIXED (Fisher-Yates implemented)  
 
-**Historical Issue:**
-Line 766 still has old biased shuffle:
+**Issue:**
+Previously used biased shuffle algorithm:
 ```typescript
 const shuffled = elements.sort(() => 0.5 - Math.random());
 ```
 
-**Should be:**
+**Resolution:**
+All instances now use proper Fisher-Yates shuffle:
 ```typescript
 const shuffled = this.fisherYatesShuffle(elements);
 ```
 
-**Priority:** LOW - Already mostly fixed, cleanup remaining instance
+**Verification:**
+- Line 827: Chekhov elements generation uses `this.fisherYatesShuffle(elements)`
+- All author style selection uses Fisher-Yates shuffle
+- No remaining instances of biased shuffle found in codebase
 
 ---
 

@@ -51,3 +51,7 @@ logs
 # Test files
 **/test-*.ts
 **/test-*.js
+
+# Playwright
+playwright-report/
+test-results/

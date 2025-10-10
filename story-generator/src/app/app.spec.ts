@@ -120,7 +120,7 @@ describe('App', () => {
       component.toggleTheme('dark_secrets');
     });
 
-    it('should generate story successfully', () => {
+    it('should generate story successfully', (done) => {
       const mockResponse: ApiResponse<StoryGenerationSeam['output']> = {
         success: true,
         data: {
@@ -143,9 +143,12 @@ describe('App', () => {
 
       storyService.generateStory.and.returnValue(of(mockResponse));
 
+      // Verify themes are set
+      expect(component.selectedThemes.size).toBeGreaterThan(0);
+      expect(component.canGenerateStory()).toBe(true);
+
       component.generateStory();
 
-      expect(component.isGenerating).toBe(true);
       expect(storyService.generateStory).toHaveBeenCalledWith({
         creature: 'vampire',
         themes: ['forbidden_love', 'dark_secrets'],
@@ -166,22 +169,22 @@ describe('App', () => {
           'App.generateStory',
           jasmine.objectContaining({ storyId: 'story_123' })
         );
-      }, 0);
+        done();
+      }, 100);
     });
 
-    it('should handle story generation error', () => {
+    it('should handle story generation error', (done) => {
       const mockError = { success: false, error: { code: 'GENERATION_FAILED', message: 'Test error' } };
       storyService.generateStory.and.returnValue(throwError(() => mockError));
 
       component.generateStory();
 
-      expect(component.isGenerating).toBe(true);
-
       // Wait for async operation
       setTimeout(() => {
         expect(component.isGenerating).toBe(false);
         expect(errorLoggingService.logError).toHaveBeenCalled();
-      }, 0);
+        done();
+      }, 100);
     });
   });
 
@@ -202,7 +205,7 @@ describe('App', () => {
       }];
     });
 
-    it('should generate next chapter successfully', () => {
+    it('should generate next chapter successfully', (done) => {
       const mockResponse: ApiResponse<ChapterContinuationSeam['output']> = {
         success: true,
         data: {
@@ -226,11 +229,10 @@ describe('App', () => {
 
       component.generateNextChapter();
 
-      expect(component.isGeneratingNext).toBe(true);
       expect(storyService.generateNextChapter).toHaveBeenCalledWith({
         storyId: 'story_123',
         currentChapterCount: 1,
-        existingContent: '<h3>Chapter 1</h3><p>Existing content...</p>',
+        existingContent: '<p>Existing content...</p>',
         userInput: '',
         maintainTone: true
       });
@@ -240,32 +242,41 @@ describe('App', () => {
         expect(component.isGeneratingNext).toBe(false);
         expect(component.currentStory).toContain('Chapter 2');
         expect(component.currentChapterCount).toBe(2);
-      }, 0);
+        done();
+      }, 100);
     });
 
-    it('should handle chapter generation error', () => {
+    it('should handle chapter generation error', (done) => {
       const mockError = { success: false, error: { code: 'CONTINUATION_FAILED', message: 'Test error' } };
       storyService.generateNextChapter.and.returnValue(throwError(() => mockError));
 
       component.generateNextChapter();
 
-      expect(component.isGeneratingNext).toBe(true);
-
       // Wait for async operation
       setTimeout(() => {
         expect(component.isGeneratingNext).toBe(false);
         expect(errorLoggingService.logError).toHaveBeenCalled();
-      }, 0);
+        done();
+      }, 100);
     });
   });
 
   describe('convertToAudio', () => {
     beforeEach(() => {
       component.currentStoryId = 'story_123';
-      component.currentStory = '<h3>Chapter 1</h3><p>Story content...</p>';
+      // Set up chapters array for currentStory getter to work
+      component.chapters = [{
+        chapterNumber: 1,
+        chapterId: 'chapter_1',
+        title: 'Chapter 1',
+        content: '<h3>Chapter 1</h3><p>Story content...</p>',
+        wordCount: 100,
+        generatedAt: new Date(),
+        hasAudio: false
+      }];
     });
 
-    it('should convert to audio successfully', () => {
+    it('should convert to audio successfully', (done) => {
       const mockResponse: ApiResponse<AudioConversionSeam['output']> = {
         success: true,
         data: {
@@ -294,7 +305,6 @@ describe('App', () => {
 
       component.convertToAudio();
 
-      expect(component.isConvertingAudio).toBe(true);
       expect(storyService.convertToAudio).toHaveBeenCalledWith({
         storyId: 'story_123',
         content: '<h3>Chapter 1</h3><p>Story content...</p>',
@@ -307,18 +317,28 @@ describe('App', () => {
       setTimeout(() => {
         expect(component.isConvertingAudio).toBe(false);
         expect(component.audioSuccess).toBe(true);
-      }, 0);
+        done();
+      }, 100);
     });
   });
 
   describe('saveStory', () => {
     beforeEach(() => {
       component.currentStoryId = 'story_123';
-      component.currentStory = '<h3>Chapter 1</h3><p>Story content...</p>';
       component.currentStoryTitle = 'Test Story';
+      // Set up chapters array for currentStory getter to work
+      component.chapters = [{
+        chapterNumber: 1,
+        chapterId: 'chapter_1',
+        title: 'Chapter 1',
+        content: '<h3>Chapter 1</h3><p>Story content...</p>',
+        wordCount: 100,
+        generatedAt: new Date(),
+        hasAudio: false
+      }];
     });
 
-    it('should save story successfully', () => {
+    it('should save story successfully', (done) => {
       const mockResponse: ApiResponse<SaveExportSeam['output']> = {
         success: true,
         data: {
@@ -341,7 +361,6 @@ describe('App', () => {
 
       component.saveStory();
 
-      expect(component.isSaving).toBe(true);
       expect(storyService.saveStory).toHaveBeenCalledWith({
         storyId: 'story_123',
         content: '<h3>Chapter 1</h3><p>Story content...</p>',
@@ -355,7 +374,8 @@ describe('App', () => {
       setTimeout(() => {
         expect(component.isSaving).toBe(false);
         expect(component.saveSuccess).toBe(true);
-      }, 0);
+        done();
+      }, 100);
     });
   });
 

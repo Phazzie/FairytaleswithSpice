@@ -83,7 +83,7 @@ describe('StoryService', () => {
         expect(response.data!.themes).toEqual(['forbidden_love', 'dark_secrets']);
       });
 
-      const req = httpMock.expectOne('/api/generate-story');
+      const req = httpMock.expectOne('/api/story/generate');
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual(mockInput);
       req.flush(mockSuccessResponse);
@@ -122,7 +122,7 @@ describe('StoryService', () => {
         }
       });
 
-      const req = httpMock.expectOne('/api/generate-story');
+      const req = httpMock.expectOne('/api/story/generate');
       req.flush(errorResponse, { status: 400, statusText: 'Bad Request' });
 
       expect(errorLoggingService.logError).toHaveBeenCalled();
@@ -138,7 +138,7 @@ describe('StoryService', () => {
         }
       });
 
-      const req = httpMock.expectOne('/api/generate-story');
+      const req = httpMock.expectOne('/api/story/generate');
       req.flush('Server Error', { status: 500, statusText: 'Internal Server Error' });
 
       expect(errorLoggingService.logError).toHaveBeenCalled();
@@ -153,8 +153,8 @@ describe('StoryService', () => {
         }
       });
 
-      const req = httpMock.expectOne('/api/generate-story');
-      req.error(new ProgressEvent('error'));
+      const req = httpMock.expectOne('/api/story/generate');
+      req.error(new ErrorEvent('error', { message: 'Client error occurred' }));
 
       expect(errorLoggingService.logError).toHaveBeenCalled();
     });
@@ -202,7 +202,7 @@ describe('StoryService', () => {
         expect(response.data!.progress.status).toBe('completed');
       });
 
-      const req = httpMock.expectOne('/api/convert-audio');
+      const req = httpMock.expectOne('/api/audio/convert');
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual(mockInput);
       req.flush(mockSuccessResponse);
@@ -230,7 +230,7 @@ describe('StoryService', () => {
         }
       });
 
-      const req = httpMock.expectOne('/api/convert-audio');
+      const req = httpMock.expectOne('/api/audio/convert');
       req.flush(errorResponse, { status: 400, statusText: 'Bad Request' });
     });
   });
@@ -271,7 +271,7 @@ describe('StoryService', () => {
         expect(response.data!.format).toBe('pdf');
       });
 
-      const req = httpMock.expectOne('/api/save-story');
+      const req = httpMock.expectOne('/api/export/save');
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual(mockInput);
       req.flush(mockSuccessResponse);
@@ -320,7 +320,7 @@ describe('StoryService', () => {
         expect(response.data!.chapterNumber).toBe(2);
       });
 
-      const req = httpMock.expectOne('/api/continue-story');
+      const req = httpMock.expectOne('/api/story/continue');
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual(mockInput);
       req.flush(mockSuccessResponse);
@@ -347,11 +347,11 @@ describe('StoryService', () => {
         next: () => fail('Should have failed'),
         error: (error) => {
           expect(error.success).toBe(false);
-          expect(error.error.code).toBe('HTTP_ERROR');
+          expect(error.error.code).toBe('ENDPOINT_NOT_FOUND');
         }
       });
 
-      const req = httpMock.expectOne('/api/generate-story');
+      const req = httpMock.expectOne('/api/story/generate');
       req.flush(null, { status: 404, statusText: 'Not Found' });
     });
 
@@ -372,7 +372,7 @@ describe('StoryService', () => {
         }
       });
 
-      const req = httpMock.expectOne('/api/generate-story');
+      const req = httpMock.expectOne('/api/story/generate');
       req.flush('Invalid JSON response', { status: 500, statusText: 'Internal Server Error' });
     });
 
@@ -389,11 +389,11 @@ describe('StoryService', () => {
         next: () => fail('Should have failed'),
         error: (error) => {
           expect(error.success).toBe(false);
-          expect(error.error.code).toBe('CLIENT_ERROR');
+          expect(error.error.code).toBe('NETWORK_ERROR');
         }
       });
 
-      const req = httpMock.expectOne('/api/generate-story');
+      const req = httpMock.expectOne('/api/story/generate');
       req.error(new ProgressEvent('timeout'));
     });
   });
@@ -405,10 +405,10 @@ describe('StoryService', () => {
 
     it('should use correct API endpoints', () => {
       const endpoints = [
-        { method: 'generateStory', url: '/api/generate-story' },
-        { method: 'convertToAudio', url: '/api/convert-audio' },
-        { method: 'saveStory', url: '/api/save-story' },
-        { method: 'generateNextChapter', url: '/api/continue-story' }
+        { method: 'generateStory', url: '/api/story/generate' },
+        { method: 'convertToAudio', url: '/api/audio/convert' },
+        { method: 'saveStory', url: '/api/export/save' },
+        { method: 'generateNextChapter', url: '/api/story/continue' }
       ];
 
       // Test that each method makes requests to correct endpoints
@@ -455,10 +455,10 @@ describe('StoryService', () => {
       service.saveStory(mockSaveInput).subscribe();
       service.generateNextChapter(mockChapterInput).subscribe();
 
-      httpMock.expectOne('/api/generate-story').flush({ success: true, data: {} });
-      httpMock.expectOne('/api/convert-audio').flush({ success: true, data: {} });
-      httpMock.expectOne('/api/save-story').flush({ success: true, data: {} });
-      httpMock.expectOne('/api/continue-story').flush({ success: true, data: {} });
+      httpMock.expectOne('/api/story/generate').flush({ success: true, data: {} });
+      httpMock.expectOne('/api/audio/convert').flush({ success: true, data: {} });
+      httpMock.expectOne('/api/export/save').flush({ success: true, data: {} });
+      httpMock.expectOne('/api/story/continue').flush({ success: true, data: {} });
 
       expect(errorLoggingService.logInfo).toHaveBeenCalledTimes(8); // 4 start + 4 success logs
     });

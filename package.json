@@ -4,9 +4,14 @@
     "install:all": "npm install --no-audit --no-fund && cd story-generator && npm install --no-audit --no-fund",
     "build": "cd story-generator && npm run build",
     "build:verify": "[ -f story-generator/dist/story-generator/browser/index.html ] || (echo 'Missing build output' && exit 1)",
-    "build:full": "npm run build && npm run build:verify"
+    "build:full": "npm run build && npm run build:verify",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:unit": "cd story-generator && npm test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@types/node": "^24.5.2",
     "typescript": "^5.9.2"
   },
