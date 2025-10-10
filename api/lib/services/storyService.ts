@@ -1158,6 +1158,26 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
       };
     }
 
+    if (!input.themes || !Array.isArray(input.themes)) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'Themes must be an array',
+        field: 'themes',
+        providedValue: input.themes,
+        expectedType: 'ThemeType[]'
+      };
+    }
+
+    if (input.themes.length === 0) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'At least one theme is required',
+        field: 'themes',
+        providedValue: input.themes,
+        expectedType: 'ThemeType[]'
+      };
+    }
+
     if (input.themes.length > VALIDATION_RULES.themes.maxCount) {
       return {
         code: 'INVALID_INPUT',
@@ -1165,6 +1185,26 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
         field: 'themes',
         providedValue: input.themes,
         expectedType: 'ThemeType[]'
+      };
+    }
+
+    if (typeof input.spicyLevel !== 'number' || input.spicyLevel < 1 || input.spicyLevel > 5) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'Spicy level must be between 1 and 5',
+        field: 'spicyLevel',
+        providedValue: input.spicyLevel,
+        expectedType: 'number (1-5)'
+      };
+    }
+
+    if (typeof input.wordCount !== 'number' || input.wordCount < 150 || input.wordCount > 2000) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'Word count must be between 150 and 2000',
+        field: 'wordCount',
+        providedValue: input.wordCount,
+        expectedType: 'number (150-2000)'
       };
     }
 
