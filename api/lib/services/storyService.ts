@@ -1467,21 +1467,15 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     // Enhanced speaker tag removal with better text formatting
     let displayContent: string = content;
 
-    // Remove speaker tags manually without regex
+    // Remove speaker tags using regex for robustness
     const rawLines = content.split('\n');
     const cleanedLines: string[] = [];
     
     for (const line of rawLines) {
-      // Remove [Speaker]: pattern
-      let cleaned = line;
-      const bracketIndex = cleaned.indexOf('[');
-      if (bracketIndex !== -1) {
-        const closeBracketIndex = cleaned.indexOf(']:', bracketIndex);
-        if (closeBracketIndex !== -1) {
-          cleaned = cleaned.substring(0, bracketIndex) + cleaned.substring(closeBracketIndex + 2);
-        }
-      }
-      cleanedLines.push(cleaned.trim());
+      // Remove all [Speaker]: patterns (handles multiple per line, nested brackets, etc.)
+      // Example pattern: [Alice]:, [Bob]:, [Narrator]:
+      const cleaned = line.replace(/\[[^\]]+\]:\s*/g, '').trim();
+      cleanedLines.push(cleaned);
     }
     
     displayContent = cleanedLines.join('\n').trim();
