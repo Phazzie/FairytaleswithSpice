@@ -53,13 +53,13 @@ export default async function handler(req: any, res: any) {
     }
 
     // Validate content length (max 500KB)
-    const MAX_CONTENT_LENGTH = 500000; // 500KB
+    const MAX_CONTENT_LENGTH = FILE_SIZE.MAX_CONTENT_LENGTH_KB * 1000;
     if (input.content.length > MAX_CONTENT_LENGTH) {
       return res.status(400).json({
         success: false,
         error: {
-          code: 'CONTENT_TOO_LARGE',
-          message: `Content exceeds maximum size of ${MAX_CONTENT_LENGTH / 1000}KB`,
+          code: ERROR_CODES.CONTENT_TOO_LARGE,
+          message: `Content exceeds maximum size of ${FILE_SIZE.MAX_CONTENT_LENGTH_KB}KB`,
           contentLength: input.content.length,
           maxLength: MAX_CONTENT_LENGTH
         }
