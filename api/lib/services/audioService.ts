@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { AudioConversionSeam, ApiResponse, CreatureType, CharacterVoiceType } from '../types/contracts';
 import { getVoiceSettingsForEmotion, getAvailableEmotions, VoiceSettings } from './emotionMapping';
+import { FILE_SIZE } from '../constants';
 
 /**
  * AudioService - Advanced Multi-Voice Text-to-Speech Processing

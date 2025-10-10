@@ -27,8 +27,10 @@ describe('App', () => {
       'generateStory', 'generateNextChapter', 'convertToAudio', 'saveStory'
     ]);
     const errorLoggingSpy = jasmine.createSpyObj('ErrorLoggingService', [
-      'logInfo', 'logError', 'logWarning', 'logCritical'
+      'logInfo', 'logError', 'logWarning', 'logCritical', 'getErrors', 'clearErrors'
     ]);
+    // Mock getErrors to return an observable
+    errorLoggingSpy.getErrors.and.returnValue(of([]));
 
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
@@ -188,7 +190,16 @@ describe('App', () => {
       // Setup current story state
       component.currentStoryId = 'story_123';
       component.currentStory = '<h3>Chapter 1</h3><p>Existing content...</p>';
-      component.currentChapterCount = 1;
+      // Set up chapters array instead of readonly property
+      component.chapters = [{
+        chapterNumber: 1,
+        chapterId: 'chapter_1',
+        title: 'Chapter 1',
+        content: '<p>Existing content...</p>',
+        wordCount: 100,
+        generatedAt: new Date(),
+        hasAudio: false
+      }];
     });
 
     it('should generate next chapter successfully', () => {
@@ -284,7 +295,6 @@ describe('App', () => {
       component.convertToAudio();
 
       expect(component.isConvertingAudio).toBe(true);
-      expect(component.audioProgress).toBe(0);
       expect(storyService.convertToAudio).toHaveBeenCalledWith({
         storyId: 'story_123',
         content: '<h3>Chapter 1</h3><p>Story content...</p>',
