@@ -94,7 +94,8 @@ interface RateLimitEntry {
   resetTime: number;
 }
 
-// In-memory storage (replace with Redis in production)
+// In-memory storage (suitable only for single-instance or development environments).
+// For multi-instance deployments (e.g., horizontal scaling, serverless, load-balanced setups), replace with a distributed cache like Redis.
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
 /**
