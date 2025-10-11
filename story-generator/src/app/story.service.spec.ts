@@ -154,7 +154,7 @@ describe('StoryService', () => {
       });
 
       const req = httpMock.expectOne('/api/story/generate');
-      req.error(new ErrorEvent('error', { message: 'Client error occurred' }));
+      req.error(new ProgressEvent('error'));
 
       expect(errorLoggingService.logError).toHaveBeenCalled();
     });
