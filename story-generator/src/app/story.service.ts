@@ -7,7 +7,8 @@ import {
   ChapterContinuationSeam,
   AudioConversionSeam,
   SaveExportSeam,
-  ApiResponse
+  ApiResponse,
+  StreamingProgressChunk
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
 
@@ -40,6 +41,160 @@ export class StoryService {
       }),
       catchError(error => this.handleError(error, 'generateStory'))
     );
+  }
+
+  /**
+   * Generate story with real-time streaming progress updates
+   * Uses Server-Sent Events (SSE) to provide chunk-by-chunk progress
+   * 
+   * @param input - Story generation parameters (creature, themes, spicyLevel, wordCount)
+   * @param onProgress - Callback for real-time chunk updates
+   * @returns Observable that completes with final story data
+   */
+  generateStoryStreaming(
+    input: StoryGenerationSeam['input'],
+    onProgress?: (chunk: StreamingProgressChunk) => void
+  ): Observable<ApiResponse<StoryGenerationSeam['output']>> {
+    return new Observable(observer => {
+      // Build URL with query params for EventSource (GET only)
+      const params = new URLSearchParams({
+        creature: input.creature,
+        themes: input.themes.join(','),
+        spicyLevel: input.spicyLevel.toString(),
+        wordCount: input.wordCount.toString(),
+        userInput: input.userInput || ''
+      });
+      const url = `${this.apiUrl}/story/stream?${params.toString()}`;
+      
+      this.errorLogging.logInfo('Starting streaming story generation', 'StoryService.generateStoryStreaming', { input });
+      
+      // Create EventSource connection
+      const eventSource = new EventSource(url);
+      
+      let accumulatedContent = '';
+      let streamId = '';
+      let finalStoryId = '';
+      
+      // Handle SSE events
+      eventSource.addEventListener('message', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          switch (data.type) {
+            case 'connected':
+              streamId = data.streamId;
+              this.errorLogging.logInfo('Stream connected', 'StoryService.generateStoryStreaming', { streamId });
+              
+              if (onProgress) {
+                onProgress({
+                  type: 'connected',
+                  streamId: data.streamId,
+                  metadata: data.metadata
+                });
+              }
+              break;
+              
+            case 'chunk':
+              // Accumulate content progressively
+              accumulatedContent = data.content || accumulatedContent;
+              
+              // Notify caller of progress
+              if (onProgress) {
+                onProgress({
+                  type: 'chunk',
+                  content: data.content,
+                  storyId: data.storyId,
+                  streamId: data.streamId,
+                  metadata: data.metadata
+                });
+              }
+              break;
+              
+            case 'complete':
+              // Final story received
+              finalStoryId = data.storyId || `story_${streamId}`;
+              const finalContent = data.content || accumulatedContent;
+              
+              const finalStory: ApiResponse<StoryGenerationSeam['output']> = {
+                success: true,
+                data: {
+                  storyId: finalStoryId,
+                  title: this.extractTitle(finalContent),
+                  content: finalContent,
+                  rawContent: finalContent,
+                  creature: input.creature,
+                  themes: input.themes,
+                  spicyLevel: input.spicyLevel,
+                  actualWordCount: data.metadata?.wordsGenerated || 0,
+                  estimatedReadTime: Math.ceil((data.metadata?.wordsGenerated || 0) / 200),
+                  hasCliffhanger: this.detectCliffhanger(finalContent),
+                  generatedAt: new Date()
+                }
+              };
+              
+              this.errorLogging.logInfo('Stream completed successfully', 'StoryService.generateStoryStreaming', { 
+                storyId: finalStoryId,
+                wordCount: data.metadata?.wordsGenerated 
+              });
+              
+              if (onProgress) {
+                onProgress({
+                  type: 'complete',
+                  content: finalContent,
+                  storyId: finalStoryId,
+                  streamId: data.streamId,
+                  metadata: data.metadata
+                });
+              }
+              
+              observer.next(finalStory);
+              observer.complete();
+              eventSource.close();
+              break;
+              
+            case 'error':
+              const errorMessage = data.error?.message || data.message || 'Streaming generation failed';
+              this.errorLogging.logError(errorMessage, 'StoryService.generateStoryStreaming', 'error', { 
+                streamId,
+                errorCode: data.error?.code 
+              });
+              
+              if (onProgress) {
+                onProgress({
+                  type: 'error',
+                  streamId: data.streamId,
+                  error: {
+                    code: data.error?.code || 'STREAMING_ERROR',
+                    message: errorMessage
+                  }
+                });
+              }
+              
+              observer.error(new Error(errorMessage));
+              eventSource.close();
+              break;
+          }
+          
+        } catch (error: any) {
+          this.errorLogging.logError(error, 'StoryService.generateStoryStreaming - Stream parsing error', 'error');
+          observer.error(error);
+          eventSource.close();
+        }
+      });
+      
+      // Handle connection errors
+      eventSource.onerror = (error) => {
+        this.errorLogging.logError(new Error('SSE connection failed'), 'StoryService.generateStoryStreaming', 'error');
+        observer.error(new Error('Stream connection failed'));
+        eventSource.close();
+      };
+      
+      // Cleanup on unsubscribe
+      return () => {
+        this.errorLogging.logInfo('Stream unsubscribed, closing connection', 'StoryService.generateStoryStreaming', { streamId });
+        eventSource.close();
+      };
+    });
   }
 
   // ==================== AUDIO CONVERSION ====================
@@ -150,4 +305,34 @@ export class StoryService {
 
     return throwError(() => errorResponse);
   };
+
+  // ==================== HELPER METHODS ====================
+  /**
+   * Extract title from HTML content
+   * Looks for the first <h3> tag in the generated story
+   */
+  private extractTitle(htmlContent: string): string {
+    if (!htmlContent) return 'Untitled Story';
+    
+    const titleMatch = htmlContent.match(/<h3[^>]*>(.*?)<\/h3>/);
+    return titleMatch ? titleMatch[1].trim() : 'Untitled Story';
+  }
+
+  /**
+   * Detect if story ends with a cliffhanger
+   * Checks for common cliffhanger patterns in the last paragraph
+   */
+  private detectCliffhanger(content: string): boolean {
+    if (!content) return false;
+    
+    const lastParagraph = content.split('</p>').slice(-2)[0] || '';
+    const cliffhangerPatterns = [
+      /to be continued/i,
+      /what happens next/i,
+      /little did .* know/i,
+      /but .*\?$/,
+      /\.\.\.$/
+    ];
+    return cliffhangerPatterns.some(pattern => pattern.test(lastParagraph));
+  }
 }

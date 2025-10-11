@@ -317,7 +317,10 @@ export class StreamingStoryComponent {
     console.log('✅ Story generation complete!');
     
     // Update title from final story if available
-    if (finalStory?.title) {
+    // ApiResponse wraps data, so we check both finalStory.data.title and finalStory.title for compatibility
+    if (finalStory?.data?.title) {
+      this.storyTitle = finalStory.data.title;
+    } else if (finalStory?.title) {
       this.storyTitle = finalStory.title;
     }
     
