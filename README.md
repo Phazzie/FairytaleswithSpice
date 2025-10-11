@@ -454,9 +454,25 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
+## 🗄️ Database Options Investigation
+
+Considering adding database persistence to save stories, enable user accounts, and unlock advanced features?
+
+📊 **[View Complete Database Investigation](./DATABASE_INDEX.md)**
+
+Quick summaries:
+- **[Decision Flowchart](./DATABASE_DECISION_FLOWCHART.md)** - Visual guide to choosing your database strategy
+- **[Quick Reference](./DATABASE_QUICK_REFERENCE.md)** - 10-minute decision guide
+- **[ROI Analysis](./DATABASE_ROI_ANALYSIS.md)** - Cost-benefit breakdown
+- **[Full Investigation](./DATABASE_INVESTIGATION.md)** - Complete technical analysis
+
+**TL;DR**: PostgreSQL + Auth0 = $20/month, 10-14 hours implementation, enables story library, user accounts, multi-chapter state, analytics, and more.
+
+---
+
 <div align="center">
 
-**[🚀 Digital Ocean Deployment Guide](./DIGITAL_OCEAN_DEPLOYMENT.md)** | **[📖 Documentation](./docs/)** | **[🐳 Docker Setup](#docker-deployment)**
+**[🚀 Digital Ocean Deployment Guide](./DIGITAL_OCEAN_DEPLOYMENT.md)** | **[🗄️ Database Options](./DATABASE_INDEX.md)** | **[📖 Documentation](./docs/)** | **[🐳 Docker Setup](#docker-deployment)**
 
 *Made with ❤️ and a touch of spice*
 
