@@ -127,7 +127,7 @@ export class StoryService {
       if (error.status === 404) {
         errorResponse.error = {
           code: 'ENDPOINT_NOT_FOUND',
-          message: 'API endpoint not found (404). Possible deployment routing issue: ensure /api functions are deployed and vercel.json rewrites are correct.'
+          message: 'API endpoint not found (404). Check that Express server is running and API routes are configured correctly.'
         };
       } else if (error.status === 0) {
         errorResponse.error = {

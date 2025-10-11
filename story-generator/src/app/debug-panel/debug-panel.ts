@@ -145,7 +145,7 @@ export class DebugPanel implements OnInit, OnDestroy {
         if (error.status === 404) {
           this.addError(
             'API',
-            'Health endpoint 404 – Likely deployment routing issue (check vercel.json and that serverless functions were included in build).',
+            'Health endpoint 404 – Server routing issue. Check that Express server is running and API routes are properly configured.',
             { status: error.status, message: error.message },
             '/api/health',
             'critical'

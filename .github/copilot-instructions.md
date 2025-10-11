@@ -44,6 +44,7 @@ The project already implements these proven seam contracts:
 - Implement mock fallbacks for development without API keys
 - Ask me to define contracts before implementing new seams
 - Focus on making integration impossible to break
+- **Add creation date/time at the top of all new files** (format: `Created: YYYY-MM-DD HH:MM` or `Date: Month DD, YYYY`)
 
 ### NEVER:
 - Start with database design
