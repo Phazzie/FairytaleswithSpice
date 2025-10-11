@@ -17,6 +17,26 @@ export class StoryService {
     }
   }
 
+  /**
+   * Calculate optimal token allocation for story generation
+   * Accounts for: word-to-token ratio, HTML overhead, speaker tags, safety buffer
+   * Optimized to reduce token count and speed up generation
+   */
+  private calculateOptimalTokens(wordCount: number): number {
+    const tokensPerWord = 1.5;        // English averages ~1.5 tokens per word
+    const htmlOverhead = 1.15;        // HTML tags add ~15% overhead (reduced from 1.2)
+    const speakerTagOverhead = 1.1;   // Speaker tags add ~10% overhead (reduced from 1.15)
+    const safetyBuffer = 1.05;        // 5% safety margin (reduced from 1.1)
+    
+    return Math.ceil(
+      wordCount * 
+      tokensPerWord * 
+      htmlOverhead * 
+      speakerTagOverhead * 
+      safetyBuffer
+    );
+  }
+
   async generateStory(input: StoryGenerationSeam['input']): Promise<ApiResponse<StoryGenerationSeam['output']>> {
     const startTime = Date.now();
 
@@ -155,14 +175,15 @@ export class StoryService {
       const response = await axios.post(
         this.grokApiUrl,
         {
-          model: 'grok-beta',
+          model: 'grok-4-fast-reasoning',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
           ],
           stream: true, // Enable streaming
           temperature: 0.8,
-          max_tokens: input.wordCount * 2, // Allow some buffer for streaming
+          max_tokens: this.calculateOptimalTokens(input.wordCount),
+          top_p: 0.95              // Focus on high-quality tokens
         },
         {
           headers: {
@@ -289,8 +310,9 @@ export class StoryService {
             content: userPrompt
           }
         ],
-        max_tokens: input.wordCount * 2, // Allow some buffer
-        temperature: 0.8
+        max_tokens: this.calculateOptimalTokens(input.wordCount),
+        temperature: 0.8,
+        top_p: 0.95              // Focus on high-quality tokens
       }, {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,
@@ -327,8 +349,9 @@ export class StoryService {
             content: prompt
           }
         ],
-        max_tokens: 1000,
-        temperature: 0.8
+        max_tokens: this.calculateOptimalTokens(500), // ~500 words per chapter
+        temperature: 0.8,
+        top_p: 0.95              // Focus on high-quality tokens
       }, {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,

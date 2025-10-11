@@ -89,6 +89,80 @@ app.post('/api/story/generate', async (req: Request, res: Response) => {
   }
 });
 
+// Story generation - STREAMING (SSE)
+app.post('/api/story/stream', async (req: Request, res: Response) => {
+  try {
+    const input = req.body;
+
+    if (!input.creature || !input.themes || typeof input.spicyLevel !== 'number' || !input.wordCount) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Missing required fields: creature, themes, spicyLevel, wordCount'
+        }
+      });
+      return;
+    }
+
+    // Set up Server-Sent Events headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering in nginx
+
+    // Send initial connected message
+    const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    res.write(`data: ${JSON.stringify({ type: 'connected', streamId })}\n\n`);
+
+    const storyService = new StoryService();
+
+    // Stream the story generation
+    await storyService.generateStoryStreaming(input, (chunk) => {
+      if (chunk.isComplete) {
+        // Send final complete message
+        res.write(`data: ${JSON.stringify({
+          type: 'complete',
+          content: chunk.content,
+          storyId: `story_${Date.now()}`,
+          metadata: {
+            wordsGenerated: chunk.wordsGenerated,
+            generationSpeed: chunk.generationSpeed,
+            percentage: 100
+          }
+        })}\n\n`);
+        res.end();
+      } else {
+        // Send chunk update
+        const percentage = (chunk.wordsGenerated / input.wordCount) * 100;
+        res.write(`data: ${JSON.stringify({
+          type: 'chunk',
+          content: chunk.content,
+          metadata: {
+            wordsGenerated: chunk.wordsGenerated,
+            estimatedWordsRemaining: chunk.estimatedWordsRemaining,
+            generationSpeed: chunk.generationSpeed,
+            percentage: Math.min(percentage, 100)
+          }
+        })}\n\n`);
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Streaming generation error:', error);
+    
+    // Send error as SSE event
+    res.write(`data: ${JSON.stringify({
+      type: 'error',
+      error: {
+        code: 'GENERATION_FAILED',
+        message: error.message || 'Story generation failed'
+      }
+    })}\n\n`);
+    res.end();
+  }
+});
+
 // Chapter continuation
 app.post('/api/story/continue', async (req: Request, res: Response) => {
   try {

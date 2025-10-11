@@ -24,12 +24,13 @@ export class StoryService {
   /**
    * Calculate optimal token allocation for story generation
    * Accounts for: word-to-token ratio, HTML overhead, speaker tags, safety buffer
+   * Optimized to reduce token count and speed up generation
    */
   private calculateOptimalTokens(wordCount: number): number {
     const tokensPerWord = 1.5;        // English averages ~1.5 tokens per word
-    const htmlOverhead = 1.2;         // HTML tags add ~20% overhead
-    const speakerTagOverhead = 1.15;  // Speaker tags add ~15% overhead
-    const safetyBuffer = 1.1;         // 10% safety margin for quality
+    const htmlOverhead = 1.15;        // HTML tags add ~15% overhead (reduced from 1.2)
+    const speakerTagOverhead = 1.1;   // Speaker tags add ~10% overhead (reduced from 1.15)
+    const safetyBuffer = 1.05;        // 5% safety margin (reduced from 1.1)
     
     return Math.ceil(
       wordCount * 
@@ -397,7 +398,7 @@ export class StoryService {
           'Authorization': `Bearer ${this.grokApiKey}`,
           'Content-Type': 'application/json'
         },
-        timeout: 45000 // 45 second timeout
+        timeout: 90000 // 90 second timeout (Grok can take 30-45s for complex stories)
       });
 
       const apiDuration = Date.now() - requestStartTime;
@@ -455,7 +456,7 @@ export class StoryService {
           'Authorization': `Bearer ${this.grokApiKey}`,
           'Content-Type': 'application/json'
         },
-        timeout: 30000 // 30 second timeout for continuations
+        timeout: 60000 // 60 second timeout for continuations (allows for complex chapters)
       });
 
       const apiDuration = Date.now() - requestStartTime;

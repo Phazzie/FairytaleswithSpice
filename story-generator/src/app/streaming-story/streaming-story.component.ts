@@ -210,7 +210,6 @@ export class StreamingStoryComponent {
   };
   
   targetWords = 900; // Default word count
-  private eventSource: EventSource | null = null;
 
   get progressPercentage(): number {
     if (this.targetWords === 0) return 0;
@@ -243,48 +242,26 @@ export class StreamingStoryComponent {
     };
 
     try {
-      // Connect to streaming endpoint
-      this.eventSource = new EventSource(`/api/story/stream`, {
-        // Note: POST data would need to be sent differently for SSE
-        // This is a simplified example - in reality, you might:
-        // 1. Use a WebSocket connection instead
-        // 2. Send the input via a separate POST then connect to stream
-        // 3. Use a unique session ID to track the generation
-      });
-
-      this.eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          switch (data.type) {
-            case 'connected':
-              console.log('🔗 Connected to story stream');
-              break;
-              
-            case 'chunk':
-              this.handleStreamChunk(data);
-              break;
-              
-            case 'complete':
-              this.handleStreamComplete();
-              break;
-              
-            case 'error':
-              this.handleStreamError(data.error);
-              break;
-          }
-        } catch (error) {
-          console.error('Error parsing stream data:', error);
+      // Use the StoryService streaming method
+      this.storyService.generateStoryStreaming(
+        input,
+        (progressUpdate) => {
+          // Handle real-time progress updates
+          this.handleStreamChunk(progressUpdate);
         }
-      };
-
-      this.eventSource.onerror = (error) => {
-        console.error('EventSource error:', error);
-        this.handleStreamError({ 
-          code: 'CONNECTION_ERROR', 
-          message: 'Lost connection to story stream' 
-        });
-      };
+      ).subscribe({
+        next: (finalStory) => {
+          // Story generation complete
+          this.handleStreamComplete(finalStory);
+        },
+        error: (error) => {
+          // Handle errors
+          this.handleStreamError({ 
+            code: 'GENERATION_FAILED', 
+            message: error.message || 'Failed to generate story' 
+          });
+        }
+      });
 
     } catch (error: any) {
       this.handleStreamError({ 
@@ -295,10 +272,8 @@ export class StreamingStoryComponent {
   }
 
   stopStreaming(): void {
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
+    // Streaming is managed by the service subscription
+    // We'd need to store the subscription to unsubscribe
     this.isStreaming = false;
   }
 
@@ -314,7 +289,9 @@ export class StreamingStoryComponent {
 
   private handleStreamChunk(data: any): void {
     // Update content progressively
-    this.streamedContent = this.formatStreamContent(data.content);
+    if (data.content) {
+      this.streamedContent = data.content;
+    }
     
     // Update progress metrics
     this.progress = {
@@ -323,23 +300,26 @@ export class StreamingStoryComponent {
       generationSpeed: data.metadata?.generationSpeed || 0
     };
 
-    // Extract title if it appears in the content
-    if (!this.storyTitle.includes('Generating') && data.content.includes('<h3>')) {
-      const titleMatch = data.content.match(/<h3>(.*?)<\/h3>/);
-      if (titleMatch) {
-        this.storyTitle = titleMatch[1];
+    // Extract title if available in metadata or content
+    if (data.type === 'chunk' && !this.storyTitle.includes('Generating')) {
+      if (data.content && data.content.includes('<h3>')) {
+        const titleMatch = data.content.match(/<h3[^>]*>(.*?)<\/h3>/);
+        if (titleMatch) {
+          this.storyTitle = titleMatch[1];
+        }
       }
     }
   }
 
-  private handleStreamComplete(): void {
+  private handleStreamComplete(finalStory?: any): void {
     this.isStreaming = false;
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
     
     console.log('✅ Story generation complete!');
+    
+    // Update title from final story if available
+    if (finalStory?.title) {
+      this.storyTitle = finalStory.title;
+    }
     
     // Add a small celebration effect
     setTimeout(() => {
@@ -350,20 +330,5 @@ export class StreamingStoryComponent {
   private handleStreamError(error: any): void {
     this.isStreaming = false;
     this.errorMessage = error.message || 'An unexpected error occurred during generation';
-    
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
-  }
-
-  private formatStreamContent(content: string): string {
-    // Basic HTML formatting for story content
-    // In production, you'd want more sophisticated formatting
-    return content
-      .replace(/\n\n/g, '</p><p>')
-      .replace(/^/, '<p>')
-      .replace(/$/, '</p>')
-      .replace(/<p><\/p>/g, '');
   }
 }

@@ -13,8 +13,9 @@ import { logInfo, logError, logWarn } from '../lib/utils/logger';
 const storyService = new StoryService();
 
 /**
- * POST /api/story/stream
+ * GET/POST /api/story/stream
  * Implements StreamingStoryGenerationSeam contract
+ * Supports GET with query params for EventSource compatibility
  */
 export default async function handler(req: any, res: any) {
   const requestId = req.headers['x-request-id'] || 
@@ -33,16 +34,32 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  if (req.method !== 'POST') {
+  if (req.method !== 'POST' && req.method !== 'GET') {
     logWarn('Method not allowed', { requestId, endpoint: '/api/story/stream', method: req.method });
     return res.status(405).json({
       success: false,
-      error: { code: 'METHOD_NOT_ALLOWED', message: 'Only POST allowed' }
+      error: { code: 'METHOD_NOT_ALLOWED', message: 'Only GET/POST allowed' }
     });
   }
 
   try {
-    const input: StoryGenerationSeam['input'] = req.body;
+    // Support both POST body and GET query params for EventSource compatibility
+    let input: StoryGenerationSeam['input'];
+    
+    if (req.method === 'GET') {
+      // Parse from query params for EventSource
+      const { creature, themes, spicyLevel, wordCount, userInput } = req.query;
+      input = {
+        creature: creature as any,
+        themes: themes ? (themes as string).split(',') as any[] : [],
+        spicyLevel: parseInt(spicyLevel as string, 10) as any,
+        wordCount: parseInt(wordCount as string, 10) as any,
+        userInput: userInput as string || ''
+      };
+    } else {
+      // POST body
+      input = req.body;
+    }
 
     // Validate input
     if (!input.creature || !input.themes || typeof input.spicyLevel !== 'number' || !input.wordCount) {
@@ -59,7 +76,7 @@ export default async function handler(req: any, res: any) {
     logInfo('Starting streaming story generation', {
       requestId,
       endpoint: '/api/story/stream',
-      method: 'POST',
+      method: req.method,
       userInput: {
         creature: input.creature,
         themes: input.themes,

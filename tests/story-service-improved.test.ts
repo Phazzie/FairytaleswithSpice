@@ -368,6 +368,150 @@ const testSuite = {
 // ==================== RUN TESTS ====================
 
 async function runAllTests() {
+  })
+};
+
+// ==================== TOKEN CALCULATION TESTS ====================
+
+const tokenCalculationTests = {
+  testTokenCalculation700: test('Token Calculation for 700 words', () => {
+    const service = new StoryService();
+    // Access private method via type assertion
+    const tokens = (service as any).calculateOptimalTokens(700);
+    
+    // Expected with OPTIMIZED formula: 700 * 1.5 * 1.15 * 1.1 * 1.05 = 1394.3 → 1395
+    const expected = Math.ceil(700 * 1.5 * 1.15 * 1.1 * 1.05);
+    console.log(`   Tokens for 700 words: ${tokens} (expected: ${expected})`);
+    
+    if (tokens !== expected) {
+      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
+    }
+    
+    // Should be more efficient than PR#65's calculation
+    const pr65Calculation = Math.ceil(700 * 1.5 * 1.2 * 1.15 * 1.1);
+    console.log(`   PR#65 would allocate: ${pr65Calculation} tokens`);
+    console.log(`   Our optimization saves: ${pr65Calculation - tokens} tokens (${((pr65Calculation - tokens) / pr65Calculation * 100).toFixed(1)}%)`);
+  }),
+  
+  testTokenCalculation900: test('Token Calculation for 900 words', () => {
+    const service = new StoryService();
+    const tokens = (service as any).calculateOptimalTokens(900);
+    
+    // Expected: 900 * 1.5 * 1.15 * 1.1 * 1.05 = 1792.1 → 1793
+    const expected = Math.ceil(900 * 1.5 * 1.15 * 1.1 * 1.05);
+    console.log(`   Tokens for 900 words: ${tokens} (expected: ${expected})`);
+    
+    if (tokens !== expected) {
+      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
+    }
+  }),
+  
+  testTokenCalculation1200: test('Token Calculation for 1200 words', () => {
+    const service = new StoryService();
+    const tokens = (service as any).calculateOptimalTokens(1200);
+    
+    // Expected: 1200 * 1.5 * 1.15 * 1.1 * 1.05 = 2389.5 → 2390
+    const expected = Math.ceil(1200 * 1.5 * 1.15 * 1.1 * 1.05);
+    console.log(`   Tokens for 1200 words: ${tokens} (expected: ${expected})`);
+    
+    if (tokens !== expected) {
+      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
+    }
+  }),
+  
+  testTokenCalculationAlwaysRoundsUp: test('Token Calculation Always Rounds Up', () => {
+    const service = new StoryService();
+    
+    // Test with a value that would have a decimal
+    const tokens = (service as any).calculateOptimalTokens(750);
+    const rawCalculation = 750 * 1.5 * 1.15 * 1.1 * 1.05;
+    const expected = Math.ceil(rawCalculation);
+    
+    console.log(`   Raw calculation: ${rawCalculation}`);
+    console.log(`   Rounded up to: ${tokens}`);
+    
+    if (tokens !== expected) {
+      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
+    }
+    
+    if (tokens < rawCalculation) {
+      throw new Error('Token calculation should always round up');
+    }
+  })
+};
+
+// ==================== TOKEN CALCULATION TESTS ====================
+
+const tokenCalculationTests = {
+  testTokenCalculation700: test('Token Calculation for 700 words', () => {
+    const service = new StoryService();
+    // Access private method via type assertion
+    const tokens = (service as any).calculateOptimalTokens(700);
+    
+    // Expected with optimized formula: 700 * 1.5 * 1.15 * 1.1 * 1.05 = 1393.5 → 1394
+    const expected = Math.ceil(700 * 1.5 * 1.15 * 1.1 * 1.05);
+    console.log(`   Tokens for 700 words: ${tokens} (expected: ${expected})`);
+    
+    if (tokens !== expected) {
+      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
+    }
+    
+    // Should be more efficient than old calculation
+    const oldCalculation = 700 * 2;
+    console.log(`   Old calculation would be: ${oldCalculation}`);
+    console.log(`   New is ${((oldCalculation - tokens) / oldCalculation * 100).toFixed(1)}% more efficient`);
+  }),
+  
+  testTokenCalculation900: test('Token Calculation for 900 words', () => {
+    const service = new StoryService();
+    const tokens = (service as any).calculateOptimalTokens(900);
+    
+    // Expected: 900 * 1.5 * 1.15 * 1.1 * 1.05 = 1792.1 → 1793
+    const expected = Math.ceil(900 * 1.5 * 1.15 * 1.1 * 1.05);
+    console.log(`   Tokens for 900 words: ${tokens} (expected: ${expected})`);
+    
+    if (tokens !== expected) {
+      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
+    }
+  }),
+  
+  testTokenCalculation1200: test('Token Calculation for 1200 words', () => {
+    const service = new StoryService();
+    const tokens = (service as any).calculateOptimalTokens(1200);
+    
+    // Expected: 1200 * 1.5 * 1.15 * 1.1 * 1.05 = 2389.5 → 2390
+    const expected = Math.ceil(1200 * 1.5 * 1.15 * 1.1 * 1.05);
+    console.log(`   Tokens for 1200 words: ${tokens} (expected: ${expected})`);
+    
+    if (tokens !== expected) {
+      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
+    }
+  }),
+  
+  testTokenCalculationAlwaysRoundsUp: test('Token Calculation Always Rounds Up', () => {
+    const service = new StoryService();
+    
+    // Test with a value that would have a decimal
+    const tokens = (service as any).calculateOptimalTokens(750);
+    const rawCalculation = 750 * 1.5 * 1.15 * 1.1 * 1.05;
+    const expected = Math.ceil(rawCalculation);
+    
+    console.log(`   Raw calculation: ${rawCalculation}`);
+    console.log(`   Rounded up to: ${tokens}`);
+    
+    if (tokens !== expected) {
+      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
+    }
+    
+    if (tokens < rawCalculation) {
+      throw new Error('Token calculation should always round up');
+    }
+  })
+};
+
+// ==================== RUN TESTS ====================
+
+async function runAllTests() {
   console.log('\n' + '='.repeat(80));
   console.log('🧪 STORY SERVICE COMPREHENSIVE TEST SUITE');
   console.log('='.repeat(80));

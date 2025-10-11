@@ -28,7 +28,7 @@ export class StoryService {
   // ==================== STORY GENERATION ====================
   generateStory(input: StoryGenerationSeam['input']): Observable<ApiResponse<StoryGenerationSeam['output']>> {
     this.errorLogging.logInfo('Starting story generation', 'StoryService.generateStory', { input });
-    
+
     return this.http.post<ApiResponse<StoryGenerationSeam['output']>>(
       `${this.apiUrl}/story/generate`,
       input
@@ -45,7 +45,7 @@ export class StoryService {
   // ==================== AUDIO CONVERSION ====================
   convertToAudio(input: AudioConversionSeam['input']): Observable<ApiResponse<AudioConversionSeam['output']>> {
     this.errorLogging.logInfo('Starting audio conversion', 'StoryService.convertToAudio', { storyId: input.storyId });
-    
+
     return this.http.post<ApiResponse<AudioConversionSeam['output']>>(
       `${this.apiUrl}/audio/convert`,
       input
@@ -62,7 +62,7 @@ export class StoryService {
   // ==================== SAVE/EXPORT ====================
   saveStory(input: SaveExportSeam['input']): Observable<ApiResponse<SaveExportSeam['output']>> {
     this.errorLogging.logInfo('Starting story save/export', 'StoryService.saveStory', { storyId: input.storyId, format: input.format });
-    
+
     return this.http.post<ApiResponse<SaveExportSeam['output']>>(
       `${this.apiUrl}/export/save`,
       input
@@ -79,7 +79,7 @@ export class StoryService {
   // ==================== CHAPTER CONTINUATION ====================
   generateNextChapter(input: ChapterContinuationSeam['input']): Observable<ApiResponse<ChapterContinuationSeam['output']>> {
     this.errorLogging.logInfo('Starting chapter continuation', 'StoryService.generateNextChapter', { storyId: input.storyId });
-    
+
     return this.http.post<ApiResponse<ChapterContinuationSeam['output']>>(
       `${this.apiUrl}/story/continue`,
       input
