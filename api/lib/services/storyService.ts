@@ -253,8 +253,8 @@ export class StoryService {
           },
           temperature: 0.8,
           max_tokens: this.calculateOptimalTokens(input.wordCount),
-          top_p: 0.95
-          // Note: Grok-4 doesn't support frequency_penalty or presence_penalty parameters
+          top_p: 0.95,              // Focus on high-quality tokens
+          repetition_penalty: 1.1   // Reduce repetition
         },
         {
           headers: {
@@ -390,8 +390,8 @@ export class StoryService {
         ],
         max_tokens: this.calculateOptimalTokens(input.wordCount),
         temperature: 0.8,
-        top_p: 0.95              // Focus on high-quality tokens
-        // Note: Grok-4 doesn't support frequency_penalty or presence_penalty parameters
+        top_p: 0.95,              // Focus on high-quality tokens
+        repetition_penalty: 1.1   // Reduce repetition
       }, {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,
@@ -448,8 +448,8 @@ export class StoryService {
         ],
         max_tokens: this.calculateOptimalTokens(500), // ~500 words per chapter
         temperature: 0.8,
-        top_p: 0.95
-        // Note: Grok-4 doesn't support frequency_penalty or presence_penalty parameters
+        top_p: 0.95,              // Focus on high-quality tokens
+        repetition_penalty: 1.1   // Reduce repetition
       }, {
         headers: {
           'Authorization': `Bearer ${this.grokApiKey}`,
