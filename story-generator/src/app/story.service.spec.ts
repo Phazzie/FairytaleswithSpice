@@ -463,4 +463,547 @@ describe('StoryService', () => {
       expect(errorLoggingService.logInfo).toHaveBeenCalledTimes(8); // 4 start + 4 success logs
     });
   });
+
+  // ==================== STREAMING STORY GENERATION TESTS ====================
+  describe('generateStoryStreaming', () => {
+    const mockInput: StoryGenerationSeam['input'] = {
+      creature: 'vampire' as CreatureType,
+      themes: ['forbidden_love', 'seduction'] as ThemeType[],
+      userInput: 'A moonlit encounter',
+      spicyLevel: 3 as SpicyLevel,
+      wordCount: 900 as const
+    };
+
+    it('should be defined', () => {
+      expect(service.generateStoryStreaming).toBeDefined();
+    });
+
+    it('should build correct SSE URL with query parameters', (done) => {
+      // Create a mock EventSource to capture the URL
+      const originalEventSource = (window as any).EventSource;
+      let capturedUrl = '';
+      
+      (window as any).EventSource = class MockEventSource {
+        constructor(url: string) {
+          capturedUrl = url;
+          setTimeout(() => {
+            this.onerror && this.onerror(new Event('error'));
+          }, 10);
+        }
+        addEventListener() {}
+        close() {}
+        onerror: any;
+      };
+
+      service.generateStoryStreaming(mockInput).subscribe({
+        error: () => {
+          expect(capturedUrl).toContain('/api/story/stream?');
+          expect(capturedUrl).toContain('creature=vampire');
+          expect(capturedUrl).toContain('themes=forbidden_love%2Cseduction');
+          expect(capturedUrl).toContain('spicyLevel=3');
+          expect(capturedUrl).toContain('wordCount=900');
+          expect(capturedUrl).toContain('userInput=A%20moonlit%20encounter');
+          
+          (window as any).EventSource = originalEventSource;
+          done();
+        }
+      });
+    });
+
+    it('should handle connected event and call onProgress callback', (done) => {
+      const originalEventSource = (window as any).EventSource;
+      let messageHandler: any;
+      
+      (window as any).EventSource = class MockEventSource {
+        constructor(url: string) {}
+        addEventListener(event: string, handler: any) {
+          if (event === 'message') {
+            messageHandler = handler;
+            // Simulate connected event
+            setTimeout(() => {
+              handler({
+                data: JSON.stringify({
+                  type: 'connected',
+                  streamId: 'stream_123',
+                  metadata: {
+                    wordsGenerated: 0,
+                    totalWordsTarget: 900,
+                    estimatedWordsRemaining: 900,
+                    generationSpeed: 0,
+                    percentage: 0
+                  }
+                })
+              });
+            }, 10);
+          }
+        }
+        close() {}
+        onerror: any;
+      };
+
+      const progressChunks: any[] = [];
+      
+      service.generateStoryStreaming(mockInput, (chunk) => {
+        progressChunks.push(chunk);
+        
+        if (chunk.type === 'connected') {
+          expect(chunk.streamId).toBe('stream_123');
+          expect(chunk.metadata).toBeDefined();
+          expect(chunk.metadata?.wordsGenerated).toBe(0);
+          
+          (window as any).EventSource = originalEventSource;
+          done();
+        }
+      }).subscribe({
+        error: () => {} // Ignore errors for this test
+      });
+    });
+
+    it('should handle chunk events with progressive content', (done) => {
+      const originalEventSource = (window as any).EventSource;
+      let messageHandler: any;
+      
+      (window as any).EventSource = class MockEventSource {
+        constructor(url: string) {}
+        addEventListener(event: string, handler: any) {
+          if (event === 'message') {
+            messageHandler = handler;
+            setTimeout(() => {
+              handler({
+                data: JSON.stringify({
+                  type: 'chunk',
+                  streamId: 'stream_123',
+                  storyId: 'story_456',
+                  content: '<h3>The Vampire\'s Desire</h3><p>In the darkness...</p>',
+                  metadata: {
+                    wordsGenerated: 45,
+                    estimatedWordsRemaining: 855,
+                    generationSpeed: 15.5,
+                    percentage: 5
+                  }
+                })
+              });
+            }, 10);
+          }
+        }
+        close() {}
+        onerror: any;
+      };
+
+      service.generateStoryStreaming(mockInput, (chunk) => {
+        if (chunk.type === 'chunk') {
+          expect(chunk.content).toContain('The Vampire\'s Desire');
+          expect(chunk.metadata?.wordsGenerated).toBe(45);
+          expect(chunk.metadata?.generationSpeed).toBe(15.5);
+          expect(chunk.metadata?.percentage).toBe(5);
+          
+          (window as any).EventSource = originalEventSource;
+          done();
+        }
+      }).subscribe({
+        error: () => {}
+      });
+    });
+
+    it('should handle complete event and return final story', (done) => {
+      const originalEventSource = (window as any).EventSource;
+      
+      (window as any).EventSource = class MockEventSource {
+        constructor(url: string) {}
+        addEventListener(event: string, handler: any) {
+          if (event === 'message') {
+            setTimeout(() => {
+              handler({
+                data: JSON.stringify({
+                  type: 'complete',
+                  streamId: 'stream_123',
+                  storyId: 'story_final',
+                  content: '<h3>Moonlit Passion</h3><p>The vampire lord gazed upon her...</p>',
+                  metadata: {
+                    wordsGenerated: 900,
+                    estimatedWordsRemaining: 0,
+                    generationSpeed: 18.2,
+                    percentage: 100
+                  }
+                })
+              });
+            }, 10);
+          }
+        }
+        close() {}
+        onerror: any;
+      };
+
+      let completeCalled = false;
+      
+      service.generateStoryStreaming(mockInput, (chunk) => {
+        if (chunk.type === 'complete') {
+          completeCalled = true;
+          expect(chunk.content).toContain('Moonlit Passion');
+          expect(chunk.metadata?.wordsGenerated).toBe(900);
+        }
+      }).subscribe({
+        next: (response) => {
+          expect(response.success).toBe(true);
+          expect(response.data).toBeDefined();
+          expect(response.data?.storyId).toBe('story_final');
+          expect(response.data?.title).toBe('Moonlit Passion');
+          expect(response.data?.content).toContain('vampire lord');
+          expect(response.data?.actualWordCount).toBe(900);
+          expect(response.data?.creature).toBe('vampire');
+          expect(completeCalled).toBe(true);
+          
+          (window as any).EventSource = originalEventSource;
+          done();
+        },
+        error: () => {
+          fail('Should not error on complete event');
+        }
+      });
+    });
+
+    it('should handle error events from server', (done) => {
+      const originalEventSource = (window as any).EventSource;
+      
+      (window as any).EventSource = class MockEventSource {
+        constructor(url: string) {}
+        addEventListener(event: string, handler: any) {
+          if (event === 'message') {
+            setTimeout(() => {
+              handler({
+                data: JSON.stringify({
+                  type: 'error',
+                  streamId: 'stream_123',
+                  error: {
+                    code: 'GENERATION_FAILED',
+                    message: 'AI service unavailable'
+                  }
+                })
+              });
+            }, 10);
+          }
+        }
+        close() {}
+        onerror: any;
+      };
+
+      let errorCallbackCalled = false;
+      
+      service.generateStoryStreaming(mockInput, (chunk) => {
+        if (chunk.type === 'error') {
+          errorCallbackCalled = true;
+          expect(chunk.error?.code).toBe('GENERATION_FAILED');
+          expect(chunk.error?.message).toBe('AI service unavailable');
+        }
+      }).subscribe({
+        next: () => {
+          fail('Should not complete successfully on error event');
+        },
+        error: (error) => {
+          expect(error.message).toContain('AI service unavailable');
+          expect(errorCallbackCalled).toBe(true);
+          
+          (window as any).EventSource = originalEventSource;
+          done();
+        }
+      });
+    });
+
+    it('should handle EventSource connection errors', (done) => {
+      const originalEventSource = (window as any).EventSource;
+      
+      (window as any).EventSource = class MockEventSource {
+        constructor(url: string) {
+          setTimeout(() => {
+            this.onerror && this.onerror(new Event('error'));
+          }, 10);
+        }
+        addEventListener() {}
+        close() {}
+        onerror: any;
+      };
+
+      service.generateStoryStreaming(mockInput).subscribe({
+        next: () => {
+          fail('Should not complete successfully on connection error');
+        },
+        error: (error) => {
+          expect(error.message).toBe('Stream connection failed');
+          expect(errorLoggingService.logError).toHaveBeenCalled();
+          
+          (window as any).EventSource = originalEventSource;
+          done();
+        }
+      });
+    });
+
+    it('should handle malformed JSON in SSE messages', (done) => {
+      const originalEventSource = (window as any).EventSource;
+      
+      (window as any).EventSource = class MockEventSource {
+        constructor(url: string) {}
+        addEventListener(event: string, handler: any) {
+          if (event === 'message') {
+            setTimeout(() => {
+              handler({
+                data: 'invalid json {{{' // Malformed JSON
+              });
+            }, 10);
+          }
+        }
+        close() {}
+        onerror: any;
+      };
+
+      service.generateStoryStreaming(mockInput).subscribe({
+        next: () => {
+          fail('Should not complete successfully on JSON parse error');
+        },
+        error: (error) => {
+          expect(error).toBeDefined();
+          expect(errorLoggingService.logError).toHaveBeenCalled();
+          
+          (window as any).EventSource = originalEventSource;
+          done();
+        }
+      });
+    });
+
+    it('should cleanup EventSource on unsubscribe', (done) => {
+      const originalEventSource = (window as any).EventSource;
+      let closeCalled = false;
+      
+      (window as any).EventSource = class MockEventSource {
+        constructor(url: string) {}
+        addEventListener() {}
+        close() {
+          closeCalled = true;
+        }
+        onerror: any;
+      };
+
+      const subscription = service.generateStoryStreaming(mockInput).subscribe({
+        error: () => {}
+      });
+
+      setTimeout(() => {
+        subscription.unsubscribe();
+        
+        expect(closeCalled).toBe(true);
+        expect(errorLoggingService.logInfo).toHaveBeenCalledWith(
+          'Stream unsubscribed, closing connection',
+          'StoryService.generateStoryStreaming',
+          jasmine.any(Object)
+        );
+        
+        (window as any).EventSource = originalEventSource;
+        done();
+      }, 50);
+    });
+
+    it('should log streaming lifecycle events', (done) => {
+      const originalEventSource = (window as any).EventSource;
+      
+      (window as any).EventSource = class MockEventSource {
+        constructor(url: string) {}
+        addEventListener(event: string, handler: any) {
+          if (event === 'message') {
+            setTimeout(() => {
+              handler({
+                data: JSON.stringify({
+                  type: 'connected',
+                  streamId: 'stream_log_test'
+                })
+              });
+            }, 10);
+          }
+        }
+        close() {}
+        onerror: any;
+      };
+
+      service.generateStoryStreaming(mockInput).subscribe({
+        error: () => {
+          expect(errorLoggingService.logInfo).toHaveBeenCalledWith(
+            'Starting streaming story generation',
+            'StoryService.generateStoryStreaming',
+            jasmine.objectContaining({ input: mockInput })
+          );
+          
+          (window as any).EventSource = originalEventSource;
+          done();
+        }
+      });
+    });
+  });
+
+  // ==================== HELPER METHOD TESTS ====================
+  describe('helper methods', () => {
+    describe('extractTitle', () => {
+      it('should extract title from h3 tag', () => {
+        const content = '<h3>The Vampire\'s Dark Secret</h3><p>Story content...</p>';
+        const service2: any = service;
+        const title = service2.extractTitle(content);
+        expect(title).toBe('The Vampire\'s Dark Secret');
+      });
+
+      it('should handle title with extra whitespace', () => {
+        const content = '<h3>  Moonlit Desire  </h3><p>Content...</p>';
+        const service2: any = service;
+        const title = service2.extractTitle(content);
+        expect(title).toBe('Moonlit Desire');
+      });
+
+      it('should return "Untitled Story" when no h3 tag found', () => {
+        const content = '<p>Story without title...</p>';
+        const service2: any = service;
+        const title = service2.extractTitle(content);
+        expect(title).toBe('Untitled Story');
+      });
+
+      it('should return "Untitled Story" for empty content', () => {
+        const service2: any = service;
+        const title = service2.extractTitle('');
+        expect(title).toBe('Untitled Story');
+      });
+
+      it('should handle h3 tags with attributes', () => {
+        const content = '<h3 class="title" id="main">Epic Tale</h3><p>Content...</p>';
+        const service2: any = service;
+        const title = service2.extractTitle(content);
+        expect(title).toBe('Epic Tale');
+      });
+    });
+
+    describe('detectCliffhanger', () => {
+      it('should detect "to be continued" pattern', () => {
+        const content = '<p>Chapter 1</p><p>And the story continues... to be continued</p>';
+        const service2: any = service;
+        const hasCliffhanger = service2.detectCliffhanger(content);
+        expect(hasCliffhanger).toBe(true);
+      });
+
+      it('should detect "what happens next" pattern', () => {
+        const content = '<p>She turned around...</p><p>But what happens next?</p>';
+        const service2: any = service;
+        const hasCliffhanger = service2.detectCliffhanger(content);
+        expect(hasCliffhanger).toBe(true);
+      });
+
+      it('should detect "little did they know" pattern', () => {
+        const content = '<p>They walked away safely.</p><p>Little did she know what awaited...</p>';
+        const service2: any = service;
+        const hasCliffhanger = service2.detectCliffhanger(content);
+        expect(hasCliffhanger).toBe(true);
+      });
+
+      it('should detect ellipsis ending', () => {
+        const content = '<p>Chapter ends here</p><p>And then...</p>';
+        const service2: any = service;
+        const hasCliffhanger = service2.detectCliffhanger(content);
+        expect(hasCliffhanger).toBe(true);
+      });
+
+      it('should detect question mark ending with "but" pattern', () => {
+        // The detectCliffhanger splits by </p> and checks second-to-last element
+        // Pattern /but .*\?$/ needs the ? at the very end of that element
+        const content = '<p>Story content</p><p>But who was watching?';
+        const service2: any = service;
+        const hasCliffhanger = service2.detectCliffhanger(content);
+        expect(hasCliffhanger).toBe(true);
+      });
+
+      it('should return false for normal ending', () => {
+        const content = '<p>And they lived happily ever after.</p><p>The End.</p>';
+        const service2: any = service;
+        const hasCliffhanger = service2.detectCliffhanger(content);
+        expect(hasCliffhanger).toBe(false);
+      });
+
+      it('should return false for empty content', () => {
+        const service2: any = service;
+        const hasCliffhanger = service2.detectCliffhanger('');
+        expect(hasCliffhanger).toBe(false);
+      });
+    });
+  });
+
+  // ==================== ADDITIONAL ERROR HANDLING TESTS ====================
+  describe('advanced error handling', () => {
+    it('should handle 500 internal server error', () => {
+      const mockInput: StoryGenerationSeam['input'] = {
+        creature: 'vampire' as CreatureType,
+        themes: ['passion'] as ThemeType[],
+        userInput: '',
+        spicyLevel: 1 as SpicyLevel,
+        wordCount: 700 as const
+      };
+
+      service.generateStory(mockInput).subscribe({
+        next: () => fail('Should have failed'),
+        error: (error) => {
+          expect(error.success).toBe(false);
+          expect(error.error.code).toBe('HTTP_ERROR');
+          expect(error.error.message).toContain('500');
+        }
+      });
+
+      const req = httpMock.expectOne('/api/story/generate');
+      req.flush('Internal Server Error', { status: 500, statusText: 'Internal Server Error' });
+    });
+
+    it('should handle 503 service unavailable', () => {
+      const mockInput: StoryGenerationSeam['input'] = {
+        creature: 'fairy' as CreatureType,
+        themes: ['desire'] as ThemeType[],
+        userInput: '',
+        spicyLevel: 2 as SpicyLevel,
+        wordCount: 900 as const
+      };
+
+      service.generateStory(mockInput).subscribe({
+        next: () => fail('Should have failed'),
+        error: (error) => {
+          expect(error.success).toBe(false);
+          expect(error.error.code).toBe('HTTP_ERROR');
+          expect(error.error.message).toContain('503');
+        }
+      });
+
+      const req = httpMock.expectOne('/api/story/generate');
+      req.flush('Service Unavailable', { status: 503, statusText: 'Service Unavailable' });
+    });
+
+    it('should preserve error details from backend', () => {
+      const mockInput: StoryGenerationSeam['input'] = {
+        creature: 'werewolf' as CreatureType,
+        themes: ['lust'] as ThemeType[],
+        userInput: '',
+        spicyLevel: 4 as SpicyLevel,
+        wordCount: 1200 as const
+      };
+
+      const backendError = {
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Too many requests',
+          details: { retryAfter: 60 }
+        }
+      };
+
+      service.generateStory(mockInput).subscribe({
+        next: () => fail('Should have failed'),
+        error: (error) => {
+          expect(error.success).toBe(false);
+          expect(error.error.code).toBe('RATE_LIMITED');
+          expect(error.error.message).toBe('Too many requests');
+          expect(error.error.details).toEqual({ retryAfter: 60 });
+        }
+      });
+
+      const req = httpMock.expectOne('/api/story/generate');
+      req.flush(backendError, { status: 429, statusText: 'Too Many Requests' });
+    });
+  });
 });
