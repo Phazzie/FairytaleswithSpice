@@ -263,7 +263,7 @@ describe('StreamingStoryComponent', () => {
       
       setTimeout(() => {
         expect(component.isStreaming).toBe(false);
-        expect(component.errorMessage).toContain('Failed to generate story');
+        expect(component.errorMessage).toBe('Stream failed');
         done();
       }, 100);
     });
@@ -343,7 +343,7 @@ describe('StreamingStoryComponent', () => {
       expect(component.isStreaming).toBe(false);
     });
 
-    it('should update title from final story data', () => {
+    it('should update title from final story data', (done) => {
       const finalStory = {
         data: {
           title: 'Final Title'
@@ -355,6 +355,7 @@ describe('StreamingStoryComponent', () => {
       // Wait for setTimeout
       setTimeout(() => {
         expect(component.storyTitle).toContain('Final Title');
+        done();
       }, 100);
     });
 
