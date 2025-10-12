@@ -140,6 +140,28 @@ export interface ChapterContinuationSeam {
   };
 }
 
+// ==================== STREAMING PROGRESS CHUNK ====================
+/**
+ * Streaming progress chunk structure
+ * Emitted during real-time story generation via SSE
+ */
+export interface StreamingProgressChunk {
+  type: 'connected' | 'chunk' | 'complete' | 'error';
+  content?: string;
+  storyId?: string;
+  streamId?: string;
+  metadata?: {
+    wordsGenerated: number;
+    estimatedWordsRemaining: number;
+    generationSpeed: number; // words per second
+    percentage: number; // 0-100
+  };
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
 // ==================== SEAM 2.5: REAL-TIME STORY GENERATION ====================
 export interface StreamingStoryGenerationSeam {
   seamName: "Real-Time Story Generation";
