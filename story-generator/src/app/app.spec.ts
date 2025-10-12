@@ -15,6 +15,7 @@ import {
   CreatureType,
   SpicyLevel
 } from './contracts';
+import { createMockStoryResponse } from '../testing';
 
 describe('App', () => {
   let component: App;

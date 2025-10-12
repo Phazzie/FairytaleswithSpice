@@ -18,6 +18,7 @@ module.exports = function (config) {
         // the possible options are listed at https://jasmine.github.io/api/edge/Configuration.html
         // for example, you can disable the random execution order
         // random: false
+        timeoutInterval: 10000 // Increase timeout for async tests from default 5000ms
       },
       clearContext: false // leave Jasmine Spec Runner output visible in browser
     },
