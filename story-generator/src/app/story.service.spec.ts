@@ -16,6 +16,13 @@ import {
   AudioFormat,
   ExportFormat
 } from './contracts';
+import { 
+  createMockStoryInput, 
+  createMockStoryResponse,
+  createMessageEmittingMock,
+  createUrlCapturingMock,
+  createSSEMessage
+} from '../testing';
 
 describe('StoryService', () => {
   let service: StoryService;
@@ -45,13 +52,10 @@ describe('StoryService', () => {
   });
 
   describe('generateStory', () => {
-    const mockInput: StoryGenerationSeam['input'] = {
-      creature: 'vampire' as CreatureType,
+    const mockInput = createMockStoryInput({
       themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
-      userInput: 'Victorian setting',
-      spicyLevel: 3 as SpicyLevel,
-      wordCount: 900 as const
-    };
+      userInput: 'Victorian setting'
+    });
 
     const mockSuccessResponse: ApiResponse<StoryGenerationSeam['output']> = {
       success: true,
@@ -466,34 +470,21 @@ describe('StoryService', () => {
 
   // ==================== STREAMING STORY GENERATION TESTS ====================
   describe('generateStoryStreaming', () => {
-    const mockInput: StoryGenerationSeam['input'] = {
-      creature: 'vampire' as CreatureType,
-      themes: ['forbidden_love', 'seduction'] as ThemeType[],
-      userInput: 'A moonlit encounter',
-      spicyLevel: 3 as SpicyLevel,
-      wordCount: 900 as const
-    };
+    const mockInput = createMockStoryInput({
+      themes: ['forbidden_love', 'seduction'] as ThemeType[]
+    });
 
     it('should be defined', () => {
       expect(service.generateStoryStreaming).toBeDefined();
     });
 
     it('should build correct SSE URL with query parameters', (done) => {
-      // Create a mock EventSource to capture the URL
       const originalEventSource = (window as any).EventSource;
       let capturedUrl = '';
       
-      (window as any).EventSource = class MockEventSource {
-        constructor(url: string) {
-          capturedUrl = url;
-          setTimeout(() => {
-            this.onerror && this.onerror(new Event('error'));
-          }, 10);
-        }
-        addEventListener() {}
-        close() {}
-        onerror: any;
-      };
+      (window as any).EventSource = createUrlCapturingMock((url) => {
+        capturedUrl = url;
+      });
 
       service.generateStoryStreaming(mockInput).subscribe({
         error: () => {

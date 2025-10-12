@@ -19,6 +19,7 @@ import {
   SpicyLevel,
   WordCount
 } from '../contracts';
+import { createMockStoryResponse, createMockProgressChunk } from '../../testing';
 
 describe('StreamingStoryComponent', () => {
   let component: StreamingStoryComponent;
@@ -135,22 +136,11 @@ describe('StreamingStoryComponent', () => {
     });
 
     it('should call service with correct parameters', async () => {
-      const mockResponse: ApiResponse<StoryGenerationSeam['output']> = {
-        success: true,
-        data: {
-          storyId: 'story_123',
-          title: 'Test Story',
-          content: '<h3>Test</h3><p>Content</p>',
-          rawContent: '<h3>Test</h3><p>Content</p>',
-          creature: 'vampire' as CreatureType,
-          themes: ['forbidden_love', 'seduction'] as ThemeType[],
-          spicyLevel: 3 as SpicyLevel,
-          actualWordCount: 900,
-          estimatedReadTime: 5,
-          hasCliffhanger: false,
-          generatedAt: new Date()
-        }
-      };
+      const mockResponse = createMockStoryResponse({
+        content: '<h3>Test</h3><p>Content</p>',
+        rawContent: '<h3>Test</h3><p>Content</p>',
+        themes: ['forbidden_love', 'seduction'] as ThemeType[]
+      });
 
       storyService.generateStoryStreaming.and.returnValue(of(mockResponse));
       
@@ -209,10 +199,9 @@ describe('StreamingStoryComponent', () => {
       expect(component.storyTitle).toBe('Generating your story...');
       
       // Title should not change while "Generating" is in the title
-      const chunk1: StreamingProgressChunk = {
-        type: 'chunk',
+      const chunk1 = createMockProgressChunk('chunk', {
         content: '<h3>Moonlit Passion</h3><p>Story begins...</p>'
-      };
+      });
       
       progressCallback(chunk1);
       
