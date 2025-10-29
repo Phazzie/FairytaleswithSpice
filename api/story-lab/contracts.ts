@@ -1,15 +1,3 @@
-/**
- * Next-generation seam contracts for the Fairytales with Spice platform.
- *
- * The previous system tightly coupled a single-chapter response to the UI, which
- * made it impossible to expand into multi-chapter batches or maintain continuity
- * across long-running sagas. This file defines an entirely new set of contracts
- * that support batch generation, persistent story state tracking, and
- * downstream services such as audio and export pipelines.
- */
-
-// ==================== CORE DOMAIN TYPES ====================
-
 export type CreatureArchetype = 'vampire' | 'werewolf' | 'fairy' | 'siren' | 'djinn';
 export type NarrativeTone = 'romance' | 'dark_romance' | 'mystery' | 'adventure' | 'comedy' | 'tragedy';
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
@@ -141,12 +129,7 @@ export interface StoryIterationPayload {
   telemetry: GenerationTelemetry;
 }
 
-// ==================== SEAM CONTRACTS ====================
-
 export interface StoryGenerationSeam {
-  seamName: 'Story Blueprint → Multi-Chapter Genesis';
-  description: 'Transforms a high-level blueprint into 1-3 cohesive chapters and an initialized story state.';
-
   input: StoryBlueprint & {
     chapterBatchSize: ChapterBatchSize;
     allowExperimentalVoices?: boolean;
@@ -154,30 +137,9 @@ export interface StoryGenerationSeam {
   };
 
   output: StoryIterationPayload;
-
-  errors: {
-    INVALID_BLUEPRINT: {
-      code: 'INVALID_BLUEPRINT';
-      message: string;
-      invalidFields: (keyof StoryBlueprint)[];
-    };
-    GENERATION_FAILED: {
-      code: 'GENERATION_FAILED';
-      message: string;
-      retryable: boolean;
-    };
-    CONTENT_POLICY_VIOLATION: {
-      code: 'CONTENT_POLICY_VIOLATION';
-      message: string;
-      offendingFragments: string[];
-    };
-  };
 }
 
 export interface StoryContinuationSeam {
-  seamName: 'Story State → Continuation Batch';
-  description: 'Extends an existing story by 1-3 chapters while updating the persistent state snapshot.';
-
   input: {
     storyId: string;
     chapterBatchSize: ChapterBatchSize;
@@ -190,59 +152,6 @@ export interface StoryContinuationSeam {
   output: StoryIterationPayload & {
     appendedChapterNumbers: number[];
   };
-
-  errors: {
-    STORY_NOT_FOUND: {
-      code: 'STORY_NOT_FOUND';
-      message: string;
-      storyId: string;
-    };
-    STATE_DIVERGENCE: {
-      code: 'STATE_DIVERGENCE';
-      message: string;
-      expectedRevision: number;
-      actualRevision: number;
-    };
-    MAX_CHAPTER_LIMIT: {
-      code: 'MAX_CHAPTER_LIMIT';
-      message: string;
-      maxChapters: number;
-      attemptedChapterNumber: number;
-    };
-  };
-}
-
-export interface StoryPersistenceSeam {
-  seamName: 'Story Snapshot ↔ Persistence Layer';
-  description: 'Defines how story state and chapter metadata are stored in the DigitalOcean database.';
-
-  input: {
-    story: StorySummary;
-    state: StoryStateSnapshot;
-    chapters: GeneratedChapter[];
-  };
-
-  output: {
-    success: true;
-    persistedRevision: number;
-  } | {
-    success: false;
-    reason: 'VALIDATION_ERROR' | 'CONNECTION_ERROR' | 'CONFLICT';
-    message: string;
-  };
-}
-
-export interface StreamingProgressChunk {
-  type: 'connected' | 'chapter_progress' | 'batch_complete' | 'error';
-  storyId?: string;
-  chapterNumber?: number;
-  partialHtml?: string;
-  percentage?: number;
-  estimatedMsRemaining?: number;
-  error?: {
-    code: string;
-    message: string;
-  };
 }
 
 export interface ApiEnvelope<T> {
@@ -252,56 +161,5 @@ export interface ApiEnvelope<T> {
     code: string;
     message: string;
     details?: unknown;
-  };
-}
-
-// ==================== FRONTEND VIEW MODELS ====================
-
-export interface StoryWorkbenchSession {
-  story: StorySummary | null;
-  state: StoryStateSnapshot | null;
-  chapterHistory: GeneratedChapter[];
-  activeBatchSize: ChapterBatchSize;
-  lastTelemetry?: GenerationTelemetry;
-}
-
-export interface ContinuityPanelViewModel {
-  characters: CharacterProfile[];
-  activeThreads: PlotThread[];
-  unresolvedArtifacts: LoreArtifact[];
-  continuityWarnings: string[];
-}
-
-export interface ChapterTimelineEntry {
-  chapterId: string;
-  chapterNumber: number;
-  title: string;
-  summary: string;
-  hasCliffhanger: boolean;
-  createdAt: string;
-}
-
-// ==================== ERROR LOGGING CONTRACTS ====================
-
-export type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
-
-export interface ErrorLog {
-  id: string;
-  timestamp: Date;
-  message: string;
-  context: string;
-  severity: ErrorSeverity;
-  stack?: string;
-  details?: unknown;
-}
-
-export interface ErrorLoggingSeam {
-  seamName: 'Client Error Logging';
-  input: never;
-  output: {
-    errorId: string;
-    logged: boolean;
-    timestamp: Date;
-    severity: ErrorSeverity;
   };
 }

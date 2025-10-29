@@ -6,7 +6,7 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StoryService } from '../story.service';
-import { StoryGenerationSeam, CreatureType, ThemeType, WordCount } from '../contracts';
+import { StoryGenerationSeam, ThemeSeed, WordBudget, StreamingProgressChunk, GeneratedChapter } from '../contracts';
 
 @Component({
   selector: 'app-streaming-story',
@@ -195,7 +195,20 @@ import { StoryGenerationSeam, CreatureType, ThemeType, WordCount } from '../cont
 })
 export class StreamingStoryComponent {
   private storyService = inject(StoryService);
-  
+  private readonly streamingBlueprint: StoryGenerationSeam['input'] = {
+    creature: 'vampire',
+    themes: [
+      { id: 'forbidden_love', label: 'Forbidden Love', description: 'Star-crossed tension under moonlight.' },
+      { id: 'ancient_curses', label: 'Ancient Curses', description: 'Legacy magic complicates every choice.' }
+    ] as ThemeSeed[],
+    logline: 'A vampire lord defies ancient vows for a mortal bond.',
+    spicyLevel: 3,
+    tone: 'dark_romance',
+    desiredWordBudget: 900,
+    chapterBatchSize: 1,
+    narrativeDirectives: 'Keep the prose brooding with lush sensory details.'
+  };
+
   // Streaming state
   isStreaming = false;
   streamedContent = '';
@@ -209,11 +222,14 @@ export class StreamingStoryComponent {
     generationSpeed: 0
   };
   
-  targetWords = 900; // Default word count
+  targetWords = this.streamingBlueprint.desiredWordBudget;
 
   get progressPercentage(): number {
-    if (this.targetWords === 0) return 0;
-    return Math.min((this.progress.wordsGenerated / this.targetWords) * 100, 100);
+    const target = Number(this.targetWords);
+    if (!target) {
+      return 0;
+    }
+    return Math.min((this.progress.wordsGenerated / target) * 100, 100);
   }
 
   get estimatedTimeRemaining(): number {
@@ -234,16 +250,13 @@ export class StreamingStoryComponent {
 
     // Example story generation input
     const input: StoryGenerationSeam['input'] = {
-      creature: 'vampire',
-      themes: ['forbidden_love', 'seduction'],
-      userInput: 'A vampire lord meets a curious human in a moonlit garden',
-      spicyLevel: 3,
-      wordCount: this.targetWords as WordCount
+      ...this.streamingBlueprint,
+      desiredWordBudget: this.targetWords as WordBudget
     };
 
     try {
       // Use the StoryService streaming method
-      this.storyService.generateStoryStreaming(
+      this.storyService.streamStoryGeneration(
         input,
         (progressUpdate) => {
           // Handle real-time progress updates
@@ -287,43 +300,39 @@ export class StreamingStoryComponent {
     };
   }
 
-  private handleStreamChunk(data: any): void {
-    // Update content progressively
-    if (data.content) {
-      this.streamedContent = data.content;
+  private handleStreamChunk(chunk: StreamingProgressChunk): void {
+    if (chunk.type === 'error' && chunk.error) {
+      this.handleStreamError(chunk.error);
+      return;
     }
-    
-    // Update progress metrics
-    this.progress = {
-      wordsGenerated: data.metadata?.wordsGenerated || 0,
-      estimatedWordsRemaining: data.metadata?.estimatedWordsRemaining || 0,
-      generationSpeed: data.metadata?.generationSpeed || 0
-    };
 
-    // Extract title if available in metadata or content
-    if (data.type === 'chunk' && !this.storyTitle.includes('Generating')) {
-      if (data.content && data.content.includes('<h3>')) {
-        const titleMatch = data.content.match(/<h3[^>]*>(.*?)<\/h3>/);
-        if (titleMatch) {
-          this.storyTitle = titleMatch[1];
-        }
-      }
+    if (chunk.partialHtml) {
+      this.streamedContent = chunk.partialHtml;
+    }
+
+    if (typeof chunk.percentage === 'number') {
+      this.progress.wordsGenerated = Math.round((chunk.percentage / 100) * this.targetWords);
+      this.progress.estimatedWordsRemaining = Math.max(this.targetWords - this.progress.wordsGenerated, 0);
+      this.progress.generationSpeed = Math.max(Math.floor(this.progress.wordsGenerated / 20), 1);
+    }
+
+    if (chunk.type === 'chapter_progress' && chunk.chapterNumber && !this.storyTitle) {
+      this.storyTitle = `Streaming Chapter ${chunk.chapterNumber}`;
     }
   }
 
   private handleStreamComplete(finalStory?: any): void {
     this.isStreaming = false;
-    
+
     console.log('✅ Story generation complete!');
-    
-    // Update title from final story if available
-    // ApiResponse wraps data, so we check both finalStory.data.title and finalStory.title for compatibility
-    if (finalStory?.data?.title) {
-      this.storyTitle = finalStory.data.title;
-    } else if (finalStory?.title) {
-      this.storyTitle = finalStory.title;
+
+    if (finalStory?.data?.summary) {
+      this.storyTitle = finalStory.data.summary.title;
+      this.streamedContent = finalStory.data.batch.chapters
+        .map((chapter: GeneratedChapter) => `<h3>${chapter.title}</h3>${chapter.htmlContent}`)
+        .join('');
     }
-    
+
     // Add a small celebration effect
     setTimeout(() => {
       this.storyTitle += ' ✨';

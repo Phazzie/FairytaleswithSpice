@@ -1,197 +1,37 @@
-<div class="debug-panel" [class.visible]="isVisible">
-  <div class="debug-header">
-    <div class="debug-title">
-      <span class="debug-icon">🧪</span>
-      <h3>Debug Panel</h3>
-      <span class="network-indicator" [class.online]="networkStatus.online" [class.offline]="!networkStatus.online">
-        {{ networkStatus.online ? '🟢' : '🔴' }}
-      </span>
+<div class="debug-panel">
+  <header class="debug-panel__header">
+    <div>
+      <h3>Story Lab Debug Console</h3>
+      <p *ngIf="health().state === 'healthy'" class="status status--healthy">API healthy • {{ health().latencyMs }} ms</p>
+      <p *ngIf="health().state === 'unhealthy'" class="status status--unhealthy">API unhealthy • {{ health().message }}</p>
+      <p *ngIf="health().state === 'checking'" class="status">Checking API health…</p>
     </div>
-    <button class="close-btn" (click)="toggleVisibility()" title="Close Debug Panel">✕</button>
-  </div>
+  </header>
 
-  <div class="debug-content">
-    <!-- API Health Check Section -->
-    <div class="debug-section">
-      <h4>🏥 API Health Check</h4>
-      <div class="health-check">
-        <button 
-          class="debug-btn health-btn" 
-          (click)="checkApiHealth()"
-          [disabled]="healthStatus === 'checking'">
-          <span *ngIf="healthStatus === 'checking'">⏳ Checking...</span>
-          <span *ngIf="healthStatus !== 'checking'">🔍 Check API Health</span>
-        </button>
-        
-        <div class="health-status" *ngIf="healthStatus !== 'unknown'">
-          <div class="status-indicator" [ngClass]="healthStatus">
-            <span *ngIf="healthStatus === 'healthy'">✅ Healthy</span>
-            <span *ngIf="healthStatus === 'unhealthy'">❌ Unhealthy</span>
-            <span *ngIf="healthStatus === 'checking'">⏳ Checking...</span>
-          </div>
-          
-          <div class="health-details" *ngIf="healthResponse">
-            <small>Version: {{ healthResponse.version }}</small>
-            <small>Last checked: {{ formatTimestamp(lastHealthCheck!) }}</small>
-            <small *ngIf="networkStatus.latency">Latency: {{ networkStatus.latency }}ms</small>
-          </div>
-        </div>
-      </div>
-    </div>
+  <section class="debug-panel__actions">
+    <button type="button" (click)="checkApiHealth()" [disabled]="health().state === 'checking'">
+      Check API Health
+    </button>
+    <button type="button" (click)="triggerSampleGenesis()" [disabled]="generating()">
+      {{ generating() ? 'Generating sample…' : 'Generate Sample Batch' }}
+    </button>
+  </section>
 
-    <!-- API Test Section -->
-    <div class="debug-section">
-      <h4>🧪 API Test</h4>
-      <div class="sample-stories">
-        <button 
-          class="debug-btn story-btn" 
-          (click)="testAPIConnection()"
-          [disabled]="testingAPI">
-          <span *ngIf="testingAPI">⏳ Testing...</span>
-          <span *ngIf="!testingAPI">🔍 Test API Connection</span>
-        </button>
-        
-        <button 
-          class="debug-btn heather-btn" 
-          (click)="generateHeatherStory()"
-          [disabled]="generatingHeatherStory">
-          <span *ngIf="generatingHeatherStory">⏳ Generating...</span>
-          <span *ngIf="!generatingHeatherStory">🧛‍♀️ Generate Heather's Story</span>
-        </button>
-        
-        <div class="heather-story-result" *ngIf="heatherStoryResult">
-          <div class="story-preview">
-            <h5>{{ heatherStoryResult.title }}</h5>
-            <p [innerHTML]="heatherStoryResult.content | slice:0:200"></p>
-            <small *ngIf="heatherStoryResult.content.length > 200">
-              ...{{ heatherStoryResult.actualWordCount }} words total
-            </small>
-          </div>
-        </div>
-      </div>
-    </div>  <div class="debug-header">
-    <div class="debug-title">
-      <span class="debug-icon">🧪</span>
-      <h3>Debug Panel</h3>
-      <span class="network-indicator" [class.online]="networkStatus.online" [class.offline]="!networkStatus.online">
-        {{ networkStatus.online ? '🟢' : '🔴' }}
-      </span>
+  <section class="debug-panel__payload" *ngIf="lastSummary() as summary">
+    <h4>Latest Batch</h4>
+    <p><strong>{{ summary.title }}</strong> · Story {{ summary.storyId }}</p>
+    <p>{{ summary.synopsis }}</p>
+    <div class="chapter-list">
+      <article *ngFor="let chapter of lastPayload()?.batch.chapters">
+        <h5>Chapter {{ chapter.chapterNumber }} · {{ chapter.title }}</h5>
+        <p>{{ chapter.summary }}</p>
+        <small>Cliffhanger: {{ chapter.hasCliffhanger ? 'Yes' : 'No' }} • Words: {{ chapter.wordCount }}</small>
+      </article>
     </div>
-    <button class="close-btn" (click)="toggleVisibility()" title="Close Debug Panel">✕</button>
-  </div>
+  </section>
 
-  <div class="debug-content">
-    <!-- API Health Check Section -->
-    <div class="debug-section">
-      <h4>🏥 API Health Check</h4>
-      <div class="health-check">
-        <button 
-          class="debug-btn health-btn" 
-          (click)="checkApiHealth()"
-          [disabled]="healthStatus === 'checking'">
-          <span *ngIf="healthStatus === 'checking'">⏳ Checking...</span>
-          <span *ngIf="healthStatus !== 'checking'">🔍 Check API Health</span>
-        </button>
-        
-        <div class="health-status" *ngIf="healthStatus !== 'unknown'">
-          <div class="status-indicator" [ngClass]="healthStatus">
-            <span *ngIf="healthStatus === 'healthy'">✅ Healthy</span>
-            <span *ngIf="healthStatus === 'unhealthy'">❌ Unhealthy</span>
-            <span *ngIf="healthStatus === 'checking'">⏳ Checking...</span>
-          </div>
-          
-          <div class="health-details" *ngIf="healthResponse">
-            <small>Version: {{ healthResponse.version }}</small>
-            <small>Last checked: {{ formatTimestamp(lastHealthCheck!) }}</small>
-            <small *ngIf="networkStatus.latency">Latency: {{ networkStatus.latency }}ms</small>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- API Test Section -->
-    <div class="debug-section">
-      <h4>� API Test</h4>
-      <div class="sample-stories">
-        <button 
-          class="debug-btn story-btn" 
-          (click)="testAPIConnection()"
-          [disabled]="testingAPI">
-          <span *ngIf="testingAPI">⏳ Testing...</span>
-          <span *ngIf="!testingAPI">� Test API Connection</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Environment Info Section -->
-    <div class="debug-section">
-      <h4>🌍 Environment Info</h4>
-      <div class="env-info">
-        <div class="env-item">
-          <strong>URL:</strong> 
-          <span class="url-text">{{ environmentInfo.url }}</span>
-          <button class="mini-btn" (click)="refreshEnvironmentInfo()" title="Refresh">🔄</button>
-        </div>
-        <div class="env-item">
-          <strong>Timestamp:</strong> {{ environmentInfo.timestamp }}
-        </div>
-        <div class="env-item">
-          <strong>Network:</strong> 
-          <span [class.online]="networkStatus.online" [class.offline]="!networkStatus.online">
-            {{ networkStatus.online ? 'Online' : 'Offline' }}
-          </span>
-          <small>(checked: {{ formatTimestamp(networkStatus.lastChecked) }})</small>
-        </div>
-        <div class="env-item">
-          <strong>Angular:</strong> {{ environmentInfo.angularVersion }}
-        </div>
-        <div class="env-item">
-          <strong>Build:</strong> {{ environmentInfo.buildMode }}
-        </div>
-      </div>
-    </div>
-
-    <!-- Error Log Section -->
-    <div class="debug-section">
-      <h4>🐛 Error Log ({{ errors.length }})</h4>
-      <div class="error-controls">
-        <button class="debug-btn clear-btn" (click)="clearErrors()" [disabled]="errors.length === 0">
-          🗑️ Clear Errors
-        </button>
-        <button class="debug-btn export-btn" (click)="exportErrorsAsJson()" [disabled]="errors.length === 0">
-          💾 Export JSON
-        </button>
-      </div>
-      
-      <div class="error-log">
-        <div *ngIf="errors.length === 0" class="no-errors">
-          ✅ No errors logged
-        </div>
-        
-        <div *ngFor="let error of errors" class="error-item" [style.border-left-color]="getErrorTypeColor(error.type)">
-          <div class="error-header">
-            <span class="error-type" [style.color]="getErrorTypeColor(error.type)">{{ error.type }}</span>
-            <span class="error-time">{{ formatTimestamp(error.timestamp) }}</span>
-            <span class="error-endpoint" *ngIf="error.endpoint">{{ error.endpoint }}</span>
-          </div>
-          <div class="error-message">{{ error.message }}</div>
-          <div class="error-details" *ngIf="error.details && error.details !== null">
-            <details>
-              <summary>Details</summary>
-              <pre>{{ error.details | json }}</pre>
-            </details>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <section class="debug-panel__error" *ngIf="lastError() as error">
+    <strong>Last Error:</strong>
+    <code>{{ error }}</code>
+  </section>
 </div>
-
-<!-- Debug Panel Toggle Button (Fixed Position) -->
-<button 
-  class="debug-toggle" 
-  (click)="toggleVisibility()"
-  [class.active]="isVisible"
-  title="Toggle Debug Panel (Ctrl+Shift+D)">
-  🧪
-</button>
