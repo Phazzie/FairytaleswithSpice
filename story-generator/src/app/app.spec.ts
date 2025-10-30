@@ -13,7 +13,8 @@ import {
   ApiResponse,
   ThemeType,
   CreatureType,
-  SpicyLevel
+  SpicyLevel,
+  Chapter
 } from './contracts';
 import { createMockStoryResponse } from '../testing';
 
@@ -122,16 +123,29 @@ describe('App', () => {
     });
 
     it('should generate story successfully', () => {
+      const mockChapter: Chapter = {
+        chapterId: 'chapter_1',
+        chapterNumber: 1,
+        title: 'Chapter 1',
+        content: '<p>Story content...</p>',
+        rawContent: '<p>Story content...</p>',
+        wordCount: 150,
+        generatedAt: new Date(),
+        hasAudio: false,
+        cliffhangerEnding: false
+      };
+
       const mockResponse: ApiResponse<StoryGenerationSeam['output']> = {
         success: true,
         data: {
           storyId: 'story_123',
           title: 'Test Story',
-          content: '<h3>Chapter 1</h3><p>Story content...</p>',
+          chapters: [mockChapter],
+          appendedToStory: '<h3>Chapter 1</h3><p>Story content...</p>',
           creature: 'vampire' as CreatureType,
           themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
           spicyLevel: 3 as SpicyLevel,
-          actualWordCount: 150,
+          totalWordCount: 150,
           estimatedReadTime: 1,
           hasCliffhanger: false,
           generatedAt: new Date()
@@ -151,13 +165,14 @@ describe('App', () => {
         themes: ['forbidden_love', 'dark_secrets'],
         userInput: '',
         spicyLevel: 3,
-        wordCount: 900
+        wordCount: 900,
+        requestedChapterCount: 1
       });
 
       // Wait for async operation
       setTimeout(() => {
         expect(component.isGenerating).toBe(false);
-        expect(component.currentStory).toBe('<h3>Chapter 1</h3><p>Story content...</p>');
+        expect(component.currentStory).toBe('<p>Story content...</p>');
         expect(component.currentStoryId).toBe('story_123');
         expect(component.currentStoryTitle).toBe('Test Story');
         expect(component.currentChapterCount).toBe(1);
@@ -201,14 +216,25 @@ describe('App', () => {
     });
 
     it('should generate next chapter successfully', () => {
+      const mockChapter: Chapter = {
+        chapterId: 'chapter_456',
+        chapterNumber: 2,
+        title: 'Chapter 2: Continuation',
+        content: '<p>New content...</p>',
+        rawContent: '<p>New content...</p>',
+        wordCount: 120,
+        generatedAt: new Date(),
+        hasAudio: false,
+        cliffhangerEnding: true
+      };
+
       const mockResponse: ApiResponse<ChapterContinuationSeam['output']> = {
         success: true,
         data: {
-          chapterId: 'chapter_456',
-          chapterNumber: 2,
-          title: 'Chapter 2: Continuation',
-          content: '<h3>Chapter 2</h3><p>New content...</p>',
-          wordCount: 120,
+          storyId: 'story_123',
+          chapters: [mockChapter],
+          totalWordCount: 220,
+          estimatedReadTime: 2,
           cliffhangerEnding: true,
           themesContinued: ['forbidden_love'] as ThemeType[],
           spicyLevelMaintained: 3 as SpicyLevel,
@@ -227,15 +253,16 @@ describe('App', () => {
       expect(storyService.generateNextChapter).toHaveBeenCalledWith({
         storyId: 'story_123',
         currentChapterCount: 1,
-        existingContent: '<p>Existing content...</p>',
+        existingContent: '<h3>Chapter 1: Chapter 1</h3>\n\n<p>Existing content...</p>',
         userInput: '',
-        maintainTone: true
+        maintainTone: true,
+        requestedChapterCount: 1
       });
 
       // Wait for async operation
       setTimeout(() => {
         expect(component.isGeneratingNext).toBe(false);
-        expect(component.currentStory).toContain('Chapter 2');
+        expect(component.currentStory).toBe('<p>New content...</p>');
         expect(component.currentChapterCount).toBe(2);
       }, 0);
     });

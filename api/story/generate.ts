@@ -40,17 +40,35 @@ export default async function handler(req: any, res: any) {
 
   try {
     console.log(`[${requestId}] POST /api/story/generate - Request received`);
-    
-    const input: StoryGenerationSeam['input'] = req.body;
+
+    const rawInput = req.body as Partial<StoryGenerationSeam['input']>;
+    const requestedChapterCount = Math.min(
+      Math.max(Number(rawInput?.requestedChapterCount ?? 1), 1),
+      3
+    ) as 1 | 2 | 3;
+
+    const input: StoryGenerationSeam['input'] = {
+      creature: rawInput.creature as StoryGenerationSeam['input']['creature'],
+      themes: (rawInput.themes || []) as StoryGenerationSeam['input']['themes'],
+      userInput: rawInput.userInput ?? '',
+      spicyLevel: rawInput.spicyLevel as StoryGenerationSeam['input']['spicyLevel'],
+      wordCount: rawInput.wordCount as StoryGenerationSeam['input']['wordCount'],
+      requestedChapterCount
+    };
 
     // Validate required fields
-    if (!input.creature || !input.themes || typeof input.spicyLevel !== 'number' || !input.wordCount) {
+    if (
+      !input.creature ||
+      !input.themes ||
+      typeof input.spicyLevel !== 'number' ||
+      !input.wordCount
+    ) {
       logWarn('Invalid input - missing required fields', {
         requestId,
         endpoint: '/api/story/generate',
         method: 'POST'
-      }, { receivedFields: Object.keys(input) });
-      
+      }, { receivedFields: Object.keys(rawInput || {}) });
+
       return res.status(400).json({
         success: false,
         error: {
@@ -68,28 +86,24 @@ export default async function handler(req: any, res: any) {
         creature: input.creature,
         themes: input.themes,
         spicyLevel: input.spicyLevel,
-        wordCount: input.wordCount
+        wordCount: input.wordCount,
+        requestedChapterCount: input.requestedChapterCount
       }
     });
 
     const storyService = new StoryService();
     const result = await storyService.generateStory(input);
-    
+
     console.log(`[${requestId}] Story generation ${result.success ? 'succeeded' : 'failed'}`);
     res.status(200).json(result);
 
   } catch (error: any) {
-<<<<<<< HEAD
     logError('Story generation endpoint error', error, {
       requestId,
       endpoint: '/api/story/generate',
       method: 'POST',
       statusCode: 500
     });
-    
-=======
-    console.error(`[${requestId}] Story generation serverless function error:`, error);
->>>>>>> c07c20875b1643c77ba40490b75daf80504c0651
     res.status(500).json({
       success: false,
       error: {

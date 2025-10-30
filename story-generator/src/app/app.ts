@@ -78,6 +78,9 @@ export class App implements OnInit, OnDestroy {
   /** Target word count for story generation */
   wordCount: number = 900;
 
+  /** Chapters to request in a single batch */
+  requestedChapterCount: 1 | 2 | 3 = 1;
+
   // ==================== UI STATE MANAGEMENT ====================
 
   /** Loading states for different operations */
@@ -181,6 +184,12 @@ export class App implements OnInit, OnDestroy {
     { value: 1200, label: '1200 words' }
   ];
 
+  chapterBatchOptions = [
+    { value: 1, label: '1 chapter' },
+    { value: 2, label: '2 chapters' },
+    { value: 3, label: '3 chapters' }
+  ];
+
   spicyLevelLabels = ['Mild', 'Warm', 'Hot', 'Spicy', 'Fire 🔥'];
 
   // Theme selection methods
@@ -252,39 +261,37 @@ export class App implements OnInit, OnDestroy {
       themes: Array.from(this.selectedThemes) as any,
       userInput: this.userInput,
       spicyLevel: this.spicyLevel as any,
-      wordCount: this.wordCount as any
+      wordCount: this.wordCount as any,
+      requestedChapterCount: this.requestedChapterCount
     };
 
     this.storyService.generateStory(request).subscribe({
       next: (response) => {
         if (response.success && response.data) {
-          // Create first chapter from generated story
-          const firstChapter: Chapter = {
-            chapterId: `chapter_1_${Date.now()}`,
-            chapterNumber: 1,
-            title: response.data.title,
-            content: response.data.content,
-            rawContent: response.data.rawContent || response.data.content,
-            wordCount: response.data.actualWordCount,
-            generatedAt: new Date(),
-            hasAudio: false
-          };
+          const normalizedChapters = (response.data.chapters || []).map((chapter, index) => ({
+            ...chapter,
+            chapterNumber: chapter.chapterNumber ?? index + 1,
+            generatedAt: chapter.generatedAt ? new Date(chapter.generatedAt) : new Date(),
+            hasAudio: chapter.hasAudio ?? false,
+            rawContent: chapter.rawContent || chapter.content
+          }));
 
-          // Initialize chapters array with first chapter
-          this.chapters = [firstChapter];
+          this.chapters = normalizedChapters;
           this.currentChapterIndex = 0;
-
-          // Store story metadata
           this.currentStoryId = response.data.storyId;
           this.currentStoryTitle = response.data.title;
           this.currentStoryThemes = response.data.themes;
           this.currentStorySpicyLevel = response.data.spicyLevel;
 
           this.isGenerating = false;
-          this.generationError = ''; // Clear any previous errors
+          this.generationError = response.data.failedChapters?.length
+            ? `Some chapters failed: ${response.data.failedChapters.map(fc => `Chapter ${fc.chapterNumber}`).join(', ')}`
+            : '';
+
           this.errorLogging.logInfo('Story generation completed successfully', 'App.generateStory', {
             storyId: response.data.storyId,
-            wordCount: response.data.actualWordCount
+            chapterCount: normalizedChapters.length,
+            totalWordCount: response.data.totalWordCount
           });
         } else {
           // Handle successful response but no data
@@ -350,26 +357,22 @@ export class App implements OnInit, OnDestroy {
       themes: ['forbidden_love'],
       userInput: 'A brief encounter in a moonlit garden. Keep it under 200 words.',
       spicyLevel: 2,
-      wordCount: 700 // API will be instructed to keep it short via userInput
+      wordCount: 700,
+      requestedChapterCount: 1
     };
 
     this.storyService.generateStory(testRequest).subscribe({
       next: (response) => {
         if (response.success && response.data) {
-          // Create quick test chapter
-          const testChapter: Chapter = {
-            chapterId: `chapter_test_${Date.now()}`,
-            chapterNumber: 1,
-            title: response.data.title,
-            content: response.data.content,
-            rawContent: response.data.rawContent || response.data.content,
-            wordCount: response.data.actualWordCount,
-            generatedAt: new Date(),
-            hasAudio: false
-          };
+          const normalizedChapters = (response.data.chapters || []).map((chapter, index) => ({
+            ...chapter,
+            chapterNumber: chapter.chapterNumber ?? index + 1,
+            generatedAt: chapter.generatedAt ? new Date(chapter.generatedAt) : new Date(),
+            hasAudio: chapter.hasAudio ?? false,
+            rawContent: chapter.rawContent || chapter.content
+          }));
 
-          // Initialize with test chapter
-          this.chapters = [testChapter];
+          this.chapters = normalizedChapters;
           this.currentChapterIndex = 0;
           this.currentStoryId = response.data.storyId;
           this.currentStoryTitle = response.data.title;
@@ -377,10 +380,14 @@ export class App implements OnInit, OnDestroy {
           this.currentStorySpicyLevel = response.data.spicyLevel;
 
           this.isGenerating = false;
-          this.generationError = '';
+          this.generationError = response.data.failedChapters?.length
+            ? `Some chapters failed: ${response.data.failedChapters.map(fc => `Chapter ${fc.chapterNumber}`).join(', ')}`
+            : '';
+
           this.errorLogging.logInfo('Quick test completed successfully', 'App.quickTest', {
             storyId: response.data.storyId,
-            wordCount: response.data.actualWordCount
+            chapterCount: normalizedChapters.length,
+            totalWordCount: response.data.totalWordCount
           });
         } else {
           this.isGenerating = false;
@@ -409,43 +416,49 @@ export class App implements OnInit, OnDestroy {
 
   generateNextChapter() {
     this.isContinuing = true;
+    this.isGeneratingNext = true;
 
     this.errorLogging.logInfo('User initiated chapter continuation', 'App.generateNextChapter');
+
+    const existingContent = this.chapters
+      .map(chapter => `<h3>Chapter ${chapter.chapterNumber}: ${chapter.title}</h3>\n\n${chapter.content}`)
+      .join('\n\n<hr/>\n\n');
 
     const request: ChapterContinuationSeam['input'] = {
       storyId: this.currentStoryId,
       currentChapterCount: this.chapters.length,
-      existingContent: this.chapters.map(ch => ch.content).join('\n\n'),
+      existingContent,
       userInput: '',
-      maintainTone: true
+      maintainTone: true,
+      requestedChapterCount: this.requestedChapterCount
     };
 
     this.storyService.generateNextChapter(request).subscribe({
       next: (response) => {
         if (response.success && response.data) {
-          // Create new chapter
-          const newChapter: Chapter = {
-            chapterId: response.data.chapterId,
-            chapterNumber: response.data.chapterNumber,
-            title: response.data.title,
-            content: response.data.content,
-            rawContent: response.data.content, // Backend should provide rawContent
-            wordCount: response.data.content.split(/\s+/).length,
-            generatedAt: new Date(),
-            hasAudio: false
-          };
+          const newChapters = (response.data.chapters || []).map(chapter => ({
+            ...chapter,
+            generatedAt: chapter.generatedAt ? new Date(chapter.generatedAt) : new Date(),
+            hasAudio: chapter.hasAudio ?? false,
+            rawContent: chapter.rawContent || chapter.content
+          }));
 
-          // Add to chapters array
-          this.chapters.push(newChapter);
-          
-          // Navigate to new chapter
-          this.currentChapterIndex = this.chapters.length - 1;
+          const startingIndex = this.chapters.length;
+          this.chapters.push(...newChapters);
+          this.currentChapterIndex = startingIndex;
 
           this.isGeneratingNext = false;
+          this.isContinuing = false;
+          this.generationError = response.data.failedChapters?.length
+            ? `Some continuation chapters failed: ${response.data.failedChapters.map(fc => `Chapter ${fc.chapterNumber}`).join(', ')}`
+            : '';
+
           this.errorLogging.logInfo('Chapter continuation completed successfully', 'App.generateNextChapter', {
-            chapterId: response.data.chapterId,
-            chapterNumber: response.data.chapterNumber
+            chapterNumbers: newChapters.map(ch => ch.chapterNumber)
           });
+        } else {
+          this.isGeneratingNext = false;
+          this.isContinuing = false;
         }
       },
       error: (error) => {
@@ -454,6 +467,7 @@ export class App implements OnInit, OnDestroy {
           userAction: 'chapter_continuation'
         });
         this.isGeneratingNext = false;
+        this.isContinuing = false;
       }
     });
   }

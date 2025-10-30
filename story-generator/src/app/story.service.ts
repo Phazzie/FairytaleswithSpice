@@ -8,7 +8,8 @@ import {
   AudioConversionSeam,
   SaveExportSeam,
   ApiResponse,
-  StreamingProgressChunk
+  StreamingProgressChunk,
+  Chapter
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
 
@@ -35,8 +36,12 @@ export class StoryService {
       input
     ).pipe(
       tap(response => {
-        if (response.success) {
-          this.errorLogging.logInfo('Story generation successful', 'StoryService.generateStory', { storyId: response.data?.storyId });
+        if (response.success && response.data) {
+          this.errorLogging.logInfo('Story generation successful', 'StoryService.generateStory', {
+            storyId: response.data.storyId,
+            chapterCount: response.data.chapters?.length || 0,
+            totalWordCount: response.data.totalWordCount
+          });
         }
       }),
       catchError(error => this.handleError(error, 'generateStory'))
@@ -62,7 +67,8 @@ export class StoryService {
         themes: input.themes.join(','),
         spicyLevel: input.spicyLevel.toString(),
         wordCount: input.wordCount.toString(),
-        userInput: input.userInput || ''
+        userInput: input.userInput || '',
+        requestedChapterCount: (input.requestedChapterCount ?? 1).toString()
       });
       const url = `${this.apiUrl}/story/stream?${params.toString()}`;
       
@@ -115,26 +121,40 @@ export class StoryService {
               finalStoryId = data.storyId || `story_${streamId}`;
               const finalContent = data.content || accumulatedContent;
               
+              const computedWordCount = data.metadata?.wordsGenerated || this.countWords(finalContent);
+              const streamingChapter = {
+                chapterId: `stream_${streamId}_1`,
+                chapterNumber: 1,
+                title: this.extractTitle(finalContent),
+                content: finalContent,
+                rawContent: finalContent,
+                wordCount: computedWordCount,
+                generatedAt: new Date(),
+                hasAudio: false,
+                cliffhangerEnding: this.detectCliffhanger(finalContent)
+              } as Chapter;
+
               const finalStory: ApiResponse<StoryGenerationSeam['output']> = {
                 success: true,
                 data: {
                   storyId: finalStoryId,
-                  title: this.extractTitle(finalContent),
-                  content: finalContent,
-                  rawContent: finalContent,
+                  title: streamingChapter.title,
+                  chapters: [streamingChapter],
                   creature: input.creature,
                   themes: input.themes,
                   spicyLevel: input.spicyLevel,
-                  actualWordCount: data.metadata?.wordsGenerated || 0,
-                  estimatedReadTime: Math.ceil((data.metadata?.wordsGenerated || 0) / 200),
-                  hasCliffhanger: this.detectCliffhanger(finalContent),
+                  totalWordCount: computedWordCount,
+                  estimatedReadTime: Math.ceil(computedWordCount / 200),
+                  hasCliffhanger: streamingChapter.cliffhangerEnding ?? false,
+                  nextChapterHint: undefined,
+                  appendedToStory: finalContent,
                   generatedAt: new Date()
                 }
               };
-              
-              this.errorLogging.logInfo('Stream completed successfully', 'StoryService.generateStoryStreaming', { 
+
+              this.errorLogging.logInfo('Stream completed successfully', 'StoryService.generateStoryStreaming', {
                 storyId: finalStoryId,
-                wordCount: data.metadata?.wordsGenerated 
+                wordCount: computedWordCount
               });
               
               if (onProgress) {
@@ -240,8 +260,10 @@ export class StoryService {
       input
     ).pipe(
       tap(response => {
-        if (response.success) {
-          this.errorLogging.logInfo('Chapter continuation successful', 'StoryService.generateNextChapter', { chapterId: response.data?.chapterId });
+        if (response.success && response.data) {
+          this.errorLogging.logInfo('Chapter continuation successful', 'StoryService.generateNextChapter', {
+            chapterNumbers: response.data.chapters?.map(ch => ch.chapterNumber)
+          });
         }
       }),
       catchError(error => this.handleError(error, 'generateNextChapter'))
@@ -313,9 +335,21 @@ export class StoryService {
    */
   private extractTitle(htmlContent: string): string {
     if (!htmlContent) return 'Untitled Story';
-    
+
     const titleMatch = htmlContent.match(/<h3[^>]*>(.*?)<\/h3>/);
     return titleMatch ? titleMatch[1].trim() : 'Untitled Story';
+  }
+
+  private countWords(htmlContent: string): number {
+    if (!htmlContent) {
+      return 0;
+    }
+
+    return htmlContent
+      .replace(/<[^>]*>/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 0)
+      .length;
   }
 
   /**

@@ -14,7 +14,8 @@ import {
   VoiceType,
   AudioSpeed,
   AudioFormat,
-  ExportFormat
+  ExportFormat,
+  Chapter
 } from './contracts';
 import { 
   createMockStoryInput, 
@@ -52,21 +53,37 @@ describe('StoryService', () => {
   });
 
   describe('generateStory', () => {
-    const mockInput = createMockStoryInput({
-      themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
-      userInput: 'Victorian setting'
-    });
+    const mockInput: StoryGenerationSeam['input'] = {
+      ...createMockStoryInput({
+        themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
+        userInput: 'Victorian setting'
+      }),
+      requestedChapterCount: 1
+    };
+
+    const mockChapter: Chapter = {
+      chapterId: 'chapter_1',
+      chapterNumber: 1,
+      title: "The Vampire's Forbidden Passion",
+      content: '<p>Story content...</p>',
+      rawContent: '<p>Story content...</p>',
+      wordCount: 150,
+      generatedAt: new Date(),
+      hasAudio: false,
+      cliffhangerEnding: false
+    };
 
     const mockSuccessResponse: ApiResponse<StoryGenerationSeam['output']> = {
       success: true,
       data: {
         storyId: 'story_123',
         title: "The Vampire's Forbidden Passion",
-        content: '<h3>Chapter 1</h3><p>Story content...</p>',
+        chapters: [mockChapter],
+        appendedToStory: '<h3>Chapter 1</h3><p>Story content...</p>',
         creature: 'vampire' as CreatureType,
         themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
         spicyLevel: 3 as SpicyLevel,
-        actualWordCount: 150,
+        totalWordCount: 150,
         estimatedReadTime: 1,
         hasCliffhanger: false,
         generatedAt: new Date()
@@ -100,7 +117,11 @@ describe('StoryService', () => {
       expect(errorLoggingService.logInfo).toHaveBeenCalledWith(
         'Story generation successful',
         'StoryService.generateStory',
-        { storyId: 'story_123' }
+        jasmine.objectContaining({
+          storyId: 'story_123',
+          chapterCount: 1,
+          totalWordCount: 150
+        })
       );
     });
 
@@ -294,17 +315,29 @@ describe('StoryService', () => {
       currentChapterCount: 1,
       existingContent: '<h3>Chapter 1</h3><p>Existing content...</p>',
       userInput: 'Make it more intense',
-      maintainTone: true
+      maintainTone: true,
+      requestedChapterCount: 1
+    };
+
+    const mockChapter: Chapter = {
+      chapterId: 'chapter_456',
+      chapterNumber: 2,
+      title: 'Chapter 2: The Deeper Shadows',
+      content: '<p>Continuation...</p>',
+      rawContent: '<p>Continuation...</p>',
+      wordCount: 120,
+      generatedAt: new Date(),
+      hasAudio: false,
+      cliffhangerEnding: true
     };
 
     const mockSuccessResponse: ApiResponse<ChapterContinuationSeam['output']> = {
       success: true,
       data: {
-        chapterId: 'chapter_456',
-        chapterNumber: 2,
-        title: 'Chapter 2: The Deeper Shadows',
-        content: '<h3>Chapter 2</h3><p>Continuation...</p>',
-        wordCount: 120,
+        storyId: 'story_123',
+        chapters: [mockChapter],
+        totalWordCount: 870,
+        estimatedReadTime: 5,
         cliffhangerEnding: true,
         themesContinued: ['forbidden_love', 'dark_secrets'] as ThemeType[],
         spicyLevelMaintained: 3 as SpicyLevel,
@@ -320,8 +353,8 @@ describe('StoryService', () => {
       service.generateNextChapter(mockInput).subscribe(response => {
         expect(response).toEqual(mockSuccessResponse);
         expect(response.success).toBe(true);
-        expect(response.data!.chapterId).toBe('chapter_456');
-        expect(response.data!.chapterNumber).toBe(2);
+        expect(response.data!.chapters?.[0].chapterId).toBe('chapter_456');
+        expect(response.data!.chapters?.[0].chapterNumber).toBe(2);
       });
 
       const req = httpMock.expectOne('/api/story/continue');
@@ -334,6 +367,11 @@ describe('StoryService', () => {
         'StoryService.generateNextChapter',
         { storyId: 'story_123' }
       );
+      expect(errorLoggingService.logInfo).toHaveBeenCalledWith(
+        'Chapter continuation successful',
+        'StoryService.generateNextChapter',
+        { chapterNumbers: [2] }
+      );
     });
   });
 
@@ -344,7 +382,8 @@ describe('StoryService', () => {
         themes: ['passion'] as ThemeType[],
         userInput: '',
         spicyLevel: 1 as SpicyLevel,
-        wordCount: 700 as const
+        wordCount: 700 as const,
+        requestedChapterCount: 1
       };
 
       service.generateStory(mockInput).subscribe({
@@ -365,7 +404,8 @@ describe('StoryService', () => {
         themes: ['desire'] as ThemeType[],
         userInput: '',
         spicyLevel: 2 as SpicyLevel,
-        wordCount: 900 as const
+        wordCount: 900 as const,
+        requestedChapterCount: 1
       };
 
       service.generateStory(mockInput).subscribe({
@@ -386,7 +426,8 @@ describe('StoryService', () => {
         themes: ['lust'] as ThemeType[],
         userInput: 'Forest setting',
         spicyLevel: 4 as SpicyLevel,
-        wordCount: 1200 as const
+        wordCount: 1200 as const,
+        requestedChapterCount: 1
       };
 
       service.generateStory(mockInput).subscribe({
@@ -428,7 +469,8 @@ describe('StoryService', () => {
         themes: ['passion'] as ThemeType[],
         userInput: 'Test',
         spicyLevel: 1 as SpicyLevel,
-        wordCount: 700 as const
+        wordCount: 700 as const,
+        requestedChapterCount: 1
       };
 
       const mockAudioInput: AudioConversionSeam['input'] = {
@@ -450,7 +492,8 @@ describe('StoryService', () => {
         storyId: 'story_123',
         currentChapterCount: 1,
         existingContent: '<p>Test</p>',
-        maintainTone: true
+        maintainTone: true,
+        requestedChapterCount: 1
       };
 
       // Test each service method logs start
@@ -470,9 +513,12 @@ describe('StoryService', () => {
 
   // ==================== STREAMING STORY GENERATION TESTS ====================
   describe('generateStoryStreaming', () => {
-    const mockInput = createMockStoryInput({
-      themes: ['forbidden_love', 'seduction'] as ThemeType[]
-    });
+    const mockInput: StoryGenerationSeam['input'] = {
+      ...createMockStoryInput({
+        themes: ['forbidden_love', 'seduction'] as ThemeType[]
+      }),
+      requestedChapterCount: 1
+    };
 
     it('should be defined', () => {
       expect(service.generateStoryStreaming).toBeDefined();
@@ -640,8 +686,8 @@ describe('StoryService', () => {
           expect(response.data).toBeDefined();
           expect(response.data?.storyId).toBe('story_final');
           expect(response.data?.title).toBe('Moonlit Passion');
-          expect(response.data?.content).toContain('vampire lord');
-          expect(response.data?.actualWordCount).toBe(900);
+          expect(response.data?.appendedToStory).toContain('vampire lord');
+          expect(response.data?.totalWordCount).toBe(900);
           expect(response.data?.creature).toBe('vampire');
           expect(completeCalled).toBe(true);
           
@@ -931,7 +977,8 @@ describe('StoryService', () => {
         themes: ['passion'] as ThemeType[],
         userInput: '',
         spicyLevel: 1 as SpicyLevel,
-        wordCount: 700 as const
+        wordCount: 700 as const,
+        requestedChapterCount: 1
       };
 
       service.generateStory(mockInput).subscribe({
@@ -953,7 +1000,8 @@ describe('StoryService', () => {
         themes: ['desire'] as ThemeType[],
         userInput: '',
         spicyLevel: 2 as SpicyLevel,
-        wordCount: 900 as const
+        wordCount: 900 as const,
+        requestedChapterCount: 1
       };
 
       service.generateStory(mockInput).subscribe({
@@ -975,7 +1023,8 @@ describe('StoryService', () => {
         themes: ['lust'] as ThemeType[],
         userInput: '',
         spicyLevel: 4 as SpicyLevel,
-        wordCount: 1200 as const
+        wordCount: 1200 as const,
+        requestedChapterCount: 1
       };
 
       const backendError = {

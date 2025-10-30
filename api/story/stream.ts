@@ -48,17 +48,29 @@ export default async function handler(req: any, res: any) {
     
     if (req.method === 'GET') {
       // Parse from query params for EventSource
-      const { creature, themes, spicyLevel, wordCount, userInput } = req.query;
+      const { creature, themes, spicyLevel, wordCount, userInput, requestedChapterCount } = req.query;
       input = {
         creature: creature as any,
         themes: themes ? (themes as string).split(',') as any[] : [],
         spicyLevel: parseInt(spicyLevel as string, 10) as any,
         wordCount: parseInt(wordCount as string, 10) as any,
-        userInput: userInput as string || ''
+        userInput: userInput as string || '',
+        requestedChapterCount: Math.min(
+          Math.max(parseInt(requestedChapterCount as string, 10) || 1, 1),
+          3
+        ) as 1 | 2 | 3
       };
     } else {
       // POST body
-      input = req.body;
+      const normalizedCount = Math.min(
+        Math.max(Number(req.body?.requestedChapterCount ?? 1), 1),
+        3
+      ) as 1 | 2 | 3;
+
+      input = {
+        ...req.body,
+        requestedChapterCount: normalizedCount
+      };
     }
 
     // Validate input
@@ -81,7 +93,8 @@ export default async function handler(req: any, res: any) {
         creature: input.creature,
         themes: input.themes,
         spicyLevel: input.spicyLevel,
-        wordCount: input.wordCount
+        wordCount: input.wordCount,
+        requestedChapterCount: input.requestedChapterCount
       }
     });
 

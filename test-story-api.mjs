@@ -72,7 +72,7 @@ async function testStoryGeneration() {
         const story = response.data.data;
         console.log(`\n📖 Story Details:`);
         console.log(`   Title: ${story.title}`);
-        console.log(`   Word Count: ${story.actualWordCount} (target: ${test.input.wordCount})`);
+        console.log(`   Word Count: ${story.totalWordCount} (target: ${test.input.wordCount})`);
         console.log(`   Read Time: ${story.estimatedReadTime} minutes`);
         console.log(`   Has Cliffhanger: ${story.hasCliffhanger ? 'Yes ✨' : 'No'}`);
         console.log(`   Story ID: ${story.storyId}`);
@@ -85,15 +85,15 @@ async function testStoryGeneration() {
         }
         
         // Show first 400 characters of content (cleaned)
-        const cleanText = story.content.replace(/<[^>]*>/g, '').trim();
+        const cleanText = (story.appendedToStory || '').replace(/<[^>]*>/g, '').trim();
         const preview = cleanText.substring(0, 400);
         console.log(`\n📝 Content Preview (first 400 chars):`);
         console.log(`${preview}...`);
         
         // Check for speaker tags (multi-voice support)
-        const hasSpeakerTags = /\[([^\]]+)\]:/.test(story.content);
+        const hasSpeakerTags = /\[([^\]]+)\]:/.test(story.appendedToStory || '');
         if (hasSpeakerTags) {
-          const speakerMatches = story.content.match(/\[([^\]]+)\]:/g);
+          const speakerMatches = (story.appendedToStory || '').match(/\[([^\]]+)\]:/g);
           const uniqueSpeakers = [...new Set(speakerMatches)];
           console.log(`\n🎙️  Multi-Voice Detected: ${uniqueSpeakers.length} unique speakers`);
           console.log(`   Speakers: ${uniqueSpeakers.slice(0, 5).join(', ')}${uniqueSpeakers.length > 5 ? '...' : ''}`);
