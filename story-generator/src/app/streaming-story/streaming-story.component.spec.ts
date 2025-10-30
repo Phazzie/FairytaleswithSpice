@@ -151,7 +151,8 @@ describe('StreamingStoryComponent', () => {
           creature: 'vampire',
           themes: jasmine.arrayContaining(['forbidden_love', 'seduction']),
           spicyLevel: 3,
-          wordCount: 900
+          wordCount: 900,
+          requestedChapterCount: 1
         }),
         jasmine.any(Function)
       );
@@ -216,17 +217,29 @@ describe('StreamingStoryComponent', () => {
     });
 
     it('should handle successful completion', (done) => {
+      const mockChapter = {
+        chapterId: 'chapter_1',
+        chapterNumber: 1,
+        title: 'Complete Story',
+        content: '<p>Final content</p>',
+        rawContent: '<p>Final content</p>',
+        wordCount: 900,
+        generatedAt: new Date(),
+        hasAudio: false,
+        cliffhangerEnding: false
+      };
+
       const mockResponse: ApiResponse<StoryGenerationSeam['output']> = {
         success: true,
         data: {
           storyId: 'story_123',
           title: 'Complete Story',
-          content: '<h3>Complete Story</h3><p>Final content</p>',
-          rawContent: '<h3>Complete Story</h3><p>Final content</p>',
+          chapters: [mockChapter],
+          appendedToStory: '<h3>Complete Story</h3><p>Final content</p>',
           creature: 'vampire' as CreatureType,
           themes: ['forbidden_love'] as ThemeType[],
           spicyLevel: 3 as SpicyLevel,
-          actualWordCount: 900,
+          totalWordCount: 900,
           estimatedReadTime: 5,
           hasCliffhanger: false,
           generatedAt: new Date()

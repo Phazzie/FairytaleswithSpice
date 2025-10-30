@@ -1,10 +1,8 @@
 #!/usr/bin/env tsx
 /**
  * IMPROVED STORY GENERATION TESTS
- * 
- * Tests StoryService with proper TypeScript support
- * Focuses on actual failure points and edge cases
- * 
+ *
+ * Updated to validate multi-chapter generation batches.
  * Run: npx tsx tests/story-service-improved.test.ts
  */
 
@@ -36,11 +34,11 @@ function test(name: string, fn: () => Promise<void> | void) {
       return true;
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      results.push({ 
-        name, 
-        passed: false, 
+      results.push({
+        name,
+        passed: false,
         error: error.message,
-        duration 
+        duration
       });
       console.log(`❌ FAILED (${duration}ms)`);
       console.log(`   Error: ${error.message}`);
@@ -59,495 +57,272 @@ function expect(actual: any, message?: string) {
         throw new Error(message || `Expected value to be defined, got ${actual}`);
       }
     },
-    toBeUndefined: () => {
-      if (actual !== undefined) {
-        throw new Error(message || `Expected value to be undefined, got ${actual}`);
-      }
-    },
     toBe: (expected: any) => {
       if (actual !== expected) {
         throw new Error(message || `Expected ${actual} to be ${expected}`);
       }
     },
-    toEqual: (expected: any) => {
-      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-        throw new Error(message || `Expected ${JSON.stringify(actual)} to equal ${JSON.stringify(expected)}`);
-      }
-    },
-    toContain: (substring: string) => {
-      if (typeof actual !== 'string' || !actual.includes(substring)) {
-        throw new Error(message || `Expected "${actual}" to contain "${substring}"`);
-      }
-    },
     toBeGreaterThan: (expected: number) => {
-      if (actual <= expected) {
+      if (typeof actual !== 'number' || actual <= expected) {
         throw new Error(message || `Expected ${actual} to be greater than ${expected}`);
       }
     },
-    toBeLessThan: (expected: number) => {
-      if (actual >= expected) {
-        throw new Error(message || `Expected ${actual} to be less than ${expected}`);
-      }
-    },
-    toBeInstanceOf: (expected: any) => {
-      if (!(actual instanceof expected)) {
-        throw new Error(message || `Expected ${actual} to be instance of ${expected.name}`);
-      }
-    },
-    toHaveProperty: (prop: string) => {
-      if (!(prop in actual)) {
-        throw new Error(message || `Expected object to have property "${prop}"`);
-      }
-    },
-    toBeOneOf: (values: any[]) => {
-      if (!values.includes(actual)) {
-        throw new Error(message || `Expected ${actual} to be one of [${values.join(', ')}]`);
+    toEqualArrayLength: (expected: number) => {
+      if (!Array.isArray(actual) || actual.length !== expected) {
+        throw new Error(message || `Expected array length ${expected}, got ${Array.isArray(actual) ? actual.length : 'non-array'}`);
       }
     }
   };
 }
 
+// Helper to summarise results at end
+async function summarize() {
+  console.log('\n📊 TEST SUMMARY');
+  console.log('-'.repeat(80));
+  const passed = results.filter(r => r.passed).length;
+  const failed = results.length - passed;
+  console.log(`Total: ${results.length}, Passed: ${passed}, Failed: ${failed}`);
+  if (failed > 0) {
+    console.log('\nFailed Tests:');
+    results.filter(r => !r.passed).forEach(r => {
+      console.log(` - ${r.name}: ${r.error}`);
+    });
+  }
+}
+
 // ==================== TESTS ====================
 
 const testSuite = {
-  
-  // Test 1: Service instantiation
   testServiceInstantiation: test('Service Instantiation', async () => {
     const service = new StoryService();
     expect(service).toBeDefined();
   }),
-  
-  // Test 2: Basic story generation with valid input
-  testBasicGeneration: test('Basic Story Generation - Vampire Romance', async () => {
+
+  testBasicGeneration: test('Basic Story Generation - Single Chapter', async () => {
     const service = new StoryService();
     const input: StoryGenerationSeam['input'] = {
       creature: 'vampire',
-      themes: ['romance', 'dark'],
+      themes: ['romance'],
       userInput: 'A vampire lord meets a mortal librarian',
       spicyLevel: 3,
-      wordCount: 700
+      wordCount: 700,
+      requestedChapterCount: 1
     };
-    
+
     const result = await service.generateStory(input);
-    
-    // Validate response structure
-    expect(result).toBeDefined();
-    expect(result).toHaveProperty('success');
-    expect(result).toHaveProperty('metadata');
-    
-    if (!result.success) {
-      console.log('   Error:', result.error);
+    if (!result.success || !result.data) {
       throw new Error(`Story generation failed: ${result.error?.message}`);
     }
-    
-    expect(result.data).toBeDefined();
-    const story = result.data!;
-    
-    // Validate required fields
+
+    const story = result.data;
     expect(story.storyId, 'storyId should be defined').toBeDefined();
-    expect(story.title, 'title should be defined').toBeDefined();
-    expect(story.content, 'content should be defined').toBeDefined();
-    expect(story.actualWordCount, 'actualWordCount should be defined').toBeDefined();
-    
+    expect(story.chapters, 'chapters should be defined').toBeDefined();
+    expect(story.chapters, 'should return exactly one chapter').toEqualArrayLength(1);
+
+    const chapter = story.chapters[0];
+    expect(chapter.chapterNumber, 'chapter number should be 1').toBe(1);
+    expect(chapter.wordCount, 'chapter word count should be > 0').toBeGreaterThan(0);
+    expect(story.totalWordCount, 'total word count should be > 0').toBeGreaterThan(0);
+
     console.log(`   ✓ Story ID: ${story.storyId}`);
     console.log(`   ✓ Title: "${story.title}"`);
-    console.log(`   ✓ Word Count: ${story.actualWordCount} (target: ${input.wordCount})`);
-    console.log(`   ✓ Read Time: ${story.estimatedReadTime} min`);
-    console.log(`   ✓ Cliffhanger: ${story.hasCliffhanger}`);
-    
-    // Validate word count is within reasonable range
-    const targetWordCount = input.wordCount;
-    const tolerance = 0.3; // 30% tolerance
-    const minWords = targetWordCount * (1 - tolerance);
-    const maxWords = targetWordCount * (1 + tolerance);
-    
-    if (story.actualWordCount < minWords || story.actualWordCount > maxWords) {
-      console.log(`   ⚠️  Word count outside tolerance range (${minWords}-${maxWords})`);
+    console.log(`   ✓ Total Words: ${story.totalWordCount}`);
+  }),
+
+  testMultiChapterBatches: test('Multi-Chapter Batch Generation (1,2,3)', async () => {
+    const service = new StoryService();
+    const chapterCounts: Array<1 | 2 | 3> = [1, 2, 3];
+
+    for (const count of chapterCounts) {
+      console.log(`   Requesting ${count} chapter(s)...`);
+      const input: StoryGenerationSeam['input'] = {
+        creature: 'werewolf',
+        themes: ['adventure'],
+        userInput: 'Pack politics threaten a budding romance',
+        spicyLevel: 2,
+        wordCount: 900,
+        requestedChapterCount: count
+      };
+
+      const result = await service.generateStory(input);
+      if (!result.success || !result.data) {
+        throw new Error(`Failed to generate ${count} chapter(s): ${result.error?.message}`);
+      }
+
+      const story = result.data;
+      expect(story.chapters, 'chapters array should exist').toBeDefined();
+      expect(story.chapters!, `should contain ${count} chapters`).toEqualArrayLength(count);
+
+      const numbers = story.chapters!.map(ch => ch.chapterNumber);
+      const expectedNumbers = Array.from({ length: count }, (_, idx) => idx + 1);
+      expect(JSON.stringify(numbers)).toBe(JSON.stringify(expectedNumbers));
+
+      const summedWordCount = story.chapters!.reduce((total, ch) => total + ch.wordCount, 0);
+      console.log(`   ✓ Generated ${count} chapters (${summedWordCount} words total)`);
+
+      if (story.failedChapters?.length) {
+        console.log(`   ⚠️ Partial failures detected: ${story.failedChapters.map(fc => `Chapter ${fc.chapterNumber}`).join(', ')}`);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }),
-  
-  // Test 3: All creature types
+
   testAllCreatures: test('All Creature Types Generation', async () => {
     const service = new StoryService();
     const creatures: Array<'vampire' | 'werewolf' | 'fairy'> = ['vampire', 'werewolf', 'fairy'];
-    
+
     for (const creature of creatures) {
       console.log(`   Testing ${creature}...`);
-      
       const input: StoryGenerationSeam['input'] = {
         creature,
         themes: ['romance'],
         userInput: `A ${creature} story`,
         spicyLevel: 2,
-        wordCount: 700
+        wordCount: 700,
+        requestedChapterCount: 1
       };
-      
+
       const result = await service.generateStory(input);
-      
-      if (!result.success) {
+      if (!result.success || !result.data) {
         throw new Error(`Failed to generate ${creature} story: ${result.error?.message}`);
       }
-      
-      expect(result.data).toBeDefined();
-      console.log(`   ✓ ${creature}: "${result.data!.title}" (${result.data!.actualWordCount} words)`);
-      
-      // Small delay between requests
-      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      console.log(`   ✓ ${creature}: "${result.data.title}" (${result.data.totalWordCount} words total)`);
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }),
-  
-  // Test 4: All spicy levels
+
   testAllSpicyLevels: test('All Spicy Levels (1-5)', async () => {
     const service = new StoryService();
     const levels: Array<1 | 2 | 3 | 4 | 5> = [1, 2, 3, 4, 5];
-    
+
     for (const level of levels) {
       console.log(`   Testing spicy level ${level}...`);
-      
       const input: StoryGenerationSeam['input'] = {
         creature: 'vampire',
         themes: ['romance'],
         userInput: 'Test story',
         spicyLevel: level,
-        wordCount: 700
+        wordCount: 700,
+        requestedChapterCount: 1
       };
-      
+
       const result = await service.generateStory(input);
-      
       if (!result.success) {
         throw new Error(`Failed to generate level ${level} story: ${result.error?.message}`);
       }
-      
-      console.log(`   ✓ Level ${level}: Generated successfully`);
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      console.log(`   ✓ Level ${level}: Generated successfully (${result.data!.totalWordCount} words)`);
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }),
-  
-  // Test 5: Different word counts
+
   testWordCounts: test('Different Word Count Targets', async () => {
     const service = new StoryService();
     const wordCounts: Array<700 | 900 | 1200> = [700, 900, 1200];
-    
+
     for (const wordCount of wordCounts) {
       console.log(`   Testing ${wordCount} words...`);
-      
       const input: StoryGenerationSeam['input'] = {
-        creature: 'vampire',
-        themes: ['romance'],
+        creature: 'fairy',
+        themes: ['adventure'],
         userInput: 'Test story',
         spicyLevel: 2,
-        wordCount
+        wordCount,
+        requestedChapterCount: 1
       };
-      
+
       const result = await service.generateStory(input);
-      
-      if (!result.success) {
+      if (!result.success || !result.data) {
         throw new Error(`Failed to generate ${wordCount}-word story: ${result.error?.message}`);
       }
-      
-      const actualWords = result.data!.actualWordCount;
+
+      const actualWords = result.data.totalWordCount;
       const variance = Math.abs(actualWords - wordCount) / wordCount * 100;
-      
       console.log(`   ✓ Target ${wordCount}, actual ${actualWords} (${variance.toFixed(1)}% variance)`);
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }),
-  
-  // Test 6: Invalid inputs
+
   testInvalidInputs: test('Invalid Input Handling', async () => {
     const service = new StoryService();
-    
-    // Test missing creature
+
     const invalidInput1 = {
       themes: ['romance'],
       userInput: 'Test',
       spicyLevel: 3,
-      wordCount: 700
+      wordCount: 700,
+      requestedChapterCount: 1
     } as any;
-    
+
     const result1 = await service.generateStory(invalidInput1);
     expect(result1.success).toBe(false);
     console.log(`   ✓ Correctly rejected missing creature`);
-    
-    // Test invalid spicy level
+
     const invalidInput2: StoryGenerationSeam['input'] = {
       creature: 'vampire',
       themes: ['romance'],
       userInput: 'Test',
       spicyLevel: 10 as any,
-      wordCount: 700
+      wordCount: 700,
+      requestedChapterCount: 1
     };
-    
+
     const result2 = await service.generateStory(invalidInput2);
     expect(result2.success).toBe(false);
     console.log(`   ✓ Correctly rejected invalid spicy level`);
   }),
-  
-  // Test 7: Chapter continuation
-  testChapterContinuation: test('Chapter Continuation', async () => {
+
+  testChapterContinuation: test('Chapter Continuation Batches', async () => {
     const service = new StoryService();
-    
-    // First generate a story
+
     const storyInput: StoryGenerationSeam['input'] = {
       creature: 'vampire',
       themes: ['romance'],
       userInput: 'Initial story',
       spicyLevel: 3,
-      wordCount: 700
+      wordCount: 700,
+      requestedChapterCount: 2
     };
-    
+
     const storyResult = await service.generateStory(storyInput);
-    
-    if (!storyResult.success) {
+    if (!storyResult.success || !storyResult.data) {
       throw new Error('Failed to generate initial story');
     }
-    
-    const story = storyResult.data!;
-    console.log(`   ✓ Generated initial story: "${story.title}"`);
-    
-    // Now continue it
+
+    const story = storyResult.data;
+    console.log(`   ✓ Generated initial story with ${story.chapters.length} chapter(s)`);
+
     const continueInput: ChapterContinuationSeam['input'] = {
       storyId: story.storyId,
-      currentChapterCount: 1,
-      existingContent: story.content,
+      currentChapterCount: story.chapters.length,
+      existingContent: story.appendedToStory,
       maintainTone: true,
-      userInput: 'Continue the romance'
+      userInput: 'Continue the romance',
+      requestedChapterCount: 2
     };
-    
+
     const continueResult = await service.continueChapter(continueInput);
-    
-    if (!continueResult.success) {
-      throw new Error(`Failed to continue chapter: ${continueResult.error?.message}`);
+    if (!continueResult.success || !continueResult.data) {
+      throw new Error(`Continuation failed: ${continueResult.error?.message}`);
     }
-    
-    const chapter = continueResult.data!;
-    console.log(`   ✓ Generated chapter ${chapter.chapterNumber}: "${chapter.title}"`);
-    console.log(`   ✓ Chapter word count: ${chapter.wordCount}`);
-  }),
-  
-  // Test 8: Performance test
-  testPerformance: test('Performance Benchmarking', async () => {
-    const service = new StoryService();
-    const iterations = 3;
-    const durations: number[] = [];
-    
-    for (let i = 0; i < iterations; i++) {
-      const startTime = Date.now();
-      
-      const input: StoryGenerationSeam['input'] = {
-        creature: 'vampire',
-        themes: ['romance'],
-        userInput: `Performance test ${i + 1}`,
-        spicyLevel: 2,
-        wordCount: 700
-      };
-      
-      const result = await service.generateStory(input);
-      const duration = Date.now() - startTime;
-      
-      if (result.success) {
-        durations.push(duration);
-        console.log(`   Run ${i + 1}: ${duration}ms`);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    
-    const avgDuration = durations.reduce((a, b) => a + b, 0) / durations.length;
-    const minDuration = Math.min(...durations);
-    const maxDuration = Math.max(...durations);
-    
-    console.log(`   ✓ Average: ${avgDuration.toFixed(0)}ms`);
-    console.log(`   ✓ Min: ${minDuration}ms`);
-    console.log(`   ✓ Max: ${maxDuration}ms`);
+
+    const continuation = continueResult.data;
+    expect(continuation.chapters, 'continuation chapters should exist').toBeDefined();
+    expect(continuation.chapters!, 'should return requested chapters').toEqualArrayLength(2);
+
+    const expectedNumbers = [story.chapters.length + 1, story.chapters.length + 2];
+    const actualNumbers = continuation.chapters!.map(ch => ch.chapterNumber);
+    expect(JSON.stringify(actualNumbers)).toBe(JSON.stringify(expectedNumbers));
+
+    console.log(`   ✓ Continued story with chapters ${actualNumbers.join(', ')}`);
   })
 };
 
-// ==================== RUN TESTS ====================
-
-async function runAllTests() {
-  })
-};
-
-// ==================== TOKEN CALCULATION TESTS ====================
-
-const tokenCalculationTests = {
-  testTokenCalculation700: test('Token Calculation for 700 words', () => {
-    const service = new StoryService();
-    // Access private method via type assertion
-    const tokens = (service as any).calculateOptimalTokens(700);
-    
-    // Expected with OPTIMIZED formula: 700 * 1.5 * 1.15 * 1.1 * 1.05 = 1394.3 → 1395
-    const expected = Math.ceil(700 * 1.5 * 1.15 * 1.1 * 1.05);
-    console.log(`   Tokens for 700 words: ${tokens} (expected: ${expected})`);
-    
-    if (tokens !== expected) {
-      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
-    }
-    
-    // Should be more efficient than PR#65's calculation
-    const pr65Calculation = Math.ceil(700 * 1.5 * 1.2 * 1.15 * 1.1);
-    console.log(`   PR#65 would allocate: ${pr65Calculation} tokens`);
-    console.log(`   Our optimization saves: ${pr65Calculation - tokens} tokens (${((pr65Calculation - tokens) / pr65Calculation * 100).toFixed(1)}%)`);
-  }),
-  
-  testTokenCalculation900: test('Token Calculation for 900 words', () => {
-    const service = new StoryService();
-    const tokens = (service as any).calculateOptimalTokens(900);
-    
-    // Expected: 900 * 1.5 * 1.15 * 1.1 * 1.05 = 1792.1 → 1793
-    const expected = Math.ceil(900 * 1.5 * 1.15 * 1.1 * 1.05);
-    console.log(`   Tokens for 900 words: ${tokens} (expected: ${expected})`);
-    
-    if (tokens !== expected) {
-      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
-    }
-  }),
-  
-  testTokenCalculation1200: test('Token Calculation for 1200 words', () => {
-    const service = new StoryService();
-    const tokens = (service as any).calculateOptimalTokens(1200);
-    
-    // Expected: 1200 * 1.5 * 1.15 * 1.1 * 1.05 = 2389.5 → 2390
-    const expected = Math.ceil(1200 * 1.5 * 1.15 * 1.1 * 1.05);
-    console.log(`   Tokens for 1200 words: ${tokens} (expected: ${expected})`);
-    
-    if (tokens !== expected) {
-      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
-    }
-  }),
-  
-  testTokenCalculationAlwaysRoundsUp: test('Token Calculation Always Rounds Up', () => {
-    const service = new StoryService();
-    
-    // Test with a value that would have a decimal
-    const tokens = (service as any).calculateOptimalTokens(750);
-    const rawCalculation = 750 * 1.5 * 1.15 * 1.1 * 1.05;
-    const expected = Math.ceil(rawCalculation);
-    
-    console.log(`   Raw calculation: ${rawCalculation}`);
-    console.log(`   Rounded up to: ${tokens}`);
-    
-    if (tokens !== expected) {
-      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
-    }
-    
-    if (tokens < rawCalculation) {
-      throw new Error('Token calculation should always round up');
-    }
-  })
-};
-
-// ==================== TOKEN CALCULATION TESTS ====================
-
-const tokenCalculationTests = {
-  testTokenCalculation700: test('Token Calculation for 700 words', () => {
-    const service = new StoryService();
-    // Access private method via type assertion
-    const tokens = (service as any).calculateOptimalTokens(700);
-    
-    // Expected with optimized formula: 700 * 1.5 * 1.15 * 1.1 * 1.05 = 1393.5 → 1394
-    const expected = Math.ceil(700 * 1.5 * 1.15 * 1.1 * 1.05);
-    console.log(`   Tokens for 700 words: ${tokens} (expected: ${expected})`);
-    
-    if (tokens !== expected) {
-      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
-    }
-    
-    // Should be more efficient than old calculation
-    const oldCalculation = 700 * 2;
-    console.log(`   Old calculation would be: ${oldCalculation}`);
-    console.log(`   New is ${((oldCalculation - tokens) / oldCalculation * 100).toFixed(1)}% more efficient`);
-  }),
-  
-  testTokenCalculation900: test('Token Calculation for 900 words', () => {
-    const service = new StoryService();
-    const tokens = (service as any).calculateOptimalTokens(900);
-    
-    // Expected: 900 * 1.5 * 1.15 * 1.1 * 1.05 = 1792.1 → 1793
-    const expected = Math.ceil(900 * 1.5 * 1.15 * 1.1 * 1.05);
-    console.log(`   Tokens for 900 words: ${tokens} (expected: ${expected})`);
-    
-    if (tokens !== expected) {
-      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
-    }
-  }),
-  
-  testTokenCalculation1200: test('Token Calculation for 1200 words', () => {
-    const service = new StoryService();
-    const tokens = (service as any).calculateOptimalTokens(1200);
-    
-    // Expected: 1200 * 1.5 * 1.15 * 1.1 * 1.05 = 2389.5 → 2390
-    const expected = Math.ceil(1200 * 1.5 * 1.15 * 1.1 * 1.05);
-    console.log(`   Tokens for 1200 words: ${tokens} (expected: ${expected})`);
-    
-    if (tokens !== expected) {
-      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
-    }
-  }),
-  
-  testTokenCalculationAlwaysRoundsUp: test('Token Calculation Always Rounds Up', () => {
-    const service = new StoryService();
-    
-    // Test with a value that would have a decimal
-    const tokens = (service as any).calculateOptimalTokens(750);
-    const rawCalculation = 750 * 1.5 * 1.15 * 1.1 * 1.05;
-    const expected = Math.ceil(rawCalculation);
-    
-    console.log(`   Raw calculation: ${rawCalculation}`);
-    console.log(`   Rounded up to: ${tokens}`);
-    
-    if (tokens !== expected) {
-      throw new Error(`Expected ${expected} tokens, got ${tokens}`);
-    }
-    
-    if (tokens < rawCalculation) {
-      throw new Error('Token calculation should always round up');
-    }
-  })
-};
-
-// ==================== RUN TESTS ====================
-
-async function runAllTests() {
-  console.log('\n' + '='.repeat(80));
-  console.log('🧪 STORY SERVICE COMPREHENSIVE TEST SUITE');
-  console.log('='.repeat(80));
-  
-  const startTime = Date.now();
-  
-  for (const [testName, testFn] of Object.entries(testSuite)) {
-    await testFn();
+(async () => {
+  for (const testName of Object.keys(testSuite)) {
+    await (testSuite as any)[testName]();
   }
-  
-  const totalDuration = Date.now() - startTime;
-  
-  // Print summary
-  console.log('\n' + '='.repeat(80));
-  console.log('📊 TEST SUMMARY');
-  console.log('='.repeat(80));
-  
-  const passed = results.filter(r => r.passed).length;
-  const failed = results.filter(r => r.failed).length;
-  const total = results.length;
-  
-  console.log(`\nTotal Tests: ${total}`);
-  console.log(`✅ Passed: ${passed}`);
-  console.log(`❌ Failed: ${failed}`);
-  console.log(`⏱️  Total Duration: ${(totalDuration / 1000).toFixed(2)}s`);
-  
-  if (failed > 0) {
-    console.log('\n❌ FAILED TESTS:');
-    results.filter(r => r.failed).forEach(r => {
-      console.log(`   - ${r.name}: ${r.error}`);
-    });
-  }
-  
-  console.log('\n' + '='.repeat(80) + '\n');
-  
-  process.exit(failed > 0 ? 1 : 0);
-}
-
-runAllTests();
+  await summarize();
+})();

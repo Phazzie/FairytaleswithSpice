@@ -87,6 +87,16 @@
         </select>
       </div>
 
+      <!-- Chapter Batch Dropdown -->
+      <div class="form-group">
+        <label for="chapterBatch">Chapters per Request:</label>
+        <select id="chapterBatch" [(ngModel)]="requestedChapterCount">
+          <option *ngFor="let option of chapterBatchOptions" [value]="option.value">
+            {{option.label}}
+          </option>
+        </select>
+      </div>
+
       <!-- Generate Button -->
       <button
         class="generate-btn"

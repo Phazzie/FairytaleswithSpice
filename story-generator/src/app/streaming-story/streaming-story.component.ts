@@ -238,7 +238,8 @@ export class StreamingStoryComponent {
       themes: ['forbidden_love', 'seduction'],
       userInput: 'A vampire lord meets a curious human in a moonlit garden',
       spicyLevel: 3,
-      wordCount: this.targetWords as WordCount
+      wordCount: this.targetWords as WordCount,
+      requestedChapterCount: 1
     };
 
     try {
@@ -318,6 +319,10 @@ export class StreamingStoryComponent {
     
     // Update title from final story if available
     // ApiResponse wraps data, so we check both finalStory.data.title and finalStory.title for compatibility
+    if (finalStory?.data?.appendedToStory) {
+      this.streamedContent = finalStory.data.appendedToStory;
+    }
+
     if (finalStory?.data?.title) {
       this.storyTitle = finalStory.data.title;
     } else if (finalStory?.title) {

@@ -195,7 +195,8 @@ export class DebugPanel implements OnInit, OnDestroy {
       themes: ['desire'],
       userInput: '',
       spicyLevel: 2,
-      wordCount: 700
+      wordCount: 700,
+      requestedChapterCount: 1
     };
 
     const start = performance.now();
@@ -248,7 +249,8 @@ export class DebugPanel implements OnInit, OnDestroy {
       themes: ['forbidden_love', 'desire', 'passion'],
       userInput: 'Write a 250-word story about Heather, an immortal vampire who has lived for centuries. Focus on a moment of vulnerability when she encounters something that reminds her of her lost humanity.',
       spicyLevel: 3,
-      wordCount: 700 // Using minimum word count for shorter story
+      wordCount: 700, // Using minimum word count for shorter story
+      requestedChapterCount: 1
     };
 
     const start = performance.now();
@@ -259,8 +261,8 @@ export class DebugPanel implements OnInit, OnDestroy {
           const duration = Math.round(performance.now() - start);
           this.addError(
             'API',
-            `✅ Heather's story generated successfully in ${duration}ms (${resp.data.actualWordCount} words)`,
-            { storyId: resp.data.storyId, title: resp.data.title, duration, wordCount: resp.data.actualWordCount },
+            `✅ Heather's story generated successfully in ${duration}ms (${resp.data.totalWordCount} words)`,
+            { storyId: resp.data.storyId, title: resp.data.title, duration, wordCount: resp.data.totalWordCount },
             '/api/story/generate',
             'info'
           );
