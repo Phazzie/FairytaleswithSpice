@@ -28,7 +28,15 @@ export class StoryService {
    * Begin a new story using the provided blueprint.
    */
   beginStory(input: StoryGenerationSeam['input']): Observable<ApiEnvelope<StoryIterationPayload>> {
-    this.errorLogging.logInfo('Starting multi-chapter genesis request', 'StoryService.beginStory', { input });
+    const { creature, tone, spicyLevel, desiredWordBudget, chapterBatchSize, themes } = input;
+    this.errorLogging.logInfo('Starting multi-chapter genesis request', 'StoryService.beginStory', {
+      creature,
+      tone,
+      spicyLevel,
+      desiredWordBudget,
+      chapterBatchSize,
+      themeCount: themes?.length ?? 0
+    });
 
     return this.http
       .post<ApiEnvelope<StoryIterationPayload>>(`${this.apiUrl}/stories`, input)
@@ -52,7 +60,8 @@ export class StoryService {
     this.errorLogging.logInfo('Requesting continuation batch', 'StoryService.continueStory', {
       storyId: input.storyId,
       batchSize: input.chapterBatchSize,
-      revision: input.storyState.revision
+      revision: input.storyState.revision,
+      previousChapters: input.previouslyGeneratedChapters?.length ?? 0
     });
 
     return this.http
@@ -76,8 +85,9 @@ export class StoryService {
         spicyLevel: String(input.spicyLevel),
         tone: input.tone,
         chapterBatchSize: String(input.chapterBatchSize),
-        wordBudget: String(input.desiredWordBudget),
-        logline: input.logline
+        desiredWordBudget: String(input.desiredWordBudget),
+        logline: input.logline,
+        themes: JSON.stringify(input.themes ?? [])
       });
 
       if (input.narrativeDirectives) {

@@ -3,10 +3,21 @@
  * Demonstrates how to use the streaming story API for real-time generation
  */
 
-import { Component, inject } from '@angular/core';
+import { Component, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { DomSanitizer, SafeHtml, SecurityContext } from '@angular/platform-browser';
+import { Subscription } from 'rxjs';
+
 import { StoryService } from '../story.service';
-import { StoryGenerationSeam, ThemeSeed, WordBudget, StreamingProgressChunk, GeneratedChapter } from '../contracts';
+import {
+  ApiEnvelope,
+  GeneratedChapter,
+  StoryGenerationSeam,
+  StoryIterationPayload,
+  StreamingProgressChunk,
+  ThemeSeed,
+  WordBudget
+} from '../contracts';
 
 @Component({
   selector: 'app-streaming-story',
@@ -54,8 +65,8 @@ import { StoryGenerationSeam, ThemeSeed, WordBudget, StreamingProgressChunk, Gen
       <div class="story-content" *ngIf="streamedContent">
         <h2 class="story-title">{{ storyTitle }}</h2>
         <div 
-          class="story-text" 
-          [innerHTML]="streamedContent">
+          class="story-text"
+          [innerHTML]="safeStreamedContent">
         </div>
         
         <!-- Typing indicator -->
@@ -193,8 +204,12 @@ import { StoryGenerationSeam, ThemeSeed, WordBudget, StreamingProgressChunk, Gen
     }
   `]
 })
-export class StreamingStoryComponent {
+export class StreamingStoryComponent implements OnDestroy {
   private storyService = inject(StoryService);
+  private readonly sanitizer = inject(DomSanitizer);
+  private streamSubscription?: Subscription;
+
+  // Created: 2025-10-29 08:27 UTC
   private readonly streamingBlueprint: StoryGenerationSeam['input'] = {
     creature: 'vampire',
     themes: [
@@ -212,6 +227,7 @@ export class StreamingStoryComponent {
   // Streaming state
   isStreaming = false;
   streamedContent = '';
+  safeStreamedContent: SafeHtml = this.sanitizer.bypassSecurityTrustHtml('');
   storyTitle = '';
   errorMessage = '';
   
@@ -243,7 +259,9 @@ export class StreamingStoryComponent {
     if (this.isStreaming) return;
 
     // Clear previous content
+    this.streamSubscription?.unsubscribe();
     this.streamedContent = '';
+    this.updateSafeStreamContent('');
     this.errorMessage = '';
     this.storyTitle = 'Generating your story...';
     this.isStreaming = true;
@@ -256,7 +274,7 @@ export class StreamingStoryComponent {
 
     try {
       // Use the StoryService streaming method
-      this.storyService.streamStoryGeneration(
+      this.streamSubscription = this.storyService.streamStoryGeneration(
         input,
         (progressUpdate) => {
           // Handle real-time progress updates
@@ -269,30 +287,31 @@ export class StreamingStoryComponent {
         },
         error: (error) => {
           // Handle errors
-          this.handleStreamError({ 
-            code: 'GENERATION_FAILED', 
-            message: error.message || 'Failed to generate story' 
+          this.handleStreamError({
+            code: 'GENERATION_FAILED',
+            message: error.message || 'Failed to generate story'
           });
         }
       });
 
     } catch (error: any) {
-      this.handleStreamError({ 
-        code: 'STREAMING_START_FAILED', 
-        message: error.message 
+      this.handleStreamError({
+        code: 'STREAMING_START_FAILED',
+        message: error.message
       });
     }
   }
 
   stopStreaming(): void {
-    // Streaming is managed by the service subscription
-    // We'd need to store the subscription to unsubscribe
+    this.streamSubscription?.unsubscribe();
+    this.streamSubscription = undefined;
     this.isStreaming = false;
   }
 
   clearError(): void {
     this.errorMessage = '';
     this.streamedContent = '';
+    this.updateSafeStreamContent('');
     this.progress = {
       wordsGenerated: 0,
       estimatedWordsRemaining: 0,
@@ -308,6 +327,7 @@ export class StreamingStoryComponent {
 
     if (chunk.partialHtml) {
       this.streamedContent = chunk.partialHtml;
+      this.updateSafeStreamContent(this.streamedContent);
     }
 
     if (typeof chunk.percentage === 'number') {
@@ -316,21 +336,24 @@ export class StreamingStoryComponent {
       this.progress.generationSpeed = Math.max(Math.floor(this.progress.wordsGenerated / 20), 1);
     }
 
-    if (chunk.type === 'chapter_progress' && chunk.chapterNumber && !this.storyTitle) {
+    if (chunk.type === 'chapter_progress' && chunk.chapterNumber && this.storyTitle.startsWith('Generating')) {
       this.storyTitle = `Streaming Chapter ${chunk.chapterNumber}`;
     }
   }
 
-  private handleStreamComplete(finalStory?: any): void {
+  private handleStreamComplete(finalStory?: ApiEnvelope<StoryIterationPayload>): void {
     this.isStreaming = false;
+    this.streamSubscription = undefined;
 
     console.log('✅ Story generation complete!');
 
     if (finalStory?.data?.summary) {
       this.storyTitle = finalStory.data.summary.title;
-      this.streamedContent = finalStory.data.batch.chapters
+      const combined = finalStory.data.batch.chapters
         .map((chapter: GeneratedChapter) => `<h3>${chapter.title}</h3>${chapter.htmlContent}`)
         .join('');
+      this.streamedContent = combined;
+      this.updateSafeStreamContent(combined);
     }
 
     // Add a small celebration effect
@@ -342,5 +365,16 @@ export class StreamingStoryComponent {
   private handleStreamError(error: any): void {
     this.isStreaming = false;
     this.errorMessage = error.message || 'An unexpected error occurred during generation';
+    this.streamSubscription = undefined;
+  }
+
+  private updateSafeStreamContent(html: string): void {
+    const sanitized = this.sanitizer.sanitize(SecurityContext.HTML, html) ?? '';
+    this.safeStreamedContent = this.sanitizer.bypassSecurityTrustHtml(sanitized);
+  }
+
+  ngOnDestroy(): void {
+    this.streamSubscription?.unsubscribe();
+    this.streamSubscription = undefined;
   }
 }

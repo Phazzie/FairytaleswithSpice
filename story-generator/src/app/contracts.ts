@@ -185,6 +185,7 @@ export interface StoryContinuationSeam {
     previouslyGeneratedChapters: GeneratedChapter[];
     continuationBrief?: string;
     forceCliffhanger?: boolean;
+    existingSummary?: StorySummary;
   };
 
   output: StoryIterationPayload & {
@@ -254,6 +255,8 @@ export interface ApiEnvelope<T> {
     details?: unknown;
   };
 }
+
+export type ApiResponse<T> = ApiEnvelope<T>;
 
 // ==================== FRONTEND VIEW MODELS ====================
 

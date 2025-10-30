@@ -200,7 +200,7 @@
             <ng-template #resolved>No cliffhanger</ng-template>
           </span>
         </header>
-        <div class="chapter-content" [innerHTML]="chapter.htmlContent"></div>
+        <div class="chapter-content" [innerHTML]="getSafeHtml(chapter.htmlContent)"></div>
         <footer>
           <h4>Chapter Summary</h4>
           <p>{{ chapter.summary }}</p>

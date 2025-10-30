@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SecurityContext } from '@angular/platform-browser';
 import {
   ChapterBatchSize,
   ChapterTimelineEntry,
@@ -24,6 +25,7 @@ import { DebugPanel } from './debug-panel/debug-panel';
 export class App {
   private readonly storyService = inject(StoryService);
   private readonly errorLogging = inject(ErrorLoggingService);
+  private readonly sanitizer = inject(DomSanitizer);
 
   readonly availableThemes: ThemeSeed[] = [
     { id: 'forbidden_love', label: 'Forbidden Love', description: 'Lovers defy expectations and social rules.' },
@@ -179,7 +181,8 @@ export class App {
       chapterBatchSize: this.blueprint().chapterBatchSize,
       storyState: session.state,
       previouslyGeneratedChapters: session.chapterHistory,
-      continuationBrief: brief ?? undefined
+      continuationBrief: brief ?? undefined,
+      existingSummary: session.story
     } as const;
 
     this.storyService.continueStory(request).subscribe({
@@ -200,6 +203,10 @@ export class App {
         this.isGenerating.set(false);
       }
     });
+  }
+
+  getSafeHtml(html: string): string {
+    return this.sanitizer.sanitize(SecurityContext.HTML, html) ?? '';
   }
 
   resetWorkbench() {

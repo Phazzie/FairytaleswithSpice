@@ -1,3 +1,5 @@
+// Created: 2025-10-29 08:27 UTC
+
 import {
   ApiEnvelope,
   ChapterBatchSize,
@@ -133,10 +135,14 @@ export function buildContinuationResponse(
     chapters.push(createChapter(startingNumber + i, input.chapterBatchSize));
   }
 
+  const preservedSummary = input.existingSummary
+    ? { ...input.existingSummary, updatedAt: new Date().toISOString() }
+    : createSummary(input.storyId, input.storyState.narrativeVoice);
+
   return {
     success: true,
     data: {
-      summary: createSummary(input.storyId, input.storyState.narrativeVoice),
+      summary: preservedSummary,
       batch: {
         chapters,
         totalWordCount: chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0),
