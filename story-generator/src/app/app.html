@@ -87,6 +87,17 @@
         </select>
       </div>
 
+      <!-- Chapter Batch Size Dropdown -->
+      <div class="form-group">
+        <label for="chapterBatch">Chapters per request:</label>
+        <select id="chapterBatch" [(ngModel)]="requestedChapterCount">
+          <option *ngFor="let option of chapterBatchOptions" [value]="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+        <small class="form-helper">Generate multiple chapters in a single request (1-3).</small>
+      </div>
+
       <!-- Generate Button -->
       <button
         class="generate-btn"
@@ -103,6 +114,12 @@
       <!-- Generation Error Display -->
       <div class="error-message" *ngIf="generationError">
         ❌ {{ generationError }}
+      </div>
+      <div class="warning-message" *ngIf="generationWarnings.length">
+        <span>⚠️ Generation warnings:</span>
+        <ul>
+          <li *ngFor="let warning of generationWarnings">{{ warning }}</li>
+        </ul>
       </div>
       </div>
     </div>
@@ -184,6 +201,12 @@
             </span>
           </button>
           <p *ngIf="!isLastChapter()" class="hint">Navigate to last chapter to continue story</p>
+          <div class="warning-message" *ngIf="continuationWarnings.length">
+            <span>⚠️ Continuation warnings:</span>
+            <ul>
+              <li *ngFor="let warning of continuationWarnings">{{ warning }}</li>
+            </ul>
+          </div>
         </div>
       </div>
 

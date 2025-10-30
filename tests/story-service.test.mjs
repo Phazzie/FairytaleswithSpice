@@ -8,8 +8,8 @@
  * Run: node tests/story-service.test.mjs
  */
 
-import { StoryService } from '../api/lib/services/storyService.js';
-import { logger } from '../api/lib/utils/logger.js';
+const { StoryService } = await import('../api/lib/services/storyService.ts');
+const { logger } = await import('../api/lib/utils/logger.ts');
 
 // ANSI color codes for terminal output
 const colors = {
@@ -94,7 +94,8 @@ async function testBasicStoryGeneration() {
     themes: ['forbidden_love', 'desire'],
     userInput: 'A vampire lord meets a mortal librarian',
     spicyLevel: 3,
-    wordCount: 700
+    wordCount: 700,
+    requestedChapterCount: 1
   };
   
   logInfo(`Input: ${JSON.stringify(input, null, 2)}`);
@@ -133,25 +134,41 @@ async function testBasicStoryGeneration() {
     `Story has valid title: "${story.title}"`, 
     'Story missing or invalid title');
   
-  assert(typeof story.content === 'string' && story.content.length > 0, 
-    `Story has content (${story.content.length} chars)`, 
-    'Story missing or invalid content');
-  
-  assert(typeof story.actualWordCount === 'number' && story.actualWordCount > 0, 
-    `Story has word count: ${story.actualWordCount}`, 
+  assert(Array.isArray(story.chapters) && story.chapters.length === input.requestedChapterCount,
+    `Story returned ${story.chapters.length} chapter(s)`,
+    'Story missing chapter array');
+
+  const combinedContent = story.appendedToStory;
+  assert(typeof combinedContent === 'string' && combinedContent.length > 0,
+    `Story has combined content (${combinedContent.length} chars)`,
+    'Story missing combined content');
+
+  assert(typeof story.totalWordCount === 'number' && story.totalWordCount > 0,
+    `Story has word count: ${story.totalWordCount}`,
     'Story missing or invalid word count');
-  
-  assert(typeof story.estimatedReadTime === 'number' && story.estimatedReadTime > 0, 
-    `Story has read time: ${story.estimatedReadTime} min`, 
+
+  assert(typeof story.estimatedReadTime === 'number' && story.estimatedReadTime > 0,
+    `Story has read time: ${story.estimatedReadTime} min`,
     'Story missing or invalid read time');
-  
-  assert(typeof story.hasCliffhanger === 'boolean', 
-    `Story has cliffhanger flag: ${story.hasCliffhanger}`, 
+
+  assert(typeof story.hasCliffhanger === 'boolean',
+    `Story has cliffhanger flag: ${story.hasCliffhanger}`,
     'Story missing or invalid cliffhanger flag');
-  
+
+  const firstChapter = story.chapters[0];
+  assert(firstChapter.chapterNumber === 1,
+    'First chapter numbered correctly',
+    `First chapter number mismatch: ${firstChapter.chapterNumber}`);
+  assert(typeof firstChapter.content === 'string' && firstChapter.content.length > 0,
+    'First chapter has content',
+    'First chapter missing content');
+  assert(typeof firstChapter.wordCount === 'number' && firstChapter.wordCount > 0,
+    'First chapter has word count',
+    'First chapter missing word count');
+
   // Test: Word count accuracy (within 20% tolerance)
   const targetWordCount = input.wordCount;
-  const actualWordCount = story.actualWordCount;
+  const actualWordCount = story.totalWordCount;
   const tolerance = targetWordCount * 0.2; // 20% tolerance
   const withinTolerance = Math.abs(actualWordCount - targetWordCount) <= tolerance;
   
@@ -162,7 +179,7 @@ async function testBasicStoryGeneration() {
   }
   
   // Test: Content quality checks
-  const hasHTML = /<[^>]+>/.test(story.content);
+  const hasHTML = /<[^>]+>/.test(combinedContent);
   assert(hasHTML, 'Content contains HTML formatting', 'Content missing HTML formatting');
   
   // Test: Metadata
@@ -175,7 +192,7 @@ async function testBasicStoryGeneration() {
     'Metadata missing processingTime');
   
   // Display content preview
-  const cleanContent = story.content.replace(/<[^>]*>/g, '').trim();
+  const cleanContent = combinedContent.replace(/<[^>]*>/g, '').trim();
   const preview = cleanContent.substring(0, 300);
   logInfo(`Content preview:\n${preview}...`);
   
@@ -190,13 +207,14 @@ async function testAllCreatureTypes() {
   
   for (const creature of creatures) {
     logInfo(`\nTesting creature: ${creature}`);
-    
+
     const input = {
       creature,
       themes: ['desire', 'passion'],
       userInput: `A ${creature} story`,
       spicyLevel: 2,
-      wordCount: 700
+      wordCount: 700,
+      requestedChapterCount: 1
     };
     
     const result = await service.generateStory(input);
@@ -230,7 +248,8 @@ async function testAllSpicyLevels() {
       themes: ['passion', 'desire'],
       userInput: `Spicy level ${level} test`,
       spicyLevel: level,
-      wordCount: 700
+      wordCount: 700,
+      requestedChapterCount: 1
     };
     
     const result = await service.generateStory(input);
@@ -251,7 +270,7 @@ async function testAllSpicyLevels() {
 
 async function testWordCountVariations() {
   logTest('Word Count Variations (700, 900, 1200)');
-  
+
   const service = new StoryService();
   const wordCounts = [700, 900, 1200];
   
@@ -263,7 +282,8 @@ async function testWordCountVariations() {
       themes: ['obsession'],
       userInput: `Word count ${wordCount} test`,
       spicyLevel: 3,
-      wordCount
+      wordCount,
+      requestedChapterCount: 1
     };
     
     const startTime = Date.now();
@@ -275,7 +295,7 @@ async function testWordCountVariations() {
       `${wordCount} word story failed: ${result.error?.message}`);
     
     if (result.success) {
-      const actual = result.data.actualWordCount;
+      const actual = result.data.totalWordCount;
       const tolerance = wordCount * 0.2;
       const withinTolerance = Math.abs(actual - wordCount) <= tolerance;
       
@@ -287,6 +307,59 @@ async function testWordCountVariations() {
     }
     
     await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+}
+
+async function testMultiChapterBatches() {
+  logTest('Requested Chapter Batches (1, 2, 3)');
+
+  const service = new StoryService();
+  const batchSizes = [1, 2, 3];
+
+  for (const batch of batchSizes) {
+    logInfo(`\nRequesting ${batch} chapter(s)`);
+
+    const input = {
+      creature: 'vampire',
+      themes: ['forbidden_love', 'desire'],
+      userInput: `Batch size ${batch} test`,
+      spicyLevel: 3,
+      wordCount: 700,
+      requestedChapterCount: batch
+    };
+
+    const result = await service.generateStory(input);
+
+    assert(result.success,
+      `Batch of ${batch} chapter(s) generated`,
+      `Batch generation failed: ${result.error?.message}`);
+
+    if (result.success) {
+      const chapters = result.data.chapters;
+      assert(chapters.length === batch,
+        `Received ${chapters.length} chapter(s)`,
+        `Expected ${batch} chapters, got ${chapters.length}`);
+
+      const totalFromChapters = chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0);
+      assert(totalFromChapters === result.data.totalWordCount,
+        `Total word count matches sum of chapters (${totalFromChapters})`,
+        `Total word count mismatch: expected ${totalFromChapters}, got ${result.data.totalWordCount}`);
+
+      chapters.forEach((chapter, index) => {
+        const expectedNumber = index + 1;
+        assert(chapter.chapterNumber === expectedNumber,
+          `Chapter ${expectedNumber} correctly numbered`,
+          `Chapter numbering mismatch: expected ${expectedNumber}, got ${chapter.chapterNumber}`);
+      });
+
+      const expectedSeparatorCount = Math.max(0, batch - 1);
+      const separatorMatches = result.data.appendedToStory.match(/<hr>/g) || [];
+      assert(separatorMatches.length === expectedSeparatorCount,
+        `Appended story contains ${expectedSeparatorCount} separator(s)`,
+        `Separator count mismatch: expected ${expectedSeparatorCount}, got ${separatorMatches.length}`);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 }
 
@@ -302,7 +375,8 @@ async function testChapterContinuation() {
     themes: ['forbidden_love', 'betrayal'],
     userInput: 'A fairy princess falls for a dark sorcerer',
     spicyLevel: 3,
-    wordCount: 700
+    wordCount: 700,
+    requestedChapterCount: 1
   };
   
   const initialStory = await service.generateStory(initialInput);
@@ -320,8 +394,9 @@ async function testChapterContinuation() {
   const continueInput = {
     storyId: initialStory.data.storyId,
     currentChapterCount: 1,
-    existingContent: initialStory.data.content,
-    maintainTone: true
+    existingContent: initialStory.data.appendedToStory,
+    maintainTone: true,
+    requestedChapterCount: 2
   };
   
   const chapter2 = await service.continueChapter(continueInput);
@@ -331,17 +406,24 @@ async function testChapterContinuation() {
     `Chapter 2 failed: ${chapter2.error?.message}`);
   
   if (chapter2.success) {
-    assert(chapter2.data.chapterNumber === 2, 
-      `Chapter number is 2`, 
-      `Chapter number mismatch: ${chapter2.data.chapterNumber}`);
-    
-    assert(chapter2.data.content.length > 0, 
-      `Chapter 2 has content (${chapter2.data.content.length} chars)`, 
-      'Chapter 2 has no content');
-    
-    logInfo(`Chapter 2 word count: ${chapter2.data.wordCount}`);
+    const newChapters = chapter2.data.chapters;
+    assert(newChapters.length === 2,
+      'Continuation returned 2 chapters',
+      `Continuation returned ${newChapters.length} chapters`);
+
+    const chapterNumbers = newChapters.map(chapter => chapter.chapterNumber);
+    assert(chapterNumbers[0] === 2 && chapterNumbers[1] === 3,
+      'Chapters numbered sequentially (2, 3)',
+      `Chapter numbers mismatch: ${chapterNumbers.join(', ')}`);
+
+    newChapters.forEach((chapter, index) => {
+      assert(chapter.content.length > 0,
+        `Chapter ${chapter.chapterNumber} has content`,
+        `Chapter ${chapter.chapterNumber} missing content`);
+      logInfo(`Chapter ${chapter.chapterNumber} word count: ${chapter.wordCount}`);
+    });
   }
-  
+
   return chapter2.success;
 }
 
@@ -357,7 +439,8 @@ async function testInputValidation() {
     themes: ['passion'],
     userInput: 'Test',
     spicyLevel: 3,
-    wordCount: 700
+    wordCount: 700,
+    requestedChapterCount: 1
   });
   
   assert(!result.success && result.error?.code === 'INVALID_INPUT', 
@@ -371,7 +454,8 @@ async function testInputValidation() {
     themes: ['passion'],
     userInput: 'Test',
     spicyLevel: 10, // Invalid!
-    wordCount: 700
+    wordCount: 700,
+    requestedChapterCount: 1
   });
   
   assert(!result.success && result.error?.code === 'INVALID_INPUT', 
@@ -385,12 +469,34 @@ async function testInputValidation() {
     themes: [], // Invalid!
     userInput: 'Test',
     spicyLevel: 3,
-    wordCount: 700
+    wordCount: 700,
+    requestedChapterCount: 1
   });
-  
-  assert(!result.success && result.error?.code === 'INVALID_INPUT', 
-    'Empty themes rejected', 
+
+  assert(!result.success && result.error?.code === 'INVALID_INPUT',
+    'Empty themes rejected',
     'Empty themes were not rejected');
+
+  // Test invalid requested chapter count (should clamp to 3)
+  logInfo('\nTesting invalid requestedChapterCount...');
+  result = await service.generateStory({
+    creature: 'vampire',
+    themes: ['passion'],
+    userInput: 'Test',
+    spicyLevel: 3,
+    wordCount: 700,
+    requestedChapterCount: 5
+  });
+
+  assert(result.success,
+    'Invalid requestedChapterCount is clamped and request succeeds',
+    `Invalid requestedChapterCount caused failure: ${result.error?.message}`);
+
+  if (result.success) {
+    assert(result.data.chapters.length === 3,
+      'Chapter count clamped to maximum of 3',
+      `Chapter count not clamped: ${result.data.chapters.length}`);
+  }
 }
 
 async function testSpeakerTags() {
@@ -402,7 +508,8 @@ async function testSpeakerTags() {
     themes: ['passion', 'desire'],
     userInput: 'A vampire and a mortal have a passionate encounter with lots of dialogue',
     spicyLevel: 4,
-    wordCount: 900
+    wordCount: 900,
+    requestedChapterCount: 1
   };
   
   const result = await service.generateStory(input);
@@ -412,21 +519,22 @@ async function testSpeakerTags() {
     `Story failed: ${result.error?.message}`);
   
   if (result.success) {
-    const content = result.data.content;
-    const hasSpeakerTags = /\[([^\]]+)\]:/.test(content);
-    
+    const combinedContent = result.data.appendedToStory;
+    const firstChapter = result.data.chapters[0];
+    const hasSpeakerTags = /\[([^\]]+)\]:/.test(combinedContent);
+
     if (hasSpeakerTags) {
-      const speakerMatches = content.match(/\[([^\]]+)\]:/g);
+      const speakerMatches = combinedContent.match(/\[([^\]]+)\]:/g);
       const uniqueSpeakers = [...new Set(speakerMatches)];
-      
+
       logSuccess(`Speaker tags found: ${uniqueSpeakers.length} unique speakers`);
       logInfo(`Speakers: ${uniqueSpeakers.slice(0, 5).join(', ')}${uniqueSpeakers.length > 5 ? '...' : ''}`);
     } else {
       warn('No speaker tags found in content (expected for dialogue-heavy stories)');
     }
-    
-    // Check for rawContent (should have speaker tags preserved)
-    if (result.data.rawContent) {
+
+    // Check for rawContent on chapter (should have speaker tags preserved)
+    if (firstChapter?.rawContent) {
       logSuccess('rawContent field present (for audio processing)');
     } else {
       warn('rawContent field missing (needed for multi-voice audio)');
@@ -446,7 +554,8 @@ async function testLoggingIntegration() {
     themes: ['power_dynamics'],
     userInput: 'Testing logging',
     spicyLevel: 2,
-    wordCount: 700
+    wordCount: 700,
+    requestedChapterCount: 1
   };
   
   await service.generateStory(input);
@@ -493,6 +602,7 @@ async function runAllTests() {
     { name: 'All Creature Types', fn: testAllCreatureTypes },
     { name: 'All Spicy Levels', fn: testAllSpicyLevels },
     { name: 'Word Count Variations', fn: testWordCountVariations },
+    { name: 'Requested Chapter Batches', fn: testMultiChapterBatches },
     { name: 'Chapter Continuation', fn: testChapterContinuation },
     { name: 'Input Validation', fn: testInputValidation },
     { name: 'Speaker Tags (Multi-Voice)', fn: testSpeakerTags },

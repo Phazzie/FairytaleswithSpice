@@ -6,7 +6,7 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StoryService } from '../story.service';
-import { StoryGenerationSeam, CreatureType, ThemeType, WordCount } from '../contracts';
+import { StoryGenerationSeam, CreatureType, ThemeType, WordCount, Chapter } from '../contracts';
 
 @Component({
   selector: 'app-streaming-story',
@@ -238,7 +238,8 @@ export class StreamingStoryComponent {
       themes: ['forbidden_love', 'seduction'],
       userInput: 'A vampire lord meets a curious human in a moonlit garden',
       spicyLevel: 3,
-      wordCount: this.targetWords as WordCount
+      wordCount: this.targetWords as WordCount,
+      requestedChapterCount: 1
     };
 
     try {
@@ -322,6 +323,14 @@ export class StreamingStoryComponent {
       this.storyTitle = finalStory.data.title;
     } else if (finalStory?.title) {
       this.storyTitle = finalStory.title;
+    }
+
+    if (finalStory?.data?.appendedToStory) {
+      this.streamedContent = finalStory.data.appendedToStory;
+    } else if (finalStory?.data?.chapters?.length) {
+      this.streamedContent = finalStory.data.chapters
+        .map((chapter: Chapter) => chapter.content)
+        .join('');
     }
     
     // Add a small celebration effect

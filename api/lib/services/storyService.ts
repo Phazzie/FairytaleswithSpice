@@ -4,7 +4,10 @@ import {
   ChapterContinuationSeam,
   ApiResponse,
   VALIDATION_RULES,
-  SpicyLevel
+  SpicyLevel,
+  Chapter,
+  ChapterGenerationError,
+  ChapterBatchSize
 } from '../types/contracts';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 
@@ -44,56 +47,114 @@ export class StoryService {
   async generateStory(input: StoryGenerationSeam['input']): Promise<ApiResponse<StoryGenerationSeam['output']>> {
     const startTime = Date.now();
     const requestId = logger.generateRequestId();
-    
+    const normalizedChapterCount = this.normalizeChapterCount(input.requestedChapterCount);
+    const normalizedInput: StoryGenerationSeam['input'] = {
+      ...input,
+      requestedChapterCount: normalizedChapterCount
+    };
+
     const context: LogContext = {
       requestId,
       endpoint: 'generateStory',
       method: 'POST',
       userInput: {
-        creature: input.creature,
-        themes: input.themes,
-        spicyLevel: input.spicyLevel,
-        wordCount: input.wordCount
+        creature: normalizedInput.creature,
+        themes: normalizedInput.themes,
+        spicyLevel: normalizedInput.spicyLevel,
+        wordCount: normalizedInput.wordCount,
+        requestedChapterCount: normalizedChapterCount
       }
     };
 
     logInfo('Story generation request received', context);
 
     try {
-      // Validate input
-      const validationError = this.validateStoryInput(input);
+      const validationError = this.validateStoryInput(normalizedInput);
       if (validationError) {
         logWarn('Story input validation failed', context, { validationError });
-        
+
         return {
           success: false,
           error: validationError,
           metadata: {
             requestId,
-            processingTime: Date.now() - startTime
+            processingTime: Date.now() - startTime,
+            chaptersRequested: normalizedChapterCount,
+            chaptersGenerated: 0
           }
         };
       }
 
-      // Generate story using Grok AI
-      const rawStoryContent = await this.callGrokAI(input, context);
+      const storyId = this.generateStoryId();
+      const chapters: Chapter[] = [];
+      const partialFailures: ChapterGenerationError[] = [];
+      let appendedToStory = '';
+      let finalHint: string | undefined;
 
-      // Process content: keep raw version for audio, clean version for display
-      const displayContent = this.stripSpeakerTagsForDisplay(rawStoryContent);
+      for (let index = 0; index < normalizedChapterCount; index++) {
+        const chapterNumber = index + 1;
 
-      // Create response
+        try {
+          const { chapter, combinedContent, nextHint } = await this.generateInitialStoryChapter(
+            normalizedInput,
+            storyId,
+            chapterNumber,
+            appendedToStory,
+            context
+          );
+
+          chapters.push(chapter);
+          appendedToStory = combinedContent;
+          finalHint = nextHint;
+        } catch (error: any) {
+          const failure: ChapterGenerationError = {
+            chapterNumber,
+            message: error?.message || 'Unknown error generating chapter',
+            retryable: true
+          };
+
+          partialFailures.push(failure);
+          logWarn('Chapter generation failed, continuing with remaining chapters', context, {
+            chapterNumber,
+            error: failure.message
+          });
+        }
+      }
+
+      const totalWordCount = chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0);
+
+      if (chapters.length === 0) {
+        return {
+          success: false,
+          error: {
+            code: 'GENERATION_FAILED',
+            message: 'Failed to generate any chapters for the story',
+            details: partialFailures
+          },
+          metadata: {
+            requestId,
+            processingTime: Date.now() - startTime,
+            chaptersRequested: normalizedChapterCount,
+            chaptersGenerated: 0,
+            partialFailures: partialFailures.length ? partialFailures : undefined
+          }
+        };
+      }
+
       const output: StoryGenerationSeam['output'] = {
-        storyId: this.generateStoryId(),
-        title: this.generateTitle(input),
-        content: displayContent, // Clean content for user display
-        rawContent: rawStoryContent, // Tagged content for audio processing
-        creature: input.creature,
-        themes: input.themes,
-        spicyLevel: input.spicyLevel,
-        actualWordCount: this.countWords(displayContent),
-        estimatedReadTime: Math.ceil(this.countWords(displayContent) / 200),
-        hasCliffhanger: this.detectCliffhanger(displayContent),
-        generatedAt: new Date()
+        storyId,
+        title: chapters[0].title,
+        chapters,
+        creature: normalizedInput.creature,
+        themes: normalizedInput.themes,
+        spicyLevel: normalizedInput.spicyLevel,
+        totalWordCount,
+        estimatedReadTime: Math.max(1, Math.ceil(totalWordCount / 200)),
+        hasCliffhanger: chapters[chapters.length - 1].cliffhangerEnding,
+        appendedToStory,
+        nextChapterHint: finalHint,
+        generatedAt: new Date(),
+        chapterErrors: partialFailures.length ? partialFailures : undefined
       };
 
       const duration = Date.now() - startTime;
@@ -101,8 +162,8 @@ export class StoryService {
         ...context,
         responseTime: duration
       }, {
-        actualWordCount: output.actualWordCount,
-        hasCliffhanger: output.hasCliffhanger
+        totalWordCount: output.totalWordCount,
+        chaptersGenerated: chapters.length
       });
 
       return {
@@ -110,13 +171,16 @@ export class StoryService {
         data: output,
         metadata: {
           requestId,
-          processingTime: Date.now() - startTime
+          processingTime: duration,
+          chaptersRequested: normalizedChapterCount,
+          chaptersGenerated: chapters.length,
+          partialFailures: partialFailures.length ? partialFailures : undefined
         }
       };
 
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      
+
       logError('Story generation failed', error, {
         ...context,
         responseTime: duration,
@@ -135,7 +199,9 @@ export class StoryService {
         },
         metadata: {
           requestId: this.generateRequestId(),
-          processingTime: Date.now() - startTime
+          processingTime: Date.now() - startTime,
+          chaptersRequested: normalizedChapterCount,
+          chaptersGenerated: 0
         }
       };
     }
@@ -144,35 +210,93 @@ export class StoryService {
   async continueChapter(input: ChapterContinuationSeam['input']): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
     const startTime = Date.now();
     const requestId = logger.generateRequestId();
-    
+    const normalizedChapterCount = this.normalizeChapterCount(input.requestedChapterCount);
+    const normalizedInput: ChapterContinuationSeam['input'] = {
+      ...input,
+      requestedChapterCount: normalizedChapterCount
+    };
+
     const context: LogContext = {
       requestId,
       endpoint: 'continueChapter',
       method: 'POST',
       userInput: {
-        currentChapterCount: input.currentChapterCount,
-        existingContentLength: input.existingContent?.length || 0,
-        maintainTone: input.maintainTone
+        currentChapterCount: normalizedInput.currentChapterCount,
+        existingContentLength: normalizedInput.existingContent?.length || 0,
+        maintainTone: normalizedInput.maintainTone,
+        requestedChapterCount: normalizedChapterCount
       }
     };
 
     logInfo('Chapter continuation request received', context);
 
     try {
-      // Generate continuation using Grok AI
-      const chapterContent = await this.callGrokAIForContinuation(input, context);
+      const chapters: Chapter[] = [];
+      const partialFailures: ChapterGenerationError[] = [];
+      let appendedToStory = normalizedInput.existingContent;
+      let chapterCursor = normalizedInput.currentChapterCount;
+      let finalHint: string | undefined;
 
-      // Create response
+      for (let index = 0; index < normalizedChapterCount; index++) {
+        const chapterNumber = chapterCursor + 1;
+
+        try {
+          const { chapter, combinedContent, nextHint } = await this.generateContinuationChapter(
+            normalizedInput,
+            chapterNumber,
+            appendedToStory,
+            context
+          );
+
+          chapters.push(chapter);
+          appendedToStory = combinedContent;
+          finalHint = nextHint;
+          chapterCursor = chapter.chapterNumber;
+        } catch (error: any) {
+          const failure: ChapterGenerationError = {
+            chapterNumber,
+            message: error?.message || 'Unknown error generating chapter continuation',
+            retryable: true
+          };
+
+          partialFailures.push(failure);
+          logWarn('Continuation chapter generation failed, continuing if possible', context, {
+            chapterNumber,
+            error: failure.message
+          });
+        }
+      }
+
+      if (chapters.length === 0) {
+        return {
+          success: false,
+          error: {
+            code: 'CONTINUATION_FAILED',
+            message: 'Failed to generate continuation chapters',
+            details: partialFailures
+          },
+          metadata: {
+            requestId,
+            processingTime: Date.now() - startTime,
+            chaptersRequested: normalizedChapterCount,
+            chaptersGenerated: 0,
+            partialFailures: partialFailures.length ? partialFailures : undefined
+          }
+        };
+      }
+
+      const totalWordCount = this.countWords(appendedToStory);
       const output: ChapterContinuationSeam['output'] = {
-        chapterId: this.generateChapterId(),
-        chapterNumber: input.currentChapterCount + 1,
-        title: `Chapter ${input.currentChapterCount + 1}: ${this.generateChapterTitle(input)}`,
-        content: chapterContent,
-        wordCount: this.countWords(chapterContent),
-        cliffhangerEnding: this.detectCliffhanger(chapterContent),
-        themesContinued: this.extractThemesFromContent(input.existingContent),
-        spicyLevelMaintained: this.extractSpicyLevelFromContent(input.existingContent),
-        appendedToStory: input.existingContent + '\n\n<hr>\n\n' + chapterContent
+        storyId: normalizedInput.storyId,
+        chapters,
+        totalWordCount,
+        appendedToStory,
+        finalChapterNumber: chapterCursor,
+        hasCliffhanger: chapters[chapters.length - 1].cliffhangerEnding,
+        themesContinued: this.extractThemesFromContent(appendedToStory),
+        spicyLevelMaintained: this.extractSpicyLevelFromContent(appendedToStory),
+        nextChapterHint: finalHint,
+        chapterErrors: partialFailures.length ? partialFailures : undefined
       };
 
       const duration = Date.now() - startTime;
@@ -180,8 +304,8 @@ export class StoryService {
         ...context,
         responseTime: duration
       }, {
-        chapterNumber: output.chapterNumber,
-        wordCount: output.wordCount
+        finalChapterNumber: output.finalChapterNumber,
+        chaptersGenerated: chapters.length
       });
 
       return {
@@ -189,13 +313,16 @@ export class StoryService {
         data: output,
         metadata: {
           requestId,
-          processingTime: duration
+          processingTime: duration,
+          chaptersRequested: normalizedChapterCount,
+          chaptersGenerated: chapters.length,
+          partialFailures: partialFailures.length ? partialFailures : undefined
         }
       };
 
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      
+
       logError('Chapter continuation failed', error, {
         ...context,
         responseTime: duration,
@@ -211,10 +338,144 @@ export class StoryService {
         },
         metadata: {
           requestId,
-          processingTime: duration
+          processingTime: duration,
+          chaptersRequested: normalizedChapterCount,
+          chaptersGenerated: 0
         }
       };
     }
+  }
+
+  private normalizeChapterCount(value: number | undefined): ChapterBatchSize {
+    const numeric = Number(value ?? 1);
+    if (!Number.isFinite(numeric)) {
+      return 1;
+    }
+
+    const rounded = Math.round(numeric);
+    const clamped = Math.min(
+      Math.max(rounded, VALIDATION_RULES.requestedChapterCount.min),
+      VALIDATION_RULES.requestedChapterCount.max
+    );
+
+    return clamped as ChapterBatchSize;
+  }
+
+  private buildSequentialTitle(baseTitle: string, chapterNumber: number): string {
+    if (chapterNumber <= 1) {
+      return baseTitle;
+    }
+    return `${baseTitle} — Chapter ${chapterNumber}`;
+  }
+
+  private generateNextChapterHint(content: string, chapterNumber: number): string {
+    const cleanContent = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!cleanContent) {
+      return `Explore new twists in chapter ${chapterNumber + 1}.`;
+    }
+
+    const sentences = cleanContent.split(/(?<=[.!?])\s+/).filter(Boolean);
+    let hint = sentences[sentences.length - 1] || cleanContent;
+    hint = hint.trim();
+
+    if (hint.length > 160) {
+      hint = `${hint.slice(0, 157)}…`;
+    }
+
+    return `Next focus: ${hint}`;
+  }
+
+  private extractStoryTitle(content: string): string | undefined {
+    const match = content.match(/<h[1-4][^>]*>(.*?)<\/h[1-4]>/i);
+    if (match?.[1]) {
+      return match[1].replace(/<[^>]*>/g, '').trim();
+    }
+    return undefined;
+  }
+
+  private async generateInitialStoryChapter(
+    input: StoryGenerationSeam['input'],
+    storyId: string,
+    chapterNumber: number,
+    existingContent: string,
+    context: LogContext
+  ): Promise<{ chapter: Chapter; combinedContent: string; nextHint?: string }> {
+    const rawContent = chapterNumber === 1
+      ? await this.callGrokAI(input, context)
+      : await this.callGrokAIForContinuation(
+        {
+          storyId,
+          currentChapterCount: chapterNumber - 1,
+          existingContent,
+          userInput: input.userInput,
+          maintainTone: true,
+          requestedChapterCount: input.requestedChapterCount
+        },
+        context
+      );
+
+    const displayContent = this.stripSpeakerTagsForDisplay(rawContent);
+    const wordCount = this.countWords(displayContent);
+    const combinedContent = existingContent
+      ? `${existingContent}\n\n<hr>\n\n${displayContent}`
+      : displayContent;
+    const baseTitle = this.generateTitle(input);
+    const title = this.buildSequentialTitle(baseTitle, chapterNumber);
+    const nextHint = this.generateNextChapterHint(displayContent, chapterNumber);
+
+    const chapter: Chapter = {
+      chapterId: `${storyId}_chapter_${chapterNumber}`,
+      chapterNumber,
+      title,
+      content: displayContent,
+      rawContent,
+      wordCount,
+      generatedAt: new Date(),
+      hasAudio: false,
+      cliffhangerEnding: this.detectCliffhanger(displayContent),
+      nextChapterHint: nextHint
+    };
+
+    return { chapter, combinedContent, nextHint };
+  }
+
+  private async generateContinuationChapter(
+    input: ChapterContinuationSeam['input'],
+    chapterNumber: number,
+    existingContent: string,
+    context: LogContext
+  ): Promise<{ chapter: Chapter; combinedContent: string; nextHint?: string }> {
+    const continuationInput: ChapterContinuationSeam['input'] = {
+      ...input,
+      currentChapterCount: chapterNumber - 1,
+      existingContent,
+      requestedChapterCount: input.requestedChapterCount
+    };
+
+    const rawContent = await this.callGrokAIForContinuation(continuationInput, context);
+    const displayContent = this.stripSpeakerTagsForDisplay(rawContent);
+    const wordCount = this.countWords(displayContent);
+    const combinedContent = existingContent
+      ? `${existingContent}\n\n<hr>\n\n${displayContent}`
+      : displayContent;
+    const baseTitle = this.extractStoryTitle(existingContent) || `Story ${input.storyId}`;
+    const title = this.buildSequentialTitle(baseTitle, chapterNumber);
+    const nextHint = this.generateNextChapterHint(displayContent, chapterNumber);
+
+    const chapter: Chapter = {
+      chapterId: `${input.storyId}_chapter_${chapterNumber}`,
+      chapterNumber,
+      title,
+      content: displayContent,
+      rawContent,
+      wordCount,
+      generatedAt: new Date(),
+      hasAudio: false,
+      cliffhangerEnding: this.detectCliffhanger(displayContent),
+      nextChapterHint: nextHint
+    };
+
+    return { chapter, combinedContent, nextHint };
   }
 
   /**
@@ -1200,6 +1461,16 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
       };
     }
 
+    if (!Array.isArray(input.themes) || input.themes.length === 0) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'At least one theme must be provided',
+        field: 'themes',
+        providedValue: input.themes,
+        expectedType: 'ThemeType[]'
+      };
+    }
+
     if (input.themes.length > VALIDATION_RULES.themes.maxCount) {
       return {
         code: 'INVALID_INPUT',
@@ -1217,6 +1488,34 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
         field: 'userInput',
         providedValue: input.userInput,
         expectedType: 'string'
+      };
+    }
+
+    if (
+      typeof input.spicyLevel !== 'number' ||
+      input.spicyLevel < VALIDATION_RULES.spicyLevel.min ||
+      input.spicyLevel > VALIDATION_RULES.spicyLevel.max
+    ) {
+      return {
+        code: 'INVALID_INPUT',
+        message: `Spicy level must be between ${VALIDATION_RULES.spicyLevel.min} and ${VALIDATION_RULES.spicyLevel.max}`,
+        field: 'spicyLevel',
+        providedValue: input.spicyLevel,
+        expectedType: 'SpicyLevel'
+      };
+    }
+
+    if (
+      typeof input.requestedChapterCount !== 'number' ||
+      input.requestedChapterCount < VALIDATION_RULES.requestedChapterCount.min ||
+      input.requestedChapterCount > VALIDATION_RULES.requestedChapterCount.max
+    ) {
+      return {
+        code: 'INVALID_INPUT',
+        message: `Requested chapter count must be between ${VALIDATION_RULES.requestedChapterCount.min} and ${VALIDATION_RULES.requestedChapterCount.max}`,
+        field: 'requestedChapterCount',
+        providedValue: input.requestedChapterCount,
+        expectedType: 'ChapterBatchSize'
       };
     }
 

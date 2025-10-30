@@ -19,6 +19,8 @@ export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 
 // ==================== CHAPTER MANAGEMENT ====================
+export type ChapterBatchSize = 1 | 2 | 3;
+
 export interface Chapter {
   chapterId: string;
   chapterNumber: number;
@@ -30,6 +32,14 @@ export interface Chapter {
   hasAudio: boolean;
   audioUrl?: string;
   audioDuration?: number;
+  cliffhangerEnding: boolean;
+  nextChapterHint?: string;
+}
+
+export interface ChapterGenerationError {
+  chapterNumber: number;
+  message: string;
+  retryable: boolean;
 }
 
 export interface AudioProgress {
@@ -50,20 +60,23 @@ export interface StoryGenerationSeam {
     userInput: string; // Optional custom ideas
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
+    requestedChapterCount: ChapterBatchSize;
   };
 
   output: {
     storyId: string;
     title: string;
-    content: string; // HTML formatted content for [innerHTML] binding (speaker tags removed)
-    rawContent?: string; // Content with speaker tags for audio processing
+    chapters: Chapter[];
     creature: CreatureType;
     themes: ThemeType[];
     spicyLevel: SpicyLevel;
-    actualWordCount: number;
-    estimatedReadTime: number; // in minutes
+    totalWordCount: number;
+    estimatedReadTime: number; // in minutes (aggregate of all chapters)
     hasCliffhanger: boolean; // determines if "Continue Chapter" button shows
+    appendedToStory: string; // Full story content aggregated from chapters
+    nextChapterHint?: string;
     generatedAt: Date;
+    chapterErrors?: ChapterGenerationError[];
   };
 
   errors: {
@@ -106,18 +119,20 @@ export interface ChapterContinuationSeam {
     existingContent: string; // Full story HTML content
     userInput?: string; // Optional continuation hints
     maintainTone: boolean; // Keep same spicy level and themes
+    requestedChapterCount: ChapterBatchSize;
   };
 
   output: {
-    chapterId: string;
-    chapterNumber: number;
-    title: string;
-    content: string; // New chapter HTML content
-    wordCount: number;
-    cliffhangerEnding: boolean;
+    storyId: string;
+    chapters: Chapter[];
+    totalWordCount: number;
+    appendedToStory: string; // Full updated story content
+    finalChapterNumber: number;
+    hasCliffhanger: boolean;
     themesContinued: ThemeType[];
     spicyLevelMaintained: SpicyLevel;
-    appendedToStory: string; // Full updated story content
+    nextChapterHint?: string;
+    chapterErrors?: ChapterGenerationError[];
   };
 
   errors: {
@@ -150,12 +165,16 @@ export interface StreamingProgressChunk {
   content?: string;
   storyId?: string;
   streamId?: string;
-  metadata?: {
-    wordsGenerated: number;
-    estimatedWordsRemaining: number;
-    generationSpeed: number; // words per second
-    percentage: number; // 0-100
-  };
+    metadata?: {
+      wordsGenerated: number;
+      totalWordsTarget?: number;
+      estimatedWordsRemaining: number;
+      generationSpeed: number; // words per second
+      percentage: number; // 0-100
+      estimatedTimeRemaining?: number; // seconds
+      chapterNumber?: number;
+      nextChapterHint?: string;
+    };
   error?: {
     code: string;
     message: string;
@@ -174,6 +193,7 @@ export interface StreamingStoryGenerationSeam {
     userInput: string;
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
+    requestedChapterCount: ChapterBatchSize;
   };
 
   progressUpdate: {
@@ -189,23 +209,12 @@ export interface StreamingStoryGenerationSeam {
       generationSpeed: number; // words per second
       percentage: number; // 0-100
       estimatedTimeRemaining?: number; // seconds
+      chapterNumber?: number;
+      nextChapterHint?: string;
     };
   };
 
-  finalOutput: {
-    // Same as StoryGenerationSeam output
-    storyId: string;
-    title: string;
-    content: string;
-    rawContent?: string;
-    creature: CreatureType;
-    themes: ThemeType[];
-    spicyLevel: SpicyLevel;
-    actualWordCount: number;
-    estimatedReadTime: number;
-    hasCliffhanger: boolean;
-    generatedAt: Date;
-  };
+    finalOutput: StoryGenerationSeam['output'];
 
   errors: {
     STREAMING_CONNECTION_FAILED: {
@@ -404,5 +413,8 @@ export interface ApiResponse<T> {
     requestId: string;
     processingTime: number;
     rateLimitRemaining?: number;
+    chaptersRequested?: number;
+    chaptersGenerated?: number;
+    partialFailures?: ChapterGenerationError[];
   };
 }

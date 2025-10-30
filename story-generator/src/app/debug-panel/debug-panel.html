@@ -62,9 +62,9 @@
         <div class="heather-story-result" *ngIf="heatherStoryResult">
           <div class="story-preview">
             <h5>{{ heatherStoryResult.title }}</h5>
-            <p [innerHTML]="heatherStoryResult.content | slice:0:200"></p>
-            <small *ngIf="heatherStoryResult.content.length > 200">
-              ...{{ heatherStoryResult.actualWordCount }} words total
+            <p [innerHTML]="heatherStoryResult.appendedToStory | slice:0:200"></p>
+            <small *ngIf="heatherStoryResult.totalWordCount > 200">
+              ...{{ heatherStoryResult.totalWordCount }} words total
             </small>
           </div>
         </div>

@@ -1,6 +1,14 @@
 import { StoryService } from '../lib/services/storyService';
-import { ChapterContinuationSeam } from '../lib/types/contracts';
+import { ChapterBatchSize, ChapterContinuationSeam } from '../lib/types/contracts';
 import { logInfo, logError, logWarn } from '../lib/utils/logger';
+
+function clampChapterCount(value: unknown): ChapterBatchSize {
+  const numeric = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+  if (!Number.isFinite(numeric)) {
+    return 1;
+  }
+  return Math.min(Math.max(numeric, 1), 3) as ChapterBatchSize;
+}
 
 export default async function handler(req: any, res: any) {
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -34,7 +42,17 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const input: ChapterContinuationSeam['input'] = req.body;
+    const rawInput = req.body as Partial<ChapterContinuationSeam['input']>;
+    const requestedChapterCount = clampChapterCount(rawInput?.requestedChapterCount);
+
+    const input: ChapterContinuationSeam['input'] = {
+      storyId: rawInput?.storyId ?? '',
+      currentChapterCount: Number(rawInput?.currentChapterCount ?? 0),
+      existingContent: rawInput?.existingContent ?? '',
+      userInput: rawInput?.userInput,
+      maintainTone: Boolean(rawInput?.maintainTone),
+      requestedChapterCount
+    };
 
     // Validate required fields
     if (!input.storyId || !input.existingContent || typeof input.currentChapterCount !== 'number') {
@@ -42,8 +60,8 @@ export default async function handler(req: any, res: any) {
         requestId,
         endpoint: '/api/story/continue',
         method: 'POST'
-      }, { receivedFields: Object.keys(input) });
-      
+      }, { receivedFields: Object.keys(rawInput ?? {}) });
+
       return res.status(400).json({
         success: false,
         error: {
@@ -60,7 +78,8 @@ export default async function handler(req: any, res: any) {
       userInput: {
         storyId: input.storyId,
         currentChapterCount: input.currentChapterCount,
-        existingContentLength: input.existingContent.length
+        existingContentLength: input.existingContent.length,
+        requestedChapterCount: input.requestedChapterCount
       }
     });
 

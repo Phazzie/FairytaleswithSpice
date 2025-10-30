@@ -1,6 +1,14 @@
 import { StoryService } from '../lib/services/storyService';
-import { StoryGenerationSeam } from '../lib/types/contracts';
+import { ChapterBatchSize, StoryGenerationSeam } from '../lib/types/contracts';
 import { logInfo, logError, logWarn } from '../lib/utils/logger';
+
+function clampChapterCount(value: unknown): ChapterBatchSize {
+  const numeric = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+  if (!Number.isFinite(numeric)) {
+    return 1;
+  }
+  return Math.min(Math.max(numeric, 1), 3) as ChapterBatchSize;
+}
 
 export default async function handler(req: any, res: any) {
   // Generate or extract request ID for tracking
@@ -41,16 +49,26 @@ export default async function handler(req: any, res: any) {
   try {
     console.log(`[${requestId}] POST /api/story/generate - Request received`);
     
-    const input: StoryGenerationSeam['input'] = req.body;
+    const rawInput = req.body as Partial<StoryGenerationSeam['input']>;
+    const requestedChapterCount = clampChapterCount(rawInput?.requestedChapterCount);
+
+    const input: StoryGenerationSeam['input'] = {
+      creature: rawInput?.creature as StoryGenerationSeam['input']['creature'],
+      themes: Array.isArray(rawInput?.themes) ? (rawInput?.themes as StoryGenerationSeam['input']['themes']) : [],
+      userInput: rawInput?.userInput ?? '',
+      spicyLevel: rawInput?.spicyLevel as StoryGenerationSeam['input']['spicyLevel'],
+      wordCount: rawInput?.wordCount as StoryGenerationSeam['input']['wordCount'],
+      requestedChapterCount
+    };
 
     // Validate required fields
-    if (!input.creature || !input.themes || typeof input.spicyLevel !== 'number' || !input.wordCount) {
+    if (!input.creature || !Array.isArray(input.themes) || input.themes.length === 0 || typeof input.spicyLevel !== 'number' || !input.wordCount) {
       logWarn('Invalid input - missing required fields', {
         requestId,
         endpoint: '/api/story/generate',
         method: 'POST'
-      }, { receivedFields: Object.keys(input) });
-      
+      }, { receivedFields: Object.keys(rawInput ?? {}) });
+
       return res.status(400).json({
         success: false,
         error: {
@@ -68,7 +86,8 @@ export default async function handler(req: any, res: any) {
         creature: input.creature,
         themes: input.themes,
         spicyLevel: input.spicyLevel,
-        wordCount: input.wordCount
+        wordCount: input.wordCount,
+        requestedChapterCount: input.requestedChapterCount
       }
     });
 
@@ -79,17 +98,12 @@ export default async function handler(req: any, res: any) {
     res.status(200).json(result);
 
   } catch (error: any) {
-<<<<<<< HEAD
     logError('Story generation endpoint error', error, {
       requestId,
       endpoint: '/api/story/generate',
       method: 'POST',
       statusCode: 500
     });
-    
-=======
-    console.error(`[${requestId}] Story generation serverless function error:`, error);
->>>>>>> c07c20875b1643c77ba40490b75daf80504c0651
     res.status(500).json({
       success: false,
       error: {

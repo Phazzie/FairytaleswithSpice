@@ -6,4 +6,4 @@
  */
 
 export * from './event-source-mock';
-export * from './test-data-factory';
+export * from './data-factory';
