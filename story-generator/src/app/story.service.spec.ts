@@ -57,24 +57,33 @@ describe('StoryService', () => {
       userInput: 'Victorian setting'
     });
 
-    const mockSuccessResponse: ApiResponse<StoryGenerationSeam['output']> = {
-      success: true,
-      data: {
-        storyId: 'story_123',
-        title: "The Vampire's Forbidden Passion",
-        content: '<h3>Chapter 1</h3><p>Story content...</p>',
-        creature: 'vampire' as CreatureType,
-        themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
-        spicyLevel: 3 as SpicyLevel,
-        actualWordCount: 150,
-        estimatedReadTime: 1,
-        hasCliffhanger: false,
-        generatedAt: new Date()
-      },
-      metadata: {
-        requestId: 'req_123',
-        processingTime: 2500
-      }
+    const generatedAt = new Date();
+    const mockSuccessResponse: ApiResponse<StoryGenerationSeam['output']> = createMockStoryResponse({
+      storyId: 'story_123',
+      title: "The Vampire's Forbidden Passion",
+      chapters: [
+        {
+          chapterId: 'story_123-ch1',
+          chapterNumber: 1,
+          title: "The Vampire's Forbidden Passion",
+          content: '<h3>Chapter 1</h3><p>Story content...</p>',
+          rawContent: '<h3>Chapter 1</h3><p>Story content...</p>',
+          wordCount: 150,
+          generatedAt,
+          hasAudio: false,
+          cliffhangerEnding: false
+        }
+      ],
+      themes: ['forbidden_love', 'dark_secrets'] as ThemeType[],
+      totalWordCount: 150,
+      estimatedReadTime: 1,
+      hasCliffhanger: false,
+      appendedToStory: '<h3>Chapter 1</h3><p>Story content...</p>',
+      generatedAt
+    });
+    mockSuccessResponse.metadata = {
+      requestId: 'req_123',
+      processingTime: 2500
     };
 
     it('should generate story successfully', () => {

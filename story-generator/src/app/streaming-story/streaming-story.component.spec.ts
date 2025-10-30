@@ -216,20 +216,33 @@ describe('StreamingStoryComponent', () => {
     });
 
     it('should handle successful completion', (done) => {
+      const generatedAt = new Date();
       const mockResponse: ApiResponse<StoryGenerationSeam['output']> = {
         success: true,
         data: {
           storyId: 'story_123',
           title: 'Complete Story',
-          content: '<h3>Complete Story</h3><p>Final content</p>',
-          rawContent: '<h3>Complete Story</h3><p>Final content</p>',
+          chapters: [
+            {
+              chapterId: 'story_123-ch1',
+              chapterNumber: 1,
+              title: 'Complete Story',
+              content: '<h3>Complete Story</h3><p>Final content</p>',
+              rawContent: '<h3>Complete Story</h3><p>Final content</p>',
+              wordCount: 900,
+              generatedAt,
+              hasAudio: false,
+              cliffhangerEnding: false
+            }
+          ],
           creature: 'vampire' as CreatureType,
           themes: ['forbidden_love'] as ThemeType[],
           spicyLevel: 3 as SpicyLevel,
-          actualWordCount: 900,
+          totalWordCount: 900,
           estimatedReadTime: 5,
           hasCliffhanger: false,
-          generatedAt: new Date()
+          appendedToStory: '<h3>Complete Story</h3><p>Final content</p>',
+          generatedAt
         }
       };
 

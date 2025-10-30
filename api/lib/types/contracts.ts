@@ -20,6 +20,8 @@ export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
 
 // ==================== CHAPTER MANAGEMENT ====================
+export type ChapterBatchSize = 1 | 2 | 3;
+
 export interface Chapter {
   chapterId: string;
   chapterNumber: number;
@@ -31,6 +33,14 @@ export interface Chapter {
   hasAudio: boolean;
   audioUrl?: string;
   audioDuration?: number;
+  cliffhangerEnding: boolean;
+  nextChapterHint?: string;
+}
+
+export interface ChapterGenerationError {
+  chapterNumber: number;
+  message: string;
+  retryable: boolean;
 }
 
 export interface AudioProgress {
@@ -51,20 +61,23 @@ export interface StoryGenerationSeam {
     userInput: string; // Optional custom ideas
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
+    requestedChapterCount: ChapterBatchSize;
   };
 
   output: {
     storyId: string;
     title: string;
-    content: string; // HTML formatted content for [innerHTML] binding (speaker tags removed)
-    rawContent?: string; // Content with speaker tags for audio processing
+    chapters: Chapter[];
     creature: CreatureType;
     themes: ThemeType[];
     spicyLevel: SpicyLevel;
-    actualWordCount: number;
-    estimatedReadTime: number; // in minutes
-    hasCliffhanger: boolean; // determines if "Continue Chapter" button shows
+    totalWordCount: number;
+    estimatedReadTime: number; // in minutes (aggregate of all chapters)
+    hasCliffhanger: boolean; // derived from final chapter
+    appendedToStory: string; // Full story content aggregated from chapters
+    nextChapterHint?: string; // Hint produced from final chapter for future continuations
     generatedAt: Date;
+    chapterErrors?: ChapterGenerationError[];
   };
 
   errors: {
@@ -107,18 +120,20 @@ export interface ChapterContinuationSeam {
     existingContent: string; // Full story HTML content
     userInput?: string; // Optional continuation hints
     maintainTone: boolean; // Keep same spicy level and themes
+    requestedChapterCount: ChapterBatchSize;
   };
 
   output: {
-    chapterId: string;
-    chapterNumber: number;
-    title: string;
-    content: string; // New chapter HTML content
-    wordCount: number;
-    cliffhangerEnding: boolean;
+    storyId: string;
+    chapters: Chapter[]; // Newly generated chapters
+    totalWordCount: number;
+    appendedToStory: string; // Full updated story content including new chapters
+    finalChapterNumber: number;
+    hasCliffhanger: boolean; // Derived from the last generated chapter
     themesContinued: ThemeType[];
     spicyLevelMaintained: SpicyLevel;
-    appendedToStory: string; // Full updated story content
+    nextChapterHint?: string;
+    chapterErrors?: ChapterGenerationError[];
   };
 
   errors: {
@@ -153,6 +168,7 @@ export interface StreamingStoryGenerationSeam {
     userInput: string;
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
+    requestedChapterCount: ChapterBatchSize;
   };
 
   progressUpdate: {
@@ -168,23 +184,12 @@ export interface StreamingStoryGenerationSeam {
       generationSpeed: number; // words per second
       percentage: number; // 0-100
       estimatedTimeRemaining?: number; // seconds
+      chapterNumber?: number;
+      nextChapterHint?: string;
     };
   };
 
-  finalOutput: {
-    // Same as StoryGenerationSeam output
-    storyId: string;
-    title: string;
-    content: string;
-    rawContent?: string;
-    creature: CreatureType;
-    themes: ThemeType[];
-    spicyLevel: SpicyLevel;
-    actualWordCount: number;
-    estimatedReadTime: number;
-    hasCliffhanger: boolean;
-    generatedAt: Date;
-  };
+  finalOutput: StoryGenerationSeam['output'];
 
   errors: {
     STREAMING_CONNECTION_FAILED: {
@@ -362,6 +367,10 @@ export const VALIDATION_RULES = {
   wordCount: {
     allowedValues: [700, 900, 1200]
   },
+  requestedChapterCount: {
+    min: 1,
+    max: 3
+  },
   audioSpeed: {
     min: 0.5,
     max: 1.5
@@ -401,5 +410,8 @@ export interface ApiResponse<T> {
     requestId: string;
     processingTime: number;
     rateLimitRemaining?: number;
+    chaptersRequested?: number;
+    chaptersGenerated?: number;
+    partialFailures?: ChapterGenerationError[];
   };
 }
