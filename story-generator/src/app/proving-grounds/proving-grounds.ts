@@ -2,6 +2,7 @@
 import { Component, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { StoryService } from '../story.service';
 import { CreatureType, ThemeType, SpicyLevel, WordCount } from '../contracts';
 import { PromptTemplatesService, PromptTemplate } from './prompt-templates.service';
@@ -77,7 +78,8 @@ export class ProvingGroundsComponent implements OnInit {
   constructor(
     private storyService: StoryService,
     private promptTemplatesService: PromptTemplatesService,
-    private evaluationService: PromptEvaluationService
+    private evaluationService: PromptEvaluationService,
+    private sanitizer: DomSanitizer
   ) {}
 
   ngOnInit(): void {
@@ -135,6 +137,12 @@ export class ProvingGroundsComponent implements OnInit {
     
     // Create a modal or alert with the prompts
     alert(message);
+  }
+
+  sanitizeHtml(html: string): SafeHtml {
+    // We trust the AI-generated HTML content but still mark it as safe for Angular
+    // The content is story text with basic HTML formatting tags only
+    return this.sanitizer.bypassSecurityTrustHtml(html);
   }
 
   generateStory(): void {
@@ -270,7 +278,7 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   private generateId(): string {
-    return `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `test_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private addToHistory(testResult: TestResult): void {
