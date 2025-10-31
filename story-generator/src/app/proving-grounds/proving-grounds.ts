@@ -4,14 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { StoryService } from '../story.service';
 import { CreatureType, ThemeType, SpicyLevel, WordCount } from '../contracts';
-
-interface PromptTemplate {
-  id: string;
-  name: string;
-  systemPrompt: string;
-  userPromptTemplate: string;
-  description: string;
-}
+import { PromptTemplatesService, PromptTemplate } from './prompt-templates.service';
+import { PromptEvaluationService } from './prompt-evaluation.service';
 
 interface TestConfiguration {
   creature: CreatureType;
@@ -78,44 +72,25 @@ export class ProvingGroundsComponent implements OnInit {
   wordCountOptions: WordCount[] = [700, 900, 1200];
 
   // Prompt templates
-  promptTemplates: PromptTemplate[] = [
-    {
-      id: 'current_production',
-      name: 'Current Production Prompt',
-      systemPrompt: 'Production system prompt from storyService.ts',
-      userPromptTemplate: 'Production user prompt template',
-      description: 'The current production prompt being used in the main app'
-    },
-    {
-      id: 'experimental_concise',
-      name: 'Experimental: Concise & Punchy',
-      systemPrompt: 'Shorter, more direct system prompt focusing on key elements',
-      userPromptTemplate: 'Streamlined user prompt',
-      description: 'Tests if shorter prompts produce better, tighter stories'
-    },
-    {
-      id: 'experimental_emotional',
-      name: 'Experimental: Emotional Depth',
-      systemPrompt: 'System prompt emphasizing emotional resonance and character depth',
-      userPromptTemplate: 'User prompt focused on emotional journey',
-      description: 'Prioritizes emotional connection over plot complexity'
-    },
-    {
-      id: 'experimental_sensory',
-      name: 'Experimental: Sensory Immersion',
-      systemPrompt: 'System prompt emphasizing multi-sensory descriptions',
-      userPromptTemplate: 'User prompt with sensory detail requirements',
-      description: 'Tests if enhanced sensory details improve engagement'
-    }
-  ];
+  promptTemplates: PromptTemplate[] = [];
 
-  constructor(private storyService: StoryService) {}
+  constructor(
+    private storyService: StoryService,
+    private promptTemplatesService: PromptTemplatesService,
+    private evaluationService: PromptEvaluationService
+  ) {}
 
   ngOnInit(): void {
+    // Load templates from service
+    this.promptTemplates = this.promptTemplatesService.getTemplates();
+    
     // Load test history from localStorage
     this.loadTestHistory();
+    
     // Select default template
-    this.selectedPromptTemplate.set(this.promptTemplates[0]);
+    if (this.promptTemplates.length > 0) {
+      this.selectedPromptTemplate.set(this.promptTemplates[0]);
+    }
   }
 
   toggleTheme(theme: ThemeType): void {
@@ -137,6 +112,29 @@ export class ProvingGroundsComponent implements OnInit {
       this.customSystemPrompt = template.systemPrompt;
       this.customUserPrompt = template.userPromptTemplate;
     }
+  }
+
+  getFilledPrompts(): { system: string; user: string } | null {
+    const template = this.selectedPromptTemplate();
+    if (!template) return null;
+
+    return this.promptTemplatesService.fillTemplate(template, {
+      creature: this.creature,
+      themes: this.themes,
+      spicyLevel: this.spicyLevel,
+      wordCount: this.wordCount,
+      userInput: this.userInput
+    });
+  }
+
+  viewPrompts(): void {
+    const prompts = this.getFilledPrompts();
+    if (!prompts) return;
+
+    const message = `SYSTEM PROMPT:\n\n${prompts.system}\n\n${'='.repeat(80)}\n\nUSER PROMPT:\n\n${prompts.user}`;
+    
+    // Create a modal or alert with the prompts
+    alert(message);
   }
 
   generateStory(): void {
@@ -216,55 +214,16 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   private async evaluateWithAI(testResult: TestResult): Promise<TestResult['aiEvaluation']> {
-    // Use Grok AI to evaluate the story quality
-    const evaluationPrompt = `Evaluate this spicy supernatural romance story on the following criteria:
-
-STORY TO EVALUATE:
-${testResult.generatedStory}
-
-CONFIGURATION:
-- Creature: ${testResult.configuration.creature}
-- Themes: ${testResult.configuration.themes.join(', ')}
-- Spice Level: ${testResult.configuration.spicyLevel}/5
-- Target Word Count: ${testResult.configuration.wordCount}
-
-Please provide:
-1. Overall Score (0-100)
-2. Strengths (3-5 bullet points)
-3. Weaknesses (3-5 bullet points)
-4. Specific Suggestions for Improvement (3-5 bullet points)
-5. Overall Feedback (2-3 sentences)
-
-Format your response as JSON:
-{
-  "score": number,
-  "strengths": ["strength1", "strength2", ...],
-  "weaknesses": ["weakness1", "weakness2", ...],
-  "suggestions": ["suggestion1", "suggestion2", ...],
-  "overallFeedback": "feedback text"
-}`;
-
-    // For now, return mock evaluation - will integrate with actual API
-    // TODO: Integrate with actual Grok API for evaluation
-    return {
-      score: 75,
-      strengths: [
-        'Strong character development',
-        'Good pacing and tension',
-        'Effective use of sensory details'
-      ],
-      weaknesses: [
-        'Some dialogue feels repetitive',
-        'Could use more unique voice descriptors',
-        'Cliffhanger could be stronger'
-      ],
-      suggestions: [
-        'Vary dialogue patterns between characters',
-        'Add more unconventional voice descriptors',
-        'Increase stakes in final scene for stronger hook'
-      ],
-      overallFeedback: 'Solid story with good fundamentals. Character chemistry is strong but could benefit from more distinct dialogue patterns.'
-    };
+    // Use the evaluation service to evaluate story quality
+    return await this.evaluationService.evaluateStory({
+      storyContent: testResult.generatedStory,
+      configuration: {
+        creature: testResult.configuration.creature,
+        themes: testResult.configuration.themes,
+        spicyLevel: testResult.configuration.spicyLevel,
+        wordCount: testResult.configuration.wordCount
+      }
+    });
   }
 
   toggleComparison(testResult: TestResult): void {

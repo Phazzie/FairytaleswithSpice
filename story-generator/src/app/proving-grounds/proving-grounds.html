@@ -104,17 +104,26 @@
             placeholder="Any specific elements or directions..."></textarea>
         </div>
 
-        <!-- Generate Button -->
-        <button 
-          class="btn btn-primary btn-large"
-          (click)="generateStory()"
-          [disabled]="isGenerating() || themes.length === 0">
-          @if (isGenerating()) {
-            <span class="spinner">⏳</span> Generating...
-          } @else {
-            🚀 Generate Story
-          }
-        </button>
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button 
+            class="btn btn-secondary"
+            (click)="viewPrompts()"
+            title="View the filled prompt templates">
+            👁️ View Prompts
+          </button>
+          
+          <button 
+            class="btn btn-primary btn-large"
+            (click)="generateStory()"
+            [disabled]="isGenerating() || themes.length === 0">
+            @if (isGenerating()) {
+              <span class="spinner">⏳</span> Generating...
+            } @else {
+              🚀 Generate Story
+            }
+          </button>
+        </div>
       </div>
 
       <!-- Custom Prompt Editor (Expandable) -->
