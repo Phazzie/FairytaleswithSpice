@@ -4,21 +4,33 @@ import {
   ChapterContinuationSeam,
   ApiResponse,
   VALIDATION_RULES,
-  SpicyLevel
+  SpicyLevel,
+  StoryState,
+  StoryStateDelta,
+  StorySummary,
+  ContinuityDevice,
+  CharacterArc,
+  PlotThread,
+  ThemeType,
+  CreatureType
 } from '../types/contracts';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
+import { StoryStateService } from './storyStateService';
 
 export class StoryService {
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
   private grokApiKey = process.env['XAI_API_KEY'];
+  private storyStateService: StoryStateService;
 
-  constructor() {
+  constructor(storyStateService = new StoryStateService()) {
     if (!this.grokApiKey) {
       logWarn('XAI_API_KEY not found in environment variables', {
         endpoint: 'StoryService',
         method: 'constructor'
       });
     }
+
+    this.storyStateService = storyStateService;
   }
 
   /**
@@ -81,10 +93,38 @@ export class StoryService {
       // Process content: keep raw version for audio, clean version for display
       const displayContent = this.stripSpeakerTagsForDisplay(rawStoryContent);
 
+      const storyId = this.generateStoryId();
+      const generatedAt = new Date();
+      const title = this.generateTitle(input);
+
+      const initialSnapshot = this.buildInitialStoryState(
+        storyId,
+        title,
+        displayContent,
+        input,
+        generatedAt
+      );
+
+      await this.storyStateService.saveStoryState(initialSnapshot.state);
+
+      await this.storyStateService.appendChapter(
+        storyId,
+        {
+          chapterId: `${storyId}-chapter-1`,
+          chapterNumber: 1,
+          title,
+          content: displayContent,
+          summary: initialSnapshot.chapterSummary,
+          continuityNotes: initialSnapshot.delta.continuityNotes,
+          createdAt: generatedAt
+        },
+        initialSnapshot.delta
+      );
+
       // Create response
       const output: StoryGenerationSeam['output'] = {
-        storyId: this.generateStoryId(),
-        title: this.generateTitle(input),
+        storyId,
+        title,
         content: displayContent, // Clean content for user display
         rawContent: rawStoryContent, // Tagged content for audio processing
         creature: input.creature,
@@ -93,7 +133,9 @@ export class StoryService {
         actualWordCount: this.countWords(displayContent),
         estimatedReadTime: Math.ceil(this.countWords(displayContent) / 200),
         hasCliffhanger: this.detectCliffhanger(displayContent),
-        generatedAt: new Date()
+        generatedAt,
+        state: initialSnapshot.state,
+        stateDelta: initialSnapshot.delta
       };
 
       const duration = Date.now() - startTime;
@@ -159,20 +201,59 @@ export class StoryService {
     logInfo('Chapter continuation request received', context);
 
     try {
-      // Generate continuation using Grok AI
-      const chapterContent = await this.callGrokAIForContinuation(input, context);
+      const existingState = await this.storyStateService.getStoryState(input.storyId);
+      const baselineState = existingState ?? this.buildStateFromExistingContent(
+        input.storyId,
+        input.existingContent,
+        input.currentChapterCount
+      );
+
+      // Generate continuation using Grok AI with structured state context
+      const chapterContent = await this.callGrokAIForContinuation(input, baselineState, context);
+
+      const chapterNumber = input.currentChapterCount + 1;
+      const chapterTitle = `Chapter ${chapterNumber}: ${this.generateChapterTitle(input)}`;
+      const chapterId = this.generateChapterId();
+
+      const continuationSnapshot = this.applyChapterToState(
+        baselineState,
+        chapterContent,
+        chapterTitle,
+        chapterNumber,
+        chapterId
+      );
+
+      await this.storyStateService.appendChapter(
+        input.storyId,
+        {
+          chapterId,
+          chapterNumber,
+          title: chapterTitle,
+          content: chapterContent,
+          summary: continuationSnapshot.chapterSummary,
+          continuityNotes: continuationSnapshot.delta.continuityNotes,
+          createdAt: continuationSnapshot.state.lastUpdated
+        },
+        continuationSnapshot.delta
+      );
+
+      await this.storyStateService.saveStoryState(continuationSnapshot.state);
+
+      const appendedStory = input.existingContent + '\n\n<hr>\n\n' + chapterContent;
 
       // Create response
       const output: ChapterContinuationSeam['output'] = {
-        chapterId: this.generateChapterId(),
-        chapterNumber: input.currentChapterCount + 1,
-        title: `Chapter ${input.currentChapterCount + 1}: ${this.generateChapterTitle(input)}`,
+        chapterId: continuationSnapshot.chapterId,
+        chapterNumber,
+        title: chapterTitle,
         content: chapterContent,
         wordCount: this.countWords(chapterContent),
         cliffhangerEnding: this.detectCliffhanger(chapterContent),
-        themesContinued: this.extractThemesFromContent(input.existingContent),
-        spicyLevelMaintained: this.extractSpicyLevelFromContent(input.existingContent),
-        appendedToStory: input.existingContent + '\n\n<hr>\n\n' + chapterContent
+        themesContinued: this.extractThemesFromContent(appendedStory),
+        spicyLevelMaintained: this.extractSpicyLevelFromContent(appendedStory),
+        appendedToStory: appendedStory,
+        state: continuationSnapshot.state,
+        stateDelta: continuationSnapshot.delta
       };
 
       const duration = Date.now() - startTime;
@@ -423,13 +504,17 @@ export class StoryService {
     }
   }
 
-  private async callGrokAIForContinuation(input: ChapterContinuationSeam['input'], context?: LogContext): Promise<string> {
+  private async callGrokAIForContinuation(
+    input: ChapterContinuationSeam['input'],
+    state: StoryState,
+    context?: LogContext
+  ): Promise<string> {
     if (!this.grokApiKey) {
       logWarn('No API key found, using mock chapter generation', context);
       return this.generateMockChapter(input);
     }
 
-    const prompt = this.buildContinuationPrompt(input);
+    const prompt = this.buildContinuationPrompt(input, state);
     const requestStartTime = Date.now();
 
     try {
@@ -1082,35 +1167,493 @@ Create a complete story that feels like it could continue but is satisfying on i
 Plant your Chekhov elements naturally and ensure the moral dilemma occurs at midpoint. End with a cliffhanger that creates genuine desire for continuation.`;
   }
 
-  private buildContinuationPrompt(input: ChapterContinuationSeam['input']): string {
-    // Extract intelligent context from previous chapters
-    const characterNames = this.extractCharacterNames(input.existingContent);
+  private buildContinuationPrompt(input: ChapterContinuationSeam['input'], state: StoryState): string {
+    const characterSummaries = state.characterArcs.map(arc => `${arc.name} (${arc.role}) — ${arc.currentStatus}`);
+    const activeThreads = state.plotThreads
+      .filter(thread => thread.status !== 'resolved')
+      .map(thread => `${thread.title}: ${thread.description}`);
+    const continuityDevices = state.continuityDevices.map(device => `${device.description} [${device.status}]`);
+    const continuityNotes = state.continuityNotes.slice(-5);
+    const keyMoments = state.summary.keyMoments.slice(-5);
+
     const lastChapterSummary = this.extractLastChapterSummary(input.existingContent);
-    const activePlotThreads = this.extractPlotThreads(input.existingContent);
     const emotionalTone = this.analyzeEmotionalTone(input.existingContent);
-    
+
     return `Continue this story as Chapter ${input.currentChapterCount + 1}.
 
-CONTEXT FROM PREVIOUS CHAPTERS:
-- Established Characters: ${characterNames.join(', ') || 'Continue developing existing characters'}
-- Last Chapter Summary: ${lastChapterSummary}
-- Active Plot Threads: ${activePlotThreads.join(', ') || 'Develop new complications'}
-- Emotional Tone: ${emotionalTone}
+CURRENT STORY STATE SNAPSHOT:
+- Character Arcs: ${characterSummaries.join(' | ') || 'Continue deepening established characters'}
+- Active Threads: ${activeThreads.join(' | ') || 'Introduce a new complication that ties to existing themes'}
+- Continuity Devices: ${continuityDevices.join(' | ') || 'Plant at least one new device for future payoff'}
+- Summary Overview: ${state.summary.overview}
+
+RECENT CONTINUITY NOTES:
+${continuityNotes.length ? continuityNotes.map(note => `- ${note}`).join('\n') : '- Maintain continuity with previous cliffhanger and emotional stakes.'}
+
+RECENT KEY MOMENTS:
+${keyMoments.length ? keyMoments.map(moment => `- ${moment}`).join('\n') : '- Establish a defining moment early in the chapter.'}
+
+IMMEDIATE PRIOR CHAPTER SUMMARY: ${lastChapterSummary}
+DOMINANT EMOTIONAL TONE: ${emotionalTone}
 
 CONTINUATION REQUIREMENTS:
-1. Resolve or escalate the previous cliffhanger within first 100 words
-2. Advance at least one relationship dynamic or plot thread
-3. Introduce one new complication, revelation, or twist
-4. Maintain character voices and established dynamics
-5. Build tension toward a new cliffhanger for next chapter
-6. Use same audio format: [Character Name]: "dialogue" and [Narrator]: descriptions
+1. Resolve or escalate the previous cliffhanger within first 100 words.
+2. Advance at least one relationship dynamic or plot thread referenced above.
+3. Introduce one new complication, revelation, or twist tied to existing threads.
+4. Maintain character voices and established dynamics with audible formatting.
+5. Build tension toward a new cliffhanger for next chapter.
+6. Use same audio format: [Character Name]: "dialogue" and [Narrator]: descriptions.
 
 ${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
 
-PREVIOUS CHAPTER(S) FOR CONTINUITY:
-${this.stripHtml(input.existingContent).slice(-1500)} // Last ~300 words for immediate context
+PREVIOUS CHAPTER EXCERPT (~300 words):
+${this.stripHtml(input.existingContent).slice(-1500)}
 
 Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for paragraphs, <em> for emphasis.`;
+  }
+
+  private buildInitialStoryState(
+    storyId: string,
+    title: string,
+    content: string,
+    input: StoryGenerationSeam['input'],
+    generatedAt: Date
+  ): { state: StoryState; delta: StoryStateDelta; chapterSummary: StorySummary } {
+    const chapterNumber = 1;
+    const characterNames = this.extractCharacterNames(content);
+    const characterResult = this.deriveCharacterArcs([], characterNames, chapterNumber, input.creature);
+    const contentThreads = this.extractPlotThreads(content);
+    const plotThreadResult = this.derivePlotThreads([], input.themes, contentThreads, chapterNumber, content);
+    const deviceResult = this.detectContinuityDevices(content, chapterNumber, []);
+    const continuityNotes = this.generateContinuityNotes(content, title, chapterNumber);
+    const chapterSummary = this.generateChapterSummary(content, title, chapterNumber, continuityNotes);
+
+    const state: StoryState = {
+      storyId,
+      lastUpdated: generatedAt,
+      chapterCount: chapterNumber,
+      characterArcs: characterResult.arcs,
+      plotThreads: plotThreadResult.threads,
+      continuityDevices: deviceResult.devices,
+      continuityNotes,
+      summary: {
+        overview: chapterSummary.overview,
+        lastChapterTitle: title,
+        chapterCount: chapterNumber,
+        keyMoments: chapterSummary.keyMoments,
+        continuityNotes
+      }
+    };
+
+    const delta: StoryStateDelta = {
+      storyId,
+      updatedAt: generatedAt,
+      addedChapters: [chapterNumber],
+      newCharacters: characterResult.newCharacters,
+      updatedCharacters: [],
+      resolvedCharacters: [],
+      newThreads: plotThreadResult.newThreads,
+      updatedThreads: [],
+      resolvedThreads: plotThreadResult.resolvedThreads,
+      deviceChanges: deviceResult.changes,
+      continuityNotes,
+      summary: chapterSummary
+    };
+
+    return { state, delta, chapterSummary };
+  }
+
+  private buildStateFromExistingContent(
+    storyId: string,
+    existingContent: string,
+    currentChapterCount: number
+  ): StoryState {
+    const inferredCreature = this.inferCreatureType(existingContent);
+    const characterNames = this.extractCharacterNames(existingContent);
+    const characterResult = this.deriveCharacterArcs([], characterNames, currentChapterCount, inferredCreature);
+    const contentThreads = this.extractPlotThreads(existingContent);
+    const themes = this.extractThemesFromContent(existingContent);
+    const plotThreadResult = this.derivePlotThreads([], themes, contentThreads, currentChapterCount, existingContent);
+    const deviceResult = this.detectContinuityDevices(existingContent, currentChapterCount, []);
+    const continuityNotes = this.generateContinuityNotes(
+      existingContent,
+      `Chapter ${currentChapterCount}`,
+      currentChapterCount
+    );
+    const chapterSummary = this.generateChapterSummary(
+      existingContent,
+      `Chapter ${currentChapterCount}`,
+      currentChapterCount,
+      continuityNotes
+    );
+
+    return {
+      storyId,
+      lastUpdated: new Date(),
+      chapterCount: currentChapterCount,
+      characterArcs: characterResult.arcs,
+      plotThreads: plotThreadResult.threads,
+      continuityDevices: deviceResult.devices,
+      continuityNotes,
+      summary: {
+        overview: chapterSummary.overview,
+        lastChapterTitle: chapterSummary.lastChapterTitle,
+        chapterCount: currentChapterCount,
+        keyMoments: chapterSummary.keyMoments,
+        continuityNotes
+      }
+    };
+  }
+
+  private applyChapterToState(
+    baselineState: StoryState,
+    chapterContent: string,
+    chapterTitle: string,
+    chapterNumber: number,
+    chapterId: string
+  ): { state: StoryState; delta: StoryStateDelta; chapterSummary: StorySummary; chapterId: string } {
+    const characterNames = this.extractCharacterNames(chapterContent);
+    const characterResult = this.deriveCharacterArcs(
+      baselineState.characterArcs,
+      characterNames,
+      chapterNumber,
+      this.inferCreatureType(chapterContent)
+    );
+
+    const contentThreads = this.extractPlotThreads(chapterContent);
+    const themes = this.extractThemesFromContent(chapterContent);
+    const plotThreadResult = this.derivePlotThreads(
+      baselineState.plotThreads,
+      themes,
+      contentThreads,
+      chapterNumber,
+      chapterContent
+    );
+
+    const deviceResult = this.detectContinuityDevices(
+      chapterContent,
+      chapterNumber,
+      baselineState.continuityDevices
+    );
+
+    const continuityNotes = this.generateContinuityNotes(chapterContent, chapterTitle, chapterNumber);
+    const chapterSummary = this.generateChapterSummary(chapterContent, chapterTitle, chapterNumber, continuityNotes);
+
+    const aggregatedContinuityNotes = Array.from(
+      new Set([...baselineState.continuityNotes, ...continuityNotes])
+    );
+    const aggregatedKeyMoments = Array.from(
+      new Set([...baselineState.summary.keyMoments, ...chapterSummary.keyMoments])
+    );
+
+    const state: StoryState = {
+      storyId: baselineState.storyId,
+      lastUpdated: new Date(),
+      chapterCount: chapterNumber,
+      characterArcs: characterResult.arcs,
+      plotThreads: plotThreadResult.threads,
+      continuityDevices: deviceResult.devices,
+      continuityNotes: aggregatedContinuityNotes,
+      summary: {
+        overview: chapterSummary.overview,
+        lastChapterTitle: chapterTitle,
+        chapterCount: chapterNumber,
+        keyMoments: aggregatedKeyMoments,
+        continuityNotes: aggregatedContinuityNotes
+      }
+    };
+
+    const delta: StoryStateDelta = {
+      storyId: baselineState.storyId,
+      updatedAt: state.lastUpdated,
+      addedChapters: [chapterNumber],
+      newCharacters: characterResult.newCharacters,
+      updatedCharacters: characterResult.updatedCharacters,
+      resolvedCharacters: [],
+      newThreads: plotThreadResult.newThreads,
+      updatedThreads: plotThreadResult.updatedThreads,
+      resolvedThreads: plotThreadResult.resolvedThreads,
+      deviceChanges: deviceResult.changes,
+      continuityNotes,
+      summary: chapterSummary
+    };
+
+    return { state, delta, chapterSummary, chapterId };
+  }
+
+  private deriveCharacterArcs(
+    existingArcs: CharacterArc[],
+    characterNames: string[],
+    chapterNumber: number,
+    creature: CreatureType
+  ): { arcs: CharacterArc[]; newCharacters: CharacterArc[]; updatedCharacters: CharacterArc[] } {
+    const arcMap = new Map<string, CharacterArc>();
+
+    for (const arc of existingArcs) {
+      arcMap.set(arc.name, {
+        ...arc,
+        goals: [...arc.goals],
+        secrets: [...arc.secrets],
+        relationships: arc.relationships.map(rel => ({ ...rel }))
+      });
+    }
+
+    const newCharacters: CharacterArc[] = [];
+    const updatedCharacters: CharacterArc[] = [];
+
+    characterNames.forEach((name, index) => {
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        return;
+      }
+
+      const existingArc = arcMap.get(trimmedName);
+
+      if (existingArc) {
+        const updatedArc: CharacterArc = {
+          ...existingArc,
+          currentStatus: `Evolving in chapter ${chapterNumber}`,
+          lastUpdatedChapter: chapterNumber
+        };
+        arcMap.set(trimmedName, updatedArc);
+        updatedCharacters.push(updatedArc);
+      } else {
+        const newArc: CharacterArc = {
+          arcId: this.generatePersistentId('arc'),
+          name: trimmedName,
+          role: index === 0 && chapterNumber <= 2 ? 'protagonist' : 'supporting',
+          currentStatus: `Introduced in chapter ${chapterNumber}`,
+          goals: [`Shape the supernatural conflict in chapter ${chapterNumber}`],
+          secrets: [`Hides a vulnerability tied to ${creature} lore.`],
+          relationships: [],
+          introducedInChapter: chapterNumber,
+          lastUpdatedChapter: chapterNumber
+        };
+        arcMap.set(trimmedName, newArc);
+        newCharacters.push(newArc);
+      }
+    });
+
+    return {
+      arcs: Array.from(arcMap.values()),
+      newCharacters,
+      updatedCharacters
+    };
+  }
+
+  private derivePlotThreads(
+    existingThreads: PlotThread[],
+    themes: ThemeType[],
+    contentThreads: string[],
+    chapterNumber: number,
+    contentSource: string
+  ): { threads: PlotThread[]; newThreads: PlotThread[]; updatedThreads: PlotThread[]; resolvedThreads: string[] } {
+    const threadMap = new Map<string, PlotThread>();
+    existingThreads.forEach(thread => {
+      threadMap.set(thread.threadId, {
+        ...thread,
+        clues: [...thread.clues],
+        outstandingQuestions: [...thread.outstandingQuestions]
+      });
+    });
+
+    const descriptors = new Set<string>();
+    themes.forEach(theme => descriptors.add(this.humanizeTheme(theme)));
+    contentThreads.forEach(thread => descriptors.add(thread));
+
+    const newThreads: PlotThread[] = [];
+    const updatedThreads: PlotThread[] = [];
+    const resolvedThreads: string[] = [];
+    const lowerContent = this.stripHtml(contentSource).toLowerCase();
+
+    descriptors.forEach((descriptor, index) => {
+      const normalized = descriptor.toLowerCase();
+      const existing = Array.from(threadMap.values()).find(thread =>
+        thread.description.toLowerCase() === normalized || thread.title.toLowerCase() === normalized
+      );
+
+      if (existing) {
+        const updated = {
+          ...existing,
+          status: 'active' as PlotThread['status']
+        };
+        threadMap.set(existing.threadId, updated);
+        updatedThreads.push(updated);
+      } else {
+        const title = this.toTitleCase(descriptor);
+        const newThread: PlotThread = {
+          threadId: this.generatePersistentId('thread'),
+          title: title || `Plot Thread ${index + 1}`,
+          description: descriptor,
+          status: 'active',
+          introducedInChapter: chapterNumber,
+          resolvedInChapter: undefined,
+          clues: [`${descriptor} escalates in chapter ${chapterNumber}.`],
+          outstandingQuestions: [`How will ${descriptor.toLowerCase()} impact the lovers?`]
+        };
+        threadMap.set(newThread.threadId, newThread);
+        newThreads.push(newThread);
+      }
+    });
+
+    for (const thread of existingThreads) {
+      const stillReferenced = Array.from(descriptors.values()).some(descriptor =>
+        descriptor.toLowerCase() === thread.description.toLowerCase()
+      );
+
+      if (!stillReferenced) {
+        const resolutionKeywords = ['resolved', 'answered', 'fulfilled', 'completed'];
+        const resolved = resolutionKeywords.some(keyword =>
+          lowerContent.includes(`${thread.title.toLowerCase()} ${keyword}`)
+        );
+
+        const updatedStatus: PlotThread['status'] = resolved ? 'resolved' : 'dormant';
+        const updatedThread: PlotThread = {
+          ...thread,
+          status: updatedStatus,
+          resolvedInChapter: resolved ? chapterNumber : thread.resolvedInChapter
+        };
+        threadMap.set(updatedThread.threadId, updatedThread);
+        updatedThreads.push(updatedThread);
+        if (resolved) {
+          resolvedThreads.push(updatedThread.threadId);
+        }
+      }
+    }
+
+    return {
+      threads: Array.from(threadMap.values()),
+      newThreads,
+      updatedThreads,
+      resolvedThreads
+    };
+  }
+
+  private detectContinuityDevices(
+    content: string,
+    chapterNumber: number,
+    existingDevices: ContinuityDevice[]
+  ): { devices: ContinuityDevice[]; changes: ContinuityDevice[] } {
+    const deviceMap = new Map<string, ContinuityDevice>();
+    existingDevices.forEach(device => {
+      deviceMap.set(device.description, { ...device });
+    });
+
+    const matches = content.match(/\[Chekhov\d+\]:\s*([^\n<]+)/gi) || [];
+    const changes: ContinuityDevice[] = [];
+
+    matches.forEach((match, index) => {
+      const description = match.replace(/\[Chekhov\d+\]:\s*/i, '').trim();
+      if (!description) {
+        return;
+      }
+
+      const existing = deviceMap.get(description);
+      if (existing) {
+        const updated: ContinuityDevice = {
+          ...existing,
+          status: existing.status === 'planted' ? 'triggered' : existing.status
+        };
+        deviceMap.set(description, updated);
+        changes.push(updated);
+      } else {
+        const device: ContinuityDevice = {
+          deviceId: this.generatePersistentId('device'),
+          description,
+          introducedInChapter: chapterNumber,
+          status: 'planted',
+          payoffPlan: 'Pay off within the next 2 chapters.'
+        };
+        deviceMap.set(description, device);
+        changes.push(device);
+      }
+    });
+
+    return {
+      devices: Array.from(deviceMap.values()),
+      changes
+    };
+  }
+
+  private generateContinuityNotes(
+    content: string,
+    chapterTitle: string,
+    chapterNumber: number
+  ): string[] {
+    const stripped = this.stripHtml(content);
+    const sentences = stripped.split(/(?<=[.!?])\s+/).map(sentence => sentence.trim()).filter(Boolean);
+    const highlights = sentences.slice(-3);
+
+    if (highlights.length === 0) {
+      return [`Chapter ${chapterNumber}: Maintain tone from ${chapterTitle}.`];
+    }
+
+    return highlights.map(sentence => `Chapter ${chapterNumber}: ${sentence}`);
+  }
+
+  private generateChapterSummary(
+    content: string,
+    chapterTitle: string,
+    chapterNumber: number,
+    continuityNotes: string[]
+  ): StorySummary {
+    const stripped = this.stripHtml(content);
+    const words = stripped.split(/\s+/).filter(Boolean);
+    const overviewWords = words.slice(0, 120).join(' ');
+    const overview = words.length > 120 ? `${overviewWords}…` : overviewWords;
+    const keyMoments = this.extractKeyMomentsFromText(stripped);
+
+    return {
+      overview,
+      lastChapterTitle: chapterTitle,
+      chapterCount: chapterNumber,
+      keyMoments,
+      continuityNotes
+    };
+  }
+
+  private extractKeyMomentsFromText(content: string): string[] {
+    const paragraphs = content.split(/\n{2,}/).map(paragraph => paragraph.trim()).filter(Boolean);
+    const moments: string[] = [];
+
+    for (const paragraph of paragraphs.slice(-4)) {
+      const sentences = paragraph.split(/(?<=[.!?])\s+/).filter(Boolean);
+      if (sentences.length > 0) {
+        moments.push(sentences[0].trim());
+      }
+    }
+
+    return moments.slice(-5);
+  }
+
+  private inferCreatureType(content: string): CreatureType {
+    const lower = content.toLowerCase();
+    if (lower.includes('moon') || lower.includes('howl') || lower.includes('wolf')) {
+      return 'werewolf';
+    }
+    if (lower.includes('fang') || lower.includes('blood') || lower.includes('coven')) {
+      return 'vampire';
+    }
+    if (lower.includes('wing') || lower.includes('glow') || lower.includes('enchanted')) {
+      return 'fairy';
+    }
+    return 'vampire';
+  }
+
+  private humanizeTheme(theme: ThemeType): string {
+    return theme.replace(/_/g, ' ');
+  }
+
+  private toTitleCase(text: string): string {
+    return text
+      .toLowerCase()
+      .split(/\s+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  private generatePersistentId(prefix: string): string {
+    return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
   }
 
   /**
