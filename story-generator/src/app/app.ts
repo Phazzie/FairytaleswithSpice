@@ -33,7 +33,7 @@ import { DebugPanel } from './debug-panel/debug-panel';
  * @since 2025-09-21
  */
 @Component({
-  selector: 'app-story-generator',
+  selector: 'app-main',
   imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel, RouterLink],
   templateUrl: './app.html',
   styleUrl: './app.css',
