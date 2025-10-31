@@ -7,6 +7,7 @@ import { StoryService } from '../story.service';
 import { CreatureType, ThemeType, SpicyLevel, WordCount } from '../contracts';
 import { PromptTemplatesService, PromptTemplate } from './prompt-templates.service';
 import { PromptEvaluationService } from './prompt-evaluation.service';
+import { GenerationLogicService, GenerationLogic, AuthorStyle, BeatStructure } from './generation-logic.service';
 
 interface TestConfiguration {
   creature: CreatureType;
@@ -61,6 +62,18 @@ export class ProvingGroundsComponent implements OnInit {
   customUserPrompt = '';
   useCustomPrompts = false;
 
+  // Generation logic viewing and editing
+  showGenerationLogic = false;
+  currentGenerationLogic = signal<GenerationLogic | null>(null);
+  allAuthorStyles: AuthorStyle[] = [];
+  allBeatStructures: BeatStructure[] = [];
+  allChekovElements: string[] = [];
+  
+  // Selected logic for custom control
+  selectedAuthorIndices: number[] = [];
+  selectedBeatIndex: number = 0;
+  selectedChekovIndices: number[] = [];
+
   // Available options
   creatureOptions: CreatureType[] = ['vampire', 'werewolf', 'fairy'];
   themeOptions: ThemeType[] = [
@@ -79,7 +92,8 @@ export class ProvingGroundsComponent implements OnInit {
     private storyService: StoryService,
     private promptTemplatesService: PromptTemplatesService,
     private evaluationService: PromptEvaluationService,
-    private sanitizer: DomSanitizer
+    private sanitizer: DomSanitizer,
+    private generationLogicService: GenerationLogicService
   ) {}
 
   ngOnInit(): void {
@@ -93,6 +107,19 @@ export class ProvingGroundsComponent implements OnInit {
     if (this.promptTemplates.length > 0) {
       this.selectedPromptTemplate.set(this.promptTemplates[0]);
     }
+
+    // Load generation logic data
+    this.loadGenerationLogicData();
+  }
+
+  private loadGenerationLogicData(): void {
+    this.allBeatStructures = this.generationLogicService.getAllBeatStructures();
+    this.allChekovElements = this.generationLogicService.getAllChekovElements();
+    this.updateAuthorStylesForCreature();
+  }
+
+  private updateAuthorStylesForCreature(): void {
+    this.allAuthorStyles = this.generationLogicService.getAllAuthorStyles(this.creature);
   }
 
   toggleTheme(theme: ThemeType): void {
@@ -143,6 +170,65 @@ export class ProvingGroundsComponent implements OnInit {
     // We trust the AI-generated HTML content but still mark it as safe for Angular
     // The content is story text with basic HTML formatting tags only
     return this.sanitizer.bypassSecurityTrustHtml(html);
+  }
+
+  generateRandomLogic(): void {
+    const logic = this.generationLogicService.generateRandomLogic(this.creature);
+    this.currentGenerationLogic.set(logic);
+    this.showGenerationLogic = true;
+  }
+
+  viewGenerationLogic(): void {
+    if (!this.currentGenerationLogic()) {
+      this.generateRandomLogic();
+    } else {
+      this.showGenerationLogic = !this.showGenerationLogic;
+    }
+  }
+
+  regenerateLogic(): void {
+    this.generateRandomLogic();
+  }
+
+  toggleAuthorSelection(index: number): void {
+    const idx = this.selectedAuthorIndices.indexOf(index);
+    if (idx > -1) {
+      this.selectedAuthorIndices.splice(idx, 1);
+    } else if (this.selectedAuthorIndices.length < 3) {
+      this.selectedAuthorIndices.push(index);
+    }
+  }
+
+  isAuthorSelected(index: number): boolean {
+    return this.selectedAuthorIndices.includes(index);
+  }
+
+  toggleChekovSelection(index: number): void {
+    const idx = this.selectedChekovIndices.indexOf(index);
+    if (idx > -1) {
+      this.selectedChekovIndices.splice(idx, 1);
+    } else if (this.selectedChekovIndices.length < 2) {
+      this.selectedChekovIndices.push(index);
+    }
+  }
+
+  isChekovSelected(index: number): boolean {
+    return this.selectedChekovIndices.includes(index);
+  }
+
+  applyCustomLogic(): void {
+    // Apply manually selected logic
+    const selectedAuthors = this.selectedAuthorIndices.map(i => this.allAuthorStyles[i]);
+    const selectedBeat = this.allBeatStructures[this.selectedBeatIndex];
+    const selectedChekov = this.selectedChekovIndices.map(i => ({
+      description: this.allChekovElements[i]
+    }));
+
+    this.currentGenerationLogic.set({
+      selectedAuthors,
+      selectedBeatStructure: selectedBeat,
+      chekovElements: selectedChekov
+    });
   }
 
   generateStory(): void {

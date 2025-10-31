@@ -236,6 +236,119 @@
   gap: 0.75rem;
 }
 
+/* Generation Logic Viewer */
+.generation-logic-viewer {
+  padding: 1rem 0;
+}
+
+.logic-actions {
+  margin-bottom: 1rem;
+}
+
+.logic-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(168, 85, 247, 0.2);
+}
+
+.logic-section:last-child {
+  border-bottom: none;
+}
+
+.logic-section h4 {
+  color: #c084fc;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+}
+
+.author-card {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  border-left: 3px solid #a855f7;
+}
+
+.author-name {
+  font-weight: 600;
+  color: #a855f7;
+  margin-bottom: 0.25rem;
+}
+
+.author-trait {
+  font-size: 0.9rem;
+  color: #e0e0e0;
+  margin-bottom: 0.5rem;
+}
+
+.author-sample {
+  font-size: 0.85rem;
+  color: #b0b0b0;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.beat-card {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 6px;
+  border-left: 3px solid #8b5cf6;
+}
+
+.beat-name {
+  font-weight: 600;
+  color: #8b5cf6;
+  margin-bottom: 0.75rem;
+  font-size: 1.1rem;
+}
+
+.beat-detail {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.beat-detail strong {
+  color: #c084fc;
+}
+
+.beat-detail.avoid {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(168, 85, 247, 0.2);
+}
+
+.beat-detail.avoid strong {
+  color: #ef4444;
+}
+
+.chekov-card {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: start;
+  border-left: 3px solid #6366f1;
+}
+
+.chekov-number {
+  background: #6366f1;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.chekov-text {
+  flex: 1;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 /* Buttons */
 .btn {
   padding: 0.75rem 1.5rem;

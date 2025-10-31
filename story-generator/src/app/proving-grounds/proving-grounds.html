@@ -126,6 +126,66 @@
         </div>
       </div>
 
+      <!-- Generation Logic Viewer (Expandable) -->
+      <div class="panel-section">
+        <div class="section-header" (click)="viewGenerationLogic()">
+          <h3>🎲 Generation Logic</h3>
+          <span class="toggle-icon">{{ showGenerationLogic ? '▼' : '▶' }}</span>
+        </div>
+        
+        @if (showGenerationLogic && currentGenerationLogic()) {
+          <div class="generation-logic-viewer">
+            <div class="logic-actions">
+              <button class="btn btn-sm btn-secondary" (click)="regenerateLogic()">
+                🎲 Regenerate Random
+              </button>
+            </div>
+
+            <!-- Selected Authors -->
+            <div class="logic-section">
+              <h4>📚 Author Styles ({{ currentGenerationLogic()!.selectedAuthors.length }}/3)</h4>
+              @for (author of currentGenerationLogic()!.selectedAuthors; track author.author) {
+                <div class="author-card">
+                  <div class="author-name">{{ author.author }}</div>
+                  <div class="author-trait">{{ author.trait }}</div>
+                  <div class="author-sample">"{{ author.voiceSample }}"</div>
+                </div>
+              }
+            </div>
+
+            <!-- Selected Beat Structure -->
+            <div class="logic-section">
+              <h4>🎭 Beat Structure</h4>
+              <div class="beat-card">
+                <div class="beat-name">{{ currentGenerationLogic()!.selectedBeatStructure.name }}</div>
+                <div class="beat-detail">
+                  <strong>Beats:</strong> {{ currentGenerationLogic()!.selectedBeatStructure.beats }}
+                </div>
+                <div class="beat-detail">
+                  <strong>Spice Integration:</strong> {{ currentGenerationLogic()!.selectedBeatStructure.spiceIntegration }}
+                </div>
+                <div class="beat-detail avoid">
+                  <strong>Avoid:</strong> {{ currentGenerationLogic()!.selectedBeatStructure.avoid }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Chekov Elements -->
+            <div class="logic-section">
+              <h4>🔫 Chekov's Gun Elements ({{ currentGenerationLogic()!.chekovElements.length }}/2)</h4>
+              @for (element of currentGenerationLogic()!.chekovElements; track element.description; let i = $index) {
+                <div class="chekov-card">
+                  <span class="chekov-number">#{{ i + 1 }}</span>
+                  <span class="chekov-text">{{ element.description }}</span>
+                </div>
+              }
+            </div>
+
+            <p class="hint">💡 These elements are randomly selected for each generation, mimicking the production story service</p>
+          </div>
+        }
+      </div>
+
       <!-- Custom Prompt Editor (Expandable) -->
       <div class="panel-section">
         <div class="section-header" (click)="useCustomPrompts = !useCustomPrompts">
