@@ -5,10 +5,14 @@ import { catchError, map, tap } from 'rxjs/operators';
 import {
   StoryGenerationSeam,
   ChapterContinuationSeam,
+  ChapterBatchSeam,
   AudioConversionSeam,
   SaveExportSeam,
   ApiResponse,
-  StreamingProgressChunk
+  StreamingProgressChunk,
+  StoryStateSummary,
+  BatchProgressState,
+  Chapter
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
 
@@ -39,6 +43,7 @@ export class StoryService {
           this.errorLogging.logInfo('Story generation successful', 'StoryService.generateStory', { storyId: response.data?.storyId });
         }
       }),
+      map((response) => this.decorateStoryGenerationResponse(response)),
       catchError(error => this.handleError(error, 'generateStory'))
     );
   }
@@ -231,6 +236,31 @@ export class StoryService {
     );
   }
 
+  // ==================== BATCH CHAPTER GENERATION ====================
+  generateChapterBatch(input: ChapterBatchSeam['input']): Observable<ApiResponse<ChapterBatchSeam['output']>> {
+    this.errorLogging.logInfo('Starting batch generation', 'StoryService.generateChapterBatch', {
+      storyId: input.storyId,
+      batchSize: input.batchSize,
+      currentChapterCount: input.currentChapterCount
+    });
+
+    return this.http.post<ApiResponse<ChapterBatchSeam['output']>>(
+      `${this.apiUrl}/story/batch`,
+      input
+    ).pipe(
+      tap(response => {
+        if (response.success) {
+          this.errorLogging.logInfo('Batch generation successful', 'StoryService.generateChapterBatch', {
+            storyId: input.storyId,
+            generatedChapters: response.data?.chapters?.length || 0
+          });
+        }
+      }),
+      map((response) => this.decorateBatchGenerationResponse(response)),
+      catchError(error => this.handleError(error, 'generateChapterBatch'))
+    );
+  }
+
   // ==================== CHAPTER CONTINUATION ====================
   generateNextChapter(input: ChapterContinuationSeam['input']): Observable<ApiResponse<ChapterContinuationSeam['output']>> {
     this.errorLogging.logInfo('Starting chapter continuation', 'StoryService.generateNextChapter', { storyId: input.storyId });
@@ -307,6 +337,100 @@ export class StoryService {
   };
 
   // ==================== HELPER METHODS ====================
+
+  private decorateStoryGenerationResponse(
+    response: ApiResponse<StoryGenerationSeam['output']>
+  ): ApiResponse<StoryGenerationSeam['output']> {
+    if (response.data) {
+      response.data.generatedAt = response.data.generatedAt ? new Date(response.data.generatedAt) : new Date();
+    }
+
+    if (response.metadata?.storyState) {
+      response.metadata.storyState = this.normalizeStoryState(response.metadata.storyState);
+    }
+
+    if (response.metadata?.batchQueue) {
+      response.metadata.batchQueue = this.normalizeBatchQueue(response.metadata.batchQueue);
+    }
+
+    return response;
+  }
+
+  private decorateBatchGenerationResponse(
+    response: ApiResponse<ChapterBatchSeam['output']>
+  ): ApiResponse<ChapterBatchSeam['output']> {
+    if (response.data) {
+      response.data.chapters = (response.data.chapters || []).map((chapter) => this.mapChapterResponse(chapter));
+      const normalizedState = this.normalizeStoryState(response.data.storyState) || this.createEmptyStoryState();
+      const normalizedQueue = this.normalizeBatchQueue(response.data.queue || []) || [];
+      response.data.storyState = normalizedState;
+      response.data.queue = normalizedQueue;
+    }
+
+    if (response.metadata?.storyState) {
+      response.metadata.storyState = this.normalizeStoryState(response.metadata.storyState);
+    }
+
+    if (response.metadata?.batchQueue) {
+      response.metadata.batchQueue = this.normalizeBatchQueue(response.metadata.batchQueue);
+    }
+
+    return response;
+  }
+
+  private normalizeStoryState(state?: StoryStateSummary | null): StoryStateSummary | undefined {
+    if (!state) {
+      return undefined;
+    }
+
+    return {
+      synopsis: state.synopsis || '',
+      lastGeneratedChapter: state.lastGeneratedChapter ?? 0,
+      characters: state.characters || [],
+      plotDevices: state.plotDevices || [],
+      cliffhangers: state.cliffhangers || [],
+      unresolvedThreads: state.unresolvedThreads || [],
+      nextBatchFocus: state.nextBatchFocus || [],
+      updatedAt: state.updatedAt || new Date().toISOString()
+    };
+  }
+
+  private normalizeBatchQueue(queue: BatchProgressState[] | undefined | null): BatchProgressState[] | undefined {
+    if (!queue) {
+      return undefined;
+    }
+
+    return queue.map((entry) => ({
+      ...entry,
+      chaptersGenerated: entry.chaptersGenerated ?? 0,
+      totalChapters: entry.totalChapters ?? entry.batchSize,
+      submittedAt: entry.submittedAt || new Date().toISOString()
+    }));
+  }
+
+  private mapChapterResponse(chapter: any): Chapter {
+    return {
+      ...chapter,
+      generatedAt: chapter?.generatedAt ? new Date(chapter.generatedAt) : new Date(),
+      hasAudio: chapter?.hasAudio ?? false,
+      wordCount: chapter?.wordCount ?? (chapter?.content ? chapter.content.split(/\s+/).length : 0)
+    };
+  }
+
+  private createEmptyStoryState(): StoryStateSummary {
+    const timestamp = new Date().toISOString();
+    return {
+      synopsis: '',
+      lastGeneratedChapter: 0,
+      characters: [],
+      plotDevices: [],
+      cliffhangers: [],
+      unresolvedThreads: [],
+      nextBatchFocus: [],
+      updatedAt: timestamp
+    };
+  }
+
   /**
    * Extract title from HTML content
    * Looks for the first <h3> tag in the generated story

@@ -21,6 +21,13 @@
 - **Chapter Continuation**: Extend stories with seamless chapter additions
 - **Customizable Length**: 700, 900, or 1200 word options
 
+### 📦 **Continuity-Aware Chapter Batching** (v3.1)
+- **Batch Size Selector**: Queue 1–3 chapters at a time and adjust the pacing per request without leaving the page.
+- **Continuity Panels**: Track active characters, plot devices, and cliffhangers with automatically refreshed summaries after each batch.
+- **Batch Progress Queue**: Monitor generation states (`queued`, `in progress`, `completed`, `failed`) with timestamps so teams can coordinate multiple runs.
+- **Collapsible Chapter Groups**: Navigate serialized runs of 50+ chapters with clustered chapter stacks and cliffhanger badges.
+- **Queue Hygiene**: Clear completed or failed batches directly from the UI to keep long writing sessions tidy.
+
 ### 🎭 **Advanced Multi-Voice Audio**
 - **Character-Specific Voices**: Unique voices for each creature type and gender
 - **Speaker Tag Recognition**: Automatically detects `[Character]:` dialogue patterns
@@ -148,7 +155,10 @@ FairytaleswithSpice/
 3. **Set Spicy Level**: Choose intensity from 1 (mild) to 5 (hot) 🌶️
 4. **Add Custom Input** (optional): Provide specific story elements
 5. **Choose Word Count**: Select 700, 900, or 1200 words
-6. **Generate**: Click "Generate Story" and watch the real-time progress
+6. **Pick Batch Size**: Choose how many follow-up chapters (1–3) you want the AI to draft per request.
+7. **Generate**: Click "Generate Story" and watch the real-time progress
+8. **Queue Batches**: Use “Generate Next Batch” to request more chapters. The queue panel shows current and pending work so multiple editors can collaborate.
+9. **Review Continuity**: Reference the continuity side panel to keep track of unresolved threads, active characters, and cliffhangers before requesting the next batch.
 
 ### **Multi-Voice Audio Features**
 
