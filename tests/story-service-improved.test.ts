@@ -154,6 +154,15 @@ const testSuite = {
     console.log(`   ✓ Word Count: ${story.actualWordCount} (target: ${input.wordCount})`);
     console.log(`   ✓ Read Time: ${story.estimatedReadTime} min`);
     console.log(`   ✓ Cliffhanger: ${story.hasCliffhanger}`);
+
+    expect(story.state, 'state snapshot should be included').toBeDefined();
+    expect(story.state.characterArcs.length, 'character arcs should be tracked').toBeGreaterThan(0);
+    expect(story.state.plotThreads.length, 'plot threads should be tracked').toBeGreaterThan(0);
+    expect(story.state.summary.lastChapterTitle, 'summary should include last chapter').toBeDefined();
+
+    expect(story.stateDelta, 'state delta should be included').toBeDefined();
+    expect(story.stateDelta.addedChapters.length, 'delta should record new chapter').toBeGreaterThan(0);
+    expect(story.stateDelta.continuityNotes.length, 'delta should include continuity notes').toBeGreaterThan(0);
     
     // Validate word count is within reasonable range
     const targetWordCount = input.wordCount;
@@ -325,6 +334,11 @@ const testSuite = {
     const chapter = continueResult.data!;
     console.log(`   ✓ Generated chapter ${chapter.chapterNumber}: "${chapter.title}"`);
     console.log(`   ✓ Chapter word count: ${chapter.wordCount}`);
+
+    expect(chapter.state, 'continuation should return updated state').toBeDefined();
+    expect(chapter.state.chapterCount, 'chapter count should increment').toBeGreaterThan(continueInput.currentChapterCount);
+    expect(chapter.stateDelta.addedChapters[0], 'delta should reference new chapter').toBe(chapter.chapterNumber);
+    expect(chapter.state.summary.lastChapterTitle, 'summary should track latest chapter title').toContain(`${chapter.chapterNumber}`);
   }),
   
   // Test 8: Performance test
@@ -362,12 +376,6 @@ const testSuite = {
     console.log(`   ✓ Average: ${avgDuration.toFixed(0)}ms`);
     console.log(`   ✓ Min: ${minDuration}ms`);
     console.log(`   ✓ Max: ${maxDuration}ms`);
-  })
-};
-
-// ==================== RUN TESTS ====================
-
-async function runAllTests() {
   })
 };
 

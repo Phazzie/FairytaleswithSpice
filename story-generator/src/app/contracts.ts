@@ -18,6 +18,81 @@ export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 
+export type PlotThreadStatus = 'active' | 'resolved' | 'dormant';
+
+export interface CharacterRelationship {
+  characterId: string;
+  name: string;
+  status: 'ally' | 'rival' | 'lover' | 'unknown';
+  tensionLevel: 'low' | 'medium' | 'high';
+  notes?: string;
+}
+
+export interface CharacterArc {
+  arcId: string;
+  name: string;
+  role: 'protagonist' | 'antagonist' | 'supporting' | 'mentor' | 'mystery';
+  currentStatus: string;
+  goals: string[];
+  secrets: string[];
+  relationships: CharacterRelationship[];
+  introducedInChapter: number;
+  lastUpdatedChapter: number;
+}
+
+export interface PlotThread {
+  threadId: string;
+  title: string;
+  description: string;
+  status: PlotThreadStatus;
+  introducedInChapter: number;
+  resolvedInChapter?: number;
+  clues: string[];
+  outstandingQuestions: string[];
+}
+
+export interface ContinuityDevice {
+  deviceId: string;
+  description: string;
+  introducedInChapter: number;
+  status: 'planted' | 'triggered' | 'resolved';
+  payoffPlan?: string;
+}
+
+export interface StorySummary {
+  overview: string;
+  chapterCount: number;
+  lastChapterTitle: string;
+  keyMoments: string[];
+  continuityNotes: string[];
+}
+
+export interface StoryState {
+  storyId: string;
+  lastUpdated: Date;
+  chapterCount: number;
+  characterArcs: CharacterArc[];
+  plotThreads: PlotThread[];
+  continuityDevices: ContinuityDevice[];
+  continuityNotes: string[];
+  summary: StorySummary;
+}
+
+export interface StoryStateDelta {
+  storyId: string;
+  updatedAt: Date;
+  addedChapters: number[];
+  newCharacters: CharacterArc[];
+  updatedCharacters: CharacterArc[];
+  resolvedCharacters: string[];
+  newThreads: PlotThread[];
+  updatedThreads: PlotThread[];
+  resolvedThreads: string[];
+  deviceChanges: ContinuityDevice[];
+  continuityNotes: string[];
+  summary?: StorySummary;
+}
+
 // ==================== CHAPTER MANAGEMENT ====================
 export interface Chapter {
   chapterId: string;
@@ -64,6 +139,8 @@ export interface StoryGenerationSeam {
     estimatedReadTime: number; // in minutes
     hasCliffhanger: boolean; // determines if "Continue Chapter" button shows
     generatedAt: Date;
+    state: StoryState;
+    stateDelta: StoryStateDelta;
   };
 
   errors: {
@@ -118,6 +195,8 @@ export interface ChapterContinuationSeam {
     themesContinued: ThemeType[];
     spicyLevelMaintained: SpicyLevel;
     appendedToStory: string; // Full updated story content
+    state: StoryState;
+    stateDelta: StoryStateDelta;
   };
 
   errors: {
