@@ -1,0 +1,26 @@
+# Dependencies
+node_modules
+story-generator/node_modules
+
+# Build artifacts (will be rebuilt)
+story-generator/dist
+story-generator/.angular
+
+# Tests
+tests
+*.test.ts
+*.spec.ts
+
+# Development files
+.git
+.github
+.vscode
+
+# Documentation
+*.md
+!README.md
+
+# Local env files (use Vercel env vars instead)
+.env
+.env.local
+.env.*.local
