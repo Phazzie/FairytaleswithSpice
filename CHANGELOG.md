@@ -5,6 +5,32 @@ All notable changes to the Fairytales with Spice project will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🔧 Technical Improvements (December 20-22, 2025)
+
+#### Grok Model Updates
+- **Model Name Refactoring**: Deduplicated Grok model name using private class constant for better maintainability
+- **Model Version Update**: Updated Grok model from `grok-4-fast-reasoning` to `grok-4-1-fast-reasoning`
+
+#### Test Coverage Enhancements
+- **Token Calculation Tests**: Added token calculation tests to test runner
+- **Test Infrastructure**: Refactored tests to use shared utilities, reducing code duplication
+- **Async Test Fixes**: Fixed all 5 async timing test failures - all 108 tests now pass
+
+#### Build & Deployment
+- **Vercel Configuration**: Added comprehensive Vercel deployment configuration
+- **Build Fixes**: Fixed critical build and test errors
+- **Vercel Config Updates**: Enhanced Vercel config to support token calculation tests
+
+#### Files Changed:
+- Grok model service refactored with private class constant
+- Test runner configuration updated
+- Vercel deployment configuration files added
+- Build scripts and test utilities improved
+
+---
+
 ## [2.2.0] - 2025-01-XX
 
 ### 🌊 Real-Time Story Streaming (October 11, 2025)
