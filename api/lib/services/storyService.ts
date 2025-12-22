@@ -244,7 +244,7 @@ export class StoryService {
       const response = await axios.post(
         this.grokApiUrl,
         {
-          model: this.grokModel, // Use same model for consistency
+          model: 'grok-4-1-fast-reasoning', // Use same model for consistency
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
@@ -374,12 +374,12 @@ export class StoryService {
 
     try {
       logInfo('Calling Grok API', context, {
-        model: this.grokModel,
+        model: 'grok-4-1-fast-reasoning',
         maxTokens: this.calculateOptimalTokens(input.wordCount)
       });
 
       const response = await axios.post(this.grokApiUrl, {
-        model: this.grokModel,
+        model: 'grok-4-1-fast-reasoning',
         messages: [
           {
             role: 'system',
@@ -414,7 +414,7 @@ export class StoryService {
 
     } catch (error: any) {
       logApiError('Grok AI', error, context, {
-        model: this.grokModel,
+        model: 'grok-4-1-fast-reasoning',
         wordCount: input.wordCount,
         creature: input.creature,
         spicyLevel: input.spicyLevel
@@ -437,7 +437,7 @@ export class StoryService {
       logInfo('Calling Grok API for chapter continuation', context);
 
       const response = await axios.post(this.grokApiUrl, {
-        model: this.grokModel,
+        model: 'grok-4-1-fast-reasoning',
         messages: [
           {
             role: 'system',
@@ -472,7 +472,7 @@ export class StoryService {
 
     } catch (error: any) {
       logApiError('Grok AI (Continuation)', error, context, {
-        model: this.grokModel,
+        model: 'grok-4-1-fast-reasoning',
         chapterNumber: input.currentChapterCount + 1
       });
       
