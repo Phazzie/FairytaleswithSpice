@@ -208,6 +208,59 @@ interface Story {
 
 ---
 
+## 🎓 Lessons Learned (December 2025)
+
+### Code Quality & Maintainability
+1. **Deduplication Prevents Drift**
+   - **Issue**: Grok model name was hardcoded in multiple locations
+   - **Fix**: Refactored to use private class constant
+   - **Lesson**: Single source of truth prevents inconsistencies across codebase
+   - **Applied**: Model name now centralized, easier to update across all services
+
+2. **Test Infrastructure Investment Pays Off**
+   - **Achievement**: Fixed all 5 async timing test failures - 108 tests now pass
+   - **Improvement**: Refactored tests to use shared utilities, reducing code duplication
+   - **Impact**: More reliable CI/CD pipeline, faster debugging of issues
+   - **Lesson**: Investing time in test infrastructure and utilities improves long-term maintainability
+
+3. **Comprehensive Test Coverage Catches Issues Early**
+   - **Added**: Token calculation tests to test runner
+   - **Benefit**: Caught edge cases in token counting logic before production
+   - **Lesson**: Expanding test coverage beyond basic functionality prevents subtle bugs
+
+### Build & Deployment
+4. **Configuration Matters**
+   - **Fixed**: Critical build and test errors through Vercel config updates
+   - **Added**: Comprehensive Vercel deployment configuration
+   - **Lesson**: Proper build configuration is as important as the code itself
+   - **Takeaway**: Document deployment configurations early in development
+
+5. **Model Version Updates Require System-Wide Validation**
+   - **Change**: Updated from `grok-4-fast-reasoning` to `grok-4-1-fast-reasoning`
+   - **Process**: Required testing across all story generation flows
+   - **Lesson**: AI model updates need comprehensive regression testing
+   - **Best Practice**: Maintain version compatibility notes in documentation
+
+### Development Workflow
+6. **Incremental Refactoring Works Better Than Big Rewrites**
+   - **Approach**: Small, focused PRs for model refactoring, test fixes, and config updates
+   - **Result**: Easier code review, faster merges, less risk
+   - **Lesson**: Break large improvements into atomic, mergeable units
+
+7. **CI/CD Pipeline Reliability Is Critical**
+   - **Problem**: Flaky async tests blocked deployments
+   - **Solution**: Systematic test reliability improvements with shared utilities
+   - **Outcome**: Consistent green builds enable faster iteration
+   - **Lesson**: Reliable tests are prerequisite for rapid development
+
+### Future Improvements Identified
+- Add automated model version compatibility testing
+- Implement test utilities library to further reduce duplication
+- Create deployment configuration validation in CI
+- Document model version migration procedures
+
+---
+
 ## Success Metrics
 
 ### Audio Pipeline:
