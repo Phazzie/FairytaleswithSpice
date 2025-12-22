@@ -1,6 +1,6 @@
-import { StoryService } from '../lib/services/storyService';
-import { StoryGenerationSeam } from '../lib/types/contracts';
-import { logInfo, logError, logWarn } from '../lib/utils/logger';
+import { StoryService } from '../_lib/services/storyService';
+import { StoryGenerationSeam } from '../_lib/types/contracts';
+import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 
 export default async function handler(req: any, res: any) {
   // Generate or extract request ID for tracking
