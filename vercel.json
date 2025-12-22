@@ -30,10 +30,8 @@
     }
   ],
   "functions": {
-    "api/!(lib)/**/*.ts": {
-      "runtime": "nodejs20.x",
-      "maxDuration": 60,
-      "excludeFiles": "**/*.spec.ts"
+    "api/**/*.ts": {
+      "maxDuration": 60
     }
   }
 }

@@ -175,7 +175,7 @@ export class StoryService {
       const response = await axios.post(
         this.grokApiUrl,
         {
-          model: 'grok-4-fast-reasoning',
+          model: 'grok-4-1-fast-reasoning',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
@@ -299,7 +299,7 @@ export class StoryService {
 
     try {
       const response = await axios.post(this.grokApiUrl, {
-        model: 'grok-4-fast-reasoning',
+        model: 'grok-4-1-fast-reasoning',
         messages: [
           {
             role: 'system',
@@ -338,7 +338,7 @@ export class StoryService {
 
     try {
       const response = await axios.post(this.grokApiUrl, {
-        model: 'grok-4-fast-reasoning',
+        model: 'grok-4-1-fast-reasoning',
         messages: [
           {
             role: 'system',
