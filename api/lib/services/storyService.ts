@@ -9,6 +9,7 @@ import {
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 
 export class StoryService {
+  private readonly grokModel = 'grok-4-1-fast-reasoning';
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
   private grokApiKey = process.env['XAI_API_KEY'];
 
