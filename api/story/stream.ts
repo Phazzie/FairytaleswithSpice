@@ -6,9 +6,9 @@
  * Provides immediate feedback during ~21 second generation process
  */
 
-import { StoryService } from '../lib/services/storyService';
-import { StoryGenerationSeam, StreamingStoryGenerationSeam } from '../lib/types/contracts';
-import { logInfo, logError, logWarn } from '../lib/utils/logger';
+import { StoryService } from '../_lib/services/storyService';
+import { StoryGenerationSeam, StreamingStoryGenerationSeam } from '../_lib/types/contracts';
+import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 
 const storyService = new StoryService();
 

@@ -1,6 +1,6 @@
-import { StoryService } from '../lib/services/storyService';
-import { ChapterContinuationSeam } from '../lib/types/contracts';
-import { logInfo, logError, logWarn } from '../lib/utils/logger';
+import { StoryService } from '../_lib/services/storyService';
+import { ChapterContinuationSeam } from '../_lib/types/contracts';
+import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 
 export default async function handler(req: any, res: any) {
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

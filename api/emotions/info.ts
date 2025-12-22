@@ -1,4 +1,4 @@
-import { AudioService } from '../lib/services/audioService';
+import { AudioService } from '../_lib/services/audioService';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {

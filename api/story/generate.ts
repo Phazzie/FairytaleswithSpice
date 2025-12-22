@@ -1,6 +1,6 @@
-import { StoryService } from '../lib/services/storyService';
-import { StoryGenerationSeam } from '../lib/types/contracts';
-import { logInfo, logError, logWarn } from '../lib/utils/logger';
+import { StoryService } from '../_lib/services/storyService';
+import { StoryGenerationSeam } from '../_lib/types/contracts';
+import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 
 export default async function handler(req: any, res: any) {
   // Generate or extract request ID for tracking
@@ -79,17 +79,13 @@ export default async function handler(req: any, res: any) {
     res.status(200).json(result);
 
   } catch (error: any) {
-<<<<<<< HEAD
     logError('Story generation endpoint error', error, {
       requestId,
       endpoint: '/api/story/generate',
       method: 'POST',
       statusCode: 500
     });
-    
-=======
-    console.error(`[${requestId}] Story generation serverless function error:`, error);
->>>>>>> c07c20875b1643c77ba40490b75daf80504c0651
+
     res.status(500).json({
       success: false,
       error: {
