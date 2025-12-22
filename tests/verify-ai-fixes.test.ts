@@ -78,7 +78,7 @@ const apiContent = readFileSync(apiServicePath, 'utf-8');
 const sgContent = readFileSync(sgServicePath, 'utf-8');
 
 // Check for the correct model name
-const correctModel = 'grok-4-fast-reasoning';
+const correctModel = 'grok-4-1-fast-reasoning';
 const incorrectModel = 'grok-beta';
 
 const apiHasCorrectModel = apiContent.includes(`model: '${correctModel}'`);

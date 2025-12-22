@@ -23,7 +23,7 @@ async function testXAI() {
     const response = await axios.post(
       'https://api.x.ai/v1/chat/completions',
       {
-        model: 'grok-4-fast-reasoning',
+        model: 'grok-4-1-fast-reasoning',
         messages: [
           { role: 'user', content: 'Say "Hello" in exactly one word.' }
         ],
