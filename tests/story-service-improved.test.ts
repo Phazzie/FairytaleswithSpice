@@ -440,13 +440,23 @@ async function runAllTests() {
   console.log('\n' + '='.repeat(80));
   console.log('🧪 STORY SERVICE COMPREHENSIVE TEST SUITE');
   console.log('='.repeat(80));
-  
+
   const startTime = Date.now();
-  
+
+  // Run main test suite
   for (const [testName, testFn] of Object.entries(testSuite)) {
     await testFn();
   }
-  
+
+  // Run token calculation tests
+  console.log('\n' + '-'.repeat(80));
+  console.log('🔢 TOKEN CALCULATION TESTS');
+  console.log('-'.repeat(80));
+
+  for (const [testName, testFn] of Object.entries(tokenCalculationTests)) {
+    await testFn();
+  }
+
   const totalDuration = Date.now() - startTime;
   
   // Print summary
