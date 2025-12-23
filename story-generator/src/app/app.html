@@ -1,15 +1,24 @@
 <div class="story-generator">
   <header class="header">
-    <h1>🧚‍♀️ Fairytales with Spice</h1>
-    <p>Create spicy fantasy stories with your favorite creatures</p>
-    <button
-      class="quick-test-btn"
-      (click)="quickTest()"
-      [disabled]="isGenerating"
-      title="Generate a quick 150-word test story to verify API connection">
-      <span *ngIf="!isGenerating">🧪 Quick Test (150 words)</span>
-      <span *ngIf="isGenerating">⏳ Testing...</span>
-    </button>
+    <div class="header-content">
+      <div class="header-text">
+        <h1>🧚‍♀️ Fairytales with Spice</h1>
+        <p>Create spicy fantasy stories with your favorite creatures</p>
+      </div>
+      <div class="header-actions">
+        <a routerLink="/proving-grounds" class="proving-grounds-link">
+          🧪 Proving Grounds
+        </a>
+        <button
+          class="quick-test-btn"
+          (click)="quickTest()"
+          [disabled]="isGenerating"
+          title="Generate a quick 150-word test story to verify API connection">
+          <span *ngIf="!isGenerating">🧪 Quick Test</span>
+          <span *ngIf="isGenerating">⏳ Testing...</span>
+        </button>
+      </div>
+    </div>
   </header>
 
   <div class="main-container">

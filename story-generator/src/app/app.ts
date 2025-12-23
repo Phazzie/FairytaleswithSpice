@@ -1,6 +1,7 @@
 import { Component, signal, OnInit, OnDestroy, ViewChild, Inject, PLATFORM_ID, inject, ChangeDetectorRef } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import { ErrorDisplayComponent } from './error-display/error-display';
@@ -32,10 +33,11 @@ import { DebugPanel } from './debug-panel/debug-panel';
  * @since 2025-09-21
  */
 @Component({
-  selector: 'app-root',
-  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel],
+  selector: 'app-main',
+  imports: [FormsModule, CommonModule, ErrorDisplayComponent, DebugPanel, RouterLink],
   templateUrl: './app.html',
-  styleUrl: './app.css'
+  styleUrl: './app.css',
+  standalone: true
 })
 export class App implements OnInit, OnDestroy {
   /** Application title signal for reactive updates */

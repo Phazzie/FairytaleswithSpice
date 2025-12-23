@@ -1,0 +1,452 @@
+<!-- Created: 2025-10-31 06:28 -->
+<div class="proving-grounds-container">
+  <header class="page-header">
+    <h1>🧪 Proving Grounds</h1>
+    <p class="subtitle">Test and iterate on story generation prompts with AI-powered evaluation</p>
+    <div class="header-actions">
+      <button 
+        class="btn btn-secondary" 
+        (click)="comparisonMode.set(!comparisonMode())"
+        [class.active]="comparisonMode()">
+        {{ comparisonMode() ? '📊 Exit Comparison' : '📊 Compare Tests' }}
+      </button>
+      <button 
+        class="btn btn-secondary" 
+        (click)="exportTestResults()"
+        [disabled]="testHistory().length === 0">
+        💾 Export Results
+      </button>
+      <a href="/" class="btn btn-secondary">← Back to Generator</a>
+    </div>
+  </header>
+
+  <div class="main-content">
+    <!-- Configuration Panel -->
+    <aside class="config-panel">
+      <div class="panel-section">
+        <h2>Test Configuration</h2>
+        
+        <!-- Prompt Template Selection -->
+        <div class="form-group">
+          <label>Prompt Template</label>
+          <div class="template-selector">
+            @for (template of promptTemplates; track template.id) {
+              <div 
+                class="template-card"
+                [class.selected]="selectedPromptTemplate()?.id === template.id"
+                (click)="selectPromptTemplate(template)">
+                <h4>{{ template.name }}</h4>
+                <p>{{ template.description }}</p>
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- Creature Selection -->
+        <div class="form-group">
+          <label>Creature Type</label>
+          <select [(ngModel)]="creature" class="form-control">
+            @for (option of creatureOptions; track option) {
+              <option [value]="option">{{ option | titlecase }}</option>
+            }
+          </select>
+        </div>
+
+        <!-- Spicy Level -->
+        <div class="form-group">
+          <label>Spice Level: {{ spicyLevel }}/5</label>
+          <input 
+            type="range" 
+            [(ngModel)]="spicyLevel" 
+            min="1" 
+            max="5" 
+            step="1"
+            class="form-control-range">
+          <div class="spice-labels">
+            <span>Mild</span>
+            <span>Hot</span>
+            <span>Scorching</span>
+          </div>
+        </div>
+
+        <!-- Word Count -->
+        <div class="form-group">
+          <label>Word Count</label>
+          <select [(ngModel)]="wordCount" class="form-control">
+            @for (option of wordCountOptions; track option) {
+              <option [value]="option">{{ option }} words</option>
+            }
+          </select>
+        </div>
+
+        <!-- Themes -->
+        <div class="form-group">
+          <label>Themes (Select 1-3)</label>
+          <div class="theme-grid">
+            @for (theme of themeOptions; track theme) {
+              <button
+                class="theme-tag"
+                [class.selected]="isThemeSelected(theme)"
+                (click)="toggleTheme(theme)">
+                {{ theme.replace('_', ' ') | titlecase }}
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- User Input -->
+        <div class="form-group">
+          <label>Additional Instructions (Optional)</label>
+          <textarea 
+            [(ngModel)]="userInput" 
+            class="form-control"
+            rows="3"
+            placeholder="Any specific elements or directions..."></textarea>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button 
+            class="btn btn-secondary"
+            (click)="viewPrompts()"
+            title="View the filled prompt templates">
+            👁️ View Prompts
+          </button>
+          
+          <button 
+            class="btn btn-primary btn-large"
+            (click)="generateStory()"
+            [disabled]="isGenerating() || themes.length === 0">
+            @if (isGenerating()) {
+              <span class="spinner">⏳</span> Generating...
+            } @else {
+              🚀 Generate Story
+            }
+          </button>
+        </div>
+      </div>
+
+      <!-- Generation Logic Viewer (Expandable) -->
+      <div class="panel-section">
+        <div class="section-header" (click)="viewGenerationLogic()">
+          <h3>🎲 Generation Logic</h3>
+          <span class="toggle-icon">{{ showGenerationLogic ? '▼' : '▶' }}</span>
+        </div>
+        
+        @if (showGenerationLogic && currentGenerationLogic()) {
+          <div class="generation-logic-viewer">
+            <div class="logic-actions">
+              <button class="btn btn-sm btn-secondary" (click)="regenerateLogic()">
+                🎲 Regenerate Random
+              </button>
+            </div>
+
+            <!-- Selected Authors -->
+            <div class="logic-section">
+              <h4>📚 Author Styles ({{ currentGenerationLogic()!.selectedAuthors.length }}/3)</h4>
+              @for (author of currentGenerationLogic()!.selectedAuthors; track author.author) {
+                <div class="author-card">
+                  <div class="author-name">{{ author.author }}</div>
+                  <div class="author-trait">{{ author.trait }}</div>
+                  <div class="author-sample">"{{ author.voiceSample }}"</div>
+                </div>
+              }
+            </div>
+
+            <!-- Selected Beat Structure -->
+            <div class="logic-section">
+              <h4>🎭 Beat Structure</h4>
+              <div class="beat-card">
+                <div class="beat-name">{{ currentGenerationLogic()!.selectedBeatStructure.name }}</div>
+                <div class="beat-detail">
+                  <strong>Beats:</strong> {{ currentGenerationLogic()!.selectedBeatStructure.beats }}
+                </div>
+                <div class="beat-detail">
+                  <strong>Spice Integration:</strong> {{ currentGenerationLogic()!.selectedBeatStructure.spiceIntegration }}
+                </div>
+                <div class="beat-detail avoid">
+                  <strong>Avoid:</strong> {{ currentGenerationLogic()!.selectedBeatStructure.avoid }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Chekov Elements -->
+            <div class="logic-section">
+              <h4>🔫 Chekov's Gun Elements ({{ currentGenerationLogic()!.chekovElements.length }}/2)</h4>
+              @for (element of currentGenerationLogic()!.chekovElements; track element.description; let i = $index) {
+                <div class="chekov-card">
+                  <span class="chekov-number">#{{ i + 1 }}</span>
+                  <span class="chekov-text">{{ element.description }}</span>
+                </div>
+              }
+            </div>
+
+            <p class="hint">💡 These elements are randomly selected for each generation, mimicking the production story service</p>
+          </div>
+        }
+      </div>
+
+      <!-- Custom Prompt Editor (Expandable) -->
+      <div class="panel-section">
+        <div class="section-header" (click)="useCustomPrompts = !useCustomPrompts">
+          <h3>🔧 Custom Prompt Editor</h3>
+          <span class="toggle-icon">{{ useCustomPrompts ? '▼' : '▶' }}</span>
+        </div>
+        
+        @if (useCustomPrompts) {
+          <div class="custom-prompt-editor">
+            <div class="form-group">
+              <label>System Prompt</label>
+              <textarea 
+                [(ngModel)]="customSystemPrompt" 
+                class="form-control code-editor"
+                rows="10"
+                placeholder="Enter custom system prompt..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>User Prompt Template</label>
+              <textarea 
+                [(ngModel)]="customUserPrompt" 
+                class="form-control code-editor"
+                rows="6"
+                placeholder="Enter custom user prompt template..."></textarea>
+            </div>
+            <p class="hint">💡 Edit prompts to test variations and improvements</p>
+          </div>
+        }
+      </div>
+    </aside>
+
+    <!-- Results Panel -->
+    <main class="results-panel">
+      @if (comparisonMode() && selectedComparisons().length > 0) {
+        <!-- Comparison View -->
+        <div class="comparison-view">
+          <div class="comparison-header">
+            <h2>Comparing {{ selectedComparisons().length }} Tests</h2>
+            <button class="btn btn-secondary" (click)="clearComparisons()">Clear Selection</button>
+          </div>
+          
+          <div class="comparison-grid">
+            @for (test of selectedComparisons(); track test.id) {
+              <div class="comparison-card">
+                <div class="comparison-card-header">
+                  <h3>Test #{{ testHistory().indexOf(test) + 1 }}</h3>
+                  <span class="timestamp">{{ test.timestamp | date:'short' }}</span>
+                </div>
+                
+                <div class="comparison-config">
+                  <p><strong>Template:</strong> {{ test.configuration.promptTemplate.name }}</p>
+                  <p><strong>Creature:</strong> {{ test.configuration.creature }}</p>
+                  <p><strong>Spice:</strong> {{ test.configuration.spicyLevel }}/5</p>
+                  <p><strong>Generation Time:</strong> {{ test.generationTime }}ms</p>
+                </div>
+
+                @if (test.aiEvaluation) {
+                  <div class="evaluation-summary">
+                    <div class="score-badge" [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
+                      {{ test.aiEvaluation.score }}/100
+                    </div>
+                    <p class="feedback">{{ test.aiEvaluation.overallFeedback }}</p>
+                  </div>
+                }
+
+                <div class="story-preview">
+                  <div [innerHTML]="test.generatedStory"></div>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      } @else if (currentTest()) {
+        <!-- Current Test View -->
+        <div class="current-test">
+          <div class="test-header">
+            <div>
+              <h2>Current Test Result</h2>
+              <p class="test-meta">
+                Generated at {{ currentTest()!.timestamp | date:'short' }} | 
+                {{ currentTest()!.generationTime }}ms
+              </p>
+            </div>
+            <div class="test-actions">
+              <button 
+                class="btn btn-primary"
+                (click)="evaluateStory(currentTest()!)"
+                [disabled]="isEvaluating() || currentTest()!.aiEvaluation">
+                @if (isEvaluating()) {
+                  <span class="spinner">⏳</span> Evaluating...
+                } @else if (currentTest()!.aiEvaluation) {
+                  ✅ Evaluated
+                } @else {
+                  🤖 Evaluate with AI
+                }
+              </button>
+            </div>
+          </div>
+
+          <!-- AI Evaluation Results -->
+          @if (currentTest()!.aiEvaluation) {
+            <div class="evaluation-panel">
+              <h3>AI Evaluation Results</h3>
+              
+              <div class="score-display">
+                <div class="score-circle" [class]="'score-' + (currentTest()!.aiEvaluation!.score >= 80 ? 'high' : currentTest()!.aiEvaluation!.score >= 60 ? 'medium' : 'low')">
+                  <span class="score-value">{{ currentTest()!.aiEvaluation!.score }}</span>
+                  <span class="score-label">/100</span>
+                </div>
+                <div class="overall-feedback">
+                  <h4>Overall Feedback</h4>
+                  <p>{{ currentTest()!.aiEvaluation!.overallFeedback }}</p>
+                </div>
+              </div>
+
+              <div class="evaluation-grid">
+                <div class="evaluation-section strengths">
+                  <h4>💪 Strengths</h4>
+                  <ul>
+                    @for (strength of currentTest()!.aiEvaluation!.strengths; track strength) {
+                      <li>{{ strength }}</li>
+                    }
+                  </ul>
+                </div>
+
+                <div class="evaluation-section weaknesses">
+                  <h4>⚠️ Weaknesses</h4>
+                  <ul>
+                    @for (weakness of currentTest()!.aiEvaluation!.weaknesses; track weakness) {
+                      <li>{{ weakness }}</li>
+                    }
+                  </ul>
+                </div>
+
+                <div class="evaluation-section suggestions">
+                  <h4>💡 Suggestions</h4>
+                  <ul>
+                    @for (suggestion of currentTest()!.aiEvaluation!.suggestions; track suggestion) {
+                      <li>{{ suggestion }}</li>
+                    }
+                  </ul>
+                </div>
+              </div>
+            </div>
+          }
+
+          <!-- Generated Story -->
+          <div class="story-display">
+            <h3>Generated Story</h3>
+            <div class="story-content" [innerHTML]="currentTest()!.generatedStory"></div>
+          </div>
+
+          <!-- Test Configuration -->
+          <div class="config-display">
+            <h3>Test Configuration</h3>
+            <div class="config-details">
+              <p><strong>Template:</strong> {{ currentTest()!.configuration.promptTemplate.name }}</p>
+              <p><strong>Creature:</strong> {{ currentTest()!.configuration.creature }}</p>
+              <p><strong>Themes:</strong> {{ currentTest()!.configuration.themes.join(', ') }}</p>
+              <p><strong>Spice Level:</strong> {{ currentTest()!.configuration.spicyLevel }}/5</p>
+              <p><strong>Word Count:</strong> {{ currentTest()!.configuration.wordCount }}</p>
+              @if (currentTest()!.configuration.userInput) {
+                <p><strong>User Input:</strong> {{ currentTest()!.configuration.userInput }}</p>
+              }
+            </div>
+          </div>
+        </div>
+      } @else {
+        <!-- Welcome State -->
+        <div class="welcome-state">
+          <div class="welcome-icon">🧪</div>
+          <h2>Welcome to the Proving Grounds</h2>
+          <p>Configure your test parameters on the left and click "Generate Story" to begin testing.</p>
+          <div class="features">
+            <div class="feature">
+              <span class="feature-icon">🎯</span>
+              <h4>Test Prompts</h4>
+              <p>Try different prompt templates and variations</p>
+            </div>
+            <div class="feature">
+              <span class="feature-icon">🤖</span>
+              <h4>AI Evaluation</h4>
+              <p>Get quality feedback from Grok AI</p>
+            </div>
+            <div class="feature">
+              <span class="feature-icon">📊</span>
+              <h4>Compare Results</h4>
+              <p>Side-by-side comparison of multiple tests</p>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Test History -->
+      @if (testHistory().length > 0) {
+        <div class="test-history">
+          <div class="history-header">
+            <h3>Test History ({{ testHistory().length }})</h3>
+            @if (comparisonMode()) {
+              <p class="hint">Select up to 3 tests to compare</p>
+            }
+          </div>
+          
+          <div class="history-list">
+            @for (test of testHistory(); track test.id) {
+              <div 
+                class="history-item"
+                [class.selected]="isSelectedForComparison(test)"
+                [class.current]="currentTest()?.id === test.id">
+                
+                <div class="history-item-header">
+                  <span class="test-number">#{{ $index + 1 }}</span>
+                  <span class="timestamp">{{ test.timestamp | date:'short' }}</span>
+                  
+                  @if (test.aiEvaluation) {
+                    <span 
+                      class="score-badge mini"
+                      [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
+                      {{ test.aiEvaluation.score }}
+                    </span>
+                  }
+                </div>
+                
+                <div class="history-item-details">
+                  <p>{{ test.configuration.creature | titlecase }} | {{ test.configuration.themes.join(', ') }}</p>
+                  <p class="template-name">{{ test.configuration.promptTemplate.name }}</p>
+                </div>
+                
+                <div class="history-item-actions">
+                  @if (comparisonMode()) {
+                    <button 
+                      class="btn btn-sm"
+                      (click)="toggleComparison(test)"
+                      [disabled]="!isSelectedForComparison(test) && selectedComparisons().length >= 3">
+                      {{ isSelectedForComparison(test) ? '✓ Selected' : 'Select' }}
+                    </button>
+                  } @else {
+                    <button 
+                      class="btn btn-sm"
+                      (click)="currentTest.set(test)">
+                      View
+                    </button>
+                    @if (!test.aiEvaluation) {
+                      <button 
+                        class="btn btn-sm"
+                        (click)="evaluateStory(test)">
+                        Evaluate
+                      </button>
+                    }
+                    <button 
+                      class="btn btn-sm btn-danger"
+                      (click)="deleteTest(test.id)">
+                      Delete
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </main>
+  </div>
+</div>
