@@ -7,15 +7,15 @@ import { DebugPanel } from './debug-panel/debug-panel';
 import { of, throwError } from 'rxjs';
 import {
   StoryGenerationSeam,
-  ChapterContinuationSeam,
+  ChapterBatchSeam,
   AudioConversionSeam,
   SaveExportSeam,
   ApiResponse,
   ThemeType,
   CreatureType,
-  SpicyLevel
+  SpicyLevel,
+  StoryStateSummary
 } from './contracts';
-import { createMockStoryResponse } from '../testing';
 
 describe('App', () => {
   let component: App;
@@ -25,7 +25,7 @@ describe('App', () => {
 
   beforeEach(async () => {
     const storyServiceSpy = jasmine.createSpyObj('StoryService', [
-      'generateStory', 'generateNextChapter', 'convertToAudio', 'saveStory'
+      'generateStory', 'generateChapterBatch', 'convertToAudio', 'saveStory'
     ]);
     const errorLoggingSpy = jasmine.createSpyObj('ErrorLoggingService', [
       'logInfo', 'logError', 'logWarning', 'logCritical', 'getErrors', 'clearErrors'
@@ -154,19 +154,17 @@ describe('App', () => {
         wordCount: 900
       });
 
-      // Wait for async operation
-      setTimeout(() => {
-        expect(component.isGenerating).toBe(false);
-        expect(component.currentStory).toBe('<h3>Chapter 1</h3><p>Story content...</p>');
-        expect(component.currentStoryId).toBe('story_123');
-        expect(component.currentStoryTitle).toBe('Test Story');
-        expect(component.currentChapterCount).toBe(1);
-        expect(errorLoggingService.logInfo).toHaveBeenCalledWith(
-          'Story generation completed successfully',
-          'App.generateStory',
-          jasmine.objectContaining({ storyId: 'story_123' })
-        );
-      }, 0);
+      expect(component.isGenerating).toBe(false);
+      expect(component.currentStory).toBe('<h3>Chapter 1</h3><p>Story content...</p>');
+      expect(component.currentStoryId).toBe('story_123');
+      expect(component.currentStoryTitle).toBe('Test Story');
+      expect(component.currentChapterCount).toBe(1);
+      expect(component.activeBatchQueue.length).toBe(0);
+      expect(errorLoggingService.logInfo).toHaveBeenCalledWith(
+        'Story generation completed successfully',
+        'App.generateStory',
+        jasmine.objectContaining({ storyId: 'story_123' })
+      );
     });
 
     it('should handle story generation error', () => {
@@ -175,20 +173,14 @@ describe('App', () => {
 
       component.generateStory();
 
-      // Wait for async operation
-      setTimeout(() => {
-        expect(component.isGenerating).toBe(false);
-        expect(errorLoggingService.logError).toHaveBeenCalled();
-      }, 0);
+      expect(component.isGenerating).toBe(false);
+      expect(errorLoggingService.logError).toHaveBeenCalled();
     });
   });
 
-  describe('generateNextChapter', () => {
+  describe('generateChapterBatch', () => {
     beforeEach(() => {
-      // Setup current story state
       component.currentStoryId = 'story_123';
-      component.currentStory = '<h3>Chapter 1</h3><p>Existing content...</p>';
-      // Set up chapters array instead of readonly property
       component.chapters = [{
         chapterNumber: 1,
         chapterId: 'chapter_1',
@@ -198,59 +190,87 @@ describe('App', () => {
         generatedAt: new Date(),
         hasAudio: false
       }];
+      component.currentChapterIndex = 0;
+      const initialState: StoryStateSummary = {
+        synopsis: '',
+        lastGeneratedChapter: 1,
+        characters: [],
+        plotDevices: [],
+        cliffhangers: [],
+        unresolvedThreads: [],
+        nextBatchFocus: [],
+        updatedAt: new Date().toISOString()
+      };
+      component.storyContinuity.set(initialState);
     });
 
-    it('should generate next chapter successfully', () => {
-      const mockResponse: ApiResponse<ChapterContinuationSeam['output']> = {
+    it('should queue and append batch chapters successfully', () => {
+      const batchResponse: ApiResponse<ChapterBatchSeam['output']> = {
         success: true,
         data: {
-          chapterId: 'chapter_456',
-          chapterNumber: 2,
-          title: 'Chapter 2: Continuation',
-          content: '<h3>Chapter 2</h3><p>New content...</p>',
-          wordCount: 120,
-          cliffhangerEnding: true,
-          themesContinued: ['forbidden_love'] as ThemeType[],
-          spicyLevelMaintained: 3 as SpicyLevel,
-          appendedToStory: '<h3>Chapter 1</h3><p>Existing content...</p><hr><h3>Chapter 2</h3><p>New content...</p>'
-        },
-        metadata: {
-          requestId: 'req_456',
-          processingTime: 3000
+          chapters: [
+            {
+              chapterId: 'chapter_2',
+              chapterNumber: 2,
+              title: 'Chapter 2',
+              content: '<p>Chapter two...</p>',
+              wordCount: 110,
+              generatedAt: new Date(),
+              hasAudio: false
+            },
+            {
+              chapterId: 'chapter_3',
+              chapterNumber: 3,
+              title: 'Chapter 3',
+              content: '<p>Chapter three...</p>',
+              wordCount: 115,
+              generatedAt: new Date(),
+              hasAudio: false
+            }
+          ],
+          storyState: {
+            synopsis: 'Updated synopsis',
+            lastGeneratedChapter: 3,
+            characters: [],
+            plotDevices: [],
+            cliffhangers: [],
+            unresolvedThreads: [],
+            nextBatchFocus: [],
+            updatedAt: new Date().toISOString()
+          },
+          queue: []
         }
       };
 
-      storyService.generateNextChapter.and.returnValue(of(mockResponse));
+      storyService.generateChapterBatch.and.returnValue(of(batchResponse));
 
-      component.generateNextChapter();
+      component.generateChapterBatch(2);
 
-      expect(storyService.generateNextChapter).toHaveBeenCalledWith({
-        storyId: 'story_123',
-        currentChapterCount: 1,
-        existingContent: '<p>Existing content...</p>',
-        userInput: '',
-        maintainTone: true
-      });
-
-      // Wait for async operation
-      setTimeout(() => {
-        expect(component.isGeneratingNext).toBe(false);
-        expect(component.currentStory).toContain('Chapter 2');
-        expect(component.currentChapterCount).toBe(2);
-      }, 0);
+      expect(storyService.generateChapterBatch).toHaveBeenCalled();
+      const request = storyService.generateChapterBatch.calls.mostRecent().args[0] as ChapterBatchSeam['input'];
+      expect(request.storyId).toBe('story_123');
+      expect(request.batchSize).toBe(2);
+      expect(request.currentChapterCount).toBe(1);
+      expect(component.chapters.length).toBe(3);
+      expect(component.activeBatchQueue.length).toBe(1);
+      expect(component.continuitySummary.lastGeneratedChapter).toBe(3);
+      expect(component.batchGenerationError).toBe('');
     });
 
-    it('should handle chapter generation error', () => {
-      const mockError = { success: false, error: { code: 'CONTINUATION_FAILED', message: 'Test error' } };
-      storyService.generateNextChapter.and.returnValue(throwError(() => mockError));
+    it('should surface batch generation errors', () => {
+      const mockError = { success: false, error: { code: 'BATCH_GENERATION_FAILED', message: 'Test error' } };
+      storyService.generateChapterBatch.and.returnValue(throwError(() => mockError));
 
+      component.generateChapterBatch(1);
+
+      expect(component.batchGenerationError).toBe('Test error');
+      expect(component.activeBatchQueue.length).toBe(1);
+    });
+
+    it('generateNextChapter should proxy to batch generation', () => {
+      const proxySpy = spyOn(component, 'generateChapterBatch');
       component.generateNextChapter();
-
-      // Wait for async operation
-      setTimeout(() => {
-        expect(component.isGeneratingNext).toBe(false);
-        expect(errorLoggingService.logError).toHaveBeenCalled();
-      }, 0);
+      expect(proxySpy).toHaveBeenCalledWith(1);
     });
   });
 

@@ -32,6 +32,56 @@ export interface Chapter {
   audioDuration?: number;
 }
 
+// ==================== STORY STATE CONTINUITY ====================
+
+export interface StoryCharacterContinuity {
+  id: string;
+  name: string;
+  role: string;
+  currentStatus: 'active' | 'evolving' | 'resolved' | 'missing';
+  lastMentionedChapter: number;
+  summary: string;
+  motivations?: string[];
+}
+
+export interface StoryPlotDeviceContinuity {
+  id: string;
+  name: string;
+  status: 'introduced' | 'escalating' | 'resolved' | 'foreshadowed';
+  introducedChapter: number;
+  expectedResolutionChapter?: number;
+  summary: string;
+}
+
+export interface StoryCliffhangerContinuity {
+  chapterNumber: number;
+  description: string;
+  status: 'open' | 'resolved' | 'revisited';
+  resolutionChapter?: number;
+}
+
+export interface StoryStateSummary {
+  synopsis: string;
+  lastGeneratedChapter: number;
+  characters: StoryCharacterContinuity[];
+  plotDevices: StoryPlotDeviceContinuity[];
+  cliffhangers: StoryCliffhangerContinuity[];
+  unresolvedThreads: string[];
+  nextBatchFocus: string[];
+  updatedAt: string;
+}
+
+export interface BatchProgressState {
+  id: string;
+  batchSize: 1 | 2 | 3;
+  status: 'queued' | 'in_progress' | 'completed' | 'failed';
+  chaptersGenerated: number;
+  totalChapters: number;
+  submittedAt: string;
+  completedAt?: string;
+  errorMessage?: string;
+}
+
 export interface AudioProgress {
   percentage: number; // 0-100
   status: 'queued' | 'processing' | 'completed' | 'failed';
@@ -136,6 +186,50 @@ export interface ChapterContinuationSeam {
       message: string;
       maxChapters: number;
       currentChapters: number;
+    };
+  };
+}
+
+// ==================== SEAM 2.1: BATCH CHAPTER GENERATION ====================
+
+export interface ChapterBatchSeam {
+  seamName: "Story → Batch Chapter Generation";
+  description: "Queues multiple chapter generations with continuity guidance";
+
+  input: {
+    storyId: string;
+    currentChapterCount: number;
+    batchSize: 1 | 2 | 3;
+    existingChapterSummaries: Array<{
+      chapterNumber: number;
+      title: string;
+      cliffhangerSummary?: string;
+    }>;
+    continuity: Partial<StoryStateSummary>;
+  };
+
+  output: {
+    chapters: Chapter[];
+    storyState: StoryStateSummary;
+    queue: BatchProgressState[];
+  };
+
+  errors: {
+    STORY_NOT_FOUND: {
+      code: "STORY_NOT_FOUND";
+      message: string;
+      storyId: string;
+    };
+    BATCH_LIMIT_EXCEEDED: {
+      code: "BATCH_LIMIT_EXCEEDED";
+      message: string;
+      requestedSize: number;
+      maxAllowed: number;
+    };
+    BATCH_GENERATION_FAILED: {
+      code: "BATCH_GENERATION_FAILED";
+      message: string;
+      retryable: boolean;
     };
   };
 }
@@ -392,6 +486,14 @@ export interface ErrorLoggingSeam {
 }
 
 // ==================== UNIFIED API RESPONSE ====================
+export interface ApiResponseMetadata {
+  requestId: string;
+  processingTime: number;
+  rateLimitRemaining?: number;
+  storyState?: StoryStateSummary;
+  batchQueue?: BatchProgressState[];
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
@@ -400,9 +502,5 @@ export interface ApiResponse<T> {
     message: string;
     details?: any;
   };
-  metadata?: {
-    requestId: string;
-    processingTime: number;
-    rateLimitRemaining?: number;
-  };
+  metadata?: ApiResponseMetadata;
 }

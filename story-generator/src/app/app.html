@@ -1,7 +1,7 @@
 <div class="story-generator">
   <header class="header">
     <h1>🧚‍♀️ Fairytales with Spice</h1>
-    <p>Create spicy fantasy stories with your favorite creatures</p>
+    <p>Create serialized spicy fantasies with continuity-aware batching</p>
     <button
       class="quick-test-btn"
       (click)="quickTest()"
@@ -13,237 +13,380 @@
   </header>
 
   <div class="main-container">
-    <!-- Fixed Configuration Panel -->
-    <div class="config-panel">
+    <aside class="config-panel">
       <div class="form-section">
-      <h2>Story Configuration</h2>
+        <h2>Story Configuration</h2>
 
-      <!-- Creature Selector -->
-      <div class="form-group">
-        <label>Choose Your Creature:</label>
-        <div class="radio-group">
-          <label class="radio-option" *ngFor="let creature of creatures; trackBy: trackByCreature">
-            <input type="radio" name="creature" [value]="creature.value" [(ngModel)]="selectedCreature">
-            <span class="radio-label">{{creature.label}}</span>
-          </label>
-        </div>
-      </div>
-
-      <!-- Theme Checkboxes -->
-      <div class="form-group">
-        <label>Story Themes ({{getSelectedThemesCount()}}/5 selected):</label>
-        <div class="checkbox-group">
-          <label class="checkbox-option"
-                 *ngFor="let theme of themes; trackBy: trackByTheme"
-                 [class.selected]="isThemeSelected(theme.value)"
-                 [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)">
-            <input type="checkbox"
-                   [checked]="isThemeSelected(theme.value)"
-                   [disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
-                   (change)="toggleTheme(theme.value)">
-            <span class="checkbox-label">{{theme.label}}</span>
-          </label>
-        </div>
-      </div>
-
-      <!-- User Input -->
-      <div class="form-group">
-        <label for="userInput">Your Ideas (Optional):</label>
-        <textarea
-          id="userInput"
-          [(ngModel)]="userInput"
-          placeholder="Describe characters, settings, or plot elements you'd like to include..."
-          rows="4">
-        </textarea>
-      </div>
-
-      <!-- Spicy Level Slider -->
-      <div class="form-group">
-        <label>Spicy Level: {{spicyLevelLabels[spicyLevel - 1]}}</label>
-        <div class="slider-container">
-          <input
-            type="range"
-            min="1"
-            max="5"
-            [(ngModel)]="spicyLevel"
-            class="spicy-slider">
-          <div class="slider-labels">
-            <span>Mild</span>
-            <span>Warm</span>
-            <span>Hot</span>
-            <span>Spicy</span>
-            <span>Fire 🔥</span>
+        <div class="form-group">
+          <label>Choose Your Creature:</label>
+          <div class="radio-group">
+            <label class="radio-option" *ngFor="let creature of creatures; trackBy: trackByCreature">
+              <input type="radio" name="creature" [value]="creature.value" [(ngModel)]="selectedCreature">
+              <span class="radio-label">{{ creature.label }}</span>
+            </label>
           </div>
         </div>
-      </div>
 
-      <!-- Word Count Dropdown -->
-      <div class="form-group">
-        <label for="wordCount">Word Count:</label>
-        <select id="wordCount" [(ngModel)]="wordCount">
-          <option *ngFor="let option of wordCountOptions" [value]="option.value">
-            {{option.label}}
-          </option>
-        </select>
-      </div>
+        <div class="form-group">
+          <label>Story Themes ({{ getSelectedThemesCount() }}/5 selected):</label>
+          <div class="checkbox-group">
+            <label
+              class="checkbox-option"
+              *ngFor="let theme of themes; trackBy: trackByTheme"
+              [class.selected]="isThemeSelected(theme.value)"
+              [class.disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)">
+              <input
+                type="checkbox"
+                [checked]="isThemeSelected(theme.value)"
+                [disabled]="!canSelectMoreThemes() && !isThemeSelected(theme.value)"
+                (change)="toggleTheme(theme.value)">
+              <span class="checkbox-label">{{ theme.label }}</span>
+            </label>
+          </div>
+        </div>
 
-      <!-- Generate Button -->
-      <button
-        class="generate-btn"
-        (click)="generateStory()"
-        [disabled]="isGenerating || !canGenerateStory()">
-        <span *ngIf="!isGenerating && canGenerateStory()">✨ Generate Story</span>
-        <span *ngIf="!isGenerating && !canGenerateStory()">❌ Select at least one theme</span>
-        <span *ngIf="isGenerating" class="loading">
-          <span class="spinner"></span>
-          Crafting your tale...
-        </span>
-      </button>
+        <div class="form-group">
+          <label for="userInput">Your Ideas (Optional):</label>
+          <textarea
+            id="userInput"
+            [(ngModel)]="userInput"
+            placeholder="Describe characters, settings, or plot elements you'd like to include..."
+            rows="4">
+          </textarea>
+        </div>
 
-      <!-- Generation Error Display -->
-      <div class="error-message" *ngIf="generationError">
-        ❌ {{ generationError }}
-      </div>
-      </div>
-    </div>
+        <div class="form-group">
+          <label>Spicy Level: {{ spicyLevelLabels[spicyLevel - 1] }}</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              min="1"
+              max="5"
+              [(ngModel)]="spicyLevel"
+              class="spicy-slider">
+            <div class="slider-labels">
+              <span>Mild</span>
+              <span>Warm</span>
+              <span>Hot</span>
+              <span>Spicy</span>
+              <span>Fire 🔥</span>
+            </div>
+          </div>
+        </div>
 
-    <!-- Flexible Story Display Panel -->
-    <div class="story-panel">
-      <div class="story-display">
+        <div class="form-group">
+          <label for="wordCount">Word Count:</label>
+          <select id="wordCount" [(ngModel)]="wordCount">
+            <option *ngFor="let option of wordCountOptions" [value]="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+
+        <section class="form-group batching-section">
+          <label>Chapter batching:</label>
+          <p class="helper-text">Queue 1–3 chapters at a time. Continuity hints keep characters and cliffhangers aligned.</p>
+          <div class="batch-selector">
+            <button
+              type="button"
+              class="batch-pill"
+              *ngFor="let option of batchSizeOptions"
+              (click)="setChaptersPerBatch(option.value)"
+              [class.active]="selectedBatchSize === option.value">
+              <span class="pill-title">{{ option.label }}</span>
+              <span class="pill-helper">{{ option.helper }}</span>
+            </button>
+          </div>
+          <div class="batch-queue-summary" *ngIf="activeBatchQueue.length">
+            <span class="queue-label">Active queue:</span>
+            <span>{{ activeBatchQueue.length }} {{ activeBatchQueue.length === 1 ? 'batch' : 'batches' }}</span>
+            <button
+              type="button"
+              class="clear-completed"
+              *ngIf="activeBatchQueue.some(entry => entry.status === 'completed' || entry.status === 'failed')"
+              (click)="clearCompletedBatches()">
+              Clear completed
+            </button>
+          </div>
+        </section>
+
+        <button
+          class="generate-btn"
+          (click)="generateStory()"
+          [disabled]="isGenerating || !canGenerateStory()">
+          <span *ngIf="!isGenerating && canGenerateStory()">✨ Generate Story</span>
+          <span *ngIf="!isGenerating && !canGenerateStory()">❌ Select at least one theme</span>
+          <span *ngIf="isGenerating" class="loading">
+            <span class="spinner"></span>
+            Crafting your tale...
+          </span>
+        </button>
+
+        <div class="error-message" *ngIf="generationError">
+          ❌ {{ generationError }}
+        </div>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <div class="workspace-grid">
         <div class="story-column">
-      <!-- Story Display -->
-      <div class="story-section" *ngIf="chapters.length > 0">
-        <!-- Chapter Navigation Header -->
-        <div class="chapter-navigation" *ngIf="chapters.length > 1">
-          <button
-            class="nav-btn"
-            (click)="previousChapter()"
-            [disabled]="isFirstChapter()">
-            ← Previous
-          </button>
-          
-          <div class="chapter-selector">
-            <select [(ngModel)]="currentChapterIndex" (change)="navigateToChapter(currentChapterIndex)">
-              <option *ngFor="let chapter of chapters; let i = index" [value]="i">
-                Chapter {{chapter.chapterNumber}}: {{chapter.title}}
-              </option>
-            </select>
+          <div class="story-section" *ngIf="chapters.length > 0">
+            <div class="story-header">
+              <div class="title-block">
+                <h2>Chapter {{ getCurrentChapter()?.chapterNumber }}: {{ getCurrentChapter()?.title }}</h2>
+                <div class="story-meta">
+                  <span>{{ getCurrentChapter()?.wordCount }} words</span>
+                  <span *ngIf="chapters.length > 1">• {{ getTotalWordCount() }} total words</span>
+                  <span>• {{ chapters.length }} {{ chapters.length === 1 ? 'chapter' : 'chapters' }}</span>
+                </div>
+              </div>
+              <div class="story-actions">
+                <button
+                  class="action-btn audio-btn"
+                  (click)="convertToAudio()"
+                  [disabled]="isConvertingAudio">
+                  <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
+                  <span *ngIf="isConvertingAudio" class="loading">
+                    <span class="spinner"></span>
+                    Converting...
+                  </span>
+                </button>
+
+                <button
+                  class="action-btn save-btn"
+                  (click)="saveStory()"
+                  [disabled]="isSaving">
+                  <span *ngIf="!isSaving">💾 Save Story</span>
+                  <span *ngIf="isSaving" class="loading">
+                    <span class="spinner"></span>
+                    Saving...
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div class="chapter-navigation" *ngIf="chapters.length > 1">
+              <button
+                class="nav-btn"
+                (click)="previousChapter()"
+                [disabled]="isFirstChapter()">
+                ← Previous
+              </button>
+
+              <div class="chapter-selector" *ngIf="!hasLongChapterList">
+                <select [(ngModel)]="currentChapterIndex" (change)="navigateToChapter(currentChapterIndex)">
+                  <option *ngFor="let chapter of chapters; let i = index" [value]="i">
+                    Chapter {{ chapter.chapterNumber }}: {{ chapter.title }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="chapter-groups" *ngIf="hasLongChapterList">
+                <div class="chapter-group" *ngFor="let group of chapterGroups; let gi = index">
+                  <button type="button" class="group-header" (click)="toggleChapterGroup(gi)">
+                    <span>{{ group.label }}</span>
+                    <span class="cliffhanger-pill" *ngIf="group.chapters.some(chapter => isChapterInOpenCliffhanger(chapter.chapterNumber))">
+                      Cliffhanger
+                    </span>
+                    <span class="chevron" [class.expanded]="!isChapterGroupCollapsed(gi)">⌄</span>
+                  </button>
+                  <div class="group-body" [class.collapsed]="isChapterGroupCollapsed(gi)">
+                    <button
+                      type="button"
+                      class="chapter-item"
+                      *ngFor="let chapter of group.chapters; let idx = index"
+                      [class.active]="currentChapterIndex === group.startIndex + idx"
+                      (click)="navigateToChapter(group.startIndex + idx)">
+                      <span class="chapter-title">Chapter {{ chapter.chapterNumber }}</span>
+                      <span class="chapter-subtitle">{{ chapter.title }}</span>
+                      <span class="chapter-meta" *ngIf="isChapterInOpenCliffhanger(chapter.chapterNumber)">
+                        ⚡ Cliffhanger
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                class="nav-btn"
+                (click)="nextChapter()"
+                [disabled]="isLastChapter()">
+                Next →
+              </button>
+            </div>
+
+            <div class="story-content" [innerHTML]="currentStory"></div>
+
+            <div class="story-footer">
+              <button
+                class="continue-btn batch-btn"
+                (click)="generateChapterBatch()"
+                [disabled]="isBatchGenerating">
+                <span *ngIf="!isBatchGenerating">📦 Generate Next Batch ({{ selectedBatchSize }} {{ selectedBatchSize === 1 ? 'chapter' : 'chapters' }})</span>
+                <span *ngIf="isBatchGenerating" class="loading">
+                  <span class="spinner"></span>
+                  Queueing chapters...
+                </span>
+              </button>
+              <button
+                class="secondary-btn"
+                type="button"
+                (click)="generateChapterBatch(1)"
+                [disabled]="isBatchGenerating">
+                ➕ Queue single chapter
+              </button>
+              <p class="hint" *ngIf="isBatchGenerating">Batch request is processing. Track progress in the queue panel.</p>
+              <p class="hint" *ngIf="!isBatchGenerating && !isLastChapter()">Navigate to the latest chapter to preview new batches.</p>
+              <div class="error-message" *ngIf="batchGenerationError">
+                ❌ {{ batchGenerationError }}
+              </div>
+            </div>
           </div>
-          
-          <button
-            class="nav-btn"
-            (click)="nextChapter()"
-            [disabled]="isLastChapter()">
-            Next →
-          </button>
-        </div>
 
-        <div class="story-header">
-          <h2>Chapter {{getCurrentChapter()?.chapterNumber}}: {{getCurrentChapter()?.title}}</h2>
-          <div class="story-meta">
-            <span>{{getCurrentChapter()?.wordCount}} words</span>
-            <span *ngIf="chapters.length > 1">• {{getTotalWordCount()}} total words</span>
-            <span>• {{chapters.length}} {{chapters.length === 1 ? 'chapter' : 'chapters'}}</span>
+          <div class="story-placeholder" *ngIf="chapters.length === 0">
+            <div class="placeholder-content">
+              <h2>Your Story Will Appear Here</h2>
+              <p>Configure your story settings on the left and click "Generate Story" to begin!</p>
+              <div class="placeholder-icon">📚✨</div>
+            </div>
           </div>
-          <div class="story-actions">
-            <button
-              class="action-btn audio-btn"
-              (click)="convertToAudio()"
-              [disabled]="isConvertingAudio">
-              <span *ngIf="!isConvertingAudio">🔊 Convert to Audio</span>
-              <span *ngIf="isConvertingAudio" class="loading">
-                <span class="spinner"></span>
-                Converting...
-              </span>
-            </button>
 
-            <button
-              class="action-btn save-btn"
-              (click)="saveStory()"
-              [disabled]="isSaving">
-              <span *ngIf="!isSaving">💾 Save Story</span>
-              <span *ngIf="isSaving" class="loading">
-                <span class="spinner"></span>
-                Saving...
-              </span>
-            </button>
+          <div class="audio-loading" *ngIf="isConvertingAudio">
+            <h3>Converting to Audio...</h3>
+            <div class="spinner"></div>
+            <p>Please wait while we create your audio story...</p>
           </div>
-        </div>
 
-        <div class="story-content" [innerHTML]="currentStory"></div>
+          <div class="error-message" *ngIf="audioError">
+            ❌ {{ audioError }}
+          </div>
 
-        <div class="story-footer">
-          <button
-            class="continue-btn"
-            (click)="generateNextChapter()"
-            [disabled]="isGeneratingNext || !isLastChapter()">
-            <span *ngIf="!isGeneratingNext">📖 Generate Next Chapter</span>
-            <span *ngIf="isGeneratingNext" class="loading">
-              <span class="spinner"></span>
-              Writing next chapter...
-            </span>
-          </button>
-          <p *ngIf="!isLastChapter()" class="hint">Navigate to last chapter to continue story</p>
-        </div>
-      </div>
+          <div class="success-message" *ngIf="saveSuccess">
+            ✅ Story saved successfully!
+          </div>
 
-      <!-- Placeholder when no story -->
-      <div class="story-placeholder" *ngIf="chapters.length === 0">
-        <div class="placeholder-content">
-          <h2>Your Story Will Appear Here</h2>
-          <p>Configure your story settings on the left and click "Generate Story" to begin!</p>
-          <div class="placeholder-icon">📚✨</div>
-        </div>
-      </div>
+          <div class="success-message" *ngIf="audioSuccess">
+            🎵 Audio conversion completed! Use the player below to listen.
+          </div>
 
-      <!-- Audio Loading -->
-      <div class="audio-loading" *ngIf="isConvertingAudio">
-        <h3>Converting to Audio...</h3>
-        <div class="spinner"></div>
-        <p>Please wait while we create your audio story...</p>
-      </div>
-
-      <!-- Error Messages -->
-      <div class="error-message" *ngIf="audioError">
-        ❌ {{ audioError }}
-      </div>
-
-      <!-- Success Messages -->
-      <div class="success-message" *ngIf="saveSuccess">
-        ✅ Story saved successfully!
-      </div>
-
-      <div class="success-message" *ngIf="audioSuccess">
-        🎵 Audio conversion completed! Use the player below to listen.
-      </div>
-
-      <!-- Audio Player -->
-      <div class="audio-player" *ngIf="currentAudioUrl">
-        <h3>🎧 Audio Narration</h3>
-        <div class="audio-controls">
-          <audio controls preload="metadata" [src]="currentAudioUrl"
-                 (loadedmetadata)="onAudioLoaded($event)"
-                 (timeupdate)="onAudioProgress($event)"
-                 (ended)="onAudioEnded()">
-            Your browser does not support the audio element.
-          </audio>
-          <div class="audio-info">
-            <p><strong>Multi-Voice Narration</strong> • Duration: {{ formatDuration(currentAudioDuration) }}</p>
-            <a [href]="currentAudioUrl" download class="download-btn">
-              💾 Download Audio
-            </a>
+          <div class="audio-player" *ngIf="currentAudioUrl">
+            <h3>🎧 Audio Narration</h3>
+            <div class="audio-controls">
+              <audio
+                controls
+                preload="metadata"
+                [src]="currentAudioUrl"
+                (loadedmetadata)="onAudioLoaded($event)"
+                (timeupdate)="onAudioProgress($event)"
+                (ended)="onAudioEnded()">
+                Your browser does not support the audio element.
+              </audio>
+              <div class="audio-info">
+                <p><strong>Multi-Voice Narration</strong> • Duration: {{ formatDuration(currentAudioDuration) }}</p>
+                <a [href]="currentAudioUrl" download class="download-btn">
+                  💾 Download Audio
+                </a>
+              </div>
+            </div>
           </div>
         </div>
+
+        <aside class="continuity-column">
+          <div class="queue-panel" *ngIf="activeBatchQueue.length">
+            <div class="panel-header">
+              <h3>Batch Progress</h3>
+              <span class="updated-at">{{ continuitySummary.updatedAt | date:'short' }}</span>
+            </div>
+            <ul class="queue-list">
+              <li class="queue-item" *ngFor="let entry of activeBatchQueue">
+                <div class="queue-item-header">
+                  <span class="queue-title">{{ entry.batchSize }} {{ entry.batchSize === 1 ? 'chapter' : 'chapters' }}</span>
+                  <span class="status-pill" [class]="entry.status">
+                    {{ entry.status | titlecase }}
+                  </span>
+                </div>
+                <div class="queue-item-body">
+                  <span>{{ entry.chaptersGenerated }} / {{ entry.totalChapters }} completed</span>
+                  <span>Started {{ entry.submittedAt | date:'shortTime' }}</span>
+                </div>
+                <p class="queue-error" *ngIf="entry.errorMessage">⚠️ {{ entry.errorMessage }}</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="continuity-panel" *ngIf="hasContinuityData">
+            <h3>Continuity Overview</h3>
+            <p class="continuity-synopsis" *ngIf="continuitySummary.synopsis">{{ continuitySummary.synopsis }}</p>
+
+            <section class="continuity-section" *ngIf="continuitySummary.characters.length">
+              <h4>Characters</h4>
+              <ul>
+                <li *ngFor="let character of continuitySummary.characters">
+                  <div class="continuity-row">
+                    <div>
+                      <span class="continuity-name">{{ character.name }}</span>
+                      <span class="continuity-role">{{ character.role }}</span>
+                    </div>
+                    <span class="continuity-status">{{ character.currentStatus | titlecase }}</span>
+                  </div>
+                  <p class="continuity-notes">{{ character.summary }}</p>
+                  <p class="continuity-meta">Last seen: Chapter {{ character.lastMentionedChapter }}</p>
+                </li>
+              </ul>
+            </section>
+
+            <section class="continuity-section" *ngIf="continuitySummary.plotDevices.length">
+              <h4>Plot Devices</h4>
+              <ul>
+                <li *ngFor="let device of continuitySummary.plotDevices">
+                  <div class="continuity-row">
+                    <span class="continuity-name">{{ device.name }}</span>
+                    <span class="continuity-status">{{ device.status | titlecase }}</span>
+                  </div>
+                  <p class="continuity-notes">{{ device.summary }}</p>
+                  <p class="continuity-meta">
+                    Introduced in Chapter {{ device.introducedChapter }}
+                    <span *ngIf="device.expectedResolutionChapter"> • Target resolution: Chapter {{ device.expectedResolutionChapter }}</span>
+                  </p>
+                </li>
+              </ul>
+            </section>
+
+            <section class="continuity-section" *ngIf="continuitySummary.cliffhangers.length">
+              <h4>Cliffhangers</h4>
+              <ul>
+                <li *ngFor="let hook of continuitySummary.cliffhangers">
+                  <div class="continuity-row">
+                    <span class="continuity-name">Chapter {{ hook.chapterNumber }}</span>
+                    <span class="continuity-status" [class.resolved]="hook.status === 'resolved'">{{ hook.status | titlecase }}</span>
+                  </div>
+                  <p class="continuity-notes">{{ hook.description }}</p>
+                  <p class="continuity-meta" *ngIf="hook.resolutionChapter">Resolved in Chapter {{ hook.resolutionChapter }}</p>
+                </li>
+              </ul>
+            </section>
+
+            <section class="continuity-section" *ngIf="continuitySummary.unresolvedThreads.length">
+              <h4>Unresolved Threads</h4>
+              <ul>
+                <li *ngFor="let thread of continuitySummary.unresolvedThreads">{{ thread }}</li>
+              </ul>
+            </section>
+
+            <section class="continuity-section" *ngIf="continuitySummary.nextBatchFocus.length">
+              <h4>Next Batch Focus</h4>
+              <ul>
+                <li *ngFor="let focus of continuitySummary.nextBatchFocus">{{ focus }}</li>
+              </ul>
+            </section>
+          </div>
+        </aside>
       </div>
-      </div>
-    </div>
+    </section>
   </div>
 
-  <!-- Error Display Component -->
   <app-error-display></app-error-display>
 </div>
 
-<!-- Debug Panel Component -->
 <app-debug-panel #debugPanel></app-debug-panel>
-
-

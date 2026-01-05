@@ -1,10 +1,18 @@
-import { Component, signal, OnInit, OnDestroy, ViewChild, Inject, PLATFORM_ID, inject, ChangeDetectorRef } from '@angular/core';
+import { Component, signal, WritableSignal, OnInit, OnDestroy, ViewChild, Inject, PLATFORM_ID, inject, ChangeDetectorRef } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import { ErrorDisplayComponent } from './error-display/error-display';
-import { StoryGenerationSeam, ChapterContinuationSeam, AudioConversionSeam, SaveExportSeam, Chapter } from './contracts';
+import {
+  StoryGenerationSeam,
+  ChapterBatchSeam,
+  AudioConversionSeam,
+  SaveExportSeam,
+  Chapter,
+  StoryStateSummary,
+  BatchProgressState
+} from './contracts';
 import { DebugPanel } from './debug-panel/debug-panel';
 
 /**
@@ -85,7 +93,6 @@ export class App implements OnInit, OnDestroy {
   isConvertingAudio: boolean = false;
   isSaving: boolean = false;
   isGeneratingNext: boolean = false;
-  isContinuing: boolean = false;
   isExporting: boolean = false;
 
   /** Error states for user feedback */
@@ -135,6 +142,24 @@ export class App implements OnInit, OnDestroy {
   /** Spicy level of current story */
   currentStorySpicyLevel: number = 3;
 
+  /** Preferred number of chapters to request per batch */
+  readonly chaptersPerBatch: WritableSignal<1 | 2 | 3> = signal<1 | 2 | 3>(1);
+
+  /** Story continuity summary provided by backend */
+  readonly storyContinuity: WritableSignal<StoryStateSummary> = signal(this.createEmptyStoryState());
+
+  /** Queue of batch progress entries for visibility */
+  readonly batchProgressQueue: WritableSignal<BatchProgressState[]> = signal([]);
+
+  /** Collapsed state for chapter groups */
+  private readonly collapsedGroupIds: WritableSignal<Set<number>> = signal(new Set<number>());
+
+  /** Track active batch generation requests */
+  isBatchGenerating: boolean = false;
+
+  /** Error state specific to batch requests */
+  batchGenerationError: string = '';
+
   // ==================== AUDIO DATA MANAGEMENT ====================
 
   /** URL of generated audio file for playback */
@@ -181,6 +206,12 @@ export class App implements OnInit, OnDestroy {
     { value: 1200, label: '1200 words' }
   ];
 
+  batchSizeOptions: Array<{ value: 1 | 2 | 3; label: string; helper: string }> = [
+    { value: 1, label: 'Solo Chapter', helper: 'Great for precise pacing or cliffhanger follow-ups.' },
+    { value: 2, label: 'Double Feature', helper: 'Balances pacing and speed for most story arcs.' },
+    { value: 3, label: 'Trilogy Burst', helper: 'Accelerates long-form runs—best after continuity review.' }
+  ];
+
   spicyLevelLabels = ['Mild', 'Warm', 'Hot', 'Spicy', 'Fire 🔥'];
 
   // Theme selection methods
@@ -215,6 +246,187 @@ export class App implements OnInit, OnDestroy {
     return this.selectedThemes.size > 0;
   }
 
+  // ==================== BATCH & CONTINUITY HELPERS ====================
+
+  setChaptersPerBatch(size: 1 | 2 | 3): void {
+    if (this.chaptersPerBatch() !== size) {
+      this.chaptersPerBatch.set(size);
+    }
+  }
+
+  get selectedBatchSize(): 1 | 2 | 3 {
+    return this.chaptersPerBatch();
+  }
+
+  get activeBatchQueue(): BatchProgressState[] {
+    return this.batchProgressQueue();
+  }
+
+  get continuitySummary(): StoryStateSummary {
+    return this.storyContinuity();
+  }
+
+  get hasContinuityData(): boolean {
+    const state = this.storyContinuity();
+    return !!state.synopsis || state.characters.length > 0 || state.plotDevices.length > 0 || state.cliffhangers.length > 0;
+  }
+
+  private createEmptyStoryState(): StoryStateSummary {
+    const timestamp = new Date().toISOString();
+    return {
+      synopsis: '',
+      lastGeneratedChapter: 0,
+      characters: [],
+      plotDevices: [],
+      cliffhangers: [],
+      unresolvedThreads: [],
+      nextBatchFocus: [],
+      updatedAt: timestamp
+    };
+  }
+
+  private resetBatchState(): void {
+    this.batchProgressQueue.set([]);
+    this.collapsedGroupIds.set(new Set<number>());
+    this.batchGenerationError = '';
+    this.isBatchGenerating = false;
+  }
+
+  private updateStoryContinuity(state?: StoryStateSummary | null): void {
+    if (!state) {
+      this.storyContinuity.set(this.createEmptyStoryState());
+      return;
+    }
+
+    this.storyContinuity.set({
+      synopsis: state.synopsis || '',
+      lastGeneratedChapter: state.lastGeneratedChapter ?? this.chapters.length,
+      characters: state.characters || [],
+      plotDevices: state.plotDevices || [],
+      cliffhangers: state.cliffhangers || [],
+      unresolvedThreads: state.unresolvedThreads || [],
+      nextBatchFocus: state.nextBatchFocus || [],
+      updatedAt: state.updatedAt || new Date().toISOString()
+    });
+  }
+
+  private updateBatchQueue(queue?: BatchProgressState[] | null): void {
+    if (!queue) {
+      this.batchProgressQueue.set([]);
+      return;
+    }
+
+    const normalized = queue.map((entry) => ({
+      ...entry,
+      chaptersGenerated: entry.chaptersGenerated ?? 0,
+      totalChapters: entry.totalChapters ?? entry.batchSize,
+      status: entry.status,
+      errorMessage: entry.errorMessage
+    }));
+
+    this.batchProgressQueue.set(normalized);
+  }
+
+  private patchBatchQueueEntry(update: BatchProgressState): void {
+    const current = [...this.batchProgressQueue()];
+    const index = current.findIndex((entry) => entry.id === update.id);
+    if (index >= 0) {
+      current[index] = { ...current[index], ...update };
+    } else {
+      current.push(update);
+    }
+    this.batchProgressQueue.set(current);
+  }
+
+  get chapterGroups(): Array<{ label: string; startIndex: number; chapters: Chapter[] }> {
+    if (!this.chapters.length) {
+      return [];
+    }
+
+    const groupSize = this.getChapterGroupSize();
+    const groups: Array<{ label: string; startIndex: number; chapters: Chapter[] }> = [];
+
+    for (let index = 0; index < this.chapters.length; index += groupSize) {
+      const chunk = this.chapters.slice(index, index + groupSize);
+      const first = chunk[0];
+      const last = chunk[chunk.length - 1];
+      const label = chunk.length === 1
+        ? `Chapter ${first.chapterNumber}`
+        : `Chapters ${first.chapterNumber}–${last.chapterNumber}`;
+
+      groups.push({
+        label,
+        startIndex: index,
+        chapters: chunk
+      });
+    }
+
+    return groups;
+  }
+
+  private getChapterGroupSize(): number {
+    if (this.chapters.length >= 50) {
+      return 10;
+    }
+    if (this.chapters.length >= 20) {
+      return 5;
+    }
+    return 3;
+  }
+
+  toggleChapterGroup(groupIndex: number): void {
+    const updated = new Set(this.collapsedGroupIds());
+    if (updated.has(groupIndex)) {
+      updated.delete(groupIndex);
+    } else {
+      updated.add(groupIndex);
+    }
+    this.collapsedGroupIds.set(updated);
+  }
+
+  isChapterGroupCollapsed(groupIndex: number): boolean {
+    return this.collapsedGroupIds().has(groupIndex);
+  }
+
+  get hasLongChapterList(): boolean {
+    return this.chapters.length >= 12;
+  }
+
+  isChapterInOpenCliffhanger(chapterNumber: number): boolean {
+    return this.storyContinuity().cliffhangers.some(
+      (cliffhanger) => cliffhanger.chapterNumber === chapterNumber && cliffhanger.status !== 'resolved'
+    );
+  }
+
+  private buildBatchRequest(batchSize: 1 | 2 | 3): ChapterBatchSeam['input'] {
+    return {
+      storyId: this.currentStoryId,
+      currentChapterCount: this.chapters.length,
+      batchSize,
+      existingChapterSummaries: this.chapters.map((chapter) => ({
+        chapterNumber: chapter.chapterNumber,
+        title: chapter.title,
+        cliffhangerSummary: this.storyContinuity()
+          .cliffhangers.find((item) => item.chapterNumber === chapter.chapterNumber)?.description
+      })),
+      continuity: {
+        synopsis: this.storyContinuity().synopsis,
+        lastGeneratedChapter: this.storyContinuity().lastGeneratedChapter,
+        characters: this.storyContinuity().characters,
+        plotDevices: this.storyContinuity().plotDevices,
+        cliffhangers: this.storyContinuity().cliffhangers,
+        unresolvedThreads: this.storyContinuity().unresolvedThreads,
+        nextBatchFocus: this.storyContinuity().nextBatchFocus,
+        updatedAt: this.storyContinuity().updatedAt
+      }
+    };
+  }
+
+  clearCompletedBatches(): void {
+    const filtered = this.activeBatchQueue.filter((entry) => entry.status !== 'completed' && entry.status !== 'failed');
+    this.batchProgressQueue.set(filtered);
+  }
+
   // TrackBy functions to prevent duplicate rendering
   trackByCreature(index: number, creature: any): string {
     return creature.value;
@@ -235,6 +447,7 @@ export class App implements OnInit, OnDestroy {
     this.currentStory = '';
     this.saveSuccess = false;
     this.audioSuccess = false;
+    this.resetBatchState();
 
     // Clear audio data when generating new story
     this.currentAudioUrl = '';
@@ -279,6 +492,8 @@ export class App implements OnInit, OnDestroy {
           this.currentStoryTitle = response.data.title;
           this.currentStoryThemes = response.data.themes;
           this.currentStorySpicyLevel = response.data.spicyLevel;
+          this.updateStoryContinuity(response.metadata?.storyState || (response as any).data?.storyState);
+          this.updateBatchQueue(response.metadata?.batchQueue || []);
 
           this.isGenerating = false;
           this.generationError = ''; // Clear any previous errors
@@ -341,6 +556,7 @@ export class App implements OnInit, OnDestroy {
     this.audioSuccess = false;
     this.currentAudioUrl = '';
     this.currentAudioDuration = 0;
+    this.resetBatchState();
 
     this.errorLogging.logInfo('Quick test initiated', 'App.quickTest');
 
@@ -375,6 +591,8 @@ export class App implements OnInit, OnDestroy {
           this.currentStoryTitle = response.data.title;
           this.currentStoryThemes = response.data.themes;
           this.currentStorySpicyLevel = response.data.spicyLevel;
+          this.updateStoryContinuity(response.metadata?.storyState || (response as any).data?.storyState);
+          this.updateBatchQueue(response.metadata?.batchQueue || []);
 
           this.isGenerating = false;
           this.generationError = '';
@@ -407,55 +625,101 @@ export class App implements OnInit, OnDestroy {
     });
   }
 
-  generateNextChapter() {
-    this.isContinuing = true;
+  generateChapterBatch(batchSize?: 1 | 2 | 3) {
+    if (!this.currentStoryId) {
+      this.batchGenerationError = 'Generate a base story before requesting additional chapters.';
+      return;
+    }
 
-    this.errorLogging.logInfo('User initiated chapter continuation', 'App.generateNextChapter');
+    const normalizedSize = (batchSize ?? this.selectedBatchSize) as 1 | 2 | 3;
+    const batchId = `batch_${Date.now()}`;
+    const submittedAt = new Date().toISOString();
 
-    const request: ChapterContinuationSeam['input'] = {
-      storyId: this.currentStoryId,
-      currentChapterCount: this.chapters.length,
-      existingContent: this.chapters.map(ch => ch.content).join('\n\n'),
-      userInput: '',
-      maintainTone: true
+    const queuedEntry: BatchProgressState = {
+      id: batchId,
+      batchSize: normalizedSize,
+      status: 'queued',
+      chaptersGenerated: 0,
+      totalChapters: normalizedSize,
+      submittedAt
     };
 
-    this.storyService.generateNextChapter(request).subscribe({
+    this.patchBatchQueueEntry(queuedEntry);
+    this.patchBatchQueueEntry({ ...queuedEntry, status: 'in_progress' });
+    this.isBatchGenerating = true;
+    this.isGeneratingNext = true;
+    this.batchGenerationError = '';
+
+    const request = this.buildBatchRequest(normalizedSize);
+
+    this.errorLogging.logInfo('User queued batch chapter generation', 'App.generateChapterBatch', {
+      storyId: request.storyId,
+      batchSize: normalizedSize,
+      currentChapterCount: request.currentChapterCount
+    });
+
+    this.storyService.generateChapterBatch(request).subscribe({
       next: (response) => {
+        this.isBatchGenerating = false;
+        this.isGeneratingNext = false;
         if (response.success && response.data) {
-          // Create new chapter
-          const newChapter: Chapter = {
-            chapterId: response.data.chapterId,
-            chapterNumber: response.data.chapterNumber,
-            title: response.data.title,
-            content: response.data.content,
-            rawContent: response.data.content, // Backend should provide rawContent
-            wordCount: response.data.content.split(/\s+/).length,
-            generatedAt: new Date(),
-            hasAudio: false
-          };
+          const newChapters = (response.data.chapters || []).map((chapter, index) => ({
+            ...chapter,
+            chapterNumber: chapter.chapterNumber || this.chapters.length + index + 1,
+            generatedAt: chapter.generatedAt ? new Date(chapter.generatedAt) : new Date(),
+            hasAudio: chapter.hasAudio ?? false
+          }));
 
-          // Add to chapters array
-          this.chapters.push(newChapter);
-          
-          // Navigate to new chapter
-          this.currentChapterIndex = this.chapters.length - 1;
+          if (newChapters.length) {
+            this.chapters = [...this.chapters, ...newChapters];
+            this.navigateToChapter(this.chapters.length - newChapters.length);
+          }
 
-          this.isGeneratingNext = false;
-          this.errorLogging.logInfo('Chapter continuation completed successfully', 'App.generateNextChapter', {
-            chapterId: response.data.chapterId,
-            chapterNumber: response.data.chapterNumber
+          this.updateStoryContinuity(response.data.storyState || response.metadata?.storyState);
+          this.updateBatchQueue(response.data.queue || response.metadata?.batchQueue || this.activeBatchQueue);
+          this.batchGenerationError = '';
+
+          this.patchBatchQueueEntry({
+            ...queuedEntry,
+            status: 'completed',
+            chaptersGenerated: newChapters.length,
+            completedAt: new Date().toISOString()
           });
+
+          this.errorLogging.logInfo('Batch generation completed successfully', 'App.generateChapterBatch', {
+            storyId: request.storyId,
+            batchSize: normalizedSize,
+            generatedChapters: newChapters.length
+          });
+        } else {
+          this.batchGenerationError = response.error?.message || 'Batch generation failed. Please try again.';
+          this.patchBatchQueueEntry({ ...queuedEntry, status: 'failed', errorMessage: this.batchGenerationError });
         }
       },
       error: (error) => {
-        this.errorLogging.logError(error, 'App.generateNextChapter', 'error', {
-          request,
-          userAction: 'chapter_continuation'
-        });
+        this.isBatchGenerating = false;
         this.isGeneratingNext = false;
+        const message = error.error?.message || error.message || 'Unable to generate chapter batch.';
+        this.batchGenerationError = message;
+
+        this.patchBatchQueueEntry({ ...queuedEntry, status: 'failed', errorMessage: message });
+        this.errorLogging.logError(error, 'App.generateChapterBatch', 'error', {
+          request,
+          userAction: 'batch_generation'
+        });
+
+        // Auto-clear error after 10 seconds for repeated attempts
+        setTimeout(() => {
+          if (this.batchGenerationError === message) {
+            this.batchGenerationError = '';
+          }
+        }, 10000);
       }
     });
+  }
+
+  generateNextChapter() {
+    this.generateChapterBatch(1);
   }
 
   convertToAudio() {

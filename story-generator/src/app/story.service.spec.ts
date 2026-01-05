@@ -5,6 +5,7 @@ import { ErrorLoggingService } from './error-logging';
 import {
   StoryGenerationSeam,
   ChapterContinuationSeam,
+  ChapterBatchSeam,
   AudioConversionSeam,
   SaveExportSeam,
   ApiResponse,
@@ -285,6 +286,105 @@ describe('StoryService', () => {
         'StoryService.saveStory',
         { storyId: 'story_123', format: 'pdf' }
       );
+    });
+  });
+
+  describe('generateChapterBatch', () => {
+    const mockInput: ChapterBatchSeam['input'] = {
+      storyId: 'story_123',
+      currentChapterCount: 2,
+      batchSize: 2,
+      existingChapterSummaries: [
+        { chapterNumber: 1, title: 'Chapter 1' },
+        { chapterNumber: 2, title: 'Chapter 2', cliffhangerSummary: 'Unanswered knock.' }
+      ],
+      continuity: {
+        synopsis: 'Two chapters of intrigue',
+        lastGeneratedChapter: 2,
+        characters: [],
+        plotDevices: [],
+        cliffhangers: [],
+        unresolvedThreads: [],
+        nextBatchFocus: [],
+        updatedAt: new Date().toISOString()
+      }
+    };
+
+    const mockSuccessResponse: ApiResponse<ChapterBatchSeam['output']> = {
+      success: true,
+      data: {
+        chapters: [
+          {
+            chapterId: 'chapter_3',
+            chapterNumber: 3,
+            title: 'Chapter 3',
+            content: '<p>New chapter content</p>',
+            wordCount: 105,
+            generatedAt: new Date(),
+            hasAudio: false
+          }
+        ],
+        storyState: {
+          synopsis: 'Updated synopsis',
+          lastGeneratedChapter: 3,
+          characters: [],
+          plotDevices: [],
+          cliffhangers: [],
+          unresolvedThreads: [],
+          nextBatchFocus: [],
+          updatedAt: new Date().toISOString()
+        },
+        queue: [
+          {
+            id: 'batch_1',
+            batchSize: 2,
+            status: 'completed',
+            chaptersGenerated: 2,
+            totalChapters: 2,
+            submittedAt: new Date().toISOString(),
+            completedAt: new Date().toISOString()
+          }
+        ]
+      },
+      metadata: {
+        requestId: 'req_batch_1',
+        processingTime: 4200
+      }
+    };
+
+    it('should request batch generation and normalize response data', () => {
+      service.generateChapterBatch(mockInput).subscribe((response) => {
+        expect(response.success).toBe(true);
+        expect(response.data?.chapters?.length).toBe(1);
+        expect(response.data?.storyState.synopsis).toBe('Updated synopsis');
+        expect(response.data?.queue.length).toBe(1);
+      });
+
+      const req = httpMock.expectOne('/api/story/batch');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual(mockInput);
+      req.flush(mockSuccessResponse);
+
+      expect(errorLoggingService.logInfo).toHaveBeenCalledWith(
+        'Starting batch generation',
+        'StoryService.generateChapterBatch',
+        jasmine.objectContaining({ storyId: 'story_123', batchSize: 2 })
+      );
+    });
+
+    it('should propagate batch generation errors', () => {
+      service.generateChapterBatch(mockInput).subscribe({
+        next: () => fail('Expected an error response'),
+        error: (error) => {
+          expect(error.success).toBe(false);
+          expect(error.error.message).toBe('Internal server error');
+        }
+      });
+
+      const req = httpMock.expectOne('/api/story/batch');
+      req.flush({ success: false, error: { code: 'BATCH_ERROR', message: 'Internal server error' } }, { status: 500, statusText: 'Server Error' });
+
+      expect(errorLoggingService.logError).toHaveBeenCalled();
     });
   });
 
