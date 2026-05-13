@@ -7,7 +7,6 @@ import {
 import express, { Request, Response, NextFunction } from 'express';
 import { join } from 'node:path';
 import { StoryService } from '../../api/lib/services/storyService';
-import { AudioService } from '../../api/lib/services/audioService';
 import { ExportService } from '../../api/lib/services/exportService';
 import { ImageService } from '../../api/lib/services/imageService';
 
@@ -50,8 +49,7 @@ app.get('/api/health', (req: Request, res: Response) => {
     uptime: process.uptime(),
     environment: process.env['NODE_ENV'] || 'development',
     services: {
-      grok: !!process.env['XAI_API_KEY'] ? 'configured' : 'mock',
-      elevenlabs: !!process.env['ELEVENLABS_API_KEY'] ? 'configured' : 'mock'
+      grok: !!process.env['XAI_API_KEY'] ? 'configured' : 'mock'
     },
     version: '2.1.0'
   });
@@ -150,7 +148,7 @@ app.post('/api/story/stream', async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('Streaming generation error:', error);
-    
+
     // Send error as SSE event
     res.write(`data: ${JSON.stringify({
       type: 'error',
@@ -190,38 +188,6 @@ app.post('/api/story/continue', async (req: Request, res: Response) => {
       error: {
         code: 'INTERNAL_ERROR',
         message: 'Chapter continuation failed'
-      }
-    });
-  }
-});
-
-// Audio conversion
-app.post('/api/audio/convert', async (req: Request, res: Response) => {
-  try {
-    const input = req.body;
-
-    if (!input.storyId || !input.content) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_INPUT',
-          message: 'Missing required fields: storyId, content'
-        }
-      });
-      return;
-    }
-
-    const audioService = new AudioService();
-    const result = await audioService.convertToAudio(input);
-
-    res.status(200).json(result);
-  } catch (error: any) {
-    console.error('Audio conversion error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Audio conversion failed'
       }
     });
   }
@@ -333,7 +299,6 @@ if (isMainModule(import.meta.url)) {
 ║                                                       ║
 ║   Services:                                           ║
 ║   - Grok AI:      ${(!!process.env['XAI_API_KEY'] ? '✅ Configured' : '⚠️  Mock Mode').padEnd(14)} ║
-║   - ElevenLabs:   ${(!!process.env['ELEVENLABS_API_KEY'] ? '✅ Configured' : '⚠️  Mock Mode').padEnd(14)} ║
 ╚═══════════════════════════════════════════════════════╝
     `);
   });

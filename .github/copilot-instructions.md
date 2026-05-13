@@ -20,25 +20,24 @@ This is a **spicy fairy tale story generator** with these key domain concepts:
 - **Creatures**: `'vampire' | 'werewolf' | 'fairy'`
 - **Themes**: `'romance' | 'adventure' | 'mystery' | 'comedy' | 'dark'`
 - **Spicy Levels**: `1 | 2 | 3 | 4 | 5` (content intensity rating)
-- **Story Processing**: Generation → Chapter Continuation → Audio Conversion → Export
+- **Story Processing**: Generation → Chapter Continuation → Export
 
 ### ESTABLISHED SEAMS:
 The project already implements these proven seam contracts:
 
 1. **User Input → Story Generator**: Form data to AI-generated story content
 2. **Story → Chapter Continuation**: Existing story to additional chapters
-3. **Story Text → Audio Converter**: HTML content to TTS audio files
-4. **Story Data → Save/Export**: Story content to various download formats
+3. **Story Data → Save/Export**: Story content to various download formats
 
 ### WORKFLOW:
 1. Build UI with mocks using existing `contracts.ts` types
 2. Extract seams from UI interactions following established patterns
 3. Define TypeScript contracts matching existing seam interfaces
 4. Generate backend services conforming to contract specifications
-5. Replace mocks with real API calls (Grok AI, ElevenLabs)
+5. Replace mocks with real API calls (Grok AI)
 
 ### ALWAYS:
-- Reference existing contracts in `story-generator/src/app/contracts.ts` and `backend/src/types/contracts.ts`
+- Reference existing contracts in `story-generator/src/app/contracts.ts` (frontend) and `story-generator/src/api/lib/types/contracts.ts` (backend)
 - Use established type definitions (`CreatureType`, `ThemeType`, `SpicyLevel`, etc.)
 - Follow the `ApiResponse<T>` pattern for all API responses
 - Implement mock fallbacks for development without API keys
