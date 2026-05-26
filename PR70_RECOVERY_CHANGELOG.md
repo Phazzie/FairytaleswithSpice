@@ -480,3 +480,43 @@ Running merge-order snapshot after #73:
 2. #74 - prompt proving grounds now that batch/state surfaces are clearer.
 3. #41/#39 - Vercel CI and test pipeline.
 4. #26 - frontend validation/accessibility services after core story-lab surfaces stabilize.
+
+## 2026-05-26 06:56 EDT - PR #71 Batch Metadata Compared And Ported
+
+Actions:
+
+- Inspected PR #71's early backend/frontend batch-generation pass.
+- Compared it against already-ported #72 backend batching, #75 story-lab UI affordances, and #73 state-delta work.
+- Ported the one unique low-risk improvement:
+  - `chaptersRequested`, `chaptersGenerated`, and `partialFailures` on `ApiResponse.metadata`.
+  - Metadata population in canonical generation and continuation responses.
+  - Metadata assertions in `tests/story-service-improved.test.ts`.
+
+Decision:
+
+- Do not merge #71 directly.
+- Do not take old app-shell changes, stale `api/lib/*` paths, old `/api/story/*` frontend route assumptions, or old test-data factory.
+- Do not take service-level clamping for invalid requested chapter counts; keep explicit validation.
+
+Validation:
+
+- `npx tsx tests/story-service-improved.test.ts` passed with 14/14 tests.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+- `git diff --check` passed.
+- `npm test` passed all configured suites.
+- `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with the existing stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed from the repo root.
+
+Self-review:
+
+- Good: #71 was compared after the newer batch/state ports, which made the remaining unique material easy to isolate.
+- Good: Metadata improves observability without changing response data shape.
+- Problem found and fixed: I initially ran `build:verify` from `story-generator`, where the script does not exist, then reran it from the repo root.
+
+Running merge-order snapshot after #71:
+
+1. #74 - prompt proving grounds, now that batch/state primitives are settled.
+2. #41/#39 - Vercel CI/test workflow.
+3. #26 - UI validation/accessibility services.
+4. #84 - dependency group remains deferred until lockfile noise is resolved.

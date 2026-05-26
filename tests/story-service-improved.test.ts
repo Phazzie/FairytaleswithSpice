@@ -379,6 +379,8 @@ const testSuite = {
 
       const story = result.data!;
       expect(story.chapters?.length).toBe(3);
+      expect(result.metadata?.chaptersRequested).toBe(3);
+      expect(result.metadata?.chaptersGenerated).toBe(3);
       expect(story.totalWordCount).toBeGreaterThan(0);
       expect(story.actualWordCount).toBe(story.totalWordCount);
       expect(story.appendedToStory).toContain('Chapter 3');
@@ -410,6 +412,8 @@ const testSuite = {
 
       const continuation = result.data!;
       expect(continuation.chapters?.length).toBe(2);
+      expect(result.metadata?.chaptersRequested).toBe(2);
+      expect(result.metadata?.chaptersGenerated).toBe(2);
       expect(continuation.chapters?.[0]?.chapterNumber).toBe(2);
       expect(continuation.chapters?.[1]?.chapterNumber).toBe(3);
       expect(continuation.appendedToStory).toContain('Chapter 3');

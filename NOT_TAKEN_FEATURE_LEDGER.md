@@ -309,3 +309,36 @@ Template:
   - `api/lib/types/contracts.ts`
   - `story-generator/src/app/contracts.ts`
   - `tests/story-service-improved.test.ts`
+
+## PR #71 - Support batch chapter generation across backend and frontend
+
+- Disposition: tiny selected port; close later as superseded
+- Source branch: `pr-71`
+- Story-generation ideas not taken:
+  - Early batch-generation implementation after #72's more mature backend port.
+  - Service-level clamping of invalid requested chapter counts.
+  - Old partial-failure response shape where it conflicts with the current `failedChapters` data field.
+  - Old `tests/story-service.test.mjs` rewrite that imports stale `api/lib/*`.
+- Other useful ideas not taken:
+  - Old Angular batch dropdown and warning UI.
+  - Old `story-generator/src/testing/data-factory.ts`.
+  - Old debug-panel and streaming component test changes.
+  - Old frontend service changes targeting `/api/story/*` rather than #70's story-lab seam.
+- Why not now:
+  - #72 already supplied the backend batch primitive in canonical `api/_lib`.
+  - #75 already supplied the current story-lab batch UI affordances.
+  - #73 already supplied state-delta and persistence-boundary behavior.
+  - Silent service-level clamping can hide bad callers; current behavior rejects invalid counts explicitly.
+- Future extraction notes:
+  - Consider UI-level clamping or disabled controls if users need forgiving batch selection.
+  - Recreate a frontend test-data factory only if future Angular specs begin duplicating large fixtures.
+- Source files/commits:
+  - `api/lib/services/storyService.ts`
+  - `api/lib/types/contracts.ts`
+  - `api/story/generate.ts`
+  - `api/story/continue.ts`
+  - `story-generator/src/app/app.*`
+  - `story-generator/src/app/contracts.ts`
+  - `story-generator/src/app/story.service.ts`
+  - `story-generator/src/testing/data-factory.ts`
+  - `tests/story-service.test.mjs`

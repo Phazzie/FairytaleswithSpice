@@ -448,5 +448,8 @@ export interface ApiResponse<T> {
     requestId: string;
     processingTime: number;
     rateLimitRemaining?: number;
+    chaptersRequested?: number;
+    chaptersGenerated?: number;
+    partialFailures?: ChapterFailure[];
   };
 }

@@ -91,7 +91,9 @@ export class StoryService {
           error: validationError,
           metadata: {
             requestId,
-            processingTime: Date.now() - startTime
+            processingTime: Date.now() - startTime,
+            chaptersRequested: requestedChapterCount,
+            chaptersGenerated: 0
           }
         };
       }
@@ -165,7 +167,10 @@ export class StoryService {
           },
           metadata: {
             requestId,
-            processingTime: Date.now() - startTime
+            processingTime: Date.now() - startTime,
+            chaptersRequested: requestedChapterCount,
+            chaptersGenerated: 0,
+            partialFailures: failedChapters.length ? failedChapters : undefined
           }
         };
       }
@@ -213,7 +218,10 @@ export class StoryService {
         data: output,
         metadata: {
           requestId,
-          processingTime: Date.now() - startTime
+          processingTime: Date.now() - startTime,
+          chaptersRequested: requestedChapterCount,
+          chaptersGenerated: chapters.length,
+          partialFailures: failedChapters.length ? failedChapters : undefined
         }
       };
 
@@ -238,7 +246,9 @@ export class StoryService {
         },
         metadata: {
           requestId,
-          processingTime: Date.now() - startTime
+          processingTime: Date.now() - startTime,
+          chaptersRequested: requestedChapterCount,
+          chaptersGenerated: 0
         }
       };
     }
@@ -282,7 +292,9 @@ export class StoryService {
           },
           metadata: {
             requestId,
-            processingTime: Date.now() - startTime
+            processingTime: Date.now() - startTime,
+            chaptersRequested: requestedChapterCount,
+            chaptersGenerated: 0
           }
         };
       }
@@ -358,7 +370,10 @@ export class StoryService {
           },
           metadata: {
             requestId,
-            processingTime: Date.now() - startTime
+            processingTime: Date.now() - startTime,
+            chaptersRequested: requestedChapterCount,
+            chaptersGenerated: 0,
+            partialFailures: failedChapters.length ? failedChapters : undefined
           }
         };
       }
@@ -402,7 +417,10 @@ export class StoryService {
         data: output,
         metadata: {
           requestId,
-          processingTime: duration
+          processingTime: duration,
+          chaptersRequested: requestedChapterCount,
+          chaptersGenerated: chapters.length,
+          partialFailures: failedChapters.length ? failedChapters : undefined
         }
       };
 
@@ -424,7 +442,9 @@ export class StoryService {
         },
         metadata: {
           requestId,
-          processingTime: duration
+          processingTime: duration,
+          chaptersRequested: requestedChapterCount,
+          chaptersGenerated: 0
         }
       };
     }

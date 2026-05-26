@@ -70,3 +70,4 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Batch generation needs an explicit budget policy. PR #72 split the requested word count across chapters; the recovery branch preserves that behavior for live calls, but the product should decide whether users expect a total-batch or per-chapter budget.
 - UI workflow ports should follow the current seam, not resurrect stale routes. PR #75's batch queue and suggested prompts were useful, but the old `/api/story/batch` path was not worth reviving beside #70's story-lab continuation API.
 - Name non-durable state for what it is. PR #73's in-memory fallback is useful for local story-lab continuity, but on Vercel it must stay labeled as transient until a durable storage product is selected.
+- Prefer explicit service validation over silent normalization. PR #71's invalid-count clamping is a possible UI behavior, but the service boundary should keep rejecting invalid caller input.

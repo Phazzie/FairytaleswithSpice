@@ -27,7 +27,7 @@ Status values:
 | #74 | port later or mine/close | pending | Proving grounds prompt lab. |
 | #73 | recreate/port | ported | Ported story-lab state deltas and transient persistence boundary; DigitalOcean Postgres and `pg` dependency not taken. |
 | #72 | port/cherry-pick | ported | Ported backward-compatible 1-3 chapter batch generation/continuation into canonical `api/_lib`; old UI/route rewrites not taken. |
-| #71 | compare then close | pending | Early batch generation, mostly superseded by #72. |
+| #71 | compare then close | ported | Ported chapter-count response metadata; remaining batch/UI material superseded by #72/#75/#73. |
 | #70 | merge baseline | merged | Merged into `recovery-pr70-story-lab-vercel` as commit `118265c`; stabilization pending. |
 | #67 | port/cherry-pick | ported | Ported author-style extraction, duplicate-service deletion, path/test fixes, and validation bug fix. |
 | #65 | port/cherry-pick | ported | Verified canonical AI fixes; aligned duplicate compiled service timeouts and test path. |
@@ -627,5 +627,62 @@ Use this template for detailed entries as each PR is handled:
   - The port keeps the current story-lab contract as the UI/API boundary and avoids creating another legacy contract layer.
   - The new store is intentionally not marketed as durable persistence. Its warning text should remain until a real Vercel storage choice is implemented.
   - The #73 port resolves the immediate state-delta gap before #71/#74 review, but production story generation still needs an adapter from canonical `StoryService` into `StoryIterationPayload`.
+- GitHub PR closure note:
+  - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #71 - Support batch chapter generation across backend and frontend
+
+- Source branch: `pr-71` / `codex/update-chapter-generation-logic-and-validations`
+- Planned disposition: compare then close
+- Actual disposition: ported small response-metadata improvement; otherwise superseded by #72/#75/#73
+- Story-generation impact: Medium. #71 was the early batch-generation pass that introduced requested chapter counts, chapter arrays, partial failures, UI batch controls, and test helpers. Most of that has already landed in a newer form.
+- Accepted material:
+  - Added optional `chaptersRequested`, `chaptersGenerated`, and `partialFailures` fields to canonical `ApiResponse.metadata`.
+  - Populated those metadata fields from `StoryService.generateStory()` and `StoryService.continueChapter()`.
+  - Added assertions for batch metadata in `tests/story-service-improved.test.ts`.
+- Not taking now:
+  - Direct branch merge.
+  - Old `api/lib/*` path changes.
+  - Old `/api/story/generate` and `/api/story/continue` route edits as-is.
+  - Old pre-#70 Angular app shell changes.
+  - Old batch dropdown UI and warnings; #70/#75 now own that surface.
+  - #71's clamping behavior for invalid requested chapter counts.
+  - Old `story-generator/src/testing/data-factory.ts`.
+  - Old `tests/story-service.test.mjs` rewrite that imports `api/lib/*`.
+- Why not taking:
+  - #72 is the more mature backend batch implementation and is already ported.
+  - #75 is the more relevant #70-compatible UI workflow port and is already ported.
+  - #73 now owns state-delta and persistence-boundary work.
+  - Explicit validation is clearer than silently clamping invalid requested chapter counts at the service boundary.
+  - The old test factory and `.mjs` tests target stale frontend/backend paths.
+- Future mining value:
+  - If the product wants forgiving batch controls, consider UI-level clamping with visible feedback rather than service-level silent clamping.
+  - Recreate frontend test-data factories only if Angular specs become repetitive after #26/#74.
+- Files inspected:
+  - `api/lib/services/storyService.ts` from PR #71
+  - `api/lib/types/contracts.ts` from PR #71
+  - `api/story/generate.ts` and `api/story/continue.ts` from PR #71
+  - `story-generator/src/app/app.*`, `contracts.ts`, `story.service.ts`, and specs from PR #71
+  - `story-generator/src/testing/data-factory.ts` from PR #71
+  - `tests/story-service.test.mjs` from PR #71
+- Files changed in recovery branch:
+  - `api/_lib/types/contracts.ts`
+  - `api/_lib/services/storyService.ts`
+  - `tests/story-service-improved.test.ts`
+  - recovery docs
+- Conflicts encountered:
+  - GitHub reports PR #71 as conflicting.
+  - Conflict shape is old `api/lib` paths, old app shell, stale test path, and overlap with already-ported #72/#75 batch features.
+- Tests/checks run:
+  - `npx tsx tests/story-service-improved.test.ts` passed with 14/14 tests.
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+  - `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+  - `git diff --check` passed.
+  - `npm test` passed all configured suites.
+  - `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with the existing stale `baseline-browser-mapping` warning.
+  - `npm run build:verify` passed from the repo root.
+- Self-review notes:
+  - The only unique code worth taking was observability metadata.
+  - The decision to reject invalid requested chapter counts remains intentional; #71's service-level clamping is recorded for possible UI-level behavior later.
 - GitHub PR closure note:
   - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
