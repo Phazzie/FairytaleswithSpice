@@ -65,3 +65,4 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - A passing process exit is not enough evidence when a custom test harness is involved. The #67 pass found a test that printed a failure but exited 0 because it counted a non-existent `failed` property.
 - Duplicate service deletion should happen before deeper feature ports. Keeping `story-generator/src/api/lib` alive made every story-generation fix twice as risky and encouraged stale-path imports.
 - Port the idea, not the tone, when resurrecting old prompt features. PR #24's trope subversion concept was valuable, but several raw inversions needed adaptation so the app keeps a dark-romance voice instead of accidental parody.
+- Do not add fake persistence to a Vercel-targeted app. PR #31's in-memory story arc service is useful as a model reference but would create false durability if exposed as an active serverless endpoint.

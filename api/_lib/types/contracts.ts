@@ -18,6 +18,22 @@ export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
+export type CliffhangerType =
+  | 'romantic_tension'
+  | 'plot_twist'
+  | 'danger'
+  | 'mystery'
+  | 'character_revelation'
+  | 'emotional_conflict';
+
+export interface CliffhangerAnalysis {
+  cliffhangerDetected: boolean;
+  cliffhangerType: CliffhangerType;
+  cliffhangerStrength: number;
+  cliffhangerText: string;
+  suggestedContinuations: string[];
+  varietyScore: number;
+}
 
 // ==================== CHAPTER MANAGEMENT ====================
 export interface Chapter {
@@ -122,6 +138,7 @@ export interface ChapterContinuationSeam {
     spicyLevelMaintained: SpicyLevel;
     appendedToStory: string; // Full updated story content
     tropeMetadata?: string; // Propagated invisible generation metadata
+    cliffhangerAnalysis?: CliffhangerAnalysis;
   };
 
   errors: {

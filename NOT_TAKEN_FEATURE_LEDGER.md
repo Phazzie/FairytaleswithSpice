@@ -176,3 +176,34 @@ Template:
   - `backend/src/services/storyService.ts`
   - `backend/src/tests/*`
   - `story-generator/src/app/contracts.ts`
+
+## PR #31 - Chapter continuation, story arc, and audiobook system
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-31`
+- Story-generation ideas not taken:
+  - In-memory story-arc CRUD service.
+  - Story arc model with characters, world state, character growth, and chapter metadata.
+  - Story arc endpoint.
+  - Frontend story arc management UI.
+  - Full enhanced continuation prompt from the old branch; only the cliffhanger variety slice was ported.
+- Other useful ideas not taken:
+  - Audiobook compilation service and endpoint.
+  - Create-audiobook UI.
+  - Old `vercel.json` routing changes.
+- Why not now:
+  - Audio is deferred.
+  - In-memory story arcs are misleading on Vercel serverless because persistence is not durable.
+  - #70 owns the story-lab UI and #72/#73 should decide the real multi-chapter/state contract.
+- Future extraction notes:
+  - Use #31's story arc model as a reference when porting #73 state snapshots.
+  - Use #31's frontend story arc affordances only after #72/#75 settle the chapter batching workflow.
+  - Reopen audiobook compilation only in a later audio phase.
+- Source files/commits:
+  - `api/lib/services/storyArcService.ts`
+  - `api/story/arc.ts`
+  - `api/lib/services/storyService.ts`
+  - `api/lib/types/contracts.ts`
+  - `api/audio/compile.ts`
+  - `api/lib/services/audiobookService.ts`
+  - `story-generator/src/app/*`

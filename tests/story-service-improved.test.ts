@@ -326,6 +326,7 @@ const testSuite = {
     const chapter = continueResult.data!;
     console.log(`   ✓ Generated chapter ${chapter.chapterNumber}: "${chapter.title}"`);
     console.log(`   ✓ Chapter word count: ${chapter.wordCount}`);
+    expect(chapter.cliffhangerAnalysis, 'cliffhangerAnalysis should be defined').toBeDefined();
   }),
   
   // Test 8: Performance test

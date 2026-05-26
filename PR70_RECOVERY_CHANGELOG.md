@@ -307,3 +307,60 @@ Self-review:
 
 - This port improves story uniqueness but introduces metadata that the current #70 UI does not yet preserve through continuation. That is acceptable for generation now and should be reconciled with #72/#73 story state work.
 - The old branch's story value was high, but its architecture was not reusable.
+
+## 2026-05-26 02:11 EDT - PR #31 Cliffhanger Slice Ported
+
+Actions:
+
+- Inspected #31's story-arc, chapter continuation, and audiobook compilation branch.
+- Ported the low-risk story-generation slice:
+  - Added `api/_lib/services/cliffhangerService.ts`.
+  - Added canonical cliffhanger types and analysis shape.
+  - Attached `cliffhangerAnalysis` to continuation outputs.
+  - Added cliffhanger variety targets to the continuation prompt.
+  - Added `tests/cliffhanger-service.test.ts` to the root test suite.
+
+Decision:
+
+- Do not merge #31 directly.
+- Do not take audiobook compilation or UI.
+- Do not take the in-memory story-arc CRUD service as active Vercel code.
+- Mine story-arc concepts for #72/#73 instead.
+
+Validation:
+
+- `npm test` passed: story suite 12/12 plus trope and cliffhanger service tests.
+- `npx tsx tests/verify-ai-fixes.test.ts` passed.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- The direct story-generation value is the cliffhanger analysis and prompt guidance.
+- The story-arc model should not be lost, but its persistence story belongs with #73 and the multi-chapter workflow belongs with #72/#75.
+
+## 2026-05-26 02:12 EDT - Self-Review Checkpoint 2
+
+Scope reviewed:
+
+- #67 audit/duplicate cleanup.
+- #24 trope subversion engine.
+- #31 cliffhanger/continuation slice.
+
+Findings:
+
+- Good: Active story-generation services now live in `api/_lib`; the compiled duplicate `story-generator/src/api/lib` service copy is gone.
+- Good: New prompt-affecting systems have focused tests and are included in `npm test`.
+- Good: Old branches contributed ideas without reintroducing audio or DigitalOcean infrastructure.
+- Problem: `tropeMetadata` is generated and can be accepted by continuation, but the #70 UI does not yet thread it through. This should be reconciled during #72/#73 work.
+- Problem: The root docs still contain many historical `api/lib` and DigitalOcean references. This is documentation drift, not active code drift, but it must be addressed before final report/PR.
+- Problem: Local dirty root lockfile and `node_modules/.package-lock.json` noise still exists and should keep #84 deferred.
+
+Immediate corrections made:
+
+- No code corrections needed at this checkpoint.
+
+Next action:
+
+- Move into Phase 4 with #72 multi-chapter workflow as the primary source, then compare #75/#73/#71 around it.

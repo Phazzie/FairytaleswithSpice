@@ -46,7 +46,7 @@ Status values:
 | #41 | port/cherry-pick | pending | Minimal Vercel CI/API tests. |
 | #40 | mine and close | pending | Visual ideas only. |
 | #39 | mine and close | pending | CI concepts, not full suite. |
-| #31 | recreate/port | pending | Story arc/cliffhanger; exclude audiobook. |
+| #31 | recreate/port | ported | Ported cliffhanger analysis/prompt guidance; story-arc CRUD and audiobook compile mined for later. |
 | #30 | mine and close | pending | Dialogue parser/speaker-tag ideas. |
 | #29 | mine and close | pending | Speaker segment and voice metadata ideas. |
 | #28 | mine and close | pending | Modular audio service breakdown; base not main. |
@@ -390,5 +390,60 @@ Use this template for detailed entries as each PR is handled:
   - The useful part of #24 was the story-generation concept, not the old file layout.
   - I deliberately adapted the trope text to avoid turning dark romance into parody by accident.
   - The continuation metadata is now present but not fully consumed by the #70 UI; #72/#73 should decide how story state carries it.
+- GitHub PR closure note:
+  - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #31 - Implement Chapter Continuation & Audiobook System with Enhanced Story Arc Management
+
+- Source branch: `pr-31` / `copilot/fix-27`
+- Planned disposition: recreate/port
+- Actual disposition: ported selected cliffhanger/continuation material; mined story-arc and audiobook ideas
+- Story-generation impact: High. Improves continuation outputs with structured cliffhanger analysis, continuation suggestions, and prompt guidance for varied chapter endings.
+- Accepted material:
+  - Added `api/_lib/services/cliffhangerService.ts`, recreated from #31's cliffhanger engine.
+  - Added `CliffhangerType` and `CliffhangerAnalysis` to canonical contracts.
+  - Updated `StoryService.continueChapter()` to attach `cliffhangerAnalysis` and use analysis for `cliffhangerEnding`.
+  - Updated continuation prompt guidance with six cliffhanger variety targets.
+  - Added `tests/cliffhanger-service.test.ts` and included it in `npm test`.
+- Not taking now:
+  - `api/audio/compile.ts`.
+  - `api/lib/services/audiobookService.ts`.
+  - `api/lib/services/storyArcService.ts` as active code.
+  - `api/story/arc.ts` endpoint.
+  - Old frontend story-arc/audiobook UI changes.
+  - Old `vercel.json` route changes from the branch.
+- Why not taking:
+  - Audio remains deferred.
+  - #31's story-arc service is an in-memory `Map`, which is not durable enough for Vercel serverless behavior.
+  - #70 owns the current story-lab UI, and #72/#73 should decide durable multi-chapter/story-state contracts.
+- Future mining value:
+  - Story arc structure, character development tracking, world state, plot threads, and chapter metadata are still useful.
+  - Revisit the story-arc service when porting #73 and #72.
+  - Revisit audiobook compilation only when the audio phase is reopened.
+- Files inspected:
+  - `api/lib/services/storyArcService.ts`
+  - `api/story/arc.ts`
+  - `api/lib/services/storyService.ts` diff from PR #31
+  - `api/lib/types/contracts.ts` diff from PR #31
+  - PR #31 file list and body
+- Files changed in recovery branch:
+  - `api/_lib/services/cliffhangerService.ts`
+  - `api/_lib/services/storyService.ts`
+  - `api/_lib/types/contracts.ts`
+  - `package.json`
+  - `tests/story-service-improved.test.ts`
+  - `tests/cliffhanger-service.test.ts`
+- Conflicts encountered:
+  - PR #31 is GitHub-mergeable as conflicting.
+  - Conflict shape is old `api/lib` paths, old frontend app shell, audiobook scope, and stale Vercel routing edits.
+- Tests/checks run:
+  - `npm test` passed: story service suite 12/12 plus trope and cliffhanger service tests.
+  - `npx tsx tests/verify-ai-fixes.test.ts` passed.
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+  - `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+  - `npm run build:verify` passed.
+- Self-review notes:
+  - This is a partial port by design. The cliffhanger engine is low-risk and immediately useful; the in-memory story arc store would create false persistence expectations on Vercel.
+  - #73/#72 should own durable story-state and multi-chapter contract decisions.
 - GitHub PR closure note:
   - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.

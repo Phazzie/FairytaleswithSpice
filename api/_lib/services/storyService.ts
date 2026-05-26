@@ -7,6 +7,7 @@ import {
   SpicyLevel
 } from '../types/contracts';
 import { selectRandomAuthorStyles } from '../config/authorStyles';
+import { CliffhangerService } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 
@@ -14,6 +15,7 @@ export class StoryService {
   private readonly grokModel = 'grok-4-1-fast-reasoning';
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
   private grokApiKey = process.env['XAI_API_KEY'];
+  private readonly cliffhangerService = new CliffhangerService();
   private readonly tropeService = new TropeSubversionService();
 
   constructor() {
@@ -176,6 +178,8 @@ export class StoryService {
       // Generate continuation using Grok AI
       const chapterContent = await this.callGrokAIForContinuation(input, context);
 
+      const cliffhangerAnalysis = this.cliffhangerService.analyze(chapterContent);
+
       // Create response
       const output: ChapterContinuationSeam['output'] = {
         chapterId: this.generateChapterId(),
@@ -183,11 +187,12 @@ export class StoryService {
         title: `Chapter ${input.currentChapterCount + 1}: ${this.generateChapterTitle(input)}`,
         content: chapterContent,
         wordCount: this.countWords(chapterContent),
-        cliffhangerEnding: this.detectCliffhanger(chapterContent),
+        cliffhangerEnding: cliffhangerAnalysis.cliffhangerDetected,
         themesContinued: this.extractThemesFromContent(input.existingContent),
         spicyLevelMaintained: this.extractSpicyLevelFromContent(input.existingContent),
         appendedToStory: input.existingContent + '\n\n<hr>\n\n' + chapterContent,
-        tropeMetadata: input.tropeMetadata
+        tropeMetadata: input.tropeMetadata,
+        cliffhangerAnalysis
       };
 
       const duration = Date.now() - startTime;
@@ -908,6 +913,15 @@ CONTINUATION REQUIREMENTS:
 5. Build tension toward a new cliffhanger for next chapter
 6. Use same audio format: [Character Name]: "dialogue" and [Narrator]: descriptions
 
+CLIFFHANGER VARIETY TARGETS:
+- romantic_tension: unresolved desire, interrupted intimacy, or a choice that delays surrender
+- plot_twist: a revelation that changes the meaning of the prior chapter
+- danger: an immediate supernatural or emotional threat
+- mystery: one answered clue opening a sharper question
+- character_revelation: a hidden identity, past wound, or confession
+- emotional_conflict: desire colliding with duty, fear, loyalty, or power
+- End with the type that best fits this chapter, but avoid repeating the exact emotional shape of the prior ending.
+
 ${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
 
 PREVIOUS CHAPTER(S) FOR CONTINUITY:
@@ -1126,9 +1140,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
   }
 
   private detectCliffhanger(content: string): boolean {
-    const cliffhangerWords = ['suddenly', 'but then', 'just as', 'what happened next', 'to be continued'];
-    const lowerContent = content.toLowerCase();
-    return cliffhangerWords.some(word => lowerContent.includes(word));
+    return this.cliffhangerService.analyze(content).cliffhangerDetected;
   }
 
   private extractThemesFromContent(content: string): any[] {
