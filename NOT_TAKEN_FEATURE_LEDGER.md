@@ -148,3 +148,31 @@ Template:
   - `api/lib/config/authorStyles.ts`
   - `story-generator/src/api/lib/*`
   - `tests/story-service-improved.test.ts`
+
+## PR #24 - Invisible trope subversion engine
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-24`
+- Story-generation ideas not taken:
+  - The old `backend/src/services/storyService.ts` implementation.
+  - Generated `backend/dist/*` files.
+  - Demo script and old standalone integration scripts.
+  - Some raw comedic/parody trope inversions that could weaken dark-romance tone if injected directly.
+  - Full continuation-state persistence for trope metadata; only optional metadata propagation is in place now.
+- Other useful ideas not taken:
+  - `TROPE_SUBVERSION_SUMMARY.md` as a root product doc.
+  - Old backend contracts and frontend contract edits.
+- Why not now:
+  - The backend tree is stale and outside the current Vercel `api/_lib` architecture.
+  - #70 owns the story-lab UI/contracts, and #72/#73 should decide the durable story-state model.
+  - The recovery docs already track the feature; another root summary would add document drift.
+- Future extraction notes:
+  - Thread `tropeMetadata` through the #72/#75 continuation UI and #73 story-state snapshot if those ports land.
+  - Add a developer-only debug/proving-ground view for selected trope directives if #74 is ported.
+  - Consider deterministic selection for reproducible tests and user support.
+- Source files/commits:
+  - `backend/src/data/tropeDatabase.ts`
+  - `backend/src/services/tropeSubversionService.ts`
+  - `backend/src/services/storyService.ts`
+  - `backend/src/tests/*`
+  - `story-generator/src/app/contracts.ts`

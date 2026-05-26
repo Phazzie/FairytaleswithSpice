@@ -64,3 +64,4 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - AI generation configuration needs executable verification. `tests/verify-ai-fixes.test.ts` caught stale path assumptions and now checks model name, token budgeting, API parameters, and timeout shape against the canonical story service.
 - A passing process exit is not enough evidence when a custom test harness is involved. The #67 pass found a test that printed a failure but exited 0 because it counted a non-existent `failed` property.
 - Duplicate service deletion should happen before deeper feature ports. Keeping `story-generator/src/api/lib` alive made every story-generation fix twice as risky and encouraged stale-path imports.
+- Port the idea, not the tone, when resurrecting old prompt features. PR #24's trope subversion concept was valuable, but several raw inversions needed adaptation so the app keeps a dark-romance voice instead of accidental parody.

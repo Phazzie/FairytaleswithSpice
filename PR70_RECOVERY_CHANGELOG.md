@@ -274,3 +274,36 @@ Self-review:
 - #67 justified its place in the merge order: duplicate service drift had already made #64/#65 riskier.
 - The first test run found a false-green test harness and a validation bug; both were fixed immediately.
 - The remaining risk is old documentation still mentioning `api/lib` paths. That is historical doc drift, not active code drift, and should be cleaned in a docs pass rather than mixed into story-generation feature ports.
+
+## 2026-05-26 02:00 EDT - PR #24 Trope Subversion Ported
+
+Actions:
+
+- Inspected #24's old backend implementation of the invisible trope subversion engine.
+- Recreated the useful material in the recovery architecture:
+  - `api/_lib/data/tropeDatabase.ts`
+  - `api/_lib/services/tropeSubversionService.ts`
+  - `tropeMetadata` contract fields for generation and continuation.
+  - Story service prompt enhancement for normal and streaming generation.
+  - `tests/trope-subversion.test.ts`, now included in `npm test`.
+- Adapted the trope wording so it supports dark-romance uniqueness without drifting into parody unless the user explicitly asks for comedy.
+
+Decision:
+
+- Do not merge #24 directly.
+- Do not take `backend/src`, `backend/dist`, demo scripts, or stale story service changes.
+- Keep the feature invisible in the user flow for now.
+
+Validation:
+
+- `npm test` passed: story suite 12/12 plus trope subversion test.
+- `npx tsx tests/verify-ai-fixes.test.ts` passed.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed after adding one explicit type annotation in `tropeSubversionService`.
+- `npx tsx tests/trope-subversion.test.ts` passed after the type fix.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- This port improves story uniqueness but introduces metadata that the current #70 UI does not yet preserve through continuation. That is acceptable for generation now and should be reconciled with #72/#73 story state work.
+- The old branch's story value was high, but its architecture was not reusable.

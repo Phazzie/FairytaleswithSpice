@@ -148,6 +148,7 @@ const testSuite = {
     expect(story.title, 'title should be defined').toBeDefined();
     expect(story.content, 'content should be defined').toBeDefined();
     expect(story.actualWordCount, 'actualWordCount should be defined').toBeDefined();
+    expect(story.tropeMetadata, 'tropeMetadata should be defined').toBeDefined();
     
     console.log(`   ✓ Story ID: ${story.storyId}`);
     console.log(`   ✓ Title: "${story.title}"`);

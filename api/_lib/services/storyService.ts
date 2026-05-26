@@ -7,12 +7,14 @@ import {
   SpicyLevel
 } from '../types/contracts';
 import { selectRandomAuthorStyles } from '../config/authorStyles';
+import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 
 export class StoryService {
   private readonly grokModel = 'grok-4-1-fast-reasoning';
   private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
   private grokApiKey = process.env['XAI_API_KEY'];
+  private readonly tropeService = new TropeSubversionService();
 
   constructor() {
     if (!this.grokApiKey) {
@@ -41,6 +43,13 @@ export class StoryService {
       speakerTagOverhead * 
       safetyBuffer
     );
+  }
+
+  private selectTropeSubversions(input: StoryGenerationSeam['input']): TropeSelection {
+    return this.tropeService.selectTropesForSubversion({
+      creature: input.creature,
+      tropeCount: Math.random() > 0.3 ? 3 : 2
+    });
   }
 
   async generateStory(input: StoryGenerationSeam['input']): Promise<ApiResponse<StoryGenerationSeam['output']>> {
@@ -77,8 +86,10 @@ export class StoryService {
         };
       }
 
+      const tropeSelection = this.selectTropeSubversions(input);
+
       // Generate story using Grok AI
-      const rawStoryContent = await this.callGrokAI(input, context);
+      const rawStoryContent = await this.callGrokAI(input, context, tropeSelection);
 
       // Process content: keep raw version for audio, clean version for display
       const displayContent = this.stripSpeakerTagsForDisplay(rawStoryContent);
@@ -95,7 +106,8 @@ export class StoryService {
         actualWordCount: this.countWords(displayContent),
         estimatedReadTime: Math.ceil(this.countWords(displayContent) / 200),
         hasCliffhanger: this.detectCliffhanger(displayContent),
-        generatedAt: new Date()
+        generatedAt: new Date(),
+        tropeMetadata: this.tropeService.serializeTropeSelection(tropeSelection)
       };
 
       const duration = Date.now() - startTime;
@@ -174,7 +186,8 @@ export class StoryService {
         cliffhangerEnding: this.detectCliffhanger(chapterContent),
         themesContinued: this.extractThemesFromContent(input.existingContent),
         spicyLevelMaintained: this.extractSpicyLevelFromContent(input.existingContent),
-        appendedToStory: input.existingContent + '\n\n<hr>\n\n' + chapterContent
+        appendedToStory: input.existingContent + '\n\n<hr>\n\n' + chapterContent,
+        tropeMetadata: input.tropeMetadata
       };
 
       const duration = Date.now() - startTime;
@@ -232,13 +245,15 @@ export class StoryService {
       generationSpeed: number;
     }) => void
   ): Promise<void> {
+    const tropeSelection = this.selectTropeSubversions(input);
+
     if (!this.grokApiKey) {
       // For mock mode, simulate streaming
-      await this.simulateStreamingGeneration(input, onChunk);
+      await this.simulateStreamingGeneration(input, onChunk, tropeSelection);
       return;
     }
 
-    const systemPrompt = this.buildSystemPrompt(input);
+    const systemPrompt = this.buildSystemPrompt(input, tropeSelection);
     const userPrompt = this.buildUserPrompt(input);
 
     try {
@@ -324,9 +339,10 @@ export class StoryService {
    */
   private async simulateStreamingGeneration(
     input: StoryGenerationSeam['input'],
-    onChunk: (chunk: any) => void
+    onChunk: (chunk: any) => void,
+    tropeSelection?: TropeSelection
   ): Promise<void> {
-    const mockStory = this.generateMockStory(input);
+    const mockStory = this.generateMockStory(input, tropeSelection);
     const words = mockStory.split(' ');
     const totalWords = words.length;
     let accumulatedContent = '';
@@ -362,14 +378,18 @@ export class StoryService {
     });
   }
 
-  private async callGrokAI(input: StoryGenerationSeam['input'], context?: LogContext): Promise<string> {
+  private async callGrokAI(
+    input: StoryGenerationSeam['input'],
+    context?: LogContext,
+    tropeSelection?: TropeSelection
+  ): Promise<string> {
     if (!this.grokApiKey) {
       logWarn('No API key found, using mock generation', context);
       // Fallback to mock generation if no API key
-      return this.generateMockStory(input);
+      return this.generateMockStory(input, tropeSelection);
     }
 
-    const systemPrompt = this.buildSystemPrompt(input);
+    const systemPrompt = this.buildSystemPrompt(input, tropeSelection);
     const userPrompt = this.buildUserPrompt(input);
     const requestStartTime = Date.now();
 
@@ -653,12 +673,12 @@ AVOID: ${selectedStructure.avoid}`;
 (These elements MUST be planted naturally in the story and will pay off in future chapters. They should feel organic, not forced.)`;
   }
 
-  private buildSystemPrompt(input: StoryGenerationSeam['input']): string {
+  private buildSystemPrompt(input: StoryGenerationSeam['input'], tropeSelection?: TropeSelection): string {
     // Get random author style selections for this generation
     const selectedStyles = selectRandomAuthorStyles(input.creature);
     const selectedBeatStructure = this.getRandomBeatStructure(input);
     
-    return `You are an audio-first dark-romance architect producing supernatural vignettes optimized for multi-voice narration.
+    const prompt = `You are an audio-first dark-romance architect producing supernatural vignettes optimized for multi-voice narration.
 Your sole purpose is to fabricate episodes that sound cinematic when read aloud and end on a cliff-hook that guarantees listener return.
 
 DYNAMIC STYLE SELECTION FOR THIS STORY:
@@ -811,6 +831,10 @@ EXAMPLE STORY START:
 NOTE: After first appearance, use simple [CharacterName]: format for subsequent dialogue.
 
 Your goal: Create episodes that make listeners desperate for "Continue Chapter."`;
+
+    return tropeSelection
+      ? this.tropeService.enhancePromptWithSubversions(prompt, tropeSelection)
+      : prompt;
   }
 
   private buildUserPrompt(input: StoryGenerationSeam['input']): string {
@@ -868,7 +892,7 @@ Plant your Chekhov elements naturally and ensure the moral dilemma occurs at mid
     const activePlotThreads = this.extractPlotThreads(input.existingContent);
     const emotionalTone = this.analyzeEmotionalTone(input.existingContent);
     
-    return `Continue this story as Chapter ${input.currentChapterCount + 1}.
+    const prompt = `Continue this story as Chapter ${input.currentChapterCount + 1}.
 
 CONTEXT FROM PREVIOUS CHAPTERS:
 - Established Characters: ${characterNames.join(', ') || 'Continue developing existing characters'}
@@ -890,6 +914,15 @@ PREVIOUS CHAPTER(S) FOR CONTINUITY:
 ${this.stripHtml(input.existingContent).slice(-1500)} // Last ~300 words for immediate context
 
 Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for paragraphs, <em> for emphasis.`;
+
+    if (!input.tropeMetadata) {
+      return prompt;
+    }
+
+    const tropeSelection = this.tropeService.deserializeTropeSelection(input.tropeMetadata);
+    return tropeSelection
+      ? this.tropeService.enhanceContinuationPrompt(prompt, tropeSelection)
+      : prompt;
   }
 
   /**
@@ -1026,7 +1059,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     return null;
   }
 
-  private generateMockStory(input: StoryGenerationSeam['input']): string {
+  private generateMockStory(input: StoryGenerationSeam['input'], _tropeSelection?: TropeSelection): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const spicyLabel = this.getSpicyLabel(input.spicyLevel);
 

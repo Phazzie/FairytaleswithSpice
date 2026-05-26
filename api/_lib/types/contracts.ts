@@ -65,6 +65,7 @@ export interface StoryGenerationSeam {
     estimatedReadTime: number; // in minutes
     hasCliffhanger: boolean; // determines if "Continue Chapter" button shows
     generatedAt: Date;
+    tropeMetadata?: string; // Invisible generation metadata for continuation consistency
   };
 
   errors: {
@@ -107,6 +108,7 @@ export interface ChapterContinuationSeam {
     existingContent: string; // Full story HTML content
     userInput?: string; // Optional continuation hints
     maintainTone: boolean; // Keep same spicy level and themes
+    tropeMetadata?: string; // Optional invisible generation metadata from original story
   };
 
   output: {
@@ -119,6 +121,7 @@ export interface ChapterContinuationSeam {
     themesContinued: ThemeType[];
     spicyLevelMaintained: SpicyLevel;
     appendedToStory: string; // Full updated story content
+    tropeMetadata?: string; // Propagated invisible generation metadata
   };
 
   errors: {
@@ -184,6 +187,7 @@ export interface StreamingStoryGenerationSeam {
     estimatedReadTime: number;
     hasCliffhanger: boolean;
     generatedAt: Date;
+    tropeMetadata?: string;
   };
 
   errors: {

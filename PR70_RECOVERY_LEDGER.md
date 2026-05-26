@@ -51,7 +51,7 @@ Status values:
 | #29 | mine and close | pending | Speaker segment and voice metadata ideas. |
 | #28 | mine and close | pending | Modular audio service breakdown; base not main. |
 | #26 | port/cherry-pick | pending | Notifications, validation, accessibility. |
-| #24 | recreate/port | pending | Trope subversion engine. |
+| #24 | recreate/port | ported | Ported invisible trope subversion engine into canonical `api/_lib`; old backend/dist/demo files not taken. |
 | #22 | mine and close | pending | Early dialogue parsing/speaker tag material. |
 
 ## Disposition Template
@@ -333,5 +333,62 @@ Use this template for detailed entries as each PR is handled:
 - Self-review notes:
   - The first `npm test` run revealed the harness was falsely exiting 0 even after a printed failed assertion. That is exactly the kind of audit failure #67 was supposed to flush out, so it was fixed immediately instead of merely documented.
   - Removing the duplicate service means later ports must target `api/_lib` or app-layer contracts, not revive `story-generator/src/api/lib`.
+- GitHub PR closure note:
+  - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #24 - Implement Invisible Trope Subversion Engine for Enhanced Story Uniqueness
+
+- Source branch: `pr-24` / `copilot/fix-21`
+- Planned disposition: recreate/port
+- Actual disposition: ported selected story-generation engine into canonical Vercel path
+- Story-generation impact: High. Adds an invisible uniqueness layer that selects supernatural-romance trope inversions and injects them into generation prompts without exposing controls in the UI.
+- Accepted material:
+  - Added `api/_lib/data/tropeDatabase.ts` with vampire, werewolf, and fairy trope definitions adapted from #24.
+  - Added `api/_lib/services/tropeSubversionService.ts` for weighted trope selection, hidden prompt directives, serialization, deserialization, continuation prompt enhancement, and stats.
+  - Integrated trope selection into `StoryService.generateStory()`, `callGrokAI()`, mock generation, and streaming generation prompts.
+  - Added optional `tropeMetadata` to story generation and chapter continuation contracts so later continuation/state work can preserve subversions.
+  - Added `tests/trope-subversion.test.ts` and included it in the root `npm test` flow.
+- Not taking now:
+  - Old `backend/src/*` and `backend/dist/*` tree.
+  - PR #24's demo scripts and standalone integration scripts.
+  - Direct old story service implementation with stale model name, stale env var, and older prompt shape.
+  - Some raw comedic/parody subversion wording from #24; the port rewrites instructions to preserve dark-romance tone unless comedy is explicitly requested.
+  - Frontend UI changes, because the engine is intentionally invisible and #70 owns the story-lab surface.
+- Why not taking:
+  - The old backend tree is not the Vercel recovery architecture.
+  - Direct merge conflicts with #70 and #67 service cleanup.
+  - The original PR's examples were useful but sometimes too comic for the current product tone.
+- Future mining value:
+  - Combine `tropeMetadata` with #73 story-state snapshots and #72/#75 multi-chapter flows.
+  - Consider analytics/debug display for selected tropes only in a developer/proving-ground surface, not the user flow.
+  - Add deterministic random seeding if reproducibility becomes important.
+- Files inspected:
+  - `backend/src/data/tropeDatabase.ts`
+  - `backend/src/services/tropeSubversionService.ts`
+  - `backend/src/services/storyService.ts`
+  - `backend/src/tests/*`
+  - `story-generator/src/app/contracts.ts` from PR #24
+- Files changed in recovery branch:
+  - `api/_lib/data/tropeDatabase.ts`
+  - `api/_lib/services/tropeSubversionService.ts`
+  - `api/_lib/services/storyService.ts`
+  - `api/_lib/types/contracts.ts`
+  - `package.json`
+  - `tests/story-service-improved.test.ts`
+  - `tests/trope-subversion.test.ts`
+- Conflicts encountered:
+  - PR #24 is GitHub-mergeable as conflicting.
+  - Conflict shape is old `backend/*` architecture, generated `backend/dist/*`, stale model/env choices, and contract drift with #70.
+- Tests/checks run:
+  - `npm test` passed: story service suite 12/12 plus trope subversion service test.
+  - `npx tsx tests/verify-ai-fixes.test.ts` passed.
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed after tightening a trope-service type.
+  - `npx tsx tests/trope-subversion.test.ts` passed after the type fix.
+  - `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+  - `npm run build:verify` passed.
+- Self-review notes:
+  - The useful part of #24 was the story-generation concept, not the old file layout.
+  - I deliberately adapted the trope text to avoid turning dark romance into parody by accident.
+  - The continuation metadata is now present but not fully consumed by the #70 UI; #72/#73 should decide how story state carries it.
 - GitHub PR closure note:
   - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
