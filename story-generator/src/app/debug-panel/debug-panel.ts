@@ -4,6 +4,7 @@ import { HttpClient } from '@angular/common/http';
 import { StoryService } from '../story.service';
 import {
   StoryGenerationSeam,
+  GeneratedChapter,
   StoryIterationPayload,
   StoryStateSnapshot,
   StorySummary
@@ -99,5 +100,9 @@ export class DebugPanel {
 
   get lastState(): StoryStateSnapshot | null {
     return this.lastPayload()?.state ?? null;
+  }
+
+  get lastChapters(): GeneratedChapter[] {
+    return this.lastPayload()?.batch.chapters ?? [];
   }
 }

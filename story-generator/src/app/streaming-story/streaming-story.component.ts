@@ -3,9 +3,9 @@
  * Demonstrates how to use the streaming story API for real-time generation
  */
 
-import { Component, OnDestroy, inject } from '@angular/core';
+import { Component, OnDestroy, SecurityContext, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DomSanitizer, SafeHtml, SecurityContext } from '@angular/platform-browser';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
 
 import { StoryService } from '../story.service';

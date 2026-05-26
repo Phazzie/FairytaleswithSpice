@@ -62,3 +62,38 @@ Self-review:
 
 - #70 is now the branch baseline, but not yet stabilized.
 - Before other PRs are merged or ported, validate build/tests and inspect whether #70's mock story-lab behavior conflicts with production story generation.
+
+## 2026-05-26 00:49 EDT - PR #70 Stabilization Build Fixes
+
+Problem:
+
+- Initial `npm run build` under local Node v23.8.0 failed with `Abort trap: 6` and no build output.
+- Verbose Angular build exposed real #70 source issues before the local Node abort:
+  - Angular templates used object spread expressions in event bindings, which Angular template parsing does not support.
+  - Angular template used an inline arrow function in a class binding.
+  - `SecurityContext` was imported from `@angular/platform-browser` instead of `@angular/core`.
+  - `DebugPanel` template called getter properties like signals.
+  - `story-generator/src/server.ts` imported removed `api/lib/*` paths instead of current `api/_lib/*` paths.
+
+Fixes:
+
+- Added `updateBlueprint()` and `isThemeSelected()` methods in `story-generator/src/app/app.ts`.
+- Replaced unsupported template expressions in `story-generator/src/app/app.html`.
+- Fixed `SecurityContext` imports in `app.ts` and `streaming-story.component.ts`.
+- Fixed `DebugPanel` template/getter usage and added a `lastChapters` getter.
+- Updated SSR server imports to `api/_lib/*`.
+- Typed the SSR streaming callback to match the actual `StoryService.generateStoryStreaming()` chunk shape.
+
+Validation:
+
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+- `npm run build` under local Node v23.8.0 still failed with `Abort trap: 6`.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- The source-level #70 build blockers are fixed.
+- Local Node v23 is not a valid Angular verification runtime; use Node 20 for build validation.
+- The branch still needs contract/path review before later story-generation PRs are ported.

@@ -12,7 +12,7 @@
           Creature Archetype
           <select
             [ngModel]="blueprint().creature"
-            (ngModelChange)="blueprint.set({ ...blueprint(), creature: $event })"
+            (ngModelChange)="updateBlueprint('creature', $event)"
           >
             <option value="vampire">Vampire</option>
             <option value="werewolf">Werewolf</option>
@@ -26,7 +26,7 @@
           Narrative Tone
           <select
             [ngModel]="blueprint().tone"
-            (ngModelChange)="blueprint.set({ ...blueprint(), tone: $event })"
+            (ngModelChange)="updateBlueprint('tone', $event)"
           >
             <option value="romance">Romance</option>
             <option value="dark_romance">Dark Romance</option>
@@ -44,7 +44,7 @@
             min="1"
             max="5"
             [ngModel]="blueprint().spicyLevel"
-            (ngModelChange)="blueprint.set({ ...blueprint(), spicyLevel: $event })"
+            (ngModelChange)="updateBlueprint('spicyLevel', $event)"
           />
           <span class="range-value">Level {{ blueprint().spicyLevel }}</span>
         </label>
@@ -53,7 +53,7 @@
           Desired Word Budget
           <select
             [ngModel]="blueprint().desiredWordBudget"
-            (ngModelChange)="blueprint.set({ ...blueprint(), desiredWordBudget: $event })"
+            (ngModelChange)="updateBlueprint('desiredWordBudget', $event)"
           >
             <option [ngValue]="600">600 words</option>
             <option [ngValue]="900">900 words</option>
@@ -66,7 +66,7 @@
           Chapters per Batch
           <select
             [ngModel]="blueprint().chapterBatchSize"
-            (ngModelChange)="blueprint.set({ ...blueprint(), chapterBatchSize: $event })"
+            (ngModelChange)="updateBlueprint('chapterBatchSize', $event)"
           >
             <option [ngValue]="1">1 chapter</option>
             <option [ngValue]="2">2 chapters</option>
@@ -81,7 +81,7 @@
           rows="3"
           placeholder="Describe the central hook in a few sentences..."
           [ngModel]="blueprint().logline"
-          (ngModelChange)="blueprint.set({ ...blueprint(), logline: $event })"
+          (ngModelChange)="updateBlueprint('logline', $event)"
         ></textarea>
       </label>
 
@@ -91,7 +91,7 @@
           <input
             type="text"
             [ngModel]="blueprint().protagonistName"
-            (ngModelChange)="blueprint.set({ ...blueprint(), protagonistName: $event })"
+            (ngModelChange)="updateBlueprint('protagonistName', $event)"
           />
         </label>
         <label>
@@ -99,7 +99,7 @@
           <input
             type="text"
             [ngModel]="blueprint().antagonistName"
-            (ngModelChange)="blueprint.set({ ...blueprint(), antagonistName: $event })"
+            (ngModelChange)="updateBlueprint('antagonistName', $event)"
           />
         </label>
       </div>
@@ -110,7 +110,7 @@
           rows="2"
           placeholder="Key locations, time period, or supernatural rules."
           [ngModel]="blueprint().worldDetails"
-          (ngModelChange)="blueprint.set({ ...blueprint(), worldDetails: $event })"
+          (ngModelChange)="updateBlueprint('worldDetails', $event)"
         ></textarea>
       </label>
 
@@ -120,7 +120,7 @@
           rows="2"
           placeholder="Any specific twists, pacing goals, or narrative constraints."
           [ngModel]="blueprint().narrativeDirectives"
-          (ngModelChange)="blueprint.set({ ...blueprint(), narrativeDirectives: $event })"
+          (ngModelChange)="updateBlueprint('narrativeDirectives', $event)"
         ></textarea>
       </label>
 
@@ -131,7 +131,7 @@
           <button
             type="button"
             class="theme-chip"
-            [class.theme-chip--active]="blueprint().themes.some(t => t.id === theme.id)"
+            [class.theme-chip--active]="isThemeSelected(theme)"
             (click)="toggleTheme(theme)"
             *ngFor="let theme of availableThemes; trackBy: trackTheme"
           >

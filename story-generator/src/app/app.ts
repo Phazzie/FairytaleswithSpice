@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, SecurityContext, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { DomSanitizer, SecurityContext } from '@angular/platform-browser';
+import { DomSanitizer } from '@angular/platform-browser';
 import {
   ChapterBatchSize,
   ChapterTimelineEntry,
@@ -14,6 +14,11 @@ import {
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import { DebugPanel } from './debug-panel/debug-panel';
+
+type BlueprintForm = StoryBlueprint & {
+  chapterBatchSize: ChapterBatchSize;
+  narrativeDirectives?: string;
+};
 
 @Component({
   selector: 'app-root',
@@ -36,21 +41,19 @@ export class App {
     { id: 'enemies_to_lovers', label: 'Enemies to Lovers', description: 'Bitterness melts into desire.' }
   ];
 
-  readonly blueprint = signal<StoryBlueprint & { chapterBatchSize: ChapterBatchSize; narrativeDirectives?: string }>(
-    {
-      creature: 'vampire',
-      themes: [],
-      logline: '',
-      spicyLevel: 3,
-      tone: 'dark_romance',
-      desiredWordBudget: 900,
-      chapterBatchSize: 2,
-      protagonistName: '',
-      antagonistName: '',
-      worldDetails: '',
-      narrativeDirectives: ''
-    }
-  );
+  readonly blueprint = signal<BlueprintForm>({
+    creature: 'vampire',
+    themes: [],
+    logline: '',
+    spicyLevel: 3,
+    tone: 'dark_romance',
+    desiredWordBudget: 900,
+    chapterBatchSize: 2,
+    protagonistName: '',
+    antagonistName: '',
+    worldDetails: '',
+    narrativeDirectives: ''
+  });
 
   readonly workbench = signal<StoryWorkbenchSession>({
     story: null,
@@ -113,6 +116,17 @@ export class App {
   });
 
   readonly activeBatchSize = computed<ChapterBatchSize>(() => this.blueprint().chapterBatchSize);
+
+  updateBlueprint<K extends keyof BlueprintForm>(field: K, value: BlueprintForm[K]) {
+    this.blueprint.update(current => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  isThemeSelected(theme: ThemeSeed): boolean {
+    return this.blueprint().themes.some(item => item.id === theme.id);
+  }
 
   toggleTheme(theme: ThemeSeed) {
     const current = this.blueprint();

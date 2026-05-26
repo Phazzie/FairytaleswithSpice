@@ -103,9 +103,14 @@ Use this template for detailed entries as each PR is handled:
 - Conflicts encountered:
   - No textual conflicts. Merge completed with the `ort` strategy.
 - Tests/checks run:
-  - Pending.
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+  - `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+  - `npm run build` under local Node v23.8.0 failed with `Abort trap: 6`.
+  - `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2.
+  - `npm run build:verify` passed.
 - Self-review notes:
-  - Immediate risks are path drift, mock endpoints becoming product truth, and regression of current story-generation quality.
-  - Next step is stabilization checks before merging/porting other PRs.
+  - Immediate source-level build blockers from #70 are fixed.
+  - Remaining risks are path drift, mock endpoints becoming product truth, and regression of current story-generation quality.
+  - Use Node 20 for Angular build verification; local Node 23 aborts.
 - GitHub PR closure note:
   - Do not close yet. Close or supersede only after the recovery branch has a final PR and #70 stabilization is documented.

@@ -59,4 +59,5 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 ### 2026-05-26
 
 - Agent instructions must be corrected before long-running recovery work. Otherwise future agents will follow stale deployment assumptions and undo the user's Vercel direction.
-
+- Angular 20 in this checkout should be verified with Node 20. Local Node v23.8.0 can abort during `ng build` without useful diagnostics, while the same branch builds under temporary Node v20.20.2.
+- PR #70 showed a concrete Angular-template lesson: keep object spread, arrow functions, and complex state updates out of templates. Put that logic on the component class so Angular's template compiler and type checker can reason about it.

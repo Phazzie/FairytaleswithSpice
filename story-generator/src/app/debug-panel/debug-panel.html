@@ -17,12 +17,12 @@
     </button>
   </section>
 
-  <section class="debug-panel__payload" *ngIf="lastSummary() as summary">
+  <section class="debug-panel__payload" *ngIf="lastSummary as summary">
     <h4>Latest Batch</h4>
     <p><strong>{{ summary.title }}</strong> · Story {{ summary.storyId }}</p>
     <p>{{ summary.synopsis }}</p>
     <div class="chapter-list">
-      <article *ngFor="let chapter of lastPayload()?.batch.chapters">
+      <article *ngFor="let chapter of lastChapters">
         <h5>Chapter {{ chapter.chapterNumber }} · {{ chapter.title }}</h5>
         <p>{{ chapter.summary }}</p>
         <small>Cliffhanger: {{ chapter.hasCliffhanger ? 'Yes' : 'No' }} • Words: {{ chapter.wordCount }}</small>
