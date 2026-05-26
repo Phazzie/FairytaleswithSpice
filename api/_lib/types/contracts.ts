@@ -47,6 +47,14 @@ export interface Chapter {
   hasAudio: boolean;
   audioUrl?: string;
   audioDuration?: number;
+  cliffhangerEnding?: boolean;
+  nextChapterHint?: string;
+}
+
+export interface ChapterFailure {
+  chapterNumber: number;
+  message: string;
+  errorCode?: string;
 }
 
 export interface AudioProgress {
@@ -67,6 +75,7 @@ export interface StoryGenerationSeam {
     userInput: string; // Optional custom ideas
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
+    requestedChapterCount?: 1 | 2 | 3;
   };
 
   output: {
@@ -82,6 +91,11 @@ export interface StoryGenerationSeam {
     hasCliffhanger: boolean; // determines if "Continue Chapter" button shows
     generatedAt: Date;
     tropeMetadata?: string; // Invisible generation metadata for continuation consistency
+    chapters?: Chapter[];
+    totalWordCount?: number;
+    nextChapterHint?: string;
+    appendedToStory?: string; // Combined HTML for generated chapters
+    failedChapters?: ChapterFailure[];
   };
 
   errors: {
@@ -125,6 +139,7 @@ export interface ChapterContinuationSeam {
     userInput?: string; // Optional continuation hints
     maintainTone: boolean; // Keep same spicy level and themes
     tropeMetadata?: string; // Optional invisible generation metadata from original story
+    requestedChapterCount?: 1 | 2 | 3;
   };
 
   output: {
@@ -139,6 +154,11 @@ export interface ChapterContinuationSeam {
     appendedToStory: string; // Full updated story content
     tropeMetadata?: string; // Propagated invisible generation metadata
     cliffhangerAnalysis?: CliffhangerAnalysis;
+    chapters?: Chapter[]; // Newly generated chapters when batching
+    totalWordCount?: number;
+    estimatedReadTime?: number; // Updated total read time in minutes
+    nextChapterHint?: string;
+    failedChapters?: ChapterFailure[];
   };
 
   errors: {
@@ -173,6 +193,7 @@ export interface StreamingStoryGenerationSeam {
     userInput: string;
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
+    requestedChapterCount?: 1 | 2 | 3;
   };
 
   progressUpdate: {
@@ -205,6 +226,11 @@ export interface StreamingStoryGenerationSeam {
     hasCliffhanger: boolean;
     generatedAt: Date;
     tropeMetadata?: string;
+    chapters?: Chapter[];
+    totalWordCount?: number;
+    nextChapterHint?: string;
+    appendedToStory?: string;
+    failedChapters?: ChapterFailure[];
   };
 
   errors: {

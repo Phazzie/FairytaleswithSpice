@@ -207,3 +207,38 @@ Template:
   - `api/audio/compile.ts`
   - `api/lib/services/audiobookService.ts`
   - `story-generator/src/app/*`
+
+## PR #72 - Finalize multi-chapter story workflows
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-72`
+- Story-generation ideas not taken:
+  - Full replacement of generation outputs with chapter-array-only responses.
+  - Full replacement of continuation outputs with chapter-array-only responses.
+  - Raw PR #72 failure semantics as the only response shape; the recovery branch kept old success/error fields and added optional `failedChapters`.
+  - Old `tests/story-service.test.mjs` rewrite that still assumes compiled `api/lib/*.js` output.
+  - Old frontend batch-merging code for the pre-#70 Angular app.
+- Other useful ideas not taken:
+  - Old chapter-batch dropdown implementation in `story-generator/src/app/app.html`.
+  - Old `story-generator/src/app/story.service.ts` changes targeting `/api/story/*` instead of #70's `/api/story-lab/*`.
+  - Old debug-panel and streaming component spec changes that are superseded by the #70 story-lab contracts.
+- Why not now:
+  - #70 already introduced a story-lab workbench, batch-size control, and separate story-lab contracts.
+  - Directly taking #72's frontend would regress the app away from the #70 direction.
+  - Directly taking #72's backend contract would break current legacy callers and tests by removing fields instead of adding batch metadata.
+  - The branch uses stale `api/lib/*` paths.
+- Future extraction notes:
+  - When `api/story-lab/mockData.ts` is replaced with real generation, use the canonical `StoryService` batch fields created from this port.
+  - Add UI display for partial chapter failures and next-chapter hints when #75 continuity panels are evaluated.
+  - Decide and document whether a batch's word budget is total-batch or per-chapter before exposing production controls.
+- Source files/commits:
+  - `api/lib/services/storyService.ts`
+  - `api/lib/types/contracts.ts`
+  - `api/story/generate.ts`
+  - `api/story/continue.ts`
+  - `api/story/stream.ts`
+  - `story-generator/src/app/contracts.ts`
+  - `story-generator/src/app/story.service.ts`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `tests/story-service-improved.test.ts`

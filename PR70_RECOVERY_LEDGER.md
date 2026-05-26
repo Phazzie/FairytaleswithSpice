@@ -26,7 +26,7 @@ Status values:
 | #75 | port/cherry-pick | pending | Chapter batching and continuity panels. |
 | #74 | port later or mine/close | pending | Proving grounds prompt lab. |
 | #73 | recreate/port | pending | Persistent story state; avoid DigitalOcean Postgres assumption. |
-| #72 | port/cherry-pick | pending | Multi-chapter backend/frontend contracts. |
+| #72 | port/cherry-pick | ported | Ported backward-compatible 1-3 chapter batch generation/continuation into canonical `api/_lib`; old UI/route rewrites not taken. |
 | #71 | compare then close | pending | Early batch generation, mostly superseded by #72. |
 | #70 | merge baseline | merged | Merged into `recovery-pr70-story-lab-vercel` as commit `118265c`; stabilization pending. |
 | #67 | port/cherry-pick | ported | Ported author-style extraction, duplicate-service deletion, path/test fixes, and validation bug fix. |
@@ -445,5 +445,65 @@ Use this template for detailed entries as each PR is handled:
 - Self-review notes:
   - This is a partial port by design. The cliffhanger engine is low-risk and immediately useful; the in-memory story arc store would create false persistence expectations on Vercel.
   - #73/#72 should own durable story-state and multi-chapter contract decisions.
+- GitHub PR closure note:
+  - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #72 - Finalize multi-chapter story workflows
+
+- Source branch: `pr-72` / `codex/update-story-generation-and-continuation-handlers`
+- Planned disposition: port/cherry-pick
+- Actual disposition: ported selected backend contract and service behavior; do not merge directly
+- Story-generation impact: High. Adds the useful PR #72 primitive of requesting 1-3 generated chapters per request, returning chapter arrays, total word counts, continuation hints, and per-chapter failure metadata.
+- Accepted material:
+  - Added optional `requestedChapterCount` to canonical story generation, continuation, and streaming inputs.
+  - Added `ChapterFailure`, optional chapter-level cliffhanger/hint fields, and optional batch metadata to canonical contracts.
+  - Updated `StoryService.generateStory()` to generate 1-3 chapters, aggregate display/raw content, preserve old single-story fields, and expose `chapters`, `totalWordCount`, `appendedToStory`, `nextChapterHint`, and `failedChapters`.
+  - Updated `StoryService.continueChapter()` to generate 1-3 continuation chapters, append them to existing content, keep cliffhanger analysis on the latest chapter, and preserve old single-chapter fields for callers that still expect them.
+  - Added chapter-scoped Grok prompts, previous-chapter excerpts for batch continuity, and mock-mode batch chapters.
+  - Updated `/api/story/stream` query parsing/logging so streaming accepts `requestedChapterCount`.
+  - Added mock-mode tests for batch generation and batch continuation to `tests/story-service-improved.test.ts`.
+- Not taking now:
+  - Direct branch merge from #72.
+  - Destructive replacement of legacy `content`, `rawContent`, `actualWordCount`, `chapterId`, `chapterNumber`, `title`, `content`, and `wordCount` response fields.
+  - Old `api/lib/*` path layout.
+  - Old `api/story/generate.ts`, `api/story/continue.ts`, and `api/story/stream.ts` rewrites as-is.
+  - Old Angular app shell changes in `story-generator/src/app/app.*`.
+  - Old frontend contracts/service changes from the pre-#70 UI.
+  - Replacement of the #70 story-lab contracts, which already model batches with `StoryIterationPayload`.
+- Why not taking:
+  - #72 is based on the pre-#70 app and conflicts with the story-lab/workbench baseline.
+  - Its raw contract removes fields that current tests, legacy API callers, and some recovery code still use.
+  - The frontend changes target the old single-form Angular app, while #70 already has batch controls and story-lab contracts.
+  - Old `api/lib/*` paths would undo the #67 duplicate-service cleanup.
+- Future mining value:
+  - Use this backend batch primitive when replacing `api/story-lab/mockData.ts` with real generation.
+  - Consider porting per-chapter partial failure display into #75-style UI panels.
+  - Revisit whether `wordCount` should mean total batch budget or per-chapter target when the story-lab production adapter is built.
+- Files inspected:
+  - `api/lib/services/storyService.ts` from PR #72
+  - `api/lib/types/contracts.ts` from PR #72
+  - `api/story/generate.ts`, `api/story/continue.ts`, and `api/story/stream.ts` from PR #72
+  - `story-generator/src/app/contracts.ts`, `story-generator/src/app/story.service.ts`, `story-generator/src/app/app.ts`, and `story-generator/src/app/app.html` from PR #72
+  - `tests/story-service-improved.test.ts` and `tests/story-service.test.mjs` from PR #72
+- Files changed in recovery branch:
+  - `api/_lib/services/storyService.ts`
+  - `api/_lib/types/contracts.ts`
+  - `api/story/stream.ts`
+  - `tests/story-service-improved.test.ts`
+- Conflicts encountered:
+  - PR #72 is GitHub-mergeable as conflicting.
+  - Conflict shape is old `api/lib` paths, old app shell/frontend contracts, direct output-shape replacement, and overlap with #70 story-lab batch concepts.
+- Tests/checks run:
+  - `npx tsx tests/story-service-improved.test.ts` passed with 14/14 tests.
+  - `npx tsx tests/verify-ai-fixes.test.ts` passed.
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+  - `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+  - `npm test` passed.
+  - `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+  - `npm run build:verify` passed.
+- Self-review notes:
+  - The important #72 idea is the batch primitive, not the old UI rewrite.
+  - The port is intentionally additive so current single-story consumers continue to work while later story-lab work can adopt the richer chapter arrays.
+  - The next risk is contract duplication between legacy `api/_lib/types/contracts.ts` and #70's `story-generator/src/app/contracts.ts`; #75/#73 should decide the adapter boundary instead of forcing one type system prematurely.
 - GitHub PR closure note:
   - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.

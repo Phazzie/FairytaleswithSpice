@@ -35,7 +35,7 @@ Treat PR #70 as a plausible alternate product baseline for the "story lab" direc
 | #75 | Chapter batching workflow and continuity panels | Adds batch size controls, batch progress queue, continuity summary panels, long chapter grouping/collapsing, and service/contract support for batched chapters. This is a product-layer continuation of the story-lab direction. | `story-generator/src/app/app.ts`, `app.html`, `app.css`, `contracts.ts`, `story.service.ts`, tests, `README.md` | **Port/cherry-pick after #70**. High product value, but overlaps heavily with #70/#72. |
 | #74 | Proving grounds page | Adds a prompt testing lab with templates, generation logic viewer, Grok-based evaluation service, history/comparison, JSON export, and Angular routing. Useful as an internal dev tool for prompt iteration. | `story-generator/src/app/proving-grounds/*`, `app.routes.ts`, `app-root.ts`, `main.ts`, `app.config.ts` | **Port later**. Good tool, but separate from core recovery. |
 | #73 | Persistent story state tracking | Adds structured story state snapshots, character/plot thread continuity, `StoryStateService`, Postgres schema/client, and in-memory fallback. Useful for continuity and session recovery. | `api/lib/db/*`, `api/lib/services/storyStateService.ts`, `api/lib/services/storyService.ts`, contracts, tests | **Recreate/port later**. Concepts are valuable, but current implementation is Postgres/DigitalOcean-shaped and uses old paths. |
-| #72 | Finalize multi-chapter story workflows | More mature backend/frontend multi-chapter implementation than #71. Adds chapter arrays, `requestedChapterCount`, partial failure reporting, streaming updates, tests, and API/service changes. | `api/lib/services/storyService.ts`, `api/story/generate.ts`, `api/story/continue.ts`, `api/story/stream.ts`, Angular contracts/services/tests | **Port selectively after #70**. Treat as the best backend contract source in the #71/#72 pair. |
+| #72 | Finalize multi-chapter story workflows | More mature backend/frontend multi-chapter implementation than #71. Adds chapter arrays, `requestedChapterCount`, partial failure reporting, streaming updates, tests, and API/service changes. | `api/lib/services/storyService.ts`, `api/story/generate.ts`, `api/story/continue.ts`, `api/story/stream.ts`, Angular contracts/services/tests | **Ported selected backend behavior**. Kept legacy fields additive; old UI/app shell remains not taken. |
 | #71 | Batch chapter generation | Early pass at multi-chapter generation across backend and frontend. Adds chapter count normalization, chapter arrays, batch dropdown, partial failure handling, tests/data factory. | Same hotspot files as #72: story service, API routes, Angular contracts/app/tests | **Mostly superseded by #72**. Use for comparison only. |
 | #70 | Story lab rewrite | Rebuilds the main app as a story lab/workbench. Adds `api/story-lab/*` mock Vercel endpoints, story-lab contracts, blueprint-like flow, continuity/debug concepts, streaming genesis, and a major Angular UI/service rewrite. | `api/story-lab/*`, `story-generator/src/app/app.*`, `contracts.ts`, `story.service.ts`, debug panel, streaming component/tests | **Baseline candidate**. Consider merging into an exploratory branch and treating it as the new direction. |
 | #67 | SOLID/KISS/DRY audit and refactor | Contains a real audit report, deployment readiness checklist, duplicate service diagnosis, removal of stale `story-generator/src/api/*` duplicates, author-style config extraction, and test syntax cleanup. | `COMPREHENSIVE_AUDIT_REPORT.md`, `DEPLOYMENT_READINESS.md`, `api/lib/config/authorStyles.ts`, deleted duplicate service files, `tests/story-service-improved.test.ts` | **Port/cherry-pick selectively**. Audit and config extraction are useful; direct merge conflicts with current Vercel recovery and old paths. |
@@ -87,7 +87,7 @@ These are the most useful non-#70 pieces, ranked by likely value and extraction 
 | 4 | #41 | Minimal Vercel CI/deploy/API-test setup, not the whole workflow suite. |
 | 5 | #26 | Notification/form validation/accessibility services. |
 | 6 | #75 | Batch/continuity UI layer after #70 baseline is stable. |
-| 7 | #72 | Multi-chapter backend contract/service behavior after #70 baseline is stable. |
+| 7 | #72 | Multi-chapter backend contract/service behavior after #70 baseline is stable. **Ported selected backend primitive.** |
 | 8 | #67 | Author-style config extraction and duplicate-code cleanup decisions. |
 | 9 | #24 | Trope subversion engine, rebuilt into current story-generation service. |
 | 10 | #31 | Story arc/cliffhanger logic, rebuilt without audiobook coupling. |
@@ -113,7 +113,7 @@ These are the most useful non-#70 pieces, ranked by likely value and extraction 
 - #41: use Vercel CI/API tests as source material.
 - #67: use audit/config extraction/cleanup ideas.
 - #75: use batch UI and continuity panels.
-- #72: use multi-chapter backend behavior.
+- #72: selected multi-chapter backend behavior is ported; mine old UI pieces only if #75 leaves gaps.
 - #74: use proving-grounds page after core app stabilizes.
 - #24: port trope engine later.
 - #31: port story arc/cliffhanger later.

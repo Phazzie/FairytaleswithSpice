@@ -364,3 +364,47 @@ Immediate corrections made:
 Next action:
 
 - Move into Phase 4 with #72 multi-chapter workflow as the primary source, then compare #75/#73/#71 around it.
+
+## 2026-05-26 06:24 EDT - PR #72 Batch Workflow Ported
+
+Actions:
+
+- Inspected PR #72's old backend, frontend, and test changes for multi-chapter story workflows.
+- Ported the durable backend idea into the Vercel canonical service instead of merging the old branch:
+  - Optional `requestedChapterCount` on generation, continuation, and streaming inputs.
+  - Optional `chapters`, `totalWordCount`, `nextChapterHint`, `appendedToStory`, and `failedChapters` response metadata.
+  - Backward-compatible single-story and single-continuation fields preserved.
+  - Chapter-scoped Grok prompts and mock-mode batch generation.
+  - Batch generation and batch continuation tests.
+- Updated the PR ledger and not-taken ledger for #72.
+
+Decision:
+
+- Do not merge #72 directly.
+- Do not take its old Angular app shell, old `/api/story/*` route rewrites as-is, or old `api/lib/*` path layout.
+- Keep #70 story-lab contracts as the UI direction and use this port as the backend batch primitive for later story-lab production integration.
+
+Validation:
+
+- `npx tsx tests/story-service-improved.test.ts` passed with 14/14 tests.
+- `npx tsx tests/verify-ai-fixes.test.ts` passed.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+- `npm test` passed.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- Good: The useful #72 feature landed without replacing legacy response fields or reviving old paths.
+- Good: Batch behavior has executable mock-mode coverage, so it does not require a live `XAI_API_KEY`.
+- Problem: There are now two story contract layers: legacy canonical `api/_lib/types/contracts.ts` and #70 story-lab contracts in `story-generator/src/app/contracts.ts`. This is acceptable during recovery, but #75/#73 need a deliberate adapter boundary before production story-lab uses real generation.
+- Problem: The batch port currently treats `wordCount` as a total batch budget when live generation is split across chapters. The UI/product decision may ultimately want per-chapter budgeting.
+
+Running merge-order snapshot after #72:
+
+1. #75 - next, because it likely contains the UI/continuity affordances that should consume #72's backend primitive.
+2. #73 - next state model candidate, but avoid adopting DigitalOcean Postgres assumptions.
+3. #71 - compare after #72/#75 to identify any earlier batch-generation material not already superseded.
+4. #74 - mine prompt proving-ground ideas after the core workflow/state pieces are settled.
+5. #41/#39 - then move into Vercel CI/test cleanup.

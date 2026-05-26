@@ -107,6 +107,21 @@ function expect(actual: any, message?: string) {
   };
 }
 
+async function withMockGrok(fn: () => Promise<void>): Promise<void> {
+  const originalApiKey = process.env['XAI_API_KEY'];
+  delete process.env['XAI_API_KEY'];
+
+  try {
+    await fn();
+  } finally {
+    if (originalApiKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalApiKey;
+    }
+  }
+}
+
 // ==================== TESTS ====================
 
 const testSuite = {
@@ -284,6 +299,20 @@ const testSuite = {
     const result2 = await service.generateStory(invalidInput2);
     expect(result2.success).toBe(false);
     console.log(`   ✓ Correctly rejected invalid spicy level`);
+
+    // Test invalid requested chapter count
+    const invalidInput3: StoryGenerationSeam['input'] = {
+      creature: 'vampire',
+      themes: ['romance'],
+      userInput: 'Test',
+      spicyLevel: 3,
+      wordCount: 700,
+      requestedChapterCount: 4 as any
+    };
+
+    const result3 = await service.generateStory(invalidInput3);
+    expect(result3.success).toBe(false);
+    console.log(`   ✓ Correctly rejected invalid requested chapter count`);
   }),
   
   // Test 7: Chapter continuation
@@ -328,8 +357,71 @@ const testSuite = {
     console.log(`   ✓ Chapter word count: ${chapter.wordCount}`);
     expect(chapter.cliffhangerAnalysis, 'cliffhangerAnalysis should be defined').toBeDefined();
   }),
+
+  // Test 8: Multi-chapter generation batch
+  testMultiChapterGenerationBatch: test('Multi-Chapter Story Generation Batch', async () => {
+    await withMockGrok(async () => {
+      const service = new StoryService();
+      const input: StoryGenerationSeam['input'] = {
+        creature: 'vampire',
+        themes: ['forbidden_love', 'dark_secrets'],
+        userInput: 'A court romance with escalating political danger',
+        spicyLevel: 3,
+        wordCount: 900,
+        requestedChapterCount: 3
+      };
+
+      const result = await service.generateStory(input);
+
+      if (!result.success) {
+        throw new Error(`Multi-chapter generation failed: ${result.error?.message}`);
+      }
+
+      const story = result.data!;
+      expect(story.chapters?.length).toBe(3);
+      expect(story.totalWordCount).toBeGreaterThan(0);
+      expect(story.actualWordCount).toBe(story.totalWordCount);
+      expect(story.appendedToStory).toContain('Chapter 3');
+      expect(story.failedChapters).toBeUndefined();
+
+      console.log(`   ✓ Generated chapters: ${story.chapters!.map(chapter => chapter.chapterNumber).join(', ')}`);
+      console.log(`   ✓ Total word count: ${story.totalWordCount}`);
+    });
+  }),
+
+  // Test 9: Multi-chapter continuation batch
+  testMultiChapterContinuationBatch: test('Multi-Chapter Continuation Batch', async () => {
+    await withMockGrok(async () => {
+      const service = new StoryService();
+      const input: ChapterContinuationSeam['input'] = {
+        storyId: 'story_test_batch',
+        currentChapterCount: 1,
+        existingContent: '<h3>Chapter 1: The First Oath</h3><p>Arabella chose danger when she accepted the crimson ring.</p>',
+        maintainTone: true,
+        userInput: 'Escalate the court intrigue',
+        requestedChapterCount: 2
+      };
+
+      const result = await service.continueChapter(input);
+
+      if (!result.success) {
+        throw new Error(`Multi-chapter continuation failed: ${result.error?.message}`);
+      }
+
+      const continuation = result.data!;
+      expect(continuation.chapters?.length).toBe(2);
+      expect(continuation.chapters?.[0]?.chapterNumber).toBe(2);
+      expect(continuation.chapters?.[1]?.chapterNumber).toBe(3);
+      expect(continuation.appendedToStory).toContain('Chapter 3');
+      expect(continuation.totalWordCount).toBeGreaterThan(0);
+      expect(continuation.cliffhangerAnalysis).toBeDefined();
+
+      console.log(`   ✓ Continued chapters: ${continuation.chapters!.map(chapter => chapter.chapterNumber).join(', ')}`);
+      console.log(`   ✓ Appended story word count: ${continuation.totalWordCount}`);
+    });
+  }),
   
-  // Test 8: Performance test
+  // Test 10: Performance test
   testPerformance: test('Performance Benchmarking', async () => {
     const service = new StoryService();
     const iterations = 3;
