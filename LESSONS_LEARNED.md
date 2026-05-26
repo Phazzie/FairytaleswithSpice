@@ -72,3 +72,6 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Name non-durable state for what it is. PR #73's in-memory fallback is useful for local story-lab continuity, but on Vercel it must stay labeled as transient until a durable storage product is selected.
 - Prefer explicit service validation over silent normalization. PR #71's invalid-count clamping is a possible UI behavior, but the service boundary should keep rejecting invalid caller input.
 - Codify repeated validation as a script. The recovery process kept depending on a remembered checklist, so `scripts/recovery/preflight.sh` now makes the expected checks visible and repeatable.
+- Keep provider credentials server-side, even in internal tools. PR #74's proving grounds needed Grok evaluation, but browser `localStorage` API keys do not fit a Vercel deployment path.
+- Build verification should understand the framework output mode. Angular SSR routes can emit `browser/index.csr.html` instead of prerendered `browser/index.html`, so verifiers should check the actual supported output shapes.
+- Browser and server bootstrap must be kept in lockstep after adding Angular routing. PR #74 initially bootstrapped `AppRoot` in `main.ts` but still bootstrapped `App` in `main.server.ts`, so the build passed while SSR served the wrong route body.

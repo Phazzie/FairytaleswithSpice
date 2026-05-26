@@ -24,7 +24,7 @@ Status values:
 | #77 | mine and close | pending | Documentation analysis lessons. |
 | #76 | close | pending | No committed material found. |
 | #75 | port/cherry-pick | ported | Ported batch queue, suggested prompts, grouped chapter timeline, and Vercel persistence wording into #70 story lab. |
-| #74 | port later or mine/close | pending | Proving grounds prompt lab. |
+| #74 | port later or mine/close | ported | Ported Proving Grounds as a routed Story Lab prompt-testing page with server-side evaluation fallback. |
 | #73 | recreate/port | ported | Ported story-lab state deltas and transient persistence boundary; DigitalOcean Postgres and `pg` dependency not taken. |
 | #72 | port/cherry-pick | ported | Ported backward-compatible 1-3 chapter batch generation/continuation into canonical `api/_lib`; old UI/route rewrites not taken. |
 | #71 | compare then close | ported | Ported chapter-count response metadata; remaining batch/UI material superseded by #72/#75/#73. |
@@ -686,3 +686,72 @@ Use this template for detailed entries as each PR is handled:
   - The decision to reject invalid requested chapter counts remains intentional; #71's service-level clamping is recorded for possible UI-level behavior later.
 - GitHub PR closure note:
   - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #74 - Add proving grounds page for prompt testing and generation logic inspection
+
+- Source branch: `pr-74` / `copilot/add-proving-grounds-page`
+- Planned disposition: port later or mine/close
+- Actual disposition: ported selectively into the #70 Story Lab baseline
+- Story-generation impact: High. Adds an internal prompt-test workbench for comparing prompt templates, previewing prompt text, inspecting generation logic ingredients, generating Story Lab samples, keeping local test history, comparing results, exporting JSON, and evaluating output quality.
+- Accepted material:
+  - Added routed `/proving-grounds` page.
+  - Ported prompt templates for production, concise, emotional-depth, sensory, and dialogue-driven generation experiments.
+  - Ported generation logic viewer data for author styles, beat structures, and Chekhov elements.
+  - Ported local test history, comparison mode, JSON export, current-result view, and evaluation display.
+  - Adapted generation to the current #70 `StoryService.beginStory()` / `/api/story-lab/stories` seam.
+  - Added `api/story-lab/evaluate.ts` so Grok evaluation can happen server-side with `XAI_API_KEY`, with mock fallback when the key or provider is unavailable.
+  - Added Angular router integration through `AppRoot`, `app.routes.ts`, `provideRouter`, and a Story Lab header link.
+  - Updated `build:verify` to accept Angular SSR's `browser/index.csr.html` output.
+- Not taking now:
+  - Direct merge of PR #74.
+  - Old pre-#70 app-shell changes as-is.
+  - Old `StoryService.generateStory()` frontend method usage.
+  - Browser `localStorage` storage of xAI API keys.
+  - Deletion from `story-generator/src/testing/index.ts`.
+  - Treating custom prompt templates as fully wired production prompt overrides; they are currently passed as `narrativeDirectives` through the Story Lab seam.
+- Why not taking:
+  - The #70 Story Lab shell is now canonical, so PR #74's old app root had to be adapted around it.
+  - Provider API keys should stay server-side for Vercel deployment.
+  - The current story-lab mock endpoint can accept prompt directives, but production prompt injection still needs a later adapter into canonical story generation.
+- Future mining value:
+  - Add structured experiment IDs and persistence if prompt testing becomes a team workflow.
+  - Add a dedicated server-side prompt-evaluation contract/test suite once real generation replaces mock Story Lab responses.
+  - Revisit CSS polish; the imported proving-grounds stylesheet builds but exceeds the Angular component CSS budget by 1.15 kB.
+- Files inspected:
+  - `story-generator/src/app/proving-grounds/*` from PR #74
+  - `story-generator/src/app/app-root.ts` from PR #74
+  - `story-generator/src/app/app.routes.ts` from PR #74
+  - `story-generator/src/app/app.config.ts`, `main.ts`, and `app.routes.server.ts` from PR #74
+  - Current #70 `story-generator/src/app/story.service.ts` and contracts
+  - Current `api/story-lab/*` route family
+- Files changed in recovery branch:
+  - `api/story-lab/evaluate.ts`
+  - `package.json`
+  - `story-generator/src/app/app-root.ts`
+  - `story-generator/src/app/app.routes.ts`
+  - `story-generator/src/app/app.config.ts`
+  - `story-generator/src/app/app.routes.server.ts`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`
+  - `story-generator/src/main.server.ts`
+  - `story-generator/src/app/proving-grounds/*`
+  - recovery docs
+- Conflicts encountered:
+  - PR #74 is mergeable against `main`, but its old app shell conflicts conceptually with the #70 recovery baseline.
+  - The build output changed from `index.html` to `index.csr.html` after server rendering was enabled for routed pages.
+  - Initial SSR route verification exposed a split bootstrap bug: browser bootstrap used `AppRoot`, but `main.server.ts` still bootstrapped the Story Lab component directly.
+- Tests/checks run:
+  - `scripts/recovery/preflight.sh --quick --skip-status` passed.
+  - `npm test` passed all configured root suites.
+  - `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with the existing stale `baseline-browser-mapping` warning and a new component CSS budget warning for proving grounds.
+  - `npm run build:verify` passed after widening the expected browser index filename.
+  - `PORT=4300 npm run start:prod` plus `curl` route checks confirmed `/` serves Story Lab content and `/proving-grounds` serves the proving-grounds container/test configuration.
+- Self-review notes:
+  - Good: The page is now a Story Lab route instead of an old-shell replacement.
+  - Good: Evaluation no longer asks users to store provider keys in browser localStorage.
+  - Problem found and fixed: `build:verify` assumed prerendered `index.html`; routed SSR produces `index.csr.html`.
+  - Problem found and fixed: SSR was still bootstrapping `App`; `main.server.ts` now bootstraps `AppRoot` so server-rendered routes use the Angular router.
+  - Watch item: The prompt directives reach the Story Lab seam but are not yet guaranteed to affect canonical production generation.
+- GitHub PR closure note:
+  - Close as ported after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.

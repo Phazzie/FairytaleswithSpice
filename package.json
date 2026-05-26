@@ -3,7 +3,7 @@
   "scripts": {
     "install:all": "npm install --no-audit --no-fund && cd story-generator && npm install --no-audit --no-fund",
     "build": "cd story-generator && npm run build",
-    "build:verify": "[ -f story-generator/dist/story-generator/browser/index.html ] || (echo 'Missing build output' && exit 1)",
+    "build:verify": "[ -f story-generator/dist/story-generator/browser/index.html ] || [ -f story-generator/dist/story-generator/browser/index.csr.html ] || (echo 'Missing build output' && exit 1)",
     "build:full": "npm run build && npm run build:verify",
     "test": "npm run test:all",
     "test:story": "tsx tests/story-service-improved.test.ts",

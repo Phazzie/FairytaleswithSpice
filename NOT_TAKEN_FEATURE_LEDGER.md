@@ -342,3 +342,33 @@ Template:
   - `story-generator/src/app/story.service.ts`
   - `story-generator/src/testing/data-factory.ts`
   - `tests/story-service.test.mjs`
+
+## PR #74 - Add proving grounds page for prompt testing and generation logic inspection
+
+- Disposition: selected port; close later as ported
+- Source branch: `pr-74`
+- Story-generation ideas not taken:
+  - Direct production prompt override wiring from the proving-grounds template editor.
+  - Treating the generation logic viewer's random author/beat/Chekhov selections as guaranteed production generation inputs.
+  - Client-side Grok/xAI evaluation with API keys stored in browser `localStorage`.
+- Other useful ideas not taken:
+  - Direct merge of old app-shell routing and header layout.
+  - Deletion from `story-generator/src/testing/index.ts`.
+  - Old `StoryService.generateStory()` method shape.
+  - Full old CSS as product-ready design; it was carried as a functional first pass and still needs budget/polish follow-up.
+- Why not now:
+  - The current #70 Story Lab seam is canonical and does not expose direct prompt-template override semantics yet.
+  - Vercel deployment should keep provider credentials server-side.
+  - The old app shell would overwrite or confuse the Story Lab baseline.
+- Future extraction notes:
+  - Add a formal prompt-experiment API that records template, variables, model, response, score, and evaluator metadata.
+  - Decide whether proving-grounds logic selections should become production generation controls or remain an inspection/testing aid.
+  - Add persistent experiment storage only after the Vercel storage decision is made.
+- Source files/commits:
+  - `story-generator/src/app/proving-grounds/*`
+  - `story-generator/src/app/app-root.ts`
+  - `story-generator/src/app/app.routes.ts`
+  - `story-generator/src/app/app.config.ts`
+  - `story-generator/src/main.ts`
+  - `story-generator/src/main.server.ts`
+  - `story-generator/src/app/app.routes.server.ts`

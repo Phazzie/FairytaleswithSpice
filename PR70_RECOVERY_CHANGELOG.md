@@ -547,3 +547,74 @@ Self-review:
 - Good: Repeated validation is now executable instead of depending on memory after each PR port.
 - Problem: `brew install jq` reached the `m4` dependency build on macOS 12 and stalled long enough to block recovery work, so I stopped it with `SIGTERM`.
 - Follow-up: Retry `jq` later with a less blocking install path, or continue using `gh --json` plus Node/TypeScript parsing when needed.
+
+## 2026-05-26 12:28 EDT - PR #74 Proving Grounds Ported
+
+Actions:
+
+- Ported PR #74 selectively instead of merging the old app shell.
+- Added Angular routing around the #70 Story Lab baseline:
+  - `AppRoot` wrapper,
+  - `app.routes.ts`,
+  - `provideRouter(routes)`,
+  - `/proving-grounds` lazy route,
+  - Story Lab header link.
+- Adapted the proving-grounds page to current Story Lab contracts:
+  - uses `StoryService.beginStory()` instead of stale `generateStory()`,
+  - passes prompt experiments as `narrativeDirectives`,
+  - stores local test history safely only in the browser,
+  - keeps comparison mode and JSON export.
+- Added server-side `api/story-lab/evaluate.ts` for Grok evaluation with `XAI_API_KEY`, falling back to mock scoring if unavailable.
+- Updated root `build:verify` to accept Angular SSR's `browser/index.csr.html` output.
+
+Decision:
+
+- Do not merge #74 directly.
+- Do not take browser-local xAI key storage.
+- Do not take old pre-#70 app-shell changes as-is.
+- Keep the proving grounds as an internal prompt-testing tool, not yet as production prompt-control infrastructure.
+
+Validation:
+
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `npm test` passed all configured root suites.
+- `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with the existing stale `baseline-browser-mapping` warning and a new proving-grounds CSS budget warning.
+- `npm run build:verify` passed after widening the expected browser index filename.
+
+Self-review:
+
+- Good: The feature now follows the #70 Story Lab seam and is lazy-loaded instead of replacing the app shell.
+- Good: Provider credentials stay server-side for Vercel.
+- Problem found and fixed: The verifier assumed prerender output `index.html`, but server-rendered routed Angular builds produce `index.csr.html`.
+- Watch item: Prompt templates are visible and passed as directives, but production story generation still needs a real adapter before proving-ground template choices can be treated as authoritative generation controls.
+
+Running merge-order snapshot after #74:
+
+1. #26 - validation, notifications, accessibility services.
+2. #41/#39 - lean Vercel CI/test workflow material.
+3. #84 - dependency update once lockfile state is intentional.
+4. Docs/research/audio mining after merge/adapt candidates are out of the way.
+
+## 2026-05-26 12:50 EDT - PR #74 SSR Route Verification Fixed
+
+Actions:
+
+- Investigated a route verification problem where `/proving-grounds` returned Story Lab body content under the built SSR server.
+- Fixed `story-generator/src/main.server.ts` so server bootstrap uses `AppRoot`, matching browser bootstrap and allowing the router to select `/` versus `/proving-grounds`.
+- Stopped the local SSR server after verification.
+
+Validation:
+
+- `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed.
+- `PORT=4300 npm run start:prod` served the production SSR bundle on `http://localhost:4300`.
+- `curl http://localhost:4300/` found `Story Blueprint` and the `Proving Grounds` link.
+- `curl http://localhost:4300/proving-grounds` found `proving-grounds-container` and `Test Configuration`.
+- `npm run build:verify` passed from the repo root.
+- `git diff --check` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+
+Self-review:
+
+- Good: The feature is now verified as a real route, not only a successful TypeScript/build port.
+- Problem found and fixed: SSR and browser bootstrap can drift after introducing a router shell; both must point at the same root component.
+- Watch item: The proving-grounds component CSS still exceeds the Angular component budget by 1.15 kB.

@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, SecurityContext, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
+import { RouterLink } from '@angular/router';
 import {
   BatchProgressState,
   ChapterBatchSize,
@@ -29,9 +30,9 @@ type ChapterGroupViewModel = {
 };
 
 @Component({
-  selector: 'app-root',
+  selector: 'app-story-lab',
   standalone: true,
-  imports: [CommonModule, FormsModule, DebugPanel],
+  imports: [CommonModule, FormsModule, RouterLink, DebugPanel],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
