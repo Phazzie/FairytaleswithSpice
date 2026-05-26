@@ -18,7 +18,7 @@ Status values:
 
 | PR | Planned action | Actual status | Notes |
 |---:|---|---|---|
-| #86 | merge | pending | Design system doc. |
+| #86 | merge | merged | Merged design system doc; normalized nonzero letter-spacing tokens. |
 | #85 | merge | pending | `path-to-regexp` security bump. |
 | #84 | try merge or recreate | pending | Grouped dependency update. |
 | #77 | mine and close | pending | Documentation analysis lessons. |
@@ -114,3 +114,30 @@ Use this template for detailed entries as each PR is handled:
   - Use Node 20 for Angular build verification; local Node 23 aborts.
 - GitHub PR closure note:
   - Do not close yet. Close or supersede only after the recovery branch has a final PR and #70 stabilization is documented.
+
+## PR #86 - Add design.md: Visual identity and design system specification
+
+- Source branch: `pr-86` / `claude/laughing-cori-CspQv`
+- Planned disposition: merge
+- Actual disposition: merged into `recovery-pr70-story-lab-vercel`
+- Story-generation impact: Low direct impact. Provides UI/design guidance for story-lab presentation rather than generation logic.
+- Accepted material:
+  - `design.md` with visual identity, color tokens, typography, spacing, component guidance, and design do/don'ts.
+- Not taking now:
+  - Nonzero letter-spacing values from the original design token front matter were not preserved.
+- Why not taking:
+  - Recovery frontend guidance requires letter spacing to stay at 0 to avoid rendering and fit issues.
+- Future mining value:
+  - Use `design.md` when reconciling #40 visual ideas and #75/#26 UI work.
+- Files inspected:
+  - `design.md`
+- Files changed in recovery branch:
+  - `design.md`
+- Conflicts encountered:
+  - None.
+- Tests/checks run:
+  - Not rerun after docs-only merge. Previous Node 20 build passed after #70 stabilization.
+- Self-review notes:
+  - The design doc is useful but should not override app usability constraints or the Vercel recovery plan.
+- GitHub PR closure note:
+  - Can be closed as merged/superseded by the recovery branch once the final recovery PR is opened.

@@ -97,3 +97,26 @@ Self-review:
 - The source-level #70 build blockers are fixed.
 - Local Node v23 is not a valid Angular verification runtime; use Node 20 for build validation.
 - The branch still needs contract/path review before later story-generation PRs are ported.
+
+## 2026-05-26 00:50 EDT - PR #86 Merged
+
+Actions:
+
+- Fetched PR #86 as `pr-86`.
+- Merged it into `recovery-pr70-story-lab-vercel`.
+- Added `design.md`.
+- Normalized `letterSpacing` values in `design.md` to `0`.
+
+Decision:
+
+- Keep the design system as useful UI guidance.
+- Do not preserve nonzero letter-spacing tokens because recovery frontend rules require letter spacing to remain 0.
+
+Validation:
+
+- No code validation rerun; #86 is docs-only.
+
+Self-review:
+
+- #86 is safe to mark merged in the ledger.
+- The design doc should guide later UI ports, especially #40, #75, and #26, but should not override layout/accessibility constraints.

@@ -17,7 +17,7 @@ typography:
     fontSize: 52px
     fontWeight: 700
     lineHeight: 1.1
-    letterSpacing: -0.03em
+    letterSpacing: 0
   h2:
     fontFamily: Georgia, serif
     fontSize: 40px
@@ -43,7 +43,7 @@ typography:
     fontSize: 12px
     fontWeight: 600
     lineHeight: 1.4
-    letterSpacing: 0.08em
+    letterSpacing: 0
 rounded:
   none: 0px
   sm: 2px
@@ -105,7 +105,7 @@ Typography is serif-forward and sophisticated. Georgia headlines provide classic
 
 - **Headlines:** Georgia serif at bold weights for authoritative, literary presence.
 - **Body:** Lora serif for long-form story content—relaxed line height and generous sizing enhance reading flow.
-- **UI Labels:** System sans-serif, uppercase tracking for clarity and modernity in functional spaces.
+- **UI Labels:** System sans-serif for clarity and modernity in functional spaces. Keep letter spacing at 0 for consistent rendering.
 
 ## Layout
 
