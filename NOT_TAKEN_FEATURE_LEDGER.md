@@ -275,3 +275,37 @@ Template:
   - `story-generator/src/app/story.service.spec.ts`
   - `story-generator/src/testing/test-data-factory.ts`
   - `README.md`
+
+## PR #73 - Add persistent story state tracking and schema
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-73`
+- Story-generation ideas not taken:
+  - Legacy `StoryStateService` implementation under `api/lib/services/storyStateService.ts`.
+  - Direct mutation of the old `api/lib/services/storyService.ts` generation flow.
+  - PR #73's older `StoryState`, `StoryStateDelta`, `CharacterArc`, `PlotThread`, and `ContinuityDevice` contract shapes as replacements for #70's richer story-lab state snapshot contracts.
+  - Database-backed chapter append semantics until the production story-lab adapter exists.
+- Other useful ideas not taken:
+  - DigitalOcean Postgres provisioning README.
+  - DigitalOcean-shaped SQL schema as active project schema.
+  - `pg` dependency and dynamic Postgres client.
+  - Old `api/lib/db/*` layout.
+  - Duplicate `story-generator/src/api/lib/types/contracts.ts` contract copy.
+- Why not now:
+  - The deployment target is Vercel, not DigitalOcean.
+  - A durable storage product has not been selected.
+  - In-memory persistence is not reliable on Vercel serverless, so the port keeps it explicitly transient and does not expose it as product durability.
+  - #70 already has the state snapshot model the UI consumes; replacing it would add churn without improving the current app.
+- Future extraction notes:
+  - Revisit the SQL schema when choosing Vercel Postgres/Neon or another durable store.
+  - Use the accepted `StoryStateDelta` and `StoryPersistenceReceipt` shapes as the adapter contract for real storage.
+  - If durable storage lands, add read/update tests for story recovery, state divergence, and chapter append conflicts.
+- Source files/commits:
+  - `api/lib/db/README.md`
+  - `api/lib/db/client.ts`
+  - `api/lib/db/schema.sql`
+  - `api/lib/services/storyStateService.ts`
+  - `api/lib/services/storyService.ts`
+  - `api/lib/types/contracts.ts`
+  - `story-generator/src/app/contracts.ts`
+  - `tests/story-service-improved.test.ts`

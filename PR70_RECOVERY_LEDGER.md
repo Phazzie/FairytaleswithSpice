@@ -25,7 +25,7 @@ Status values:
 | #76 | close | pending | No committed material found. |
 | #75 | port/cherry-pick | ported | Ported batch queue, suggested prompts, grouped chapter timeline, and Vercel persistence wording into #70 story lab. |
 | #74 | port later or mine/close | pending | Proving grounds prompt lab. |
-| #73 | recreate/port | pending | Persistent story state; avoid DigitalOcean Postgres assumption. |
+| #73 | recreate/port | ported | Ported story-lab state deltas and transient persistence boundary; DigitalOcean Postgres and `pg` dependency not taken. |
 | #72 | port/cherry-pick | ported | Ported backward-compatible 1-3 chapter batch generation/continuation into canonical `api/_lib`; old UI/route rewrites not taken. |
 | #71 | compare then close | pending | Early batch generation, mostly superseded by #72. |
 | #70 | merge baseline | merged | Merged into `recovery-pr70-story-lab-vercel` as commit `118265c`; stabilization pending. |
@@ -563,5 +563,69 @@ Use this template for detailed entries as each PR is handled:
   - The port deliberately uses the existing #70 `continueStory()` path instead of creating #75's separate batch endpoint.
   - The queue is currently UI-local because story-lab generation is still mock/synchronous. Durable queue semantics should wait for real persistence/workflow decisions.
   - The current visual design remains the #70 dark story-lab shell; #75's broad visual rewrite was not ported.
+- GitHub PR closure note:
+  - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #73 - Add persistent story state tracking and schema
+
+- Source branch: `pr-73` / `codex/implement-story-state-management-system`
+- Planned disposition: recreate/port
+- Actual disposition: ported selected story-state concepts into the #70 story-lab mock seam; do not merge directly
+- Story-generation impact: High. Adds explicit state deltas and a persistence boundary to the story-lab workflow so character, plot-thread, artifact, beat, and continuity changes are represented per batch.
+- Accepted material:
+  - Added `StoryStateDelta` to the #70 story-lab contracts.
+  - Added `StoryPersistenceReceipt` to mark whether a story snapshot was client-carried, transient-memory, or durable.
+  - Extended `StoryIterationPayload` with optional `stateDelta` and `persistence` fields.
+  - Added `api/story-lab/stateStore.ts` as a clearly marked transient-memory persistence boundary for story-lab continuity.
+  - Updated story-lab mock generation so chapter deltas introduce characters, escalate threads, foreshadow artifacts, add beats, and produce continuity warnings.
+  - Updated story-lab continuation so it applies chapter deltas to the incoming state snapshot and can fall back to a same-process transient snapshot if present.
+  - Added `tests/story-lab-state.test.ts` and included it in `npm test`.
+- Not taking now:
+  - Direct branch merge.
+  - DigitalOcean Postgres schema and provisioning docs.
+  - `pg` dependency.
+  - Old `api/lib/db/*` path layout.
+  - Old `api/lib/services/storyStateService.ts` implementation as active production code.
+  - Old legacy `api/lib/services/storyService.ts` state mutation changes.
+  - Old duplicate `story-generator/src/api/lib/types/contracts.ts` contract copy.
+- Why not taking:
+  - The app target is Vercel, and no durable Vercel storage product has been selected yet.
+  - Adding `pg` and DigitalOcean provisioning would contradict the current deployment direction.
+  - #70 already owns richer story-lab state contracts than PR #73's older legacy contracts, so the useful port is state-delta and persistence-boundary behavior rather than wholesale type replacement.
+  - In-memory state is not durable on Vercel; the recovery branch labels it as transient to avoid false persistence claims.
+- Future mining value:
+  - Use PR #73's SQL schema as a conceptual reference when choosing Vercel Postgres/Neon, Vercel KV/Upstash, Blob, or another durable store.
+  - Promote `api/story-lab/stateStore.ts` from transient to durable only after storage selection and migration planning.
+  - Use the state-delta shape when replacing story-lab mocks with the canonical `api/_lib/services/storyService.ts`.
+- Files inspected:
+  - `api/lib/db/README.md`, `api/lib/db/client.ts`, and `api/lib/db/schema.sql` from PR #73
+  - `api/lib/services/storyStateService.ts` from PR #73
+  - `api/lib/services/storyService.ts` from PR #73
+  - `api/lib/types/contracts.ts` from PR #73
+  - `story-generator/src/app/contracts.ts` from PR #73
+  - `tests/story-service-improved.test.ts` from PR #73
+- Files changed in recovery branch:
+  - `story-generator/src/app/contracts.ts`
+  - `api/story-lab/contracts.ts`
+  - `api/story-lab/mockData.ts`
+  - `api/story-lab/stateStore.ts`
+  - `api/story-lab/stories/[storyId]/continue.ts`
+  - `tests/story-lab-state.test.ts`
+  - `package.json`
+- Conflicts encountered:
+  - GitHub reports PR #73 as conflicting against `main`; it is also stale against the recovery branch.
+  - Conflict shape is old `api/lib` paths, DigitalOcean Postgres provisioning, old legacy service mutation, and overlap with #70's newer story-lab state contracts.
+- Tests/checks run:
+  - `npx tsx tests/story-lab-state.test.ts` passed.
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+  - `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+  - `git diff --check` passed.
+  - `npm test` passed, including story, trope, cliffhanger, and story-lab state tests.
+  - `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+  - `npm run build:verify` passed.
+- Self-review notes:
+  - The port keeps the current story-lab contract as the UI/API boundary and avoids creating another legacy contract layer.
+  - The new store is intentionally not marketed as durable persistence. Its warning text should remain until a real Vercel storage choice is implemented.
+  - The #73 port resolves the immediate state-delta gap before #71/#74 review, but production story generation still needs an adapter from canonical `StoryService` into `StoryIterationPayload`.
 - GitHub PR closure note:
   - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.

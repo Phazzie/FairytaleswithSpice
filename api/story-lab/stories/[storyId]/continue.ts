@@ -4,6 +4,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 import type { ApiEnvelope, StoryContinuationSeam, StoryIterationPayload } from '../../contracts';
 import { buildContinuationResponse } from '../../mockData';
+import { getTransientStorySnapshot } from '../../stateStore';
 
 const isValidBatchSize = (size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] =>
   [1, 2, 3].includes(size as StoryContinuationSeam['input']['chapterBatchSize']);
@@ -34,26 +35,32 @@ export default async function handler(
     return;
   }
 
-  const input: StoryContinuationSeam['input'] = req.body;
+  const input = req.body as Partial<StoryContinuationSeam['input']>;
+  const storyId = input.storyId?.trim() ?? '';
+  const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
 
   const hasChapters = Array.isArray(input.previouslyGeneratedChapters);
   const batchSizeNumber = Number(input.chapterBatchSize);
 
-  if (!input.storyId?.trim() || !input.storyState || !hasChapters || !isValidBatchSize(batchSizeNumber)) {
+  if (!storyId || (!input.storyState && !transientSnapshot) || (!hasChapters && !transientSnapshot) || !isValidBatchSize(batchSizeNumber)) {
     res.status(400).json({
       success: false,
       error: {
         code: 'INVALID_REQUEST',
-        message: 'Continuation requires storyId, storyState, previouslyGeneratedChapters, and a chapterBatchSize of 1-3.'
+        message: 'Continuation requires storyId, storyState or transient snapshot, previous chapters or transient snapshot, and a chapterBatchSize of 1-3.'
       }
     });
     return;
   }
 
   const normalizedInput: StoryContinuationSeam['input'] = {
-    ...input,
-    storyId: input.storyId.trim(),
-    previouslyGeneratedChapters: input.previouslyGeneratedChapters,
+    ...(input as StoryContinuationSeam['input']),
+    storyId,
+    storyState: input.storyState ?? transientSnapshot!.state,
+    previouslyGeneratedChapters: hasChapters
+      ? input.previouslyGeneratedChapters!
+      : transientSnapshot!.chapters,
+    existingSummary: input.existingSummary ?? transientSnapshot?.summary,
     chapterBatchSize: batchSizeNumber as StoryContinuationSeam['input']['chapterBatchSize']
   };
 

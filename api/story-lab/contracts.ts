@@ -18,6 +18,8 @@ export type {
   ChapterDelta,
   GeneratedChapter,
   ChapterBatchEnvelope,
+  StoryStateDelta,
+  StoryPersistenceReceipt,
   GenerationTelemetry,
   StoryIterationPayload,
   StoryGenerationSeam,

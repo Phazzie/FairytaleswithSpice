@@ -126,6 +126,28 @@ export interface ChapterBatchEnvelope {
   suggestedNextPrompts: string[];
 }
 
+export interface StoryStateDelta {
+  storyId: string;
+  fromRevision: number | null;
+  toRevision: number;
+  addedChapterNumbers: number[];
+  introducedCharacters: CharacterProfile[];
+  updatedCharacters: CharacterProfile[];
+  resolvedThreads: string[];
+  escalatedThreads: PlotThread[];
+  foreshadowedArtifacts: LoreArtifact[];
+  continuityWarnings: string[];
+  beatIds: string[];
+  summary: string;
+}
+
+export interface StoryPersistenceReceipt {
+  mode: 'client_carried' | 'transient_memory' | 'durable_storage';
+  persistedRevision: number;
+  persistedAt: string;
+  warning?: string;
+}
+
 export interface GenerationTelemetry {
   engine: 'gpt' | 'grok' | 'custom';
   totalLatencyMs: number;
@@ -138,6 +160,8 @@ export interface StoryIterationPayload {
   summary: StorySummary;
   batch: ChapterBatchEnvelope;
   state: StoryStateSnapshot;
+  stateDelta?: StoryStateDelta;
+  persistence?: StoryPersistenceReceipt;
   telemetry: GenerationTelemetry;
 }
 
