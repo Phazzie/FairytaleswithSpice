@@ -31,7 +31,7 @@ Status values:
 | #70 | merge baseline | merged | Merged into `recovery-pr70-story-lab-vercel` as commit `118265c`; stabilization pending. |
 | #67 | port/cherry-pick | pending | Audit, author-style extraction, duplicate cleanup. |
 | #65 | port/cherry-pick | pending | AI model/token/story quality fixes. |
-| #64 | port/cherry-pick | pending | Fisher-Yates/randomization and selected tests. |
+| #64 | port/cherry-pick | ported | Ported Fisher-Yates Chekhov element selection; stale tests/docs/node_modules not taken. |
 | #63 | mine and close | pending | Storage/database research. |
 | #56 | mine and close | pending | Backend service/cache research, DigitalOcean-shaped. |
 | #55 | mine and close | pending | Voice evolution/emotion material; audio deferred. |
@@ -203,3 +203,40 @@ Use this template for detailed entries as each PR is handled:
   - Correct action is to preserve the lesson, not the stale code.
 - GitHub PR closure note:
   - Close as superseded after recovery branch/final PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #64 - Complete PR#61: Fix remaining biased randomization, update documentation, and fix all tests
+
+- Source branch: `pr-64` / `copilot/finish-fixing-pr-61-issues`
+- Planned disposition: port/cherry-pick
+- Actual disposition: ported selected correctness fix
+- Story-generation impact: Medium. Fixes biased Chekhov element selection in the story-generation prompt.
+- Accepted material:
+  - Replaced `elements.sort(() => 0.5 - Math.random())` with Fisher-Yates selection in `api/_lib/services/storyService.ts`.
+  - Applied the same fix to `story-generator/src/api/lib/services/storyService.ts` because it is still included by the Angular tsconfig and should not retain known-bad prompt logic while duplicate cleanup remains pending.
+- Not taking now:
+  - Broad stale branch changes that rename `api/_lib` back to `api/lib`.
+  - Playwright scaffold and E2E docs from the old branch.
+  - Angular spec rewrites targeting the pre-#70 UI.
+  - `node_modules` and package churn.
+  - Documentation deletions from the stale branch base.
+- Why not taking:
+  - Direct merge would undo current Vercel `_lib` path decisions and reintroduce stale audio/backend/dependency artifacts.
+  - #70 changed the app shell, so old UI specs are not trustworthy as-is.
+- Future mining value:
+  - E2E smoke-test ideas may be useful later after the #70 story-lab UI stabilizes.
+- Files inspected:
+  - `api/lib/services/storyService.ts` from PR #64
+  - `story-generator/src/api/lib/services/storyService.ts` from PR #64
+  - PR #64 file stats
+- Files changed in recovery branch:
+  - `api/_lib/services/storyService.ts`
+  - `story-generator/src/api/lib/services/storyService.ts`
+- Conflicts encountered:
+  - Not merged directly due stale branch blast radius.
+- Tests/checks run:
+  - `rg` confirmed no remaining `sort(() => 0.5 - Math.random())` in the two story service copies.
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- Self-review notes:
+  - The duplicate `story-generator/src/api/lib/services/storyService.ts` still needs a later cleanup decision, likely from #67, but retaining a biased randomization bug there would be worse while it is compiled.
+- GitHub PR closure note:
+  - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.

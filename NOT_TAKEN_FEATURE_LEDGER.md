@@ -74,3 +74,26 @@ Template:
   - `story-generator/src/app/app.ts`
   - `story-generator/src/app/app.html`
   - `story-generator/src/app/app-no-progress.ts.alternative`
+
+## PR #64 - Complete PR#61 randomization and test cleanup
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-64`
+- Story-generation ideas not taken:
+  - No additional story-generation prompt logic beyond the Fisher-Yates Chekhov element fix was taken.
+  - Old branch versions of story service files that rename or duplicate service paths.
+- Other useful ideas not taken:
+  - Playwright E2E scaffold and `e2e/story-generation.spec.ts`.
+  - Test documentation and old Angular spec adjustments.
+  - PR completion summary docs.
+- Why not now:
+  - The branch is stale against the Vercel `_lib` path and #70 UI baseline.
+  - Direct merge would bring path regressions, dependency churn, and old UI/test assumptions.
+- Future extraction notes:
+  - Recreate E2E smoke coverage after the story-lab UI is stable, using #64 only as a reference.
+  - Revisit test expectations after #72/#75 multi-chapter decisions are made.
+- Source files/commits:
+  - `api/lib/services/storyService.ts`
+  - `story-generator/src/api/lib/services/storyService.ts`
+  - `playwright.config.ts`
+  - `e2e/story-generation.spec.ts`

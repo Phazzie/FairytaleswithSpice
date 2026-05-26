@@ -165,3 +165,26 @@ Self-review:
 
 - This is the first PR where the planned "port/cherry-pick" action changed after baseline inspection.
 - The plan's running-ledger approach caught the reason: useful lesson, stale implementation.
+
+## 2026-05-26 00:53 EDT - PR #64 Fisher-Yates Fix Ported
+
+Actions:
+
+- Inspected PR #64 and confirmed direct merge would be too stale and broad.
+- Ported the Fisher-Yates Chekhov element selection fix manually.
+- Updated both `api/_lib/services/storyService.ts` and `story-generator/src/api/lib/services/storyService.ts`.
+
+Reason:
+
+- `api/_lib/services/storyService.ts` is the Vercel recovery target.
+- `story-generator/src/api/lib/services/storyService.ts` is still included by `story-generator/tsconfig.app.json`, so it should not keep known-bad prompt logic while duplicate cleanup remains unresolved.
+
+Validation:
+
+- `rg` confirmed no remaining `sort(() => 0.5 - Math.random())` in the two story service copies.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+
+Self-review:
+
+- Porting only the randomization fix avoided #64's path regression from `_lib` back to `lib`.
+- Duplicate service cleanup remains a real issue for the #67 phase.
