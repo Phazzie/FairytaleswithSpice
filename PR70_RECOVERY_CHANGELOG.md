@@ -520,3 +520,30 @@ Running merge-order snapshot after #71:
 2. #41/#39 - Vercel CI/test workflow.
 3. #26 - UI validation/accessibility services.
 4. #84 - dependency group remains deferred until lockfile noise is resolved.
+
+## 2026-05-26 12:05 EDT - Recovery Preflight Tooling Added
+
+Actions:
+
+- Attempted Homebrew installation of `jq` so GitHub PR JSON output can be summarized without noisy raw payloads.
+- Added `scripts/recovery/preflight.sh`.
+- The script codifies the repeated recovery validation sequence:
+  - required tool checks,
+  - `git diff --check`,
+  - Angular app/spec type checks,
+  - root `npm test`,
+  - Angular production build through Node 20,
+  - root `npm run build:verify`.
+- Added options for `--quick`, `--skip-tests`, `--skip-build`, and `--skip-status`.
+
+Validation:
+
+- `bash -n scripts/recovery/preflight.sh` passed.
+- `scripts/recovery/preflight.sh --help` printed the expected usage.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+
+Self-review:
+
+- Good: Repeated validation is now executable instead of depending on memory after each PR port.
+- Problem: `brew install jq` reached the `m4` dependency build on macOS 12 and stalled long enough to block recovery work, so I stopped it with `SIGTERM`.
+- Follow-up: Retry `jq` later with a less blocking install path, or continue using `gh --json` plus Node/TypeScript parsing when needed.
