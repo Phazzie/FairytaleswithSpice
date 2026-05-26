@@ -188,3 +188,31 @@ Self-review:
 
 - Porting only the randomization fix avoided #64's path regression from `_lib` back to `lib`.
 - Duplicate service cleanup remains a real issue for the #67 phase.
+
+## 2026-05-26 00:54 EDT - Self-Review Checkpoint 1
+
+Scope reviewed:
+
+- #70 baseline merge and stabilization.
+- #86 design doc merge.
+- #85 dependency lockfile merge.
+- #50 progress/hydration lesson mining.
+- #64 Fisher-Yates randomization port.
+
+Findings:
+
+- Good: The recovery branch is now based on #70 and builds successfully under Node 20.
+- Good: The running ledger changed the #50 decision from "port code" to "mine lesson" after inspection, which avoided stale UI regression.
+- Good: #64 was narrowed to the one story-generation correctness fix instead of merging broad stale branch content.
+- Problem: Current local Node v23.8.0 is not suitable for Angular build validation. Continue using Node 20 for build checks.
+- Problem: `story-generator/src/api/lib/services/storyService.ts` remains as a duplicate compiled story service. It should be resolved during #67 cleanup, but until then it should not retain known bugs.
+- Problem: Lockfile noise in root `package-lock.json` and `node_modules/.package-lock.json` remains uncommitted. Avoid dependency-heavy PRs until that is resolved.
+- Problem: An unrelated untracked `pocketfm-contest-forge/` directory is present. Ignore it unless the user connects it to this work.
+
+Immediate corrections made:
+
+- None needed beyond already-committed #70/#64 fixes.
+
+Next action:
+
+- Inspect #65 for model/token/quality fixes and port only the parts not already present in the #70 recovery branch.
