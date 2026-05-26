@@ -123,6 +123,7 @@ The ledger schema:
 
 3. Create recovery branch from current `origin/main`.
    - Proposed branch: `recovery/pr70-story-lab-vercel`
+   - Actual branch used in this checkout: `recovery-pr70-story-lab-vercel`
    - Tag the starting point locally: `pre-pr70-recovery-main-YYYYMMDD`
 
 4. Merge PR #70 into the recovery branch.
@@ -411,7 +412,7 @@ The highest-risk loss would be story-generation ideas hidden in stale or audio-h
 
 This recovery is done when:
 
-1. `recovery/pr70-story-lab-vercel` exists and includes #70 as the baseline.
+1. `recovery-pr70-story-lab-vercel` exists and includes #70 as the baseline.
 2. Every open PR from the inventory is either:
    - merged into the recovery branch,
    - ported/cherry-picked and then closed,
