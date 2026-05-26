@@ -1,4 +1,6 @@
 <div class="app-shell">
+  <app-notifications></app-notifications>
+
   <header class="app-header">
     <div class="app-header__topline">
       <h1>Fairytales with Spice · Story Lab</h1>
@@ -16,6 +18,8 @@
           <select
             [ngModel]="blueprint().creature"
             (ngModelChange)="updateBlueprint('creature', $event)"
+            [attr.aria-invalid]="hasFieldError('creature')"
+            [attr.aria-describedby]="hasFieldError('creature') ? 'creature-error' : null"
           >
             <option value="vampire">Vampire</option>
             <option value="werewolf">Werewolf</option>
@@ -23,6 +27,9 @@
             <option value="siren">Siren</option>
             <option value="djinn">Djinn</option>
           </select>
+          <span class="field-error" id="creature-error" *ngIf="hasFieldError('creature')" role="alert">
+            {{ getFieldError('creature') }}
+          </span>
         </label>
 
         <label>
@@ -30,6 +37,8 @@
           <select
             [ngModel]="blueprint().tone"
             (ngModelChange)="updateBlueprint('tone', $event)"
+            [attr.aria-invalid]="hasFieldError('tone')"
+            [attr.aria-describedby]="hasFieldError('tone') ? 'tone-error' : null"
           >
             <option value="romance">Romance</option>
             <option value="dark_romance">Dark Romance</option>
@@ -38,6 +47,9 @@
             <option value="comedy">Comedy</option>
             <option value="tragedy">Tragedy</option>
           </select>
+          <span class="field-error" id="tone-error" *ngIf="hasFieldError('tone')" role="alert">
+            {{ getFieldError('tone') }}
+          </span>
         </label>
 
         <label>
@@ -48,8 +60,13 @@
             max="5"
             [ngModel]="blueprint().spicyLevel"
             (ngModelChange)="updateBlueprint('spicyLevel', $event)"
+            [attr.aria-invalid]="hasFieldError('spicyLevel')"
+            [attr.aria-describedby]="hasFieldError('spicyLevel') ? 'spicy-level-error' : null"
           />
           <span class="range-value">Level {{ blueprint().spicyLevel }}</span>
+          <span class="field-error" id="spicy-level-error" *ngIf="hasFieldError('spicyLevel')" role="alert">
+            {{ getFieldError('spicyLevel') }}
+          </span>
         </label>
 
         <label>
@@ -57,12 +74,17 @@
           <select
             [ngModel]="blueprint().desiredWordBudget"
             (ngModelChange)="updateBlueprint('desiredWordBudget', $event)"
+            [attr.aria-invalid]="hasFieldError('desiredWordBudget')"
+            [attr.aria-describedby]="hasFieldError('desiredWordBudget') ? 'word-budget-error' : null"
           >
             <option [ngValue]="600">600 words</option>
             <option [ngValue]="900">900 words</option>
             <option [ngValue]="1200">1200 words</option>
             <option [ngValue]="1500">1500 words</option>
           </select>
+          <span class="field-error" id="word-budget-error" *ngIf="hasFieldError('desiredWordBudget')" role="alert">
+            {{ getFieldError('desiredWordBudget') }}
+          </span>
         </label>
 
         <label>
@@ -70,11 +92,16 @@
           <select
             [ngModel]="blueprint().chapterBatchSize"
             (ngModelChange)="updateBlueprint('chapterBatchSize', $event)"
+            [attr.aria-invalid]="hasFieldError('chapterBatchSize')"
+            [attr.aria-describedby]="hasFieldError('chapterBatchSize') ? 'chapter-batch-error' : null"
           >
             <option [ngValue]="1">1 chapter</option>
             <option [ngValue]="2">2 chapters</option>
             <option [ngValue]="3">3 chapters</option>
           </select>
+          <span class="field-error" id="chapter-batch-error" *ngIf="hasFieldError('chapterBatchSize')" role="alert">
+            {{ getFieldError('chapterBatchSize') }}
+          </span>
         </label>
       </div>
 
@@ -85,7 +112,12 @@
           placeholder="Describe the central hook in a few sentences..."
           [ngModel]="blueprint().logline"
           (ngModelChange)="updateBlueprint('logline', $event)"
+          [attr.aria-invalid]="hasFieldError('logline')"
+          [attr.aria-describedby]="hasFieldError('logline') ? 'logline-error' : null"
         ></textarea>
+        <span class="field-error" id="logline-error" *ngIf="hasFieldError('logline')" role="alert">
+          {{ getFieldError('logline') }}
+        </span>
       </label>
 
       <div class="name-row">
@@ -114,7 +146,12 @@
           placeholder="Key locations, time period, or supernatural rules."
           [ngModel]="blueprint().worldDetails"
           (ngModelChange)="updateBlueprint('worldDetails', $event)"
+          [attr.aria-invalid]="hasFieldError('worldDetails')"
+          [attr.aria-describedby]="hasFieldError('worldDetails') ? 'world-details-error' : null"
         ></textarea>
+        <span class="field-error" id="world-details-error" *ngIf="hasFieldError('worldDetails')" role="alert">
+          {{ getFieldError('worldDetails') }}
+        </span>
       </label>
 
       <label>
@@ -124,12 +161,24 @@
           placeholder="Any specific twists, pacing goals, or narrative constraints."
           [ngModel]="blueprint().narrativeDirectives"
           (ngModelChange)="updateBlueprint('narrativeDirectives', $event)"
+          [attr.aria-invalid]="hasFieldError('narrativeDirectives')"
+          [attr.aria-describedby]="hasFieldError('narrativeDirectives') ? 'narrative-directives-error' : null"
         ></textarea>
+        <span class="field-error" id="narrative-directives-error" *ngIf="hasFieldError('narrativeDirectives')" role="alert">
+          {{ getFieldError('narrativeDirectives') }}
+        </span>
       </label>
 
-      <section class="theme-picker">
+      <section
+        class="theme-picker"
+        [attr.aria-invalid]="hasFieldError('themes')"
+        [attr.aria-describedby]="hasFieldError('themes') ? 'themes-error' : null"
+      >
         <h3>Thematic Seeds</h3>
         <p class="theme-summary">{{ selectedThemes }}</p>
+        <p class="field-error" id="themes-error" *ngIf="hasFieldError('themes')" role="alert">
+          {{ getFieldError('themes') }}
+        </p>
         <div class="theme-grid">
           <button
             type="button"
@@ -145,7 +194,7 @@
       </section>
 
       <div class="action-row">
-        <button type="button" class="primary" (click)="startGenesis()" [disabled]="isGenerating()">
+        <button type="button" class="primary" (click)="startGenesis()" [disabled]="isGenerating() || !isBlueprintValid()">
           {{ workbench().story ? 'Regenerate Genesis' : 'Generate Chapters' }}
         </button>
         <button
@@ -160,6 +209,9 @@
           Reset Blueprint
         </button>
       </div>
+      <p class="validation-summary" *ngIf="firstValidationError()" role="status">
+        {{ firstValidationError() }}
+      </p>
 
       <section class="batch-queue" *ngIf="activeBatchQueue().length">
         <header>

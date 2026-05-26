@@ -31,7 +31,7 @@
 .app-header h1 {
   font-size: 2.25rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: #fbcfe8;
 }
@@ -116,6 +116,29 @@ select:focus {
   outline: none;
   border-color: rgba(244, 114, 182, 0.8);
   box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.25);
+}
+
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'],
+.theme-picker[aria-invalid='true'] .theme-grid {
+  border-color: rgba(248, 113, 113, 0.9);
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.18);
+}
+
+.field-error,
+.validation-summary {
+  color: #fecaca;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.field-error {
+  margin-top: -0.15rem;
+}
+
+.validation-summary {
+  margin: 0.75rem 0 0;
 }
 
 input[type='range'] {

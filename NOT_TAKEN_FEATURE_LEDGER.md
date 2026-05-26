@@ -372,3 +372,35 @@ Template:
   - `story-generator/src/main.ts`
   - `story-generator/src/main.server.ts`
   - `story-generator/src/app/app.routes.server.ts`
+
+## PR #26 - Implement comprehensive UI/UX polish and accessibility improvements
+
+- Disposition: selected port; close later as ported
+- Source branch: `pr-26`
+- Story-generation ideas not taken:
+  - Old retry buttons that simply rerun generation/chapter actions without a batch retry contract.
+  - Old validation model based on pre-#70 fields such as `userInput`, `wordCount`, and `selectedThemes` string arrays.
+- Other useful ideas not taken:
+  - Direct old app-shell rewrite and radio/checkbox layout.
+  - Old `generateStory()` and `generateNextChapter()` frontend service method usage.
+  - Audio conversion progress UI.
+  - Save/download action buttons from the old screen.
+  - Old emoji-heavy notification rendering.
+  - Broad CSS restyling from the stale UI.
+- Why not now:
+  - The current app uses the #70 Story Lab blueprint, batch queue, and `beginStory()`/`continueStory()` seam.
+  - Audio remains deferred.
+  - Save/export needs to be reconnected to current Story Lab state before UI controls are useful.
+  - Retrying failed batches should be designed around explicit queue item state, not a blind replay.
+- Future extraction notes:
+  - Add per-batch retry once failed `BatchProgressState` items can keep enough request metadata to safely replay.
+  - Reintroduce save/export notifications when the export flow is wired to current generated chapters.
+  - Consider a small notification story/spec harness if toasts become more complex.
+- Source files/commits:
+  - `story-generator/src/app/notification.service.ts`
+  - `story-generator/src/app/form-validation.service.ts`
+  - `story-generator/src/app/notifications.component.ts`
+  - `story-generator/src/app/notifications.component.css`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`

@@ -50,7 +50,7 @@ Status values:
 | #30 | mine and close | pending | Dialogue parser/speaker-tag ideas. |
 | #29 | mine and close | pending | Speaker segment and voice metadata ideas. |
 | #28 | mine and close | pending | Modular audio service breakdown; base not main. |
-| #26 | port/cherry-pick | pending | Notifications, validation, accessibility. |
+| #26 | port/cherry-pick | ported | Ported notifications, Story Lab validation, inline accessibility/error feedback, and focused service specs. |
 | #24 | recreate/port | ported | Ported invisible trope subversion engine into canonical `api/_lib`; old backend/dist/demo files not taken. |
 | #22 | mine and close | pending | Early dialogue parsing/speaker tag material. |
 
@@ -753,5 +753,70 @@ Use this template for detailed entries as each PR is handled:
   - Problem found and fixed: `build:verify` assumed prerendered `index.html`; routed SSR produces `index.csr.html`.
   - Problem found and fixed: SSR was still bootstrapping `App`; `main.server.ts` now bootstraps `AppRoot` so server-rendered routes use the Angular router.
   - Watch item: The prompt directives reach the Story Lab seam but are not yet guaranteed to affect canonical production generation.
+- GitHub PR closure note:
+  - Close as ported after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #26 - Implement comprehensive UI/UX polish and accessibility improvements
+
+- Source branch: `pr-26` / `copilot/fix-8`
+- Planned disposition: port/cherry-pick
+- Actual disposition: ported selectively into the #70 Story Lab baseline
+- Story-generation impact: Medium indirect. This does not change prompt generation, but it improves user-facing validation before generation and makes generation success/failure feedback more explicit.
+- Accepted material:
+  - Ported a signal-backed notification service, adapted to the current Angular 20 standalone app.
+  - Ported an accessible notification/toast component with live-region behavior.
+  - Recreated the form-validation service against current `StoryGenerationSeam['input']` contracts instead of the old pre-#70 `CreatureType`/`WordCount` model.
+  - Added inline `aria-invalid`, `aria-describedby`, and field-level validation messages for Story Lab blueprint fields.
+  - Added success/error/warning/info notifications for generation, continuation, reset, and invalid blueprint attempts.
+  - Added narrow specs for `FormValidationService` and `NotificationService`.
+  - Normalized Story Lab header letter spacing to `0` while touching the same stylesheet.
+- Not taking now:
+  - Direct merge of PR #26.
+  - Old app-shell rewrite, radio/checkbox story form, and pre-#70 layout/CSS.
+  - Old `StoryService.generateStory()`, `generateNextChapter()`, `convertToAudio()`, and `saveStory()` UI wiring.
+  - Audio conversion progress UI and save/download buttons from the stale app shell.
+  - Old validation imports from `VALIDATION_RULES`, `CreatureType`, `ThemeType`, and `WordCount`, which do not exist in the current contract file.
+  - Emoji-heavy notification icons and old rounded toast styling as-is.
+- Why not taking:
+  - The #70 Story Lab route shell and `beginStory()`/`continueStory()` service seam are canonical now.
+  - Audio remains deferred.
+  - The old form model validates different fields than the current Story Lab blueprint.
+- Future mining value:
+  - Retry-button patterns from the old app may be useful later if failed batch jobs gain explicit retry semantics.
+  - Save/export feedback could be reintroduced after the export flow is connected to the current Story Lab state.
+- Files inspected:
+  - `story-generator/src/app/notification.service.ts` from PR #26
+  - `story-generator/src/app/form-validation.service.ts` from PR #26
+  - `story-generator/src/app/notifications.component.ts` from PR #26
+  - `story-generator/src/app/notifications.component.css` from PR #26
+  - `story-generator/src/app/app.ts`, `app.html`, and `app.css` from PR #26
+  - Current `story-generator/src/app/contracts.ts`, `app.ts`, `app.html`, and `app.css`
+- Files changed in recovery branch:
+  - `story-generator/src/app/notification.service.ts`
+  - `story-generator/src/app/notification.service.spec.ts`
+  - `story-generator/src/app/notifications.component.ts`
+  - `story-generator/src/app/notifications.component.css`
+  - `story-generator/src/app/form-validation.service.ts`
+  - `story-generator/src/app/form-validation.service.spec.ts`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`
+  - recovery docs
+- Conflicts encountered:
+  - PR #26 is draft and conflicting against `main`; it targets the pre-#70 app shell.
+  - Its validation service imports old contract names that no longer exist.
+  - Its UI changes include audio/save actions that are out of current scope.
+- Tests/checks run:
+  - `scripts/recovery/preflight.sh --quick --skip-status` passed.
+  - `npm test` passed all configured root suites.
+  - `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with the existing stale `baseline-browser-mapping` warning and the known #74 proving-grounds CSS budget warning.
+  - `PORT=4300 npm run start:prod` plus `curl` checks confirmed `/` serves Story Lab with validation text and `/proving-grounds` still serves the proving-grounds page.
+  - `npm run build:verify` passed.
+  - `cd story-generator && npm test -- --watch=false --browsers=ChromeHeadless` built the spec bundle but failed because ChromeHeadless did not capture.
+  - `cd story-generator && CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npx -p node@20 -c "node -v && npm test -- --watch=false --browsers=ChromeHeadless"` also built the spec bundle but failed because ChromeHeadless did not capture.
+- Self-review notes:
+  - Good: The useful #26 behavior is now attached to the current Story Lab workflow instead of resurrecting the stale UI.
+  - Good: Validation now follows the current seam contracts and has service-level specs.
+  - Watch item: Local Angular browser-test execution still needs a reliable ChromeHeadless launch setup.
 - GitHub PR closure note:
   - Close as ported after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.

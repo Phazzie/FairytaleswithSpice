@@ -59,7 +59,7 @@ Treat PR #70 as a plausible alternate product baseline for the "story lab" direc
 | #30 | Multi-voice audio pipeline | Adds dialogue parser, ElevenLabs v3, multi-voice UI controls, prompt updates for speaker tags, contracts. | `backend/src/services/dialogueParser.ts`, `audioService.ts`, story service, app files/contracts | **Defer/recreate later**. Audio capability material only. |
 | #29 | Multi-voice audio service | Adds `multiVoiceAudioService`, speaker segments, character voice types, mock audio generation, docs, API contracts. | `api/lib/services/multiVoiceAudioService.ts`, `MULTI_VOICE_AUDIO.md`, audio service/contracts, app files | **Defer/recreate later**. One of the cleaner audio references. |
 | #28 | Multi-voice audio pipeline, 11Labs v3 | Adds dialogue parser, character voice service, audio stitching service, multi-voice UI, prompt format changes, debug/error updates. Base branch is not `main`. | `backend/src/services/dialogueParserService.ts`, `characterVoiceService.ts`, `audioStitchingService.ts`, app files | **Defer/recreate later**. Useful modular audio service breakdown. |
-| #26 | UI/UX polish and accessibility | Adds notification service, form validation service, toast component, loading states, inline validation, ARIA/live regions, retry/error patterns. | `notification.service.ts`, `form-validation.service.ts`, `notifications.component.*`, `app.*` | **Port/cherry-pick**. Useful frontend capability independent of story direction. |
+| #26 | UI/UX polish and accessibility | Adds notification service, form validation service, toast component, loading states, inline validation, ARIA/live regions, retry/error patterns. Ported notifications, Story Lab validation, inline error accessibility, and service specs into the current #70 app. | `notification.service.ts`, `form-validation.service.ts`, `notifications.component.*`, `app.*` | **Ported selectively**. Old app shell, stale story service methods, audio/save UI, and blind retry controls not taken. |
 | #24 | Invisible trope subversion engine | Adds trope database, trope subversion service, prompt enhancement, metadata contracts for chapter consistency, integration/demo tests. | `backend/src/data/tropeDatabase.ts`, `tropeSubversionService.ts`, story service, contracts, tests/docs | **Recreate/port later**. Strong story-quality upgrade, but old backend. |
 | #22 | Multi-voice audio pipeline | Adds dialogue parsing service, enhanced audio service, voice mapping, emotional inflection, frontend audio UI/progress. | `backend/src/services/dialogueParsingService.ts`, `audioService.ts`, audio routes, app files/contracts | **Defer/recreate later**. Early audio implementation. |
 
@@ -85,7 +85,7 @@ These are the most useful non-#70 pieces, ranked by likely value and extraction 
 | 2 | #64 | Fisher-Yates fix for Chekhov element selection; current code still has biased `sort(() => 0.5 - Math.random())` in places. |
 | 3 | #65 | Remaining AI quality/model/token verification work, adapted to current `api/_lib`. |
 | 4 | #41 | Minimal Vercel CI/deploy/API-test setup, not the whole workflow suite. |
-| 5 | #26 | Notification/form validation/accessibility services. |
+| 5 | #26 | Notification/form validation/accessibility services. **Ported selected current-Story-Lab version.** |
 | 6 | #75 | Batch/continuity UI layer after #70 baseline is stable. **Ported selected queue, suggested-prompt, and grouped-timeline UI.** |
 | 7 | #72 | Multi-chapter backend contract/service behavior after #70 baseline is stable. **Ported selected backend primitive.** |
 | 8 | #67 | Author-style config extraction and duplicate-code cleanup decisions. |
@@ -103,7 +103,7 @@ These are the most useful non-#70 pieces, ranked by likely value and extraction 
 - #50: cherry-pick/port the small fix.
 - #64: cherry-pick/port Fisher-Yates and selected tests; do not bring `node_modules`.
 - #65: port model/token/test pieces.
-- #26: port services/components, adapting templates manually.
+- #26: services/components and current Story Lab validation have been ported; retry/save/audio UI remains future mining material.
 
 ### Use as a baseline
 

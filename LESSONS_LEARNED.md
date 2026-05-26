@@ -75,3 +75,5 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Keep provider credentials server-side, even in internal tools. PR #74's proving grounds needed Grok evaluation, but browser `localStorage` API keys do not fit a Vercel deployment path.
 - Build verification should understand the framework output mode. Angular SSR routes can emit `browser/index.csr.html` instead of prerendered `browser/index.html`, so verifiers should check the actual supported output shapes.
 - Browser and server bootstrap must be kept in lockstep after adding Angular routing. PR #74 initially bootstrapped `AppRoot` in `main.ts` but still bootstrapped `App` in `main.server.ts`, so the build passed while SSR served the wrong route body.
+- Port UI infrastructure against current contracts, not old form names. PR #26's validation idea was useful, but the implementation had to be rebuilt around the #70 Story Lab blueprint seam.
+- Record browser-test environment failures separately from code failures. The Angular spec bundle can build while Karma still fails because ChromeHeadless never captures; that needs environment follow-up, not silent treatment as a spec pass.

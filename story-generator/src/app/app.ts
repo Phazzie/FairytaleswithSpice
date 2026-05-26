@@ -3,6 +3,7 @@ import { Component, SecurityContext, computed, inject, signal } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
+import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import {
   BatchProgressState,
   ChapterBatchSize,
@@ -17,6 +18,8 @@ import {
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import { DebugPanel } from './debug-panel/debug-panel';
+import { NotificationService } from './notification.service';
+import { NotificationsComponent } from './notifications.component';
 
 type BlueprintForm = StoryBlueprint & {
   chapterBatchSize: ChapterBatchSize;
@@ -32,13 +35,15 @@ type ChapterGroupViewModel = {
 @Component({
   selector: 'app-story-lab',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, DebugPanel],
+  imports: [CommonModule, FormsModule, RouterLink, NotificationsComponent, DebugPanel],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
 export class App {
   private readonly storyService = inject(StoryService);
   private readonly errorLogging = inject(ErrorLoggingService);
+  private readonly formValidation = inject(FormValidationService);
+  private readonly notificationService = inject(NotificationService);
   private readonly sanitizer = inject(DomSanitizer);
 
   readonly availableThemes: ThemeSeed[] = [
@@ -77,6 +82,9 @@ export class App {
   readonly collapsedChapterGroups = signal<Set<number>>(new Set());
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Configure your spicy fairy-tale blueprint to begin.');
+  readonly validationErrors = computed(() => this.formValidation.validateBlueprint(this.blueprint()));
+  readonly isBlueprintValid = computed(() => this.formValidation.isValid(this.validationErrors()));
+  readonly firstValidationError = computed(() => this.formValidation.getFirstError(this.validationErrors()));
 
   readonly timeline = computed<ChapterTimelineEntry[]>(() => {
     const session = this.workbench();
@@ -191,8 +199,11 @@ export class App {
     }
 
     const blueprint = this.blueprint();
-    if (!blueprint.logline?.trim()) {
-      this.statusMessage.set('Please provide a concise logline to anchor the story.');
+    const validationErrors = this.validationErrors();
+    if (!this.formValidation.isValid(validationErrors)) {
+      const message = this.formValidation.getFirstError(validationErrors) ?? 'Complete the required blueprint fields.';
+      this.statusMessage.set(message);
+      this.notificationService.error('Blueprint needs attention', message);
       return;
     }
 
@@ -204,20 +215,28 @@ export class App {
     this.storyService.beginStory(blueprint).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          this.statusMessage.set(response.error?.message ?? 'Unknown error while generating story.');
+          const message = response.error?.message ?? 'Unknown error while generating story.';
+          this.statusMessage.set(message);
           this.markBatchFailed(batchId, response.error?.message ?? 'Unknown generation error.');
+          this.notificationService.error('Generation failed', message);
           this.isGenerating.set(false);
           return;
         }
 
         this.applyIteration(response.data, blueprint.chapterBatchSize, batchId);
         this.statusMessage.set('Genesis batch complete. Continue weaving the saga!');
+        this.notificationService.success(
+          'Genesis complete',
+          `Generated ${response.data.batch.chapters.length} chapter${response.data.batch.chapters.length === 1 ? '' : 's'}.`
+        );
         this.isGenerating.set(false);
       },
       error: error => {
         this.errorLogging.logError(error, 'App.startGenesis');
-        this.statusMessage.set('Story generation failed. Check the debug panel for details.');
+        const message = 'Story generation failed. Check the debug panel for details.';
+        this.statusMessage.set(message);
         this.markBatchFailed(batchId, 'Story generation failed.');
+        this.notificationService.error('Generation failed', message);
         this.isGenerating.set(false);
       }
     });
@@ -230,7 +249,9 @@ export class App {
 
     const session = this.workbench();
     if (!session.story || !session.state) {
-      this.statusMessage.set('Generate a story before requesting continuations.');
+      const message = 'Generate a story before requesting continuations.';
+      this.statusMessage.set(message);
+      this.notificationService.warning('No active story', message);
       return;
     }
 
@@ -250,20 +271,28 @@ export class App {
     this.storyService.continueStory(request).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          this.statusMessage.set(response.error?.message ?? 'Continuation request failed.');
-          this.markBatchFailed(batchId, response.error?.message ?? 'Continuation request failed.');
+          const message = response.error?.message ?? 'Continuation request failed.';
+          this.statusMessage.set(message);
+          this.markBatchFailed(batchId, message);
+          this.notificationService.error('Continuation failed', message);
           this.isGenerating.set(false);
           return;
         }
 
         this.applyIteration(response.data, request.chapterBatchSize, batchId);
         this.statusMessage.set('Continuation batch ready. Select a chapter to explore.');
+        this.notificationService.success(
+          'Continuation ready',
+          `Added ${response.data.batch.chapters.length} chapter${response.data.batch.chapters.length === 1 ? '' : 's'} to the saga.`
+        );
         this.isGenerating.set(false);
       },
       error: error => {
         this.errorLogging.logError(error, 'App.continueSaga');
-        this.statusMessage.set('Continuation failed. Inspect logged errors for more detail.');
-        this.markBatchFailed(batchId, 'Continuation failed.');
+        const message = 'Continuation failed. Inspect logged errors for more detail.';
+        this.statusMessage.set(message);
+        this.markBatchFailed(batchId, message);
+        this.notificationService.error('Continuation failed', message);
         this.isGenerating.set(false);
       }
     });
@@ -285,6 +314,7 @@ export class App {
     this.selectedChapterId.set(null);
     this.collapsedChapterGroups.set(new Set());
     this.statusMessage.set('Blueprint reset. Ready for a brand new legend.');
+    this.notificationService.info('Workbench reset', 'Story Lab is ready for a new blueprint.');
   }
 
   private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize, batchId?: string) {
@@ -420,5 +450,13 @@ export class App {
 
   trackTheme(index: number, theme: ThemeSeed) {
     return theme.id;
+  }
+
+  getFieldError(field: BlueprintValidationField): string | undefined {
+    return this.validationErrors()[field];
+  }
+
+  hasFieldError(field: BlueprintValidationField): boolean {
+    return Boolean(this.getFieldError(field));
   }
 }

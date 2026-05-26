@@ -618,3 +618,65 @@ Self-review:
 - Good: The feature is now verified as a real route, not only a successful TypeScript/build port.
 - Problem found and fixed: SSR and browser bootstrap can drift after introducing a router shell; both must point at the same root component.
 - Watch item: The proving-grounds component CSS still exceeds the Angular component budget by 1.15 kB.
+
+Running merge-order snapshot after #74 verification:
+
+1. #26 - validation, notifications, accessibility services.
+2. #41/#39 - lean Vercel CI/test workflow material.
+3. #84 - dependency update once lockfile state is intentional.
+4. Docs/research/audio mining after merge/adapt candidates are out of the way.
+
+## 2026-05-26 13:15 EDT - PR #26 Validation and Notifications Ported
+
+Actions:
+
+- Ported PR #26 selectively instead of merging the old pre-#70 app shell.
+- Added a signal-backed `NotificationService` and accessible `NotificationsComponent`.
+- Recreated `FormValidationService` around current Story Lab blueprint contracts:
+  - creature,
+  - tone,
+  - themes,
+  - logline,
+  - spicy level,
+  - word budget,
+  - chapter batch size,
+  - world details,
+  - narrative directives.
+- Wired Story Lab validation into the current #70 app:
+  - inline field errors,
+  - `aria-invalid`,
+  - `aria-describedby`,
+  - disabled invalid generate action,
+  - invalid-blueprint notification,
+  - success/error notifications for generation and continuation.
+- Added focused specs for notification and validation services.
+
+Decision:
+
+- Do not merge #26 directly.
+- Do not take the old app form layout, stale story service methods, save/download controls, or audio conversion progress UI.
+- Keep the retry-button idea as future mining material for explicit batch retry semantics.
+
+Validation:
+
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `npm test` passed all configured root suites.
+- `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with the existing stale `baseline-browser-mapping` warning and known #74 proving-grounds CSS budget warning.
+- `PORT=4300 npm run start:prod` plus `curl` confirmed `/` contains Story Lab content and the new validation summary, and `/proving-grounds` still resolves correctly.
+- `npm run build:verify` passed.
+- Angular Karma browser tests did not complete:
+  - `cd story-generator && npm test -- --watch=false --browsers=ChromeHeadless` built the spec bundle but ChromeHeadless never captured.
+  - Repeating with `CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` and Node 20 produced the same ChromeHeadless capture timeout.
+
+Self-review:
+
+- Good: #26's useful capability is now integrated into the current Story Lab rather than copied over as a stale UI branch.
+- Good: Validation follows the active seam and has direct specs.
+- Problem documented: local ChromeHeadless capture is not reliable in this environment, so Angular browser-spec execution remains unverified even though spec typecheck and bundle build passed.
+- Watch item: Retry UI should wait until batch retry semantics are designed instead of merely replaying the last action.
+
+Running merge-order snapshot after #26:
+
+1. #41/#39 - lean Vercel CI/test workflow material.
+2. #84 - dependency update once lockfile state is intentional.
+3. Docs/research/audio mining after merge/adapt candidates are out of the way.
