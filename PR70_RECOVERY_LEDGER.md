@@ -18,40 +18,40 @@ Status values:
 
 | PR | Planned action | Actual status | Notes |
 |---:|---|---|---|
-| #86 | merge | merged | Merged design system doc; normalized nonzero letter-spacing tokens. |
-| #85 | merge | merged | Merged `path-to-regexp` 8.4.0 lockfile update. |
-| #84 | try merge or recreate | recreate later | Stale grouped dependency update; not merged because it mixes Angular 20/21 and stale audio/path churn. |
-| #77 | mine and close | pending | Documentation analysis lessons. |
-| #76 | close | pending | No committed material found. |
-| #75 | port/cherry-pick | ported | Ported batch queue, suggested prompts, grouped chapter timeline, and Vercel persistence wording into #70 story lab. |
-| #74 | port later or mine/close | ported | Ported Proving Grounds as a routed Story Lab prompt-testing page with server-side evaluation fallback. |
-| #73 | recreate/port | ported | Ported story-lab state deltas and transient persistence boundary; DigitalOcean Postgres and `pg` dependency not taken. |
-| #72 | port/cherry-pick | ported | Ported backward-compatible 1-3 chapter batch generation/continuation into canonical `api/_lib`; old UI/route rewrites not taken. |
-| #71 | compare then close | ported | Ported chapter-count response metadata; remaining batch/UI material superseded by #72/#75/#73. |
-| #70 | merge baseline | merged | Merged into `recovery-pr70-story-lab-vercel` as commit `118265c`; stabilization pending. |
-| #67 | port/cherry-pick | ported | Ported author-style extraction, duplicate-service deletion, path/test fixes, and validation bug fix. |
-| #65 | port/cherry-pick | ported | Verified canonical AI fixes; aligned duplicate compiled service timeouts and test path. |
-| #64 | port/cherry-pick | ported | Ported Fisher-Yates Chekhov element selection; stale tests/docs/node_modules not taken. |
-| #63 | mine and close | pending | Storage/database research. |
-| #56 | mine and close | pending | Backend service/cache research, DigitalOcean-shaped. |
+| #86 | merge | merged; closed | Merged design system doc; normalized nonzero letter-spacing tokens; closed as superseded by #87. |
+| #85 | merge | merged; closed | Merged `path-to-regexp` 8.4.0 lockfile update; closed as superseded by #87. |
+| #84 | try merge or recreate | recreate later; closed | Stale grouped dependency update; not merged because it mixes Angular 20/21 and stale audio/path churn. |
+| #77 | mine and close | mined and closed | Documentation analysis lessons mined; source docs not merged as root docs. |
+| #76 | close | closed no material | PR contains planning/body material but no committed files. |
+| #75 | port/cherry-pick | ported; closed | Ported batch queue, suggested prompts, grouped chapter timeline, and Vercel persistence wording into #70 story lab. |
+| #74 | port later or mine/close | ported; closed | Ported Proving Grounds as a routed Story Lab prompt-testing page with server-side evaluation fallback. |
+| #73 | recreate/port | ported; closed | Ported story-lab state deltas and transient persistence boundary; DigitalOcean Postgres and `pg` dependency not taken. |
+| #72 | port/cherry-pick | ported; closed | Ported backward-compatible 1-3 chapter batch generation/continuation into canonical `api/_lib`; old UI/route rewrites not taken. |
+| #71 | compare then close | ported; closed | Ported chapter-count response metadata; remaining batch/UI material superseded by #72/#75/#73. |
+| #70 | merge baseline | merged; closed | Merged into `recovery-pr70-story-lab-vercel` as commit `118265c`; superseded by #87. |
+| #67 | port/cherry-pick | ported; closed | Ported author-style extraction, duplicate-service deletion, path/test fixes, and validation bug fix. |
+| #65 | port/cherry-pick | ported; closed | Verified canonical AI fixes; aligned duplicate compiled service timeouts and test path. |
+| #64 | port/cherry-pick | ported; closed | Ported Fisher-Yates Chekhov element selection; stale tests/docs/node_modules not taken. |
+| #63 | mine and close | mined and closed | Database/story persistence concepts mined for future Vercel storage decision. |
+| #56 | mine and close | mined and closed | Cache/storage/monitoring/rate-limit concepts mined; DigitalOcean provider code not taken. |
 | #55 | mine and close | pending | Voice evolution/emotion material; audio deferred. |
-| #54 | close | pending | DigitalOcean deployment infra; not Vercel direction. |
-| #53 | mine and close | pending | Docs cleanup intent; avoid node_modules churn. |
-| #50 | port/cherry-pick | mined; close later | Old progress simulator fix is superseded by #70 story-lab UI; lessons recorded in not-taken ledger. |
+| #54 | close | mined and closed | DigitalOcean deployment infra rejected for Vercel; generic deploy checklist ideas mined. |
+| #53 | mine and close | mined and closed | Docs cleanup lifecycle ideas mined; node_modules churn not taken. |
+| #50 | port/cherry-pick | mined and closed | Old progress simulator fix is superseded by #70 story-lab UI; lessons recorded in not-taken ledger. |
 | #47 | mine and close | pending | Audio pipeline research. |
 | #45 | mine and close | pending | Emotion mapping and character consistency. |
 | #44 | mine and close | pending | Character-driven narration material. |
 | #43 | mine and close | pending | Audio player/emotion-aware voice processing. |
 | #42 | mine and close | pending | Streaming audio/emotion mapping. |
-| #41 | port/cherry-pick | ported | Ported a lean Recovery CI workflow; stale API/backend rewrites not taken. |
-| #40 | mine and close | pending | Visual ideas only. |
-| #39 | mine and close | mined/ported | Mined CI concepts into the lean Recovery CI workflow; heavyweight suite not taken. |
-| #31 | recreate/port | ported | Ported cliffhanger analysis/prompt guidance; story-arc CRUD and audiobook compile mined for later. |
+| #41 | port/cherry-pick | ported; closed | Ported a lean Recovery CI workflow; stale API/backend rewrites not taken. |
+| #40 | mine and close | mined and closed | Visual interaction/layout ideas mined; mystical app-shell rewrite not taken. |
+| #39 | mine and close | mined/ported; closed | Mined CI concepts into the lean Recovery CI workflow; heavyweight suite not taken. |
+| #31 | recreate/port | ported; closed | Ported cliffhanger analysis/prompt guidance; story-arc CRUD and audiobook compile mined for later. |
 | #30 | mine and close | pending | Dialogue parser/speaker-tag ideas. |
 | #29 | mine and close | pending | Speaker segment and voice metadata ideas. |
 | #28 | mine and close | pending | Modular audio service breakdown; base not main. |
-| #26 | port/cherry-pick | ported | Ported notifications, Story Lab validation, inline accessibility/error feedback, and focused service specs. |
-| #24 | recreate/port | ported | Ported invisible trope subversion engine into canonical `api/_lib`; old backend/dist/demo files not taken. |
+| #26 | port/cherry-pick | ported; closed | Ported notifications, Story Lab validation, inline accessibility/error feedback, and focused service specs. |
+| #24 | recreate/port | ported; closed | Ported invisible trope subversion engine into canonical `api/_lib`; old backend/dist/demo files not taken. |
 | #22 | mine and close | pending | Early dialogue parsing/speaker tag material. |
 
 ## Disposition Template
@@ -957,3 +957,265 @@ Use this template for detailed entries as each PR is handled:
   - The next dependency attempt should start from the recovery branch with clean lockfiles.
 - GitHub PR closure note:
   - Close as superseded/recreate after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #77 - Add comprehensive documentation analysis and Seam-Driven Development lessons
+
+- Source branch: `refs/remotes/pr/77` / `copilot/analyze-markdown-files`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; do not merge documents into the recovery root
+- Story-generation impact: Indirect. The PR reinforces that contracts, mock-first development, service-layer preservation, and documentation lifecycle control are core to protecting story-generation work during platform changes.
+- Accepted material:
+  - Lessons folded into the recovery process: contracts define seams, direct API integration can be simpler than extra frameworks for single-step generation, mock mode is useful but must not become product truth, and documentation needs an index/lifecycle.
+  - The "documentation overload" finding is now reflected in this recovery's preference for one ledger, one changelog, one not-taken ledger, one lessons file, and one final report.
+- Not taking now:
+  - `repodocs.md` as a 1,300-line root document.
+  - `repodocsanalysis.md` as a second large root analysis document.
+  - `DOCUMENTATION_ANALYSIS_SUMMARY.md` as another status document.
+  - The branch's stale path drift that renames `api/_lib` back to `api/lib`.
+  - Branch changes that delete `vercel.json` and `.vercelignore`.
+  - Audio and package-script changes from the stale branch base.
+- Why not taking:
+  - The recovery already created narrower live tracking docs and should not add more root documentation sprawl.
+  - The branch is not docs-only when compared to the current baseline; it carries stale Vercel/path/audio changes.
+- Future mining value:
+  - Re-run a documentation index after #87 is merged and stale PRs are closed, using a generated index rather than another large static analysis report.
+  - Consider an `archive/` policy only after current recovery docs are consolidated.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `DOCUMENTATION_ANALYSIS_SUMMARY.md`
+  - `repodocsanalysis.md`
+  - `repodocs.md` metadata from the summary.
+  - Branch file list against `main`.
+- Files changed in recovery branch:
+  - `PR70_RECOVERY_LEDGER.md`
+  - `NOT_TAKEN_FEATURE_LEDGER.md`
+  - `PR70_RECOVERY_CHANGELOG.md`
+  - `LESSONS_LEARNED.md`
+- Conflicts encountered:
+  - Direct branch material includes `api/_lib` to `api/lib` path regressions, deletion of Vercel files, audio files/tests, and root package changes.
+- Tests/checks run:
+  - Documentation-only mining; no build rerun for this ledger update before closure.
+- Self-review notes:
+  - The useful material was process guidance, not the generated document corpus.
+  - This PR validates the current tracking strategy but should not be copied into the branch as another large historical artifact.
+- GitHub PR closure note:
+  - Closed as superseded by #87 after mining documentation/process lessons into the recovery ledgers.
+
+## PR #76 - [WIP] Analyze and redesign Angular app for Seam Driven Development
+
+- Source branch: `refs/remotes/pr/76` / `copilot/redesign-angular-app-sdd`
+- Planned disposition: close
+- Actual disposition: closed no material
+- Story-generation impact: Indirect planned impact only. The PR body proposes a deep SDD redesign report, but no deliverable file was committed.
+- Accepted material:
+  - The PR body's checklist confirms useful review categories for the final report: current-state analysis, commit-history review, SDD drift, conventional/unconventional critique, devil's advocate section, and questions the team should have asked.
+- Not taking now:
+  - No code or document files, because the PR file list is empty.
+  - The stale branch-base file changes visible in Git diff are not unique #76 material.
+- Why not taking:
+  - There is no committed `spicyfairytaleremix.md` or other deliverable to merge.
+  - The final recovery report will cover the self-critique portions in a current, source-attributed way.
+- Future mining value:
+  - Use the PR body's critique prompts as a checklist when writing `PR70_RECOVERY_FINAL_REPORT.md`.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - Branch log and diff list.
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - No direct material conflict because there are no committed files.
+- Tests/checks run:
+  - Not applicable.
+- Self-review notes:
+  - This is a good example of why PR bodies are not enough evidence for a merge; close no-material PRs after capturing useful intent.
+- GitHub PR closure note:
+  - Closed as no committed material; #87 will contain the current final report instead.
+
+## PR #63 - Comprehensive Database Investigation: PostgreSQL, MongoDB, Redis Analysis for Digital Ocean Deployment
+
+- Source branch: `refs/remotes/pr/63` / `copilot/investigate-database-options`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; recreate Vercel-specific storage decision later
+- Story-generation impact: High future impact. Durable story libraries, multi-chapter state, story-state snapshots, analytics, sharing, and API usage tracking would materially improve story generation workflows and continuity.
+- Accepted material:
+  - Future storage capability inventory: story library/history, multi-chapter state persistence, user accounts/preferences, analytics, sharing, API usage/quotas, and search/filtering.
+  - Schema ideas for stories, chapters, story_state, analytics_events, story_shares, api_usage, and user_quotas.
+  - Migration lesson: add persistence behind seams with a silent-write/dual-read rollout instead of rewriting core generation paths.
+- Not taking now:
+  - DigitalOcean-specific pricing and provisioning recommendations.
+  - The root `DATABASE_*.md` document set.
+  - README edits from the stale branch.
+  - Direct Postgres/Auth0 selection as an active recovery decision.
+  - Branch path churn that renames `api/_lib` to `api/lib`, deletes security helpers/tests, and mutates many app/test files.
+- Why not taking:
+  - The app target is Vercel, so storage should be chosen from Vercel-compatible options such as Neon/Vercel Postgres, Upstash Redis, Blob, or another explicit Vercel path.
+  - Current recovery already labels story-lab state as transient; adding docs that imply DigitalOcean persistence would confuse the deployment direction.
+- Future mining value:
+  - Use #63 as the main reference for a later Vercel storage RFC.
+  - Prioritize story library plus multi-chapter state before social/sharing features because they directly support story generation continuity.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `DATABASE_INVESTIGATION.md`
+  - `DATABASE_ROI_ANALYSIS.md`
+  - Branch file list against `main`.
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Direct branch includes broad stale code/test deletions, old `api/lib` paths, root lockfile churn, and DigitalOcean framing.
+- Tests/checks run:
+  - Documentation-only mining; no build rerun for this ledger update before closure.
+- Self-review notes:
+  - The capabilities are very relevant, but a provider-specific research doc should not silently become the product storage decision.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87; storage ideas remain in the not-taken ledger for a Vercel storage decision.
+
+## PR #56 - Research and ROI Analysis: Digital Ocean Backend Services Integration Opportunities
+
+- Source branch: `refs/remotes/pr/56` / `copilot/fix-d8e60909-345a-42f7-b452-59c45cd5b5e2`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; recreate only provider-neutral/Vercel-compatible pieces later
+- Story-generation impact: Medium future impact. Caching, rate limiting, generated file storage, analytics, and persistence can reduce generation cost and improve continuity, but the concrete implementation is provider-shaped.
+- Accepted material:
+  - Cache-service idea: deterministic story-generation cache keys, audio URL caching, cache statistics, graceful fallback, and rate limiting.
+  - Provider-neutral service categories to revisit for Vercel: object storage for exports/audio, Redis-style cache for expensive AI calls and quotas, observability, and database-backed story history.
+- Not taking now:
+  - DigitalOcean Spaces, Managed Redis, App Platform, Load Balancer, VPC, and DOKS recommendations as active deployment plan.
+  - `api/lib/services/cacheService.ts` implementation as-is.
+  - ROI claims and provider pricing as recovery docs.
+  - Old `api/lib` path shape and stale app/API rewrites.
+- Why not taking:
+  - The user's direction is Vercel, not DigitalOcean.
+  - A cache layer must be designed around current `api/_lib` contracts, Vercel storage/runtime constraints, and privacy expectations for generated content.
+- Future mining value:
+  - Recreate a small `api/_lib/services/cacheService.ts` only after choosing Upstash Redis, Vercel Runtime Cache, or another explicit Vercel-compatible cache.
+  - Add rate limiting with clear behavior for mock mode and live Grok mode.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `DIGITAL_OCEAN_SERVICES_ANALYSIS.md`
+  - `DO_SERVICES_SUMMARY.md`
+  - Branch file list against `main`.
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Direct branch deletes Vercel-oriented files, adds DigitalOcean service assumptions, renames/shared code paths, and includes package/lockfile churn.
+- Tests/checks run:
+  - Documentation-only mining; no build rerun for this ledger update before closure.
+- Self-review notes:
+  - The cache idea is useful enough to keep, but provider ROI docs are not a substitute for a Vercel architecture decision.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87; Vercel-compatible cache/storage ideas remain in the not-taken ledger.
+
+## PR #54 - Digital Ocean Deployment Infrastructure - Complete Code Audit & Production Ready Setup
+
+- Source branch: `refs/remotes/pr/54` / `copilot/fix-39f1b710-a1e8-490f-9997-425e777cc64e`
+- Planned disposition: close
+- Actual disposition: mined and closed; do not merge deployment infrastructure
+- Story-generation impact: Low direct impact. It affects runtime/deployment reliability, not story prompt quality.
+- Accepted material:
+  - Generic deployment-readiness checklist ideas: Node 20 runtime, environment variable clarity, health checks, CORS/origin control, mock mode, structured logging, and resource monitoring.
+  - Reminder that deployment docs should name the target platform explicitly.
+- Not taking now:
+  - `app.yaml`, DigitalOcean App Platform deployment docs, and `deploy.sh`.
+  - Dockerfiles, Docker Compose, Docker healthcheck/start scripts, and `server.js` production server.
+  - Express traditional-hosting API compatibility layer.
+  - Audio/export routes and environment assumptions from the old shell.
+  - `.env.example` as written because it includes audio/provider assumptions not in current scope.
+- Why not taking:
+  - The active target is Vercel, and the current repo already has serverless `api/` functions plus `vercel.json`.
+  - Adding a second traditional-hosting runtime would split deployment truth and invite regressions.
+- Future mining value:
+  - Use the checklist shape when writing a Vercel deployment checklist: env vars, build command, output directory, health endpoint, mock/live mode, logging, and custom domain checks.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `DEPLOYMENT_CHECKLIST.md`
+  - `DEPLOY.md`
+  - Branch file list against `main`.
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Direct branch adds DigitalOcean/Docker runtime files and old API route assumptions that conflict with Vercel-first recovery.
+- Tests/checks run:
+  - Documentation-only mining; no build rerun for this ledger update before closure.
+- Self-review notes:
+  - This PR is directly opposed to the user's Vercel direction. Mine checklist discipline, not deployment code.
+- GitHub PR closure note:
+  - Closed as superseded by #87; deployment infrastructure intentionally not taken.
+
+## PR #53 - Complete documentation audit: Archive outdated docs, update architecture references, and enhance changelog
+
+- Source branch: `refs/remotes/pr/53` / `copilot/fix-2036820c-39ee-4d4c-bcce-d85a9bcb1042`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; recreate docs cleanup later if needed
+- Story-generation impact: Indirect. Cleaner docs reduce future story-generation mistakes by making current seams and paths obvious.
+- Accepted material:
+  - Documentation lifecycle pattern: archive historical feature docs behind a README, remove temporary completion docs, and keep active docs current.
+  - Repository hygiene lesson: do not commit `node_modules`; use `.gitignore` and dependency install scripts.
+  - Architecture-reference cleanup idea: serverless/API paths must be kept current in agent and contributor docs.
+- Not taking now:
+  - Direct archive/move/delete operations from the stale branch.
+  - Changelog rewrite and agent-doc edits as-is.
+  - Massive `node_modules` deletion/change set inside the PR.
+  - Old references to `api/lib` instead of current `api/_lib`.
+  - Audio-heavy README claims as active current documentation.
+- Why not taking:
+  - The current recovery docs already supersede older root-doc cleanup.
+  - A docs cleanup should be done after PR closure, not while the recovery still needs visible ledgers and final report.
+  - Merging a node_modules cleanup PR with unrelated architecture rewrites would create review noise.
+- Future mining value:
+  - After #87 is accepted, do a clean docs consolidation commit that archives recovery docs and updates README/AGENTS without touching dependencies or code paths.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `archived/README.md`
+  - `README.md`
+  - `.github/copilot-instructions.md`
+  - Branch file list against `main`.
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Direct branch includes hundreds of dependency-file changes plus stale serverless/path references.
+- Tests/checks run:
+  - Documentation-only mining; no build rerun for this ledger update before closure.
+- Self-review notes:
+  - The intent is good, but a docs lifecycle pass must be smaller and timed after recovery, or it becomes the same document sprawl it is trying to solve.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87; cleanup ideas remain for a post-recovery docs pass.
+
+## PR #40 - Revolutionary UI: Complete mystical interface transformation with floating particles, 3D animations, and optimized layout arrangement
+
+- Source branch: `refs/remotes/pr/40` / `copilot/fix-19edc1b5-252d-4e09-bb58-fd6c2fb5aea0`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; recreate selected visual/workflow ideas only if they fit #70 Story Lab
+- Story-generation impact: Low direct impact. It changes the story creation experience and input affordances but not generation logic.
+- Accepted material:
+  - Interaction ideas: clearer grouping of creature selection, theme selection, inspiration text, intensity, word budget, and final generate action.
+  - Status ideas: a central "ready/casting" state, selected-theme counter, and visible disabled/ready generate state.
+  - Implementation caution: `trackBy`/stable iteration and hydration testing matter for dynamic Angular forms.
+- Not taking now:
+  - Full mystical app-shell rewrite in `app.html` and `app.css`.
+  - Floating particle background, 3D card flips, spell-circle/orb controls, emoji-driven control labels, and heavy purple/gold gradient theme.
+  - `ngSkipHydration` usage as a broad workaround.
+  - Audio/save UI controls from the old app.
+  - Current PR screenshots/assets as implementation target.
+- Why not taking:
+  - #70 already established the Story Lab/workbench direction, and `design.md` now provides a calmer design system.
+  - The recovery frontend guidance avoids particle/orb decoration, one-note purple palettes, and text-heavy novelty controls.
+  - Direct merge would replace the current Story Lab app shell and collide with #75/#26/#74 ports.
+- Future mining value:
+  - Recreate only the layout hierarchy and state-clarity ideas in the current Story Lab design language if screenshots show the existing UI needs simplification.
+  - Consider a subdued "generation status core" after real generation/progress semantics are settled.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`
+  - `story-generator/src/app/app.ts`
+  - Diff shortstat for app UI files.
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Direct branch overwrites the pre-#70 app shell and conflicts with the current #70 Story Lab structure, #75 workflow additions, and #26 validation/notification surface.
+- Tests/checks run:
+  - Documentation/UI mining only; no build rerun for this ledger update before closure.
+- Self-review notes:
+  - The branch is useful as a sketch of interaction grouping, but the visual treatment should not set the recovery direction.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87; selected UI ideas remain in the not-taken ledger.

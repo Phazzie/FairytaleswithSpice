@@ -480,3 +480,170 @@ Template:
   - `package-lock.json`
   - `story-generator/package.json`
   - `story-generator/package-lock.json`
+
+## PR #77 - Documentation analysis and SDD lessons
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/77`
+- Story-generation ideas not taken:
+  - No direct prompt/service code.
+  - Broad lessons about contract-first seams, mock mode, and service-layer preservation that affect story-generation safety are already represented in `LESSONS_LEARNED.md` and `PR70_RECOVERY_PLAN.md`.
+- Other useful ideas not taken:
+  - `repodocs.md`, `repodocsanalysis.md`, and `DOCUMENTATION_ANALYSIS_SUMMARY.md` as additional root docs.
+  - The recommendation to reduce the active doc set to a smaller indexed set.
+- Why not now:
+  - Recovery already has live ledgers; adding large generated historical docs would increase document sprawl.
+  - The branch also carries stale `api/lib` path drift, Vercel file deletion, audio files, and package changes.
+- Future extraction notes:
+  - After #87 lands, create a small docs index/archive policy instead of merging PR #77's large static reports.
+  - Re-run doc inventory against the post-recovery repo if a cleanup pass is requested.
+- Source files/commits:
+  - `DOCUMENTATION_ANALYSIS_SUMMARY.md`
+  - `repodocs.md`
+  - `repodocsanalysis.md`
+
+## PR #76 - WIP SDD redesign analysis
+
+- Disposition: closed no material
+- Source branch: `refs/remotes/pr/76`
+- Story-generation ideas not taken:
+  - No committed story-generation material.
+  - PR body asks for current-state analysis, SDD critique, devil's advocate questions, and redesign planning.
+- Other useful ideas not taken:
+  - Planned `spicyfairytaleremix.md` deliverable was not present.
+- Why not now:
+  - There are no files to merge.
+  - The final recovery report will cover the useful critique prompts against the current #87 branch.
+- Future extraction notes:
+  - Use the body checklist while writing `PR70_RECOVERY_FINAL_REPORT.md`.
+- Source files/commits:
+  - PR body only.
+
+## PR #63 - Database investigation
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/63`
+- Story-generation ideas not taken:
+  - Durable story library/history.
+  - Cross-session multi-chapter story state.
+  - Persistent consequences, world facts, character arcs, and chapter metadata.
+  - Analytics for popular creatures, themes, spice levels, generation success, regeneration patterns, and story recommendations.
+  - API usage and quota tracking around Grok generation.
+- Other useful ideas not taken:
+  - PostgreSQL/Auth0/Redis option analysis.
+  - Raw SQL/Prisma-style schema ideas for `stories`, `chapters`, `story_state`, `analytics_events`, `story_shares`, `story_reactions`, `api_usage`, and `user_quotas`.
+  - Silent-write/read-rollout migration strategy.
+- Why not now:
+  - The research is DigitalOcean-oriented and should not decide Vercel storage by accident.
+  - Current recovery state is explicitly transient until a Vercel-compatible storage product is selected.
+  - Direct branch includes stale code/path/test churn.
+- Future extraction notes:
+  - Write a Vercel storage RFC using #63 as source material; compare Neon/Vercel Postgres, Upstash Redis, Blob, and any needed auth provider.
+  - Prioritize story library and multi-chapter state before social reactions/sharing.
+- Source files/commits:
+  - `DATABASE_INVESTIGATION.md`
+  - `DATABASE_ROI_ANALYSIS.md`
+  - `DATABASE_DECISION_FLOWCHART.md`
+  - `DATABASE_QUICK_REFERENCE.md`
+  - `DATABASE_INDEX.md`
+
+## PR #56 - DigitalOcean backend services research
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/56`
+- Story-generation ideas not taken:
+  - Story-generation caching keyed by input.
+  - Rate limiting around expensive AI calls.
+  - Usage analytics and cost tracking.
+  - Story history/persistence through a database-backed layer.
+- Other useful ideas not taken:
+  - Object storage for generated audio/export files.
+  - Redis-style cache service with graceful fallback and statistics.
+  - Observability and monitoring concepts.
+  - DigitalOcean Spaces, Managed Redis, Managed PostgreSQL, App Platform, Load Balancer, VPC, and DOKS recommendations.
+  - `api/lib/services/cacheService.ts` implementation.
+- Why not now:
+  - Provider direction conflicts with the Vercel target.
+  - Cache/storage code must be recreated under `api/_lib` after Vercel-compatible products are chosen.
+  - Audio is deferred, so audio URL caching is future scope.
+- Future extraction notes:
+  - Recreate a small cache seam around Vercel Runtime Cache or Upstash Redis only after privacy/TTL rules are decided for generated stories.
+  - Reuse deterministic key and graceful-fallback ideas, not the provider-specific code.
+- Source files/commits:
+  - `DIGITAL_OCEAN_SERVICES_ANALYSIS.md`
+  - `DO_SERVICES_SUMMARY.md`
+  - `DO_COST_ANALYSIS.md`
+  - `DO_IMPLEMENTATION_GUIDE.md`
+  - `api/lib/services/cacheService.ts`
+
+## PR #54 - DigitalOcean deployment infrastructure
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/54`
+- Story-generation ideas not taken:
+  - No direct story-generation feature material.
+- Other useful ideas not taken:
+  - Dockerfiles, Docker Compose, `server.js`, `app.yaml`, `deploy.sh`, and DigitalOcean deployment docs.
+  - Traditional Express compatibility server.
+  - Deployment checklist categories: Node version, environment variables, CORS, health checks, mock/live mode, logging, and monitoring.
+- Why not now:
+  - The target is Vercel, and adding DigitalOcean/Docker runtime files would split deployment truth.
+  - Current API route layout is Vercel serverless, not a traditional Express server.
+- Future extraction notes:
+  - Create a Vercel deployment checklist using the generic categories, not the DigitalOcean implementation.
+  - Keep `XAI_API_KEY`, build command/output directory, health endpoint, and Vercel project/env setup as checklist items.
+- Source files/commits:
+  - `DEPLOYMENT_CHECKLIST.md`
+  - `DEPLOY.md`
+  - `app.yaml`
+  - `Dockerfile`
+  - `server.js`
+  - `deploy.sh`
+
+## PR #53 - Documentation audit and archive cleanup
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/53`
+- Story-generation ideas not taken:
+  - No direct generation code.
+  - Preserved concept: stale docs can cause agents to revive old story/audio paths and should be archived or corrected.
+- Other useful ideas not taken:
+  - `archived/README.md` structure for historical docs.
+  - Changelog rewrite and updated Copilot/agent instructions.
+  - Removal of committed dependencies.
+- Why not now:
+  - The PR touches large `node_modules` sets and stale doc paths.
+  - Recovery docs need to remain visible until #87 is accepted; a cleanup/archive pass belongs after the recovery closes.
+- Future extraction notes:
+  - Do a clean docs consolidation after recovery: archive old status docs, update README/AGENTS to current Vercel paths, and avoid dependency churn.
+- Source files/commits:
+  - `archived/README.md`
+  - `README.md`
+  - `.github/copilot-instructions.md`
+  - `AGENTS.md`
+  - `CHANGELOG.md`
+
+## PR #40 - Mystical UI rewrite
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/40`
+- Story-generation ideas not taken:
+  - No prompt/service behavior.
+  - Input-flow ideas: group creature, theme, inspiration, intensity, word budget, and final generation action clearly.
+  - Generation-state ideas: central ready/casting status, selected-theme counter, disabled/ready action states.
+- Other useful ideas not taken:
+  - Full mystical spell-crafting app shell.
+  - Floating particles, 3D creature cards, rune stones, intensity crystal, central spell circle, heavy animation system, and purple/gold gradient palette.
+  - Broad `ngSkipHydration` usage.
+  - Old audio/save controls.
+- Why not now:
+  - #70 Story Lab is the product baseline and `design.md` is the current visual guidance.
+  - The recovery design constraints reject decorative particles/orbs, one-note purple palettes, and novelty text controls where standard controls are clearer.
+  - Direct merge would overwrite current Story Lab UI, validation, batching, and Proving Grounds routing.
+- Future extraction notes:
+  - Recreate layout hierarchy and state clarity in the current design language only if Story Lab screenshots show the workflow is too scattered.
+  - Test mobile/desktop screenshots before accepting any large visual treatment.
+- Source files/commits:
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`
+  - `story-generator/src/app/app.ts`

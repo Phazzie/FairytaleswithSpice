@@ -755,3 +755,41 @@ Running merge-order snapshot after #84:
 
 1. Docs/research/audio mining and closure work.
 2. Fresh dependency update from the recovery branch after lockfile state is clean.
+
+## 2026-05-26 14:16 EDT - Recovery PR Opened and Docs/Deployment/Visual Mining Recorded
+
+Actions:
+
+- Ran full recovery preflight with `scripts/recovery/preflight.sh --skip-status`.
+- Pushed `recovery-pr70-story-lab-vercel` to GitHub.
+- Opened draft recovery PR #87: `https://github.com/Phazzie/FairytaleswithSpice/pull/87`.
+- Closed the already handled PRs with comments pointing to #87 and the recovery ledgers:
+  - #86, #85, #84, #75, #74, #73, #72, #71, #70, #67, #65, #64, #50, #41, #39, #31, #26, #24.
+- Refreshed the open PR list after the first closure batch; remaining source PRs are #77, #76, #63, #56, #55, #54, #53, #47, #45, #44, #43, #42, #40, #30, #29, #28, and #22 plus #87.
+- Fetched docs/storage/deployment/visual PR heads into temporary refs:
+  - #77, #76, #63, #56, #54, #53, #40.
+- Mined and recorded the useful material from:
+  - #77 documentation/SDD analysis,
+  - #76 WIP SDD redesign body/no-file state,
+  - #63 database/story persistence research,
+  - #56 cache/storage/monitoring/rate-limit research,
+  - #54 deployment-readiness checklist ideas,
+  - #53 documentation lifecycle/archive cleanup,
+  - #40 UI layout/state clarity ideas.
+
+Validation:
+
+- `scripts/recovery/preflight.sh --skip-status` passed before pushing #87.
+- Covered checks: required tool precheck with `jq` warning, `git diff --check`, Angular app typecheck, Angular spec typecheck, root story/trope/cliffhanger/story-lab-state tests, Node 20 Angular production build, and build-output verification.
+- Known warnings remain:
+  - `jq` is not installed locally.
+  - Angular build reports stale `baseline-browser-mapping`.
+  - `src/app/proving-grounds/proving-grounds.css` exceeds the component CSS budget by about 1.15 kB.
+
+Self-review:
+
+- Good: #87 now gives every old PR closure a concrete replacement branch instead of an abstract plan.
+- Good: The docs/storage/deployment/visual mining happened before those PRs are closed, preserving the material the user asked us not to lose.
+- Problem found: Several "docs" or "research" branches are not clean docs branches when compared to the recovery baseline; they carry stale `api/lib` rewrites, Vercel file deletions, audio scope, node_modules churn, or DigitalOcean runtime assumptions.
+- Decision: Close those branches after recording their useful ideas, and recreate any future storage/deploy/docs/UI work from #87 rather than trying to merge stale branch contents.
+- Watch item: The remaining audio PRs are likely to contain story-generation spillover, so they need the same evidence-first mining pass before closure.
