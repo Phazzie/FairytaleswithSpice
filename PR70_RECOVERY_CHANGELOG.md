@@ -240,3 +240,37 @@ Self-review:
 
 - The canonical service is in better shape than the stale branch suggested, but the duplicate compiled story service is still a risk.
 - #67 should either remove the duplicate service path or make it a thin wrapper around the canonical `api/_lib` implementation.
+
+## 2026-05-26 01:50 EDT - PR #67 Audit Refactor Ported
+
+Actions:
+
+- Inspected #67's audit PR and confirmed it is conflicting against the #70/Vercel recovery branch.
+- Ported the useful refactor into the Vercel `api/_lib` path:
+  - Added `api/_lib/config/authorStyles.ts`.
+  - Removed inline author-style tables from `api/_lib/services/storyService.ts`.
+  - Deleted stale duplicate compiled files under `story-generator/src/api/lib/*`.
+  - Updated tests away from stale `api/lib` and duplicate `story-generator/src/api/lib` imports.
+- Fixed an uncovered test-harness bug: `tests/story-service-improved.test.ts` counted `r.failed`, which does not exist, so printed failures still exited 0.
+- Fixed the actual story-generation validation bug exposed by that test: invalid spicy levels were accepted and generated mock stories.
+
+Decision:
+
+- Do not merge #67 directly.
+- Do not take #67's DigitalOcean deployment readiness doc.
+- Do not add #67's root audit report as another active status doc; mine its refactor recommendations into the recovery ledgers instead.
+
+Validation:
+
+- Non-doc code scan found no remaining `api/lib`, `story-generator/src/api`, or `src/api/lib` references in `tests`, `api`, or `story-generator`.
+- `npx tsx tests/verify-ai-fixes.test.ts` passed.
+- `npm test` passed with 12/12 tests.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- #67 justified its place in the merge order: duplicate service drift had already made #64/#65 riskier.
+- The first test run found a false-green test harness and a validation bug; both were fixed immediately.
+- The remaining risk is old documentation still mentioning `api/lib` paths. That is historical doc drift, not active code drift, and should be cleaned in a docs pass rather than mixed into story-generation feature ports.

@@ -8,8 +8,8 @@
  * Run: npx tsx tests/story-service-improved.test.ts
  */
 
-import { StoryService } from '../api/lib/services/storyService';
-import { StoryGenerationSeam, ChapterContinuationSeam } from '../api/lib/types/contracts';
+import { StoryService } from '../api/_lib/services/storyService';
+import { StoryGenerationSeam, ChapterContinuationSeam } from '../api/_lib/types/contracts';
 
 // ==================== TEST UTILITIES ====================
 
@@ -465,7 +465,7 @@ async function runAllTests() {
   console.log('='.repeat(80));
   
   const passed = results.filter(r => r.passed).length;
-  const failed = results.filter(r => r.failed).length;
+  const failed = results.filter(r => !r.passed).length;
   const total = results.length;
   
   console.log(`\nTotal Tests: ${total}`);
@@ -475,7 +475,7 @@ async function runAllTests() {
   
   if (failed > 0) {
     console.log('\n❌ FAILED TESTS:');
-    results.filter(r => r.failed).forEach(r => {
+    results.filter(r => !r.passed).forEach(r => {
       console.log(`   - ${r.name}: ${r.error}`);
     });
   }

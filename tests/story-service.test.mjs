@@ -8,8 +8,8 @@
  * Run: node tests/story-service.test.mjs
  */
 
-import { StoryService } from '../api/lib/services/storyService.js';
-import { logger } from '../api/lib/utils/logger.js';
+import { StoryService } from '../api/_lib/services/storyService.js';
+import { logger } from '../api/_lib/utils/logger.js';
 
 // ANSI color codes for terminal output
 const colors = {

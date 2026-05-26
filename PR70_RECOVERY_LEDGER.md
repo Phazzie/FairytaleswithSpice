@@ -29,7 +29,7 @@ Status values:
 | #72 | port/cherry-pick | pending | Multi-chapter backend/frontend contracts. |
 | #71 | compare then close | pending | Early batch generation, mostly superseded by #72. |
 | #70 | merge baseline | merged | Merged into `recovery-pr70-story-lab-vercel` as commit `118265c`; stabilization pending. |
-| #67 | port/cherry-pick | pending | Audit, author-style extraction, duplicate cleanup. |
+| #67 | port/cherry-pick | ported | Ported author-style extraction, duplicate-service deletion, path/test fixes, and validation bug fix. |
 | #65 | port/cherry-pick | ported | Verified canonical AI fixes; aligned duplicate compiled service timeouts and test path. |
 | #64 | port/cherry-pick | ported | Ported Fisher-Yates Chekhov element selection; stale tests/docs/node_modules not taken. |
 | #63 | mine and close | pending | Storage/database research. |
@@ -276,5 +276,62 @@ Use this template for detailed entries as each PR is handled:
   - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
 - Self-review notes:
   - This reinforces the #67 priority: remove or quarantine duplicate story services after the audit so model/timeouts/randomization cannot drift again.
+- GitHub PR closure note:
+  - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #67 - Comprehensive SOLID/KISS/DRY Audit: Fix deployment blockers and eliminate duplicate code
+
+- Source branch: `pr-67` / `copilot/perform-code-audit-and-fixes`
+- Planned disposition: port/cherry-pick
+- Actual disposition: ported selected refactor/test material; do not merge directly
+- Story-generation impact: High. Removes compiled duplicate story service drift, centralizes author-style configuration, fixes stale story-test imports, and adds missing validation for spicy level/word count inputs.
+- Accepted material:
+  - Added `api/_lib/config/authorStyles.ts`, adapted from #67's `api/lib/config/authorStyles.ts`.
+  - Removed the large inline author-style tables from `api/_lib/services/storyService.ts`.
+  - Deleted the stale compiled duplicate `story-generator/src/api/lib/*` service/type files.
+  - Updated `tests/story-service-improved.test.ts` and `tests/verify-ai-fixes.test.ts` away from stale duplicate paths.
+  - Fixed `tests/story-service-improved.test.ts` so failed tests are counted with `!r.passed`.
+  - Fixed `StoryService.validateStoryInput()` to reject invalid spicy levels and invalid word counts before mock/live generation.
+- Not taking now:
+  - `DEPLOYMENT_READINESS.md` from #67 because it is DigitalOcean-specific.
+  - `COMPREHENSIVE_AUDIT_REPORT.md` as a root doc because this recovery already has one active changelog, ledger, lessons file, and final-report target.
+  - The old `api/lib/*` path shape.
+  - PR #67's direct branch deletion/merge as-is.
+- Why not taking:
+  - Direct merge conflicts with the #70 baseline and current Vercel `api/_lib` path.
+  - The deployment checklist points at DigitalOcean, which conflicts with the user's Vercel target.
+  - Adding another root audit report would worsen the repo's existing status-doc sprawl.
+- Future mining value:
+  - The audit's future refactor ideas remain useful: prompt builder extraction, content formatter extraction, mock-data boundary, story analyzer extraction, beat-structure config, and Chekhov element config.
+  - Reuse the duplicate-removal lesson for later story state and multi-chapter ports.
+- Files inspected:
+  - `COMPREHENSIVE_AUDIT_REPORT.md` from PR #67
+  - `DEPLOYMENT_READINESS.md` from PR #67
+  - `api/lib/config/authorStyles.ts` from PR #67
+  - Deleted `story-generator/src/api/lib/*` files from PR #67
+  - `tests/story-service-improved.test.ts`
+- Files changed in recovery branch:
+  - `api/_lib/config/authorStyles.ts`
+  - `api/_lib/services/storyService.ts`
+  - `story-generator/src/api/lib/services/exportService.ts`
+  - `story-generator/src/api/lib/services/imageService.ts`
+  - `story-generator/src/api/lib/services/storyService.ts`
+  - `story-generator/src/api/lib/types/contracts.ts`
+  - `tests/story-service-improved.test.ts`
+  - `tests/story-service.test.mjs`
+  - `tests/verify-ai-fixes.test.ts`
+- Conflicts encountered:
+  - PR #67 is GitHub-mergeable as conflicting and was not merged directly.
+  - Conflict shape is path drift (`api/lib` vs `api/_lib`), duplicate service deletion, and obsolete DigitalOcean deployment docs.
+- Tests/checks run:
+  - Non-doc code scan found no remaining `api/lib`, `story-generator/src/api`, or `src/api/lib` references in `tests`, `api`, or `story-generator`.
+  - `npx tsx tests/verify-ai-fixes.test.ts` passed.
+  - `npm test` passed with 12/12 tests after validation and harness fixes.
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+  - `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2.
+  - `npm run build:verify` passed.
+- Self-review notes:
+  - The first `npm test` run revealed the harness was falsely exiting 0 even after a printed failed assertion. That is exactly the kind of audit failure #67 was supposed to flush out, so it was fixed immediately instead of merely documented.
+  - Removing the duplicate service means later ports must target `api/_lib` or app-layer contracts, not revive `story-generator/src/api/lib`.
 - GitHub PR closure note:
   - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.

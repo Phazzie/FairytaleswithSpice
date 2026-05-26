@@ -118,3 +118,33 @@ Template:
   - `api/lib/services/storyService.ts`
   - `story-generator/src/api/lib/services/storyService.ts`
   - `tests/verify-ai-fixes.test.ts`
+
+## PR #67 - SOLID/KISS/DRY audit and duplicate cleanup
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-67`
+- Story-generation ideas not taken:
+  - Full prompt-builder extraction.
+  - Content formatter extraction.
+  - Story analyzer extraction.
+  - Beat-structure configuration extraction.
+  - Chekhov element configuration extraction.
+  - Mock data service extraction.
+- Other useful ideas not taken:
+  - `COMPREHENSIVE_AUDIT_REPORT.md` as a root report.
+  - `DEPLOYMENT_READINESS.md`.
+  - DigitalOcean deployment checklist and rollback process.
+  - Old `api/lib/*` file layout.
+- Why not now:
+  - The extraction ideas are useful but larger than the safe #67 port and should happen after multi-chapter/story-state decisions settle.
+  - The deployment doc conflicts with the Vercel direction.
+  - The recovery already has active tracking docs; adding another root audit report would increase status-doc drift.
+- Future extraction notes:
+  - When the story service is next refactored, split prompt construction, content formatting, story analysis, beat structures, and Chekhov elements into canonical `api/_lib` modules.
+  - Use the #67 audit as a checklist for future service decomposition, not as deploy guidance.
+- Source files/commits:
+  - `COMPREHENSIVE_AUDIT_REPORT.md`
+  - `DEPLOYMENT_READINESS.md`
+  - `api/lib/config/authorStyles.ts`
+  - `story-generator/src/api/lib/*`
+  - `tests/story-service-improved.test.ts`
