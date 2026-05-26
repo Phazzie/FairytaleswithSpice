@@ -452,3 +452,31 @@ Template:
   - `.github/workflows/contract-validation.yml`
   - `.github/workflows/deployment-optimization.yml`
   - `.github/workflows/visual-testing.yml`
+
+## PR #84 - chore(deps): bump the npm_and_yarn group across 2 directories with 10 updates
+
+- Disposition: recreate later; close later as superseded by fresh dependency work
+- Source branch: `pr-84`
+- Story-generation ideas not taken:
+  - None directly; dependency update only by intent.
+- Other useful ideas not taken:
+  - `axios` update from `^1.12.2` to `^1.13.5`.
+  - Angular patch updates for several Angular 20 packages.
+  - Root `@types/node`, `tsx`, and TypeScript dependency updates.
+  - Large lockfile rewrite.
+  - Old audio service/test files included by stale branch comparison.
+  - Root script changes that make audio tests part of the required suite.
+- Why not now:
+  - Audio is deferred.
+  - The branch appears stale against the recovery baseline.
+  - The Angular version set is not coherent because `@angular/core` is bumped to 21 while related Angular packages stay at 20.
+  - Existing dirty local root lockfile/node_modules changes should not be mixed with a dependency update.
+- Future extraction notes:
+  - Re-run dependency updates fresh from the recovery branch.
+  - Keep same-major Angular 20 patch updates separate from any Angular 21 migration.
+  - Validate fresh dependency work with Node 20 build, root tests, and `build:verify`.
+- Source files/commits:
+  - `package.json`
+  - `package-lock.json`
+  - `story-generator/package.json`
+  - `story-generator/package-lock.json`

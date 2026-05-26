@@ -78,3 +78,4 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Port UI infrastructure against current contracts, not old form names. PR #26's validation idea was useful, but the implementation had to be rebuilt around the #70 Story Lab blueprint seam.
 - Record browser-test environment failures separately from code failures. The Angular spec bundle can build while Karma still fails because ChromeHeadless never captures; that needs environment follow-up, not silent treatment as a spec pass.
 - CI should run the recovery's current truth, not a stale idealized repo shape. PR #41/#39 had useful workflow ideas, but their concrete jobs assumed old backend/API paths and would have undone Vercel `_lib` normalization.
+- Dependency PRs need clean lockfile state and coherent framework versions. PR #84 was dependency-focused by intent, but its stale branch comparison and mixed Angular 20/21 package set make a fresh update safer than a merge.

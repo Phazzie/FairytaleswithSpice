@@ -718,3 +718,40 @@ Running merge-order snapshot after #41/#39:
 
 1. #84 - dependency update once lockfile state is intentional.
 2. Docs/research/audio mining after merge/adapt candidates are out of the way.
+
+## 2026-05-26 13:34 EDT - PR #84 Dependency Update Deferred For Fresh Recreate
+
+Actions:
+
+- Fetched PR #84 as `pr-84`.
+- Inspected package and lockfile changes.
+- Compared the branch against the current recovery baseline.
+
+Decision:
+
+- Do not merge #84 into this recovery branch.
+- Recreate the dependency update later from the recovery branch after lockfile state is clean.
+- Treat Angular 21 as a separate deliberate migration, not part of a grouped patch update.
+
+Findings:
+
+- The PR head commit is dependency-focused, but the branch is stale against the recovery baseline.
+- Against the current recovery branch, #84 also brings in old audio service/test files, `AGENTS.md` changes, and `story-generator/src/server.ts` churn.
+- Root scripts in #84 add audio tests back into required root test commands, which conflicts with the current audio-deferred scope.
+- `story-generator/package.json` mixes `@angular/core` `^21.1.5` with multiple Angular `^20.3.x` packages.
+- Lockfile churn is large enough that it should not be mixed with the existing unrelated dirty root lockfile/node_modules state.
+
+Validation:
+
+- Inspected `git diff main..pr-84 -- package.json story-generator/package.json`.
+- Inspected `git diff --shortstat main..pr-84 -- package-lock.json story-generator/package-lock.json`.
+
+Self-review:
+
+- Good: #84 is no longer sitting in the merge/adapt queue as if it were a clean merge candidate.
+- Watch item: A fresh dependency branch is still needed after recovery stabilization.
+
+Running merge-order snapshot after #84:
+
+1. Docs/research/audio mining and closure work.
+2. Fresh dependency update from the recovery branch after lockfile state is clean.

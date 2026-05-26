@@ -20,7 +20,7 @@ Status values:
 |---:|---|---|---|
 | #86 | merge | merged | Merged design system doc; normalized nonzero letter-spacing tokens. |
 | #85 | merge | merged | Merged `path-to-regexp` 8.4.0 lockfile update. |
-| #84 | try merge or recreate | pending | Grouped dependency update. |
+| #84 | try merge or recreate | recreate later | Stale grouped dependency update; not merged because it mixes Angular 20/21 and stale audio/path churn. |
 | #77 | mine and close | pending | Documentation analysis lessons. |
 | #76 | close | pending | No committed material found. |
 | #75 | port/cherry-pick | ported | Ported batch queue, suggested prompts, grouped chapter timeline, and Vercel persistence wording into #70 story lab. |
@@ -912,3 +912,48 @@ Use this template for detailed entries as each PR is handled:
   - Keep CI boring until the recovery branch is ready to become the mainline.
 - GitHub PR closure note:
   - Close as mined/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #84 - chore(deps): bump the npm_and_yarn group across 2 directories with 10 updates
+
+- Source branch: `pr-84` / `dependabot/npm_and_yarn/npm_and_yarn-99e8bff974`
+- Planned disposition: try merge or recreate
+- Actual disposition: recreate later; do not merge this PR into the recovery branch
+- Story-generation impact: Low direct impact, but high build risk. Dependency drift can break Story Lab validation and Vercel builds.
+- Accepted material:
+  - Dependency-maintenance intent only.
+- Not taking now:
+  - Direct PR #84 merge.
+  - Root package script changes that reintroduce audio tests as required root tests.
+  - Root and Angular lockfile churn.
+  - Added old audio service/test files.
+  - `AGENTS.md` changes from the stale branch base.
+  - `story-generator/src/server.ts` changes from the stale branch base.
+  - Mixed Angular dependency versions where `@angular/core` is `^21.1.5` while several Angular packages remain `^20.3.x`.
+- Why not taking:
+  - The current recovery branch has intentionally deferred audio.
+  - The PR branch is based on stale repository state and includes material beyond dependency updates when compared to the current recovery baseline.
+  - Angular should be upgraded coherently, either as a same-major patch update or as a deliberate Angular 21 migration.
+  - The worktree still has unrelated dirty root lockfile/node_modules noise, so dependency work needs a clean lockfile pass.
+- Future mining value:
+  - Re-run Dependabot or `npm outdated` after the recovery branch is otherwise stable.
+  - Apply `axios` and Angular patch updates in a fresh dependency branch with Node 20 build verification.
+  - Treat Angular 21 as a separate migration, not a grouped patch bump.
+- Files inspected:
+  - `package.json`
+  - `package-lock.json`
+  - `story-generator/package.json`
+  - `story-generator/package-lock.json`
+  - Branch diff list against current recovery baseline
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - #84 appears dependency-only by its head commit, but against the current recovery branch it pulls in stale audio, AGENTS, server, and test changes.
+  - Existing dirty local root lockfiles must not be mixed into a dependency PR disposition.
+- Tests/checks run:
+  - `git diff main..pr-84 -- package.json story-generator/package.json` inspected dependency/script changes.
+  - `git diff --shortstat main..pr-84 -- package-lock.json story-generator/package-lock.json` showed large lockfile churn.
+- Self-review notes:
+  - Correct action is to preserve the dependency-update need without importing stale branch state.
+  - The next dependency attempt should start from the recovery branch with clean lockfiles.
+- GitHub PR closure note:
+  - Close as superseded/recreate after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
