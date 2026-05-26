@@ -793,3 +793,40 @@ Self-review:
 - Problem found: Several "docs" or "research" branches are not clean docs branches when compared to the recovery baseline; they carry stale `api/lib` rewrites, Vercel file deletions, audio scope, node_modules churn, or DigitalOcean runtime assumptions.
 - Decision: Close those branches after recording their useful ideas, and recreate any future storage/deploy/docs/UI work from #87 rather than trying to merge stale branch contents.
 - Watch item: The remaining audio PRs are likely to contain story-generation spillover, so they need the same evidence-first mining pass before closure.
+
+## 2026-05-26 14:47 EDT - Audio PR Story-Generation Spillover Mined
+
+Actions:
+
+- Fetched audio PR heads into temporary refs:
+  - #55, #47, #45, #44, #43, #42, #30, #29, #28, #22.
+- Inspected PR bodies, file lists, prompt snippets, audio research docs, and representative parser/service code.
+- Recorded PR-by-PR dispositions in `PR70_RECOVERY_LEDGER.md`, `NOT_TAKEN_FEATURE_LEDGER.md`, and `PR_USEFUL_MATERIAL_INVENTORY.md`.
+
+Mined story-generation material:
+
+- #55: audio-first prompt mode, 90+ emotion vocabulary, narrator atmosphere tags, character voice evolution as character-development metadata, and the warning against replacing prose with machine-first JSON.
+- #47: tag validation, voice consistency testing, emotion navigation/bookmarks, and optional scene/effect metadata.
+- #45: emotion taxonomy, character emotional memory, fuzzy emotion suggestions, and consistency across emotional changes.
+- #44: scene/effect trigger metadata, emotion distribution and character-count QA signals, and SFX-provider caution.
+- #43: character personality profiles and output analysis for neutral-tag overuse, low emotion variety, and oversized casts.
+- #42: audio background-job semantics with start/status/result/cancel/progress and separation from story-generation streaming.
+- #30/#29/#28/#22: explicit speaker/narrator tags, segment/result models, modular parser/voice/stitching seams, and quote-based fallback parsing.
+
+Decision:
+
+- Do not port active audio runtime, UI, provider, SFX, or player code now.
+- Preserve the material as a future "audio-ready story generation" backlog.
+- If audio returns, rebuild from #87 using current `api/_lib`, Story Lab contracts, Vercel-compatible storage/queue choices, and an explicit prompt/metadata seam.
+
+Self-review:
+
+- Good: The highest-risk knowledge loss from stale audio PRs is now recorded before closure.
+- Good: The branch still avoids audio runtime scope and DigitalOcean/provider drift.
+- Problem found: Several audio PRs solve the same problem in slightly incompatible ways. The later PRs are richer conceptually, but the earlier PRs are cleaner for modular parser/segment contract ideas.
+- Follow-up: Close the audio PRs with comments that name both what was mined and what was not taken.
+
+Closure result:
+
+- Closed #55, #47, #45, #44, #43, #42, #30, #29, #28, and #22 with ledger-backed comments.
+- Refreshed GitHub open PR list after closure; only #87 remains open.

@@ -34,25 +34,25 @@ Status values:
 | #64 | port/cherry-pick | ported; closed | Ported Fisher-Yates Chekhov element selection; stale tests/docs/node_modules not taken. |
 | #63 | mine and close | mined and closed | Database/story persistence concepts mined for future Vercel storage decision. |
 | #56 | mine and close | mined and closed | Cache/storage/monitoring/rate-limit concepts mined; DigitalOcean provider code not taken. |
-| #55 | mine and close | pending | Voice evolution/emotion material; audio deferred. |
+| #55 | mine and close | mined and closed | Voice evolution, narrator atmosphere, 90+ emotion vocabulary, and audio-first prompt ideas mined; audio runtime not taken. |
 | #54 | close | mined and closed | DigitalOcean deployment infra rejected for Vercel; generic deploy checklist ideas mined. |
 | #53 | mine and close | mined and closed | Docs cleanup lifecycle ideas mined; node_modules churn not taken. |
 | #50 | port/cherry-pick | mined and closed | Old progress simulator fix is superseded by #70 story-lab UI; lessons recorded in not-taken ledger. |
-| #47 | mine and close | pending | Audio pipeline research. |
-| #45 | mine and close | pending | Emotion mapping and character consistency. |
-| #44 | mine and close | pending | Character-driven narration material. |
-| #43 | mine and close | pending | Audio player/emotion-aware voice processing. |
-| #42 | mine and close | pending | Streaming audio/emotion mapping. |
+| #47 | mine and close | mined and closed | Audio investigation mined for speaker tags, emotion navigation, voice consistency, and sound-effect scene metadata ideas. |
+| #45 | mine and close | mined and closed | Emotion mapping, character memory, fuzzy emotion suggestions, and consistency tracking mined. |
+| #44 | mine and close | mined and closed | Character-driven narration, sound-effect trigger metadata, and emotion taxonomy mined. |
+| #43 | mine and close | mined and closed | Personality profiles, emotion distribution analysis, and character-control concepts mined. |
+| #42 | mine and close | mined and closed | Streaming audio job model, modern ElevenLabs notes, and emotion/tag prompt ideas mined; audio runtime not taken. |
 | #41 | port/cherry-pick | ported; closed | Ported a lean Recovery CI workflow; stale API/backend rewrites not taken. |
 | #40 | mine and close | mined and closed | Visual interaction/layout ideas mined; mystical app-shell rewrite not taken. |
 | #39 | mine and close | mined/ported; closed | Mined CI concepts into the lean Recovery CI workflow; heavyweight suite not taken. |
 | #31 | recreate/port | ported; closed | Ported cliffhanger analysis/prompt guidance; story-arc CRUD and audiobook compile mined for later. |
-| #30 | mine and close | pending | Dialogue parser/speaker-tag ideas. |
-| #29 | mine and close | pending | Speaker segment and voice metadata ideas. |
-| #28 | mine and close | pending | Modular audio service breakdown; base not main. |
+| #30 | mine and close | mined and closed | Dialogue parser, speaker tag contract, segment progress, and voice assignment ideas mined. |
+| #29 | mine and close | mined and closed | MultiVoiceAudioService segment model, character voice mapping, and narrator-intimacy ideas mined. |
+| #28 | mine and close | mined and closed | Modular parser/voice/stitching breakdown and prompt format updates mined. |
 | #26 | port/cherry-pick | ported; closed | Ported notifications, Story Lab validation, inline accessibility/error feedback, and focused service specs. |
 | #24 | recreate/port | ported; closed | Ported invisible trope subversion engine into canonical `api/_lib`; old backend/dist/demo files not taken. |
-| #22 | mine and close | pending | Early dialogue parsing/speaker tag material. |
+| #22 | mine and close | mined and closed | Early dialogue parsing, quote-based fallback extraction, and emotional context inference mined. |
 
 ## Disposition Template
 
@@ -1219,3 +1219,382 @@ Use this template for detailed entries as each PR is handled:
   - The branch is useful as a sketch of interaction grouping, but the visual treatment should not set the recovery direction.
 - GitHub PR closure note:
   - Closed as mined/superseded by #87; selected UI ideas remain in the not-taken ledger.
+
+## PR #55 - Enhance Multi-Voice Audio System with Voice Evolution and 90+ Emotion Support
+
+- Source branch: `refs/remotes/pr/55` / `copilot/fix-c58defe9-72e1-4f67-afc8-235508002d70`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: High future impact. #55 contains the clearest prompt-level path for writing stories that preserve audio metadata without forcing JSON output.
+- Accepted material:
+  - Backlog idea: keep human-readable speaker tags as the primary story text format, not rigid JSON blocks.
+  - Backlog idea: expand prompt vocabulary with curated emotion names and narrator atmosphere labels.
+  - Backlog idea: voice evolution markers can double as character-development metadata for future continuity/state systems.
+- Not taking now:
+  - Enhanced audio service implementation.
+  - 90+ emotion runtime mapping as active audio code.
+  - Browser/audio service changes and lockfile churn.
+  - "Audio-DNA" hidden/steganographic encoding idea.
+  - Character consciousness/collaborative generation architecture as implementation.
+- Why not taking:
+  - Audio remains deferred and the branch uses stale `api/lib` paths.
+  - The useful story-generation material can be recreated as prompt/metadata work after production Story Lab generation is wired.
+  - Hidden Unicode/zero-width metadata would be fragile and hard to review.
+- Future mining value:
+  - Add explicit story-generation support for `[Character, emotion]`, `[Character, confident->vulnerable]`, and `[Narrator, tension|intimacy|danger]` once audio scope reopens.
+  - Use voice-evolution hints as optional Story Lab state deltas, not as required user-visible formatting.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `ENHANCED_AUDIO_EXAMPLES.md`
+  - `IMPLEMENTATION_SUMMARY.md`
+  - `MULTI_VOICE_AUDIO_SYSTEM_ANALYSIS.md`
+  - `api/lib/services/storyService.ts`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Stale `api/lib` path, audio runtime scope, and lockfile churn.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - This PR is the most important audio branch for future story-generation prompts because it argues for preserving natural prose and enriching tags rather than replacing story text with machine-first JSON.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87; story-generation ideas are preserved in `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #47 - Comprehensive Audio Pipeline Investigation & Enhancement Research
+
+- Source branch: `refs/remotes/pr/47` / `copilot/fix-46`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: Medium-high future impact. It inventories the end-to-end audio pipeline and identifies story-format requirements for later narration.
+- Accepted material:
+  - Backlog idea: speaker tags need a validation/test harness before audio is reintroduced.
+  - Backlog idea: emotional moments can become navigation/bookmark metadata for generated stories.
+  - Backlog idea: scene/sound-effect metadata can be generated as optional tags or state deltas rather than mixed into prose.
+- Not taking now:
+  - Investigation scripts and prototype audio services.
+  - Advanced audio player implementation plans.
+  - Web Audio mixing, SFX APIs, IndexedDB offline caching, and per-character timeline controls.
+  - Voice consistency verification implementation.
+- Why not taking:
+  - Audio and sound effects are out of current scope.
+  - The investigation is a roadmap, not a current Vercel Story Lab feature.
+- Future mining value:
+  - Reuse the roadmap sequence: tag validation, emotion mapping, consistency tests, then player/SFX work.
+  - Use the "emotion navigation" idea when chapter/proving-ground metadata is persisted.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `audio-pipeline-investigation.md`
+  - `advanced-audio-player-investigation.ts`
+  - `enhanced-audio-service.ts`
+  - `enhanced-audio-service-practical.ts`
+  - `sound-effects-investigation.ts`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Branch is research/prototype-heavy and not aligned with the current Vercel `api/_lib` runtime.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - Useful as a future audio roadmap, but most features should be rewritten from scratch after the story-generation seam stabilizes.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87.
+
+## PR #45 - Enhance Audio Pipeline with Comprehensive Emotion Mapping and Character Consistency
+
+- Source branch: `refs/remotes/pr/45` / `copilot/fix-51cdecd8-5fc8-4fd8-8f2c-a04288ce6583`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: High future impact. The emotion taxonomy, character memory, and fuzzy matching ideas can inform prompt metadata and validation.
+- Accepted material:
+  - Backlog idea: maintain a curated supernatural-romance emotion taxonomy grouped by romantic, dark, power-dynamic, creature-specific, and intensity labels.
+  - Backlog idea: keep recent emotional history per character to avoid abrupt tonal resets across chapters.
+  - Backlog idea: fuzzy emotion suggestions can help validate generated tags without failing generation.
+- Not taking now:
+  - API/backend audio service implementations.
+  - Emotion testing endpoints.
+  - Backend package/demo files and backend `node_modules`/lockfiles.
+  - Audio-specific voice parameter memory as active runtime behavior.
+- Why not taking:
+  - Audio runtime is deferred and branch paths are stale.
+  - Character emotional memory belongs in the Story Lab/state model after Vercel persistence is selected.
+- Future mining value:
+  - Build a small shared `emotionVocabulary` config for prompt generation and future tag validation.
+  - Add generated-tag validation in Proving Grounds before making it production behavior.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `AUDIO_PIPELINE_INVESTIGATION.md`
+  - `EMOTION_MAPPING_DOCUMENTATION.md`
+  - `api/lib/services/audioService.ts`
+  - `backend/src/services/audioService.ts`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Stale backend/API paths, backend dependencies, and audio runtime scope.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - This is one of the best sources for a future emotion vocabulary, but its code should be recreated around current contracts.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87.
+
+## PR #44 - Comprehensive Audio Pipeline Enhancement: World-Class Character-Driven Narration System
+
+- Source branch: `refs/remotes/pr/44` / `copilot/fix-ce37da23-7471-40d3-b624-b1fcc1453f80`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: Medium future impact. The branch connects emotion tags, character controls, and sound-effect triggers to scene metadata.
+- Accepted material:
+  - Backlog idea: use creature-specific scene/effect trigger metadata as optional future output, not prose pollution.
+  - Backlog idea: narrator and character metadata should include emotion distribution and character count for QA.
+  - Backlog idea: model/provider notes can inform a later ElevenLabs update, outside this recovery.
+- Not taking now:
+  - Enhanced audio player component.
+  - `api/soundeffects/info.ts`.
+  - Sound-effect service/provider implementation.
+  - ElevenLabs model migration.
+  - Backend/dist audio files and old app-shell UI changes.
+- Why not taking:
+  - Audio and sound effects are explicitly deferred.
+  - Sound effects introduce provider, licensing, attribution, storage, and mixing decisions that are separate from Vercel Story Lab recovery.
+- Future mining value:
+  - If audio resumes, start with story metadata for scene atmosphere/effect intent before adding any SFX provider.
+  - Use Proving Grounds to inspect effect-trigger quality before exposing sound effects.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `ELEVENLABS_MODELS_RESEARCH.md`
+  - `RECENT_PRS_ANALYSIS.md`
+  - `SOUND_EFFECTS_RESEARCH.md`
+  - `api/lib/services/audioService.ts`
+  - `api/soundeffects/info.ts`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Stale backend/dist files, old API paths, audio player/app shell changes, and sound-effect scope.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - Good SFX research, but implementing it now would be a product pivot away from Story Lab deployment.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87.
+
+## PR #43 - Implement Advanced Audio Pipeline with Emotion-Aware Voice Processing and Enhanced Player Controls
+
+- Source branch: `refs/remotes/pr/43` / `copilot/fix-1b94cd5d-767d-4a07-978e-79e55475019b`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: Medium future impact. Character personality profiles and emotion distribution analysis can become story-generation QA signals.
+- Accepted material:
+  - Backlog idea: character type/personality profiles can influence dialogue style and narrator description.
+  - Backlog idea: analyze generated output for too many neutral tags, too little emotion variety, or too many speakers.
+  - Backlog idea: expose character/emotion metadata in a future player only after audio is active.
+- Not taking now:
+  - `AudioEnhancementService` implementation.
+  - Enhanced audio player component and per-character controls.
+  - 90+ emotion runtime parameter mapping as active code.
+  - Backend package files and stale app UI changes.
+- Why not taking:
+  - Audio remains deferred.
+  - The current Story Lab already has a different UI contract and does not need audio player controls.
+- Future mining value:
+  - Recreate the output-analysis recommendations inside Proving Grounds or story QA tests.
+  - Use character personality profiles as prompt inputs only after they are centralized with author/trope/beat configs.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `AUDIO_PIPELINE_ENHANCEMENTS.md`
+  - `backend/src/services/audioEnhancementService.ts`
+  - `story-generator/src/app/enhanced-audio-player/*`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Old backend path, audio player UI, and stale app-shell assumptions.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - The QA/analyzer ideas are more reusable than the player implementation in the current phase.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87.
+
+## PR #42 - Implement comprehensive emotion mapping, streaming audio generation, and modern ElevenLabs API integration
+
+- Source branch: `refs/remotes/pr/42` / `copilot/vscode1758509975176`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: Medium future impact. It reinforces emotion tag requirements and suggests background-job semantics for future audio generation.
+- Accepted material:
+  - Backlog idea: story generation should keep `[Character, emotion]` tags valid enough for later audio.
+  - Backlog idea: long-running audio should be a background job with progress events if audio returns.
+  - Backlog idea: streaming/progress APIs need explicit cancel/status/result semantics, not ad hoc polling.
+- Not taking now:
+  - `api/audio/streaming.ts`.
+  - `streamingAudioService.ts` and streaming tests.
+  - ElevenLabs model/output-format modernization as current work.
+  - App error-severity fix if already superseded elsewhere.
+- Why not taking:
+  - Audio is deferred and current Vercel recovery already protects story-generation streaming separately.
+  - Background audio jobs need durable queue/storage decisions before implementation.
+- Future mining value:
+  - If audio resumes, evaluate Vercel Workflow/Queues or another durable job runner instead of in-memory job state.
+  - Keep SSE progress semantics separate from story-generation SSE semantics.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `AI_STORY_GENERATION_PROMPT.md`
+  - `AUDIO_PIPELINE_INVESTIGATION_REPORT.md`
+  - `ENHANCED_AUDIO_SYSTEM_DOCS.md`
+  - `api/audio/streaming.ts`
+  - `api/lib/services/streamingAudioService.ts`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Stale `api/lib` paths, audio endpoints, and background job state outside current scope.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - Useful job-model sketch, but implementing it now would require solving persistence/queues before the app is even merged.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87.
+
+## PR #30 - Implement Complete Multi-Voice Audio Generation Pipeline with 11Labs v3 Integration
+
+- Source branch: `refs/remotes/pr/30` / `copilot/fix-30ca5fa5-21c1-4743-a219-da303f73ddfa`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: Medium future impact. It establishes the base contract that story generation must produce clear speaker/narrator tags.
+- Accepted material:
+  - Backlog idea: prompt contracts should require all speech as `[Speaker]` or `[Speaker, emotion]` and all descriptions as `[Narrator]` if audio output is enabled.
+  - Backlog idea: audio progress can track the current dialogue segment being generated.
+  - Backlog idea: creature-specific voice assignment starts from story creature plus character naming clues.
+- Not taking now:
+  - Old backend `StoryService` prompt code.
+  - `DialogueParser` and audio-service implementations.
+  - Old Angular app UI controls and contract changes.
+  - 11Labs v3 provider wiring.
+- Why not taking:
+  - Branch uses stale backend/API paths and old model/env names.
+  - The #70 Story Lab baseline has different contracts and audio is deferred.
+- Future mining value:
+  - When audio resumes, introduce audio-mode prompt requirements as an optional generation mode rather than always forcing tags in all reading experiences.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `backend/src/services/storyService.ts`
+  - `backend/src/services/dialogueParser.ts`
+  - `api/lib/types/contracts.ts`
+  - `story-generator/src/app/contracts.ts`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Old backend/dist files, stale story service, old app shell, and audio scope.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - This is early source material; later PRs have richer emotion/evolution detail.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87.
+
+## PR #29 - Implement Complete Multi-Voice Audio Generation Pipeline
+
+- Source branch: `refs/remotes/pr/29` / `copilot/fix-f95f543c-a963-43a1-8626-ae2dfd9336ea`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: Medium future impact. It provides a structured segment/result model for multi-voice output.
+- Accepted material:
+  - Backlog idea: `SpeakerSegment`/`MultiVoiceAudioResult`-style models are useful for future audio metadata and progress display.
+  - Backlog idea: narrator can have multiple modes, such as neutral versus intimate.
+  - Backlog idea: character voice mapping should be extracted from audio output metadata for UI display.
+- Not taking now:
+  - `MultiVoiceAudioService` implementation.
+  - Environment-variable voice ID mapping.
+  - Segment audio generation/stitching pipeline.
+  - Old UI contract and button changes.
+- Why not taking:
+  - Runtime audio is deferred.
+  - The service should be recreated under current `api/_lib` contracts if audio resumes.
+- Future mining value:
+  - Use the segment/result model as a starting point for future audio contracts and Story Lab metadata display.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `api/lib/services/multiVoiceAudioService.ts`
+  - `api/lib/types/contracts.ts`
+  - `story-generator/src/app/contracts.ts`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Stale `api/lib` and backend/dist paths; old UI controls.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - Cleaner than #30 for contract shape, but still not worth merging during audio deferral.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87.
+
+## PR #28 - Implement Complete Multi-Voice Audio Generation Pipeline with 11Labs v3
+
+- Source branch: `refs/remotes/pr/28` / `copilot/vscode1758314464060`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: Medium future impact. It decomposes dialogue parsing, character voice assignment, and audio stitching into separate modules.
+- Accepted material:
+  - Backlog idea: keep dialogue parsing, character voice assignment, and audio stitching as separate seams if audio is rebuilt.
+  - Backlog idea: story prompts can be adjusted to emit explicit speaker tags for audio-mode stories.
+  - Backlog idea: character names plus surrounding narration can infer creature/gender when tags are incomplete.
+- Not taking now:
+  - `DialogueParserService`, `CharacterVoiceService`, and `AudioStitchingService` implementations.
+  - Backend/dist output files.
+  - Old frontend app controls/debug/error changes.
+- Why not taking:
+  - Branch base is stale and audio is deferred.
+  - Any future audio rebuild should start from current Story Lab contracts and Vercel constraints.
+- Future mining value:
+  - Use the modular service split as the likely future architecture if audio resumes.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `backend/src/services/dialogueParserService.ts`
+  - `backend/src/services/characterVoiceService.ts`
+  - `backend/src/services/audioStitchingService.ts`
+  - `backend/src/services/storyService.ts`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Old backend and frontend app shell, plus non-main branch lineage.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - This is more useful architecturally than as code; recreate the service boundaries later.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87.
+
+## PR #22 - Implement Complete Multi-Voice Audio Generation Pipeline with ElevenLabs v3
+
+- Source branch: `refs/remotes/pr/22` / `copilot/fix-20`
+- Planned disposition: mine and close
+- Actual disposition: mined and closed; audio runtime deferred
+- Story-generation impact: Medium future impact. It contains early dialogue extraction and emotional-context inference ideas for stories without explicit tags.
+- Accepted material:
+  - Backlog idea: quote-based dialogue extraction can be a fallback if old/generated stories do not use speaker tags.
+  - Backlog idea: emotional context can be inferred from nearby narration when explicit `[Character, emotion]` tags are missing.
+  - Backlog idea: character extraction can use honorifics, speech verbs, and nearby paragraphs.
+- Not taking now:
+  - Early dialogue parsing service implementation.
+  - Backend audio routes and service code.
+  - Old frontend audio UI and contracts.
+- Why not taking:
+  - Later audio PRs provide stronger explicit-tag systems.
+  - Fallback inference is useful but less reliable than prompting for tags in new generation.
+  - Audio is deferred.
+- Future mining value:
+  - Use fallback parsing for imported legacy stories or old generated content, but prefer explicit tags for new audio-mode generation.
+- Files inspected:
+  - PR body and file list from GitHub.
+  - `backend/src/services/dialogueParsingService.ts`
+  - `backend/src/routes/audioRoutes.ts`
+  - `backend/src/types/contracts.ts`
+  - `story-generator/src/app/contracts.ts`
+- Files changed in recovery branch:
+  - Recovery docs only.
+- Conflicts encountered:
+  - Early backend/audio route structure, old app shell, and audio scope.
+- Tests/checks run:
+  - Mining-only docs update; no build rerun before closure.
+- Self-review notes:
+  - Keep #22 as legacy fallback reference, not a primary architecture source.
+- GitHub PR closure note:
+  - Closed as mined/superseded by #87.
