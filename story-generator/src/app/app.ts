@@ -3,9 +3,11 @@ import { Component, SecurityContext, computed, inject, signal } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import {
+  BatchProgressState,
   ChapterBatchSize,
   ChapterTimelineEntry,
   ContinuityPanelViewModel,
+  GeneratedChapter,
   StoryBlueprint,
   StoryIterationPayload,
   StoryWorkbenchSession,
@@ -18,6 +20,12 @@ import { DebugPanel } from './debug-panel/debug-panel';
 type BlueprintForm = StoryBlueprint & {
   chapterBatchSize: ChapterBatchSize;
   narrativeDirectives?: string;
+};
+
+type ChapterGroupViewModel = {
+  id: number;
+  label: string;
+  chapters: GeneratedChapter[];
 };
 
 @Component({
@@ -59,10 +67,13 @@ export class App {
     story: null,
     state: null,
     chapterHistory: [],
-    activeBatchSize: 2
+    activeBatchSize: 2,
+    lastSuggestedPrompts: [],
+    batchQueue: []
   });
 
   readonly selectedChapterId = signal<string | null>(null);
+  readonly collapsedChapterGroups = signal<Set<number>>(new Set());
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Configure your spicy fairy-tale blueprint to begin.');
 
@@ -116,6 +127,37 @@ export class App {
   });
 
   readonly activeBatchSize = computed<ChapterBatchSize>(() => this.blueprint().chapterBatchSize);
+  readonly activeBatchQueue = computed<BatchProgressState[]>(() => this.workbench().batchQueue ?? []);
+  readonly hasFinishedBatchQueueItems = computed(() =>
+    this.activeBatchQueue().some(item => item.status === 'completed' || item.status === 'failed')
+  );
+  readonly suggestedNextPrompts = computed(() => this.workbench().lastSuggestedPrompts ?? []);
+  readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
+    const chapters = this.workbench().chapterHistory;
+    if (!chapters.length) {
+      return [];
+    }
+
+    const groupSize = this.getChapterGroupSize(chapters.length);
+    const groups: ChapterGroupViewModel[] = [];
+
+    for (let index = 0; index < chapters.length; index += groupSize) {
+      const chunk = chapters.slice(index, index + groupSize);
+      const first = chunk[0];
+      const last = chunk[chunk.length - 1];
+      const label = chunk.length === 1
+        ? `Chapter ${first.chapterNumber}`
+        : `Chapters ${first.chapterNumber}-${last.chapterNumber}`;
+
+      groups.push({
+        id: index / groupSize,
+        label,
+        chapters: chunk
+      });
+    }
+
+    return groups;
+  });
 
   updateBlueprint<K extends keyof BlueprintForm>(field: K, value: BlueprintForm[K]) {
     this.blueprint.update(current => ({
@@ -155,22 +197,26 @@ export class App {
 
     this.isGenerating.set(true);
     this.statusMessage.set('Summoning the first batch of chapters...');
+    this.setBatchQueue([]);
+    const batchId = this.enqueueBatch('Genesis', blueprint.chapterBatchSize);
 
     this.storyService.beginStory(blueprint).subscribe({
       next: response => {
         if (!response.success || !response.data) {
           this.statusMessage.set(response.error?.message ?? 'Unknown error while generating story.');
+          this.markBatchFailed(batchId, response.error?.message ?? 'Unknown generation error.');
           this.isGenerating.set(false);
           return;
         }
 
-        this.applyIteration(response.data, blueprint.chapterBatchSize);
+        this.applyIteration(response.data, blueprint.chapterBatchSize, batchId);
         this.statusMessage.set('Genesis batch complete. Continue weaving the saga!');
         this.isGenerating.set(false);
       },
       error: error => {
         this.errorLogging.logError(error, 'App.startGenesis');
         this.statusMessage.set('Story generation failed. Check the debug panel for details.');
+        this.markBatchFailed(batchId, 'Story generation failed.');
         this.isGenerating.set(false);
       }
     });
@@ -189,6 +235,7 @@ export class App {
 
     this.isGenerating.set(true);
     this.statusMessage.set('Extending the saga with a fresh batch...');
+    const batchId = this.enqueueBatch('Continuation', this.blueprint().chapterBatchSize);
 
     const request = {
       storyId: session.story.storyId,
@@ -203,17 +250,19 @@ export class App {
       next: response => {
         if (!response.success || !response.data) {
           this.statusMessage.set(response.error?.message ?? 'Continuation request failed.');
+          this.markBatchFailed(batchId, response.error?.message ?? 'Continuation request failed.');
           this.isGenerating.set(false);
           return;
         }
 
-        this.applyIteration(response.data, request.chapterBatchSize);
+        this.applyIteration(response.data, request.chapterBatchSize, batchId);
         this.statusMessage.set('Continuation batch ready. Select a chapter to explore.');
         this.isGenerating.set(false);
       },
       error: error => {
         this.errorLogging.logError(error, 'App.continueSaga');
         this.statusMessage.set('Continuation failed. Inspect logged errors for more detail.');
+        this.markBatchFailed(batchId, 'Continuation failed.');
         this.isGenerating.set(false);
       }
     });
@@ -228,27 +277,108 @@ export class App {
       story: null,
       state: null,
       chapterHistory: [],
-      activeBatchSize: this.blueprint().chapterBatchSize
+      activeBatchSize: this.blueprint().chapterBatchSize,
+      lastSuggestedPrompts: [],
+      batchQueue: []
     });
     this.selectedChapterId.set(null);
+    this.collapsedChapterGroups.set(new Set());
     this.statusMessage.set('Blueprint reset. Ready for a brand new legend.');
   }
 
-  private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize) {
+  private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize, batchId?: string) {
+    const existingQueue = this.activeBatchQueue();
+    const batchQueue = batchId
+      ? existingQueue.map(item => item.id === batchId
+          ? {
+              ...item,
+              status: 'completed' as const,
+              chaptersGenerated: payload.batch.chapters.length,
+              completedAt: new Date().toISOString(),
+              errorMessage: undefined
+            }
+          : item)
+      : existingQueue;
+
     const nextSession: StoryWorkbenchSession = {
       story: payload.summary,
       state: payload.state,
       chapterHistory: [...(this.workbench().story?.storyId === payload.summary.storyId ? this.workbench().chapterHistory : []), ...payload.batch.chapters],
       activeBatchSize: batchSize,
-      lastTelemetry: payload.telemetry
+      lastTelemetry: payload.telemetry,
+      lastSuggestedPrompts: payload.batch.suggestedNextPrompts,
+      batchQueue
     };
 
     this.workbench.set(nextSession);
+    this.collapsedChapterGroups.set(new Set());
 
     const newestChapter = payload.batch.chapters.at(-1);
     if (newestChapter) {
       this.selectedChapterId.set(newestChapter.chapterId);
     }
+  }
+
+  private enqueueBatch(label: string, batchSize: ChapterBatchSize): string {
+    const id = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const entry: BatchProgressState = {
+      id,
+      label,
+      batchSize,
+      status: 'in_progress',
+      chaptersGenerated: 0,
+      totalChapters: batchSize,
+      submittedAt: new Date().toISOString()
+    };
+
+    this.setBatchQueue([...this.activeBatchQueue(), entry]);
+    return id;
+  }
+
+  private markBatchFailed(batchId: string, errorMessage: string) {
+    this.setBatchQueue(this.activeBatchQueue().map(item => item.id === batchId
+      ? {
+          ...item,
+          status: 'failed' as const,
+          completedAt: new Date().toISOString(),
+          errorMessage
+        }
+      : item));
+  }
+
+  private setBatchQueue(batchQueue: BatchProgressState[]) {
+    this.workbench.update(current => ({
+      ...current,
+      batchQueue
+    }));
+  }
+
+  clearFinishedBatchQueue() {
+    this.setBatchQueue(this.activeBatchQueue().filter(item => item.status !== 'completed' && item.status !== 'failed'));
+  }
+
+  toggleChapterGroup(groupId: number) {
+    const next = new Set(this.collapsedChapterGroups());
+    if (next.has(groupId)) {
+      next.delete(groupId);
+    } else {
+      next.add(groupId);
+    }
+    this.collapsedChapterGroups.set(next);
+  }
+
+  isChapterGroupCollapsed(groupId: number): boolean {
+    return this.collapsedChapterGroups().has(groupId);
+  }
+
+  private getChapterGroupSize(chapterCount: number): number {
+    if (chapterCount >= 50) {
+      return 10;
+    }
+    if (chapterCount >= 20) {
+      return 5;
+    }
+    return 3;
   }
 
   get currentChapterContent(): string {
@@ -283,7 +413,7 @@ export class App {
     return blueprint.themes.map(theme => theme.label).join(', ');
   }
 
-  trackChapter(index: number, entry: ChapterTimelineEntry) {
+  trackChapter(index: number, entry: Pick<ChapterTimelineEntry, 'chapterId'>) {
     return entry.chapterId;
   }
 

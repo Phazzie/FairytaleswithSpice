@@ -242,3 +242,36 @@ Template:
   - `story-generator/src/app/app.ts`
   - `story-generator/src/app/app.html`
   - `tests/story-service-improved.test.ts`
+
+## PR #75 - Add chapter batching workflow and continuity panels
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-75`
+- Story-generation ideas not taken:
+  - PR #75's separate `ChapterBatchSeam` shape and `/api/story/batch` route.
+  - The old frontend service changes targeting a standalone batch endpoint instead of the #70 `beginStory()` / `continueStory()` story-lab seam.
+  - Durable/asynchronous queue semantics beyond UI-local progress state.
+  - The old continuation-panel data assumptions where they conflicted with the current `StoryIterationPayload`.
+- Other useful ideas not taken:
+  - Direct pre-#70 Angular app shell rewrite.
+  - Large old CSS redesign.
+  - README workflow edits that describe the older app shape.
+  - `story-generator/src/testing/test-data-factory.ts`; current #70 specs already use local story-lab fixtures.
+- Why not now:
+  - #75 is stale against the PR #70 story-lab baseline and overlaps heavily with #72's backend batching work.
+  - The current app already has batch-size controls and continuity panels, so a direct merge would replace current working seams rather than enhance them.
+  - Creating another batch route before #73 persistence decisions would increase API drift.
+- Future extraction notes:
+  - Revisit fuller queue semantics if story generation becomes backgrounded, resumable, or backed by durable Vercel storage/workflows.
+  - Add partial-failure UI once the story-lab route returns canonical #72 `failedChapters` data.
+  - Update README after #73 decides persistence/session recovery.
+- Source files/commits:
+  - `story-generator/src/app/contracts.ts`
+  - `story-generator/src/app/story.service.ts`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`
+  - `story-generator/src/app/app.spec.ts`
+  - `story-generator/src/app/story.service.spec.ts`
+  - `story-generator/src/testing/test-data-factory.ts`
+  - `README.md`

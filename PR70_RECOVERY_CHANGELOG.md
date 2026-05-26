@@ -258,6 +258,36 @@ Decision:
 
 - Do not merge #67 directly.
 - Do not take #67's DigitalOcean deployment readiness doc.
+
+## 2026-05-26 06:38 EDT - PR #75 Batch UI Ported
+
+Actions:
+
+- Inspected PR #75's branch and treated it as stale against the PR #70 story-lab baseline.
+- Ported the useful workflow layer into the current Angular app:
+  - UI-local batch queue state for genesis and continuation requests.
+  - Suggested next-move prompt buttons.
+  - Grouped/collapsible chapter timeline behavior for longer stories.
+  - Vercel-compatible persistence seam wording.
+- Updated `PR70_RECOVERY_LEDGER.md` and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+Decision:
+
+- Do not merge #75 directly.
+- Do not take the old `/api/story/batch` route/service seam because #70 already owns `beginStory()` and `continueStory()`.
+
+Validation:
+
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2 and only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- This was the right place to port UI affordances rather than backend behavior; #72 already established the backend primitive.
+- The queue is intentionally local state for now. Durable or asynchronous queue semantics should wait for #73 persistence decisions.
+- Visual additions were kept in the #70 story-lab shell instead of importing #75's broad CSS rewrite.
 - Do not add #67's root audit report as another active status doc; mine its refactor recommendations into the recovery ledgers instead.
 
 Validation:

@@ -135,6 +135,8 @@ describe('App', () => {
     expect(component.workbench().story?.storyId).toBe('story-123');
     expect(component.workbench().chapterHistory.length).toBe(2);
     expect(component.selectedChapter()?.chapterNumber).toBe(2);
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('completed');
+    expect(component.suggestedNextPrompts()).toEqual(['Explore the rival court.']);
   });
 
   it('continues an existing saga and appends chapters', () => {
@@ -189,5 +191,6 @@ describe('App', () => {
     expect(request.storyId).toBe('story-123');
     expect(component.workbench().chapterHistory.length).toBe(2);
     expect(component.selectedChapter()?.chapterNumber).toBe(2);
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('completed');
   });
 });

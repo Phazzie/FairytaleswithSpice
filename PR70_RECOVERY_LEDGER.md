@@ -23,7 +23,7 @@ Status values:
 | #84 | try merge or recreate | pending | Grouped dependency update. |
 | #77 | mine and close | pending | Documentation analysis lessons. |
 | #76 | close | pending | No committed material found. |
-| #75 | port/cherry-pick | pending | Chapter batching and continuity panels. |
+| #75 | port/cherry-pick | ported | Ported batch queue, suggested prompts, grouped chapter timeline, and Vercel persistence wording into #70 story lab. |
 | #74 | port later or mine/close | pending | Proving grounds prompt lab. |
 | #73 | recreate/port | pending | Persistent story state; avoid DigitalOcean Postgres assumption. |
 | #72 | port/cherry-pick | ported | Ported backward-compatible 1-3 chapter batch generation/continuation into canonical `api/_lib`; old UI/route rewrites not taken. |
@@ -505,5 +505,63 @@ Use this template for detailed entries as each PR is handled:
   - The important #72 idea is the batch primitive, not the old UI rewrite.
   - The port is intentionally additive so current single-story consumers continue to work while later story-lab work can adopt the richer chapter arrays.
   - The next risk is contract duplication between legacy `api/_lib/types/contracts.ts` and #70's `story-generator/src/app/contracts.ts`; #75/#73 should decide the adapter boundary instead of forcing one type system prematurely.
+- GitHub PR closure note:
+  - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #75 - Add chapter batching workflow and continuity panels
+
+- Source branch: `pr-75` / `codex/add-reactive-fields-and-ui-enhancements`
+- Planned disposition: port/cherry-pick
+- Actual disposition: ported selected current-story-lab UI behavior; do not merge directly
+- Story-generation impact: Medium-high. Improves the #70 story-lab workflow around batch visibility, continuation prompt selection, and long chapter navigation without changing backend generation logic.
+- Accepted material:
+  - Added `BatchProgressState` and `BatchProgressStatus` to the #70 frontend story-lab contracts.
+  - Added `lastSuggestedPrompts` and `batchQueue` to `StoryWorkbenchSession`.
+  - Corrected `StoryPersistenceSeam` wording from DigitalOcean database to a Vercel-compatible persistence layer.
+  - Added visible batch queue state for genesis and continuation requests in `App`.
+  - Added completed/failed queue clearing.
+  - Added suggested next-move prompt buttons that call `continueSaga(prompt)`.
+  - Added grouped/collapsible chapter timeline behavior for longer chapter histories.
+  - Updated app specs to assert completed queue state and suggested prompts.
+- Not taking now:
+  - Direct branch merge.
+  - PR #75's old `ChapterBatchSeam` and `/api/story/batch` frontend service route.
+  - Old pre-#70 Angular app shell rewrite in `app.ts`, `app.html`, and `app.css`.
+  - Large old CSS redesign.
+  - README workflow updates that describe the old app rather than the #70 story lab.
+  - `story-generator/src/testing/test-data-factory.ts`, because current #70 specs already use local story-lab factories.
+- Why not taking:
+  - #75 is built on the pre-#70 app and conflicts with the current `beginStory()` / `continueStory()` story-lab service.
+  - #70 already has continuity panels and batch-size controls, so the remaining useful pieces are workflow affordances rather than a full UI replacement.
+  - Adding `/api/story/batch` would create another route seam while #70 already uses `/api/story-lab/stories/:storyId/continue`.
+- Future mining value:
+  - Use #75's fuller queue semantics if generation becomes asynchronous or durable.
+  - Revisit README wording after #73 decides the real persistence story.
+  - Revisit long-list timeline ergonomics with browser screenshots after the final story-lab layout stabilizes.
+- Files inspected:
+  - `story-generator/src/app/contracts.ts` from PR #75
+  - `story-generator/src/app/story.service.ts` from PR #75
+  - `story-generator/src/app/app.ts`, `app.html`, `app.css`, and `app.spec.ts` from PR #75
+  - `story-generator/src/app/story.service.spec.ts` from PR #75
+  - `story-generator/src/testing/test-data-factory.ts` from PR #75
+  - `README.md` from PR #75
+- Files changed in recovery branch:
+  - `story-generator/src/app/contracts.ts`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`
+  - `story-generator/src/app/app.spec.ts`
+- Conflicts encountered:
+  - PR #75 is GitHub-mergeable against `main` but stale against the recovery branch's #70 story-lab baseline.
+  - Conflict shape is old app shell vs #70 story lab, old route/service shape vs `/api/story-lab`, and a large CSS rewrite that does not match the current component structure.
+- Tests/checks run:
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+  - `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+  - `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+  - `npm run build:verify` passed.
+- Self-review notes:
+  - The port deliberately uses the existing #70 `continueStory()` path instead of creating #75's separate batch endpoint.
+  - The queue is currently UI-local because story-lab generation is still mock/synchronous. Durable queue semantics should wait for real persistence/workflow decisions.
+  - The current visual design remains the #70 dark story-lab shell; #75's broad visual rewrite was not ported.
 - GitHub PR closure note:
   - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.

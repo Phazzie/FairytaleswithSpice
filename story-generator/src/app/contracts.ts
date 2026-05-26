@@ -141,6 +141,20 @@ export interface StoryIterationPayload {
   telemetry: GenerationTelemetry;
 }
 
+export type BatchProgressStatus = 'queued' | 'in_progress' | 'completed' | 'failed';
+
+export interface BatchProgressState {
+  id: string;
+  label: string;
+  batchSize: ChapterBatchSize;
+  status: BatchProgressStatus;
+  chaptersGenerated: number;
+  totalChapters: number;
+  submittedAt: string;
+  completedAt?: string;
+  errorMessage?: string;
+}
+
 // ==================== SEAM CONTRACTS ====================
 
 export interface StoryGenerationSeam {
@@ -215,7 +229,7 @@ export interface StoryContinuationSeam {
 
 export interface StoryPersistenceSeam {
   seamName: 'Story Snapshot ↔ Persistence Layer';
-  description: 'Defines how story state and chapter metadata are stored in the DigitalOcean database.';
+  description: 'Defines how story state and chapter metadata are stored in a Vercel-compatible persistence layer.';
 
   input: {
     story: StorySummary;
@@ -266,6 +280,8 @@ export interface StoryWorkbenchSession {
   chapterHistory: GeneratedChapter[];
   activeBatchSize: ChapterBatchSize;
   lastTelemetry?: GenerationTelemetry;
+  lastSuggestedPrompts?: string[];
+  batchQueue?: BatchProgressState[];
 }
 
 export interface ContinuityPanelViewModel {

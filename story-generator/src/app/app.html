@@ -157,6 +157,32 @@
           Reset Blueprint
         </button>
       </div>
+
+      <section class="batch-queue" *ngIf="activeBatchQueue().length">
+        <header>
+          <h3>Batch Queue</h3>
+          <button
+            type="button"
+            class="text-button"
+            (click)="clearFinishedBatchQueue()"
+            *ngIf="hasFinishedBatchQueueItems()"
+          >
+            Clear finished
+          </button>
+        </header>
+        <ol>
+          <li *ngFor="let item of activeBatchQueue()">
+            <span class="queue-title">{{ item.label }} - {{ item.batchSize }} chapter{{ item.batchSize === 1 ? '' : 's' }}</span>
+            <span class="queue-status" [ngClass]="'queue-status--' + item.status">
+              {{ item.status | titlecase }}
+            </span>
+            <span class="queue-meta">
+              {{ item.chaptersGenerated }}/{{ item.totalChapters }} chapters
+            </span>
+            <span class="queue-error" *ngIf="item.errorMessage">{{ item.errorMessage }}</span>
+          </li>
+        </ol>
+      </section>
     </section>
 
     <section class="story-panel" *ngIf="workbench().story as story">
@@ -176,19 +202,27 @@
 
       <section class="chapter-timeline" *ngIf="timeline().length">
         <h3>Chapter Timeline</h3>
-        <ol>
-          <li *ngFor="let entry of timeline(); trackBy: trackChapter">
-            <button
-              type="button"
-              [class.active]="selectedChapter()?.chapterNumber === entry.chapterNumber"
-              (click)="selectChapter(entry.chapterId)"
-            >
-              <span class="chapter-number">Chapter {{ entry.chapterNumber }}</span>
-              <span class="chapter-title">{{ entry.title }}</span>
-              <span class="chapter-summary">{{ entry.summary }}</span>
+        <div class="chapter-groups">
+          <section class="chapter-group" *ngFor="let group of chapterGroups()">
+            <button type="button" class="group-toggle" (click)="toggleChapterGroup(group.id)">
+              <span>{{ group.label }}</span>
+              <span>{{ isChapterGroupCollapsed(group.id) ? '+' : '-' }}</span>
             </button>
-          </li>
-        </ol>
+            <ol *ngIf="!isChapterGroupCollapsed(group.id)">
+              <li *ngFor="let entry of group.chapters; trackBy: trackChapter">
+                <button
+                  type="button"
+                  [class.active]="selectedChapter()?.chapterNumber === entry.chapterNumber"
+                  (click)="selectChapter(entry.chapterId)"
+                >
+                  <span class="chapter-number">Chapter {{ entry.chapterNumber }}</span>
+                  <span class="chapter-title">{{ entry.title }}</span>
+                  <span class="chapter-summary">{{ entry.summary }}</span>
+                </button>
+              </li>
+            </ol>
+          </section>
+        </div>
       </section>
 
       <article class="chapter-view" *ngIf="selectedChapter() as chapter">
@@ -251,6 +285,22 @@
         <ul *ngIf="continuityWarnings.length">
           <li *ngFor="let warning of continuityWarnings">⚠️ {{ warning }}</li>
         </ul>
+      </section>
+
+      <section>
+        <h3>Suggested Next Moves</h3>
+        <p *ngIf="!suggestedNextPrompts().length">Continuation prompts will appear after a batch completes.</p>
+        <div class="prompt-list" *ngIf="suggestedNextPrompts().length">
+          <button
+            type="button"
+            class="prompt-chip"
+            *ngFor="let prompt of suggestedNextPrompts()"
+            (click)="continueSaga(prompt)"
+            [disabled]="isGenerating()"
+          >
+            {{ prompt }}
+          </button>
+        </div>
       </section>
     </aside>
   </main>

@@ -32,7 +32,7 @@ Treat PR #70 as a plausible alternate product baseline for the "story lab" direc
 | #84 | Dependabot grouped dependencies | Updates Axios, Angular 20 patch packages, Vite, lodash, MCP SDK, and related dependencies. Security and maintenance value. | `package.json`, `package-lock.json`, `story-generator/package.json`, `story-generator/package-lock.json` | **Defer until baseline builds**. Useful but larger dependency blast radius. |
 | #77 | Documentation analysis | Adds `repodocs.md`, `repodocsanalysis.md`, and a summary indexing the large documentation set and SDD lessons. Useful for cleanup and context. | `repodocs.md`, `repodocsanalysis.md`, `DOCUMENTATION_ANALYSIS_SUMMARY.md` | **Reference or merge later**. Docs-only, but not product-critical. |
 | #76 | SDD redesign analysis placeholder | PR body describes a planned `spicyfairytaleremix.md`, but changed files are zero. No committed material. | None | **Close/ignore** unless rerunning the analysis. |
-| #75 | Chapter batching workflow and continuity panels | Adds batch size controls, batch progress queue, continuity summary panels, long chapter grouping/collapsing, and service/contract support for batched chapters. This is a product-layer continuation of the story-lab direction. | `story-generator/src/app/app.ts`, `app.html`, `app.css`, `contracts.ts`, `story.service.ts`, tests, `README.md` | **Port/cherry-pick after #70**. High product value, but overlaps heavily with #70/#72. |
+| #75 | Chapter batching workflow and continuity panels | Adds batch size controls, batch progress queue, continuity summary panels, long chapter grouping/collapsing, and service/contract support for batched chapters. Ported the queue, suggested prompts, grouped timeline, specs, and Vercel persistence wording into the #70 story lab. | `story-generator/src/app/app.ts`, `app.html`, `app.css`, `contracts.ts`, `story.service.ts`, tests, `README.md` | **Ported selected UI/workflow material**. Direct merge remains stale because it overlaps heavily with #70/#72. |
 | #74 | Proving grounds page | Adds a prompt testing lab with templates, generation logic viewer, Grok-based evaluation service, history/comparison, JSON export, and Angular routing. Useful as an internal dev tool for prompt iteration. | `story-generator/src/app/proving-grounds/*`, `app.routes.ts`, `app-root.ts`, `main.ts`, `app.config.ts` | **Port later**. Good tool, but separate from core recovery. |
 | #73 | Persistent story state tracking | Adds structured story state snapshots, character/plot thread continuity, `StoryStateService`, Postgres schema/client, and in-memory fallback. Useful for continuity and session recovery. | `api/lib/db/*`, `api/lib/services/storyStateService.ts`, `api/lib/services/storyService.ts`, contracts, tests | **Recreate/port later**. Concepts are valuable, but current implementation is Postgres/DigitalOcean-shaped and uses old paths. |
 | #72 | Finalize multi-chapter story workflows | More mature backend/frontend multi-chapter implementation than #71. Adds chapter arrays, `requestedChapterCount`, partial failure reporting, streaming updates, tests, and API/service changes. | `api/lib/services/storyService.ts`, `api/story/generate.ts`, `api/story/continue.ts`, `api/story/stream.ts`, Angular contracts/services/tests | **Ported selected backend behavior**. Kept legacy fields additive; old UI/app shell remains not taken. |
@@ -86,7 +86,7 @@ These are the most useful non-#70 pieces, ranked by likely value and extraction 
 | 3 | #65 | Remaining AI quality/model/token verification work, adapted to current `api/_lib`. |
 | 4 | #41 | Minimal Vercel CI/deploy/API-test setup, not the whole workflow suite. |
 | 5 | #26 | Notification/form validation/accessibility services. |
-| 6 | #75 | Batch/continuity UI layer after #70 baseline is stable. |
+| 6 | #75 | Batch/continuity UI layer after #70 baseline is stable. **Ported selected queue, suggested-prompt, and grouped-timeline UI.** |
 | 7 | #72 | Multi-chapter backend contract/service behavior after #70 baseline is stable. **Ported selected backend primitive.** |
 | 8 | #67 | Author-style config extraction and duplicate-code cleanup decisions. |
 | 9 | #24 | Trope subversion engine, rebuilt into current story-generation service. |
@@ -112,7 +112,7 @@ These are the most useful non-#70 pieces, ranked by likely value and extraction 
 
 - #41: use Vercel CI/API tests as source material.
 - #67: use audit/config extraction/cleanup ideas.
-- #75: use batch UI and continuity panels.
+- #75: selected batch queue, suggested-prompt, and grouped-timeline UI has been ported; keep fuller queue semantics as future reference.
 - #72: selected multi-chapter backend behavior is ported; mine old UI pieces only if #75 leaves gaps.
 - #74: use proving-grounds page after core app stabilizes.
 - #24: port trope engine later.
