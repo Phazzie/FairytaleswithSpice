@@ -142,3 +142,26 @@ Self-review:
 
 - #85 is safe to mark merged.
 - #84 should remain deferred until the baseline dependency state is clean because it has a larger dependency blast radius.
+
+## 2026-05-26 00:52 EDT - PR #50 Mined And Superseded
+
+Actions:
+
+- Inspected PR #50 commits and `PROGRESS_METER_FIX.md`.
+- Searched the current #70 baseline for the affected old symbols: `progressTimeoutId`, `simulateGenerationProgress`, `generationProgress`, `generationStatus`, and `ngSkipHydration`.
+- Updated `PR70_RECOVERY_LEDGER.md` and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+Decision:
+
+- Do not merge or cherry-pick #50 code into the #70 baseline.
+- Preserve the timeout-cleanup and hydration lessons for future batch/progress work.
+
+Reason:
+
+- The old progress meter implementation no longer exists after #70.
+- Direct merge would reintroduce stale app shell and audio-era UI code.
+
+Self-review:
+
+- This is the first PR where the planned "port/cherry-pick" action changed after baseline inspection.
+- The plan's running-ledger approach caught the reason: useful lesson, stale implementation.

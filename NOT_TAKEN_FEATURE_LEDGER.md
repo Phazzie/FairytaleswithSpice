@@ -53,3 +53,24 @@ Template:
 - #56: provider-specific backend services; mine cache/rate-limit ideas only.
 - #63: database decision tree; use as reference for a new Vercel storage decision.
 
+## PR #50 - Fix progress meter hanging at 95% preventing story generation
+
+- Disposition: mined; close later as superseded by PR #70 baseline
+- Source branch: `pr-50`
+- Story-generation ideas not taken:
+  - Old progress-simulator implementation that manually steps generation progress to 95%.
+  - Timeout-protection UI around the old single-story generation form.
+- Other useful ideas not taken:
+  - `app-no-progress.ts.alternative`, which removed the progress simulator entirely.
+  - `PROGRESS_METER_FIX.md` root documentation.
+- Why not now:
+  - PR #70 replaced the old app shell with the story-lab workbench, and the old `simulateGenerationProgress()`/`progressTimeoutId` code no longer exists.
+  - Merging #50 directly would drag stale UI, audio-era controls, and old backend assumptions into the recovery branch.
+- Future extraction notes:
+  - If simulated progress is reintroduced for batch generation, store timeout IDs immediately after each `setTimeout()` and clear pending timeouts on success/error.
+  - Avoid hydration bypasses that break form controls; test interactive form state after SSR/hydration changes.
+- Source files/commits:
+  - `PROGRESS_METER_FIX.md`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app-no-progress.ts.alternative`

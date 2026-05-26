@@ -37,7 +37,7 @@ Status values:
 | #55 | mine and close | pending | Voice evolution/emotion material; audio deferred. |
 | #54 | close | pending | DigitalOcean deployment infra; not Vercel direction. |
 | #53 | mine and close | pending | Docs cleanup intent; avoid node_modules churn. |
-| #50 | port/cherry-pick | pending | Progress/hydration fix. |
+| #50 | port/cherry-pick | mined; close later | Old progress simulator fix is superseded by #70 story-lab UI; lessons recorded in not-taken ledger. |
 | #47 | mine and close | pending | Audio pipeline research. |
 | #45 | mine and close | pending | Emotion mapping and character consistency. |
 | #44 | mine and close | pending | Character-driven narration material. |
@@ -169,3 +169,37 @@ Use this template for detailed entries as each PR is handled:
   - Safe dependency merge. Keep #84 deferred until baseline dependency state is cleaner.
 - GitHub PR closure note:
   - Can be closed as merged/superseded by the recovery branch once the final recovery PR is opened.
+
+## PR #50 - Fix progress meter hanging at 95% preventing story generation
+
+- Source branch: `pr-50` / `copilot/fix-d1b24491-4fbc-41d5-99b4-a1277ebf809a`
+- Planned disposition: port/cherry-pick
+- Actual disposition: mined; do not merge old code into #70 baseline
+- Story-generation impact: Indirect. The old bug blocked users from completing story generation, but the affected progress-simulator UI no longer exists in the #70 story-lab baseline.
+- Accepted material:
+  - Lesson: simulated progress timeout IDs must be stored immediately after each `setTimeout()` so in-flight progress can be cancelled when the real response completes.
+  - Lesson: hydration bypasses like `ngSkipHydration` can break interactive form state and should not be added casually.
+- Not taking now:
+  - `story-generator/src/app/app.ts` progress simulator changes.
+  - `story-generator/src/app/app.html` old layout/hydration changes.
+  - `app-no-progress.ts.alternative`.
+  - `PROGRESS_METER_FIX.md` as a root doc, because it describes the superseded UI.
+- Why not taking:
+  - #70 rewrote the story-lab UI and removed the old progress meter implementation.
+  - Direct merge would reintroduce stale app shell/audio-era UI and conflict with the #70 baseline.
+- Future mining value:
+  - Use the timeout-cleanup pattern if a future generated-progress queue is added to #70 or #75-style batching.
+- Files inspected:
+  - `PROGRESS_METER_FIX.md`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+- Files changed in recovery branch:
+  - None.
+- Conflicts encountered:
+  - Not attempted as a merge/cherry-pick because the branch diff is dominated by stale app/backend/audio-era structure.
+- Tests/checks run:
+  - Searched current #70 baseline for `progressTimeoutId`, `simulateGenerationProgress`, `generationProgress`, `generationStatus`, and `ngSkipHydration`; none of the old affected implementation exists.
+- Self-review notes:
+  - Correct action is to preserve the lesson, not the stale code.
+- GitHub PR closure note:
+  - Close as superseded after recovery branch/final PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
