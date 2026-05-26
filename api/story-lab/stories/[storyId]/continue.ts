@@ -1,7 +1,5 @@
 // Created: 2025-10-29 08:27 UTC
 
-import type { NextApiRequest, NextApiResponse } from 'next';
-
 import type { ApiEnvelope, StoryContinuationSeam, StoryIterationPayload } from '../../contracts';
 import { buildContinuationResponse } from '../../mockData';
 import { getTransientStorySnapshot } from '../../stateStore';
@@ -9,10 +7,7 @@ import { getTransientStorySnapshot } from '../../stateStore';
 const isValidBatchSize = (size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] =>
   [1, 2, 3].includes(size as StoryContinuationSeam['input']['chapterBatchSize']);
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<ApiEnvelope<StoryIterationPayload & { appendedChapterNumbers: number[] }>>
-) {
+export default async function handler(req: any, res: any) {
   const origin = process.env.FRONTEND_URL ?? 'http://localhost:4200';
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');

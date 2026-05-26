@@ -26,7 +26,7 @@ Options:
 Default checks:
   1. Required tool availability.
   2. git diff --check.
-  3. Angular app/spec type checks.
+  3. Angular app/spec and Vercel API type checks.
   4. Root npm test suite.
   5. Angular production build through Node 20.
   6. Root build output verification.
@@ -98,6 +98,11 @@ if [[ ${RUN_TYPECHECK} -eq 1 ]]; then
   step "Type checking Angular specs"
   npx tsc -p tsconfig.spec.json --noEmit
   cd "${REPO_ROOT}"
+
+  step "Type checking Vercel API functions"
+  find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 \
+    | xargs -0 npx tsc --noEmit --target es2020 --lib es2020,dom --module commonjs \
+        --moduleResolution node --esModuleInterop --skipLibCheck --types node
 fi
 
 if [[ ${RUN_TESTS} -eq 1 ]]; then

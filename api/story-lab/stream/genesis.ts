@@ -1,15 +1,13 @@
 // Created: 2025-10-29 08:27 UTC
 
-import type { NextApiRequest, NextApiResponse } from 'next';
-
 import type {
   ApiEnvelope,
   StoryGenerationSeam,
   StoryIterationPayload,
   StreamingProgressChunk,
   ThemeSeed
-} from '../../contracts';
-import { buildGenesisResponse } from '../../mockData';
+} from '../contracts';
+import { buildGenesisResponse } from '../mockData';
 
 const ACCESS_CONTROL_METHODS = 'GET, OPTIONS';
 const ACCESS_CONTROL_HEADERS = 'Content-Type';
@@ -18,7 +16,7 @@ type GenesisResponse = ApiEnvelope<StoryIterationPayload>;
 
 type ParsedBlueprint = { blueprint: StoryGenerationSeam['input']; error?: undefined } | { blueprint?: undefined; error: string };
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: any, res: any) {
   const origin = process.env.FRONTEND_URL ?? 'http://localhost:4200';
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', ACCESS_CONTROL_METHODS);
@@ -127,7 +125,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   timeouts.push(completionTimeout);
 }
 
-function parseBlueprint(req: NextApiRequest): ParsedBlueprint {
+function parseBlueprint(req: any): ParsedBlueprint {
   try {
     const getString = (value: string | string[] | undefined): string | undefined => {
       if (Array.isArray(value)) {

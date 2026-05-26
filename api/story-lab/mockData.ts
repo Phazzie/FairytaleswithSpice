@@ -320,7 +320,7 @@ export function buildContinuationResponse(
   const previousChapters = input.previouslyGeneratedChapters.length
     ? input.previouslyGeneratedChapters
     : transientSnapshot?.chapters ?? [];
-  const lastChapter = previousChapters.at(-1);
+  const lastChapter = previousChapters[previousChapters.length - 1];
   const startingNumber = lastChapter ? lastChapter.chapterNumber + 1 : 1;
   const chapters: GeneratedChapter[] = [];
   for (let i = 0; i < input.chapterBatchSize; i++) {

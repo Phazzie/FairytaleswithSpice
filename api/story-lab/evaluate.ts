@@ -1,5 +1,3 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-
 import type { ApiEnvelope } from './contracts';
 
 interface EvaluationCriteria {
@@ -95,10 +93,7 @@ function parseEvaluation(content: string): EvaluationCriteria {
   };
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<ApiEnvelope<EvaluationCriteria>>
-) {
+export default async function handler(req: any, res: any) {
   const origin = process.env.FRONTEND_URL ?? 'http://localhost:4200';
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');

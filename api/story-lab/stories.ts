@@ -1,16 +1,11 @@
 // Created: 2025-10-29 08:27 UTC
 
-import type { NextApiRequest, NextApiResponse } from 'next';
-
 import type { ApiEnvelope, StoryGenerationSeam, StoryIterationPayload } from './contracts';
 import { buildGenesisResponse } from './mockData';
 
 const VALID_BATCH_SIZES: ReadonlyArray<StoryGenerationSeam['input']['chapterBatchSize']> = [1, 2, 3];
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<ApiEnvelope<StoryIterationPayload>>
-) {
+export default async function handler(req: any, res: any) {
   const origin = process.env.FRONTEND_URL ?? 'http://localhost:4200';
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');

@@ -108,7 +108,7 @@ export class CliffhangerService {
       .map(paragraph => this.stripHtml(paragraph).trim())
       .filter(Boolean);
 
-    return paragraphs.at(-1) ?? this.stripHtml(content).slice(-240).trim();
+    return paragraphs[paragraphs.length - 1] ?? this.stripHtml(content).slice(-240).trim();
   }
 
   private stripHtml(content: string): string {
