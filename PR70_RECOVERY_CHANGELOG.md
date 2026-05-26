@@ -43,3 +43,22 @@ Decision:
 Open issue:
 
 - `git stash push` for the lockfile noise returned exit code 1 without output. The lockfile changes remain uncommitted and visible.
+
+## 2026-05-26 00:12 EDT - PR #70 Merged As Baseline
+
+Actions:
+
+- Merged local branch `pr-70` into `recovery-pr70-story-lab-vercel` with a real merge commit.
+- Merge commit: `118265c Merge PR #70 story lab baseline`.
+- Updated `PR70_RECOVERY_LEDGER.md` with the #70 disposition.
+
+Result:
+
+- Merge completed cleanly with no textual conflicts.
+- PR #70 added the `api/story-lab/*` route family and rewrote the Angular story-lab surface.
+- Dirty lockfile changes are still present and unrelated to the merge.
+
+Self-review:
+
+- #70 is now the branch baseline, but not yet stabilized.
+- Before other PRs are merged or ported, validate build/tests and inspect whether #70's mock story-lab behavior conflicts with production story generation.

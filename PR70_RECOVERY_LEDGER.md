@@ -28,7 +28,7 @@ Status values:
 | #73 | recreate/port | pending | Persistent story state; avoid DigitalOcean Postgres assumption. |
 | #72 | port/cherry-pick | pending | Multi-chapter backend/frontend contracts. |
 | #71 | compare then close | pending | Early batch generation, mostly superseded by #72. |
-| #70 | merge baseline | pending | Story-lab baseline. |
+| #70 | merge baseline | merged | Merged into `recovery-pr70-story-lab-vercel` as commit `118265c`; stabilization pending. |
 | #67 | port/cherry-pick | pending | Audit, author-style extraction, duplicate cleanup. |
 | #65 | port/cherry-pick | pending | AI model/token/story quality fixes. |
 | #64 | port/cherry-pick | pending | Fisher-Yates/randomization and selected tests. |
@@ -77,3 +77,35 @@ Use this template for detailed entries as each PR is handled:
 - GitHub PR closure note:
 ```
 
+## PR #70 - Rebuild story lab for multi-chapter storytelling
+
+- Source branch: `pr-70` / `codex/revamp-story-design-system`
+- Planned disposition: merge baseline
+- Actual disposition: merged into `recovery-pr70-story-lab-vercel` with merge commit `118265c`
+- Story-generation impact: High. Establishes the story-lab/workbench UI direction, story-lab API mocks, story-lab contracts, streaming genesis endpoint, and new frontend service/component expectations.
+- Accepted material:
+  - Story-lab API route family under `api/story-lab/*`.
+  - Mock story-lab data and health/story/continue/genesis endpoints.
+  - Major Angular story-lab UI rewrite in `story-generator/src/app/app.*`.
+  - Updated frontend contracts and story service behavior for story-lab style workflows.
+  - Streaming component changes aligned with story-lab semantics.
+- Not taking now:
+  - No separate PR #70 material has been rejected yet.
+  - Stabilization may still split mock/demo endpoints from production story generation if checks show they conflict.
+- Why not taking:
+  - Pending stabilization review.
+- Future mining value:
+  - PR #70 is now baseline; later mining should compare #72/#75/#73 against this direction instead of against old `main`.
+- Files inspected:
+  - Merge output included `api/story-lab/*`, `story-generator/src/app/app.*`, `story-generator/src/app/contracts.ts`, `story-generator/src/app/story.service.ts`, streaming component/spec files, debug panel files, and app specs.
+- Files changed in recovery branch:
+  - Same as merge output from commit `118265c`.
+- Conflicts encountered:
+  - No textual conflicts. Merge completed with the `ort` strategy.
+- Tests/checks run:
+  - Pending.
+- Self-review notes:
+  - Immediate risks are path drift, mock endpoints becoming product truth, and regression of current story-generation quality.
+  - Next step is stabilization checks before merging/porting other PRs.
+- GitHub PR closure note:
+  - Do not close yet. Close or supersede only after the recovery branch has a final PR and #70 stabilization is documented.
