@@ -9,12 +9,18 @@ audio PRs are tracked in `NOT_TAKEN_FEATURE_LEDGER.md`.
 ```
 api/
 ├── health.ts              # Health check endpoint (GET /api/health)
+├── image/
+│   └── generate.ts        # Image generation stub/service (POST /api/image/generate)
 ├── story/
 │   ├── generate.ts        # Story generation (POST /api/story/generate)
 │   ├── continue.ts        # Story continuation (POST /api/story/continue)
-│   └── stream.ts          # Story streaming (POST /api/story/stream)
+│   ├── stream.ts          # Story streaming (POST /api/story/stream)
+│   └── stream-demo.ts     # Stream demo endpoint (GET /api/story/stream-demo)
 ├── story-lab/
+│   ├── health.ts          # Story Lab health/readiness (GET /api/story-lab/health)
 │   ├── stories.ts         # Story Lab mock genesis (POST /api/story-lab/stories)
+│   ├── stories/[storyId]/continue.ts
+│   │                         # Story Lab continuation (POST /api/story-lab/stories/:storyId/continue)
 │   ├── evaluate.ts        # Prompt/story evaluation (POST /api/story-lab/evaluate)
 │   └── stream/genesis.ts  # Story Lab mock streaming (GET /api/story-lab/stream/genesis)
 ├── export/
@@ -107,7 +113,12 @@ The API is automatically deployed to Vercel when changes are pushed to the main 
 - `/api/story/generate` → `/api/story/generate.ts`
 - `/api/story/continue` → `/api/story/continue.ts`
 - `/api/story/stream` → `/api/story/stream.ts`
+- `/api/story-lab/health` → `/api/story-lab/health.ts`
 - `/api/story-lab/stories` → `/api/story-lab/stories.ts`
+- `/api/story-lab/stories/:storyId/continue` → `/api/story-lab/stories/[storyId]/continue.ts`
+- `/api/story-lab/evaluate` → `/api/story-lab/evaluate.ts`
+- `/api/story-lab/stream/genesis` → `/api/story-lab/stream/genesis.ts`
+- `/api/image/generate` → `/api/image/generate.ts`
 - `/api/export/save` → `/api/export/save.ts`
 - `/api/health` → `/api/health.ts`
 
@@ -138,7 +149,7 @@ Or test individual functions:
 curl http://localhost:3000/api/health
 
 # Test story generation (requires request body)
-curl -X POST http://localhost:3000/api/generate-story \
+curl -X POST http://localhost:3000/api/story/generate \
   -H "Content-Type: application/json" \
   -d '{"creature":"vampire","themes":["romance"],"spicyLevel":2,"wordCount":700}'
 ```

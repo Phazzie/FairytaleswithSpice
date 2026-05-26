@@ -830,3 +830,54 @@ Closure result:
 
 - Closed #55, #47, #45, #44, #43, #42, #30, #29, #28, and #22 with ledger-backed comments.
 - Refreshed GitHub open PR list after closure; only #87 remains open.
+
+## 2026-05-26 15:32 EDT - Vercel Deployment Stabilized
+
+Actions:
+
+- Installed `jq` locally for the recovery preflight script.
+- Investigated the first Vercel preview failures after the audio/docs mining pass.
+- Added `scripts/recovery/ensure-vercel-index.sh` so Angular's `index.csr.html` output is materialized as `index.html` for Vercel's static fallback.
+- Updated root build scripts so `npm run build` and `npm run build:verify` both enforce that Vercel fallback file.
+- Added Vercel API function TypeScript compilation to `scripts/recovery/preflight.sh`.
+- Fixed stale Vercel function imports:
+  - removed Next.js request/response type imports from plain Vercel functions,
+  - corrected `api/export/save.ts` from `../lib/*` to `../_lib/*`,
+  - corrected `api/story-lab/stream/genesis.ts` imports,
+  - replaced API-side `.at(-1)` calls with compiler-compatible indexed reads,
+  - removed stale `api/story/stream.ts.backup`.
+- Reduced the deployed Vercel function count by removing deferred active audio endpoints/services and moving Story Lab helper modules under `api/_lib/story-lab/*`.
+- Updated API docs and env checks so XAI/Grok remains active and ElevenLabs/audio runtime is not required for this recovery branch.
+
+Deployment result:
+
+- Deployment `dpl_9rTrwwQqQfqpHziJX91pcFjShrKA` for commit `0e96ef2` failed in Vercel TypeScript compilation.
+- Deployment `dpl_EG7eEreP8fW9uax2XNi2AWnSJEdT` for commit `cfc4be1` built successfully but ended `ERROR` after output deployment, consistent with excess deployable API functions.
+- Deployment `dpl_CopbfUAYcFL8BhwSJ82BumMGLeo5` for commit `528233f` is `READY`.
+- Vercel reports `lambdaRuntimeStats: {"nodejs":12}` for the ready deployment.
+- Preview URL: `https://fairytaleswith-spice-dapa55dm3-phazzies-projects.vercel.app`
+- Branch alias: `https://fairytaleswith-spice-git-recovery-pr70-e629d8-phazzies-projects.vercel.app`
+- A normal unauthenticated `curl` hit Vercel Authentication for protected preview URLs.
+- Vercel connector verification:
+  - root URL returned `200 OK` and served the Angular shell,
+  - `/api/health` returned `200 OK` through a temporary Vercel share/access flow,
+  - `/api/health` reported production environment and `grok: configured`.
+
+Validation:
+
+- `jq --version` returns `jq-1.8.1`.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed after the Vercel function-count reduction.
+- `scripts/recovery/preflight.sh --skip-status` passed after the final report and docs updates.
+- Manual Vercel API typecheck passed:
+  - `find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 | xargs -0 npx tsc --noEmit --target es2020 --lib es2020,dom --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node`
+- `npm run build:verify` passed after the Angular fallback index fix.
+- `git diff --check` passed before the Vercel fix commits.
+
+Self-review:
+
+- Good: The branch now has a concrete ready Vercel deployment, not just local build confidence.
+- Good: The preflight script now catches the API function compilation class that Vercel caught remotely.
+- Problem found: Helper TypeScript files under non-underscore `api/story-lab/*` counted as deployable Vercel functions. Moving helpers under `api/_lib/story-lab/*` was necessary.
+- Problem found: Deferred audio code was still active enough to affect Vercel deployment shape. Removing active audio routes/services better matches the user's audio-deferred direction.
+- Problem found: Protected preview deployments need an authenticated or share-token smoke path; unauthenticated curl alone is not a useful runtime signal.
+- Should have anticipated sooner: Vercel deployment should have been run before closing the last source PRs, because local Angular/root checks did not exercise Vercel's per-function compiler or function-count constraints.

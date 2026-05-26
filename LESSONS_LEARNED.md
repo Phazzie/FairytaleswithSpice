@@ -88,3 +88,9 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Do not force story output into machine-first JSON just to support audio. PR #55's strongest lesson is to keep prose readable and add explicit, reviewable tags or metadata only where they serve the story.
 - Repeated audio PRs should be treated as a design space, not as merge candidates. Early branches have cleaner parser/segment seams; later branches have richer emotion/personality concepts. A future audio rebuild should synthesize, not merge.
 - In-memory audio jobs and voice memories are not durable product behavior on Vercel. If audio resumes, choose a queue/workflow and storage path before adding start/status/result/cancel APIs.
+- Local recovery checks must compile Vercel API functions directly. Angular builds and root TSX tests do not catch plain Vercel function import drift, Next.js-only type imports, or function compiler target issues.
+- Angular SSR/CSR output needs deployment-aware verification. This branch emits `index.csr.html`; Vercel fallback rewrites need an actual `index.html`, so the build now materializes and verifies it.
+- Keep shared helpers out of deployable Vercel function paths. TypeScript files under ordinary `api/*` folders can be treated as functions; reusable Story Lab helpers belong under `api/_lib/*`.
+- Count deployable Vercel functions before assuming a preview will deploy. Removing deferred audio routes and moving helper modules dropped the branch to 12 Node functions and unblocked deployment.
+- Protected Vercel previews need an authenticated smoke-test path. A 401 from unauthenticated `curl` can mean deployment protection, not app failure; use Vercel share/access tooling or a bypass token for runtime checks.
+- Deferred scope should be physically inactive, not merely deprioritized. Leaving audio endpoints and services in the active API tree made deployment harder even though audio was out of scope.
