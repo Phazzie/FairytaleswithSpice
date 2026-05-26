@@ -216,3 +216,27 @@ Immediate corrections made:
 Next action:
 
 - Inspect #65 for model/token/quality fixes and port only the parts not already present in the #70 recovery branch.
+
+## 2026-05-26 00:55 EDT - PR #65 AI Fixes Verified And Ported
+
+Actions:
+
+- Inspected #65's model/token/API-parameter fixes against the #70 recovery branch.
+- Confirmed the canonical Vercel service already had the intended model, dynamic token calculation, `top_p: 0.95`, and longer timeouts.
+- Updated `tests/verify-ai-fixes.test.ts` from stale `api/lib/*` imports to current `api/_lib/*`.
+- Aligned the duplicate compiled `story-generator/src/api/lib/services/storyService.ts` timeouts to 90 seconds for generation and 60 seconds for continuation.
+
+Decision:
+
+- Do not merge #65 directly.
+- Treat #65 as ported because the useful current material is verifier/path correction plus duplicate-service timeout alignment.
+
+Validation:
+
+- `npx tsx tests/verify-ai-fixes.test.ts` passed under escalated execution. Missing `XAI_API_KEY` warnings were expected and did not indicate live API calls.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+
+Self-review:
+
+- The canonical service is in better shape than the stale branch suggested, but the duplicate compiled story service is still a risk.
+- #67 should either remove the duplicate service path or make it a thin wrapper around the canonical `api/_lib` implementation.

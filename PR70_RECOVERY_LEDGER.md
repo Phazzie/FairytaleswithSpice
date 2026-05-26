@@ -30,7 +30,7 @@ Status values:
 | #71 | compare then close | pending | Early batch generation, mostly superseded by #72. |
 | #70 | merge baseline | merged | Merged into `recovery-pr70-story-lab-vercel` as commit `118265c`; stabilization pending. |
 | #67 | port/cherry-pick | pending | Audit, author-style extraction, duplicate cleanup. |
-| #65 | port/cherry-pick | pending | AI model/token/story quality fixes. |
+| #65 | port/cherry-pick | ported | Verified canonical AI fixes; aligned duplicate compiled service timeouts and test path. |
 | #64 | port/cherry-pick | ported | Ported Fisher-Yates Chekhov element selection; stale tests/docs/node_modules not taken. |
 | #63 | mine and close | pending | Storage/database research. |
 | #56 | mine and close | pending | Backend service/cache research, DigitalOcean-shaped. |
@@ -238,5 +238,43 @@ Use this template for detailed entries as each PR is handled:
   - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
 - Self-review notes:
   - The duplicate `story-generator/src/api/lib/services/storyService.ts` still needs a later cleanup decision, likely from #67, but retaining a biased randomization bug there would be worse while it is compiled.
+- GitHub PR closure note:
+  - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #65 - Fix AI story generation: model name, token allocation, and API parameters
+
+- Source branch: `pr-65` / `copilot/fix-5ac64344-68ed-4394-9706-a5dd2d4b168c`
+- Planned disposition: port/cherry-pick
+- Actual disposition: ported selected verification/path and timeout alignment
+- Story-generation impact: High. Confirms the current story service uses the intended Grok model, dynamic token calculation, supported API parameters, and longer story/continuation timeouts.
+- Accepted material:
+  - Re-pointed `tests/verify-ai-fixes.test.ts` from stale `api/lib/services/storyService` to the current Vercel `api/_lib/services/storyService`.
+  - Kept and verified `grok-4-1-fast-reasoning`, `calculateOptimalTokens()`, `top_p: 0.95`, and no unsupported `repetition_penalty` in both story service copies.
+  - Aligned the compiled duplicate `story-generator/src/api/lib/services/storyService.ts` timeouts with the canonical service: 90 seconds for generation and 60 seconds for continuations.
+- Not taking now:
+  - Direct branch merge/cherry-pick from #65.
+  - Any stale `api/lib/*` path layout.
+  - Any duplicate-service structure as an endorsed long-term architecture.
+- Why not taking:
+  - The canonical `api/_lib/services/storyService.ts` already contained most of #65's AI improvements after #70 stabilization.
+  - Direct merge risks path drift back to `api/lib`.
+  - Duplicate service cleanup belongs in the #67 audit phase, but the duplicate should not keep lower timeouts while it still compiles.
+- Future mining value:
+  - Preserve `tests/verify-ai-fixes.test.ts` as a fast regression check for model/token/API timeout behavior.
+  - Use #65 as evidence that model configuration should become centralized, not duplicated.
+- Files inspected:
+  - `api/_lib/services/storyService.ts`
+  - `story-generator/src/api/lib/services/storyService.ts`
+  - `tests/verify-ai-fixes.test.ts`
+- Files changed in recovery branch:
+  - `story-generator/src/api/lib/services/storyService.ts`
+  - `tests/verify-ai-fixes.test.ts`
+- Conflicts encountered:
+  - No merge attempted; branch material was selectively ported because of stale path shape.
+- Tests/checks run:
+  - `npx tsx tests/verify-ai-fixes.test.ts` passed under escalated execution. Missing `XAI_API_KEY` warnings were expected because the verifier reads service modules without making real API calls.
+  - `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- Self-review notes:
+  - This reinforces the #67 priority: remove or quarantine duplicate story services after the audit so model/timeouts/randomization cannot drift again.
 - GitHub PR closure note:
   - Close as ported/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.

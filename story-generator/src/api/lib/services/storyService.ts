@@ -318,7 +318,7 @@ export class StoryService {
           'Authorization': `Bearer ${this.grokApiKey}`,
           'Content-Type': 'application/json'
         },
-        timeout: 45000 // 45 second timeout
+        timeout: 90000 // 90 second timeout (Grok can take 30-45s for complex stories)
       });
 
       return this.formatStoryContent(response.data.choices[0].message.content);
@@ -357,7 +357,7 @@ export class StoryService {
           'Authorization': `Bearer ${this.grokApiKey}`,
           'Content-Type': 'application/json'
         },
-        timeout: 30000 // 30 second timeout for continuations
+        timeout: 60000 // 60 second timeout for continuations (allows for complex chapters)
       });
 
       return this.formatChapterContent(response.data.choices[0].message.content);

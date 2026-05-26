@@ -97,3 +97,24 @@ Template:
   - `story-generator/src/api/lib/services/storyService.ts`
   - `playwright.config.ts`
   - `e2e/story-generation.spec.ts`
+
+## PR #65 - Fix AI story generation model and token issues
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-65`
+- Story-generation ideas not taken:
+  - No additional prompt feature was omitted; the current canonical service already contains the main model, token, `top_p`, and timeout changes.
+  - The branch's stale `api/lib/*` service path is not taken.
+  - The duplicate story service structure is not accepted as permanent architecture.
+- Other useful ideas not taken:
+  - None beyond path/layout decisions.
+- Why not now:
+  - Direct merge is unnecessary and would reintroduce stale path assumptions.
+  - Duplicate cleanup should be handled deliberately in #67 instead of being hidden inside the #65 port.
+- Future extraction notes:
+  - Keep the verifier focused on canonical service behavior and run it after any model or token-budget changes.
+  - Centralize model name, token calculation, API parameters, and timeouts so future PRs cannot fix one service copy while leaving another stale.
+- Source files/commits:
+  - `api/lib/services/storyService.ts`
+  - `story-generator/src/api/lib/services/storyService.ts`
+  - `tests/verify-ai-fixes.test.ts`

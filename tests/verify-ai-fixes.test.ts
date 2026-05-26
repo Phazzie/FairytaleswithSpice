@@ -11,7 +11,7 @@
  * 4. Timeout increases (90s/60s)
  */
 
-import { StoryService } from '../api/lib/services/storyService';
+import { StoryService } from '../api/_lib/services/storyService';
 import { StoryService as StoryGeneratorService } from '../story-generator/src/api/lib/services/storyService';
 
 console.log('\n' + '='.repeat(80));
@@ -48,7 +48,7 @@ for (const testCase of testCases) {
   const savingsPercent = (savings / pr65Calculation * 100).toFixed(1);
   
   console.log(`\n${testCase.words} words:`);
-  console.log(`  api/lib:           ${apiTokens} tokens ${apiPass ? '✅' : '❌'}`);
+  console.log(`  api/_lib:          ${apiTokens} tokens ${apiPass ? '✅' : '❌'}`);
   console.log(`  story-generator:   ${sgTokens} tokens ${sgPass ? '✅' : '❌'}`);
   console.log(`  Consistency:       ${consistent ? '✅' : '❌'}`);
   console.log(`  Expected:          ${testCase.expected} tokens`);
@@ -71,7 +71,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const rootDir = process.cwd();
-const apiServicePath = join(rootDir, 'api/lib/services/storyService.ts');
+const apiServicePath = join(rootDir, 'api/_lib/services/storyService.ts');
 const sgServicePath = join(rootDir, 'story-generator/src/api/lib/services/storyService.ts');
 
 const apiContent = readFileSync(apiServicePath, 'utf-8');
@@ -86,7 +86,7 @@ const apiHasIncorrectModel = apiContent.includes(`model: '${incorrectModel}'`);
 const sgHasCorrectModel = sgContent.includes(`model: '${correctModel}'`);
 const sgHasIncorrectModel = sgContent.includes(`model: '${incorrectModel}'`);
 
-console.log(`\napi/lib/services/storyService.ts:`);
+console.log(`\napi/_lib/services/storyService.ts:`);
 console.log(`  Uses '${correctModel}':  ${apiHasCorrectModel ? '✅' : '❌'}`);
 console.log(`  Uses '${incorrectModel}':        ${apiHasIncorrectModel ? '❌ (should not)' : '✅'}`);
 
@@ -111,7 +111,7 @@ const sgHasTopP = sgContent.includes('top_p: 0.95');
 const apiHasRepetitionPenalty = apiContent.includes('repetition_penalty');
 const sgHasRepetitionPenalty = sgContent.includes('repetition_penalty');
 
-console.log(`\napi/lib/services/storyService.ts:`);
+console.log(`\napi/_lib/services/storyService.ts:`);
 console.log(`  Has top_p parameter:              ${apiHasTopP ? '✅' : '❌'}`);
 console.log(`  Has repetition_penalty parameter: ${apiHasRepetitionPenalty ? '❌ (should NOT - unsupported)' : '✅'}`);
 
@@ -132,7 +132,7 @@ console.log('-'.repeat(80));
 const apiHas90sTimeout = apiContent.includes('timeout: 90000');
 const apiHas60sTimeout = apiContent.includes('timeout: 60000');
 
-console.log(`\napi/lib/services/storyService.ts:`);
+console.log(`\napi/_lib/services/storyService.ts:`);
 console.log(`  Has 90s story generation timeout:  ${apiHas90sTimeout ? '✅' : '❌'}`);
 console.log(`  Has 60s continuation timeout:      ${apiHas60sTimeout ? '✅' : '❌'}`);
 
