@@ -120,3 +120,25 @@ Self-review:
 
 - #86 is safe to mark merged in the ledger.
 - The design doc should guide later UI ports, especially #40, #75, and #26, but should not override layout/accessibility constraints.
+
+## 2026-05-26 00:51 EDT - PR #85 Merged
+
+Actions:
+
+- Fetched PR #85 as `pr-85`.
+- Verified the PR's unique commit only updates `story-generator/package-lock.json`.
+- Merged it into `recovery-pr70-story-lab-vercel`.
+
+Accepted material:
+
+- `path-to-regexp` updated to 8.4.0 in `story-generator/package-lock.json`.
+
+Validation:
+
+- Confirmed `story-generator/package-lock.json` now records `node_modules/path-to-regexp` version 8.4.0.
+- Did not rerun build because this is lockfile-only and installed modules are not guaranteed to reflect lockfile-only dependency changes until install.
+
+Self-review:
+
+- #85 is safe to mark merged.
+- #84 should remain deferred until the baseline dependency state is clean because it has a larger dependency blast radius.

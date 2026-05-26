@@ -19,7 +19,7 @@ Status values:
 | PR | Planned action | Actual status | Notes |
 |---:|---|---|---|
 | #86 | merge | merged | Merged design system doc; normalized nonzero letter-spacing tokens. |
-| #85 | merge | pending | `path-to-regexp` security bump. |
+| #85 | merge | merged | Merged `path-to-regexp` 8.4.0 lockfile update. |
 | #84 | try merge or recreate | pending | Grouped dependency update. |
 | #77 | mine and close | pending | Documentation analysis lessons. |
 | #76 | close | pending | No committed material found. |
@@ -139,5 +139,33 @@ Use this template for detailed entries as each PR is handled:
   - Not rerun after docs-only merge. Previous Node 20 build passed after #70 stabilization.
 - Self-review notes:
   - The design doc is useful but should not override app usability constraints or the Vercel recovery plan.
+- GitHub PR closure note:
+  - Can be closed as merged/superseded by the recovery branch once the final recovery PR is opened.
+
+## PR #85 - chore(deps): bump path-to-regexp
+
+- Source branch: `pr-85` / `dependabot/npm_and_yarn/story-generator/npm_and_yarn-7fa4943c34`
+- Planned disposition: merge
+- Actual disposition: merged into `recovery-pr70-story-lab-vercel`
+- Story-generation impact: None direct. Security/dependency hygiene only.
+- Accepted material:
+  - `story-generator/package-lock.json` update from `path-to-regexp` 8.3.0 to 8.4.0.
+- Not taking now:
+  - No feature material omitted.
+- Why not taking:
+  - Not applicable.
+- Future mining value:
+  - None; this is a narrow dependency bump.
+- Files inspected:
+  - `story-generator/package-lock.json`
+- Files changed in recovery branch:
+  - `story-generator/package-lock.json`
+- Conflicts encountered:
+  - None.
+- Tests/checks run:
+  - Confirmed lockfile contains `node_modules/path-to-regexp` version 8.4.0.
+  - Did not rerun build because this is lockfile-only and current installed `node_modules` may not reflect the lockfile until install.
+- Self-review notes:
+  - Safe dependency merge. Keep #84 deferred until baseline dependency state is cleaner.
 - GitHub PR closure note:
   - Can be closed as merged/superseded by the recovery branch once the final recovery PR is opened.
