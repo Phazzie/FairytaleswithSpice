@@ -680,3 +680,41 @@ Running merge-order snapshot after #26:
 1. #41/#39 - lean Vercel CI/test workflow material.
 2. #84 - dependency update once lockfile state is intentional.
 3. Docs/research/audio mining after merge/adapt candidates are out of the way.
+
+## 2026-05-26 13:25 EDT - PR #41/#39 Lean Recovery CI Ported
+
+Actions:
+
+- Refreshed local PR heads for #41 and #39 with `git fetch origin pull/41/head:pr-41 pull/39/head:pr-39`.
+- Inspected the CI workflow suites from both branches.
+- Added one lean workflow: `.github/workflows/recovery-ci.yml`.
+- The workflow:
+  - uses Node 20,
+  - installs root and Angular dependencies,
+  - runs `scripts/recovery/preflight.sh --skip-status`,
+  - checks that `vercel.json` defines `buildCommand` and `outputDirectory`,
+  - runs on PRs to `main`, pushes to `main` and recovery branches, and manual dispatch.
+
+Decision:
+
+- Do not merge #41 directly.
+- Do not merge #39 directly.
+- Do not take workflows that assume stale `backend`, `api/package.json`, old `api/lib`, old backend contract paths, or old API route names.
+- Do not add Vercel CLI deployment workflow yet; Vercel Git deployment can be configured separately once branch validation is stable and secrets are intentionally provisioned.
+
+Validation:
+
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/recovery-ci.yml"); puts "workflow yaml ok"'` passed.
+- `node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('vercel.json','utf8')); if (!config.buildCommand || !config.outputDirectory) throw new Error('bad vercel config'); console.log('vercel config ok')"` passed.
+- `git diff --check` passed.
+
+Self-review:
+
+- Good: CI now runs the same recovery preflight script used locally, which reduces checklist drift.
+- Good: This avoids the old API/backend path rewrites that would undo #70 recovery work.
+- Watch item: This is a validation workflow, not a deployment workflow; the Vercel project/link/secrets still need a later deployment pass.
+
+Running merge-order snapshot after #41/#39:
+
+1. #84 - dependency update once lockfile state is intentional.
+2. Docs/research/audio mining after merge/adapt candidates are out of the way.

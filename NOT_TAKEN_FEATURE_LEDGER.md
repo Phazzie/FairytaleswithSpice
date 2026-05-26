@@ -404,3 +404,51 @@ Template:
   - `story-generator/src/app/app.ts`
   - `story-generator/src/app/app.html`
   - `story-generator/src/app/app.css`
+
+## PR #41 - Comprehensive test coverage and Vercel CI/CD
+
+- Disposition: selected lean CI port; close later as ported
+- Source branch: `pr-41`
+- Story-generation ideas not taken:
+  - None directly; PR #41 is mostly CI/deployment/testing infrastructure.
+- Other useful ideas not taken:
+  - Direct API/backend Jest package layout.
+  - Old `api/lib` path rewrite and current `api/_lib` deletion.
+  - Separate security, monitoring, deployment, dependency, and comprehensive CI workflows.
+  - Vercel CLI deployment workflow requiring `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`.
+  - API route tests written against stale route/package assumptions.
+- Why not now:
+  - Current recovery branch should keep Vercel `_lib` helper layout.
+  - The repo is not currently organized as the branch's backend/API package structure expects.
+  - Deployment secrets and Vercel project linkage should be explicit, not smuggled in through an old workflow.
+- Future extraction notes:
+  - Rebuild API route tests once the Story Lab API surface is stable.
+  - Add preview/prod Vercel deployment workflow only after secrets and project linkage are intentionally configured.
+- Source files/commits:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/deploy.yml`
+  - `.github/workflows/security-quality.yml`
+
+## PR #39 - Implement extensive CI system with 6 comprehensive workflows
+
+- Disposition: mined into lean CI; close later as superseded
+- Source branch: `pr-39`
+- Story-generation ideas not taken:
+  - None directly; PR #39 is workflow infrastructure.
+- Other useful ideas not taken:
+  - Six-workflow CI suite.
+  - README/status badge writer.
+  - Lighthouse, visual regression, analytics dashboard, and dependency-management workflows.
+  - Contract validation against old `backend/src/types/contracts.ts`.
+  - API smoke tests for old endpoint names.
+- Why not now:
+  - The workflow suite is broader than the recovery branch needs and assumes stale paths.
+  - Browser-based CI should wait until local ChromeHeadless capture is reliable or a different browser strategy is selected.
+- Future extraction notes:
+  - Revisit accessibility/performance workflows after Vercel deployment is stable.
+  - Rebuild contract validation after current frontend/backend contract locations are final.
+- Source files/commits:
+  - `.github/workflows/ci-status.yml`
+  - `.github/workflows/contract-validation.yml`
+  - `.github/workflows/deployment-optimization.yml`
+  - `.github/workflows/visual-testing.yml`

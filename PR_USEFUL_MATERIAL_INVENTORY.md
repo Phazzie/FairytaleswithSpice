@@ -52,9 +52,9 @@ Treat PR #70 as a plausible alternate product baseline for the "story lab" direc
 | #44 | Character-driven audio narration system | Broad audio enhancement: ElevenLabs model optimization, enhanced player, emotion mapping, voice consistency, sound effects framework, new docs, and `api/soundeffects/info.ts`. | `api/lib/services/audioService.ts`, `api/soundeffects/info.ts`, enhanced audio player files, docs | **Defer/recreate later**. Contains useful audio UX/research but not now. |
 | #43 | Advanced audio player and emotion-aware voice processing | Adds `AudioEnhancementService`, enhanced audio player component with waveform/character controls, emotion tags, personality profiles, analysis/recommendations. | `backend/src/services/audioEnhancementService.ts`, `story-generator/src/app/enhanced-audio-player/*`, contracts/docs | **Defer/recreate later**. Reusable design/code concepts, old backend. |
 | #42 | Streaming audio generation and modern ElevenLabs | Adds streaming audio service, audio streaming API, SSE progress, 90+ emotion mappings, ElevenLabs model research, enhanced tests/docs. | `api/audio/streaming.ts`, `api/lib/services/streamingAudioService.ts`, `emotionMapping.ts`, audio docs/tests | **Defer/recreate later**. Good architecture for audio phase. |
-| #41 | Comprehensive test coverage and Vercel CI/CD | Adds API Jest tests, integration workflow tests, Vercel deploy workflow, CodeQL/security/dependency/monitoring workflows, documentation, and a Vercel config tweak. Also includes stale audio/backend changes. | `.github/workflows/*`, `api/*.test.ts`, `tests/integration/*`, `api/jest.config.js`, `vercel.json`, CI docs | **Port/cherry-pick**. Very useful for Vercel readiness, but direct merge is too large/stale. |
+| #41 | Comprehensive test coverage and Vercel CI/CD | Adds API Jest tests, integration workflow tests, Vercel deploy workflow, CodeQL/security/dependency/monitoring workflows, documentation, and a Vercel config tweak. Also includes stale audio/backend changes. Mined into a lean `recovery-ci.yml` workflow that runs the current recovery preflight and Vercel config sanity check. | `.github/workflows/*`, `api/*.test.ts`, `tests/integration/*`, `api/jest.config.js`, `vercel.json`, CI docs | **Ported lean CI only**. Direct merge is too large/stale and reintroduces old API/backend paths. |
 | #40 | Mystical UI rewrite | Replaces main HTML/CSS with a spell-crafting style UI: particle effects, 3D creature cards, rune theme selection, intensity crystal, responsive magical layout, hydration fixes. | `story-generator/src/app/app.html`, `app.css` | **Reference or port visual pieces**. Conflicts with #70/#75 UI direction. |
-| #39 | Extensive CI/CD system | Adds six heavyweight workflows: comprehensive CI, dependency management, deployment optimization, contract validation, visual testing, analytics dashboard, Lighthouse config, and CI docs. | `.github/workflows/*`, `.github/lighthouse/lighthouse.json`, `.github/CI_SYSTEM.md`, minor spec fixes | **Reference/recreate lean version**. Useful ideas, overbuilt as-is. |
+| #39 | Extensive CI/CD system | Adds six heavyweight workflows: comprehensive CI, dependency management, deployment optimization, contract validation, visual testing, analytics dashboard, Lighthouse config, and CI docs. Mined branch/path triggers, cache, status-gate, and contract/build validation ideas into the lean recovery workflow. | `.github/workflows/*`, `.github/lighthouse/lighthouse.json`, `.github/CI_SYSTEM.md`, minor spec fixes | **Mined/ported lean concept only**. Heavy suite remains overbuilt and stale. |
 | #31 | Chapter continuation, story arc, audiobook | Adds story arc CRUD/service, cliffhanger analysis, enhanced continuation, story arc frontend UI, and audiobook compilation. Audio pieces are out of scope, but story arc/cliffhanger pieces are useful. | `api/lib/services/storyArcService.ts`, `api/story/arc.ts`, `api/story/continue.ts`, contracts, app files, `api/audio/compile.ts` | **Port story-arc/cliffhanger only**. Recreate without audiobook coupling. |
 | #30 | Multi-voice audio pipeline | Adds dialogue parser, ElevenLabs v3, multi-voice UI controls, prompt updates for speaker tags, contracts. | `backend/src/services/dialogueParser.ts`, `audioService.ts`, story service, app files/contracts | **Defer/recreate later**. Audio capability material only. |
 | #29 | Multi-voice audio service | Adds `multiVoiceAudioService`, speaker segments, character voice types, mock audio generation, docs, API contracts. | `api/lib/services/multiVoiceAudioService.ts`, `MULTI_VOICE_AUDIO.md`, audio service/contracts, app files | **Defer/recreate later**. One of the cleaner audio references. |
@@ -111,7 +111,7 @@ These are the most useful non-#70 pieces, ranked by likely value and extraction 
 
 ### Port selected features, do not merge whole
 
-- #41: use Vercel CI/API tests as source material.
+- #41: lean recovery CI has been ported; API route tests and Vercel deploy workflow remain future rebuild material.
 - #67: use audit/config extraction/cleanup ideas.
 - #75: selected batch queue, suggested-prompt, and grouped-timeline UI has been ported; keep fuller queue semantics as future reference.
 - #72: selected multi-chapter backend behavior is ported; mine old UI pieces only if #75 leaves gaps.
@@ -122,7 +122,7 @@ These are the most useful non-#70 pieces, ranked by likely value and extraction 
 
 ### Recreate cleanly
 
-- #39: recreate a lean CI subset.
+- #39: lean CI subset has been recreated in `.github/workflows/recovery-ci.yml`; broader workflow suite remains future material.
 - #40: recreate only chosen visual elements on top of the final UI.
 - #53: recreate docs cleanup without `node_modules`.
 - #54/#56/#63: recreate provider-neutral or Vercel-specific storage/deploy docs if still needed.

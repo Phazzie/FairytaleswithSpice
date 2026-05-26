@@ -43,9 +43,9 @@ Status values:
 | #44 | mine and close | pending | Character-driven narration material. |
 | #43 | mine and close | pending | Audio player/emotion-aware voice processing. |
 | #42 | mine and close | pending | Streaming audio/emotion mapping. |
-| #41 | port/cherry-pick | pending | Minimal Vercel CI/API tests. |
+| #41 | port/cherry-pick | ported | Ported a lean Recovery CI workflow; stale API/backend rewrites not taken. |
 | #40 | mine and close | pending | Visual ideas only. |
-| #39 | mine and close | pending | CI concepts, not full suite. |
+| #39 | mine and close | mined/ported | Mined CI concepts into the lean Recovery CI workflow; heavyweight suite not taken. |
 | #31 | recreate/port | ported | Ported cliffhanger analysis/prompt guidance; story-arc CRUD and audiobook compile mined for later. |
 | #30 | mine and close | pending | Dialogue parser/speaker-tag ideas. |
 | #29 | mine and close | pending | Speaker segment and voice metadata ideas. |
@@ -820,3 +820,95 @@ Use this template for detailed entries as each PR is handled:
   - Watch item: Local Angular browser-test execution still needs a reliable ChromeHeadless launch setup.
 - GitHub PR closure note:
   - Close as ported after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #41 - Comprehensive test coverage and Vercel CI/CD
+
+- Source branch: `pr-41` / `copilot/vscode1758409263971`
+- Planned disposition: port/cherry-pick
+- Actual disposition: ported lean CI material only
+- Story-generation impact: Indirect. Adds CI coverage for the current recovery checks so story-generation and Story Lab regressions are caught before merge.
+- Accepted material:
+  - Added `.github/workflows/recovery-ci.yml`.
+  - Uses Node 20.
+  - Installs root and Angular dependencies.
+  - Runs `scripts/recovery/preflight.sh --skip-status`, which covers whitespace, Angular app/spec typecheck, root story/trope/cliffhanger/story-lab tests, Node 20 Angular build, and build output verification.
+  - Adds a small `vercel.json` sanity check for `buildCommand` and `outputDirectory`.
+- Not taking now:
+  - Direct PR #41 merge.
+  - API/backend package split.
+  - Jest API test harness from the stale branch.
+  - Old `api/lib` path rewrites and deletions of current `api/_lib`.
+  - Backend directory assumptions.
+  - Security, monitoring, deployment, and dependency workflow suite files.
+  - Vercel CLI deploy workflow requiring secrets.
+- Why not taking:
+  - The branch would undo current Vercel `_lib` path normalization and delete recovery tests.
+  - The repo does not currently have the backend/API package layout assumed by the workflow suite.
+  - Vercel Git integration can handle deployment; this recovery needs a reliable validation gate first.
+- Future mining value:
+  - API route tests may be useful after current serverless route contracts stabilize.
+  - Vercel CLI preview deployment can be added later if project secrets are configured intentionally.
+- Files inspected:
+  - `.github/workflows/ci.yml` from PR #41
+  - `.github/workflows/deploy.yml` from PR #41
+  - `.github/workflows/security-quality.yml` from PR #41
+  - PR #41 API/backend/test file list
+- Files changed in recovery branch:
+  - `.github/workflows/recovery-ci.yml`
+  - recovery docs
+- Conflicts encountered:
+  - PR #41 contains stale code-path churn, including `api/_lib` deletion and `api/lib` reintroduction.
+  - PR #41 assumes `backend`, `api/package.json`, and integration-test packages that are not part of the current recovery baseline.
+- Tests/checks run:
+  - `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/recovery-ci.yml"); puts "workflow yaml ok"'` passed.
+  - `node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('vercel.json','utf8')); if (!config.buildCommand || !config.outputDirectory) throw new Error('bad vercel config'); console.log('vercel config ok')"` passed.
+  - `git diff --check` passed.
+  - Reused prior current-branch validation from #26: quick preflight, root tests, Node 20 build, SSR curl checks, and build verification.
+- Self-review notes:
+  - Good: The CI now validates the recovery branch using the same script run locally.
+  - Good: No DigitalOcean or stale backend assumptions were added.
+  - Watch item: This does not deploy to Vercel; it validates that the repo is ready for Vercel/Git deployment.
+- GitHub PR closure note:
+  - Close as ported after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+## PR #39 - Implement extensive CI system with 6 comprehensive workflows
+
+- Source branch: `pr-39` / `copilot/fix-38`
+- Planned disposition: mine and close
+- Actual disposition: mined into `.github/workflows/recovery-ci.yml`; close later as superseded
+- Story-generation impact: Indirect. Provides CI ideas only.
+- Accepted material:
+  - Contract/build validation concept.
+  - Dependency caching concept.
+  - Branch/path-trigger awareness.
+  - Single status-gate idea, reduced to one lean workflow.
+- Not taking now:
+  - Direct PR #39 merge.
+  - Six-workflow suite.
+  - CI badge writer that modifies README/status files.
+  - Lighthouse, visual regression, analytics dashboard, and broad dependency-management workflows.
+  - Contract validation against old `backend/src/types/contracts.ts`.
+  - Stale API endpoint smoke tests for old route names.
+- Why not taking:
+  - The suite is overbuilt for the current recovery branch and assumes old backend/API layout.
+  - Badge/status writer workflows would create repo churn unrelated to making the app deployable.
+  - Visual/performance workflows should wait until the Vercel deployment path and UI baseline are stable.
+- Future mining value:
+  - Add a separate accessibility/performance workflow after browser automation is reliable.
+  - Add contract-diff checks once frontend and backend contract locations are finalized.
+- Files inspected:
+  - `.github/workflows/ci-status.yml`
+  - `.github/workflows/contract-validation.yml`
+  - PR #39 workflow file list
+- Files changed in recovery branch:
+  - `.github/workflows/recovery-ci.yml`
+  - recovery docs
+- Conflicts encountered:
+  - Same stale path drift as #41: old `api/lib`, backend contract paths, and deleted current tests.
+- Tests/checks run:
+  - Same workflow YAML/config checks listed under #41.
+- Self-review notes:
+  - The useful part of #39 was workflow shape, not its concrete implementation.
+  - Keep CI boring until the recovery branch is ready to become the mainline.
+- GitHub PR closure note:
+  - Close as mined/superseded after final recovery PR exists, pointing to this ledger and `NOT_TAKEN_FEATURE_LEDGER.md`.
