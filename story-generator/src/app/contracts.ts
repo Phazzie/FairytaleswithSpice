@@ -1,357 +1,291 @@
-// ==================== SEAM-DRIVEN DEVELOPMENT CONTRACTS ====================
-// These contracts are derived directly from UI interactions and data flows
-// Each seam represents a boundary where data crosses between components
+/**
+ * Next-generation seam contracts for the Fairytales with Spice platform.
+ *
+ * The previous system tightly coupled a single-chapter response to the UI, which
+ * made it impossible to expand into multi-chapter batches or maintain continuity
+ * across long-running sagas. This file defines an entirely new set of contracts
+ * that support batch generation, persistent story state tracking, and
+ * downstream services such as audio and export pipelines.
+ */
 
-// ==================== TYPE DEFINITIONS ====================
-export type CreatureType = 'vampire' | 'werewolf' | 'fairy';
-export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden_love' | 'revenge' | 'manipulation' | 'seduction' | 'dark_secrets' | 'corruption' | 'dominance' | 'submission' | 'jealousy' | 'temptation' | 'sin' | 'desire' | 'passion' | 'lust' | 'deceit';
+// ==================== CORE DOMAIN TYPES ====================
+
+export type CreatureArchetype = 'vampire' | 'werewolf' | 'fairy' | 'siren' | 'djinn';
+export type NarrativeTone = 'romance' | 'dark_romance' | 'mystery' | 'adventure' | 'comedy' | 'tragedy';
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
-export type WordCount = 700 | 900 | 1200;
-export type VoiceType = 'female' | 'male' | 'neutral';
-export type CharacterVoiceType = 
-  | 'vampire_male' | 'vampire_female' 
-  | 'werewolf_male' | 'werewolf_female'
-  | 'fairy_male' | 'fairy_female'
-  | 'human_male' | 'human_female'
-  | 'narrator';
-export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
-export type AudioFormat = 'mp3' | 'wav' | 'aac';
-export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
+export type ChapterBatchSize = 1 | 2 | 3;
+export type WordBudget = 600 | 900 | 1200 | 1500;
 
-// ==================== CHAPTER MANAGEMENT ====================
-export interface Chapter {
+export interface ThemeSeed {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface StoryBlueprint {
+  creature: CreatureArchetype;
+  themes: ThemeSeed[];
+  logline: string;
+  spicyLevel: SpicyLevel;
+  tone: NarrativeTone;
+  desiredWordBudget: WordBudget;
+  protagonistName?: string;
+  antagonistName?: string;
+  worldDetails?: string;
+}
+
+export interface RelationshipEdge {
+  characterId: string;
+  relationship: 'ally' | 'lover' | 'rival' | 'family' | 'unknown';
+  notes: string;
+}
+
+export interface CharacterProfile {
+  id: string;
+  displayName: string;
+  archetype: 'protagonist' | 'antagonist' | 'supporting' | 'narrator';
+  summary: string;
+  currentGoal: string;
+  internalConflict: string;
+  externalConflict: string;
+  secrets: string[];
+  relationships: RelationshipEdge[];
+  spiceCompatibilities: SpicyLevel[];
+}
+
+export interface PlotThread {
+  id: string;
+  label: string;
+  status: 'active' | 'escalating' | 'resolved' | 'dormant';
+  description: string;
+  foreshadowedDevices: string[];
+}
+
+export interface LoreArtifact {
+  id: string;
+  name: string;
+  significance: string;
+  introducedInChapter?: number;
+  resolvedInChapter?: number;
+}
+
+export interface StoryBeat {
+  id: string;
+  chapterNumber: number;
+  summary: string;
+  beatType: 'inciting_incident' | 'rising_action' | 'climax' | 'falling_action' | 'resolution' | 'interlude';
+  tensionLevel: 1 | 2 | 3 | 4 | 5;
+  spicyLevel: SpicyLevel;
+}
+
+export interface StoryStateSnapshot {
+  storyId: string;
+  revision: number;
+  characters: CharacterProfile[];
+  threads: PlotThread[];
+  artifacts: LoreArtifact[];
+  beats: StoryBeat[];
+  continuityWarnings: string[];
+  narrativeVoice: string;
+  lastUpdatedAt: string;
+}
+
+export interface StorySummary {
+  storyId: string;
+  title: string;
+  synopsis: string;
+  tone: NarrativeTone;
+  spicyLevel: SpicyLevel;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChapterDelta {
+  introducedCharacters: CharacterProfile[];
+  resolvedThreads: string[];
+  escalatedThreads: string[];
+  foreshadowedArtifacts: LoreArtifact[];
+  continuityFlags: string[];
+}
+
+export interface GeneratedChapter {
   chapterId: string;
   chapterNumber: number;
   title: string;
-  content: string; // HTML for this chapter only
-  rawContent?: string; // With speaker tags for audio
+  htmlContent: string;
+  rawContent?: string;
+  summary: string;
   wordCount: number;
-  generatedAt: Date;
-  hasAudio: boolean;
-  audioUrl?: string;
-  audioDuration?: number;
+  hasCliffhanger: boolean;
+  delta: ChapterDelta;
 }
 
-export interface AudioProgress {
-  percentage: number; // 0-100
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  message: string;
-  estimatedTimeRemaining?: number; // in seconds
+export interface ChapterBatchEnvelope {
+  chapters: GeneratedChapter[];
+  totalWordCount: number;
+  suggestedNextPrompts: string[];
 }
 
-// ==================== SEAM 1: USER INPUT → STORY GENERATOR ====================
+export interface GenerationTelemetry {
+  engine: 'gpt' | 'grok' | 'custom';
+  totalLatencyMs: number;
+  averageChapterLatencyMs: number;
+  tokensConsumed: number;
+  retryCount: number;
+}
+
+export interface StoryIterationPayload {
+  summary: StorySummary;
+  batch: ChapterBatchEnvelope;
+  state: StoryStateSnapshot;
+  telemetry: GenerationTelemetry;
+}
+
+// ==================== SEAM CONTRACTS ====================
+
 export interface StoryGenerationSeam {
-  seamName: "User Input → Story Generator";
-  description: "Converts form data into generated story content";
+  seamName: 'Story Blueprint → Multi-Chapter Genesis';
+  description: 'Transforms a high-level blueprint into 1-3 cohesive chapters and an initialized story state.';
 
-  input: {
-    creature: CreatureType;
-    themes: ThemeType[];
-    userInput: string; // Optional custom ideas
-    spicyLevel: SpicyLevel;
-    wordCount: WordCount;
+  input: StoryBlueprint & {
+    chapterBatchSize: ChapterBatchSize;
+    allowExperimentalVoices?: boolean;
+    narrativeDirectives?: string;
   };
 
-  output: {
-    storyId: string;
-    title: string;
-    content: string; // HTML formatted content for [innerHTML] binding (speaker tags removed)
-    rawContent?: string; // Content with speaker tags for audio processing
-    creature: CreatureType;
-    themes: ThemeType[];
-    spicyLevel: SpicyLevel;
-    actualWordCount: number;
-    estimatedReadTime: number; // in minutes
-    hasCliffhanger: boolean; // determines if "Continue Chapter" button shows
-    generatedAt: Date;
-  };
+  output: StoryIterationPayload;
 
   errors: {
+    INVALID_BLUEPRINT: {
+      code: 'INVALID_BLUEPRINT';
+      message: string;
+      invalidFields: (keyof StoryBlueprint)[];
+    };
     GENERATION_FAILED: {
-      code: "GENERATION_FAILED";
+      code: 'GENERATION_FAILED';
       message: string;
       retryable: boolean;
-      retryAfter?: number;
     };
-    CONTENT_VIOLATION: {
-      code: "CONTENT_VIOLATION";
+    CONTENT_POLICY_VIOLATION: {
+      code: 'CONTENT_POLICY_VIOLATION';
       message: string;
-      suggestions: string[];
-      blockedContent: string[];
-    };
-    RATE_LIMITED: {
-      code: "RATE_LIMITED";
-      message: string;
-      retryAfter: number; // seconds
-      limitRemaining: number;
-    };
-    INVALID_INPUT: {
-      code: "INVALID_INPUT";
-      message: string;
-      field: keyof StoryGenerationSeam['input'];
-      providedValue: any;
-      expectedType: string;
+      offendingFragments: string[];
     };
   };
 }
 
-// ==================== SEAM 2: STORY → CHAPTER CONTINUATION ====================
-export interface ChapterContinuationSeam {
-  seamName: "Story → Chapter Continuation";
-  description: "Extends existing story with additional chapters";
+export interface StoryContinuationSeam {
+  seamName: 'Story State → Continuation Batch';
+  description: 'Extends an existing story by 1-3 chapters while updating the persistent state snapshot.';
 
   input: {
     storyId: string;
-    currentChapterCount: number;
-    existingContent: string; // Full story HTML content
-    userInput?: string; // Optional continuation hints
-    maintainTone: boolean; // Keep same spicy level and themes
+    chapterBatchSize: ChapterBatchSize;
+    storyState: StoryStateSnapshot;
+    previouslyGeneratedChapters: GeneratedChapter[];
+    continuationBrief?: string;
+    forceCliffhanger?: boolean;
+    existingSummary?: StorySummary;
   };
 
-  output: {
-    chapterId: string;
-    chapterNumber: number;
-    title: string;
-    content: string; // New chapter HTML content
-    wordCount: number;
-    cliffhangerEnding: boolean;
-    themesContinued: ThemeType[];
-    spicyLevelMaintained: SpicyLevel;
-    appendedToStory: string; // Full updated story content
+  output: StoryIterationPayload & {
+    appendedChapterNumbers: number[];
   };
 
   errors: {
     STORY_NOT_FOUND: {
-      code: "STORY_NOT_FOUND";
+      code: 'STORY_NOT_FOUND';
       message: string;
       storyId: string;
     };
-    CONTINUATION_FAILED: {
-      code: "CONTINUATION_FAILED";
+    STATE_DIVERGENCE: {
+      code: 'STATE_DIVERGENCE';
       message: string;
-      retryable: boolean;
+      expectedRevision: number;
+      actualRevision: number;
     };
-    MAX_CHAPTERS_REACHED: {
-      code: "MAX_CHAPTERS_REACHED";
+    MAX_CHAPTER_LIMIT: {
+      code: 'MAX_CHAPTER_LIMIT';
       message: string;
       maxChapters: number;
-      currentChapters: number;
+      attemptedChapterNumber: number;
     };
   };
 }
 
-// ==================== STREAMING PROGRESS CHUNK ====================
-/**
- * Streaming progress chunk structure
- * Emitted during real-time story generation via SSE
- */
-export interface StreamingProgressChunk {
-  type: 'connected' | 'chunk' | 'complete' | 'error';
-  content?: string;
-  storyId?: string;
-  streamId?: string;
-  metadata?: {
-    wordsGenerated: number;
-    estimatedWordsRemaining: number;
-    generationSpeed: number; // words per second
-    percentage: number; // 0-100
+export interface StoryPersistenceSeam {
+  seamName: 'Story Snapshot ↔ Persistence Layer';
+  description: 'Defines how story state and chapter metadata are stored in the DigitalOcean database.';
+
+  input: {
+    story: StorySummary;
+    state: StoryStateSnapshot;
+    chapters: GeneratedChapter[];
   };
+
+  output: {
+    success: true;
+    persistedRevision: number;
+  } | {
+    success: false;
+    reason: 'VALIDATION_ERROR' | 'CONNECTION_ERROR' | 'CONFLICT';
+    message: string;
+  };
+}
+
+export interface StreamingProgressChunk {
+  type: 'connected' | 'chapter_progress' | 'batch_complete' | 'error';
+  storyId?: string;
+  chapterNumber?: number;
+  partialHtml?: string;
+  percentage?: number;
+  estimatedMsRemaining?: number;
   error?: {
     code: string;
     message: string;
   };
 }
 
-// ==================== SEAM 2.5: REAL-TIME STORY GENERATION ====================
-export interface StreamingStoryGenerationSeam {
-  seamName: "Real-Time Story Generation";
-  description: "Provides real-time updates during story generation for better UX";
-
-  input: {
-    // Same as StoryGenerationSeam input
-    creature: CreatureType;
-    themes: ThemeType[];
-    userInput: string;
-    spicyLevel: SpicyLevel;
-    wordCount: WordCount;
-  };
-
-  progressUpdate: {
-    streamId: string;
-    storyId?: string; // Generated after stream starts
-    type: 'connected' | 'progress' | 'chunk' | 'complete' | 'error';
-    content?: string; // Accumulated content so far
-    isComplete: boolean;
-    metadata: {
-      wordsGenerated: number;
-      totalWordsTarget: number;
-      estimatedWordsRemaining: number;
-      generationSpeed: number; // words per second
-      percentage: number; // 0-100
-      estimatedTimeRemaining?: number; // seconds
-    };
-  };
-
-  finalOutput: {
-    // Same as StoryGenerationSeam output
-    storyId: string;
-    title: string;
-    content: string;
-    rawContent?: string;
-    creature: CreatureType;
-    themes: ThemeType[];
-    spicyLevel: SpicyLevel;
-    actualWordCount: number;
-    estimatedReadTime: number;
-    hasCliffhanger: boolean;
-    generatedAt: Date;
-  };
-
-  errors: {
-    STREAMING_CONNECTION_FAILED: {
-      code: "STREAMING_CONNECTION_FAILED";
-      message: string;
-      retryable: boolean;
-    };
-    STREAM_INTERRUPTED: {
-      code: "STREAM_INTERRUPTED";
-      message: string;
-      recoveryOptions: string[];
-      partialContent?: string;
-    };
-    // Inherits all errors from StoryGenerationSeam
+export interface ApiEnvelope<T> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
   };
 }
 
-// ==================== SEAM 3: STORY TEXT → AUDIO CONVERTER ====================
-export interface AudioConversionSeam {
-  seamName: "Story Text → Audio Converter";
-  description: "Converts story text to audio format with progress tracking";
+export type ApiResponse<T> = ApiEnvelope<T>;
 
-  input: {
-    storyId: string;
-    content: string; // Full story HTML content
-    voice?: VoiceType;
-    speed?: AudioSpeed;
-    format?: AudioFormat;
-  };
+// ==================== FRONTEND VIEW MODELS ====================
 
-  output: {
-    audioId: string;
-    storyId: string;
-    audioUrl: string; // Download URL for UI
-    duration: number; // in seconds
-    fileSize: number; // in bytes
-    format: AudioFormat;
-    voice: VoiceType;
-    speed: AudioSpeed;
-    progress: AudioProgress; // For real-time UI updates
-    completedAt: Date;
-  };
-
-  errors: {
-    CONVERSION_FAILED: {
-      code: "CONVERSION_FAILED";
-      message: string;
-      retryable: boolean;
-      stage: "text_processing" | "audio_generation" | "file_creation";
-    };
-    UNSUPPORTED_CONTENT: {
-      code: "UNSUPPORTED_CONTENT";
-      message: string;
-      unsupportedElements: string[];
-    };
-    AUDIO_QUOTA_EXCEEDED: {
-      code: "AUDIO_QUOTA_EXCEEDED";
-      message: string;
-      quotaRemaining: number;
-      resetTime: Date;
-    };
-  };
+export interface StoryWorkbenchSession {
+  story: StorySummary | null;
+  state: StoryStateSnapshot | null;
+  chapterHistory: GeneratedChapter[];
+  activeBatchSize: ChapterBatchSize;
+  lastTelemetry?: GenerationTelemetry;
 }
 
-// ==================== SEAM 4: STORY DATA → SAVE/EXPORT SYSTEM ====================
-export interface SaveExportSeam {
-  seamName: "Story Data → Save/Export System";
-  description: "Saves or exports story data in various formats";
-
-  input: {
-    storyId: string;
-    content: string; // Full story HTML content
-    title: string;
-    format: ExportFormat;
-    includeMetadata?: boolean;
-    includeChapters?: boolean;
-  };
-
-  output: {
-    exportId: string;
-    storyId: string;
-    downloadUrl: string; // Direct download URL for UI
-    filename: string;
-    format: ExportFormat;
-    fileSize: number;
-    expiresAt: Date; // When download URL expires
-    exportedAt: Date;
-  };
-
-  errors: {
-    EXPORT_FAILED: {
-      code: "EXPORT_FAILED";
-      message: string;
-      retryable: boolean;
-      format: ExportFormat;
-    };
-    FORMAT_NOT_SUPPORTED: {
-      code: "FORMAT_NOT_SUPPORTED";
-      message: string;
-      requestedFormat: ExportFormat;
-      supportedFormats: ExportFormat[];
-    };
-    STORAGE_QUOTA_EXCEEDED: {
-      code: "STORAGE_QUOTA_EXCEEDED";
-      message: string;
-      quotaRemaining: number;
-    };
-  };
+export interface ContinuityPanelViewModel {
+  characters: CharacterProfile[];
+  activeThreads: PlotThread[];
+  unresolvedArtifacts: LoreArtifact[];
+  continuityWarnings: string[];
 }
 
-// ==================== VALIDATION RULES ====================
-export const VALIDATION_RULES = {
-  userInput: {
-    maxLength: 1000,
-    allowedHtml: false
-  },
-  themes: {
-    maxCount: 5,
-    allowedValues: ['betrayal', 'obsession', 'power_dynamics', 'forbidden_love', 'revenge', 'manipulation', 'seduction', 'dark_secrets', 'corruption', 'dominance', 'submission', 'jealousy', 'temptation', 'sin', 'desire', 'passion', 'lust', 'deceit']
-  },
-  spicyLevel: {
-    min: 1,
-    max: 5
-  },
-  wordCount: {
-    allowedValues: [700, 900, 1200]
-  },
-  audioSpeed: {
-    min: 0.5,
-    max: 1.5
-  }
-} as const;
-
-// ==================== UI STATE MANAGEMENT ====================
-export interface UIState {
-  isGenerating: boolean;
-  isConvertingAudio: boolean;
-  isSaving: boolean;
-  isGeneratingNext: boolean;
-  audioProgress: number;
-  saveSuccess: boolean;
-  audioSuccess: boolean;
-  lastError?: string;
+export interface ChapterTimelineEntry {
+  chapterId: string;
+  chapterNumber: number;
+  title: string;
+  summary: string;
+  hasCliffhanger: boolean;
+  createdAt: string;
 }
 
-// ==================== ERROR LOGGING SEAM ====================
+// ==================== ERROR LOGGING CONTRACTS ====================
+
 export type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
 
 export interface ErrorLog {
@@ -361,48 +295,16 @@ export interface ErrorLog {
   context: string;
   severity: ErrorSeverity;
   stack?: string;
-  details?: any;
+  details?: unknown;
 }
 
 export interface ErrorLoggingSeam {
-  seamName: "Error Tracking → Logging System";
-  description: "Captures and manages application errors for debugging";
-
-  input: {
-    error: any;
-    context: string;
-    severity?: ErrorSeverity;
-    additionalDetails?: any;
-  };
-
+  seamName: 'Client Error Logging';
+  input: never;
   output: {
     errorId: string;
     logged: boolean;
     timestamp: Date;
     severity: ErrorSeverity;
-  };
-
-  errors: {
-    LOGGING_FAILED: {
-      code: "LOGGING_FAILED";
-      message: string;
-      originalError: any;
-    };
-  };
-}
-
-// ==================== UNIFIED API RESPONSE ====================
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-  metadata?: {
-    requestId: string;
-    processingTime: number;
-    rateLimitRemaining?: number;
   };
 }

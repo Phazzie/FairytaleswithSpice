@@ -162,15 +162,17 @@ export class ErrorLoggingService {
   private logToConsole(errorLog: ErrorLog): void {
     const prefix = `[${errorLog.severity.toUpperCase()}] ${errorLog.context}:`;
     
+    const details = (errorLog.details ?? {}) as { originalError?: any } & Record<string, unknown>;
+
     switch (errorLog.severity) {
       case 'critical':
       case 'error':
         console.error(prefix, errorLog.message);
-        console.error('Error details:', errorLog.details);
-        
+        console.error('Error details:', details);
+
         // Enhanced HTTP error logging
-        if (errorLog.details?.originalError) {
-          const error = errorLog.details.originalError;
+        if (details.originalError) {
+          const error = details.originalError;
           if (error?.status) {
             console.error(`HTTP Status: ${error.status}`);
           }
