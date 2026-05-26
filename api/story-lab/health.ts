@@ -1,6 +1,6 @@
 // Created: 2025-10-29 08:27 UTC
 
-import type { ApiEnvelope } from './contracts';
+import type { ApiEnvelope } from '../_lib/story-lab/contracts';
 
 type HealthPayload = { status: 'ok'; time: string };
 

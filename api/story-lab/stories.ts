@@ -1,7 +1,7 @@
 // Created: 2025-10-29 08:27 UTC
 
-import type { ApiEnvelope, StoryGenerationSeam, StoryIterationPayload } from './contracts';
-import { buildGenesisResponse } from './mockData';
+import type { ApiEnvelope, StoryGenerationSeam, StoryIterationPayload } from '../_lib/story-lab/contracts';
+import { buildGenesisResponse } from '../_lib/story-lab/mockData';
 
 const VALID_BATCH_SIZES: ReadonlyArray<StoryGenerationSeam['input']['chapterBatchSize']> = [1, 2, 3];
 

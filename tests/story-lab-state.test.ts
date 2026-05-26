@@ -1,5 +1,5 @@
-import { buildContinuationResponse, buildGenesisResponse } from '../api/story-lab/mockData';
-import type { StoryGenerationSeam } from '../api/story-lab/contracts';
+import { buildContinuationResponse, buildGenesisResponse } from '../api/_lib/story-lab/mockData';
+import type { StoryGenerationSeam } from '../api/_lib/story-lab/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {

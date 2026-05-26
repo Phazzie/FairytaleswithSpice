@@ -1,8 +1,8 @@
 // Created: 2025-10-29 08:27 UTC
 
-import type { ApiEnvelope, StoryContinuationSeam, StoryIterationPayload } from '../../contracts';
-import { buildContinuationResponse } from '../../mockData';
-import { getTransientStorySnapshot } from '../../stateStore';
+import type { ApiEnvelope, StoryContinuationSeam, StoryIterationPayload } from '../../../_lib/story-lab/contracts';
+import { buildContinuationResponse } from '../../../_lib/story-lab/mockData';
+import { getTransientStorySnapshot } from '../../../_lib/story-lab/stateStore';
 
 const isValidBatchSize = (size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] =>
   [1, 2, 3].includes(size as StoryContinuationSeam['input']['chapterBatchSize']);

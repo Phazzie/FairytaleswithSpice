@@ -1,4 +1,4 @@
-import type { ApiEnvelope } from './contracts';
+import type { ApiEnvelope } from '../_lib/story-lab/contracts';
 
 interface EvaluationCriteria {
   score: number;

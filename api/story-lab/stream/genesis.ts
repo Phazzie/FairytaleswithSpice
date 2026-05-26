@@ -6,8 +6,8 @@ import type {
   StoryIterationPayload,
   StreamingProgressChunk,
   ThemeSeed
-} from '../contracts';
-import { buildGenesisResponse } from '../mockData';
+} from '../../_lib/story-lab/contracts';
+import { buildGenesisResponse } from '../../_lib/story-lab/mockData';
 
 const ACCESS_CONTROL_METHODS = 'GET, OPTIONS';
 const ACCESS_CONTROL_HEADERS = 'Content-Type';

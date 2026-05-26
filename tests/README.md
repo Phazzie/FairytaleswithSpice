@@ -223,7 +223,6 @@ node tests/audio-service.test.mjs
 ```bash
 # .env file
 XAI_API_KEY=your_grok_api_key
-ELEVENLABS_API_KEY=your_elevenlabs_api_key
 ```
 
 **Note**: Tests work in **mock mode** without API keys!
