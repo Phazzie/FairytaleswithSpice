@@ -26,6 +26,8 @@ export type {
   StoryContinuationSeam,
   StoryPersistenceSeam,
   StreamingProgressChunk,
+  EvaluationCriteria,
+  EvaluationRequest,
   StoryWorkbenchSession,
   ContinuityPanelViewModel,
   ChapterTimelineEntry,
@@ -34,5 +36,5 @@ export type {
   ErrorLoggingSeam
 } from '../../../story-generator/src/app/contracts';
 
-export type ApiResponse<T> = import('../../../story-generator/src/app/contracts').ApiEnvelope<T>;
+export type ApiResponse<T> = import('../../../story-generator/src/app/contracts').ApiResponse<T>;
 export type ApiEnvelope<T> = ApiResponse<T>;

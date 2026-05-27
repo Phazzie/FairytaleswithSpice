@@ -1,4 +1,4 @@
-// Created: 2025-09-19
+// Created: 2025-09-19 00:00 UTC
 // Ported from PR #24 into the canonical Vercel api/_lib tree.
 
 export interface Trope {

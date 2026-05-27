@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 STORY_GENERATOR_DIR="${REPO_ROOT}/story-generator"
+ROOT_TSC="${REPO_ROOT}/node_modules/.bin/tsc"
+STORY_GENERATOR_TSC="${STORY_GENERATOR_DIR}/node_modules/.bin/tsc"
 
 RUN_TESTS=1
 RUN_TYPECHECK=1
@@ -62,7 +64,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 step() {
-  printf '\n==> %s\n' "$1"
+  local message="$1"
+  printf '\n==> %s\n' "${message}"
 }
 
 require_command() {
@@ -96,15 +99,15 @@ step "Checking deployable Vercel function count"
 if [[ ${RUN_TYPECHECK} -eq 1 ]]; then
   step "Type checking Angular app"
   cd "${STORY_GENERATOR_DIR}"
-  npx tsc -p tsconfig.app.json --noEmit
+  "${STORY_GENERATOR_TSC}" -p tsconfig.app.json --noEmit
 
   step "Type checking Angular specs"
-  npx tsc -p tsconfig.spec.json --noEmit
+  "${STORY_GENERATOR_TSC}" -p tsconfig.spec.json --noEmit
   cd "${REPO_ROOT}"
 
   step "Type checking Vercel API functions"
   find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 \
-    | xargs -0 npx tsc --noEmit --target es2020 --lib es2020,dom --module commonjs \
+    | xargs -0 "${ROOT_TSC}" --noEmit --target es2020 --lib es2020,dom --module commonjs \
         --moduleResolution node --esModuleInterop --skipLibCheck --types node
 fi
 

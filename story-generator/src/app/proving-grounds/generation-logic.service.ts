@@ -29,8 +29,9 @@ export interface GenerationLogic {
   providedIn: 'root'
 })
 export class GenerationLogicService {
+  private fallbackRandomState = (Date.now() ^ Math.floor((globalThis.performance?.now() ?? 0) * 1000)) >>> 0;
 
-  private vampireStyles: AuthorStyle[] = [
+  private readonly vampireStyles: AuthorStyle[] = [
     {
       author: 'Jeaniene Frost',
       voiceSample: '"You know what I like about you?" His smile was all sharp edges. "Absolutely nothing. That\'s what makes you interesting."',
@@ -93,7 +94,7 @@ export class GenerationLogicService {
     }
   ];
 
-  private werewolfStyles: AuthorStyle[] = [
+  private readonly werewolfStyles: AuthorStyle[] = [
     {
       author: 'Patricia Briggs',
       voiceSample: '"Pack means family. And family means I\'ll tear apart anyone who threatens what\'s mine."',
@@ -156,7 +157,7 @@ export class GenerationLogicService {
     }
   ];
 
-  private fairyStyles: AuthorStyle[] = [
+  private readonly fairyStyles: AuthorStyle[] = [
     {
       author: 'Sarah J. Maas',
       voiceSample: 'High Fae beauty masked centuries of cunning and cruelty, but his smile promised things far more dangerous than death.',
@@ -219,7 +220,7 @@ export class GenerationLogicService {
     }
   ];
 
-  private beatStructures: BeatStructure[] = [
+  private readonly beatStructures: BeatStructure[] = [
     {
       name: "TEMPTATION CASCADE",
       beats: "Forbidden Glimpse → Growing Obsession → Point of No Return → Consequences Unfold → Deeper Temptation",
@@ -342,7 +343,7 @@ export class GenerationLogicService {
     }
   ];
 
-  private chekovElements: string[] = [
+  private readonly chekovElements: string[] = [
     "Cursed relic with three uses, each more dangerous than the last",
     "Sealed chamber that opens only under blood moon, contains ancestral secrets",
     "Stranger knows protagonist's real name, disappears before questioned",
@@ -372,6 +373,8 @@ export class GenerationLogicService {
       case 'werewolf':
         return this.werewolfStyles;
       case 'fairy':
+      case 'siren':
+      case 'djinn':
         return this.fairyStyles;
       default:
         return [];
@@ -389,19 +392,17 @@ export class GenerationLogicService {
   // Simulate the random selection logic from storyService
   selectRandomAuthors(creature: CreatureArchetype): AuthorStyle[] {
     const styles = this.getAllAuthorStyles(creature);
-    // Fisher-Yates shuffle
-    const shuffled = [...styles].sort(() => Math.random() - 0.5);
-    // Select 2-3 authors
-    return shuffled.slice(0, 3);
+    const count = Math.min(styles.length, 2 + this.randomInt(2));
+    return this.shuffle(styles).slice(0, count);
   }
 
   selectRandomBeatStructure(): BeatStructure {
-    const index = Math.floor(Math.random() * this.beatStructures.length);
+    const index = this.randomInt(this.beatStructures.length);
     return this.beatStructures[index];
   }
 
   selectRandomChekovElements(): ChekovElement[] {
-    const shuffled = [...this.chekovElements].sort(() => Math.random() - 0.5);
+    const shuffled = this.shuffle(this.chekovElements);
     return shuffled.slice(0, 2).map(desc => ({ description: desc }));
   }
 
@@ -414,10 +415,41 @@ export class GenerationLogicService {
   }
 
   summarizeLogic(logic: GenerationLogic): string {
+    const authorSummary = logic.selectedAuthors
+      .map(author => `${author.author} (${author.trait})`)
+      .join('; ') || 'none selected';
+    const chekovSummary = logic.chekovElements
+      .map(element => element.description)
+      .join('; ');
+
     return [
-      `Author styles: ${logic.selectedAuthors.map(author => `${author.author} (${author.trait})`).join('; ') || 'none selected'}.`,
+      `Author styles: ${authorSummary}.`,
       `Beat structure: ${logic.selectedBeatStructure.name} - ${logic.selectedBeatStructure.beats}.`,
-      `Chekov elements: ${logic.chekovElements.map(element => element.description).join('; ')}.`
+      `Chekov elements: ${chekovSummary}.`
     ].join('\n');
+  }
+
+  private shuffle<T>(items: readonly T[]): T[] {
+    const shuffled = [...items];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = this.randomInt(i + 1);
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
+  private randomInt(maxExclusive: number): number {
+    if (maxExclusive <= 1) {
+      return 0;
+    }
+
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+      const values = new Uint32Array(1);
+      globalThis.crypto.getRandomValues(values);
+      return values[0] % maxExclusive;
+    }
+
+    this.fallbackRandomState = (1664525 * this.fallbackRandomState + 1013904223) >>> 0;
+    return this.fallbackRandomState % maxExclusive;
   }
 }

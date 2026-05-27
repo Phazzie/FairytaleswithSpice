@@ -184,6 +184,7 @@
             type="button"
             class="theme-chip"
             [class.theme-chip--active]="isThemeSelected(theme)"
+            [attr.aria-pressed]="isThemeSelected(theme)"
             (click)="toggleTheme(theme)"
             *ngFor="let theme of availableThemes; trackBy: trackTheme"
           >
@@ -209,9 +210,9 @@
           Reset Blueprint
         </button>
       </div>
-      <p class="validation-summary" *ngIf="firstValidationError()" role="status">
+      <output class="validation-summary" *ngIf="firstValidationError()" aria-live="polite">
         {{ firstValidationError() }}
-      </p>
+      </output>
 
       <section class="batch-queue" *ngIf="activeBatchQueue().length">
         <header>

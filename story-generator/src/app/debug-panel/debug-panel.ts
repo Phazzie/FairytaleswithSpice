@@ -7,7 +7,8 @@ import {
   GeneratedChapter,
   StoryIterationPayload,
   StoryStateSnapshot,
-  StorySummary
+  StorySummary,
+  ApiResponse
 } from '../contracts';
 
 interface HealthStatus {
@@ -15,6 +16,11 @@ interface HealthStatus {
   timestamp?: string;
   latencyMs?: number;
   message?: string;
+}
+
+interface HealthPayload {
+  status: string;
+  time: string;
 }
 
 @Component({
@@ -48,13 +54,23 @@ export class DebugPanel {
     this.health.set({ state: 'checking' });
     const started = performance.now();
 
-    this.http.get<{ status: string; time: string }>('/api/story-lab/health').subscribe({
+    this.http.get<ApiResponse<HealthPayload>>('/api/story-lab/health').subscribe({
       next: response => {
+        if (!response.success) {
+          this.health.set({
+            state: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            latencyMs: Math.round(performance.now() - started),
+            message: response.error.message
+          });
+          return;
+        }
+
         this.health.set({
-          state: response.status === 'ok' ? 'healthy' : 'unhealthy',
-          timestamp: response.time,
+          state: response.data.status === 'ok' ? 'healthy' : 'unhealthy',
+          timestamp: response.data.time,
           latencyMs: Math.round(performance.now() - started),
-          message: response.status
+          message: response.data.status
         });
       },
       error: error => {

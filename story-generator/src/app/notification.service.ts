@@ -1,3 +1,5 @@
+// Created: 2025-10-31 06:28 UTC
+
 import { Injectable, signal } from '@angular/core';
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info';
@@ -19,6 +21,7 @@ export type NotificationOptions = Partial<Pick<Notification, 'autoHide' | 'durat
 })
 export class NotificationService {
   private readonly notificationsSignal = signal<Notification[]>([]);
+  private idSequence = 0;
 
   readonly notifications = this.notificationsSignal.asReadonly();
 
@@ -72,6 +75,6 @@ export class NotificationService {
   }
 
   private generateId(): string {
-    return `notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return `notification-${Date.now()}-${this.idSequence++}`;
   }
 }

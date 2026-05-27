@@ -284,17 +284,41 @@ export interface StreamingProgressChunk {
   };
 }
 
-export interface ApiEnvelope<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
+export interface ApiErrorPayload {
+  code: string;
+  message: string;
+  details?: unknown;
 }
 
-export type ApiResponse<T> = ApiEnvelope<T>;
+export type ApiResponse<T> = {
+  success: true;
+  data: T;
+  error?: never;
+} | {
+  success: false;
+  data?: never;
+  error: ApiErrorPayload;
+};
+
+export type ApiEnvelope<T> = ApiResponse<T>;
+
+export interface EvaluationCriteria {
+  score: number;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+  overallFeedback: string;
+}
+
+export interface EvaluationRequest {
+  storyContent: string;
+  configuration: {
+    creature: CreatureArchetype | string;
+    themes: string[];
+    spicyLevel: SpicyLevel | number;
+    wordCount: WordBudget | number;
+  };
+}
 
 // ==================== FRONTEND VIEW MODELS ====================
 

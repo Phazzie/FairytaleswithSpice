@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { StoryService } from '../_lib/services/storyService';
 import { StoryGenerationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
@@ -5,7 +6,7 @@ import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 export default async function handler(req: any, res: any) {
   // Generate or extract request ID for tracking
   const requestId = req.headers['x-request-id'] || 
-                    `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    `req_${randomUUID()}`;
   
   // Set request ID in response header for client tracking
   res.setHeader('X-Request-ID', requestId);

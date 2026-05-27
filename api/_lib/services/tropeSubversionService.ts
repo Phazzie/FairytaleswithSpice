@@ -1,6 +1,7 @@
 // Created: 2025-09-19
 // Ported from PR #24 into the canonical Vercel api/_lib tree.
 
+import { randomInt } from 'node:crypto';
 import { TROPE_DATABASE, Trope, TropeCreatureType } from '../data/tropeDatabase';
 
 export interface TropeSelection {
@@ -20,6 +21,10 @@ export interface TropeSubversionOptions {
 export class TropeSubversionService {
   private readonly minTropes = 2;
   private readonly maxTropes = 3;
+
+  supportsCreature(creature: string): creature is TropeCreatureType {
+    return Object.prototype.hasOwnProperty.call(TROPE_DATABASE, creature);
+  }
 
   selectTropesForSubversion(options: TropeSubversionOptions): TropeSelection {
     const { creature, preferredIntensity, avoidCategories = [], tropeCount } = options;
@@ -138,7 +143,7 @@ export class TropeSubversionService {
   }
 
   private getRandomTropeCount(): number {
-    return Math.floor(Math.random() * (this.maxTropes - this.minTropes + 1)) + this.minTropes;
+    return randomInt(this.minTropes, this.maxTropes + 1);
   }
 
   private createWeightedTropePool(
@@ -176,7 +181,7 @@ export class TropeSubversionService {
     const activePool = poolCopy.length >= count ? poolCopy : fallbackPool;
 
     while (selected.length < count && activePool.length > 0) {
-      const randomIndex = Math.floor(Math.random() * activePool.length);
+      const randomIndex = randomInt(activePool.length);
       const selectedTrope = activePool[randomIndex];
 
       if (!usedIds.has(selectedTrope.id)) {

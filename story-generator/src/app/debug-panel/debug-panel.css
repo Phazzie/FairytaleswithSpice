@@ -3,7 +3,7 @@
   bottom: 2rem;
   right: 2rem;
   z-index: 1000;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: Inter, system-ui, sans-serif;
 }
 
 .debug-panel {
@@ -64,7 +64,7 @@
   border-radius: 12px;
   border: none;
   cursor: pointer;
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.8), rgba(59, 130, 246, 0.6));
+  background: #6d28d9;
   color: #fff;
   font-weight: 600;
 }
@@ -132,5 +132,6 @@
   margin-top: 0.35rem;
   font-size: 0.75rem;
   color: #fecaca;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }

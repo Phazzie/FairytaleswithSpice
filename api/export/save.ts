@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { ExportService } from '../_lib/services/exportService';
 import { SaveExportSeam } from '../_lib/types/contracts';
 import { FILE_SIZE } from '../_lib/constants';
@@ -6,7 +7,7 @@ import { ERROR_CODES } from '../_lib/errorCodes';
 export default async function handler(req: any, res: any) {
   // Generate or extract request ID for tracking
   const requestId = req.headers['x-request-id'] || 
-                    `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    `req_${randomUUID()}`;
   
   // Set request ID in response header for client tracking
   res.setHeader('X-Request-ID', requestId);

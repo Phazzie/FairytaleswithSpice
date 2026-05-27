@@ -8,6 +8,8 @@ This file is read automatically by AI coding agents. It is the repo-level operat
 
 The active direction is documented in `PR70_RECOVERY_PLAN.md`.
 
+The next parallel-agent execution plan is `plan.md`. Use it only after the current review-fix/polish branch is merged; do not use it as permission to keep expanding the recovery baseline PR.
+
 Follow that plan before doing broad PR reconciliation work. The intended recovery path is:
 
 1. Create a new recovery branch from current `main`.

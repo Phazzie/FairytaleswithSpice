@@ -1,4 +1,7 @@
+// Created: 2025-10-31 06:28 UTC
+
 import axios from 'axios';
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   StoryGenerationSeam,
   ChapterContinuationSeam,
@@ -6,12 +9,20 @@ import {
   VALIDATION_RULES,
   SpicyLevel,
   Chapter,
-  ChapterFailure
+  ChapterFailure,
+  CreatureType
 } from '../types/contracts';
 import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
+
+interface GeneratedChaptersResult {
+  chapters: Chapter[];
+  failedChapters: ChapterFailure[];
+  aggregatedHtml: string;
+  aggregatedRawHtml: string;
+}
 
 export class StoryService {
   private readonly grokModel = 'grok-4-1-fast-reasoning';
@@ -49,10 +60,14 @@ export class StoryService {
     );
   }
 
-  private selectTropeSubversions(input: StoryGenerationSeam['input']): TropeSelection {
+  private selectTropeSubversions(input: StoryGenerationSeam['input']): TropeSelection | undefined {
+    if (!this.tropeService.supportsCreature(input.creature)) {
+      return undefined;
+    }
+
     return this.tropeService.selectTropesForSubversion({
       creature: input.creature,
-      tropeCount: Math.random() > 0.3 ? 3 : 2
+      tropeCount: randomInt(2, 4)
     });
   }
 
@@ -99,64 +114,12 @@ export class StoryService {
       }
 
       const tropeSelection = this.selectTropeSubversions(sanitizedInput);
-      const chapters: Chapter[] = [];
-      const failedChapters: ChapterFailure[] = [];
-      let aggregatedHtml = '';
-      let aggregatedRawHtml = '';
-
-      for (let chapterNumber = 1; chapterNumber <= requestedChapterCount; chapterNumber++) {
-        try {
-          const rawChapterContent = await this.callGrokAI(
-            sanitizedInput,
-            context,
-            tropeSelection,
-            requestedChapterCount > 1
-              ? { chapterNumber, totalChapters: requestedChapterCount, existingContent: aggregatedRawHtml }
-              : undefined
-          );
-          const displayContent = this.stripSpeakerTagsForDisplay(rawChapterContent);
-          const { title, body } = this.extractChapterTitleAndBody(displayContent, chapterNumber);
-          const chapterContent = body || displayContent;
-          const cliffhanger = this.detectCliffhanger(chapterContent);
-          const chapter: Chapter = {
-            chapterId: this.generateChapterId(),
-            chapterNumber,
-            title,
-            content: chapterContent,
-            rawContent: rawChapterContent,
-            wordCount: this.countWords(chapterContent),
-            generatedAt: new Date(),
-            hasAudio: false,
-            cliffhangerEnding: cliffhanger,
-            nextChapterHint: this.generateNextChapterHint(chapterContent)
-          };
-
-          chapters.push(chapter);
-
-          const appendableChapter = requestedChapterCount === 1
-            ? displayContent
-            : this.renderChapterForAppend(chapter);
-          aggregatedHtml = this.combineStoryContent(aggregatedHtml, appendableChapter);
-          aggregatedRawHtml = this.combineStoryContent(
-            aggregatedRawHtml,
-            requestedChapterCount === 1
-              ? rawChapterContent
-              : this.renderChapterForAppend({ ...chapter, content: rawChapterContent })
-          );
-
-          logInfo('Chapter generated successfully', context, {
-            chapterNumber,
-            wordCount: chapter.wordCount,
-            cliffhanger
-          });
-        } catch (chapterError: any) {
-          logError('Chapter generation failed', chapterError, context, { chapterNumber });
-          failedChapters.push({
-            chapterNumber,
-            message: chapterError?.message || 'Unknown chapter generation error'
-          });
-        }
-      }
+      const {
+        chapters,
+        failedChapters,
+        aggregatedHtml,
+        aggregatedRawHtml
+      } = await this.generateChaptersForStory(sanitizedInput, requestedChapterCount, tropeSelection, context);
 
       if (chapters.length === 0) {
         return {
@@ -194,7 +157,7 @@ export class StoryService {
         estimatedReadTime: Math.max(1, Math.ceil(totalWordCount / 200)),
         hasCliffhanger: Boolean(lastChapter.cliffhangerEnding),
         generatedAt: new Date(),
-        tropeMetadata: this.tropeService.serializeTropeSelection(tropeSelection),
+        tropeMetadata: tropeSelection ? this.tropeService.serializeTropeSelection(tropeSelection) : undefined,
         chapters,
         totalWordCount,
         nextChapterHint: lastChapter.nextChapterHint,
@@ -252,6 +215,79 @@ export class StoryService {
         }
       };
     }
+  }
+
+  private async generateChaptersForStory(
+    input: StoryGenerationSeam['input'],
+    requestedChapterCount: number,
+    tropeSelection: TropeSelection | undefined,
+    context: LogContext
+  ): Promise<GeneratedChaptersResult> {
+    const chapters: Chapter[] = [];
+    const failedChapters: ChapterFailure[] = [];
+    let aggregatedHtml = '';
+    let aggregatedRawHtml = '';
+
+    for (let chapterNumber = 1; chapterNumber <= requestedChapterCount; chapterNumber++) {
+      try {
+        const rawChapterContent = await this.callGrokAI(
+          input,
+          context,
+          tropeSelection,
+          requestedChapterCount > 1
+            ? { chapterNumber, totalChapters: requestedChapterCount, existingContent: aggregatedRawHtml }
+            : undefined
+        );
+        const displayContent = this.stripSpeakerTagsForDisplay(rawChapterContent);
+        const { title, body } = this.extractChapterTitleAndBody(displayContent, chapterNumber);
+        const chapterContent = body || displayContent;
+        const cliffhanger = this.detectCliffhanger(chapterContent);
+        const chapter: Chapter = {
+          chapterId: this.generateChapterId(),
+          chapterNumber,
+          title,
+          content: chapterContent,
+          rawContent: rawChapterContent,
+          wordCount: this.countWords(chapterContent),
+          generatedAt: new Date(),
+          hasAudio: false,
+          cliffhangerEnding: cliffhanger,
+          nextChapterHint: this.generateNextChapterHint(chapterContent)
+        };
+
+        chapters.push(chapter);
+
+        const appendableChapter = requestedChapterCount === 1
+          ? displayContent
+          : this.renderChapterForAppend(chapter);
+        aggregatedHtml = this.combineStoryContent(aggregatedHtml, appendableChapter);
+        aggregatedRawHtml = this.combineStoryContent(
+          aggregatedRawHtml,
+          requestedChapterCount === 1
+            ? rawChapterContent
+            : this.renderChapterForAppend({ ...chapter, content: rawChapterContent })
+        );
+
+        logInfo('Chapter generated successfully', context, {
+          chapterNumber,
+          wordCount: chapter.wordCount,
+          cliffhanger
+        });
+      } catch (chapterError: any) {
+        logError('Chapter generation failed', chapterError, context, { chapterNumber });
+        failedChapters.push({
+          chapterNumber,
+          message: chapterError?.message || 'Unknown chapter generation error'
+        });
+      }
+    }
+
+    return {
+      chapters,
+      failedChapters,
+      aggregatedHtml,
+      aggregatedRawHtml
+    };
   }
 
   async continueChapter(input: ChapterContinuationSeam['input']): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
@@ -505,51 +541,86 @@ export class StoryService {
       let wordsGenerated = 0;
       const targetWords = input.wordCount;
       const startTime = Date.now();
+      let streamCompleted = false;
 
-      response.data.on('data', (chunk: Buffer) => {
-        const lines = chunk.toString().split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') {
-              onChunk({
-                content: accumulatedContent,
-                isComplete: true,
-                wordsGenerated: wordsGenerated,
-                estimatedWordsRemaining: 0,
-                generationSpeed: wordsGenerated / ((Date.now() - startTime) / 1000)
-              });
-              return;
-            }
+      await new Promise<void>((resolve, reject) => {
+        const finishStream = (remainingWords: number) => {
+          if (streamCompleted) {
+            return;
+          }
 
-            try {
-              const parsed = JSON.parse(data);
-              const delta = parsed.choices?.[0]?.delta?.content;
-              
-              if (delta) {
-                accumulatedContent += delta;
-                wordsGenerated = accumulatedContent.split(/\s+/).length;
-                
-                onChunk({
-                  content: accumulatedContent,
-                  isComplete: false,
-                  wordsGenerated: wordsGenerated,
-                  estimatedWordsRemaining: Math.max(0, targetWords - wordsGenerated),
-                  generationSpeed: wordsGenerated / ((Date.now() - startTime) / 1000)
-                });
+          streamCompleted = true;
+          onChunk({
+            content: accumulatedContent,
+            isComplete: true,
+            wordsGenerated,
+            estimatedWordsRemaining: remainingWords,
+            generationSpeed: this.calculateGenerationSpeed(wordsGenerated, startTime)
+          });
+          resolve();
+        };
+
+        const failStream = (streamError: Error) => {
+          if (streamCompleted) {
+            return;
+          }
+
+          streamCompleted = true;
+          reject(streamError);
+        };
+
+        response.data.on('data', (chunk: Buffer) => {
+          const lines = chunk.toString().split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') {
+                finishStream(0);
+                return;
               }
-            } catch (e) {
-              // Skip malformed chunks
+
+              try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices?.[0]?.delta?.content;
+
+                if (delta) {
+                  accumulatedContent += delta;
+                  wordsGenerated = accumulatedContent.split(/\s+/).length;
+
+                  onChunk({
+                    content: accumulatedContent,
+                    isComplete: false,
+                    wordsGenerated: wordsGenerated,
+                    estimatedWordsRemaining: Math.max(0, targetWords - wordsGenerated),
+                    generationSpeed: this.calculateGenerationSpeed(wordsGenerated, startTime)
+                  });
+                }
+              } catch (e) {
+                // Skip malformed chunks
+              }
             }
           }
-        }
+        });
+        response.data.on('error', (streamError: Error) => {
+          logError('Streaming response failed', streamError, {
+            endpoint: 'generateStoryStreaming',
+            method: 'STREAM'
+          });
+          failStream(streamError);
+        });
+        response.data.on('end', () => finishStream(0));
       });
 
     } catch (error: any) {
       console.error('Streaming generation error:', error);
       throw error;
     }
+  }
+
+  private calculateGenerationSpeed(wordsGenerated: number, startTime: number): number {
+    const elapsedSeconds = Math.max(0.001, (Date.now() - startTime) / 1000);
+    return wordsGenerated / elapsedSeconds;
   }
 
   /**
@@ -579,7 +650,7 @@ export class StoryService {
         isComplete: false,
         wordsGenerated: Math.min(wordsGenerated, totalWords),
         estimatedWordsRemaining: Math.max(0, totalWords - wordsGenerated),
-        generationSpeed: wordsGenerated / ((Date.now() - startTime) / 1000)
+        generationSpeed: this.calculateGenerationSpeed(wordsGenerated, startTime)
       });
       
       // Simulate generation delay
@@ -592,7 +663,7 @@ export class StoryService {
       isComplete: true,
       wordsGenerated: totalWords,
       estimatedWordsRemaining: 0,
-      generationSpeed: totalWords / ((Date.now() - startTime) / 1000)
+      generationSpeed: this.calculateGenerationSpeed(totalWords, startTime)
     });
   }
 
@@ -870,7 +941,7 @@ export class StoryService {
     ];
 
     // Select random structure
-    const selectedStructure = structures[Math.floor(Math.random() * structures.length)];
+    const selectedStructure = structures[randomInt(structures.length)];
     
     return `SELECTED STRUCTURE: ${selectedStructure.name}
 BEATS: ${selectedStructure.beats}
@@ -906,7 +977,7 @@ AVOID: ${selectedStructure.avoid}`;
     // Select 2 random elements for this story using Fisher-Yates for uniform distribution.
     const shuffled = [...elements];
     for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = randomInt(i + 1);
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     const selected = shuffled.slice(0, 2);
@@ -1285,7 +1356,8 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
   }
 
   private validateStoryInput(input: StoryGenerationSeam['input']): any {
-    if (!input.creature || !['vampire', 'werewolf', 'fairy'].includes(input.creature)) {
+    const supportedCreatures: readonly CreatureType[] = ['vampire', 'werewolf', 'fairy', 'siren', 'djinn'];
+    if (!input.creature || !supportedCreatures.includes(input.creature)) {
       return {
         code: 'INVALID_INPUT',
         message: 'Invalid creature type',
@@ -1493,7 +1565,9 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     const names: Record<string, string> = {
       'vampire': 'Vampire',
       'werewolf': 'Werewolf',
-      'fairy': 'Fairy'
+      'fairy': 'Fairy',
+      'siren': 'Siren',
+      'djinn': 'Djinn'
     };
     return names[creature] || 'Creature';
   }
@@ -1714,14 +1788,14 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
   }
 
   private generateStoryId(): string {
-    return `story_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `story_${randomUUID()}`;
   }
 
   private generateChapterId(): string {
-    return `chapter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `chapter_${randomUUID()}`;
   }
 
   private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `req_${randomUUID()}`;
   }
 }

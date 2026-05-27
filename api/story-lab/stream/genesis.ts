@@ -11,6 +11,11 @@ import { buildGenesisResponse } from '../../_lib/story-lab/mockData';
 
 const ACCESS_CONTROL_METHODS = 'GET, OPTIONS';
 const ACCESS_CONTROL_HEADERS = 'Content-Type';
+const VALID_CREATURES: ReadonlyArray<StoryGenerationSeam['input']['creature']> = ['vampire', 'werewolf', 'fairy', 'siren', 'djinn'];
+const VALID_TONES: ReadonlyArray<StoryGenerationSeam['input']['tone']> = ['romance', 'dark_romance', 'mystery', 'adventure', 'comedy', 'tragedy'];
+const VALID_SPICY_LEVELS: ReadonlyArray<StoryGenerationSeam['input']['spicyLevel']> = [1, 2, 3, 4, 5];
+const VALID_WORD_BUDGETS: ReadonlyArray<StoryGenerationSeam['input']['desiredWordBudget']> = [600, 900, 1200, 1500];
+const VALID_BATCH_SIZES: ReadonlyArray<StoryGenerationSeam['input']['chapterBatchSize']> = [1, 2, 3];
 
 type GenesisResponse = ApiEnvelope<StoryIterationPayload>;
 
@@ -59,8 +64,13 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const storyId = genesis.data?.summary.storyId ?? `story-${Date.now()}`;
-  const totalChapters = genesis.data?.batch.chapters.length ?? 0;
+  if (!genesis.success) {
+    res.status(500).json(genesis);
+    return;
+  }
+
+  const storyId = genesis.data.summary.storyId;
+  const totalChapters = genesis.data.batch.chapters.length;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -93,7 +103,7 @@ export default async function handler(req: any, res: any) {
     estimatedMsRemaining: totalChapters * 500
   });
 
-  genesis.data?.batch.chapters.forEach((chapter, index) => {
+  genesis.data.batch.chapters.forEach((chapter, index) => {
     const timeout = setTimeout(() => {
       const progress: StreamingProgressChunk = {
         type: 'chapter_progress',
@@ -159,16 +169,16 @@ function parseBlueprint(req: any): ParsedBlueprint {
     const desiredWordBudget = parseNumber(req.query.desiredWordBudget);
     const spicyLevel = parseNumber(req.query.spicyLevel);
 
-    if (!chapterBatchSize || ![1, 2, 3].includes(chapterBatchSize)) {
+    if (!isOneOf(VALID_BATCH_SIZES, chapterBatchSize)) {
       return { error: 'chapterBatchSize must be 1, 2, or 3.' };
     }
 
-    if (!desiredWordBudget) {
-      return { error: 'desiredWordBudget is required.' };
+    if (!isOneOf(VALID_WORD_BUDGETS, desiredWordBudget)) {
+      return { error: 'desiredWordBudget must be 600, 900, 1200, or 1500.' };
     }
 
-    if (!spicyLevel) {
-      return { error: 'spicyLevel is required.' };
+    if (!isOneOf(VALID_SPICY_LEVELS, spicyLevel)) {
+      return { error: 'spicyLevel must be between 1 and 5.' };
     }
 
     const logline = getString(req.query.logline)?.trim();
@@ -176,16 +186,23 @@ function parseBlueprint(req: any): ParsedBlueprint {
       return { error: 'logline is required.' };
     }
 
-    const creature = getString(req.query.creature) as StoryGenerationSeam['input']['creature'];
-    const tone = (getString(req.query.tone) ?? 'dark_romance') as StoryGenerationSeam['input']['tone'];
+    const rawCreature = getString(req.query.creature);
+    if (!isOneOf(VALID_CREATURES, rawCreature)) {
+      return { error: 'creature must be vampire, werewolf, fairy, siren, or djinn.' };
+    }
+
+    const rawTone = getString(req.query.tone) ?? 'dark_romance';
+    if (!isOneOf(VALID_TONES, rawTone)) {
+      return { error: 'tone is not supported.' };
+    }
 
     const blueprint: StoryGenerationSeam['input'] = {
-      creature,
-      tone,
+      creature: rawCreature,
+      tone: rawTone,
       logline,
-      spicyLevel: spicyLevel as StoryGenerationSeam['input']['spicyLevel'],
-      desiredWordBudget: desiredWordBudget as StoryGenerationSeam['input']['desiredWordBudget'],
-      chapterBatchSize: chapterBatchSize as StoryGenerationSeam['input']['chapterBatchSize'],
+      spicyLevel,
+      desiredWordBudget,
+      chapterBatchSize,
       themes: parseThemes(req.query.themes),
       narrativeDirectives: getString(req.query.narrativeDirectives) ?? undefined
     };
@@ -205,4 +222,8 @@ function isThemeSeed(value: unknown): value is ThemeSeed {
 
   const candidate = value as Record<string, unknown>;
   return typeof candidate.id === 'string' && typeof candidate.label === 'string' && typeof candidate.description === 'string';
+}
+
+function isOneOf<T extends string | number>(allowed: readonly T[], value: unknown): value is T {
+  return allowed.includes(value as T);
 }

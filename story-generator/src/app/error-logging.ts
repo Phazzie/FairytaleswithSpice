@@ -11,6 +11,7 @@ import { ErrorLog, ErrorSeverity, ErrorLoggingSeam } from './contracts';
 export class ErrorLoggingService {
   private errors$ = new BehaviorSubject<ErrorLog[]>([]);
   private readonly maxErrors = 100; // Keep only the latest 100 errors
+  private errorIdSequence = 0;
 
   constructor() {}
 
@@ -117,7 +118,7 @@ export class ErrorLoggingService {
   // ==================== PRIVATE HELPERS ====================
 
   private generateErrorId(): string {
-    return `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `error_${Date.now()}_${this.errorIdSequence++}`;
   }
 
   private extractErrorMessage(error: any): string {
