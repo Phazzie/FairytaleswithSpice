@@ -11,8 +11,7 @@
  * 4. Timeout increases (90s/60s)
  */
 
-import { StoryService } from '../api/lib/services/storyService';
-import { StoryService as StoryGeneratorService } from '../story-generator/src/api/lib/services/storyService';
+import { StoryService } from '../api/_lib/services/storyService';
 
 console.log('\n' + '='.repeat(80));
 console.log('🔧 AI GENERATION FIXES VERIFICATION (OPTIMIZED VERSION)');
@@ -24,7 +23,6 @@ console.log('\n📐 TEST 1: Optimized Token Calculation Method');
 console.log('-'.repeat(80));
 
 const apiService = new StoryService();
-const sgService = new StoryGeneratorService();
 
 // Our OPTIMIZED formula: 1.5 * 1.15 * 1.1 * 1.05 = 1.99x multiplier
 const testCases = [
@@ -36,11 +34,8 @@ const testCases = [
 let tokenTestsPassed = 0;
 for (const testCase of testCases) {
   const apiTokens = (apiService as any).calculateOptimalTokens(testCase.words);
-  const sgTokens = (sgService as any).calculateOptimalTokens(testCase.words);
   
   const apiPass = apiTokens === testCase.expected;
-  const sgPass = sgTokens === testCase.expected;
-  const consistent = apiTokens === sgTokens;
   
   // Compare to PR#65's conservative formula
   const pr65Calculation = Math.ceil(testCase.words * 1.5 * 1.2 * 1.15 * 1.1);
@@ -48,14 +43,12 @@ for (const testCase of testCases) {
   const savingsPercent = (savings / pr65Calculation * 100).toFixed(1);
   
   console.log(`\n${testCase.words} words:`);
-  console.log(`  api/lib:           ${apiTokens} tokens ${apiPass ? '✅' : '❌'}`);
-  console.log(`  story-generator:   ${sgTokens} tokens ${sgPass ? '✅' : '❌'}`);
-  console.log(`  Consistency:       ${consistent ? '✅' : '❌'}`);
+  console.log(`  api/_lib:          ${apiTokens} tokens ${apiPass ? '✅' : '❌'}`);
   console.log(`  Expected:          ${testCase.expected} tokens`);
   console.log(`  PR#65 would use:   ${pr65Calculation} tokens`);
   console.log(`  Our savings:       ${savings} tokens (${savingsPercent}% more efficient)`);
   
-  if (apiPass && sgPass && consistent) {
+  if (apiPass) {
     tokenTestsPassed++;
   }
 }
@@ -71,11 +64,9 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const rootDir = process.cwd();
-const apiServicePath = join(rootDir, 'api/lib/services/storyService.ts');
-const sgServicePath = join(rootDir, 'story-generator/src/api/lib/services/storyService.ts');
+const apiServicePath = join(rootDir, 'api/_lib/services/storyService.ts');
 
 const apiContent = readFileSync(apiServicePath, 'utf-8');
-const sgContent = readFileSync(sgServicePath, 'utf-8');
 
 // Check for the correct model name
 const correctModel = 'grok-4-1-fast-reasoning';
@@ -83,19 +74,12 @@ const incorrectModel = 'grok-beta';
 
 const apiHasCorrectModel = apiContent.includes(`model: '${correctModel}'`);
 const apiHasIncorrectModel = apiContent.includes(`model: '${incorrectModel}'`);
-const sgHasCorrectModel = sgContent.includes(`model: '${correctModel}'`);
-const sgHasIncorrectModel = sgContent.includes(`model: '${incorrectModel}'`);
 
-console.log(`\napi/lib/services/storyService.ts:`);
+console.log(`\napi/_lib/services/storyService.ts:`);
 console.log(`  Uses '${correctModel}':  ${apiHasCorrectModel ? '✅' : '❌'}`);
 console.log(`  Uses '${incorrectModel}':        ${apiHasIncorrectModel ? '❌ (should not)' : '✅'}`);
 
-console.log(`\nstory-generator/src/api/lib/services/storyService.ts:`);
-console.log(`  Uses '${correctModel}':  ${sgHasCorrectModel ? '✅' : '❌'}`);
-console.log(`  Uses '${incorrectModel}':        ${sgHasIncorrectModel ? '❌ (should not)' : '✅'}`);
-
-const modelTestPassed = apiHasCorrectModel && !apiHasIncorrectModel && 
-                        sgHasCorrectModel && !sgHasIncorrectModel;
+const modelTestPassed = apiHasCorrectModel && !apiHasIncorrectModel;
 
 console.log(`\n${modelTestPassed ? '✅' : '❌'} Model name verification: ${modelTestPassed ? 'PASSED' : 'FAILED'}`);
 
@@ -105,22 +89,15 @@ console.log('\n\n⚙️  TEST 3: Verifying API Parameters (Grok-Compatible)');
 console.log('-'.repeat(80));
 
 const apiHasTopP = apiContent.includes('top_p: 0.95');
-const sgHasTopP = sgContent.includes('top_p: 0.95');
 
 // CRITICAL: Should NOT have repetition_penalty (Grok doesn't support it)
 const apiHasRepetitionPenalty = apiContent.includes('repetition_penalty');
-const sgHasRepetitionPenalty = sgContent.includes('repetition_penalty');
 
-console.log(`\napi/lib/services/storyService.ts:`);
+console.log(`\napi/_lib/services/storyService.ts:`);
 console.log(`  Has top_p parameter:              ${apiHasTopP ? '✅' : '❌'}`);
 console.log(`  Has repetition_penalty parameter: ${apiHasRepetitionPenalty ? '❌ (should NOT - unsupported)' : '✅'}`);
 
-console.log(`\nstory-generator/src/api/lib/services/storyService.ts:`);
-console.log(`  Has top_p parameter:              ${sgHasTopP ? '✅' : '❌'}`);
-console.log(`  Has repetition_penalty parameter: ${sgHasRepetitionPenalty ? '❌ (should NOT - unsupported)' : '✅'}`);
-
-const paramsTestPassed = apiHasTopP && !apiHasRepetitionPenalty && 
-                         sgHasTopP && !sgHasRepetitionPenalty;
+const paramsTestPassed = apiHasTopP && !apiHasRepetitionPenalty;
 
 console.log(`\n${paramsTestPassed ? '✅' : '❌'} API parameters verification: ${paramsTestPassed ? 'PASSED' : 'FAILED'}`);
 
@@ -132,7 +109,7 @@ console.log('-'.repeat(80));
 const apiHas90sTimeout = apiContent.includes('timeout: 90000');
 const apiHas60sTimeout = apiContent.includes('timeout: 60000');
 
-console.log(`\napi/lib/services/storyService.ts:`);
+console.log(`\napi/_lib/services/storyService.ts:`);
 console.log(`  Has 90s story generation timeout:  ${apiHas90sTimeout ? '✅' : '❌'}`);
 console.log(`  Has 60s continuation timeout:      ${apiHas60sTimeout ? '✅' : '❌'}`);
 

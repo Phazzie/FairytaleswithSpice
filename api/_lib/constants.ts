@@ -11,24 +11,18 @@ export const TOKEN_CALCULATION = {
 export const FILE_SIZE = {
   BYTES_PER_KB: 1024,
   BYTES_PER_MB: 1024 * 1024,
-  MAX_AUDIO_SIZE_MB: 10,        // 10MB maximum audio file size
   MAX_CONTENT_LENGTH_KB: 500,    // 500KB maximum content length (~75,000 words)
   DATA_URL_WARNING_THRESHOLD_MB: 5  // Warn when data URL exceeds 5MB
 } as const;
 
 export const TIMEOUTS = {
   GROK_API_MS: 45000,           // 45 seconds for story generation
-  GROK_CONTINUATION_MS: 30000,  // 30 seconds for chapter continuation
-  ELEVENLABS_API_MS: 60000      // 60 seconds for audio generation
+  GROK_CONTINUATION_MS: 30000   // 30 seconds for chapter continuation
 } as const;
 
 export const RATE_LIMITS = {
   STORY_GENERATION: {
     maxRequests: 10,
-    windowMs: 15 * 60 * 1000    // 15 minutes
-  },
-  AUDIO_CONVERSION: {
-    maxRequests: 5,
     windowMs: 15 * 60 * 1000    // 15 minutes
   },
   EXPORT: {

@@ -1,0 +1,918 @@
+Created: 2026-05-26 00:12 EDT
+
+# PR #70 Recovery Changelog
+
+This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
+
+## 2026-05-26 00:12 EDT - Recovery Tracking Started
+
+Actions:
+
+- Rewrote `AGENTS.md` as the first execution step after the user asked for it.
+- Corrected the agent guidance from DigitalOcean-only to Vercel-first.
+- Added an explicit pointer from `AGENTS.md` to `PR70_RECOVERY_PLAN.md`.
+- Added instructions for keeping this changelog, `LESSONS_LEARNED.md`, `PR70_RECOVERY_LEDGER.md`, and `NOT_TAKEN_FEATURE_LEDGER.md` current.
+
+Observations:
+
+- The repo still contains conflicting architecture signals:
+  - `vercel.json` and `api/_lib/*` support Vercel.
+  - `.do/app.yaml`, `.do/app.yaml.buildpack`, and several docs still point at DigitalOcean.
+  - Older PRs use `api/lib/*` or `story-generator/src/api/lib/*`.
+- Audio is still present in some current files and many stale PRs, but the current recovery scope keeps audio deferred.
+
+Self-review:
+
+- The first requested action was completed before branch or merge work.
+- The next required safety step is to preserve local state before creating the recovery branch.
+- Current dirty state still includes lockfile changes from earlier install work and untracked recovery docs.
+
+## 2026-05-26 00:12 EDT - Recovery Branch Created
+
+Actions:
+
+- Refreshed `origin` with `git fetch origin`.
+- Tried to create the planned branch name `recovery/pr70-story-lab-vercel`; Git could not create the nested ref path in this checkout.
+- Created the flat branch `recovery-pr70-story-lab-vercel` instead.
+
+Decision:
+
+- Use `recovery-pr70-story-lab-vercel` as the actual recovery branch name.
+- Keep the plan's intent unchanged: this is the branch where PR #70 becomes the baseline and other open PRs are merged, ported, mined, or closed.
+
+Open issue:
+
+- `git stash push` for the lockfile noise returned exit code 1 without output. The lockfile changes remain uncommitted and visible.
+
+## 2026-05-26 00:12 EDT - PR #70 Merged As Baseline
+
+Actions:
+
+- Merged local branch `pr-70` into `recovery-pr70-story-lab-vercel` with a real merge commit.
+- Merge commit: `118265c Merge PR #70 story lab baseline`.
+- Updated `PR70_RECOVERY_LEDGER.md` with the #70 disposition.
+
+Result:
+
+- Merge completed cleanly with no textual conflicts.
+- PR #70 added the `api/story-lab/*` route family and rewrote the Angular story-lab surface.
+- Dirty lockfile changes are still present and unrelated to the merge.
+
+Self-review:
+
+- #70 is now the branch baseline, but not yet stabilized.
+- Before other PRs are merged or ported, validate build/tests and inspect whether #70's mock story-lab behavior conflicts with production story generation.
+
+## 2026-05-26 00:49 EDT - PR #70 Stabilization Build Fixes
+
+Problem:
+
+- Initial `npm run build` under local Node v23.8.0 failed with `Abort trap: 6` and no build output.
+- Verbose Angular build exposed real #70 source issues before the local Node abort:
+  - Angular templates used object spread expressions in event bindings, which Angular template parsing does not support.
+  - Angular template used an inline arrow function in a class binding.
+  - `SecurityContext` was imported from `@angular/platform-browser` instead of `@angular/core`.
+  - `DebugPanel` template called getter properties like signals.
+  - `story-generator/src/server.ts` imported removed `api/lib/*` paths instead of current `api/_lib/*` paths.
+
+Fixes:
+
+- Added `updateBlueprint()` and `isThemeSelected()` methods in `story-generator/src/app/app.ts`.
+- Replaced unsupported template expressions in `story-generator/src/app/app.html`.
+- Fixed `SecurityContext` imports in `app.ts` and `streaming-story.component.ts`.
+- Fixed `DebugPanel` template/getter usage and added a `lastChapters` getter.
+- Updated SSR server imports to `api/_lib/*`.
+- Typed the SSR streaming callback to match the actual `StoryService.generateStoryStreaming()` chunk shape.
+
+Validation:
+
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+- `npm run build` under local Node v23.8.0 still failed with `Abort trap: 6`.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- The source-level #70 build blockers are fixed.
+- Local Node v23 is not a valid Angular verification runtime; use Node 20 for build validation.
+- The branch still needs contract/path review before later story-generation PRs are ported.
+
+## 2026-05-26 00:50 EDT - PR #86 Merged
+
+Actions:
+
+- Fetched PR #86 as `pr-86`.
+- Merged it into `recovery-pr70-story-lab-vercel`.
+- Added `design.md`.
+- Normalized `letterSpacing` values in `design.md` to `0`.
+
+Decision:
+
+- Keep the design system as useful UI guidance.
+- Do not preserve nonzero letter-spacing tokens because recovery frontend rules require letter spacing to remain 0.
+
+Validation:
+
+- No code validation rerun; #86 is docs-only.
+
+Self-review:
+
+- #86 is safe to mark merged in the ledger.
+- The design doc should guide later UI ports, especially #40, #75, and #26, but should not override layout/accessibility constraints.
+
+## 2026-05-26 00:51 EDT - PR #85 Merged
+
+Actions:
+
+- Fetched PR #85 as `pr-85`.
+- Verified the PR's unique commit only updates `story-generator/package-lock.json`.
+- Merged it into `recovery-pr70-story-lab-vercel`.
+
+Accepted material:
+
+- `path-to-regexp` updated to 8.4.0 in `story-generator/package-lock.json`.
+
+Validation:
+
+- Confirmed `story-generator/package-lock.json` now records `node_modules/path-to-regexp` version 8.4.0.
+- Did not rerun build because this is lockfile-only and installed modules are not guaranteed to reflect lockfile-only dependency changes until install.
+
+Self-review:
+
+- #85 is safe to mark merged.
+- #84 should remain deferred until the baseline dependency state is clean because it has a larger dependency blast radius.
+
+## 2026-05-26 00:52 EDT - PR #50 Mined And Superseded
+
+Actions:
+
+- Inspected PR #50 commits and `PROGRESS_METER_FIX.md`.
+- Searched the current #70 baseline for the affected old symbols: `progressTimeoutId`, `simulateGenerationProgress`, `generationProgress`, `generationStatus`, and `ngSkipHydration`.
+- Updated `PR70_RECOVERY_LEDGER.md` and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+Decision:
+
+- Do not merge or cherry-pick #50 code into the #70 baseline.
+- Preserve the timeout-cleanup and hydration lessons for future batch/progress work.
+
+Reason:
+
+- The old progress meter implementation no longer exists after #70.
+- Direct merge would reintroduce stale app shell and audio-era UI code.
+
+Self-review:
+
+- This is the first PR where the planned "port/cherry-pick" action changed after baseline inspection.
+- The plan's running-ledger approach caught the reason: useful lesson, stale implementation.
+
+## 2026-05-26 00:53 EDT - PR #64 Fisher-Yates Fix Ported
+
+Actions:
+
+- Inspected PR #64 and confirmed direct merge would be too stale and broad.
+- Ported the Fisher-Yates Chekhov element selection fix manually.
+- Updated both `api/_lib/services/storyService.ts` and `story-generator/src/api/lib/services/storyService.ts`.
+
+Reason:
+
+- `api/_lib/services/storyService.ts` is the Vercel recovery target.
+- `story-generator/src/api/lib/services/storyService.ts` is still included by `story-generator/tsconfig.app.json`, so it should not keep known-bad prompt logic while duplicate cleanup remains unresolved.
+
+Validation:
+
+- `rg` confirmed no remaining `sort(() => 0.5 - Math.random())` in the two story service copies.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+
+Self-review:
+
+- Porting only the randomization fix avoided #64's path regression from `_lib` back to `lib`.
+- Duplicate service cleanup remains a real issue for the #67 phase.
+
+## 2026-05-26 00:54 EDT - Self-Review Checkpoint 1
+
+Scope reviewed:
+
+- #70 baseline merge and stabilization.
+- #86 design doc merge.
+- #85 dependency lockfile merge.
+- #50 progress/hydration lesson mining.
+- #64 Fisher-Yates randomization port.
+
+Findings:
+
+- Good: The recovery branch is now based on #70 and builds successfully under Node 20.
+- Good: The running ledger changed the #50 decision from "port code" to "mine lesson" after inspection, which avoided stale UI regression.
+- Good: #64 was narrowed to the one story-generation correctness fix instead of merging broad stale branch content.
+- Problem: Current local Node v23.8.0 is not suitable for Angular build validation. Continue using Node 20 for build checks.
+- Problem: `story-generator/src/api/lib/services/storyService.ts` remains as a duplicate compiled story service. It should be resolved during #67 cleanup, but until then it should not retain known bugs.
+- Problem: Lockfile noise in root `package-lock.json` and `node_modules/.package-lock.json` remains uncommitted. Avoid dependency-heavy PRs until that is resolved.
+- Problem: An unrelated untracked `pocketfm-contest-forge/` directory is present. Ignore it unless the user connects it to this work.
+
+Immediate corrections made:
+
+- None needed beyond already-committed #70/#64 fixes.
+
+Next action:
+
+- Inspect #65 for model/token/quality fixes and port only the parts not already present in the #70 recovery branch.
+
+## 2026-05-26 00:55 EDT - PR #65 AI Fixes Verified And Ported
+
+Actions:
+
+- Inspected #65's model/token/API-parameter fixes against the #70 recovery branch.
+- Confirmed the canonical Vercel service already had the intended model, dynamic token calculation, `top_p: 0.95`, and longer timeouts.
+- Updated `tests/verify-ai-fixes.test.ts` from stale `api/lib/*` imports to current `api/_lib/*`.
+- Aligned the duplicate compiled `story-generator/src/api/lib/services/storyService.ts` timeouts to 90 seconds for generation and 60 seconds for continuation.
+
+Decision:
+
+- Do not merge #65 directly.
+- Treat #65 as ported because the useful current material is verifier/path correction plus duplicate-service timeout alignment.
+
+Validation:
+
+- `npx tsx tests/verify-ai-fixes.test.ts` passed under escalated execution. Missing `XAI_API_KEY` warnings were expected and did not indicate live API calls.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+
+Self-review:
+
+- The canonical service is in better shape than the stale branch suggested, but the duplicate compiled story service is still a risk.
+- #67 should either remove the duplicate service path or make it a thin wrapper around the canonical `api/_lib` implementation.
+
+## 2026-05-26 01:50 EDT - PR #67 Audit Refactor Ported
+
+Actions:
+
+- Inspected #67's audit PR and confirmed it is conflicting against the #70/Vercel recovery branch.
+- Ported the useful refactor into the Vercel `api/_lib` path:
+  - Added `api/_lib/config/authorStyles.ts`.
+  - Removed inline author-style tables from `api/_lib/services/storyService.ts`.
+  - Deleted stale duplicate compiled files under `story-generator/src/api/lib/*`.
+  - Updated tests away from stale `api/lib` and duplicate `story-generator/src/api/lib` imports.
+- Fixed an uncovered test-harness bug: `tests/story-service-improved.test.ts` counted `r.failed`, which does not exist, so printed failures still exited 0.
+- Fixed the actual story-generation validation bug exposed by that test: invalid spicy levels were accepted and generated mock stories.
+
+Decision:
+
+- Do not merge #67 directly.
+- Do not take #67's DigitalOcean deployment readiness doc.
+- Do not add #67's root audit report as another active status doc; mine its refactor recommendations into the recovery ledgers instead.
+
+Validation:
+
+- Non-doc code scan found no remaining `api/lib`, `story-generator/src/api`, or `src/api/lib` references in `tests`, `api`, or `story-generator`.
+- `npx tsx tests/verify-ai-fixes.test.ts` passed.
+- `npm test` passed with 12/12 tests.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- #67 justified its place in the merge order: duplicate service drift had already made #64/#65 riskier.
+- The first test run found a false-green test harness and a validation bug; both were fixed immediately.
+- The remaining risk is old documentation still mentioning `api/lib` paths. That is historical doc drift, not active code drift, and should be cleaned in a docs pass rather than mixed into story-generation feature ports.
+
+## 2026-05-26 02:00 EDT - PR #24 Trope Subversion Ported
+
+Actions:
+
+- Inspected #24's old backend implementation of the invisible trope subversion engine.
+- Recreated the useful material in the recovery architecture:
+  - `api/_lib/data/tropeDatabase.ts`
+  - `api/_lib/services/tropeSubversionService.ts`
+  - `tropeMetadata` contract fields for generation and continuation.
+  - Story service prompt enhancement for normal and streaming generation.
+  - `tests/trope-subversion.test.ts`, now included in `npm test`.
+- Adapted the trope wording so it supports dark-romance uniqueness without drifting into parody unless the user explicitly asks for comedy.
+
+Decision:
+
+- Do not merge #24 directly.
+- Do not take `backend/src`, `backend/dist`, demo scripts, or stale story service changes.
+- Keep the feature invisible in the user flow for now.
+
+Validation:
+
+- `npm test` passed: story suite 12/12 plus trope subversion test.
+- `npx tsx tests/verify-ai-fixes.test.ts` passed.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed after adding one explicit type annotation in `tropeSubversionService`.
+- `npx tsx tests/trope-subversion.test.ts` passed after the type fix.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- This port improves story uniqueness but introduces metadata that the current #70 UI does not yet preserve through continuation. That is acceptable for generation now and should be reconciled with #72/#73 story state work.
+- The old branch's story value was high, but its architecture was not reusable.
+
+## 2026-05-26 02:11 EDT - PR #31 Cliffhanger Slice Ported
+
+Actions:
+
+- Inspected #31's story-arc, chapter continuation, and audiobook compilation branch.
+- Ported the low-risk story-generation slice:
+  - Added `api/_lib/services/cliffhangerService.ts`.
+  - Added canonical cliffhanger types and analysis shape.
+  - Attached `cliffhangerAnalysis` to continuation outputs.
+  - Added cliffhanger variety targets to the continuation prompt.
+  - Added `tests/cliffhanger-service.test.ts` to the root test suite.
+
+Decision:
+
+- Do not merge #31 directly.
+- Do not take audiobook compilation or UI.
+- Do not take the in-memory story-arc CRUD service as active Vercel code.
+- Mine story-arc concepts for #72/#73 instead.
+
+Validation:
+
+- `npm test` passed: story suite 12/12 plus trope and cliffhanger service tests.
+- `npx tsx tests/verify-ai-fixes.test.ts` passed.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- The direct story-generation value is the cliffhanger analysis and prompt guidance.
+- The story-arc model should not be lost, but its persistence story belongs with #73 and the multi-chapter workflow belongs with #72/#75.
+
+## 2026-05-26 02:12 EDT - Self-Review Checkpoint 2
+
+Scope reviewed:
+
+- #67 audit/duplicate cleanup.
+- #24 trope subversion engine.
+- #31 cliffhanger/continuation slice.
+
+Findings:
+
+- Good: Active story-generation services now live in `api/_lib`; the compiled duplicate `story-generator/src/api/lib` service copy is gone.
+- Good: New prompt-affecting systems have focused tests and are included in `npm test`.
+- Good: Old branches contributed ideas without reintroducing audio or DigitalOcean infrastructure.
+- Problem: `tropeMetadata` is generated and can be accepted by continuation, but the #70 UI does not yet thread it through. This should be reconciled during #72/#73 work.
+- Problem: The root docs still contain many historical `api/lib` and DigitalOcean references. This is documentation drift, not active code drift, but it must be addressed before final report/PR.
+- Problem: Local dirty root lockfile and `node_modules/.package-lock.json` noise still exists and should keep #84 deferred.
+
+Immediate corrections made:
+
+- No code corrections needed at this checkpoint.
+
+Next action:
+
+- Move into Phase 4 with #72 multi-chapter workflow as the primary source, then compare #75/#73/#71 around it.
+
+## 2026-05-26 06:24 EDT - PR #72 Batch Workflow Ported
+
+Actions:
+
+- Inspected PR #72's old backend, frontend, and test changes for multi-chapter story workflows.
+- Ported the durable backend idea into the Vercel canonical service instead of merging the old branch:
+  - Optional `requestedChapterCount` on generation, continuation, and streaming inputs.
+  - Optional `chapters`, `totalWordCount`, `nextChapterHint`, `appendedToStory`, and `failedChapters` response metadata.
+  - Backward-compatible single-story and single-continuation fields preserved.
+  - Chapter-scoped Grok prompts and mock-mode batch generation.
+  - Batch generation and batch continuation tests.
+- Updated the PR ledger and not-taken ledger for #72.
+
+Decision:
+
+- Do not merge #72 directly.
+- Do not take its old Angular app shell, old `/api/story/*` route rewrites as-is, or old `api/lib/*` path layout.
+- Keep #70 story-lab contracts as the UI direction and use this port as the backend batch primitive for later story-lab production integration.
+
+Validation:
+
+- `npx tsx tests/story-service-improved.test.ts` passed with 14/14 tests.
+- `npx tsx tests/verify-ai-fixes.test.ts` passed.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+- `npm test` passed.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. Angular emitted only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- Good: The useful #72 feature landed without replacing legacy response fields or reviving old paths.
+- Good: Batch behavior has executable mock-mode coverage, so it does not require a live `XAI_API_KEY`.
+- Problem: There are now two story contract layers: legacy canonical `api/_lib/types/contracts.ts` and #70 story-lab contracts in `story-generator/src/app/contracts.ts`. This is acceptable during recovery, but #75/#73 need a deliberate adapter boundary before production story-lab uses real generation.
+- Problem: The batch port currently treats `wordCount` as a total batch budget when live generation is split across chapters. The UI/product decision may ultimately want per-chapter budgeting.
+
+Running merge-order snapshot after #72:
+
+1. #75 - next, because it likely contains the UI/continuity affordances that should consume #72's backend primitive.
+2. #73 - next state model candidate, but avoid adopting DigitalOcean Postgres assumptions.
+3. #71 - compare after #72/#75 to identify any earlier batch-generation material not already superseded.
+4. #74 - mine prompt proving-ground ideas after the core workflow/state pieces are settled.
+5. #41/#39 - then move into Vercel CI/test cleanup.
+
+## 2026-05-26 06:38 EDT - PR #75 Batch UI Ported
+
+Actions:
+
+- Inspected PR #75's branch and treated it as stale against the PR #70 story-lab baseline.
+- Ported the useful workflow layer into the current Angular app:
+  - UI-local batch queue state for genesis and continuation requests.
+  - Suggested next-move prompt buttons.
+  - Grouped/collapsible chapter timeline behavior for longer stories.
+  - Vercel-compatible persistence seam wording.
+- Updated `PR70_RECOVERY_LEDGER.md` and `NOT_TAKEN_FEATURE_LEDGER.md`.
+
+Decision:
+
+- Do not merge #75 directly.
+- Do not take the old `/api/story/batch` route/service seam because #70 already owns `beginStory()` and `continueStory()`.
+
+Validation:
+
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2 and only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- This was the right place to port UI affordances rather than backend behavior; #72 already established the backend primitive.
+- The queue is intentionally local state for now. Durable or asynchronous queue semantics should wait for #73 persistence decisions.
+- Visual additions were kept in the #70 story-lab shell instead of importing #75's broad CSS rewrite.
+
+## 2026-05-26 06:47 EDT - PR #73 Story-State Delta Ported
+
+Actions:
+
+- Inspected PR #73's story-state contracts, `StoryStateService`, Postgres client/schema, story service changes, and tests.
+- Ported the useful state concepts into the current #70 story-lab seam:
+  - `StoryStateDelta` and `StoryPersistenceReceipt` contracts.
+  - Optional `stateDelta` and `persistence` fields on `StoryIterationPayload`.
+  - Transient `api/story-lab/stateStore.ts` boundary with an explicit non-durable warning.
+  - Mock chapter deltas that introduce characters, escalate threads, foreshadow artifacts, add beats, and surface continuity warnings.
+  - Continuation state application and same-process transient snapshot fallback.
+  - `tests/story-lab-state.test.ts`, included in `npm test`.
+
+Decision:
+
+- Do not merge #73 directly.
+- Do not take DigitalOcean Postgres provisioning, the `pg` dependency, or old `api/lib/*` implementation paths.
+- Treat transient memory only as story-lab continuity scaffolding, not production persistence.
+
+Validation:
+
+- `npx tsx tests/story-lab-state.test.ts` passed.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+- `git diff --check` passed.
+- `npm test` passed.
+- `npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2 and only the stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed.
+
+Self-review:
+
+- Good: #73's story-generation value is now represented in the #70 story-lab contract rather than old legacy contracts.
+- Good: The port makes non-durable state explicit instead of accidentally promising persistence.
+- Problem: Production story-lab generation still needs an adapter from the canonical `api/_lib` story service into `StoryIterationPayload`.
+
+Running merge-order snapshot after #73:
+
+1. #71 - compare against #72/#75/#73 and close if fully superseded.
+2. #74 - prompt proving grounds now that batch/state surfaces are clearer.
+3. #41/#39 - Vercel CI and test pipeline.
+4. #26 - frontend validation/accessibility services after core story-lab surfaces stabilize.
+
+## 2026-05-26 06:56 EDT - PR #71 Batch Metadata Compared And Ported
+
+Actions:
+
+- Inspected PR #71's early backend/frontend batch-generation pass.
+- Compared it against already-ported #72 backend batching, #75 story-lab UI affordances, and #73 state-delta work.
+- Ported the one unique low-risk improvement:
+  - `chaptersRequested`, `chaptersGenerated`, and `partialFailures` on `ApiResponse.metadata`.
+  - Metadata population in canonical generation and continuation responses.
+  - Metadata assertions in `tests/story-service-improved.test.ts`.
+
+Decision:
+
+- Do not merge #71 directly.
+- Do not take old app-shell changes, stale `api/lib/*` paths, old `/api/story/*` frontend route assumptions, or old test-data factory.
+- Do not take service-level clamping for invalid requested chapter counts; keep explicit validation.
+
+Validation:
+
+- `npx tsx tests/story-service-improved.test.ts` passed with 14/14 tests.
+- `cd story-generator && npx tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && npx tsc -p tsconfig.spec.json --noEmit` passed.
+- `git diff --check` passed.
+- `npm test` passed all configured suites.
+- `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with the existing stale `baseline-browser-mapping` warning.
+- `npm run build:verify` passed from the repo root.
+
+Self-review:
+
+- Good: #71 was compared after the newer batch/state ports, which made the remaining unique material easy to isolate.
+- Good: Metadata improves observability without changing response data shape.
+- Problem found and fixed: I initially ran `build:verify` from `story-generator`, where the script does not exist, then reran it from the repo root.
+
+Running merge-order snapshot after #71:
+
+1. #74 - prompt proving grounds, now that batch/state primitives are settled.
+2. #41/#39 - Vercel CI/test workflow.
+3. #26 - UI validation/accessibility services.
+4. #84 - dependency group remains deferred until lockfile noise is resolved.
+
+## 2026-05-26 12:05 EDT - Recovery Preflight Tooling Added
+
+Actions:
+
+- Attempted Homebrew installation of `jq` so GitHub PR JSON output can be summarized without noisy raw payloads.
+- Added `scripts/recovery/preflight.sh`.
+- The script codifies the repeated recovery validation sequence:
+  - required tool checks,
+  - `git diff --check`,
+  - Angular app/spec type checks,
+  - root `npm test`,
+  - Angular production build through Node 20,
+  - root `npm run build:verify`.
+- Added options for `--quick`, `--skip-tests`, `--skip-build`, and `--skip-status`.
+
+Validation:
+
+- `bash -n scripts/recovery/preflight.sh` passed.
+- `scripts/recovery/preflight.sh --help` printed the expected usage.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+
+Self-review:
+
+- Good: Repeated validation is now executable instead of depending on memory after each PR port.
+- Problem: `brew install jq` reached the `m4` dependency build on macOS 12 and stalled long enough to block recovery work, so I stopped it with `SIGTERM`.
+- Follow-up: Retry `jq` later with a less blocking install path, or continue using `gh --json` plus Node/TypeScript parsing when needed.
+
+## 2026-05-26 12:28 EDT - PR #74 Proving Grounds Ported
+
+Actions:
+
+- Ported PR #74 selectively instead of merging the old app shell.
+- Added Angular routing around the #70 Story Lab baseline:
+  - `AppRoot` wrapper,
+  - `app.routes.ts`,
+  - `provideRouter(routes)`,
+  - `/proving-grounds` lazy route,
+  - Story Lab header link.
+- Adapted the proving-grounds page to current Story Lab contracts:
+  - uses `StoryService.beginStory()` instead of stale `generateStory()`,
+  - passes prompt experiments as `narrativeDirectives`,
+  - stores local test history safely only in the browser,
+  - keeps comparison mode and JSON export.
+- Added server-side `api/story-lab/evaluate.ts` for Grok evaluation with `XAI_API_KEY`, falling back to mock scoring if unavailable.
+- Updated root `build:verify` to accept Angular SSR's `browser/index.csr.html` output.
+
+Decision:
+
+- Do not merge #74 directly.
+- Do not take browser-local xAI key storage.
+- Do not take old pre-#70 app-shell changes as-is.
+- Keep the proving grounds as an internal prompt-testing tool, not yet as production prompt-control infrastructure.
+
+Validation:
+
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `npm test` passed all configured root suites.
+- `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with the existing stale `baseline-browser-mapping` warning and a new proving-grounds CSS budget warning.
+- `npm run build:verify` passed after widening the expected browser index filename.
+
+Self-review:
+
+- Good: The feature now follows the #70 Story Lab seam and is lazy-loaded instead of replacing the app shell.
+- Good: Provider credentials stay server-side for Vercel.
+- Problem found and fixed: The verifier assumed prerender output `index.html`, but server-rendered routed Angular builds produce `index.csr.html`.
+- Watch item: Prompt templates are visible and passed as directives, but production story generation still needs a real adapter before proving-ground template choices can be treated as authoritative generation controls.
+
+Running merge-order snapshot after #74:
+
+1. #26 - validation, notifications, accessibility services.
+2. #41/#39 - lean Vercel CI/test workflow material.
+3. #84 - dependency update once lockfile state is intentional.
+4. Docs/research/audio mining after merge/adapt candidates are out of the way.
+
+## 2026-05-26 12:50 EDT - PR #74 SSR Route Verification Fixed
+
+Actions:
+
+- Investigated a route verification problem where `/proving-grounds` returned Story Lab body content under the built SSR server.
+- Fixed `story-generator/src/main.server.ts` so server bootstrap uses `AppRoot`, matching browser bootstrap and allowing the router to select `/` versus `/proving-grounds`.
+- Stopped the local SSR server after verification.
+
+Validation:
+
+- `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed.
+- `PORT=4300 npm run start:prod` served the production SSR bundle on `http://localhost:4300`.
+- `curl http://localhost:4300/` found `Story Blueprint` and the `Proving Grounds` link.
+- `curl http://localhost:4300/proving-grounds` found `proving-grounds-container` and `Test Configuration`.
+- `npm run build:verify` passed from the repo root.
+- `git diff --check` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+
+Self-review:
+
+- Good: The feature is now verified as a real route, not only a successful TypeScript/build port.
+- Problem found and fixed: SSR and browser bootstrap can drift after introducing a router shell; both must point at the same root component.
+- Watch item: The proving-grounds component CSS still exceeds the Angular component budget by 1.15 kB.
+
+Running merge-order snapshot after #74 verification:
+
+1. #26 - validation, notifications, accessibility services.
+2. #41/#39 - lean Vercel CI/test workflow material.
+3. #84 - dependency update once lockfile state is intentional.
+4. Docs/research/audio mining after merge/adapt candidates are out of the way.
+
+## 2026-05-26 13:15 EDT - PR #26 Validation and Notifications Ported
+
+Actions:
+
+- Ported PR #26 selectively instead of merging the old pre-#70 app shell.
+- Added a signal-backed `NotificationService` and accessible `NotificationsComponent`.
+- Recreated `FormValidationService` around current Story Lab blueprint contracts:
+  - creature,
+  - tone,
+  - themes,
+  - logline,
+  - spicy level,
+  - word budget,
+  - chapter batch size,
+  - world details,
+  - narrative directives.
+- Wired Story Lab validation into the current #70 app:
+  - inline field errors,
+  - `aria-invalid`,
+  - `aria-describedby`,
+  - disabled invalid generate action,
+  - invalid-blueprint notification,
+  - success/error notifications for generation and continuation.
+- Added focused specs for notification and validation services.
+
+Decision:
+
+- Do not merge #26 directly.
+- Do not take the old app form layout, stale story service methods, save/download controls, or audio conversion progress UI.
+- Keep the retry-button idea as future mining material for explicit batch retry semantics.
+
+Validation:
+
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `npm test` passed all configured root suites.
+- `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with the existing stale `baseline-browser-mapping` warning and known #74 proving-grounds CSS budget warning.
+- `PORT=4300 npm run start:prod` plus `curl` confirmed `/` contains Story Lab content and the new validation summary, and `/proving-grounds` still resolves correctly.
+- `npm run build:verify` passed.
+- Angular Karma browser tests did not complete:
+  - `cd story-generator && npm test -- --watch=false --browsers=ChromeHeadless` built the spec bundle but ChromeHeadless never captured.
+  - Repeating with `CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` and Node 20 produced the same ChromeHeadless capture timeout.
+
+Self-review:
+
+- Good: #26's useful capability is now integrated into the current Story Lab rather than copied over as a stale UI branch.
+- Good: Validation follows the active seam and has direct specs.
+- Problem documented: local ChromeHeadless capture is not reliable in this environment, so Angular browser-spec execution remains unverified even though spec typecheck and bundle build passed.
+- Watch item: Retry UI should wait until batch retry semantics are designed instead of merely replaying the last action.
+
+Running merge-order snapshot after #26:
+
+1. #41/#39 - lean Vercel CI/test workflow material.
+2. #84 - dependency update once lockfile state is intentional.
+3. Docs/research/audio mining after merge/adapt candidates are out of the way.
+
+## 2026-05-26 13:25 EDT - PR #41/#39 Lean Recovery CI Ported
+
+Actions:
+
+- Refreshed local PR heads for #41 and #39 with `git fetch origin pull/41/head:pr-41 pull/39/head:pr-39`.
+- Inspected the CI workflow suites from both branches.
+- Added one lean workflow: `.github/workflows/recovery-ci.yml`.
+- The workflow:
+  - uses Node 20,
+  - installs root and Angular dependencies,
+  - runs `scripts/recovery/preflight.sh --skip-status`,
+  - checks that `vercel.json` defines `buildCommand` and `outputDirectory`,
+  - runs on PRs to `main`, pushes to `main` and recovery branches, and manual dispatch.
+
+Decision:
+
+- Do not merge #41 directly.
+- Do not merge #39 directly.
+- Do not take workflows that assume stale `backend`, `api/package.json`, old `api/lib`, old backend contract paths, or old API route names.
+- Do not add Vercel CLI deployment workflow yet; Vercel Git deployment can be configured separately once branch validation is stable and secrets are intentionally provisioned.
+
+Validation:
+
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/recovery-ci.yml"); puts "workflow yaml ok"'` passed.
+- `node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('vercel.json','utf8')); if (!config.buildCommand || !config.outputDirectory) throw new Error('bad vercel config'); console.log('vercel config ok')"` passed.
+- `git diff --check` passed.
+
+Self-review:
+
+- Good: CI now runs the same recovery preflight script used locally, which reduces checklist drift.
+- Good: This avoids the old API/backend path rewrites that would undo #70 recovery work.
+- Watch item: This is a validation workflow, not a deployment workflow; the Vercel project/link/secrets still need a later deployment pass.
+
+Running merge-order snapshot after #41/#39:
+
+1. #84 - dependency update once lockfile state is intentional.
+2. Docs/research/audio mining after merge/adapt candidates are out of the way.
+
+## 2026-05-26 13:34 EDT - PR #84 Dependency Update Deferred For Fresh Recreate
+
+Actions:
+
+- Fetched PR #84 as `pr-84`.
+- Inspected package and lockfile changes.
+- Compared the branch against the current recovery baseline.
+
+Decision:
+
+- Do not merge #84 into this recovery branch.
+- Recreate the dependency update later from the recovery branch after lockfile state is clean.
+- Treat Angular 21 as a separate deliberate migration, not part of a grouped patch update.
+
+Findings:
+
+- The PR head commit is dependency-focused, but the branch is stale against the recovery baseline.
+- Against the current recovery branch, #84 also brings in old audio service/test files, `AGENTS.md` changes, and `story-generator/src/server.ts` churn.
+- Root scripts in #84 add audio tests back into required root test commands, which conflicts with the current audio-deferred scope.
+- `story-generator/package.json` mixes `@angular/core` `^21.1.5` with multiple Angular `^20.3.x` packages.
+- Lockfile churn is large enough that it should not be mixed with the existing unrelated dirty root lockfile/node_modules state.
+
+Validation:
+
+- Inspected `git diff main..pr-84 -- package.json story-generator/package.json`.
+- Inspected `git diff --shortstat main..pr-84 -- package-lock.json story-generator/package-lock.json`.
+
+Self-review:
+
+- Good: #84 is no longer sitting in the merge/adapt queue as if it were a clean merge candidate.
+- Watch item: A fresh dependency branch is still needed after recovery stabilization.
+
+Running merge-order snapshot after #84:
+
+1. Docs/research/audio mining and closure work.
+2. Fresh dependency update from the recovery branch after lockfile state is clean.
+
+## 2026-05-26 14:16 EDT - Recovery PR Opened and Docs/Deployment/Visual Mining Recorded
+
+Actions:
+
+- Ran full recovery preflight with `scripts/recovery/preflight.sh --skip-status`.
+- Pushed `recovery-pr70-story-lab-vercel` to GitHub.
+- Opened draft recovery PR #87: `https://github.com/Phazzie/FairytaleswithSpice/pull/87`.
+- Closed the already handled PRs with comments pointing to #87 and the recovery ledgers:
+  - #86, #85, #84, #75, #74, #73, #72, #71, #70, #67, #65, #64, #50, #41, #39, #31, #26, #24.
+- Refreshed the open PR list after the first closure batch; remaining source PRs are #77, #76, #63, #56, #55, #54, #53, #47, #45, #44, #43, #42, #40, #30, #29, #28, and #22 plus #87.
+- Fetched docs/storage/deployment/visual PR heads into temporary refs:
+  - #77, #76, #63, #56, #54, #53, #40.
+- Mined and recorded the useful material from:
+  - #77 documentation/SDD analysis,
+  - #76 WIP SDD redesign body/no-file state,
+  - #63 database/story persistence research,
+  - #56 cache/storage/monitoring/rate-limit research,
+  - #54 deployment-readiness checklist ideas,
+  - #53 documentation lifecycle/archive cleanup,
+  - #40 UI layout/state clarity ideas.
+
+Validation:
+
+- `scripts/recovery/preflight.sh --skip-status` passed before pushing #87.
+- Covered checks: required tool precheck with `jq` warning, `git diff --check`, Angular app typecheck, Angular spec typecheck, root story/trope/cliffhanger/story-lab-state tests, Node 20 Angular production build, and build-output verification.
+- Known warnings remain:
+  - `jq` is not installed locally.
+  - Angular build reports stale `baseline-browser-mapping`.
+  - `src/app/proving-grounds/proving-grounds.css` exceeds the component CSS budget by about 1.15 kB.
+
+Self-review:
+
+- Good: #87 now gives every old PR closure a concrete replacement branch instead of an abstract plan.
+- Good: The docs/storage/deployment/visual mining happened before those PRs are closed, preserving the material the user asked us not to lose.
+- Problem found: Several "docs" or "research" branches are not clean docs branches when compared to the recovery baseline; they carry stale `api/lib` rewrites, Vercel file deletions, audio scope, node_modules churn, or DigitalOcean runtime assumptions.
+- Decision: Close those branches after recording their useful ideas, and recreate any future storage/deploy/docs/UI work from #87 rather than trying to merge stale branch contents.
+- Watch item: The remaining audio PRs are likely to contain story-generation spillover, so they need the same evidence-first mining pass before closure.
+
+## 2026-05-26 14:47 EDT - Audio PR Story-Generation Spillover Mined
+
+Actions:
+
+- Fetched audio PR heads into temporary refs:
+  - #55, #47, #45, #44, #43, #42, #30, #29, #28, #22.
+- Inspected PR bodies, file lists, prompt snippets, audio research docs, and representative parser/service code.
+- Recorded PR-by-PR dispositions in `PR70_RECOVERY_LEDGER.md`, `NOT_TAKEN_FEATURE_LEDGER.md`, and `PR_USEFUL_MATERIAL_INVENTORY.md`.
+
+Mined story-generation material:
+
+- #55: audio-first prompt mode, 90+ emotion vocabulary, narrator atmosphere tags, character voice evolution as character-development metadata, and the warning against replacing prose with machine-first JSON.
+- #47: tag validation, voice consistency testing, emotion navigation/bookmarks, and optional scene/effect metadata.
+- #45: emotion taxonomy, character emotional memory, fuzzy emotion suggestions, and consistency across emotional changes.
+- #44: scene/effect trigger metadata, emotion distribution and character-count QA signals, and SFX-provider caution.
+- #43: character personality profiles and output analysis for neutral-tag overuse, low emotion variety, and oversized casts.
+- #42: audio background-job semantics with start/status/result/cancel/progress and separation from story-generation streaming.
+- #30/#29/#28/#22: explicit speaker/narrator tags, segment/result models, modular parser/voice/stitching seams, and quote-based fallback parsing.
+
+Decision:
+
+- Do not port active audio runtime, UI, provider, SFX, or player code now.
+- Preserve the material as a future "audio-ready story generation" backlog.
+- If audio returns, rebuild from #87 using current `api/_lib`, Story Lab contracts, Vercel-compatible storage/queue choices, and an explicit prompt/metadata seam.
+
+Self-review:
+
+- Good: The highest-risk knowledge loss from stale audio PRs is now recorded before closure.
+- Good: The branch still avoids audio runtime scope and DigitalOcean/provider drift.
+- Problem found: Several audio PRs solve the same problem in slightly incompatible ways. The later PRs are richer conceptually, but the earlier PRs are cleaner for modular parser/segment contract ideas.
+- Follow-up: Close the audio PRs with comments that name both what was mined and what was not taken.
+
+Closure result:
+
+- Closed #55, #47, #45, #44, #43, #42, #30, #29, #28, and #22 with ledger-backed comments.
+- Refreshed GitHub open PR list after closure; only #87 remains open.
+
+## 2026-05-26 15:32 EDT - Vercel Deployment Stabilized
+
+Actions:
+
+- Installed `jq` locally for the recovery preflight script.
+- Investigated the first Vercel preview failures after the audio/docs mining pass.
+- Added `scripts/recovery/ensure-vercel-index.sh` so Angular's `index.csr.html` output is materialized as `index.html` for Vercel's static fallback.
+- Updated root build scripts so `npm run build` and `npm run build:verify` both enforce that Vercel fallback file.
+- Added Vercel API function TypeScript compilation to `scripts/recovery/preflight.sh`.
+- Fixed stale Vercel function imports:
+  - removed Next.js request/response type imports from plain Vercel functions,
+  - corrected `api/export/save.ts` from `../lib/*` to `../_lib/*`,
+  - corrected `api/story-lab/stream/genesis.ts` imports,
+  - replaced API-side `.at(-1)` calls with compiler-compatible indexed reads,
+  - removed stale `api/story/stream.ts.backup`.
+- Reduced the deployed Vercel function count by removing deferred active audio endpoints/services and moving Story Lab helper modules under `api/_lib/story-lab/*`.
+- Updated API docs and env checks so XAI/Grok remains active and ElevenLabs/audio runtime is not required for this recovery branch.
+
+Deployment result:
+
+- Deployment `dpl_9rTrwwQqQfqpHziJX91pcFjShrKA` for commit `0e96ef2` failed in Vercel TypeScript compilation.
+- Deployment `dpl_EG7eEreP8fW9uax2XNi2AWnSJEdT` for commit `cfc4be1` built successfully but ended `ERROR` after output deployment, consistent with excess deployable API functions.
+- Deployment `dpl_CopbfUAYcFL8BhwSJ82BumMGLeo5` for commit `528233f` is `READY`.
+- Vercel reports `lambdaRuntimeStats: {"nodejs":12}` for the ready deployment.
+- Preview URL: `https://fairytaleswith-spice-dapa55dm3-phazzies-projects.vercel.app`
+- Branch alias: `https://fairytaleswith-spice-git-recovery-pr70-e629d8-phazzies-projects.vercel.app`
+- A normal unauthenticated `curl` hit Vercel Authentication for protected preview URLs.
+- Vercel connector verification:
+  - root URL returned `200 OK` and served the Angular shell,
+  - `/api/health` returned `200 OK` through a temporary Vercel share/access flow,
+  - `/api/health` reported production environment and `grok: configured`.
+
+Validation:
+
+- `jq --version` returns `jq-1.8.1`.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed after the Vercel function-count reduction.
+- `scripts/recovery/preflight.sh --skip-status` passed after the final report and docs updates.
+- Manual Vercel API typecheck passed:
+  - `find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 | xargs -0 npx tsc --noEmit --target es2020 --lib es2020,dom --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node`
+- `npm run build:verify` passed after the Angular fallback index fix.
+- `git diff --check` passed before the Vercel fix commits.
+
+Self-review:
+
+- Good: The branch now has a concrete ready Vercel deployment, not just local build confidence.
+- Good: The preflight script now catches the API function compilation class that Vercel caught remotely.
+- Problem found: Helper TypeScript files under non-underscore `api/story-lab/*` counted as deployable Vercel functions. Moving helpers under `api/_lib/story-lab/*` was necessary.
+- Problem found: Deferred audio code was still active enough to affect Vercel deployment shape. Removing active audio routes/services better matches the user's audio-deferred direction.
+- Problem found: Protected preview deployments need an authenticated or share-token smoke path; unauthenticated curl alone is not a useful runtime signal.
+- Should have anticipated sooner: Vercel deployment should have been run before closing the last source PRs, because local Angular/root checks did not exercise Vercel's per-function compiler or function-count constraints.
+
+## 2026-05-27 12:51 EDT - PR #87 Finish-And-Merge Scope Freeze
+
+Actions:
+
+- Replaced the broad next-phase execution plan with `PR87_NEXT_EXECUTION_PLAN.md`, a narrower finish-and-merge plan for PR #87.
+- Added `PR87_FINISH_TURNOVER_LETTER.md` so a compacted or future context can resume without rediscovering the current direction.
+- Reviewed Spark's completed checklist output and accepted only the pieces that reduce merge/deploy risk.
+- Kept the Vercel function-count guard path:
+  - `scripts/recovery/check-vercel-function-count.sh`
+  - `scripts/recovery/preflight.sh`
+- Reworked Spark's Proving Grounds CSS output:
+  - rejected the one-line minified stylesheet as not merge-ready,
+  - restored readable formatting and hover/focus/spinner affordances,
+  - raised the Angular `anyComponentStyle` warning threshold from `10kB` to `12kB` so source readability is not traded away for a warning-only budget.
+- Reverted the root `package.json` `test:grok-smoke` script addition from the current PR scope; the untracked Grok smoke test idea remains deferred follow-up material.
+- Fixed two SonarCloud security findings that appeared after the branch push:
+  - replaced dynamic chapter-title `RegExp` construction in `api/_lib/services/storyService.ts`,
+  - removed Angular `bypassSecurityTrustHtml` usage from `story-generator/src/app/streaming-story/streaming-story.component.ts` and let Angular's `[innerHTML]` sanitizer handle streamed HTML.
+
+Decision:
+
+- PR #87 is now in polish/merge mode. Do not add Story Lab adapter, persistence, AI evals, dependency refresh, or audio runtime work before merging this recovery baseline.
+
+Validation:
+
+- `scripts/recovery/check-vercel-function-count.sh` passed and reported `12/12`.
+- `git diff --check` passed.
+- `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. The Proving Grounds CSS budget warning is gone; the stale `baseline-browser-mapping` warning remains.
+- `scripts/recovery/preflight.sh --skip-status` passed after the SonarCloud fixes.
+
+Self-review:
+
+- Spark was useful for fast bounded work, but its CSS fix proved why final merge polish needs a senior review gate.
+- The better release decision is to merge #87 as a clean baseline and move valuable but nonessential validation/planning ideas into smaller follow-up PRs.

@@ -2,12 +2,16 @@
   "private": true,
   "scripts": {
     "install:all": "npm install --no-audit --no-fund && cd story-generator && npm install --no-audit --no-fund",
-    "build": "cd story-generator && npm run build",
-    "build:verify": "[ -f story-generator/dist/story-generator/browser/index.html ] || (echo 'Missing build output' && exit 1)",
+    "build": "cd story-generator && npm run build && cd .. && npm run build:vercel-index",
+    "build:vercel-index": "scripts/recovery/ensure-vercel-index.sh",
+    "build:verify": "npm run build:vercel-index && test -f story-generator/dist/story-generator/browser/index.html",
     "build:full": "npm run build && npm run build:verify",
-    "test": "npm run test:story",
+    "test": "npm run test:all",
     "test:story": "tsx tests/story-service-improved.test.ts",
-    "test:all": "tsx tests/story-service-improved.test.ts"
+    "test:tropes": "tsx tests/trope-subversion.test.ts",
+    "test:cliffhangers": "tsx tests/cliffhanger-service.test.ts",
+    "test:story-lab-state": "tsx tests/story-lab-state.test.ts",
+    "test:all": "npm run test:story && npm run test:tropes && npm run test:cliffhangers && npm run test:story-lab-state"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

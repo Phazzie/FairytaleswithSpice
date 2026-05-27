@@ -1,0 +1,892 @@
+Created: 2026-05-26 00:12 EDT
+
+# Not-Taken Feature Ledger
+
+This file records useful material that is intentionally not merged or only partially ported during the PR #70 recovery. The purpose is to prevent old PR closures from losing future ideas.
+
+## How To Use
+
+For every closed or partially ported PR:
+
+1. Add an entry before closing the GitHub PR.
+2. Separate story-generation material from audio/deployment/UI-only material.
+3. Include enough source detail for future mining.
+4. State why the material was not taken now.
+
+Template:
+
+```markdown
+## PR #NN - Title
+
+- Disposition:
+- Source branch:
+- Story-generation ideas not taken:
+- Other useful ideas not taken:
+- Why not now:
+- Future extraction notes:
+- Source files/commits:
+```
+
+## Initial High-Priority Mining Buckets
+
+### Story Generation
+
+- #24: trope database, trope subversion service, prompt enhancement, uniqueness metadata.
+- #31: story arc service, cliffhanger analysis, continuation context.
+- #73: story state snapshots, character arcs, plot threads, continuity deltas.
+- #72/#75/#71: multi-chapter structures, requested chapter counts, partial failure semantics.
+- #65/#64/#67/#50: model/token/randomization/config/progress correctness.
+- #74: prompt proving grounds and evaluation loops.
+
+### Audio PRs With Story-Generation Spillover
+
+- #55: voice evolution, emotion taxonomy, narrator atmosphere, character consistency.
+- #45: fuzzy emotion matching and character memory.
+- #44: character-driven narration and scene/sound metadata.
+- #43: emotion-aware profiles and character control concepts.
+- #42: streaming/emotion architecture ideas.
+- #30/#29/#28/#22: dialogue parsing, speaker tags, segment models, voice metadata boundaries.
+
+### Deployment And Storage
+
+- #54: DigitalOcean deployment infrastructure. Not Vercel direction.
+- #56: provider-specific backend services; mine cache/rate-limit ideas only.
+- #63: database decision tree; use as reference for a new Vercel storage decision.
+
+## PR #50 - Fix progress meter hanging at 95% preventing story generation
+
+- Disposition: mined; close later as superseded by PR #70 baseline
+- Source branch: `pr-50`
+- Story-generation ideas not taken:
+  - Old progress-simulator implementation that manually steps generation progress to 95%.
+  - Timeout-protection UI around the old single-story generation form.
+- Other useful ideas not taken:
+  - `app-no-progress.ts.alternative`, which removed the progress simulator entirely.
+  - `PROGRESS_METER_FIX.md` root documentation.
+- Why not now:
+  - PR #70 replaced the old app shell with the story-lab workbench, and the old `simulateGenerationProgress()`/`progressTimeoutId` code no longer exists.
+  - Merging #50 directly would drag stale UI, audio-era controls, and old backend assumptions into the recovery branch.
+- Future extraction notes:
+  - If simulated progress is reintroduced for batch generation, store timeout IDs immediately after each `setTimeout()` and clear pending timeouts on success/error.
+  - Avoid hydration bypasses that break form controls; test interactive form state after SSR/hydration changes.
+- Source files/commits:
+  - `PROGRESS_METER_FIX.md`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app-no-progress.ts.alternative`
+
+## PR #64 - Complete PR#61 randomization and test cleanup
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-64`
+- Story-generation ideas not taken:
+  - No additional story-generation prompt logic beyond the Fisher-Yates Chekhov element fix was taken.
+  - Old branch versions of story service files that rename or duplicate service paths.
+- Other useful ideas not taken:
+  - Playwright E2E scaffold and `e2e/story-generation.spec.ts`.
+  - Test documentation and old Angular spec adjustments.
+  - PR completion summary docs.
+- Why not now:
+  - The branch is stale against the Vercel `_lib` path and #70 UI baseline.
+  - Direct merge would bring path regressions, dependency churn, and old UI/test assumptions.
+- Future extraction notes:
+  - Recreate E2E smoke coverage after the story-lab UI is stable, using #64 only as a reference.
+  - Revisit test expectations after #72/#75 multi-chapter decisions are made.
+- Source files/commits:
+  - `api/lib/services/storyService.ts`
+  - `story-generator/src/api/lib/services/storyService.ts`
+  - `playwright.config.ts`
+  - `e2e/story-generation.spec.ts`
+
+## PR #65 - Fix AI story generation model and token issues
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-65`
+- Story-generation ideas not taken:
+  - No additional prompt feature was omitted; the current canonical service already contains the main model, token, `top_p`, and timeout changes.
+  - The branch's stale `api/lib/*` service path is not taken.
+  - The duplicate story service structure is not accepted as permanent architecture.
+- Other useful ideas not taken:
+  - None beyond path/layout decisions.
+- Why not now:
+  - Direct merge is unnecessary and would reintroduce stale path assumptions.
+  - Duplicate cleanup should be handled deliberately in #67 instead of being hidden inside the #65 port.
+- Future extraction notes:
+  - Keep the verifier focused on canonical service behavior and run it after any model or token-budget changes.
+  - Centralize model name, token calculation, API parameters, and timeouts so future PRs cannot fix one service copy while leaving another stale.
+- Source files/commits:
+  - `api/lib/services/storyService.ts`
+  - `story-generator/src/api/lib/services/storyService.ts`
+  - `tests/verify-ai-fixes.test.ts`
+
+## PR #67 - SOLID/KISS/DRY audit and duplicate cleanup
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-67`
+- Story-generation ideas not taken:
+  - Full prompt-builder extraction.
+  - Content formatter extraction.
+  - Story analyzer extraction.
+  - Beat-structure configuration extraction.
+  - Chekhov element configuration extraction.
+  - Mock data service extraction.
+- Other useful ideas not taken:
+  - `COMPREHENSIVE_AUDIT_REPORT.md` as a root report.
+  - `DEPLOYMENT_READINESS.md`.
+  - DigitalOcean deployment checklist and rollback process.
+  - Old `api/lib/*` file layout.
+- Why not now:
+  - The extraction ideas are useful but larger than the safe #67 port and should happen after multi-chapter/story-state decisions settle.
+  - The deployment doc conflicts with the Vercel direction.
+  - The recovery already has active tracking docs; adding another root audit report would increase status-doc drift.
+- Future extraction notes:
+  - When the story service is next refactored, split prompt construction, content formatting, story analysis, beat structures, and Chekhov elements into canonical `api/_lib` modules.
+  - Use the #67 audit as a checklist for future service decomposition, not as deploy guidance.
+- Source files/commits:
+  - `COMPREHENSIVE_AUDIT_REPORT.md`
+  - `DEPLOYMENT_READINESS.md`
+  - `api/lib/config/authorStyles.ts`
+  - `story-generator/src/api/lib/*`
+  - `tests/story-service-improved.test.ts`
+
+## PR #24 - Invisible trope subversion engine
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-24`
+- Story-generation ideas not taken:
+  - The old `backend/src/services/storyService.ts` implementation.
+  - Generated `backend/dist/*` files.
+  - Demo script and old standalone integration scripts.
+  - Some raw comedic/parody trope inversions that could weaken dark-romance tone if injected directly.
+  - Full continuation-state persistence for trope metadata; only optional metadata propagation is in place now.
+- Other useful ideas not taken:
+  - `TROPE_SUBVERSION_SUMMARY.md` as a root product doc.
+  - Old backend contracts and frontend contract edits.
+- Why not now:
+  - The backend tree is stale and outside the current Vercel `api/_lib` architecture.
+  - #70 owns the story-lab UI/contracts, and #72/#73 should decide the durable story-state model.
+  - The recovery docs already track the feature; another root summary would add document drift.
+- Future extraction notes:
+  - Thread `tropeMetadata` through the #72/#75 continuation UI and #73 story-state snapshot if those ports land.
+  - Add a developer-only debug/proving-ground view for selected trope directives if #74 is ported.
+  - Consider deterministic selection for reproducible tests and user support.
+- Source files/commits:
+  - `backend/src/data/tropeDatabase.ts`
+  - `backend/src/services/tropeSubversionService.ts`
+  - `backend/src/services/storyService.ts`
+  - `backend/src/tests/*`
+  - `story-generator/src/app/contracts.ts`
+
+## PR #31 - Chapter continuation, story arc, and audiobook system
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-31`
+- Story-generation ideas not taken:
+  - In-memory story-arc CRUD service.
+  - Story arc model with characters, world state, character growth, and chapter metadata.
+  - Story arc endpoint.
+  - Frontend story arc management UI.
+  - Full enhanced continuation prompt from the old branch; only the cliffhanger variety slice was ported.
+- Other useful ideas not taken:
+  - Audiobook compilation service and endpoint.
+  - Create-audiobook UI.
+  - Old `vercel.json` routing changes.
+- Why not now:
+  - Audio is deferred.
+  - In-memory story arcs are misleading on Vercel serverless because persistence is not durable.
+  - #70 owns the story-lab UI and #72/#73 should decide the real multi-chapter/state contract.
+- Future extraction notes:
+  - Use #31's story arc model as a reference when porting #73 state snapshots.
+  - Use #31's frontend story arc affordances only after #72/#75 settle the chapter batching workflow.
+  - Reopen audiobook compilation only in a later audio phase.
+- Source files/commits:
+  - `api/lib/services/storyArcService.ts`
+  - `api/story/arc.ts`
+  - `api/lib/services/storyService.ts`
+  - `api/lib/types/contracts.ts`
+  - `api/audio/compile.ts`
+  - `api/lib/services/audiobookService.ts`
+  - `story-generator/src/app/*`
+
+## PR #72 - Finalize multi-chapter story workflows
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-72`
+- Story-generation ideas not taken:
+  - Full replacement of generation outputs with chapter-array-only responses.
+  - Full replacement of continuation outputs with chapter-array-only responses.
+  - Raw PR #72 failure semantics as the only response shape; the recovery branch kept old success/error fields and added optional `failedChapters`.
+  - Old `tests/story-service.test.mjs` rewrite that still assumes compiled `api/lib/*.js` output.
+  - Old frontend batch-merging code for the pre-#70 Angular app.
+- Other useful ideas not taken:
+  - Old chapter-batch dropdown implementation in `story-generator/src/app/app.html`.
+  - Old `story-generator/src/app/story.service.ts` changes targeting `/api/story/*` instead of #70's `/api/story-lab/*`.
+  - Old debug-panel and streaming component spec changes that are superseded by the #70 story-lab contracts.
+- Why not now:
+  - #70 already introduced a story-lab workbench, batch-size control, and separate story-lab contracts.
+  - Directly taking #72's frontend would regress the app away from the #70 direction.
+  - Directly taking #72's backend contract would break current legacy callers and tests by removing fields instead of adding batch metadata.
+  - The branch uses stale `api/lib/*` paths.
+- Future extraction notes:
+  - When `api/story-lab/mockData.ts` is replaced with real generation, use the canonical `StoryService` batch fields created from this port.
+  - Add UI display for partial chapter failures and next-chapter hints when #75 continuity panels are evaluated.
+  - Decide and document whether a batch's word budget is total-batch or per-chapter before exposing production controls.
+- Source files/commits:
+  - `api/lib/services/storyService.ts`
+  - `api/lib/types/contracts.ts`
+  - `api/story/generate.ts`
+  - `api/story/continue.ts`
+  - `api/story/stream.ts`
+  - `story-generator/src/app/contracts.ts`
+  - `story-generator/src/app/story.service.ts`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `tests/story-service-improved.test.ts`
+
+## PR #75 - Add chapter batching workflow and continuity panels
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-75`
+- Story-generation ideas not taken:
+  - PR #75's separate `ChapterBatchSeam` shape and `/api/story/batch` route.
+  - The old frontend service changes targeting a standalone batch endpoint instead of the #70 `beginStory()` / `continueStory()` story-lab seam.
+  - Durable/asynchronous queue semantics beyond UI-local progress state.
+  - The old continuation-panel data assumptions where they conflicted with the current `StoryIterationPayload`.
+- Other useful ideas not taken:
+  - Direct pre-#70 Angular app shell rewrite.
+  - Large old CSS redesign.
+  - README workflow edits that describe the older app shape.
+  - `story-generator/src/testing/test-data-factory.ts`; current #70 specs already use local story-lab fixtures.
+- Why not now:
+  - #75 is stale against the PR #70 story-lab baseline and overlaps heavily with #72's backend batching work.
+  - The current app already has batch-size controls and continuity panels, so a direct merge would replace current working seams rather than enhance them.
+  - Creating another batch route before #73 persistence decisions would increase API drift.
+- Future extraction notes:
+  - Revisit fuller queue semantics if story generation becomes backgrounded, resumable, or backed by durable Vercel storage/workflows.
+  - Add partial-failure UI once the story-lab route returns canonical #72 `failedChapters` data.
+  - Update README after #73 decides persistence/session recovery.
+- Source files/commits:
+  - `story-generator/src/app/contracts.ts`
+  - `story-generator/src/app/story.service.ts`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`
+  - `story-generator/src/app/app.spec.ts`
+  - `story-generator/src/app/story.service.spec.ts`
+  - `story-generator/src/testing/test-data-factory.ts`
+  - `README.md`
+
+## PR #73 - Add persistent story state tracking and schema
+
+- Disposition: selected port; close later as superseded
+- Source branch: `pr-73`
+- Story-generation ideas not taken:
+  - Legacy `StoryStateService` implementation under `api/lib/services/storyStateService.ts`.
+  - Direct mutation of the old `api/lib/services/storyService.ts` generation flow.
+  - PR #73's older `StoryState`, `StoryStateDelta`, `CharacterArc`, `PlotThread`, and `ContinuityDevice` contract shapes as replacements for #70's richer story-lab state snapshot contracts.
+  - Database-backed chapter append semantics until the production story-lab adapter exists.
+- Other useful ideas not taken:
+  - DigitalOcean Postgres provisioning README.
+  - DigitalOcean-shaped SQL schema as active project schema.
+  - `pg` dependency and dynamic Postgres client.
+  - Old `api/lib/db/*` layout.
+  - Duplicate `story-generator/src/api/lib/types/contracts.ts` contract copy.
+- Why not now:
+  - The deployment target is Vercel, not DigitalOcean.
+  - A durable storage product has not been selected.
+  - In-memory persistence is not reliable on Vercel serverless, so the port keeps it explicitly transient and does not expose it as product durability.
+  - #70 already has the state snapshot model the UI consumes; replacing it would add churn without improving the current app.
+- Future extraction notes:
+  - Revisit the SQL schema when choosing Vercel Postgres/Neon or another durable store.
+  - Use the accepted `StoryStateDelta` and `StoryPersistenceReceipt` shapes as the adapter contract for real storage.
+  - If durable storage lands, add read/update tests for story recovery, state divergence, and chapter append conflicts.
+- Source files/commits:
+  - `api/lib/db/README.md`
+  - `api/lib/db/client.ts`
+  - `api/lib/db/schema.sql`
+  - `api/lib/services/storyStateService.ts`
+  - `api/lib/services/storyService.ts`
+  - `api/lib/types/contracts.ts`
+  - `story-generator/src/app/contracts.ts`
+  - `tests/story-service-improved.test.ts`
+
+## PR #71 - Support batch chapter generation across backend and frontend
+
+- Disposition: tiny selected port; close later as superseded
+- Source branch: `pr-71`
+- Story-generation ideas not taken:
+  - Early batch-generation implementation after #72's more mature backend port.
+  - Service-level clamping of invalid requested chapter counts.
+  - Old partial-failure response shape where it conflicts with the current `failedChapters` data field.
+  - Old `tests/story-service.test.mjs` rewrite that imports stale `api/lib/*`.
+- Other useful ideas not taken:
+  - Old Angular batch dropdown and warning UI.
+  - Old `story-generator/src/testing/data-factory.ts`.
+  - Old debug-panel and streaming component test changes.
+  - Old frontend service changes targeting `/api/story/*` rather than #70's story-lab seam.
+- Why not now:
+  - #72 already supplied the backend batch primitive in canonical `api/_lib`.
+  - #75 already supplied the current story-lab batch UI affordances.
+  - #73 already supplied state-delta and persistence-boundary behavior.
+  - Silent service-level clamping can hide bad callers; current behavior rejects invalid counts explicitly.
+- Future extraction notes:
+  - Consider UI-level clamping or disabled controls if users need forgiving batch selection.
+  - Recreate a frontend test-data factory only if future Angular specs begin duplicating large fixtures.
+- Source files/commits:
+  - `api/lib/services/storyService.ts`
+  - `api/lib/types/contracts.ts`
+  - `api/story/generate.ts`
+  - `api/story/continue.ts`
+  - `story-generator/src/app/app.*`
+  - `story-generator/src/app/contracts.ts`
+  - `story-generator/src/app/story.service.ts`
+  - `story-generator/src/testing/data-factory.ts`
+  - `tests/story-service.test.mjs`
+
+## PR #74 - Add proving grounds page for prompt testing and generation logic inspection
+
+- Disposition: selected port; close later as ported
+- Source branch: `pr-74`
+- Story-generation ideas not taken:
+  - Direct production prompt override wiring from the proving-grounds template editor.
+  - Treating the generation logic viewer's random author/beat/Chekhov selections as guaranteed production generation inputs.
+  - Client-side Grok/xAI evaluation with API keys stored in browser `localStorage`.
+- Other useful ideas not taken:
+  - Direct merge of old app-shell routing and header layout.
+  - Deletion from `story-generator/src/testing/index.ts`.
+  - Old `StoryService.generateStory()` method shape.
+  - Full old CSS as product-ready design; it was carried as a functional first pass and still needs budget/polish follow-up.
+- Why not now:
+  - The current #70 Story Lab seam is canonical and does not expose direct prompt-template override semantics yet.
+  - Vercel deployment should keep provider credentials server-side.
+  - The old app shell would overwrite or confuse the Story Lab baseline.
+- Future extraction notes:
+  - Add a formal prompt-experiment API that records template, variables, model, response, score, and evaluator metadata.
+  - Decide whether proving-grounds logic selections should become production generation controls or remain an inspection/testing aid.
+  - Add persistent experiment storage only after the Vercel storage decision is made.
+- Source files/commits:
+  - `story-generator/src/app/proving-grounds/*`
+  - `story-generator/src/app/app-root.ts`
+  - `story-generator/src/app/app.routes.ts`
+  - `story-generator/src/app/app.config.ts`
+  - `story-generator/src/main.ts`
+  - `story-generator/src/main.server.ts`
+  - `story-generator/src/app/app.routes.server.ts`
+
+## PR #26 - Implement comprehensive UI/UX polish and accessibility improvements
+
+- Disposition: selected port; close later as ported
+- Source branch: `pr-26`
+- Story-generation ideas not taken:
+  - Old retry buttons that simply rerun generation/chapter actions without a batch retry contract.
+  - Old validation model based on pre-#70 fields such as `userInput`, `wordCount`, and `selectedThemes` string arrays.
+- Other useful ideas not taken:
+  - Direct old app-shell rewrite and radio/checkbox layout.
+  - Old `generateStory()` and `generateNextChapter()` frontend service method usage.
+  - Audio conversion progress UI.
+  - Save/download action buttons from the old screen.
+  - Old emoji-heavy notification rendering.
+  - Broad CSS restyling from the stale UI.
+- Why not now:
+  - The current app uses the #70 Story Lab blueprint, batch queue, and `beginStory()`/`continueStory()` seam.
+  - Audio remains deferred.
+  - Save/export needs to be reconnected to current Story Lab state before UI controls are useful.
+  - Retrying failed batches should be designed around explicit queue item state, not a blind replay.
+- Future extraction notes:
+  - Add per-batch retry once failed `BatchProgressState` items can keep enough request metadata to safely replay.
+  - Reintroduce save/export notifications when the export flow is wired to current generated chapters.
+  - Consider a small notification story/spec harness if toasts become more complex.
+- Source files/commits:
+  - `story-generator/src/app/notification.service.ts`
+  - `story-generator/src/app/form-validation.service.ts`
+  - `story-generator/src/app/notifications.component.ts`
+  - `story-generator/src/app/notifications.component.css`
+  - `story-generator/src/app/app.ts`
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`
+
+## PR #41 - Comprehensive test coverage and Vercel CI/CD
+
+- Disposition: selected lean CI port; close later as ported
+- Source branch: `pr-41`
+- Story-generation ideas not taken:
+  - None directly; PR #41 is mostly CI/deployment/testing infrastructure.
+- Other useful ideas not taken:
+  - Direct API/backend Jest package layout.
+  - Old `api/lib` path rewrite and current `api/_lib` deletion.
+  - Separate security, monitoring, deployment, dependency, and comprehensive CI workflows.
+  - Vercel CLI deployment workflow requiring `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`.
+  - API route tests written against stale route/package assumptions.
+- Why not now:
+  - Current recovery branch should keep Vercel `_lib` helper layout.
+  - The repo is not currently organized as the branch's backend/API package structure expects.
+  - Deployment secrets and Vercel project linkage should be explicit, not smuggled in through an old workflow.
+- Future extraction notes:
+  - Rebuild API route tests once the Story Lab API surface is stable.
+  - Add preview/prod Vercel deployment workflow only after secrets and project linkage are intentionally configured.
+- Source files/commits:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/deploy.yml`
+  - `.github/workflows/security-quality.yml`
+
+## PR #39 - Implement extensive CI system with 6 comprehensive workflows
+
+- Disposition: mined into lean CI; close later as superseded
+- Source branch: `pr-39`
+- Story-generation ideas not taken:
+  - None directly; PR #39 is workflow infrastructure.
+- Other useful ideas not taken:
+  - Six-workflow CI suite.
+  - README/status badge writer.
+  - Lighthouse, visual regression, analytics dashboard, and dependency-management workflows.
+  - Contract validation against old `backend/src/types/contracts.ts`.
+  - API smoke tests for old endpoint names.
+- Why not now:
+  - The workflow suite is broader than the recovery branch needs and assumes stale paths.
+  - Browser-based CI should wait until local ChromeHeadless capture is reliable or a different browser strategy is selected.
+- Future extraction notes:
+  - Revisit accessibility/performance workflows after Vercel deployment is stable.
+  - Rebuild contract validation after current frontend/backend contract locations are final.
+- Source files/commits:
+  - `.github/workflows/ci-status.yml`
+  - `.github/workflows/contract-validation.yml`
+  - `.github/workflows/deployment-optimization.yml`
+  - `.github/workflows/visual-testing.yml`
+
+## PR #84 - chore(deps): bump the npm_and_yarn group across 2 directories with 10 updates
+
+- Disposition: recreate later; close later as superseded by fresh dependency work
+- Source branch: `pr-84`
+- Story-generation ideas not taken:
+  - None directly; dependency update only by intent.
+- Other useful ideas not taken:
+  - `axios` update from `^1.12.2` to `^1.13.5`.
+  - Angular patch updates for several Angular 20 packages.
+  - Root `@types/node`, `tsx`, and TypeScript dependency updates.
+  - Large lockfile rewrite.
+  - Old audio service/test files included by stale branch comparison.
+  - Root script changes that make audio tests part of the required suite.
+- Why not now:
+  - Audio is deferred.
+  - The branch appears stale against the recovery baseline.
+  - The Angular version set is not coherent because `@angular/core` is bumped to 21 while related Angular packages stay at 20.
+  - Existing dirty local root lockfile/node_modules changes should not be mixed with a dependency update.
+- Future extraction notes:
+  - Re-run dependency updates fresh from the recovery branch.
+  - Keep same-major Angular 20 patch updates separate from any Angular 21 migration.
+  - Validate fresh dependency work with Node 20 build, root tests, and `build:verify`.
+- Source files/commits:
+  - `package.json`
+  - `package-lock.json`
+  - `story-generator/package.json`
+  - `story-generator/package-lock.json`
+
+## PR #77 - Documentation analysis and SDD lessons
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/77`
+- Story-generation ideas not taken:
+  - No direct prompt/service code.
+  - Broad lessons about contract-first seams, mock mode, and service-layer preservation that affect story-generation safety are already represented in `LESSONS_LEARNED.md` and `PR70_RECOVERY_PLAN.md`.
+- Other useful ideas not taken:
+  - `repodocs.md`, `repodocsanalysis.md`, and `DOCUMENTATION_ANALYSIS_SUMMARY.md` as additional root docs.
+  - The recommendation to reduce the active doc set to a smaller indexed set.
+- Why not now:
+  - Recovery already has live ledgers; adding large generated historical docs would increase document sprawl.
+  - The branch also carries stale `api/lib` path drift, Vercel file deletion, audio files, and package changes.
+- Future extraction notes:
+  - After #87 lands, create a small docs index/archive policy instead of merging PR #77's large static reports.
+  - Re-run doc inventory against the post-recovery repo if a cleanup pass is requested.
+- Source files/commits:
+  - `DOCUMENTATION_ANALYSIS_SUMMARY.md`
+  - `repodocs.md`
+  - `repodocsanalysis.md`
+
+## PR #76 - WIP SDD redesign analysis
+
+- Disposition: closed no material
+- Source branch: `refs/remotes/pr/76`
+- Story-generation ideas not taken:
+  - No committed story-generation material.
+  - PR body asks for current-state analysis, SDD critique, devil's advocate questions, and redesign planning.
+- Other useful ideas not taken:
+  - Planned `spicyfairytaleremix.md` deliverable was not present.
+- Why not now:
+  - There are no files to merge.
+  - The final recovery report will cover the useful critique prompts against the current #87 branch.
+- Future extraction notes:
+  - Use the body checklist while writing `PR70_RECOVERY_FINAL_REPORT.md`.
+- Source files/commits:
+  - PR body only.
+
+## PR #63 - Database investigation
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/63`
+- Story-generation ideas not taken:
+  - Durable story library/history.
+  - Cross-session multi-chapter story state.
+  - Persistent consequences, world facts, character arcs, and chapter metadata.
+  - Analytics for popular creatures, themes, spice levels, generation success, regeneration patterns, and story recommendations.
+  - API usage and quota tracking around Grok generation.
+- Other useful ideas not taken:
+  - PostgreSQL/Auth0/Redis option analysis.
+  - Raw SQL/Prisma-style schema ideas for `stories`, `chapters`, `story_state`, `analytics_events`, `story_shares`, `story_reactions`, `api_usage`, and `user_quotas`.
+  - Silent-write/read-rollout migration strategy.
+- Why not now:
+  - The research is DigitalOcean-oriented and should not decide Vercel storage by accident.
+  - Current recovery state is explicitly transient until a Vercel-compatible storage product is selected.
+  - Direct branch includes stale code/path/test churn.
+- Future extraction notes:
+  - Write a Vercel storage RFC using #63 as source material; compare Neon/Vercel Postgres, Upstash Redis, Blob, and any needed auth provider.
+  - Prioritize story library and multi-chapter state before social reactions/sharing.
+- Source files/commits:
+  - `DATABASE_INVESTIGATION.md`
+  - `DATABASE_ROI_ANALYSIS.md`
+  - `DATABASE_DECISION_FLOWCHART.md`
+  - `DATABASE_QUICK_REFERENCE.md`
+  - `DATABASE_INDEX.md`
+
+## PR #56 - DigitalOcean backend services research
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/56`
+- Story-generation ideas not taken:
+  - Story-generation caching keyed by input.
+  - Rate limiting around expensive AI calls.
+  - Usage analytics and cost tracking.
+  - Story history/persistence through a database-backed layer.
+- Other useful ideas not taken:
+  - Object storage for generated audio/export files.
+  - Redis-style cache service with graceful fallback and statistics.
+  - Observability and monitoring concepts.
+  - DigitalOcean Spaces, Managed Redis, Managed PostgreSQL, App Platform, Load Balancer, VPC, and DOKS recommendations.
+  - `api/lib/services/cacheService.ts` implementation.
+- Why not now:
+  - Provider direction conflicts with the Vercel target.
+  - Cache/storage code must be recreated under `api/_lib` after Vercel-compatible products are chosen.
+  - Audio is deferred, so audio URL caching is future scope.
+- Future extraction notes:
+  - Recreate a small cache seam around Vercel Runtime Cache or Upstash Redis only after privacy/TTL rules are decided for generated stories.
+  - Reuse deterministic key and graceful-fallback ideas, not the provider-specific code.
+- Source files/commits:
+  - `DIGITAL_OCEAN_SERVICES_ANALYSIS.md`
+  - `DO_SERVICES_SUMMARY.md`
+  - `DO_COST_ANALYSIS.md`
+  - `DO_IMPLEMENTATION_GUIDE.md`
+  - `api/lib/services/cacheService.ts`
+
+## PR #54 - DigitalOcean deployment infrastructure
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/54`
+- Story-generation ideas not taken:
+  - No direct story-generation feature material.
+- Other useful ideas not taken:
+  - Dockerfiles, Docker Compose, `server.js`, `app.yaml`, `deploy.sh`, and DigitalOcean deployment docs.
+  - Traditional Express compatibility server.
+  - Deployment checklist categories: Node version, environment variables, CORS, health checks, mock/live mode, logging, and monitoring.
+- Why not now:
+  - The target is Vercel, and adding DigitalOcean/Docker runtime files would split deployment truth.
+  - Current API route layout is Vercel serverless, not a traditional Express server.
+- Future extraction notes:
+  - Create a Vercel deployment checklist using the generic categories, not the DigitalOcean implementation.
+  - Keep `XAI_API_KEY`, build command/output directory, health endpoint, and Vercel project/env setup as checklist items.
+- Source files/commits:
+  - `DEPLOYMENT_CHECKLIST.md`
+  - `DEPLOY.md`
+  - `app.yaml`
+  - `Dockerfile`
+  - `server.js`
+  - `deploy.sh`
+
+## PR #53 - Documentation audit and archive cleanup
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/53`
+- Story-generation ideas not taken:
+  - No direct generation code.
+  - Preserved concept: stale docs can cause agents to revive old story/audio paths and should be archived or corrected.
+- Other useful ideas not taken:
+  - `archived/README.md` structure for historical docs.
+  - Changelog rewrite and updated Copilot/agent instructions.
+  - Removal of committed dependencies.
+- Why not now:
+  - The PR touches large `node_modules` sets and stale doc paths.
+  - Recovery docs need to remain visible until #87 is accepted; a cleanup/archive pass belongs after the recovery closes.
+- Future extraction notes:
+  - Do a clean docs consolidation after recovery: archive old status docs, update README/AGENTS to current Vercel paths, and avoid dependency churn.
+- Source files/commits:
+  - `archived/README.md`
+  - `README.md`
+  - `.github/copilot-instructions.md`
+  - `AGENTS.md`
+  - `CHANGELOG.md`
+
+## PR #40 - Mystical UI rewrite
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/40`
+- Story-generation ideas not taken:
+  - No prompt/service behavior.
+  - Input-flow ideas: group creature, theme, inspiration, intensity, word budget, and final generation action clearly.
+  - Generation-state ideas: central ready/casting status, selected-theme counter, disabled/ready action states.
+- Other useful ideas not taken:
+  - Full mystical spell-crafting app shell.
+  - Floating particles, 3D creature cards, rune stones, intensity crystal, central spell circle, heavy animation system, and purple/gold gradient palette.
+  - Broad `ngSkipHydration` usage.
+  - Old audio/save controls.
+- Why not now:
+  - #70 Story Lab is the product baseline and `design.md` is the current visual guidance.
+  - The recovery design constraints reject decorative particles/orbs, one-note purple palettes, and novelty text controls where standard controls are clearer.
+  - Direct merge would overwrite current Story Lab UI, validation, batching, and Proving Grounds routing.
+- Future extraction notes:
+  - Recreate layout hierarchy and state clarity in the current design language only if Story Lab screenshots show the workflow is too scattered.
+  - Test mobile/desktop screenshots before accepting any large visual treatment.
+- Source files/commits:
+  - `story-generator/src/app/app.html`
+  - `story-generator/src/app/app.css`
+  - `story-generator/src/app/app.ts`
+
+## PR #55 - Voice evolution and 90+ emotion support
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/55`
+- Story-generation ideas not taken:
+  - Audio-first prompt mode that keeps human-readable `[Character]`, `[Character, emotion]`, and `[Narrator]` tags.
+  - Voice evolution markers such as `[Character, confident->vulnerable]` and `[Character, cold->passionate]`.
+  - Narrator atmosphere tags such as `[Narrator, tension]`, `[Narrator, intimacy]`, and `[Narrator, danger]`.
+  - Curated emotion vocabulary for precise story beats.
+  - Character voice arcs as a proxy for character development arcs.
+- Other useful ideas not taken:
+  - Enhanced audio runtime.
+  - Character consciousness engine, collaborative generation protocol, and voice memory architecture.
+  - Hidden "Audio-DNA" metadata encoding.
+- Why not now:
+  - Audio runtime is deferred.
+  - Current work should wire production Story Lab generation first.
+  - Hidden metadata is too fragile for review and debugging.
+- Future extraction notes:
+  - Recreate as an optional "audio-ready story mode" after core generation and persistence are stable.
+  - Store voice-evolution ideas as explicit metadata/state deltas, not invisible characters.
+- Source files/commits:
+  - `ENHANCED_AUDIO_EXAMPLES.md`
+  - `IMPLEMENTATION_SUMMARY.md`
+  - `MULTI_VOICE_AUDIO_SYSTEM_ANALYSIS.md`
+  - `api/lib/services/storyService.ts`
+
+## PR #47 - Audio pipeline investigation
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/47`
+- Story-generation ideas not taken:
+  - Speaker-tag validation and testing framework.
+  - Emotion/bookmark navigation metadata.
+  - Scene/effect metadata as future generated story annotations.
+  - Voice consistency verification requirements.
+- Other useful ideas not taken:
+  - Advanced audio player design.
+  - Web Audio API mixing.
+  - Sound-effect API research and prototypes.
+  - Offline audio caching and per-character controls.
+- Why not now:
+  - Audio and SFX are deferred.
+  - The branch is research/prototype material, not current Story Lab code.
+- Future extraction notes:
+  - Rebuild the audio roadmap in this order: tag validation, emotion taxonomy, consistency tests, then player/SFX.
+- Source files/commits:
+  - `audio-pipeline-investigation.md`
+  - `advanced-audio-player-investigation.ts`
+  - `enhanced-audio-service.ts`
+  - `enhanced-audio-service-practical.ts`
+  - `sound-effects-investigation.ts`
+
+## PR #45 - Emotion mapping and character consistency
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/45`
+- Story-generation ideas not taken:
+  - 81/90+ emotion taxonomy grouped for spicy fairy tales.
+  - Character emotional memory with recent history.
+  - Fuzzy emotion suggestions for invalid generated tags.
+  - Character consistency tracking across emotional changes.
+- Other useful ideas not taken:
+  - Audio service implementations and emotion testing endpoints.
+  - Demo scripts and backend package files.
+  - Backend `node_modules`/lockfile material.
+- Why not now:
+  - Audio runtime is deferred.
+  - Emotional memory should be part of future Story Lab state/persistence, not an in-memory audio service side effect.
+- Future extraction notes:
+  - Centralize an emotion vocabulary config for prompt generation, tag validation, and future audio.
+  - Use Proving Grounds to flag generated tags that are unknown or too generic.
+- Source files/commits:
+  - `AUDIO_PIPELINE_INVESTIGATION.md`
+  - `EMOTION_MAPPING_DOCUMENTATION.md`
+  - `api/lib/services/audioService.ts`
+  - `backend/src/services/audioService.ts`
+
+## PR #44 - Character-driven narration and sound effects
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/44`
+- Story-generation ideas not taken:
+  - Creature-specific scene/effect trigger metadata.
+  - Emotion distribution and character count as story QA signals.
+  - Character-driven narration metadata for future audio/player display.
+- Other useful ideas not taken:
+  - Enhanced player controls.
+  - Sound-effect provider integrations.
+  - `api/soundeffects/info.ts`.
+  - ElevenLabs model migration.
+- Why not now:
+  - SFX has provider/licensing/storage complexity and is outside current Vercel deployment recovery.
+  - Audio is deferred.
+- Future extraction notes:
+  - Generate effect-intent metadata first; choose providers and mixing architecture later.
+  - Evaluate effect tags in Proving Grounds before user-facing release.
+- Source files/commits:
+  - `ELEVENLABS_MODELS_RESEARCH.md`
+  - `RECENT_PRS_ANALYSIS.md`
+  - `SOUND_EFFECTS_RESEARCH.md`
+  - `api/lib/services/audioService.ts`
+  - `api/soundeffects/info.ts`
+
+## PR #43 - Emotion-aware voice processing and enhanced player
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/43`
+- Story-generation ideas not taken:
+  - Character personality profiles for vampires, werewolves, fairies, humans, and narrator.
+  - Output analysis for speaker count and emotion distribution.
+  - Recommendations when generated dialogue is too neutral or has too little emotional variety.
+- Other useful ideas not taken:
+  - `AudioEnhancementService`.
+  - Enhanced audio player with per-character controls.
+  - Runtime 90+ emotion-to-voice parameter mapping.
+- Why not now:
+  - Audio player work is out of scope.
+  - Character personality profiles need to be reconciled with author-style, beat, trope, and Story Lab state configs first.
+- Future extraction notes:
+  - Recreate the analyzer portion in Proving Grounds or story QA tests.
+  - Promote personality profiles only if they improve generated dialogue without over-constraining prose.
+- Source files/commits:
+  - `AUDIO_PIPELINE_ENHANCEMENTS.md`
+  - `backend/src/services/audioEnhancementService.ts`
+  - `story-generator/src/app/enhanced-audio-player/*`
+
+## PR #42 - Streaming audio and modern ElevenLabs integration
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/42`
+- Story-generation ideas not taken:
+  - Explicit audio-compatible story tags.
+  - Long-running audio job semantics with start/status/result/cancel/progress.
+  - Separation between story-generation SSE and future audio-generation progress.
+- Other useful ideas not taken:
+  - Streaming audio endpoints and service.
+  - ElevenLabs model/output-format modernization.
+  - Background audio queue state.
+- Why not now:
+  - Audio is deferred.
+  - In-memory background jobs are not durable enough for Vercel without a queue/workflow decision.
+- Future extraction notes:
+  - If audio resumes, evaluate Vercel Workflow/Queues or another durable runner.
+  - Keep audio progress contracts separate from story streaming contracts.
+- Source files/commits:
+  - `AI_STORY_GENERATION_PROMPT.md`
+  - `AUDIO_PIPELINE_INVESTIGATION_REPORT.md`
+  - `ENHANCED_AUDIO_SYSTEM_DOCS.md`
+  - `api/audio/streaming.ts`
+  - `api/lib/services/streamingAudioService.ts`
+
+## PR #30 - Multi-voice pipeline with 11Labs v3
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/30`
+- Story-generation ideas not taken:
+  - Prompt requirement that all speech uses `[Speaker]` or `[Speaker, emotion]` and narration uses `[Narrator]`.
+  - Segment-level progress/current-dialogue metadata.
+  - Creature-specific voice assignment starting from story creature and character names.
+- Other useful ideas not taken:
+  - Old backend `StoryService`.
+  - `DialogueParser` and audio service implementations.
+  - Old Angular audio controls and contracts.
+  - 11Labs v3 provider wiring.
+- Why not now:
+  - Audio is deferred and #30 predates the #70 Story Lab baseline.
+- Future extraction notes:
+  - Add explicit tags only in an audio-ready generation mode so reading-only output can remain clean if desired.
+- Source files/commits:
+  - `backend/src/services/storyService.ts`
+  - `backend/src/services/dialogueParser.ts`
+  - `api/lib/types/contracts.ts`
+  - `story-generator/src/app/contracts.ts`
+
+## PR #29 - Multi-voice audio service
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/29`
+- Story-generation ideas not taken:
+  - `SpeakerSegment` and `MultiVoiceAudioResult` style metadata.
+  - Narrator voice modes, especially neutral versus intimate.
+  - Character voice mapping surfaced as result metadata.
+- Other useful ideas not taken:
+  - `MultiVoiceAudioService`.
+  - Segment audio generation and stitching.
+  - Environment-variable voice ID map.
+  - Old UI contract/button changes.
+- Why not now:
+  - Audio runtime is deferred.
+  - The service would need to be recreated under current `api/_lib` and Story Lab contracts.
+- Future extraction notes:
+  - Use the segment/result model as a first draft for future audio contracts.
+- Source files/commits:
+  - `api/lib/services/multiVoiceAudioService.ts`
+  - `api/lib/types/contracts.ts`
+  - `story-generator/src/app/contracts.ts`
+
+## PR #28 - Modular multi-voice audio pipeline
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/28`
+- Story-generation ideas not taken:
+  - Separate seams for dialogue parsing, character voice selection, and audio stitching.
+  - Explicit speaker-tag prompt formatting for audio-mode stories.
+  - Inference from character names plus surrounding narration when tags are incomplete.
+- Other useful ideas not taken:
+  - `DialogueParserService`, `CharacterVoiceService`, and `AudioStitchingService`.
+  - Backend/dist output.
+  - Old frontend controls/debug/error changes.
+- Why not now:
+  - Audio is deferred and branch lineage is stale.
+- Future extraction notes:
+  - Use this modular breakdown for any future audio rebuild.
+- Source files/commits:
+  - `backend/src/services/dialogueParserService.ts`
+  - `backend/src/services/characterVoiceService.ts`
+  - `backend/src/services/audioStitchingService.ts`
+  - `backend/src/services/storyService.ts`
+
+## PR #22 - Early multi-voice audio pipeline
+
+- Disposition: mined and closed as superseded by PR #87
+- Source branch: `refs/remotes/pr/22`
+- Story-generation ideas not taken:
+  - Quote-based fallback dialogue extraction.
+  - Emotional context inference from nearby narration.
+  - Character extraction from honorifics, speech verbs, and adjacent paragraphs.
+- Other useful ideas not taken:
+  - Early backend dialogue parsing service.
+  - Audio routes and service code.
+  - Old frontend audio UI/contracts.
+- Why not now:
+  - Later PRs provide better explicit speaker-tag systems.
+  - Audio remains deferred.
+- Future extraction notes:
+  - Keep fallback parsing only for legacy/imported stories; prefer explicit tags in new audio-mode generation.
+- Source files/commits:
+  - `backend/src/services/dialogueParsingService.ts`
+  - `backend/src/routes/audioRoutes.ts`
+  - `backend/src/types/contracts.ts`
+  - `story-generator/src/app/contracts.ts`

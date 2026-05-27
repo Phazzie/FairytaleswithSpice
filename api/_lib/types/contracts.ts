@@ -18,6 +18,22 @@ export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
+export type CliffhangerType =
+  | 'romantic_tension'
+  | 'plot_twist'
+  | 'danger'
+  | 'mystery'
+  | 'character_revelation'
+  | 'emotional_conflict';
+
+export interface CliffhangerAnalysis {
+  cliffhangerDetected: boolean;
+  cliffhangerType: CliffhangerType;
+  cliffhangerStrength: number;
+  cliffhangerText: string;
+  suggestedContinuations: string[];
+  varietyScore: number;
+}
 
 // ==================== CHAPTER MANAGEMENT ====================
 export interface Chapter {
@@ -31,6 +47,14 @@ export interface Chapter {
   hasAudio: boolean;
   audioUrl?: string;
   audioDuration?: number;
+  cliffhangerEnding?: boolean;
+  nextChapterHint?: string;
+}
+
+export interface ChapterFailure {
+  chapterNumber: number;
+  message: string;
+  errorCode?: string;
 }
 
 export interface AudioProgress {
@@ -51,6 +75,7 @@ export interface StoryGenerationSeam {
     userInput: string; // Optional custom ideas
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
+    requestedChapterCount?: 1 | 2 | 3;
   };
 
   output: {
@@ -65,6 +90,12 @@ export interface StoryGenerationSeam {
     estimatedReadTime: number; // in minutes
     hasCliffhanger: boolean; // determines if "Continue Chapter" button shows
     generatedAt: Date;
+    tropeMetadata?: string; // Invisible generation metadata for continuation consistency
+    chapters?: Chapter[];
+    totalWordCount?: number;
+    nextChapterHint?: string;
+    appendedToStory?: string; // Combined HTML for generated chapters
+    failedChapters?: ChapterFailure[];
   };
 
   errors: {
@@ -107,6 +138,8 @@ export interface ChapterContinuationSeam {
     existingContent: string; // Full story HTML content
     userInput?: string; // Optional continuation hints
     maintainTone: boolean; // Keep same spicy level and themes
+    tropeMetadata?: string; // Optional invisible generation metadata from original story
+    requestedChapterCount?: 1 | 2 | 3;
   };
 
   output: {
@@ -119,6 +152,13 @@ export interface ChapterContinuationSeam {
     themesContinued: ThemeType[];
     spicyLevelMaintained: SpicyLevel;
     appendedToStory: string; // Full updated story content
+    tropeMetadata?: string; // Propagated invisible generation metadata
+    cliffhangerAnalysis?: CliffhangerAnalysis;
+    chapters?: Chapter[]; // Newly generated chapters when batching
+    totalWordCount?: number;
+    estimatedReadTime?: number; // Updated total read time in minutes
+    nextChapterHint?: string;
+    failedChapters?: ChapterFailure[];
   };
 
   errors: {
@@ -153,6 +193,7 @@ export interface StreamingStoryGenerationSeam {
     userInput: string;
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
+    requestedChapterCount?: 1 | 2 | 3;
   };
 
   progressUpdate: {
@@ -184,6 +225,12 @@ export interface StreamingStoryGenerationSeam {
     estimatedReadTime: number;
     hasCliffhanger: boolean;
     generatedAt: Date;
+    tropeMetadata?: string;
+    chapters?: Chapter[];
+    totalWordCount?: number;
+    nextChapterHint?: string;
+    appendedToStory?: string;
+    failedChapters?: ChapterFailure[];
   };
 
   errors: {
@@ -401,5 +448,8 @@ export interface ApiResponse<T> {
     requestId: string;
     processingTime: number;
     rateLimitRemaining?: number;
+    chaptersRequested?: number;
+    chaptersGenerated?: number;
+    partialFailures?: ChapterFailure[];
   };
 }

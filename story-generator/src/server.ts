@@ -6,9 +6,17 @@ import {
 } from '@angular/ssr/node';
 import express, { Request, Response, NextFunction } from 'express';
 import { join } from 'node:path';
-import { StoryService } from '../../api/lib/services/storyService';
-import { ExportService } from '../../api/lib/services/exportService';
-import { ImageService } from '../../api/lib/services/imageService';
+import { StoryService } from '../../api/_lib/services/storyService';
+import { ExportService } from '../../api/_lib/services/exportService';
+import { ImageService } from '../../api/_lib/services/imageService';
+
+type StoryStreamChunk = {
+  content: string;
+  isComplete: boolean;
+  wordsGenerated: number;
+  estimatedWordsRemaining: number;
+  generationSpeed: number;
+};
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -116,7 +124,7 @@ app.post('/api/story/stream', async (req: Request, res: Response) => {
     const storyService = new StoryService();
 
     // Stream the story generation
-    await storyService.generateStoryStreaming(input, (chunk) => {
+    await storyService.generateStoryStreaming(input, (chunk: StoryStreamChunk) => {
       if (chunk.isComplete) {
         // Send final complete message
         res.write(`data: ${JSON.stringify({
