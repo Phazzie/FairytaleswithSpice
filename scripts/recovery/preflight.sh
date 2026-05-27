@@ -90,6 +90,9 @@ fi
 step "Checking whitespace/conflict markers"
 git diff --check
 
+step "Checking deployable Vercel function count"
+"${SCRIPT_DIR}/check-vercel-function-count.sh"
+
 if [[ ${RUN_TYPECHECK} -eq 1 ]]; then
   step "Type checking Angular app"
   cd "${STORY_GENERATOR_DIR}"
