@@ -897,6 +897,9 @@ Actions:
   - restored readable formatting and hover/focus/spinner affordances,
   - raised the Angular `anyComponentStyle` warning threshold from `10kB` to `12kB` so source readability is not traded away for a warning-only budget.
 - Reverted the root `package.json` `test:grok-smoke` script addition from the current PR scope; the untracked Grok smoke test idea remains deferred follow-up material.
+- Fixed two SonarCloud security findings that appeared after the branch push:
+  - replaced dynamic chapter-title `RegExp` construction in `api/_lib/services/storyService.ts`,
+  - removed Angular `bypassSecurityTrustHtml` usage from `story-generator/src/app/streaming-story/streaming-story.component.ts` and let Angular's `[innerHTML]` sanitizer handle streamed HTML.
 
 Decision:
 
@@ -907,6 +910,7 @@ Validation:
 - `scripts/recovery/check-vercel-function-count.sh` passed and reported `12/12`.
 - `git diff --check` passed.
 - `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed with Node v20.20.2. The Proving Grounds CSS budget warning is gone; the stale `baseline-browser-mapping` warning remains.
+- `scripts/recovery/preflight.sh --skip-status` passed after the SonarCloud fixes.
 
 Self-review:
 

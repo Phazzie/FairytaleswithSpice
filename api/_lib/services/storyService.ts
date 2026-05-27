@@ -1375,7 +1375,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     let title = headingMatch ? this.stripHtml(headingMatch[1]).trim() : '';
 
     if (title.toLowerCase().startsWith(`chapter ${chapterNumber}`)) {
-      title = title.replace(new RegExp(`^chapter\\s+${chapterNumber}\\s*:?`, 'i'), '').trim();
+      title = title.slice(`chapter ${chapterNumber}`.length).replace(/^\s*:?/, '').trim();
     }
 
     if (!title) {

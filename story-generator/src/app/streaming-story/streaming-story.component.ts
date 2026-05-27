@@ -3,9 +3,8 @@
  * Demonstrates how to use the streaming story API for real-time generation
  */
 
-import { Component, OnDestroy, SecurityContext, inject } from '@angular/core';
+import { Component, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
 
 import { StoryService } from '../story.service';
@@ -66,7 +65,7 @@ import {
         <h2 class="story-title">{{ storyTitle }}</h2>
         <div 
           class="story-text"
-          [innerHTML]="safeStreamedContent">
+          [innerHTML]="streamedContent">
         </div>
         
         <!-- Typing indicator -->
@@ -206,7 +205,6 @@ import {
 })
 export class StreamingStoryComponent implements OnDestroy {
   private storyService = inject(StoryService);
-  private readonly sanitizer = inject(DomSanitizer);
   private streamSubscription?: Subscription;
 
   // Created: 2025-10-29 08:27 UTC
@@ -227,7 +225,6 @@ export class StreamingStoryComponent implements OnDestroy {
   // Streaming state
   isStreaming = false;
   streamedContent = '';
-  safeStreamedContent: SafeHtml = this.sanitizer.bypassSecurityTrustHtml('');
   storyTitle = '';
   errorMessage = '';
   
@@ -261,7 +258,6 @@ export class StreamingStoryComponent implements OnDestroy {
     // Clear previous content
     this.streamSubscription?.unsubscribe();
     this.streamedContent = '';
-    this.updateSafeStreamContent('');
     this.errorMessage = '';
     this.storyTitle = 'Generating your story...';
     this.isStreaming = true;
@@ -311,7 +307,6 @@ export class StreamingStoryComponent implements OnDestroy {
   clearError(): void {
     this.errorMessage = '';
     this.streamedContent = '';
-    this.updateSafeStreamContent('');
     this.progress = {
       wordsGenerated: 0,
       estimatedWordsRemaining: 0,
@@ -327,7 +322,6 @@ export class StreamingStoryComponent implements OnDestroy {
 
     if (chunk.partialHtml) {
       this.streamedContent = chunk.partialHtml;
-      this.updateSafeStreamContent(this.streamedContent);
     }
 
     if (typeof chunk.percentage === 'number') {
@@ -353,7 +347,6 @@ export class StreamingStoryComponent implements OnDestroy {
         .map((chapter: GeneratedChapter) => `<h3>${chapter.title}</h3>${chapter.htmlContent}`)
         .join('');
       this.streamedContent = combined;
-      this.updateSafeStreamContent(combined);
     }
 
     // Add a small celebration effect
@@ -366,11 +359,6 @@ export class StreamingStoryComponent implements OnDestroy {
     this.isStreaming = false;
     this.errorMessage = error.message || 'An unexpected error occurred during generation';
     this.streamSubscription = undefined;
-  }
-
-  private updateSafeStreamContent(html: string): void {
-    const sanitized = this.sanitizer.sanitize(SecurityContext.HTML, html) ?? '';
-    this.safeStreamedContent = this.sanitizer.bypassSecurityTrustHtml(sanitized);
   }
 
   ngOnDestroy(): void {
