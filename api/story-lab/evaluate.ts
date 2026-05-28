@@ -1,22 +1,4 @@
-import type { ApiEnvelope } from '../_lib/story-lab/contracts';
-
-interface EvaluationCriteria {
-  score: number;
-  strengths: string[];
-  weaknesses: string[];
-  suggestions: string[];
-  overallFeedback: string;
-}
-
-interface EvaluationRequest {
-  storyContent?: string;
-  configuration?: {
-    creature?: string;
-    themes?: string[];
-    spicyLevel?: number;
-    wordCount?: number;
-  };
-}
+import type { ApiResponse, EvaluationCriteria, EvaluationRequest } from '../_lib/story-lab/contracts';
 
 interface NormalizedEvaluationRequest {
   storyContent: string;
@@ -116,8 +98,10 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const input = req.body as EvaluationRequest;
-  if (!input.storyContent?.trim()) {
+  const input = req.body as (Partial<EvaluationRequest> & {
+    configuration?: Partial<EvaluationRequest['configuration']>;
+  }) | undefined;
+  if (!input || typeof input !== 'object' || !input.storyContent?.trim()) {
     res.status(400).json({
       success: false,
       error: {
@@ -140,10 +124,11 @@ export default async function handler(req: any, res: any) {
 
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) {
-    res.status(200).json({
+    const payload: ApiResponse<EvaluationCriteria> = {
       success: true,
       data: getMockEvaluation()
-    });
+    };
+    res.status(200).json(payload);
     return;
   }
 
@@ -175,26 +160,25 @@ export default async function handler(req: any, res: any) {
       throw new Error(`xAI evaluation failed with ${response.status}`);
     }
 
-    const payload = await response.json() as {
+    const grokPayload = await response.json() as {
       choices?: Array<{ message?: { content?: string } }>;
     };
-    const content = payload.choices?.[0]?.message?.content;
+    const content = grokPayload.choices?.[0]?.message?.content;
     if (!content) {
       throw new Error('xAI evaluation response did not include content.');
     }
 
-    res.status(200).json({
+    const responsePayload: ApiResponse<EvaluationCriteria> = {
       success: true,
       data: parseEvaluation(content)
-    });
+    };
+    res.status(200).json(responsePayload);
   } catch (error) {
-    res.status(200).json({
+    console.warn('Evaluation fallback returned mock feedback.', error);
+    const fallbackPayload: ApiResponse<EvaluationCriteria> = {
       success: true,
-      data: getMockEvaluation(),
-      error: {
-        code: 'EVALUATION_FALLBACK',
-        message: error instanceof Error ? error.message : 'Evaluation failed; returned mock feedback.'
-      }
-    });
+      data: getMockEvaluation()
+    };
+    res.status(200).json(fallbackPayload);
   }
 }

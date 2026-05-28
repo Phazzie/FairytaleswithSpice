@@ -7,10 +7,12 @@
  */
 
 import { StoryService } from '../_lib/services/storyService';
+import { randomUUID } from 'node:crypto';
 import { StoryGenerationSeam, StreamingStoryGenerationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 
 const storyService = new StoryService();
+const VALID_REQUESTED_CHAPTER_COUNTS = new Set([1, 2, 3]);
 
 /**
  * GET/POST /api/story/stream
@@ -19,7 +21,7 @@ const storyService = new StoryService();
  */
 export default async function handler(req: any, res: any) {
   const requestId = req.headers['x-request-id'] || 
-                    `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    `req_${randomUUID()}`;
   
   // Set CORS headers FIRST
   const origin = process.env['FRONTEND_URL'] || 'http://localhost:4200';
@@ -49,15 +51,16 @@ export default async function handler(req: any, res: any) {
     if (req.method === 'GET') {
       // Parse from query params for EventSource
       const { creature, themes, spicyLevel, wordCount, userInput, requestedChapterCount } = req.query;
+      const parsedRequestedChapterCount = requestedChapterCount
+        ? Number.parseInt(requestedChapterCount as string, 10)
+        : undefined;
       input = {
         creature: creature as any,
         themes: themes ? (themes as string).split(',') as any[] : [],
-        spicyLevel: parseInt(spicyLevel as string, 10) as any,
-        wordCount: parseInt(wordCount as string, 10) as any,
+        spicyLevel: Number.parseInt(spicyLevel as string, 10) as any,
+        wordCount: Number.parseInt(wordCount as string, 10) as any,
         userInput: userInput as string || '',
-        requestedChapterCount: requestedChapterCount
-          ? parseInt(requestedChapterCount as string, 10) as any
-          : undefined
+        requestedChapterCount: parsedRequestedChapterCount as any
       };
     } else {
       // POST body
@@ -65,13 +68,38 @@ export default async function handler(req: any, res: any) {
     }
 
     // Validate input
-    if (!input.creature || !input.themes || typeof input.spicyLevel !== 'number' || !input.wordCount) {
-      logWarn('Invalid streaming input', { requestId, endpoint: '/api/story/stream' }, { receivedFields: Object.keys(input) });
+    if (
+      !input ||
+      !input.creature ||
+      !Array.isArray(input.themes) ||
+      !Number.isInteger(input.spicyLevel) ||
+      input.spicyLevel < 1 ||
+      input.spicyLevel > 5 ||
+      !Number.isInteger(input.wordCount) ||
+      input.wordCount < 1
+    ) {
+      logWarn('Invalid streaming input', { requestId, endpoint: '/api/story/stream' }, { receivedFields: input ? Object.keys(input) : [] });
       return res.status(400).json({
         success: false,
         error: { 
           code: 'INVALID_INPUT', 
-          message: 'Missing required fields: creature, themes, spicyLevel, wordCount' 
+          message: 'Invalid or missing fields: creature, themes, spicyLevel, wordCount'
+        }
+      });
+    }
+
+    if (
+      input.requestedChapterCount !== undefined &&
+      !VALID_REQUESTED_CHAPTER_COUNTS.has(input.requestedChapterCount)
+    ) {
+      logWarn('Invalid requested chapter count', { requestId, endpoint: '/api/story/stream' }, {
+        requestedChapterCount: input.requestedChapterCount
+      });
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'requestedChapterCount must be 1, 2, or 3'
         }
       });
     }
@@ -104,7 +132,7 @@ export default async function handler(req: any, res: any) {
       'Access-Control-Allow-Headers': 'Cache-Control, X-API-Key, Authorization'
     });
 
-    const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const streamId = `stream_${randomUUID()}`;
 
     // Send initial connection message per contract
     const connectedUpdate: StreamingStoryGenerationSeam['progressUpdate'] = {

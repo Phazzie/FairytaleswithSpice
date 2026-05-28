@@ -11,6 +11,8 @@
  * - Environment-aware logging (verbose in dev, minimal in prod)
  */
 
+import { randomUUID } from 'node:crypto';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'critical';
 
 export interface LogContext {
@@ -63,7 +65,7 @@ class Logger {
    * Generate a unique request ID for correlation
    */
   public generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `req_${randomUUID()}`;
   }
 
   /**

@@ -1,6 +1,6 @@
 // Created: 2025-10-29 08:27 UTC
 
-import type { ApiEnvelope, StoryGenerationSeam, StoryIterationPayload } from '../_lib/story-lab/contracts';
+import type { ApiResponse, StoryGenerationSeam, StoryIterationPayload } from '../_lib/story-lab/contracts';
 import { buildGenesisResponse } from '../_lib/story-lab/mockData';
 
 const VALID_BATCH_SIZES: ReadonlyArray<StoryGenerationSeam['input']['chapterBatchSize']> = [1, 2, 3];
@@ -28,7 +28,17 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const input: StoryGenerationSeam['input'] = req.body;
+  const input = req.body as StoryGenerationSeam['input'] | undefined;
+  if (!input || typeof input !== 'object') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_BLUEPRINT',
+        message: 'Request body is required.'
+      }
+    });
+    return;
+  }
 
   const normalizedBatch = Number(input.chapterBatchSize) as StoryGenerationSeam['input']['chapterBatchSize'];
   const validBatch = VALID_BATCH_SIZES.includes(normalizedBatch);
@@ -52,6 +62,6 @@ export default async function handler(req: any, res: any) {
     themes: Array.isArray(input.themes) ? input.themes : []
   };
 
-  const payload: ApiEnvelope<StoryIterationPayload> = buildGenesisResponse(normalizedInput);
+  const payload: ApiResponse<StoryIterationPayload> = buildGenesisResponse(normalizedInput);
   res.status(200).json(payload);
 }

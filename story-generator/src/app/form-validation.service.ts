@@ -1,3 +1,5 @@
+// Created: 2025-10-31 06:28 UTC
+
 import { Injectable } from '@angular/core';
 import {
   ChapterBatchSize,
@@ -21,11 +23,11 @@ export type BlueprintValidationField =
 
 export type BlueprintValidationErrors = Partial<Record<BlueprintValidationField, string>>;
 
-const VALID_CREATURES: readonly CreatureArchetype[] = ['vampire', 'werewolf', 'fairy', 'siren', 'djinn'];
-const VALID_TONES: readonly NarrativeTone[] = ['romance', 'dark_romance', 'mystery', 'adventure', 'comedy', 'tragedy'];
-const VALID_SPICY_LEVELS: readonly SpicyLevel[] = [1, 2, 3, 4, 5];
-const VALID_WORD_BUDGETS: readonly WordBudget[] = [600, 900, 1200, 1500];
-const VALID_BATCH_SIZES: readonly ChapterBatchSize[] = [1, 2, 3];
+const VALID_CREATURES = new Set<CreatureArchetype>(['vampire', 'werewolf', 'fairy', 'siren', 'djinn']);
+const VALID_TONES = new Set<NarrativeTone>(['romance', 'dark_romance', 'mystery', 'adventure', 'comedy', 'tragedy']);
+const VALID_SPICY_LEVELS = new Set<SpicyLevel>([1, 2, 3, 4, 5]);
+const VALID_WORD_BUDGETS = new Set<WordBudget>([600, 900, 1200, 1500]);
+const VALID_BATCH_SIZES = new Set<ChapterBatchSize>([1, 2, 3]);
 
 @Injectable({
   providedIn: 'root'
@@ -43,11 +45,11 @@ export class FormValidationService {
     const chapterBatchSize = Number(input.chapterBatchSize);
     const themes = Array.isArray(input.themes) ? input.themes : [];
 
-    if (!VALID_CREATURES.includes(input.creature)) {
+    if (!VALID_CREATURES.has(input.creature)) {
       errors.creature = 'Choose a supported creature archetype.';
     }
 
-    if (!VALID_TONES.includes(input.tone)) {
+    if (!VALID_TONES.has(input.tone)) {
       errors.tone = 'Choose a supported narrative tone.';
     }
 
@@ -63,15 +65,15 @@ export class FormValidationService {
       errors.logline = `Keep the logline under ${this.maxLoglineLength} characters.`;
     }
 
-    if (!VALID_SPICY_LEVELS.includes(spicyLevel as SpicyLevel)) {
+    if (!VALID_SPICY_LEVELS.has(spicyLevel as SpicyLevel)) {
       errors.spicyLevel = 'Spicy level must be between 1 and 5.';
     }
 
-    if (!VALID_WORD_BUDGETS.includes(desiredWordBudget as WordBudget)) {
+    if (!VALID_WORD_BUDGETS.has(desiredWordBudget as WordBudget)) {
       errors.desiredWordBudget = 'Choose a supported word budget.';
     }
 
-    if (!VALID_BATCH_SIZES.includes(chapterBatchSize as ChapterBatchSize)) {
+    if (!VALID_BATCH_SIZES.has(chapterBatchSize as ChapterBatchSize)) {
       errors.chapterBatchSize = 'Choose 1, 2, or 3 chapters per batch.';
     }
 

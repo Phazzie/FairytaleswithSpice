@@ -3,6 +3,7 @@
 // Generates images using Grok-2-Image based on story content
 
 import axios from 'axios';
+import { randomUUID } from 'node:crypto';
 import { ImageGenerationSeam, ApiResponse } from '../types/contracts.js';
 
 export class ImageService {
@@ -215,7 +216,7 @@ export class ImageService {
   private generateMockImageUrl(input: ImageGenerationSeam['input']): string {
     // Generate a realistic mock image URL for development
     const dimensions = this.getAspectRatioDimensions(input.aspectRatio || '16:9');
-    const mockId = Math.random().toString(36).substring(2, 15);
+    const mockId = randomUUID();
     return `https://picsum.photos/${dimensions.width}/${dimensions.height}?random=${mockId}`;
   }
 
@@ -233,10 +234,10 @@ export class ImageService {
   }
 
   private generateRequestId(): string {
-    return `img-req-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    return `img-req-${randomUUID()}`;
   }
 
   private generateImageId(): string {
-    return `img-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    return `img-${randomUUID()}`;
   }
 }

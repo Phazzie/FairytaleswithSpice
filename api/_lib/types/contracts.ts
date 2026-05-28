@@ -3,7 +3,7 @@
 // Each seam represents a boundary where data crosses between components
 
 // ==================== TYPE DEFINITIONS ====================
-export type CreatureType = 'vampire' | 'werewolf' | 'fairy';
+export type CreatureType = 'vampire' | 'werewolf' | 'fairy' | 'siren' | 'djinn';
 export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden_love' | 'revenge' | 'manipulation' | 'seduction' | 'dark_secrets' | 'corruption' | 'dominance' | 'submission' | 'jealousy' | 'temptation' | 'sin' | 'desire' | 'passion' | 'lust' | 'deceit';
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
 export type WordCount = 700 | 900 | 1200;
@@ -436,20 +436,29 @@ export interface UIState {
 }
 
 // ==================== UNIFIED API RESPONSE ====================
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-  metadata?: {
-    requestId: string;
-    processingTime: number;
-    rateLimitRemaining?: number;
-    chaptersRequested?: number;
-    chaptersGenerated?: number;
-    partialFailures?: ChapterFailure[];
-  };
+export interface ApiResponseMetadata {
+  requestId: string;
+  processingTime: number;
+  rateLimitRemaining?: number;
+  chaptersRequested?: number;
+  chaptersGenerated?: number;
+  partialFailures?: ChapterFailure[];
 }
+
+export interface ApiErrorPayload {
+  code: string;
+  message: string;
+  details?: any;
+}
+
+export type ApiResponse<T> = {
+  success: true;
+  data: T;
+  error?: never;
+  metadata?: ApiResponseMetadata;
+} | {
+  success: false;
+  data?: never;
+  error: ApiErrorPayload;
+  metadata?: ApiResponseMetadata;
+};

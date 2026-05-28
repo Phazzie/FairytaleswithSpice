@@ -3,7 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import {
-  ApiEnvelope,
+  ApiResponse,
   StoryGenerationSeam,
   StoryIterationPayload,
   StoryContinuationSeam,
@@ -27,7 +27,7 @@ export class StoryService {
   /**
    * Begin a new story using the provided blueprint.
    */
-  beginStory(input: StoryGenerationSeam['input']): Observable<ApiEnvelope<StoryIterationPayload>> {
+  beginStory(input: StoryGenerationSeam['input']): Observable<ApiResponse<StoryIterationPayload>> {
     const { creature, tone, spicyLevel, desiredWordBudget, chapterBatchSize, themes } = input;
     this.errorLogging.logInfo('Starting multi-chapter genesis request', 'StoryService.beginStory', {
       creature,
@@ -39,13 +39,13 @@ export class StoryService {
     });
 
     return this.http
-      .post<ApiEnvelope<StoryIterationPayload>>(`${this.apiUrl}/stories`, input)
+      .post<ApiResponse<StoryIterationPayload>>(`${this.apiUrl}/stories`, input)
       .pipe(
         tap(response => {
           if (response.success) {
             this.errorLogging.logInfo('Genesis batch completed', 'StoryService.beginStory', {
-              storyId: response.data?.summary.storyId,
-              chapters: response.data?.batch.chapters.map(ch => ch.chapterNumber)
+              storyId: response.data.summary.storyId,
+              chapters: response.data.batch.chapters.map(ch => ch.chapterNumber)
             });
           }
         }),
@@ -56,7 +56,7 @@ export class StoryService {
   /**
    * Request a continuation batch for an existing story.
    */
-  continueStory(input: StoryContinuationSeam['input']): Observable<ApiEnvelope<StoryIterationPayload & { appendedChapterNumbers: number[] }>> {
+  continueStory(input: StoryContinuationSeam['input']): Observable<ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }>> {
     this.errorLogging.logInfo('Requesting continuation batch', 'StoryService.continueStory', {
       storyId: input.storyId,
       batchSize: input.chapterBatchSize,
@@ -65,7 +65,7 @@ export class StoryService {
     });
 
     return this.http
-      .post<ApiEnvelope<StoryIterationPayload & { appendedChapterNumbers: number[] }>>(
+      .post<ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }>>(
         `${this.apiUrl}/stories/${input.storyId}/continue`,
         input
       )
@@ -78,8 +78,8 @@ export class StoryService {
   streamStoryGeneration(
     input: StoryGenerationSeam['input'],
     onProgress: (chunk: StreamingProgressChunk) => void
-  ): Observable<ApiEnvelope<StoryIterationPayload>> {
-    return new Observable<ApiEnvelope<StoryIterationPayload>>(observer => {
+  ): Observable<ApiResponse<StoryIterationPayload>> {
+    return new Observable<ApiResponse<StoryIterationPayload>>(observer => {
       const params = new URLSearchParams({
         creature: input.creature,
         spicyLevel: String(input.spicyLevel),
@@ -100,7 +100,7 @@ export class StoryService {
 
       eventSource.onmessage = event => {
         try {
-          const chunk = JSON.parse(event.data) as StreamingProgressChunk | ApiEnvelope<StoryIterationPayload>;
+          const chunk = JSON.parse(event.data) as StreamingProgressChunk | ApiResponse<StoryIterationPayload>;
           if ('type' in chunk) {
             onProgress(chunk);
             return;

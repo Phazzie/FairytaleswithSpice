@@ -63,15 +63,25 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
   cursor: pointer;
   padding: 1rem;
   background: #a855f71a;
+  border: 0;
   border-radius: 8px;
+  color: inherit;
+  font: inherit;
   margin-bottom: 1rem;
+  text-align: left;
   transition: background 0.2s;
 }
 .section-header:hover {
   background: #a855f733;
+}
+.section-header-title {
+  color: #c084fc;
+  font-size: 1.2rem;
+  font-weight: 700;
 }
 .toggle-icon {
   color: #a855f7;
@@ -138,7 +148,9 @@
   background: #0000004d;
   border: 2px solid #a855f74d;
   border-radius: 8px;
+  color: inherit;
   cursor: pointer;
+  text-align: left;
   transition:
     border-color 0.2s,
     background 0.2s;
@@ -152,12 +164,15 @@
   background: #a855f733;
   box-shadow: 0 0 15px #a855f74d;
 }
-.template-card h4 {
+.template-title {
+  display: block;
   margin: 0 0 0.5rem;
   color: #c084fc;
   font-size: 1rem;
+  font-weight: 700;
 }
-.template-card p {
+.template-description {
+  display: block;
   margin: 0;
   font-size: 0.9rem;
   color: #b0b0b0;
@@ -185,8 +200,8 @@
   background: #a855f71a;
 }
 .theme-tag.selected {
-  background: #a855f7;
-  border-color: #a855f7;
+  background: #7e22ce;
+  border-color: #c084fc;
   color: #fff;
   box-shadow: 0 0 10px #a855f780;
 }
@@ -287,7 +302,7 @@
   border-left: 3px solid #6366f1;
 }
 .chekov-number {
-  background: #6366f1;
+  background: #4338ca;
   color: #fff;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
@@ -320,7 +335,7 @@
   cursor: not-allowed;
 }
 .btn-primary {
-  background: linear-gradient(135deg, #a855f7 0, #8b5cf6 100%);
+  background: #6d28d9;
   color: #fff;
   box-shadow: 0 4px 15px #a855f74d;
 }
@@ -351,12 +366,12 @@
   font-size: 0.85rem;
 }
 .btn-danger {
-  background: #ef444433;
-  color: #ef4444;
-  border: 1px solid #ef4444;
+  background: #7f1d1d;
+  color: #fee2e2;
+  border: 1px solid #fca5a5;
 }
 .btn-danger:hover:not(:disabled) {
-  background: #ef44444d;
+  background: #991b1b;
 }
 .spinner {
   display: inline-block;
@@ -473,19 +488,19 @@
   border: 4px solid;
 }
 .score-circle.score-high {
-  background: #22c55e33;
-  border-color: #22c55e;
-  color: #22c55e;
+  background: #14532d;
+  border-color: #86efac;
+  color: #dcfce7;
 }
 .score-circle.score-medium {
-  background: #eab30833;
-  border-color: #eab308;
-  color: #eab308;
+  background: #713f12;
+  border-color: #fde68a;
+  color: #fef9c3;
 }
 .score-circle.score-low {
-  background: #ef444433;
-  border-color: #ef4444;
-  color: #ef4444;
+  background: #7f1d1d;
+  border-color: #fecaca;
+  color: #fee2e2;
 }
 .score-value {
   font-size: 2.5rem;
@@ -629,6 +644,18 @@
   border-radius: 6px;
   font-weight: 700;
   font-size: 1.2rem;
+}
+.score-badge.score-high {
+  background: #14532d;
+  color: #dcfce7;
+}
+.score-badge.score-medium {
+  background: #713f12;
+  color: #fef9c3;
+}
+.score-badge.score-low {
+  background: #7f1d1d;
+  color: #fee2e2;
 }
 .score-badge.mini {
   padding: 0.3rem 0.6rem;

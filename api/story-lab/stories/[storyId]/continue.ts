@@ -1,6 +1,6 @@
 // Created: 2025-10-29 08:27 UTC
 
-import type { ApiEnvelope, StoryContinuationSeam, StoryIterationPayload } from '../../../_lib/story-lab/contracts';
+import type { ApiResponse, StoryContinuationSeam, StoryIterationPayload } from '../../../_lib/story-lab/contracts';
 import { buildContinuationResponse } from '../../../_lib/story-lab/mockData';
 import { getTransientStorySnapshot } from '../../../_lib/story-lab/stateStore';
 
@@ -30,7 +30,18 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const input = req.body as Partial<StoryContinuationSeam['input']>;
+  const input = req.body as Partial<StoryContinuationSeam['input']> | undefined;
+  if (!input || typeof input !== 'object') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_REQUEST',
+        message: 'Request body is required.'
+      }
+    });
+    return;
+  }
+
   const storyId = input.storyId?.trim() ?? '';
   const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
 
@@ -48,18 +59,20 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
+  const previousChapters = hasChapters
+    ? input.previouslyGeneratedChapters ?? []
+    : transientSnapshot!.chapters;
+
   const normalizedInput: StoryContinuationSeam['input'] = {
     ...(input as StoryContinuationSeam['input']),
     storyId,
     storyState: input.storyState ?? transientSnapshot!.state,
-    previouslyGeneratedChapters: hasChapters
-      ? input.previouslyGeneratedChapters!
-      : transientSnapshot!.chapters,
+    previouslyGeneratedChapters: previousChapters,
     existingSummary: input.existingSummary ?? transientSnapshot?.summary,
     chapterBatchSize: batchSizeNumber as StoryContinuationSeam['input']['chapterBatchSize']
   };
 
-  const payload: ApiEnvelope<StoryIterationPayload & { appendedChapterNumbers: number[] }> =
+  const payload: ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }> =
     buildContinuationResponse(normalizedInput);
   res.status(200).json(payload);
 }

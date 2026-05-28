@@ -916,3 +916,63 @@ Self-review:
 
 - Spark was useful for fast bounded work, but its CSS fix proved why final merge polish needs a senior review gate.
 - The better release decision is to merge #87 as a clean baseline and move valuable but nonessential validation/planning ideas into smaller follow-up PRs.
+
+## 2026-05-27 13:45 EDT - Review Follow-Up And Two-Agent Plan
+
+Actions:
+
+- Addressed the still-relevant review findings after PR #87 merged:
+  - aligned frontend/backend API envelopes as discriminated `ApiResponse<T>` unions,
+  - added Story Lab empty-body guards,
+  - allowed the frontend creature set through API validation without crashing trope subversion,
+  - preserved author-style selection for `siren` and `djinn` through the fairy style profile,
+  - hardened Proving Grounds accessibility, comparison state updates, and random ID generation,
+  - replaced remaining `Math.random` ID/security-hotspot usage in active app/API code,
+  - pinned recovery CI actions and disabled checkout credential persistence,
+  - tightened the Vercel function-count guard with an explicit allow-list,
+  - kept `typescript` pinned to a patch range in the root package files.
+- Completed a second review-comment sweep for remaining concrete, low-risk findings:
+  - fixed creation header format on trope/cliffhanger helper files,
+  - removed cliffhanger type skew from question-mark-only endings,
+  - replaced `Date.now()`-only Story Lab mock IDs with UUIDs,
+  - added Story Lab stream enum/range validation before contract casts,
+  - rejected invalid `requestedChapterCount` values in the legacy story stream route,
+  - added theme-chip `aria-pressed`,
+  - tightened debug/app CSS contrast and wrapping rules.
+- Updated `scripts/recovery/preflight.sh` to call local TypeScript binaries directly because `npx tsc` can hang under npm exec parsing on this machine.
+- Added `plan.md`, a self-contained two-agent execution plan for the next major Story Lab productionization chunk.
+- Pointed `AGENTS.md` at `plan.md` with the instruction that the plan starts only after the current polish branch is merged.
+- Addressed PR #89 Gemini follow-up comments:
+  - rejected non-array `themes` in `api/story/stream.ts`,
+  - corrected the Proving Grounds template selector to use `role="radio"` with `aria-checked`,
+  - added a non-`Math.random` preview-selection fallback for environments without Web Crypto.
+- Addressed PR #89 Codex/Copilot follow-up comments:
+  - updated the debug panel to read the enveloped Story Lab health response,
+  - mapped `siren` and `djinn` in backend creature display text,
+  - made live upstream stream errors reject instead of emitting successful completion,
+  - removed flow-content headings from interactive Proving Grounds buttons,
+  - added explicit numeric validation for legacy stream `spicyLevel` and `wordCount`.
+
+Validation:
+
+- `git diff --check` passed.
+- `scripts/recovery/check-vercel-function-count.sh` passed and reported `12/12`.
+- Direct Vercel API typecheck passed:
+  - `find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 | xargs -0 node_modules/.bin/tsc --noEmit --target es2020 --lib es2020,dom --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node`
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `scripts/recovery/preflight.sh --skip-status` passed after docs/plan updates.
+- After the second review sweep, `scripts/recovery/preflight.sh --quick --skip-status` passed again.
+- After the second review sweep, `cd story-generator && npx -p node@20 -c "node -v && npm run build"` passed.
+- After PR #89 Gemini follow-ups, `git diff --check`, `scripts/recovery/check-vercel-function-count.sh`, direct Vercel API typecheck, `scripts/recovery/preflight.sh --quick --skip-status`, and the Node 20 Angular build passed again.
+- After PR #89 Codex/Copilot follow-ups, `git diff --check`, `scripts/recovery/check-vercel-function-count.sh`, direct Vercel API typecheck, `scripts/recovery/preflight.sh --quick --skip-status`, and the Node 20 Angular build passed again.
+- `npm run build:verify` passed after the final Angular build.
+- Known warning remains: `baseline-browser-mapping` reports stale browser data during the Angular build.
+- Existing mock-mode root tests still print word-count variance warnings, but the suite exits passing.
+
+Self-review:
+
+- Good: The review fixes stayed mostly in hardening/contract territory instead of adding new product scope.
+- Good: The new `plan.md` separates the next large work from the review-polish branch.
+- Problem found: Running `npx tsc -p ...` inside preflight hung as `npm exec`; direct local `tsc` binaries are more predictable for this repo.
+- Problem found: A stricter discriminated API response type immediately exposed an evaluation-route variable collision.
+- Should have anticipated sooner: Review comments that look cosmetic can expose real boundaries, especially API envelope shape and Vercel function counting.

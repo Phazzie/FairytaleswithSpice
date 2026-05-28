@@ -129,7 +129,14 @@ describe('StoryService', () => {
     expect(errorLogging.logInfo).toHaveBeenCalledWith(
       'Starting multi-chapter genesis request',
       'StoryService.beginStory',
-      { input }
+      {
+        creature: input.creature,
+        tone: input.tone,
+        spicyLevel: input.spicyLevel,
+        desiredWordBudget: input.desiredWordBudget,
+        chapterBatchSize: input.chapterBatchSize,
+        themeCount: input.themes.length
+      }
     );
   });
 

@@ -94,3 +94,6 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Count deployable Vercel functions before assuming a preview will deploy. Removing deferred audio routes and moving helper modules dropped the branch to 12 Node functions and unblocked deployment.
 - Protected Vercel previews need an authenticated smoke-test path. A 401 from unauthenticated `curl` can mean deployment protection, not app failure; use Vercel share/access tooling or a bypass token for runtime checks.
 - Deferred scope should be physically inactive, not merely deprioritized. Leaving audio endpoints and services in the active API tree made deployment harder even though audio was out of scope.
+- Review-polish branches need a hard scope boundary. Fix review comments, validate, and merge; put the next large product move in a separate plan/branch so cleanup work does not become another oversized mixed PR.
+- Prefer direct local tool binaries in recovery scripts when `npx` behavior is ambiguous. In this repo, `npx tsc -p ...` can hang under `npm exec`, while `node_modules/.bin/tsc` runs predictably.
+- A function-count check is stronger when it names the expected functions. A raw count can pass while hiding accidental helper placement; an allow-list makes deployable API shape intentional.

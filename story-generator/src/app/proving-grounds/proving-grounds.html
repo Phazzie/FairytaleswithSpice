@@ -5,12 +5,14 @@
     <p class="subtitle">{{ statusMessage }}</p>
     <div class="header-actions">
       <button
+        type="button"
         class="btn btn-secondary"
         (click)="comparisonMode.set(!comparisonMode())"
         [class.active]="comparisonMode()">
         {{ comparisonMode() ? '📊 Exit Comparison' : '📊 Compare Tests' }}
       </button>
       <button
+        type="button"
         class="btn btn-secondary"
         (click)="exportTestResults()"
         [disabled]="testHistory().length === 0">
@@ -28,24 +30,27 @@
 
         <!-- Prompt Template Selection -->
         <div class="form-group">
-          <label>Prompt Template</label>
-          <div class="template-selector">
+          <label id="prompt-template-label">Prompt Template</label>
+          <div class="template-selector" role="radiogroup" aria-labelledby="prompt-template-label">
             @for (template of promptTemplates; track template.id) {
-              <div
+              <button
+                type="button"
+                role="radio"
                 class="template-card"
                 [class.selected]="selectedPromptTemplate()?.id === template.id"
+                [attr.aria-checked]="selectedPromptTemplate()?.id === template.id"
                 (click)="selectPromptTemplate(template)">
-                <h4>{{ template.name }}</h4>
-                <p>{{ template.description }}</p>
-              </div>
+                <span class="template-title">{{ template.name }}</span>
+                <span class="template-description">{{ template.description }}</span>
+              </button>
             }
           </div>
         </div>
 
         <!-- Creature Selection -->
         <div class="form-group">
-          <label>Creature Type</label>
-          <select [(ngModel)]="creature" class="form-control">
+          <label for="pg-creature">Creature Type</label>
+          <select id="pg-creature" [(ngModel)]="creature" class="form-control">
             @for (option of creatureOptions; track option) {
               <option [value]="option">{{ option | titlecase }}</option>
             }
@@ -54,8 +59,9 @@
 
         <!-- Spicy Level -->
         <div class="form-group">
-          <label>Spice Level: {{ spicyLevel }}/5</label>
+          <label for="pg-spice">Spice Level: {{ spicyLevel }}/5</label>
           <input
+            id="pg-spice"
             type="range"
             [(ngModel)]="spicyLevel"
             min="1"
@@ -71,8 +77,8 @@
 
         <!-- Word Count -->
         <div class="form-group">
-          <label>Word Count</label>
-          <select [(ngModel)]="wordCount" class="form-control">
+          <label for="pg-word-count">Word Count</label>
+          <select id="pg-word-count" [(ngModel)]="wordCount" class="form-control">
             @for (option of wordCountOptions; track option) {
               <option [ngValue]="option">{{ option }} words</option>
             }
@@ -81,8 +87,8 @@
 
         <!-- Chapter Batch -->
         <div class="form-group">
-          <label>Chapter Batch</label>
-          <select [(ngModel)]="chapterBatchSize" class="form-control">
+          <label for="pg-chapter-batch">Chapter Batch</label>
+          <select id="pg-chapter-batch" [(ngModel)]="chapterBatchSize" class="form-control">
             @for (option of chapterBatchOptions; track option) {
               <option [ngValue]="option">{{ option }} chapter{{ option === 1 ? '' : 's' }}</option>
             }
@@ -91,12 +97,14 @@
 
         <!-- Themes -->
         <div class="form-group">
-          <label>Themes (Select 1-3)</label>
-          <div class="theme-grid">
+          <label id="pg-themes-label">Themes (Select 1-3)</label>
+          <div class="theme-grid" role="group" aria-labelledby="pg-themes-label">
             @for (theme of themeOptions; track theme.id) {
               <button
+                type="button"
                 class="theme-tag"
                 [class.selected]="isThemeSelected(theme)"
+                [attr.aria-pressed]="isThemeSelected(theme)"
                 (click)="toggleTheme(theme)">
                 {{ theme.label }}
               </button>
@@ -106,8 +114,9 @@
 
         <!-- User Input -->
         <div class="form-group">
-          <label>Additional Instructions (Optional)</label>
+          <label for="pg-user-input">Additional Instructions (Optional)</label>
           <textarea
+            id="pg-user-input"
             [(ngModel)]="userInput"
             class="form-control"
             rows="3"
@@ -117,6 +126,7 @@
         <!-- Action Buttons -->
         <div class="action-buttons">
           <button
+            type="button"
             class="btn btn-secondary"
             (click)="viewPrompts()"
             title="View the filled prompt templates">
@@ -124,6 +134,7 @@
           </button>
 
           <button
+            type="button"
             class="btn btn-primary btn-large"
             (click)="generateStory()"
             [disabled]="isGenerating() || selectedThemes.length === 0">
@@ -138,15 +149,20 @@
 
       <!-- Generation Logic Viewer (Expandable) -->
       <div class="panel-section">
-        <div class="section-header" (click)="viewGenerationLogic()">
-          <h3>🎲 Generation Logic</h3>
+        <button
+          type="button"
+          class="section-header"
+          (click)="viewGenerationLogic()"
+          [attr.aria-expanded]="showGenerationLogic"
+          aria-controls="generation-logic-panel">
+          <span class="section-header-title">🎲 Generation Logic</span>
           <span class="toggle-icon">{{ showGenerationLogic ? '▼' : '▶' }}</span>
-        </div>
+        </button>
 
         @if (showGenerationLogic && currentGenerationLogic()) {
-          <div class="generation-logic-viewer">
+          <div id="generation-logic-panel" class="generation-logic-viewer">
             <div class="logic-actions">
-              <button class="btn btn-sm btn-secondary" (click)="regenerateLogic()">
+              <button type="button" class="btn btn-sm btn-secondary" (click)="regenerateLogic()">
                 🎲 Regenerate Random
               </button>
             </div>
@@ -198,24 +214,31 @@
 
       <!-- Custom Prompt Editor (Expandable) -->
       <div class="panel-section">
-        <div class="section-header" (click)="useCustomPrompts = !useCustomPrompts">
-          <h3>🔧 Custom Prompt Editor</h3>
+        <button
+          type="button"
+          class="section-header"
+          (click)="useCustomPrompts = !useCustomPrompts"
+          [attr.aria-expanded]="useCustomPrompts"
+          aria-controls="custom-prompt-panel">
+          <span class="section-header-title">🔧 Custom Prompt Editor</span>
           <span class="toggle-icon">{{ useCustomPrompts ? '▼' : '▶' }}</span>
-        </div>
+        </button>
 
         @if (useCustomPrompts) {
-          <div class="custom-prompt-editor">
+          <div id="custom-prompt-panel" class="custom-prompt-editor">
             <div class="form-group">
-              <label>System Prompt</label>
+              <label for="pg-system-prompt">System Prompt</label>
               <textarea
+                id="pg-system-prompt"
                 [(ngModel)]="customSystemPrompt"
                 class="form-control code-editor"
                 rows="10"
                 placeholder="Enter custom system prompt..."></textarea>
             </div>
             <div class="form-group">
-              <label>User Prompt Template</label>
+              <label for="pg-user-prompt">User Prompt Template</label>
               <textarea
+                id="pg-user-prompt"
                 [(ngModel)]="customUserPrompt"
                 class="form-control code-editor"
                 rows="6"
@@ -234,7 +257,7 @@
         <div class="comparison-view">
           <div class="comparison-header">
             <h2>Comparing {{ selectedComparisons().length }} Tests</h2>
-            <button class="btn btn-secondary" (click)="clearComparisons()">Clear Selection</button>
+            <button type="button" class="btn btn-secondary" (click)="clearComparisons()">Clear Selection</button>
           </div>
 
           <div class="comparison-grid">
@@ -283,6 +306,7 @@
             </div>
             <div class="test-actions">
               <button
+                type="button"
                 class="btn btn-primary"
                 (click)="evaluateStory(currentTest()!)"
                 [disabled]="isEvaluating() || currentTest()!.aiEvaluation">
@@ -429,6 +453,7 @@
                 <div class="history-item-actions">
                   @if (comparisonMode()) {
                     <button
+                      type="button"
                       class="btn btn-sm"
                       (click)="toggleComparison(test)"
                       [disabled]="!isSelectedForComparison(test) && selectedComparisons().length >= 3">
@@ -436,18 +461,21 @@
                     </button>
                   } @else {
                     <button
+                      type="button"
                       class="btn btn-sm"
                       (click)="currentTest.set(test)">
                       View
                     </button>
                     @if (!test.aiEvaluation) {
                       <button
+                        type="button"
                         class="btn btn-sm"
                         (click)="evaluateStory(test)">
                         Evaluate
                       </button>
                     }
                     <button
+                      type="button"
                       class="btn btn-sm btn-danger"
                       (click)="deleteTest(test.id)">
                       Delete

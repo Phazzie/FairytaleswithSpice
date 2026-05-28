@@ -8,6 +8,7 @@ import {
   ChapterBatchSize,
   CreatureArchetype,
   GeneratedChapter,
+  EvaluationCriteria,
   SpicyLevel,
   StoryGenerationSeam,
   StoryIterationPayload,
@@ -16,7 +17,7 @@ import {
 } from '../contracts';
 import { StoryService } from '../story.service';
 import { GenerationLogic, GenerationLogicService } from './generation-logic.service';
-import { EvaluationCriteria, PromptEvaluationService } from './prompt-evaluation.service';
+import { PromptEvaluationService } from './prompt-evaluation.service';
 import { PromptTemplate, PromptTemplatesService } from './prompt-templates.service';
 
 interface TestConfiguration {
@@ -59,6 +60,7 @@ export class ProvingGroundsComponent implements OnInit {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly generationLogicService = inject(GenerationLogicService);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  private idSequence = 0;
 
   readonly isGenerating = signal(false);
   readonly isEvaluating = signal(false);
@@ -171,7 +173,7 @@ export class ProvingGroundsComponent implements OnInit {
       return;
     }
 
-    window.alert(`SYSTEM PROMPT:\n\n${prompts.system}\n\n${'='.repeat(80)}\n\nUSER PROMPT:\n\n${prompts.user}`);
+    globalThis.alert(`SYSTEM PROMPT:\n\n${prompts.system}\n\n${'='.repeat(80)}\n\nUSER PROMPT:\n\n${prompts.user}`);
   }
 
   sanitizeHtml(html: string): string {
@@ -255,6 +257,7 @@ export class ProvingGroundsComponent implements OnInit {
       if (this.currentTest()?.id === updated.id) {
         this.currentTest.set(updated);
       }
+      this.selectedComparisons.set(this.selectedComparisons().map(test => test.id === updated.id ? updated : test));
     } catch (error) {
       console.error('Error evaluating story:', error);
       this.statusMessage = 'Evaluation failed; mock scoring remains available when the API is unavailable.';
@@ -265,15 +268,15 @@ export class ProvingGroundsComponent implements OnInit {
 
   toggleComparison(testResult: TestResult): void {
     const selected = this.selectedComparisons();
-    const index = selected.findIndex(test => test.id === testResult.id);
 
-    if (index > -1) {
-      selected.splice(index, 1);
-    } else if (selected.length < 3) {
-      selected.push(testResult);
+    if (selected.some(test => test.id === testResult.id)) {
+      this.selectedComparisons.set(selected.filter(test => test.id !== testResult.id));
+      return;
     }
 
-    this.selectedComparisons.set([...selected]);
+    if (selected.length < 3) {
+      this.selectedComparisons.set([...selected, testResult]);
+    }
   }
 
   isSelectedForComparison(testResult: TestResult): boolean {
@@ -305,6 +308,8 @@ export class ProvingGroundsComponent implements OnInit {
     if (this.currentTest()?.id === testId) {
       this.currentTest.set(null);
     }
+
+    this.selectedComparisons.set(this.selectedComparisons().filter(test => test.id !== testId));
   }
 
   themeSummary(themes: ThemeSeed[]): string {
@@ -369,7 +374,7 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   private generateId(): string {
-    return `test_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    return `test_${Date.now()}_${this.idSequence++}`;
   }
 
   private addToHistory(testResult: TestResult): void {

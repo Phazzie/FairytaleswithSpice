@@ -45,6 +45,7 @@ export class App {
   private readonly formValidation = inject(FormValidationService);
   private readonly notificationService = inject(NotificationService);
   private readonly sanitizer = inject(DomSanitizer);
+  private batchIdSequence = 0;
 
   readonly availableThemes: ThemeSeed[] = [
     { id: 'forbidden_love', label: 'Forbidden Love', description: 'Lovers defy expectations and social rules.' },
@@ -344,14 +345,14 @@ export class App {
     this.workbench.set(nextSession);
     this.collapsedChapterGroups.set(new Set());
 
-    const newestChapter = payload.batch.chapters.at(-1);
+    const newestChapter = payload.batch.chapters[payload.batch.chapters.length - 1];
     if (newestChapter) {
       this.selectedChapterId.set(newestChapter.chapterId);
     }
   }
 
   private enqueueBatch(label: string, batchSize: ChapterBatchSize): string {
-    const id = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = `batch-${Date.now()}-${this.batchIdSequence++}`;
     const entry: BatchProgressState = {
       id,
       label,

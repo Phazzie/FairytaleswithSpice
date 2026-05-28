@@ -24,7 +24,7 @@ export interface PromptVariables {
 })
 export class PromptTemplatesService {
 
-  private productionSystemPrompt = `You are an audio-first dark-romance architect producing supernatural vignettes optimized for multi-voice narration.
+  private readonly productionSystemPrompt = `You are an audio-first dark-romance architect producing supernatural vignettes optimized for multi-voice narration.
 Your sole purpose is to fabricate episodes that sound cinematic when read aloud and end on a cliff-hook that guarantees listener return.
 
 PROSE ENGINE (MANDATORY):
@@ -151,12 +151,12 @@ Your goal: Create episodes that make listeners desperate for "Continue Chapter."
     const spicyLabel = this.getSpicyLabel(variables.spicyLevel);
 
     return userPromptTemplate
-      .replace(/{{WORD_COUNT}}/g, variables.wordCount.toString())
-      .replace(/{{CREATURE}}/g, creatureName)
-      .replace(/{{THEMES}}/g, themesText)
-      .replace(/{{SPICY_LEVEL}}/g, variables.spicyLevel.toString())
-      .replace(/{{SPICY_LABEL}}/g, spicyLabel)
-      .replace(/{{USER_INPUT}}/g, variables.userInput || '');
+      .replaceAll('{{WORD_COUNT}}', variables.wordCount.toString())
+      .replaceAll('{{CREATURE}}', creatureName)
+      .replaceAll('{{THEMES}}', themesText)
+      .replaceAll('{{SPICY_LEVEL}}', variables.spicyLevel.toString())
+      .replaceAll('{{SPICY_LABEL}}', spicyLabel)
+      .replaceAll('{{USER_INPUT}}', variables.userInput || '');
   }
 
   private getProductionUserPrompt(): string {

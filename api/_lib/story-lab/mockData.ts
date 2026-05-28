@@ -15,6 +15,7 @@ import {
   StoryStateSnapshot,
   StorySummary
 } from './contracts';
+import { randomUUID } from 'node:crypto';
 import { getTransientStorySnapshot, persistStoryIteration } from './stateStore';
 
 let storyRevisionCounter = 1;
@@ -134,18 +135,19 @@ function createBaseState(storyId: string, batchSize: ChapterBatchSize): StorySta
 }
 
 function createChapterDelta(storyId: string, chapterNumber: number, batchSize: ChapterBatchSize): ChapterDelta {
-  const introducedCharacters =
-    chapterNumber === 1
-      ? [createMortalBeloved(storyId)]
-      : chapterNumber === 2
-        ? [createRivalEmissary(storyId)]
-        : [];
+  let introducedCharacters: CharacterProfile[] = [];
+  if (chapterNumber === 1) {
+    introducedCharacters = [createMortalBeloved(storyId)];
+  } else if (chapterNumber === 2) {
+    introducedCharacters = [createRivalEmissary(storyId)];
+  }
 
-  const foreshadowedArtifacts = chapterNumber === 1
-    ? [createSignetArtifact(storyId)]
-    : chapterNumber === 2
-      ? [createOathScroll(storyId, chapterNumber)]
-      : [];
+  let foreshadowedArtifacts: LoreArtifact[] = [];
+  if (chapterNumber === 1) {
+    foreshadowedArtifacts = [createSignetArtifact(storyId)];
+  } else if (chapterNumber === 2) {
+    foreshadowedArtifacts = [createOathScroll(storyId, chapterNumber)];
+  }
 
   const continuityFlags = batchSize === 3 && chapterNumber % 3 === 0
     ? [`Chapter ${chapterNumber} should pay off one planted court secret before adding another.`]
@@ -277,7 +279,7 @@ function buildStateDelta(
 export function buildGenesisResponse(
   input: StoryGenerationSeam['input']
 ): ApiEnvelope<StoryIterationPayload> {
-  const storyId = `story-${Date.now()}`;
+  const storyId = `story-${randomUUID()}`;
   const chapters: GeneratedChapter[] = [];
   for (let i = 0; i < input.chapterBatchSize; i++) {
     chapters.push(createChapter(storyId, i + 1, input.chapterBatchSize));

@@ -1,5 +1,8 @@
-// Created: 2025-10-12
+// Created: 2025-10-12 00:00 UTC
 // Ported from PR #67 into the Vercel-oriented api/_lib tree.
+
+import { randomInt } from 'node:crypto';
+import type { CreatureType } from '../types/contracts';
 
 export interface AuthorStyle {
   author: string;
@@ -196,37 +199,43 @@ export const FAIRY_STYLES: AuthorStyle[] = [
   }
 ];
 
-export function getAuthorStylesForCreature(creature: string): AuthorStyle[] {
-  switch (creature.toLowerCase()) {
-    case 'vampire':
-      return VAMPIRE_STYLES;
+const AUTHOR_STYLE_MAP: Record<CreatureType, AuthorStyle[]> = {
+  vampire: VAMPIRE_STYLES,
+  werewolf: WEREWOLF_STYLES,
+  fairy: FAIRY_STYLES,
+  siren: FAIRY_STYLES,
+  djinn: FAIRY_STYLES
+};
+
+function getSecondaryAuthorStyles(creature: CreatureType): AuthorStyle[] {
+  switch (creature) {
     case 'werewolf':
-      return WEREWOLF_STYLES;
+      return [...VAMPIRE_STYLES, ...FAIRY_STYLES];
     case 'fairy':
-      return FAIRY_STYLES;
-    default:
-      return VAMPIRE_STYLES;
+    case 'siren':
+    case 'djinn':
+      return [...VAMPIRE_STYLES, ...WEREWOLF_STYLES];
+    case 'vampire':
+      return [...WEREWOLF_STYLES, ...FAIRY_STYLES];
   }
 }
 
-export function selectRandomAuthorStyles(creature: string): AuthorStyle[] {
-  const normalizedCreature = creature.toLowerCase();
+export function getAuthorStylesForCreature(creature: CreatureType): AuthorStyle[] {
+  return AUTHOR_STYLE_MAP[creature];
+}
+
+export function selectRandomAuthorStyles(creature: CreatureType): AuthorStyle[] {
   const fisherYatesShuffle = <T>(array: T[]): T[] => {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = randomInt(i + 1);
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     return shuffled;
   };
 
-  const primaryStyles = getAuthorStylesForCreature(normalizedCreature);
-  const otherStyles =
-    normalizedCreature === 'werewolf'
-      ? [...VAMPIRE_STYLES, ...FAIRY_STYLES]
-      : normalizedCreature === 'fairy'
-        ? [...VAMPIRE_STYLES, ...WEREWOLF_STYLES]
-        : [...WEREWOLF_STYLES, ...FAIRY_STYLES];
+  const primaryStyles = getAuthorStylesForCreature(creature);
+  const otherStyles = getSecondaryAuthorStyles(creature);
 
   return [
     ...fisherYatesShuffle(primaryStyles).slice(0, 2),

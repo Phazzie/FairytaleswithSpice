@@ -1,4 +1,4 @@
-// Created: 2026-05-26
+// Created: 2026-05-26 00:00 UTC
 // Recreated from PR #31's cliffhanger analysis ideas for the Vercel api/_lib tree.
 
 import { CliffhangerAnalysis, CliffhangerType } from '../types/contracts';
@@ -80,13 +80,17 @@ export class CliffhangerService {
     for (const [type, patterns] of Object.entries(CLIFFHANGER_PATTERNS) as Array<[CliffhangerType, string[]]>) {
       const wholeContentMatches = patterns.filter(pattern => lowerContent.includes(pattern)).length;
       const finalParagraphMatches = patterns.filter(pattern => lowerLastParagraph.includes(pattern)).length;
-      const questionBoost = lowerLastParagraph.includes('?') ? 2 : 0;
-      const currentStrength = wholeContentMatches + finalParagraphMatches * 2 + questionBoost;
+      const currentStrength = wholeContentMatches + finalParagraphMatches * 2;
 
       if (currentStrength > strength) {
         detectedType = type;
         strength = currentStrength;
       }
+    }
+
+    if (detectedType === null && lowerLastParagraph.includes('?')) {
+      detectedType = 'mystery';
+      strength = 2;
     }
 
     const cliffhangerType = detectedType ?? 'plot_twist';

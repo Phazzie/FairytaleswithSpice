@@ -103,7 +103,7 @@ textarea,
 select {
   font: inherit;
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(236, 72, 153, 0.25);
+  border: 1px solid rgba(236, 72, 153, 0.55);
   border-radius: 12px;
   padding: 0.75rem;
   color: #f5f3ff;
@@ -339,13 +339,13 @@ button.primary {
 }
 
 button.secondary {
-  background: rgba(59, 130, 246, 0.25);
-  color: #bfdbfe;
+  background: #1d4ed8;
+  color: #fff;
 }
 
 button.ghost {
   background: transparent;
-  color: rgba(255, 255, 255, 0.8);
+  color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
 

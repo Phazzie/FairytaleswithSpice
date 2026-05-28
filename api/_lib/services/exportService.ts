@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { SaveExportSeam, ApiResponse, ExportFormat } from '../types/contracts';
 
 export class ExportService {
@@ -299,10 +300,10 @@ startxref
   }
 
   private generateExportId(): string {
-    return `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `export_${randomUUID()}`;
   }
 
   private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `req_${randomUUID()}`;
   }
 }

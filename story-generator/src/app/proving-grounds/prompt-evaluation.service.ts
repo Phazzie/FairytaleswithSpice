@@ -2,25 +2,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { ApiEnvelope } from '../contracts';
-
-export interface EvaluationCriteria {
-  score: number;
-  strengths: string[];
-  weaknesses: string[];
-  suggestions: string[];
-  overallFeedback: string;
-}
-
-export interface EvaluationRequest {
-  storyContent: string;
-  configuration: {
-    creature: string;
-    themes: string[];
-    spicyLevel: number;
-    wordCount: number;
-  };
-}
+import { ApiResponse, EvaluationCriteria, EvaluationRequest } from '../contracts';
 
 @Injectable({
   providedIn: 'root'
@@ -31,7 +13,7 @@ export class PromptEvaluationService {
   async evaluateStory(request: EvaluationRequest): Promise<EvaluationCriteria> {
     try {
       const response = await firstValueFrom(
-        this.http.post<ApiEnvelope<EvaluationCriteria>>('/api/story-lab/evaluate', request)
+        this.http.post<ApiResponse<EvaluationCriteria>>('/api/story-lab/evaluate', request)
       );
 
       if (response.success && response.data) {

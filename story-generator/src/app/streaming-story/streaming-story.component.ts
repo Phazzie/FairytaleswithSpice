@@ -9,7 +9,7 @@ import { Subscription } from 'rxjs';
 
 import { StoryService } from '../story.service';
 import {
-  ApiEnvelope,
+  ApiResponse,
   GeneratedChapter,
   StoryGenerationSeam,
   StoryIterationPayload,
@@ -335,13 +335,13 @@ export class StreamingStoryComponent implements OnDestroy {
     }
   }
 
-  private handleStreamComplete(finalStory?: ApiEnvelope<StoryIterationPayload>): void {
+  private handleStreamComplete(finalStory?: ApiResponse<StoryIterationPayload>): void {
     this.isStreaming = false;
     this.streamSubscription = undefined;
 
     console.log('✅ Story generation complete!');
 
-    if (finalStory?.data?.summary) {
+    if (finalStory?.success && finalStory.data.summary) {
       this.storyTitle = finalStory.data.summary.title;
       const combined = finalStory.data.batch.chapters
         .map((chapter: GeneratedChapter) => `<h3>${chapter.title}</h3>${chapter.htmlContent}`)
