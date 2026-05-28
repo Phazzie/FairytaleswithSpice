@@ -64,6 +64,8 @@ describe('App', () => {
   let storyService: jasmine.SpyObj<StoryService>;
 
   beforeEach(async () => {
+    window.history.pushState({}, '', '/');
+
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'beginStory',
       'continueStory',
@@ -91,6 +93,36 @@ describe('App', () => {
     expect(component.blueprint().tone).toBe('dark_romance');
     expect(component.blueprint().spicyLevel).toBe(3);
     expect(component.workbench().chapterHistory.length).toBe(0);
+  });
+
+  it('hides the debug panel unless debug mode is requested', () => {
+    expect(component.showDebugPanel()).toBeFalse();
+  });
+
+  it('enables the debug panel with the debug query parameter', () => {
+    TestBed.resetTestingModule();
+    window.history.pushState({}, '', '/?debug=1');
+
+    const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
+      'beginStory',
+      'continueStory',
+      'streamStoryGeneration'
+    ]);
+    const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
+      'logInfo',
+      'logError'
+    ]);
+
+    TestBed.configureTestingModule({
+      imports: [App, HttpClientTestingModule],
+      providers: [
+        { provide: StoryService, useValue: storyServiceSpy },
+        { provide: ErrorLoggingService, useValue: errorLoggingSpy }
+      ]
+    });
+
+    const debugComponent = TestBed.createComponent(App).componentInstance;
+    expect(debugComponent.showDebugPanel()).toBeTrue();
   });
 
   it('toggles theme selections', () => {

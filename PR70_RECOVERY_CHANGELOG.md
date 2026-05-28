@@ -1071,3 +1071,29 @@ Self-review:
 - Good: The follow-up plan was kept out of PR #90 and committed on a fresh post-merge branch.
 - Problem found: Main-branch SonarCloud quality gate is red after the merge due to broader recovery-era hotspots and duplicated new-code density. It does not block the deployed demo, but it should be handled in a dedicated hardening branch.
 - Should have anticipated: PR-level Sonar success and main-branch quality-gate success are different evidence. The PR passed; main still evaluates broader branch conditions.
+
+## 2026-05-28 01:40 EDT - MVP Browser Smoke Work Started
+
+Actions:
+
+- Created `mvp/story-lab-public-readiness` from updated `main`.
+- Added `MVP_TO_SHIPPING_EXEC_PLAN.md` and linked it from `AGENTS.md`.
+- Added a Playwright-backed browser smoke script at `scripts/recovery/story-lab-browser-smoke.mjs`.
+- Added root script `npm run smoke:story-lab-ui`.
+- Gated the public debug panel behind `?debug=1` instead of rendering it for every public user.
+- Added `STORY_LAB_MVP_READINESS_REPORT.md` as a candidate report.
+
+Validation:
+
+- `git diff --check` passed.
+- `npm run test:story-lab-real-engine` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `npm run test:all` passed.
+- `STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui` passed after the full smoke build exposed an over-broad heading assertion.
+
+Self-review:
+
+- Good: The first MVP work attacks the weakest previous evidence: browser-level Story Lab use, not just API curl proof.
+- Good: The debug panel is preserved for recovery but removed from the default public surface.
+- Problem found: `ng serve` was too slow and process-fragile for an autonomous smoke gate in this checkout. The smoke now builds with Node 20 and serves the built output directly.
+- Should have anticipated: Browser smoke selectors must be exact enough to distinguish app title, story title, and chapter headings.

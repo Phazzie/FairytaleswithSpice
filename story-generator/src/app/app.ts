@@ -83,6 +83,7 @@ export class App {
   readonly collapsedChapterGroups = signal<Set<number>>(new Set());
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Configure your spicy fairy-tale blueprint to begin.');
+  readonly showDebugPanel = signal(this.isDebugPanelRequested());
   readonly validationErrors = computed(() => this.formValidation.validateBlueprint(this.blueprint()));
   readonly isBlueprintValid = computed(() => this.formValidation.isValid(this.validationErrors()));
   readonly firstValidationError = computed(() => this.formValidation.getFirstError(this.validationErrors()));
@@ -419,6 +420,14 @@ export class App {
 
   get currentChapterSummary(): string {
     return this.selectedChapter()?.summary ?? '';
+  }
+
+  private isDebugPanelRequested(): boolean {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    return new URLSearchParams(window.location.search).get('debug') === '1';
   }
 
   get totalChapterCount(): number {
