@@ -244,6 +244,12 @@ function contentType(filePath) {
   if (filePath.endsWith('.svg')) {
     return 'image/svg+xml';
   }
+  if (filePath.endsWith('.png')) {
+    return 'image/png';
+  }
+  if (filePath.endsWith('.webp')) {
+    return 'image/webp';
+  }
   return 'application/octet-stream';
 }
 
@@ -337,7 +343,17 @@ async function runSmoke() {
     await page.locator(smokeSelectors.continueButton).click();
     await page.locator(smokeSelectors.chapterView(2)).waitFor({ timeout: liveMode ? 90_000 : 20_000 });
 
+    if (!liveMode) {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.locator(smokeSelectors.heading).waitFor({ timeout: 20_000 });
+      await page.locator(smokeSelectors.storyPanel).waitFor({ timeout: 20_000 });
+      await page.locator(smokeSelectors.chapterView(2)).waitFor({ timeout: 20_000 });
+      await expectNonEmptyText(page.locator(smokeSelectors.storyTitle), 'restored story title');
+    }
+
     await page.screenshot({ path: path.join(outputDir, liveMode ? 'live-success.png' : 'mock-success.png'), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 920 });
+    await page.screenshot({ path: path.join(outputDir, liveMode ? 'live-mobile-success.png' : 'mock-mobile-success.png'), fullPage: true });
     console.log(`Story Lab browser smoke passed (${liveMode ? 'live' : 'mock'} mode) at ${appUrl}`);
   } catch (error) {
     if (page) {
@@ -456,8 +472,16 @@ function buildPayload(chapters, revision) {
       persistedRevision: revision,
       persistedAt: now
     },
+    continuityExtraction: {
+      source: liveMode ? 'ai' : 'heuristic',
+      extractedAt: now,
+      confidence: liveMode ? 0.82 : 0.55,
+      warning: liveMode ? undefined : 'Continuity is using local heuristic extraction in smoke mode.'
+    },
     telemetry: {
       engine: liveMode ? 'grok' : 'custom',
+      model: liveMode ? 'grok-4.20-multi-agent' : 'mock-story-lab',
+      reasoningEffort: liveMode ? 'medium' : undefined,
       totalLatencyMs: 100,
       averageChapterLatencyMs: 100,
       tokensConsumed: 1000,

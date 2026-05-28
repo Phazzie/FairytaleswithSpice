@@ -1,17 +1,61 @@
 <div class="app-shell">
   <app-notifications></app-notifications>
 
-  <header class="app-header">
-    <div class="app-header__topline">
-      <h1 data-testid="story-lab-heading">Fairytales with Spice · Story Lab</h1>
-      <a class="header-link" routerLink="/proving-grounds">Proving Grounds</a>
+  <header class="lab-hero">
+    <div class="lab-hero__image" aria-hidden="true"></div>
+    <div class="lab-hero__content">
+      <p class="eyebrow">Grok multi-agent writing workbench</p>
+      <h1 data-testid="story-lab-heading">Story Lab</h1>
+      <p class="status-message">{{ statusMessage() }}</p>
+      <div class="hero-badges">
+        <span>{{ modelBadge() }}</span>
+        <span>{{ workspaceSaveStatus() }}</span>
+      </div>
     </div>
-    <p class="status-message">{{ statusMessage() }}</p>
+    <nav class="hero-actions" aria-label="Story Lab destinations">
+      <a class="header-link" routerLink="/proving-grounds">Proving Grounds</a>
+      <button type="button" class="ghost compact" (click)="saveActiveProject()" [disabled]="!workbench().story">
+        Save
+      </button>
+    </nav>
   </header>
 
-  <main class="app-grid">
+  <main class="workbench-grid">
+    <aside class="saved-rail" aria-label="Saved stories">
+      <div class="section-heading">
+        <p class="eyebrow">Library</p>
+        <h2>Saved Stories</h2>
+      </div>
+      <p class="muted" *ngIf="!savedProjects().length">No saved stories in this browser yet.</p>
+      <ol class="saved-list" *ngIf="savedProjects().length">
+        <li class="saved-item" *ngFor="let project of savedProjects()">
+          <button
+            type="button"
+            class="saved-load"
+            [class.saved-load--active]="workbench().savedProjectId === project.id"
+            (click)="loadSavedProject(project.id)"
+          >
+            <span class="saved-title">{{ project.title }}</span>
+            <span class="saved-meta">{{ project.chapters.length }} chapter{{ project.chapters.length === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}</span>
+          </button>
+          <button
+            type="button"
+            class="saved-delete"
+            [attr.aria-label]="'Delete ' + project.title"
+            (click)="deleteSavedProject(project.id)"
+          >
+            Delete
+          </button>
+        </li>
+      </ol>
+    </aside>
+
     <section class="blueprint-panel">
-      <h2>Story Blueprint</h2>
+      <div class="section-heading">
+        <p class="eyebrow">Blueprint Studio</p>
+        <h2>Shape the first batch</h2>
+      </div>
+
       <div class="form-grid">
         <label>
           Creature Archetype
@@ -114,8 +158,8 @@
         Logline
         <textarea
           data-testid="blueprint-logline"
-          rows="3"
-          placeholder="Describe the central hook in a few sentences..."
+          rows="4"
+          placeholder="A forbidden lover, a vow-binding court, the price of choosing desire."
           [ngModel]="blueprint().logline"
           (ngModelChange)="updateBlueprint('logline', $event)"
           [attr.aria-invalid]="hasFieldError('logline')"
@@ -151,8 +195,8 @@
         World Details
         <textarea
           data-testid="blueprint-world-details"
-          rows="2"
-          placeholder="Key locations, time period, or supernatural rules."
+          rows="3"
+          placeholder="Moonlit reef court, vow-binding songs, witness shells, exile law."
           [ngModel]="blueprint().worldDetails"
           (ngModelChange)="updateBlueprint('worldDetails', $event)"
           [attr.aria-invalid]="hasFieldError('worldDetails')"
@@ -164,10 +208,10 @@
       </label>
 
       <label>
-        Narrative Directives (optional)
+        Narrative Directives
         <textarea
-          rows="2"
-          placeholder="Any specific twists, pacing goals, or narrative constraints."
+          rows="3"
+          placeholder="Lush tension, dangerous bargains, one unanswered question at every ending."
           [ngModel]="blueprint().narrativeDirectives"
           (ngModelChange)="updateBlueprint('narrativeDirectives', $event)"
           [attr.aria-invalid]="hasFieldError('narrativeDirectives')"
@@ -183,8 +227,10 @@
         [attr.aria-invalid]="hasFieldError('themes')"
         [attr.aria-describedby]="hasFieldError('themes') ? 'themes-error' : null"
       >
-        <h3>Thematic Seeds</h3>
-        <p class="theme-summary">{{ selectedThemes }}</p>
+        <div class="section-heading compact-heading">
+          <p class="eyebrow">Thematic Seeds</p>
+          <h3>{{ selectedThemes }}</h3>
+        </div>
         <p class="field-error" id="themes-error" *ngIf="hasFieldError('themes')" role="alert">
           {{ getFieldError('themes') }}
         </p>
@@ -219,7 +265,7 @@
           Continue Saga
         </button>
         <button type="button" class="ghost" (click)="resetWorkbench()" [disabled]="isGenerating()">
-          Reset Blueprint
+          Reset
         </button>
       </div>
       <output class="validation-summary" *ngIf="firstValidationError()" aria-live="polite">
@@ -240,7 +286,7 @@
         </header>
         <ol>
           <li *ngFor="let item of activeBatchQueue()">
-            <span class="queue-title">{{ item.label }} - {{ item.batchSize }} chapter{{ item.batchSize === 1 ? '' : 's' }}</span>
+            <span class="queue-title">{{ item.label }} · {{ item.batchSize }} chapter{{ item.batchSize === 1 ? '' : 's' }}</span>
             <span class="queue-status" [ngClass]="'queue-status--' + item.status">
               {{ item.status | titlecase }}
             </span>
@@ -253,23 +299,27 @@
       </section>
     </section>
 
-    <section class="story-panel" data-testid="story-panel" *ngIf="workbench().story as story">
+    <section class="story-panel" data-testid="story-panel" *ngIf="workbench().story as story; else emptyReader">
       <header class="story-header">
         <div>
+          <p class="eyebrow">Chapter Reader</p>
           <h2 data-testid="story-title">{{ story.title }}</h2>
           <p class="story-meta">
-            {{ story.tone | titlecase }} · Spicy Level {{ story.spicyLevel }} · {{ totalChapterCount }} chapters so far
+            {{ story.tone | titlecase }} · Level {{ story.spicyLevel }} · {{ totalChapterCount }} chapter{{ totalChapterCount === 1 ? '' : 's' }}
           </p>
         </div>
         <div class="telemetry" *ngIf="workbench().lastTelemetry as telemetry">
-          <span>Engine: {{ telemetry.engine }}</span>
-          <span>Latency: {{ telemetry.totalLatencyMs }} ms</span>
-          <span>Tokens: {{ telemetry.tokensConsumed }}</span>
+          <span>{{ telemetry.engine | titlecase }}</span>
+          <span>{{ telemetry.totalLatencyMs }} ms</span>
+          <span *ngIf="telemetry.model">{{ telemetry.model }}</span>
         </div>
       </header>
 
       <section class="chapter-timeline" *ngIf="timeline().length">
-        <h3>Chapter Timeline</h3>
+        <div class="section-heading compact-heading">
+          <p class="eyebrow">Timeline</p>
+          <h3>{{ totalChapterCount }} chapter{{ totalChapterCount === 1 ? '' : 's' }} drafted</h3>
+        </div>
         <div class="chapter-groups">
           <section class="chapter-group" *ngFor="let group of chapterGroups()">
             <button type="button" class="group-toggle" (click)="toggleChapterGroup(group.id)">
@@ -295,7 +345,10 @@
 
       <article class="chapter-view" data-testid="chapter-view" [attr.data-chapter-number]="chapter.chapterNumber" *ngIf="selectedChapter() as chapter">
         <header>
-          <h3>{{ chapter.title }}</h3>
+          <div>
+            <p class="eyebrow">Selected Chapter</p>
+            <h3>{{ chapter.title }}</h3>
+          </div>
           <span class="chapter-meta">
             {{ chapter.wordCount }} words ·
             <ng-container *ngIf="chapter.hasCliffhanger; else resolved">Cliffhanger ending</ng-container>
@@ -304,17 +357,37 @@
         </header>
         <div class="chapter-content" [innerHTML]="getSafeHtml(chapter.htmlContent)"></div>
         <footer>
-          <h4>Chapter Summary</h4>
+          <h4>Summary</h4>
           <p>{{ chapter.summary }}</p>
         </footer>
       </article>
     </section>
 
+    <ng-template #emptyReader>
+      <section class="story-panel story-panel--empty">
+        <div>
+          <p class="eyebrow">Chapter Reader</p>
+          <h2>Awaiting the first draft</h2>
+          <p class="muted">The generated chapters will open here.</p>
+        </div>
+      </section>
+    </ng-template>
+
     <aside class="continuity-panel">
-      <h2>Continuity Lab</h2>
+      <div class="section-heading">
+        <p class="eyebrow">Continuity Weave</p>
+        <h2>State and next moves</h2>
+      </div>
+
+      <section class="continuity-receipt" *ngIf="continuityExtraction() as extraction">
+        <h3>{{ extraction.source | titlecase }} continuity</h3>
+        <p>Confidence {{ extraction.confidence | percent:'1.0-0' }}</p>
+        <p class="warning-text" *ngIf="extraction.warning">{{ extraction.warning }}</p>
+      </section>
+
       <section>
         <h3>Characters</h3>
-        <p *ngIf="!continuityPanel().characters.length">Characters will appear here once the story begins.</p>
+        <p class="muted" *ngIf="!continuityPanel().characters.length">Characters will appear once the story begins.</p>
         <ul *ngIf="continuityPanel().characters.length">
           <li *ngFor="let character of continuityPanel().characters">
             <strong>{{ character.displayName }}</strong>
@@ -326,7 +399,7 @@
 
       <section>
         <h3>Plot Threads</h3>
-        <p>{{ activeThreadsLabel }}</p>
+        <p class="muted">{{ activeThreadsLabel }}</p>
         <ul>
           <li *ngFor="let thread of continuityPanel().activeThreads">
             <strong>{{ thread.label }}</strong>
@@ -337,8 +410,8 @@
       </section>
 
       <section>
-        <h3>Artifacts & Foreshadowing</h3>
-        <p *ngIf="!continuityPanel().unresolvedArtifacts.length">No unresolved artifacts yet.</p>
+        <h3>Artifacts</h3>
+        <p class="muted" *ngIf="!continuityPanel().unresolvedArtifacts.length">No unresolved artifacts yet.</p>
         <ul *ngIf="continuityPanel().unresolvedArtifacts.length">
           <li *ngFor="let artifact of continuityPanel().unresolvedArtifacts">
             <strong>{{ artifact.name }}</strong>
@@ -348,16 +421,16 @@
       </section>
 
       <section>
-        <h3>Continuity Warnings</h3>
-        <p *ngIf="!continuityWarnings.length">Everything is coherent so far.</p>
+        <h3>Warnings</h3>
+        <p class="muted" *ngIf="!continuityWarnings.length">Everything is coherent so far.</p>
         <ul *ngIf="continuityWarnings.length">
-          <li *ngFor="let warning of continuityWarnings">⚠️ {{ warning }}</li>
+          <li *ngFor="let warning of continuityWarnings">{{ warning }}</li>
         </ul>
       </section>
 
       <section>
         <h3>Suggested Next Moves</h3>
-        <p *ngIf="!suggestedNextPrompts().length">Continuation prompts will appear after a batch completes.</p>
+        <p class="muted" *ngIf="!suggestedNextPrompts().length">Continuation prompts will appear after a batch completes.</p>
         <div class="prompt-list" *ngIf="suggestedNextPrompts().length">
           <button
             type="button"

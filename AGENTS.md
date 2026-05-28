@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-05-26 00:12 EDT
+Last updated: 2026-05-28 16:49 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for the current recovery effort.
 
@@ -13,6 +13,8 @@ The next Story Lab real-engine execution plan is `STORY_LAB_REAL_ENGINE_EXEC_PLA
 The current demo-shipping execution plan is `STORY_LAB_DEMO_SHIPPING_EXEC_PLAN.md`. Use it after PR #90 has landed and before making demo-readiness, deployed-smoke, or live-provider changes.
 
 The active MVP-to-shipping execution plan is `MVP_TO_SHIPPING_EXEC_PLAN.md`. Use it before public UI readiness, browser-smoke, MVP-report, dependency/security-hardening, or shipping-readiness work.
+
+The active next polish plan is `GROK_MULTIAGENT_STORY_LAB_POLISH_EXEC_PLAN.md`. Use it before changing Grok model behavior, Story Lab front-end design, durable local story memory, AI continuity extraction, or story-quality evals.
 
 The previous parallel-agent execution plan is `plan.md`. Treat it as superseded for the immediate Story Lab real-engine work; do not use it as permission to broaden this branch.
 

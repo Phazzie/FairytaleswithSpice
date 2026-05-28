@@ -12,6 +12,7 @@
  */
 
 import { StoryService } from '../api/_lib/services/storyService';
+import { DEFAULT_XAI_STORY_MODEL } from '../api/_lib/config/xaiConfig';
 
 console.log('\n' + '='.repeat(80));
 console.log('🔧 AI GENERATION FIXES VERIFICATION (OPTIMIZED VERSION)');
@@ -65,21 +66,26 @@ import { join } from 'path';
 
 const rootDir = process.cwd();
 const apiServicePath = join(rootDir, 'api/_lib/services/storyService.ts');
+const configPath = join(rootDir, 'api/_lib/config/xaiConfig.ts');
 
 const apiContent = readFileSync(apiServicePath, 'utf-8');
+const configContent = readFileSync(configPath, 'utf-8');
 
 // Check for the correct model name
-const correctModel = 'grok-4-1-fast-reasoning';
+const correctModel = DEFAULT_XAI_STORY_MODEL;
 const incorrectModel = 'grok-beta';
+const previousModel = 'grok-4-1-fast-reasoning';
 
-const apiHasCorrectModel = apiContent.includes(`model: '${correctModel}'`);
+const configHasCorrectModel = configContent.includes(`DEFAULT_XAI_STORY_MODEL = '${correctModel}'`);
 const apiHasIncorrectModel = apiContent.includes(`model: '${incorrectModel}'`);
+const apiHasPreviousModel = apiContent.includes(previousModel);
 
-console.log(`\napi/_lib/services/storyService.ts:`);
-console.log(`  Uses '${correctModel}':  ${apiHasCorrectModel ? '✅' : '❌'}`);
+console.log(`\napi/_lib/config/xaiConfig.ts and api/_lib/services/storyService.ts:`);
+console.log(`  Central default model '${correctModel}': ${configHasCorrectModel ? '✅' : '❌'}`);
+console.log(`  StoryService still embeds '${previousModel}': ${apiHasPreviousModel ? '❌ (should not)' : '✅'}`);
 console.log(`  Uses '${incorrectModel}':        ${apiHasIncorrectModel ? '❌ (should not)' : '✅'}`);
 
-const modelTestPassed = apiHasCorrectModel && !apiHasIncorrectModel;
+const modelTestPassed = configHasCorrectModel && !apiHasIncorrectModel && !apiHasPreviousModel;
 
 console.log(`\n${modelTestPassed ? '✅' : '❌'} Model name verification: ${modelTestPassed ? 'PASSED' : 'FAILED'}`);
 
@@ -88,7 +94,7 @@ console.log(`\n${modelTestPassed ? '✅' : '❌'} Model name verification: ${mod
 console.log('\n\n⚙️  TEST 3: Verifying API Parameters (Grok-Compatible)');
 console.log('-'.repeat(80));
 
-const apiHasTopP = apiContent.includes('top_p: 0.95');
+const apiHasTopP = apiContent.includes('topP: 0.95');
 
 // CRITICAL: Should NOT have repetition_penalty (Grok doesn't support it)
 const apiHasRepetitionPenalty = apiContent.includes('repetition_penalty');
@@ -106,8 +112,8 @@ console.log(`\n${paramsTestPassed ? '✅' : '❌'} API parameters verification: 
 console.log('\n\n⏱️  TEST 4: Verifying Timeout Increases');
 console.log('-'.repeat(80));
 
-const apiHas90sTimeout = apiContent.includes('timeout: 90000');
-const apiHas60sTimeout = apiContent.includes('timeout: 60000');
+const apiHas90sTimeout = apiContent.includes('timeoutMs: 90000');
+const apiHas60sTimeout = apiContent.includes('timeoutMs: 60000');
 
 console.log(`\napi/_lib/services/storyService.ts:`);
 console.log(`  Has 90s story generation timeout:  ${apiHas90sTimeout ? '✅' : '❌'}`);

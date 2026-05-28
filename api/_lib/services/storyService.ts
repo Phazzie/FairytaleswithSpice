@@ -1,6 +1,5 @@
 // Created: 2025-10-31 06:28 UTC
 
-import axios from 'axios';
 import { randomInt, randomUUID } from 'node:crypto';
 import {
   StoryGenerationSeam,
@@ -16,6 +15,7 @@ import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
+import { XaiTextClient } from './xaiTextClient';
 
 interface GeneratedChaptersResult {
   chapters: Chapter[];
@@ -25,14 +25,12 @@ interface GeneratedChaptersResult {
 }
 
 export class StoryService {
-  private readonly grokModel = 'grok-4-1-fast-reasoning';
-  private grokApiUrl = 'https://api.x.ai/v1/chat/completions';
-  private grokApiKey = process.env['XAI_API_KEY'];
+  private readonly xaiClient = new XaiTextClient();
   private readonly cliffhangerService = new CliffhangerService();
   private readonly tropeService = new TropeSubversionService();
 
   constructor() {
-    if (!this.grokApiKey) {
+    if (!this.xaiClient.hasApiKey()) {
       logWarn('XAI_API_KEY not found in environment variables', {
         endpoint: 'StoryService',
         method: 'constructor'
@@ -501,7 +499,7 @@ export class StoryService {
   ): Promise<void> {
     const tropeSelection = this.selectTropeSubversions(input);
 
-    if (!this.grokApiKey) {
+    if (!this.xaiClient.hasApiKey()) {
       // For mock mode, simulate streaming
       await this.simulateStreamingGeneration(input, onChunk, tropeSelection);
       return;
@@ -511,107 +509,32 @@ export class StoryService {
     const userPrompt = this.buildUserPrompt(input);
 
     try {
-      const response = await axios.post(
-        this.grokApiUrl,
-        {
-          model: 'grok-4-1-fast-reasoning', // Use same model for consistency
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          stream: true, // Enable streaming
-          stream_options: {
-            include_usage: true
-          },
-          temperature: 0.8,
-          max_tokens: this.calculateOptimalTokens(input.wordCount),
-          top_p: 0.95
-          // Note: Grok-4 doesn't support frequency_penalty or presence_penalty parameters
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.grokApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          responseType: 'stream'
-        }
-      );
-
-      let accumulatedContent = '';
-      let wordsGenerated = 0;
       const targetWords = input.wordCount;
       const startTime = Date.now();
-      let streamCompleted = false;
 
-      await new Promise<void>((resolve, reject) => {
-        const finishStream = (remainingWords: number) => {
-          if (streamCompleted) {
-            return;
-          }
-
-          streamCompleted = true;
-          onChunk({
-            content: accumulatedContent,
-            isComplete: true,
-            wordsGenerated,
-            estimatedWordsRemaining: remainingWords,
-            generationSpeed: this.calculateGenerationSpeed(wordsGenerated, startTime)
-          });
-          resolve();
-        };
-
-        const failStream = (streamError: Error) => {
-          if (streamCompleted) {
-            return;
-          }
-
-          streamCompleted = true;
-          reject(streamError);
-        };
-
-        response.data.on('data', (chunk: Buffer) => {
-          const lines = chunk.toString().split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') {
-                finishStream(0);
-                return;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                const delta = parsed.choices?.[0]?.delta?.content;
-
-                if (delta) {
-                  accumulatedContent += delta;
-                  wordsGenerated = accumulatedContent.split(/\s+/).length;
-
-                  onChunk({
-                    content: accumulatedContent,
-                    isComplete: false,
-                    wordsGenerated: wordsGenerated,
-                    estimatedWordsRemaining: Math.max(0, targetWords - wordsGenerated),
-                    generationSpeed: this.calculateGenerationSpeed(wordsGenerated, startTime)
-                  });
-                }
-              } catch (e) {
-                // Skip malformed chunks
-              }
-            }
-          }
-        });
-        response.data.on('error', (streamError: Error) => {
-          logError('Streaming response failed', streamError, {
-            endpoint: 'generateStoryStreaming',
-            method: 'STREAM'
-          });
-          failStream(streamError);
-        });
-        response.data.on('end', () => finishStream(0));
+      const response = await this.xaiClient.generateText({
+        operation: 'genesis',
+        system: systemPrompt,
+        user: userPrompt,
+        maxOutputTokens: this.calculateOptimalTokens(input.wordCount),
+        temperature: 0.8,
+        topP: 0.95,
+        timeoutMs: 90000,
+        context: {
+          endpoint: 'generateStoryStreaming',
+          method: 'RESPONSES'
+        }
       });
 
+      const content = response.text;
+      const wordsGenerated = this.countWords(content);
+      onChunk({
+        content,
+        isComplete: true,
+        wordsGenerated,
+        estimatedWordsRemaining: Math.max(0, targetWords - wordsGenerated),
+        generationSpeed: this.calculateGenerationSpeed(wordsGenerated, startTime)
+      });
     } catch (error: any) {
       console.error('Streaming generation error:', error);
       throw error;
@@ -673,7 +596,7 @@ export class StoryService {
     tropeSelection?: TropeSelection,
     chapterOptions?: { chapterNumber: number; totalChapters: number; existingContent?: string }
   ): Promise<string> {
-    if (!this.grokApiKey) {
+    if (!this.xaiClient.hasApiKey()) {
       logWarn('No API key found, using mock generation', context);
       // Fallback to mock generation if no API key
       return chapterOptions
@@ -688,56 +611,39 @@ export class StoryService {
     const userPrompt = chapterOptions
       ? this.buildChapterUserPrompt(input, chapterOptions)
       : this.buildUserPrompt(input);
-    const requestStartTime = Date.now();
-
     try {
       logInfo('Calling Grok API', context, {
-        model: 'grok-4-1-fast-reasoning',
         maxTokens: this.calculateOptimalTokens(targetWordCount),
         chapterNumber: chapterOptions?.chapterNumber,
         totalChapters: chapterOptions?.totalChapters
       });
 
-      const response = await axios.post(this.grokApiUrl, {
-        model: 'grok-4-1-fast-reasoning',
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
-          {
-            role: 'user',
-            content: userPrompt
-          }
-        ],
-        max_tokens: this.calculateOptimalTokens(targetWordCount),
+      const response = await this.xaiClient.generateText({
+        operation: 'genesis',
+        system: systemPrompt,
+        user: userPrompt,
+        maxOutputTokens: this.calculateOptimalTokens(targetWordCount),
         temperature: 0.8,
-        top_p: 0.95              // Focus on high-quality tokens
-        // Note: Grok-4 doesn't support frequency_penalty or presence_penalty parameters
-      }, {
-        headers: {
-          'Authorization': `Bearer ${this.grokApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 90000 // 90 second timeout (Grok can take 30-45s for complex stories)
+        topP: 0.95,
+        timeoutMs: 90000,
+        context
       });
-
-      const apiDuration = Date.now() - requestStartTime;
       
-      logPerformance('Grok API call', apiDuration, {
+      logPerformance('Grok API call', response.latencyMs, {
         ...context,
-        promptTokens: response.data.usage?.prompt_tokens,
-        completionTokens: response.data.usage?.completion_tokens
+        promptTokens: response.usage?.inputTokens,
+        completionTokens: response.usage?.outputTokens
       }, {
+        model: response.model,
+        reasoningEffort: response.reasoningEffort,
         chapterNumber: chapterOptions?.chapterNumber,
         totalChapters: chapterOptions?.totalChapters
       });
 
-      return this.formatStoryContent(response.data.choices[0].message.content);
+      return this.formatStoryContent(response.text);
 
     } catch (error: any) {
       logApiError('Grok AI', error, context, {
-        model: 'grok-4-1-fast-reasoning',
         wordCount: targetWordCount,
         creature: input.creature,
         spicyLevel: input.spicyLevel,
@@ -753,14 +659,13 @@ export class StoryService {
     context?: LogContext,
     chapterOptions?: { chapterNumber: number; totalChapters: number; existingContent?: string }
   ): Promise<string> {
-    if (!this.grokApiKey) {
+    if (!this.xaiClient.hasApiKey()) {
       logWarn('No API key found, using mock chapter generation', context);
       return this.generateMockChapter(input, chapterOptions?.chapterNumber);
     }
 
     const chapterNumber = chapterOptions?.chapterNumber ?? input.currentChapterCount + 1;
     const prompt = this.buildContinuationPrompt(input, chapterNumber, chapterOptions?.existingContent);
-    const requestStartTime = Date.now();
 
     try {
       logInfo('Calling Grok API for chapter continuation', context, {
@@ -768,46 +673,32 @@ export class StoryService {
         totalChapters: chapterOptions?.totalChapters
       });
 
-      const response = await axios.post(this.grokApiUrl, {
-        model: 'grok-4-1-fast-reasoning',
-        messages: [
-          {
-            role: 'system',
-            content: 'Continue this story in the same style and tone. Maintain character development, spice level, and plot progression. Keep the same supernatural atmosphere and romantic intensity. CRITICAL: Use [Character Name]: "dialogue" format for all speech and [Narrator]: for descriptive text to match the existing story format.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: this.calculateOptimalTokens(500), // ~500 words per chapter
+      const response = await this.xaiClient.generateText({
+        operation: 'continuation',
+        system: 'Continue this story in the same style and tone. Maintain character development, spice level, and plot progression. Keep the same supernatural atmosphere and romantic intensity. CRITICAL: Use [Character Name]: "dialogue" format for all speech and [Narrator]: for descriptive text to match the existing story format.',
+        user: prompt,
+        maxOutputTokens: this.calculateOptimalTokens(500),
         temperature: 0.8,
-        top_p: 0.95
-        // Note: Grok-4 doesn't support frequency_penalty or presence_penalty parameters
-      }, {
-        headers: {
-          'Authorization': `Bearer ${this.grokApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 60000 // 60 second timeout for continuations (allows for complex chapters)
+        topP: 0.95,
+        timeoutMs: 60000,
+        context
       });
-
-      const apiDuration = Date.now() - requestStartTime;
       
-      logPerformance('Grok API continuation call', apiDuration, {
+      logPerformance('Grok API continuation call', response.latencyMs, {
         ...context,
-        promptTokens: response.data.usage?.prompt_tokens,
-        completionTokens: response.data.usage?.completion_tokens
+        promptTokens: response.usage?.inputTokens,
+        completionTokens: response.usage?.outputTokens
       }, {
+        model: response.model,
+        reasoningEffort: response.reasoningEffort,
         chapterNumber,
         totalChapters: chapterOptions?.totalChapters
       });
 
-      return this.formatChapterContent(response.data.choices[0].message.content);
+      return this.formatChapterContent(response.text);
 
     } catch (error: any) {
       logApiError('Grok AI (Continuation)', error, context, {
-        model: 'grok-4-1-fast-reasoning',
         chapterNumber
       });
       

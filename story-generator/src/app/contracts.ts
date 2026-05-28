@@ -151,10 +151,21 @@ export interface StoryPersistenceReceipt {
 
 export interface GenerationTelemetry {
   engine: 'gpt' | 'grok' | 'custom';
+  model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   totalLatencyMs: number;
   averageChapterLatencyMs: number;
   tokensConsumed: number;
   retryCount: number;
+}
+
+export type ContinuityExtractionSource = 'ai' | 'heuristic' | 'mixed';
+
+export interface ContinuityExtractionReceipt {
+  source: ContinuityExtractionSource;
+  extractedAt: string;
+  confidence: number;
+  warning?: string;
 }
 
 export interface StoryIterationPayload {
@@ -163,7 +174,23 @@ export interface StoryIterationPayload {
   state: StoryStateSnapshot;
   stateDelta?: StoryStateDelta;
   persistence?: StoryPersistenceReceipt;
+  continuityExtraction?: ContinuityExtractionReceipt;
   telemetry: GenerationTelemetry;
+}
+
+export interface SavedStoryProject {
+  id: string;
+  storyId: string;
+  title: string;
+  synopsis: string;
+  blueprint: StoryGenerationSeam['input'];
+  summary: StorySummary;
+  state: StoryStateSnapshot;
+  chapters: GeneratedChapter[];
+  telemetry?: GenerationTelemetry;
+  continuityExtraction?: ContinuityExtractionReceipt;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type BatchProgressStatus = 'queued' | 'in_progress' | 'completed' | 'failed';
@@ -329,8 +356,10 @@ export interface StoryWorkbenchSession {
   chapterHistory: GeneratedChapter[];
   activeBatchSize: ChapterBatchSize;
   lastTelemetry?: GenerationTelemetry;
+  lastContinuityExtraction?: ContinuityExtractionReceipt;
   lastSuggestedPrompts?: string[];
   batchQueue?: BatchProgressState[];
+  savedProjectId?: string;
 }
 
 export interface ContinuityPanelViewModel {
