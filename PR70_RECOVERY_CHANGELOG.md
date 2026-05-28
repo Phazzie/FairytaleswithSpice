@@ -1214,3 +1214,20 @@ Self-review:
 - Problem found: Full dev audit is still red because Karma's dependency chain has vulnerable transitive packages.
 - Problem found: The repo has tracked root `node_modules` files from old history; generated changes to those files should not be included in this branch.
 - Should have anticipated: A stale Dependabot branch can be mergeable but still not be the right dependency answer once newer patch releases exist.
+
+## 2026-05-28 03:07 EDT - PR94 CI Whitespace Fix
+
+Problem:
+
+- PR #94 Recovery CI failed during `git diff --check` after `npm ci` because the repository still tracks historical root `node_modules` files.
+- Installing dependencies on GitHub mutated those generated files, and `git diff --check` reported whitespace inside the generated axios package diff.
+
+Fix:
+
+- Updated `scripts/recovery/preflight.sh` so the whitespace/conflict-marker check excludes `node_modules/**` and `story-generator/node_modules/**`.
+
+Self-review:
+
+- Good: This preserves the rule that generated dependency churn should not be committed.
+- Problem found: Local validation passed because local `node_modules` churn had been restored before preflight; CI exposed the install-order variant.
+- Should have anticipated: Any workflow that runs `npm ci` before `git diff --check` must exclude tracked generated dependency paths until the old tracked `node_modules` history is removed.

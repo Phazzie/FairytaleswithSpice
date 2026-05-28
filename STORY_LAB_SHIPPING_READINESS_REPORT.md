@@ -184,3 +184,4 @@ Validation notes:
 - The build still prints the known `baseline-browser-mapping` stale-data warning.
 - `npm run test:all` still prints expected mock-mode warnings about missing `XAI_API_KEY` and mock word-count variance, but the suite exits passing.
 - A temporary root `npm install` confirmed local root `axios@1.16.1` and `follow-redirects@1.16.0`; generated `node_modules` changes were restored before commit.
+- PR #94 initially exposed a CI-only install-order issue: `npm ci` mutates historical tracked root `node_modules` files before preflight. `scripts/recovery/preflight.sh` now excludes `node_modules` from its whitespace diff check so generated dependency files do not block source validation.
