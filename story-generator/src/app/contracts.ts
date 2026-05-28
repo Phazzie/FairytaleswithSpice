@@ -153,6 +153,7 @@ export interface GenerationTelemetry {
   engine: 'gpt' | 'grok' | 'custom';
   model?: string;
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  fallbackFromModel?: string;
   totalLatencyMs: number;
   averageChapterLatencyMs: number;
   tokensConsumed: number;

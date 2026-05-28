@@ -69,7 +69,7 @@ export class App {
     spicyLevel: 3,
     tone: 'dark_romance',
     desiredWordBudget: 900,
-    chapterBatchSize: 2,
+    chapterBatchSize: 1,
     protagonistName: '',
     antagonistName: '',
     worldDetails: '',
@@ -161,9 +161,13 @@ export class App {
       return 'Grok multi-agent';
     }
 
-    return telemetry.reasoningEffort
-      ? `${telemetry.model} · ${telemetry.reasoningEffort}`
+    const modelLabel = telemetry.fallbackFromModel
+      ? `${telemetry.model} fallback`
       : telemetry.model;
+
+    return telemetry.reasoningEffort
+      ? `${modelLabel} · ${telemetry.reasoningEffort}`
+      : modelLabel;
   });
   readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
     const chapters = this.workbench().chapterHistory;

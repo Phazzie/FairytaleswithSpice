@@ -1,6 +1,9 @@
 export const DEFAULT_XAI_STORY_MODEL = 'grok-4.20-multi-agent';
+export const DEFAULT_XAI_FAST_MODEL = 'grok-4.3';
 export const DEFAULT_XAI_REASONING_EFFORT = 'medium';
 export const XAI_RESPONSES_API_URL = 'https://api.x.ai/v1/responses';
+export const DEFAULT_XAI_PRIMARY_TIMEOUT_MS = 18000;
+export const DEFAULT_XAI_FAST_TIMEOUT_MS = 20000;
 
 export type XaiReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
@@ -8,6 +11,10 @@ const VALID_REASONING_EFFORTS = new Set<XaiReasoningEffort>(['low', 'medium', 'h
 
 export function getXaiStoryModel(): string {
   return process.env['XAI_STORY_MODEL']?.trim() || DEFAULT_XAI_STORY_MODEL;
+}
+
+export function getXaiFastModel(): string {
+  return process.env['XAI_FAST_MODEL']?.trim() || DEFAULT_XAI_FAST_MODEL;
 }
 
 export function getXaiReasoningEffort(): XaiReasoningEffort {
@@ -22,4 +29,32 @@ export function getXaiReasoningEffort(): XaiReasoningEffort {
 
 export function isHighAgentEffort(effort: XaiReasoningEffort = getXaiReasoningEffort()): boolean {
   return effort === 'high' || effort === 'xhigh';
+}
+
+export function supportsXaiReasoningParameter(model: string): boolean {
+  return model.includes('multi-agent');
+}
+
+export function getXaiPrimaryTimeoutMs(): number {
+  return getPositiveIntegerEnv(['XAI_STORY_PRIMARY_TIMEOUT_MS', 'XAI_PRIMARY_TIMEOUT_MS'], DEFAULT_XAI_PRIMARY_TIMEOUT_MS);
+}
+
+export function getXaiFastTimeoutMs(): number {
+  return getPositiveIntegerEnv(['XAI_STORY_FAST_TIMEOUT_MS', 'XAI_FAST_TIMEOUT_MS'], DEFAULT_XAI_FAST_TIMEOUT_MS);
+}
+
+function getPositiveIntegerEnv(names: string[], fallback: number): number {
+  for (const name of names) {
+    const rawValue = process.env[name]?.trim();
+    if (!rawValue) {
+      continue;
+    }
+
+    const parsed = Number(rawValue);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return fallback;
 }

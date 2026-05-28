@@ -1,5 +1,6 @@
 import type { ApiResponse, EvaluationCriteria, EvaluationRequest } from '../_lib/story-lab/contracts';
 import { XaiTextClient } from '../_lib/services/xaiTextClient';
+import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
 
 interface NormalizedEvaluationRequest {
   storyContent: string;
@@ -139,7 +140,9 @@ export default async function handler(req: any, res: any) {
       maxOutputTokens: 1500,
       temperature: 0.3,
       topP: 0.9,
-      timeoutMs: 90000
+      timeoutMs: getXaiFastTimeoutMs(),
+      modelPreference: 'fast',
+      allowFallback: false
     });
 
     const responsePayload: ApiResponse<EvaluationCriteria> = {

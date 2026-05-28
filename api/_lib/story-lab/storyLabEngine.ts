@@ -536,15 +536,18 @@ function buildContinuationPrompts(input: LabContinuationSeam['input'], nextChapt
 
 function buildGrokTelemetry(metadata: ApiResponseMetadata | undefined, chapterCount: number): GenerationTelemetry {
   const totalLatencyMs = metadata?.processingTime ?? 0;
+  const model = metadata?.model ?? getXaiStoryModel();
+  const reasoningEffort = metadata ? metadata.reasoningEffort : getXaiReasoningEffort();
 
   return {
     engine: 'grok',
-    model: getXaiStoryModel(),
-    reasoningEffort: getXaiReasoningEffort(),
+    model,
+    reasoningEffort,
+    fallbackFromModel: metadata?.fallbackFromModel,
     totalLatencyMs,
     averageChapterLatencyMs: chapterCount > 0 ? Math.round(totalLatencyMs / chapterCount) : totalLatencyMs,
     tokensConsumed: 0,
-    retryCount: 0
+    retryCount: metadata?.fallbackFromModel ? 1 : 0
   };
 }
 

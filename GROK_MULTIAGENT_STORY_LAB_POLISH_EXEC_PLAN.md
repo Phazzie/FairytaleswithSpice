@@ -46,7 +46,12 @@ xAI official sources:
 - [x] Add local saved story projects and restore-on-load behavior.
 - [x] Add AI-assisted continuity extraction with explicit degraded-mode warnings.
 - [x] Add story quality evals and visual/browser smoke coverage.
-- [ ] Merge through focused PRs with production smoke evidence.
+- [x] Merge PR #98 and confirm merged-main Recovery CI plus Vercel production root.
+- [x] Run production live Story Lab smoke after merge.
+- [x] Discover and document that the first post-merge live Story Lab smoke failed because `/api/story-lab/stories` returned Vercel HTTP 504.
+- [x] Add a Grok-only Vercel timeout policy: try `grok-4.20-multi-agent` inside the live request window, fall back to `grok-4.3` for retryable timeout/server failures, use the fast path for extra batch chapters, and keep continuity/evaluation on the fast Grok path.
+- [x] Verify the authenticated Vercel preview with live Story Lab browser smoke after the timeout/default follow-up.
+- [ ] Merge the timeout follow-up and rerun production live Story Lab smoke evidence.
 
 ## Surprises & Discoveries
 
@@ -58,6 +63,8 @@ xAI official sources:
 - The OpenAI docs MCP was installed globally during planning with `codex mcp add openaiDeveloperDocs --url https://developers.openai.com/mcp`, but this current session still used official web docs because MCP tools are not exposed until a future tool refresh/restart.
 - The Grok multi-agent live smoke path needed an async `main()` wrapper because this checkout's `tsx` path emits CJS for that file and rejected top-level `await`.
 - The build-backed browser smoke caught the right acceptance shape for local persistence: mocked generation, continuation, reload, restored active story, desktop screenshot, and mobile screenshot.
+- PR #98 passed branch checks and merged cleanly, but production live smoke exposed a real runtime failure: Grok multi-agent plus AI continuity extraction could exceed Vercel's synchronous function window and surface as a 504 before users saw a story.
+- Protected Vercel preview URLs need browser-based auth handling. The Story Lab smoke harness's raw `fetch` readiness check cannot use `_vercel_share` cookies, so protected-preview smokes must skip that preflight and let Playwright load the shared URL.
 
 ## Decision Log
 
@@ -91,6 +98,18 @@ xAI official sources:
 - Decision: AI continuity extraction should fail visibly, not silently.
   Rationale: If Grok extraction fails, keep the old heuristic continuity as a degraded fallback, attach a warning to the continuity panel, and record it in telemetry.
 
+- Decision: Keep Grok multi-agent as the preferred generation model but add a Grok-only fast fallback.
+  Rationale: The user asked to stay Grok-only and move to Grok multi-agent, but Vercel cannot hold a synchronous request open indefinitely. `grok-4.20-multi-agent` remains the first attempt; retryable timeout/server failures use `grok-4.3`, and the UI records `fallbackFromModel` instead of pretending the fallback was the primary model.
+
+- Decision: In multi-chapter batches, only the first generated chapter attempts multi-agent.
+  Rationale: The Story Lab default is a two-chapter batch. Retrying multi-agent independently for every chapter could still exceed Vercel's function window. Later chapters in the same batch use the fast Grok model to keep the full request inside one deployable budget.
+
+- Decision: Default the first visible Story Lab batch to one chapter.
+  Rationale: The user needs a demoable first path. Multi-chapter batching remains available, but the default should not start with extra live provider calls before the first story appears.
+
+- Decision: Run AI continuity extraction on the fast Grok path with a short timeout.
+  Rationale: Continuity extraction is useful, but it is secondary to returning the drafted chapter. If it cannot finish quickly, the existing heuristic/mixed receipt path is the right degraded mode.
+
 ## Outcomes & Retrospective
 
 - What became better for normal users: Story Lab now opens as a polished writing workbench, uses a real atmospheric bitmap asset, keeps saved stories in the browser, restores the latest story on load, and shows visible continuity/model/save status.
@@ -100,6 +119,7 @@ xAI official sources:
 - What surprised us: the visual polish was less risky than the storage seam; the storage seam needed explicit contracts and refresh-after-reload browser proof to stay honest.
 - What we should have anticipated: `tsx` top-level-await behavior and xAI Responses output variants should have been accounted for immediately in the shared client/smoke harness.
 - What remains deliberately deferred: production live smoke after merge, true streaming migration, cloud persistence, audio runtime, DigitalOcean work, and the remaining Karma/socket dev-audit findings.
+- Post-merge correction: production live smoke did run and found a Vercel 504 in the real provider path. The correction is a bounded provider policy, not a provider switch or a return to mocks.
 
 ## Context and Orientation
 
