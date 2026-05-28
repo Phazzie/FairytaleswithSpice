@@ -1270,3 +1270,30 @@ Self-review:
 - Good: PR #88 was closed only after the replacement dependency work landed and production checks passed.
 - Problem found: The final evidence update itself needed a small follow-up branch because the report could only be fully accurate after merge.
 - Should have anticipated: Any report that promises post-merge production status should reserve a final docs-only pass to record the exact merge commit and production smoke result.
+
+## 2026-05-28 03:28 EDT - PR95 Dev/Test Audit Cleanup Merged
+
+Actions:
+
+- Found new Dependabot PR #95 after the shipping evidence pass.
+- Inspected #95 and confirmed it was lockfile-only for `story-generator/package-lock.json`.
+- Merged PR #95 as `d1b7458b71d232b5e38e94755776c69c7c165381`.
+- Confirmed open PR list is empty after the merge.
+- Confirmed main Recovery CI passed for `d1b7458`.
+- Confirmed Vercel production deployment succeeded for `d1b7458`.
+- Confirmed production root `https://fairytaleswith-spice.vercel.app` returned HTTP `200`.
+- Ran production live browser smoke:
+  - `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
+  - Result: passed.
+
+Dependency/security evidence:
+
+- `cd story-generator && npm audit --omit=dev --json` still reports zero vulnerabilities.
+- `cd story-generator && npm audit --json` now reports four dev/test-toolchain findings, down from seven.
+- Remaining full-audit findings are `engine.io`, `socket.io-adapter`, `socket.io-parser`, and `ws`.
+
+Self-review:
+
+- Good: The follow-up PR was small, green, and improved a documented risk, so merging it was better than leaving it open.
+- Problem found: The final report had already become stale because the queue changed immediately after the docs-only evidence PR.
+- Should have anticipated: Dependabot can open a cleanup PR immediately after a dependency branch lands; final reports should be checked against the PR queue one last time before calling the queue closed.

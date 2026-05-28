@@ -33,6 +33,7 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - [x] Run final local branch validation after dependency/Sonar fixes. `git diff --check`, `node --check`, runtime audits, quick preflight, story-lab real-engine tests, root test suite, browser smoke, and build verification passed.
 - [x] Open shipping-hardening PR and verify GitHub checks. PR #94 passed Recovery CI, Vercel, SonarCloud, and automated review gates.
 - [x] Merge shipping-hardening PR, supersede PR #88, and verify production status. PR #94 merged as `a71aef4dec43c8720096b4db5b21dc051a6a3c06`; PR #88 was closed as superseded; main Recovery CI, main Dependabot Updates, Vercel production, and production live browser smoke passed.
+- [x] Merge follow-up Dependabot PR #95. Lockfile-only `picomatch`/`qs` update reduced full Story Generator audit findings from seven to four; main Recovery CI, Vercel production, and production live browser smoke passed after merge.
 
 ## Surprises & Discoveries
 
@@ -49,6 +50,7 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - The repo still tracks some root `node_modules` files from old history. This branch should not commit generated `node_modules` churn; use package manifests and lockfiles as the source of truth.
 - Main Sonar's top returned source findings were in the browser smoke harness and Story Lab engine. Both were small enough to fix inside the shipping branch instead of leaving as report-only triage.
 - PR #94 passed its checks and merged cleanly. PR #88 was closed as superseded after the fresher dependency update landed, leaving no open PRs at the time of the final shipping evidence update.
+- A follow-up Dependabot PR #95 appeared immediately after #94/#96. It was worth merging because it was lockfile-only, checks were green, and it cut the remaining dev/test audit findings from seven to four.
 
 ## Decision Log
 
@@ -80,7 +82,7 @@ Fill this in as work proceeds:
 - What became MVP-ready:
 - Public UI default no longer shows the developer debug panel; local built-artifact browser smoke proves genesis and continuation mechanics with mocked responses; production live browser smoke proves the deployed Story Lab can generate and continue through the UI.
 - What became shipping-hardened locally and on main:
-- Runtime dependency audits are clean; stale PR #88 was superseded and closed; top Sonar findings from the current main query were fixed; PR #94 passed GitHub checks and merged; main Recovery CI, main Dependabot Updates, Vercel production deployment, and production live browser smoke passed.
+- Runtime dependency audits are clean; stale PR #88 was superseded and closed; top Sonar findings from the current main query were fixed; PR #94 passed GitHub checks and merged; PR #95 reduced dev/test audit findings; main Recovery CI, Vercel production deployment, and production live browser smoke passed.
 - What remained below shipping quality:
 - Current Story Lab MVP/shipping scope is complete. Runtime audits are clean, while full dev audit and historical Sonar cleanup remain documented risks.
 - What hostile review found:
