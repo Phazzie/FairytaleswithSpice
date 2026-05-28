@@ -1144,3 +1144,24 @@ Actions:
 Decision:
 
 - Merge PR #92 after checks are green, then run live browser smoke against production Vercel for MVP evidence.
+
+## 2026-05-28 02:15 EDT - PR92 Merged and Production Browser Smoke Passed
+
+Actions:
+
+- Merged PR #92 into `main` as commit `fb3549fa5b088475a67534ef94e0d3dfe93ee78c`.
+- Confirmed local checkout is on updated `main`.
+- Confirmed main Recovery CI passed for the merge commit.
+- Confirmed Vercel production deployment completed for the merge commit.
+- Confirmed production root returned HTTP `200`.
+- Ran production live browser smoke:
+  - `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
+  - Result: passed.
+- Updated `STORY_LAB_MVP_READINESS_REPORT.md` with production evidence.
+
+Self-review:
+
+- Good: MVP evidence now covers both deterministic local UI mechanics and real deployed Grok-backed browser usage.
+- Good: The debug panel is hidden from normal users while still recoverable with `?debug=1`.
+- Problem found: Main SonarCloud remains red on broader recovery-era criteria after the merge. This belongs in Tier 2 shipping hardening, not in the already-merged MVP proof.
+- Should have anticipated: The MVP report needed a post-merge evidence update branch because production proof necessarily happens after the MVP PR lands.
