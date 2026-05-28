@@ -19,8 +19,8 @@ https://fairytaleswith-spice.vercel.app
 - Recovery CI passed on `main`.
 - Production `/api/health` returned:
   - `success: true`,
-  - `environment: "production"`,
-  - `services.grok: "configured"`.
+  - `data.environment: "production"`,
+  - `data.services.grok: "configured"`.
 - Production Story Lab genesis returned:
   - `success: true`,
   - `telemetry.engine: "grok"`,
@@ -39,6 +39,8 @@ https://fairytaleswith-spice.vercel.app
   - `scripts/recovery/preflight.sh --quick --skip-status`,
   - `npm run test:all`,
   - `npx -p node@20 -c "node -v && cd story-generator && npm run build"`.
+
+The concrete story id, titles, and appended chapter number above are example evidence from the 2026-05-28 production smoke run. Future runs should match the response shape and `telemetry.engine: "grok"`, not those exact creative outputs.
 
 ## Caveats
 

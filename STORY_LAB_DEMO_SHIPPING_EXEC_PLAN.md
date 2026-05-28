@@ -22,9 +22,9 @@ The user-visible success condition is: a person can open the deployed app, creat
 - [x] Create a fresh shipping-readiness branch from updated `main`: `demo/story-lab-shipping-readiness`.
 - [x] Commit this ExecPlan and link it from `AGENTS.md`: `bdbeb1e`.
 - [x] Identify the deployed Vercel URL to test: `https://fairytaleswith-spice.vercel.app`.
-- [x] Verify `/api/health`. It returned `success: true`, `environment: "production"`, and `services.grok: "configured"`.
-- [x] Verify Story Lab genesis returns `success: true` and `telemetry.engine: "grok"` on deployed Vercel. Generated `Reefbound Vow` as `story_ea1bcf73-cee6-444a-ae0b-22187557c6be`.
-- [x] Verify Story Lab continuation returns appended chapters on deployed Vercel. Appended chapter `2`, `The Claimed Voice`, with `telemetry.engine: "grok"`.
+- [x] Verify `/api/health`. It returned `success: true`, `data.environment: "production"`, and `data.services.grok: "configured"`.
+- [x] Verify Story Lab genesis returns `success: true` and `telemetry.engine: "grok"` on deployed Vercel. Example run generated `Reefbound Vow` as `story_ea1bcf73-cee6-444a-ae0b-22187557c6be`.
+- [x] Verify Story Lab continuation returns appended chapters on deployed Vercel. Example run appended chapter `2`, `The Claimed Voice`, with `telemetry.engine: "grok"`.
 - [x] Fix only demo-blocking issues found by the deployed smoke tests. No runtime demo blockers were found.
 - [x] Run local and remote validation after documentation/report updates. `git diff --check`, `npm run test:story-lab-real-engine`, `scripts/recovery/preflight.sh --quick --skip-status`, `npm run test:all`, and `npx -p node@20 -c "node -v && cd story-generator && npm run build"` passed.
 - [x] Update `PR70_RECOVERY_CHANGELOG.md` and `LESSONS_LEARNED.md`.
@@ -42,6 +42,7 @@ Record surprises here as they happen. Examples to capture:
 
 Actual discoveries:
 
+- `STORY_LAB_DEMO_READINESS_REPORT.md` is the canonical final evidence artifact for demo readiness. This ExecPlan and the recovery changelog intentionally summarize that evidence to avoid future drift.
 - Production `https://fairytaleswith-spice.vercel.app` is public and reachable, while branch preview URLs such as `fairytaleswith-spice-git-main-phazzies-projects.vercel.app` and the PR preview are protected by Vercel authentication.
 - Production health confirms `XAI_API_KEY` is configured server-side.
 - Real production Story Lab genesis and continuation both returned `telemetry.engine: "grok"`, proving they did not use mock fallback.
@@ -177,7 +178,8 @@ Use the active Vercel deployment URL from PR #90 checks or the production deploy
 Health:
 
 ```bash
-curl -fsS "$APP_URL/api/health" | jq .
+curl -fsS "$APP_URL/api/health" \
+  | jq '{success, environment: .data.environment, grok: .data.services.grok}'
 ```
 
 Genesis smoke:
@@ -210,10 +212,25 @@ JSON
 
 Continuation smoke:
 
-Build the continuation request from `/tmp/story-lab-genesis.json`, then POST to:
+Build the continuation request from `/tmp/story-lab-genesis.json`, then POST it to the matching story route:
 
-```text
-$APP_URL/api/story-lab/stories/{storyId}/continue
+```bash
+story_id="$(jq -r '.data.summary.storyId' /tmp/story-lab-genesis.json)"
+
+jq '{
+  storyId: .data.summary.storyId,
+  chapterBatchSize: 1,
+  storyState: .data.state,
+  previouslyGeneratedChapters: .data.batch.chapters,
+  existingSummary: .data.summary,
+  continuationBrief: "Continue the immediate romantic and political stakes from the last chapter."
+}' /tmp/story-lab-genesis.json > /tmp/story-lab-continuation-request.json
+
+curl -fsS "$APP_URL/api/story-lab/stories/$story_id/continue" \
+  -H 'content-type: application/json' \
+  --data-binary @/tmp/story-lab-continuation-request.json \
+  | tee /tmp/story-lab-continuation.json \
+  | jq '{success, engine: .data.telemetry.engine, appendedChapterNumbers: .data.appendedChapterNumbers, chapters: (.data.batch.chapters | length), title: .data.summary.title, error}'
 ```
 
 The continuation response must have:

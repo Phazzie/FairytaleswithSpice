@@ -1060,9 +1060,9 @@ Validation and evidence:
 - PR #90 checks were green immediately before merge.
 - Main Recovery CI passed after merge.
 - Vercel deployment completed after merge.
-- Production `/api/health` returned `success: true`, `environment: "production"`, and `services.grok: "configured"`.
-- Production Story Lab genesis returned `success: true`, `telemetry.engine: "grok"`, story id `story_ea1bcf73-cee6-444a-ae0b-22187557c6be`, and title `Reefbound Vow`.
-- Production Story Lab continuation returned `success: true`, `telemetry.engine: "grok"`, and appended chapter number `2`.
+- Production `/api/health` returned `success: true`, `data.environment: "production"`, and `data.services.grok: "configured"`.
+- Production Story Lab genesis returned `success: true` and `telemetry.engine: "grok"`. Example run evidence: story id `story_ea1bcf73-cee6-444a-ae0b-22187557c6be`, title `Reefbound Vow`.
+- Production Story Lab continuation returned `success: true` and `telemetry.engine: "grok"`. Example run evidence: appended chapter number `2`.
 - Production frontend root returned HTTP 200 and served the Angular app shell.
 
 Self-review:
