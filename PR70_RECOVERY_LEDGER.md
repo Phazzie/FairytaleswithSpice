@@ -18,7 +18,7 @@ Status values:
 
 | PR | Planned action | Actual status | Notes |
 |---:|---|---|---|
-| #88 | recreate/supersede | in progress | Dependency-only Dependabot PR is being superseded by fresher dependency updates on `shipping/story-lab-hardening`; close after replacement PR lands. |
+| #88 | recreate/supersede | superseded; closed | Dependency-only Dependabot PR was superseded by fresher dependency updates in PR #94, then closed. |
 | #86 | merge | merged; closed | Merged design system doc; normalized nonzero letter-spacing tokens; closed as superseded by #87. |
 | #85 | merge | merged; closed | Merged `path-to-regexp` 8.4.0 lockfile update; closed as superseded by #87. |
 | #84 | try merge or recreate | recreate later; closed | Stale grouped dependency update; not merged because it mixes Angular 20/21 and stale audio/path churn. |
@@ -1604,7 +1604,7 @@ Use this template for detailed entries as each PR is handled:
 
 - Source branch: `dependabot/npm_and_yarn/npm_and_yarn-8fd274c0be`
 - Planned disposition: recreate/supersede
-- Actual disposition: in progress on `shipping/story-lab-hardening`; close after replacement PR lands
+- Actual disposition: superseded by PR #94 and closed
 - Story-generation impact: Indirect. Dependency/security hardening protects the deployed Story Lab runtime but does not change prompt semantics or generation behavior.
 - Accepted material:
   - The dependency-update intent from PR #88.
@@ -1652,8 +1652,13 @@ Use this template for detailed entries as each PR is handled:
   - `npm run test:all` passed with expected mock-mode warnings.
   - `npm run smoke:story-lab-ui` passed after building with Node `v20.20.2`.
   - `npm run build:verify` passed.
+  - PR #94 checks passed on GitHub.
+  - Main Recovery CI passed after PR #94 merged.
+  - Main Dependabot Updates workflow passed after PR #94 merged.
+  - Vercel production deployment succeeded after PR #94 merged.
+  - Production live browser smoke passed against `https://fairytaleswith-spice.vercel.app`.
 - Self-review notes:
   - Correct action is to supersede the dependency PR with a current, validated dependency branch rather than merge older patch targets.
   - Do not overstate the audit result: runtime is clean, full dev audit is still not clean.
 - GitHub PR closure note:
-  - Pending. Close PR #88 after the replacement shipping-hardening PR merges, pointing to this ledger entry and the shipping readiness report.
+  - Closed as superseded after PR #94 merged, pointing to the fresher dependency update and `STORY_LAB_SHIPPING_READINESS_REPORT.md`.

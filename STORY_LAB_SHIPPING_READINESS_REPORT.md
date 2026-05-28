@@ -4,11 +4,20 @@ Created: 2026-05-28 02:43 EDT
 
 ## Status
 
-Status: candidate shipping-hardening report for branch `shipping/story-lab-hardening`.
+Status: shipping readiness achieved for the current Vercel Story Lab scope.
 
 Tier 1 MVP is already proven by `STORY_LAB_MVP_READINESS_REPORT.md`: production Vercel can open Story Lab, generate a Grok-backed chapter from the browser UI, and continue the saga from the browser UI.
 
-Tier 2 shipping is in progress on this branch. The branch is intended to supersede Dependabot PR #88 with fresher dependency versions, reduce the top Sonar main-branch issues introduced by the MVP smoke work, and document the remaining release risks honestly.
+Tier 2 shipping hardening merged through PR #94:
+
+- PR: `https://github.com/Phazzie/FairytaleswithSpice/pull/94`
+- Merge commit: `a71aef4dec43c8720096b4db5b21dc051a6a3c06`
+- Main Recovery CI: passed for `a71aef4`.
+- Main Dependabot Updates workflow: passed for `a71aef4`.
+- Vercel production deployment: successful for `a71aef4`.
+- Production live browser smoke: passed against `https://fairytaleswith-spice.vercel.app`.
+
+Dependabot PR #88 is closed as superseded by PR #94. There are no open PRs at the time of this report update.
 
 ## What Is Safe To Promise
 
@@ -44,7 +53,7 @@ PR #88 was inspected as the only open PR:
 - PR: `https://github.com/Phazzie/FairytaleswithSpice/pull/88`
 - Title: `chore(deps): bump the npm_and_yarn group across 2 directories with 22 updates`
 - Files: `package.json`, `package-lock.json`, `story-generator/package.json`, `story-generator/package-lock.json`
-- Disposition: supersede with this branch after merge.
+- Disposition: superseded by PR #94 and closed.
 
 Why not merge #88 directly:
 
@@ -75,7 +84,7 @@ This still reported seven findings, all in dev/test tooling reachable through Ka
 
 Main SonarCloud was queried during this branch and reported 120 open issues on `main`, including 8 critical code smells, 10 vulnerabilities, and 3 bugs.
 
-This branch directly fixes the two top source issues returned by the query:
+PR #94 directly fixed the two top source issues returned by the query:
 
 - `scripts/recovery/story-lab-browser-smoke.mjs`: refactored the static smoke server so missing-file fallback is a flat async file-selection path instead of nested callbacks.
 - `api/_lib/story-lab/storyLabEngine.ts`: refactored speaker-tag stripping so it no longer mutates a `for` loop counter.
@@ -87,7 +96,7 @@ Residual Sonar work is not zero. Known remaining categories include:
 - Historical hotspot findings in Docker/DigitalOcean-era files.
 - Regex/security-hotspot review items in older tests/services.
 
-Shipping interpretation: this branch should remove the obvious new blockers, but the project still needs a later Sonar cleanup pass if the desired standard is a fully clean main branch rather than an understood and triaged one.
+Shipping interpretation: the obvious new blockers were removed and PR #94's Sonar quality gate passed. The project still needs a later Sonar cleanup pass if the desired standard is a fully clean main branch rather than an understood and triaged one.
 
 ## Production Environment And Config
 
@@ -175,8 +184,11 @@ Local validation passed on 2026-05-28:
 - [x] `npm run test:all`
 - [x] `npm run smoke:story-lab-ui`
 - [x] `npm run build:verify`
-- [ ] PR checks on GitHub
-- [ ] Post-merge production status
+- [x] PR #94 checks on GitHub
+- [x] Main Recovery CI after merge
+- [x] Main Dependabot Updates workflow after merge
+- [x] Vercel production deployment after merge
+- [x] Production live browser smoke after merge
 
 Validation notes:
 
@@ -186,3 +198,5 @@ Validation notes:
 - A temporary root `npm install` confirmed local root `axios@1.16.1` and `follow-redirects@1.16.0`; generated `node_modules` changes were restored before commit.
 - PR #94 initially exposed a CI-only install-order issue: `npm ci` mutates historical tracked root `node_modules` files before preflight. `scripts/recovery/preflight.sh` now excludes `node_modules` from its whitespace diff check so generated dependency files do not block source validation.
 - PR #94 review also tightened the smoke server: SPA fallback is now limited to extensionless routes so missing `.js`, `.css`, or image assets return `404` instead of receiving HTML.
+- Post-merge production live smoke command passed:
+  `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
