@@ -51,7 +51,7 @@ xAI official sources:
 - [x] Discover and document that the first post-merge live Story Lab smoke failed because `/api/story-lab/stories` returned Vercel HTTP 504.
 - [x] Add a Grok-only Vercel timeout policy: try `grok-4.20-multi-agent` inside the live request window, fall back to `grok-4.3` for retryable timeout/server failures, use the fast path for extra batch chapters, and keep continuity/evaluation on the fast Grok path.
 - [x] Verify the authenticated Vercel preview with live Story Lab browser smoke after the timeout/default follow-up.
-- [ ] Merge the timeout follow-up and rerun production live Story Lab smoke evidence.
+- [x] Merge the timeout follow-up and rerun production live Story Lab smoke evidence.
 
 ## Surprises & Discoveries
 
@@ -120,6 +120,7 @@ xAI official sources:
 - What we should have anticipated: `tsx` top-level-await behavior and xAI Responses output variants should have been accounted for immediately in the shared client/smoke harness.
 - What remains deliberately deferred: production live smoke after merge, true streaming migration, cloud persistence, audio runtime, DigitalOcean work, and the remaining Karma/socket dev-audit findings.
 - Post-merge correction: production live smoke did run and found a Vercel 504 in the real provider path. The correction is a bounded provider policy, not a provider switch or a return to mocks.
+- Final post-merge evidence: PR #99 merged into `main`, Vercel production served the new deployment, and `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui` passed.
 
 ## Context and Orientation
 

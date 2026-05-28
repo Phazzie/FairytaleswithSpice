@@ -1412,3 +1412,21 @@ Self-review:
 - Problem found during self-review: Story Lab defaults to a two-chapter batch, so a primary-plus-fallback retry per chapter was still too much worst-case latency. The fix now lets only the first chapter attempt multi-agent and uses fast Grok for later chapters in the same batch.
 - Problem found during preview smoke: the protected Vercel preview failed the smoke harness before browser auth because the harness used Node `fetch`; after bypassing that preflight, the app reached the UI but live generation still failed with the 9s fast fallback timeout, so the first-attempt fast fallback budget was raised while extra batch chapters stay capped.
 - Should have anticipated: If generation and continuity both call live AI in one serverless request, their worst-case timeouts must be budgeted together, not judged one call at a time.
+
+## 2026-05-28 19:11 EDT - PR99 Merged and Production Live Smoke Restored
+
+Actions:
+
+- Merged PR #99, `Bound Grok multi-agent Story Lab latency`, into `main` as merge commit `e859bb825656ed7a08c8a361079bde4e86c76503`.
+- Confirmed main Recovery CI passed for `e859bb8`.
+- Confirmed Vercel production deployment completed for `e859bb8`.
+- Confirmed production root `https://fairytaleswith-spice.vercel.app` returned HTTP 200 with `last-modified: Thu, 28 May 2026 23:10:29 GMT`.
+- Ran production live Story Lab browser smoke:
+  - `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
+  - Result: passed.
+
+Self-review:
+
+- Good: The failure that Vercel exposed is now represented as executable behavior and durable documentation, not just a chat observation.
+- Good: The final proof used production, not only a protected preview.
+- Remaining risk: Very slow Grok provider responses can still fail closed, especially if a user deliberately asks for larger multi-chapter batches. The default demo path is now one chapter and has passed live production smoke.
