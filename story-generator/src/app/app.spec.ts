@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { of } from 'rxjs';
+import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
+import { BehaviorSubject, of } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
@@ -62,9 +63,10 @@ function createState(overrides: Partial<StoryStateSnapshot> = {}): StoryStateSna
 describe('App', () => {
   let component: App;
   let storyService: jasmine.SpyObj<StoryService>;
+  let queryParamMap$: BehaviorSubject<ParamMap>;
 
   beforeEach(async () => {
-    window.history.pushState({}, '', '/');
+    queryParamMap$ = new BehaviorSubject<ParamMap>(convertToParamMap({}));
 
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'beginStory',
@@ -80,7 +82,8 @@ describe('App', () => {
       imports: [App, HttpClientTestingModule],
       providers: [
         { provide: StoryService, useValue: storyServiceSpy },
-        { provide: ErrorLoggingService, useValue: errorLoggingSpy }
+        { provide: ErrorLoggingService, useValue: errorLoggingSpy },
+        { provide: ActivatedRoute, useValue: { queryParamMap: queryParamMap$.asObservable() } }
       ]
     }).compileComponents();
 
@@ -100,29 +103,8 @@ describe('App', () => {
   });
 
   it('enables the debug panel with the debug query parameter', () => {
-    TestBed.resetTestingModule();
-    window.history.pushState({}, '', '/?debug=1');
-
-    const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
-      'beginStory',
-      'continueStory',
-      'streamStoryGeneration'
-    ]);
-    const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
-      'logInfo',
-      'logError'
-    ]);
-
-    TestBed.configureTestingModule({
-      imports: [App, HttpClientTestingModule],
-      providers: [
-        { provide: StoryService, useValue: storyServiceSpy },
-        { provide: ErrorLoggingService, useValue: errorLoggingSpy }
-      ]
-    });
-
-    const debugComponent = TestBed.createComponent(App).componentInstance;
-    expect(debugComponent.showDebugPanel()).toBeTrue();
+    queryParamMap$.next(convertToParamMap({ debug: '1' }));
+    expect(component.showDebugPanel()).toBeTrue();
   });
 
   it('toggles theme selections', () => {

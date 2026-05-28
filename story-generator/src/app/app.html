@@ -3,7 +3,7 @@
 
   <header class="app-header">
     <div class="app-header__topline">
-      <h1>Fairytales with Spice · Story Lab</h1>
+      <h1 data-testid="story-lab-heading">Fairytales with Spice · Story Lab</h1>
       <a class="header-link" routerLink="/proving-grounds">Proving Grounds</a>
     </div>
     <p class="status-message">{{ statusMessage() }}</p>
@@ -16,6 +16,7 @@
         <label>
           Creature Archetype
           <select
+            data-testid="blueprint-creature"
             [ngModel]="blueprint().creature"
             (ngModelChange)="updateBlueprint('creature', $event)"
             [attr.aria-invalid]="hasFieldError('creature')"
@@ -35,6 +36,7 @@
         <label>
           Narrative Tone
           <select
+            data-testid="blueprint-tone"
             [ngModel]="blueprint().tone"
             (ngModelChange)="updateBlueprint('tone', $event)"
             [attr.aria-invalid]="hasFieldError('tone')"
@@ -55,6 +57,7 @@
         <label>
           Spicy Level
           <input
+            data-testid="blueprint-spicy-level"
             type="range"
             min="1"
             max="5"
@@ -72,6 +75,7 @@
         <label>
           Desired Word Budget
           <select
+            data-testid="blueprint-word-budget"
             [ngModel]="blueprint().desiredWordBudget"
             (ngModelChange)="updateBlueprint('desiredWordBudget', $event)"
             [attr.aria-invalid]="hasFieldError('desiredWordBudget')"
@@ -90,6 +94,7 @@
         <label>
           Chapters per Batch
           <select
+            data-testid="blueprint-chapter-batch-size"
             [ngModel]="blueprint().chapterBatchSize"
             (ngModelChange)="updateBlueprint('chapterBatchSize', $event)"
             [attr.aria-invalid]="hasFieldError('chapterBatchSize')"
@@ -108,6 +113,7 @@
       <label>
         Logline
         <textarea
+          data-testid="blueprint-logline"
           rows="3"
           placeholder="Describe the central hook in a few sentences..."
           [ngModel]="blueprint().logline"
@@ -124,6 +130,7 @@
         <label>
           Protagonist Name
           <input
+            data-testid="blueprint-protagonist"
             type="text"
             [ngModel]="blueprint().protagonistName"
             (ngModelChange)="updateBlueprint('protagonistName', $event)"
@@ -132,6 +139,7 @@
         <label>
           Antagonist Name
           <input
+            data-testid="blueprint-antagonist"
             type="text"
             [ngModel]="blueprint().antagonistName"
             (ngModelChange)="updateBlueprint('antagonistName', $event)"
@@ -142,6 +150,7 @@
       <label>
         World Details
         <textarea
+          data-testid="blueprint-world-details"
           rows="2"
           placeholder="Key locations, time period, or supernatural rules."
           [ngModel]="blueprint().worldDetails"
@@ -183,6 +192,8 @@
           <button
             type="button"
             class="theme-chip"
+            data-testid="theme-chip"
+            [attr.data-theme-id]="theme.id"
             [class.theme-chip--active]="isThemeSelected(theme)"
             [attr.aria-pressed]="isThemeSelected(theme)"
             (click)="toggleTheme(theme)"
@@ -195,12 +206,13 @@
       </section>
 
       <div class="action-row">
-        <button type="button" class="primary" (click)="startGenesis()" [disabled]="isGenerating() || !isBlueprintValid()">
+        <button type="button" class="primary" data-testid="generate-chapters" (click)="startGenesis()" [disabled]="isGenerating() || !isBlueprintValid()">
           {{ workbench().story ? 'Regenerate Genesis' : 'Generate Chapters' }}
         </button>
         <button
           type="button"
           class="secondary"
+          data-testid="continue-saga"
           (click)="continueSaga()"
           [disabled]="isGenerating() || !workbench().story"
         >
@@ -241,10 +253,10 @@
       </section>
     </section>
 
-    <section class="story-panel" *ngIf="workbench().story as story">
+    <section class="story-panel" data-testid="story-panel" *ngIf="workbench().story as story">
       <header class="story-header">
         <div>
-          <h2>{{ story.title }}</h2>
+          <h2 data-testid="story-title">{{ story.title }}</h2>
           <p class="story-meta">
             {{ story.tone | titlecase }} · Spicy Level {{ story.spicyLevel }} · {{ totalChapterCount }} chapters so far
           </p>
@@ -281,7 +293,7 @@
         </div>
       </section>
 
-      <article class="chapter-view" *ngIf="selectedChapter() as chapter">
+      <article class="chapter-view" data-testid="chapter-view" [attr.data-chapter-number]="chapter.chapterNumber" *ngIf="selectedChapter() as chapter">
         <header>
           <h3>{{ chapter.title }}</h3>
           <span class="chapter-meta">
@@ -362,4 +374,4 @@
   </main>
 </div>
 
-<app-debug-panel *ngIf="showDebugPanel()"></app-debug-panel>
+<app-debug-panel data-testid="story-lab-debug-panel" *ngIf="showDebugPanel()"></app-debug-panel>

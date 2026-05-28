@@ -1,8 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { Component, SecurityContext, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import {
   BatchProgressState,
@@ -45,6 +47,7 @@ export class App {
   private readonly formValidation = inject(FormValidationService);
   private readonly notificationService = inject(NotificationService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly route = inject(ActivatedRoute);
   private batchIdSequence = 0;
 
   readonly availableThemes: ThemeSeed[] = [
@@ -83,7 +86,10 @@ export class App {
   readonly collapsedChapterGroups = signal<Set<number>>(new Set());
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Configure your spicy fairy-tale blueprint to begin.');
-  readonly showDebugPanel = signal(this.isDebugPanelRequested());
+  readonly showDebugPanel = toSignal(
+    this.route.queryParamMap.pipe(map(params => params.get('debug') === '1')),
+    { initialValue: false }
+  );
   readonly validationErrors = computed(() => this.formValidation.validateBlueprint(this.blueprint()));
   readonly isBlueprintValid = computed(() => this.formValidation.isValid(this.validationErrors()));
   readonly firstValidationError = computed(() => this.formValidation.getFirstError(this.validationErrors()));
@@ -420,14 +426,6 @@ export class App {
 
   get currentChapterSummary(): string {
     return this.selectedChapter()?.summary ?? '';
-  }
-
-  private isDebugPanelRequested(): boolean {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-
-    return new URLSearchParams(window.location.search).get('debug') === '1';
   }
 
   get totalChapterCount(): number {

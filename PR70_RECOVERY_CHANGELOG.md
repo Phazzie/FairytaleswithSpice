@@ -1097,3 +1097,33 @@ Self-review:
 - Good: The debug panel is preserved for recovery but removed from the default public surface.
 - Problem found: `ng serve` was too slow and process-fragile for an autonomous smoke gate in this checkout. The smoke now builds with Node 20 and serves the built output directly.
 - Should have anticipated: Browser smoke selectors must be exact enough to distinguish app title, story title, and chapter headings.
+
+## 2026-05-28 01:56 EDT - PR92 Review Fixes
+
+Actions:
+
+- Addressed automated review feedback on PR #92:
+  - changed debug-panel visibility from a one-time `window.location.search` read to Angular `ActivatedRoute.queryParamMap`,
+  - added stable `data-testid` hooks for the Story Lab smoke path,
+  - updated the Playwright smoke to use those hooks and avoid hard-coded generated story copy,
+  - guarded browser cleanup so Chromium launch errors are not masked,
+  - replaced the Node 20 build command with a portable `npx -- ... node -e` wrapper instead of `npx -c`,
+  - removed the regex route matcher that Sonar flagged as a security hotspot.
+
+Validation:
+
+- `git diff --check` passed.
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs` passed.
+- `cd story-generator && ../node_modules/.bin/tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && ../node_modules/.bin/tsc -p tsconfig.spec.json --noEmit` passed.
+- `npm run test:story-lab-real-engine` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `npm run smoke:story-lab-ui` passed after rebuilding with Node `v20.20.2` and driving the built app through mocked genesis and continuation.
+- `npm run test:all` passed with the existing mock-mode key/word-count warnings.
+
+Self-review:
+
+- Good: The review fixes improved the smoke harness instead of just quieting bots. Live mode no longer depends on a specific generated title.
+- Good: The debug panel remains recoverable through `?debug=1` while following Angular route state.
+- Problem found: Stable smoke selectors are now part of the UI contract; future markup edits must preserve or deliberately update them.
+- Should have anticipated: Any live AI browser smoke must avoid asserting exact generated prose or titles, because model output is intentionally variable.

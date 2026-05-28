@@ -22,6 +22,8 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - [x] Run browser smoke against local built UI in mocked mode: `STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui` passed after a build-backed smoke iteration exposed and fixed harness issues.
 - [x] Fix any UI blockers found by browser smoke. Debug panel is gated behind `?debug=1`; smoke selector false-positive was fixed.
 - [x] Run local validation. `git diff --check`, `npm run test:story-lab-real-engine`, `scripts/recovery/preflight.sh --quick --skip-status`, `npm run test:all`, and mocked browser smoke passed.
+- [x] Address PR #92 automated review comments. Debug-panel visibility is now derived from Angular query params, the smoke script uses stable test IDs, browser cleanup preserves launch errors, the Node 20 build invocation no longer depends on `npx -c`, and the Sonar-flagged route regex was removed.
+- [x] Re-run review-fix validation. `git diff --check`, `node --check scripts/recovery/story-lab-browser-smoke.mjs`, Angular app/spec typechecks, `npm run test:story-lab-real-engine`, `scripts/recovery/preflight.sh --quick --skip-status`, `npm run smoke:story-lab-ui`, and `npm run test:all` passed.
 - [ ] Open and merge a focused MVP PR.
 - [ ] Verify production after merge and write `STORY_LAB_MVP_READINESS_REPORT.md`.
 - [ ] Start shipping-hardening branch after MVP is proven.
@@ -37,6 +39,7 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - Second local browser-smoke attempt showed the startup timeout also covered Node 20 bootstrap time, and killing `npx` did not stop nested Angular processes. The script now allows 180 seconds and terminates the spawned process group.
 - `ng serve` is too slow and hard to bound for this autonomous smoke gate. The smoke script now builds the app under Node 20 and serves the built browser output through a tiny local static server, so the browser test exercises the deployable artifact.
 - First static-browser smoke reached generated UI but failed on a broad heading selector that matched the app title, story title, and chapter title. The selector now targets the story title as a level-2 heading.
+- PR #92 review found the next brittleness layer: a one-time debug query read, label/text-based smoke selectors, an unguarded browser cleanup path, an `npx -c` portability risk, and a Sonar regex hotspot in the mocked continuation route.
 
 ## Decision Log
 
@@ -67,6 +70,7 @@ Fill this in as work proceeds:
 - Browser evidence had to be built-artifact evidence, not an unreliable `ng serve` check. Debug UI needed gating rather than deletion.
 - What was fixed immediately:
 - Debug panel gating, browser smoke process model, exact story-title assertion.
+- PR #92 review fixes: route-derived debug-panel state, stable `data-testid` smoke selectors, guarded Playwright cleanup, portable Node 20 build command, and regex-free mocked continuation route.
 - What was documented instead:
 - Production live browser smoke remains pending until preview or post-merge production access is available.
 - What surprised us:

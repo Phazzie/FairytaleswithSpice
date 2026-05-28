@@ -33,17 +33,24 @@ Passed:
 
 ```bash
 git diff --check
+node --check scripts/recovery/story-lab-browser-smoke.mjs
+cd story-generator && ../node_modules/.bin/tsc -p tsconfig.app.json --noEmit
+cd story-generator && ../node_modules/.bin/tsc -p tsconfig.spec.json --noEmit
 npm run test:story-lab-real-engine
 scripts/recovery/preflight.sh --quick --skip-status
 npm run test:all
-STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui
+npm run smoke:story-lab-ui
 ```
 
 Build evidence:
 
-- `npm run smoke:story-lab-ui` built the Angular app through Node `v20.20.2` and served the deployable browser output.
-- That first full smoke attempt reached generated UI, then failed on an over-broad smoke assertion.
-- The assertion was fixed, and the smoke passed against the same built app with `STORY_LAB_SMOKE_SKIP_BUILD=1`.
+- `npm run smoke:story-lab-ui` built the Angular app through Node `v20.20.2`, served the deployable browser output, and passed the mocked Story Lab browser flow.
+- The smoke now uses stable `data-testid` selectors for the main controls and waits for selected chapter views rather than hard-coded generated story copy.
+
+Review-fix evidence:
+
+- PR #92 review comments about debug-query reactivity, brittle smoke selectors, browser cleanup masking launch failures, `npx -c` portability, and the Sonar route regex hotspot were addressed in the branch.
+- Local validation passed after those fixes.
 
 ## Caveats
 

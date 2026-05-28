@@ -15,6 +15,39 @@ const liveMode = process.env.STORY_LAB_SMOKE_LIVE === '1';
 const shouldStartStaticServer = !providedUrl;
 const shouldBuildStaticApp = shouldStartStaticServer && process.env.STORY_LAB_SMOKE_SKIP_BUILD !== '1';
 
+const smokeSelectors = Object.freeze({
+  heading: '[data-testid="story-lab-heading"]',
+  debugPanel: '[data-testid="story-lab-debug-panel"]',
+  creature: '[data-testid="blueprint-creature"]',
+  tone: '[data-testid="blueprint-tone"]',
+  spicyLevel: '[data-testid="blueprint-spicy-level"]',
+  wordBudget: '[data-testid="blueprint-word-budget"]',
+  chapterBatchSize: '[data-testid="blueprint-chapter-batch-size"]',
+  logline: '[data-testid="blueprint-logline"]',
+  protagonist: '[data-testid="blueprint-protagonist"]',
+  antagonist: '[data-testid="blueprint-antagonist"]',
+  worldDetails: '[data-testid="blueprint-world-details"]',
+  generateButton: '[data-testid="generate-chapters"]',
+  continueButton: '[data-testid="continue-saga"]',
+  storyPanel: '[data-testid="story-panel"]',
+  storyTitle: '[data-testid="story-title"]',
+  themeChip: themeId => `[data-testid="theme-chip"][data-theme-id="${themeId}"]`,
+  chapterView: chapterNumber => `[data-testid="chapter-view"][data-chapter-number="${chapterNumber}"]`
+});
+
+const demoBlueprint = Object.freeze({
+  creature: 'siren',
+  tone: 'dark_romance',
+  spicyLevel: '1',
+  wordBudgetLabel: '600 words',
+  chapterBatchLabel: '1 chapter',
+  themeId: 'forbidden_love',
+  logline: 'A siren diplomat risks exile to save a forbidden lover before a cruel reef court.',
+  protagonist: 'Mira',
+  antagonist: 'Lord Brine',
+  worldDetails: 'A moonlit reef court where vow-binding songs carry the force of law.'
+});
+
 const consoleMessages = [];
 let staticServer = null;
 
@@ -48,10 +81,19 @@ try {
 
 async function runBuild() {
   await runCommand('npx', [
+    '--yes',
     '-p',
     'node@20',
-    '-c',
-    'node -v && npm run build'
+    '--',
+    'node',
+    '-e',
+    [
+      'console.log(process.version)',
+      "const { spawnSync } = require('node:child_process')",
+      "const command = process.platform === 'win32' ? 'npm.cmd' : 'npm'",
+      "const result = spawnSync(command, ['run', 'build'], { stdio: 'inherit' })",
+      'process.exit(result.status ?? 1)'
+    ].join(';')
   ], rootDir);
 }
 
@@ -179,60 +221,67 @@ async function waitForHttp(url, timeoutMs) {
 
 async function runSmoke() {
   let browser;
+  let page;
   try {
     browser = await chromium.launch({ headless: true });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Unable to launch Chromium for browser smoke. Run "npx playwright install chromium" and retry. Original error: ${error.message}`
+      `Unable to launch Chromium for browser smoke. Run "npx playwright install chromium" and retry. Original error: ${message}`
     );
   }
 
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 1200 }
-  });
-  const page = await context.newPage();
-
-  page.on('console', message => {
-    consoleMessages.push(`${message.type()}: ${message.text()}`);
-  });
-  page.on('pageerror', error => {
-    consoleMessages.push(`pageerror: ${error.message}`);
-  });
-
-  if (!liveMode) {
-    await installMockStoryLabRoutes(page);
-  }
-
   try {
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 1200 }
+    });
+    page = await context.newPage();
+
+    page.on('console', message => {
+      consoleMessages.push(`${message.type()}: ${message.text()}`);
+    });
+    page.on('pageerror', error => {
+      consoleMessages.push(`pageerror: ${error.message}`);
+    });
+
+    if (!liveMode) {
+      await installMockStoryLabRoutes(page);
+    }
+
     await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('heading', { name: /Fairytales with Spice/i }).waitFor({ timeout: 20_000 });
-    await expectHidden(page.getByText('Story Lab Debug Console'));
+    await page.locator(smokeSelectors.heading).waitFor({ timeout: 20_000 });
+    await expectHidden(page.locator(smokeSelectors.debugPanel));
 
-    await page.getByLabel('Creature Archetype').selectOption('siren');
-    await page.getByLabel('Narrative Tone').selectOption('dark_romance');
-    await page.getByLabel('Spicy Level').fill('1');
-    await page.getByLabel('Desired Word Budget').selectOption({ label: '600 words' });
-    await page.getByLabel('Chapters per Batch').selectOption({ label: '1 chapter' });
-    await page.getByLabel('Logline').fill('A siren diplomat risks exile to save a forbidden lover before a cruel reef court.');
-    await page.getByLabel('Protagonist Name').fill('Mira');
-    await page.getByLabel('Antagonist Name').fill('Lord Brine');
-    await page.getByLabel('World Details').fill('A moonlit reef court where vow-binding songs carry the force of law.');
-    await page.getByRole('button', { name: /Forbidden Love/i }).click();
+    await page.locator(smokeSelectors.creature).selectOption(demoBlueprint.creature);
+    await page.locator(smokeSelectors.tone).selectOption(demoBlueprint.tone);
+    await page.locator(smokeSelectors.spicyLevel).fill(demoBlueprint.spicyLevel);
+    await page.locator(smokeSelectors.wordBudget).selectOption({ label: demoBlueprint.wordBudgetLabel });
+    await page.locator(smokeSelectors.chapterBatchSize).selectOption({ label: demoBlueprint.chapterBatchLabel });
+    await page.locator(smokeSelectors.logline).fill(demoBlueprint.logline);
+    await page.locator(smokeSelectors.protagonist).fill(demoBlueprint.protagonist);
+    await page.locator(smokeSelectors.antagonist).fill(demoBlueprint.antagonist);
+    await page.locator(smokeSelectors.worldDetails).fill(demoBlueprint.worldDetails);
+    await page.locator(smokeSelectors.themeChip(demoBlueprint.themeId)).click();
 
-    await page.getByRole('button', { name: /Generate Chapters/i }).click();
-    await page.getByRole('heading', { name: 'Reefbound Vow', level: 2 }).waitFor({ timeout: liveMode ? 90_000 : 20_000 });
-    await page.getByText(/Chapter 1/i).first().waitFor({ timeout: 20_000 });
+    await page.locator(smokeSelectors.generateButton).click();
+    await page.locator(smokeSelectors.storyPanel).waitFor({ timeout: liveMode ? 90_000 : 20_000 });
+    await expectNonEmptyText(page.locator(smokeSelectors.storyTitle), 'story title');
+    await page.locator(smokeSelectors.chapterView(1)).waitFor({ timeout: 20_000 });
 
-    await page.getByRole('button', { name: /Continue Saga/i }).click();
-    await page.getByText(/Chapter 2/i).first().waitFor({ timeout: liveMode ? 90_000 : 20_000 });
+    await page.locator(smokeSelectors.continueButton).click();
+    await page.locator(smokeSelectors.chapterView(2)).waitFor({ timeout: liveMode ? 90_000 : 20_000 });
 
     await page.screenshot({ path: path.join(outputDir, liveMode ? 'live-success.png' : 'mock-success.png'), fullPage: true });
     console.log(`Story Lab browser smoke passed (${liveMode ? 'live' : 'mock'} mode) at ${appUrl}`);
   } catch (error) {
-    await page.screenshot({ path: path.join(outputDir, liveMode ? 'live-failure.png' : 'mock-failure.png'), fullPage: true });
+    if (page) {
+      await page.screenshot({ path: path.join(outputDir, liveMode ? 'live-failure.png' : 'mock-failure.png'), fullPage: true });
+    }
     throw error;
   } finally {
-    await browser.close();
+    if (browser) {
+      await browser.close();
+    }
   }
 }
 
@@ -257,7 +306,7 @@ async function installMockStoryLabRoutes(page) {
     });
   });
 
-  await page.route(/.*\/api\/story-lab\/stories\/[^/]+\/continue$/, async route => {
+  await page.route('**/api/story-lab/stories/*/continue', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -380,6 +429,14 @@ async function expectHidden(locator) {
   }
   if (await locator.first().isVisible()) {
     throw new Error('Debug panel is visible in default public Story Lab view.');
+  }
+}
+
+async function expectNonEmptyText(locator, label) {
+  await locator.waitFor({ timeout: 20_000 });
+  const text = (await locator.textContent())?.trim();
+  if (!text) {
+    throw new Error(`Expected ${label} to contain visible text.`);
   }
 }
 
