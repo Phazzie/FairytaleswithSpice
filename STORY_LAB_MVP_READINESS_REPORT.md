@@ -56,6 +56,7 @@ Review-fix evidence:
 ## Caveats
 
 - Live deployed browser smoke has not run for this branch yet.
+- PR #92 branch preview returned HTTP `401` on 2026-05-28, so unauthenticated live browser smoke cannot prove the preview.
 - The local browser smoke uses mocked API responses by default to avoid provider cost and keep UI mechanics deterministic.
 - Real Grok provider evidence still comes from the earlier production API smoke recorded in `STORY_LAB_DEMO_READINESS_REPORT.md` until this branch is deployed.
 - Continuity state remains heuristic and transient; this is acceptable for MVP continuation but not a durable-memory claim.

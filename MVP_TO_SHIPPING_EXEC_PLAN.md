@@ -24,6 +24,7 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - [x] Run local validation. `git diff --check`, `npm run test:story-lab-real-engine`, `scripts/recovery/preflight.sh --quick --skip-status`, `npm run test:all`, and mocked browser smoke passed.
 - [x] Address PR #92 automated review comments. Debug-panel visibility is now derived from Angular query params, the smoke script uses stable test IDs, browser cleanup preserves launch errors, the Node 20 build invocation no longer depends on `npx -c`, and the Sonar-flagged route regex was removed.
 - [x] Re-run review-fix validation. `git diff --check`, `node --check scripts/recovery/story-lab-browser-smoke.mjs`, Angular app/spec typechecks, `npm run test:story-lab-real-engine`, `scripts/recovery/preflight.sh --quick --skip-status`, `npm run smoke:story-lab-ui`, and `npm run test:all` passed.
+- [x] Try deployed preview live smoke. PR #92 preview returned HTTP `401`, so use production after merge for unauthenticated real-provider browser evidence.
 - [ ] Open and merge a focused MVP PR.
 - [ ] Verify production after merge and write `STORY_LAB_MVP_READINESS_REPORT.md`.
 - [ ] Start shipping-hardening branch after MVP is proven.

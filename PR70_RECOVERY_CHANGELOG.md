@@ -1130,3 +1130,17 @@ Self-review:
 - Good: The debug panel remains recoverable through `?debug=1` while following Angular route state.
 - Problem found: Stable smoke selectors are now part of the UI contract; future markup edits must preserve or deliberately update them.
 - Should have anticipated: Any live AI browser smoke must avoid asserting exact generated prose or titles, because model output is intentionally variable.
+
+## 2026-05-28 02:10 EDT - PR92 Preview Smoke Blocked by Vercel Auth
+
+Actions:
+
+- Confirmed PR #92 checks were green on commit `473fa9f`.
+- Tried live browser smoke against the Vercel preview URL:
+  - `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice-git-mvp-story-lab-d390c3-phazzies-projects.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
+- Confirmed the preview root returns HTTP `401`, so unauthenticated live browser smoke cannot prove the branch preview.
+- Stopped the smoke attempt instead of waiting for its full timeout.
+
+Decision:
+
+- Merge PR #92 after checks are green, then run live browser smoke against production Vercel for MVP evidence.
