@@ -1044,3 +1044,30 @@ Self-review:
 - Good: The review comments improved the architecture instead of just polishing style. Theme canonicalization and trope metadata preservation directly protect story-generation quality.
 - Problem found: The first implementation made the streaming endpoint production-capable in name but still delayed the first event until after generation. The fix makes the endpoint at least connection-honest, though true token/chapter streaming remains future work.
 - Should have anticipated: Story Lab's free-form theme IDs and the classic engine's closed `ThemeType` union were a contract mismatch. The rich `generationContext` made this survivable, but the classic field still needed canonicalization.
+
+## 2026-05-28 00:27 EDT - PR90 Merged and Production Smoke Tested
+
+Actions:
+
+- Merged PR #90 into `main` as merge commit `0af83b397396ecca9707d5151252df18a1247a4b`.
+- Created `demo/story-lab-shipping-readiness` from updated `main`.
+- Added `.agent/PLANS.md` and `STORY_LAB_DEMO_SHIPPING_EXEC_PLAN.md`, then linked the demo-shipping plan from `AGENTS.md`.
+- Smoke-tested production Vercel at `https://fairytaleswith-spice.vercel.app`.
+- Added `STORY_LAB_DEMO_READINESS_REPORT.md`.
+
+Validation and evidence:
+
+- PR #90 checks were green immediately before merge.
+- Main Recovery CI passed after merge.
+- Vercel deployment completed after merge.
+- Production `/api/health` returned `success: true`, `environment: "production"`, and `services.grok: "configured"`.
+- Production Story Lab genesis returned `success: true`, `telemetry.engine: "grok"`, story id `story_ea1bcf73-cee6-444a-ae0b-22187557c6be`, and title `Reefbound Vow`.
+- Production Story Lab continuation returned `success: true`, `telemetry.engine: "grok"`, and appended chapter number `2`.
+- Production frontend root returned HTTP 200 and served the Angular app shell.
+
+Self-review:
+
+- Good: The app now has deployed proof that Story Lab reaches the real Grok-backed engine and can continue a story.
+- Good: The follow-up plan was kept out of PR #90 and committed on a fresh post-merge branch.
+- Problem found: Main-branch SonarCloud quality gate is red after the merge due to broader recovery-era hotspots and duplicated new-code density. It does not block the deployed demo, but it should be handled in a dedicated hardening branch.
+- Should have anticipated: PR-level Sonar success and main-branch quality-gate success are different evidence. The PR passed; main still evaluates broader branch conditions.

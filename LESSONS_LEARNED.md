@@ -101,3 +101,4 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Mock fallback must be explicit and honest. It is acceptable when no provider key exists or a mock flag is set; it should not hide configured provider failures.
 - Heuristic continuity state should be labeled by behavior, not ambition. Until AI state extraction or durable persistence exists, real generated prose can seed Story Lab panels, but those panels are not proof of durable continuity intelligence.
 - When a rich UI uses free-form labels but an older engine uses a closed union, preserve the rich data separately and canonicalize only the legacy field. Casting free-form IDs into closed contracts hides generation bugs.
+- PR-level checks and main-branch quality gates are different evidence. A PR can pass its checks while the merged branch fails broader Sonar conditions; treat runtime deployment proof and repository-quality proof as separate shipping gates.

@@ -16,19 +16,19 @@ The user-visible success condition is: a person can open the deployed app, creat
 
 ## Progress
 
-- [ ] Re-check PR #90 status.
-- [ ] Merge PR #90 without adding unrelated files to it.
-- [ ] Sync local `main` after merge.
-- [ ] Create a fresh shipping-readiness branch from updated `main`.
-- [ ] Commit this ExecPlan and link it from `AGENTS.md`.
-- [ ] Identify the deployed Vercel URL to test.
-- [ ] Verify `/api/health`.
-- [ ] Verify Story Lab genesis returns `success: true` and `telemetry.engine: "grok"` on deployed Vercel.
-- [ ] Verify Story Lab continuation returns appended chapters on deployed Vercel.
-- [ ] Fix only demo-blocking issues found by the deployed smoke tests.
-- [ ] Run local and remote validation.
-- [ ] Update `PR70_RECOVERY_CHANGELOG.md` and `LESSONS_LEARNED.md`.
-- [ ] Produce a concise demo-readiness report.
+- [x] Re-check PR #90 status. PR #90 was green, mergeable, and open before merge.
+- [x] Merge PR #90 without adding unrelated files to it. Merged as `0af83b397396ecca9707d5151252df18a1247a4b`.
+- [x] Sync local `main` after merge.
+- [x] Create a fresh shipping-readiness branch from updated `main`: `demo/story-lab-shipping-readiness`.
+- [x] Commit this ExecPlan and link it from `AGENTS.md`: `bdbeb1e`.
+- [x] Identify the deployed Vercel URL to test: `https://fairytaleswith-spice.vercel.app`.
+- [x] Verify `/api/health`. It returned `success: true`, `environment: "production"`, and `services.grok: "configured"`.
+- [x] Verify Story Lab genesis returns `success: true` and `telemetry.engine: "grok"` on deployed Vercel. Generated `Reefbound Vow` as `story_ea1bcf73-cee6-444a-ae0b-22187557c6be`.
+- [x] Verify Story Lab continuation returns appended chapters on deployed Vercel. Appended chapter `2`, `The Claimed Voice`, with `telemetry.engine: "grok"`.
+- [x] Fix only demo-blocking issues found by the deployed smoke tests. No runtime demo blockers were found.
+- [x] Run local and remote validation after documentation/report updates. `git diff --check`, `npm run test:story-lab-real-engine`, `scripts/recovery/preflight.sh --quick --skip-status`, `npm run test:all`, and `npx -p node@20 -c "node -v && cd story-generator && npm run build"` passed.
+- [x] Update `PR70_RECOVERY_CHANGELOG.md` and `LESSONS_LEARNED.md`.
+- [x] Produce a concise demo-readiness report: `STORY_LAB_DEMO_READINESS_REPORT.md`.
 
 ## Surprises & Discoveries
 
@@ -39,6 +39,14 @@ Record surprises here as they happen. Examples to capture:
 - The current Grok model name is rejected by xAI.
 - Generation succeeds locally but times out or fails on Vercel.
 - Continuation loses story state or returns a partial batch.
+
+Actual discoveries:
+
+- Production `https://fairytaleswith-spice.vercel.app` is public and reachable, while branch preview URLs such as `fairytaleswith-spice-git-main-phazzies-projects.vercel.app` and the PR preview are protected by Vercel authentication.
+- Production health confirms `XAI_API_KEY` is configured server-side.
+- Real production Story Lab genesis and continuation both returned `telemetry.engine: "grok"`, proving they did not use mock fallback.
+- The frontend shell returns HTTP 200 and serves the Angular app root and bundles from production.
+- SonarCloud's main-branch quality gate is red after PR #90 merged due to broader recovery-era hotspots and duplicated new-code density. The PR #90 checks passed, Recovery CI passed, and Vercel deployed. This is not a runtime demo blocker, but it should become a hardening branch before calling the repository clean.
 
 ## Decision Log
 
@@ -57,16 +65,19 @@ Record surprises here as they happen. Examples to capture:
 - Decision: Do not implement AI continuity extraction in this branch.
   Rationale: The current branch should prove real generation and continuation first. Hybrid AI continuity extraction is the next serious architecture branch.
 
+- Decision: Do not fix the main-branch Sonar quality gate inside this demo-readiness branch unless it blocks deployment.
+  Rationale: The deployed app works and the Sonar failure spans many files and categories, including old Docker files, tests, author style data, trope data, and recovery-era duplication. Folding that into demo readiness would turn this branch into another broad cleanup branch.
+
 ## Outcomes & Retrospective
 
 Fill this in at completion:
 
-- What shipped:
-- What did not ship:
-- What was surprising:
-- What should have been anticipated:
-- Whether the app is girlfriend-demo ready:
-- Remaining risks:
+- What shipped: PR #90 landed on `main`; production Vercel serves the app; production Story Lab genesis and continuation use the Grok path.
+- What did not ship: OpenAI/provider abstraction, AI continuity extraction, audio, durable story storage, broad Sonar hardening, and visual redesign.
+- What was surprising: Main's production deployment is public and smoke-testable while branch previews are protected. Sonar's PR checks passed, but the main branch quality gate still failed on broader new-code criteria.
+- What should have been anticipated: Main quality gates can behave differently from PR checks; deployed runtime proof and repository hygiene proof are separate outcomes.
+- Whether the app is girlfriend-demo ready: API and production runtime are demo-ready for a simple Story Lab generation/continuation flow. A manual browser click-through is still recommended immediately before showing it.
+- Remaining risks: Story quality is live-model dependent; UI was checked by HTTP shell load rather than automated browser interaction; continuity state is still heuristic; main Sonar quality gate is red.
 
 ## Context and Orientation
 
