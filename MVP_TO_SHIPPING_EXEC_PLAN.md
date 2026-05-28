@@ -27,9 +27,12 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - [x] Try deployed preview live smoke. PR #92 preview returned HTTP `401`, so use production after merge for unauthenticated real-provider browser evidence.
 - [x] Open and merge a focused MVP PR. PR #92 merged to `main` as `fb3549fa5b088475a67534ef94e0d3dfe93ee78c`.
 - [x] Verify production after merge and write `STORY_LAB_MVP_READINESS_REPORT.md`. Main Recovery CI passed, Vercel production deployed, production root returned HTTP `200`, and production live browser smoke passed.
-- [ ] Start shipping-hardening branch after MVP is proven.
-- [ ] Triage main Sonar/security/dependency signals and document or fix blockers.
-- [ ] Write final shipping-readiness report.
+- [x] Start shipping-hardening branch after MVP is proven: `shipping/story-lab-hardening`.
+- [x] Triage main Sonar/security/dependency signals and document or fix blockers in progress. Runtime audits are clean after dependency updates; full Story Generator audit still has dev/test-toolchain findings.
+- [x] Create draft shipping-readiness report: `STORY_LAB_SHIPPING_READINESS_REPORT.md`.
+- [x] Run final local branch validation after dependency/Sonar fixes. `git diff --check`, `node --check`, runtime audits, quick preflight, story-lab real-engine tests, root test suite, browser smoke, and build verification passed.
+- [ ] Open shipping-hardening PR and verify GitHub checks.
+- [ ] Merge shipping-hardening PR, supersede PR #88, and verify production status.
 
 ## Surprises & Discoveries
 
@@ -41,6 +44,10 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - `ng serve` is too slow and hard to bound for this autonomous smoke gate. The smoke script now builds the app under Node 20 and serves the built browser output through a tiny local static server, so the browser test exercises the deployable artifact.
 - First static-browser smoke reached generated UI but failed on a broad heading selector that matched the app title, story title, and chapter title. The selector now targets the story title as a level-2 heading.
 - PR #92 review found the next brittleness layer: a one-time debug query read, label/text-based smoke selectors, an unguarded browser cleanup path, an `npx -c` portability risk, and a Sonar regex hotspot in the mocked continuation route.
+- PR #88 is the only remaining open PR, but its dependency versions are already behind the fresher updates on `shipping/story-lab-hardening`; the safer disposition is to supersede it after the replacement PR lands.
+- Runtime dependency audit can be clean while full dev audit is still red. In this branch, `story-generator npm audit --json` still reports Karma/socket dev-toolchain findings even though `--omit=dev` reports zero vulnerabilities.
+- The repo still tracks some root `node_modules` files from old history. This branch should not commit generated `node_modules` churn; use package manifests and lockfiles as the source of truth.
+- Main Sonar's top returned source findings were in the browser smoke harness and Story Lab engine. Both were small enough to fix inside the shipping branch instead of leaving as report-only triage.
 
 ## Decision Log
 
@@ -59,23 +66,35 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - Decision: Do not move provider work to OpenAI during MVP.
   Rationale: The current production provider is Grok via `XAI_API_KEY`. A provider abstraction belongs after UI/browser proof, not before it.
 
+- Decision: Supersede PR #88 instead of merging it directly.
+  Rationale: PR #88 is dependency-only but now updates to older patch levels than this branch. Recreating the dependency intent on top of current `main` avoids stale branch behavior and keeps the security update current.
+
+- Decision: Treat `npm audit --omit=dev` as the production runtime gate and full `npm audit` as a dev/test-tooling risk report.
+  Rationale: Story Generator's remaining full-audit findings are under Karma/socket tooling, not production Story Lab runtime packages.
+
 ## Outcomes & Retrospective
 
 Fill this in as work proceeds:
 
 - What became MVP-ready:
 - Public UI default no longer shows the developer debug panel; local built-artifact browser smoke proves genesis and continuation mechanics with mocked responses; production live browser smoke proves the deployed Story Lab can generate and continue through the UI.
+- What became shipping-hardened locally:
+- Runtime dependency audits are clean; stale PR #88 has a supersession path; top Sonar findings from the current main query were fixed; the built-artifact browser smoke still passes after dependency updates.
 - What remained below shipping quality:
-- Shipping hardening still needs dependency/security/Sonar triage. Main SonarCloud remains red on broader branch criteria after PR #92.
+- Shipping hardening still needs PR checks, merge, PR #88 closure, and post-merge production status. Runtime audits are clean, while full dev audit and historical Sonar cleanup remain documented risks.
 - What hostile review found:
 - Browser evidence had to be built-artifact evidence, not an unreliable `ng serve` check. Debug UI needed gating rather than deletion.
 - What was fixed immediately:
 - Debug panel gating, browser smoke process model, exact story-title assertion.
 - PR #92 review fixes: route-derived debug-panel state, stable `data-testid` smoke selectors, guarded Playwright cleanup, portable Node 20 build command, and regex-free mocked continuation route.
 - What was documented instead:
-- Production live browser smoke remains pending until preview or post-merge production access is available.
+- Live provider smoke stays explicit rather than default CI; branch-preview smoke can be blocked by Vercel auth, so post-merge production checks are the reliable unauthenticated path.
 - What surprised us:
+- A stale Dependabot PR was still mergeable but no longer the best dependency answer because fresher patch releases existed by the time shipping hardening started.
+- Story Generator's production audit could be clean while full audit remained red because Karma's dev/test dependency chain still pulls vulnerable socket/glob packages.
 - What should have been anticipated:
+- Dependency work should distinguish runtime dependency risk from dev/test tooling risk before deciding whether a red audit blocks shipping.
+- Main Sonar issue lists should be queried early enough to catch small fix-now issues before they become review-cycle noise.
 
 ## Context and Orientation
 

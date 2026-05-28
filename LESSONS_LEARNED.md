@@ -106,3 +106,7 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Browser smoke for AI-generated output should assert stable app state, not exact generated copy. Use test IDs and structural milestones such as selected chapter number so live-provider variation does not create false failures.
 - Test-only static servers still need production-grade path boundaries. A smoke harness should not create a new file-serving risk just because it only runs locally.
 - Production-only evidence needs its own follow-up artifact path. If a report cannot be completed until after merge, plan a small post-merge evidence update instead of leaving the report permanently half true.
+- A stale Dependabot PR can be mergeable and still be the wrong dependency answer. Recreate the dependency intent on the current baseline when newer patch releases exist or the branch would obscure current product work.
+- Dependency/security reports need runtime and dev/test categories. A clean `npm audit --omit=dev` can support a production-runtime claim, but a red full audit still needs an honest test-tooling follow-up.
+- Do not commit generated `node_modules` churn just because old history tracks some dependency files. Package manifests and lockfiles are the reviewable source of truth for dependency updates.
+- Small Sonar issues should be fixed during shipping hardening when the fix is local and low risk. Reporting them without fixing is useful only when the issue is broad, historical, or risky to change in the current branch.

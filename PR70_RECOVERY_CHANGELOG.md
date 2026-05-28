@@ -1165,3 +1165,52 @@ Self-review:
 - Good: The debug panel is hidden from normal users while still recoverable with `?debug=1`.
 - Problem found: Main SonarCloud remains red on broader recovery-era criteria after the merge. This belongs in Tier 2 shipping hardening, not in the already-merged MVP proof.
 - Should have anticipated: The MVP report needed a post-merge evidence update branch because production proof necessarily happens after the MVP PR lands.
+
+## 2026-05-28 02:43 EDT - Shipping Hardening Started
+
+Actions:
+
+- Continued on `shipping/story-lab-hardening` after PR #93 had recorded production MVP smoke evidence.
+- Inspected the only remaining open PR, #88, and treated it as dependency-security input rather than a direct merge candidate.
+- Updated dependency manifests and lockfiles beyond PR #88's patch levels:
+  - root `axios` now targets `^1.16.1`,
+  - Story Generator `axios` now targets `^1.16.1`,
+  - Angular runtime packages now target `20.3.22`,
+  - Angular CLI/build/SSR packages now target `20.3.26`,
+  - Angular build/type tooling is now in `devDependencies` instead of production dependencies.
+- Cleaned generated root `node_modules` churn from the worktree instead of committing generated dependency files.
+- Queried main SonarCloud issue state and found 120 open issues on `main`.
+- Fixed the two top source issues from the Sonar query:
+  - flattened the static smoke server fallback path in `scripts/recovery/story-lab-browser-smoke.mjs`,
+  - rewrote Story Lab speaker-tag stripping in `api/_lib/story-lab/storyLabEngine.ts` to avoid assigning to a `for` loop counter.
+- Created `STORY_LAB_SHIPPING_READINESS_REPORT.md`.
+- Updated `MVP_TO_SHIPPING_EXEC_PLAN.md`, `PR70_RECOVERY_LEDGER.md`, and `LESSONS_LEARNED.md` with the shipping-hardening disposition and risk classification.
+
+Dependency/security evidence gathered:
+
+- `npm audit --omit=dev --json` at the root reported zero vulnerabilities.
+- `cd story-generator && npm audit --omit=dev --json` reported zero vulnerabilities.
+- `cd story-generator && npm audit --omit=dev --omit=optional --json` reported zero vulnerabilities.
+- `cd story-generator && npm audit --json` still reported seven dev/test-toolchain findings through Karma/socket dependencies.
+
+Validation:
+
+- `git diff --check` passed after generated `node_modules` churn was restored.
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed, including function count, Angular app/spec typechecks, and direct Vercel API typecheck.
+- `npm run test:story-lab-real-engine` passed.
+- `npm run test:all` passed with expected mock-mode `XAI_API_KEY` and word-count warnings.
+- `npm run smoke:story-lab-ui` passed in mocked mode after building with Node `v20.20.2`; Angular reported the known `baseline-browser-mapping` stale-data warning and completed in 345.796 seconds.
+- `npm run build:verify` passed.
+
+Decision:
+
+- Supersede PR #88 after this shipping-hardening branch is merged. PR #88 is dependency-only, but this branch updates to fresher dependency versions and does so on the current Story Lab baseline.
+
+Self-review:
+
+- Good: Runtime dependency risk is materially reduced instead of merely documented.
+- Good: The branch fixes small high-signal Sonar issues immediately instead of using the report as an excuse.
+- Problem found: Full dev audit is still red because Karma's dependency chain has vulnerable transitive packages.
+- Problem found: The repo has tracked root `node_modules` files from old history; generated changes to those files should not be included in this branch.
+- Should have anticipated: A stale Dependabot branch can be mergeable but still not be the right dependency answer once newer patch releases exist.
