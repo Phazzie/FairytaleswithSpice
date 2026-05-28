@@ -1352,6 +1352,7 @@ Fix:
 - Removed provider-returned model/text/usage logging from `tests/grok-multi-agent-smoke.test.ts` and `tests/verify-api-keys.ts`; the scripts now log configured model/effort plus output length only.
 - Hardened xAI response text extraction against null response entries.
 - Hardened continuity JSON parsing against valid-but-non-object JSON and skipped null/non-object entries in AI-provided characters, threads, and artifacts.
+- Replaced continuity extractor regex-based Markdown fence stripping and HTML-to-text conversion with deterministic scanners to clear Sonar regex backtracking hotspots.
 
 Validation:
 
@@ -1361,6 +1362,7 @@ Validation:
 - `node_modules/.bin/tsc -p story-generator/tsconfig.spec.json --noEmit` passed.
 - `scripts/recovery/preflight.sh --quick --skip-status` passed.
 - `node_modules/.bin/tsx tests/verify-ai-fixes.test.ts` passed.
+- `npm run test:story-quality` and `scripts/recovery/preflight.sh --quick --skip-status` passed again after the regex-hotspot fix.
 - `git diff --check` passed.
 
 Self-review:

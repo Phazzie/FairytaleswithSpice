@@ -139,11 +139,7 @@ function buildContinuityPrompt(input: ContinuityExtractionInput): string {
 }
 
 function parseContinuityJson(content: string): AiContinuityShape {
-  const jsonText = content
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
+  const jsonText = stripMarkdownJsonFence(content);
 
   const parsed = JSON.parse(jsonText) as unknown;
   const data = parsed && typeof parsed === 'object'
@@ -158,6 +154,26 @@ function parseContinuityJson(content: string): AiContinuityShape {
     suggestedNarrativeVoice: typeof data.suggestedNarrativeVoice === 'string' ? data.suggestedNarrativeVoice : undefined,
     confidence: typeof data.confidence === 'number' ? data.confidence : undefined
   };
+}
+
+function stripMarkdownJsonFence(content: string): string {
+  let text = content.trim();
+
+  if (!text.startsWith('```')) {
+    return text;
+  }
+
+  const firstLineBreakIndex = text.indexOf('\n');
+  if (firstLineBreakIndex === -1) {
+    return text.slice(3).trim();
+  }
+
+  text = text.slice(firstLineBreakIndex + 1).trim();
+  if (text.endsWith('```')) {
+    text = text.slice(0, -3).trim();
+  }
+
+  return text;
 }
 
 function mergeAiContinuity(
@@ -309,8 +325,51 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function htmlToText(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  let text = '';
+  let insideTag = false;
+  let previousWasSpace = false;
+
+  for (const character of html) {
+    if (character === '<') {
+      insideTag = true;
+      appendSpace();
+      continue;
+    }
+
+    if (character === '>') {
+      insideTag = false;
+      appendSpace();
+      continue;
+    }
+
+    if (insideTag) {
+      continue;
+    }
+
+    if (isWhitespaceCharacter(character)) {
+      appendSpace();
+      continue;
+    }
+
+    text += character;
+    previousWasSpace = false;
+  }
+
+  return text.trim();
+
+  function appendSpace() {
+    if (!previousWasSpace) {
+      text += ' ';
+      previousWasSpace = true;
+    }
+  }
+}
+
+function isWhitespaceCharacter(character: string): boolean {
+  return character === ' '
+    || character === '\n'
+    || character === '\r'
+    || character === '\t'
+    || character === '\f'
+    || character === '\v';
 }
