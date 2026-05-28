@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { of } from 'rxjs';
+import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
+import { BehaviorSubject, of } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
@@ -62,8 +63,11 @@ function createState(overrides: Partial<StoryStateSnapshot> = {}): StoryStateSna
 describe('App', () => {
   let component: App;
   let storyService: jasmine.SpyObj<StoryService>;
+  let queryParamMap$: BehaviorSubject<ParamMap>;
 
   beforeEach(async () => {
+    queryParamMap$ = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'beginStory',
       'continueStory',
@@ -78,7 +82,8 @@ describe('App', () => {
       imports: [App, HttpClientTestingModule],
       providers: [
         { provide: StoryService, useValue: storyServiceSpy },
-        { provide: ErrorLoggingService, useValue: errorLoggingSpy }
+        { provide: ErrorLoggingService, useValue: errorLoggingSpy },
+        { provide: ActivatedRoute, useValue: { queryParamMap: queryParamMap$.asObservable() } }
       ]
     }).compileComponents();
 
@@ -91,6 +96,15 @@ describe('App', () => {
     expect(component.blueprint().tone).toBe('dark_romance');
     expect(component.blueprint().spicyLevel).toBe(3);
     expect(component.workbench().chapterHistory.length).toBe(0);
+  });
+
+  it('hides the debug panel unless debug mode is requested', () => {
+    expect(component.showDebugPanel()).toBeFalse();
+  });
+
+  it('enables the debug panel with the debug query parameter', () => {
+    queryParamMap$.next(convertToParamMap({ debug: '1' }));
+    expect(component.showDebugPanel()).toBeTrue();
   });
 
   it('toggles theme selections', () => {

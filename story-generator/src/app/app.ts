@@ -1,8 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { Component, SecurityContext, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import {
   BatchProgressState,
@@ -45,6 +47,7 @@ export class App {
   private readonly formValidation = inject(FormValidationService);
   private readonly notificationService = inject(NotificationService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly route = inject(ActivatedRoute);
   private batchIdSequence = 0;
 
   readonly availableThemes: ThemeSeed[] = [
@@ -83,6 +86,10 @@ export class App {
   readonly collapsedChapterGroups = signal<Set<number>>(new Set());
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Configure your spicy fairy-tale blueprint to begin.');
+  readonly showDebugPanel = toSignal(
+    this.route.queryParamMap.pipe(map(params => params.get('debug') === '1')),
+    { initialValue: false }
+  );
   readonly validationErrors = computed(() => this.formValidation.validateBlueprint(this.blueprint()));
   readonly isBlueprintValid = computed(() => this.formValidation.isValid(this.validationErrors()));
   readonly firstValidationError = computed(() => this.formValidation.getFirstError(this.validationErrors()));
@@ -234,9 +241,9 @@ export class App {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.startGenesis');
-        const message = 'Story generation failed. Check the debug panel for details.';
+        const message = 'Story generation failed. Please try again in a moment. If it keeps failing, the story provider may be unavailable.';
         this.statusMessage.set(message);
-        this.markBatchFailed(batchId, 'Story generation failed.');
+        this.markBatchFailed(batchId, message);
         this.notificationService.error('Generation failed', message);
         this.isGenerating.set(false);
       }
@@ -290,7 +297,7 @@ export class App {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.continueSaga');
-        const message = 'Continuation failed. Inspect logged errors for more detail.';
+        const message = 'Continuation failed. Please try again; your existing chapters are still available.';
         this.statusMessage.set(message);
         this.markBatchFailed(batchId, message);
         this.notificationService.error('Continuation failed', message);

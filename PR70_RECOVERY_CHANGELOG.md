@@ -1071,3 +1071,76 @@ Self-review:
 - Good: The follow-up plan was kept out of PR #90 and committed on a fresh post-merge branch.
 - Problem found: Main-branch SonarCloud quality gate is red after the merge due to broader recovery-era hotspots and duplicated new-code density. It does not block the deployed demo, but it should be handled in a dedicated hardening branch.
 - Should have anticipated: PR-level Sonar success and main-branch quality-gate success are different evidence. The PR passed; main still evaluates broader branch conditions.
+
+## 2026-05-28 01:40 EDT - MVP Browser Smoke Work Started
+
+Actions:
+
+- Created `mvp/story-lab-public-readiness` from updated `main`.
+- Added `MVP_TO_SHIPPING_EXEC_PLAN.md` and linked it from `AGENTS.md`.
+- Added a Playwright-backed browser smoke script at `scripts/recovery/story-lab-browser-smoke.mjs`.
+- Added root script `npm run smoke:story-lab-ui`.
+- Gated the public debug panel behind `?debug=1` instead of rendering it for every public user.
+- Added `STORY_LAB_MVP_READINESS_REPORT.md` as a candidate report.
+
+Validation:
+
+- `git diff --check` passed.
+- `npm run test:story-lab-real-engine` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `npm run test:all` passed.
+- `STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui` passed after the full smoke build exposed an over-broad heading assertion.
+
+Self-review:
+
+- Good: The first MVP work attacks the weakest previous evidence: browser-level Story Lab use, not just API curl proof.
+- Good: The debug panel is preserved for recovery but removed from the default public surface.
+- Problem found: `ng serve` was too slow and process-fragile for an autonomous smoke gate in this checkout. The smoke now builds with Node 20 and serves the built output directly.
+- Should have anticipated: Browser smoke selectors must be exact enough to distinguish app title, story title, and chapter headings.
+
+## 2026-05-28 01:56 EDT - PR92 Review Fixes
+
+Actions:
+
+- Addressed automated review feedback on PR #92:
+  - changed debug-panel visibility from a one-time `window.location.search` read to Angular `ActivatedRoute.queryParamMap`,
+  - added stable `data-testid` hooks for the Story Lab smoke path,
+  - updated the Playwright smoke to use those hooks and avoid hard-coded generated story copy,
+  - hardened static-file path resolution in the smoke server so requests cannot escape the built output directory,
+  - guarded browser cleanup so Chromium launch errors are not masked,
+  - made the smoke build use the current Node when it is already Node 20 and only fall back to `npx node@20` when needed,
+  - removed the regex route matcher that Sonar flagged as a security hotspot,
+  - replaced public error guidance that pointed normal users to the hidden debug panel,
+  - corrected the deployed-smoke command in the ExecPlan so real-provider evidence requires `STORY_LAB_SMOKE_LIVE=1`.
+
+Validation:
+
+- `git diff --check` passed.
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs` passed.
+- `cd story-generator && ../node_modules/.bin/tsc -p tsconfig.app.json --noEmit` passed.
+- `cd story-generator && ../node_modules/.bin/tsc -p tsconfig.spec.json --noEmit` passed.
+- `npm run test:story-lab-real-engine` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `npm run smoke:story-lab-ui` passed after rebuilding with Node `v20.20.2` and driving the built app through mocked genesis and continuation.
+- `npm run test:all` passed with the existing mock-mode key/word-count warnings.
+
+Self-review:
+
+- Good: The review fixes improved the smoke harness instead of just quieting bots. Live mode no longer depends on a specific generated title.
+- Good: The debug panel remains recoverable through `?debug=1` while following Angular route state.
+- Problem found: Stable smoke selectors are now part of the UI contract; future markup edits must preserve or deliberately update them.
+- Should have anticipated: Any live AI browser smoke must avoid asserting exact generated prose or titles, because model output is intentionally variable.
+
+## 2026-05-28 02:10 EDT - PR92 Preview Smoke Blocked by Vercel Auth
+
+Actions:
+
+- Confirmed PR #92 checks were green on commit `473fa9f`.
+- Tried live browser smoke against the Vercel preview URL:
+  - `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice-git-mvp-story-lab-d390c3-phazzies-projects.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
+- Confirmed the preview root returns HTTP `401`, so unauthenticated live browser smoke cannot prove the branch preview.
+- Stopped the smoke attempt instead of waiting for its full timeout.
+
+Decision:
+
+- Merge PR #92 after checks are green, then run live browser smoke against production Vercel for MVP evidence.

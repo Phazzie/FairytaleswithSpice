@@ -12,10 +12,12 @@
     "test:cliffhangers": "tsx tests/cliffhanger-service.test.ts",
     "test:story-lab-state": "tsx tests/story-lab-state.test.ts",
     "test:story-lab-real-engine": "tsx tests/story-lab-real-engine.test.ts",
-    "test:all": "npm run test:story && npm run test:tropes && npm run test:cliffhangers && npm run test:story-lab-state && npm run test:story-lab-real-engine"
+    "test:all": "npm run test:story && npm run test:tropes && npm run test:cliffhangers && npm run test:story-lab-state && npm run test:story-lab-real-engine",
+    "smoke:story-lab-ui": "node scripts/recovery/story-lab-browser-smoke.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
+    "playwright": "^1.60.0",
     "tsx": "^4.20.6",
     "typescript": "~5.9.2"
   },
