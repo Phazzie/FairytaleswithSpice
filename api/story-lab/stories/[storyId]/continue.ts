@@ -1,7 +1,7 @@
 // Created: 2025-10-29 08:27 UTC
 
 import type { ApiResponse, StoryContinuationSeam, StoryIterationPayload } from '../../../_lib/story-lab/contracts';
-import { buildContinuationResponse } from '../../../_lib/story-lab/mockData';
+import { continueStoryLab } from '../../../_lib/story-lab/storyLabEngine';
 import { getTransientStorySnapshot } from '../../../_lib/story-lab/stateStore';
 
 const isValidBatchSize = (size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] =>
@@ -73,6 +73,6 @@ export default async function handler(req: any, res: any) {
   };
 
   const payload: ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }> =
-    buildContinuationResponse(normalizedInput);
+    await continueStoryLab(normalizedInput);
   res.status(200).json(payload);
 }

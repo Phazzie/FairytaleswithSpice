@@ -7,7 +7,7 @@ import type {
   StreamingProgressChunk,
   ThemeSeed
 } from '../../_lib/story-lab/contracts';
-import { buildGenesisResponse } from '../../_lib/story-lab/mockData';
+import { generateStoryLabGenesis } from '../../_lib/story-lab/storyLabEngine';
 
 const ACCESS_CONTROL_METHODS = 'GET, OPTIONS';
 const ACCESS_CONTROL_HEADERS = 'Content-Type';
@@ -50,28 +50,6 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  let genesis: GenesisResponse;
-  try {
-    genesis = buildGenesisResponse(parsed.blueprint);
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'GENERATION_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to generate mock response.'
-      }
-    });
-    return;
-  }
-
-  if (!genesis.success) {
-    res.status(500).json(genesis);
-    return;
-  }
-
-  const storyId = genesis.data.summary.storyId;
-  const totalChapters = genesis.data.batch.chapters.length;
-
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -98,10 +76,40 @@ export default async function handler(req: any, res: any) {
 
   sendChunk({
     type: 'connected',
-    storyId,
     percentage: 0,
-    estimatedMsRemaining: totalChapters * 500
+    estimatedMsRemaining: parsed.blueprint.chapterBatchSize * 90000
   });
+
+  let genesis: GenesisResponse;
+  try {
+    genesis = await generateStoryLabGenesis(parsed.blueprint);
+  } catch (error) {
+    sendChunk({
+      type: 'error',
+      percentage: 100,
+      error: {
+        code: 'GENERATION_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to generate response.'
+      }
+    });
+    cleanup();
+    res.end();
+    return;
+  }
+
+  if (!genesis.success) {
+    sendChunk({
+      type: 'error',
+      percentage: 100,
+      error: genesis.error
+    });
+    cleanup();
+    res.end();
+    return;
+  }
+
+  const storyId = genesis.data.summary.storyId;
+  const totalChapters = genesis.data.batch.chapters.length;
 
   genesis.data.batch.chapters.forEach((chapter, index) => {
     const timeout = setTimeout(() => {
@@ -204,7 +212,10 @@ function parseBlueprint(req: any): ParsedBlueprint {
       desiredWordBudget,
       chapterBatchSize,
       themes: parseThemes(req.query.themes),
-      narrativeDirectives: getString(req.query.narrativeDirectives) ?? undefined
+      narrativeDirectives: getString(req.query.narrativeDirectives) ?? undefined,
+      protagonistName: getString(req.query.protagonistName) ?? undefined,
+      antagonistName: getString(req.query.antagonistName) ?? undefined,
+      worldDetails: getString(req.query.worldDetails) ?? undefined
     };
 
     return { blueprint };

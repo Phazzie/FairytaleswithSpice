@@ -976,3 +976,71 @@ Self-review:
 - Problem found: Running `npx tsc -p ...` inside preflight hung as `npm exec`; direct local `tsc` binaries are more predictable for this repo.
 - Problem found: A stricter discriminated API response type immediately exposed an evaluation-route variable collision.
 - Should have anticipated sooner: Review comments that look cosmetic can expose real boundaries, especially API envelope shape and Vercel function counting.
+
+## 2026-05-27 21:05 EDT - Story Lab Real Engine Work Started
+
+Actions:
+
+- Created `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md` with three implementation critique/revision passes and three autonomous execution-plan critique/revision passes.
+- Updated `AGENTS.md` so future Story Lab generation work starts from the new real-engine plan.
+- Added first-class Story Lab generation context to the real story engine contract:
+  - logline,
+  - tone,
+  - protagonist and antagonist names,
+  - world details,
+  - narrative directives,
+  - full theme seed metadata.
+- Updated the real `StoryService` prompt builder so Story Lab blueprint fields are explicit prompt constraints rather than flattened into a generic user-input blob.
+- Added `api/_lib/story-lab/storyLabEngine.ts` to orchestrate Story Lab genesis and continuation through the real `StoryService` when `XAI_API_KEY` is configured.
+- Kept mock Story Lab generation only for missing provider key or explicit `STORY_LAB_FORCE_MOCK`.
+- Wired Story Lab genesis, continuation, and streaming genesis routes to the new Story Lab engine orchestration.
+- Marked mock Story Lab telemetry as `custom` instead of `gpt`.
+- Added `tests/story-lab-real-engine.test.ts` and a root `test:story-lab-real-engine` script.
+- Added an explicit test proving configured provider failure returns the provider error instead of silently falling back to mock Story Lab output.
+
+Validation:
+
+- `git diff --check` passed.
+- Direct Vercel API typecheck passed after replacing an `.at(-1)` use that the ES2020 Vercel typecheck target rejected.
+- `npm run test:story-lab-real-engine` passed.
+- `npm run test:story-lab-state` passed.
+- `npm run test:all` passed.
+- `scripts/recovery/check-vercel-function-count.sh` passed and reported `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- Node 20 Angular build passed with `npx -p node@20 -c "node -v && npm run build"`.
+
+Self-review:
+
+- Good: Story Lab no longer needs a permanent lossy adapter to reach the real engine; the rich blueprint now enters the real prompt contract as structured context.
+- Good: Configured provider failures should not silently fall back to fake Story Lab content.
+- Problem found: Story Lab continuity state derived from real prose is still heuristic. That is acceptable for this slice only because it is not represented as durable storage or AI-grade story analysis.
+- Should have anticipated: the Vercel API typecheck target still rejects `.at()`, so new recovery code should use index access consistently.
+
+## 2026-05-27 22:52 EDT - PR90 Automated Review Fixes
+
+Actions:
+
+- Addressed automated review feedback on PR #90:
+  - canonicalized Story Lab theme IDs before passing them to the classic engine instead of casting free-form IDs to `ThemeType`,
+  - preserved full Story Lab theme seeds in `generationContext`,
+  - carried trope metadata through `StorySummary` so continuations can reuse the original trope-subversion state,
+  - changed continuation content assembly to fall back from empty `rawContent` to `htmlContent`,
+  - sent SSE headers and the initial `connected` event before awaiting real generation,
+  - forwarded `protagonistName`, `antagonistName`, and `worldDetails` through the streaming genesis path,
+  - converted partial real-engine batch failures into explicit Story Lab errors instead of silently returning a shorter completed batch,
+  - mapped real `StoryService` processing time into Story Lab telemetry latency,
+  - replaced regex-based HTML/speaker-tag stripping with linear scans to satisfy SonarCloud hotspot checks,
+  - fixed timestamp headers on new files and updated word-count pacing guidance for 600 and 1500 words.
+
+Validation:
+
+- `git diff --check` passed before the first review-fix amend.
+- `npm run test:story-lab-real-engine` passed after review fixes.
+- Direct Vercel API typecheck passed after review fixes.
+- Angular TypeScript check passed with `cd story-generator && npx tsc --noEmit --project tsconfig.json`.
+
+Self-review:
+
+- Good: The review comments improved the architecture instead of just polishing style. Theme canonicalization and trope metadata preservation directly protect story-generation quality.
+- Problem found: The first implementation made the streaming endpoint production-capable in name but still delayed the first event until after generation. The fix makes the endpoint at least connection-honest, though true token/chapter streaming remains future work.
+- Should have anticipated: Story Lab's free-form theme IDs and the classic engine's closed `ThemeType` union were a contract mismatch. The rich `generationContext` made this survivable, but the classic field still needed canonicalization.
