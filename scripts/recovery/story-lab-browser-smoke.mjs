@@ -1,6 +1,6 @@
 // Created: 2026-05-28 05:20 UTC
 
-import { mkdir } from 'node:fs/promises';
+import { access, mkdir } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { createServer } from 'node:http';
 import path from 'node:path';
@@ -141,22 +141,13 @@ function runCommand(command, args, cwd) {
 async function startStaticServer() {
   const browserDir = path.join(rootDir, 'story-generator', 'dist', 'story-generator', 'browser');
   const server = createServer((request, response) => {
-    const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
-    const filePath = resolveStaticFilePath(browserDir, requestUrl.pathname);
-
-    if (!filePath) {
-      response.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
-      response.end('Forbidden');
-      return;
-    }
-
-    streamFile(filePath, response, () => {
-      streamFile(path.join(browserDir, 'index.html'), response, () => {
-        streamFile(path.join(browserDir, 'index.csr.html'), response, () => {
-          response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-          response.end('Not found');
-        });
-      });
+    void serveStaticRequest(browserDir, request, response).catch(error => {
+      if (response.headersSent) {
+        response.destroy(error);
+        return;
+      }
+      response.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end('Static smoke server error');
     });
   });
 
@@ -173,6 +164,48 @@ async function startStaticServer() {
   appUrl = `http://127.0.0.1:${address.port}`;
   console.log(`Serving built Story Lab app at ${appUrl}`);
   return server;
+}
+
+async function serveStaticRequest(browserDir, request, response) {
+  const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+  const filePath = resolveStaticFilePath(browserDir, requestUrl.pathname);
+
+  if (!filePath) {
+    response.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
+    response.end('Forbidden');
+    return;
+  }
+
+  const fallbackCandidates = path.extname(requestUrl.pathname)
+    ? [filePath]
+    : [filePath, path.join(browserDir, 'index.html'), path.join(browserDir, 'index.csr.html')];
+  const fileToServe = await firstExistingFile(fallbackCandidates);
+
+  if (!fileToServe) {
+    response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    response.end('Not found');
+    return;
+  }
+
+  streamFile(fileToServe, response);
+}
+
+async function firstExistingFile(filePaths) {
+  for (const filePath of filePaths) {
+    if (await fileExists(filePath)) {
+      return filePath;
+    }
+  }
+  return null;
+}
+
+async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function resolveStaticFilePath(root, urlPathname) {
@@ -214,20 +247,21 @@ function contentType(filePath) {
   return 'application/octet-stream';
 }
 
-function streamFile(filePath, response, onMissing) {
+function streamFile(filePath, response) {
   const stream = createReadStream(filePath);
-  let opened = false;
 
   stream.on('open', () => {
-    opened = true;
     response.writeHead(200, { 'content-type': contentType(filePath) });
     stream.pipe(response);
   });
 
-  stream.on('error', () => {
-    if (!opened) {
-      onMissing();
+  stream.on('error', error => {
+    if (response.headersSent) {
+      response.destroy(error);
+      return;
     }
+    response.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+    response.end('Static file read error');
   });
 }
 

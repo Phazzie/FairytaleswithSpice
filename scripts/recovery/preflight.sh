@@ -91,7 +91,7 @@ else
 fi
 
 step "Checking whitespace/conflict markers"
-git diff --check
+git diff --check -- . ':(exclude)node_modules/**' ':(exclude)story-generator/node_modules/**'
 
 step "Checking deployable Vercel function count"
 "${SCRIPT_DIR}/check-vercel-function-count.sh"

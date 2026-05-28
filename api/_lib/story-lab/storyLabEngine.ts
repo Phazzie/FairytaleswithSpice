@@ -632,17 +632,19 @@ function stripMarkupTags(value: string): string {
 
 function stripSpeakerTags(value: string): string {
   let result = '';
+  let index = 0;
 
-  for (let index = 0; index < value.length; index += 1) {
+  while (index < value.length) {
     if (value[index] === '[') {
       const closingIndex = value.indexOf(']:', index + 1);
       if (closingIndex >= 0) {
-        index = closingIndex + 1;
+        index = closingIndex + 2;
         continue;
       }
     }
 
     result += value[index];
+    index += 1;
   }
 
   return result;

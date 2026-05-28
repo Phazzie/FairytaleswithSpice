@@ -18,6 +18,7 @@ Status values:
 
 | PR | Planned action | Actual status | Notes |
 |---:|---|---|---|
+| #88 | recreate/supersede | in progress | Dependency-only Dependabot PR is being superseded by fresher dependency updates on `shipping/story-lab-hardening`; close after replacement PR lands. |
 | #86 | merge | merged; closed | Merged design system doc; normalized nonzero letter-spacing tokens; closed as superseded by #87. |
 | #85 | merge | merged; closed | Merged `path-to-regexp` 8.4.0 lockfile update; closed as superseded by #87. |
 | #84 | try merge or recreate | recreate later; closed | Stale grouped dependency update; not merged because it mixes Angular 20/21 and stale audio/path churn. |
@@ -1598,3 +1599,61 @@ Use this template for detailed entries as each PR is handled:
   - Keep #22 as legacy fallback reference, not a primary architecture source.
 - GitHub PR closure note:
   - Closed as mined/superseded by #87.
+
+## PR #88 - chore(deps): bump the npm_and_yarn group across 2 directories with 22 updates
+
+- Source branch: `dependabot/npm_and_yarn/npm_and_yarn-8fd274c0be`
+- Planned disposition: recreate/supersede
+- Actual disposition: in progress on `shipping/story-lab-hardening`; close after replacement PR lands
+- Story-generation impact: Indirect. Dependency/security hardening protects the deployed Story Lab runtime but does not change prompt semantics or generation behavior.
+- Accepted material:
+  - The dependency-update intent from PR #88.
+  - Root axios/follow-redirects runtime security update, recreated as root `axios` `^1.16.1` and lockfile `follow-redirects` `1.16.0`.
+  - Story Generator axios/follow-redirects runtime security update, recreated as `axios` `^1.16.1` and lockfile `follow-redirects` `1.16.0`.
+  - Angular 20 patch-family security/runtime update, recreated at fresher current patch levels than PR #88: Angular runtime packages `20.3.22` and CLI/build/SSR packages `20.3.26`.
+  - Build/type tooling moved from production dependencies to devDependencies in `story-generator/package.json`.
+- Not taking now:
+  - PR #88's exact older patch targets, including axios `1.15.2` and earlier Angular patch versions.
+  - Any generated `node_modules` changes from local install/update commands.
+- Why not taking:
+  - PR #88 is now stale relative to current package registry state and this branch's fresher patch updates.
+  - Generated `node_modules` churn is not a reviewable or deployable source artifact for this recovery branch.
+- Future mining value:
+  - None beyond using Dependabot as a signal source for future dependency windows.
+- Files inspected:
+  - `package.json`
+  - `package-lock.json`
+  - `story-generator/package.json`
+  - `story-generator/package-lock.json`
+  - PR #88 body and changed-file list from GitHub.
+- Files changed in recovery branch:
+  - `package.json`
+  - `package-lock.json`
+  - `story-generator/package.json`
+  - `story-generator/package-lock.json`
+  - `api/_lib/story-lab/storyLabEngine.ts`
+  - `scripts/recovery/story-lab-browser-smoke.mjs`
+  - `STORY_LAB_SHIPPING_READINESS_REPORT.md`
+  - `MVP_TO_SHIPPING_EXEC_PLAN.md`
+  - `PR70_RECOVERY_CHANGELOG.md`
+  - `PR70_RECOVERY_LEDGER.md`
+  - `LESSONS_LEARNED.md`
+- Conflicts encountered:
+  - No direct merge attempted; branch is intentionally recreated on current Story Lab baseline.
+- Tests/checks run:
+  - `node --check scripts/recovery/story-lab-browser-smoke.mjs` passed.
+  - Root `npm audit --omit=dev --json` passed with zero vulnerabilities.
+  - Story Generator `npm audit --omit=dev --json` passed with zero vulnerabilities.
+  - Story Generator `npm audit --omit=dev --omit=optional --json` passed with zero vulnerabilities.
+  - Full Story Generator `npm audit --json` still reports seven dev/test-toolchain findings through Karma/socket packages.
+  - `git diff --check` passed.
+  - `scripts/recovery/preflight.sh --quick --skip-status` passed.
+  - `npm run test:story-lab-real-engine` passed.
+  - `npm run test:all` passed with expected mock-mode warnings.
+  - `npm run smoke:story-lab-ui` passed after building with Node `v20.20.2`.
+  - `npm run build:verify` passed.
+- Self-review notes:
+  - Correct action is to supersede the dependency PR with a current, validated dependency branch rather than merge older patch targets.
+  - Do not overstate the audit result: runtime is clean, full dev audit is still not clean.
+- GitHub PR closure note:
+  - Pending. Close PR #88 after the replacement shipping-hardening PR merges, pointing to this ledger entry and the shipping readiness report.
