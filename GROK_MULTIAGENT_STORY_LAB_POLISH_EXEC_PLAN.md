@@ -52,6 +52,7 @@ xAI official sources:
 - [x] Add a Grok-only Vercel timeout policy: try `grok-4.20-multi-agent` inside the live request window, fall back to `grok-4.3` for retryable timeout/server failures, use the fast path for extra batch chapters, and keep continuity/evaluation on the fast Grok path.
 - [x] Verify the authenticated Vercel preview with live Story Lab browser smoke after the timeout/default follow-up.
 - [x] Merge the timeout follow-up and rerun production live Story Lab smoke evidence.
+- [x] Deploy the final provider-variability timeout tweak on `main` and rerun production live Story Lab smoke against the public URL.
 
 ## Surprises & Discoveries
 
@@ -121,9 +122,10 @@ xAI official sources:
 - What a senior dev who hates this still objects to: `/api/story/stream` is still effectively a final-result SSE path rather than true Responses API token streaming, local storage is browser-only, and live Grok multi-agent behavior is only opt-in because credentials are not present locally.
 - What surprised us: the visual polish was less risky than the storage seam; the storage seam needed explicit contracts and refresh-after-reload browser proof to stay honest.
 - What we should have anticipated: `tsx` top-level-await behavior and xAI Responses output variants should have been accounted for immediately in the shared client/smoke harness.
-- What remains deliberately deferred: production live smoke after merge, true streaming migration, cloud persistence, audio runtime, DigitalOcean work, and the remaining Karma/socket dev-audit findings.
+- What remains deliberately deferred: true streaming migration, cloud persistence, audio runtime, DigitalOcean work, and the remaining Karma/socket dev-audit findings.
 - Post-merge correction: production live smoke did run and found a Vercel 504 in the real provider path. The correction is a bounded provider policy, not a provider switch or a return to mocks.
 - Post-merge evidence: PR #99 merged into `main`, Vercel production served the new deployment, and `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui` passed once, then a second production smoke exposed provider latency variance. The timeout policy was tightened again so multi-agent is a short probe and fast Grok owns the fallback budget.
+- Final evidence: commit `4fb64b6` deployed to Vercel with Recovery CI passing, Vercel reporting deployment success, production root returning HTTP 200 with `last-modified: Thu, 28 May 2026 23:24:41 GMT`, and production live Story Lab browser smoke passing again with `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`.
 
 ## Context and Orientation
 

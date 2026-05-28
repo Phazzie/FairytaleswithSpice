@@ -1449,3 +1449,22 @@ Self-review:
 - Good: This keeps the app Grok-only and still attempts multi-agent first.
 - Problem found: A fallback that succeeds once but fails on a second smoke is still too fragile for "show it to someone" readiness.
 - Should have anticipated: In a synchronous serverless UI flow, the experimental multi-agent call should be treated as a short probe, not as the main latency budget.
+
+## 2026-05-28 19:26 EDT - Final Grok-Only Production Smoke Passed
+
+Actions:
+
+- Confirmed `main` is at commit `4fb64b6`, `Prioritize fast Grok fallback budget`.
+- Confirmed Recovery CI passed for `4fb64b6`.
+- Confirmed Vercel reported deployment success for `4fb64b6`.
+- Confirmed production root `https://fairytaleswith-spice.vercel.app` returned HTTP 200 with `last-modified: Thu, 28 May 2026 23:24:41 GMT`.
+- Ran production live Story Lab browser smoke:
+  - `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
+  - Result: passed.
+
+Self-review:
+
+- Good: The final proof used the public production URL after the provider-variability fix, not only the earlier successful deployment.
+- Good: The app remains Grok-only: `grok-4.20-multi-agent` is the short primary probe and `grok-4.3` is the visible fast fallback for retryable timeout/server failures.
+- Remaining risk: This is still a synchronous live-provider workflow. It is demoable now, but larger chapter batches, provider incidents, or very slow responses can still fail closed.
+- What should be next: if production reliability has to survive repeated public usage, move long-running generation to a job/streaming architecture or make fast Grok the default button path with multi-agent as an explicit deep mode.
