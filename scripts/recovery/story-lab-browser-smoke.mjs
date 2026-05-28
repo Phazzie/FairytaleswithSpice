@@ -14,6 +14,8 @@ let appUrl = providedUrl;
 const liveMode = process.env.STORY_LAB_SMOKE_LIVE === '1';
 const shouldStartStaticServer = !providedUrl;
 const shouldBuildStaticApp = shouldStartStaticServer && process.env.STORY_LAB_SMOKE_SKIP_BUILD !== '1';
+const shouldSkipHttpWait = process.env.STORY_LAB_SMOKE_SKIP_HTTP_WAIT === '1'
+  || Boolean(providedUrl && new URL(providedUrl).searchParams.has('_vercel_share'));
 
 const smokeSelectors = Object.freeze({
   heading: '[data-testid="story-lab-heading"]',
@@ -62,7 +64,9 @@ try {
     staticServer = await startStaticServer();
   }
 
-  await waitForHttp(appUrl, 180_000);
+  if (!shouldSkipHttpWait) {
+    await waitForHttp(appUrl, 180_000);
+  }
   await runSmoke();
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

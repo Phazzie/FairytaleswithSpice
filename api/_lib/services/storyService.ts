@@ -44,6 +44,8 @@ interface GeneratedChaptersResult {
   aiMetadata?: AiCallMetadata;
 }
 
+const EXTRA_BATCH_CHAPTER_TIMEOUT_MS = 9000;
+
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
   private readonly cliffhangerService = new CliffhangerService();
@@ -671,7 +673,9 @@ export class StoryService {
         maxOutputTokens: this.calculateOptimalTokens(targetWordCount),
         temperature: 0.8,
         topP: 0.95,
-        timeoutMs: chapterOptions?.preferFastModel ? getXaiFastTimeoutMs() : getXaiPrimaryTimeoutMs(),
+        timeoutMs: chapterOptions?.preferFastModel
+          ? Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS)
+          : getXaiPrimaryTimeoutMs(),
         fallbackTimeoutMs: getXaiFastTimeoutMs(),
         modelPreference,
         allowFallback: !chapterOptions?.preferFastModel,
@@ -736,7 +740,9 @@ export class StoryService {
         maxOutputTokens: this.calculateOptimalTokens(500),
         temperature: 0.8,
         topP: 0.95,
-        timeoutMs: chapterOptions?.preferFastModel ? getXaiFastTimeoutMs() : getXaiPrimaryTimeoutMs(),
+        timeoutMs: chapterOptions?.preferFastModel
+          ? Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS)
+          : getXaiPrimaryTimeoutMs(),
         fallbackTimeoutMs: getXaiFastTimeoutMs(),
         modelPreference,
         allowFallback: !chapterOptions?.preferFastModel,

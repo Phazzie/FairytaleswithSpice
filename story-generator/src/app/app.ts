@@ -69,7 +69,7 @@ export class App {
     spicyLevel: 3,
     tone: 'dark_romance',
     desiredWordBudget: 900,
-    chapterBatchSize: 2,
+    chapterBatchSize: 1,
     protagonistName: '',
     antagonistName: '',
     worldDetails: '',

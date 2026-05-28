@@ -63,6 +63,7 @@ xAI official sources:
 - The Grok multi-agent live smoke path needed an async `main()` wrapper because this checkout's `tsx` path emits CJS for that file and rejected top-level `await`.
 - The build-backed browser smoke caught the right acceptance shape for local persistence: mocked generation, continuation, reload, restored active story, desktop screenshot, and mobile screenshot.
 - PR #98 passed branch checks and merged cleanly, but production live smoke exposed a real runtime failure: Grok multi-agent plus AI continuity extraction could exceed Vercel's synchronous function window and surface as a 504 before users saw a story.
+- Protected Vercel preview URLs need browser-based auth handling. The Story Lab smoke harness's raw `fetch` readiness check cannot use `_vercel_share` cookies, so protected-preview smokes must skip that preflight and let Playwright load the shared URL.
 
 ## Decision Log
 
@@ -101,6 +102,9 @@ xAI official sources:
 
 - Decision: In multi-chapter batches, only the first generated chapter attempts multi-agent.
   Rationale: The Story Lab default is a two-chapter batch. Retrying multi-agent independently for every chapter could still exceed Vercel's function window. Later chapters in the same batch use the fast Grok model to keep the full request inside one deployable budget.
+
+- Decision: Default the first visible Story Lab batch to one chapter.
+  Rationale: The user needs a demoable first path. Multi-chapter batching remains available, but the default should not start with extra live provider calls before the first story appears.
 
 - Decision: Run AI continuity extraction on the fast Grok path with a short timeout.
   Rationale: Continuity extraction is useful, but it is secondary to returning the drafted chapter. If it cannot finish quickly, the existing heuristic/mixed receipt path is the right degraded mode.

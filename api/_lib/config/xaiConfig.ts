@@ -3,7 +3,7 @@ export const DEFAULT_XAI_FAST_MODEL = 'grok-4.3';
 export const DEFAULT_XAI_REASONING_EFFORT = 'medium';
 export const XAI_RESPONSES_API_URL = 'https://api.x.ai/v1/responses';
 export const DEFAULT_XAI_PRIMARY_TIMEOUT_MS = 18000;
-export const DEFAULT_XAI_FAST_TIMEOUT_MS = 9000;
+export const DEFAULT_XAI_FAST_TIMEOUT_MS = 20000;
 
 export type XaiReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 

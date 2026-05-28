@@ -1387,10 +1387,13 @@ Fix in progress:
 - Added config helpers for primary and fast request timeouts so production is not tied to 60-90 second local development assumptions.
 - Moved continuity extraction and Story Lab evaluation to the fast Grok path with shorter timeouts.
 - Added `fallbackFromModel` telemetry so the UI can say when a fast Grok fallback was used instead of pretending multi-agent completed.
+- Updated the browser smoke harness so Vercel `_vercel_share` preview URLs skip the raw Node `fetch` preflight and let Playwright handle the auth flow.
+- Changed the initial Story Lab default to one chapter per batch so the first demo path does not begin with avoidable multi-call latency.
 
 Validation:
 
 - `node_modules/.bin/tsx tests/verify-ai-fixes.test.ts` passed.
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs` passed.
 - `npm run smoke:grok-multi-agent` passed the no-credential skip path.
 - `npm run test:story-quality` passed.
 - `npm run test:story-lab-real-engine` passed.
@@ -1405,4 +1408,5 @@ Self-review:
 - Good: The UI telemetry now exposes fallback behavior rather than hiding it.
 - Problem found: The original multi-agent plan anticipated higher latency, but did not turn that anticipation into a Vercel request-budget policy before merge.
 - Problem found during self-review: Story Lab defaults to a two-chapter batch, so a primary-plus-fallback retry per chapter was still too much worst-case latency. The fix now lets only the first chapter attempt multi-agent and uses fast Grok for later chapters in the same batch.
+- Problem found during preview smoke: the protected Vercel preview failed the smoke harness before browser auth because the harness used Node `fetch`; after bypassing that preflight, the app reached the UI but live generation still failed with the 9s fast fallback timeout, so the first-attempt fast fallback budget was raised while extra batch chapters stay capped.
 - Should have anticipated: If generation and continuity both call live AI in one serverless request, their worst-case timeouts must be budgeted together, not judged one call at a time.
