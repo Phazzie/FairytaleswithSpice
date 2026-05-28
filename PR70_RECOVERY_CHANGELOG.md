@@ -1430,3 +1430,22 @@ Self-review:
 - Good: The failure that Vercel exposed is now represented as executable behavior and durable documentation, not just a chat observation.
 - Good: The final proof used production, not only a protected preview.
 - Remaining risk: Very slow Grok provider responses can still fail closed, especially if a user deliberately asks for larger multi-chapter batches. The default demo path is now one chapter and has passed live production smoke.
+
+## 2026-05-28 19:19 EDT - Provider Variability Follow-Up
+
+Problem:
+
+- A second production live smoke against the docs-only deployment reached the app but failed closed with "AI service temporarily unavailable."
+- The previous production smoke had passed with the same Story Lab code, so the issue is provider latency variance rather than a deterministic route/build failure.
+
+Fix in progress:
+
+- Reduced the primary multi-agent probe timeout from 18s to 8s.
+- Raised the fast Grok fallback budget from 20s to 30s.
+- Kept extra batch chapters capped at 9s so non-default multi-chapter batches do not consume the full Vercel function window.
+
+Self-review:
+
+- Good: This keeps the app Grok-only and still attempts multi-agent first.
+- Problem found: A fallback that succeeds once but fails on a second smoke is still too fragile for "show it to someone" readiness.
+- Should have anticipated: In a synchronous serverless UI flow, the experimental multi-agent call should be treated as a short probe, not as the main latency budget.
