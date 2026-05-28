@@ -6,7 +6,26 @@
 export type CreatureType = 'vampire' | 'werewolf' | 'fairy' | 'siren' | 'djinn';
 export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden_love' | 'revenge' | 'manipulation' | 'seduction' | 'dark_secrets' | 'corruption' | 'dominance' | 'submission' | 'jealousy' | 'temptation' | 'sin' | 'desire' | 'passion' | 'lust' | 'deceit';
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
-export type WordCount = 700 | 900 | 1200;
+export type WordCount = 600 | 700 | 900 | 1200 | 1500;
+export type NarrativeTone = 'romance' | 'dark_romance' | 'mystery' | 'adventure' | 'comedy' | 'tragedy';
+export type GenerationSource = 'classic_generator' | 'story_lab';
+
+export interface GenerationThemeSeed {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface StoryGenerationContext {
+  source: GenerationSource;
+  logline?: string;
+  tone?: NarrativeTone;
+  protagonistName?: string;
+  antagonistName?: string;
+  worldDetails?: string;
+  narrativeDirectives?: string;
+  themeSeeds?: GenerationThemeSeed[];
+}
 export type VoiceType = 'female' | 'male' | 'neutral';
 export type CharacterVoiceType = 
   | 'vampire_male' | 'vampire_female' 
@@ -76,6 +95,7 @@ export interface StoryGenerationSeam {
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
     requestedChapterCount?: 1 | 2 | 3;
+    generationContext?: StoryGenerationContext;
   };
 
   output: {
@@ -407,7 +427,7 @@ export const VALIDATION_RULES = {
     max: 5
   },
   wordCount: {
-    allowedValues: [700, 900, 1200]
+    allowedValues: [600, 700, 900, 1200, 1500]
   },
   audioSpeed: {
     min: 0.5,

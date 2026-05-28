@@ -97,3 +97,7 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Review-polish branches need a hard scope boundary. Fix review comments, validate, and merge; put the next large product move in a separate plan/branch so cleanup work does not become another oversized mixed PR.
 - Prefer direct local tool binaries in recovery scripts when `npx` behavior is ambiguous. In this repo, `npx tsc -p ...` can hang under `npm exec`, while `node_modules/.bin/tsc` runs predictably.
 - A function-count check is stronger when it names the expected functions. A raw count can pass while hiding accidental helper placement; an allow-list makes deployable API shape intentional.
+- A Story Lab-to-engine bridge becomes technical debt if it compresses rich blueprint fields into a generic prompt string. Promote the rich fields into the real generation contract instead.
+- Mock fallback must be explicit and honest. It is acceptable when no provider key exists or a mock flag is set; it should not hide configured provider failures.
+- Heuristic continuity state should be labeled by behavior, not ambition. Until AI state extraction or durable persistence exists, real generated prose can seed Story Lab panels, but those panels are not proof of durable continuity intelligence.
+- When a rich UI uses free-form labels but an older engine uses a closed union, preserve the rich data separately and canonicalize only the legacy field. Casting free-form IDs into closed contracts hides generation bugs.

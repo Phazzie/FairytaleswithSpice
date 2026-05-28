@@ -1162,9 +1162,10 @@ Your goal: Create episodes that make listeners desperate for "Continue Chapter."
 
   private buildUserPrompt(input: StoryGenerationSeam['input']): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
-    const themesText = input.themes.join(', ');
+    const themesText = this.formatThemeContext(input);
     const spicyLabel = this.getSpicyLabel(input.spicyLevel);
     const chekovElements = this.generateChekovElements();
+    const storyLabContext = this.formatStoryLabContext(input);
 
     return `Write a ${input.wordCount}-word spicy supernatural romance story optimized for audio narration:
 
@@ -1172,6 +1173,7 @@ PROTAGONIST: ${creatureName} with complex motivations and hidden depths
 THEMES TO WEAVE: ${themesText}
 SPICE LEVEL: ${spicyLabel} (Level ${input.spicyLevel}/5) - maintain this intensity throughout
 ${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+${storyLabContext}
 
 CHEKHOV LEDGER (plant these elements for future payoff):
 ${chekovElements}
@@ -1186,9 +1188,11 @@ STORY REQUIREMENTS:
 - Follow the selected beat structure precisely
 
 WORD COUNT PACING:
+- 600 words: Compressed hook, immediate tension, clean payoff
 - 700 words: Fast, tense, sharp progression
 - 900 words: Character depth with tight focus  
 - 1200 words: Layered, immersive with complex tension
+- 1500 words: Multi-scene escalation with richer reversals and payoff
 
 MANDATORY FORMATTING FOR AUDIO:
 - [Character Name, voice: 4-word description]: "dialogue" for FIRST appearance of each major character
@@ -1206,6 +1210,57 @@ USE CREATIVE, UNCONVENTIONAL VOICE DESCRIPTORS - NO REPEATED WORDS ACROSS CHARAC
 Create a complete story that feels like it could continue but is satisfying on its own. Make every word count toward character development, world-building, or advancing romantic/sexual tension.
 
 Plant your Chekhov elements naturally and ensure the moral dilemma occurs at midpoint. End with a cliffhanger that creates genuine desire for continuation.`;
+  }
+
+  private formatThemeContext(input: StoryGenerationSeam['input']): string {
+    const themeSeeds = input.generationContext?.themeSeeds ?? [];
+    if (themeSeeds.length > 0) {
+      return themeSeeds
+        .map(theme => `${theme.label} (${theme.description})`)
+        .join('; ');
+    }
+
+    return input.themes.join(', ');
+  }
+
+  private formatStoryLabContext(input: StoryGenerationSeam['input']): string {
+    const context = input.generationContext;
+    if (context?.source !== 'story_lab') {
+      return '';
+    }
+
+    const lines = [
+      '',
+      'STORY LAB BLUEPRINT - FIRST-CLASS CREATIVE CONSTRAINTS:'
+    ];
+
+    if (context.logline) {
+      lines.push(`- Logline: ${context.logline}`);
+    }
+    if (context.tone) {
+      lines.push(`- Narrative tone: ${context.tone.split('_').join(' ')}`);
+    }
+    if (context.protagonistName) {
+      lines.push(`- Protagonist name: ${context.protagonistName}`);
+    }
+    if (context.antagonistName) {
+      lines.push(`- Antagonist name or opposing force: ${context.antagonistName}`);
+    }
+    if (context.worldDetails) {
+      lines.push(`- World details: ${context.worldDetails}`);
+    }
+    if (context.narrativeDirectives) {
+      lines.push(`- Narrative directives: ${context.narrativeDirectives}`);
+    }
+    if (context.themeSeeds?.length) {
+      lines.push('- Theme seed intent:');
+      for (const theme of context.themeSeeds) {
+        lines.push(`  * ${theme.label}: ${theme.description}`);
+      }
+    }
+
+    lines.push('- Treat these blueprint fields as binding story intent, not as optional flavor.');
+    return lines.join('\n');
   }
 
   private buildChapterUserPrompt(

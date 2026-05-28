@@ -93,6 +93,15 @@ export class StoryService {
       if (input.narrativeDirectives) {
         params.set('narrativeDirectives', input.narrativeDirectives);
       }
+      if (input.protagonistName) {
+        params.set('protagonistName', input.protagonistName);
+      }
+      if (input.antagonistName) {
+        params.set('antagonistName', input.antagonistName);
+      }
+      if (input.worldDetails) {
+        params.set('worldDetails', input.worldDetails);
+      }
 
       const streamUrl = `${this.apiUrl}/stream/genesis?${params.toString()}`;
       const eventSource = new EventSource(streamUrl);

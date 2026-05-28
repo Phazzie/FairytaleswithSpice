@@ -300,7 +300,7 @@ export function buildGenesisResponse(
     state,
     stateDelta: buildStateDelta(storyId, null, state, chapters),
     telemetry: {
-      engine: 'gpt',
+      engine: 'custom',
       totalLatencyMs: 2200,
       averageChapterLatencyMs: Math.round(2200 / input.chapterBatchSize),
       tokensConsumed: 1600,
@@ -343,7 +343,7 @@ export function buildContinuationResponse(
     state: nextState,
     stateDelta: buildStateDelta(input.storyId, input.storyState, nextState, chapters),
     telemetry: {
-      engine: 'gpt',
+      engine: 'custom',
       totalLatencyMs: 2400,
       averageChapterLatencyMs: Math.round(2400 / input.chapterBatchSize),
       tokensConsumed: 1750,

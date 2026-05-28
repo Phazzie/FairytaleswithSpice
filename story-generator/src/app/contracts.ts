@@ -96,6 +96,7 @@ export interface StorySummary {
   synopsis: string;
   tone: NarrativeTone;
   spicyLevel: SpicyLevel;
+  tropeMetadata?: string;
   createdAt: string;
   updatedAt: string;
 }

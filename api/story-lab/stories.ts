@@ -1,7 +1,7 @@
 // Created: 2025-10-29 08:27 UTC
 
 import type { ApiResponse, StoryGenerationSeam, StoryIterationPayload } from '../_lib/story-lab/contracts';
-import { buildGenesisResponse } from '../_lib/story-lab/mockData';
+import { generateStoryLabGenesis } from '../_lib/story-lab/storyLabEngine';
 
 const VALID_BATCH_SIZES: ReadonlyArray<StoryGenerationSeam['input']['chapterBatchSize']> = [1, 2, 3];
 
@@ -62,6 +62,6 @@ export default async function handler(req: any, res: any) {
     themes: Array.isArray(input.themes) ? input.themes : []
   };
 
-  const payload: ApiResponse<StoryIterationPayload> = buildGenesisResponse(normalizedInput);
+  const payload: ApiResponse<StoryIterationPayload> = await generateStoryLabGenesis(normalizedInput);
   res.status(200).json(payload);
 }

@@ -8,7 +8,9 @@ This file is read automatically by AI coding agents. It is the repo-level operat
 
 The active direction is documented in `PR70_RECOVERY_PLAN.md`.
 
-The next parallel-agent execution plan is `plan.md`. Use it only after the current review-fix/polish branch is merged; do not use it as permission to keep expanding the recovery baseline PR.
+The next Story Lab real-engine execution plan is `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md`. Use it before changing Story Lab generation semantics.
+
+The previous parallel-agent execution plan is `plan.md`. Treat it as superseded for the immediate Story Lab real-engine work; do not use it as permission to broaden this branch.
 
 Follow that plan before doing broad PR reconciliation work. The intended recovery path is:
 
