@@ -26,6 +26,8 @@ import type {
 import { StoryService } from '../services/storyService';
 import { buildContinuationResponse, buildGenesisResponse } from './mockData';
 import { getTransientStorySnapshot, persistStoryIteration } from './stateStore';
+import { extractContinuity } from './continuityExtractor';
+import { getXaiReasoningEffort, getXaiStoryModel } from '../config/xaiConfig';
 
 type ClassicStoryOutput = ClassicGenerationSeam['output'];
 type ClassicContinuationOutput = ClassicContinuationSeam['output'];
@@ -130,7 +132,11 @@ export async function generateStoryLabGenesis(
     return partialError;
   }
 
-  const payload = buildStoryLabPayloadFromGeneratedStory(input, result.data, result.metadata);
+  const payload = await enrichContinuity(
+    buildStoryLabPayloadFromGeneratedStory(input, result.data, result.metadata),
+    input,
+    !options.serviceFactory
+  );
   payload.persistence = persistStoryIteration(payload);
 
   return {
@@ -202,7 +208,11 @@ export async function continueStoryLab(
     return partialError;
   }
 
-  const payload = buildStoryLabPayloadFromContinuation(input, result.data, storyState, existingSummary, previousChapters, result.metadata);
+  const payload = await enrichContinuity(
+    buildStoryLabPayloadFromContinuation(input, result.data, storyState, existingSummary, previousChapters, result.metadata),
+    undefined,
+    !options.serviceFactory
+  );
   payload.persistence = persistStoryIteration(payload, previousChapters);
 
   return {
@@ -529,10 +539,37 @@ function buildGrokTelemetry(metadata: ApiResponseMetadata | undefined, chapterCo
 
   return {
     engine: 'grok',
+    model: getXaiStoryModel(),
+    reasoningEffort: getXaiReasoningEffort(),
     totalLatencyMs,
     averageChapterLatencyMs: chapterCount > 0 ? Math.round(totalLatencyMs / chapterCount) : totalLatencyMs,
     tokensConsumed: 0,
     retryCount: 0
+  };
+}
+
+async function enrichContinuity<T extends StoryIterationPayload>(
+  payload: T,
+  blueprint: LabGenerationSeam['input'] | undefined,
+  useAi: boolean
+): Promise<T> {
+  const extraction = await extractContinuity({
+    storyId: payload.summary.storyId,
+    currentState: payload.state,
+    chapters: payload.batch.chapters,
+    summary: payload.summary,
+    blueprint,
+    useAi
+  });
+
+  return {
+    ...payload,
+    state: extraction.state,
+    stateDelta: payload.stateDelta ? {
+      ...payload.stateDelta,
+      continuityWarnings: extraction.state.continuityWarnings
+    } : payload.stateDelta,
+    continuityExtraction: extraction.receipt
   };
 }
 

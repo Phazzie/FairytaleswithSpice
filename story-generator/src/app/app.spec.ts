@@ -12,6 +12,8 @@ import {
   GeneratedChapter
 } from './contracts';
 
+const STORAGE_KEY = 'fairytales_story_lab_projects_v1';
+
 function createChapter(overrides: Partial<GeneratedChapter> = {}): GeneratedChapter {
   return {
     chapterId: overrides.chapterId ?? 'chapter-1',
@@ -67,6 +69,7 @@ describe('App', () => {
 
   beforeEach(async () => {
     queryParamMap$ = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+    localStorage.removeItem(STORAGE_KEY);
 
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'beginStory',
@@ -89,6 +92,10 @@ describe('App', () => {
 
     component = TestBed.createComponent(App).componentInstance;
     storyService = TestBed.inject(StoryService) as jasmine.SpyObj<StoryService>;
+  });
+
+  afterEach(() => {
+    localStorage.removeItem(STORAGE_KEY);
   });
 
   it('creates the workbench with default blueprint values', () => {
@@ -142,7 +149,11 @@ describe('App', () => {
 
     storyService.beginStory.and.returnValue(of({ success: true, data: payload }));
 
-    component.blueprint.set({ ...component.blueprint(), logline: 'A vampire princess bound by forbidden vows.' });
+    component.blueprint.set({
+      ...component.blueprint(),
+      logline: 'A vampire princess bound by forbidden vows.',
+      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }]
+    });
     component.startGenesis();
 
     expect(storyService.beginStory).toHaveBeenCalled();
@@ -151,6 +162,43 @@ describe('App', () => {
     expect(component.selectedChapter()?.chapterNumber).toBe(2);
     expect(component.activeBatchQueue().at(-1)?.status).toBe('completed');
     expect(component.suggestedNextPrompts()).toEqual(['Explore the rival court.']);
+    expect(component.savedProjects().length).toBe(1);
+    expect(component.workspaceSaveStatus()).toBe('Saved in this browser.');
+  });
+
+  it('loads a saved browser-local project into the workbench', () => {
+    const payload: StoryIterationPayload = {
+      summary: createSummary({ title: 'Saved Pact' }),
+      batch: {
+        chapters: [createChapter()],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      },
+      state: createState(),
+      telemetry: {
+        engine: 'grok',
+        model: 'grok-4.20-multi-agent',
+        reasoningEffort: 'medium',
+        totalLatencyMs: 1200,
+        averageChapterLatencyMs: 1200,
+        tokensConsumed: 900,
+        retryCount: 0
+      }
+    };
+
+    storyService.beginStory.and.returnValue(of({ success: true, data: payload }));
+    component.blueprint.set({
+      ...component.blueprint(),
+      logline: 'A vampire princess bound by forbidden vows.',
+      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }]
+    });
+    component.startGenesis();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    expect(component.workbench().story?.title).toBe('Saved Pact');
+    expect(component.workbench().chapterHistory.length).toBe(1);
+    expect(component.modelBadge()).toBe('grok-4.20-multi-agent · medium');
   });
 
   it('continues an existing saga and appends chapters', () => {

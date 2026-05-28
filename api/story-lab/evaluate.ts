@@ -1,4 +1,5 @@
 import type { ApiResponse, EvaluationCriteria, EvaluationRequest } from '../_lib/story-lab/contracts';
+import { XaiTextClient } from '../_lib/services/xaiTextClient';
 
 interface NormalizedEvaluationRequest {
   storyContent: string;
@@ -9,8 +10,6 @@ interface NormalizedEvaluationRequest {
     wordCount: number;
   };
 }
-
-const XAI_API_URL = 'https://api.x.ai/v1/chat/completions';
 
 function getMockEvaluation(): EvaluationCriteria {
   return {
@@ -122,8 +121,8 @@ export default async function handler(req: any, res: any) {
     }
   };
 
-  const apiKey = process.env.XAI_API_KEY;
-  if (!apiKey) {
+  const xaiClient = new XaiTextClient();
+  if (!xaiClient.hasApiKey()) {
     const payload: ApiResponse<EvaluationCriteria> = {
       success: true,
       data: getMockEvaluation()
@@ -133,52 +132,30 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const response = await fetch(XAI_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'grok-4-fast-reasoning',
-        messages: [
-          {
-            role: 'system',
-            content: 'You evaluate spicy supernatural romance stories for craft quality. Return only valid JSON.'
-          },
-          {
-            role: 'user',
-            content: buildEvaluationPrompt(request)
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 1500
-      })
+    const evaluationResponse = await xaiClient.generateText({
+      operation: 'evaluation',
+      system: 'You evaluate spicy supernatural romance stories for craft quality. Return only valid JSON.',
+      user: buildEvaluationPrompt(request),
+      maxOutputTokens: 1500,
+      temperature: 0.3,
+      topP: 0.9,
+      timeoutMs: 90000
     });
-
-    if (!response.ok) {
-      throw new Error(`xAI evaluation failed with ${response.status}`);
-    }
-
-    const grokPayload = await response.json() as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = grokPayload.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error('xAI evaluation response did not include content.');
-    }
 
     const responsePayload: ApiResponse<EvaluationCriteria> = {
       success: true,
-      data: parseEvaluation(content)
+      data: parseEvaluation(evaluationResponse.text)
     };
     res.status(200).json(responsePayload);
   } catch (error) {
-    console.warn('Evaluation fallback returned mock feedback.', error);
-    const fallbackPayload: ApiResponse<EvaluationCriteria> = {
-      success: true,
-      data: getMockEvaluation()
+    console.warn('Story Lab evaluation failed.', error);
+    const failurePayload: ApiResponse<never> = {
+      success: false,
+      error: {
+        code: 'EVALUATION_FAILED',
+        message: 'Grok evaluation is temporarily unavailable.'
+      }
     };
-    res.status(200).json(fallbackPayload);
+    res.status(502).json(failurePayload);
   }
 }

@@ -12,12 +12,14 @@ import {
   ChapterTimelineEntry,
   ContinuityPanelViewModel,
   GeneratedChapter,
+  SavedStoryProject,
   StoryBlueprint,
   StoryIterationPayload,
   StoryWorkbenchSession,
   ThemeSeed
 } from './contracts';
 import { StoryService } from './story.service';
+import { StoryWorkspaceStorageService } from './story-workspace-storage.service';
 import { ErrorLoggingService } from './error-logging';
 import { DebugPanel } from './debug-panel/debug-panel';
 import { NotificationService } from './notification.service';
@@ -46,6 +48,7 @@ export class App {
   private readonly errorLogging = inject(ErrorLoggingService);
   private readonly formValidation = inject(FormValidationService);
   private readonly notificationService = inject(NotificationService);
+  private readonly workspaceStorage = inject(StoryWorkspaceStorageService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly route = inject(ActivatedRoute);
   private batchIdSequence = 0;
@@ -86,6 +89,8 @@ export class App {
   readonly collapsedChapterGroups = signal<Set<number>>(new Set());
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Configure your spicy fairy-tale blueprint to begin.');
+  readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
+  readonly savedProjects = signal<SavedStoryProject[]>([]);
   readonly showDebugPanel = toSignal(
     this.route.queryParamMap.pipe(map(params => params.get('debug') === '1')),
     { initialValue: false }
@@ -149,6 +154,17 @@ export class App {
     this.activeBatchQueue().some(item => item.status === 'completed' || item.status === 'failed')
   );
   readonly suggestedNextPrompts = computed(() => this.workbench().lastSuggestedPrompts ?? []);
+  readonly continuityExtraction = computed(() => this.workbench().lastContinuityExtraction ?? null);
+  readonly modelBadge = computed(() => {
+    const telemetry = this.workbench().lastTelemetry;
+    if (!telemetry?.model) {
+      return 'Grok multi-agent';
+    }
+
+    return telemetry.reasoningEffort
+      ? `${telemetry.model} · ${telemetry.reasoningEffort}`
+      : telemetry.model;
+  });
   readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
     const chapters = this.workbench().chapterHistory;
     if (!chapters.length) {
@@ -175,6 +191,10 @@ export class App {
 
     return groups;
   });
+
+  constructor() {
+    this.restoreLatestProject();
+  }
 
   updateBlueprint<K extends keyof BlueprintForm>(field: K, value: BlueprintForm[K]) {
     this.blueprint.update(current => ({
@@ -325,6 +345,47 @@ export class App {
     this.notificationService.info('Workbench reset', 'Story Lab is ready for a new blueprint.');
   }
 
+  saveActiveProject() {
+    const savedProjectId = this.persistSession(this.workbench());
+    if (savedProjectId) {
+      this.workbench.update(current => ({
+        ...current,
+        savedProjectId
+      }));
+    }
+  }
+
+  loadSavedProject(projectId: string) {
+    const project = this.workspaceStorage.loadProject(projectId);
+    if (!project) {
+      const message = 'That saved story could not be found in this browser.';
+      this.workspaceSaveStatus.set(message);
+      this.notificationService.warning('Story not found', message);
+      this.refreshSavedProjects();
+      return;
+    }
+
+    this.hydrateSavedProject(project, true);
+  }
+
+  deleteSavedProject(projectId: string) {
+    const result = this.workspaceStorage.deleteProject(projectId);
+    if (!result.success) {
+      this.workspaceSaveStatus.set(result.message);
+      this.notificationService.warning('Delete failed', result.message);
+      return;
+    }
+
+    this.refreshSavedProjects();
+    if (this.workbench().savedProjectId === projectId) {
+      this.workbench.update(current => ({
+        ...current,
+        savedProjectId: undefined
+      }));
+    }
+    this.workspaceSaveStatus.set('Saved story removed from this browser.');
+  }
+
   private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize, batchId?: string) {
     const existingQueue = this.activeBatchQueue();
     const batchQueue = batchId
@@ -345,11 +406,16 @@ export class App {
       chapterHistory: [...(this.workbench().story?.storyId === payload.summary.storyId ? this.workbench().chapterHistory : []), ...payload.batch.chapters],
       activeBatchSize: batchSize,
       lastTelemetry: payload.telemetry,
+      lastContinuityExtraction: payload.continuityExtraction,
       lastSuggestedPrompts: payload.batch.suggestedNextPrompts,
       batchQueue
     };
 
-    this.workbench.set(nextSession);
+    const savedProjectId = this.persistSession(nextSession);
+    this.workbench.set({
+      ...nextSession,
+      savedProjectId
+    });
     this.collapsedChapterGroups.set(new Set());
 
     const newestChapter = payload.batch.chapters[payload.batch.chapters.length - 1];
@@ -390,6 +456,78 @@ export class App {
       ...current,
       batchQueue
     }));
+  }
+
+  private restoreLatestProject() {
+    this.refreshSavedProjects();
+    const latestProject = this.savedProjects()[0];
+    if (latestProject) {
+      this.hydrateSavedProject(latestProject, false);
+    }
+  }
+
+  private refreshSavedProjects() {
+    this.savedProjects.set(this.workspaceStorage.listProjects());
+  }
+
+  private hydrateSavedProject(project: SavedStoryProject, shouldNotify: boolean) {
+    this.blueprint.set({
+      ...project.blueprint,
+      narrativeDirectives: project.blueprint.narrativeDirectives ?? ''
+    });
+    this.workbench.set({
+      story: project.summary,
+      state: project.state,
+      chapterHistory: project.chapters,
+      activeBatchSize: project.blueprint.chapterBatchSize,
+      lastTelemetry: project.telemetry,
+      lastContinuityExtraction: project.continuityExtraction,
+      lastSuggestedPrompts: [],
+      batchQueue: [],
+      savedProjectId: project.id
+    });
+    this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
+    this.collapsedChapterGroups.set(new Set());
+    this.workspaceSaveStatus.set(`Loaded "${project.title}" from this browser.`);
+    this.statusMessage.set('Saved story loaded. Continue the saga whenever you are ready.');
+
+    if (shouldNotify) {
+      this.notificationService.info('Story loaded', project.title);
+    }
+  }
+
+  private persistSession(session: StoryWorkbenchSession): string | undefined {
+    if (!session.story || !session.state || !session.chapterHistory.length) {
+      return undefined;
+    }
+
+    const now = new Date().toISOString();
+    const currentProjectId = session.savedProjectId ?? session.story.storyId;
+    const existingProject = this.workspaceStorage.loadProject(currentProjectId);
+    const project: SavedStoryProject = {
+      id: currentProjectId,
+      storyId: session.story.storyId,
+      title: session.story.title,
+      synopsis: session.story.synopsis,
+      blueprint: this.blueprint(),
+      summary: session.story,
+      state: session.state,
+      chapters: session.chapterHistory,
+      telemetry: session.lastTelemetry,
+      continuityExtraction: session.lastContinuityExtraction,
+      createdAt: existingProject?.createdAt ?? session.story.createdAt ?? now,
+      updatedAt: now
+    };
+    const result = this.workspaceStorage.saveProject(project);
+
+    if (!result.success) {
+      this.workspaceSaveStatus.set(result.message);
+      return undefined;
+    }
+
+    this.refreshSavedProjects();
+    this.workspaceSaveStatus.set('Saved in this browser.');
+    return result.data.id;
   }
 
   clearFinishedBatchQueue() {

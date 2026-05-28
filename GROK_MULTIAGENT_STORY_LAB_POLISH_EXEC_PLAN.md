@@ -38,14 +38,14 @@ xAI official sources:
 - [x] Corrected user shorthand from "Grok 4.2 multiagent" to documented xAI model `grok-4.20-multi-agent`.
 - [x] Created this self-contained ExecPlan.
 - [x] Link this plan from `AGENTS.md`.
-- [ ] Create a new branch from updated `main`.
-- [ ] Implement Grok multi-agent model configuration and opt-in live model smoke.
-- [ ] Migrate StoryService calls to the xAI Responses API through one shared xAI client.
-- [ ] Update Story Lab evaluation route to the same model/config path.
-- [ ] Redesign the Story Lab front end with a polished, domain-specific workspace.
-- [ ] Add local saved story projects and restore-on-load behavior.
-- [ ] Add AI-assisted continuity extraction with explicit degraded-mode warnings.
-- [ ] Add story quality evals and visual/browser smoke coverage.
+- [x] Create a new branch from updated `main`.
+- [x] Implement Grok multi-agent model configuration and opt-in live model smoke.
+- [x] Migrate StoryService calls to the xAI Responses API through one shared xAI client.
+- [x] Update Story Lab evaluation route to the same model/config path.
+- [x] Redesign the Story Lab front end with a polished, domain-specific workspace.
+- [x] Add local saved story projects and restore-on-load behavior.
+- [x] Add AI-assisted continuity extraction with explicit degraded-mode warnings.
+- [x] Add story quality evals and visual/browser smoke coverage.
 - [ ] Merge through focused PRs with production smoke evidence.
 
 ## Surprises & Discoveries
@@ -56,6 +56,8 @@ xAI official sources:
 - The current continuity panel exists, but continuity extraction is mostly heuristic and transient. This is the right place to use Grok more deeply.
 - xAI multi-agent can be expensive/slow depending on reasoning effort. The plan uses medium by default and reserves high/xhigh for explicit deep work rather than every button click.
 - The OpenAI docs MCP was installed globally during planning with `codex mcp add openaiDeveloperDocs --url https://developers.openai.com/mcp`, but this current session still used official web docs because MCP tools are not exposed until a future tool refresh/restart.
+- The Grok multi-agent live smoke path needed an async `main()` wrapper because this checkout's `tsx` path emits CJS for that file and rejected top-level `await`.
+- The build-backed browser smoke caught the right acceptance shape for local persistence: mocked generation, continuation, reload, restored active story, desktop screenshot, and mobile screenshot.
 
 ## Decision Log
 
@@ -91,15 +93,13 @@ xAI official sources:
 
 ## Outcomes & Retrospective
 
-Fill this in as work proceeds:
-
-- What became better for normal users:
-- What became better for story quality:
-- What became safer architecturally:
-- What a senior dev who hates this still objects to:
-- What surprised us:
-- What we should have anticipated:
-- What remains deliberately deferred:
+- What became better for normal users: Story Lab now opens as a polished writing workbench, uses a real atmospheric bitmap asset, keeps saved stories in the browser, restores the latest story on load, and shows visible continuity/model/save status.
+- What became better for story quality: Story Lab blueprint fields still reach the canonical engine; continuation receives prior chapter context; continuity extraction is labeled as `ai`, `heuristic`, or `mixed`; deterministic story-quality evals now cover prompt preservation, cliffhanger metadata, and continuation context.
+- What became safer architecturally: active story, continuation, evaluation, and smoke model calls share `XaiTextClient` and `xaiConfig` instead of scattering model strings and payload shapes.
+- What a senior dev who hates this still objects to: `/api/story/stream` is still effectively a final-result SSE path rather than true Responses API token streaming, local storage is browser-only, and live Grok multi-agent behavior is only opt-in because credentials are not present locally.
+- What surprised us: the visual polish was less risky than the storage seam; the storage seam needed explicit contracts and refresh-after-reload browser proof to stay honest.
+- What we should have anticipated: `tsx` top-level-await behavior and xAI Responses output variants should have been accounted for immediately in the shared client/smoke harness.
+- What remains deliberately deferred: production live smoke after merge, true streaming migration, cloud persistence, audio runtime, DigitalOcean work, and the remaining Karma/socket dev-audit findings.
 
 ## Context and Orientation
 

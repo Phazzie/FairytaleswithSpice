@@ -1297,3 +1297,45 @@ Self-review:
 - Good: The follow-up PR was small, green, and improved a documented risk, so merging it was better than leaving it open.
 - Problem found: The final report had already become stale because the queue changed immediately after the docs-only evidence PR.
 - Should have anticipated: Dependabot can open a cleanup PR immediately after a dependency branch lands; final reports should be checked against the PR queue one last time before calling the queue closed.
+
+## 2026-05-28 18:00 EDT - Grok Multi-Agent Story Lab Polish Implemented
+
+Actions:
+
+- Created and continued `feature/grok-multiagent-story-lab-polish` from the Grok multi-agent polish plan.
+- Added centralized xAI story configuration in `api/_lib/config/xaiConfig.ts` with default model `grok-4.20-multi-agent` and default reasoning effort `medium`.
+- Added `api/_lib/services/xaiTextClient.ts` so active story generation, continuation, evaluation, continuity extraction, API-key verification, and the opt-in live smoke use one xAI Responses API path.
+- Migrated Story Lab evaluation away from a hard-coded model string and direct chat-completions payload.
+- Added AI-assisted continuity extraction with explicit `ai`, `heuristic`, or `mixed` receipts and visible fallback warnings.
+- Added browser-local saved story projects in `story-generator/src/app/story-workspace-storage.service.ts`; Story Lab now autosaves generated/continued stories, restores the latest saved story on load, and lets users load/delete saved browser-local projects.
+- Reworked the Story Lab UI into a writer's workbench with saved-story rail, blueprint studio, chapter reader, continuity weave, Grok model badge, and a generated bitmap atmosphere asset at `story-generator/public/story-lab-atmosphere.png`.
+- Added deterministic story-quality evals in `tests/story-quality-evals.test.ts` and included them in `npm run test:all`.
+- Extended the Story Lab browser smoke to verify restore-on-refresh in mock mode and capture desktop and mobile screenshots.
+
+Validation:
+
+- `npm run smoke:grok-multi-agent` passed the no-credential skip path.
+- `npm run test:story-quality` passed.
+- `npm run test:story-lab-state` passed.
+- `npm run test:story-lab-real-engine` passed.
+- `node_modules/.bin/tsc -p story-generator/tsconfig.app.json --noEmit` passed.
+- `node_modules/.bin/tsc -p story-generator/tsconfig.spec.json --noEmit` passed.
+- `npm run test:all` passed.
+- `git diff --check` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed, including function count, Angular app/spec typechecks, and Vercel API typecheck.
+- `npm run smoke:story-lab-ui` passed in mocked mode after a Node 20 build; screenshots were written to `tmp/story-lab-smoke/mock-success.png` and `tmp/story-lab-smoke/mock-mobile-success.png`.
+- `node_modules/.bin/tsx tests/verify-ai-fixes.test.ts` passed.
+- `node_modules/.bin/tsx tests/verify-api-keys.ts` was not a usable pass/fail signal locally because `XAI_API_KEY` is absent; it failed closed with "XAI_API_KEY not found in environment."
+- `npm audit --omit=dev --json` at the root reported zero vulnerabilities.
+- `cd story-generator && npm audit --omit=dev --json` reported zero vulnerabilities.
+- `cd story-generator && npm audit --json` still reported the known four dev/test-toolchain findings: `engine.io`, `socket.io-adapter`, `socket.io-parser`, and `ws`.
+
+Self-review:
+
+- Good: The model migration is centralized and Grok-only; no OpenAI runtime dependency or provider abstraction was added.
+- Good: The UI is now visibly product-specific without replacing the first screen with a landing page.
+- Good: Persistence is labeled and implemented as browser-local instead of pretending the app has accounts or cloud storage.
+- Problem found: The xAI Responses smoke initially used top-level `await`, which this repo's CJS-oriented `tsx` path rejected.
+- Problem found: True token streaming was not completed in this pass; the existing SSE route remains a final-result path over the migrated Responses call.
+- Assumption still pending: Live Grok multi-agent behavior needs `RUN_REAL_GROK_MULTI_AGENT_SMOKE=1` and `XAI_API_KEY` to verify provider acceptance of the payload in this environment.
+- What should be fixed before merge: open the branch as a focused PR, run CI, and run production live Story Lab smoke after deployment.

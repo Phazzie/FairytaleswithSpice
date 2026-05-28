@@ -4,7 +4,8 @@
  * Tests the XAI API key used by active story generation.
  */
 
-import axios from 'axios';
+import { XaiTextClient } from '../api/_lib/services/xaiTextClient';
+import { getXaiReasoningEffort, getXaiStoryModel } from '../api/_lib/config/xaiConfig';
 
 async function testXAI() {
   console.log('\n🧪 Testing XAI (Grok) API Key...');
@@ -20,26 +21,22 @@ async function testXAI() {
   console.log(`✓ API Key found: ${apiKey.substring(0, 15)}...`);
   
   try {
-    const response = await axios.post(
-      'https://api.x.ai/v1/chat/completions',
-      {
-        model: 'grok-4-1-fast-reasoning',
-        messages: [
-          { role: 'user', content: 'Say "Hello" in exactly one word.' }
-        ],
-        max_tokens: 10
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      }
-    );
+    const client = new XaiTextClient();
+    const response = await client.generateText({
+      operation: 'smoke',
+      system: 'Return exactly one word.',
+      user: 'Say Hello in exactly one word.',
+      maxOutputTokens: 20,
+      temperature: 0.1,
+      topP: 0.9,
+      timeoutMs: 30000
+    });
     
     console.log('✅ XAI API Key is VALID');
-    console.log(`   Response: ${response.data.choices[0].message.content}`);
+    console.log(`   Model: ${response.model}`);
+    console.log(`   Configured model: ${getXaiStoryModel()}`);
+    console.log(`   Reasoning effort: ${getXaiReasoningEffort()}`);
+    console.log(`   Response: ${response.text}`);
     return true;
     
   } catch (error: any) {
