@@ -31,8 +31,8 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - [x] Triage main Sonar/security/dependency signals and document or fix blockers in progress. Runtime audits are clean after dependency updates; full Story Generator audit still has dev/test-toolchain findings.
 - [x] Create draft shipping-readiness report: `STORY_LAB_SHIPPING_READINESS_REPORT.md`.
 - [x] Run final local branch validation after dependency/Sonar fixes. `git diff --check`, `node --check`, runtime audits, quick preflight, story-lab real-engine tests, root test suite, browser smoke, and build verification passed.
-- [ ] Open shipping-hardening PR and verify GitHub checks.
-- [ ] Merge shipping-hardening PR, supersede PR #88, and verify production status.
+- [x] Open shipping-hardening PR and verify GitHub checks. PR #94 passed Recovery CI, Vercel, SonarCloud, and automated review gates.
+- [x] Merge shipping-hardening PR, supersede PR #88, and verify production status. PR #94 merged as `a71aef4dec43c8720096b4db5b21dc051a6a3c06`; PR #88 was closed as superseded; main Recovery CI, main Dependabot Updates, Vercel production, and production live browser smoke passed.
 
 ## Surprises & Discoveries
 
@@ -48,6 +48,7 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - Runtime dependency audit can be clean while full dev audit is still red. In this branch, `story-generator npm audit --json` still reports Karma/socket dev-toolchain findings even though `--omit=dev` reports zero vulnerabilities.
 - The repo still tracks some root `node_modules` files from old history. This branch should not commit generated `node_modules` churn; use package manifests and lockfiles as the source of truth.
 - Main Sonar's top returned source findings were in the browser smoke harness and Story Lab engine. Both were small enough to fix inside the shipping branch instead of leaving as report-only triage.
+- PR #94 passed its checks and merged cleanly. PR #88 was closed as superseded after the fresher dependency update landed, leaving no open PRs at the time of the final shipping evidence update.
 
 ## Decision Log
 
@@ -78,10 +79,10 @@ Fill this in as work proceeds:
 
 - What became MVP-ready:
 - Public UI default no longer shows the developer debug panel; local built-artifact browser smoke proves genesis and continuation mechanics with mocked responses; production live browser smoke proves the deployed Story Lab can generate and continue through the UI.
-- What became shipping-hardened locally:
-- Runtime dependency audits are clean; stale PR #88 has a supersession path; top Sonar findings from the current main query were fixed; the built-artifact browser smoke still passes after dependency updates.
+- What became shipping-hardened locally and on main:
+- Runtime dependency audits are clean; stale PR #88 was superseded and closed; top Sonar findings from the current main query were fixed; PR #94 passed GitHub checks and merged; main Recovery CI, main Dependabot Updates, Vercel production deployment, and production live browser smoke passed.
 - What remained below shipping quality:
-- Shipping hardening still needs PR checks, merge, PR #88 closure, and post-merge production status. Runtime audits are clean, while full dev audit and historical Sonar cleanup remain documented risks.
+- Current Story Lab MVP/shipping scope is complete. Runtime audits are clean, while full dev audit and historical Sonar cleanup remain documented risks.
 - What hostile review found:
 - Browser evidence had to be built-artifact evidence, not an unreliable `ng serve` check. Debug UI needed gating rather than deletion.
 - What was fixed immediately:

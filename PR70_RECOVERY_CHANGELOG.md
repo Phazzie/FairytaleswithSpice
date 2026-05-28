@@ -1247,3 +1247,26 @@ Validation:
 
 - `node --check scripts/recovery/story-lab-browser-smoke.mjs` passed.
 - `STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui` passed.
+
+## 2026-05-28 03:18 EDT - PR94 Merged and Shipping Evidence Recorded
+
+Actions:
+
+- Merged PR #94, `Harden Story Lab shipping readiness`, into `main` as merge commit `a71aef4dec43c8720096b4db5b21dc051a6a3c06`.
+- Closed Dependabot PR #88 as superseded by PR #94's fresher dependency update.
+- Confirmed the open PR list is empty after the closure.
+- Confirmed main Recovery CI passed for `a71aef4`.
+- Confirmed main Dependabot Updates workflow passed for `a71aef4`.
+- Confirmed Vercel production deployment succeeded for `a71aef4`.
+- Confirmed production root `https://fairytaleswith-spice.vercel.app` returned HTTP `200`.
+- Ran production live browser smoke:
+  - `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
+  - Result: passed.
+- Updated `STORY_LAB_SHIPPING_READINESS_REPORT.md` with the post-merge evidence.
+
+Self-review:
+
+- Good: Shipping readiness is now based on merged-main evidence, not branch-local optimism.
+- Good: PR #88 was closed only after the replacement dependency work landed and production checks passed.
+- Problem found: The final evidence update itself needed a small follow-up branch because the report could only be fully accurate after merge.
+- Should have anticipated: Any report that promises post-merge production status should reserve a final docs-only pass to record the exact merge commit and production smoke result.
