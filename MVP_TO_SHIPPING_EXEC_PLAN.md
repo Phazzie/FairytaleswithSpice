@@ -25,8 +25,8 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - [x] Address PR #92 automated review comments. Debug-panel visibility is now derived from Angular query params, the smoke script uses stable test IDs, browser cleanup preserves launch errors, the Node 20 build invocation no longer depends on `npx -c`, and the Sonar-flagged route regex was removed.
 - [x] Re-run review-fix validation. `git diff --check`, `node --check scripts/recovery/story-lab-browser-smoke.mjs`, Angular app/spec typechecks, `npm run test:story-lab-real-engine`, `scripts/recovery/preflight.sh --quick --skip-status`, `npm run smoke:story-lab-ui`, and `npm run test:all` passed.
 - [x] Try deployed preview live smoke. PR #92 preview returned HTTP `401`, so use production after merge for unauthenticated real-provider browser evidence.
-- [ ] Open and merge a focused MVP PR.
-- [ ] Verify production after merge and write `STORY_LAB_MVP_READINESS_REPORT.md`.
+- [x] Open and merge a focused MVP PR. PR #92 merged to `main` as `fb3549fa5b088475a67534ef94e0d3dfe93ee78c`.
+- [x] Verify production after merge and write `STORY_LAB_MVP_READINESS_REPORT.md`. Main Recovery CI passed, Vercel production deployed, production root returned HTTP `200`, and production live browser smoke passed.
 - [ ] Start shipping-hardening branch after MVP is proven.
 - [ ] Triage main Sonar/security/dependency signals and document or fix blockers.
 - [ ] Write final shipping-readiness report.
@@ -64,9 +64,9 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 Fill this in as work proceeds:
 
 - What became MVP-ready:
-- Public UI default no longer shows the developer debug panel; local built-artifact browser smoke proves genesis and continuation mechanics with mocked responses.
+- Public UI default no longer shows the developer debug panel; local built-artifact browser smoke proves genesis and continuation mechanics with mocked responses; production live browser smoke proves the deployed Story Lab can generate and continue through the UI.
 - What remained below shipping quality:
-- Deployed browser smoke is still required before final MVP completion. Shipping hardening still needs dependency/security/Sonar triage.
+- Shipping hardening still needs dependency/security/Sonar triage. Main SonarCloud remains red on broader branch criteria after PR #92.
 - What hostile review found:
 - Browser evidence had to be built-artifact evidence, not an unreliable `ng serve` check. Debug UI needed gating rather than deletion.
 - What was fixed immediately:

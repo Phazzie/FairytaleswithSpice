@@ -105,3 +105,4 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Browser smoke should exercise the deployable artifact when dev-server startup is slow or runtime-sensitive. For this Angular/Vercel recovery, a build-backed static smoke is slower than `ng serve` but gives stronger MVP evidence and cleaner process cleanup.
 - Browser smoke for AI-generated output should assert stable app state, not exact generated copy. Use test IDs and structural milestones such as selected chapter number so live-provider variation does not create false failures.
 - Test-only static servers still need production-grade path boundaries. A smoke harness should not create a new file-serving risk just because it only runs locally.
+- Production-only evidence needs its own follow-up artifact path. If a report cannot be completed until after merge, plan a small post-merge evidence update instead of leaving the report permanently half true.
