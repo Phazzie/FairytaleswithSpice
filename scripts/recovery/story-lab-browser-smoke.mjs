@@ -176,11 +176,10 @@ async function serveStaticRequest(browserDir, request, response) {
     return;
   }
 
-  const fileToServe = await firstExistingFile([
-    filePath,
-    path.join(browserDir, 'index.html'),
-    path.join(browserDir, 'index.csr.html')
-  ]);
+  const fallbackCandidates = path.extname(requestUrl.pathname)
+    ? [filePath]
+    : [filePath, path.join(browserDir, 'index.html'), path.join(browserDir, 'index.csr.html')];
+  const fileToServe = await firstExistingFile(fallbackCandidates);
 
   if (!fileToServe) {
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });

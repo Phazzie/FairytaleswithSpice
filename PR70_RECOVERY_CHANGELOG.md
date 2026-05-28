@@ -1231,3 +1231,19 @@ Self-review:
 - Good: This preserves the rule that generated dependency churn should not be committed.
 - Problem found: Local validation passed because local `node_modules` churn had been restored before preflight; CI exposed the install-order variant.
 - Should have anticipated: Any workflow that runs `npm ci` before `git diff --check` must exclude tracked generated dependency paths until the old tracked `node_modules` history is removed.
+
+## 2026-05-28 03:11 EDT - PR94 Review Fix
+
+Problem:
+
+- Gemini review correctly noted that the smoke server's SPA fallback should not serve `index.html` for missing static assets such as JavaScript, CSS, or images.
+
+Fix:
+
+- Updated `scripts/recovery/story-lab-browser-smoke.mjs` so only extensionless paths use the SPA fallback candidates.
+- Static asset paths now return `404` when the requested file is absent instead of receiving HTML with the wrong MIME/type expectations.
+
+Validation:
+
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs` passed.
+- `STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui` passed.
