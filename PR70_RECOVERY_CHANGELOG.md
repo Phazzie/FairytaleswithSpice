@@ -1339,3 +1339,32 @@ Self-review:
 - Problem found: True token streaming was not completed in this pass; the existing SSE route remains a final-result path over the migrated Responses call.
 - Assumption still pending: Live Grok multi-agent behavior needs `RUN_REAL_GROK_MULTI_AGENT_SMOKE=1` and `XAI_API_KEY` to verify provider acceptance of the payload in this environment.
 - What should be fixed before merge: open the branch as a focused PR, run CI, and run production live Story Lab smoke after deployment.
+
+## 2026-05-28 18:13 EDT - PR98 Review and Sonar Fixes
+
+Problem:
+
+- PR #98 Recovery CI passed and Vercel preview deployed, but SonarCloud failed the quality gate on log-injection hotspots in live-key helper scripts.
+- Gemini review flagged malformed LLM/provider response shapes that could crash `continuityExtractor.ts` and `xaiTextClient.ts`.
+
+Fix:
+
+- Removed provider-returned model/text/usage logging from `tests/grok-multi-agent-smoke.test.ts` and `tests/verify-api-keys.ts`; the scripts now log configured model/effort plus output length only.
+- Hardened xAI response text extraction against null response entries.
+- Hardened continuity JSON parsing against valid-but-non-object JSON and skipped null/non-object entries in AI-provided characters, threads, and artifacts.
+
+Validation:
+
+- `npm run smoke:grok-multi-agent` passed the no-credential skip path.
+- `npm run test:story-quality` passed.
+- `node_modules/.bin/tsc -p story-generator/tsconfig.app.json --noEmit` passed.
+- `node_modules/.bin/tsc -p story-generator/tsconfig.spec.json --noEmit` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `node_modules/.bin/tsx tests/verify-ai-fixes.test.ts` passed.
+- `git diff --check` passed.
+
+Self-review:
+
+- Good: The review comments were correct and cheap to fix; the branch is safer for malformed AI output.
+- Problem found: Test/helper logging can still fail a production quality gate when it logs provider-controlled strings.
+- Should have anticipated: New live smoke scripts should default to non-content telemetry from the start.

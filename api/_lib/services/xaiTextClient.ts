@@ -140,8 +140,8 @@ export class XaiTextClient {
     }
 
     return (payload.output ?? [])
-      .flatMap(item => item.content ?? [])
-      .filter(content => (content.type === 'output_text' || content.type === 'text' || !content.type) && typeof content.text === 'string')
+      .flatMap(item => item?.content ?? [])
+      .filter(content => content && (content.type === 'output_text' || content.type === 'text' || !content.type) && typeof content.text === 'string')
       .map(content => content.text?.trim() ?? '')
       .filter(Boolean)
       .join('\n\n')

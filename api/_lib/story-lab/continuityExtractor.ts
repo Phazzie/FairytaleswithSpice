@@ -145,15 +145,18 @@ function parseContinuityJson(content: string): AiContinuityShape {
     .replace(/\s*```$/i, '')
     .trim();
 
-  const parsed = JSON.parse(jsonText) as AiContinuityShape;
+  const parsed = JSON.parse(jsonText) as unknown;
+  const data = parsed && typeof parsed === 'object'
+    ? parsed as AiContinuityShape
+    : {};
 
   return {
-    characters: Array.isArray(parsed.characters) ? parsed.characters : [],
-    threads: Array.isArray(parsed.threads) ? parsed.threads : [],
-    artifacts: Array.isArray(parsed.artifacts) ? parsed.artifacts : [],
-    continuityWarnings: Array.isArray(parsed.continuityWarnings) ? parsed.continuityWarnings : [],
-    suggestedNarrativeVoice: typeof parsed.suggestedNarrativeVoice === 'string' ? parsed.suggestedNarrativeVoice : undefined,
-    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : undefined
+    characters: Array.isArray(data.characters) ? data.characters : [],
+    threads: Array.isArray(data.threads) ? data.threads : [],
+    artifacts: Array.isArray(data.artifacts) ? data.artifacts : [],
+    continuityWarnings: Array.isArray(data.continuityWarnings) ? data.continuityWarnings : [],
+    suggestedNarrativeVoice: typeof data.suggestedNarrativeVoice === 'string' ? data.suggestedNarrativeVoice : undefined,
+    confidence: typeof data.confidence === 'number' ? data.confidence : undefined
   };
 }
 
@@ -180,6 +183,10 @@ function mergeCharacters(existing: CharacterProfile[], incoming: Partial<Charact
   const byId = new Map(existing.map(character => [character.id, character]));
 
   for (const candidate of incoming) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+
     const id = isNonEmptyString(candidate.id) ? candidate.id : slugId('character', candidate.displayName);
     if (!id || !isNonEmptyString(candidate.displayName)) {
       continue;
@@ -207,6 +214,10 @@ function mergeThreads(existing: PlotThread[], incoming: Partial<PlotThread>[]): 
   const byId = new Map(existing.map(thread => [thread.id, thread]));
 
   for (const candidate of incoming) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+
     const id = isNonEmptyString(candidate.id) ? candidate.id : slugId('thread', candidate.label);
     if (!id || !isNonEmptyString(candidate.label)) {
       continue;
@@ -229,6 +240,10 @@ function mergeArtifacts(existing: LoreArtifact[], incoming: Partial<LoreArtifact
   const byId = new Map(existing.map(artifact => [artifact.id, artifact]));
 
   for (const candidate of incoming) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+
     const id = isNonEmptyString(candidate.id) ? candidate.id : slugId('artifact', candidate.name);
     if (!id || !isNonEmptyString(candidate.name)) {
       continue;

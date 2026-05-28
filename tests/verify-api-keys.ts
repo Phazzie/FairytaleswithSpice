@@ -33,10 +33,9 @@ async function testXAI() {
     });
     
     console.log('✅ XAI API Key is VALID');
-    console.log(`   Model: ${response.model}`);
     console.log(`   Configured model: ${getXaiStoryModel()}`);
     console.log(`   Reasoning effort: ${getXaiReasoningEffort()}`);
-    console.log(`   Response: ${response.text}`);
+    console.log(`   Output characters: ${response.text.length}`);
     return true;
     
   } catch (error: any) {

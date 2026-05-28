@@ -28,10 +28,9 @@ async function main(): Promise<void> {
 
   console.log('Grok multi-agent smoke passed.');
   console.log(`Configured model: ${getXaiStoryModel()}`);
-  console.log(`Response model: ${response.model}`);
   console.log(`Reasoning effort: ${getXaiReasoningEffort()}`);
   console.log(`Latency: ${Date.now() - startedAt} ms`);
-  console.log(`Usage: ${JSON.stringify(response.usage ?? {})}`);
+  console.log(`Output characters: ${response.text.length}`);
 }
 
 main().catch(error => {
