@@ -1370,3 +1370,39 @@ Self-review:
 - Good: The review comments were correct and cheap to fix; the branch is safer for malformed AI output.
 - Problem found: Test/helper logging can still fail a production quality gate when it logs provider-controlled strings.
 - Should have anticipated: New live smoke scripts should default to non-content telemetry from the start.
+
+## 2026-05-28 18:42 EDT - Post-Merge Production 504 Follow-Up
+
+Problem:
+
+- PR #98 merged and the production root returned HTTP 200, but the production live Story Lab browser smoke failed.
+- Browser console evidence showed `POST /api/story-lab/stories` returning HTTP 504 before `[data-testid="story-panel"]` appeared.
+- The likely cause was not a provider mismatch; it was a synchronous Vercel request waiting on Grok multi-agent generation and then a second AI continuity extraction call.
+
+Fix in progress:
+
+- Kept the app Grok-only and left `grok-4.20-multi-agent` as the primary Story Lab generation model.
+- Added a bounded Grok fallback path in the shared xAI Responses client: retryable timeout/server failures fall back to `grok-4.3`.
+- Budgeted multi-chapter batches so only the first generated chapter attempts multi-agent; later chapters in the same batch use the fast Grok path.
+- Added config helpers for primary and fast request timeouts so production is not tied to 60-90 second local development assumptions.
+- Moved continuity extraction and Story Lab evaluation to the fast Grok path with shorter timeouts.
+- Added `fallbackFromModel` telemetry so the UI can say when a fast Grok fallback was used instead of pretending multi-agent completed.
+
+Validation:
+
+- `node_modules/.bin/tsx tests/verify-ai-fixes.test.ts` passed.
+- `npm run smoke:grok-multi-agent` passed the no-credential skip path.
+- `npm run test:story-quality` passed.
+- `npm run test:story-lab-real-engine` passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- `npm run test:all` passed.
+- `git diff --check` passed.
+- `npm run smoke:story-lab-ui` passed in mock mode after a fresh Node 20 Angular build.
+
+Self-review:
+
+- Good: The correction stayed inside the xAI client and canonical story service instead of adding another provider adapter or reintroducing mocks.
+- Good: The UI telemetry now exposes fallback behavior rather than hiding it.
+- Problem found: The original multi-agent plan anticipated higher latency, but did not turn that anticipation into a Vercel request-budget policy before merge.
+- Problem found during self-review: Story Lab defaults to a two-chapter batch, so a primary-plus-fallback retry per chapter was still too much worst-case latency. The fix now lets only the first chapter attempt multi-agent and uses fast Grok for later chapters in the same batch.
+- Should have anticipated: If generation and continuity both call live AI in one serverless request, their worst-case timeouts must be budgeted together, not judged one call at a time.

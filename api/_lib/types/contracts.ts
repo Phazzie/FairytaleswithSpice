@@ -463,6 +463,9 @@ export interface ApiResponseMetadata {
   chaptersRequested?: number;
   chaptersGenerated?: number;
   partialFailures?: ChapterFailure[];
+  model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  fallbackFromModel?: string;
 }
 
 export interface ApiErrorPayload {

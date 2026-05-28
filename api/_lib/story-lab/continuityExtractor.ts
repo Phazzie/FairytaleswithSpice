@@ -9,6 +9,7 @@ import type {
   StorySummary
 } from './contracts';
 import { XaiTextClient } from '../services/xaiTextClient';
+import { getXaiFastTimeoutMs } from '../config/xaiConfig';
 
 interface ContinuityExtractionInput {
   storyId: string;
@@ -59,10 +60,12 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
         'Do not invent cloud persistence, audio state, or facts not supported by the chapters.'
       ].join(' '),
       user: buildContinuityPrompt(input),
-      maxOutputTokens: 2200,
+      maxOutputTokens: 1200,
       temperature: 0.2,
       topP: 0.9,
-      timeoutMs: 90000
+      timeoutMs: Math.min(getXaiFastTimeoutMs(), 5000),
+      modelPreference: 'fast',
+      allowFallback: false
     });
 
     const aiShape = parseContinuityJson(response.text);

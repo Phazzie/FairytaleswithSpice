@@ -1,8 +1,17 @@
 import axios from 'axios';
-import { getXaiReasoningEffort, getXaiStoryModel, XAI_RESPONSES_API_URL, XaiReasoningEffort } from '../config/xaiConfig';
-import { logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
+import {
+  getXaiFastModel,
+  getXaiFastTimeoutMs,
+  getXaiReasoningEffort,
+  getXaiStoryModel,
+  supportsXaiReasoningParameter,
+  XAI_RESPONSES_API_URL,
+  type XaiReasoningEffort
+} from '../config/xaiConfig';
+import { logApiError, logInfo, logPerformance, logWarn, LogContext } from '../utils/logger';
 
 export type XaiTextOperation = 'genesis' | 'continuation' | 'continuity_extraction' | 'evaluation' | 'smoke';
+export type XaiModelPreference = 'primary' | 'fast';
 
 export interface XaiTextRequest {
   system: string;
@@ -11,14 +20,18 @@ export interface XaiTextRequest {
   temperature: number;
   topP: number;
   timeoutMs: number;
+  fallbackTimeoutMs?: number;
   context?: LogContext;
   operation: XaiTextOperation;
+  modelPreference?: XaiModelPreference;
+  allowFallback?: boolean;
 }
 
 export interface XaiTextResponse {
   text: string;
   model: string;
-  reasoningEffort: XaiReasoningEffort;
+  reasoningEffort?: XaiReasoningEffort;
+  fallbackFromModel?: string;
   latencyMs: number;
   usage?: {
     inputTokens?: number;
@@ -58,80 +71,146 @@ export class XaiTextClient {
       throw new Error('XAI_API_KEY is required for live Grok generation.');
     }
 
-    const model = getXaiStoryModel();
-    const reasoningEffort = getXaiReasoningEffort();
+    const preferredModel = request.modelPreference === 'fast'
+      ? getXaiFastModel()
+      : getXaiStoryModel();
+    const allowFallback = request.allowFallback ?? (request.operation !== 'smoke' && request.modelPreference !== 'fast');
+
+    try {
+      return await this.callResponsesApi(request, preferredModel, request.timeoutMs);
+    } catch (error: any) {
+      const fastModel = getXaiFastModel();
+      if (allowFallback && fastModel !== preferredModel && this.isRetryableProviderError(error)) {
+        logWarn('Primary xAI model attempt did not finish in the live request window; retrying with fast Grok model.', request.context, {
+          operation: request.operation,
+          primaryModel: preferredModel,
+          fallbackModel: fastModel,
+          status: error.response?.status,
+          errorCode: error.code
+        });
+
+        try {
+          const fallbackResponse = await this.callResponsesApi(
+            request,
+            fastModel,
+            request.fallbackTimeoutMs ?? getXaiFastTimeoutMs()
+          );
+
+          return {
+            ...fallbackResponse,
+            fallbackFromModel: preferredModel
+          };
+        } catch (fallbackError: any) {
+          this.logProviderFailure(fallbackError, request, fastModel);
+          throw this.toUnavailableError(fallbackError);
+        }
+      }
+
+      this.logProviderFailure(error, request, preferredModel);
+      throw this.toUnavailableError(error);
+    }
+  }
+
+  private async callResponsesApi(
+    request: XaiTextRequest,
+    model: string,
+    timeoutMs: number
+  ): Promise<XaiTextResponse> {
     const startedAt = Date.now();
+    const reasoningEffort = supportsXaiReasoningParameter(model)
+      ? getXaiReasoningEffort()
+      : undefined;
 
     logInfo('Calling xAI Responses API', request.context, {
       operation: request.operation,
       model,
       reasoningEffort,
-      maxOutputTokens: request.maxOutputTokens
+      maxOutputTokens: request.maxOutputTokens,
+      timeoutMs
     });
 
-    try {
-      const response = await axios.post<XaiResponsesPayload>(
-        this.apiUrl,
-        {
-          model,
-          input: [
-            { role: 'system', content: request.system },
-            { role: 'user', content: request.user }
-          ],
-          reasoning: {
-            effort: reasoningEffort
-          },
-          max_output_tokens: request.maxOutputTokens,
-          temperature: request.temperature,
-          top_p: request.topP,
-          store: false
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: request.timeoutMs
-        }
-      );
+    const payload: Record<string, unknown> = {
+      model,
+      input: [
+        { role: 'system', content: request.system },
+        { role: 'user', content: request.user }
+      ],
+      max_output_tokens: request.maxOutputTokens,
+      temperature: request.temperature,
+      top_p: request.topP,
+      store: false
+    };
 
-      const latencyMs = Date.now() - startedAt;
-      const text = this.extractText(response.data);
-
-      if (!text) {
-        throw new Error('xAI response did not include output text.');
-      }
-
-      logPerformance('xAI Responses API call', latencyMs, request.context, {
-        operation: request.operation,
-        model: response.data.model || model,
-        reasoningEffort,
-        inputTokens: response.data.usage?.input_tokens,
-        outputTokens: response.data.usage?.output_tokens
-      });
-
-      return {
-        text,
-        model: response.data.model || model,
-        reasoningEffort,
-        latencyMs,
-        usage: {
-          inputTokens: response.data.usage?.input_tokens,
-          outputTokens: response.data.usage?.output_tokens,
-          totalTokens: response.data.usage?.total_tokens
-        }
+    if (reasoningEffort) {
+      payload['reasoning'] = {
+        effort: reasoningEffort
       };
-    } catch (error: any) {
-      logApiError('xAI Responses API', error, request.context, {
-        operation: request.operation,
-        model,
-        reasoningEffort,
-        status: error.response?.status
-      });
-
-      const status = error.response?.status ? ` (${error.response.status})` : '';
-      throw new Error(`xAI service temporarily unavailable${status}`);
     }
+
+    const response = await axios.post<XaiResponsesPayload>(
+      this.apiUrl,
+      payload,
+      {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: timeoutMs
+      }
+    );
+
+    const latencyMs = Date.now() - startedAt;
+    const text = this.extractText(response.data);
+
+    if (!text) {
+      throw new Error('xAI response did not include output text.');
+    }
+
+    logPerformance('xAI Responses API call', latencyMs, request.context, {
+      operation: request.operation,
+      model,
+      reasoningEffort,
+      inputTokens: response.data.usage?.input_tokens,
+      outputTokens: response.data.usage?.output_tokens
+    });
+
+    return {
+      text,
+      model,
+      reasoningEffort,
+      latencyMs,
+      usage: {
+        inputTokens: response.data.usage?.input_tokens,
+        outputTokens: response.data.usage?.output_tokens,
+        totalTokens: response.data.usage?.total_tokens
+      }
+    };
+  }
+
+  private logProviderFailure(error: any, request: XaiTextRequest, model: string): void {
+    logApiError('xAI Responses API', error, request.context, {
+      operation: request.operation,
+      model,
+      status: error.response?.status,
+      errorCode: error.code
+    });
+  }
+
+  private isRetryableProviderError(error: any): boolean {
+    const status = error.response?.status;
+    if (status === undefined) {
+      return error.code === 'ECONNABORTED'
+        || error.code === 'ETIMEDOUT'
+        || error.code === 'ECONNRESET'
+        || error.message?.toLowerCase().includes('timeout');
+    }
+
+    return status === 408 || status === 429 || status >= 500;
+  }
+
+  private toUnavailableError(error: any): Error {
+    const status = error.response?.status ? ` (${error.response.status})` : '';
+    return new Error(`xAI service temporarily unavailable${status}`);
   }
 
   private extractText(payload: XaiResponsesPayload): string {

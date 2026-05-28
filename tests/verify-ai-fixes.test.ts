@@ -8,11 +8,16 @@
  * 1. Token calculation optimization (OPTIMIZED version - not PR#65's conservative version)
  * 2. Model name consistency
  * 3. API parameters (top_p, NO repetition_penalty - not supported by Grok)
- * 4. Timeout increases (90s/60s)
+ * 4. Vercel-bounded provider timeouts with fast Grok fallback
  */
 
 import { StoryService } from '../api/_lib/services/storyService';
-import { DEFAULT_XAI_STORY_MODEL } from '../api/_lib/config/xaiConfig';
+import {
+  DEFAULT_XAI_FAST_MODEL,
+  DEFAULT_XAI_FAST_TIMEOUT_MS,
+  DEFAULT_XAI_PRIMARY_TIMEOUT_MS,
+  DEFAULT_XAI_STORY_MODEL
+} from '../api/_lib/config/xaiConfig';
 
 console.log('\n' + '='.repeat(80));
 console.log('🔧 AI GENERATION FIXES VERIFICATION (OPTIMIZED VERSION)');
@@ -67,9 +72,11 @@ import { join } from 'path';
 const rootDir = process.cwd();
 const apiServicePath = join(rootDir, 'api/_lib/services/storyService.ts');
 const configPath = join(rootDir, 'api/_lib/config/xaiConfig.ts');
+const xaiClientPath = join(rootDir, 'api/_lib/services/xaiTextClient.ts');
 
 const apiContent = readFileSync(apiServicePath, 'utf-8');
 const configContent = readFileSync(configPath, 'utf-8');
+const xaiClientContent = readFileSync(xaiClientPath, 'utf-8');
 
 // Check for the correct model name
 const correctModel = DEFAULT_XAI_STORY_MODEL;
@@ -109,19 +116,41 @@ console.log(`\n${paramsTestPassed ? '✅' : '❌'} API parameters verification: 
 
 // ==================== TEST 4: Timeouts ====================
 
-console.log('\n\n⏱️  TEST 4: Verifying Timeout Increases');
+console.log('\n\n⏱️  TEST 4: Verifying Vercel-Bounded Timeouts');
 console.log('-'.repeat(80));
 
-const apiHas90sTimeout = apiContent.includes('timeoutMs: 90000');
-const apiHas60sTimeout = apiContent.includes('timeoutMs: 60000');
+const configHasPrimaryTimeout = configContent.includes(`DEFAULT_XAI_PRIMARY_TIMEOUT_MS = ${DEFAULT_XAI_PRIMARY_TIMEOUT_MS}`);
+const configHasFastTimeout = configContent.includes(`DEFAULT_XAI_FAST_TIMEOUT_MS = ${DEFAULT_XAI_FAST_TIMEOUT_MS}`);
+const configHasFastModel = configContent.includes(`DEFAULT_XAI_FAST_MODEL = '${DEFAULT_XAI_FAST_MODEL}'`);
+const apiUsesPrimaryTimeoutHelper = apiContent.includes('timeoutMs: getXaiPrimaryTimeoutMs()');
+const apiUsesFastFallbackTimeoutHelper = apiContent.includes('fallbackTimeoutMs: getXaiFastTimeoutMs()');
+const apiBudgetsExtraGenesisChapters = apiContent.includes('preferFastModel: chapterNumber > 1');
+const apiBudgetsExtraContinuationChapters = apiContent.includes('preferFastModel: offset > 1');
+const xaiClientHasRetryableFallback = xaiClientContent.includes('isRetryableProviderError')
+  && xaiClientContent.includes('fallbackFromModel');
 
 console.log(`\napi/_lib/services/storyService.ts:`);
-console.log(`  Has 90s story generation timeout:  ${apiHas90sTimeout ? '✅' : '❌'}`);
-console.log(`  Has 60s continuation timeout:      ${apiHas60sTimeout ? '✅' : '❌'}`);
+console.log(`  Uses primary timeout helper:        ${apiUsesPrimaryTimeoutHelper ? '✅' : '❌'}`);
+console.log(`  Uses fast fallback timeout helper:  ${apiUsesFastFallbackTimeoutHelper ? '✅' : '❌'}`);
+console.log(`  Fast path for extra genesis chapters:      ${apiBudgetsExtraGenesisChapters ? '✅' : '❌'}`);
+console.log(`  Fast path for extra continuation chapters: ${apiBudgetsExtraContinuationChapters ? '✅' : '❌'}`);
+console.log(`\napi/_lib/config/xaiConfig.ts:`);
+console.log(`  Primary timeout ${DEFAULT_XAI_PRIMARY_TIMEOUT_MS}ms:      ${configHasPrimaryTimeout ? '✅' : '❌'}`);
+console.log(`  Fast timeout ${DEFAULT_XAI_FAST_TIMEOUT_MS}ms:         ${configHasFastTimeout ? '✅' : '❌'}`);
+console.log(`  Fast model '${DEFAULT_XAI_FAST_MODEL}':       ${configHasFastModel ? '✅' : '❌'}`);
+console.log(`\napi/_lib/services/xaiTextClient.ts:`);
+console.log(`  Has retryable fast fallback path:   ${xaiClientHasRetryableFallback ? '✅' : '❌'}`);
 
-const timeoutTestPassed = apiHas90sTimeout && apiHas60sTimeout;
+const timeoutTestPassed = configHasPrimaryTimeout
+  && configHasFastTimeout
+  && configHasFastModel
+  && apiUsesPrimaryTimeoutHelper
+  && apiUsesFastFallbackTimeoutHelper
+  && apiBudgetsExtraGenesisChapters
+  && apiBudgetsExtraContinuationChapters
+  && xaiClientHasRetryableFallback;
 
-console.log(`\n${timeoutTestPassed ? '✅' : '❌'} Timeout verification: ${timeoutTestPassed ? 'PASSED' : 'FAILED'}`);
+console.log(`\n${timeoutTestPassed ? '✅' : '❌'} Timeout/fallback verification: ${timeoutTestPassed ? 'PASSED' : 'FAILED'}`);
 
 // ==================== FINAL SUMMARY ====================
 
@@ -134,7 +163,7 @@ const allPassed = tokenTestsPassed === testCases.length && modelTestPassed && pa
 console.log(`\n✅ Token Calculation:    ${tokenTestsPassed}/${testCases.length} tests passed (OPTIMIZED formula)`);
 console.log(`${modelTestPassed ? '✅' : '❌'} Model Names:          ${modelTestPassed ? 'CORRECT' : 'INCORRECT'}`);
 console.log(`${paramsTestPassed ? '✅' : '❌'} API Parameters:       ${paramsTestPassed ? 'CORRECT (no repetition_penalty)' : 'INCORRECT'}`);
-console.log(`${timeoutTestPassed ? '✅' : '❌'} Timeouts:             ${timeoutTestPassed ? 'CORRECT (90s/60s)' : 'INCORRECT'}`);
+console.log(`${timeoutTestPassed ? '✅' : '❌'} Timeouts/Fallback:    ${timeoutTestPassed ? 'CORRECT (Vercel-bounded)' : 'INCORRECT'}`);
 
 console.log(`\n${allPassed ? '✅ ALL FIXES VERIFIED SUCCESSFULLY!' : '❌ SOME FIXES FAILED VERIFICATION'}`);
 console.log('\n💡 NOTE: This uses OPTIMIZED token calculation (~12% more efficient than PR#65)');

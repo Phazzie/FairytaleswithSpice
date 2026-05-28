@@ -15,13 +15,33 @@ import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
-import { XaiTextClient } from './xaiTextClient';
+import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
+import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
+
+interface AiCallMetadata {
+  model?: string;
+  reasoningEffort?: XaiReasoningEffort;
+  fallbackFromModel?: string;
+}
+
+interface GeneratedTextResult {
+  content: string;
+  aiMetadata?: AiCallMetadata;
+}
+
+interface ChapterGenerationOptions {
+  chapterNumber: number;
+  totalChapters: number;
+  existingContent?: string;
+  preferFastModel?: boolean;
+}
 
 interface GeneratedChaptersResult {
   chapters: Chapter[];
   failedChapters: ChapterFailure[];
   aggregatedHtml: string;
   aggregatedRawHtml: string;
+  aiMetadata?: AiCallMetadata;
 }
 
 export class StoryService {
@@ -116,7 +136,8 @@ export class StoryService {
         chapters,
         failedChapters,
         aggregatedHtml,
-        aggregatedRawHtml
+        aggregatedRawHtml,
+        aiMetadata
       } = await this.generateChaptersForStory(sanitizedInput, requestedChapterCount, tropeSelection, context);
 
       if (chapters.length === 0) {
@@ -182,7 +203,10 @@ export class StoryService {
           processingTime: Date.now() - startTime,
           chaptersRequested: requestedChapterCount,
           chaptersGenerated: chapters.length,
-          partialFailures: failedChapters.length ? failedChapters : undefined
+          partialFailures: failedChapters.length ? failedChapters : undefined,
+          model: aiMetadata?.model,
+          reasoningEffort: aiMetadata?.reasoningEffort,
+          fallbackFromModel: aiMetadata?.fallbackFromModel
         }
       };
 
@@ -225,17 +249,25 @@ export class StoryService {
     const failedChapters: ChapterFailure[] = [];
     let aggregatedHtml = '';
     let aggregatedRawHtml = '';
+    let aiMetadata: AiCallMetadata | undefined;
 
     for (let chapterNumber = 1; chapterNumber <= requestedChapterCount; chapterNumber++) {
       try {
-        const rawChapterContent = await this.callGrokAI(
+        const generatedText = await this.callGrokAI(
           input,
           context,
           tropeSelection,
           requestedChapterCount > 1
-            ? { chapterNumber, totalChapters: requestedChapterCount, existingContent: aggregatedRawHtml }
+            ? {
+                chapterNumber,
+                totalChapters: requestedChapterCount,
+                existingContent: aggregatedRawHtml,
+                preferFastModel: chapterNumber > 1
+              }
             : undefined
         );
+        aiMetadata = this.mergeAiMetadata(aiMetadata, generatedText.aiMetadata);
+        const rawChapterContent = generatedText.content;
         const displayContent = this.stripSpeakerTagsForDisplay(rawChapterContent);
         const { title, body } = this.extractChapterTitleAndBody(displayContent, chapterNumber);
         const chapterContent = body || displayContent;
@@ -284,7 +316,8 @@ export class StoryService {
       chapters,
       failedChapters,
       aggregatedHtml,
-      aggregatedRawHtml
+      aggregatedRawHtml,
+      aiMetadata
     };
   }
 
@@ -339,20 +372,24 @@ export class StoryService {
       let aggregatedRawHtml = sanitizedInput.existingContent || '';
       let workingChapterCount = sanitizedInput.currentChapterCount;
       let lastCliffhangerAnalysis = this.cliffhangerService.analyze('');
+      let aiMetadata: AiCallMetadata | undefined;
 
       for (let offset = 1; offset <= requestedChapterCount; offset++) {
         const chapterNumber = workingChapterCount + 1;
 
         try {
-          const rawChapterContent = await this.callGrokAIForContinuation(
+          const generatedText = await this.callGrokAIForContinuation(
             { ...sanitizedInput, currentChapterCount: workingChapterCount },
             context,
             {
               chapterNumber,
               totalChapters: requestedChapterCount,
-              existingContent: aggregatedRawHtml
+              existingContent: aggregatedRawHtml,
+              preferFastModel: offset > 1
             }
           );
+          aiMetadata = this.mergeAiMetadata(aiMetadata, generatedText.aiMetadata);
+          const rawChapterContent = generatedText.content;
           const displayContent = this.stripSpeakerTagsForDisplay(rawChapterContent);
           const { title, body } = this.extractChapterTitleAndBody(displayContent, chapterNumber);
           const chapterContent = body || displayContent;
@@ -454,7 +491,10 @@ export class StoryService {
           processingTime: duration,
           chaptersRequested: requestedChapterCount,
           chaptersGenerated: chapters.length,
-          partialFailures: failedChapters.length ? failedChapters : undefined
+          partialFailures: failedChapters.length ? failedChapters : undefined,
+          model: aiMetadata?.model,
+          reasoningEffort: aiMetadata?.reasoningEffort,
+          fallbackFromModel: aiMetadata?.fallbackFromModel
         }
       };
 
@@ -519,7 +559,9 @@ export class StoryService {
         maxOutputTokens: this.calculateOptimalTokens(input.wordCount),
         temperature: 0.8,
         topP: 0.95,
-        timeoutMs: 90000,
+        timeoutMs: getXaiPrimaryTimeoutMs(),
+        fallbackTimeoutMs: getXaiFastTimeoutMs(),
+        allowFallback: true,
         context: {
           endpoint: 'generateStoryStreaming',
           method: 'RESPONSES'
@@ -594,14 +636,16 @@ export class StoryService {
     input: StoryGenerationSeam['input'],
     context?: LogContext,
     tropeSelection?: TropeSelection,
-    chapterOptions?: { chapterNumber: number; totalChapters: number; existingContent?: string }
-  ): Promise<string> {
+    chapterOptions?: ChapterGenerationOptions
+  ): Promise<GeneratedTextResult> {
     if (!this.xaiClient.hasApiKey()) {
       logWarn('No API key found, using mock generation', context);
       // Fallback to mock generation if no API key
-      return chapterOptions
-        ? this.generateMockInitialChapter(input, chapterOptions.chapterNumber)
-        : this.generateMockStory(input, tropeSelection);
+      return {
+        content: chapterOptions
+          ? this.generateMockInitialChapter(input, chapterOptions.chapterNumber)
+          : this.generateMockStory(input, tropeSelection)
+      };
     }
 
     const targetWordCount = chapterOptions
@@ -611,11 +655,13 @@ export class StoryService {
     const userPrompt = chapterOptions
       ? this.buildChapterUserPrompt(input, chapterOptions)
       : this.buildUserPrompt(input);
+    const modelPreference = chapterOptions?.preferFastModel ? 'fast' : 'primary';
     try {
       logInfo('Calling Grok API', context, {
         maxTokens: this.calculateOptimalTokens(targetWordCount),
         chapterNumber: chapterOptions?.chapterNumber,
-        totalChapters: chapterOptions?.totalChapters
+        totalChapters: chapterOptions?.totalChapters,
+        modelPreference
       });
 
       const response = await this.xaiClient.generateText({
@@ -625,7 +671,10 @@ export class StoryService {
         maxOutputTokens: this.calculateOptimalTokens(targetWordCount),
         temperature: 0.8,
         topP: 0.95,
-        timeoutMs: 90000,
+        timeoutMs: chapterOptions?.preferFastModel ? getXaiFastTimeoutMs() : getXaiPrimaryTimeoutMs(),
+        fallbackTimeoutMs: getXaiFastTimeoutMs(),
+        modelPreference,
+        allowFallback: !chapterOptions?.preferFastModel,
         context
       });
       
@@ -640,7 +689,10 @@ export class StoryService {
         totalChapters: chapterOptions?.totalChapters
       });
 
-      return this.formatStoryContent(response.text);
+      return {
+        content: this.formatStoryContent(response.text),
+        aiMetadata: this.toAiCallMetadata(response)
+      };
 
     } catch (error: any) {
       logApiError('Grok AI', error, context, {
@@ -657,20 +709,24 @@ export class StoryService {
   private async callGrokAIForContinuation(
     input: ChapterContinuationSeam['input'],
     context?: LogContext,
-    chapterOptions?: { chapterNumber: number; totalChapters: number; existingContent?: string }
-  ): Promise<string> {
+    chapterOptions?: ChapterGenerationOptions
+  ): Promise<GeneratedTextResult> {
     if (!this.xaiClient.hasApiKey()) {
       logWarn('No API key found, using mock chapter generation', context);
-      return this.generateMockChapter(input, chapterOptions?.chapterNumber);
+      return {
+        content: this.generateMockChapter(input, chapterOptions?.chapterNumber)
+      };
     }
 
     const chapterNumber = chapterOptions?.chapterNumber ?? input.currentChapterCount + 1;
     const prompt = this.buildContinuationPrompt(input, chapterNumber, chapterOptions?.existingContent);
+    const modelPreference = chapterOptions?.preferFastModel ? 'fast' : 'primary';
 
     try {
       logInfo('Calling Grok API for chapter continuation', context, {
         chapterNumber,
-        totalChapters: chapterOptions?.totalChapters
+        totalChapters: chapterOptions?.totalChapters,
+        modelPreference
       });
 
       const response = await this.xaiClient.generateText({
@@ -680,7 +736,10 @@ export class StoryService {
         maxOutputTokens: this.calculateOptimalTokens(500),
         temperature: 0.8,
         topP: 0.95,
-        timeoutMs: 60000,
+        timeoutMs: chapterOptions?.preferFastModel ? getXaiFastTimeoutMs() : getXaiPrimaryTimeoutMs(),
+        fallbackTimeoutMs: getXaiFastTimeoutMs(),
+        modelPreference,
+        allowFallback: !chapterOptions?.preferFastModel,
         context
       });
       
@@ -695,7 +754,10 @@ export class StoryService {
         totalChapters: chapterOptions?.totalChapters
       });
 
-      return this.formatChapterContent(response.text);
+      return {
+        content: this.formatChapterContent(response.text),
+        aiMetadata: this.toAiCallMetadata(response)
+      };
 
     } catch (error: any) {
       logApiError('Grok AI (Continuation)', error, context, {
@@ -704,6 +766,26 @@ export class StoryService {
       
       throw new Error('AI service temporarily unavailable');
     }
+  }
+
+  private toAiCallMetadata(response: XaiTextResponse): AiCallMetadata {
+    return {
+      model: response.model,
+      reasoningEffort: response.reasoningEffort,
+      fallbackFromModel: response.fallbackFromModel
+    };
+  }
+
+  private mergeAiMetadata(existing: AiCallMetadata | undefined, next: AiCallMetadata | undefined): AiCallMetadata | undefined {
+    if (!next) {
+      return existing;
+    }
+
+    return {
+      model: next.model ?? existing?.model,
+      reasoningEffort: next.reasoningEffort ?? existing?.reasoningEffort,
+      fallbackFromModel: existing?.fallbackFromModel ?? next.fallbackFromModel
+    };
   }
 
   private getRandomBeatStructure(input: StoryGenerationSeam['input']): string {

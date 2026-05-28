@@ -312,6 +312,7 @@
           <span>{{ telemetry.engine | titlecase }}</span>
           <span>{{ telemetry.totalLatencyMs }} ms</span>
           <span *ngIf="telemetry.model">{{ telemetry.model }}</span>
+          <span *ngIf="telemetry.fallbackFromModel">fallback from {{ telemetry.fallbackFromModel }}</span>
         </div>
       </header>
 
