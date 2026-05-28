@@ -50,6 +50,7 @@ xAI official sources:
 - [x] Run production live Story Lab smoke after merge.
 - [x] Discover and document that the first post-merge live Story Lab smoke failed because `/api/story-lab/stories` returned Vercel HTTP 504.
 - [x] Add a Grok-only Vercel timeout policy: try `grok-4.20-multi-agent` inside the live request window, fall back to `grok-4.3` for retryable timeout/server failures, use the fast path for extra batch chapters, and keep continuity/evaluation on the fast Grok path.
+- [x] Verify the authenticated Vercel preview with live Story Lab browser smoke after the timeout/default follow-up.
 - [ ] Merge the timeout follow-up and rerun production live Story Lab smoke evidence.
 
 ## Surprises & Discoveries

@@ -1401,6 +1401,8 @@ Validation:
 - `npm run test:all` passed.
 - `git diff --check` passed.
 - `npm run smoke:story-lab-ui` passed in mock mode after a fresh Node 20 Angular build.
+- Authenticated Vercel preview live smoke passed after the timeout/default follow-up:
+  - `STORY_LAB_SMOKE_URL='https://fairytaleswith-spice-git-fix-grok-mult-7c8417-phazzies-projects.vercel.app/?_vercel_share=zDsTJzlsbLjfLIP4sF7m1Chmvy8rpwX6' STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
 
 Self-review:
 
