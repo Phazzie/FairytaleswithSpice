@@ -1106,9 +1106,12 @@ Actions:
   - changed debug-panel visibility from a one-time `window.location.search` read to Angular `ActivatedRoute.queryParamMap`,
   - added stable `data-testid` hooks for the Story Lab smoke path,
   - updated the Playwright smoke to use those hooks and avoid hard-coded generated story copy,
+  - hardened static-file path resolution in the smoke server so requests cannot escape the built output directory,
   - guarded browser cleanup so Chromium launch errors are not masked,
-  - replaced the Node 20 build command with a portable `npx -- ... node -e` wrapper instead of `npx -c`,
-  - removed the regex route matcher that Sonar flagged as a security hotspot.
+  - made the smoke build use the current Node when it is already Node 20 and only fall back to `npx node@20` when needed,
+  - removed the regex route matcher that Sonar flagged as a security hotspot,
+  - replaced public error guidance that pointed normal users to the hidden debug panel,
+  - corrected the deployed-smoke command in the ExecPlan so real-provider evidence requires `STORY_LAB_SMOKE_LIVE=1`.
 
 Validation:
 

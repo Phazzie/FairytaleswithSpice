@@ -213,7 +213,7 @@ By default this command builds the Angular app, serves `story-generator/dist/sto
 If the smoke supports deployed mode, run it explicitly with the production URL after merge:
 
 ```bash
-STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app npm run smoke:story-lab-ui
+STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui
 ```
 
 Write `STORY_LAB_MVP_READINESS_REPORT.md` with:

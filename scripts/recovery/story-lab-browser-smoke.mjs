@@ -80,6 +80,11 @@ try {
 }
 
 async function runBuild() {
+  if (currentNodeMajorVersion() === 20) {
+    await runCommand('npm', ['run', 'build'], rootDir);
+    return;
+  }
+
   await runCommand('npx', [
     '--yes',
     '-p',
@@ -95,6 +100,10 @@ async function runBuild() {
       'process.exit(result.status ?? 1)'
     ].join(';')
   ], rootDir);
+}
+
+function currentNodeMajorVersion() {
+  return Number.parseInt(process.versions.node.split('.')[0] ?? '', 10);
 }
 
 function runCommand(command, args, cwd) {
@@ -133,10 +142,13 @@ async function startStaticServer() {
   const browserDir = path.join(rootDir, 'story-generator', 'dist', 'story-generator', 'browser');
   const server = createServer((request, response) => {
     const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
-    const pathname = decodeURIComponent(requestUrl.pathname);
-    const safePath = pathname.includes('..') ? '/' : pathname;
-    const relativePath = safePath === '/' ? '/index.html' : safePath;
-    const filePath = path.join(browserDir, relativePath);
+    const filePath = resolveStaticFilePath(browserDir, requestUrl.pathname);
+
+    if (!filePath) {
+      response.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
+      response.end('Forbidden');
+      return;
+    }
 
     streamFile(filePath, response, () => {
       streamFile(path.join(browserDir, 'index.html'), response, () => {
@@ -161,6 +173,26 @@ async function startStaticServer() {
   appUrl = `http://127.0.0.1:${address.port}`;
   console.log(`Serving built Story Lab app at ${appUrl}`);
   return server;
+}
+
+function resolveStaticFilePath(root, urlPathname) {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(urlPathname);
+  } catch {
+    return null;
+  }
+
+  let relativePath = pathname === '/' ? 'index.html' : pathname;
+  while (relativePath.startsWith('/')) {
+    relativePath = relativePath.slice(1);
+  }
+
+  const resolvedRoot = path.resolve(root);
+  const filePath = path.resolve(resolvedRoot, relativePath);
+  const isInsideRoot = filePath === resolvedRoot || filePath.startsWith(`${resolvedRoot}${path.sep}`);
+
+  return isInsideRoot ? filePath : null;
 }
 
 function contentType(filePath) {

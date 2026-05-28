@@ -241,9 +241,9 @@ export class App {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.startGenesis');
-        const message = 'Story generation failed. Check the debug panel for details.';
+        const message = 'Story generation failed. Please try again in a moment. If it keeps failing, the story provider may be unavailable.';
         this.statusMessage.set(message);
-        this.markBatchFailed(batchId, 'Story generation failed.');
+        this.markBatchFailed(batchId, message);
         this.notificationService.error('Generation failed', message);
         this.isGenerating.set(false);
       }
@@ -297,7 +297,7 @@ export class App {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.continueSaga');
-        const message = 'Continuation failed. Inspect logged errors for more detail.';
+        const message = 'Continuation failed. Please try again; your existing chapters are still available.';
         this.statusMessage.set(message);
         this.markBatchFailed(batchId, message);
         this.notificationService.error('Continuation failed', message);

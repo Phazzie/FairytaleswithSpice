@@ -50,6 +50,7 @@ Build evidence:
 Review-fix evidence:
 
 - PR #92 review comments about debug-query reactivity, brittle smoke selectors, browser cleanup masking launch failures, `npx -c` portability, and the Sonar route regex hotspot were addressed in the branch.
+- Follow-up review fixes hardened the local static server path handling, removed public error copy that referenced the hidden debug panel, and corrected the deployed-smoke command to require live mode.
 - Local validation passed after those fixes.
 
 ## Caveats
