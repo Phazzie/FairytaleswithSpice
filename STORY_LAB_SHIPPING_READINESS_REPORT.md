@@ -17,7 +17,16 @@ Tier 2 shipping hardening merged through PR #94:
 - Vercel production deployment: successful for `a71aef4`.
 - Production live browser smoke: passed against `https://fairytaleswith-spice.vercel.app`.
 
-Dependabot PR #88 is closed as superseded by PR #94. There are no open PRs at the time of this report update.
+Follow-up dev/test dependency cleanup merged through PR #95:
+
+- PR: `https://github.com/Phazzie/FairytaleswithSpice/pull/95`
+- Merge commit: `d1b7458b71d232b5e38e94755776c69c7c165381`
+- Main Recovery CI: passed for `d1b7458`.
+- Vercel production deployment: successful for `d1b7458`.
+- Production live browser smoke: passed against `https://fairytaleswith-spice.vercel.app`.
+- Full Story Generator audit risk dropped from seven findings to four dev/test-toolchain findings.
+
+Dependabot PR #88 is closed as superseded by PR #94. Follow-up Dependabot PR #95 is merged. There are no open PRs at the time of this report update.
 
 ## What Is Safe To Promise
 
@@ -36,11 +45,8 @@ Dependabot PR #88 is closed as superseded by PR #94. There are no open PRs at th
 - Do not promise durable long-term story memory. Current Story Lab continuity/state is client-carried and heuristic.
 - Do not promise audio. Audio remains deferred and inactive for this recovery.
 - Do not promise DigitalOcean deployment. Docker/DigitalOcean files are historical unless deliberately revived later.
-- Do not promise a totally clean full dev audit. Full `story-generator npm audit --json` still reports seven dev/test-toolchain findings under Karma/socket tooling:
-  - `body-parser` via Karma's nested `qs`,
+- Do not promise a totally clean full dev audit. Full `story-generator npm audit --json` still reports four dev/test-toolchain findings under Karma/socket tooling:
   - `engine.io` via `ws`,
-  - `picomatch` via Karma/watch tooling,
-  - Karma's nested `qs`,
   - `socket.io-adapter` via `ws`,
   - `socket.io-parser`,
   - `ws`.
@@ -62,6 +68,14 @@ Why not merge #88 directly:
 - This branch updates Angular runtime packages to `20.3.22` and Angular CLI/build/SSR packages to `20.3.26`.
 - This branch also moves Angular build/type tooling out of production dependencies and into devDependencies.
 
+PR #95 appeared after PR #94 and was merged directly:
+
+- PR: `https://github.com/Phazzie/FairytaleswithSpice/pull/95`
+- Title: `chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates`
+- Files: `story-generator/package-lock.json`
+- Disposition: merged.
+- Effect: updated transitive dev/test packages `picomatch` `2.3.1 -> 2.3.2` and `qs` `6.13.0 -> 6.15.2`, reducing full Story Generator audit findings from seven to four.
+
 Runtime dependency result:
 
 ```bash
@@ -78,7 +92,7 @@ Remaining full-audit result:
 cd story-generator && npm audit --json
 ```
 
-This still reported seven findings, all in dev/test tooling reachable through Karma/socket packages. These should be treated as follow-up test-infrastructure risk, not production runtime risk.
+After PR #95, this still reported four findings, all in dev/test tooling reachable through Karma/socket packages. These should be treated as follow-up test-infrastructure risk, not production runtime risk.
 
 ## Sonar Triage
 
@@ -154,13 +168,14 @@ Do not put live mode into default CI because it consumes provider quota and depe
 What a senior dev who hates this would object to:
 
 - The dependency update is still large because Angular patch updates move a lot of lockfile entries.
-- The full `story-generator npm audit` is not clean; calling the whole repo "secure" would be overstated.
+- The full `story-generator npm audit` is not clean even after PR #95; calling the whole repo "secure" would be overstated.
 - Sonar is triaged, not fully burned down.
 - The repo still tracks some root `node_modules` files from old history. This branch intentionally does not commit generated `node_modules` churn, but that means a local checkout can need `npm install` before `npm ls` reflects the new root axios range.
 
 What was fixed now instead of documented:
 
 - Runtime dependency audit findings for root and Story Generator production dependencies.
+- Transitive dev/test `picomatch` and `qs` findings through PR #95.
 - The top Sonar nested-callback issue in the browser smoke harness.
 - The top Sonar loop-counter mutation issue in Story Lab continuation cleanup.
 
@@ -189,6 +204,10 @@ Local validation passed on 2026-05-28:
 - [x] Main Dependabot Updates workflow after merge
 - [x] Vercel production deployment after merge
 - [x] Production live browser smoke after merge
+- [x] PR #95 checks on GitHub
+- [x] Main Recovery CI after PR #95
+- [x] Vercel production deployment after PR #95
+- [x] Production live browser smoke after PR #95
 
 Validation notes:
 
@@ -199,4 +218,7 @@ Validation notes:
 - PR #94 initially exposed a CI-only install-order issue: `npm ci` mutates historical tracked root `node_modules` files before preflight. `scripts/recovery/preflight.sh` now excludes `node_modules` from its whitespace diff check so generated dependency files do not block source validation.
 - PR #94 review also tightened the smoke server: SPA fallback is now limited to extensionless routes so missing `.js`, `.css`, or image assets return `404` instead of receiving HTML.
 - Post-merge production live smoke command passed:
+  `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`
+- PR #95 reduced full Story Generator audit findings from seven to four. The remaining findings are `engine.io`, `socket.io-adapter`, `socket.io-parser`, and `ws` in dev/test tooling.
+- Post-PR #95 production live smoke command passed:
   `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`

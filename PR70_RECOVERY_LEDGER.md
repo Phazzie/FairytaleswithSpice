@@ -18,6 +18,7 @@ Status values:
 
 | PR | Planned action | Actual status | Notes |
 |---:|---|---|---|
+| #95 | merge | merged | Lockfile-only Dependabot PR updated Story Generator `picomatch` and `qs`, reducing full dev/test audit findings from seven to four. |
 | #88 | recreate/supersede | superseded; closed | Dependency-only Dependabot PR was superseded by fresher dependency updates in PR #94, then closed. |
 | #86 | merge | merged; closed | Merged design system doc; normalized nonzero letter-spacing tokens; closed as superseded by #87. |
 | #85 | merge | merged; closed | Merged `path-to-regexp` 8.4.0 lockfile update; closed as superseded by #87. |
@@ -1662,3 +1663,42 @@ Use this template for detailed entries as each PR is handled:
   - Do not overstate the audit result: runtime is clean, full dev audit is still not clean.
 - GitHub PR closure note:
   - Closed as superseded after PR #94 merged, pointing to the fresher dependency update and `STORY_LAB_SHIPPING_READINESS_REPORT.md`.
+
+## PR #95 - chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates
+
+- Source branch: `dependabot/npm_and_yarn/story-generator/npm_and_yarn-3477c3f106`
+- Planned disposition: merge
+- Actual disposition: merged as `d1b7458b71d232b5e38e94755776c69c7c165381`
+- Story-generation impact: None direct. This is dev/test dependency risk reduction only; Story Lab runtime generation behavior is unchanged.
+- Accepted material:
+  - `story-generator/package-lock.json` transitive `picomatch` update from `2.3.1` to `2.3.2`.
+  - `story-generator/package-lock.json` transitive `qs` update from `6.13.0` to `6.15.2`.
+  - Reduction of full Story Generator audit findings from seven to four.
+- Not taking now:
+  - No feature material omitted.
+- Why not taking:
+  - Not applicable.
+- Future mining value:
+  - Remaining full-audit cleanup should focus on the Karma/socket chain: `engine.io`, `socket.io-adapter`, `socket.io-parser`, and `ws`.
+- Files inspected:
+  - PR #95 body and changed-file list from GitHub.
+  - `story-generator/package-lock.json`.
+- Files changed in recovery branch:
+  - `story-generator/package-lock.json`.
+- Conflicts encountered:
+  - None. The PR was lockfile-only and mergeable.
+- Tests/checks run:
+  - PR #95 Recovery CI passed.
+  - PR #95 SonarCloud checks passed.
+  - PR #95 Vercel preview passed.
+  - Main Recovery CI passed after merge.
+  - Vercel production deployment succeeded after merge.
+  - `git diff --check` passed locally after merge.
+  - `cd story-generator && npm audit --omit=dev --json` reported zero vulnerabilities.
+  - `cd story-generator && npm audit --json` reported four remaining dev/test-toolchain findings.
+  - Production live browser smoke passed against `https://fairytaleswith-spice.vercel.app`.
+- Self-review notes:
+  - This should not be described as production feature work.
+  - It does materially improve the documented dev/test audit state, so the shipping report needed a final accuracy update.
+- GitHub PR closure note:
+  - Merged. No closure comment needed.
