@@ -1486,3 +1486,21 @@ Self-review:
 - Good: The change removes hidden dependency on fallback behavior for normal generation.
 - Risk: The browser smoke still needs repair because one run timed out on `page.goto()` before testing generation, even though HTTP root and direct API calls succeeded.
 - What should be next: improve the smoke harness, then redesign the UI on a separate branch.
+
+## 2026-05-29 02:41 EDT - Grok 4.3 Default Deployed and Verified
+
+Actions:
+
+- Pushed commit `ab4de1a`, `Default Story Lab to Grok 4.3`, to `main`.
+- Confirmed Recovery CI passed for `ab4de1a`.
+- Confirmed Vercel reported deployment success for `ab4de1a`.
+- Confirmed production root returned HTTP 200 with `last-modified: Fri, 29 May 2026 06:40:59 GMT`.
+- Called production `/api/story-lab/stories` after deployment with the Story Lab smoke blueprint.
+- Confirmed the response returned `success: true`, title `Reefbound Vows`, `model: "grok-4.3"`, `fallbackFromModel: null`, and `latencyMs: 11106`.
+
+Self-review:
+
+- Good: The normal generation path no longer burns time on a multi-agent probe before reaching the model that actually works.
+- Good: The status matrix now separates working generation from degraded continuity extraction and weak UI quality.
+- Remaining risk: Continuity extraction still returned `source: "mixed"` with a warning, so story generation is working better than the AI enrichment layer.
+- What should be next: add a direct production API smoke script for this exact proof, then fix the browser smoke navigation timeout before UI redesign work.

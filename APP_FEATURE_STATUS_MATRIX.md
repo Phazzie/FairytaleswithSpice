@@ -1,14 +1,14 @@
 # App Feature Status Matrix
 
-Updated: 2026-05-29 02:06 EDT
+Updated: 2026-05-29 02:41 EDT
 
 This matrix summarizes the current Fairytales with Spice app after promoting `grok-4.3` to the default Story Lab model.
 
 | Area | Feature | Status | Evidence | Main Risk / Next Step |
 |---|---|---|---|---|
-| Deployment | Vercel production app | Working | Production root returns HTTP 200; Vercel deployed latest `main` before this follow-up. | Keep post-change deploy/CI checks green after the `grok-4.3` default lands. |
+| Deployment | Vercel production app | Working | Recovery CI passed for `ab4de1a`; Vercel deployed it; production root returned HTTP 200 with `last-modified: Fri, 29 May 2026 06:40:59 GMT`. | Keep monitoring deploys after follow-up docs-only changes. |
 | Deployment | Vercel API layout | Working | Shared API code is under `api/_lib`; function-count/preflight checks have passed in recovery. | Continue avoiding helper files in deployable API folders. |
-| AI | Production Story Lab generation | Working, now defaulting to `grok-4.3` | Direct production `/api/story-lab/stories` call returned HTTP 200 and a real generated story, `Debt of the Singing Reef`. | Run final post-deploy production smoke after this model-default change. |
+| AI | Production Story Lab generation | Working, defaulting to `grok-4.3` | Post-deploy direct production `/api/story-lab/stories` call returned HTTP 200, generated `Reefbound Vows`, reported `model: "grok-4.3"`, `fallbackFromModel: null`, and `latencyMs: 11106`. | Monitor provider latency and add a direct API smoke script so this proof is repeatable. |
 | AI | Grok multi-agent | Demoted to experiment | Production telemetry showed generation succeeded through fallback from `grok-4.20-multi-agent` to `grok-4.3`. | Use `XAI_STORY_MODEL=grok-4.20-multi-agent` only for explicit experiments. |
 | AI | Continuation | Working but not reverified today | Prior production browser smoke generated and continued a story; route uses the canonical StoryService path. | Re-run continuation smoke after fixing browser navigation timeout. |
 | AI | Continuity extraction | Degraded but honest | Direct production generation returned `source: "mixed"` and a visible warning when AI extraction was unavailable. | Improve AI extraction reliability or keep the degraded receipt highly visible. |
@@ -25,7 +25,7 @@ This matrix summarizes the current Fairytales with Spice app after promoting `gr
 | Proving Grounds | Prompt/testing workspace | Present, not shipping-critical | Ported as a routed Story Lab prompt-testing page with server-side evaluation fallback. | Reassess after core UI is fixed. |
 | Export/Image | Export and image API stubs/services | Present, not recently validated | Routes exist in current Vercel layout. | Audit before presenting as product features. |
 | Audio | Audio runtime | Deferred/inactive | Audio ideas were mined; active audio routes/services are not in scope. | Rebuild later from mined ideas instead of merging old audio PRs. |
-| CI/Validation | Recovery CI | Working | Latest pushed evidence commit passed Recovery CI. | GitHub Actions Node 20 deprecation warning needs future workflow update. |
-| CI/Validation | Story/API tests | Working locally in prior recovery checks | `test:all`, `verify-ai-fixes`, and preflight passed during the Grok/Vercel recovery. | Re-run after model-default change before pushing. |
+| CI/Validation | Recovery CI | Working | `ab4de1a` passed Recovery CI. | GitHub Actions Node 20 deprecation warning needs future workflow update. |
+| CI/Validation | Story/API tests | Working locally | `verify-ai-fixes`, `test:story-lab-real-engine`, `test:story-quality`, `scripts/recovery/preflight.sh --quick --skip-status`, `npm run smoke:grok` skip path, and mock Story Lab UI smoke passed after the model-default change. | Add a lightweight direct production API smoke script. |
 | Security | Runtime audit | Good at last check | Runtime audit was clean in prior shipping evidence. | Full dev/test audit still has known Karma/socket findings. |
 | Reviews | Recent PR review comments | Addressed before merge, not freshly rechecked | Known Sonar/Gemini/review issues were fixed before PR #98/#99 merge. | GitHub API timed out during current fresh recheck; retry later if needed. |
