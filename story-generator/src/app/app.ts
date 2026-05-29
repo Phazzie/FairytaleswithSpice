@@ -158,7 +158,7 @@ export class App {
   readonly modelBadge = computed(() => {
     const telemetry = this.workbench().lastTelemetry;
     if (!telemetry?.model) {
-      return 'Grok multi-agent';
+      return 'Grok 4.3';
     }
 
     const modelLabel = telemetry.fallbackFromModel

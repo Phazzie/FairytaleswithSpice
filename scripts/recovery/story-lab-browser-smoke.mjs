@@ -484,7 +484,7 @@ function buildPayload(chapters, revision) {
     },
     telemetry: {
       engine: liveMode ? 'grok' : 'custom',
-      model: liveMode ? 'grok-4.20-multi-agent' : 'mock-story-lab',
+      model: liveMode ? 'grok-4.3' : 'mock-story-lab',
       reasoningEffort: liveMode ? 'medium' : undefined,
       totalLatencyMs: 100,
       averageChapterLatencyMs: 100,

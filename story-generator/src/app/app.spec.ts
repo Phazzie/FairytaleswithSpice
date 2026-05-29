@@ -177,8 +177,7 @@ describe('App', () => {
       state: createState(),
       telemetry: {
         engine: 'grok',
-        model: 'grok-4.20-multi-agent',
-        reasoningEffort: 'medium',
+        model: 'grok-4.3',
         totalLatencyMs: 1200,
         averageChapterLatencyMs: 1200,
         tokensConsumed: 900,
@@ -198,7 +197,7 @@ describe('App', () => {
 
     expect(component.workbench().story?.title).toBe('Saved Pact');
     expect(component.workbench().chapterHistory.length).toBe(1);
-    expect(component.modelBadge()).toBe('grok-4.20-multi-agent · medium');
+    expect(component.modelBadge()).toBe('grok-4.3');
   });
 
   it('continues an existing saga and appends chapters', () => {

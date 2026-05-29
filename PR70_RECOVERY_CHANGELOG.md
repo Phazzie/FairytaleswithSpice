@@ -1468,3 +1468,21 @@ Self-review:
 - Good: The app remains Grok-only: `grok-4.20-multi-agent` is the short primary probe and `grok-4.3` is the visible fast fallback for retryable timeout/server failures.
 - Remaining risk: This is still a synchronous live-provider workflow. It is demoable now, but larger chapter batches, provider incidents, or very slow responses can still fail closed.
 - What should be next: if production reliability has to survive repeated public usage, move long-running generation to a job/streaming architecture or make fast Grok the default button path with multi-agent as an explicit deep mode.
+
+## 2026-05-29 02:06 EDT - Grok 4.3 Promoted To Default
+
+Actions:
+
+- Checked production health and confirmed `services.grok: "configured"`.
+- Called production `/api/story-lab/stories` directly with the Story Lab smoke blueprint.
+- Confirmed real story generation returned HTTP 200 with a generated story titled `Debt of the Singing Reef`.
+- Observed telemetry showed `model: "grok-4.3"` and `fallbackFromModel: "grok-4.20-multi-agent"`, proving the working path was the fallback model.
+- Changed the default story model from `grok-4.20-multi-agent` to `grok-4.3`.
+- Kept `XAI_STORY_MODEL` as an override so multi-agent can be tested intentionally later.
+
+Self-review:
+
+- Good: This makes the default app path match the model that actually returned production stories.
+- Good: The change removes hidden dependency on fallback behavior for normal generation.
+- Risk: The browser smoke still needs repair because one run timed out on `page.goto()` before testing generation, even though HTTP root and direct API calls succeeded.
+- What should be next: improve the smoke harness, then redesign the UI on a separate branch.

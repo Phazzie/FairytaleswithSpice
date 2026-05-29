@@ -53,6 +53,7 @@ xAI official sources:
 - [x] Verify the authenticated Vercel preview with live Story Lab browser smoke after the timeout/default follow-up.
 - [x] Merge the timeout follow-up and rerun production live Story Lab smoke evidence.
 - [x] Deploy the final provider-variability timeout tweak on `main` and rerun production live Story Lab smoke against the public URL.
+- [x] Promote `grok-4.3` to the default Story Lab model after production evidence showed it was the reliable path.
 
 ## Surprises & Discoveries
 
@@ -114,6 +115,9 @@ xAI official sources:
 - Decision: Run AI continuity extraction on the fast Grok path with a short timeout.
   Rationale: Continuity extraction is useful, but it is secondary to returning the drafted chapter. If it cannot finish quickly, the existing heuristic/mixed receipt path is the right degraded mode.
 
+- Decision: Default production Story Lab generation to `grok-4.3`.
+  Rationale: Live production evidence showed the multi-agent path repeatedly depended on fallback, while `grok-4.3` returned usable stories. Multi-agent remains available through `XAI_STORY_MODEL`, but the default user path should use the model that is actually working.
+
 ## Outcomes & Retrospective
 
 - What became better for normal users: Story Lab now opens as a polished writing workbench, uses a real atmospheric bitmap asset, keeps saved stories in the browser, restores the latest story on load, and shows visible continuity/model/save status.
@@ -126,6 +130,7 @@ xAI official sources:
 - Post-merge correction: production live smoke did run and found a Vercel 504 in the real provider path. The correction is a bounded provider policy, not a provider switch or a return to mocks.
 - Post-merge evidence: PR #99 merged into `main`, Vercel production served the new deployment, and `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui` passed once, then a second production smoke exposed provider latency variance. The timeout policy was tightened again so multi-agent is a short probe and fast Grok owns the fallback budget.
 - Final evidence: commit `4fb64b6` deployed to Vercel with Recovery CI passing, Vercel reporting deployment success, production root returning HTTP 200 with `last-modified: Thu, 28 May 2026 23:24:41 GMT`, and production live Story Lab browser smoke passing again with `STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE=1 npm run smoke:story-lab-ui`.
+- Follow-up model decision: the default model is now `grok-4.3` because the observed reliable production path was the fast Grok model. `grok-4.20-multi-agent` should be treated as an explicit experiment via `XAI_STORY_MODEL`, not the public default.
 
 ## Context and Orientation
 
@@ -179,7 +184,7 @@ Create branch:
 
 Add `api/_lib/config/xaiConfig.ts`:
 
-- export `DEFAULT_XAI_STORY_MODEL = 'grok-4.20-multi-agent'`;
+- export `DEFAULT_XAI_STORY_MODEL = 'grok-4.3'`;
 - export `DEFAULT_XAI_REASONING_EFFORT = 'medium'`;
 - export `getXaiStoryModel()` from `process.env.XAI_STORY_MODEL || DEFAULT_XAI_STORY_MODEL`;
 - export `getXaiReasoningEffort()` constrained to `low | medium | high | xhigh`, default `medium`;
@@ -453,7 +458,7 @@ Required visual validation:
 Acceptance criteria:
 
 - active Story Lab generation and continuation use the centralized xAI model config;
-- default model is `grok-4.20-multi-agent`;
+- default model is `grok-4.3`;
 - no OpenAI runtime dependency or API key is added;
 - public UI is visibly more polished, domain-specific, and user-friendly;
 - generated stories can be saved and reopened in the same browser;
@@ -517,7 +522,7 @@ Files not to touch unless a later step proves it is necessary:
 Environment variables:
 
 - `XAI_API_KEY`: required for live Grok generation.
-- `XAI_STORY_MODEL`: optional override, default `grok-4.20-multi-agent`.
+- `XAI_STORY_MODEL`: optional override, default `grok-4.3`.
 - `XAI_STORY_REASONING_EFFORT`: optional override, one of `low`, `medium`, `high`, `xhigh`, default `medium`.
 - `STORY_LAB_FORCE_MOCK`: keep existing behavior for local/mock validation.
 
