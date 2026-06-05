@@ -244,6 +244,25 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
   });
 
   await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
+    const response = await generateStoryLabGenesis({
+      ...blueprint,
+      heatContract: undefined
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called when Heat Contract is missing');
+        },
+        continueChapter: async () => {
+          throw new Error('continueChapter should not be called by genesis test');
+        }
+      })
+    });
+
+    assert(!response.success, 'missing Heat Contract should fail before provider call');
+    assert(response.error.code === 'CONTENT_POLICY_VIOLATION', 'missing Heat Contract should use content policy error');
+  });
+
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
     const response = await generateStoryLabGenesis(blueprint, {
       serviceFactory: () => ({
         generateStory: async () => ({

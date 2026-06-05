@@ -86,7 +86,7 @@ function missingProviderResponse(): StoryLabErrorResponse {
 }
 
 function validateHeatContract(input: LabGenerationSeam['input']): StoryLabErrorResponse | null {
-  if (input.heatContract && input.heatContract.adultOnlyConfirmed !== true) {
+  if (!input.heatContract || input.heatContract.adultOnlyConfirmed !== true) {
     return {
       success: false,
       error: {

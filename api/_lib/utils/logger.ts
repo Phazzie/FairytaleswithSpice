@@ -50,7 +50,12 @@ const SENSITIVE_KEY_PATTERNS = [
   /^x-api-key$/i,
   /api[_-]?key/i,
   /password/i,
-  /token/i,
+  /^token$/i,
+  /[_-]token$/i,
+  /^token[_-]/i,
+  /access[_-]?token/i,
+  /refresh[_-]?token/i,
+  /id[_-]?token/i,
   /secret/i,
   /email/i,
   /prompt/i,
@@ -64,7 +69,7 @@ const SENSITIVE_KEY_PATTERNS = [
 ];
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const BEARER_PATTERN = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
-const API_KEY_PATTERN = /\b(?:xai|sk|api)[-_A-Za-z0-9]{10,}\b/gi;
+const API_KEY_PATTERN = /\b(?:xai|sk|api)[-_][-_A-Za-z0-9]{8,}\b/gi;
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/gi;
 
 export function redactSensitiveLogData<T>(value: T): T {

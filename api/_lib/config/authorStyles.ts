@@ -338,9 +338,9 @@ function getSecondaryAuthorStyles(creature: CreatureType): AuthorStyle[] {
     case 'witch':
       return [...FAIRY_STYLES, ...VAMPIRE_STYLES];
     case 'dragon':
-      return [...VAMPIRE_STYLES, ...FAIRY_STYLES];
-    case 'demon':
       return [...WEREWOLF_STYLES, ...FAIRY_STYLES];
+    case 'demon':
+      return [...VAMPIRE_STYLES, ...FAIRY_STYLES];
     case 'angel':
       return [...FAIRY_STYLES, ...WITCH_STYLES];
     case 'mermaid':

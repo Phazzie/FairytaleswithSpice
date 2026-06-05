@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
@@ -383,7 +383,7 @@ describe('App', () => {
     expect(component.statusMessage()).toBe('Story copied to your clipboard.');
   });
 
-  it('downloads generated story HTML locally', () => {
+  it('downloads generated story HTML locally', fakeAsync(() => {
     const originalCreateElement = document.createElement.bind(document);
     const anchor = originalCreateElement('a') as HTMLAnchorElement;
     const clickSpy = spyOn(anchor, 'click');
@@ -403,7 +403,9 @@ describe('App', () => {
 
     expect(anchor.download).toBe('downloaded-pact.html');
     expect(clickSpy).toHaveBeenCalled();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    tick();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:story-download');
     expect(component.statusMessage()).toBe('Story download created.');
-  });
+  }));
 });

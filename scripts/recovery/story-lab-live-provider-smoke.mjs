@@ -53,7 +53,7 @@ try {
   assertLiveStoryPayload(response);
   console.log('Live Story Lab provider smoke passed.');
 } catch (error) {
-  console.error(error instanceof Error ? error.message : error);
+  console.error('Live Story Lab provider smoke failed. Check the configured provider, URL, and credentials before rerunning.');
   process.exitCode = 1;
 }
 

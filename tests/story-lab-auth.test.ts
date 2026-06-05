@@ -1,3 +1,6 @@
+#!/usr/bin/env tsx
+// Created: 2026-06-05 00:56 EDT
+
 import {
   createDenyByDefaultAuthPort,
   isAuthError

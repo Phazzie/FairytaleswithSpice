@@ -548,8 +548,8 @@ export class App implements OnDestroy {
     const safeTitle = this.safeFileName(session.story.title);
     const chapters = session.chapterHistory
       .map(chapter => {
-        const body = this.escapeHtml(this.stripHtml(chapter.htmlContent));
-        return `<section><h2>Chapter ${chapter.chapterNumber}: ${this.escapeHtml(chapter.title)}</h2><p>${body}</p></section>`;
+        const body = this.getSafeHtml(chapter.htmlContent);
+        return `<section><h2>Chapter ${chapter.chapterNumber}: ${this.escapeHtml(chapter.title)}</h2>${body}</section>`;
       })
       .join('\n');
     const html = `<!doctype html>
@@ -575,7 +575,7 @@ ${chapters}
     link.href = url;
     link.download = `${safeTitle}.html`;
     link.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
     this.statusMessage.set('Story download created.');
   }
 

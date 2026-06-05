@@ -1624,3 +1624,26 @@ Self-review:
 - Good: The next phases are explicit gates, so CORS/privacy/export/job decisions do not get bundled into parser/auth/redaction work.
 - Remaining risk: Browser-run error-logging coverage still needs CI or a local Chrome environment that can capture under Karma.
 - What should be next: publish this finished work in a PR, address review comments, then start Phase B2 only after the PR is clean.
+
+## 2026-06-05 00:56 EDT - PR100 Review Follow-Ups
+
+Actions:
+
+- Addressed actionable PR #100 review comments:
+  - missing Heat Contract now fails before the provider call instead of bypassing the adult-reader confirmation seam;
+  - `dragon` and `demon` secondary style mixes now match the Charmed MVP plan;
+  - server and client API-key redaction patterns now require a delimiter after `xai`, `sk`, or `api`;
+  - token-count telemetry keys no longer match the secret-token redaction rule;
+  - local HTML downloads preserve sanitized paragraph structure and delay Blob URL cleanup to avoid download races;
+  - live-provider smoke failure logging no longer prints uncontrolled error text;
+  - new root test files now include the standard creation timestamp header.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/log-redaction.test.ts`: passed.
+- `npx tsx tests/story-lab-real-engine.test.ts`: passed.
+- `npx tsx tests/story-lab-blueprint-parser.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npx tsx tests/story-lab-stream-parse.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
