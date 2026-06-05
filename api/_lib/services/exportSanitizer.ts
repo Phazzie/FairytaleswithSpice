@@ -135,7 +135,7 @@ function replacePdfControlCharacters(value: string): string {
   let sanitized = '';
 
   for (const character of value) {
-    const codePoint = character.charCodeAt(0);
+    const codePoint = character.codePointAt(0) ?? 0;
     sanitized += codePoint <= 0x1f || codePoint === 0x7f ? ' ' : character;
   }
 
