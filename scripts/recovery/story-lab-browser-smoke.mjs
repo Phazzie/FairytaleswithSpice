@@ -20,17 +20,24 @@ const shouldSkipHttpWait = process.env.STORY_LAB_SMOKE_SKIP_HTTP_WAIT === '1'
 const smokeSelectors = Object.freeze({
   heading: '[data-testid="story-lab-heading"]',
   debugPanel: '[data-testid="story-lab-debug-panel"]',
-  creature: '[data-testid="blueprint-creature"]',
+  skinChoice: skinId => `[data-testid="skin-choice"][data-skin-id="${skinId}"]`,
+  creatureCard: creatureId => `[data-testid="creature-card"][data-creature-id="${creatureId}"]`,
   tone: '[data-testid="blueprint-tone"]',
-  spicyLevel: '[data-testid="blueprint-spicy-level"]',
+  spiceCard: spicyLevel => `[data-testid="spice-card"][data-spice-level="${spicyLevel}"]`,
   wordBudget: '[data-testid="blueprint-word-budget"]',
   chapterBatchSize: '[data-testid="blueprint-chapter-batch-size"]',
   logline: '[data-testid="blueprint-logline"]',
   protagonist: '[data-testid="blueprint-protagonist"]',
   antagonist: '[data-testid="blueprint-antagonist"]',
   worldDetails: '[data-testid="blueprint-world-details"]',
+  storyDetails: 'details.story-details > summary',
   generateButton: '[data-testid="generate-chapters"]',
   continueButton: '[data-testid="continue-saga"]',
+  continuationDirection: label => `[data-testid="continuation-direction"][data-direction-label="${label}"]`,
+  copyStory: '[data-testid="copy-story"]',
+  downloadStory: '[data-testid="download-story"]',
+  progress: '[data-testid="generation-progress"]',
+  statusMessage: '[data-testid="status-message"]',
   storyPanel: '[data-testid="story-panel"]',
   storyTitle: '[data-testid="story-title"]',
   themeChip: themeId => `[data-testid="theme-chip"][data-theme-id="${themeId}"]`,
@@ -38,10 +45,11 @@ const smokeSelectors = Object.freeze({
 });
 
 const demoBlueprint = Object.freeze({
-  creature: 'siren',
+  skin: 'bookshop',
+  creature: 'mermaid',
   tone: 'dark_romance',
-  spicyLevel: '1',
-  wordBudgetLabel: '600 words',
+  spicyLevel: 2,
+  wordBudgetLabel: 'Short',
   chapterBatchLabel: '1 chapter',
   themeId: 'forbidden_love',
   logline: 'A siren diplomat risks exile to save a forbidden lover before a cruel reef court.',
@@ -309,7 +317,9 @@ async function runSmoke() {
 
   try {
     const context = await browser.newContext({
-      viewport: { width: 1440, height: 1200 }
+      viewport: { width: 1440, height: 1200 },
+      acceptDownloads: true,
+      permissions: ['clipboard-read', 'clipboard-write']
     });
     page = await context.newPage();
 
@@ -328,24 +338,38 @@ async function runSmoke() {
     await page.locator(smokeSelectors.heading).waitFor({ timeout: 20_000 });
     await expectHidden(page.locator(smokeSelectors.debugPanel));
 
-    await page.locator(smokeSelectors.creature).selectOption(demoBlueprint.creature);
+    await page.locator(smokeSelectors.skinChoice(demoBlueprint.skin)).click();
+    await page.locator(smokeSelectors.creatureCard(demoBlueprint.creature)).click();
     await page.locator(smokeSelectors.tone).selectOption(demoBlueprint.tone);
-    await page.locator(smokeSelectors.spicyLevel).fill(demoBlueprint.spicyLevel);
+    await page.locator(smokeSelectors.spiceCard(demoBlueprint.spicyLevel)).click();
     await page.locator(smokeSelectors.wordBudget).selectOption({ label: demoBlueprint.wordBudgetLabel });
     await page.locator(smokeSelectors.chapterBatchSize).selectOption({ label: demoBlueprint.chapterBatchLabel });
     await page.locator(smokeSelectors.logline).fill(demoBlueprint.logline);
+    await page.locator(smokeSelectors.storyDetails).click();
     await page.locator(smokeSelectors.protagonist).fill(demoBlueprint.protagonist);
     await page.locator(smokeSelectors.antagonist).fill(demoBlueprint.antagonist);
     await page.locator(smokeSelectors.worldDetails).fill(demoBlueprint.worldDetails);
     await page.locator(smokeSelectors.themeChip(demoBlueprint.themeId)).click();
 
     await page.locator(smokeSelectors.generateButton).click();
+    await page.locator(smokeSelectors.progress).waitFor({ timeout: 20_000 });
     await page.locator(smokeSelectors.storyPanel).waitFor({ timeout: liveMode ? 90_000 : 20_000 });
     await expectNonEmptyText(page.locator(smokeSelectors.storyTitle), 'story title');
     await page.locator(smokeSelectors.chapterView(1)).waitFor({ timeout: 20_000 });
 
-    await page.locator(smokeSelectors.continueButton).click();
+    await page.locator(smokeSelectors.continuationDirection('Raise the danger')).click();
+    await page.locator(smokeSelectors.progress).waitFor({ timeout: 20_000 });
     await page.locator(smokeSelectors.chapterView(2)).waitFor({ timeout: liveMode ? 90_000 : 20_000 });
+
+    await page.locator(smokeSelectors.copyStory).click();
+    await expectText(page.locator(smokeSelectors.statusMessage), 'Story copied');
+    const download = await Promise.all([
+      page.waitForEvent('download', { timeout: 20_000 }),
+      page.locator(smokeSelectors.downloadStory).click()
+    ]).then(([downloadEvent]) => downloadEvent);
+    if (!download.suggestedFilename().endsWith('.html')) {
+      throw new Error(`Expected Story Lab download to be an HTML file, got ${download.suggestedFilename()}`);
+    }
 
     if (!liveMode) {
       await page.reload({ waitUntil: 'domcontentloaded' });
@@ -385,6 +409,7 @@ async function installMockStoryLabRoutes(page) {
       await route.fallback();
       return;
     }
+    await delay(250);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -393,6 +418,27 @@ async function installMockStoryLabRoutes(page) {
   });
 
   await page.route('**/api/story-lab/stories/*/continue', async route => {
+    let body = null;
+    try {
+      body = route.request().postDataJSON();
+    } catch {
+      body = null;
+    }
+    if (!body?.continuationBrief?.includes('danger')) {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: {
+            code: 'MISSING_DIRECTION',
+            message: 'Smoke expected a continuation direction brief.'
+          }
+        })
+      });
+      return;
+    }
+    await delay(250);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -532,6 +578,20 @@ async function expectNonEmptyText(locator, label) {
   if (!text) {
     throw new Error(`Expected ${label} to contain visible text.`);
   }
+}
+
+async function expectText(locator, expectedText) {
+  await locator.waitFor({ timeout: 20_000 });
+  const started = Date.now();
+  let lastText = '';
+  while (Date.now() - started < 20_000) {
+    lastText = (await locator.textContent())?.trim() ?? '';
+    if (lastText.includes(expectedText)) {
+      return;
+    }
+    await delay(100);
+  }
+  throw new Error(`Expected text to include "${expectedText}", got "${lastText}"`);
 }
 
 function delay(ms) {

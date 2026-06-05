@@ -16,7 +16,8 @@
     "test:all": "npm run test:story && npm run test:tropes && npm run test:cliffhangers && npm run test:story-lab-state && npm run test:story-lab-real-engine && npm run test:story-quality",
     "smoke:grok": "tsx tests/grok-multi-agent-smoke.test.ts",
     "smoke:grok-multi-agent": "tsx tests/grok-multi-agent-smoke.test.ts",
-    "smoke:story-lab-ui": "node scripts/recovery/story-lab-browser-smoke.mjs"
+    "smoke:story-lab-ui": "node scripts/recovery/story-lab-browser-smoke.mjs",
+    "smoke:story-lab-live-provider": "tsx scripts/recovery/story-lab-live-provider-smoke.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

@@ -375,7 +375,14 @@ export class GenerationLogicService {
       case 'fairy':
       case 'siren':
       case 'djinn':
+      case 'witch':
+      case 'angel':
+      case 'mermaid':
         return this.fairyStyles;
+      case 'dragon':
+        return this.werewolfStyles;
+      case 'demon':
+        return this.vampireStyles;
       default:
         return [];
     }

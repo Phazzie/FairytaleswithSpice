@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, SecurityContext, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, SecurityContext, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
@@ -11,8 +11,13 @@ import {
   ChapterBatchSize,
   ChapterTimelineEntry,
   ContinuityPanelViewModel,
+  CreatureArchetype,
   GeneratedChapter,
+  HeatContract,
+  HeatIntimacyBoundary,
+  HeatTensionMode,
   SavedStoryProject,
+  SpicyLevel,
   StoryBlueprint,
   StoryIterationPayload,
   StoryWorkbenchSession,
@@ -36,6 +41,44 @@ type ChapterGroupViewModel = {
   chapters: GeneratedChapter[];
 };
 
+type StorySkinId = 'bookshop' | 'conservatory' | 'writing-desk';
+
+type StorySkinOption = {
+  id: StorySkinId;
+  label: string;
+  mood: string;
+};
+
+type CreatureOption = {
+  id: CreatureArchetype;
+  label: string;
+  description: string;
+};
+
+type SpiceOption = {
+  level: SpicyLevel;
+  label: string;
+  description: string;
+};
+
+type HeatContractOption<T extends string> = {
+  id: T;
+  label: string;
+  description: string;
+};
+
+type ContinuationDirection = {
+  label: string;
+  brief: string;
+};
+
+type GenerationProgressState = {
+  active: boolean;
+  percent: number;
+  stage: string;
+  elapsedSeconds: number;
+};
+
 @Component({
   selector: 'app-story-lab',
   standalone: true,
@@ -43,7 +86,7 @@ type ChapterGroupViewModel = {
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
-export class App {
+export class App implements OnDestroy {
   private readonly storyService = inject(StoryService);
   private readonly errorLogging = inject(ErrorLoggingService);
   private readonly formValidation = inject(FormValidationService);
@@ -52,14 +95,71 @@ export class App {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly route = inject(ActivatedRoute);
   private batchIdSequence = 0;
+  private readonly skinStorageKey = 'fairytales_story_lab_skin_v1';
+  private progressTimer: ReturnType<typeof setInterval> | null = null;
+  private progressStartedAt = 0;
+
+  readonly skinOptions: StorySkinOption[] = [
+    { id: 'bookshop', label: 'Enchanted Bookshop', mood: 'Warm, nostalgic, whimsical' },
+    { id: 'conservatory', label: 'Moonlit Conservatory', mood: 'Romantic, mysterious, gothic' },
+    { id: 'writing-desk', label: 'Cozy Witchy Writing Desk', mood: 'Intimate, earthy, creative' }
+  ];
+
+  readonly creatureOptions: CreatureOption[] = [
+    { id: 'vampire', label: 'Vampire', description: 'Immortal desire, old secrets, dangerous elegance.' },
+    { id: 'werewolf', label: 'Werewolf', description: 'Pack bonds, moonlit hunger, protective intensity.' },
+    { id: 'fairy', label: 'Fairy', description: 'Fae bargains, beautiful traps, glittering menace.' },
+    { id: 'siren', label: 'Siren', description: 'Songs, saltwater vows, temptation with teeth.' },
+    { id: 'djinn', label: 'Djinn', description: 'Wishes, bargains, heat shimmer magic.' },
+    { id: 'witch', label: 'Witch', description: 'Spellwork, grimoires, familiar old power.' },
+    { id: 'dragon', label: 'Dragon', description: 'Treasure, pride, scale-deep obsession.' },
+    { id: 'demon', label: 'Demon', description: 'Temptation, contracts, wicked devotion.' },
+    { id: 'angel', label: 'Angel', description: 'Forbidden grace, falling, sacred desire.' },
+    { id: 'mermaid', label: 'Mermaid', description: 'Tides, curses, pearl-lit longing.' }
+  ];
 
   readonly availableThemes: ThemeSeed[] = [
-    { id: 'forbidden_love', label: 'Forbidden Love', description: 'Lovers defy expectations and social rules.' },
-    { id: 'ancient_curses', label: 'Ancient Curses', description: 'Long-forgotten vows twist fate.' },
-    { id: 'court_intrigue', label: 'Court Intrigue', description: 'Schemes and power plays simmer in shadow.' },
-    { id: 'blood_oaths', label: 'Blood Oaths', description: 'Unbreakable promises bind every action.' },
-    { id: 'slow_burn', label: 'Slow Burn', description: 'Tension builds across chapters before erupting.' },
-    { id: 'enemies_to_lovers', label: 'Enemies to Lovers', description: 'Bitterness melts into desire.' }
+    { id: 'forbidden_love', label: 'Forbidden Love', description: 'Desire has consequences.' },
+    { id: 'dark_secrets', label: 'Hidden Secrets', description: 'Someone is lying beautifully.' },
+    { id: 'court_intrigue', label: 'Court Intrigue', description: 'Power games under candlelight.' },
+    { id: 'blood_oaths', label: 'Blood Oaths', description: 'Promises that bite back.' },
+    { id: 'slow_burn', label: 'Slow Burn', description: 'Tension before surrender.' },
+    { id: 'enemies_to_lovers', label: 'Enemies to Lovers', description: 'Sparks from mutual danger.' },
+    { id: 'revenge', label: 'Revenge', description: 'A debt comes due.' },
+    { id: 'obsession', label: 'Obsession', description: 'Want sharp enough to wound.' },
+    { id: 'temptation', label: 'Temptation', description: 'The wrong door keeps opening.' },
+    { id: 'magical_bargain', label: 'Magical Bargain', description: 'Every wish has a price.' },
+    { id: 'secret_identity', label: 'Secret Identity', description: 'The lover is not who they seem.' },
+    { id: 'forced_proximity', label: 'Forced Proximity', description: 'No escape from chemistry.' }
+  ];
+
+  readonly spiceOptions: SpiceOption[] = [
+    { level: 1, label: 'Storybook Romance', description: 'Longing, flirtation, no explicit detail.' },
+    { level: 2, label: 'Warm', description: 'Kissing, sensual tension, restrained heat.' },
+    { level: 3, label: 'Spicy', description: 'Adult heat, literary, fade-to-black before graphic detail.' },
+    { level: 4, label: 'Very Spicy', description: 'Explicit consensual intimacy with emotional stakes.' },
+    { level: 5, label: 'Inferno', description: 'Maximum explicit consensual adult fantasy.' }
+  ];
+
+  readonly heatTensionOptions: HeatContractOption<HeatTensionMode>[] = [
+    { id: 'slow_burn', label: 'Slow burn', description: 'Longing, restraint, charged pauses.' },
+    { id: 'dangerous_proximity', label: 'Danger close', description: 'Threat, protection, forced proximity.' },
+    { id: 'playful_banter', label: 'Banter', description: 'Teasing, challenge, mischief.' },
+    { id: 'devotional_longing', label: 'Devotion', description: 'Reverence, sacrifice, tenderness.' }
+  ];
+
+  readonly heatBoundaryOptions: HeatContractOption<HeatIntimacyBoundary>[] = [
+    { id: 'fade_to_black', label: 'Fade to black', description: 'Build heat, close the door early.' },
+    { id: 'closed_door', label: 'Closed door', description: 'Romance stays implied off-page.' },
+    { id: 'literary_on_page', label: 'Literary on-page', description: 'Consensual heat with polished language.' }
+  ];
+
+  readonly continuationDirections: ContinuationDirection[] = [
+    { label: 'Deepen the romance', brief: 'Deepen the romantic tension and make the emotional stakes more intimate.' },
+    { label: 'Raise the danger', brief: 'Raise the external danger and force the characters into a sharper choice.' },
+    { label: 'Reveal a secret', brief: 'Reveal a secret that changes how the previous chapter should be understood.' },
+    { label: 'Add a twist', brief: 'Add a twist that complicates the romance without breaking continuity.' },
+    { label: 'Slow down and linger', brief: 'Slow down for atmosphere, longing, and character intimacy before the next plot turn.' }
   ];
 
   readonly blueprint = signal<BlueprintForm>({
@@ -70,6 +170,12 @@ export class App {
     tone: 'dark_romance',
     desiredWordBudget: 900,
     chapterBatchSize: 1,
+    heatContract: {
+      adultOnlyConfirmed: false,
+      tensionMode: 'slow_burn',
+      intimacyBoundary: 'fade_to_black',
+      noGoContent: ''
+    },
     protagonistName: '',
     antagonistName: '',
     worldDetails: '',
@@ -87,10 +193,18 @@ export class App {
 
   readonly selectedChapterId = signal<string | null>(null);
   readonly collapsedChapterGroups = signal<Set<number>>(new Set());
+  readonly activeSkin = signal<StorySkinId>('writing-desk');
+  readonly customContinuationBrief = signal('');
   readonly isGenerating = signal(false);
-  readonly statusMessage = signal<string>('Configure your spicy fairy-tale blueprint to begin.');
+  readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
   readonly savedProjects = signal<SavedStoryProject[]>([]);
+  readonly generationProgress = signal<GenerationProgressState>({
+    active: false,
+    percent: 0,
+    stage: 'Waiting for your story idea',
+    elapsedSeconds: 0
+  });
   readonly showDebugPanel = toSignal(
     this.route.queryParamMap.pipe(map(params => params.get('debug') === '1')),
     { initialValue: false }
@@ -98,6 +212,13 @@ export class App {
   readonly validationErrors = computed(() => this.formValidation.validateBlueprint(this.blueprint()));
   readonly isBlueprintValid = computed(() => this.formValidation.isValid(this.validationErrors()));
   readonly firstValidationError = computed(() => this.formValidation.getFirstError(this.validationErrors()));
+  readonly currentSkin = computed(() =>
+    this.skinOptions.find(skin => skin.id === this.activeSkin()) ?? this.skinOptions[0]
+  );
+  readonly activeSpiceOption = computed(() =>
+    this.spiceOptions.find(option => option.level === Number(this.blueprint().spicyLevel)) ?? this.spiceOptions[2]
+  );
+  readonly activeHeatContract = computed(() => this.normalizeHeatContract(this.blueprint().heatContract));
 
   readonly timeline = computed<ChapterTimelineEntry[]>(() => {
     const session = this.workbench();
@@ -197,13 +318,28 @@ export class App {
   });
 
   constructor() {
+    this.restoreSkin();
     this.restoreLatestProject();
+  }
+
+  ngOnDestroy() {
+    this.stopProgress();
   }
 
   updateBlueprint<K extends keyof BlueprintForm>(field: K, value: BlueprintForm[K]) {
     this.blueprint.update(current => ({
       ...current,
       [field]: value
+    }));
+  }
+
+  updateHeatContract<K extends keyof HeatContract>(field: K, value: HeatContract[K]) {
+    this.blueprint.update(current => ({
+      ...current,
+      heatContract: {
+        ...this.normalizeHeatContract(current.heatContract),
+        [field]: value
+      }
     }));
   }
 
@@ -219,6 +355,19 @@ export class App {
       : [...current.themes, theme];
 
     this.blueprint.set({ ...current, themes: updatedThemes });
+  }
+
+  selectSkin(skinId: StorySkinId) {
+    this.activeSkin.set(skinId);
+    try {
+      localStorage.setItem(this.skinStorageKey, skinId);
+    } catch {
+      this.workspaceSaveStatus.set('Theme choice will last until this tab closes.');
+    }
+  }
+
+  updateCustomContinuationBrief(value: string) {
+    this.customContinuationBrief.set(value);
   }
 
   selectChapter(chapterId: string) {
@@ -240,36 +389,40 @@ export class App {
     }
 
     this.isGenerating.set(true);
-    this.statusMessage.set('Summoning the first batch of chapters...');
+    this.statusMessage.set('Sending your story ingredients to Grok...');
+    this.startProgress('genesis');
     this.setBatchQueue([]);
     const batchId = this.enqueueBatch('Genesis', blueprint.chapterBatchSize);
 
     this.storyService.beginStory(blueprint).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          const message = response.error?.message ?? 'Unknown error while generating story.';
+          const message = this.formatApiError(response.error, 'Unknown error while generating story.');
           this.statusMessage.set(message);
-          this.markBatchFailed(batchId, response.error?.message ?? 'Unknown generation error.');
+          this.markBatchFailed(batchId, message);
           this.notificationService.error('Generation failed', message);
           this.isGenerating.set(false);
+          this.stopProgress();
           return;
         }
 
         this.applyIteration(response.data, blueprint.chapterBatchSize, batchId);
-        this.statusMessage.set('Genesis batch complete. Continue weaving the saga!');
+        this.statusMessage.set('Your first chapter is ready. Choose where the story goes next.');
         this.notificationService.success(
           'Genesis complete',
           `Generated ${response.data.batch.chapters.length} chapter${response.data.batch.chapters.length === 1 ? '' : 's'}.`
         );
         this.isGenerating.set(false);
+        this.stopProgress();
       },
       error: error => {
         this.errorLogging.logError(error, 'App.startGenesis');
-        const message = 'Story generation failed. Please try again in a moment. If it keeps failing, the story provider may be unavailable.';
+        const message = this.formatHttpError(error, 'Story generation failed. Please try again in a moment.');
         this.statusMessage.set(message);
         this.markBatchFailed(batchId, message);
         this.notificationService.error('Generation failed', message);
         this.isGenerating.set(false);
+        this.stopProgress();
       }
     });
   }
@@ -288,7 +441,8 @@ export class App {
     }
 
     this.isGenerating.set(true);
-    this.statusMessage.set('Extending the saga with a fresh batch...');
+    this.statusMessage.set('Asking Grok to continue the next chapter...');
+    this.startProgress('continuation');
     const batchId = this.enqueueBatch('Continuation', this.blueprint().chapterBatchSize);
 
     const request = {
@@ -303,11 +457,12 @@ export class App {
     this.storyService.continueStory(request).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          const message = response.error?.message ?? 'Continuation request failed.';
+          const message = this.formatApiError(response.error, 'Continuation request failed.');
           this.statusMessage.set(message);
           this.markBatchFailed(batchId, message);
           this.notificationService.error('Continuation failed', message);
           this.isGenerating.set(false);
+          this.stopProgress();
           return;
         }
 
@@ -318,16 +473,33 @@ export class App {
           `Added ${response.data.batch.chapters.length} chapter${response.data.batch.chapters.length === 1 ? '' : 's'} to the saga.`
         );
         this.isGenerating.set(false);
+        this.stopProgress();
       },
       error: error => {
         this.errorLogging.logError(error, 'App.continueSaga');
-        const message = 'Continuation failed. Please try again; your existing chapters are still available.';
+        const message = this.formatHttpError(error, 'Continuation failed. Your existing chapters are still available.');
         this.statusMessage.set(message);
         this.markBatchFailed(batchId, message);
         this.notificationService.error('Continuation failed', message);
         this.isGenerating.set(false);
+        this.stopProgress();
       }
     });
+  }
+
+  continueWithDirection(direction: ContinuationDirection) {
+    this.continueSaga(direction.brief);
+  }
+
+  continueWithCustomDirection() {
+    const brief = this.customContinuationBrief().trim();
+    if (!brief) {
+      this.continueSaga();
+      return;
+    }
+
+    this.customContinuationBrief.set('');
+    this.continueSaga(brief);
   }
 
   getSafeHtml(html: string): string {
@@ -345,8 +517,66 @@ export class App {
     });
     this.selectedChapterId.set(null);
     this.collapsedChapterGroups.set(new Set());
-    this.statusMessage.set('Blueprint reset. Ready for a brand new legend.');
+    this.statusMessage.set('Start a fresh tale whenever you are ready.');
     this.notificationService.info('Workbench reset', 'Story Lab is ready for a new blueprint.');
+  }
+
+  async copyStory() {
+    const text = this.buildPlainStoryText();
+    if (!text) {
+      this.notificationService.warning('Nothing to copy', 'Generate a story first.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      this.notificationService.success('Story copied', 'The story text is on your clipboard.');
+      this.statusMessage.set('Story copied to your clipboard.');
+    } catch {
+      this.notificationService.error('Copy failed', 'Your browser did not allow clipboard access.');
+      this.statusMessage.set('Copy failed. Your browser did not allow clipboard access.');
+    }
+  }
+
+  downloadStory() {
+    const session = this.workbench();
+    if (!session.story || !session.chapterHistory.length) {
+      this.notificationService.warning('Nothing to download', 'Generate a story first.');
+      return;
+    }
+
+    const safeTitle = this.safeFileName(session.story.title);
+    const chapters = session.chapterHistory
+      .map(chapter => {
+        const body = this.escapeHtml(this.stripHtml(chapter.htmlContent));
+        return `<section><h2>Chapter ${chapter.chapterNumber}: ${this.escapeHtml(chapter.title)}</h2><p>${body}</p></section>`;
+      })
+      .join('\n');
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${this.escapeHtml(session.story.title)}</title>
+<style>
+body{font-family:Georgia,serif;line-height:1.65;max-width:760px;margin:40px auto;padding:0 20px;color:#251914;background:#fff8ee}
+h1,h2{line-height:1.15}hr{border:0;border-top:1px solid #d8c5aa;margin:28px 0}
+</style>
+</head>
+<body>
+<h1>${this.escapeHtml(session.story.title)}</h1>
+<p>${this.escapeHtml(session.story.synopsis)}</p>
+<hr>
+${chapters}
+</body>
+</html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${safeTitle}.html`;
+    link.click();
+    URL.revokeObjectURL(url);
+    this.statusMessage.set('Story download created.');
   }
 
   saveActiveProject() {
@@ -477,6 +707,7 @@ export class App {
   private hydrateSavedProject(project: SavedStoryProject, shouldNotify: boolean) {
     this.blueprint.set({
       ...project.blueprint,
+      heatContract: this.normalizeHeatContract(project.blueprint.heatContract),
       narrativeDirectives: project.blueprint.narrativeDirectives ?? ''
     });
     this.workbench.set({
@@ -498,6 +729,121 @@ export class App {
     if (shouldNotify) {
       this.notificationService.info('Story loaded', project.title);
     }
+  }
+
+  private restoreSkin() {
+    try {
+      const savedSkin = localStorage.getItem(this.skinStorageKey) as StorySkinId | null;
+      if (savedSkin && this.skinOptions.some(skin => skin.id === savedSkin)) {
+        this.activeSkin.set(savedSkin);
+      }
+    } catch {
+      this.activeSkin.set('writing-desk');
+    }
+  }
+
+  private startProgress(mode: 'genesis' | 'continuation') {
+    const stages = mode === 'genesis'
+      ? [
+          'Preparing your story ingredients',
+          'Sending them to Grok',
+          'Writing the first chapter',
+          'Checking the story thread',
+          'Binding the pages'
+        ]
+      : [
+          'Reading the last chapter',
+          'Sending your direction to Grok',
+          'Writing the next turn',
+          'Checking continuity',
+          'Binding the next pages'
+        ];
+
+    this.stopProgress();
+    this.progressStartedAt = Date.now();
+    this.generationProgress.set({
+      active: true,
+      percent: 8,
+      stage: stages[0],
+      elapsedSeconds: 0
+    });
+
+    this.progressTimer = setInterval(() => {
+      const elapsedSeconds = Math.floor((Date.now() - this.progressStartedAt) / 1000);
+      const stageIndex = Math.min(stages.length - 1, Math.floor(elapsedSeconds / 6));
+      this.generationProgress.update(current => ({
+        active: true,
+        percent: Math.min(92, current.percent + (current.percent < 55 ? 7 : 3)),
+        stage: stages[stageIndex],
+        elapsedSeconds
+      }));
+    }, 1000);
+  }
+
+  private stopProgress() {
+    if (this.progressTimer) {
+      clearInterval(this.progressTimer);
+      this.progressTimer = null;
+    }
+
+    this.generationProgress.update(current => ({
+      ...current,
+      active: false,
+      percent: current.percent > 0 ? 100 : 0
+    }));
+  }
+
+  private formatApiError(error: { code?: string; message?: string; details?: unknown } | undefined, fallback: string): string {
+    const code = error?.code ?? '';
+    const message = error?.message ?? fallback;
+
+    if (code === 'AI_UNAVAILABLE') {
+      return 'The AI story engine is unavailable because this deployment is missing its Grok configuration.';
+    }
+
+    if (code.includes('TIMEOUT') || message.toLowerCase().includes('timeout')) {
+      return 'Grok took too long to finish this story. Try a shorter chapter or try again in a minute.';
+    }
+
+    if (message.toLowerCase().includes('temporarily unavailable') || message.toLowerCase().includes('provider')) {
+      return 'Grok is temporarily unavailable. Try again in a minute.';
+    }
+
+    return message;
+  }
+
+  private formatHttpError(error: any, fallback: string): string {
+    return this.formatApiError(error?.error?.error ?? error?.error, fallback);
+  }
+
+  private buildPlainStoryText(): string {
+    const session = this.workbench();
+    if (!session.story || !session.chapterHistory.length) {
+      return '';
+    }
+
+    const chapters = session.chapterHistory
+      .map(chapter => `Chapter ${chapter.chapterNumber}: ${chapter.title}\n\n${this.stripHtml(chapter.htmlContent)}`)
+      .join('\n\n---\n\n');
+
+    return `${session.story.title}\n\n${session.story.synopsis}\n\n${chapters}`;
+  }
+
+  private stripHtml(html: string): string {
+    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private safeFileName(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'fairytales-story';
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   private persistSession(session: StoryWorkbenchSession): string | undefined {
@@ -602,11 +948,44 @@ export class App {
     return theme.id;
   }
 
+  trackSkin(index: number, skin: StorySkinOption) {
+    return skin.id;
+  }
+
+  trackCreature(index: number, creature: CreatureOption) {
+    return creature.id;
+  }
+
+  trackSpice(index: number, spice: SpiceOption) {
+    return spice.level;
+  }
+
+  trackHeatTensionOption(index: number, option: HeatContractOption<HeatTensionMode>) {
+    return option.id;
+  }
+
+  trackHeatBoundaryOption(index: number, option: HeatContractOption<HeatIntimacyBoundary>) {
+    return option.id;
+  }
+
+  trackContinuationDirection(index: number, direction: ContinuationDirection) {
+    return direction.label;
+  }
+
   getFieldError(field: BlueprintValidationField): string | undefined {
     return this.validationErrors()[field];
   }
 
   hasFieldError(field: BlueprintValidationField): boolean {
     return Boolean(this.getFieldError(field));
+  }
+
+  private normalizeHeatContract(contract: HeatContract | undefined): HeatContract {
+    return {
+      adultOnlyConfirmed: contract?.adultOnlyConfirmed === true,
+      tensionMode: contract?.tensionMode ?? 'slow_burn',
+      intimacyBoundary: contract?.intimacyBoundary ?? 'fade_to_black',
+      noGoContent: contract?.noGoContent ?? ''
+    };
   }
 }

@@ -1,84 +1,211 @@
-<div class="app-shell">
+<div class="app-shell" [ngClass]="'skin-' + activeSkin()">
   <app-notifications></app-notifications>
 
   <header class="lab-hero">
     <div class="lab-hero__image" aria-hidden="true"></div>
     <div class="lab-hero__content">
-      <p class="eyebrow">Grok 4.3 writing workbench</p>
-      <h1 data-testid="story-lab-heading">Story Lab</h1>
-      <p class="status-message">{{ statusMessage() }}</p>
+      <p class="eyebrow">AI fairytales for grown-up romantics</p>
+      <h1 data-testid="story-lab-heading">Fairytales with Spice</h1>
+      <p class="status-message" data-testid="status-message">{{ statusMessage() }}</p>
       <div class="hero-badges">
-        <span>{{ modelBadge() }}</span>
+        <span>{{ currentSkin().label }}</span>
         <span>{{ workspaceSaveStatus() }}</span>
       </div>
     </div>
-    <nav class="hero-actions" aria-label="Story Lab destinations">
-      <a class="header-link" routerLink="/proving-grounds">Proving Grounds</a>
+    <nav class="hero-actions" aria-label="Story Lab actions">
+      <a class="header-link" routerLink="/proving-grounds" *ngIf="showDebugPanel()">Proving Grounds</a>
       <button type="button" class="ghost compact" (click)="saveActiveProject()" [disabled]="!workbench().story">
         Save
       </button>
     </nav>
   </header>
 
-  <main class="workbench-grid">
-    <aside class="saved-rail" aria-label="Saved stories">
-      <div class="section-heading">
-        <p class="eyebrow">Library</p>
-        <h2>Saved Stories</h2>
-      </div>
-      <p class="muted" *ngIf="!savedProjects().length">No saved stories in this browser yet.</p>
-      <ol class="saved-list" *ngIf="savedProjects().length">
-        <li class="saved-item" *ngFor="let project of savedProjects()">
-          <button
-            type="button"
-            class="saved-load"
-            [class.saved-load--active]="workbench().savedProjectId === project.id"
-            (click)="loadSavedProject(project.id)"
-          >
-            <span class="saved-title">{{ project.title }}</span>
-            <span class="saved-meta">{{ project.chapters.length }} chapter{{ project.chapters.length === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}</span>
-          </button>
-          <button
-            type="button"
-            class="saved-delete"
-            [attr.aria-label]="'Delete ' + project.title"
-            (click)="deleteSavedProject(project.id)"
-          >
-            Delete
-          </button>
-        </li>
-      </ol>
-    </aside>
+  <main class="story-layout">
+    <section class="skin-strip" aria-label="Choose the visual style">
+      <button
+        type="button"
+        class="skin-choice"
+        data-testid="skin-choice"
+        [attr.data-skin-id]="skin.id"
+        *ngFor="let skin of skinOptions; trackBy: trackSkin"
+        [class.skin-choice--active]="activeSkin() === skin.id"
+        [attr.aria-pressed]="activeSkin() === skin.id"
+        (click)="selectSkin(skin.id)"
+      >
+        <span>{{ skin.label }}</span>
+        <small>{{ skin.mood }}</small>
+      </button>
+    </section>
 
-    <section class="blueprint-panel">
+    <section class="creation-panel">
       <div class="section-heading">
-        <p class="eyebrow">Blueprint Studio</p>
-        <h2>Shape the first batch</h2>
+        <p class="eyebrow">Create your story</p>
+        <h2>Tell us what you want to read</h2>
       </div>
+
+      <label class="story-idea">
+        Story idea
+        <textarea
+          data-testid="blueprint-logline"
+          rows="5"
+          placeholder="A witch with a guarded heart opens her door to a charming alchemist. Sparks fly. So do boundaries."
+          [ngModel]="blueprint().logline"
+          (ngModelChange)="updateBlueprint('logline', $event)"
+          [attr.aria-invalid]="hasFieldError('logline')"
+          [attr.aria-describedby]="hasFieldError('logline') ? 'logline-error' : null"
+        ></textarea>
+        <span class="field-error" id="logline-error" *ngIf="hasFieldError('logline')" role="alert">
+          {{ getFieldError('logline') }}
+        </span>
+      </label>
+
+      <section class="choice-block">
+        <div class="section-heading compact-heading">
+          <p class="eyebrow">Creature</p>
+          <h3>{{ blueprint().creature | titlecase }}</h3>
+        </div>
+        <div class="creature-grid">
+          <button
+            type="button"
+            class="creature-card"
+            data-testid="creature-card"
+            [attr.data-creature-id]="creature.id"
+            *ngFor="let creature of creatureOptions; trackBy: trackCreature"
+            [class.creature-card--active]="blueprint().creature === creature.id"
+            [attr.aria-pressed]="blueprint().creature === creature.id"
+            (click)="updateBlueprint('creature', creature.id)"
+          >
+            <span>{{ creature.label }}</span>
+            <small>{{ creature.description }}</small>
+          </button>
+        </div>
+      </section>
+
+      <section class="choice-block">
+        <div class="section-heading compact-heading">
+          <p class="eyebrow">Story elements</p>
+          <h3>{{ selectedThemes }}</h3>
+        </div>
+        <p class="field-error" id="themes-error" *ngIf="hasFieldError('themes')" role="alert">
+          {{ getFieldError('themes') }}
+        </p>
+        <div class="theme-grid" [attr.aria-invalid]="hasFieldError('themes')">
+          <button
+            type="button"
+            class="theme-chip"
+            data-testid="theme-chip"
+            [attr.data-theme-id]="theme.id"
+            [class.theme-chip--active]="isThemeSelected(theme)"
+            [attr.aria-pressed]="isThemeSelected(theme)"
+            (click)="toggleTheme(theme)"
+            *ngFor="let theme of availableThemes; trackBy: trackTheme"
+          >
+            <span class="theme-label">{{ theme.label }}</span>
+            <span class="theme-description">{{ theme.description }}</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="choice-block">
+        <div class="section-heading compact-heading">
+          <p class="eyebrow">Spice level</p>
+          <h3>{{ activeSpiceOption().label }}</h3>
+        </div>
+        <div class="spice-grid">
+          <button
+            type="button"
+            class="spice-card"
+            data-testid="spice-card"
+            [attr.data-spice-level]="spice.level"
+            *ngFor="let spice of spiceOptions; trackBy: trackSpice"
+            [class.spice-card--active]="blueprint().spicyLevel === spice.level"
+            [attr.aria-pressed]="blueprint().spicyLevel === spice.level"
+            (click)="updateBlueprint('spicyLevel', spice.level)"
+          >
+            <span>Level {{ spice.level }}</span>
+            <strong>{{ spice.label }}</strong>
+            <small>{{ spice.description }}</small>
+          </button>
+        </div>
+      </section>
+
+      <section class="choice-block heat-contract" data-testid="heat-contract">
+        <div class="section-heading compact-heading">
+          <p class="eyebrow">Heat contract</p>
+          <h3>{{ activeHeatContract().intimacyBoundary.split('_').join(' ') | titlecase }}</h3>
+        </div>
+
+        <label class="contract-check">
+          <input
+            type="checkbox"
+            data-testid="heat-contract-adult"
+            [ngModel]="activeHeatContract().adultOnlyConfirmed"
+            (ngModelChange)="updateHeatContract('adultOnlyConfirmed', $event)"
+          />
+          Adult readers only; consensual fantasy only.
+        </label>
+        <span class="field-error" *ngIf="hasFieldError('heatContract')" role="alert">
+          {{ getFieldError('heatContract') }}
+        </span>
+
+        <div class="heat-option-group">
+          <span>Tension mode</span>
+          <div class="heat-option-grid">
+            <button
+              type="button"
+              class="heat-option"
+              data-testid="heat-tension-option"
+              [attr.data-heat-tension]="option.id"
+              *ngFor="let option of heatTensionOptions; trackBy: trackHeatTensionOption"
+              [class.heat-option--active]="activeHeatContract().tensionMode === option.id"
+              [attr.aria-pressed]="activeHeatContract().tensionMode === option.id"
+              (click)="updateHeatContract('tensionMode', option.id)"
+            >
+              <strong>{{ option.label }}</strong>
+              <small>{{ option.description }}</small>
+            </button>
+          </div>
+        </div>
+
+        <div class="heat-option-group">
+          <span>Boundary</span>
+          <div class="heat-option-grid">
+            <button
+              type="button"
+              class="heat-option"
+              data-testid="heat-boundary-option"
+              [attr.data-heat-boundary]="option.id"
+              *ngFor="let option of heatBoundaryOptions; trackBy: trackHeatBoundaryOption"
+              [class.heat-option--active]="activeHeatContract().intimacyBoundary === option.id"
+              [attr.aria-pressed]="activeHeatContract().intimacyBoundary === option.id"
+              (click)="updateHeatContract('intimacyBoundary', option.id)"
+            >
+              <strong>{{ option.label }}</strong>
+              <small>{{ option.description }}</small>
+            </button>
+          </div>
+        </div>
+
+        <label>
+          No-go content
+          <textarea
+            data-testid="heat-contract-no-go"
+            rows="2"
+            placeholder="No coercion, no humiliation, no body horror."
+            [ngModel]="activeHeatContract().noGoContent"
+            (ngModelChange)="updateHeatContract('noGoContent', $event)"
+            [attr.aria-invalid]="hasFieldError('heatContractNoGoContent')"
+            [attr.aria-describedby]="hasFieldError('heatContractNoGoContent') ? 'heat-contract-no-go-error' : null"
+          ></textarea>
+          <span class="field-error" id="heat-contract-no-go-error" *ngIf="hasFieldError('heatContractNoGoContent')" role="alert">
+            {{ getFieldError('heatContractNoGoContent') }}
+          </span>
+        </label>
+      </section>
 
       <div class="form-grid">
         <label>
-          Creature Archetype
-          <select
-            data-testid="blueprint-creature"
-            [ngModel]="blueprint().creature"
-            (ngModelChange)="updateBlueprint('creature', $event)"
-            [attr.aria-invalid]="hasFieldError('creature')"
-            [attr.aria-describedby]="hasFieldError('creature') ? 'creature-error' : null"
-          >
-            <option value="vampire">Vampire</option>
-            <option value="werewolf">Werewolf</option>
-            <option value="fairy">Fairy</option>
-            <option value="siren">Siren</option>
-            <option value="djinn">Djinn</option>
-          </select>
-          <span class="field-error" id="creature-error" *ngIf="hasFieldError('creature')" role="alert">
-            {{ getFieldError('creature') }}
-          </span>
-        </label>
-
-        <label>
-          Narrative Tone
+          Mood
           <select
             data-testid="blueprint-tone"
             [ngModel]="blueprint().tone"
@@ -99,25 +226,7 @@
         </label>
 
         <label>
-          Spicy Level
-          <input
-            data-testid="blueprint-spicy-level"
-            type="range"
-            min="1"
-            max="5"
-            [ngModel]="blueprint().spicyLevel"
-            (ngModelChange)="updateBlueprint('spicyLevel', $event)"
-            [attr.aria-invalid]="hasFieldError('spicyLevel')"
-            [attr.aria-describedby]="hasFieldError('spicyLevel') ? 'spicy-level-error' : null"
-          />
-          <span class="range-value">Level {{ blueprint().spicyLevel }}</span>
-          <span class="field-error" id="spicy-level-error" *ngIf="hasFieldError('spicyLevel')" role="alert">
-            {{ getFieldError('spicyLevel') }}
-          </span>
-        </label>
-
-        <label>
-          Desired Word Budget
+          Chapter length
           <select
             data-testid="blueprint-word-budget"
             [ngModel]="blueprint().desiredWordBudget"
@@ -125,10 +234,10 @@
             [attr.aria-invalid]="hasFieldError('desiredWordBudget')"
             [attr.aria-describedby]="hasFieldError('desiredWordBudget') ? 'word-budget-error' : null"
           >
-            <option [ngValue]="600">600 words</option>
-            <option [ngValue]="900">900 words</option>
-            <option [ngValue]="1200">1200 words</option>
-            <option [ngValue]="1500">1500 words</option>
+            <option [ngValue]="600">Short</option>
+            <option [ngValue]="900">Medium</option>
+            <option [ngValue]="1200">Long</option>
+            <option [ngValue]="1500">Lush</option>
           </select>
           <span class="field-error" id="word-budget-error" *ngIf="hasFieldError('desiredWordBudget')" role="alert">
             {{ getFieldError('desiredWordBudget') }}
@@ -136,7 +245,7 @@
         </label>
 
         <label>
-          Chapters per Batch
+          Chapters now
           <select
             data-testid="blueprint-chapter-batch-size"
             [ngModel]="blueprint().chapterBatchSize"
@@ -154,115 +263,64 @@
         </label>
       </div>
 
-      <label>
-        Logline
-        <textarea
-          data-testid="blueprint-logline"
-          rows="4"
-          placeholder="A forbidden lover, a vow-binding court, the price of choosing desire."
-          [ngModel]="blueprint().logline"
-          (ngModelChange)="updateBlueprint('logline', $event)"
-          [attr.aria-invalid]="hasFieldError('logline')"
-          [attr.aria-describedby]="hasFieldError('logline') ? 'logline-error' : null"
-        ></textarea>
-        <span class="field-error" id="logline-error" *ngIf="hasFieldError('logline')" role="alert">
-          {{ getFieldError('logline') }}
-        </span>
-      </label>
-
-      <div class="name-row">
-        <label>
-          Protagonist Name
-          <input
-            data-testid="blueprint-protagonist"
-            type="text"
-            [ngModel]="blueprint().protagonistName"
-            (ngModelChange)="updateBlueprint('protagonistName', $event)"
-          />
-        </label>
-        <label>
-          Antagonist Name
-          <input
-            data-testid="blueprint-antagonist"
-            type="text"
-            [ngModel]="blueprint().antagonistName"
-            (ngModelChange)="updateBlueprint('antagonistName', $event)"
-          />
-        </label>
-      </div>
-
-      <label>
-        World Details
-        <textarea
-          data-testid="blueprint-world-details"
-          rows="3"
-          placeholder="Moonlit reef court, vow-binding songs, witness shells, exile law."
-          [ngModel]="blueprint().worldDetails"
-          (ngModelChange)="updateBlueprint('worldDetails', $event)"
-          [attr.aria-invalid]="hasFieldError('worldDetails')"
-          [attr.aria-describedby]="hasFieldError('worldDetails') ? 'world-details-error' : null"
-        ></textarea>
-        <span class="field-error" id="world-details-error" *ngIf="hasFieldError('worldDetails')" role="alert">
-          {{ getFieldError('worldDetails') }}
-        </span>
-      </label>
-
-      <label>
-        Narrative Directives
-        <textarea
-          rows="3"
-          placeholder="Lush tension, dangerous bargains, one unanswered question at every ending."
-          [ngModel]="blueprint().narrativeDirectives"
-          (ngModelChange)="updateBlueprint('narrativeDirectives', $event)"
-          [attr.aria-invalid]="hasFieldError('narrativeDirectives')"
-          [attr.aria-describedby]="hasFieldError('narrativeDirectives') ? 'narrative-directives-error' : null"
-        ></textarea>
-        <span class="field-error" id="narrative-directives-error" *ngIf="hasFieldError('narrativeDirectives')" role="alert">
-          {{ getFieldError('narrativeDirectives') }}
-        </span>
-      </label>
-
-      <section
-        class="theme-picker"
-        [attr.aria-invalid]="hasFieldError('themes')"
-        [attr.aria-describedby]="hasFieldError('themes') ? 'themes-error' : null"
-      >
-        <div class="section-heading compact-heading">
-          <p class="eyebrow">Thematic Seeds</p>
-          <h3>{{ selectedThemes }}</h3>
+      <details class="story-details">
+        <summary>Names, world, and special requests</summary>
+        <div class="name-row">
+          <label>
+            Main character
+            <input
+              data-testid="blueprint-protagonist"
+              type="text"
+              [ngModel]="blueprint().protagonistName"
+              (ngModelChange)="updateBlueprint('protagonistName', $event)"
+            />
+          </label>
+          <label>
+            Love interest or troublemaker
+            <input
+              data-testid="blueprint-antagonist"
+              type="text"
+              [ngModel]="blueprint().antagonistName"
+              (ngModelChange)="updateBlueprint('antagonistName', $event)"
+            />
+          </label>
         </div>
-        <p class="field-error" id="themes-error" *ngIf="hasFieldError('themes')" role="alert">
-          {{ getFieldError('themes') }}
-        </p>
-        <div class="theme-grid">
-          <button
-            type="button"
-            class="theme-chip"
-            data-testid="theme-chip"
-            [attr.data-theme-id]="theme.id"
-            [class.theme-chip--active]="isThemeSelected(theme)"
-            [attr.aria-pressed]="isThemeSelected(theme)"
-            (click)="toggleTheme(theme)"
-            *ngFor="let theme of availableThemes; trackBy: trackTheme"
-          >
-            <span class="theme-label">{{ theme.label }}</span>
-            <span class="theme-description">{{ theme.description }}</span>
-          </button>
-        </div>
-      </section>
+
+        <label>
+          World details
+          <textarea
+            data-testid="blueprint-world-details"
+            rows="3"
+            placeholder="Moonlit reef court, vow-binding songs, witness shells, exile law."
+            [ngModel]="blueprint().worldDetails"
+            (ngModelChange)="updateBlueprint('worldDetails', $event)"
+            [attr.aria-invalid]="hasFieldError('worldDetails')"
+            [attr.aria-describedby]="hasFieldError('worldDetails') ? 'world-details-error' : null"
+          ></textarea>
+          <span class="field-error" id="world-details-error" *ngIf="hasFieldError('worldDetails')" role="alert">
+            {{ getFieldError('worldDetails') }}
+          </span>
+        </label>
+
+        <label>
+          Special requests
+          <textarea
+            rows="3"
+            placeholder="Lush tension, dangerous bargains, one unanswered question at every ending."
+            [ngModel]="blueprint().narrativeDirectives"
+            (ngModelChange)="updateBlueprint('narrativeDirectives', $event)"
+            [attr.aria-invalid]="hasFieldError('narrativeDirectives')"
+            [attr.aria-describedby]="hasFieldError('narrativeDirectives') ? 'narrative-directives-error' : null"
+          ></textarea>
+          <span class="field-error" id="narrative-directives-error" *ngIf="hasFieldError('narrativeDirectives')" role="alert">
+            {{ getFieldError('narrativeDirectives') }}
+          </span>
+        </label>
+      </details>
 
       <div class="action-row">
         <button type="button" class="primary" data-testid="generate-chapters" (click)="startGenesis()" [disabled]="isGenerating() || !isBlueprintValid()">
-          {{ workbench().story ? 'Regenerate Genesis' : 'Generate Chapters' }}
-        </button>
-        <button
-          type="button"
-          class="secondary"
-          data-testid="continue-saga"
-          (click)="continueSaga()"
-          [disabled]="isGenerating() || !workbench().story"
-        >
-          Continue Saga
+          {{ workbench().story ? 'Start a New First Chapter' : 'Generate My Story' }}
         </button>
         <button type="button" class="ghost" (click)="resetWorkbench()" [disabled]="isGenerating()">
           Reset
@@ -272,54 +330,95 @@
         {{ firstValidationError() }}
       </output>
 
-      <section class="batch-queue" *ngIf="activeBatchQueue().length">
-        <header>
-          <h3>Batch Queue</h3>
-          <button
-            type="button"
-            class="text-button"
-            (click)="clearFinishedBatchQueue()"
-            *ngIf="hasFinishedBatchQueueItems()"
-          >
-            Clear finished
-          </button>
-        </header>
-        <ol>
-          <li *ngFor="let item of activeBatchQueue()">
-            <span class="queue-title">{{ item.label }} · {{ item.batchSize }} chapter{{ item.batchSize === 1 ? '' : 's' }}</span>
-            <span class="queue-status" [ngClass]="'queue-status--' + item.status">
-              {{ item.status | titlecase }}
-            </span>
-            <span class="queue-meta">
-              {{ item.chaptersGenerated }}/{{ item.totalChapters }} chapters
-            </span>
-            <span class="queue-error" *ngIf="item.errorMessage">{{ item.errorMessage }}</span>
-          </li>
-        </ol>
+      <section class="generation-progress" data-testid="generation-progress" *ngIf="generationProgress().active" aria-live="polite">
+        <div class="progress-copy">
+          <strong>{{ generationProgress().stage }}</strong>
+          <span>{{ generationProgress().elapsedSeconds }}s elapsed</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span [style.width.%]="generationProgress().percent"></span>
+        </div>
       </section>
     </section>
 
-    <section class="story-panel" data-testid="story-panel" *ngIf="workbench().story as story; else emptyReader">
+    <section class="reader-panel" data-testid="story-panel" *ngIf="workbench().story as story; else emptyReader">
       <header class="story-header">
         <div>
-          <p class="eyebrow">Chapter Reader</p>
+          <p class="eyebrow">Your story</p>
           <h2 data-testid="story-title">{{ story.title }}</h2>
           <p class="story-meta">
-            {{ story.tone | titlecase }} · Level {{ story.spicyLevel }} · {{ totalChapterCount }} chapter{{ totalChapterCount === 1 ? '' : 's' }}
+            {{ story.tone | titlecase }} · {{ activeSpiceOption().label }} · {{ totalChapterCount }} chapter{{ totalChapterCount === 1 ? '' : 's' }}
+          </p>
+          <p class="heat-contract-summary" data-testid="heat-contract-summary">
+            {{ activeHeatContract().tensionMode.split('_').join(' ') | titlecase }} ·
+            {{ activeHeatContract().intimacyBoundary.split('_').join(' ') | titlecase }}
           </p>
         </div>
-        <div class="telemetry" *ngIf="workbench().lastTelemetry as telemetry">
-          <span>{{ telemetry.engine | titlecase }}</span>
-          <span>{{ telemetry.totalLatencyMs }} ms</span>
-          <span *ngIf="telemetry.model">{{ telemetry.model }}</span>
-          <span *ngIf="telemetry.fallbackFromModel">fallback from {{ telemetry.fallbackFromModel }}</span>
+        <div class="story-actions">
+          <button type="button" class="ghost compact" data-testid="copy-story" (click)="copyStory()">Copy</button>
+          <button type="button" class="ghost compact" data-testid="download-story" (click)="downloadStory()">Download</button>
+          <button type="button" class="ghost compact" (click)="saveActiveProject()">Save</button>
         </div>
       </header>
 
+      <article class="chapter-view" data-testid="chapter-view" [attr.data-chapter-number]="chapter.chapterNumber" *ngIf="selectedChapter() as chapter">
+        <header>
+          <div>
+            <p class="eyebrow">Chapter {{ chapter.chapterNumber }}</p>
+            <h3>{{ chapter.title }}</h3>
+          </div>
+          <span class="chapter-meta">
+            {{ chapter.wordCount }} words ·
+            <ng-container *ngIf="chapter.hasCliffhanger; else resolved">cliffhanger</ng-container>
+            <ng-template #resolved>complete beat</ng-template>
+          </span>
+        </header>
+        <div class="chapter-content" [innerHTML]="getSafeHtml(chapter.htmlContent)"></div>
+      </article>
+
+      <section class="continue-panel">
+        <div class="section-heading compact-heading">
+          <p class="eyebrow">Next chapter</p>
+          <h3>Where should it go?</h3>
+        </div>
+        <div class="direction-grid">
+          <button
+            type="button"
+            class="prompt-chip"
+            data-testid="continuation-direction"
+            [attr.data-direction-label]="direction.label"
+            *ngFor="let direction of continuationDirections; trackBy: trackContinuationDirection"
+            (click)="continueWithDirection(direction)"
+            [disabled]="isGenerating()"
+          >
+            {{ direction.label }}
+          </button>
+        </div>
+        <label class="custom-direction">
+          Custom direction
+          <textarea
+            rows="2"
+            data-testid="custom-continuation-brief"
+            placeholder="Reveal what the bargain really costs."
+            [ngModel]="customContinuationBrief()"
+            (ngModelChange)="updateCustomContinuationBrief($event)"
+          ></textarea>
+        </label>
+        <button
+          type="button"
+          class="secondary"
+          data-testid="continue-saga"
+          (click)="continueWithCustomDirection()"
+          [disabled]="isGenerating() || !workbench().story"
+        >
+          Continue Story
+        </button>
+      </section>
+
       <section class="chapter-timeline" *ngIf="timeline().length">
         <div class="section-heading compact-heading">
-          <p class="eyebrow">Timeline</p>
-          <h3>{{ totalChapterCount }} chapter{{ totalChapterCount === 1 ? '' : 's' }} drafted</h3>
+          <p class="eyebrow">Chapters</p>
+          <h3>{{ totalChapterCount }} drafted</h3>
         </div>
         <div class="chapter-groups">
           <section class="chapter-group" *ngFor="let group of chapterGroups()">
@@ -343,95 +442,59 @@
           </section>
         </div>
       </section>
-
-      <article class="chapter-view" data-testid="chapter-view" [attr.data-chapter-number]="chapter.chapterNumber" *ngIf="selectedChapter() as chapter">
-        <header>
-          <div>
-            <p class="eyebrow">Selected Chapter</p>
-            <h3>{{ chapter.title }}</h3>
-          </div>
-          <span class="chapter-meta">
-            {{ chapter.wordCount }} words ·
-            <ng-container *ngIf="chapter.hasCliffhanger; else resolved">Cliffhanger ending</ng-container>
-            <ng-template #resolved>No cliffhanger</ng-template>
-          </span>
-        </header>
-        <div class="chapter-content" [innerHTML]="getSafeHtml(chapter.htmlContent)"></div>
-        <footer>
-          <h4>Summary</h4>
-          <p>{{ chapter.summary }}</p>
-        </footer>
-      </article>
     </section>
 
     <ng-template #emptyReader>
-      <section class="story-panel story-panel--empty">
+      <section class="reader-panel reader-panel--empty">
         <div>
-          <p class="eyebrow">Chapter Reader</p>
-          <h2>Awaiting the first draft</h2>
-          <p class="muted">The generated chapters will open here.</p>
+          <p class="eyebrow">Your story</p>
+          <h2>Your first chapter will appear here</h2>
+          <p class="muted">Choose your ingredients, set the spice level, and let Grok write the opening.</p>
         </div>
       </section>
     </ng-template>
 
-    <aside class="continuity-panel">
-      <div class="section-heading">
-        <p class="eyebrow">Continuity Weave</p>
-        <h2>State and next moves</h2>
-      </div>
-
-      <section class="continuity-receipt" *ngIf="continuityExtraction() as extraction">
-        <h3>{{ extraction.source | titlecase }} continuity</h3>
-        <p>Confidence {{ extraction.confidence | percent:'1.0-0' }}</p>
-        <p class="warning-text" *ngIf="extraction.warning">{{ extraction.warning }}</p>
-      </section>
-
+    <aside class="library-panel" aria-label="Saved stories and story state">
       <section>
-        <h3>Characters</h3>
-        <p class="muted" *ngIf="!continuityPanel().characters.length">Characters will appear once the story begins.</p>
-        <ul *ngIf="continuityPanel().characters.length">
-          <li *ngFor="let character of continuityPanel().characters">
-            <strong>{{ character.displayName }}</strong>
-            <span class="character-role">{{ character.archetype | titlecase }}</span>
-            <p>{{ character.summary }}</p>
+        <div class="section-heading">
+          <p class="eyebrow">Library</p>
+          <h2>Saved here</h2>
+        </div>
+        <p class="muted" *ngIf="!savedProjects().length">No saved stories in this browser yet.</p>
+        <ol class="saved-list" *ngIf="savedProjects().length">
+          <li class="saved-item" *ngFor="let project of savedProjects()">
+            <button
+              type="button"
+              class="saved-load"
+              [class.saved-load--active]="workbench().savedProjectId === project.id"
+              (click)="loadSavedProject(project.id)"
+            >
+              <span class="saved-title">{{ project.title }}</span>
+              <span class="saved-meta">{{ project.chapters.length }} chapter{{ project.chapters.length === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}</span>
+            </button>
+            <button
+              type="button"
+              class="saved-delete"
+              [attr.aria-label]="'Delete ' + project.title"
+              (click)="deleteSavedProject(project.id)"
+            >
+              Delete
+            </button>
           </li>
-        </ul>
+        </ol>
       </section>
 
-      <section>
-        <h3>Plot Threads</h3>
-        <p class="muted">{{ activeThreadsLabel }}</p>
+      <section class="continuity-soft" *ngIf="workbench().story">
+        <div class="section-heading compact-heading">
+          <p class="eyebrow">Story memory</p>
+          <h3>What the app is tracking</h3>
+        </div>
+        <p class="warning-text" *ngIf="continuityExtraction()?.warning">{{ continuityExtraction()?.warning }}</p>
         <ul>
-          <li *ngFor="let thread of continuityPanel().activeThreads">
-            <strong>{{ thread.label }}</strong>
-            <span class="thread-status">{{ thread.status | titlecase }}</span>
-            <p>{{ thread.description }}</p>
-          </li>
+          <li>{{ continuityPanel().characters.length }} character{{ continuityPanel().characters.length === 1 ? '' : 's' }}</li>
+          <li>{{ continuityPanel().activeThreads.length }} active thread{{ continuityPanel().activeThreads.length === 1 ? '' : 's' }}</li>
+          <li>{{ continuityPanel().unresolvedArtifacts.length }} unresolved artifact{{ continuityPanel().unresolvedArtifacts.length === 1 ? '' : 's' }}</li>
         </ul>
-      </section>
-
-      <section>
-        <h3>Artifacts</h3>
-        <p class="muted" *ngIf="!continuityPanel().unresolvedArtifacts.length">No unresolved artifacts yet.</p>
-        <ul *ngIf="continuityPanel().unresolvedArtifacts.length">
-          <li *ngFor="let artifact of continuityPanel().unresolvedArtifacts">
-            <strong>{{ artifact.name }}</strong>
-            <p>{{ artifact.significance }}</p>
-          </li>
-        </ul>
-      </section>
-
-      <section>
-        <h3>Warnings</h3>
-        <p class="muted" *ngIf="!continuityWarnings.length">Everything is coherent so far.</p>
-        <ul *ngIf="continuityWarnings.length">
-          <li *ngFor="let warning of continuityWarnings">{{ warning }}</li>
-        </ul>
-      </section>
-
-      <section>
-        <h3>Suggested Next Moves</h3>
-        <p class="muted" *ngIf="!suggestedNextPrompts().length">Continuation prompts will appear after a batch completes.</p>
         <div class="prompt-list" *ngIf="suggestedNextPrompts().length">
           <button
             type="button"

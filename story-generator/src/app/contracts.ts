@@ -10,16 +10,35 @@
 
 // ==================== CORE DOMAIN TYPES ====================
 
-export type CreatureArchetype = 'vampire' | 'werewolf' | 'fairy' | 'siren' | 'djinn';
+export type CreatureArchetype =
+  | 'vampire'
+  | 'werewolf'
+  | 'fairy'
+  | 'siren'
+  | 'djinn'
+  | 'witch'
+  | 'dragon'
+  | 'demon'
+  | 'angel'
+  | 'mermaid';
 export type NarrativeTone = 'romance' | 'dark_romance' | 'mystery' | 'adventure' | 'comedy' | 'tragedy';
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
 export type ChapterBatchSize = 1 | 2 | 3;
 export type WordBudget = 600 | 900 | 1200 | 1500;
+export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_banter' | 'devotional_longing';
+export type HeatIntimacyBoundary = 'fade_to_black' | 'closed_door' | 'literary_on_page';
 
 export interface ThemeSeed {
   id: string;
   label: string;
   description: string;
+}
+
+export interface HeatContract {
+  adultOnlyConfirmed: boolean;
+  tensionMode: HeatTensionMode;
+  intimacyBoundary: HeatIntimacyBoundary;
+  noGoContent?: string;
 }
 
 export interface StoryBlueprint {
@@ -29,6 +48,7 @@ export interface StoryBlueprint {
   spicyLevel: SpicyLevel;
   tone: NarrativeTone;
   desiredWordBudget: WordBudget;
+  heatContract?: HeatContract;
   protagonistName?: string;
   antagonistName?: string;
   worldDetails?: string;

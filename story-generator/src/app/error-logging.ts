@@ -5,6 +5,29 @@ import { ErrorLog, ErrorSeverity, ErrorLoggingSeam } from './contracts';
 // Seam-Driven Error Logging Service
 // Provides centralized error capture and management following seam contracts
 
+const REDACTED = '[REDACTED]';
+const SENSITIVE_KEY_PATTERNS = [
+  /authorization/i,
+  /^x-api-key$/i,
+  /api[_-]?key/i,
+  /password/i,
+  /token/i,
+  /secret/i,
+  /email/i,
+  /prompt/i,
+  /story[_-]?text/i,
+  /raw[_-]?content/i,
+  /html[_-]?content/i,
+  /user[_-]?input/i,
+  /artifact[_-]?url/i,
+  /blob[_-]?url/i,
+  /export[_-]?url/i
+];
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const BEARER_PATTERN = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const API_KEY_PATTERN = /\b(?:xai|sk|api)[-_A-Za-z0-9]{10,}\b/gi;
+const URL_PATTERN = /https?:\/\/[^\s"'<>]+/gi;
+
 @Injectable({
   providedIn: 'root'
 })
@@ -22,17 +45,19 @@ export class ErrorLoggingService {
    */
   logError(error: any, context: string, severity: ErrorSeverity = 'error', additionalDetails?: any): ErrorLoggingSeam['output'] {
     try {
+      const detailsSource = {
+        originalError: error,
+        ...additionalDetails
+      };
+      const sensitiveValues = this.collectSensitiveStrings(detailsSource);
       const errorLog: ErrorLog = {
         id: this.generateErrorId(),
         timestamp: new Date(),
-        message: this.extractErrorMessage(error),
+        message: this.redactSensitiveText(this.extractErrorMessage(error), sensitiveValues),
         context,
         severity,
-        stack: this.extractErrorStack(error),
-        details: {
-          originalError: error,
-          ...additionalDetails
-        }
+        stack: this.redactOptionalText(this.extractErrorStack(error), sensitiveValues),
+        details: this.redactSensitiveLogData(detailsSource, sensitiveValues)
       };
 
       // Add to errors array (keep only recent errors)
@@ -51,8 +76,8 @@ export class ErrorLoggingService {
       };
     } catch (loggingError) {
       // Fallback logging if the service itself fails
-      console.error('ErrorLoggingService failed to log error:', loggingError);
-      console.error('Original error that failed to log:', error);
+      console.error('ErrorLoggingService failed to log error:', this.redactSensitiveLogData(loggingError));
+      console.error('Original error that failed to log:', this.redactSensitiveLogData(error));
       
       return {
         errorId: 'failed-' + Date.now(),
@@ -158,6 +183,97 @@ export class ErrorLoggingService {
       return error.error.stack;
     }
     return undefined;
+  }
+
+  private redactSensitiveLogData(value: any, sensitiveValues: string[] = [], seen = new WeakSet<object>(), keyHint = ''): any {
+    if (value === null || value === undefined) {
+      return value;
+    }
+
+    if (this.isSensitiveKey(keyHint)) {
+      return REDACTED;
+    }
+
+    if (typeof value === 'string') {
+      return this.redactSensitiveText(value, sensitiveValues);
+    }
+
+    if (typeof value !== 'object') {
+      return value;
+    }
+
+    if (value instanceof Date) {
+      return value;
+    }
+
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      return value.map(item => this.redactSensitiveLogData(item, sensitiveValues, seen, keyHint));
+    }
+
+    const redacted: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      redacted[key] = this.redactSensitiveLogData(child, sensitiveValues, seen, key);
+    }
+    return redacted;
+  }
+
+  private collectSensitiveStrings(value: any, seen = new WeakSet<object>(), keyHint = ''): string[] {
+    if (value === null || value === undefined) {
+      return [];
+    }
+
+    if (typeof value === 'string') {
+      return this.isSensitiveKey(keyHint) ? [value] : [];
+    }
+
+    if (typeof value !== 'object' || value instanceof Date) {
+      return [];
+    }
+
+    if (seen.has(value)) {
+      return [];
+    }
+    seen.add(value);
+
+    const values: string[] = [];
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        values.push(...this.collectSensitiveStrings(item, seen, keyHint));
+      }
+      return values;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      values.push(...this.collectSensitiveStrings(child, seen, key));
+    }
+    return values.filter(item => item.length > 0);
+  }
+
+  private redactOptionalText(value: string | undefined, sensitiveValues: string[]): string | undefined {
+    return value ? this.redactSensitiveText(value, sensitiveValues) : undefined;
+  }
+
+  private redactSensitiveText(value: string, sensitiveValues: string[] = []): string {
+    let redacted = value
+      .replace(BEARER_PATTERN, `Bearer ${REDACTED}`)
+      .replace(API_KEY_PATTERN, REDACTED)
+      .replace(EMAIL_PATTERN, REDACTED)
+      .replace(URL_PATTERN, REDACTED);
+
+    for (const sensitiveValue of sensitiveValues) {
+      redacted = redacted.split(sensitiveValue).join(REDACTED);
+    }
+
+    return redacted;
+  }
+
+  private isSensitiveKey(key: string): boolean {
+    return key.length > 0 && SENSITIVE_KEY_PATTERNS.some(pattern => pattern.test(key));
   }
 
   private logToConsole(errorLog: ErrorLog): void {

@@ -44,6 +44,82 @@ export interface LogEntry {
   metadata?: Record<string, any>;
 }
 
+const REDACTED = '[REDACTED]';
+const SENSITIVE_KEY_PATTERNS = [
+  /authorization/i,
+  /^x-api-key$/i,
+  /api[_-]?key/i,
+  /password/i,
+  /token/i,
+  /secret/i,
+  /email/i,
+  /prompt/i,
+  /story[_-]?text/i,
+  /raw[_-]?content/i,
+  /html[_-]?content/i,
+  /user[_-]?input/i,
+  /artifact[_-]?url/i,
+  /blob[_-]?url/i,
+  /export[_-]?url/i
+];
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const BEARER_PATTERN = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const API_KEY_PATTERN = /\b(?:xai|sk|api)[-_A-Za-z0-9]{10,}\b/gi;
+const URL_PATTERN = /https?:\/\/[^\s"'<>]+/gi;
+
+export function redactSensitiveLogData<T>(value: T): T {
+  return redactValue(value, new WeakSet()) as T;
+}
+
+function redactValue(value: unknown, seen: WeakSet<object>, keyHint = ''): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (isSensitiveKey(keyHint)) {
+    return REDACTED;
+  }
+
+  if (typeof value === 'string') {
+    return redactSensitiveText(value);
+  }
+
+  if (typeof value !== 'object') {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.map(item => redactValue(item, seen, keyHint));
+  }
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    redacted[key] = redactValue(child, seen, key);
+  }
+  return redacted;
+}
+
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(BEARER_PATTERN, `Bearer ${REDACTED}`)
+    .replace(API_KEY_PATTERN, REDACTED)
+    .replace(EMAIL_PATTERN, REDACTED)
+    .replace(URL_PATTERN, REDACTED);
+}
+
+function isSensitiveKey(key: string): boolean {
+  return key.length > 0 && SENSITIVE_KEY_PATTERNS.some(pattern => pattern.test(key));
+}
+
 class Logger {
   private static instance: Logger;
   private isDevelopment: boolean;
@@ -193,9 +269,9 @@ class Logger {
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
-      message,
-      context,
-      metadata
+      message: redactSensitiveLogData(message),
+      context: redactSensitiveLogData(context),
+      metadata: redactSensitiveLogData(metadata)
     };
 
     // Extract error details if present
@@ -225,12 +301,12 @@ class Logger {
   private extractErrorDetails(error: any): LogEntry['error'] {
     const details: LogEntry['error'] = {
       name: error?.name || 'Error',
-      message: error?.message || String(error)
+      message: redactSensitiveLogData(error?.message || String(error))
     };
 
     // Stack trace
     if (error?.stack) {
-      details.stack = error.stack;
+      details.stack = redactSensitiveLogData(error.stack);
     }
 
     // Error code
@@ -247,7 +323,7 @@ class Logger {
 
     // API response data
     if (error?.response?.data) {
-      details.apiResponse = error.response.data;
+      details.apiResponse = redactSensitiveLogData(error.response.data);
     }
 
     return details;
@@ -269,17 +345,17 @@ class Logger {
     // Axios error format
     if (error?.response) {
       result.statusCode = error.response.status;
-      result.apiResponse = error.response.data;
+      result.apiResponse = redactSensitiveLogData(error.response.data);
       
       if (error.response.data?.message) {
-        result.message = error.response.data.message;
+        result.message = redactSensitiveLogData(error.response.data.message);
       } else if (error.response.data?.error) {
-        result.message = error.response.data.error;
+        result.message = redactSensitiveLogData(error.response.data.error);
       } else if (error.response.statusText) {
-        result.message = error.response.statusText;
+        result.message = redactSensitiveLogData(error.response.statusText);
       }
     } else if (error?.message) {
-      result.message = error.message;
+      result.message = redactSensitiveLogData(error.message);
     }
 
     if (error?.code) {
@@ -293,20 +369,7 @@ class Logger {
    * Sanitize request data to remove sensitive information
    */
   private sanitizeRequestData(data: any): any {
-    if (!data) return data;
-
-    const sanitized = { ...data };
-    
-    // Remove API keys
-    const sensitiveKeys = ['apiKey', 'api_key', 'password', 'token', 'secret', 'authorization'];
-    
-    for (const key of sensitiveKeys) {
-      if (sanitized[key]) {
-        sanitized[key] = '***REDACTED***';
-      }
-    }
-
-    return sanitized;
+    return redactSensitiveLogData(data);
   }
 
   /**

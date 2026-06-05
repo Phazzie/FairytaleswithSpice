@@ -329,7 +329,12 @@ Let characters drive the story through their interactions.`;
       'werewolf': 'Werewolf',
       'fairy': 'Fairy',
       'siren': 'Siren',
-      'djinn': 'Djinn'
+      'djinn': 'Djinn',
+      'witch': 'Witch',
+      'dragon': 'Dragon',
+      'demon': 'Demon',
+      'angel': 'Angel',
+      'mermaid': 'Mermaid'
     };
     return names[creature];
   }

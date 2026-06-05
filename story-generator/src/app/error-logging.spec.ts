@@ -50,4 +50,44 @@ describe('ErrorLoggingService', () => {
     expect(service.getErrorsBySeverity('warning').length).toBe(1);
     expect(service.getErrorsBySeverity('info').length).toBe(1);
   });
+
+  it('should redact private story, prompt, auth, email, and artifact URL details', () => {
+    const storyText = 'Elena opened the forbidden grimoire and confessed the secret ending.';
+    const prompt = 'Write a spicy supernatural chapter using the entire private blueprint.';
+    const email = 'reader@example.com';
+    const apiKey = 'xai-secret-key-123';
+    const artifactUrl = 'https://blob.vercel-storage.com/story/export.html?token=private-token';
+
+    service.logError(
+      {
+        message: `${email} failed while generating ${storyText}`,
+        url: artifactUrl,
+        headers: {
+          Authorization: `Bearer ${apiKey}`
+        },
+        error: {
+          prompt,
+          storyText
+        }
+      },
+      'Privacy Test',
+      'error',
+      {
+        prompt,
+        email,
+        apiKey,
+        artifactUrl
+      }
+    );
+
+    const latest = service.getLatestErrors(1)[0];
+    const serialized = JSON.stringify(latest);
+
+    expect(serialized).not.toContain(storyText);
+    expect(serialized).not.toContain(prompt);
+    expect(serialized).not.toContain(email);
+    expect(serialized).not.toContain(apiKey);
+    expect(serialized).not.toContain(artifactUrl);
+    expect(serialized).toContain('[REDACTED]');
+  });
 });
