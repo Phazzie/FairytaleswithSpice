@@ -90,4 +90,22 @@ describe('ErrorLoggingService', () => {
     expect(serialized).not.toContain(artifactUrl);
     expect(serialized).toContain('[REDACTED]');
   });
+
+  it('should keep the true original error when additional details include originalError', () => {
+    const realError = new Error('real root cause');
+
+    service.logError(
+      realError,
+      'Override Test',
+      'error',
+      { originalError: new Error('forged root cause') }
+    );
+
+    const latest = service.getLatestErrors(1)[0];
+    const details = JSON.stringify(latest.details);
+
+    expect(latest.message).toBe('real root cause');
+    expect(details).toContain('real root cause');
+    expect(details).not.toContain('forged root cause');
+  });
 });

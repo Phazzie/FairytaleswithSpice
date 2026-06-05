@@ -1655,3 +1655,35 @@ Follow-up review batch:
 - Carried the original Heat Contract into Story Lab continuations through the continuation seam and classic `generationContext`.
 - Added `tests/story-service-streaming-security.test.ts` to prove streaming does not emit mock chunks in production missing-key mode.
 - `npx tsx tests/story-service-streaming-security.test.ts`: passed.
+
+## 2026-06-05 01:13 EDT - PR100 CodeRabbit Follow-Ups
+
+Actions:
+
+- Added abort/timeout handling around the live deployment smoke `fetch` so `/api/story-lab/stories` stalls fail fast.
+- Removed machine-specific absolute `/Users/...` paths from Story Lab plan artifacts.
+- Added `stylelint-disable-next-line selector-pseudo-element-no-unknown` comments for the two Angular `::ng-deep` chapter-content selectors.
+- Raised `.saved-delete` contrast to 10.55:1 by using the destructive accent background with light text.
+- Made `StoryBlueprint.heatContract` required on the frontend generation seam and updated existing demo/test blueprint constructors to provide an explicit confirmed contract.
+- Typed Heat Contract validation sets from the shared frontend union types.
+- Added negative coverage for unsupported Heat Contract tension mode and intimacy boundary values.
+- Prevented `additionalDetails.originalError` from overriding the true original error in client error logging.
+
+Review disposition:
+
+- Did not expand Angular Proving Grounds into five new dedicated style-bank arrays in this PR. Production/API Story Lab generation already has dedicated new-creature style banks; the Proving Grounds simulator still needs a separate shared-data/content follow-up if it should mirror those banks without importing the `node:crypto` API module into the browser bundle.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/log-redaction.test.ts`: passed.
+- `npx tsx tests/story-lab-real-engine.test.ts`: passed.
+- `npx tsx tests/story-service-streaming-security.test.ts`: passed.
+- `npx tsx tests/story-lab-blueprint-parser.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npx tsx tests/story-lab-stream-parse.test.ts`: passed.
+- `npx tsx tests/story-lab-state.test.ts`: passed.
+- `node scripts/recovery/story-lab-live-provider-smoke.mjs`: passed skip path.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.

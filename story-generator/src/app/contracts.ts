@@ -48,7 +48,7 @@ export interface StoryBlueprint {
   spicyLevel: SpicyLevel;
   tone: NarrativeTone;
   desiredWordBudget: WordBudget;
-  heatContract?: HeatContract;
+  heatContract: HeatContract;
   protagonistName?: string;
   antagonistName?: string;
   worldDetails?: string;

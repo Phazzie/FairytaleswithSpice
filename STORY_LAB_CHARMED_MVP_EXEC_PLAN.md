@@ -70,7 +70,7 @@ Fill this in as work proceeds:
 
 ## Context and Orientation
 
-Repository root: `/Users/hbpheonix/fairytaleswithspice`.
+Repository root: this repository checkout.
 
 Current branch for this work: `feature/charmed-mvp-story-lab`.
 
@@ -296,13 +296,13 @@ Stop and ask the user only if:
 
 ## Artifacts and Notes
 
-Generated design board copied to:
+Generated design board copied locally to:
 
-- `/Users/hbpheonix/Desktop/fairytales-ui-design-board.png`
+- `fairytales-ui-design-board.png` on the implementer's desktop.
 
-Original generated image remains under:
+Original generated image remains in the implementer's Codex generated image cache:
 
-- `/Users/hbpheonix/.codex/generated_images/019e6126-bf1f-72e3-84a2-baec7579b999/ig_06c1111e7c485efe016a197f8722688193adff6110601edc74.png`
+- `019e6126-bf1f-72e3-84a2-baec7579b999/ig_06c1111e7c485efe016a197f8722688193adff6110601edc74.png`
 
 ## Interfaces and Dependencies
 

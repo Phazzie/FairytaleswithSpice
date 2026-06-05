@@ -653,10 +653,12 @@ button:disabled {
   font-size: 1.06rem;
 }
 
+/* stylelint-disable-next-line selector-pseudo-element-no-unknown */
 :host ::ng-deep .chapter-content p {
   margin: 0 0 1rem;
 }
 
+/* stylelint-disable-next-line selector-pseudo-element-no-unknown */
 :host ::ng-deep .chapter-content p:last-child {
   margin-bottom: 0;
 }
@@ -787,8 +789,8 @@ button:disabled {
 }
 
 .saved-delete {
-  background: rgba(146, 48, 57, 0.08);
-  color: #743039;
+  background: #6f1d33;
+  color: #fff9ee;
   padding: 0 8px;
   font-size: 0.76rem;
 }

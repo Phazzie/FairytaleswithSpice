@@ -51,8 +51,8 @@ export class ErrorLoggingService {
   logError(error: any, context: string, severity: ErrorSeverity = 'error', additionalDetails?: any): ErrorLoggingSeam['output'] {
     try {
       const detailsSource = {
-        originalError: error,
-        ...additionalDetails
+        ...additionalDetails,
+        originalError: error
       };
       const sensitiveValues = this.collectSensitiveStrings(detailsSource);
       const errorLog: ErrorLog = {

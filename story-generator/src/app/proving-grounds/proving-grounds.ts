@@ -343,6 +343,12 @@ export class ProvingGroundsComponent implements OnInit {
       tone: 'dark_romance',
       desiredWordBudget: this.wordCount,
       chapterBatchSize: this.chapterBatchSize,
+      heatContract: {
+        adultOnlyConfirmed: true,
+        tensionMode: 'slow_burn',
+        intimacyBoundary: 'fade_to_black',
+        noGoContent: ''
+      },
       narrativeDirectives: [
         'PROVING GROUNDS TEST',
         prompts.system,

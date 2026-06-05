@@ -79,4 +79,30 @@ describe('FormValidationService', () => {
 
     expect(errors.heatContractNoGoContent).toContain('no-go content');
   });
+
+  it('rejects unsupported Heat Contract tension mode', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      heatContract: {
+        adultOnlyConfirmed: true,
+        tensionMode: 'unsupported_mode' as StoryGenerationSeam['input']['heatContract']['tensionMode'],
+        intimacyBoundary: 'fade_to_black',
+        noGoContent: ''
+      }
+    }));
+
+    expect(errors.heatContract).toContain('supported Heat Contract settings');
+  });
+
+  it('rejects unsupported Heat Contract intimacy boundary', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      heatContract: {
+        adultOnlyConfirmed: true,
+        tensionMode: 'slow_burn',
+        intimacyBoundary: 'unsupported_boundary' as StoryGenerationSeam['input']['heatContract']['intimacyBoundary'],
+        noGoContent: ''
+      }
+    }));
+
+    expect(errors.heatContract).toContain('supported Heat Contract settings');
+  });
 });

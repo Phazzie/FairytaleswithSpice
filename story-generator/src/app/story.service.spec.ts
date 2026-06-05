@@ -19,6 +19,12 @@ function createGenesisInput(): StoryGenerationSeam['input'] {
     tone: 'dark_romance',
     desiredWordBudget: 900,
     chapterBatchSize: 2,
+    heatContract: {
+      adultOnlyConfirmed: true,
+      tensionMode: 'slow_burn',
+      intimacyBoundary: 'fade_to_black',
+      noGoContent: ''
+    },
     narrativeDirectives: 'Lean into gothic atmosphere.'
   };
 }

@@ -46,8 +46,8 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] server and client logging redact story text, prompts, auth headers, API keys, emails, and artifact URLs.
 - [x] Re-ran focused Phase B1 validation that completed locally.
 - [ ] Run a complete Angular build/browser-spec pass in a stable browser environment; local Node v23 hung before useful diagnostics, and Node 20 built the targeted spec bundle but Chrome did not capture within 60 seconds.
-- [ ] Push the completed checklist work and open a PR.
-- [ ] Address actionable PR review comments before starting the next implementation gate.
+- [x] Push the completed checklist work and open PR #100.
+- [x] Address actionable PR review comments before starting the next implementation gate.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -115,7 +115,7 @@ The key product goal is not "more features." The key product goal is a story stu
 
 ## Context and Orientation
 
-Repository root: `/Users/hbpheonix/fairytaleswithspice`.
+Repository root: this repository checkout.
 
 Current branch: `feature/charmed-mvp-story-lab`.
 

@@ -219,6 +219,12 @@ export class StreamingStoryComponent implements OnDestroy {
     tone: 'dark_romance',
     desiredWordBudget: 900,
     chapterBatchSize: 1,
+    heatContract: {
+      adultOnlyConfirmed: true,
+      tensionMode: 'slow_burn',
+      intimacyBoundary: 'fade_to_black',
+      noGoContent: ''
+    },
     narrativeDirectives: 'Keep the prose brooding with lush sensory details.'
   };
 

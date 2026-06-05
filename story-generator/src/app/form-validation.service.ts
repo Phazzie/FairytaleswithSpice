@@ -4,6 +4,8 @@ import { Injectable } from '@angular/core';
 import {
   ChapterBatchSize,
   CreatureArchetype,
+  HeatIntimacyBoundary,
+  HeatTensionMode,
   NarrativeTone,
   SpicyLevel,
   StoryGenerationSeam,
@@ -41,8 +43,8 @@ const VALID_TONES = new Set<NarrativeTone>(['romance', 'dark_romance', 'mystery'
 const VALID_SPICY_LEVELS = new Set<SpicyLevel>([1, 2, 3, 4, 5]);
 const VALID_WORD_BUDGETS = new Set<WordBudget>([600, 900, 1200, 1500]);
 const VALID_BATCH_SIZES = new Set<ChapterBatchSize>([1, 2, 3]);
-const VALID_HEAT_TENSION_MODES = new Set(['slow_burn', 'dangerous_proximity', 'playful_banter', 'devotional_longing']);
-const VALID_HEAT_BOUNDARIES = new Set(['fade_to_black', 'closed_door', 'literary_on_page']);
+const VALID_HEAT_TENSION_MODES = new Set<HeatTensionMode>(['slow_burn', 'dangerous_proximity', 'playful_banter', 'devotional_longing']);
+const VALID_HEAT_BOUNDARIES = new Set<HeatIntimacyBoundary>(['fade_to_black', 'closed_door', 'literary_on_page']);
 
 @Injectable({
   providedIn: 'root'

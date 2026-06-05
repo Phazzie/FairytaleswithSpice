@@ -3,6 +3,7 @@
 const shouldRun = process.env.RUN_REAL_GROK_SMOKE === '1';
 const providedUrl = process.env.STORY_LAB_SMOKE_URL;
 const hasLocalProviderKey = Boolean(process.env.XAI_API_KEY);
+const DEPLOYMENT_FETCH_TIMEOUT_MS = 30_000;
 
 if (!shouldRun) {
   console.log('Skipping live Story Lab provider smoke. Set RUN_REAL_GROK_SMOKE=1 to enable.');
@@ -59,11 +60,25 @@ try {
 
 async function callDeployment(url) {
   const endpoint = new URL('/api/story-lab/stories', normalizeBaseUrl(url));
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(blueprint)
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEPLOYMENT_FETCH_TIMEOUT_MS);
+  timeout.unref?.();
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(blueprint),
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(`Deployment smoke timed out after ${DEPLOYMENT_FETCH_TIMEOUT_MS}ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`Deployment smoke failed with HTTP ${response.status}`);
@@ -83,6 +98,10 @@ function normalizeBaseUrl(url) {
   parsed.search = '';
   parsed.hash = '';
   return parsed;
+}
+
+function isAbortError(error) {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
 }
 
 function assertLiveStoryPayload(response) {
