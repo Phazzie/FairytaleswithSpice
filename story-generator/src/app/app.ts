@@ -831,20 +831,102 @@ ${chapters}
   }
 
   private stripHtml(html: string): string {
-    return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    let text = '';
+    let insideTag = false;
+
+    for (const char of html) {
+      if (char === '<') {
+        insideTag = true;
+        text += ' ';
+        continue;
+      }
+      if (char === '>') {
+        insideTag = false;
+        continue;
+      }
+      if (!insideTag) {
+        text += char;
+      }
+    }
+
+    return this.normalizeInlineWhitespace(text);
   }
 
   private safeFileName(value: string): string {
-    return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'fairytales-story';
+    let safeName = '';
+    let needsSeparator = false;
+
+    for (const char of value.toLowerCase()) {
+      if (this.isAsciiLetterOrDigit(char)) {
+        if (needsSeparator && safeName.length > 0) {
+          safeName += '-';
+        }
+        safeName += char;
+        needsSeparator = false;
+        continue;
+      }
+
+      needsSeparator = safeName.length > 0;
+    }
+
+    return safeName || 'fairytales-story';
   }
 
   private escapeHtml(value: string): string {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+    let escaped = '';
+
+    for (const char of value) {
+      switch (char) {
+        case '&':
+          escaped += '&amp;';
+          break;
+        case '<':
+          escaped += '&lt;';
+          break;
+        case '>':
+          escaped += '&gt;';
+          break;
+        case '"':
+          escaped += '&quot;';
+          break;
+        case '\'':
+          escaped += '&#39;';
+          break;
+        default:
+          escaped += char;
+      }
+    }
+
+    return escaped;
+  }
+
+  private normalizeInlineWhitespace(value: string): string {
+    let normalized = '';
+    let pendingSpace = false;
+
+    for (const char of value) {
+      if (this.isWhitespace(char)) {
+        pendingSpace = normalized.length > 0;
+        continue;
+      }
+
+      if (pendingSpace) {
+        normalized += ' ';
+      }
+      normalized += char;
+      pendingSpace = false;
+    }
+
+    return normalized.trim();
+  }
+
+  private isWhitespace(char: string): boolean {
+    return char === ' ' || char === '\n' || char === '\r' || char === '\t' || char === '\f' || char === '\v';
+  }
+
+  private isAsciiLetterOrDigit(char: string): boolean {
+    const code = char.charCodeAt(0);
+    return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
   }
 
   private persistSession(session: StoryWorkbenchSession): string | undefined {
