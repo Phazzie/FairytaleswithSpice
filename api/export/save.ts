@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { ExportService } from '../_lib/services/exportService';
 import { SaveExportSeam } from '../_lib/types/contracts';
 import { FILE_SIZE } from '../_lib/constants';
@@ -12,19 +13,11 @@ export default async function handler(req: any, res: any) {
   // Set request ID in response header for client tracking
   res.setHeader('X-Request-ID', requestId);
   
-  // Set CORS headers
-  const origin = process.env['FRONTEND_URL'] || 'http://localhost:4200';
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, X-Request-ID'
-  );
-
-  // Handle preflight OPTIONS request
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
+  const cors = applyCorsPolicy(req, res, {
+    methods: ['POST', 'OPTIONS'],
+    credentials: true
+  });
+  if (cors.handled) {
     return;
   }
 
@@ -75,8 +68,8 @@ export default async function handler(req: any, res: any) {
     console.log(`[${requestId}] Export ${result.success ? 'succeeded' : 'failed'}`);
     res.status(200).json(result);
 
-  } catch (error: any) {
-    console.error(`[${requestId}] Export serverless function error:`, error);
+  } catch {
+    console.error(`[${requestId}] Export serverless function failed`);
     res.status(500).json({
       success: false,
       error: {

@@ -8,6 +8,7 @@
 
 import { StoryService } from '../_lib/services/storyService';
 import { randomUUID } from 'node:crypto';
+import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { StoryGenerationSeam, StreamingStoryGenerationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 
@@ -23,16 +24,11 @@ export default async function handler(req: any, res: any) {
   const requestId = req.headers['x-request-id'] || 
                     `req_${randomUUID()}`;
   
-  // Set CORS headers FIRST
-  const origin = process.env['FRONTEND_URL'] || 'http://localhost:4200';
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, X-Request-ID');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
+  const cors = applyCorsPolicy(req, res, {
+    methods: ['GET', 'POST', 'OPTIONS'],
+    credentials: true
+  });
+  if (cors.handled) {
     return;
   }
 
@@ -124,12 +120,10 @@ export default async function handler(req: any, res: any) {
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
     res.setHeader('X-Request-ID', requestId);
     res.writeHead(200, {
+      ...cors.headers,
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Credentials': 'true',
-      'Access-Control-Allow-Headers': 'Cache-Control, X-API-Key, Authorization'
+      'Connection': 'keep-alive'
     });
 
     const streamId = `stream_${randomUUID()}`;

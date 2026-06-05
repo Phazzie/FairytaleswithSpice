@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { StoryService } from '../_lib/services/storyService';
 import { ChapterContinuationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
@@ -6,19 +7,11 @@ import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 export default async function handler(req: any, res: any) {
   const requestId = `req_${randomUUID()}`;
   
-  // Set CORS headers
-  const origin = process.env['FRONTEND_URL'] || 'http://localhost:4200';
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
-
-  // Handle preflight OPTIONS request
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
+  const cors = applyCorsPolicy(req, res, {
+    methods: ['POST', 'OPTIONS'],
+    credentials: true
+  });
+  if (cors.handled) {
     return;
   }
 

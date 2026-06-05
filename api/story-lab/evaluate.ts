@@ -1,4 +1,5 @@
 import type { ApiResponse, EvaluationCriteria, EvaluationRequest } from '../_lib/story-lab/contracts';
+import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { XaiTextClient } from '../_lib/services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
 
@@ -76,14 +77,11 @@ function parseEvaluation(content: string): EvaluationCriteria {
 }
 
 export default async function handler(req: any, res: any) {
-  const origin = process.env.FRONTEND_URL ?? 'http://localhost:4200';
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Vary', 'Origin');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
+  const cors = applyCorsPolicy(req, res, {
+    methods: ['POST', 'OPTIONS'],
+    credentials: true
+  });
+  if (cors.handled) {
     return;
   }
 
