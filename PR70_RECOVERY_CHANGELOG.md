@@ -1668,10 +1668,7 @@ Actions:
 - Typed Heat Contract validation sets from the shared frontend union types.
 - Added negative coverage for unsupported Heat Contract tension mode and intimacy boundary values.
 - Prevented `additionalDetails.originalError` from overriding the true original error in client error logging.
-
-Review disposition:
-
-- Did not expand Angular Proving Grounds into five new dedicated style-bank arrays in this PR. Production/API Story Lab generation already has dedicated new-creature style banks; the Proving Grounds simulator still needs a separate shared-data/content follow-up if it should mirror those banks without importing the `node:crypto` API module into the browser bundle.
+- Added dedicated Angular Proving Grounds style arrays for `witch`, `dragon`, `demon`, `angel`, and `mermaid`, mirroring the API-side content without importing the `node:crypto` API module into the browser bundle.
 
 Validation:
 
