@@ -1,5 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { SaveExportSeam, ApiResponse, ExportFormat } from '../types/contracts';
+import {
+  escapeHtml,
+  escapePdfText,
+  sanitizeStoryHtmlForExport,
+  stripStoryHtmlForExport
+} from './exportSanitizer';
+
+interface ExportMetadata {
+  generatedAt: string;
+  wordCount: number;
+  readTime: number;
+  creature: string;
+  themes: string[];
+}
 
 export class ExportService {
   private storageBaseUrl = process.env['STORAGE_BASE_URL'] || 'https://storage.example.com';
@@ -48,15 +62,14 @@ export class ExportService {
         }
       };
 
-    } catch (error: any) {
-      console.error('Export error:', error);
+    } catch {
+      console.error('Export failed');
 
       return {
         success: false,
         error: {
           code: 'EXPORT_FAILED',
-          message: 'Failed to export story',
-          details: error.message
+          message: 'Failed to export story'
         },
         metadata: {
           requestId: this.generateRequestId(),
@@ -67,27 +80,31 @@ export class ExportService {
   }
 
   private async generateExportContent(input: SaveExportSeam['input']): Promise<string> {
-    const cleanContent = this.cleanHtmlContent(input.content);
-    const metadata = this.generateMetadata(input);
+    const sanitizedHtml = sanitizeStoryHtmlForExport(input.content);
+    const plainText = stripStoryHtmlForExport(input.content);
+    const metadata = this.generateMetadata(plainText);
 
     switch (input.format) {
       case 'pdf':
-        return this.generatePDFContent(cleanContent, metadata, input);
+        return this.generatePDFContent(plainText, input);
       case 'html':
-        return this.generateHTMLContent(cleanContent, metadata, input);
+        return this.generateHTMLContent(sanitizedHtml, metadata, input);
       case 'txt':
-        return this.generateTextContent(cleanContent, metadata, input);
+        return this.generateTextContent(plainText, metadata, input);
       case 'epub':
-        return this.generateEPUBContent(cleanContent, metadata, input);
+        return this.generateEPUBContent(input);
       case 'docx':
-        return this.generateDOCXContent(cleanContent, metadata, input);
+        return this.generateDOCXContent(plainText);
       default:
         throw new Error(`Unsupported format: ${input.format}`);
     }
   }
 
-  private generatePDFContent(content: string, metadata: any, input: SaveExportSeam['input']): string {
+  private generatePDFContent(content: string, input: SaveExportSeam['input']): string {
     // Mock PDF generation - in real implementation, use pdfkit or puppeteer
+    const title = escapePdfText(input.title);
+    const excerpt = escapePdfText(content).substring(0, 100);
+
     return `%PDF-1.4
 1 0 obj
 <<
@@ -126,9 +143,9 @@ stream
 BT
 /F1 12 Tf
 72 720 Td
-(${input.title}) Tj
+(${title}) Tj
 0 -24 Td
-(${content.substring(0, 100)}...) Tj
+(${excerpt}...) Tj
 ET
 endstream
 endobj
@@ -159,15 +176,19 @@ startxref
 %%EOF`;
   }
 
-  private generateHTMLContent(content: string, metadata: any, input: SaveExportSeam['input']): string {
+  private generateHTMLContent(content: string, metadata: ExportMetadata, input: SaveExportSeam['input']): string {
     const includeMetadata = input.includeMetadata !== false;
+    const title = escapeHtml(input.title);
+    const generatedAt = escapeHtml(metadata.generatedAt);
+    const creature = escapeHtml(metadata.creature);
+    const themes = metadata.themes.map(theme => escapeHtml(theme)).join(', ');
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${input.title}</title>
+    <title>${title}</title>
     <style>
         body { font-family: 'Georgia', serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
         h1, h2, h3 { color: #2c3e50; }
@@ -176,16 +197,16 @@ startxref
     </style>
 </head>
 <body>
-    <h1>${input.title}</h1>
+    <h1>${title}</h1>
 
     ${includeMetadata ? `
     <div class="metadata">
         <h3>Story Information</h3>
-        <p><strong>Generated:</strong> ${metadata.generatedAt}</p>
+        <p><strong>Generated:</strong> ${generatedAt}</p>
         <p><strong>Word Count:</strong> ${metadata.wordCount}</p>
         <p><strong>Estimated Read Time:</strong> ${metadata.readTime} minutes</p>
-        <p><strong>Creature:</strong> ${metadata.creature}</p>
-        <p><strong>Themes:</strong> ${metadata.themes.join(', ')}</p>
+        <p><strong>Creature:</strong> ${creature}</p>
+        <p><strong>Themes:</strong> ${themes}</p>
     </div>
     ` : ''}
 
@@ -196,10 +217,11 @@ startxref
 </html>`;
   }
 
-  private generateTextContent(content: string, metadata: any, input: SaveExportSeam['input']): string {
+  private generateTextContent(content: string, metadata: ExportMetadata, input: SaveExportSeam['input']): string {
     const includeMetadata = input.includeMetadata !== false;
+    const title = stripStoryHtmlForExport(input.title);
 
-    let text = `${input.title}\n${'='.repeat(input.title.length)}\n\n`;
+    let text = `${title}\n${'='.repeat(title.length)}\n\n`;
 
     if (includeMetadata) {
       text += `Story Information:\n`;
@@ -211,17 +233,19 @@ startxref
       text += `---\n\n`;
     }
 
-    text += content.replace(/<[^>]*>/g, ''); // Remove HTML tags
+    text += content;
 
     return text;
   }
 
-  private generateEPUBContent(content: string, metadata: any, input: SaveExportSeam['input']): string {
+  private generateEPUBContent(input: SaveExportSeam['input']): string {
     // Mock EPUB generation - in real implementation, use epub-gen or similar
+    const title = escapeHtml(input.title);
+
     return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
     <metadata>
-        <dc:title>${input.title}</dc:title>
+        <dc:title>${title}</dc:title>
         <dc:creator>Fairytales with Spice</dc:creator>
         <dc:language>en</dc:language>
     </metadata>
@@ -234,9 +258,9 @@ startxref
 </package>`;
   }
 
-  private generateDOCXContent(content: string, metadata: any, input: SaveExportSeam['input']): string {
+  private generateDOCXContent(content: string): string {
     // Mock DOCX generation - in real implementation, use docx or similar
-    return `PK                  docProps/PK                  word/PK                  [Content_Types].xmlPK                  _rels/PK                  word/_rels/document.xml.relsPK                  word/document.xml${content}`;
+    return `PK                  docProps/PK                  word/PK                  [Content_Types].xmlPK                  _rels/PK                  word/_rels/document.xml.relsPK                  word/document.xml${escapeHtml(content)}`;
   }
 
   private async saveToStorage(content: string, input: SaveExportSeam['input']): Promise<string> {
@@ -272,26 +296,18 @@ startxref
     return null;
   }
 
-  private cleanHtmlContent(htmlContent: string): string {
-    // Clean up HTML content for export
-    return htmlContent
-      .replace(/\n\s*\n/g, '\n') // Remove extra newlines
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .trim();
-  }
-
-  private generateMetadata(input: SaveExportSeam['input']): any {
+  private generateMetadata(content: string): ExportMetadata {
     return {
       generatedAt: new Date().toISOString(),
-      wordCount: this.countWords(input.content),
-      readTime: Math.ceil(this.countWords(input.content) / 200),
+      wordCount: this.countWords(content),
+      readTime: Math.ceil(this.countWords(content) / 200),
       creature: 'vampire', // In real implementation, extract from story data
       themes: ['romance', 'dark'] // In real implementation, extract from story data
     };
   }
 
   private countWords(content: string): number {
-    return content.replace(/<[^>]*>/g, '').split(/\s+/).filter(word => word.length > 0).length;
+    return content.split(/\s+/).filter(word => word.length > 0).length;
   }
 
   private generateFilename(input: SaveExportSeam['input']): string {

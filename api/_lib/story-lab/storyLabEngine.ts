@@ -64,7 +64,39 @@ const DEFAULT_CLASSIC_THEME: ThemeType = 'forbidden_love';
 
 export function shouldUseMockStoryLab(): boolean {
   const forceMock = process.env['STORY_LAB_FORCE_MOCK'] ?? '';
-  return MOCK_FLAG_VALUES.has(forceMock.toLowerCase()) || !process.env['XAI_API_KEY'];
+  return !isProductionRuntime() && (MOCK_FLAG_VALUES.has(forceMock.toLowerCase()) || !process.env['XAI_API_KEY']);
+}
+
+function isProductionRuntime(): boolean {
+  return process.env['NODE_ENV'] === 'production' || process.env['VERCEL_ENV'] === 'production';
+}
+
+function shouldFailClosedForMissingProvider(): boolean {
+  return isProductionRuntime() && !process.env['XAI_API_KEY'];
+}
+
+function missingProviderResponse(): StoryLabErrorResponse {
+  return {
+    success: false,
+    error: {
+      code: 'AI_UNAVAILABLE',
+      message: 'The AI story engine is not configured for this deployment. Set XAI_API_KEY before generating stories.'
+    }
+  };
+}
+
+function validateHeatContract(input: LabGenerationSeam['input']): StoryLabErrorResponse | null {
+  if (!input.heatContract || input.heatContract.adultOnlyConfirmed !== true) {
+    return {
+      success: false,
+      error: {
+        code: 'CONTENT_POLICY_VIOLATION',
+        message: 'Story Lab requires adult-reader and consensual-fantasy confirmation before generating this Heat Contract.'
+      }
+    };
+  }
+
+  return null;
 }
 
 function toClassicThemes(themeIds: string[]): ThemeType[] {
@@ -96,6 +128,7 @@ export function toClassicGenerationInput(input: LabGenerationSeam['input']): Cla
       antagonistName: input.antagonistName,
       worldDetails: input.worldDetails,
       narrativeDirectives: input.narrativeDirectives,
+      heatContract: input.heatContract,
       themeSeeds: input.themes
     }
   };
@@ -105,6 +138,15 @@ export async function generateStoryLabGenesis(
   input: LabGenerationSeam['input'],
   options: StoryLabEngineOptions = {}
 ): Promise<ApiResponse<StoryIterationPayload>> {
+  const heatContractError = validateHeatContract(input);
+  if (heatContractError) {
+    return heatContractError;
+  }
+
+  if (shouldFailClosedForMissingProvider()) {
+    return missingProviderResponse();
+  }
+
   if (shouldUseMockStoryLab()) {
     return withMockTelemetry(buildGenesisResponse(input));
   }
@@ -149,6 +191,10 @@ export async function continueStoryLab(
   input: LabContinuationSeam['input'],
   options: StoryLabEngineOptions = {}
 ): Promise<ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }>> {
+  if (shouldFailClosedForMissingProvider()) {
+    return missingProviderResponse();
+  }
+
   const transientSnapshot = getTransientStorySnapshot(input.storyId);
   const previousChapters = input.previouslyGeneratedChapters.length
     ? input.previouslyGeneratedChapters
@@ -185,7 +231,11 @@ export async function continueStoryLab(
     userInput: input.continuationBrief,
     maintainTone: true,
     tropeMetadata: existingSummary?.tropeMetadata,
-    requestedChapterCount: input.chapterBatchSize
+    requestedChapterCount: input.chapterBatchSize,
+    generationContext: input.heatContract ? {
+      source: 'story_lab',
+      heatContract: input.heatContract
+    } : undefined
   });
 
   if (!result.success) {

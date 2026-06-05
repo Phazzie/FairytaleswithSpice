@@ -17,6 +17,12 @@ function createBlueprint(): StoryGenerationSeam['input'] {
     tone: 'dark_romance',
     desiredWordBudget: 900,
     chapterBatchSize: 2,
+    heatContract: {
+      adultOnlyConfirmed: true,
+      tensionMode: 'slow_burn',
+      intimacyBoundary: 'fade_to_black',
+      noGoContent: ''
+    },
     protagonistName: 'Mira',
     antagonistName: 'Lord Brine',
     worldDetails: 'A reef court ruled by vow-binding songs.',

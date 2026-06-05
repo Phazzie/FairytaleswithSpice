@@ -1504,3 +1504,277 @@ Self-review:
 - Good: The status matrix now separates working generation from degraded continuity extraction and weak UI quality.
 - Remaining risk: Continuity extraction still returned `source: "mixed"` with a warning, so story generation is working better than the AI enrichment layer.
 - What should be next: add a direct production API smoke script for this exact proof, then fix the browser smoke navigation timeout before UI redesign work.
+
+## 2026-06-03 04:16 EDT - Charmed Story Lab MVP Validated Locally
+
+Actions:
+
+- Updated the active Charmed MVP plan in `STORY_LAB_CHARMED_MVP_EXEC_PLAN.md` and linked it from `AGENTS.md`.
+- Ran a hostile review pass against the plan and current diff. The review found stale browser-smoke selectors, missing Angular coverage, missing production continuation fail-closed proof, style-routing drift from the plan, undocumented Proving Grounds contract alignment, and unrelated untracked files.
+- Updated `story-generator/src/app/app.spec.ts` to cover skin persistence, expanded creature/spice options, friendly `AI_UNAVAILABLE` messaging, direction-chip continuation wiring, clipboard copy, and local HTML download.
+- Updated `scripts/recovery/story-lab-browser-smoke.mjs` for the new card-based UI and added mocked smoke coverage for skin selection, expanded creature selection, visible progress, direction continuation, copy, and HTML download.
+- Updated `tests/story-lab-real-engine.test.ts` to prove production missing-key fail-closed behavior for both genesis and continuation, while preserving development/mock behavior.
+- Documented intentional creature style routing: `witch`, `angel`, and `mermaid` use fairy-adjacent styles; `dragon` uses werewolf-adjacent styles; `demon` uses vampire-adjacent styles until dedicated banks exist.
+- Kept Proving Grounds edits limited to shared creature-contract alignment; the normal public first screen still hides Proving Grounds unless debug mode is requested.
+- Trimmed `story-generator/src/app/app.css` until the fresh build no longer emitted the component CSS budget warning.
+
+Validation:
+
+- `git diff --check`: passed.
+- `cd story-generator && ../node_modules/.bin/tsc -p tsconfig.app.json --noEmit`: passed.
+- `cd story-generator && ../node_modules/.bin/tsc -p tsconfig.spec.json --noEmit`: passed.
+- `npm run test:story-lab-real-engine`: passed.
+- `npm run smoke:story-lab-ui`: passed in mocked mode after a fresh Angular build.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+Self-review:
+
+- Good: The Charmed MVP is now validated against the card-based UI instead of the old workbench controls.
+- Good: Production fail-closed behavior is executable evidence for both Story Lab genesis and continuation.
+- Good: The public UI path gained local share/export without adding accounts, server PDF, email, or cloud state.
+- Remaining risk: The branch has not run a live production/provider smoke. That should happen after merge or preview deployment with real `XAI_API_KEY`.
+- Not part of this MVP: unrelated untracked `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts` remain untouched for a separate cleanup/commit decision.
+
+## 2026-06-03 05:28 EDT - Platform Evolution Plan and Heat Contract v0
+
+Actions:
+
+- Created `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md` as the self-contained post-Charmed platform plan.
+- Ran three adversarial review passes against the plan: product/UX, architecture/deployment, and testing/security.
+- Incorporated hater findings into the plan:
+  - no storage/jobs/auth/audio/server export on this branch;
+  - auth/privacy/retention/deletion before cloud persistence;
+  - function-count checks before and after API route changes;
+  - Vercel Workflow as the only durable-generation target, with non-Workflow polling labeled non-durable;
+  - Director's Room reframed as concrete draft-improvement notes instead of process theater.
+- Added dedicated style banks for `witch`, `dragon`, `demon`, `angel`, and `mermaid`, with semantic coverage tests.
+- Expanded Story Lab stream genesis parsing to accept the full Charmed creature set and preserve Heat Contract data.
+- Added `scripts/recovery/story-lab-live-provider-smoke.mjs` and `npm run smoke:story-lab-live-provider`; the script skips without credentials by default and requires Grok telemetry when enabled.
+- Added Heat Contract v0:
+  - frontend contract type and UI controls;
+  - adult-only/consensual fantasy validation;
+  - tension mode and intimacy boundary controls;
+  - no-go content field;
+  - browser-local blueprint persistence through the existing save path;
+  - reader-side Heat Contract summary;
+  - Story Lab engine mapping into `generationContext`;
+  - backend refusal if a submitted Heat Contract is explicitly unconfirmed.
+- Linked the platform plan from `AGENTS.md`.
+
+Validation:
+
+- `git diff --check`: passed.
+- `cd story-generator && ../node_modules/.bin/tsc -p tsconfig.app.json --noEmit`: passed.
+- `cd story-generator && ../node_modules/.bin/tsc -p tsconfig.spec.json --noEmit`: passed.
+- `npm run test:story-lab-real-engine`: passed.
+- `npm exec -- tsx tests/story-lab-stream-parse.test.ts`: passed.
+- `npm run smoke:story-lab-live-provider`: passed in default skip mode.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed, including Angular app/spec typechecks and Vercel API function typechecks.
+
+Blocked local validation:
+
+- `cd story-generator && npm test -- --watch=false --include=src/app/app.spec.ts --include=src/app/form-validation.service.spec.ts`: started but hung locally under Node `v23.8.0` after Chrome/Karma startup.
+- `cd story-generator && npm run build`: started but hung locally under Node `v23.8.0` in Angular/esbuild after the baseline-browser-mapping warning.
+
+Self-review:
+
+- Good: The work improved user-facing safety/story control without adding cloud state, new API routes, or audio/export scope.
+- Good: The live-provider smoke can no longer pass on arbitrary non-mock telemetry; enabled proof must be Grok.
+- Good: The future plan now treats current function-count, auth, privacy, CORS, export, and logging concerns as gates rather than polish.
+- Remaining risk: Angular build/browser-spec validation still needs a Node 20 or CI run before this slice should be called fully browser-verified.
+- What should be next: run the Angular build/spec checks under Node 20, then do an opt-in live-provider smoke against a Vercel preview or production URL with real `XAI_API_KEY`.
+
+## 2026-06-05 00:33 EDT - Platform Plan Checklist and Phase B1 Gate
+
+Actions:
+
+- Rewrote `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md` so the future work is a checklist instead of a broad phase list.
+- Counted completed Phase A work in the plan progress and outcomes.
+- Split the old Phase B into smaller gates:
+  - Phase B1: shared parser, auth port, owner authorization, and redaction;
+  - Phase B2: CORS and account boundary policy;
+  - Phase B3: retention, deletion, and export-sanitizer policy;
+  - Phase B4: opaque job-id streaming design.
+- Completed Phase B1 locally:
+  - POST and stream Story Lab genesis now normalize through one shared server blueprint parser;
+  - Story Lab account auth now has a deny-by-default `AuthPort`;
+  - `authorizeProjectAccess` denies non-owner project access without leaking project ids in the user-facing message;
+  - server and client error logging redact story text, prompts, auth headers, API keys, emails, and artifact URLs.
+- Kept storage, job routes, audio, server export, auth-provider selection, and cloud writes out of this gate.
+
+Validation:
+
+- `npm exec -- tsx tests/story-lab-blueprint-parser.test.ts`: passed.
+- `npm exec -- tsx tests/story-lab-auth.test.ts`: passed.
+- `npm exec -- tsx tests/log-redaction.test.ts`: passed.
+- `npm exec -- tsx tests/story-lab-stream-parse.test.ts`: passed.
+- `npm run test:story-lab-state`: passed.
+- `npm run test:story-lab-real-engine`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc --allowJs false --skipLibCheck --module commonjs --target es2022 --moduleResolution node --types node --noEmit tests/story-lab-blueprint-parser.test.ts tests/story-lab-auth.test.ts tests/log-redaction.test.ts tests/story-lab-stream-parse.test.ts`: passed.
+
+Blocked local validation:
+
+- `npx -p node@20 node ./node_modules/@angular/cli/bin/ng.js test --watch=false --include src/app/error-logging.spec.ts`: built the targeted spec bundle, then Chrome failed to capture within 60 seconds in this runner.
+
+Self-review:
+
+- Good: Completed work is now counted in the plan rather than hidden in chat history.
+- Good: The next phases are explicit gates, so CORS/privacy/export/job decisions do not get bundled into parser/auth/redaction work.
+- Remaining risk: Browser-run error-logging coverage still needs CI or a local Chrome environment that can capture under Karma.
+- What should be next: publish this finished work in a PR, address review comments, then start Phase B2 only after the PR is clean.
+
+## 2026-06-05 00:56 EDT - PR100 Review Follow-Ups
+
+Actions:
+
+- Addressed actionable PR #100 review comments:
+  - missing Heat Contract now fails before the provider call instead of bypassing the adult-reader confirmation seam;
+  - `dragon` and `demon` secondary style mixes now match the Charmed MVP plan;
+  - server and client API-key redaction patterns now require a delimiter after `xai`, `sk`, or `api`;
+  - token-count telemetry keys no longer match the secret-token redaction rule;
+  - local HTML downloads preserve sanitized paragraph structure and delay Blob URL cleanup to avoid download races;
+  - live-provider smoke failure logging no longer prints uncontrolled error text;
+  - new root test files now include the standard creation timestamp header.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/log-redaction.test.ts`: passed.
+- `npx tsx tests/story-lab-real-engine.test.ts`: passed.
+- `npx tsx tests/story-lab-blueprint-parser.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npx tsx tests/story-lab-stream-parse.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+
+Follow-up review batch:
+
+- Added the required Heat Contract adult confirmation click to `scripts/recovery/story-lab-browser-smoke.mjs`.
+- Made classic `/api/story/stream` fail closed in production without `XAI_API_KEY` instead of streaming mock content.
+- Carried the original Heat Contract into Story Lab continuations through the continuation seam and classic `generationContext`.
+- Added `tests/story-service-streaming-security.test.ts` to prove streaming does not emit mock chunks in production missing-key mode.
+- `npx tsx tests/story-service-streaming-security.test.ts`: passed.
+
+## 2026-06-05 01:13 EDT - PR100 CodeRabbit Follow-Ups
+
+Actions:
+
+- Added abort/timeout handling around the live deployment smoke `fetch` so `/api/story-lab/stories` stalls fail fast.
+- Removed machine-specific absolute `/Users/...` paths from Story Lab plan artifacts.
+- Added `stylelint-disable-next-line selector-pseudo-element-no-unknown` comments for the two Angular `::ng-deep` chapter-content selectors.
+- Raised `.saved-delete` contrast to 10.55:1 by using the destructive accent background with light text.
+- Made `StoryBlueprint.heatContract` required on the frontend generation seam and updated existing demo/test blueprint constructors to provide an explicit confirmed contract.
+- Typed Heat Contract validation sets from the shared frontend union types.
+- Added negative coverage for unsupported Heat Contract tension mode and intimacy boundary values.
+- Prevented `additionalDetails.originalError` from overriding the true original error in client error logging.
+- Added dedicated Angular Proving Grounds style arrays for `witch`, `dragon`, `demon`, `angel`, and `mermaid`, mirroring the API-side content without importing the `node:crypto` API module into the browser bundle.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/log-redaction.test.ts`: passed.
+- `npx tsx tests/story-lab-real-engine.test.ts`: passed.
+- `npx tsx tests/story-service-streaming-security.test.ts`: passed.
+- `npx tsx tests/story-lab-blueprint-parser.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npx tsx tests/story-lab-stream-parse.test.ts`: passed.
+- `npx tsx tests/story-lab-state.test.ts`: passed.
+- `node scripts/recovery/story-lab-live-provider-smoke.mjs`: passed skip path.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-05 02:20 EDT - Phase B2-B4 Privacy and Streaming Gates
+
+Actions:
+
+- Created `STORY_LAB_PRIVACY_STREAMING_GATES_EXEC_PLAN.md` as the self-contained execution plan for the next large branch after PR #100.
+- Ran a hostile privacy/security/deployment review against the initial plan and revised it before implementation:
+  - reject disallowed browser origins with `403`;
+  - never accept or echo wildcard credentialed CORS;
+  - drive SSE `writeHead` CORS headers from the same helper;
+  - implement export sanitizer tests now instead of only documenting them;
+  - keep job-id work contract-only while the function count is `12/12`.
+- Created `api/_lib/http/corsPolicy.ts` and replaced repeated CORS blocks across private-content/account-capable API routes.
+- Created `api/_lib/services/exportSanitizer.ts` and updated `api/_lib/services/exportService.ts` plus `api/export/save.ts` so server export sanitizes story HTML/title/metadata/PDF strings and does not log raw export error objects.
+- Created `api/_lib/story-lab/jobs/jobContracts.ts` for opaque `job_<uuid>` ids and status/events path builders without adding deployable job routes.
+- Updated `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md`, `LESSONS_LEARNED.md`, and this changelog with the completed gates and remaining provisioning blockers.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/cors-policy.test.ts`: passed.
+- `npx tsx tests/export-sanitizer.test.ts`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx tsx tests/log-redaction.test.ts`: passed.
+- `npx tsx tests/story-lab-blueprint-parser.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npx tsx tests/story-lab-stream-parse.test.ts`: passed.
+- `npx tsx tests/story-lab-real-engine.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+Self-review:
+
+- Good: The branch completed a large privacy/security chunk without broadening PR #100.
+- Good: No deployable API routes were added; helper files stayed under `api/_lib`.
+- Good: Future job streaming now has an opaque path contract, but actual routes remain blocked until route consolidation and Workflow/worker decisions.
+- Remaining risk: The current Story Lab stream still uses query fields until the future POST job creation route exists.
+
+## 2026-06-05 02:34 EDT - PR101 Sonar Follow-Ups
+
+Actions:
+
+- Addressed SonarCloud annotations in `api/_lib/services/exportSanitizer.ts` and `tests/export-sanitizer.test.ts`:
+  - used `String.raw` for escaped regex/string fixtures;
+  - changed mechanical global string replacements to a TypeScript-compatible fixed-string helper;
+  - used `RegExp.exec()` instead of `String.match()` for tag parsing.
+- Replaced sanitizer regex tokenization/tag stripping with a small manual HTML token scanner after SonarCloud reported five regex DoS security hotspots.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/export-sanitizer.test.ts`: passed.
+- `npx tsx tests/cors-policy.test.ts`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-05 02:52 EDT - PR101 Review Comment Follow-Ups
+
+Actions:
+
+- Addressed Sourcery/Copilot CORS review: disallowed-origin fallback responses now call `end()` when a response adapter does not provide `json()`.
+- Addressed Gemini entity-decoding review: plain-text export decodes direct `&lt;`, `&gt;`, quotes, and apostrophes, while decoding `&amp;` last to avoid double-decoding `&amp;lt;` and `&amp;quot;`.
+- Added the missing `// Created:` headers to `api/_lib/services/exportSanitizer.ts` and `api/_lib/story-lab/jobs/jobContracts.ts`.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/cors-policy.test.ts`: passed.
+- `npx tsx tests/export-sanitizer.test.ts`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-05 03:28 EDT - PR100 Sonar Gate Follow-Ups
+
+Actions:
+
+- Addressed the three PR #100 SonarCloud regex-DoS security hotspots without marking them reviewed:
+  - replaced server and Angular log email/auth/API-key/URL regex redaction with a shared bounded token scanner;
+  - replaced Story Lab plain-text HTML stripping, file-name cleanup, and HTML escaping regex replacements with character scans.
+- Refactored the shared scanner into `shared/sensitiveTextRedaction.ts` after SonarCloud cleared the hotspots but failed the gate on duplicated new-code density.
+- Kept the unrelated untracked planning/smoke files out of scope.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/log-redaction.test.ts`: passed.
+- `npx tsx tests/export-sanitizer.test.ts`: passed.
+- `npx tsx tests/cors-policy.test.ts`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.

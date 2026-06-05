@@ -50,4 +50,62 @@ describe('ErrorLoggingService', () => {
     expect(service.getErrorsBySeverity('warning').length).toBe(1);
     expect(service.getErrorsBySeverity('info').length).toBe(1);
   });
+
+  it('should redact private story, prompt, auth, email, and artifact URL details', () => {
+    const storyText = 'Elena opened the forbidden grimoire and confessed the secret ending.';
+    const prompt = 'Write a spicy supernatural chapter using the entire private blueprint.';
+    const email = 'reader@example.com';
+    const apiKey = 'xai-secret-key-123';
+    const artifactUrl = 'https://blob.vercel-storage.com/story/export.html?token=private-token';
+
+    service.logError(
+      {
+        message: `${email} failed while generating ${storyText}`,
+        url: artifactUrl,
+        headers: {
+          Authorization: `Bearer ${apiKey}`
+        },
+        error: {
+          prompt,
+          storyText
+        }
+      },
+      'Privacy Test',
+      'error',
+      {
+        prompt,
+        email,
+        apiKey,
+        artifactUrl
+      }
+    );
+
+    const latest = service.getLatestErrors(1)[0];
+    const serialized = JSON.stringify(latest);
+
+    expect(serialized).not.toContain(storyText);
+    expect(serialized).not.toContain(prompt);
+    expect(serialized).not.toContain(email);
+    expect(serialized).not.toContain(apiKey);
+    expect(serialized).not.toContain(artifactUrl);
+    expect(serialized).toContain('[REDACTED]');
+  });
+
+  it('should keep the true original error when additional details include originalError', () => {
+    const realError = new Error('real root cause');
+
+    service.logError(
+      realError,
+      'Override Test',
+      'error',
+      { originalError: new Error('forged root cause') }
+    );
+
+    const latest = service.getLatestErrors(1)[0];
+    const details = JSON.stringify(latest.details);
+
+    expect(latest.message).toBe('real root cause');
+    expect(details).toContain('real root cause');
+    expect(details).not.toContain('forged root cause');
+  });
 });

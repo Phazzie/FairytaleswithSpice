@@ -93,6 +93,9 @@ export class StoryService {
       if (input.narrativeDirectives) {
         params.set('narrativeDirectives', input.narrativeDirectives);
       }
+      if (input.heatContract) {
+        params.set('heatContract', JSON.stringify(input.heatContract));
+      }
       if (input.protagonistName) {
         params.set('protagonistName', input.protagonistName);
       }

@@ -199,12 +199,132 @@ export const FAIRY_STYLES: AuthorStyle[] = [
   }
 ];
 
+export const WITCH_STYLES: AuthorStyle[] = [
+  {
+    author: 'Coven Hearth Gothic',
+    voiceSample: '"Every spell has a price," she said, pressing the candle flame flat with one wet fingertip. "Tell me what you are willing to burn."',
+    trait: 'Witchcraft intimacy built from bargains, hearth magic, and dangerous domestic ritual'
+  },
+  {
+    author: 'Grimoire Noir',
+    voiceSample: 'Ink crawled across the page before her lover could lie, each black letter blooming like a bruise under moonlight.',
+    trait: 'Spellbook mystery where secrets become physical evidence'
+  },
+  {
+    author: 'Familiar-Bond Romance',
+    voiceSample: 'The cat hissed at him first. Sensible creature. Then the warding circle opened anyway, which meant her heart had betrayed them both.',
+    trait: 'Witch familiars, protective wards, and reluctant trust turning into heat'
+  },
+  {
+    author: 'Kitchen-Sink Enchantment',
+    voiceSample: 'Rosemary, iron, grave dirt, honey. She measured each ingredient by instinct, saving the last spoonful of sweetness for revenge.',
+    trait: 'Tactile spellcraft grounded in herbs, thresholds, kitchens, and revenge'
+  }
+];
+
+export const DRAGON_STYLES: AuthorStyle[] = [
+  {
+    author: 'Hoard-Bound Majesty',
+    voiceSample: '"I do not collect gold because it shines," he murmured. "I collect what kingdoms are foolish enough to worship."',
+    trait: 'Dragon pride, treasure psychology, and courtly dominance'
+  },
+  {
+    author: 'Scale-and-Silk Romance',
+    voiceSample: 'Heat rolled from him in waves, but his claws touched her sleeve with impossible care, as if silk could bruise.',
+    trait: 'Massive power restrained by precise tenderness'
+  },
+  {
+    author: 'Sky-Tyrant Epic',
+    voiceSample: 'When his wings opened, every candle in the palace bent sideways. Even the throne seemed to remember fear.',
+    trait: 'Aerial grandeur, ancient territorial claims, and throne-room stakes'
+  },
+  {
+    author: 'Molten Devotion',
+    voiceSample: '"Name the enemy," he said, smoke curling between his teeth, "and I will make the mountain forget they were born."',
+    trait: 'Volcanic protectiveness and obsessive loyalty'
+  }
+];
+
+export const DEMON_STYLES: AuthorStyle[] = [
+  {
+    author: 'Velvet Contract Horror',
+    voiceSample: '"Read the last clause," he said softly. "The one your pulse keeps trying to skip."',
+    trait: 'Demon contracts, loopholes, temptation, and elegant dread'
+  },
+  {
+    author: 'Infernal Ballroom',
+    voiceSample: 'Hell did not smell like sulfur. It smelled like champagne, hot skin, and the moment before a vow became a chain.',
+    trait: 'Decadent demon society with manners sharper than knives'
+  },
+  {
+    author: 'Temptation Advocate',
+    voiceSample: '"I never make anyone fall," he whispered. "I only ask why they keep standing where it hurts."',
+    trait: 'Psychological seduction that exposes denied desire'
+  },
+  {
+    author: 'Ash-Crowned Redemption',
+    voiceSample: 'The halo scar around his throat glowed whenever he told the truth, which made his silence more intimate than any confession.',
+    trait: 'Fallen monsters, redemption pressure, and sacred-profane tension'
+  }
+];
+
+export const ANGEL_STYLES: AuthorStyle[] = [
+  {
+    author: 'Cathedral Longing',
+    voiceSample: 'His wings cast shadows across the altar, but it was the hunger in his lowered eyes that made the chapel feel forbidden.',
+    trait: 'Angel grace strained by desire, duty, and sacred architecture'
+  },
+  {
+    author: 'Fallen-Star Romance',
+    voiceSample: '"I was made for obedience," he said, touching the rain on her cheek. "Then you taught me weather."',
+    trait: 'Celestial innocence breaking into chosen rebellion'
+  },
+  {
+    author: 'Judgment Court Gothic',
+    voiceSample: 'The choir stopped singing when she entered, and every feather in the room turned its pale eye toward her crime.',
+    trait: 'Heavenly courts, judgment, ritual law, and forbidden advocacy'
+  },
+  {
+    author: 'Mercy-as-Temptation',
+    voiceSample: 'He could have condemned her with a word. Instead he knelt, offered his sword hilt-first, and ruined them both.',
+    trait: 'Mercy, sacrifice, and intimate moral catastrophe'
+  }
+];
+
+export const MERMAID_STYLES: AuthorStyle[] = [
+  {
+    author: 'Pearl-Dagger Court',
+    voiceSample: "The reef court smiled with too many teeth, each pearl in the queen's crown harvested from a drowned promise.",
+    trait: 'Mermaid court intrigue, ocean law, and beautiful cruelty'
+  },
+  {
+    author: 'Tide-Pull Romance',
+    voiceSample: 'Every retreat of the wave dragged her farther from him; every return put salt on his lips like a vow.',
+    trait: 'Rhythmic longing shaped by tides, distance, and return'
+  },
+  {
+    author: 'Shipwreck Gothic',
+    voiceSample: 'The wreck still sang at low tide, ribs of black wood humming with the names of sailors who had loved badly.',
+    trait: 'Haunted coasts, wrecks, curses, and drowned secrets'
+  },
+  {
+    author: 'Brine-Bound Bargain',
+    voiceSample: '"Give me your voice for one moon," she said, "and I will teach your heart how to breathe underwater."',
+    trait: 'Voice bargains, salt magic, and amphibious intimacy'
+  }
+];
+
 const AUTHOR_STYLE_MAP: Record<CreatureType, AuthorStyle[]> = {
   vampire: VAMPIRE_STYLES,
   werewolf: WEREWOLF_STYLES,
   fairy: FAIRY_STYLES,
   siren: FAIRY_STYLES,
-  djinn: FAIRY_STYLES
+  djinn: FAIRY_STYLES,
+  witch: WITCH_STYLES,
+  dragon: DRAGON_STYLES,
+  demon: DEMON_STYLES,
+  angel: ANGEL_STYLES,
+  mermaid: MERMAID_STYLES
 };
 
 function getSecondaryAuthorStyles(creature: CreatureType): AuthorStyle[] {
@@ -215,6 +335,16 @@ function getSecondaryAuthorStyles(creature: CreatureType): AuthorStyle[] {
     case 'siren':
     case 'djinn':
       return [...VAMPIRE_STYLES, ...WEREWOLF_STYLES];
+    case 'witch':
+      return [...FAIRY_STYLES, ...VAMPIRE_STYLES];
+    case 'dragon':
+      return [...WEREWOLF_STYLES, ...FAIRY_STYLES];
+    case 'demon':
+      return [...VAMPIRE_STYLES, ...FAIRY_STYLES];
+    case 'angel':
+      return [...FAIRY_STYLES, ...WITCH_STYLES];
+    case 'mermaid':
+      return [...FAIRY_STYLES, ...WEREWOLF_STYLES];
     case 'vampire':
       return [...WEREWOLF_STYLES, ...FAIRY_STYLES];
   }

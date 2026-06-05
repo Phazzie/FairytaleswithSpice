@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
@@ -13,6 +13,7 @@ import {
 } from './contracts';
 
 const STORAGE_KEY = 'fairytales_story_lab_projects_v1';
+const SKIN_STORAGE_KEY = 'fairytales_story_lab_skin_v1';
 
 function createChapter(overrides: Partial<GeneratedChapter> = {}): GeneratedChapter {
   return {
@@ -62,6 +63,13 @@ function createState(overrides: Partial<StoryStateSnapshot> = {}): StoryStateSna
   };
 }
 
+const confirmedHeatContract = {
+  adultOnlyConfirmed: true,
+  tensionMode: 'slow_burn' as const,
+  intimacyBoundary: 'fade_to_black' as const,
+  noGoContent: 'No coercion.'
+};
+
 describe('App', () => {
   let component: App;
   let storyService: jasmine.SpyObj<StoryService>;
@@ -70,6 +78,7 @@ describe('App', () => {
   beforeEach(async () => {
     queryParamMap$ = new BehaviorSubject<ParamMap>(convertToParamMap({}));
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(SKIN_STORAGE_KEY);
 
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'beginStory',
@@ -96,12 +105,14 @@ describe('App', () => {
 
   afterEach(() => {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(SKIN_STORAGE_KEY);
   });
 
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
     expect(component.blueprint().spicyLevel).toBe(3);
+    expect(component.activeHeatContract().adultOnlyConfirmed).toBeFalse();
     expect(component.workbench().chapterHistory.length).toBe(0);
   });
 
@@ -122,6 +133,40 @@ describe('App', () => {
 
     component.toggleTheme({ id: 'forbidden_love', label: 'Forbidden Love', description: '' });
     expect(component.blueprint().themes.length).toBe(0);
+  });
+
+  it('selects and persists a visual skin without changing story inputs', () => {
+    const initialBlueprint = component.blueprint();
+
+    component.selectSkin('bookshop');
+
+    expect(component.activeSkin()).toBe('bookshop');
+    expect(localStorage.getItem(SKIN_STORAGE_KEY)).toBe('bookshop');
+    expect(component.blueprint()).toEqual(initialBlueprint);
+  });
+
+  it('supports the expanded creature set and spice labels', () => {
+    expect(component.creatureOptions.map(option => option.id)).toContain('dragon');
+    expect(component.creatureOptions.map(option => option.id)).toContain('mermaid');
+
+    component.updateBlueprint('creature', 'dragon');
+    component.updateBlueprint('spicyLevel', 5);
+
+    expect(component.blueprint().creature).toBe('dragon');
+    expect(component.activeSpiceOption().label).toBe('Inferno');
+  });
+
+  it('updates the Heat Contract without changing the rest of the blueprint', () => {
+    component.updateHeatContract('adultOnlyConfirmed', true);
+    component.updateHeatContract('tensionMode', 'dangerous_proximity');
+    component.updateHeatContract('intimacyBoundary', 'literary_on_page');
+    component.updateHeatContract('noGoContent', 'No humiliation.');
+
+    expect(component.activeHeatContract().adultOnlyConfirmed).toBeTrue();
+    expect(component.activeHeatContract().tensionMode).toBe('dangerous_proximity');
+    expect(component.activeHeatContract().intimacyBoundary).toBe('literary_on_page');
+    expect(component.activeHeatContract().noGoContent).toBe('No humiliation.');
+    expect(component.blueprint().creature).toBe('vampire');
   });
 
   it('prevents genesis without a logline', () => {
@@ -152,7 +197,8 @@ describe('App', () => {
     component.blueprint.set({
       ...component.blueprint(),
       logline: 'A vampire princess bound by forbidden vows.',
-      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }]
+      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }],
+      heatContract: confirmedHeatContract
     });
     component.startGenesis();
 
@@ -164,6 +210,27 @@ describe('App', () => {
     expect(component.suggestedNextPrompts()).toEqual(['Explore the rival court.']);
     expect(component.savedProjects().length).toBe(1);
     expect(component.workspaceSaveStatus()).toBe('Saved in this browser.');
+  });
+
+  it('shows a friendly AI configuration error when generation cannot use Grok', () => {
+    storyService.beginStory.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'AI_UNAVAILABLE',
+        message: 'The AI story engine is not configured for this deployment.'
+      }
+    }));
+
+    component.blueprint.set({
+      ...component.blueprint(),
+      logline: 'A dragon guardian bargains for one night of forbidden mercy.',
+      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }],
+      heatContract: confirmedHeatContract
+    });
+    component.startGenesis();
+
+    expect(component.statusMessage()).toContain('missing its Grok configuration');
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
   });
 
   it('loads a saved browser-local project into the workbench', () => {
@@ -189,7 +256,8 @@ describe('App', () => {
     component.blueprint.set({
       ...component.blueprint(),
       logline: 'A vampire princess bound by forbidden vows.',
-      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }]
+      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }],
+      heatContract: confirmedHeatContract
     });
     component.startGenesis();
     component.resetWorkbench();
@@ -254,4 +322,90 @@ describe('App', () => {
     expect(component.selectedChapter()?.chapterNumber).toBe(2);
     expect(component.activeBatchQueue().at(-1)?.status).toBe('completed');
   });
+
+  it('continues with a selected direction brief', () => {
+    const genesisPayload: StoryIterationPayload = {
+      summary: createSummary(),
+      batch: {
+        chapters: [createChapter()],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      },
+      state: createState(),
+      telemetry: {
+        engine: 'gpt',
+        totalLatencyMs: 1800,
+        averageChapterLatencyMs: 900,
+        tokensConsumed: 900,
+        retryCount: 0
+      }
+    };
+    const continuationPayload: StoryIterationPayload & { appendedChapterNumbers: number[] } = {
+      ...genesisPayload,
+      state: createState({ revision: 2 }),
+      batch: {
+        chapters: [createChapter({ chapterId: 'chapter-2', chapterNumber: 2 })],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      },
+      appendedChapterNumbers: [2]
+    };
+    component.workbench.set({
+      story: genesisPayload.summary,
+      state: genesisPayload.state,
+      chapterHistory: genesisPayload.batch.chapters,
+      activeBatchSize: 1,
+      lastTelemetry: genesisPayload.telemetry
+    });
+    storyService.continueStory.and.returnValue(of({ success: true, data: continuationPayload }));
+
+    component.continueWithDirection(component.continuationDirections[1]);
+
+    expect(storyService.continueStory.calls.mostRecent().args[0].continuationBrief)
+      .toContain('external danger');
+  });
+
+  it('copies generated story text to the clipboard', async () => {
+    const writeText = jasmine.createSpy('writeText').and.resolveTo();
+    spyOnProperty(navigator, 'clipboard', 'get').and.returnValue({ writeText } as unknown as Clipboard);
+    component.workbench.set({
+      story: createSummary({ title: 'Copied Pact' }),
+      state: createState(),
+      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      activeBatchSize: 1
+    });
+
+    await component.copyStory();
+
+    expect(writeText).toHaveBeenCalled();
+    expect(writeText.calls.mostRecent().args[0]).toContain('Copied Pact');
+    expect(writeText.calls.mostRecent().args[0]).toContain('Heat rose.');
+    expect(component.statusMessage()).toBe('Story copied to your clipboard.');
+  });
+
+  it('downloads generated story HTML locally', fakeAsync(() => {
+    const originalCreateElement = document.createElement.bind(document);
+    const anchor = originalCreateElement('a') as HTMLAnchorElement;
+    const clickSpy = spyOn(anchor, 'click');
+    spyOn(document, 'createElement').and.callFake((tagName: string) => {
+      return tagName.toLowerCase() === 'a' ? anchor : originalCreateElement(tagName);
+    });
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:story-download');
+    spyOn(URL, 'revokeObjectURL');
+    component.workbench.set({
+      story: createSummary({ title: 'Downloaded Pact', synopsis: 'A pact worth keeping.' }),
+      state: createState(),
+      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      activeBatchSize: 1
+    });
+
+    component.downloadStory();
+
+    expect(anchor.download).toBe('downloaded-pact.html');
+    expect(clickSpy).toHaveBeenCalled();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    tick();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:story-download');
+    expect(component.statusMessage()).toBe('Story download created.');
+  }));
 });

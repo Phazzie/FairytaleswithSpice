@@ -3,17 +3,36 @@
 // Each seam represents a boundary where data crosses between components
 
 // ==================== TYPE DEFINITIONS ====================
-export type CreatureType = 'vampire' | 'werewolf' | 'fairy' | 'siren' | 'djinn';
+export type CreatureType =
+  | 'vampire'
+  | 'werewolf'
+  | 'fairy'
+  | 'siren'
+  | 'djinn'
+  | 'witch'
+  | 'dragon'
+  | 'demon'
+  | 'angel'
+  | 'mermaid';
 export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden_love' | 'revenge' | 'manipulation' | 'seduction' | 'dark_secrets' | 'corruption' | 'dominance' | 'submission' | 'jealousy' | 'temptation' | 'sin' | 'desire' | 'passion' | 'lust' | 'deceit';
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
 export type WordCount = 600 | 700 | 900 | 1200 | 1500;
 export type NarrativeTone = 'romance' | 'dark_romance' | 'mystery' | 'adventure' | 'comedy' | 'tragedy';
 export type GenerationSource = 'classic_generator' | 'story_lab';
+export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_banter' | 'devotional_longing';
+export type HeatIntimacyBoundary = 'fade_to_black' | 'closed_door' | 'literary_on_page';
 
 export interface GenerationThemeSeed {
   id: string;
   label: string;
   description: string;
+}
+
+export interface HeatContractIntent {
+  adultOnlyConfirmed: boolean;
+  tensionMode: HeatTensionMode;
+  intimacyBoundary: HeatIntimacyBoundary;
+  noGoContent?: string;
 }
 
 export interface StoryGenerationContext {
@@ -24,6 +43,7 @@ export interface StoryGenerationContext {
   antagonistName?: string;
   worldDetails?: string;
   narrativeDirectives?: string;
+  heatContract?: HeatContractIntent;
   themeSeeds?: GenerationThemeSeed[];
 }
 export type VoiceType = 'female' | 'male' | 'neutral';
@@ -160,6 +180,7 @@ export interface ChapterContinuationSeam {
     maintainTone: boolean; // Keep same spicy level and themes
     tropeMetadata?: string; // Optional invisible generation metadata from original story
     requestedChapterCount?: 1 | 2 | 3;
+    generationContext?: StoryGenerationContext;
   };
 
   output: {

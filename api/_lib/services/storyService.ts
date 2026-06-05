@@ -60,6 +60,14 @@ export class StoryService {
     }
   }
 
+  private isProductionRuntime(): boolean {
+    return process.env['NODE_ENV'] === 'production' || process.env['VERCEL_ENV'] === 'production';
+  }
+
+  private missingProviderError(): Error {
+    return new Error('The AI story engine is not configured for this deployment. Set XAI_API_KEY before generating stories.');
+  }
+
   /**
    * Calculate optimal token allocation for story generation
    * Accounts for: word-to-token ratio, HTML overhead, speaker tags, safety buffer
@@ -542,6 +550,10 @@ export class StoryService {
     const tropeSelection = this.selectTropeSubversions(input);
 
     if (!this.xaiClient.hasApiKey()) {
+      if (this.isProductionRuntime()) {
+        throw this.missingProviderError();
+      }
+
       // For mock mode, simulate streaming
       await this.simulateStreamingGeneration(input, onChunk, tropeSelection);
       return;
@@ -641,6 +653,10 @@ export class StoryService {
     chapterOptions?: ChapterGenerationOptions
   ): Promise<GeneratedTextResult> {
     if (!this.xaiClient.hasApiKey()) {
+      if (this.isProductionRuntime()) {
+        throw this.missingProviderError();
+      }
+
       logWarn('No API key found, using mock generation', context);
       // Fallback to mock generation if no API key
       return {
@@ -716,6 +732,10 @@ export class StoryService {
     chapterOptions?: ChapterGenerationOptions
   ): Promise<GeneratedTextResult> {
     if (!this.xaiClient.hasApiKey()) {
+      if (this.isProductionRuntime()) {
+        throw this.missingProviderError();
+      }
+
       logWarn('No API key found, using mock chapter generation', context);
       return {
         content: this.generateMockChapter(input, chapterOptions?.chapterNumber)
@@ -1010,12 +1030,12 @@ INTIMATE SCENES MUST:
 - Use anticipation and denial to heighten tension
 - Never rush to physical without emotional stakes
 
-SPICE LEVELS (match exactly):
-Level 1: Yearning looks, accidental touches, sweet anticipation
-Level 2: First kisses, heated arguments, sensual tension
-Level 3: Clothes stay on, hands don't, steamy fade-to-black
-Level 4: Explicit but emotional, detailed physical intimacy
-Level 5: Nothing left to imagination, graphic yet sophisticated
+SPICE LEVELS (match exactly and do not exceed the requested level):
+Level 1 - Storybook romance: longing, flirtation, charged glances, accidental touches, no explicit anatomy, no on-page sexual acts.
+Level 2 - Warm: kissing, sensual tension, heated arguments, suggestive desire, no explicit sex and no graphic anatomical detail.
+Level 3 - Spicy: clear adult heat, hands and bodies can be described, keep language literary, fade to black before graphic sex.
+Level 4 - Very spicy: explicit consensual adult intimacy is allowed, direct language is allowed, keep emotional stakes and avoid crude shock value.
+Level 5 - Inferno: maximum explicit consensual adult fantasy the app allows, graphic but sophisticated, no coercion, no minors, no non-consensual framing.
 
 MORAL DILEMMA TRIGGER:
 At midpoint (≈50% word count), protagonist faces desire-vs-principle choice that drives the remainder and influences the cliffhanger.
@@ -1231,6 +1251,13 @@ Plant your Chekhov elements naturally and ensure the moral dilemma occurs at mid
     if (context.narrativeDirectives) {
       lines.push(`- Narrative directives: ${context.narrativeDirectives}`);
     }
+    if (context.heatContract) {
+      lines.push(`- Heat contract: adult readers only confirmed; tension mode ${this.formatHeatContractLabel(context.heatContract.tensionMode)}; boundary ${this.formatHeatContractLabel(context.heatContract.intimacyBoundary)}.`);
+      if (context.heatContract.noGoContent?.trim()) {
+        lines.push(`- No-go content: ${context.heatContract.noGoContent.trim()}`);
+      }
+      lines.push('- Keep intimate material consensual and do not exceed the Heat Contract boundary.');
+    }
     if (context.themeSeeds?.length) {
       lines.push('- Theme seed intent:');
       for (const theme of context.themeSeeds) {
@@ -1240,6 +1267,10 @@ Plant your Chekhov elements naturally and ensure the moral dilemma occurs at mid
 
     lines.push('- Treat these blueprint fields as binding story intent, not as optional flavor.');
     return lines.join('\n');
+  }
+
+  private formatHeatContractLabel(value: string): string {
+    return value.split('_').join(' ');
   }
 
   private buildChapterUserPrompt(
@@ -1297,6 +1328,7 @@ CLIFFHANGER VARIETY TARGETS:
 - End with the type that best fits this chapter, but avoid repeating the exact emotional shape of the prior ending.
 
 ${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+${this.formatContinuationStoryLabContext(input.generationContext)}
 
 PREVIOUS CHAPTER(S) FOR CONTINUITY:
 ${this.createContextExcerpt(existingContent)}
@@ -1311,6 +1343,25 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     return tropeSelection
       ? this.tropeService.enhanceContinuationPrompt(prompt, tropeSelection)
       : prompt;
+  }
+
+  private formatContinuationStoryLabContext(context: ChapterContinuationSeam['input']['generationContext']): string {
+    if (context?.source !== 'story_lab' || !context.heatContract) {
+      return '';
+    }
+
+    const lines = [
+      '',
+      'STORY LAB HEAT CONTRACT - CONTINUATION CONSTRAINTS:',
+      `- Adult readers only confirmed; tension mode ${this.formatHeatContractLabel(context.heatContract.tensionMode)}; boundary ${this.formatHeatContractLabel(context.heatContract.intimacyBoundary)}.`
+    ];
+
+    if (context.heatContract.noGoContent?.trim()) {
+      lines.push(`- No-go content: ${context.heatContract.noGoContent.trim()}`);
+    }
+
+    lines.push('- Keep continuation intimacy consensual and do not exceed the original Heat Contract boundary.');
+    return lines.join('\n');
   }
 
   /**
@@ -1390,7 +1441,18 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
   }
 
   private validateStoryInput(input: StoryGenerationSeam['input']): any {
-    const supportedCreatures: readonly CreatureType[] = ['vampire', 'werewolf', 'fairy', 'siren', 'djinn'];
+    const supportedCreatures: readonly CreatureType[] = [
+      'vampire',
+      'werewolf',
+      'fairy',
+      'siren',
+      'djinn',
+      'witch',
+      'dragon',
+      'demon',
+      'angel',
+      'mermaid'
+    ];
     if (!input.creature || !supportedCreatures.includes(input.creature)) {
       return {
         code: 'INVALID_INPUT',
@@ -1601,13 +1663,24 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
       'werewolf': 'Werewolf',
       'fairy': 'Fairy',
       'siren': 'Siren',
-      'djinn': 'Djinn'
+      'djinn': 'Djinn',
+      'witch': 'Witch',
+      'dragon': 'Dragon',
+      'demon': 'Demon',
+      'angel': 'Angel',
+      'mermaid': 'Mermaid'
     };
     return names[creature] || 'Creature';
   }
 
   private getSpicyLabel(level: number): string {
-    const labels = ['Mild', 'Warm', 'Hot', 'Spicy', 'Fire 🔥'];
+    const labels = [
+      'Storybook romance',
+      'Warm',
+      'Spicy',
+      'Very spicy',
+      'Inferno'
+    ];
     return labels[level - 1] || 'Spicy';
   }
 

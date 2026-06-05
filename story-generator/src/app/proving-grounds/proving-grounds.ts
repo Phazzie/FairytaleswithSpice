@@ -84,7 +84,18 @@ export class ProvingGroundsComponent implements OnInit {
   showGenerationLogic = false;
   statusMessage = 'Configure a prompt test and generate a Story Lab sample.';
 
-  readonly creatureOptions: CreatureArchetype[] = ['vampire', 'werewolf', 'fairy', 'siren', 'djinn'];
+  readonly creatureOptions: CreatureArchetype[] = [
+    'vampire',
+    'werewolf',
+    'fairy',
+    'siren',
+    'djinn',
+    'witch',
+    'dragon',
+    'demon',
+    'angel',
+    'mermaid'
+  ];
   readonly themeOptions: ThemeSeed[] = [
     { id: 'betrayal', label: 'Betrayal', description: 'Trust becomes leverage.' },
     { id: 'obsession', label: 'Obsession', description: 'Desire narrows into fixation.' },
@@ -332,6 +343,12 @@ export class ProvingGroundsComponent implements OnInit {
       tone: 'dark_romance',
       desiredWordBudget: this.wordCount,
       chapterBatchSize: this.chapterBatchSize,
+      heatContract: {
+        adultOnlyConfirmed: true,
+        tensionMode: 'slow_burn',
+        intimacyBoundary: 'fade_to_black',
+        noGoContent: ''
+      },
       narrativeDirectives: [
         'PROVING GROUNDS TEST',
         prompts.system,

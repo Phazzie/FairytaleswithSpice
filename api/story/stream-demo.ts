@@ -1,18 +1,15 @@
+import { applyCorsPolicy } from '../_lib/http/corsPolicy';
+
 /**
  * Simple Streaming Test API
  * Easy way to test text streaming without complex setups
  */
 
 export default async function handler(req: any, res: any) {
-  // Set CORS headers  
-  const origin = process.env['FRONTEND_URL'] || 'http://localhost:4200';
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
+  const cors = applyCorsPolicy(req, res, {
+    methods: ['GET', 'OPTIONS']
+  });
+  if (cors.handled) {
     return;
   }
 
@@ -26,10 +23,10 @@ export default async function handler(req: any, res: any) {
   try {
     // Set up Server-Sent Events
     res.writeHead(200, {
+      ...cors.headers,
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
+      'Connection': 'keep-alive'
     });
 
     // Send initial connection message

@@ -11,6 +11,12 @@ function createBlueprint(overrides: Partial<StoryGenerationSeam['input']> = {}):
     tone: 'dark_romance',
     desiredWordBudget: 900,
     chapterBatchSize: 2,
+    heatContract: {
+      adultOnlyConfirmed: true,
+      tensionMode: 'slow_burn',
+      intimacyBoundary: 'fade_to_black',
+      noGoContent: ''
+    },
     ...overrides
   };
 }
@@ -46,5 +52,57 @@ describe('FormValidationService', () => {
 
     expect(errors.chapterBatchSize).toContain('1, 2, or 3');
     expect(errors.desiredWordBudget).toContain('word budget');
+  });
+
+  it('requires the Heat Contract adult-reader confirmation', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      heatContract: {
+        adultOnlyConfirmed: false,
+        tensionMode: 'slow_burn',
+        intimacyBoundary: 'fade_to_black',
+        noGoContent: ''
+      }
+    }));
+
+    expect(errors.heatContract).toContain('adult readers');
+  });
+
+  it('limits Heat Contract no-go content length', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      heatContract: {
+        adultOnlyConfirmed: true,
+        tensionMode: 'slow_burn',
+        intimacyBoundary: 'fade_to_black',
+        noGoContent: 'x'.repeat(service.maxNoGoContentLength + 1)
+      }
+    }));
+
+    expect(errors.heatContractNoGoContent).toContain('no-go content');
+  });
+
+  it('rejects unsupported Heat Contract tension mode', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      heatContract: {
+        adultOnlyConfirmed: true,
+        tensionMode: 'unsupported_mode' as StoryGenerationSeam['input']['heatContract']['tensionMode'],
+        intimacyBoundary: 'fade_to_black',
+        noGoContent: ''
+      }
+    }));
+
+    expect(errors.heatContract).toContain('supported Heat Contract settings');
+  });
+
+  it('rejects unsupported Heat Contract intimacy boundary', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      heatContract: {
+        adultOnlyConfirmed: true,
+        tensionMode: 'slow_burn',
+        intimacyBoundary: 'unsupported_boundary' as StoryGenerationSeam['input']['heatContract']['intimacyBoundary'],
+        noGoContent: ''
+      }
+    }));
+
+    expect(errors.heatContract).toContain('supported Heat Contract settings');
   });
 });
