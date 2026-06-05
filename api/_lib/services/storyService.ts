@@ -550,6 +550,10 @@ export class StoryService {
     const tropeSelection = this.selectTropeSubversions(input);
 
     if (!this.xaiClient.hasApiKey()) {
+      if (this.isProductionRuntime()) {
+        throw this.missingProviderError();
+      }
+
       // For mock mode, simulate streaming
       await this.simulateStreamingGeneration(input, onChunk, tropeSelection);
       return;
@@ -1324,6 +1328,7 @@ CLIFFHANGER VARIETY TARGETS:
 - End with the type that best fits this chapter, but avoid repeating the exact emotional shape of the prior ending.
 
 ${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+${this.formatContinuationStoryLabContext(input.generationContext)}
 
 PREVIOUS CHAPTER(S) FOR CONTINUITY:
 ${this.createContextExcerpt(existingContent)}
@@ -1338,6 +1343,25 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     return tropeSelection
       ? this.tropeService.enhanceContinuationPrompt(prompt, tropeSelection)
       : prompt;
+  }
+
+  private formatContinuationStoryLabContext(context: ChapterContinuationSeam['input']['generationContext']): string {
+    if (context?.source !== 'story_lab' || !context.heatContract) {
+      return '';
+    }
+
+    const lines = [
+      '',
+      'STORY LAB HEAT CONTRACT - CONTINUATION CONSTRAINTS:',
+      `- Adult readers only confirmed; tension mode ${this.formatHeatContractLabel(context.heatContract.tensionMode)}; boundary ${this.formatHeatContractLabel(context.heatContract.intimacyBoundary)}.`
+    ];
+
+    if (context.heatContract.noGoContent?.trim()) {
+      lines.push(`- No-go content: ${context.heatContract.noGoContent.trim()}`);
+    }
+
+    lines.push('- Keep continuation intimacy consensual and do not exceed the original Heat Contract boundary.');
+    return lines.join('\n');
   }
 
   /**

@@ -180,6 +180,7 @@ export interface ChapterContinuationSeam {
     maintainTone: boolean; // Keep same spicy level and themes
     tropeMetadata?: string; // Optional invisible generation metadata from original story
     requestedChapterCount?: 1 | 2 | 3;
+    generationContext?: StoryGenerationContext;
   };
 
   output: {

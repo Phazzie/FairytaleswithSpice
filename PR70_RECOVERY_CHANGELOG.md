@@ -1647,3 +1647,11 @@ Validation:
 - `npx tsx tests/story-lab-auth.test.ts`: passed.
 - `npx tsx tests/story-lab-stream-parse.test.ts`: passed.
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+
+Follow-up review batch:
+
+- Added the required Heat Contract adult confirmation click to `scripts/recovery/story-lab-browser-smoke.mjs`.
+- Made classic `/api/story/stream` fail closed in production without `XAI_API_KEY` instead of streaming mock content.
+- Carried the original Heat Contract into Story Lab continuations through the continuation seam and classic `generationContext`.
+- Added `tests/story-service-streaming-security.test.ts` to prove streaming does not emit mock chunks in production missing-key mode.
+- `npx tsx tests/story-service-streaming-security.test.ts`: passed.

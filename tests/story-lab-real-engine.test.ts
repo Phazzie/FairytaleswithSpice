@@ -350,6 +350,59 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(response.error.code === 'AI_UNAVAILABLE', 'production continuation missing provider key should use AI_UNAVAILABLE');
   });
 
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    let sawHeatContract = false;
+    const response = await continueStoryLab({
+      storyId: payload.summary.storyId,
+      chapterBatchSize: 1,
+      storyState: payload.state,
+      previouslyGeneratedChapters: payload.batch.chapters,
+      continuationBrief: 'Keep the boundary intact.',
+      existingSummary: payload.summary,
+      heatContract: blueprint.heatContract
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by continuation test');
+        },
+        continueChapter: async input => {
+          sawHeatContract = input.generationContext?.heatContract?.intimacyBoundary === 'fade_to_black';
+          return {
+            success: true,
+            data: {
+              chapterId: 'chapter-2',
+              chapterNumber: 2,
+              title: 'Boundary Kept',
+              content: '<h3>Chapter 2: Boundary Kept</h3><p>Mira chose restraint.</p>',
+              rawContent: '<p>[Mira]: "We wait."</p>',
+              wordCount: 7,
+              cliffhangerEnding: true,
+              themesContinued: ['forbidden_love'],
+              spicyLevelMaintained: 3,
+              appendedToStory: '<h3>Chapter 2: Boundary Kept</h3><p>Mira chose restraint.</p>',
+              tropeMetadata: payload.summary.tropeMetadata,
+              chapters: [{
+                chapterId: 'chapter-2',
+                chapterNumber: 2,
+                title: 'Boundary Kept',
+                content: '<h3>Chapter 2: Boundary Kept</h3><p>Mira chose restraint.</p>',
+                rawContent: '<p>[Mira]: "We wait."</p>',
+                wordCount: 7,
+                generatedAt: new Date(),
+                hasAudio: false,
+                cliffhangerEnding: true
+              }],
+              totalWordCount: 7
+            }
+          };
+        }
+      })
+    });
+
+    assert(response.success, 'continuation with Heat Contract should succeed through service seam');
+    assert(sawHeatContract, 'continuation service input should receive the original Heat Contract');
+  });
+
   console.log('Story Lab real-engine mapping tests passed');
 })().catch(error => {
   console.error(error);

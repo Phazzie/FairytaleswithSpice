@@ -451,7 +451,8 @@ export class App implements OnDestroy {
       storyState: session.state,
       previouslyGeneratedChapters: session.chapterHistory,
       continuationBrief: brief ?? undefined,
-      existingSummary: session.story
+      existingSummary: session.story,
+      heatContract: this.activeHeatContract()
     } as const;
 
     this.storyService.continueStory(request).subscribe({

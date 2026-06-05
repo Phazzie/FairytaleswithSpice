@@ -273,6 +273,7 @@ export interface StoryContinuationSeam {
     continuationBrief?: string;
     forceCliffhanger?: boolean;
     existingSummary?: StorySummary;
+    heatContract?: HeatContract;
   };
 
   output: StoryIterationPayload & {

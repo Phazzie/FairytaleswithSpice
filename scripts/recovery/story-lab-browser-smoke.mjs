@@ -30,6 +30,7 @@ const smokeSelectors = Object.freeze({
   protagonist: '[data-testid="blueprint-protagonist"]',
   antagonist: '[data-testid="blueprint-antagonist"]',
   worldDetails: '[data-testid="blueprint-world-details"]',
+  heatContractAdult: '[data-testid="heat-contract-adult"]',
   storyDetails: 'details.story-details > summary',
   generateButton: '[data-testid="generate-chapters"]',
   continueButton: '[data-testid="continue-saga"]',
@@ -350,6 +351,7 @@ async function runSmoke() {
     await page.locator(smokeSelectors.antagonist).fill(demoBlueprint.antagonist);
     await page.locator(smokeSelectors.worldDetails).fill(demoBlueprint.worldDetails);
     await page.locator(smokeSelectors.themeChip(demoBlueprint.themeId)).click();
+    await page.locator(smokeSelectors.heatContractAdult).check();
 
     await page.locator(smokeSelectors.generateButton).click();
     await page.locator(smokeSelectors.progress).waitFor({ timeout: 20_000 });

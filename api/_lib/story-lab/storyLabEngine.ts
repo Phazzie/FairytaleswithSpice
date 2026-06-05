@@ -231,7 +231,11 @@ export async function continueStoryLab(
     userInput: input.continuationBrief,
     maintainTone: true,
     tropeMetadata: existingSummary?.tropeMetadata,
-    requestedChapterCount: input.chapterBatchSize
+    requestedChapterCount: input.chapterBatchSize,
+    generationContext: input.heatContract ? {
+      source: 'story_lab',
+      heatContract: input.heatContract
+    } : undefined
   });
 
   if (!result.success) {
