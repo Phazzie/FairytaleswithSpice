@@ -1763,9 +1763,9 @@ Validation:
 Actions:
 
 - Addressed the three PR #100 SonarCloud regex-DoS security hotspots without marking them reviewed:
-  - replaced server log email/auth/API-key/URL regex redaction with bounded token scanners;
-  - replaced Angular error-log email/auth/API-key/URL regex redaction with bounded token scanners;
+  - replaced server and Angular log email/auth/API-key/URL regex redaction with a shared bounded token scanner;
   - replaced Story Lab plain-text HTML stripping, file-name cleanup, and HTML escaping regex replacements with character scans.
+- Refactored the shared scanner into `shared/sensitiveTextRedaction.ts` after SonarCloud cleared the hotspots but failed the gate on duplicated new-code density.
 - Kept the unrelated untracked planning/smoke files out of scope.
 
 Validation:
@@ -1776,3 +1776,5 @@ Validation:
 - `npx tsx tests/cors-policy.test.ts`: passed.
 - `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
