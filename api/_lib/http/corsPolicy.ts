@@ -147,11 +147,18 @@ function unique(values: string[]): string[] {
 
 function sendCorsForbidden(res: CorsResponseLike): void {
   const response = res.status(403);
-  response.json?.({
+  const body = {
     success: false,
     error: {
       code: 'ORIGIN_NOT_ALLOWED',
       message: 'Request origin is not allowed.'
     }
-  });
+  };
+
+  if (response.json) {
+    response.json(body);
+    return;
+  }
+
+  response.end?.();
 }

@@ -1741,3 +1741,19 @@ Validation:
 - `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-05 02:52 EDT - PR101 Review Comment Follow-Ups
+
+Actions:
+
+- Addressed Sourcery/Copilot CORS review: disallowed-origin fallback responses now call `end()` when a response adapter does not provide `json()`.
+- Addressed Gemini entity-decoding review: plain-text export decodes direct `&lt;`, `&gt;`, quotes, and apostrophes, while decoding `&amp;` last to avoid double-decoding `&amp;lt;` and `&amp;quot;`.
+- Added the missing `// Created:` headers to `api/_lib/services/exportSanitizer.ts` and `api/_lib/story-lab/jobs/jobContracts.ts`.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/cors-policy.test.ts`: passed.
+- `npx tsx tests/export-sanitizer.test.ts`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.

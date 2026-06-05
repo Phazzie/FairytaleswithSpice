@@ -1,3 +1,5 @@
+// Created: 2026-06-05 02:20 EDT
+
 const ALLOWED_STORY_TAGS = new Set([
   'p',
   'br',
@@ -50,6 +52,14 @@ const DANGEROUS_BLOCK_TAGS = new Set([
   'select'
 ]);
 const PLAIN_TEXT_BREAK_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'li', 'blockquote', 'section', 'article']);
+const BASIC_HTML_ENTITY_REPLACEMENTS = [
+  ['&nbsp;', ' '],
+  ['&lt;', '<'],
+  ['&gt;', '>'],
+  ['&quot;', '"'],
+  ['&#39;', "'"],
+  ['&amp;', '&']
+];
 
 interface ParsedHtmlTag {
   tagName: string;
@@ -330,9 +340,12 @@ function isInlineWhitespace(character: string): boolean {
 }
 
 function decodeBasicEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'");
+  return BASIC_HTML_ENTITY_REPLACEMENTS.reduce(
+    (decoded, [entity, replacement]) => replaceEntity(decoded, entity, replacement),
+    value
+  );
+}
+
+function replaceEntity(value: string, entity: string, replacement: string): string {
+  return replaceEvery(replaceEvery(value, entity, replacement), entity.toUpperCase(), replacement);
 }

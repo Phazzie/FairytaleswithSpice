@@ -55,6 +55,14 @@ assert(!plainText.includes('>'), 'plain export should not contain raw closing an
 assert(!plainText.includes('stealPrivateStory'), 'plain export should remove script content');
 assert(!plainText.includes('secret.example'), 'plain export should remove style content');
 
+const entityPlainText = stripStoryHtmlForExport(
+  '<p>&lt;visible&gt; &amp;lt;encoded&amp;gt; &quot;quote&quot; &amp;quot;encoded quote&amp;quot;</p>'
+);
+assert(entityPlainText.includes('<visible>'), 'plain export should decode direct less-than and greater-than entities');
+assert(entityPlainText.includes('&lt;encoded&gt;'), 'plain export should not double-decode amp-escaped tag entities');
+assert(entityPlainText.includes('"quote"'), 'plain export should decode direct quote entities');
+assert(entityPlainText.includes('&quot;encoded quote&quot;'), 'plain export should not double-decode amp-escaped quote entities');
+
 assert(
   escapeHtml('<title>"Angel"</title>') === '&lt;title&gt;&quot;Angel&quot;&lt;/title&gt;',
   'escapeHtml should escape markup and quotes'

@@ -40,6 +40,25 @@ class FakeResponse implements CorsResponseLike {
   }
 }
 
+class EndOnlyResponse implements CorsResponseLike {
+  headers: Record<string, string> = {};
+  statusCode = 0;
+  ended = false;
+
+  setHeader(name: string, value: string): void {
+    this.headers[name] = value;
+  }
+
+  status(code: number): CorsResponseLike {
+    this.statusCode = code;
+    return this;
+  }
+
+  end(): void {
+    this.ended = true;
+  }
+}
+
 function request(method: string, origin?: string): CorsRequestLike {
   return {
     method,
@@ -95,6 +114,17 @@ assert(rejectedResult.handled, 'disallowed origin should be handled by CORS reje
 assert(rejectedResult.rejected, 'disallowed origin should be rejected');
 assert(rejectedResponse.statusCode === 403, 'disallowed origin should return 403');
 assert(!('Access-Control-Allow-Origin' in rejectedResponse.headers), 'disallowed origin should not receive allow-origin');
+
+const endOnlyRejectedResponse = new EndOnlyResponse();
+const endOnlyRejectedResult = applyCorsPolicy(request('POST', 'https://evil.example.com'), endOnlyRejectedResponse, {
+  methods: ['POST', 'OPTIONS'],
+  credentials: true,
+  env
+});
+
+assert(endOnlyRejectedResult.handled, 'non-JSON disallowed origin should be handled');
+assert(endOnlyRejectedResponse.statusCode === 403, 'non-JSON disallowed origin should return 403');
+assert(endOnlyRejectedResponse.ended, 'non-JSON disallowed origin should end the response');
 
 const wildcardResponse = new FakeResponse();
 applyCorsPolicy(request('OPTIONS', 'https://evil.example.com'), wildcardResponse, {
