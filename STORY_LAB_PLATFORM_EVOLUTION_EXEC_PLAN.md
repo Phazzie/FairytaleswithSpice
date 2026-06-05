@@ -48,6 +48,10 @@ The key product goal is not "more features." The key product goal is a story stu
 - [ ] Run a complete Angular build/browser-spec pass in a stable browser environment; local Node v23 hung before useful diagnostics, and Node 20 built the targeted spec bundle but Chrome did not capture within 60 seconds.
 - [x] Push the completed checklist work and open PR #100.
 - [x] Address actionable PR review comments before starting the next implementation gate.
+- [x] Executed Phase B2-B4 safety gates on `feature/story-lab-privacy-streaming-gates`:
+  - [x] centralized credentialed CORS and disallowed-origin rejection;
+  - [x] documented retention/deletion/export policy and implemented the server export sanitizer;
+  - [x] added opaque job-id streaming contracts without adding deployable job routes.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -61,6 +65,7 @@ The key product goal is not "more features." The key product goal is a story stu
 - The repo is already at the Vercel function-count guard limit (`12/12`), so any future job/export route work must consolidate or retire existing functions before adding routes.
 - Phase B was too broad as one executable block. It mixed shared parser extraction, account auth seams, privacy/redaction, CORS, retention/deletion policy, export-sanitizer planning, and the future opaque job-id stream. It is now split into smaller checklist gates.
 - Phase B1 can be completed without adding routes, dependencies, storage writes, or an auth provider.
+- Phase B2-B4 can also be completed route-free: shared CORS, sanitizer, retention policy, and job-id contracts all live under `api/_lib` plus tests, so the Vercel function-count guard stays at `12/12`.
 - Local Angular/Karma remains environment-sensitive: Node 20 could build the targeted error-logging spec bundle, but Chrome did not capture within 60 seconds in this runner.
 
 ## Decision Log
@@ -87,6 +92,8 @@ The key product goal is not "more features." The key product goal is a story stu
   Rationale: Parser/auth/redaction are code-safe without provisioning; CORS, retention, export sanitizer, and job-id streaming require separate review because they change privacy, deployment, and route-count risk.
 - Decision: Count Phase B1 as completed only for parser/auth/redaction behavior, not for account sync readiness as a whole.
   Rationale: The code now prevents obvious drift and log leakage, but CORS, retention/deletion, export sanitizer replacement, and job-id streaming still remain gates before accounts or cloud storage.
+- Decision: Count Phase B2-B4 as completed for policy/contracts/safety helpers only, not for account sync, durable storage, or durable job execution.
+  Rationale: Disallowed origins now fail before private route work, server export interpolation is sanitized, and future EventSource paths have an opaque job-id contract, but no auth provider, database, Blob store, Workflow runner, or job route has been provisioned.
 
 ## Outcomes & Retrospective
 
@@ -101,17 +108,21 @@ The key product goal is not "more features." The key product goal is a story stu
   - POST and stream Story Lab genesis now normalize through one shared server blueprint parser.
   - Story Lab account auth has a deny-by-default port and owner-scope authorization helper without pretending API keys are user accounts.
   - Server and client error logging now redact private story/prompt/user/artifact data before storing or printing logs.
+  - Credentialed CORS now uses one `api/_lib/http/corsPolicy.ts` helper and rejects disallowed browser origins before route work.
+  - Server export now sanitizes story HTML through a tiny allow-list, strips dangerous containers, escapes title/metadata/PDF strings, and avoids logging raw export errors.
+  - Future Story Lab job streaming now has an opaque `job_<uuid>` contract and path builder that keeps blueprint/story/private fields out of status and events URLs.
 - What was intentionally deferred:
-  - Accounts, cloud storage, durable jobs, Workflow, Blob export, email, and audio runtime.
-  - CORS/account boundary hardening, retention/deletion policy, export sanitizer replacement, and opaque job-id streaming.
+  - Accounts, cloud storage, durable job routes, Workflow execution, Blob export, email, and audio runtime.
+  - Route consolidation before any `/api/story-lab/jobs*` implementation.
 - What hostile review still objected to:
   - The current staged progress UI is not real durable progress.
-  - Streaming still places sensitive blueprint fields in an EventSource URL until the future job-id design replaces it.
-  - Existing `/api/export/save` is not safe enough to reuse as durable server export.
+  - Streaming still places sensitive blueprint fields in an EventSource URL until a POST-created job route replaces it with the new opaque job-id contract.
+  - Existing `/api/export/save` is safer for mock server export, but it is still not a durable Blob/email export path.
   - Full Angular build and Karma browser spec validation must be rerun under a stable local/CI environment because Node v23 Angular build/Karma runners hung here.
 - What validation proved:
   - `git diff --check`, direct app/spec `tsc`, `npm run test:story-lab-real-engine`, `npm exec -- tsx tests/story-lab-stream-parse.test.ts`, `npm run smoke:story-lab-live-provider` default skip, `scripts/recovery/check-vercel-function-count.sh`, and `scripts/recovery/preflight.sh --quick --skip-status` all completed successfully.
   - Phase B1 focused tests passed: `npm exec -- tsx tests/story-lab-blueprint-parser.test.ts`, `npm exec -- tsx tests/story-lab-auth.test.ts`, `npm exec -- tsx tests/log-redaction.test.ts`, `npm exec -- tsx tests/story-lab-stream-parse.test.ts`, `npm run test:story-lab-state`, and `npm run test:story-lab-real-engine`.
+  - Phase B2-B4 focused tests passed: `npx tsx tests/cors-policy.test.ts`, `npx tsx tests/export-sanitizer.test.ts`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/log-redaction.test.ts`, `npx tsx tests/story-lab-blueprint-parser.test.ts`, `npx tsx tests/story-lab-auth.test.ts`, `npx tsx tests/story-lab-stream-parse.test.ts`, `npx tsx tests/story-lab-real-engine.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh`, and `scripts/recovery/preflight.sh --quick --skip-status`.
 
 ## Context and Orientation
 
@@ -446,67 +457,92 @@ Validation evidence:
 
 #### Phase B2: CORS and Account Boundary Gate
 
-Status: not started.
+Status: complete locally on `feature/story-lab-privacy-streaming-gates`.
 
 Files:
 
-- [ ] Create `api/_lib/http/corsPolicy.ts` or a similarly named shared helper under `api/_lib`.
-- [ ] Modify account-capable routes to use exact allowed origins from env.
-- [ ] Add CORS tests that reject wildcard origins before cookies/account sync.
+- [x] Created `api/_lib/http/corsPolicy.ts`.
+- [x] Modified account-capable/private-content routes to use exact allowed origins from env:
+  - `api/story/generate.ts`
+  - `api/story/continue.ts`
+  - `api/story/stream.ts`
+  - `api/story/stream-demo.ts`
+  - `api/export/save.ts`
+  - `api/image/generate.ts`
+  - `api/story-lab/stories.ts`
+  - `api/story-lab/stories/[storyId]/continue.ts`
+  - `api/story-lab/evaluate.ts`
+  - `api/story-lab/stream/genesis.ts`
+  - `api/story-lab/health.ts`
+- [x] Added `tests/cors-policy.test.ts`.
 
 Rules:
 
-- [ ] No wildcard CORS for routes that can carry account cookies, auth headers, story text, artifact URLs, or project ids.
-- [ ] CORS config must be centralized before any account sync route is added.
-- [ ] `FRONTEND_URL` or a future allow-list env must be parsed and validated without logging the raw value when it contains private preview URLs.
+- [x] No wildcard CORS for routes that can carry account cookies, auth headers, story text, artifact URLs, or project ids.
+- [x] CORS config is centralized before any account sync route is added.
+- [x] `STORY_LAB_ALLOWED_ORIGINS`, `ALLOWED_ORIGINS`, and `FRONTEND_URL` are parsed as exact URL origins; `*` is ignored and never echoed.
+- [x] Disallowed browser origins receive `403` before private route work runs.
+- [x] SSE `writeHead` calls now use helper-built CORS headers instead of route-local strings.
 
 Validation:
 
-- [ ] CORS policy tests.
-- [ ] `scripts/recovery/check-vercel-function-count.sh`
-- [ ] `scripts/recovery/preflight.sh --quick --skip-status`
+- [x] `npx tsx tests/cors-policy.test.ts`: passed.
+- [x] Wildcard CORS scan under `api/`: no remaining wildcard allow-origin literal.
+- [x] `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- [x] `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
 #### Phase B3: Retention, Deletion, and Export-Sanitizer Policy Gate
 
-Status: not started.
+Status: policy and sanitizer complete locally; durable Blob/email export still blocked.
 
 Files:
 
-- [ ] Add or update the plan/changelog section that defines retention and deletion behavior for raw chapter text, story state snapshots, spice metadata, narration metadata, emails, and artifact URLs.
-- [ ] Add an export sanitizer replacement design for `api/export/save.ts` and `api/_lib/services/exportService.ts` before claiming durable server PDF/email export.
-- [ ] Add tests only after a concrete sanitizer implementation is selected.
+- [x] Updated this plan/changelog/lessons with retention, deletion, and export-sanitizer behavior.
+- [x] Created `api/_lib/services/exportSanitizer.ts`.
+- [x] Updated `api/_lib/services/exportService.ts`.
+- [x] Updated `api/export/save.ts` so raw export error objects are not logged.
+- [x] Added `tests/export-sanitizer.test.ts`.
 
 Rules:
 
-- [ ] Do not store raw story text in cloud storage until retention, deletion, owner-scope, and export behavior are documented.
-- [ ] Do not reuse `/api/export/save` for durable account export until sanitizer tests cover HTML/title/metadata and private artifact URLs.
-- [ ] Do not add Blob URLs until private URL and deletion rules exist.
+- [x] Do not store raw story text in cloud storage until retention, deletion, owner-scope, and export behavior are enforced by the storage adapter.
+- [x] Retention policy for future cloud storage:
+  - story projects, chapters, story state snapshots, spice metadata, and narration metadata are owner-scoped records;
+  - account deletion must cascade through project/chapter/state/export/job records;
+  - generated artifact URLs must be private, expiring, owner-scoped, and deleted when the source project/export is deleted;
+  - email export must not store recipient emails beyond the delivery/audit window selected in a later provider-specific plan.
+- [x] Server export now sanitizes HTML content through a tiny allow-list, strips all attributes, removes dangerous container content, escapes HTML titles/metadata, escapes PDF string syntax, and uses plain text for text/PDF mock output.
+- [x] Do not add Blob URLs until private URL and deletion rules are implemented against the selected Blob/storage provider.
 
 Validation:
 
-- [ ] Privacy/retention review recorded in this plan.
-- [ ] Export sanitizer test plan recorded before implementation.
+- [x] Privacy/retention review recorded in this plan.
+- [x] `npx tsx tests/export-sanitizer.test.ts`: passed.
+- [x] `npx tsx tests/log-redaction.test.ts`: passed.
 
 #### Phase B4: Opaque Job-Id Streaming Design Gate
 
-Status: not started.
+Status: design/contracts complete locally; route implementation blocked by function-count and workflow/provider decisions.
 
 Files:
 
-- [ ] Update this plan with the route consolidation needed before adding job routes.
-- [ ] Define how POST job creation replaces sensitive EventSource query strings.
-- [ ] Define how anonymous local generation keeps working before account storage exists.
+- [x] Updated this plan with the route consolidation needed before adding job routes.
+- [x] Created `api/_lib/story-lab/jobs/jobContracts.ts`.
+- [x] Added `tests/story-lab-job-contracts.test.ts`.
+- [x] Defined how POST job creation should replace sensitive EventSource query strings: future creation returns `job_<uuid>`, and status/events URLs carry only that opaque id.
+- [x] Defined anonymous local generation behavior before account storage exists: keep current direct generation as a non-durable local path until a job route plus real worker/workflow is available.
 
 Rules:
 
-- [ ] Streaming should be replaced by POST job creation plus opaque job-id events before sensitive account data enters the URL path.
-- [ ] Do not add job routes while the function-count guard is still `12/12`.
-- [ ] Without Vercel Workflow, status must be labeled non-durable.
+- [x] Streaming should be replaced by POST job creation plus opaque job-id events before sensitive account data enters the URL path.
+- [x] Do not add job routes while the function-count guard is still `12/12`; this gate added contracts/tests only.
+- [x] Without Vercel Workflow or a real queue/worker, status must be labeled non-durable.
 
 Validation:
 
-- [ ] Function-count consolidation plan exists.
-- [ ] Job contract tests are specified before code.
+- [x] Function-count consolidation remains required before route implementation.
+- [x] `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- [x] `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
 
 ### Phase C: Storage Port Without Cloud Deployment
 

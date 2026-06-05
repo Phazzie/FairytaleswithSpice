@@ -1684,3 +1684,76 @@ Validation:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-05 02:20 EDT - Phase B2-B4 Privacy and Streaming Gates
+
+Actions:
+
+- Created `STORY_LAB_PRIVACY_STREAMING_GATES_EXEC_PLAN.md` as the self-contained execution plan for the next large branch after PR #100.
+- Ran a hostile privacy/security/deployment review against the initial plan and revised it before implementation:
+  - reject disallowed browser origins with `403`;
+  - never accept or echo wildcard credentialed CORS;
+  - drive SSE `writeHead` CORS headers from the same helper;
+  - implement export sanitizer tests now instead of only documenting them;
+  - keep job-id work contract-only while the function count is `12/12`.
+- Created `api/_lib/http/corsPolicy.ts` and replaced repeated CORS blocks across private-content/account-capable API routes.
+- Created `api/_lib/services/exportSanitizer.ts` and updated `api/_lib/services/exportService.ts` plus `api/export/save.ts` so server export sanitizes story HTML/title/metadata/PDF strings and does not log raw export error objects.
+- Created `api/_lib/story-lab/jobs/jobContracts.ts` for opaque `job_<uuid>` ids and status/events path builders without adding deployable job routes.
+- Updated `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md`, `LESSONS_LEARNED.md`, and this changelog with the completed gates and remaining provisioning blockers.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/cors-policy.test.ts`: passed.
+- `npx tsx tests/export-sanitizer.test.ts`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx tsx tests/log-redaction.test.ts`: passed.
+- `npx tsx tests/story-lab-blueprint-parser.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npx tsx tests/story-lab-stream-parse.test.ts`: passed.
+- `npx tsx tests/story-lab-real-engine.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+Self-review:
+
+- Good: The branch completed a large privacy/security chunk without broadening PR #100.
+- Good: No deployable API routes were added; helper files stayed under `api/_lib`.
+- Good: Future job streaming now has an opaque path contract, but actual routes remain blocked until route consolidation and Workflow/worker decisions.
+- Remaining risk: The current Story Lab stream still uses query fields until the future POST job creation route exists.
+
+## 2026-06-05 02:34 EDT - PR101 Sonar Follow-Ups
+
+Actions:
+
+- Addressed SonarCloud annotations in `api/_lib/services/exportSanitizer.ts` and `tests/export-sanitizer.test.ts`:
+  - used `String.raw` for escaped regex/string fixtures;
+  - changed mechanical global string replacements to a TypeScript-compatible fixed-string helper;
+  - used `RegExp.exec()` instead of `String.match()` for tag parsing.
+- Replaced sanitizer regex tokenization/tag stripping with a small manual HTML token scanner after SonarCloud reported five regex DoS security hotspots.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/export-sanitizer.test.ts`: passed.
+- `npx tsx tests/cors-policy.test.ts`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-05 02:52 EDT - PR101 Review Comment Follow-Ups
+
+Actions:
+
+- Addressed Sourcery/Copilot CORS review: disallowed-origin fallback responses now call `end()` when a response adapter does not provide `json()`.
+- Addressed Gemini entity-decoding review: plain-text export decodes direct `&lt;`, `&gt;`, quotes, and apostrophes, while decoding `&amp;` last to avoid double-decoding `&amp;lt;` and `&amp;quot;`.
+- Added the missing `// Created:` headers to `api/_lib/services/exportSanitizer.ts` and `api/_lib/story-lab/jobs/jobContracts.ts`.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/cors-policy.test.ts`: passed.
+- `npx tsx tests/export-sanitizer.test.ts`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.

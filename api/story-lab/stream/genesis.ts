@@ -5,26 +5,21 @@ import type {
   StoryIterationPayload,
   StreamingProgressChunk
 } from '../../_lib/story-lab/contracts';
+import { applyCorsPolicy } from '../../_lib/http/corsPolicy';
 import { generateStoryLabGenesis } from '../../_lib/story-lab/storyLabEngine';
 import {
   parseStoryLabBlueprintFromQuery,
   type StoryLabBlueprintParseResult
 } from '../../_lib/story-lab/validation/blueprintParser';
 
-const ACCESS_CONTROL_METHODS = 'GET, OPTIONS';
-const ACCESS_CONTROL_HEADERS = 'Content-Type';
-
 type GenesisResponse = ApiEnvelope<StoryIterationPayload>;
 
 export default async function handler(req: any, res: any) {
-  const origin = process.env.FRONTEND_URL ?? 'http://localhost:4200';
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', ACCESS_CONTROL_METHODS);
-  res.setHeader('Access-Control-Allow-Headers', ACCESS_CONTROL_HEADERS);
-  res.setHeader('Vary', 'Origin');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
+  const cors = applyCorsPolicy(req, res, {
+    methods: ['GET', 'OPTIONS'],
+    credentials: true
+  });
+  if (cors.handled) {
     return;
   }
 
@@ -46,6 +41,7 @@ export default async function handler(req: any, res: any) {
   }
 
   res.writeHead(200, {
+    ...cors.headers,
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive'
