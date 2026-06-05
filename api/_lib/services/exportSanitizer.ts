@@ -36,23 +36,24 @@ const DANGEROUS_CONTAINER_TAGS = [
 ];
 
 const DANGEROUS_CONTAINER_PATTERN = new RegExp(
-  `<\\s*(${DANGEROUS_CONTAINER_TAGS.join('|')})\\b[^>]*>[\\s\\S]*?<\\s*\\/\\s*\\1\\s*>`,
+  String.raw`<\s*(${DANGEROUS_CONTAINER_TAGS.join('|')})\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>`,
   'gi'
 );
 const DANGEROUS_SINGLE_TAG_PATTERN = new RegExp(
-  `<\\s*\\/?\\s*(?:${DANGEROUS_CONTAINER_TAGS.join('|')})\\b[^>]*>`,
+  String.raw`<\s*\/?\s*(?:${DANGEROUS_CONTAINER_TAGS.join('|')})\b[^>]*>`,
   'gi'
 );
 const HTML_TOKEN_PATTERN = /(<[^>]*>)/g;
 const HTML_TAG_PATTERN = /^<\s*(\/)?\s*([a-zA-Z0-9:-]+)(?:\s[^>]*)?\/?\s*>$/;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/g;
 
 export function escapeHtml(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 export function sanitizeStoryHtmlForExport(html: string): string {
@@ -90,10 +91,10 @@ export function stripStoryHtmlForExport(html: string): string {
 
 export function escapePdfText(value: string): string {
   return value
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)');
+    .replaceAll(CONTROL_CHARACTER_PATTERN, ' ')
+    .replaceAll('\\', String.raw`\\`)
+    .replaceAll('(', String.raw`\(`)
+    .replaceAll(')', String.raw`\)`);
 }
 
 function removeDangerousHtml(html: string): string {
@@ -105,7 +106,7 @@ function removeDangerousHtml(html: string): string {
 }
 
 function sanitizeStoryTag(token: string): string {
-  const match = token.match(HTML_TAG_PATTERN);
+  const match = HTML_TAG_PATTERN.exec(token);
   if (!match) {
     return '';
   }

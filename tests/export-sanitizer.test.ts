@@ -59,10 +59,9 @@ assert(
   escapeHtml('<title>"Angel"</title>') === '&lt;title&gt;&quot;Angel&quot;&lt;/title&gt;',
   'escapeHtml should escape markup and quotes'
 );
-assert(
-  escapePdfText('A (private) \\\\ path\n') === 'A \\(private\\) \\\\\\\\ path ',
-  'escapePdfText should escape PDF string syntax'
-);
+const pdfSample = String.raw`A (private) \\ path` + '\n';
+const expectedPdfSample = String.raw`A \(private\) \\\\ path `;
+assert(escapePdfText(pdfSample) === expectedPdfSample, 'escapePdfText should escape PDF string syntax');
 
 async function main(): Promise<void> {
   const exportService = new ExportService();
@@ -94,7 +93,7 @@ async function main(): Promise<void> {
   assert(!textExport.includes('javascript:'), 'text export should not include unsafe URLs');
   assert(!textExport.includes('stealPrivateStory'), 'text export should not include removed script content');
 
-  const pdfTitle = 'Private (Title) \\\\';
+  const pdfTitle = String.raw`Private (Title) \\`;
   const pdfExport = await (exportService as any).generateExportContent({
     ...input,
     title: pdfTitle,

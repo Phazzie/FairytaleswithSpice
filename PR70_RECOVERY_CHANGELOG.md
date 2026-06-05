@@ -1722,3 +1722,19 @@ Self-review:
 - Good: No deployable API routes were added; helper files stayed under `api/_lib`.
 - Good: Future job streaming now has an opaque path contract, but actual routes remain blocked until route consolidation and Workflow/worker decisions.
 - Remaining risk: The current Story Lab stream still uses query fields until the future POST job creation route exists.
+
+## 2026-06-05 02:34 EDT - PR101 Sonar Follow-Ups
+
+Actions:
+
+- Addressed SonarCloud annotations in `api/_lib/services/exportSanitizer.ts` and `tests/export-sanitizer.test.ts`:
+  - used `String.raw` for escaped regex/string fixtures;
+  - changed mechanical global string replacements to `replaceAll`;
+  - used `RegExp.exec()` instead of `String.match()` for tag parsing.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/export-sanitizer.test.ts`: passed.
+- `npx tsx tests/cors-policy.test.ts`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
