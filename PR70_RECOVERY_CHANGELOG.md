@@ -1731,6 +1731,7 @@ Actions:
   - used `String.raw` for escaped regex/string fixtures;
   - changed mechanical global string replacements to a TypeScript-compatible fixed-string helper;
   - used `RegExp.exec()` instead of `String.match()` for tag parsing.
+- Replaced sanitizer regex tokenization/tag stripping with a small manual HTML token scanner after SonarCloud reported five regex DoS security hotspots.
 
 Validation:
 
@@ -1738,4 +1739,5 @@ Validation:
 - `npx tsx tests/export-sanitizer.test.ts`: passed.
 - `npx tsx tests/cors-policy.test.ts`: passed.
 - `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
