@@ -1729,7 +1729,7 @@ Actions:
 
 - Addressed SonarCloud annotations in `api/_lib/services/exportSanitizer.ts` and `tests/export-sanitizer.test.ts`:
   - used `String.raw` for escaped regex/string fixtures;
-  - changed mechanical global string replacements to `replaceAll`;
+  - changed mechanical global string replacements to a TypeScript-compatible fixed-string helper;
   - used `RegExp.exec()` instead of `String.match()` for tag parsing.
 
 Validation:
@@ -1738,3 +1738,4 @@ Validation:
 - `npx tsx tests/export-sanitizer.test.ts`: passed.
 - `npx tsx tests/cors-policy.test.ts`: passed.
 - `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.

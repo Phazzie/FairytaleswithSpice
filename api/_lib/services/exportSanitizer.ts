@@ -45,15 +45,15 @@ const DANGEROUS_SINGLE_TAG_PATTERN = new RegExp(
 );
 const HTML_TOKEN_PATTERN = /(<[^>]*>)/g;
 const HTML_TAG_PATTERN = /^<\s*(\/)?\s*([a-zA-Z0-9:-]+)(?:\s[^>]*)?\/?\s*>$/;
-const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/g;
 
 export function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+  return [
+    ['&', '&amp;'],
+    ['<', '&lt;'],
+    ['>', '&gt;'],
+    ['"', '&quot;'],
+    ["'", '&#39;']
+  ].reduce((escaped, [searchValue, replacement]) => replaceEvery(escaped, searchValue, replacement), value);
 }
 
 export function sanitizeStoryHtmlForExport(html: string): string {
@@ -90,11 +90,14 @@ export function stripStoryHtmlForExport(html: string): string {
 }
 
 export function escapePdfText(value: string): string {
-  return value
-    .replaceAll(CONTROL_CHARACTER_PATTERN, ' ')
-    .replaceAll('\\', String.raw`\\`)
-    .replaceAll('(', String.raw`\(`)
-    .replaceAll(')', String.raw`\)`);
+  return [
+    ['\\', String.raw`\\`],
+    ['(', String.raw`\(`],
+    [')', String.raw`\)`]
+  ].reduce(
+    (escaped, [searchValue, replacement]) => replaceEvery(escaped, searchValue, replacement),
+    replacePdfControlCharacters(value)
+  );
 }
 
 function removeDangerousHtml(html: string): string {
@@ -122,6 +125,21 @@ function sanitizeStoryTag(token: string): string {
   }
 
   return isClosingTag ? `</${tagName}>` : `<${tagName}>`;
+}
+
+function replaceEvery(value: string, searchValue: string, replacement: string): string {
+  return value.split(searchValue).join(replacement);
+}
+
+function replacePdfControlCharacters(value: string): string {
+  let sanitized = '';
+
+  for (const character of value) {
+    const codePoint = character.charCodeAt(0);
+    sanitized += codePoint <= 0x1f || codePoint === 0x7f ? ' ' : character;
+  }
+
+  return sanitized;
 }
 
 function decodeBasicEntities(value: string): string {
