@@ -1943,7 +1943,9 @@ Actions:
   - making the EventSource mock instance registry readonly;
   - removing an unnecessary batch-size assertion;
   - using `RegExp.exec()` in the job-id URL parser;
-  - returning `this` from the route-test fake response `status()` helper.
+  - returning `this` from the route-test fake response `status()` helper;
+  - extracting repeated GET job-id validation into one route-handler helper;
+  - rewriting continuation input normalization without type assertions.
 
 Validation:
 

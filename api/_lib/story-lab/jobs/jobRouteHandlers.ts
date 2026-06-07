@@ -89,14 +89,8 @@ export async function handleGetStoryLabJob(req: RequestLike, res: ResponseLike):
     return;
   }
 
-  if ((req.method ?? '').toUpperCase() !== 'GET') {
-    sendJson(res, 405, methodNotAllowed('Only GET requests are supported.'));
-    return;
-  }
-
-  const jobId = readJobId(req);
-  if (!jobId || !assertOpaqueStoryLabJobId(jobId)) {
-    sendJson(res, 400, invalidJobId());
+  const jobId = readValidJobIdOrRespond(req, res);
+  if (!jobId) {
     return;
   }
 
@@ -121,14 +115,8 @@ export async function handleStreamStoryLabJobEvents(req: RequestLike, res: Respo
     return;
   }
 
-  if ((req.method ?? '').toUpperCase() !== 'GET') {
-    sendJson(res, 405, methodNotAllowed('Only GET requests are supported.'));
-    return;
-  }
-
-  const jobId = readJobId(req);
-  if (!jobId || !assertOpaqueStoryLabJobId(jobId)) {
-    sendJson(res, 400, invalidJobId());
+  const jobId = readValidJobIdOrRespond(req, res);
+  if (!jobId) {
     return;
   }
 
@@ -255,28 +243,49 @@ function normalizeContinuationInput(input: unknown): StoryContinuationSeam['inpu
   const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
   const hasChapters = Array.isArray(partial.previouslyGeneratedChapters);
   const batchSizeNumber = Number(partial.chapterBatchSize);
+  const storyState = partial.storyState ?? transientSnapshot?.state;
+  const previouslyGeneratedChapters = hasChapters
+    ? partial.previouslyGeneratedChapters ?? []
+    : transientSnapshot?.chapters;
 
   if (
     !storyId ||
-    (!partial.storyState && !transientSnapshot) ||
-    (!hasChapters && !transientSnapshot) ||
+    !storyState ||
+    !previouslyGeneratedChapters ||
     !isValidBatchSize(batchSizeNumber)
   ) {
     return null;
   }
 
   return {
-    ...(partial as StoryContinuationSeam['input']),
     storyId,
-    storyState: partial.storyState ?? transientSnapshot!.state,
-    previouslyGeneratedChapters: hasChapters ? partial.previouslyGeneratedChapters ?? [] : transientSnapshot!.chapters,
+    storyState,
+    previouslyGeneratedChapters,
+    continuationBrief: partial.continuationBrief,
+    forceCliffhanger: partial.forceCliffhanger,
     existingSummary: partial.existingSummary ?? transientSnapshot?.summary,
-    chapterBatchSize: batchSizeNumber
+    chapterBatchSize: batchSizeNumber,
+    heatContract: partial.heatContract
   };
 }
 
 function isValidBatchSize(size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] {
   return [1, 2, 3].includes(size);
+}
+
+function readValidJobIdOrRespond(req: RequestLike, res: ResponseLike): string | null {
+  if ((req.method ?? '').toUpperCase() !== 'GET') {
+    sendJson(res, 405, methodNotAllowed('Only GET requests are supported.'));
+    return null;
+  }
+
+  const jobId = readJobId(req);
+  if (!jobId || !assertOpaqueStoryLabJobId(jobId)) {
+    sendJson(res, 400, invalidJobId());
+    return null;
+  }
+
+  return jobId;
 }
 
 function readJobId(req: RequestLike): string | null {
