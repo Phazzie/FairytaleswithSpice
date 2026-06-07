@@ -4,6 +4,109 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-06-07 08:58 EDT - Story Lab Continuation UI Job Migration
+
+Actions:
+
+- Created `feature/story-lab-continuation-jobs` from current `main`.
+- Added `STORY_LAB_CONTINUATION_JOB_UI_EXEC_PLAN.md` for the UI slice and hostile-review risks.
+- Changed the Continue Saga UI from the old direct `continueStory()` call to `createStoryLabJob({ kind: 'continuation', continuation })`.
+- Wired continuation job snapshots/events into the existing visible progress/status panel.
+- Added continuation terminal handling:
+  - completed jobs append the returned chapters to the current saga;
+  - failed jobs show the existing friendly Grok configuration message when appropriate;
+  - cancelled jobs fail the active continuation batch without removing existing chapters.
+- Kept active browser-session job recovery limited to genesis for this slice so the UI does not imply durable continuation recovery before storage/Workflow exists.
+- Updated the mocked browser smoke so continuation uses `/api/story-lab/jobs` and the legacy `/api/story-lab/stories/:storyId/continue` path returns `410 LEGACY_CONTINUATION_ROUTE_USED` in smoke mode.
+- Updated `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md` to mark visible continuation job migration complete while keeping durable/account-backed job persistence deferred.
+
+Validation:
+
+- RED: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"` failed with 4 expected continuation failures proving the UI still called `continueStory` and did not stream continuation job events.
+- GREEN: the same focused Angular command passed with `23 SUCCESS` after the UI migration.
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs`: passed.
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx tsx tests/story-lab-job-routes.test.ts`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `23 SUCCESS`.
+- `npm run smoke:story-lab-ui`: passed in mock mode; Angular build reported the existing budget warnings for the 509.99 kB initial browser bundle and 12.56 kB `app.css`.
+
+Self-review:
+
+- Good: Both visible writing actions now use the same Story Lab job route family.
+- Good: Smoke mode now fails fast if the UI tries the old direct genesis or continuation endpoints.
+- Remaining risk: Continuation jobs do not yet have browser-session reload recovery; adding that should wait for a deliberate state/durability slice because continuation recovery needs an existing story/session snapshot.
+- Remaining risk: The job store is still `non_durable_memory`, so this is UI/contract progress, not durable Workflow/database-backed background execution.
+
+## 2026-06-07 09:05 EDT - PR107 Sonar Cleanup
+
+Problem:
+
+- PR #107 SonarCloud Code Analysis failed the quality gate with `7.2% Duplication on New Code` where the gate requires `<= 3%`.
+- Sonar also reported:
+  - duplicated app-spec job event helper implementation;
+  - a redundant jump in the mocked browser smoke route handler;
+  - a nested ternary in mocked smoke job lookup.
+
+Fix:
+
+- Replaced separate genesis/continuation spec event helpers with one generic `createJobEvent()` helper.
+- Removed the redundant return from the smoke script.
+- Replaced the nested smoke job lookup ternary with explicit `if`/`else if` branches.
+
+Validation:
+
+- `git diff --check`: passed.
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `23 SUCCESS`.
+- `npm run smoke:story-lab-ui`: passed in mock mode; Angular build reported the existing budget warnings for the 509.99 kB initial browser bundle and 12.56 kB `app.css`.
+
+## 2026-06-07 09:08 EDT - PR107 Gemini Review Fixes
+
+Problem:
+
+- Gemini Code Assist left two actionable continuation-job UI comments:
+  - completed continuation jobs should defensively reject malformed result payloads before using `job.result.batch.chapters`;
+  - continuation event streams that complete synchronously should not leave a stale closed subscription reference.
+
+Fix:
+
+- Added regression specs for malformed completed continuation payloads and synchronous continuation stream completion.
+- Added a `hasRenderableIterationPayload()` guard before applying completed continuation job results.
+- Updated `openContinuationJobEventStream()` to assign the stream subscription through a local variable and store `null` when it is already closed.
+
+Validation:
+
+- RED: focused Angular app spec failed with the expected malformed-payload and stale-subscription failures before implementation.
+- GREEN: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"` passed with `25 SUCCESS`.
+- `git diff --check`: passed.
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `npm run smoke:story-lab-ui`: passed in mock mode; Angular build reported the existing budget warnings for the 510.13 kB initial browser bundle and 12.56 kB `app.css`.
+
+## 2026-06-07 09:11 EDT - PR107 Remaining Sonar Duplication Cleanup
+
+Problem:
+
+- After the first Sonar cleanup and Gemini review-fix commit, SonarCloud still failed the quality gate with `6.5% Duplication on New Code`.
+- Sonar duplication details pointed to the genesis and continuation job-response helpers in `story-generator/src/app/app.spec.ts`.
+
+Fix:
+
+- Replaced duplicated genesis/continuation job-response helper bodies with one generic `createJobResponse()` test helper.
+- Kept the small genesis/continuation wrapper helpers so tests still read in domain language.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `25 SUCCESS`.
+
 ## 2026-05-26 00:12 EDT - Recovery Tracking Started
 
 Actions:

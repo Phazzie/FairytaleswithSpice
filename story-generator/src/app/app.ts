@@ -90,6 +90,8 @@ type ActiveStoryLabJobState = {
   startedAt: string;
 };
 
+type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
+
 @Component({
   selector: 'app-story-lab',
   standalone: true,
@@ -465,6 +467,7 @@ export class App implements OnDestroy {
     this.isGenerating.set(true);
     this.statusMessage.set('Asking Grok to continue the next chapter...');
     this.startProgress('continuation');
+    this.closeJobSubscriptions();
     const batchId = this.enqueueBatch('Continuation', this.blueprint().chapterBatchSize);
 
     const request = {
@@ -477,37 +480,33 @@ export class App implements OnDestroy {
       heatContract: this.activeHeatContract()
     } as const;
 
-    this.storyService.continueStory(request).subscribe({
+    const jobCreationSubscription = this.storyService.createStoryLabJob<ContinuationJobResult>({
+      kind: 'continuation',
+      continuation: request
+    }).subscribe({
       next: response => {
         if (!response.success || !response.data) {
           const message = this.formatApiError(response.error, 'Continuation request failed.');
-          this.statusMessage.set(message);
-          this.markBatchFailed(batchId, message);
-          this.notificationService.error('Continuation failed', message);
-          this.isGenerating.set(false);
-          this.stopProgress();
+          this.failContinuationJob(batchId, message);
           return;
         }
 
-        this.applyIteration(response.data, request.chapterBatchSize, batchId);
-        this.statusMessage.set('Continuation batch ready. Select a chapter to explore.');
-        this.notificationService.success(
-          'Continuation ready',
-          `Added ${response.data.batch.chapters.length} chapter${response.data.batch.chapters.length === 1 ? '' : 's'} to the saga.`
-        );
-        this.isGenerating.set(false);
-        this.stopProgress();
+        const isTerminal = this.handleContinuationJobSnapshot(response.data.job, batchId, request.chapterBatchSize);
+        if (!isTerminal) {
+          this.openContinuationJobEventStream(response.data.job.jobId, batchId, request.chapterBatchSize);
+        }
       },
       error: error => {
+        this.jobCreationSubscription = null;
         this.errorLogging.logError(error, 'App.continueSaga');
         const message = this.formatHttpError(error, 'Continuation failed. Your existing chapters are still available.');
-        this.statusMessage.set(message);
-        this.markBatchFailed(batchId, message);
-        this.notificationService.error('Continuation failed', message);
-        this.isGenerating.set(false);
-        this.stopProgress();
+        this.failContinuationJob(batchId, message);
+      },
+      complete: () => {
+        this.jobCreationSubscription = null;
       }
     });
+    this.jobCreationSubscription = jobCreationSubscription.closed ? null : jobCreationSubscription;
   }
 
   continueWithDirection(direction: ContinuationDirection) {
@@ -744,7 +743,69 @@ ${chapters}
     });
   }
 
-  private updateProgressFromJob(job: StoryLabJob<StoryIterationPayload>) {
+  private handleContinuationJobSnapshot(
+    job: StoryLabJob<ContinuationJobResult>,
+    batchId: string,
+    batchSize: ChapterBatchSize
+  ): boolean {
+    this.updateProgressFromJob(job);
+
+    if (job.status === 'completed') {
+      if (!this.hasRenderableIterationPayload(job.result)) {
+        this.failContinuationJob(batchId, 'Continuation finished without a valid story payload. Please try again.');
+        return true;
+      }
+
+      this.applyIteration(job.result, batchSize, batchId);
+      this.statusMessage.set('Continuation batch ready. Select a chapter to explore.');
+      this.notificationService.success(
+        'Continuation ready',
+        `Added ${job.result.batch.chapters.length} chapter${job.result.batch.chapters.length === 1 ? '' : 's'} to the saga.`
+      );
+      this.isGenerating.set(false);
+      this.closeJobEventSubscription();
+      this.stopProgress();
+      return true;
+    }
+
+    if (job.status === 'failed') {
+      this.failContinuationJob(
+        batchId,
+        this.formatApiError(job.error, 'Continuation failed. Your existing chapters are still available.')
+      );
+      return true;
+    }
+
+    if (job.status === 'cancelled') {
+      this.failContinuationJob(batchId, 'Continuation was cancelled before it finished.');
+      return true;
+    }
+
+    return false;
+  }
+
+  private openContinuationJobEventStream(jobId: string, batchId: string, batchSize: ChapterBatchSize) {
+    this.closeJobEventSubscription();
+    const jobEventSubscription = this.storyService.streamStoryLabJobEvents<ContinuationJobResult>(
+      jobId,
+      () => undefined
+    ).subscribe({
+      next: event => {
+        this.handleContinuationJobSnapshot(event.job, batchId, batchSize);
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.openContinuationJobEventStream');
+        const message = this.formatHttpError(error, 'Continuation updates stopped. Your existing chapters are still available.');
+        this.failContinuationJob(batchId, message);
+      },
+      complete: () => {
+        this.jobEventSubscription = null;
+      }
+    });
+    this.jobEventSubscription = jobEventSubscription.closed ? null : jobEventSubscription;
+  }
+
+  private updateProgressFromJob(job: StoryLabJob<unknown>) {
     const stage = this.formatJobStage(job.currentStep, job.status);
     const progressPercent = Math.max(0, Math.min(100, Math.round(job.progressPercent)));
     this.jobDrivenProgress = true;
@@ -763,6 +824,19 @@ ${chapters}
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
     this.notificationService.error('Generation failed', message);
+    this.isGenerating.set(false);
+    this.stopProgress();
+  }
+
+  private hasRenderableIterationPayload(payload: StoryIterationPayload | undefined): payload is StoryIterationPayload {
+    return Array.isArray(payload?.batch?.chapters);
+  }
+
+  private failContinuationJob(batchId: string, message: string) {
+    this.closeJobEventSubscription();
+    this.statusMessage.set(message);
+    this.markBatchFailed(batchId, message);
+    this.notificationService.error('Continuation failed', message);
     this.isGenerating.set(false);
     this.stopProgress();
   }

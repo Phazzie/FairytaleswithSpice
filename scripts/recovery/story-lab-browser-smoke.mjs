@@ -364,6 +364,9 @@ async function runSmoke() {
 
     await page.locator(smokeSelectors.continuationDirection('Raise the danger')).click();
     await page.locator(smokeSelectors.progress).waitFor({ timeout: 20_000 });
+    if (!liveMode) {
+      await expectText(page.locator(smokeSelectors.progress), 'Grok is continuing the saga');
+    }
     await page.locator(smokeSelectors.chapterView(2)).waitFor({ timeout: liveMode ? 90_000 : 20_000 });
 
     await page.locator(smokeSelectors.copyStory).click();
@@ -401,8 +404,10 @@ async function runSmoke() {
 }
 
 async function installMockStoryLabRoutes(page) {
-  const smokeJobId = 'job_00000000-0000-4000-8000-000000000105';
+  const genesisJobId = 'job_00000000-0000-4000-8000-000000000105';
+  const continuationJobId = 'job_00000000-0000-4000-8000-000000000106';
   let latestGenesisJob = null;
+  let latestContinuationJob = null;
 
   await page.route('**/api/health', async route => {
     await route.fulfill({
@@ -457,33 +462,114 @@ async function installMockStoryLabRoutes(page) {
       body = null;
     }
 
-    if (body?.kind !== 'genesis') {
+    if (body?.kind === 'genesis') {
+      latestGenesisJob = buildJobSnapshot(genesisJobId, 'running', 'generating_story', 38);
+      await delay(250);
       await route.fulfill({
-        status: 400,
+        status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          success: false,
-          error: {
-            code: 'SMOKE_EXPECTED_GENESIS_JOB',
-            message: 'Smoke expected a genesis Story Lab job request.'
-          }
-        })
+        body: JSON.stringify(buildJobResponse(latestGenesisJob))
       });
       return;
     }
 
-    latestGenesisJob = buildJobSnapshot(smokeJobId, 'running', 'generating_story', 38);
-    await delay(250);
+    if (body?.kind === 'continuation') {
+      if (!body?.continuation?.continuationBrief?.includes('danger')) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: false,
+            error: {
+              code: 'MISSING_DIRECTION',
+              message: 'Smoke expected a continuation direction brief.'
+            }
+          })
+        });
+        return;
+      }
+
+      latestContinuationJob = buildJobSnapshot(continuationJobId, 'running', 'continuing_story', 42, undefined, 'continuation');
+      await delay(250);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(buildJobResponse(latestContinuationJob))
+      });
+      return;
+    }
+
     await route.fulfill({
-      status: 200,
+      status: 400,
       contentType: 'application/json',
-      body: JSON.stringify(buildJobResponse(latestGenesisJob))
+      body: JSON.stringify({
+        success: false,
+        error: {
+          code: 'SMOKE_UNSUPPORTED_JOB',
+          message: 'Smoke expected a genesis or continuation Story Lab job request.'
+        }
+      })
     });
   });
 
   await page.route('**/api/story-lab/jobs/*/events', async route => {
     const jobId = extractJobId(route.request().url(), '/events');
-    if (jobId !== smokeJobId || !latestGenesisJob) {
+    if (jobId === genesisJobId && latestGenesisJob) {
+      const completedJob = buildJobSnapshot(
+        genesisJobId,
+        'completed',
+        'completed',
+        100,
+        buildPayload([buildChapter(1)], 1)
+      );
+      const events = [
+        buildJobSnapshot(genesisJobId, 'queued', 'queued', 8),
+        latestGenesisJob,
+        completedJob
+      ];
+      latestGenesisJob = completedJob;
+
+      await delay(500);
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache'
+        },
+        body: events.map((job, index) => `data: ${JSON.stringify(buildJobEvent(job, index + 1))}\n\n`).join('')
+      });
+      return;
+    }
+
+    if (jobId === continuationJobId && latestContinuationJob) {
+      const completedJob = buildJobSnapshot(
+        continuationJobId,
+        'completed',
+        'completed',
+        100,
+        { ...buildPayload([buildChapter(2)], 2), appendedChapterNumbers: [2] },
+        'continuation'
+      );
+      const events = [
+        buildJobSnapshot(continuationJobId, 'queued', 'queued', 8, undefined, 'continuation'),
+        latestContinuationJob,
+        completedJob
+      ];
+      latestContinuationJob = completedJob;
+
+      await delay(500);
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache'
+        },
+        body: events.map((job, index) => `data: ${JSON.stringify(buildJobEvent(job, index + 1))}\n\n`).join('')
+      });
+      return;
+    }
+
+    if (jobId !== genesisJobId || !latestGenesisJob) {
       await route.fulfill({
         status: 404,
         contentType: 'application/json',
@@ -495,37 +581,18 @@ async function installMockStoryLabRoutes(page) {
           }
         })
       });
-      return;
     }
-
-    const completedJob = buildJobSnapshot(
-      smokeJobId,
-      'completed',
-      'completed',
-      100,
-      buildPayload([buildChapter(1)], 1)
-    );
-    const events = [
-      buildJobSnapshot(smokeJobId, 'queued', 'queued', 8),
-      latestGenesisJob,
-      completedJob
-    ];
-    latestGenesisJob = completedJob;
-
-    await delay(500);
-    await route.fulfill({
-      status: 200,
-      headers: {
-        'content-type': 'text/event-stream; charset=utf-8',
-        'cache-control': 'no-cache'
-      },
-      body: events.map((job, index) => `data: ${JSON.stringify(buildJobEvent(job, index + 1))}\n\n`).join('')
-    });
   });
 
   await page.route('**/api/story-lab/jobs/*', async route => {
     const jobId = extractJobId(route.request().url());
-    if (jobId !== smokeJobId || !latestGenesisJob) {
+    let job = null;
+    if (jobId === genesisJobId) {
+      job = latestGenesisJob;
+    } else if (jobId === continuationJobId) {
+      job = latestContinuationJob;
+    }
+    if (!job) {
       await route.fulfill({
         status: 404,
         contentType: 'application/json',
@@ -543,45 +610,34 @@ async function installMockStoryLabRoutes(page) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(buildJobResponse(latestGenesisJob))
+      body: JSON.stringify(buildJobResponse(job))
     });
   });
 
   await page.route('**/api/story-lab/stories/*/continue', async route => {
-    let body = null;
-    try {
-      body = route.request().postDataJSON();
-    } catch {
-      body = null;
-    }
-    if (!body?.continuationBrief?.includes('danger')) {
-      await route.fulfill({
-        status: 400,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: false,
-          error: {
-            code: 'MISSING_DIRECTION',
-            message: 'Smoke expected a continuation direction brief.'
-          }
-        })
-      });
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
       return;
     }
-    await delay(250);
     await route.fulfill({
-      status: 200,
+      status: 410,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, data: { ...buildPayload([buildChapter(2)], 2), appendedChapterNumbers: [2] } })
+      body: JSON.stringify({
+        success: false,
+        error: {
+          code: 'LEGACY_CONTINUATION_ROUTE_USED',
+          message: 'Smoke mode expects continuation to use /api/story-lab/jobs.'
+        }
+      })
     });
   });
 }
 
-function buildJobSnapshot(jobId, status, currentStep, progressPercent, result) {
+function buildJobSnapshot(jobId, status, currentStep, progressPercent, result, kind = 'genesis') {
   const now = new Date().toISOString();
   return {
     jobId,
-    kind: 'genesis',
+    kind,
     status,
     currentStep,
     progressPercent,

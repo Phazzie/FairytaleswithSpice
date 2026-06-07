@@ -19,6 +19,9 @@ const STORAGE_KEY = 'fairytales_story_lab_projects_v1';
 const SKIN_STORAGE_KEY = 'fairytales_story_lab_skin_v1';
 const ACTIVE_JOB_STORAGE_KEY = 'fairytales_story_lab_active_job_v1';
 type GenesisJobOverrides = Partial<StoryLabJobCreationResponse<StoryIterationPayload>['job']>;
+type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
+type ContinuationJobOverrides = Partial<StoryLabJobCreationResponse<ContinuationJobResult>['job']>;
+type JobKindForTest = StoryLabJobCreationResponse<unknown>['job']['kind'];
 
 function createChapter(overrides: Partial<GeneratedChapter> = {}): GeneratedChapter {
   return {
@@ -72,13 +75,32 @@ function createGenesisJobResponse(
   payload?: StoryIterationPayload,
   overrides: Partial<StoryLabJobCreationResponse<StoryIterationPayload>['job']> = {}
 ): StoryLabJobCreationResponse<StoryIterationPayload> {
+  return createJobResponse({
+    kind: 'genesis',
+    defaultJobId: 'job_123e4567-e89b-12d3-a456-426614174000',
+    payload,
+    overrides
+  });
+}
+
+function createJobResponse<TResult>({
+  kind,
+  defaultJobId,
+  payload,
+  overrides = {}
+}: {
+  kind: JobKindForTest;
+  defaultJobId: string;
+  payload?: TResult;
+  overrides?: Partial<StoryLabJobCreationResponse<TResult>['job']>;
+}): StoryLabJobCreationResponse<TResult> {
   const now = new Date().toISOString();
-  const jobId = overrides.jobId ?? 'job_123e4567-e89b-12d3-a456-426614174000';
+  const jobId = overrides.jobId ?? defaultJobId;
 
   return {
     job: {
       jobId,
-      kind: 'genesis',
+      kind,
       status: overrides.status ?? 'completed',
       currentStep: overrides.currentStep ?? 'completed',
       progressPercent: overrides.progressPercent ?? 100,
@@ -100,9 +122,45 @@ function createGenesisJobResponse(
   };
 }
 
-function createGenesisJobEvent(
-  response: StoryLabJobCreationResponse<StoryIterationPayload>
-): StoryLabJobEvent<StoryIterationPayload> {
+function createContinuationPayload(
+  genesisPayload: StoryIterationPayload,
+  overrides: Partial<ContinuationJobResult> = {}
+): ContinuationJobResult {
+  return {
+    ...genesisPayload,
+    state: createState({ revision: 2 }),
+    batch: {
+      chapters: [createChapter({ chapterId: 'chapter-2', chapterNumber: 2 })],
+      totalWordCount: 900,
+      suggestedNextPrompts: []
+    },
+    telemetry: {
+      engine: 'gpt',
+      totalLatencyMs: 1700,
+      averageChapterLatencyMs: 850,
+      tokensConsumed: 880,
+      retryCount: 0
+    },
+    appendedChapterNumbers: [2],
+    ...overrides
+  };
+}
+
+function createContinuationJobResponse(
+  payload?: ContinuationJobResult,
+  overrides: ContinuationJobOverrides = {}
+): StoryLabJobCreationResponse<ContinuationJobResult> {
+  return createJobResponse({
+    kind: 'continuation',
+    defaultJobId: 'job_223e4567-e89b-12d3-a456-426614174000',
+    payload,
+    overrides
+  });
+}
+
+function createJobEvent<TResult>(
+  response: StoryLabJobCreationResponse<TResult>
+): StoryLabJobEvent<TResult> {
   return {
     eventId: `event-${response.job.status}`,
     type: 'snapshot',
@@ -212,6 +270,36 @@ describe('App', () => {
     component.startGenesis();
   }
 
+  function seedWorkbenchForContinuation(overrides: Partial<StoryIterationPayload> = {}): StoryIterationPayload {
+    const payload: StoryIterationPayload = {
+      summary: createSummary(),
+      batch: {
+        chapters: [createChapter()],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      },
+      state: createState(),
+      telemetry: {
+        engine: 'gpt',
+        totalLatencyMs: 1800,
+        averageChapterLatencyMs: 900,
+        tokensConsumed: 900,
+        retryCount: 0
+      },
+      ...overrides
+    };
+
+    component.workbench.set({
+      story: payload.summary,
+      state: payload.state,
+      chapterHistory: payload.batch.chapters,
+      activeBatchSize: 1,
+      lastTelemetry: payload.telemetry
+    });
+
+    return payload;
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -314,7 +402,7 @@ describe('App', () => {
       jasmine.any(Function)
     );
 
-    events$.next(createGenesisJobEvent(createGenesisJobResponse(payload)));
+    events$.next(createJobEvent(createGenesisJobResponse(payload)));
     events$.complete();
 
     expect(component.workbench().story?.storyId).toBe('story-123');
@@ -338,7 +426,7 @@ describe('App', () => {
       }
     );
 
-    events$.next(createGenesisJobEvent(createGenesisJobResponse(undefined, {
+    events$.next(createJobEvent(createGenesisJobResponse(undefined, {
       status: 'running',
       currentStep: 'generating_story',
       progressPercent: 47
@@ -354,7 +442,7 @@ describe('App', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
 
     startGenesisJobFlow('A dragon guardian bargains for one night of forbidden mercy.', events$);
-    events$.next(createGenesisJobEvent(createGenesisJobResponse(undefined, {
+    events$.next(createJobEvent(createGenesisJobResponse(undefined, {
       status: 'failed',
       currentStep: 'failed',
       progressPercent: 100,
@@ -498,100 +586,144 @@ describe('App', () => {
   });
 
   it('continues an existing saga and appends chapters', () => {
-    const genesisPayload: StoryIterationPayload = {
-      summary: createSummary(),
-      batch: {
-        chapters: [createChapter()],
-        totalWordCount: 900,
-        suggestedNextPrompts: []
-      },
-      state: createState(),
-      telemetry: {
-        engine: 'gpt',
-        totalLatencyMs: 1800,
-        averageChapterLatencyMs: 900,
-        tokensConsumed: 900,
-        retryCount: 0
-      }
-    };
-
-    component.workbench.set({
-      story: genesisPayload.summary,
-      state: genesisPayload.state,
-      chapterHistory: genesisPayload.batch.chapters,
-      activeBatchSize: 1,
-      lastTelemetry: genesisPayload.telemetry
-    });
-
-    const continuationPayload: StoryIterationPayload & { appendedChapterNumbers: number[] } = {
-      ...genesisPayload,
-      state: createState({ revision: 2 }),
-      batch: {
-        chapters: [createChapter({ chapterId: 'chapter-2', chapterNumber: 2 })],
-        totalWordCount: 900,
-        suggestedNextPrompts: []
-      },
-      telemetry: {
-        engine: 'gpt',
-        totalLatencyMs: 1700,
-        averageChapterLatencyMs: 850,
-        tokensConsumed: 880,
-        retryCount: 0
-      },
-      appendedChapterNumbers: [2]
-    };
-
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
     storyService.continueStory.and.returnValue(of({ success: true, data: continuationPayload }));
 
     component.continueSaga('Focus on the betrayal arc.');
 
-    const request = storyService.continueStory.calls.mostRecent().args[0];
-    expect(request.storyId).toBe('story-123');
+    expect(storyService.continueStory).not.toHaveBeenCalled();
+    expect(storyService.createStoryLabJob).toHaveBeenCalledWith(jasmine.objectContaining({
+      kind: 'continuation',
+      continuation: jasmine.objectContaining({
+        storyId: 'story-123',
+        continuationBrief: 'Focus on the betrayal arc.'
+      })
+    }));
     expect(component.workbench().chapterHistory.length).toBe(2);
     expect(component.selectedChapter()?.chapterNumber).toBe(2);
     expect(component.activeBatchQueue().at(-1)?.status).toBe('completed');
   });
 
   it('continues with a selected direction brief', () => {
-    const genesisPayload: StoryIterationPayload = {
-      summary: createSummary(),
-      batch: {
-        chapters: [createChapter()],
-        totalWordCount: 900,
-        suggestedNextPrompts: []
-      },
-      state: createState(),
-      telemetry: {
-        engine: 'gpt',
-        totalLatencyMs: 1800,
-        averageChapterLatencyMs: 900,
-        tokensConsumed: 900,
-        retryCount: 0
-      }
-    };
-    const continuationPayload: StoryIterationPayload & { appendedChapterNumbers: number[] } = {
-      ...genesisPayload,
-      state: createState({ revision: 2 }),
-      batch: {
-        chapters: [createChapter({ chapterId: 'chapter-2', chapterNumber: 2 })],
-        totalWordCount: 900,
-        suggestedNextPrompts: []
-      },
-      appendedChapterNumbers: [2]
-    };
-    component.workbench.set({
-      story: genesisPayload.summary,
-      state: genesisPayload.state,
-      chapterHistory: genesisPayload.batch.chapters,
-      activeBatchSize: 1,
-      lastTelemetry: genesisPayload.telemetry
-    });
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
     storyService.continueStory.and.returnValue(of({ success: true, data: continuationPayload }));
 
     component.continueWithDirection(component.continuationDirections[1]);
 
-    expect(storyService.continueStory.calls.mostRecent().args[0].continuationBrief)
+    expect(storyService.continueStory).not.toHaveBeenCalled();
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    expect(jobRequest.kind).toBe('continuation');
+    expect(jobRequest.continuation.continuationBrief)
       .toContain('external danger');
+  });
+
+  it('updates continuation progress from Story Lab job snapshots', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'continuing_story',
+        progressPercent: 28
+      })
+    }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+    storyService.continueStory.and.returnValue(of({ success: true, data: continuationPayload }));
+
+    component.continueSaga('Make the rival reveal dangerous.');
+
+    expect(storyService.continueStory).not.toHaveBeenCalled();
+    expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(
+      'job_223e4567-e89b-12d3-a456-426614174000',
+      jasmine.any(Function)
+    );
+    expect(component.generationProgress().percent).toBe(28);
+    expect(component.statusMessage()).toContain('Grok');
+
+    events$.next(createJobEvent(createContinuationJobResponse(continuationPayload)));
+    events$.complete();
+
+    expect(component.workbench().chapterHistory.length).toBe(2);
+    expect(component.selectedChapter()?.chapterNumber).toBe(2);
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('completed');
+  });
+
+  it('keeps existing chapters when a continuation job fails', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(undefined, {
+        status: 'failed',
+        currentStep: 'failed',
+        progressPercent: 100,
+        error: {
+          code: 'AI_UNAVAILABLE',
+          message: 'The AI story engine is not configured for this deployment.'
+        }
+      })
+    }));
+    storyService.continueStory.and.returnValue(of({ success: true, data: createContinuationPayload(genesisPayload) }));
+
+    component.continueSaga();
+
+    expect(storyService.continueStory).not.toHaveBeenCalled();
+    expect(component.workbench().chapterHistory).toEqual(genesisPayload.batch.chapters);
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+    expect(component.statusMessage()).toContain('missing its Grok configuration');
+  });
+
+  it('keeps existing chapters when a completed continuation job has a malformed story payload', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const malformedPayload = {
+      ...createContinuationPayload(genesisPayload),
+      batch: undefined
+    } as unknown as ContinuationJobResult;
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(malformedPayload)
+    }));
+
+    expect(() => component.continueSaga()).not.toThrow();
+    expect(storyService.continueStory).not.toHaveBeenCalled();
+    expect(component.workbench().chapterHistory).toEqual(genesisPayload.batch.chapters);
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+    expect(component.statusMessage()).toContain('valid story payload');
+  });
+
+  it('clears a continuation event subscription that completes synchronously', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'continuing_story',
+        progressPercent: 28
+      })
+    }));
+    storyService.streamStoryLabJobEvents.and.returnValue(of(
+      createJobEvent(createContinuationJobResponse(continuationPayload))
+    ));
+
+    component.continueSaga('Make the rival reveal dangerous.');
+
+    expect(component.workbench().chapterHistory.length).toBe(2);
+    expect((component as unknown as { jobEventSubscription: unknown }).jobEventSubscription).toBeNull();
   });
 
   it('copies generated story text to the clipboard', async () => {
