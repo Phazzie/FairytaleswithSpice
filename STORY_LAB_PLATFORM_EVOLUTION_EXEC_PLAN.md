@@ -90,6 +90,10 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] added Desire Ledger, Continuity Keeper, and Chapter Ending notes;
   - [x] let users accept/dismiss notes or move a note into the custom continuation brief;
   - [x] sent accepted notes through the existing continuation job path.
+- [x] Started the Villain Pressure UI slice on `feature/story-lab-villain-pressure-ui`:
+  - [x] rendered pressure controls inside the existing continuation panel;
+  - [x] added antagonist, environment, secret, deadline, and inner-desire pressure choices;
+  - [x] composed selected pressure into UI-generated continuation briefs without changing direct continuation internals.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -144,6 +148,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Story Lab now shows a visible job banner when generation/continuation starts, runs, or is recovered after reload.
   - Story Lab now shows a visible batch queue so users can see and clear completed/failed generation batches.
   - Story Lab now shows the first Director's Room panel so users can turn craft notes into the next continuation request.
+  - Story Lab now lets users choose the pressure source for the next continuation.
 - What became better technically:
   - Story Lab stream parsing accepts the same expanded creature set as the Charmed UI.
   - Heat Contract data is typed in frontend contracts, mapped through the Story Lab engine, and preserved in the classic generation context.
@@ -158,6 +163,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - The Angular UI now has signal-backed job status state that mirrors job lifecycle and recovery without adding routes or backend contracts.
   - The Angular UI now renders the existing batch queue state instead of keeping it hidden behind component internals.
   - The Angular UI now has deterministic Director's Room note state that reuses existing continuation jobs instead of adding backend review routes.
+  - The Angular UI now composes Villain Pressure choices in public continuation handlers without changing the lower-level job request seam.
 - What was intentionally deferred:
   - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, cold-start-safe job resume, Blob export, email, and audio runtime.
 - What hostile review still objected to:
@@ -175,6 +181,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Phase D job status UI focused checks passed: RED targeted Angular app spec failed on missing rendered banner, PR follow-up RED failed on missing progress rendering `NaN%`, then GREEN targeted Angular app spec passed with `34 SUCCESS`.
   - Phase D batch queue UI focused checks passed: RED targeted Angular app spec failed on missing rendered batch queue, then GREEN targeted Angular app spec passed with `36 SUCCESS`; `git diff --check`, app/spec TypeScript compiles, function count at `10/12`, and mocked browser smoke also passed.
   - Director's Room UI focused checks passed: RED targeted Angular app spec failed on missing rendered panel/actions, then GREEN targeted Angular app spec passed with `40 SUCCESS`; `git diff --check`, app/spec TypeScript compiles, and function count at `10/12` passed; the first mocked browser smoke failed on the `app.css` hard budget, then passed after reusing existing list/grid styles and trimming CSS under 15 kB.
+  - Villain Pressure UI focused checks passed: RED targeted Angular app spec failed on missing rendered pressure dial and pressure text, then GREEN targeted Angular app spec passed with `43 SUCCESS`; `git diff --check`, app/spec TypeScript compiles, function count at `10/12`, and mocked browser smoke passed.
 
 ## Context and Orientation
 
