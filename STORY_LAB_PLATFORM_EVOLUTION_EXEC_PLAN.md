@@ -69,6 +69,10 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] added browser-session active genesis job recovery through `getStoryLabJob`;
   - [x] cleared malformed, completed, failed, and cancelled active job markers;
   - [x] moved mocked browser smoke genesis coverage to `/api/story-lab/jobs` plus SSE job events.
+- [x] Continued Phase D visible continuation UI migration on `feature/story-lab-continuation-jobs`:
+  - [x] moved the Continue Saga UI from direct `continueStory` calls to `POST /api/story-lab/jobs` with `kind: 'continuation'`;
+  - [x] wired continuation progress, completion, cancellation, and failed-provider handling to Story Lab job snapshots/events;
+  - [x] moved mocked browser smoke continuation coverage to `/api/story-lab/jobs` and made the legacy direct continuation route fail in smoke mode.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -132,9 +136,9 @@ The key product goal is not "more features." The key product goal is a story stu
   - Future Story Lab job streaming now has an opaque `job_<uuid>` contract and path builder that keeps blueprint/story/private fields out of status and events URLs.
   - Story Lab job routes now create opaque jobs, replay queued/running/terminal snapshots, and label the in-process store as `non_durable_memory`.
 - What was intentionally deferred:
-  - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, reload-safe job resume UI, Blob export, email, and audio runtime.
+  - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, continuation reload-safe job resume UI, Blob export, email, and audio runtime.
 - What hostile review still objected to:
-  - The genesis UI now uses job snapshots/events, but the in-memory scaffold is still not real durable Workflow/database-backed progress.
+  - The genesis and continuation UI now use job snapshots/events, but the in-memory scaffold is still not real durable Workflow/database-backed progress.
   - The legacy direct Story Lab stream route still exists for compatibility; future work should retire it after job UI smoke coverage and reload-safe resume are in place.
   - Existing `/api/export/save` is safer for mock server export, but it is still not a durable Blob/email export path.
   - Full Angular build and Karma browser spec validation must be rerun under a stable local/CI environment because Node v23 Angular build/Karma runners hung here.
@@ -612,9 +616,12 @@ Files:
 - [x] Added `vercel.json` rewrites for `/api/story-lab/jobs/:jobId` and `/api/story-lab/jobs/:jobId/events`.
 - [x] Modified `story-generator/src/app/story.service.ts`.
 - [x] Modified `story-generator/src/app/app.ts` to use job routes for genesis visible progress.
+- [x] Modified `story-generator/src/app/app.ts` to use job routes for continuation visible progress.
 - [x] Modified `story-generator/src/app/app.spec.ts` for genesis job creation, event progress, completion, and failed-job handling.
+- [x] Modified `story-generator/src/app/app.spec.ts` for continuation job creation, event progress, completion, and failed-job handling.
 - [x] Reused `story-generator/src/app/app.html` existing progress panel for reload-safe job progress.
 - [x] Modified `scripts/recovery/story-lab-browser-smoke.mjs` for queued -> running -> terminal job progress.
+- [x] Modified `scripts/recovery/story-lab-browser-smoke.mjs` so mock continuation uses jobs and rejects the legacy direct continuation route.
 
 Contracts:
 
@@ -643,7 +650,8 @@ Acceptance:
 - [x] Function count stays within the repo's allow-list before and after the API route change.
 - [x] Non-Workflow fallback is labeled non-durable.
 - [x] UI can start a genesis job and complete/fail from job snapshots/events.
-- [x] UI can survive reload by polling job id inside the current browser session.
+- [x] UI can start a continuation job and complete/fail from job snapshots/events.
+- [x] UI can survive reload for active genesis jobs by polling job id inside the current browser session.
 - [x] Mocked browser smoke sees queued -> running -> completed through the visible UI.
 
 ### Phase E: Account Sync
