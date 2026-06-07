@@ -7,6 +7,9 @@ import {
   StoryGenerationSeam,
   StoryIterationPayload,
   StoryContinuationSeam,
+  StoryLabJobCreationRequest,
+  StoryLabJobCreationResponse,
+  StoryLabJobEvent,
   StreamingProgressChunk
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
@@ -73,6 +76,84 @@ export class StoryService {
   }
 
   /**
+   * Create a Story Lab background job scaffold.
+   */
+  createStoryLabJob<TResult = StoryIterationPayload>(
+    request: StoryLabJobCreationRequest
+  ): Observable<ApiResponse<StoryLabJobCreationResponse<TResult>>> {
+    this.errorLogging.logInfo('Creating Story Lab job', 'StoryService.createStoryLabJob', {
+      kind: request.kind
+    });
+
+    return this.http
+      .post<ApiResponse<StoryLabJobCreationResponse<TResult>>>(`${this.apiUrl}/jobs`, request)
+      .pipe(catchError(error => this.handleHttpError(error, 'createStoryLabJob')));
+  }
+
+  /**
+   * Read a Story Lab job snapshot by opaque job id.
+   */
+  getStoryLabJob<TResult = unknown>(
+    jobId: string
+  ): Observable<ApiResponse<StoryLabJobCreationResponse<TResult>>> {
+    this.errorLogging.logInfo('Reading Story Lab job', 'StoryService.getStoryLabJob', {
+      jobId
+    });
+
+    return this.http
+      .get<ApiResponse<StoryLabJobCreationResponse<TResult>>>(`${this.apiUrl}/jobs/${encodeURIComponent(jobId)}`)
+      .pipe(catchError(error => this.handleHttpError(error, 'getStoryLabJob')));
+  }
+
+  /**
+   * Subscribe to Story Lab job snapshot events.
+   */
+  streamStoryLabJobEvents<TResult = unknown>(
+    jobId: string,
+    onEvent: (event: StoryLabJobEvent<TResult>) => void
+  ): Observable<StoryLabJobEvent<TResult>> {
+    return new Observable<StoryLabJobEvent<TResult>>(observer => {
+      const streamUrl = `${this.apiUrl}/jobs/${encodeURIComponent(jobId)}/events`;
+      const eventSource = new EventSource(streamUrl);
+      this.errorLogging.logInfo('Opened Story Lab job event stream', 'StoryService.streamStoryLabJobEvents', {
+        jobId
+      });
+
+      eventSource.onmessage = event => {
+        try {
+          const jobEvent = JSON.parse(event.data) as StoryLabJobEvent<TResult>;
+          onEvent(jobEvent);
+          observer.next(jobEvent);
+
+          if (['completed', 'failed', 'cancelled'].includes(jobEvent.job.status)) {
+            observer.complete();
+            eventSource.close();
+          }
+        } catch (error) {
+          this.errorLogging.logError(error, 'StoryService.streamStoryLabJobEvents.parse', 'error');
+          observer.error(error);
+          eventSource.close();
+        }
+      };
+
+      eventSource.onerror = error => {
+        this.errorLogging.logError(error, 'StoryService.streamStoryLabJobEvents.connection', 'error', {
+          jobId
+        });
+        observer.error(error);
+        eventSource.close();
+      };
+
+      return () => {
+        this.errorLogging.logInfo('Closing Story Lab job event stream', 'StoryService.streamStoryLabJobEvents', {
+          jobId
+        });
+        eventSource.close();
+      };
+    });
+  }
+
+  /**
    * Connect to the streaming endpoint for real-time progress updates.
    */
   streamStoryGeneration(
@@ -108,7 +189,12 @@ export class StoryService {
 
       const streamUrl = `${this.apiUrl}/stream/genesis?${params.toString()}`;
       const eventSource = new EventSource(streamUrl);
-      this.errorLogging.logInfo('Opened streaming connection', 'StoryService.streamStoryGeneration', { streamUrl });
+      this.errorLogging.logInfo('Opened streaming connection', 'StoryService.streamStoryGeneration', {
+        creature: input.creature,
+        tone: input.tone,
+        chapterBatchSize: input.chapterBatchSize,
+        themeCount: input.themes?.length ?? 0
+      });
 
       eventSource.onmessage = event => {
         try {

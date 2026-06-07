@@ -3,8 +3,9 @@
 This directory contains Vercel serverless functions for the Story Lab recovery branch.
 Audio endpoints are intentionally deferred for this recovery; story-generation ideas mined from
 audio PRs are tracked in `NOT_TAKEN_FEATURE_LEDGER.md`.
-The active route budget is intentionally kept at 9 deployable functions out of the 12-function guard
-so future Story Lab job routes can be added without exceeding deployment capacity.
+The active route budget is now 12 deployable functions out of the 12-function guard after adding
+the non-durable Story Lab job-route scaffold. Do not add another deployable route until a new
+consolidation plan frees capacity.
 
 ## 📁 API Structure
 
@@ -16,6 +17,10 @@ api/
 │   ├── continue.ts        # Story continuation (POST /api/story/continue)
 │   └── stream.ts          # Story streaming (POST /api/story/stream)
 ├── story-lab/
+│   ├── jobs.ts           # Story Lab job creation scaffold (POST /api/story-lab/jobs)
+│   ├── jobs/[jobId].ts   # Story Lab job status (GET /api/story-lab/jobs/:jobId)
+│   ├── jobs/[jobId]/events.ts
+│   │                         # Story Lab job event replay (GET /api/story-lab/jobs/:jobId/events)
 │   ├── stories.ts         # Story Lab mock genesis (POST /api/story-lab/stories)
 │   ├── stories/[storyId]/continue.ts
 │   │                         # Story Lab continuation (POST /api/story-lab/stories/:storyId/continue)
@@ -88,6 +93,34 @@ Content-Type: application/json
 }
 ```
 
+### Story Lab Jobs
+```http
+POST /api/story-lab/jobs
+Content-Type: application/json
+
+{
+  "kind": "genesis",
+  "blueprint": {
+    "creature": "vampire",
+    "tone": "dark_romance",
+    "themes": [],
+    "logline": "A cursed bargain changes the court.",
+    "spicyLevel": 3,
+    "desiredWordBudget": 1200,
+    "chapterBatchSize": 2
+  }
+}
+```
+
+Returns an opaque `job_<uuid>` plus status and events paths. Current job storage is
+`non_durable_memory`: it is process-local and can disappear after a cold start, deploy, or crash.
+Export and audio job kinds are reserved for later durable storage/provider work.
+
+```http
+GET /api/story-lab/jobs/:jobId
+GET /api/story-lab/jobs/:jobId/events
+```
+
 ### Save/Export
 ```http
 POST /api/export/save
@@ -113,6 +146,9 @@ The API is automatically deployed to Vercel when changes are pushed to the main 
 - `/api/story/stream` → `/api/story/stream.ts`
 - `/api/story-lab/stories` → `/api/story-lab/stories.ts`
 - `/api/story-lab/stories/:storyId/continue` → `/api/story-lab/stories/[storyId]/continue.ts`
+- `/api/story-lab/jobs` → `/api/story-lab/jobs.ts`
+- `/api/story-lab/jobs/:jobId` → `/api/story-lab/jobs/[jobId].ts`
+- `/api/story-lab/jobs/:jobId/events` → `/api/story-lab/jobs/[jobId]/events.ts`
 - `/api/story-lab/evaluate` → `/api/story-lab/evaluate.ts`
 - `/api/story-lab/stream/genesis` → `/api/story-lab/stream/genesis.ts`
 - `/api/export/save` → `/api/export/save.ts`
@@ -127,6 +163,8 @@ Retired route files:
 Do not restore retired routes without updating `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md` and
 `scripts/recovery/check-vercel-function-count.sh`.
 
+Current function-count guard should print `12/12`.
+
 ### CORS Configuration
 
 The API is configured to accept requests from the frontend domain specified in `FRONTEND_URL` environment variable.
@@ -134,6 +172,8 @@ The API is configured to accept requests from the frontend domain specified in `
 ### Mock Mode
 
 Without API keys, the services run in mock mode with realistic delays and responses for development.
+In production-like environments, missing `XAI_API_KEY` fails Story Lab generation jobs with
+`AI_UNAVAILABLE` instead of silently returning mock prose.
 
 ## 🔧 Local Development
 

@@ -352,6 +352,80 @@ export type ApiResponse<T> = {
 
 export type ApiEnvelope<T> = ApiResponse<T>;
 
+export type StoryLabJobKind = 'genesis' | 'continuation' | 'export' | 'audio';
+
+export type StoryLabJobStatus =
+  | 'queued'
+  | 'running'
+  | 'waiting_for_review'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export interface StoryLabJobError {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export interface StoryLabJob<TPublicResult = unknown> {
+  jobId: string;
+  kind: StoryLabJobKind;
+  status: StoryLabJobStatus;
+  currentStep: string;
+  progressPercent: number;
+  createdAt: string;
+  updatedAt: string;
+  result?: TPublicResult;
+  error?: StoryLabJobError;
+}
+
+export interface StoryLabJobPaths {
+  statusPath: string;
+  eventsPath: string;
+}
+
+export interface StoryLabJobDurability {
+  mode: 'non_durable_memory';
+  durable: false;
+  warning: string;
+}
+
+export interface StoryLabJobEvent<TPublicResult = unknown> {
+  eventId: string;
+  type: 'snapshot';
+  emittedAt: string;
+  job: StoryLabJob<TPublicResult>;
+}
+
+export type StoryLabJobCreationRequest =
+  | {
+      kind: 'genesis';
+      blueprint: StoryGenerationSeam['input'];
+      idempotencyKey?: string;
+      projectId?: string;
+      storyId?: string;
+    }
+  | {
+      kind: 'continuation';
+      continuation: StoryContinuationSeam['input'];
+      idempotencyKey?: string;
+      projectId?: string;
+      storyId?: string;
+    }
+  | {
+      kind: 'export' | 'audio';
+      projectId?: string;
+      storyId?: string;
+      idempotencyKey?: string;
+    };
+
+export interface StoryLabJobCreationResponse<TPublicResult = unknown> {
+  job: StoryLabJob<TPublicResult>;
+  paths: StoryLabJobPaths;
+  durability: StoryLabJobDurability;
+}
+
 export interface EvaluationCriteria {
   score: number;
   strengths: string[];

@@ -56,6 +56,11 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] retired duplicate/demo/unused Vercel routes for Story Lab health, stream demo, and image generation;
   - [x] redirected the debug panel and browser smoke mock to root `/api/health`;
   - [x] reduced the expected Vercel function count from `12/12` to `9/12`.
+- [x] Executed the Phase D backend job-route scaffold on `feature/story-lab-job-routes`:
+  - [x] added `POST /api/story-lab/jobs`, `GET /api/story-lab/jobs/:jobId`, and `GET /api/story-lab/jobs/:jobId/events`;
+  - [x] added a `non_durable_memory` in-process job store and replaying SSE snapshots;
+  - [x] added Angular `StoryService` job seam methods without migrating the visible progress UI yet;
+  - [x] returned the Vercel function-count guard to `12/12`.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -66,7 +71,7 @@ The key product goal is not "more features." The key product goal is a story stu
 - Dedicated style banks can be implemented safely before cloud/workflow work because they are deterministic prompt-quality improvements with local tests. This is now done for all five new creatures.
 - Heat Contract v0 gave the first useful "spice safety" primitive without adding accounts, database rows, audio providers, or server export.
 - A broad account/storage/workflow/audio/export implementation would be a risky mixed rewrite. It needs phased migration with compatibility adapters and explicit provisioning gates.
-- The repo was at the Vercel function-count guard limit (`12/12`). Route-budget consolidation retired three duplicate/demo/unused route entrypoints so the expected current guard result is `9/12`.
+- The repo was at the Vercel function-count guard limit (`12/12`). Route-budget consolidation retired three duplicate/demo/unused route entrypoints, then the job-route scaffold spent those three slots. The expected current guard result is `12/12`.
 - Phase B was too broad as one executable block. It mixed shared parser extraction, account auth seams, privacy/redaction, CORS, retention/deletion policy, export-sanitizer planning, and the future opaque job-id stream. It is now split into smaller checklist gates.
 - Phase B1 can be completed without adding routes, dependencies, storage writes, or an auth provider.
 - Phase B2-B4 was completed route-free: shared CORS, sanitizer, retention policy, and job-id contracts all live under `api/_lib` plus tests, so that gate kept the Vercel function-count guard at `12/12` before later route-budget consolidation.
@@ -98,6 +103,8 @@ The key product goal is not "more features." The key product goal is a story stu
   Rationale: The code now prevents obvious drift and log leakage, but CORS, retention/deletion, export sanitizer replacement, and job-id streaming still remain gates before accounts or cloud storage.
 - Decision: Count Phase B2-B4 as completed for policy/contracts/safety helpers only, not for account sync, durable storage, or durable job execution.
   Rationale: Disallowed origins now fail before private route work, server export interpolation is sanitized, and future EventSource paths have an opaque job-id contract, but no auth provider, database, Blob store, Workflow runner, or job route has been provisioned.
+- Decision: Split Phase D into a backend job-route scaffold and a later UI/durable-runner slice.
+  Rationale: The route slots are now available, but no Workflow, queue, database-backed job table, or auth provider is provisioned. A synchronous non-durable scaffold gives the UI a typed seam without making false durability claims.
 
 ## Outcomes & Retrospective
 
@@ -115,12 +122,12 @@ The key product goal is not "more features." The key product goal is a story stu
   - Credentialed CORS now uses one `api/_lib/http/corsPolicy.ts` helper and rejects disallowed browser origins before route work.
   - Server export now sanitizes story HTML through a tiny allow-list, strips dangerous containers, escapes title/metadata/PDF strings, and avoids logging raw export errors.
   - Future Story Lab job streaming now has an opaque `job_<uuid>` contract and path builder that keeps blueprint/story/private fields out of status and events URLs.
+  - Story Lab job routes now create opaque jobs, replay queued/running/terminal snapshots, and label the in-process store as `non_durable_memory`.
 - What was intentionally deferred:
-  - Accounts, cloud storage, durable job routes, Workflow execution, Blob export, email, and audio runtime.
-  - Route consolidation before any `/api/story-lab/jobs*` implementation.
+  - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, visible job progress/reload UI, Blob export, email, and audio runtime.
 - What hostile review still objected to:
   - The current staged progress UI is not real durable progress.
-  - Streaming still places sensitive blueprint fields in an EventSource URL until a POST-created job route replaces it with the new opaque job-id contract.
+  - The legacy direct Story Lab stream route still accepts blueprint fields in an EventSource URL until the visible UI is migrated to POST-created job ids.
   - Existing `/api/export/save` is safer for mock server export, but it is still not a durable Blob/email export path.
   - Full Angular build and Karma browser spec validation must be rerun under a stable local/CI environment because Node v23 Angular build/Karma runners hung here.
 - What validation proved:
@@ -128,6 +135,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Phase B1 focused tests passed: `npm exec -- tsx tests/story-lab-blueprint-parser.test.ts`, `npm exec -- tsx tests/story-lab-auth.test.ts`, `npm exec -- tsx tests/log-redaction.test.ts`, `npm exec -- tsx tests/story-lab-stream-parse.test.ts`, `npm run test:story-lab-state`, and `npm run test:story-lab-real-engine`.
   - Phase B2-B4 focused tests passed: `npx tsx tests/cors-policy.test.ts`, `npx tsx tests/export-sanitizer.test.ts`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/log-redaction.test.ts`, `npx tsx tests/story-lab-blueprint-parser.test.ts`, `npx tsx tests/story-lab-auth.test.ts`, `npx tsx tests/story-lab-stream-parse.test.ts`, `npx tsx tests/story-lab-real-engine.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh`, and `scripts/recovery/preflight.sh --quick --skip-status`.
   - Route-budget consolidation focused checks passed: `git diff --check`, `scripts/recovery/check-vercel-function-count.sh` at `9/12`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, and `scripts/recovery/preflight.sh --quick --skip-status`.
+  - Phase D backend job-route focused checks passed: `git diff --check`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh` at `12/12`, and `scripts/recovery/preflight.sh --quick --skip-status`.
 
 ## Context and Orientation
 
@@ -151,6 +159,9 @@ Current Story Lab files:
 - `api/_lib/story-lab/storyLabEngine.ts`: Story Lab engine over the canonical story service.
 - `api/_lib/services/storyService.ts`: Grok prose generation and continuation.
 - `api/_lib/config/authorStyles.ts`: current creature style banks.
+- `api/story-lab/jobs.ts`: non-durable Story Lab job creation scaffold.
+- `api/story-lab/jobs/[jobId].ts`: non-durable Story Lab job status route.
+- `api/story-lab/jobs/[jobId]/events.ts`: non-durable Story Lab job event replay route.
 - `api/story-lab/stories.ts`: Story Lab genesis route.
 - `api/story-lab/stories/[storyId]/continue.ts`: Story Lab continuation route.
 - `api/story-lab/stream/genesis.ts`: current SSE-style Story Lab genesis route.
@@ -267,12 +278,19 @@ Do not create this schema until a database has been provisioned, a local migrati
 
 ### Release 3: Durable Generation Jobs and True Progress
 
-Preferred path with Vercel Workflow:
+Current scaffold:
+
+- `api/story-lab/jobs.ts` creates an opaque `job_<uuid>`, runs current generation synchronously, and stores queued/running/terminal snapshots in process memory.
+- `api/story-lab/jobs/[jobId].ts` returns the current process-local job state.
+- `api/story-lab/jobs/[jobId]/events.ts` replays stored job snapshots as SSE and closes.
+- This is explicitly `non_durable_memory`; it is not crash-safe, reload-safe across cold starts, owner-scoped, or backed by Workflow/database storage.
+
+Preferred durable path with Vercel Workflow:
 
 - `api/story-lab/jobs.ts` creates a job and invokes `runStoryGenerationWorkflow`.
 - `api/story-lab/jobs/[jobId].ts` returns job state.
 - `api/story-lab/jobs/[jobId]/events.ts` streams job events as SSE.
-- These routes require the three slots freed by `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md`; rerun the function-count guard before and after adding them.
+- These routes currently spend the three slots freed by `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md`; rerun the function-count guard before and after changing them.
 - Workflow steps:
   1. validate request;
   2. load project/state;
@@ -529,7 +547,7 @@ Validation:
 
 #### Phase B4: Opaque Job-Id Streaming Design Gate
 
-Status: design/contracts complete locally; route implementation blocked by function-count and workflow/provider decisions.
+Status: design/contracts complete locally; route implementation later scaffolded as non-durable process memory after route-budget consolidation.
 
 Files:
 
@@ -542,12 +560,12 @@ Files:
 Rules:
 
 - [x] Streaming should be replaced by POST job creation plus opaque job-id events before sensitive account data enters the URL path.
-- [x] Do not add job routes while the function-count guard is still `12/12`; this gate added contracts/tests only.
+- [x] Do not add job routes while the function-count guard is still `12/12`; this gate added contracts/tests only. Later route-budget consolidation freed three slots for the non-durable scaffold.
 - [x] Without Vercel Workflow or a real queue/worker, status must be labeled non-durable.
 
 Validation:
 
-- [x] Function-count consolidation remains required before route implementation.
+- [x] Function-count consolidation was required before route implementation and was completed before the Phase D scaffold.
 - [x] `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
 - [x] `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
 
@@ -581,15 +599,16 @@ Validation:
 
 Files:
 
-- Create `api/_lib/story-lab/jobs/contracts.ts`.
-- Create `api/_lib/story-lab/jobs/jobStore.ts`.
-- Create `api/story-lab/jobs.ts`.
-- Create `api/story-lab/jobs/[jobId].ts`.
-- Create `api/story-lab/jobs/[jobId]/events.ts`.
-- Modify `story-generator/src/app/story.service.ts`.
-- Modify `story-generator/src/app/app.ts`.
-- Modify `story-generator/src/app/app.html`.
-- Modify `scripts/recovery/story-lab-browser-smoke.mjs`.
+- [x] Modified `story-generator/src/app/contracts.ts`.
+- [x] Reused `api/_lib/story-lab/jobs/jobContracts.ts`.
+- [x] Created `api/_lib/story-lab/jobs/jobStore.ts`.
+- [x] Created `api/story-lab/jobs.ts`.
+- [x] Created `api/story-lab/jobs/[jobId].ts`.
+- [x] Created `api/story-lab/jobs/[jobId]/events.ts`.
+- [x] Modified `story-generator/src/app/story.service.ts`.
+- [ ] Modify `story-generator/src/app/app.ts` to use job routes for visible progress.
+- [ ] Modify `story-generator/src/app/app.html` for reload-safe job progress.
+- [ ] Modify `scripts/recovery/story-lab-browser-smoke.mjs` for queued -> running -> terminal job progress.
 
 Contracts:
 
@@ -612,11 +631,13 @@ export interface StoryLabJob {
 
 Acceptance:
 
-- UI can start a job and survive reload by polling job id.
-- Mocked browser smoke sees queued -> running -> completed.
-- Production missing key creates a failed job with `AI_UNAVAILABLE`, not mock prose.
-- Function count stays within the repo's allow-list before and after any API route change.
-- Non-Workflow fallback is labeled non-durable.
+- [x] Backend can create genesis and continuation jobs through opaque ids.
+- [x] Status and events paths contain only `job_<uuid>`.
+- [x] Production missing key creates a failed job with `AI_UNAVAILABLE`, not mock prose.
+- [x] Function count stays within the repo's allow-list before and after the API route change.
+- [x] Non-Workflow fallback is labeled non-durable.
+- [ ] UI can start a job and survive reload by polling job id.
+- [ ] Mocked browser smoke sees queued -> running -> completed through the visible UI.
 
 ### Phase E: Account Sync
 
@@ -691,7 +712,7 @@ Full platform is accepted only when:
 - If a dependency install is needed, update both root and app lockfiles intentionally and run `npm run install:all` before validation.
 - If Vercel Marketplace provisioning is missing, stop before implementing provider-specific database code beyond lazy adapter scaffolding.
 - If Workflow is unavailable, document fallback behavior as non-durable and do not claim crash safety.
-- Run `scripts/recovery/check-vercel-function-count.sh` before and after every API route change; after route-budget consolidation the expected guard result is `9/12`.
+- Run `scripts/recovery/check-vercel-function-count.sh` before and after every API route change; after the job-route scaffold the expected guard result is `12/12`.
 - If function count would exceed 12, consolidate or retire routes before adding new deployable functions. Future Phase D job routes may spend the three freed slots only if the guard still passes.
 - If browser smoke fails because of selectors, prefer preserving explicit `data-testid` hooks in the template.
 - If live provider smoke fails for missing credentials, it must skip in normal CI and print the exact env needed without exposing secrets.

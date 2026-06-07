@@ -1901,3 +1901,34 @@ Validation:
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `9/12`.
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-07 07:13 EDT - Story Lab Job Route Scaffold
+
+Actions:
+
+- Added `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` for the Phase D backend job-route slice.
+- Added shared Story Lab job contracts to the frontend seam and re-exported them through backend job helpers.
+- Added `api/_lib/story-lab/jobs/jobStore.ts` as an explicitly `non_durable_memory` in-process job store with snapshot events.
+- Added the three Vercel route files freed by the route-budget branch:
+  - `api/story-lab/jobs.ts`;
+  - `api/story-lab/jobs/[jobId].ts`;
+  - `api/story-lab/jobs/[jobId]/events.ts`.
+- Added Angular `StoryService` methods for creating jobs, reading job snapshots, and subscribing to job events.
+- Tightened the existing Story Lab streaming log so it no longer logs a full EventSource URL containing blueprint query data.
+- Added route tests covering opaque ids, SSE replay, invalid/unknown ids, unsupported reserved job kinds, and production missing-provider failure.
+- Updated the function-count allow-list and active docs for the new 12-function shape.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx tsx tests/story-lab-job-routes.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+Self-review:
+
+- Good: The new job URLs carry only opaque `job_<uuid>` ids and do not place blueprint text in status/events paths.
+- Good: The scaffold is honest about durability; it runs synchronously in the request and stores process-local snapshots only.
+- Remaining risk: The visible Story Lab UI still uses the older direct generation/streaming path until the next UI migration slice.

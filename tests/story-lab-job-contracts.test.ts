@@ -5,9 +5,11 @@ import {
   assertOpaqueStoryLabJobId,
   buildStoryLabJobPaths,
   createOpaqueStoryLabJobId,
+  NON_DURABLE_STORY_LAB_JOB_DURABILITY,
   StoryLabJob,
   StoryLabJobCreationRequest
 } from '../api/_lib/story-lab/jobs/jobContracts';
+import type { StoryGenerationSeam } from '../api/_lib/story-lab/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -58,8 +60,30 @@ for (const privateTerm of privateTerms) {
   assert(!combinedPathText.includes(privateTerm), `job path should not include private term ${privateTerm}`);
 }
 
+const blueprint: StoryGenerationSeam['input'] = {
+  creature: 'vampire',
+  themes: [
+    {
+      id: 'forbidden_love',
+      label: 'Forbidden Love',
+      description: 'Desire has consequences.'
+    }
+  ],
+  logline: 'Private Title should stay out of job paths.',
+  spicyLevel: 3,
+  tone: 'dark_romance',
+  desiredWordBudget: 900,
+  chapterBatchSize: 1,
+  heatContract: {
+    adultOnlyConfirmed: true,
+    tensionMode: 'slow_burn',
+    intimacyBoundary: 'fade_to_black',
+    noGoContent: 'No coercion.'
+  }
+};
 const creationRequest: StoryLabJobCreationRequest = {
   kind: 'genesis',
+  blueprint,
   projectId: 'project_private',
   storyId: 'story_private',
   idempotencyKey: 'client-key-1'
@@ -77,5 +101,7 @@ const job: StoryLabJob<{ storyId: string }> = {
 assert(job.jobId === jobId, 'job contract should carry the opaque id');
 assert(job.kind === 'genesis', 'job contract should carry the job kind');
 assert(job.status === 'queued', 'job contract should carry the job status');
+assert(NON_DURABLE_STORY_LAB_JOB_DURABILITY.mode === 'non_durable_memory', 'job scaffold should be explicitly non-durable');
+assert(!NON_DURABLE_STORY_LAB_JOB_DURABILITY.durable, 'job scaffold should not claim durable storage');
 
 console.log('Story Lab job contract tests passed');
