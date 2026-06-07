@@ -19,15 +19,15 @@ interface HealthStatus {
 }
 
 interface HealthPayload {
-  status: 'healthy';
-  timestamp: string;
-  version: string;
-  environment: string;
-  services: {
-    grok: 'configured' | 'mock';
+  status: string;
+  timestamp?: string;
+  version?: string;
+  environment?: string;
+  services?: {
+    grok?: 'configured' | 'mock' | string;
   };
-  cors: {
-    allowedOrigin: string;
+  cors?: {
+    allowedOrigin?: string;
   };
 }
 
@@ -80,11 +80,12 @@ export class DebugPanel {
           return;
         }
 
+        const healthData = response.data;
         this.health.set({
-          state: response.data.status === 'healthy' ? 'healthy' : 'unhealthy',
-          timestamp: response.data.timestamp,
+          state: healthData?.status === 'healthy' ? 'healthy' : 'unhealthy',
+          timestamp: healthData?.timestamp,
           latencyMs: Math.round(performance.now() - started),
-          message: `grok: ${response.data.services.grok}`
+          message: `grok: ${healthData?.services?.grok ?? 'unknown'}`
         });
       },
       error: error => {

@@ -46,6 +46,7 @@ This does not delete shared service code such as `api/_lib/services/imageService
 - Project-local `.worktrees/` is not ignored in this checkout. To avoid adding tool-only ignore churn, this work runs on a normal feature branch in the current checkout.
 - The root `/api/health` endpoint returns `{ success: true, data: { status: "healthy", timestamp, version, environment, services, cors } }`, while `/api/story-lab/health` returns `{ status: "ok", time }`. The debug panel must adapt to the root shape.
 - `story-generator/src/server.ts` contains a local Express `/api/image/generate` route. This plan does not touch that local development server route because it is not a Vercel deployable function under root `api/`.
+- Gemini Code Assist review correctly pointed out that the debug panel should not crash on malformed successful health payloads. The local payload type now accepts non-healthy statuses and missing nested fields.
 
 ## Decision Log
 
@@ -85,6 +86,7 @@ An expert reviewer hostile to this change would object:
   - `scripts/recovery/check-vercel-function-count.sh`: passed with `Vercel function count check: 9/12`.
   - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
   - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+  - After Gemini review follow-up, the same four checks passed again.
 - PR and merge evidence: Pending until this branch is pushed and reviewed.
 - Remaining risks: Historical docs still mention retired routes as past context; active Vercel docs and route guards now mark them retired.
 

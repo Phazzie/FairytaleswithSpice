@@ -57,4 +57,21 @@ describe('DebugPanel', () => {
     }));
     expect(component.health().latencyMs).toEqual(jasmine.any(Number));
   });
+
+  it('treats malformed successful health payloads as unhealthy', () => {
+    component.checkApiHealth();
+
+    const request = httpMock.expectOne('/api/health');
+    request.flush({
+      success: true,
+      data: {
+        status: 'degraded'
+      }
+    });
+
+    expect(component.health()).toEqual(jasmine.objectContaining({
+      state: 'unhealthy',
+      message: 'grok: unknown'
+    }));
+  });
 });
