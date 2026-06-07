@@ -1778,3 +1778,70 @@ Validation:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-07 05:20 EDT - Story Lab Storage Port Hostile Review Start
+
+Actions:
+
+- Continued the route-free Phase C storage-port branch from `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`.
+- Confirmed the branch remains storage scaffolding only: no new deployable API routes, no auth provider adapter, no database provisioning, and no UI cloud-sync claim.
+- Added a hostile-review regression for the configured Postgres save path: if an owner-scoped upsert returns zero rows because a project id belongs to another owner, the adapter must not report success.
+- Updated the Postgres save scaffold to require returned database rows and return `STORY_LAB_PROJECT_FORBIDDEN` for zero-row owner conflicts.
+- Updated `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` and `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md` with the review objection and focused evidence.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/story-lab-storage-port.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npm run test:story-lab-state`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+Self-review:
+
+- Good: The storage port now proves the owner boundary at the fake Postgres executor seam, not just in the in-memory adapter.
+- Good: The branch still avoids route growth while the Vercel function budget is saturated.
+- Remaining risk: The branch still needs final diff review, commit, push, PR checks, and review follow-up before merge.
+
+## 2026-06-07 05:40 EDT - PR102 Review Follow-Ups
+
+Actions:
+
+- Addressed Gemini Code Assist feedback on storage runtime safety.
+- Updated `normalizeSavedStoryProject` and `toStoryProjectListItem` so missing derived metadata uses safe fallbacks instead of throwing.
+- Updated the Postgres save parameter mapping to tolerate missing nested `summary`, `blueprint`, or `state` fields without leaking data.
+- Added malformed Postgres row tests and changed JSON parsing to fail closed with `STORY_LAB_STORAGE_ERROR` rather than returning a fabricated empty project.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/story-lab-storage-port.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npm run test:story-lab-state`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+Self-review:
+
+- Good: The review follow-up improves runtime safety without adding routes, dependencies, database provisioning, or UI cloud-sync behavior.
+- Good: Corrupt stored JSON now becomes a typed storage failure, which is safer than treating an invalid database row as a real project.
+- Remaining risk: PR checks need to be rerun after this follow-up commit.
+
+## 2026-06-07 05:42 EDT - PR102 CodeRabbit/Sonar Cleanup
+
+Actions:
+
+- Addressed CodeRabbit's actionable documentation comments:
+  - replaced the machine-specific repository path in `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` with repo-root wording;
+  - corrected the helper name from `createStoreError` to `createStoryProjectStoreError`.
+- Addressed SonarCloud test-quality warnings by marking the fake executor queue `readonly` and replacing the `.length - 1` latest-query access with an explicit index guard.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/story-lab-storage-port.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npm run test:story-lab-state`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
