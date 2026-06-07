@@ -19,7 +19,7 @@ interface HealthStatus {
 }
 
 interface HealthPayload {
-  status: string;
+  status?: string;
   timestamp?: string;
   version?: string;
   environment?: string;
@@ -29,6 +29,12 @@ interface HealthPayload {
   cors?: {
     allowedOrigin?: string;
   };
+}
+
+type HealthResponse = ApiResponse<HealthPayload> | HealthPayload;
+
+function isApiHealthResponse(response: HealthResponse): response is ApiResponse<HealthPayload> {
+  return typeof response === 'object' && response !== null && 'success' in response;
 }
 
 @Component({
@@ -68,9 +74,9 @@ export class DebugPanel {
     this.health.set({ state: 'checking' });
     const started = performance.now();
 
-    this.http.get<ApiResponse<HealthPayload>>('/api/health').subscribe({
+    this.http.get<HealthResponse>('/api/health').subscribe({
       next: response => {
-        if (!response.success) {
+        if (isApiHealthResponse(response) && !response.success) {
           this.health.set({
             state: 'unhealthy',
             timestamp: new Date().toISOString(),
@@ -80,7 +86,7 @@ export class DebugPanel {
           return;
         }
 
-        const healthData = response.data;
+        const healthData = (isApiHealthResponse(response) ? response.data : response) as HealthPayload | undefined;
         this.health.set({
           state: healthData?.status === 'healthy' ? 'healthy' : 'unhealthy',
           timestamp: healthData?.timestamp,

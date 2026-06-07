@@ -58,6 +58,30 @@ describe('DebugPanel', () => {
     expect(component.health().latencyMs).toEqual(jasmine.any(Number));
   });
 
+  it('checks unwrapped local root API health', () => {
+    const timestamp = '2026-06-07T10:05:00.000Z';
+
+    component.checkApiHealth();
+
+    const request = httpMock.expectOne('/api/health');
+    expect(request.request.method).toBe('GET');
+    request.flush({
+      status: 'healthy',
+      timestamp,
+      version: '2.1.0',
+      environment: 'test',
+      services: {
+        grok: 'configured'
+      }
+    });
+
+    expect(component.health()).toEqual(jasmine.objectContaining({
+      state: 'healthy',
+      timestamp,
+      message: 'grok: configured'
+    }));
+  });
+
   it('treats malformed successful health payloads as unhealthy', () => {
     component.checkApiHealth();
 

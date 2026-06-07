@@ -1865,6 +1865,21 @@ Validation:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
+## 2026-06-07 06:43 EDT - PR103 Local Health Shape Follow-Up
+
+Actions:
+
+- Addressed Codex review feedback that the local Express `/api/health` route returns an unwrapped health payload while the Vercel function returns an `ApiResponse` envelope.
+- Added a small debug-panel response adapter that accepts either root health shape.
+- Added a focused spec for the unwrapped local health response.
+
+Validation:
+
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `9/12`.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
 Self-review:
 
 - Good: This branch frees exactly three function slots without changing the active story-generation routes or deleting reusable service code under `api/_lib`.
