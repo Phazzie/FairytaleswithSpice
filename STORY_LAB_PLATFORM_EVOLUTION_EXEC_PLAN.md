@@ -77,6 +77,10 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] stored active continuation job markers while continuation snapshots are still running;
   - [x] restored running continuation jobs after reload when a saved browser-local story is available;
   - [x] applied completed recovered continuation jobs to the restored local story and cleared unusable markers.
+- [x] Continued Phase D visible job status polish on `feature/story-lab-job-status-ui`:
+  - [x] added a compact job status banner for starting, running, and recovered Story Lab jobs;
+  - [x] showed current stage, percent complete, and shortened opaque job id without exposing story or blueprint text;
+  - [x] hid the banner when continuation recovery cannot safely reconnect to a saved browser-local story.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -128,6 +132,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - New Charmed creatures now have dedicated creative style banks instead of borrowing from older creature voices.
   - Heat Contract v0 gives users visible adult-only/spice-boundary controls and carries those boundaries into generation.
   - The generated-story reader shows the active Heat Contract summary beside the story metadata.
+  - Story Lab now shows a visible job banner when generation/continuation starts, runs, or is recovered after reload.
 - What became better technically:
   - Story Lab stream parsing accepts the same expanded creature set as the Charmed UI.
   - Heat Contract data is typed in frontend contracts, mapped through the Story Lab engine, and preserved in the classic generation context.
@@ -139,11 +144,12 @@ The key product goal is not "more features." The key product goal is a story stu
   - Server export now sanitizes story HTML through a tiny allow-list, strips dangerous containers, escapes title/metadata/PDF strings, and avoids logging raw export errors.
   - Future Story Lab job streaming now has an opaque `job_<uuid>` contract and path builder that keeps blueprint/story/private fields out of status and events URLs.
   - Story Lab job routes now create opaque jobs, replay queued/running/terminal snapshots, and label the in-process store as `non_durable_memory`.
+  - The Angular UI now has signal-backed job status state that mirrors job lifecycle and recovery without adding routes or backend contracts.
 - What was intentionally deferred:
   - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, cold-start-safe job resume, Blob export, email, and audio runtime.
 - What hostile review still objected to:
   - The genesis and continuation UI now use job snapshots/events, but the in-memory scaffold is still not real durable Workflow/database-backed progress.
-  - The legacy direct Story Lab stream route still exists for compatibility; future work should retire it after job UI smoke coverage and reload-safe resume are in place.
+  - The legacy direct Story Lab stream route still exists for compatibility; future work should retire or hard-deprecate it in a separate compatibility slice.
   - Existing `/api/export/save` is safer for mock server export, but it is still not a durable Blob/email export path.
   - Full Angular build and Karma browser spec validation must be rerun under a stable local/CI environment because Node v23 Angular build/Karma runners hung here.
 - What validation proved:
@@ -153,6 +159,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Route-budget consolidation focused checks passed: `git diff --check`, `scripts/recovery/check-vercel-function-count.sh` at `9/12`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, and `scripts/recovery/preflight.sh --quick --skip-status`.
   - Phase D backend job-route focused checks passed: `git diff --check`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh` at `10/12`, and `scripts/recovery/preflight.sh --quick --skip-status`.
   - Phase D genesis UI job migration focused checks passed: `git diff --check`, app/spec TypeScript compiles, targeted Angular `app.spec.ts` Karma run, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, and `scripts/recovery/check-vercel-function-count.sh` at `10/12`.
+  - Phase D job status UI focused checks passed: RED targeted Angular app spec failed on missing rendered banner, then GREEN targeted Angular app spec passed with `33 SUCCESS`.
 
 ## Context and Orientation
 
@@ -621,6 +628,7 @@ Files:
 - [x] Modified `story-generator/src/app/story.service.ts`.
 - [x] Modified `story-generator/src/app/app.ts` to use job routes for genesis visible progress.
 - [x] Modified `story-generator/src/app/app.ts` to use job routes for continuation visible progress.
+- [x] Modified `story-generator/src/app/app.ts`, `story-generator/src/app/app.html`, and `story-generator/src/app/app.css` for a visible job status/recovery banner.
 - [x] Modified `story-generator/src/app/app.spec.ts` for genesis job creation, event progress, completion, and failed-job handling.
 - [x] Modified `story-generator/src/app/app.spec.ts` for continuation job creation, event progress, completion, and failed-job handling.
 - [x] Reused `story-generator/src/app/app.html` existing progress panel for reload-safe job progress.
@@ -657,6 +665,7 @@ Acceptance:
 - [x] UI can start a continuation job and complete/fail from job snapshots/events.
 - [x] UI can survive reload for active genesis jobs by polling job id inside the current browser session.
 - [x] UI can survive reload for active continuation jobs when the local saved story context is available.
+- [x] UI shows a compact job status/recovery banner with current stage, percent complete, and shortened opaque job id.
 - [x] Mocked browser smoke sees queued -> running -> completed through the visible UI.
 
 ### Phase E: Account Sync

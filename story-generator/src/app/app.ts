@@ -91,6 +91,20 @@ type ActiveStoryLabJobState = {
   storyId?: string;
 };
 
+type JobStatusPanelState = {
+  visible: boolean;
+  kind: ActiveStoryLabJobState['kind'];
+  tone: 'starting' | 'running' | 'recovering';
+  label: string;
+  title: string;
+  description: string;
+  progressPercent: number;
+  stage: string;
+  jobId?: string;
+  statusPath?: string;
+  startedAt?: string;
+};
+
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 
 @Component({
@@ -223,6 +237,7 @@ export class App implements OnDestroy {
     stage: 'Waiting for your story idea',
     elapsedSeconds: 0
   });
+  readonly jobStatusPanel = signal<JobStatusPanelState>(this.createHiddenJobStatusPanel());
   readonly showDebugPanel = toSignal(
     this.route.queryParamMap.pipe(map(params => params.get('debug') === '1')),
     { initialValue: false }
@@ -411,6 +426,7 @@ export class App implements OnDestroy {
     this.isGenerating.set(true);
     this.statusMessage.set('Sending your story ingredients to Grok...');
     this.startProgress('genesis');
+    this.showStartingJobStatus('genesis');
     this.setBatchQueue([]);
     this.closeJobSubscriptions();
     const batchId = this.enqueueBatch('Genesis', blueprint.chapterBatchSize);
@@ -468,6 +484,7 @@ export class App implements OnDestroy {
     this.isGenerating.set(true);
     this.statusMessage.set('Asking Grok to continue the next chapter...');
     this.startProgress('continuation');
+    this.showStartingJobStatus('continuation');
     this.closeJobSubscriptions();
     const batchId = this.enqueueBatch('Continuation', this.blueprint().chapterBatchSize);
 
@@ -697,6 +714,7 @@ ${chapters}
     batchSize: ChapterBatchSize
   ): boolean {
     this.updateProgressFromJob(job);
+    this.updateJobStatusFromJob(job);
 
     if (job.status === 'completed') {
       if (!job.result) {
@@ -712,6 +730,7 @@ ${chapters}
       );
       this.isGenerating.set(false);
       this.clearActiveStoryLabJob();
+      this.clearJobStatusPanel();
       this.closeJobEventSubscription();
       this.stopProgress();
       return true;
@@ -759,6 +778,7 @@ ${chapters}
     batchSize: ChapterBatchSize
   ): boolean {
     this.updateProgressFromJob(job);
+    this.updateJobStatusFromJob(job);
 
     if (job.status === 'completed') {
       if (!this.hasRenderableIterationPayload(job.result)) {
@@ -774,6 +794,7 @@ ${chapters}
       );
       this.isGenerating.set(false);
       this.clearActiveStoryLabJob();
+      this.clearJobStatusPanel();
       this.closeJobEventSubscription();
       this.stopProgress();
       return true;
@@ -831,6 +852,7 @@ ${chapters}
 
   private failGenesisJob(batchId: string, message: string) {
     this.clearActiveStoryLabJob();
+    this.clearJobStatusPanel();
     this.closeJobEventSubscription();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
@@ -845,6 +867,7 @@ ${chapters}
 
   private failContinuationJob(batchId: string, message: string) {
     this.clearActiveStoryLabJob();
+    this.clearJobStatusPanel();
     this.closeJobEventSubscription();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
@@ -881,6 +904,7 @@ ${chapters}
       : 'Restoring your continuation job...');
     this.startProgress(activeJob.kind);
     this.ensureRecoveredBatch(activeJob);
+    this.showRecoveringJobStatus(activeJob);
 
     if (activeJob.kind === 'continuation') {
       this.restoreActiveContinuationJob(activeJob);
@@ -923,6 +947,7 @@ ${chapters}
       this.markBatchFailed(activeJob.batchId, message);
       this.notificationService.warning('Continuation not restored', message);
       this.clearActiveStoryLabJob();
+      this.clearJobStatusPanel();
       this.isGenerating.set(false);
       this.stopProgress();
       return;
@@ -1060,6 +1085,113 @@ ${chapters}
       default:
         return this.humanizeIdentifier(currentStep);
     }
+  }
+
+  private createHiddenJobStatusPanel(): JobStatusPanelState {
+    return {
+      visible: false,
+      kind: 'genesis',
+      tone: 'starting',
+      label: '',
+      title: '',
+      description: '',
+      progressPercent: 0,
+      stage: ''
+    };
+  }
+
+  private showStartingJobStatus(kind: ActiveStoryLabJobState['kind']) {
+    this.jobStatusPanel.set({
+      visible: true,
+      kind,
+      tone: 'starting',
+      label: kind === 'genesis' ? 'Story generation' : 'Story continuation',
+      title: kind === 'genesis' ? 'First chapter job starting' : 'Continuation job starting',
+      description: kind === 'genesis'
+        ? 'Story Lab is creating a background job for the opening batch.'
+        : 'Story Lab is creating a background job for the next batch.',
+      progressPercent: 8,
+      stage: this.generationProgress().stage,
+      startedAt: new Date().toISOString()
+    });
+  }
+
+  private showRecoveringJobStatus(activeJob: ActiveStoryLabJobState) {
+    this.jobStatusPanel.set({
+      visible: true,
+      kind: activeJob.kind,
+      tone: 'recovering',
+      label: 'Recovered job',
+      title: activeJob.kind === 'genesis' ? 'First chapter job recovered' : 'Continuation job recovered',
+      description: activeJob.kind === 'genesis'
+        ? 'Resumed from this browser. Story Lab is reconnecting to the first chapter job.'
+        : 'Resumed from this browser. Story Lab found the saved story and reconnected to the continuation job.',
+      progressPercent: this.generationProgress().percent || 8,
+      stage: this.generationProgress().stage,
+      jobId: this.formatShortJobId(activeJob.jobId),
+      statusPath: activeJob.statusPath,
+      startedAt: activeJob.startedAt
+    });
+  }
+
+  private updateJobStatusFromJob(job: StoryLabJob<unknown>) {
+    const kind: ActiveStoryLabJobState['kind'] = job.kind === 'continuation' ? 'continuation' : 'genesis';
+    const current = this.jobStatusPanel();
+    const tone = current.visible && current.tone === 'recovering' ? 'recovering' : 'running';
+    const stage = this.formatJobStage(job.currentStep, job.status);
+    const progressPercent = Math.max(0, Math.min(100, Math.round(job.progressPercent)));
+
+    this.jobStatusPanel.set({
+      visible: true,
+      kind,
+      tone,
+      label: tone === 'recovering'
+        ? 'Recovered job'
+        : kind === 'genesis' ? 'Story generation' : 'Story continuation',
+      title: this.formatJobStatusTitle(kind, tone),
+      description: this.formatJobStatusDescription(kind, tone),
+      progressPercent,
+      stage,
+      jobId: this.formatShortJobId(job.jobId),
+      statusPath: current.visible ? current.statusPath : undefined,
+      startedAt: job.createdAt
+    });
+  }
+
+  private formatJobStatusTitle(kind: ActiveStoryLabJobState['kind'], tone: JobStatusPanelState['tone']): string {
+    if (tone === 'recovering') {
+      return kind === 'genesis' ? 'First chapter job recovered' : 'Continuation job recovered';
+    }
+
+    if (tone === 'starting') {
+      return kind === 'genesis' ? 'First chapter job starting' : 'Continuation job starting';
+    }
+
+    return kind === 'genesis' ? 'First chapter job running' : 'Continuation job running';
+  }
+
+  private formatJobStatusDescription(kind: ActiveStoryLabJobState['kind'], tone: JobStatusPanelState['tone']): string {
+    if (tone === 'recovering') {
+      return kind === 'genesis'
+        ? 'Resumed from this browser. Story Lab is reconnecting to the first chapter job.'
+        : 'Resumed from this browser. Story Lab found the saved story and reconnected to the continuation job.';
+    }
+
+    return kind === 'genesis'
+      ? 'Story Lab is writing the opening batch in a background job.'
+      : 'Story Lab is extending the saved story in a background job.';
+  }
+
+  private clearJobStatusPanel() {
+    this.jobStatusPanel.set(this.createHiddenJobStatusPanel());
+  }
+
+  private formatShortJobId(jobId: string | undefined): string | undefined {
+    if (!jobId) {
+      return undefined;
+    }
+
+    return jobId.length <= 16 ? jobId : `${jobId.slice(0, 8)}...${jobId.slice(-4)}`;
   }
 
   private enqueueBatch(label: string, batchSize: ChapterBatchSize): string {

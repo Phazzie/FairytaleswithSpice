@@ -339,6 +339,27 @@
           <span [style.width.%]="generationProgress().percent"></span>
         </div>
       </section>
+
+      <section
+        class="job-status-panel"
+        [class.job-status-panel--recovering]="jobStatusPanel().tone === 'recovering'"
+        data-testid="job-status-panel"
+        *ngIf="jobStatusPanel().visible"
+        aria-live="polite"
+      >
+        <div class="job-status-panel__header">
+          <div>
+            <p class="eyebrow">{{ jobStatusPanel().label }}</p>
+            <h3>{{ jobStatusPanel().title }}</h3>
+          </div>
+          <strong>{{ jobStatusPanel().progressPercent }}%</strong>
+        </div>
+        <p>{{ jobStatusPanel().description }}</p>
+        <div class="job-status-panel__meta">
+          <span>{{ jobStatusPanel().stage }}</span>
+          <span *ngIf="jobStatusPanel().jobId">Job {{ jobStatusPanel().jobId }}</span>
+        </div>
+      </section>
     </section>
 
     <section class="reader-panel" data-testid="story-panel" *ngIf="workbench().story as story; else emptyReader">

@@ -276,6 +276,7 @@
 .choice-block,
 .story-details,
 .generation-progress,
+.job-status-panel,
 .continue-panel,
 .chapter-timeline,
 .continuity-soft,
@@ -578,6 +579,59 @@ button:disabled {
   background: linear-gradient(90deg, var(--accent-2), var(--accent-3), var(--accent));
 }
 
+.job-status-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--line) 64%);
+  padding: 12px;
+  background: color-mix(in srgb, var(--paper-strong) 82%, var(--accent) 18%);
+}
+
+.job-status-panel--recovering {
+  border-color: color-mix(in srgb, var(--accent-2) 44%, var(--line) 56%);
+  background: color-mix(in srgb, var(--paper-strong) 80%, var(--accent-2) 20%);
+}
+
+.job-status-panel__header,
+.job-status-panel__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.job-status-panel__header h3 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.job-status-panel__header strong {
+  flex: 0 0 auto;
+  min-width: 52px;
+  text-align: right;
+  color: var(--accent);
+  font-size: 1.05rem;
+}
+
+.job-status-panel p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.job-status-panel__meta {
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .reader-panel {
   min-height: 680px;
 }
@@ -852,8 +906,17 @@ button:disabled {
 
   .story-header,
   .chapter-view header,
-  .progress-copy {
+  .progress-copy,
+  .job-status-panel__header {
     flex-direction: column;
+  }
+
+  .job-status-panel__header {
+    align-items: flex-start;
+  }
+
+  .job-status-panel__header strong {
+    text-align: left;
   }
 
   .story-actions {
