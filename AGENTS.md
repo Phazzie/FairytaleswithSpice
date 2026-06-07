@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-06-07 06:20 EDT
+Last updated: 2026-06-07 07:13 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for the current recovery effort.
 
@@ -25,6 +25,8 @@ The active Story Lab privacy/streaming gate plan is `STORY_LAB_PRIVACY_STREAMING
 The active Story Lab storage-port plan is `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`. Use it before changing Story Lab storage ports, in-memory account-store scaffolding, Postgres adapter scaffolding, or account-sync persistence boundaries.
 
 The active Story Lab route-budget plan is `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md`. Use it before retiring, adding, consolidating, or documenting Vercel-facing route files for Story Lab capacity work.
+
+The active Story Lab job-route scaffold plan is `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md`. Use it before changing the non-durable Story Lab job routes, job store, job event stream, or Angular job client seam.
 
 The previous parallel-agent execution plan is `plan.md`. Treat it as superseded for the immediate Story Lab real-engine work; do not use it as permission to broaden this branch.
 
@@ -150,10 +152,15 @@ Current Vercel-facing route families include:
 | `/api/story/stream` | Streaming story generation / SSE |
 | `/api/story/continue` | Continue story |
 | `/api/export/save` | Export/save |
+| `/api/story-lab/jobs` | Create a non-durable Story Lab job scaffold |
+| `/api/story-lab/jobs/:jobId` | Read a non-durable Story Lab job snapshot |
+| `/api/story-lab/jobs/:jobId/events` | Replay non-durable Story Lab job snapshots as SSE |
 
 SSE must remain SSE. Do not convert `/api/story/stream` to WebSocket or polling unless explicitly requested.
 
 Image-generation service code may exist under `api/_lib` or the local development server, but there is no active Vercel `/api/image/generate` route after the route-budget consolidation.
+
+Story Lab job routes are currently process-local and explicitly non-durable. They do not provide account ownership, Workflow durability, database persistence, audio jobs, export jobs, or reload-safe UI progress until later platform gates land.
 
 ## Audio Scope
 

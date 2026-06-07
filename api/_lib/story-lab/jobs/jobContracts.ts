@@ -2,47 +2,27 @@
 
 import { randomUUID } from 'node:crypto';
 
-export type StoryLabJobKind = 'genesis' | 'continuation' | 'export' | 'audio';
+export type {
+  StoryLabJob,
+  StoryLabJobCreationRequest,
+  StoryLabJobCreationResponse,
+  StoryLabJobDurability,
+  StoryLabJobError,
+  StoryLabJobEvent,
+  StoryLabJobKind,
+  StoryLabJobPaths,
+  StoryLabJobStatus
+} from '../contracts';
 
-export type StoryLabJobStatus =
-  | 'queued'
-  | 'running'
-  | 'waiting_for_review'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
-
-export interface StoryLabJobCreationRequest {
-  kind: StoryLabJobKind;
-  projectId?: string;
-  storyId?: string;
-  idempotencyKey?: string;
-}
-
-export interface StoryLabJobError {
-  code: string;
-  message: string;
-}
-
-export interface StoryLabJob<TPublicResult = unknown> {
-  jobId: string;
-  kind: StoryLabJobKind;
-  status: StoryLabJobStatus;
-  currentStep: string;
-  progressPercent: number;
-  createdAt: string;
-  updatedAt: string;
-  result?: TPublicResult;
-  error?: StoryLabJobError;
-}
-
-export interface StoryLabJobPaths {
-  statusPath: string;
-  eventsPath: string;
-}
+import type { StoryLabJobDurability, StoryLabJobPaths } from '../contracts';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const JOB_ID_PATTERN = /^job_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const NON_DURABLE_STORY_LAB_JOB_DURABILITY: StoryLabJobDurability = {
+  mode: 'non_durable_memory',
+  durable: false,
+  warning: 'Story Lab jobs are stored in process memory in this scaffold. They are not durable across serverless cold starts, deploys, or crashes.'
+};
 
 export function createOpaqueStoryLabJobId(randomId = randomUUID()): string {
   const uuid = randomId.startsWith('job_') ? randomId.slice('job_'.length) : randomId;
