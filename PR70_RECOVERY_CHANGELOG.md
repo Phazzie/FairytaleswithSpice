@@ -41,6 +41,30 @@ Self-review:
 - Remaining risk: Continuation jobs do not yet have browser-session reload recovery; adding that should wait for a deliberate state/durability slice because continuation recovery needs an existing story/session snapshot.
 - Remaining risk: The job store is still `non_durable_memory`, so this is UI/contract progress, not durable Workflow/database-backed background execution.
 
+## 2026-06-07 09:05 EDT - PR107 Sonar Cleanup
+
+Problem:
+
+- PR #107 SonarCloud Code Analysis failed the quality gate with `7.2% Duplication on New Code` where the gate requires `<= 3%`.
+- Sonar also reported:
+  - duplicated app-spec job event helper implementation;
+  - a redundant jump in the mocked browser smoke route handler;
+  - a nested ternary in mocked smoke job lookup.
+
+Fix:
+
+- Replaced separate genesis/continuation spec event helpers with one generic `createJobEvent()` helper.
+- Removed the redundant return from the smoke script.
+- Replaced the nested smoke job lookup ternary with explicit `if`/`else if` branches.
+
+Validation:
+
+- `git diff --check`: passed.
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `23 SUCCESS`.
+- `npm run smoke:story-lab-ui`: passed in mock mode; Angular build reported the existing budget warnings for the 509.99 kB initial browser bundle and 12.56 kB `app.css`.
+
 ## 2026-05-26 00:12 EDT - Recovery Tracking Started
 
 Actions:

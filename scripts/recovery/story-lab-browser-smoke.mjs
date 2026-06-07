@@ -581,17 +581,17 @@ async function installMockStoryLabRoutes(page) {
           }
         })
       });
-      return;
     }
   });
 
   await page.route('**/api/story-lab/jobs/*', async route => {
     const jobId = extractJobId(route.request().url());
-    const job = jobId === genesisJobId
-      ? latestGenesisJob
-      : jobId === continuationJobId
-        ? latestContinuationJob
-        : null;
+    let job = null;
+    if (jobId === genesisJobId) {
+      job = latestGenesisJob;
+    } else if (jobId === continuationJobId) {
+      job = latestContinuationJob;
+    }
     if (!job) {
       await route.fulfill({
         status: 404,

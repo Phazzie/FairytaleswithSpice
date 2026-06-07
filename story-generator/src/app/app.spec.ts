@@ -102,17 +102,6 @@ function createGenesisJobResponse(
   };
 }
 
-function createGenesisJobEvent(
-  response: StoryLabJobCreationResponse<StoryIterationPayload>
-): StoryLabJobEvent<StoryIterationPayload> {
-  return {
-    eventId: `event-${response.job.status}`,
-    type: 'snapshot',
-    emittedAt: response.job.updatedAt,
-    job: response.job
-  };
-}
-
 function createContinuationPayload(
   genesisPayload: StoryIterationPayload,
   overrides: Partial<ContinuationJobResult> = {}
@@ -169,9 +158,9 @@ function createContinuationJobResponse(
   };
 }
 
-function createContinuationJobEvent(
-  response: StoryLabJobCreationResponse<ContinuationJobResult>
-): StoryLabJobEvent<ContinuationJobResult> {
+function createJobEvent<TResult>(
+  response: StoryLabJobCreationResponse<TResult>
+): StoryLabJobEvent<TResult> {
   return {
     eventId: `event-${response.job.status}`,
     type: 'snapshot',
@@ -413,7 +402,7 @@ describe('App', () => {
       jasmine.any(Function)
     );
 
-    events$.next(createGenesisJobEvent(createGenesisJobResponse(payload)));
+    events$.next(createJobEvent(createGenesisJobResponse(payload)));
     events$.complete();
 
     expect(component.workbench().story?.storyId).toBe('story-123');
@@ -437,7 +426,7 @@ describe('App', () => {
       }
     );
 
-    events$.next(createGenesisJobEvent(createGenesisJobResponse(undefined, {
+    events$.next(createJobEvent(createGenesisJobResponse(undefined, {
       status: 'running',
       currentStep: 'generating_story',
       progressPercent: 47
@@ -453,7 +442,7 @@ describe('App', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
 
     startGenesisJobFlow('A dragon guardian bargains for one night of forbidden mercy.', events$);
-    events$.next(createGenesisJobEvent(createGenesisJobResponse(undefined, {
+    events$.next(createJobEvent(createGenesisJobResponse(undefined, {
       status: 'failed',
       currentStep: 'failed',
       progressPercent: 100,
@@ -666,7 +655,7 @@ describe('App', () => {
     expect(component.generationProgress().percent).toBe(28);
     expect(component.statusMessage()).toContain('Grok');
 
-    events$.next(createContinuationJobEvent(createContinuationJobResponse(continuationPayload)));
+    events$.next(createJobEvent(createContinuationJobResponse(continuationPayload)));
     events$.complete();
 
     expect(component.workbench().chapterHistory.length).toBe(2);
