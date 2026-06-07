@@ -398,11 +398,25 @@ async function runSmoke() {
 }
 
 async function installMockStoryLabRoutes(page) {
-  await page.route('**/api/story-lab/health', async route => {
+  await page.route('**/api/health', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, data: { status: 'ok', time: new Date().toISOString() } })
+      body: JSON.stringify({
+        success: true,
+        data: {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          version: '1.0.0',
+          environment: 'test',
+          services: {
+            grok: 'mock'
+          },
+          cors: {
+            allowedOrigin: 'http://localhost:4200'
+          }
+        }
+      })
     });
   });
 

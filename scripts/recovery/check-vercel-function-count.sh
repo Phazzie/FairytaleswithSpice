@@ -7,15 +7,12 @@ cd "${REPO_ROOT}"
 EXPECTED_FUNCTIONS=(
   "api/export/save.ts"
   "api/health.ts"
-  "api/image/generate.ts"
   "api/story-lab/evaluate.ts"
-  "api/story-lab/health.ts"
   "api/story-lab/stories.ts"
   "api/story-lab/stories/[storyId]/continue.ts"
   "api/story-lab/stream/genesis.ts"
   "api/story/continue.ts"
   "api/story/generate.ts"
-  "api/story/stream-demo.ts"
   "api/story/stream.ts"
 )
 

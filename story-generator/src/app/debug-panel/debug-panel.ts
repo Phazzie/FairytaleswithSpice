@@ -19,8 +19,22 @@ interface HealthStatus {
 }
 
 interface HealthPayload {
-  status: string;
-  time: string;
+  status?: string;
+  timestamp?: string;
+  version?: string;
+  environment?: string;
+  services?: {
+    grok?: 'configured' | 'mock' | string;
+  };
+  cors?: {
+    allowedOrigin?: string;
+  };
+}
+
+type HealthResponse = ApiResponse<HealthPayload> | HealthPayload;
+
+function isApiHealthResponse(response: HealthResponse): response is ApiResponse<HealthPayload> {
+  return typeof response === 'object' && response !== null && 'success' in response;
 }
 
 @Component({
@@ -60,9 +74,9 @@ export class DebugPanel {
     this.health.set({ state: 'checking' });
     const started = performance.now();
 
-    this.http.get<ApiResponse<HealthPayload>>('/api/story-lab/health').subscribe({
+    this.http.get<HealthResponse>('/api/health').subscribe({
       next: response => {
-        if (!response.success) {
+        if (isApiHealthResponse(response) && !response.success) {
           this.health.set({
             state: 'unhealthy',
             timestamp: new Date().toISOString(),
@@ -72,11 +86,12 @@ export class DebugPanel {
           return;
         }
 
+        const healthData = (isApiHealthResponse(response) ? response.data : response) as HealthPayload | undefined;
         this.health.set({
-          state: response.data.status === 'ok' ? 'healthy' : 'unhealthy',
-          timestamp: response.data.time,
+          state: healthData?.status === 'healthy' ? 'healthy' : 'unhealthy',
+          timestamp: healthData?.timestamp,
           latencyMs: Math.round(performance.now() - started),
-          message: response.data.status
+          message: `grok: ${healthData?.services?.grok ?? 'unknown'}`
         });
       },
       error: error => {
