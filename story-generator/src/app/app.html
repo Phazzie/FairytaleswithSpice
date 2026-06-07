@@ -360,6 +360,38 @@
           <span *ngIf="jobStatusPanel().jobId">Job {{ jobStatusPanel().jobId }}</span>
         </div>
       </section>
+
+      <section class="batch-queue-panel" data-testid="batch-queue-panel" *ngIf="activeBatchQueue().length" aria-live="polite">
+        <div class="batch-queue-panel__header">
+          <div>
+            <p class="eyebrow">Job batches</p>
+            <h3>Story Lab queue</h3>
+          </div>
+          <button
+            type="button"
+            class="ghost compact"
+            data-testid="clear-finished-batches"
+            *ngIf="hasFinishedBatchQueueItems()"
+            (click)="clearFinishedBatchQueue()"
+          >
+            Clear finished
+          </button>
+        </div>
+        <ol class="batch-queue-list">
+          <li
+            class="batch-queue-item"
+            *ngFor="let batch of activeBatchQueue(); trackBy: trackBatch"
+            [class.batch-queue-item--failed]="batch.status === 'failed'"
+          >
+            <div class="batch-queue-item__main">
+              <strong>{{ batch.label }}</strong>
+              <span>{{ formatBatchStatus(batch.status) }}</span>
+            </div>
+            <span class="batch-queue-item__count">{{ formatBatchChapterProgress(batch) }}</span>
+            <p class="warning-text" *ngIf="batch.errorMessage">{{ batch.errorMessage }}</p>
+          </li>
+        </ol>
+      </section>
     </section>
 
     <section class="reader-panel" data-testid="story-panel" *ngIf="workbench().story as story; else emptyReader">

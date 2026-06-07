@@ -277,6 +277,7 @@
 .story-details,
 .generation-progress,
 .job-status-panel,
+.batch-queue-panel,
 .continue-panel,
 .chapter-timeline,
 .continuity-soft,
@@ -632,6 +633,78 @@ button:disabled {
   line-height: 1.35;
 }
 
+.batch-queue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.batch-queue-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.batch-queue-panel__header h3 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.batch-queue-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.batch-queue-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.batch-queue-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.batch-queue-item__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.batch-queue-item__main strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.batch-queue-item__main span,
+.batch-queue-item__count {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.batch-queue-item--failed .batch-queue-item__main span {
+  color: #923039;
+  font-weight: 760;
+}
+
+.batch-queue-item .warning-text {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .reader-panel {
   min-height: 680px;
 }
@@ -907,11 +980,13 @@ button:disabled {
   .story-header,
   .chapter-view header,
   .progress-copy,
-  .job-status-panel__header {
+  .job-status-panel__header,
+  .batch-queue-panel__header {
     flex-direction: column;
   }
 
-  .job-status-panel__header {
+  .job-status-panel__header,
+  .batch-queue-panel__header {
     align-items: flex-start;
   }
 
@@ -925,6 +1000,10 @@ button:disabled {
 
   .story-actions button {
     flex: 1 1 auto;
+  }
+
+  .batch-queue-item {
+    grid-template-columns: 1fr;
   }
 
   .reader-panel {

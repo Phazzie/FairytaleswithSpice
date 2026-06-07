@@ -81,6 +81,10 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] added a compact job status banner for starting, running, and recovered Story Lab jobs;
   - [x] showed current stage, percent complete, and shortened opaque job id without exposing story or blueprint text;
   - [x] hid the banner when continuation recovery cannot safely reconnect to a saved browser-local story.
+- [x] Continued Phase D batch queue visibility on `feature/story-lab-batch-queue-ui`:
+  - [x] rendered the existing batch queue in the Story Lab creation panel;
+  - [x] showed batch label, status, chapter count, and failed-batch error text;
+  - [x] exposed the existing clear-finished-batches action through a visible compact button.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -133,6 +137,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Heat Contract v0 gives users visible adult-only/spice-boundary controls and carries those boundaries into generation.
   - The generated-story reader shows the active Heat Contract summary beside the story metadata.
   - Story Lab now shows a visible job banner when generation/continuation starts, runs, or is recovered after reload.
+  - Story Lab now shows a visible batch queue so users can see and clear completed/failed generation batches.
 - What became better technically:
   - Story Lab stream parsing accepts the same expanded creature set as the Charmed UI.
   - Heat Contract data is typed in frontend contracts, mapped through the Story Lab engine, and preserved in the classic generation context.
@@ -145,6 +150,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Future Story Lab job streaming now has an opaque `job_<uuid>` contract and path builder that keeps blueprint/story/private fields out of status and events URLs.
   - Story Lab job routes now create opaque jobs, replay queued/running/terminal snapshots, and label the in-process store as `non_durable_memory`.
   - The Angular UI now has signal-backed job status state that mirrors job lifecycle and recovery without adding routes or backend contracts.
+  - The Angular UI now renders the existing batch queue state instead of keeping it hidden behind component internals.
 - What was intentionally deferred:
   - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, cold-start-safe job resume, Blob export, email, and audio runtime.
 - What hostile review still objected to:
@@ -160,6 +166,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Phase D backend job-route focused checks passed: `git diff --check`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh` at `10/12`, and `scripts/recovery/preflight.sh --quick --skip-status`.
   - Phase D genesis UI job migration focused checks passed: `git diff --check`, app/spec TypeScript compiles, targeted Angular `app.spec.ts` Karma run, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, and `scripts/recovery/check-vercel-function-count.sh` at `10/12`.
   - Phase D job status UI focused checks passed: RED targeted Angular app spec failed on missing rendered banner, PR follow-up RED failed on missing progress rendering `NaN%`, then GREEN targeted Angular app spec passed with `34 SUCCESS`.
+  - Phase D batch queue UI focused checks passed: RED targeted Angular app spec failed on missing rendered batch queue, then GREEN targeted Angular app spec passed with `36 SUCCESS`; `git diff --check`, app/spec TypeScript compiles, function count at `10/12`, and mocked browser smoke also passed.
 
 ## Context and Orientation
 
@@ -629,6 +636,7 @@ Files:
 - [x] Modified `story-generator/src/app/app.ts` to use job routes for genesis visible progress.
 - [x] Modified `story-generator/src/app/app.ts` to use job routes for continuation visible progress.
 - [x] Modified `story-generator/src/app/app.ts`, `story-generator/src/app/app.html`, and `story-generator/src/app/app.css` for a visible job status/recovery banner.
+- [x] Modified `story-generator/src/app/app.ts`, `story-generator/src/app/app.html`, and `story-generator/src/app/app.css` for a visible batch queue panel.
 - [x] Modified `story-generator/src/app/app.spec.ts` for genesis job creation, event progress, completion, and failed-job handling.
 - [x] Modified `story-generator/src/app/app.spec.ts` for continuation job creation, event progress, completion, and failed-job handling.
 - [x] Reused `story-generator/src/app/app.html` existing progress panel for reload-safe job progress.
@@ -666,6 +674,7 @@ Acceptance:
 - [x] UI can survive reload for active genesis jobs by polling job id inside the current browser session.
 - [x] UI can survive reload for active continuation jobs when the local saved story context is available.
 - [x] UI shows a compact job status/recovery banner with current stage, percent complete, and shortened opaque job id.
+- [x] UI shows current/completed/failed batch queue entries and can clear finished entries.
 - [x] Mocked browser smoke sees queued -> running -> completed through the visible UI.
 
 ### Phase E: Account Sync
