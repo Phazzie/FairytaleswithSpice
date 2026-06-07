@@ -1163,32 +1163,50 @@ ${chapters}
 
   private formatJobStatusTitle(kind: ActiveStoryLabJobState['kind'], tone: JobStatusPanelState['tone']): string {
     if (tone === 'recovering') {
-      return kind === 'genesis' ? 'First chapter job recovered' : 'Continuation job recovered';
+      if (kind === 'genesis') {
+        return 'First chapter job recovered';
+      }
+
+      return 'Continuation job recovered';
     }
 
     if (tone === 'starting') {
-      return kind === 'genesis' ? 'First chapter job starting' : 'Continuation job starting';
+      if (kind === 'genesis') {
+        return 'First chapter job starting';
+      }
+
+      return 'Continuation job starting';
     }
 
-    return kind === 'genesis' ? 'First chapter job running' : 'Continuation job running';
+    if (kind === 'genesis') {
+      return 'First chapter job running';
+    }
+
+    return 'Continuation job running';
   }
 
   private formatJobStatusDescription(kind: ActiveStoryLabJobState['kind'], tone: JobStatusPanelState['tone']): string {
     if (tone === 'recovering') {
-      return kind === 'genesis'
-        ? 'Resumed from this browser. Story Lab is reconnecting to the first chapter job.'
-        : 'Resumed from this browser. Story Lab found the saved story and reconnected to the continuation job.';
+      if (kind === 'genesis') {
+        return 'Resumed from this browser. Story Lab is reconnecting to the first chapter job.';
+      }
+
+      return 'Resumed from this browser. Story Lab found the saved story and reconnected to the continuation job.';
     }
 
     if (kind === 'genesis') {
-      return tone === 'starting'
-        ? 'Story Lab is creating a background job for the opening batch.'
-        : 'Story Lab is writing the opening batch in a background job.';
+      if (tone === 'starting') {
+        return 'Story Lab is creating a background job for the opening batch.';
+      }
+
+      return 'Story Lab is writing the opening batch in a background job.';
     }
 
-    return tone === 'starting'
-      ? 'Story Lab is creating a background job for the next batch.'
-      : 'Story Lab is extending the saved story in a background job.';
+    if (tone === 'starting') {
+      return 'Story Lab is creating a background job for the next batch.';
+    }
+
+    return 'Story Lab is extending the saved story in a background job.';
   }
 
   private clearJobStatusPanel() {

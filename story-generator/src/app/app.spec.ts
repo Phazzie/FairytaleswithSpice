@@ -181,19 +181,39 @@ function createActiveJobMarker(overrides: Partial<Record<string, unknown>> = {})
   };
 }
 
-  function storeActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) {
-    sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, JSON.stringify(createActiveJobMarker(overrides)));
-  }
+function storeActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) {
+  sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, JSON.stringify(createActiveJobMarker(overrides)));
+}
 
-  function storeContinuationRecoveryMarker(storyId = 'story-123') {
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId
-    });
-  }
+function storeContinuationRecoveryMarker(storyId = 'story-123') {
+  storeActiveJobMarker({
+    jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
+    kind: 'continuation',
+    batchId: 'batch-continuation-recovered',
+    statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
+    storyId
+  });
+}
+
+function stubRunningContinuationRecovery(
+  storyService: jasmine.SpyObj<StoryService>,
+  storyId: string,
+  progressPercent = 44
+) {
+  const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
+  storeContinuationRecoveryMarker(storyId);
+  storyService.getStoryLabJob.calls.reset();
+  storyService.getStoryLabJob.and.returnValue(of({
+    success: true,
+    data: createContinuationJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'continuing_story',
+      progressPercent
+    })
+  }));
+  storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+  return events$;
+}
 
 function makePayloadForStory(storyId: string, title: string): Partial<StoryIterationPayload> {
   return {
@@ -322,6 +342,13 @@ describe('App', () => {
     });
 
     return payload;
+  }
+
+  function prepareRunningContinuationRecovery(): StoryIterationPayload {
+    const genesisPayload = seedWorkbenchForContinuation();
+    component.saveActiveProject();
+    stubRunningContinuationRecovery(storyService, genesisPayload.summary.storyId);
+    return genesisPayload;
   }
 
   function renderedJobStatusText(targetFixture: ComponentFixture<App> = fixture): string | null {
@@ -627,20 +654,7 @@ describe('App', () => {
   });
 
   it('recovers a running continuation job from browser storage and resumes events', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    component.saveActiveProject();
-    const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
-    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createContinuationJobResponse(undefined, {
-        status: 'running',
-        currentStep: 'continuing_story',
-        progressPercent: 44
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+    const genesisPayload = prepareRunningContinuationRecovery();
 
     const recovered = TestBed.createComponent(App).componentInstance;
 
@@ -657,20 +671,7 @@ describe('App', () => {
   });
 
   it('renders a recovered continuation job status panel after reload', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    component.saveActiveProject();
-    const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
-    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createContinuationJobResponse(undefined, {
-        status: 'running',
-        currentStep: 'continuing_story',
-        progressPercent: 44
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+    prepareRunningContinuationRecovery();
 
     const recoveredFixture = TestBed.createComponent(App);
 

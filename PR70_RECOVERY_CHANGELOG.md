@@ -17,8 +17,9 @@ Fix:
 - Added one `normalizeJobProgressPercent()` helper and used it for both the main progress bar and the new job status banner.
 - Reduced duplication by:
   - extracting repeated continuation recovery marker setup in `app.spec.ts`;
+  - extracting repeated running continuation recovery job stubbing in `app.spec.ts`;
   - routing starting/running/recovered banner updates through one `setJobStatusPanel()` helper;
-  - centralizing banner label/title/description formatting.
+  - centralizing banner label/title/description formatting and flattening Sonar-flagged nested ternaries.
 
 Validation:
 
