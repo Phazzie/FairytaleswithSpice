@@ -1,4 +1,4 @@
-import { fakeAsync, TestBed, tick } from '@angular/core/testing';
+import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
 import { BehaviorSubject, of, Subject } from 'rxjs';
@@ -185,6 +185,36 @@ function storeActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) 
   sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, JSON.stringify(createActiveJobMarker(overrides)));
 }
 
+function storeContinuationRecoveryMarker(storyId = 'story-123') {
+  storeActiveJobMarker({
+    jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
+    kind: 'continuation',
+    batchId: 'batch-continuation-recovered',
+    statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
+    storyId
+  });
+}
+
+function stubRunningContinuationRecovery(
+  storyService: jasmine.SpyObj<StoryService>,
+  storyId: string,
+  progressPercent = 44
+) {
+  const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
+  storeContinuationRecoveryMarker(storyId);
+  storyService.getStoryLabJob.calls.reset();
+  storyService.getStoryLabJob.and.returnValue(of({
+    success: true,
+    data: createContinuationJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'continuing_story',
+      progressPercent
+    })
+  }));
+  storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+  return events$;
+}
+
 function makePayloadForStory(storyId: string, title: string): Partial<StoryIterationPayload> {
   return {
     summary: createSummary({ storyId, title }),
@@ -205,6 +235,7 @@ const confirmedHeatContract = {
 };
 
 describe('App', () => {
+  let fixture: ComponentFixture<App>;
   let component: App;
   let storyService: jasmine.SpyObj<StoryService>;
   let queryParamMap$: BehaviorSubject<ParamMap>;
@@ -237,7 +268,8 @@ describe('App', () => {
       ]
     }).compileComponents();
 
-    component = TestBed.createComponent(App).componentInstance;
+    fixture = TestBed.createComponent(App);
+    component = fixture.componentInstance;
     storyService = TestBed.inject(StoryService) as jasmine.SpyObj<StoryService>;
   });
 
@@ -310,6 +342,19 @@ describe('App', () => {
     });
 
     return payload;
+  }
+
+  function prepareRunningContinuationRecovery(): StoryIterationPayload {
+    const genesisPayload = seedWorkbenchForContinuation();
+    component.saveActiveProject();
+    stubRunningContinuationRecovery(storyService, genesisPayload.summary.storyId);
+    return genesisPayload;
+  }
+
+  function renderedJobStatusText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    targetFixture.detectChanges();
+    const panel = targetFixture.nativeElement.querySelector('[data-testid="job-status-panel"]') as HTMLElement | null;
+    return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
   it('creates the workbench with default blueprint values', () => {
@@ -450,6 +495,37 @@ describe('App', () => {
     expect(component.statusMessage()).toContain('Grok');
   });
 
+  it('renders the active genesis job status panel while a story job is running', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+
+    startGenesisJobFlow('A siren archivist bargains with a moonlit duke.', events$);
+
+    const statusText = renderedJobStatusText();
+    expect(statusText).toContain('First chapter job running');
+    expect(statusText).toContain('32%');
+    expect(statusText).toContain('job_123e...4000');
+    expect(statusText).toContain('Grok is writing your first chapter.');
+  });
+
+  it('defaults missing job progress to zero instead of rendering NaN', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+    const response = createGenesisJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'generating_story'
+    });
+    delete (response.job as Partial<typeof response.job>).progressPercent;
+    storyService.createStoryLabJob.and.returnValue(of({ success: true, data: response }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+    configureValidBlueprint('A moonlit archivist bargains with a dangerous fae prince.');
+
+    component.startGenesis();
+
+    const statusText = renderedJobStatusText();
+    expect(component.generationProgress().percent).toBe(0);
+    expect(statusText).toContain('0%');
+    expect(statusText).not.toContain('NaN%');
+  });
+
   it('shows a friendly AI configuration error when a genesis job cannot use Grok', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
 
@@ -578,26 +654,7 @@ describe('App', () => {
   });
 
   it('recovers a running continuation job from browser storage and resumes events', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    component.saveActiveProject();
-    const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: genesisPayload.summary.storyId
-    });
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createContinuationJobResponse(undefined, {
-        status: 'running',
-        currentStep: 'continuing_story',
-        progressPercent: 44
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+    const genesisPayload = prepareRunningContinuationRecovery();
 
     const recovered = TestBed.createComponent(App).componentInstance;
 
@@ -613,17 +670,23 @@ describe('App', () => {
     expect(recovered.activeBatchQueue().at(-1)?.label).toBe('Continuation');
   });
 
+  it('renders a recovered continuation job status panel after reload', () => {
+    prepareRunningContinuationRecovery();
+
+    const recoveredFixture = TestBed.createComponent(App);
+
+    const statusText = renderedJobStatusText(recoveredFixture);
+    expect(statusText).toContain('Continuation job recovered');
+    expect(statusText).toContain('44%');
+    expect(statusText).toContain('job_223e...4000');
+    expect(statusText).toContain('Grok is continuing the saga.');
+  });
+
   it('recovers a completed continuation job and clears the active job marker', () => {
     const genesisPayload = seedWorkbenchForContinuation();
     const continuationPayload = createContinuationPayload(genesisPayload);
     component.saveActiveProject();
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: genesisPayload.summary.storyId
-    });
+    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
     storyService.getStoryLabJob.calls.reset();
     storyService.getStoryLabJob.and.returnValue(of({
       success: true,
@@ -643,13 +706,7 @@ describe('App', () => {
     seedWorkbenchForContinuation(makePayloadForStory('story-newer', 'Newer Pact'));
     component.saveActiveProject();
     const continuationPayload = createContinuationPayload(originalPayload);
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: 'story-original'
-    });
+    storeContinuationRecoveryMarker('story-original');
     storyService.getStoryLabJob.calls.reset();
     storyService.getStoryLabJob.and.returnValue(of({
       success: true,
@@ -665,13 +722,7 @@ describe('App', () => {
   });
 
   it('clears a continuation active job marker when no saved story context exists', () => {
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: 'story-123'
-    });
+    storeContinuationRecoveryMarker();
     storyService.getStoryLabJob.calls.reset();
 
     const recovered = TestBed.createComponent(App).componentInstance;
@@ -679,6 +730,16 @@ describe('App', () => {
     expect(storyService.getStoryLabJob).not.toHaveBeenCalled();
     expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
     expect(recovered.statusMessage()).toContain('saved story');
+  });
+
+  it('does not render a job status panel when continuation recovery lacks saved story context', () => {
+    storeContinuationRecoveryMarker();
+    storyService.getStoryLabJob.calls.reset();
+
+    const recoveredFixture = TestBed.createComponent(App);
+
+    expect(renderedJobStatusText(recoveredFixture)).toBeNull();
+    expect(storyService.getStoryLabJob).not.toHaveBeenCalled();
   });
 
   it('clears malformed active job storage without crashing startup', () => {
