@@ -31,6 +31,7 @@ This plan is intentionally route-free. The Vercel function-count guard is alread
 - [x] Add hostile-review-driven Postgres owner-conflict save coverage.
 - [x] Fix any Postgres save path that can imply cross-owner overwrite success.
 - [x] Update platform plan, changelog, and lessons with focused storage evidence.
+- [x] Address Gemini review comments for missing metadata and corrupt stored JSON handling.
 - [x] Run focused validation and recovery preflight.
 - [ ] Push, open PR, address review/checks, and merge the PR.
 
@@ -68,6 +69,7 @@ Current implementation state as of 2026-06-07 05:20 EDT:
   - `api/_lib/story-lab/storage/postgresStoryProjectStore.ts`: dependency-injected Postgres scaffold.
   - `tests/story-lab-storage-port.test.ts`: focused storage contract tests.
 - Hostile review found that the Postgres save path could ignore a zero-row upsert result and imply success after a cross-owner id conflict. The adapter now requires `returning ...` rows from the database and returns `STORY_LAB_PROJECT_FORBIDDEN` if the owner-scoped upsert returns none.
+- Gemini review found that missing `summary`, `chapters`, `blueprint`, or `state` fields could throw in metadata paths, and that corrupt database JSON needed explicit handling. The storage helpers now use safe metadata fallbacks, and the Postgres row parser fails closed with a typed storage error instead of returning a fabricated project.
 - Validation passed:
   - `git diff --check`;
   - `npx tsx tests/story-lab-storage-port.test.ts` -> `Story Lab storage port tests passed`;

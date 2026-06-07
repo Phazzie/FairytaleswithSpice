@@ -561,10 +561,11 @@ Rules:
 - The route layer must continue to work without `DATABASE_URL`.
 - Postgres saves must be based on returned database rows. A zero-row owner-scoped upsert means the caller did not own the conflicting project id and must return `STORY_LAB_PROJECT_FORBIDDEN`, not optimistic success.
 - Postgres load/delete stay owner-scoped and may avoid revealing whether another owner's project id exists.
+- Missing derived metadata should use safe display/storage fallbacks, while corrupt stored Postgres JSON should fail closed with `STORY_LAB_STORAGE_ERROR` rather than fabricating an empty saved project.
 
 Validation:
 
-- [x] `npx tsx tests/story-lab-storage-port.test.ts`: passed with owner isolation, clone safety, fail-closed readiness, fake-executor SQL shape, and zero-row Postgres owner-conflict coverage.
+- [x] `npx tsx tests/story-lab-storage-port.test.ts`: passed with owner isolation, clone safety, safe metadata fallbacks, fail-closed readiness, malformed-row failure, fake-executor SQL shape, and zero-row Postgres owner-conflict coverage.
 - [x] `npm run test:story-lab-state`: passed.
 - [x] `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
 - [x] `scripts/recovery/preflight.sh --quick --skip-status`: passed.

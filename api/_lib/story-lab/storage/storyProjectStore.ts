@@ -90,8 +90,8 @@ export function normalizeSavedStoryProject(
   const normalizedProject: SavedStoryProject = {
     ...cloneSavedStoryProject(project),
     id: project.id || project.storyId,
-    title: project.title || project.summary.title,
-    synopsis: project.synopsis || project.summary.synopsis,
+    title: project.title || project.summary?.title || 'Untitled Story Lab Project',
+    synopsis: project.synopsis || project.summary?.synopsis || '',
     createdAt: existingCreatedAt ?? project.createdAt ?? now,
     updatedAt: now
   };
@@ -116,7 +116,7 @@ export function toStoryProjectListItem(record: StoredStoryProjectRecord): StoryP
     storyId: record.storyId,
     title: record.project.title,
     synopsis: record.project.synopsis,
-    chapterCount: record.project.chapters.length,
+    chapterCount: record.project.chapters?.length ?? 0,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };

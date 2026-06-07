@@ -55,9 +55,11 @@ const privateStoryText = 'Elena revealed the private vault beneath the moonlit c
 
 async function main() {
   await testNonDurableMemoryStore();
+  await testMissingProjectMetadataFallbacks();
   await testPostgresStoreReadiness();
   await testPostgresStoreExecutorPath();
   await testPostgresStoreOwnerConflict();
+  await testPostgresStoreMalformedRowsFailClosed();
 
   console.log('Story Lab storage port tests passed');
 }
@@ -146,6 +148,49 @@ async function testPostgresStoreReadiness() {
       process.env['DATABASE_URL'] = previousDatabaseUrl;
     }
   }
+}
+
+async function testMissingProjectMetadataFallbacks() {
+  const store = createNonDurableInMemoryStoryProjectStore({ now: () => now });
+  const saveResult = await store.saveProject(owner, createProjectWithMissingMetadata());
+  assert(saveResult.success, 'store should save project snapshots with missing derived metadata');
+  assert(saveResult.data.project.title === 'Untitled Story Lab Project', 'missing project title should use safe fallback');
+  assert(saveResult.data.project.synopsis === '', 'missing synopsis should use safe fallback');
+
+  const listResult = await store.listProjects(owner);
+  assert(listResult.success, 'store should list project snapshots with missing derived metadata');
+  assert(listResult.data[0]?.title === 'Untitled Story Lab Project', 'list should use normalized title fallback');
+  assert(listResult.data[0]?.chapterCount === 0, 'missing chapter array should list as zero chapters');
+}
+
+async function testPostgresStoreMalformedRowsFailClosed() {
+  const executor = new FakePostgresExecutor();
+  const store = createPostgresStoryProjectStore({
+    databaseUrl: 'postgres://example.invalid/story_lab',
+    executor,
+    now: () => now
+  });
+
+  executor.enqueueRows([
+    {
+      ...createProjectRow(createProject()),
+      project_json: '{not valid json'
+    }
+  ]);
+  const loadResult = await store.loadProject(owner, 'project-1');
+  assert(!loadResult.success, 'malformed Postgres project JSON should fail closed on load');
+  assert(loadResult.error.code === 'STORY_LAB_STORAGE_ERROR', 'malformed load should return storage error');
+  assert(!loadResult.error.message.includes(privateStoryText), 'malformed load error should not leak private story text');
+
+  executor.enqueueRows([
+    {
+      ...createProjectRow(createProject()),
+      project_json: null
+    }
+  ]);
+  const listResult = await store.listProjects(owner);
+  assert(!listResult.success, 'empty Postgres project JSON should fail closed on list');
+  assert(listResult.error.code === 'STORY_LAB_STORAGE_ERROR', 'malformed list should return storage error');
 }
 
 async function testPostgresStoreExecutorPath() {
@@ -308,6 +353,16 @@ function createProject(): SavedStoryProject {
     createdAt: now,
     updatedAt: now
   };
+}
+
+function createProjectWithMissingMetadata(): SavedStoryProject {
+  return {
+    ...createProject(),
+    title: '',
+    synopsis: '',
+    summary: undefined,
+    chapters: undefined
+  } as unknown as SavedStoryProject;
 }
 
 main().catch(error => {

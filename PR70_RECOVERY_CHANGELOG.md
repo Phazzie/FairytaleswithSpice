@@ -1803,3 +1803,27 @@ Self-review:
 - Good: The storage port now proves the owner boundary at the fake Postgres executor seam, not just in the in-memory adapter.
 - Good: The branch still avoids route growth while the Vercel function budget is saturated.
 - Remaining risk: The branch still needs final diff review, commit, push, PR checks, and review follow-up before merge.
+
+## 2026-06-07 05:40 EDT - PR102 Review Follow-Ups
+
+Actions:
+
+- Addressed Gemini Code Assist feedback on storage runtime safety.
+- Updated `normalizeSavedStoryProject` and `toStoryProjectListItem` so missing derived metadata uses safe fallbacks instead of throwing.
+- Updated the Postgres save parameter mapping to tolerate missing nested `summary`, `blueprint`, or `state` fields without leaking data.
+- Added malformed Postgres row tests and changed JSON parsing to fail closed with `STORY_LAB_STORAGE_ERROR` rather than returning a fabricated empty project.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/story-lab-storage-port.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npm run test:story-lab-state`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+Self-review:
+
+- Good: The review follow-up improves runtime safety without adding routes, dependencies, database provisioning, or UI cloud-sync behavior.
+- Good: Corrupt stored JSON now becomes a typed storage failure, which is safer than treating an invalid database row as a real project.
+- Remaining risk: PR checks need to be rerun after this follow-up commit.

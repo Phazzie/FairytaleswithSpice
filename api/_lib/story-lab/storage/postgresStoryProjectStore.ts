@@ -37,6 +37,10 @@ interface StoryProjectRow {
 }
 
 const DEFAULT_ACTIVE_SKIN = 'writing-desk';
+const DEFAULT_CREATURE = 'vampire';
+const DEFAULT_REVISION = 0;
+const DEFAULT_SPICY_LEVEL = 1;
+const DEFAULT_TONE = 'dark_romance';
 
 const SAVE_PROJECT_SQL = `
 insert into story_projects (
@@ -127,11 +131,11 @@ class PostgresStoryProjectStore implements StoryProjectStore {
         record.storyId,
         record.project.title,
         record.project.synopsis,
-        record.project.summary.tone,
-        record.project.summary.spicyLevel,
-        record.project.blueprint.creature,
+        record.project.summary?.tone ?? record.project.blueprint?.tone ?? DEFAULT_TONE,
+        record.project.summary?.spicyLevel ?? record.project.blueprint?.spicyLevel ?? DEFAULT_SPICY_LEVEL,
+        record.project.blueprint?.creature ?? DEFAULT_CREATURE,
         DEFAULT_ACTIVE_SKIN,
-        record.project.state.revision,
+        record.project.state?.revision ?? DEFAULT_REVISION,
         JSON.stringify(record.project),
         record.createdAt,
         record.updatedAt
@@ -281,11 +285,19 @@ function recordFromRow(row: StoryProjectRow): StoredStoryProjectRecord {
 }
 
 function projectFromJson(value: unknown): SavedStoryProject {
-  if (typeof value === 'string') {
-    return cloneSavedStoryProject(JSON.parse(value) as SavedStoryProject);
-  }
+  try {
+    if (value === null || value === undefined) {
+      throw new Error('Stored Story Lab project JSON is empty.');
+    }
 
-  return cloneSavedStoryProject(value as SavedStoryProject);
+    if (typeof value === 'string') {
+      return cloneSavedStoryProject(JSON.parse(value) as SavedStoryProject);
+    }
+
+    return cloneSavedStoryProject(value as SavedStoryProject);
+  } catch {
+    throw new Error('Stored Story Lab project JSON is invalid.');
+  }
 }
 
 function toIsoString(value: string | Date): string {
