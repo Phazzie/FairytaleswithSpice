@@ -366,6 +366,15 @@ describe('App', () => {
     return renderedBatchQueuePanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
+  function renderedDirectorRoomPanel(targetFixture: ComponentFixture<App> = fixture): HTMLElement | null {
+    targetFixture.detectChanges();
+    return targetFixture.nativeElement.querySelector('[data-testid="director-room-panel"]') as HTMLElement | null;
+  }
+
+  function renderedDirectorRoomText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    return renderedDirectorRoomPanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -560,6 +569,93 @@ describe('App', () => {
 
     expect(component.activeBatchQueue().length).toBe(0);
     expect(renderedBatchQueueText()).toBeNull();
+  });
+
+  it('hides the Director Room before a chapter exists', () => {
+    expect(renderedDirectorRoomText()).toBeNull();
+  });
+
+  it('renders Director Room craft notes for the selected chapter', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'heroine',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'The rival court wants the same oath.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+
+    const directorText = renderedDirectorRoomText();
+
+    expect(directorText).toContain('Director');
+    expect(directorText).toContain('Desire Ledger');
+    expect(directorText).toContain('Continuity Keeper');
+    expect(directorText).toContain('Chapter Ending');
+    expect(directorText).toContain('Mara');
+    expect(directorText).toContain('Moonlit oath');
+  });
+
+  it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {
+    seedWorkbenchForContinuation();
+
+    const panel = renderedDirectorRoomPanel();
+    const rewriteButton = panel?.querySelector('[data-testid="rewrite-director-note"]') as HTMLButtonElement | null;
+    const dismissButton = panel?.querySelector('[data-testid="dismiss-director-note"]') as HTMLButtonElement | null;
+
+    rewriteButton?.click();
+    fixture.detectChanges();
+    dismissButton?.click();
+    fixture.detectChanges();
+
+    expect(component.customContinuationBrief()).toContain('Desire Ledger');
+    expect(renderedDirectorRoomText()).toContain('Dismissed');
+  });
+
+  it('continues with accepted Director Room notes through the existing job flow', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    const panel = renderedDirectorRoomPanel();
+    const acceptButtons = panel?.querySelectorAll('[data-testid="accept-director-note"]') as NodeListOf<HTMLButtonElement> | undefined;
+    acceptButtons?.[0]?.click();
+    acceptButtons?.[1]?.click();
+    fixture.detectChanges();
+
+    const continueButton = renderedDirectorRoomPanel()?.querySelector('[data-testid="continue-with-director-notes"]') as HTMLButtonElement | null;
+    continueButton?.click();
+
+    expect(storyService.continueStory).not.toHaveBeenCalled();
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    expect(jobRequest.kind).toBe('continuation');
+    expect(jobRequest.continuation.continuationBrief).toContain('Director Room notes');
+    expect(jobRequest.continuation.continuationBrief).toContain('Desire Ledger');
+    expect(jobRequest.continuation.continuationBrief).toContain('Continuity Keeper');
   });
 
   it('defaults missing job progress to zero instead of rendering NaN', () => {

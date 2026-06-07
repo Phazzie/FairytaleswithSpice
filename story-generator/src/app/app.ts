@@ -74,6 +74,20 @@ type ContinuationDirection = {
   brief: string;
 };
 
+type DirectorRoomNoteId = 'desire-ledger' | 'continuity-keeper' | 'chapter-ending';
+
+type DirectorRoomNoteStatus = 'pending' | 'accepted' | 'dismissed';
+
+type DirectorRoomNote = {
+  id: DirectorRoomNoteId;
+  title: string;
+  focus: string;
+  suggestion: string;
+  continuationBrief: string;
+  status: DirectorRoomNoteStatus;
+  chapterId: string;
+};
+
 type GenerationProgressState = {
   active: boolean;
   percent: number;
@@ -227,6 +241,7 @@ export class App implements OnDestroy {
   readonly collapsedChapterGroups = signal<Set<number>>(new Set());
   readonly activeSkin = signal<StorySkinId>('writing-desk');
   readonly customContinuationBrief = signal('');
+  readonly directorRoomDecisions = signal<Record<string, DirectorRoomNoteStatus>>({});
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
@@ -309,6 +324,60 @@ export class App implements OnDestroy {
   );
   readonly suggestedNextPrompts = computed(() => this.workbench().lastSuggestedPrompts ?? []);
   readonly continuityExtraction = computed(() => this.workbench().lastContinuityExtraction ?? null);
+  readonly directorRoomNotes = computed<DirectorRoomNote[]>(() => {
+    const chapter = this.selectedChapter();
+    if (!chapter) {
+      return [];
+    }
+
+    const blueprint = this.blueprint();
+    const continuity = this.continuityPanel();
+    const primaryCharacter = continuity.characters[0];
+    const primaryThread = continuity.activeThreads[0];
+    const primaryArtifact = continuity.unresolvedArtifacts[0];
+    const protagonist = primaryCharacter?.displayName || blueprint.protagonistName?.trim() || 'the lead';
+    const currentGoal = primaryCharacter?.currentGoal || `make the ${blueprint.creature} desire more costly`;
+    const continuityLabel = primaryThread?.label || primaryArtifact?.name || 'the current story thread';
+    const continuityDetail = primaryThread?.description || primaryArtifact?.significance || chapter.summary;
+    const endingSuggestion = chapter.hasCliffhanger
+      ? 'Pay off the current cliffhanger, then open a harder question before the chapter closes.'
+      : 'End the next chapter on an impossible choice instead of a quiet fade-out.';
+    const baseNotes: Omit<DirectorRoomNote, 'status'>[] = [
+      {
+        id: 'desire-ledger',
+        title: 'Desire Ledger',
+        focus: `${protagonist} wants: ${currentGoal}`,
+        suggestion: 'Make the next scene force that desire to cost something visible.',
+        continuationBrief: `Desire Ledger: Make ${protagonist} actively pursue ${currentGoal}, and make that desire cost something visible.`,
+        chapterId: chapter.chapterId
+      },
+      {
+        id: 'continuity-keeper',
+        title: 'Continuity Keeper',
+        focus: `${continuityLabel}: ${continuityDetail}`,
+        suggestion: 'Carry this thread forward on page so the next chapter feels connected.',
+        continuationBrief: `Continuity Keeper: Carry forward ${continuityLabel}. ${continuityDetail}`,
+        chapterId: chapter.chapterId
+      },
+      {
+        id: 'chapter-ending',
+        title: 'Chapter Ending',
+        focus: chapter.hasCliffhanger ? 'Current chapter already ends on a cliffhanger.' : 'Current chapter closes without a hard unresolved turn.',
+        suggestion: endingSuggestion,
+        continuationBrief: `Chapter Ending: ${endingSuggestion}`,
+        chapterId: chapter.chapterId
+      }
+    ];
+    const decisions = this.directorRoomDecisions();
+
+    return baseNotes.map(note => ({
+      ...note,
+      status: decisions[this.getDirectorRoomDecisionKey(note)] ?? 'pending'
+    }));
+  });
+  readonly acceptedDirectorRoomNotes = computed(() =>
+    this.directorRoomNotes().filter(note => note.status === 'accepted')
+  );
   readonly modelBadge = computed(() => {
     const telemetry = this.workbench().lastTelemetry;
     if (!telemetry?.model) {
@@ -549,6 +618,30 @@ export class App implements OnDestroy {
 
     this.customContinuationBrief.set('');
     this.continueSaga(brief);
+  }
+
+  acceptDirectorRoomNote(note: DirectorRoomNote) {
+    this.setDirectorRoomNoteStatus(note, 'accepted');
+  }
+
+  dismissDirectorRoomNote(note: DirectorRoomNote) {
+    this.setDirectorRoomNoteStatus(note, 'dismissed');
+  }
+
+  useDirectorRoomNoteAsBrief(note: DirectorRoomNote) {
+    this.setDirectorRoomNoteStatus(note, 'accepted');
+    this.customContinuationBrief.set(note.continuationBrief);
+    this.statusMessage.set('Director Room note moved into the custom continuation brief.');
+  }
+
+  continueWithDirectorRoomNotes() {
+    const acceptedNotes = this.acceptedDirectorRoomNotes();
+    if (!acceptedNotes.length) {
+      this.notificationService.warning('No Director Room notes selected', 'Accept at least one note before continuing with notes.');
+      return;
+    }
+
+    this.continueSaga(this.buildDirectorRoomContinuationBrief(acceptedNotes));
   }
 
   getSafeHtml(html: string): string {
@@ -1568,6 +1661,42 @@ ${chapters}
   formatBatchChapterProgress(batch: BatchProgressState): string {
     const noun = batch.totalChapters === 1 ? 'chapter' : 'chapters';
     return `${batch.chaptersGenerated} of ${batch.totalChapters} ${noun}`;
+  }
+
+  trackDirectorRoomNote(_index: number, note: DirectorRoomNote): string {
+    return note.id;
+  }
+
+  formatDirectorRoomNoteStatus(status: DirectorRoomNoteStatus): string {
+    switch (status) {
+      case 'accepted':
+        return 'Accepted';
+      case 'dismissed':
+        return 'Dismissed';
+      case 'pending':
+        return 'Pending';
+    }
+  }
+
+  private setDirectorRoomNoteStatus(note: DirectorRoomNote, status: DirectorRoomNoteStatus) {
+    this.directorRoomDecisions.update(current => ({
+      ...current,
+      [this.getDirectorRoomDecisionKey(note)]: status
+    }));
+  }
+
+  private getDirectorRoomDecisionKey(note: Pick<DirectorRoomNote, 'chapterId' | 'id'>): string {
+    return `${note.chapterId}:${note.id}`;
+  }
+
+  private buildDirectorRoomContinuationBrief(notes: DirectorRoomNote[]): string {
+    const customBrief = this.customContinuationBrief().trim();
+    const directorBrief = [
+      'Director Room notes:',
+      ...notes.map(note => `- ${note.continuationBrief}`)
+    ].join('\n');
+
+    return customBrief ? `${customBrief}\n\n${directorBrief}` : directorBrief;
   }
 
   toggleChapterGroup(groupId: number) {

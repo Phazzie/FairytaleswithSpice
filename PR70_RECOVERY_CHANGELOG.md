@@ -4,6 +4,39 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-06-07 10:13 EDT - Story Lab Director's Room UI
+
+Actions:
+
+- Created `feature/story-lab-director-room-ui` from current `main` after PR #110 merged.
+- Added `STORY_LAB_DIRECTOR_ROOM_UI_EXEC_PLAN.md` and linked it from `AGENTS.md`.
+- Added a compact Director's Room panel below the selected chapter.
+- The panel renders three deterministic craft notes when a chapter exists:
+  - `Desire Ledger`;
+  - `Continuity Keeper`;
+  - `Chapter Ending`.
+- Added note actions for accepting, dismissing, and moving a note into the custom continuation brief.
+- Added `Continue with notes`, which sends accepted notes through the existing continuation job flow instead of adding a new route or fake AI-review service.
+
+Validation:
+
+- RED: focused Angular app spec failed with 3 expected Director's Room failures because the panel/actions did not exist yet.
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- GREEN: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include='src/app/app.spec.ts'"`: passed with `40 SUCCESS`.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npm run smoke:story-lab-ui`: initially failed production build because `app.css` exceeded the 15 kB hard budget by 937 bytes.
+- Reused existing batch queue list/grid CSS for the Director's Room panel and trimmed nonessential note styling.
+- `npm run smoke:story-lab-ui`: passed in mock mode after the CSS budget fix; Angular still reports existing warning-level budgets, with `app.css` at 14.95 kB.
+
+Self-review:
+
+- Good: The UI now exposes the platform plan's Director's Room concept without claiming durable workflow or AI critique.
+- Good: Accepted notes reuse the job-backed continuation path, so the new UI stays inside existing contracts.
+- Good: The production CSS hard budget caught the first styling pass before it reached the PR.
+- Remaining risk: This is deterministic local craft guidance; AI-backed critique and true rewrite jobs remain future platform work.
+
 ## 2026-06-07 09:59 EDT - Story Lab Batch Queue UI
 
 Actions:

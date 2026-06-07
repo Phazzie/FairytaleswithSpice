@@ -796,6 +796,26 @@ button:disabled {
   gap: 10px;
 }
 
+.director-room-note p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.director-room-note--dismissed {
+  opacity: 0.72;
+}
+
+.director-room-note__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .prompt-chip {
   min-height: 40px;
   padding: 9px 10px;

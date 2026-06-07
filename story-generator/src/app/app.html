@@ -429,6 +429,48 @@
         <div class="chapter-content" [innerHTML]="getSafeHtml(chapter.htmlContent)"></div>
       </article>
 
+      <section class="director-room-panel batch-queue-panel" data-testid="director-room-panel" *ngIf="directorRoomNotes().length">
+        <div class="section-heading compact-heading">
+          <p class="eyebrow">Director's Room</p>
+          <h3>Make the next chapter sharper</h3>
+        </div>
+        <ol class="batch-queue-list">
+          <li
+            class="batch-queue-item director-room-note"
+            *ngFor="let note of directorRoomNotes(); trackBy: trackDirectorRoomNote"
+            [class.director-room-note--accepted]="note.status === 'accepted'"
+            [class.director-room-note--dismissed]="note.status === 'dismissed'"
+          >
+            <div class="batch-queue-item__main director-room-note__title">
+              <strong>{{ note.title }}</strong>
+              <span>{{ formatDirectorRoomNoteStatus(note.status) }}</span>
+            </div>
+            <div class="director-room-note__actions">
+              <button type="button" class="ghost compact" data-testid="accept-director-note" (click)="acceptDirectorRoomNote(note)" [disabled]="isGenerating()">
+                Use note
+              </button>
+              <button type="button" class="ghost compact" data-testid="rewrite-director-note" (click)="useDirectorRoomNoteAsBrief(note)" [disabled]="isGenerating()">
+                Use as brief
+              </button>
+              <button type="button" class="ghost compact" data-testid="dismiss-director-note" (click)="dismissDirectorRoomNote(note)" [disabled]="isGenerating()">
+                Dismiss
+              </button>
+            </div>
+            <p>{{ note.focus }}</p>
+            <p>{{ note.suggestion }}</p>
+          </li>
+        </ol>
+        <button
+          type="button"
+          class="secondary"
+          data-testid="continue-with-director-notes"
+          (click)="continueWithDirectorRoomNotes()"
+          [disabled]="isGenerating() || !acceptedDirectorRoomNotes().length"
+        >
+          Continue with notes
+        </button>
+      </section>
+
       <section class="continue-panel">
         <div class="section-heading compact-heading">
           <p class="eyebrow">Next chapter</p>
