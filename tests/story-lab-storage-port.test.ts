@@ -22,7 +22,7 @@ interface CapturedQuery {
 
 class FakePostgresExecutor implements PostgresQueryExecutor {
   readonly queries: CapturedQuery[] = [];
-  private queuedRows: unknown[][] = [];
+  private readonly queuedRows: unknown[][] = [];
 
   enqueueRows(rows: unknown[]): void {
     this.queuedRows.push(rows);
@@ -36,7 +36,8 @@ class FakePostgresExecutor implements PostgresQueryExecutor {
   }
 
   latestQuery(): CapturedQuery {
-    const query = this.queries[this.queries.length - 1];
+    const latestQueryIndex = this.queries.length - 1;
+    const query = latestQueryIndex >= 0 ? this.queries[latestQueryIndex] : undefined;
     assert(query, 'expected a captured Postgres query');
     return query;
   }

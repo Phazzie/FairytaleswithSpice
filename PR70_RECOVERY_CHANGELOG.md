@@ -1827,3 +1827,21 @@ Self-review:
 - Good: The review follow-up improves runtime safety without adding routes, dependencies, database provisioning, or UI cloud-sync behavior.
 - Good: Corrupt stored JSON now becomes a typed storage failure, which is safer than treating an invalid database row as a real project.
 - Remaining risk: PR checks need to be rerun after this follow-up commit.
+
+## 2026-06-07 05:42 EDT - PR102 CodeRabbit/Sonar Cleanup
+
+Actions:
+
+- Addressed CodeRabbit's actionable documentation comments:
+  - replaced the machine-specific repository path in `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` with repo-root wording;
+  - corrected the helper name from `createStoreError` to `createStoryProjectStoreError`.
+- Addressed SonarCloud test-quality warnings by marking the fake executor queue `readonly` and replacing the `.length - 1` latest-query access with an explicit index guard.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/story-lab-storage-port.test.ts`: passed.
+- `npx tsx tests/story-lab-auth.test.ts`: passed.
+- `npm run test:story-lab-state`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.

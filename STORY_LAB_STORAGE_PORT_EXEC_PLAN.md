@@ -81,7 +81,7 @@ Current implementation state as of 2026-06-07 05:20 EDT:
 
 ## Context and Orientation
 
-Repository root: `/Users/hbpheonix/fairytaleswithspice`.
+Repository root: this checkout. Run commands from the repository root.
 
 Active branch for this plan: `feature/story-lab-storage-port`.
 
@@ -162,7 +162,7 @@ Keep frontend storage unchanged. Phase C only prepares the backend storage port;
    - `createStoredStoryProjectRecord`;
    - `toStoryProjectListItem`;
    - `projectAccessRecordFromStoredProject`;
-   - `createStoreError`.
+   - `createStoryProjectStoreError`.
 4. Create `api/_lib/story-lab/storage/inMemoryStoryProjectStore.ts`.
 5. Implement owner-scoped `saveProject`, `loadProject`, `listProjects`, and `deleteProject`.
 6. Create `api/_lib/story-lab/storage/postgresStoryProjectStore.ts`.
@@ -186,7 +186,7 @@ Keep frontend storage unchanged. Phase C only prepares the backend storage port;
 
 ## Validation and Acceptance
 
-Run from `/Users/hbpheonix/fairytaleswithspice`:
+Run from the repository root:
 
 - `git diff --check`
 - `npx tsx tests/story-lab-storage-port.test.ts`
