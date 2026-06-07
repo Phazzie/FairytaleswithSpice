@@ -357,6 +357,15 @@ describe('App', () => {
     return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
+  function renderedBatchQueuePanel(targetFixture: ComponentFixture<App> = fixture): HTMLElement | null {
+    targetFixture.detectChanges();
+    return targetFixture.nativeElement.querySelector('[data-testid="batch-queue-panel"]') as HTMLElement | null;
+  }
+
+  function renderedBatchQueueText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    return renderedBatchQueuePanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -505,6 +514,52 @@ describe('App', () => {
     expect(statusText).toContain('32%');
     expect(statusText).toContain('job_123e...4000');
     expect(statusText).toContain('Grok is writing your first chapter.');
+  });
+
+  it('renders the active batch queue while a genesis job is running', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+
+    startGenesisJobFlow('A siren archivist bargains with a moonlit duke.', events$);
+
+    const queueText = renderedBatchQueueText();
+    expect(queueText).toContain('Story Lab queue');
+    expect(queueText).toContain('Genesis');
+    expect(queueText).toContain('In Progress');
+    expect(queueText).toContain('0 of 1 chapter');
+  });
+
+  it('clears finished batches from the visible batch queue', () => {
+    const payload: StoryIterationPayload = {
+      summary: createSummary(),
+      batch: {
+        chapters: [createChapter()],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      },
+      state: createState(),
+      telemetry: {
+        engine: 'gpt',
+        totalLatencyMs: 1200,
+        averageChapterLatencyMs: 1200,
+        tokensConsumed: 900,
+        retryCount: 0
+      }
+    };
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(payload)
+    }));
+    configureValidBlueprint('A siren archivist bargains with a moonlit duke.');
+
+    component.startGenesis();
+
+    expect(renderedBatchQueueText()).toContain('Completed');
+    const clearButton = renderedBatchQueuePanel()?.querySelector('[data-testid="clear-finished-batches"]') as HTMLButtonElement | null;
+    clearButton?.click();
+    fixture.detectChanges();
+
+    expect(component.activeBatchQueue().length).toBe(0);
+    expect(renderedBatchQueueText()).toBeNull();
   });
 
   it('defaults missing job progress to zero instead of rendering NaN', () => {

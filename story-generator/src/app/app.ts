@@ -1548,6 +1548,28 @@ ${chapters}
     this.setBatchQueue(this.activeBatchQueue().filter(item => item.status !== 'completed' && item.status !== 'failed'));
   }
 
+  trackBatch(_index: number, batch: BatchProgressState): string {
+    return batch.id;
+  }
+
+  formatBatchStatus(status: BatchProgressState['status']): string {
+    switch (status) {
+      case 'queued':
+        return 'Queued';
+      case 'in_progress':
+        return 'In Progress';
+      case 'completed':
+        return 'Completed';
+      case 'failed':
+        return 'Failed';
+    }
+  }
+
+  formatBatchChapterProgress(batch: BatchProgressState): string {
+    const noun = batch.totalChapters === 1 ? 'chapter' : 'chapters';
+    return `${batch.chaptersGenerated} of ${batch.totalChapters} ${noun}`;
+  }
+
   toggleChapterGroup(groupId: number) {
     const next = new Set(this.collapsedChapterGroups());
     if (next.has(groupId)) {

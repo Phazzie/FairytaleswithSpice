@@ -4,6 +4,36 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-06-07 09:59 EDT - Story Lab Batch Queue UI
+
+Actions:
+
+- Created `feature/story-lab-batch-queue-ui` from current `main` after PR #109 merged.
+- Added `STORY_LAB_BATCH_QUEUE_UI_EXEC_PLAN.md` for the focused UI checklist.
+- Exposed the existing Story Lab batch queue in the creation panel.
+- The new panel shows:
+  - each active/completed/failed batch label;
+  - user-readable status;
+  - generated chapter count;
+  - failed-batch error text when present.
+- Added a visible `Clear finished` button that calls the existing `clearFinishedBatchQueue()` method only when completed or failed batches are present.
+
+Validation:
+
+- RED: focused Angular app spec failed with 2 expected batch queue failures because `[data-testid="batch-queue-panel"]` and `[data-testid="clear-finished-batches"]` did not exist yet.
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- GREEN: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include='src/app/app.spec.ts'"`: passed with `36 SUCCESS`.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npm run smoke:story-lab-ui`: passed in mock mode.
+
+Self-review:
+
+- Good: The UI now shows the job batch history the app was already tracking internally.
+- Good: The clear action uses existing state cleanup and does not touch saved stories or backend job state.
+- Remaining risk: The panel is browser-session state only; durable cloud job history still needs account/job persistence.
+
 ## 2026-06-07 09:47 EDT - PR109 Review Follow-Up
 
 Problem:
