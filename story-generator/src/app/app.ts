@@ -83,7 +83,7 @@ type GenerationProgressState = {
 
 type ActiveStoryLabJobState = {
   jobId: string;
-  kind: 'genesis';
+  kind: 'genesis' | 'continuation';
   batchId: string;
   batchSize: ChapterBatchSize;
   statusPath: string;
@@ -493,6 +493,14 @@ export class App implements OnDestroy {
 
         const isTerminal = this.handleContinuationJobSnapshot(response.data.job, batchId, request.chapterBatchSize);
         if (!isTerminal) {
+          this.storeActiveStoryLabJob({
+            jobId: response.data.job.jobId,
+            kind: 'continuation',
+            batchId,
+            batchSize: request.chapterBatchSize,
+            statusPath: response.data.paths.statusPath,
+            startedAt: response.data.job.createdAt
+          });
           this.openContinuationJobEventStream(response.data.job.jobId, batchId, request.chapterBatchSize);
         }
       },
@@ -763,6 +771,7 @@ ${chapters}
         `Added ${job.result.batch.chapters.length} chapter${job.result.batch.chapters.length === 1 ? '' : 's'} to the saga.`
       );
       this.isGenerating.set(false);
+      this.clearActiveStoryLabJob();
       this.closeJobEventSubscription();
       this.stopProgress();
       return true;
@@ -833,6 +842,7 @@ ${chapters}
   }
 
   private failContinuationJob(batchId: string, message: string) {
+    this.clearActiveStoryLabJob();
     this.closeJobEventSubscription();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
@@ -864,9 +874,16 @@ ${chapters}
     }
 
     this.isGenerating.set(true);
-    this.statusMessage.set('Restoring your story job...');
-    this.startProgress('genesis');
+    this.statusMessage.set(activeJob.kind === 'genesis'
+      ? 'Restoring your story job...'
+      : 'Restoring your continuation job...');
+    this.startProgress(activeJob.kind);
     this.ensureRecoveredBatch(activeJob);
+
+    if (activeJob.kind === 'continuation') {
+      this.restoreActiveContinuationJob(activeJob);
+      return;
+    }
 
     this.storyService.getStoryLabJob<StoryIterationPayload>(activeJob.jobId).subscribe({
       next: response => {
@@ -889,6 +906,40 @@ ${chapters}
     });
   }
 
+  private restoreActiveContinuationJob(activeJob: ActiveStoryLabJobState) {
+    const session = this.workbench();
+    if (!session.story || !session.state) {
+      const message = 'That continuation job needs a saved story before it can be restored.';
+      this.statusMessage.set(message);
+      this.markBatchFailed(activeJob.batchId, message);
+      this.notificationService.warning('Continuation not restored', message);
+      this.clearActiveStoryLabJob();
+      this.isGenerating.set(false);
+      this.stopProgress();
+      return;
+    }
+
+    this.storyService.getStoryLabJob<ContinuationJobResult>(activeJob.jobId).subscribe({
+      next: response => {
+        if (!response.success || !response.data) {
+          const message = this.formatApiError(response.error, 'That continuation job is no longer available.');
+          this.failContinuationJob(activeJob.batchId, message);
+          return;
+        }
+
+        const isTerminal = this.handleContinuationJobSnapshot(response.data.job, activeJob.batchId, activeJob.batchSize);
+        if (!isTerminal) {
+          this.openContinuationJobEventStream(activeJob.jobId, activeJob.batchId, activeJob.batchSize);
+        }
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.restoreActiveContinuationJob');
+        const message = this.formatHttpError(error, 'That continuation job is no longer available.');
+        this.failContinuationJob(activeJob.batchId, message);
+      }
+    });
+  }
+
   private ensureRecoveredBatch(activeJob: ActiveStoryLabJobState) {
     if (this.activeBatchQueue().some(item => item.id === activeJob.batchId)) {
       return;
@@ -898,7 +949,7 @@ ${chapters}
       ...this.activeBatchQueue(),
       {
         id: activeJob.batchId,
-        label: 'Genesis',
+        label: activeJob.kind === 'genesis' ? 'Genesis' : 'Continuation',
         batchSize: activeJob.batchSize,
         status: 'in_progress',
         chaptersGenerated: 0,
@@ -935,7 +986,7 @@ ${chapters}
       const parsed = JSON.parse(rawJob) as Partial<ActiveStoryLabJobState>;
       if (
         typeof parsed.jobId === 'string'
-        && parsed.kind === 'genesis'
+        && (parsed.kind === 'genesis' || parsed.kind === 'continuation')
         && typeof parsed.batchId === 'string'
         && this.isChapterBatchSize(parsed.batchSize)
         && typeof parsed.statusPath === 'string'
