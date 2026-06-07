@@ -81,6 +81,15 @@ type GenerationProgressState = {
   elapsedSeconds: number;
 };
 
+type ActiveStoryLabJobState = {
+  jobId: string;
+  kind: 'genesis';
+  batchId: string;
+  batchSize: ChapterBatchSize;
+  statusPath: string;
+  startedAt: string;
+};
+
 @Component({
   selector: 'app-story-lab',
   standalone: true,
@@ -98,6 +107,7 @@ export class App implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private batchIdSequence = 0;
   private readonly skinStorageKey = 'fairytales_story_lab_skin_v1';
+  private readonly activeJobStorageKey = 'fairytales_story_lab_active_job_v1';
   private progressTimer: ReturnType<typeof setInterval> | null = null;
   private progressStartedAt = 0;
   private jobDrivenProgress = false;
@@ -325,6 +335,7 @@ export class App implements OnDestroy {
   constructor() {
     this.restoreSkin();
     this.restoreLatestProject();
+    this.restoreActiveStoryLabJob();
   }
 
   ngOnDestroy() {
@@ -414,6 +425,14 @@ export class App implements OnDestroy {
 
         const isTerminal = this.handleGenesisJobSnapshot(response.data.job, batchId, blueprint.chapterBatchSize);
         if (!isTerminal) {
+          this.storeActiveStoryLabJob({
+            jobId: response.data.job.jobId,
+            kind: 'genesis',
+            batchId,
+            batchSize: blueprint.chapterBatchSize,
+            statusPath: response.data.paths.statusPath,
+            startedAt: response.data.job.createdAt
+          });
           this.openGenesisJobEventStream(response.data.job.jobId, batchId, blueprint.chapterBatchSize);
         }
       },
@@ -511,6 +530,7 @@ export class App implements OnDestroy {
   }
 
   resetWorkbench() {
+    this.clearActiveStoryLabJob();
     this.workbench.set({
       story: null,
       state: null,
@@ -682,6 +702,7 @@ ${chapters}
         `Generated ${job.result.batch.chapters.length} chapter${job.result.batch.chapters.length === 1 ? '' : 's'}.`
       );
       this.isGenerating.set(false);
+      this.clearActiveStoryLabJob();
       this.closeJobEventSubscription();
       this.stopProgress();
       return true;
@@ -737,6 +758,7 @@ ${chapters}
   }
 
   private failGenesisJob(batchId: string, message: string) {
+    this.clearActiveStoryLabJob();
     this.closeJobEventSubscription();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
@@ -759,6 +781,124 @@ ${chapters}
     }
 
     this.closeJobEventSubscription();
+  }
+
+  private restoreActiveStoryLabJob() {
+    const activeJob = this.readActiveStoryLabJob();
+    if (!activeJob) {
+      return;
+    }
+
+    this.isGenerating.set(true);
+    this.statusMessage.set('Restoring your story job...');
+    this.startProgress('genesis');
+    this.ensureRecoveredBatch(activeJob);
+
+    this.storyService.getStoryLabJob<StoryIterationPayload>(activeJob.jobId).subscribe({
+      next: response => {
+        if (!response.success || !response.data) {
+          const message = this.formatApiError(response.error, 'That story job is no longer available.');
+          this.failGenesisJob(activeJob.batchId, message);
+          return;
+        }
+
+        const isTerminal = this.handleGenesisJobSnapshot(response.data.job, activeJob.batchId, activeJob.batchSize);
+        if (!isTerminal) {
+          this.openGenesisJobEventStream(activeJob.jobId, activeJob.batchId, activeJob.batchSize);
+        }
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.restoreActiveStoryLabJob');
+        const message = this.formatHttpError(error, 'That story job is no longer available.');
+        this.failGenesisJob(activeJob.batchId, message);
+      }
+    });
+  }
+
+  private ensureRecoveredBatch(activeJob: ActiveStoryLabJobState) {
+    if (this.activeBatchQueue().some(item => item.id === activeJob.batchId)) {
+      return;
+    }
+
+    this.setBatchQueue([
+      ...this.activeBatchQueue(),
+      {
+        id: activeJob.batchId,
+        label: 'Genesis',
+        batchSize: activeJob.batchSize,
+        status: 'in_progress',
+        chaptersGenerated: 0,
+        totalChapters: activeJob.batchSize,
+        submittedAt: activeJob.startedAt
+      }
+    ]);
+  }
+
+  private storeActiveStoryLabJob(activeJob: ActiveStoryLabJobState) {
+    if (typeof sessionStorage === 'undefined') {
+      return;
+    }
+
+    try {
+      sessionStorage.setItem(this.activeJobStorageKey, JSON.stringify(activeJob));
+    } catch {
+      this.workspaceSaveStatus.set('Story job progress will last until this tab closes.');
+    }
+  }
+
+  private readActiveStoryLabJob(): ActiveStoryLabJobState | null {
+    if (typeof sessionStorage === 'undefined') {
+      return null;
+    }
+
+    let rawJob: string | null = null;
+    try {
+      rawJob = sessionStorage.getItem(this.activeJobStorageKey);
+      if (!rawJob) {
+        return null;
+      }
+
+      const parsed = JSON.parse(rawJob) as Partial<ActiveStoryLabJobState>;
+      if (
+        typeof parsed.jobId === 'string'
+        && parsed.kind === 'genesis'
+        && typeof parsed.batchId === 'string'
+        && this.isChapterBatchSize(parsed.batchSize)
+        && typeof parsed.statusPath === 'string'
+        && typeof parsed.startedAt === 'string'
+      ) {
+        return {
+          jobId: parsed.jobId,
+          kind: parsed.kind,
+          batchId: parsed.batchId,
+          batchSize: parsed.batchSize,
+          statusPath: parsed.statusPath,
+          startedAt: parsed.startedAt
+        };
+      }
+    } catch {
+      this.clearActiveStoryLabJob();
+      return null;
+    }
+
+    this.clearActiveStoryLabJob();
+    return null;
+  }
+
+  private clearActiveStoryLabJob() {
+    if (typeof sessionStorage === 'undefined') {
+      return;
+    }
+
+    try {
+      sessionStorage.removeItem(this.activeJobStorageKey);
+    } catch {
+      // Ignore storage cleanup failures; the job state is only a reload hint.
+    }
+  }
+
+  private isChapterBatchSize(value: unknown): value is ChapterBatchSize {
+    return value === 1 || value === 2 || value === 3;
   }
 
   private formatJobStage(currentStep: string, status: StoryLabJobStatus): string {

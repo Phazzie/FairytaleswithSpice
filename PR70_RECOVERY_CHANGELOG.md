@@ -1927,6 +1927,33 @@ Validation:
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
+## 2026-06-07 08:38 EDT - Story Lab Reload-Safe Genesis Job Smoke
+
+Actions:
+
+- Added `STORY_LAB_JOB_RESUME_SMOKE_EXEC_PLAN.md` with a hostile-review checklist for the reload-safe genesis job UI slice.
+- Added a browser-session active genesis job marker in the Angular app.
+- Restored active genesis job progress after reload by reading `getStoryLabJob(jobId)` and reopening job events when the job is still non-terminal.
+- Cleared active job markers on completed, failed, cancelled, malformed, unknown, and reset paths.
+- Added focused Angular specs for active job marker persistence, running-job recovery, completed-job recovery, malformed storage cleanup, and in-flight subscription cleanup.
+- Updated the mocked Story Lab browser smoke so genesis must use `POST /api/story-lab/jobs` plus job SSE events; the old direct `/api/story-lab/stories` mock now fails if used for genesis.
+- Updated `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md` to mark browser-session reload recovery and mocked job-progress smoke complete.
+
+Validation:
+
+- RED check: targeted `app.spec.ts` failed with 4 expected failures before implementation: missing active marker storage, missing recovery call, missing completed-job hydration, and malformed storage cleanup.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `21 SUCCESS`.
+- `npm run smoke:story-lab-ui`: passed in mock mode; build completed with Angular budget warnings for the initial browser bundle and `app.css`.
+
+Self-review:
+
+- Good: Mock smoke now proves the primary genesis UI uses the job route family, not the legacy direct genesis route.
+- Good: Reload recovery handles browser refresh inside the current in-memory job scaffold without claiming database or Workflow durability.
+- Remaining risk: A Vercel cold start can still lose the non-durable job map; true durability still requires Workflow/database/account ownership.
+- Remaining risk: Continuation still uses the direct route and should be migrated in a separate job slice.
+
 ## 2026-06-07 08:18 EDT - Story Lab Genesis UI Job Migration
 
 Actions:
