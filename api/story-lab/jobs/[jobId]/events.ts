@@ -1,5 +1,3 @@
 // Created: 2026-06-07 07:05 EDT
 
-import { handleStreamStoryLabJobEvents } from '../../../_lib/story-lab/jobs/jobRouteHandlers';
-
-export default handleStreamStoryLabJobEvents;
+export { handleStreamStoryLabJobEvents as default } from '../../../_lib/story-lab/jobs/jobRouteHandlers';

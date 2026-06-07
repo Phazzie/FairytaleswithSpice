@@ -1,5 +1,3 @@
 // Created: 2026-06-07 07:05 EDT
 
-import { handleGetStoryLabJob } from '../../_lib/story-lab/jobs/jobRouteHandlers';
-
-export default handleGetStoryLabJob;
+export { handleGetStoryLabJob as default } from '../../_lib/story-lab/jobs/jobRouteHandlers';

@@ -26,7 +26,7 @@ class FakeResponse {
     this.headers[name] = value;
   }
 
-  status(code: number): FakeResponse {
+  status(code: number): this {
     this.statusCode = code;
     return this;
   }

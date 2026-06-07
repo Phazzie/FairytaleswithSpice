@@ -1932,3 +1932,22 @@ Self-review:
 - Good: The new job URLs carry only opaque `job_<uuid>` ids and do not place blueprint text in status/events paths.
 - Good: The scaffold is honest about durability; it runs synchronously in the request and stores process-local snapshots only.
 - Remaining risk: The visible Story Lab UI still uses the older direct generation/streaming path until the next UI migration slice.
+
+## 2026-06-07 07:21 EDT - PR104 Sonar Cleanup
+
+Actions:
+
+- Addressed SonarCloud annotations on PR #104 by:
+  - re-exporting the three tiny route default handlers without import/export boilerplate;
+  - replacing `window` test references with `globalThis`;
+  - making the EventSource mock instance registry readonly;
+  - removing an unnecessary batch-size assertion;
+  - using `RegExp.exec()` in the job-id URL parser;
+  - returning `this` from the route-test fake response `status()` helper.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/story-lab-job-routes.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.

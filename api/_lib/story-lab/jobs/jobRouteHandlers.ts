@@ -276,7 +276,7 @@ function normalizeContinuationInput(input: unknown): StoryContinuationSeam['inpu
 }
 
 function isValidBatchSize(size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] {
-  return [1, 2, 3].includes(size as StoryContinuationSeam['input']['chapterBatchSize']);
+  return [1, 2, 3].includes(size);
 }
 
 function readJobId(req: RequestLike): string | null {
@@ -290,7 +290,7 @@ function readJobId(req: RequestLike): string | null {
   }
 
   const pathname = req.url.split('?')[0];
-  const match = pathname.match(/\/api\/story-lab\/jobs\/([^/]+)/);
+  const match = /\/api\/story-lab\/jobs\/([^/]+)/.exec(pathname);
   return match ? decodeURIComponent(match[1]) : null;
 }
 

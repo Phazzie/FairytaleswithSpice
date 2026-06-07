@@ -87,7 +87,7 @@ function createJobResponse<TResult = unknown>(
 }
 
 class MockEventSource {
-  static instances: MockEventSource[] = [];
+  static readonly instances: MockEventSource[] = [];
 
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
@@ -129,18 +129,18 @@ describe('StoryService', () => {
     service = TestBed.inject(StoryService);
     httpMock = TestBed.inject(HttpTestingController);
     errorLogging = TestBed.inject(ErrorLoggingService) as jasmine.SpyObj<ErrorLoggingService>;
-    originalEventSource = window.EventSource;
-    MockEventSource.instances = [];
-    Object.defineProperty(window, 'EventSource', {
+    originalEventSource = globalThis.EventSource;
+    MockEventSource.instances.length = 0;
+    Object.defineProperty(globalThis, 'EventSource', {
       configurable: true,
       writable: true,
-      value: MockEventSource as unknown as typeof EventSource
+      value: MockEventSource
     });
   });
 
   afterEach(() => {
     httpMock.verify();
-    Object.defineProperty(window, 'EventSource', {
+    Object.defineProperty(globalThis, 'EventSource', {
       configurable: true,
       writable: true,
       value: originalEventSource
