@@ -107,6 +107,63 @@ Validation:
 - `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
 - `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `25 SUCCESS`.
 
+## 2026-06-07 09:18 EDT - Story Lab Continuation Browser-Session Resume
+
+Actions:
+
+- Created `feature/story-lab-continuation-resume` from current `main` after PR #107 merged.
+- Added `STORY_LAB_CONTINUATION_RESUME_UI_EXEC_PLAN.md` to scope the slice to browser-session UI recovery only.
+- Expanded active Story Lab job markers from genesis-only to `genesis | continuation`.
+- Stored active continuation job markers while continuation jobs are still running.
+- Made `restoreActiveStoryLabJob()` route by job kind:
+  - genesis recovery keeps the existing path;
+  - continuation recovery requires an already-restored saved local story/state before calling `getStoryLabJob`;
+  - missing saved story context clears the marker and avoids appending chapters into an empty workbench.
+- Added recovered continuation batch labeling, terminal marker cleanup, and completed continuation application to the restored local story.
+- Updated `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md` to mark browser-session continuation recovery complete while keeping cold-start-safe durable job recovery deferred.
+
+Validation:
+
+- RED: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"` failed with 4 expected continuation-resume failures proving active continuation markers were not stored or restored.
+- GREEN: the same focused Angular command passed with `29 SUCCESS` after the implementation.
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx tsx tests/story-lab-job-routes.test.ts`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `29 SUCCESS`.
+
+Remaining risk:
+
+- This is still browser-session recovery over a process-local job scaffold. Vercel cold starts, cross-device resume, account-owned jobs, and Workflow/database durability remain future platform gates.
+
+## 2026-06-07 09:26 EDT - PR108 Story-Bound Continuation Resume Review Fix
+
+Problem:
+
+- Gemini Code Assist and Codex both flagged that active continuation markers did not include the originating `storyId`.
+- Without that binding, reload recovery could use whichever saved project auto-loaded first, then append the recovered continuation onto the wrong context or drop the earlier chapter history when story ids differed.
+
+Fix:
+
+- Added regression specs proving active continuation markers store `storyId` and reload recovery loads the matching saved story instead of the newest saved project.
+- Stored `storyId` in active continuation markers.
+- Required continuation markers to include `storyId`.
+- Added matching saved-project lookup by story id before resuming continuation jobs.
+- Refused continuation recovery when the saved story context cannot be found.
+
+Validation:
+
+- RED: focused Angular app spec failed with the expected missing-`storyId` and wrong-project recovery failures.
+- GREEN: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"` passed with `30 SUCCESS`.
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx tsx tests/story-lab-job-routes.test.ts`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+
 ## 2026-05-26 00:12 EDT - Recovery Tracking Started
 
 Actions:

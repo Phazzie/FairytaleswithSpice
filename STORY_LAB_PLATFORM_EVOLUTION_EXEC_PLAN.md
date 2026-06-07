@@ -73,6 +73,10 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] moved the Continue Saga UI from direct `continueStory` calls to `POST /api/story-lab/jobs` with `kind: 'continuation'`;
   - [x] wired continuation progress, completion, cancellation, and failed-provider handling to Story Lab job snapshots/events;
   - [x] moved mocked browser smoke continuation coverage to `/api/story-lab/jobs` and made the legacy direct continuation route fail in smoke mode.
+- [x] Continued Phase D browser-session continuation recovery on `feature/story-lab-continuation-resume`:
+  - [x] stored active continuation job markers while continuation snapshots are still running;
+  - [x] restored running continuation jobs after reload when a saved browser-local story is available;
+  - [x] applied completed recovered continuation jobs to the restored local story and cleared unusable markers.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -136,7 +140,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Future Story Lab job streaming now has an opaque `job_<uuid>` contract and path builder that keeps blueprint/story/private fields out of status and events URLs.
   - Story Lab job routes now create opaque jobs, replay queued/running/terminal snapshots, and label the in-process store as `non_durable_memory`.
 - What was intentionally deferred:
-  - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, continuation reload-safe job resume UI, Blob export, email, and audio runtime.
+  - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, cold-start-safe job resume, Blob export, email, and audio runtime.
 - What hostile review still objected to:
   - The genesis and continuation UI now use job snapshots/events, but the in-memory scaffold is still not real durable Workflow/database-backed progress.
   - The legacy direct Story Lab stream route still exists for compatibility; future work should retire it after job UI smoke coverage and reload-safe resume are in place.
@@ -652,6 +656,7 @@ Acceptance:
 - [x] UI can start a genesis job and complete/fail from job snapshots/events.
 - [x] UI can start a continuation job and complete/fail from job snapshots/events.
 - [x] UI can survive reload for active genesis jobs by polling job id inside the current browser session.
+- [x] UI can survive reload for active continuation jobs when the local saved story context is available.
 - [x] Mocked browser smoke sees queued -> running -> completed through the visible UI.
 
 ### Phase E: Account Sync
