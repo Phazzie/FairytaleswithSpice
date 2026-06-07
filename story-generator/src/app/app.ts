@@ -74,6 +74,15 @@ type ContinuationDirection = {
   brief: string;
 };
 
+type VillainPressureId = 'antagonist' | 'environment' | 'secret' | 'deadline' | 'inner-desire';
+
+type VillainPressureOption = {
+  id: VillainPressureId;
+  label: string;
+  description: string;
+  brief: string;
+};
+
 type DirectorRoomNoteId = 'desire-ledger' | 'continuity-keeper' | 'chapter-ending';
 
 type DirectorRoomNoteStatus = 'pending' | 'accepted' | 'dismissed';
@@ -208,6 +217,39 @@ export class App implements OnDestroy {
     { label: 'Slow down and linger', brief: 'Slow down for atmosphere, longing, and character intimacy before the next plot turn.' }
   ];
 
+  readonly villainPressureOptions: VillainPressureOption[] = [
+    {
+      id: 'antagonist',
+      label: 'Antagonist',
+      description: 'Make the rival or villain act directly.',
+      brief: 'Villain Pressure: Let the antagonist directly raise the cost of the next choice.'
+    },
+    {
+      id: 'environment',
+      label: 'Environment',
+      description: 'Make the setting itself push back.',
+      brief: 'Villain Pressure: Let the environment itself become dangerous and force a decision.'
+    },
+    {
+      id: 'secret',
+      label: 'Secret',
+      description: 'Let hidden truth create pressure.',
+      brief: 'Villain Pressure: Let a secret create pressure before anyone fully explains it.'
+    },
+    {
+      id: 'deadline',
+      label: 'Deadline',
+      description: 'Put the scene under a clock.',
+      brief: 'Villain Pressure: Put the characters under a tight deadline that makes delay costly.'
+    },
+    {
+      id: 'inner-desire',
+      label: 'Inner Desire',
+      description: 'Make want itself the problem.',
+      brief: 'Villain Pressure: Let inner desire pressure the character into a dangerous choice.'
+    }
+  ];
+
   readonly blueprint = signal<BlueprintForm>({
     creature: 'vampire',
     themes: [],
@@ -241,6 +283,7 @@ export class App implements OnDestroy {
   readonly collapsedChapterGroups = signal<Set<number>>(new Set());
   readonly activeSkin = signal<StorySkinId>('writing-desk');
   readonly customContinuationBrief = signal('');
+  readonly selectedVillainPressureId = signal<VillainPressureId>('secret');
   readonly directorRoomDecisions = signal<Record<string, DirectorRoomNoteStatus>>({});
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
@@ -267,6 +310,9 @@ export class App implements OnDestroy {
     this.spiceOptions.find(option => option.level === Number(this.blueprint().spicyLevel)) ?? this.spiceOptions[2]
   );
   readonly activeHeatContract = computed(() => this.normalizeHeatContract(this.blueprint().heatContract));
+  readonly selectedVillainPressure = computed(() =>
+    this.villainPressureOptions.find(option => option.id === this.selectedVillainPressureId()) ?? this.villainPressureOptions[2]
+  );
 
   readonly timeline = computed<ChapterTimelineEntry[]>(() => {
     const session = this.workbench();
@@ -606,18 +652,26 @@ export class App implements OnDestroy {
   }
 
   continueWithDirection(direction: ContinuationDirection) {
-    this.continueSaga(direction.brief);
+    this.continueSaga(this.withVillainPressureBrief(direction.brief));
   }
 
   continueWithCustomDirection() {
     const brief = this.customContinuationBrief().trim();
     if (!brief) {
-      this.continueSaga();
+      this.continueSaga(this.withVillainPressureBrief());
       return;
     }
 
     this.customContinuationBrief.set('');
-    this.continueSaga(brief);
+    this.continueSaga(this.withVillainPressureBrief(brief));
+  }
+
+  selectVillainPressure(pressureId: VillainPressureId) {
+    this.selectedVillainPressureId.set(pressureId);
+  }
+
+  isVillainPressureSelected(option: VillainPressureOption): boolean {
+    return this.selectedVillainPressureId() === option.id;
   }
 
   acceptDirectorRoomNote(note: DirectorRoomNote) {
@@ -641,7 +695,7 @@ export class App implements OnDestroy {
       return;
     }
 
-    this.continueSaga(this.buildDirectorRoomContinuationBrief(acceptedNotes));
+    this.continueSaga(this.withVillainPressureBrief(this.buildDirectorRoomContinuationBrief(acceptedNotes)));
   }
 
   getSafeHtml(html: string): string {
@@ -1667,6 +1721,10 @@ ${chapters}
     return note.id;
   }
 
+  trackVillainPressure(_index: number, option: VillainPressureOption): string {
+    return option.id;
+  }
+
   formatDirectorRoomNoteStatus(status: DirectorRoomNoteStatus): string {
     switch (status) {
       case 'accepted':
@@ -1697,6 +1755,13 @@ ${chapters}
     ].join('\n');
 
     return customBrief ? `${customBrief}\n\n${directorBrief}` : directorBrief;
+  }
+
+  private withVillainPressureBrief(brief?: string): string {
+    const trimmedBrief = brief?.trim();
+    const pressureBrief = this.selectedVillainPressure().brief;
+
+    return trimmedBrief ? `${trimmedBrief}\n\n${pressureBrief}` : pressureBrief;
   }
 
   toggleChapterGroup(groupId: number) {

@@ -476,6 +476,25 @@
           <p class="eyebrow">Next chapter</p>
           <h3>Where should it go?</h3>
         </div>
+        <div data-testid="villain-pressure-dial">
+          <p class="eyebrow">Villain Pressure</p>
+          <p class="muted">{{ selectedVillainPressure().description }}</p>
+          <div class="heat-option-grid">
+            <button
+              type="button"
+              class="heat-option"
+              data-testid="villain-pressure-option"
+              [attr.data-pressure-id]="pressure.id"
+              [class.heat-option--active]="isVillainPressureSelected(pressure)"
+              *ngFor="let pressure of villainPressureOptions; trackBy: trackVillainPressure"
+              (click)="selectVillainPressure(pressure.id)"
+              [disabled]="isGenerating()"
+            >
+              <strong>{{ pressure.label }}</strong>
+              <span>{{ pressure.description }}</span>
+            </button>
+          </div>
+        </div>
         <div class="direction-grid">
           <button
             type="button"

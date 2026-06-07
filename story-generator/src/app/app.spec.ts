@@ -375,6 +375,15 @@ describe('App', () => {
     return renderedDirectorRoomPanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
+  function renderedVillainPressureDial(targetFixture: ComponentFixture<App> = fixture): HTMLElement | null {
+    targetFixture.detectChanges();
+    return targetFixture.nativeElement.querySelector('[data-testid="villain-pressure-dial"]') as HTMLElement | null;
+  }
+
+  function renderedVillainPressureText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    return renderedVillainPressureDial(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -656,6 +665,65 @@ describe('App', () => {
     expect(jobRequest.continuation.continuationBrief).toContain('Director Room notes');
     expect(jobRequest.continuation.continuationBrief).toContain('Desire Ledger');
     expect(jobRequest.continuation.continuationBrief).toContain('Continuity Keeper');
+  });
+
+  it('renders a villain pressure dial after a story exists', () => {
+    seedWorkbenchForContinuation();
+
+    const pressureText = renderedVillainPressureText();
+
+    expect(pressureText).toContain('Villain Pressure');
+    expect(pressureText).toContain('Secret');
+    expect(pressureText).toContain('Deadline');
+  });
+
+  it('continues with selected deadline pressure through the existing job flow', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    const deadlineButton = renderedVillainPressureDial()?.querySelector('[data-pressure-id="deadline"]') as HTMLButtonElement | null;
+    deadlineButton?.click();
+    fixture.detectChanges();
+    const continueButton = fixture.nativeElement.querySelector('[data-testid="continue-saga"]') as HTMLButtonElement;
+    continueButton.click();
+
+    expect(storyService.continueStory).not.toHaveBeenCalled();
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    expect(jobRequest.kind).toBe('continuation');
+    expect(jobRequest.continuation.continuationBrief).toContain('tight deadline');
+  });
+
+  it('adds selected pressure to Director Room continuation notes', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    const environmentButton = renderedVillainPressureDial()?.querySelector('[data-pressure-id="environment"]') as HTMLButtonElement | null;
+    environmentButton?.click();
+    fixture.detectChanges();
+    const acceptButton = renderedDirectorRoomPanel()?.querySelector('[data-testid="accept-director-note"]') as HTMLButtonElement | null;
+    acceptButton?.click();
+    fixture.detectChanges();
+    const continueButton = renderedDirectorRoomPanel()?.querySelector('[data-testid="continue-with-director-notes"]') as HTMLButtonElement | null;
+    continueButton?.click();
+
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    expect(jobRequest.kind).toBe('continuation');
+    expect(jobRequest.continuation.continuationBrief).toContain('Director Room notes');
+    expect(jobRequest.continuation.continuationBrief).toContain('environment itself');
   });
 
   it('defaults missing job progress to zero instead of rendering NaN', () => {

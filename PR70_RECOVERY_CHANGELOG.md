@@ -4,6 +4,39 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-06-07 10:24 EDT - Story Lab Villain Pressure UI
+
+Actions:
+
+- Created `feature/story-lab-villain-pressure-ui` from current `main` after PR #111 merged.
+- Added `STORY_LAB_VILLAIN_PRESSURE_UI_EXEC_PLAN.md` and linked it from `AGENTS.md`.
+- Added a Villain Pressure dial inside the existing continuation panel.
+- Added five pressure choices:
+  - `Antagonist`;
+  - `Environment`;
+  - `Secret`;
+  - `Deadline`;
+  - `Inner Desire`.
+- Composed selected pressure into UI-generated continuation briefs for normal continuation, direction continuation, and Director's Room notes.
+- Kept direct `continueSaga(brief)` unchanged so lower-level tests/callers do not receive hidden UI pressure.
+- Reused existing heat-option/grid styles and added no new CSS.
+
+Validation:
+
+- RED: focused Angular app spec failed with 3 expected pressure-dial failures because the panel and pressure text did not exist yet.
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- GREEN: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include='src/app/app.spec.ts'"`: passed with `43 SUCCESS`.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npm run smoke:story-lab-ui`: passed in mock mode; Angular still reports warning-level initial bundle and CSS budget warnings, but `app.css` remains under the 15 kB hard limit.
+
+Self-review:
+
+- Good: The dial makes continuation more directive without creating backend or AI-review scope.
+- Good: The Director's Room path and normal Continue Story path both carry selected pressure through the existing job request.
+- Remaining risk: This is still a brief-shaping control, not a true villain-planning engine.
+
 ## 2026-06-07 10:13 EDT - Story Lab Director's Room UI
 
 Actions:
