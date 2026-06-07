@@ -548,10 +548,10 @@ Validation:
 
 Files:
 
-- Create `api/_lib/story-lab/storage/storyProjectStore.ts`.
-- Create `api/_lib/story-lab/storage/inMemoryStoryProjectStore.ts`.
-- Create `api/_lib/story-lab/storage/postgresStoryProjectStore.ts`.
-- Create `tests/story-lab-storage-port.test.ts`.
+- Created `api/_lib/story-lab/storage/storyProjectStore.ts`.
+- Created `api/_lib/story-lab/storage/inMemoryStoryProjectStore.ts`.
+- Created `api/_lib/story-lab/storage/postgresStoryProjectStore.ts`.
+- Created `tests/story-lab-storage-port.test.ts`.
 
 Rules:
 
@@ -559,12 +559,15 @@ Rules:
 - The in-memory adapter is for tests/local only and must be named non-durable.
 - Cloud adapter writes require the Phase B1 auth/authorization tests and the Phase B2/B3 privacy gates.
 - The route layer must continue to work without `DATABASE_URL`.
+- Postgres saves must be based on returned database rows. A zero-row owner-scoped upsert means the caller did not own the conflicting project id and must return `STORY_LAB_PROJECT_FORBIDDEN`, not optimistic success.
+- Postgres load/delete stay owner-scoped and may avoid revealing whether another owner's project id exists.
 
 Validation:
 
-- `tsx tests/story-lab-storage-port.test.ts`
-- `npm run test:story-lab-state`
-- `scripts/recovery/preflight.sh --quick --skip-status`
+- [x] `npx tsx tests/story-lab-storage-port.test.ts`: passed with owner isolation, clone safety, fail-closed readiness, fake-executor SQL shape, and zero-row Postgres owner-conflict coverage.
+- [x] `npm run test:story-lab-state`: passed.
+- [x] `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- [x] `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
 ### Phase D: Job Contract and Progress UI
 
