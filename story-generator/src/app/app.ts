@@ -751,8 +751,8 @@ ${chapters}
     this.updateProgressFromJob(job);
 
     if (job.status === 'completed') {
-      if (!job.result) {
-        this.failContinuationJob(batchId, 'Continuation finished without a story payload. Please try again.');
+      if (!this.hasRenderableIterationPayload(job.result)) {
+        this.failContinuationJob(batchId, 'Continuation finished without a valid story payload. Please try again.');
         return true;
       }
 
@@ -786,7 +786,7 @@ ${chapters}
 
   private openContinuationJobEventStream(jobId: string, batchId: string, batchSize: ChapterBatchSize) {
     this.closeJobEventSubscription();
-    this.jobEventSubscription = this.storyService.streamStoryLabJobEvents<ContinuationJobResult>(
+    const jobEventSubscription = this.storyService.streamStoryLabJobEvents<ContinuationJobResult>(
       jobId,
       () => undefined
     ).subscribe({
@@ -802,6 +802,7 @@ ${chapters}
         this.jobEventSubscription = null;
       }
     });
+    this.jobEventSubscription = jobEventSubscription.closed ? null : jobEventSubscription;
   }
 
   private updateProgressFromJob(job: StoryLabJob<unknown>) {
@@ -825,6 +826,10 @@ ${chapters}
     this.notificationService.error('Generation failed', message);
     this.isGenerating.set(false);
     this.stopProgress();
+  }
+
+  private hasRenderableIterationPayload(payload: StoryIterationPayload | undefined): payload is StoryIterationPayload {
+    return Array.isArray(payload?.batch?.chapters);
   }
 
   private failContinuationJob(batchId: string, message: string) {

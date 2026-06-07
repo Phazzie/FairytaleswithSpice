@@ -65,6 +65,30 @@ Validation:
 - `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `23 SUCCESS`.
 - `npm run smoke:story-lab-ui`: passed in mock mode; Angular build reported the existing budget warnings for the 509.99 kB initial browser bundle and 12.56 kB `app.css`.
 
+## 2026-06-07 09:08 EDT - PR107 Gemini Review Fixes
+
+Problem:
+
+- Gemini Code Assist left two actionable continuation-job UI comments:
+  - completed continuation jobs should defensively reject malformed result payloads before using `job.result.batch.chapters`;
+  - continuation event streams that complete synchronously should not leave a stale closed subscription reference.
+
+Fix:
+
+- Added regression specs for malformed completed continuation payloads and synchronous continuation stream completion.
+- Added a `hasRenderableIterationPayload()` guard before applying completed continuation job results.
+- Updated `openContinuationJobEventStream()` to assign the stream subscription through a local variable and store `null` when it is already closed.
+
+Validation:
+
+- RED: focused Angular app spec failed with the expected malformed-payload and stale-subscription failures before implementation.
+- GREEN: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"` passed with `25 SUCCESS`.
+- `git diff --check`: passed.
+- `node --check scripts/recovery/story-lab-browser-smoke.mjs`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `npm run smoke:story-lab-ui`: passed in mock mode; Angular build reported the existing budget warnings for the 510.13 kB initial browser bundle and 12.56 kB `app.css`.
+
 ## 2026-05-26 00:12 EDT - Recovery Tracking Started
 
 Actions:

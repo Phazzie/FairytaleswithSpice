@@ -687,6 +687,45 @@ describe('App', () => {
     expect(component.statusMessage()).toContain('missing its Grok configuration');
   });
 
+  it('keeps existing chapters when a completed continuation job has a malformed story payload', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const malformedPayload = {
+      ...createContinuationPayload(genesisPayload),
+      batch: undefined
+    } as unknown as ContinuationJobResult;
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(malformedPayload)
+    }));
+
+    expect(() => component.continueSaga()).not.toThrow();
+    expect(storyService.continueStory).not.toHaveBeenCalled();
+    expect(component.workbench().chapterHistory).toEqual(genesisPayload.batch.chapters);
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+    expect(component.statusMessage()).toContain('valid story payload');
+  });
+
+  it('clears a continuation event subscription that completes synchronously', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'continuing_story',
+        progressPercent: 28
+      })
+    }));
+    storyService.streamStoryLabJobEvents.and.returnValue(of(
+      createJobEvent(createContinuationJobResponse(continuationPayload))
+    ));
+
+    component.continueSaga('Make the rival reveal dangerous.');
+
+    expect(component.workbench().chapterHistory.length).toBe(2);
+    expect((component as unknown as { jobEventSubscription: unknown }).jobEventSubscription).toBeNull();
+  });
+
   it('copies generated story text to the clipboard', async () => {
     const writeText = jasmine.createSpy('writeText').and.resolveTo();
     spyOnProperty(navigator, 'clipboard', 'get').and.returnValue({ writeText } as unknown as Clipboard);
