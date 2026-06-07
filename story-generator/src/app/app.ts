@@ -839,7 +839,7 @@ ${chapters}
 
   private updateProgressFromJob(job: StoryLabJob<unknown>) {
     const stage = this.formatJobStage(job.currentStep, job.status);
-    const progressPercent = Math.max(0, Math.min(100, Math.round(job.progressPercent)));
+    const progressPercent = this.normalizeJobProgressPercent(job.progressPercent);
     this.jobDrivenProgress = true;
     this.statusMessage.set(stage);
     this.generationProgress.update(current => ({
@@ -1101,15 +1101,9 @@ ${chapters}
   }
 
   private showStartingJobStatus(kind: ActiveStoryLabJobState['kind']) {
-    this.jobStatusPanel.set({
-      visible: true,
+    this.setJobStatusPanel({
       kind,
       tone: 'starting',
-      label: kind === 'genesis' ? 'Story generation' : 'Story continuation',
-      title: kind === 'genesis' ? 'First chapter job starting' : 'Continuation job starting',
-      description: kind === 'genesis'
-        ? 'Story Lab is creating a background job for the opening batch.'
-        : 'Story Lab is creating a background job for the next batch.',
       progressPercent: 8,
       stage: this.generationProgress().stage,
       startedAt: new Date().toISOString()
@@ -1117,15 +1111,9 @@ ${chapters}
   }
 
   private showRecoveringJobStatus(activeJob: ActiveStoryLabJobState) {
-    this.jobStatusPanel.set({
-      visible: true,
+    this.setJobStatusPanel({
       kind: activeJob.kind,
       tone: 'recovering',
-      label: 'Recovered job',
-      title: activeJob.kind === 'genesis' ? 'First chapter job recovered' : 'Continuation job recovered',
-      description: activeJob.kind === 'genesis'
-        ? 'Resumed from this browser. Story Lab is reconnecting to the first chapter job.'
-        : 'Resumed from this browser. Story Lab found the saved story and reconnected to the continuation job.',
       progressPercent: this.generationProgress().percent || 8,
       stage: this.generationProgress().stage,
       jobId: this.formatShortJobId(activeJob.jobId),
@@ -1139,23 +1127,38 @@ ${chapters}
     const current = this.jobStatusPanel();
     const tone = current.visible && current.tone === 'recovering' ? 'recovering' : 'running';
     const stage = this.formatJobStage(job.currentStep, job.status);
-    const progressPercent = Math.max(0, Math.min(100, Math.round(job.progressPercent)));
+    const progressPercent = this.normalizeJobProgressPercent(job.progressPercent);
 
-    this.jobStatusPanel.set({
-      visible: true,
+    this.setJobStatusPanel({
       kind,
       tone,
-      label: tone === 'recovering'
-        ? 'Recovered job'
-        : kind === 'genesis' ? 'Story generation' : 'Story continuation',
-      title: this.formatJobStatusTitle(kind, tone),
-      description: this.formatJobStatusDescription(kind, tone),
       progressPercent,
       stage,
       jobId: this.formatShortJobId(job.jobId),
       statusPath: current.visible ? current.statusPath : undefined,
       startedAt: job.createdAt
     });
+  }
+
+  private setJobStatusPanel(status: Pick<
+    JobStatusPanelState,
+    'kind' | 'tone' | 'progressPercent' | 'stage' | 'jobId' | 'statusPath' | 'startedAt'
+  >) {
+    this.jobStatusPanel.set({
+      visible: true,
+      ...status,
+      label: this.formatJobStatusLabel(status.kind, status.tone),
+      title: this.formatJobStatusTitle(status.kind, status.tone),
+      description: this.formatJobStatusDescription(status.kind, status.tone)
+    });
+  }
+
+  private formatJobStatusLabel(kind: ActiveStoryLabJobState['kind'], tone: JobStatusPanelState['tone']): string {
+    if (tone === 'recovering') {
+      return 'Recovered job';
+    }
+
+    return kind === 'genesis' ? 'Story generation' : 'Story continuation';
   }
 
   private formatJobStatusTitle(kind: ActiveStoryLabJobState['kind'], tone: JobStatusPanelState['tone']): string {
@@ -1177,8 +1180,14 @@ ${chapters}
         : 'Resumed from this browser. Story Lab found the saved story and reconnected to the continuation job.';
     }
 
-    return kind === 'genesis'
-      ? 'Story Lab is writing the opening batch in a background job.'
+    if (kind === 'genesis') {
+      return tone === 'starting'
+        ? 'Story Lab is creating a background job for the opening batch.'
+        : 'Story Lab is writing the opening batch in a background job.';
+    }
+
+    return tone === 'starting'
+      ? 'Story Lab is creating a background job for the next batch.'
       : 'Story Lab is extending the saved story in a background job.';
   }
 
@@ -1192,6 +1201,10 @@ ${chapters}
     }
 
     return jobId.length <= 16 ? jobId : `${jobId.slice(0, 8)}...${jobId.slice(-4)}`;
+  }
+
+  private normalizeJobProgressPercent(progressPercent: number | null | undefined): number {
+    return Math.max(0, Math.min(100, Math.round(progressPercent ?? 0)));
   }
 
   private enqueueBatch(label: string, batchSize: ChapterBatchSize): string {

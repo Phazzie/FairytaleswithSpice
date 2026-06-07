@@ -159,7 +159,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Route-budget consolidation focused checks passed: `git diff --check`, `scripts/recovery/check-vercel-function-count.sh` at `9/12`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, and `scripts/recovery/preflight.sh --quick --skip-status`.
   - Phase D backend job-route focused checks passed: `git diff --check`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh` at `10/12`, and `scripts/recovery/preflight.sh --quick --skip-status`.
   - Phase D genesis UI job migration focused checks passed: `git diff --check`, app/spec TypeScript compiles, targeted Angular `app.spec.ts` Karma run, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, and `scripts/recovery/check-vercel-function-count.sh` at `10/12`.
-  - Phase D job status UI focused checks passed: RED targeted Angular app spec failed on missing rendered banner, then GREEN targeted Angular app spec passed with `33 SUCCESS`.
+  - Phase D job status UI focused checks passed: RED targeted Angular app spec failed on missing rendered banner, PR follow-up RED failed on missing progress rendering `NaN%`, then GREEN targeted Angular app spec passed with `34 SUCCESS`.
 
 ## Context and Orientation
 

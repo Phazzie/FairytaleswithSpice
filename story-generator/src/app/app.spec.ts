@@ -181,9 +181,19 @@ function createActiveJobMarker(overrides: Partial<Record<string, unknown>> = {})
   };
 }
 
-function storeActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) {
-  sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, JSON.stringify(createActiveJobMarker(overrides)));
-}
+  function storeActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) {
+    sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, JSON.stringify(createActiveJobMarker(overrides)));
+  }
+
+  function storeContinuationRecoveryMarker(storyId = 'story-123') {
+    storeActiveJobMarker({
+      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
+      kind: 'continuation',
+      batchId: 'batch-continuation-recovered',
+      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
+      storyId
+    });
+  }
 
 function makePayloadForStory(storyId: string, title: string): Partial<StoryIterationPayload> {
   return {
@@ -470,6 +480,25 @@ describe('App', () => {
     expect(statusText).toContain('Grok is writing your first chapter.');
   });
 
+  it('defaults missing job progress to zero instead of rendering NaN', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+    const response = createGenesisJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'generating_story'
+    });
+    delete (response.job as Partial<typeof response.job>).progressPercent;
+    storyService.createStoryLabJob.and.returnValue(of({ success: true, data: response }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+    configureValidBlueprint('A moonlit archivist bargains with a dangerous fae prince.');
+
+    component.startGenesis();
+
+    const statusText = renderedJobStatusText();
+    expect(component.generationProgress().percent).toBe(0);
+    expect(statusText).toContain('0%');
+    expect(statusText).not.toContain('NaN%');
+  });
+
   it('shows a friendly AI configuration error when a genesis job cannot use Grok', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
 
@@ -601,13 +630,7 @@ describe('App', () => {
     const genesisPayload = seedWorkbenchForContinuation();
     component.saveActiveProject();
     const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: genesisPayload.summary.storyId
-    });
+    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
     storyService.getStoryLabJob.calls.reset();
     storyService.getStoryLabJob.and.returnValue(of({
       success: true,
@@ -637,13 +660,7 @@ describe('App', () => {
     const genesisPayload = seedWorkbenchForContinuation();
     component.saveActiveProject();
     const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: genesisPayload.summary.storyId
-    });
+    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
     storyService.getStoryLabJob.calls.reset();
     storyService.getStoryLabJob.and.returnValue(of({
       success: true,
@@ -668,13 +685,7 @@ describe('App', () => {
     const genesisPayload = seedWorkbenchForContinuation();
     const continuationPayload = createContinuationPayload(genesisPayload);
     component.saveActiveProject();
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: genesisPayload.summary.storyId
-    });
+    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
     storyService.getStoryLabJob.calls.reset();
     storyService.getStoryLabJob.and.returnValue(of({
       success: true,
@@ -694,13 +705,7 @@ describe('App', () => {
     seedWorkbenchForContinuation(makePayloadForStory('story-newer', 'Newer Pact'));
     component.saveActiveProject();
     const continuationPayload = createContinuationPayload(originalPayload);
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: 'story-original'
-    });
+    storeContinuationRecoveryMarker('story-original');
     storyService.getStoryLabJob.calls.reset();
     storyService.getStoryLabJob.and.returnValue(of({
       success: true,
@@ -716,13 +721,7 @@ describe('App', () => {
   });
 
   it('clears a continuation active job marker when no saved story context exists', () => {
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: 'story-123'
-    });
+    storeContinuationRecoveryMarker();
     storyService.getStoryLabJob.calls.reset();
 
     const recovered = TestBed.createComponent(App).componentInstance;
@@ -733,13 +732,7 @@ describe('App', () => {
   });
 
   it('does not render a job status panel when continuation recovery lacks saved story context', () => {
-    storeActiveJobMarker({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: 'story-123'
-    });
+    storeContinuationRecoveryMarker();
     storyService.getStoryLabJob.calls.reset();
 
     const recoveredFixture = TestBed.createComponent(App);

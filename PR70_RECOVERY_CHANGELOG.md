@@ -4,6 +4,32 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-06-07 09:47 EDT - PR109 Review Follow-Up
+
+Problem:
+
+- SonarCloud failed the PR #109 quality gate with `7.3% Duplication on New Code`.
+- Gemini Code Assist flagged that a missing/null `job.progressPercent` could render `NaN%` in the new job status banner and the existing progress state.
+
+Fix:
+
+- Added a regression spec proving missing job progress falls back to `0%` instead of `NaN%`.
+- Added one `normalizeJobProgressPercent()` helper and used it for both the main progress bar and the new job status banner.
+- Reduced duplication by:
+  - extracting repeated continuation recovery marker setup in `app.spec.ts`;
+  - routing starting/running/recovered banner updates through one `setJobStatusPanel()` helper;
+  - centralizing banner label/title/description formatting.
+
+Validation:
+
+- RED: focused Angular app spec failed with the expected missing-progress regression: progress was `NaN` and the banner rendered `NaN%`.
+- GREEN: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include='src/app/app.spec.ts'"`: passed with `34 SUCCESS`.
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npm run smoke:story-lab-ui`: passed in mock mode; Angular build reported the existing bundle budget warnings.
+
 ## 2026-06-07 09:37 EDT - Story Lab Job Status UI
 
 Actions:
