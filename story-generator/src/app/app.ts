@@ -4,7 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { map } from 'rxjs';
+import { Subscription, map } from 'rxjs';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import {
   BatchProgressState,
@@ -20,6 +20,8 @@ import {
   SpicyLevel,
   StoryBlueprint,
   StoryIterationPayload,
+  StoryLabJob,
+  StoryLabJobStatus,
   StoryWorkbenchSession,
   ThemeSeed
 } from './contracts';
@@ -98,6 +100,9 @@ export class App implements OnDestroy {
   private readonly skinStorageKey = 'fairytales_story_lab_skin_v1';
   private progressTimer: ReturnType<typeof setInterval> | null = null;
   private progressStartedAt = 0;
+  private jobDrivenProgress = false;
+  private jobCreationSubscription: Subscription | null = null;
+  private jobEventSubscription: Subscription | null = null;
 
   readonly skinOptions: StorySkinOption[] = [
     { id: 'bookshop', label: 'Enchanted Bookshop', mood: 'Warm, nostalgic, whimsical' },
@@ -323,6 +328,7 @@ export class App implements OnDestroy {
   }
 
   ngOnDestroy() {
+    this.closeJobSubscriptions();
     this.stopProgress();
   }
 
@@ -392,39 +398,36 @@ export class App implements OnDestroy {
     this.statusMessage.set('Sending your story ingredients to Grok...');
     this.startProgress('genesis');
     this.setBatchQueue([]);
+    this.closeJobSubscriptions();
     const batchId = this.enqueueBatch('Genesis', blueprint.chapterBatchSize);
 
-    this.storyService.beginStory(blueprint).subscribe({
+    const jobCreationSubscription = this.storyService.createStoryLabJob<StoryIterationPayload>({
+      kind: 'genesis',
+      blueprint
+    }).subscribe({
       next: response => {
         if (!response.success || !response.data) {
           const message = this.formatApiError(response.error, 'Unknown error while generating story.');
-          this.statusMessage.set(message);
-          this.markBatchFailed(batchId, message);
-          this.notificationService.error('Generation failed', message);
-          this.isGenerating.set(false);
-          this.stopProgress();
+          this.failGenesisJob(batchId, message);
           return;
         }
 
-        this.applyIteration(response.data, blueprint.chapterBatchSize, batchId);
-        this.statusMessage.set('Your first chapter is ready. Choose where the story goes next.');
-        this.notificationService.success(
-          'Genesis complete',
-          `Generated ${response.data.batch.chapters.length} chapter${response.data.batch.chapters.length === 1 ? '' : 's'}.`
-        );
-        this.isGenerating.set(false);
-        this.stopProgress();
+        const isTerminal = this.handleGenesisJobSnapshot(response.data.job, batchId, blueprint.chapterBatchSize);
+        if (!isTerminal) {
+          this.openGenesisJobEventStream(response.data.job.jobId, batchId, blueprint.chapterBatchSize);
+        }
       },
       error: error => {
+        this.jobCreationSubscription = null;
         this.errorLogging.logError(error, 'App.startGenesis');
         const message = this.formatHttpError(error, 'Story generation failed. Please try again in a moment.');
-        this.statusMessage.set(message);
-        this.markBatchFailed(batchId, message);
-        this.notificationService.error('Generation failed', message);
-        this.isGenerating.set(false);
-        this.stopProgress();
+        this.failGenesisJob(batchId, message);
+      },
+      complete: () => {
+        this.jobCreationSubscription = null;
       }
     });
+    this.jobCreationSubscription = jobCreationSubscription.closed ? null : jobCreationSubscription;
   }
 
   async continueSaga(brief?: string) {
@@ -659,6 +662,130 @@ ${chapters}
     }
   }
 
+  private handleGenesisJobSnapshot(
+    job: StoryLabJob<StoryIterationPayload>,
+    batchId: string,
+    batchSize: ChapterBatchSize
+  ): boolean {
+    this.updateProgressFromJob(job);
+
+    if (job.status === 'completed') {
+      if (!job.result) {
+        this.failGenesisJob(batchId, 'Story generation finished without a story payload. Please try again.');
+        return true;
+      }
+
+      this.applyIteration(job.result, batchSize, batchId);
+      this.statusMessage.set('Your first chapter is ready. Choose where the story goes next.');
+      this.notificationService.success(
+        'Genesis complete',
+        `Generated ${job.result.batch.chapters.length} chapter${job.result.batch.chapters.length === 1 ? '' : 's'}.`
+      );
+      this.isGenerating.set(false);
+      this.closeJobEventSubscription();
+      this.stopProgress();
+      return true;
+    }
+
+    if (job.status === 'failed') {
+      this.failGenesisJob(
+        batchId,
+        this.formatApiError(job.error, 'Story generation failed. Please try again in a moment.')
+      );
+      return true;
+    }
+
+    if (job.status === 'cancelled') {
+      this.failGenesisJob(batchId, 'Story generation was cancelled before it finished.');
+      return true;
+    }
+
+    return false;
+  }
+
+  private openGenesisJobEventStream(jobId: string, batchId: string, batchSize: ChapterBatchSize) {
+    this.closeJobEventSubscription();
+    this.jobEventSubscription = this.storyService.streamStoryLabJobEvents<StoryIterationPayload>(
+      jobId,
+      () => undefined
+    ).subscribe({
+      next: event => {
+        this.handleGenesisJobSnapshot(event.job, batchId, batchSize);
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.openGenesisJobEventStream');
+        const message = this.formatHttpError(error, 'Story generation updates stopped. Please try again in a moment.');
+        this.failGenesisJob(batchId, message);
+      },
+      complete: () => {
+        this.jobEventSubscription = null;
+      }
+    });
+  }
+
+  private updateProgressFromJob(job: StoryLabJob<StoryIterationPayload>) {
+    const stage = this.formatJobStage(job.currentStep, job.status);
+    const progressPercent = Math.max(0, Math.min(100, Math.round(job.progressPercent)));
+    this.jobDrivenProgress = true;
+    this.statusMessage.set(stage);
+    this.generationProgress.update(current => ({
+      active: true,
+      percent: progressPercent,
+      stage,
+      elapsedSeconds: current.elapsedSeconds
+    }));
+  }
+
+  private failGenesisJob(batchId: string, message: string) {
+    this.closeJobEventSubscription();
+    this.statusMessage.set(message);
+    this.markBatchFailed(batchId, message);
+    this.notificationService.error('Generation failed', message);
+    this.isGenerating.set(false);
+    this.stopProgress();
+  }
+
+  private closeJobEventSubscription() {
+    if (this.jobEventSubscription) {
+      this.jobEventSubscription.unsubscribe();
+      this.jobEventSubscription = null;
+    }
+  }
+
+  private closeJobSubscriptions() {
+    if (this.jobCreationSubscription) {
+      this.jobCreationSubscription.unsubscribe();
+      this.jobCreationSubscription = null;
+    }
+
+    this.closeJobEventSubscription();
+  }
+
+  private formatJobStage(currentStep: string, status: StoryLabJobStatus): string {
+    if (status === 'queued') {
+      return 'Story job queued.';
+    }
+
+    if (status === 'waiting_for_review') {
+      return 'Story job is waiting for review.';
+    }
+
+    switch (currentStep) {
+      case 'queued':
+        return 'Story job queued.';
+      case 'generating_story':
+        return 'Grok is writing your first chapter.';
+      case 'continuing_story':
+        return 'Grok is continuing the saga.';
+      case 'completed':
+        return 'Binding the pages.';
+      case 'failed':
+        return 'Generation failed.';
+      default:
+        return this.humanizeIdentifier(currentStep);
+    }
+  }
+
   private enqueueBatch(label: string, batchSize: ChapterBatchSize): string {
     const id = `batch-${Date.now()}-${this.batchIdSequence++}`;
     const entry: BatchProgressState = {
@@ -761,6 +888,7 @@ ${chapters}
         ];
 
     this.stopProgress();
+    this.jobDrivenProgress = false;
     this.progressStartedAt = Date.now();
     this.generationProgress.set({
       active: true,
@@ -774,8 +902,10 @@ ${chapters}
       const stageIndex = Math.min(stages.length - 1, Math.floor(elapsedSeconds / 6));
       this.generationProgress.update(current => ({
         active: true,
-        percent: Math.min(92, current.percent + (current.percent < 55 ? 7 : 3)),
-        stage: stages[stageIndex],
+        percent: this.jobDrivenProgress
+          ? current.percent
+          : Math.min(92, current.percent + (current.percent < 55 ? 7 : 3)),
+        stage: this.jobDrivenProgress ? current.stage : stages[stageIndex],
         elapsedSeconds
       }));
     }, 1000);
@@ -792,6 +922,7 @@ ${chapters}
       active: false,
       percent: current.percent > 0 ? 100 : 0
     }));
+    this.jobDrivenProgress = false;
   }
 
   private formatApiError(error: { code?: string; message?: string; details?: unknown } | undefined, fallback: string): string {
@@ -918,6 +1049,11 @@ ${chapters}
     }
 
     return normalized.trim();
+  }
+
+  private humanizeIdentifier(value: string): string {
+    const normalized = this.normalizeInlineWhitespace(value.replace(/[_-]+/g, ' '));
+    return normalized ? `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}.` : 'Story job is running.';
   }
 
   private isWhitespace(char: string): boolean {

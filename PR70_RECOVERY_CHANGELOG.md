@@ -1927,6 +1927,39 @@ Validation:
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
+## 2026-06-07 08:18 EDT - Story Lab Genesis UI Job Migration
+
+Actions:
+
+- Moved the primary Story Lab genesis Generate flow from the old direct `beginStory` call to `createStoryLabJob({ kind: 'genesis', blueprint })`.
+- Wired genesis progress, completion, cancellation, and failed-provider handling through Story Lab job snapshots/events.
+- Kept the local staged progress timer only as a bridge until real job snapshots arrive, so the progress bar no longer fights backend job percentages.
+- Added focused Angular specs proving:
+  - invalid genesis input does not create a job;
+  - valid genesis creates a Story Lab job and does not call `beginStory`;
+  - job snapshots update the visible progress state;
+  - failed jobs surface the existing friendly Grok configuration message;
+  - saved-project loading still works when genesis returns through the job response shape.
+- Updated `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md` to mark genesis job-driven progress complete while keeping reload-safe polling and browser-smoke coverage pending.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `16 SUCCESS`.
+- `npx -p node@20 -c "npm run build"` from `story-generator/`: passed; Angular reported bundle budget warnings for the 506.06 kB initial browser bundle and 12.56 kB `app.css`.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx tsx tests/story-lab-job-routes.test.ts`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+
+Self-review:
+
+- Good: The Generate button now exercises the job API seam added in PR #104, which reduces dependence on the legacy direct genesis path.
+- Good: The UI handles running, completed, failed, and cancelled terminal job states without inventing new backend contracts.
+- Remaining risk: Jobs are still `non_durable_memory`; reload-safe resume needs persisted job ids or polling support in a follow-up slice.
+- Remaining risk: The browser smoke still needs to assert queued -> running -> terminal visible job progress before the old stream route can be retired.
+
 Self-review:
 
 - Good: The new job URLs carry only opaque `job_<uuid>` ids and do not place blueprint text in status/events paths.
