@@ -21,6 +21,7 @@ const ACTIVE_JOB_STORAGE_KEY = 'fairytales_story_lab_active_job_v1';
 type GenesisJobOverrides = Partial<StoryLabJobCreationResponse<StoryIterationPayload>['job']>;
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 type ContinuationJobOverrides = Partial<StoryLabJobCreationResponse<ContinuationJobResult>['job']>;
+type JobKindForTest = StoryLabJobCreationResponse<unknown>['job']['kind'];
 
 function createChapter(overrides: Partial<GeneratedChapter> = {}): GeneratedChapter {
   return {
@@ -74,13 +75,32 @@ function createGenesisJobResponse(
   payload?: StoryIterationPayload,
   overrides: Partial<StoryLabJobCreationResponse<StoryIterationPayload>['job']> = {}
 ): StoryLabJobCreationResponse<StoryIterationPayload> {
+  return createJobResponse({
+    kind: 'genesis',
+    defaultJobId: 'job_123e4567-e89b-12d3-a456-426614174000',
+    payload,
+    overrides
+  });
+}
+
+function createJobResponse<TResult>({
+  kind,
+  defaultJobId,
+  payload,
+  overrides = {}
+}: {
+  kind: JobKindForTest;
+  defaultJobId: string;
+  payload?: TResult;
+  overrides?: Partial<StoryLabJobCreationResponse<TResult>['job']>;
+}): StoryLabJobCreationResponse<TResult> {
   const now = new Date().toISOString();
-  const jobId = overrides.jobId ?? 'job_123e4567-e89b-12d3-a456-426614174000';
+  const jobId = overrides.jobId ?? defaultJobId;
 
   return {
     job: {
       jobId,
-      kind: 'genesis',
+      kind,
       status: overrides.status ?? 'completed',
       currentStep: overrides.currentStep ?? 'completed',
       progressPercent: overrides.progressPercent ?? 100,
@@ -130,32 +150,12 @@ function createContinuationJobResponse(
   payload?: ContinuationJobResult,
   overrides: ContinuationJobOverrides = {}
 ): StoryLabJobCreationResponse<ContinuationJobResult> {
-  const now = new Date().toISOString();
-  const jobId = overrides.jobId ?? 'job_223e4567-e89b-12d3-a456-426614174000';
-
-  return {
-    job: {
-      jobId,
-      kind: 'continuation',
-      status: overrides.status ?? 'completed',
-      currentStep: overrides.currentStep ?? 'completed',
-      progressPercent: overrides.progressPercent ?? 100,
-      createdAt: overrides.createdAt ?? now,
-      updatedAt: overrides.updatedAt ?? now,
-      result: payload,
-      error: overrides.error,
-      ...overrides
-    },
-    paths: {
-      statusPath: `/api/story-lab/jobs/${jobId}`,
-      eventsPath: `/api/story-lab/jobs/${jobId}/events`
-    },
-    durability: {
-      mode: 'non_durable_memory',
-      durable: false,
-      warning: 'Jobs are held in memory for this deployment.'
-    }
-  };
+  return createJobResponse({
+    kind: 'continuation',
+    defaultJobId: 'job_223e4567-e89b-12d3-a456-426614174000',
+    payload,
+    overrides
+  });
 }
 
 function createJobEvent<TResult>(

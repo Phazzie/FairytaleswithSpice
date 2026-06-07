@@ -89,6 +89,24 @@ Validation:
 - `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
 - `npm run smoke:story-lab-ui`: passed in mock mode; Angular build reported the existing budget warnings for the 510.13 kB initial browser bundle and 12.56 kB `app.css`.
 
+## 2026-06-07 09:11 EDT - PR107 Remaining Sonar Duplication Cleanup
+
+Problem:
+
+- After the first Sonar cleanup and Gemini review-fix commit, SonarCloud still failed the quality gate with `6.5% Duplication on New Code`.
+- Sonar duplication details pointed to the genesis and continuation job-response helpers in `story-generator/src/app/app.spec.ts`.
+
+Fix:
+
+- Replaced duplicated genesis/continuation job-response helper bodies with one generic `createJobResponse()` test helper.
+- Kept the small genesis/continuation wrapper helpers so tests still read in domain language.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: passed with `25 SUCCESS`.
+
 ## 2026-05-26 00:12 EDT - Recovery Tracking Started
 
 Actions:
