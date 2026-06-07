@@ -485,7 +485,7 @@
               class="heat-option"
               data-testid="villain-pressure-option"
               [attr.data-pressure-id]="pressure.id"
-              [class.heat-option--active]="isVillainPressureSelected(pressure)"
+              [class.heat-option--active]="selectedVillainPressureId() === pressure.id"
               *ngFor="let pressure of villainPressureOptions; trackBy: trackVillainPressure"
               (click)="selectVillainPressure(pressure.id)"
               [disabled]="isGenerating()"

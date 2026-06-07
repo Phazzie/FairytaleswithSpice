@@ -311,7 +311,7 @@ export class App implements OnDestroy {
   );
   readonly activeHeatContract = computed(() => this.normalizeHeatContract(this.blueprint().heatContract));
   readonly selectedVillainPressure = computed(() =>
-    this.villainPressureOptions.find(option => option.id === this.selectedVillainPressureId()) ?? this.villainPressureOptions[2]
+    this.villainPressureOptions.find(option => option.id === this.selectedVillainPressureId())!
   );
 
   readonly timeline = computed<ChapterTimelineEntry[]>(() => {
@@ -668,10 +668,6 @@ export class App implements OnDestroy {
 
   selectVillainPressure(pressureId: VillainPressureId) {
     this.selectedVillainPressureId.set(pressureId);
-  }
-
-  isVillainPressureSelected(option: VillainPressureOption): boolean {
-    return this.selectedVillainPressureId() === option.id;
   }
 
   acceptDirectorRoomNote(note: DirectorRoomNote) {

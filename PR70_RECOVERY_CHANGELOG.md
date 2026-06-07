@@ -4,6 +4,27 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-06-07 10:31 EDT - PR112 Review Follow-Up
+
+Problem:
+
+- Gemini review flagged two medium-pressure UI maintainability issues:
+  - template method calls for pressure active state run on each Angular change detection cycle;
+  - `selectedVillainPressure` used a magic fallback array index.
+
+Actions:
+
+- Replaced the template method call with direct signal comparison: `selectedVillainPressureId() === pressure.id`.
+- Replaced the magic fallback index with a non-null assertion on the typed pressure lookup.
+- Removed the now-unused `isVillainPressureSelected()` method.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include='src/app/app.spec.ts'"`: passed with `43 SUCCESS`.
+
 ## 2026-06-07 10:24 EDT - Story Lab Villain Pressure UI
 
 Actions:
