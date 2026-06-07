@@ -85,6 +85,11 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] rendered the existing batch queue in the Story Lab creation panel;
   - [x] showed batch label, status, chapter count, and failed-batch error text;
   - [x] exposed the existing clear-finished-batches action through a visible compact button.
+- [x] Started the first Director's Room UI slice on `feature/story-lab-director-room-ui`:
+  - [x] rendered a compact local craft-notes panel after a chapter exists;
+  - [x] added Desire Ledger, Continuity Keeper, and Chapter Ending notes;
+  - [x] let users accept/dismiss notes or move a note into the custom continuation brief;
+  - [x] sent accepted notes through the existing continuation job path.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -138,6 +143,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - The generated-story reader shows the active Heat Contract summary beside the story metadata.
   - Story Lab now shows a visible job banner when generation/continuation starts, runs, or is recovered after reload.
   - Story Lab now shows a visible batch queue so users can see and clear completed/failed generation batches.
+  - Story Lab now shows the first Director's Room panel so users can turn craft notes into the next continuation request.
 - What became better technically:
   - Story Lab stream parsing accepts the same expanded creature set as the Charmed UI.
   - Heat Contract data is typed in frontend contracts, mapped through the Story Lab engine, and preserved in the classic generation context.
@@ -151,6 +157,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Story Lab job routes now create opaque jobs, replay queued/running/terminal snapshots, and label the in-process store as `non_durable_memory`.
   - The Angular UI now has signal-backed job status state that mirrors job lifecycle and recovery without adding routes or backend contracts.
   - The Angular UI now renders the existing batch queue state instead of keeping it hidden behind component internals.
+  - The Angular UI now has deterministic Director's Room note state that reuses existing continuation jobs instead of adding backend review routes.
 - What was intentionally deferred:
   - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, cold-start-safe job resume, Blob export, email, and audio runtime.
 - What hostile review still objected to:
@@ -167,6 +174,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Phase D genesis UI job migration focused checks passed: `git diff --check`, app/spec TypeScript compiles, targeted Angular `app.spec.ts` Karma run, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, and `scripts/recovery/check-vercel-function-count.sh` at `10/12`.
   - Phase D job status UI focused checks passed: RED targeted Angular app spec failed on missing rendered banner, PR follow-up RED failed on missing progress rendering `NaN%`, then GREEN targeted Angular app spec passed with `34 SUCCESS`.
   - Phase D batch queue UI focused checks passed: RED targeted Angular app spec failed on missing rendered batch queue, then GREEN targeted Angular app spec passed with `36 SUCCESS`; `git diff --check`, app/spec TypeScript compiles, function count at `10/12`, and mocked browser smoke also passed.
+  - Director's Room UI focused checks passed: RED targeted Angular app spec failed on missing rendered panel/actions, then GREEN targeted Angular app spec passed with `40 SUCCESS`; `git diff --check`, app/spec TypeScript compiles, and function count at `10/12` passed; the first mocked browser smoke failed on the `app.css` hard budget, then passed after reusing existing list/grid styles and trimming CSS under 15 kB.
 
 ## Context and Orientation
 
