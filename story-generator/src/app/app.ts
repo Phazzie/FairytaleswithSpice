@@ -88,6 +88,7 @@ type ActiveStoryLabJobState = {
   batchSize: ChapterBatchSize;
   statusPath: string;
   startedAt: string;
+  storyId?: string;
 };
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
@@ -499,7 +500,8 @@ export class App implements OnDestroy {
             batchId,
             batchSize: request.chapterBatchSize,
             statusPath: response.data.paths.statusPath,
-            startedAt: response.data.job.createdAt
+            startedAt: response.data.job.createdAt,
+            storyId: request.storyId
           });
           this.openContinuationJobEventStream(response.data.job.jobId, batchId, request.chapterBatchSize);
         }
@@ -907,8 +909,15 @@ ${chapters}
   }
 
   private restoreActiveContinuationJob(activeJob: ActiveStoryLabJobState) {
+    if (activeJob.storyId && this.workbench().story?.storyId !== activeJob.storyId) {
+      const matchingProject = this.findSavedProjectByStoryId(activeJob.storyId);
+      if (matchingProject) {
+        this.hydrateSavedProject(matchingProject, false);
+      }
+    }
+
     const session = this.workbench();
-    if (!session.story || !session.state) {
+    if (!session.story || !session.state || session.story.storyId !== activeJob.storyId) {
       const message = 'That continuation job needs a saved story before it can be restored.';
       this.statusMessage.set(message);
       this.markBatchFailed(activeJob.batchId, message);
@@ -991,6 +1000,7 @@ ${chapters}
         && this.isChapterBatchSize(parsed.batchSize)
         && typeof parsed.statusPath === 'string'
         && typeof parsed.startedAt === 'string'
+        && (parsed.kind === 'genesis' || typeof parsed.storyId === 'string')
       ) {
         return {
           jobId: parsed.jobId,
@@ -998,7 +1008,8 @@ ${chapters}
           batchId: parsed.batchId,
           batchSize: parsed.batchSize,
           statusPath: parsed.statusPath,
-          startedAt: parsed.startedAt
+          startedAt: parsed.startedAt,
+          storyId: parsed.kind === 'continuation' ? parsed.storyId : undefined
         };
       }
     } catch {
@@ -1122,6 +1133,12 @@ ${chapters}
     if (shouldNotify) {
       this.notificationService.info('Story loaded', project.title);
     }
+  }
+
+  private findSavedProjectByStoryId(storyId: string): SavedStoryProject | null {
+    return this.workspaceStorage.loadProject(storyId)
+      ?? this.workspaceStorage.listProjects().find(project => project.storyId === storyId)
+      ?? null;
   }
 
   private restoreSkin() {

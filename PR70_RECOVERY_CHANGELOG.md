@@ -138,6 +138,32 @@ Remaining risk:
 
 - This is still browser-session recovery over a process-local job scaffold. Vercel cold starts, cross-device resume, account-owned jobs, and Workflow/database durability remain future platform gates.
 
+## 2026-06-07 09:26 EDT - PR108 Story-Bound Continuation Resume Review Fix
+
+Problem:
+
+- Gemini Code Assist and Codex both flagged that active continuation markers did not include the originating `storyId`.
+- Without that binding, reload recovery could use whichever saved project auto-loaded first, then append the recovered continuation onto the wrong context or drop the earlier chapter history when story ids differed.
+
+Fix:
+
+- Added regression specs proving active continuation markers store `storyId` and reload recovery loads the matching saved story instead of the newest saved project.
+- Stored `storyId` in active continuation markers.
+- Required continuation markers to include `storyId`.
+- Added matching saved-project lookup by story id before resuming continuation jobs.
+- Refused continuation recovery when the saved story context cannot be found.
+
+Validation:
+
+- RED: focused Angular app spec failed with the expected missing-`storyId` and wrong-project recovery failures.
+- GREEN: `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"` passed with `30 SUCCESS`.
+- `git diff --check`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
+- `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx tsx tests/story-lab-job-routes.test.ts`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+
 ## 2026-05-26 00:12 EDT - Recovery Tracking Started
 
 Actions:

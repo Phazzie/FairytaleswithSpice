@@ -185,6 +185,18 @@ function storeActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) 
   sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, JSON.stringify(createActiveJobMarker(overrides)));
 }
 
+function makePayloadForStory(storyId: string, title: string): Partial<StoryIterationPayload> {
+  return {
+    summary: createSummary({ storyId, title }),
+    state: createState({ storyId }),
+    batch: {
+      chapters: [createChapter({ chapterId: `${storyId}-chapter-1` })],
+      totalWordCount: 900,
+      suggestedNextPrompts: []
+    }
+  };
+}
+
 const confirmedHeatContract = {
   adultOnlyConfirmed: true,
   tensionMode: 'slow_burn' as const,
@@ -559,7 +571,8 @@ describe('App', () => {
       jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
       kind: 'continuation',
       batchSize: 1,
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000'
+      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
+      storyId: 'story-123'
     }));
     expect(marker.batchId).toMatch(/^batch-/);
   });
@@ -572,7 +585,8 @@ describe('App', () => {
       jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
       kind: 'continuation',
       batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000'
+      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
+      storyId: genesisPayload.summary.storyId
     });
     storyService.getStoryLabJob.calls.reset();
     storyService.getStoryLabJob.and.returnValue(of({
@@ -607,7 +621,8 @@ describe('App', () => {
       jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
       kind: 'continuation',
       batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000'
+      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
+      storyId: genesisPayload.summary.storyId
     });
     storyService.getStoryLabJob.calls.reset();
     storyService.getStoryLabJob.and.returnValue(of({
@@ -622,12 +637,40 @@ describe('App', () => {
     expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
   });
 
+  it('loads the continuation marker story instead of the newest saved project on recovery', () => {
+    const originalPayload = seedWorkbenchForContinuation(makePayloadForStory('story-original', 'Original Pact'));
+    component.saveActiveProject();
+    seedWorkbenchForContinuation(makePayloadForStory('story-newer', 'Newer Pact'));
+    component.saveActiveProject();
+    const continuationPayload = createContinuationPayload(originalPayload);
+    storeActiveJobMarker({
+      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
+      kind: 'continuation',
+      batchId: 'batch-continuation-recovered',
+      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
+      storyId: 'story-original'
+    });
+    storyService.getStoryLabJob.calls.reset();
+    storyService.getStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(recovered.workbench().story?.storyId).toBe('story-original');
+    expect(recovered.workbench().chapterHistory.length).toBe(2);
+    expect(recovered.workbench().chapterHistory[0].chapterId).toBe('story-original-chapter-1');
+    expect(recovered.selectedChapter()?.chapterNumber).toBe(2);
+  });
+
   it('clears a continuation active job marker when no saved story context exists', () => {
     storeActiveJobMarker({
       jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
       kind: 'continuation',
       batchId: 'batch-continuation-recovered',
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000'
+      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
+      storyId: 'story-123'
     });
     storyService.getStoryLabJob.calls.reset();
 
