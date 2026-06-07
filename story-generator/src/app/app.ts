@@ -101,6 +101,7 @@ export class App implements OnDestroy {
   private progressTimer: ReturnType<typeof setInterval> | null = null;
   private progressStartedAt = 0;
   private jobDrivenProgress = false;
+  private jobCreationSubscription: Subscription | null = null;
   private jobEventSubscription: Subscription | null = null;
 
   readonly skinOptions: StorySkinOption[] = [
@@ -327,7 +328,7 @@ export class App implements OnDestroy {
   }
 
   ngOnDestroy() {
-    this.closeJobEventSubscription();
+    this.closeJobSubscriptions();
     this.stopProgress();
   }
 
@@ -397,10 +398,10 @@ export class App implements OnDestroy {
     this.statusMessage.set('Sending your story ingredients to Grok...');
     this.startProgress('genesis');
     this.setBatchQueue([]);
-    this.closeJobEventSubscription();
+    this.closeJobSubscriptions();
     const batchId = this.enqueueBatch('Genesis', blueprint.chapterBatchSize);
 
-    this.storyService.createStoryLabJob<StoryIterationPayload>({
+    const jobCreationSubscription = this.storyService.createStoryLabJob<StoryIterationPayload>({
       kind: 'genesis',
       blueprint
     }).subscribe({
@@ -417,11 +418,16 @@ export class App implements OnDestroy {
         }
       },
       error: error => {
+        this.jobCreationSubscription = null;
         this.errorLogging.logError(error, 'App.startGenesis');
         const message = this.formatHttpError(error, 'Story generation failed. Please try again in a moment.');
         this.failGenesisJob(batchId, message);
+      },
+      complete: () => {
+        this.jobCreationSubscription = null;
       }
     });
+    this.jobCreationSubscription = jobCreationSubscription.closed ? null : jobCreationSubscription;
   }
 
   async continueSaga(brief?: string) {
@@ -676,6 +682,7 @@ ${chapters}
         `Generated ${job.result.batch.chapters.length} chapter${job.result.batch.chapters.length === 1 ? '' : 's'}.`
       );
       this.isGenerating.set(false);
+      this.closeJobEventSubscription();
       this.stopProgress();
       return true;
     }
@@ -730,6 +737,7 @@ ${chapters}
   }
 
   private failGenesisJob(batchId: string, message: string) {
+    this.closeJobEventSubscription();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
     this.notificationService.error('Generation failed', message);
@@ -742,6 +750,15 @@ ${chapters}
       this.jobEventSubscription.unsubscribe();
       this.jobEventSubscription = null;
     }
+  }
+
+  private closeJobSubscriptions() {
+    if (this.jobCreationSubscription) {
+      this.jobCreationSubscription.unsubscribe();
+      this.jobCreationSubscription = null;
+    }
+
+    this.closeJobEventSubscription();
   }
 
   private formatJobStage(currentStep: string, status: StoryLabJobStatus): string {

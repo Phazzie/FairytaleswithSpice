@@ -6,6 +6,7 @@ import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import {
+  ApiResponse,
   StoryIterationPayload,
   StoryLabJobCreationResponse,
   StoryLabJobEvent,
@@ -16,6 +17,7 @@ import {
 
 const STORAGE_KEY = 'fairytales_story_lab_projects_v1';
 const SKIN_STORAGE_KEY = 'fairytales_story_lab_skin_v1';
+type GenesisJobOverrides = Partial<StoryLabJobCreationResponse<StoryIterationPayload>['job']>;
 
 function createChapter(overrides: Partial<GeneratedChapter> = {}): GeneratedChapter {
   return {
@@ -156,6 +158,41 @@ describe('App', () => {
     localStorage.removeItem(SKIN_STORAGE_KEY);
   });
 
+  function configureValidBlueprint(logline: string) {
+    component.blueprint.set({
+      ...component.blueprint(),
+      logline,
+      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }],
+      heatContract: confirmedHeatContract
+    });
+  }
+
+  function stubRunningGenesisJob(
+    events$: Subject<StoryLabJobEvent<StoryIterationPayload>>,
+    overrides: GenesisJobOverrides = {}
+  ) {
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'generating_story',
+        progressPercent: 32,
+        ...overrides
+      })
+    }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+  }
+
+  function startGenesisJobFlow(
+    logline: string,
+    events$: Subject<StoryLabJobEvent<StoryIterationPayload>>,
+    initialJobOverrides: GenesisJobOverrides = {}
+  ) {
+    stubRunningGenesisJob(events$, initialJobOverrides);
+    configureValidBlueprint(logline);
+    component.startGenesis();
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -242,23 +279,7 @@ describe('App', () => {
     };
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
 
-    storyService.createStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createGenesisJobResponse(undefined, {
-        status: 'running',
-        currentStep: 'generating_story',
-        progressPercent: 32
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
-
-    component.blueprint.set({
-      ...component.blueprint(),
-      logline: 'A vampire princess bound by forbidden vows.',
-      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }],
-      heatContract: confirmedHeatContract
-    });
-    component.startGenesis();
+    startGenesisJobFlow('A vampire princess bound by forbidden vows.', events$);
 
     expect(storyService.beginStory).not.toHaveBeenCalled();
     expect(storyService.createStoryLabJob).toHaveBeenCalled();
@@ -288,23 +309,15 @@ describe('App', () => {
 
   it('updates genesis progress from Story Lab job snapshots', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
-    storyService.createStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createGenesisJobResponse(undefined, {
+    startGenesisJobFlow(
+      'A siren archivist bargains with a moonlit duke.',
+      events$,
+      {
         status: 'running',
         currentStep: 'queued',
         progressPercent: 10
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
-
-    component.blueprint.set({
-      ...component.blueprint(),
-      logline: 'A siren archivist bargains with a moonlit duke.',
-      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }],
-      heatContract: confirmedHeatContract
-    });
-    component.startGenesis();
+      }
+    );
 
     events$.next(createGenesisJobEvent(createGenesisJobResponse(undefined, {
       status: 'running',
@@ -320,23 +333,8 @@ describe('App', () => {
 
   it('shows a friendly AI configuration error when a genesis job cannot use Grok', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
-    storyService.createStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createGenesisJobResponse(undefined, {
-        status: 'running',
-        currentStep: 'generating_story',
-        progressPercent: 32
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
 
-    component.blueprint.set({
-      ...component.blueprint(),
-      logline: 'A dragon guardian bargains for one night of forbidden mercy.',
-      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }],
-      heatContract: confirmedHeatContract
-    });
-    component.startGenesis();
+    startGenesisJobFlow('A dragon guardian bargains for one night of forbidden mercy.', events$);
     events$.next(createGenesisJobEvent(createGenesisJobResponse(undefined, {
       status: 'failed',
       currentStep: 'failed',
@@ -349,6 +347,18 @@ describe('App', () => {
 
     expect(component.statusMessage()).toContain('missing its Grok configuration');
     expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+  });
+
+  it('cancels an in-flight genesis job creation subscription on destroy', () => {
+    const creation$ = new Subject<ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>>();
+    storyService.createStoryLabJob.and.returnValue(creation$.asObservable());
+    configureValidBlueprint('A witch queen bargains with a haunted mirror.');
+
+    component.startGenesis();
+
+    expect(creation$.observed).toBeTrue();
+    component.ngOnDestroy();
+    expect(creation$.observed).toBeFalse();
   });
 
   it('loads a saved browser-local project into the workbench', () => {
