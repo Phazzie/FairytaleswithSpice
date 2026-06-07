@@ -9,8 +9,6 @@ EXPECTED_FUNCTIONS=(
   "api/health.ts"
   "api/story-lab/evaluate.ts"
   "api/story-lab/jobs.ts"
-  "api/story-lab/jobs/[jobId].ts"
-  "api/story-lab/jobs/[jobId]/events.ts"
   "api/story-lab/stories.ts"
   "api/story-lab/stories/[storyId]/continue.ts"
   "api/story-lab/stream/genesis.ts"

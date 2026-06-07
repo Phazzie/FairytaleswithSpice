@@ -1909,14 +1909,14 @@ Actions:
 - Added `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` for the Phase D backend job-route slice.
 - Added shared Story Lab job contracts to the frontend seam and re-exported them through backend job helpers.
 - Added `api/_lib/story-lab/jobs/jobStore.ts` as an explicitly `non_durable_memory` in-process job store with snapshot events.
-- Added the three Vercel route files freed by the route-budget branch:
-  - `api/story-lab/jobs.ts`;
-  - `api/story-lab/jobs/[jobId].ts`;
-  - `api/story-lab/jobs/[jobId]/events.ts`.
+- Added the Story Lab public job URL family through one deployable Vercel function:
+  - `POST /api/story-lab/jobs`;
+  - `GET /api/story-lab/jobs/:jobId` via `vercel.json` rewrite;
+  - `GET /api/story-lab/jobs/:jobId/events` via `vercel.json` rewrite.
 - Added Angular `StoryService` methods for creating jobs, reading job snapshots, and subscribing to job events.
 - Tightened the existing Story Lab streaming log so it no longer logs a full EventSource URL containing blueprint query data.
 - Added route tests covering opaque ids, SSE replay, invalid/unknown ids, unsupported reserved job kinds, and production missing-provider failure.
-- Updated the function-count allow-list and active docs for the new 12-function shape.
+- Updated the function-count allow-list and active docs for the new 10-function shape.
 
 Validation:
 
@@ -1924,7 +1924,7 @@ Validation:
 - `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
 - `npx tsx tests/story-lab-job-routes.test.ts`: passed.
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
-- `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
 Self-review:
@@ -1952,4 +1952,24 @@ Validation:
 - `git diff --check`: passed.
 - `npx tsx tests/story-lab-job-routes.test.ts`: passed.
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-07 07:31 EDT - PR104 Review Robustness Follow-Up
+
+Actions:
+
+- Addressed automated review feedback on the job scaffold:
+  - guarded continuation `storyId` before trimming untyped request JSON;
+  - returned `400` for malformed percent-encoded job-id paths instead of throwing;
+  - added a bounded in-memory job-store eviction cap;
+  - collapsed status/events handling into the single `api/story-lab/jobs.ts` deployable function via `vercel.json` rewrites so process-local job state is not split across separate Vercel functions.
+- Updated route-count docs and the allow-list for the resulting `10/12` function shape.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts`: passed.
+- `npx tsx tests/story-lab-job-routes.test.ts`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.

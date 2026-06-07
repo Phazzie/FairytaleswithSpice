@@ -3,9 +3,10 @@
 This directory contains Vercel serverless functions for the Story Lab recovery branch.
 Audio endpoints are intentionally deferred for this recovery; story-generation ideas mined from
 audio PRs are tracked in `NOT_TAKEN_FEATURE_LEDGER.md`.
-The active route budget is now 12 deployable functions out of the 12-function guard after adding
-the non-durable Story Lab job-route scaffold. Do not add another deployable route until a new
-consolidation plan frees capacity.
+The active route budget is now 10 deployable functions out of the 12-function guard after adding
+the non-durable Story Lab job-route scaffold. Status and events URLs rewrite into the single
+`api/story-lab/jobs.ts` function so the process-local scaffold does not split state across
+separate deployed functions.
 
 ## 📁 API Structure
 
@@ -17,10 +18,10 @@ api/
 │   ├── continue.ts        # Story continuation (POST /api/story/continue)
 │   └── stream.ts          # Story streaming (POST /api/story/stream)
 ├── story-lab/
-│   ├── jobs.ts           # Story Lab job creation scaffold (POST /api/story-lab/jobs)
-│   ├── jobs/[jobId].ts   # Story Lab job status (GET /api/story-lab/jobs/:jobId)
-│   ├── jobs/[jobId]/events.ts
-│   │                         # Story Lab job event replay (GET /api/story-lab/jobs/:jobId/events)
+│   ├── jobs.ts           # Story Lab job scaffold
+│   │                         # POST /api/story-lab/jobs
+│   │                         # GET /api/story-lab/jobs/:jobId via vercel.json rewrite
+│   │                         # GET /api/story-lab/jobs/:jobId/events via vercel.json rewrite
 │   ├── stories.ts         # Story Lab mock genesis (POST /api/story-lab/stories)
 │   ├── stories/[storyId]/continue.ts
 │   │                         # Story Lab continuation (POST /api/story-lab/stories/:storyId/continue)
@@ -147,8 +148,8 @@ The API is automatically deployed to Vercel when changes are pushed to the main 
 - `/api/story-lab/stories` → `/api/story-lab/stories.ts`
 - `/api/story-lab/stories/:storyId/continue` → `/api/story-lab/stories/[storyId]/continue.ts`
 - `/api/story-lab/jobs` → `/api/story-lab/jobs.ts`
-- `/api/story-lab/jobs/:jobId` → `/api/story-lab/jobs/[jobId].ts`
-- `/api/story-lab/jobs/:jobId/events` → `/api/story-lab/jobs/[jobId]/events.ts`
+- `/api/story-lab/jobs/:jobId` → rewritten by `vercel.json` to `/api/story-lab/jobs.ts`
+- `/api/story-lab/jobs/:jobId/events` → rewritten by `vercel.json` to `/api/story-lab/jobs.ts`
 - `/api/story-lab/evaluate` → `/api/story-lab/evaluate.ts`
 - `/api/story-lab/stream/genesis` → `/api/story-lab/stream/genesis.ts`
 - `/api/export/save` → `/api/export/save.ts`
@@ -163,7 +164,7 @@ Retired route files:
 Do not restore retired routes without updating `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md` and
 `scripts/recovery/check-vercel-function-count.sh`.
 
-Current function-count guard should print `12/12`.
+Current function-count guard should print `10/12`.
 
 ### CORS Configuration
 

@@ -4,7 +4,7 @@
 
 **Goal:** Add the three Story Lab job API routes that replace sensitive EventSource query-string generation with opaque `job_<uuid>` status and events paths.
 
-**Architecture:** Spend the three route slots freed by `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md`, keep reusable job logic under `api/_lib/story-lab/jobs`, and label the current execution mode as `non_durable_memory`. The branch adds a backend job scaffold and Angular client seam methods, but it does not claim durable Workflow execution, cloud persistence, account sync, audio, export jobs, or a redesigned progress UI.
+**Architecture:** Spend one route slot freed by `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md`, keep reusable job logic under `api/_lib/story-lab/jobs`, rewrite status/events URLs into the same deployable function while storage is process-local, and label the current execution mode as `non_durable_memory`. The branch adds a backend job scaffold and Angular client seam methods, but it does not claim durable Workflow execution, cloud persistence, account sync, audio, export jobs, or a redesigned progress UI.
 
 **Tech Stack:** TypeScript Vercel functions under `api/`, shared Story Lab contracts under `story-generator/src/app/contracts.ts` and `api/_lib/story-lab/jobs`, Angular `HttpClient` and `EventSource` methods in `story-generator/src/app/story.service.ts`, custom `tsx` integration tests under `tests/`, and recovery validation scripts.
 
@@ -12,11 +12,9 @@
 
 ## Purpose / Big Picture
 
-Story Lab currently has a direct POST genesis route and a GET stream route that still carries blueprint fields in an EventSource query string. Phase B4 created opaque job-id helpers but did not add routes because the Vercel function guard was saturated. PR #103 lowered the active route count to `9/12`, which means Phase D can add exactly three route files:
+Story Lab currently has a direct POST genesis route and a GET stream route that still carries blueprint fields in an EventSource query string. Phase B4 created opaque job-id helpers but did not add routes because the Vercel function guard was saturated. PR #103 lowered the active route count to `9/12`, which means Phase D can add a job function without exceeding the 12-function guard.
 
-- `api/story-lab/jobs.ts`
-- `api/story-lab/jobs/[jobId].ts`
-- `api/story-lab/jobs/[jobId]/events.ts`
+The first implementation used three deployable files, but review correctly identified that process-local memory cannot be shared across separate Vercel functions. The branch now serves the three public URLs through one deployable `api/story-lab/jobs.ts` function and Vercel rewrites.
 
 The user-visible outcome of this slice is not a new visible progress UI yet. The observable outcome is a typed job API surface:
 
@@ -35,7 +33,7 @@ This branch deliberately keeps the current direct generation routes working. It 
 - [x] Created branch `feature/story-lab-job-routes`.
 - [x] Wrote this ExecPlan and hostile review.
 - [x] Add shared job response contracts and non-durable job store.
-- [x] Add the three deployable job route files.
+- [x] Add the public job route family through one deployable job function and rewrites.
 - [x] Add Angular client seam methods and focused specs.
 - [x] Add route/store tests for opaque ids, SSE snapshots, missing-provider failures, and invalid job ids.
 - [x] Update function-count allow-list and active docs.
@@ -70,8 +68,8 @@ An expert reviewer hostile to this plan would object:
 
 1. "This is fake background work."
    Response: The plan labels the mode `non_durable_memory`, runs work synchronously in the POST request, and records that Workflow/queue/database work is still required before claiming durable progress.
-2. "Adding three route files can blow the Vercel budget again."
-   Response: The branch starts at `9/12`, adds exactly three deployable route files, updates the allow-list, and must end with the guard at `12/12`.
+2. "Adding status/events as separate functions breaks process-local state."
+   Response: The branch starts at `9/12`, adds one deployable job function, rewrites status/events URLs into that function, and must end with the guard at `10/12`.
 3. "The path might still leak private blueprint text."
    Response: Status and events paths are built only from `job_<uuid>`. Request bodies may contain private data, but URLs must not.
 4. "Status/events endpoints may reveal another user's job."
@@ -90,7 +88,7 @@ Fill before final handoff:
 - Outcome: Added the backend Story Lab job-route scaffold and Angular job client seam. The scaffold creates opaque `job_<uuid>` ids, stores process-local snapshots, replays SSE events, and labels durability as `non_durable_memory`.
 - Validation evidence: `git diff --check`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh`, and `scripts/recovery/preflight.sh --quick --skip-status` passed during implementation.
 - PR and merge evidence: pending.
-- Remaining risks: The visible UI still uses the old direct generation/streaming path; durable Workflow/queue/database/auth ownership remains future work; the function budget is back at `12/12`.
+- Remaining risks: The visible UI still uses the old direct generation/streaming path; durable Workflow/queue/database/auth ownership remains future work; the function budget is now `10/12`.
 
 ## Context and Orientation
 
@@ -120,7 +118,7 @@ Do not stage or modify unrelated untracked files:
 
 ## Plan of Work
 
-Task 1 creates shared job contracts and the non-durable store. Task 2 creates the three route files. Task 3 adds frontend client methods and specs. Task 4 adds route/store tests. Task 5 updates docs and the route-count guard. Task 6 validates and publishes.
+Task 1 creates shared job contracts and the non-durable store. Task 2 creates the public job route family through one deployable function and rewrites. Task 3 adds frontend client methods and specs. Task 4 adds route/store tests. Task 5 updates docs and the route-count guard. Task 6 validates and publishes.
 
 ## Concrete Steps
 
@@ -145,8 +143,7 @@ Steps:
 Files:
 
 - Create `api/story-lab/jobs.ts`.
-- Create `api/story-lab/jobs/[jobId].ts`.
-- Create `api/story-lab/jobs/[jobId]/events.ts`.
+- Modify `vercel.json`.
 
 Steps:
 
@@ -197,7 +194,7 @@ Files:
 
 Steps:
 
-- [x] Add the three job routes to the allow-list and verify the guard prints `12/12`.
+- [x] Add the job function to the allow-list and verify the guard prints `10/12`.
 - [x] Update active API docs with the new job route family and the non-durable limitation.
 - [x] Update the platform plan so Phase D backend job routes are marked as scaffolded while full UI progress, Workflow, durable storage, and account auth remain pending.
 - [x] Record validation evidence and self-review in the changelog and this plan.
@@ -215,7 +212,7 @@ Run from repository root:
 
 Expected results:
 
-- Function count prints `12/12`.
+- Function count prints `10/12`.
 - Job route tests prove completed and failed non-durable jobs.
 - Quick preflight exits 0.
 
@@ -225,7 +222,7 @@ If validation passes, commit intended files. Normal commit/push hooks may still 
 
 Accept this branch only when:
 
-- Exactly three route files are added and function count is `12/12`.
+- Public job URLs route through one deployable function and function count is `10/12`.
 - Job ids are opaque `job_<uuid>` values, and status/events paths contain no blueprint/story text.
 - `POST /api/story-lab/jobs` supports genesis and continuation job requests.
 - Production-like missing provider config creates a failed job with `AI_UNAVAILABLE`.

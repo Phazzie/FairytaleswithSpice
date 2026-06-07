@@ -6,6 +6,14 @@
   "installCommand": "npm run install:all",
   "rewrites": [
     {
+      "source": "/api/story-lab/jobs/:jobId/events",
+      "destination": "/api/story-lab/jobs?jobId=:jobId&events=1"
+    },
+    {
+      "source": "/api/story-lab/jobs/:jobId",
+      "destination": "/api/story-lab/jobs?jobId=:jobId"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }

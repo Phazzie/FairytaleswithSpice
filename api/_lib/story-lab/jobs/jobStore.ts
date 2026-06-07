@@ -35,10 +35,16 @@ interface StoredStoryLabJob<TPublicResult = unknown> {
   events: StoryLabJobEvent<TPublicResult>[];
 }
 
+const DEFAULT_MAX_STORY_LAB_JOBS = 1000;
+
 export class NonDurableStoryLabJobStore {
   private readonly jobs = new Map<string, StoredStoryLabJob>();
 
+  constructor(private readonly maxJobs = DEFAULT_MAX_STORY_LAB_JOBS) {}
+
   createJob<TPublicResult = unknown>(input: CreateStoryLabJobInput): StoryLabJobCreationResponse<TPublicResult> {
+    this.evictOldestJobIfNeeded();
+
     const now = input.now ?? new Date().toISOString();
     const job: StoryLabJob<TPublicResult> = {
       jobId: createOpaqueStoryLabJobId(),
@@ -106,6 +112,17 @@ export class NonDurableStoryLabJobStore {
 
   reset(): void {
     this.jobs.clear();
+  }
+
+  private evictOldestJobIfNeeded(): void {
+    while (this.jobs.size >= this.maxJobs) {
+      const oldestJobId = this.jobs.keys().next().value;
+      if (!oldestJobId) {
+        return;
+      }
+
+      this.jobs.delete(oldestJobId);
+    }
   }
 }
 

@@ -1,11 +1,9 @@
 #!/usr/bin/env tsx
 // Created: 2026-06-07 07:17 EDT
 
-import createJobHandler from '../api/story-lab/jobs';
-import getJobHandler from '../api/story-lab/jobs/[jobId]';
-import eventsHandler from '../api/story-lab/jobs/[jobId]/events';
+import jobHandler from '../api/story-lab/jobs';
 import type { StoryGenerationSeam, StoryLabJobCreationRequest } from '../api/_lib/story-lab/contracts';
-import { nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
+import { NonDurableStoryLabJobStore, nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
 
 interface FakeRequest {
   method: string;
@@ -66,12 +64,12 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
-function createRequest(method: string, body?: unknown, jobId?: string): FakeRequest {
+function createRequest(method: string, body?: unknown, jobId?: string, events = false): FakeRequest {
   return {
     method,
     body,
-    query: jobId ? { jobId } : {},
-    url: jobId ? `/api/story-lab/jobs/${encodeURIComponent(jobId)}` : '/api/story-lab/jobs',
+    query: jobId ? { jobId, ...(events ? { events: '1' } : {}) } : {},
+    url: jobId ? `/api/story-lab/jobs/${encodeURIComponent(jobId)}${events ? '/events' : ''}` : '/api/story-lab/jobs',
     headers: {}
   };
 }
@@ -136,7 +134,7 @@ function restoreEnv(): void {
 
 async function postGenesisJob(request = createGenesisJobRequest()): Promise<FakeResponse> {
   const response = new FakeResponse();
-  await createJobHandler(createRequest('POST', request), response);
+  await jobHandler(createRequest('POST', request), response);
   return response;
 }
 
@@ -158,7 +156,7 @@ async function testGenesisJobCompletesInMockMode(): Promise<void> {
   assert(!body.data.paths.statusPath.includes('vampire'), 'status path should not contain story semantics');
 
   const statusResponse = new FakeResponse();
-  await getJobHandler(createRequest('GET', undefined, body.data.job.jobId), statusResponse);
+  await jobHandler(createRequest('GET', undefined, body.data.job.jobId), statusResponse);
   assert(statusResponse.statusCode === 200, 'known job id should return 200');
   const statusBody = statusResponse.body as any;
   assert(statusBody.data.job.status === 'completed', 'status route should return the completed snapshot');
@@ -171,7 +169,7 @@ async function testEventsReplaySnapshotsAndClose(): Promise<void> {
   const response = await postGenesisJob();
   const jobId = (response.body as any).data.job.jobId as string;
   const eventsResponse = new FakeResponse();
-  await eventsHandler(createRequest('GET', undefined, jobId), eventsResponse);
+  await jobHandler(createRequest('GET', undefined, jobId, true), eventsResponse);
 
   assert(eventsResponse.statusCode === 200, 'events route should return 200 for known job id');
   assert(eventsResponse.headers['Content-Type'] === 'text/event-stream', 'events route should use SSE content type');
@@ -187,11 +185,15 @@ async function testInvalidAndUnknownJobIds(): Promise<void> {
   setMockRuntime();
 
   const invalidResponse = new FakeResponse();
-  await getJobHandler(createRequest('GET', undefined, 'job_<script>'), invalidResponse);
+  await jobHandler(createRequest('GET', undefined, 'job_<script>'), invalidResponse);
   assert(invalidResponse.statusCode === 400, 'invalid job ids should return 400');
 
+  const malformedResponse = new FakeResponse();
+  await jobHandler({ ...createRequest('GET'), query: {}, url: '/api/story-lab/jobs/%E0%A4%A' }, malformedResponse);
+  assert(malformedResponse.statusCode === 400, 'malformed encoded job ids should return 400');
+
   const unknownResponse = new FakeResponse();
-  await getJobHandler(createRequest('GET', undefined, 'job_00000000-0000-4000-8000-000000000000'), unknownResponse);
+  await jobHandler(createRequest('GET', undefined, 'job_00000000-0000-4000-8000-000000000000'), unknownResponse);
   assert(unknownResponse.statusCode === 404, 'unknown valid job ids should return 404');
 }
 
@@ -200,10 +202,39 @@ async function testReservedJobKindsAreRejected(): Promise<void> {
   setMockRuntime();
 
   const response = new FakeResponse();
-  await createJobHandler(createRequest('POST', { kind: 'audio', storyId: 'story_private' }), response);
+  await jobHandler(createRequest('POST', { kind: 'audio', storyId: 'story_private' }), response);
   assert(response.statusCode === 400, 'reserved audio job should return 400');
   const body = response.body as any;
   assert(body.error.code === 'UNSUPPORTED_JOB_KIND', 'reserved job response should explain unsupported kind');
+}
+
+async function testMalformedContinuationStoryIdReturnsInvalidRequest(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  const response = new FakeResponse();
+  await jobHandler(createRequest('POST', {
+    kind: 'continuation',
+    continuation: {
+      storyId: 123,
+      chapterBatchSize: 1
+    }
+  }), response);
+
+  assert(response.statusCode === 400, 'malformed continuation storyId should return 400');
+  const body = response.body as any;
+  assert(body.error.code === 'INVALID_REQUEST', 'malformed continuation should use invalid request response');
+}
+
+function testStoreEvictsOldestJobs(): void {
+  const store = new NonDurableStoryLabJobStore(2);
+  const first = store.createJob({ kind: 'genesis', now: '2026-06-07T00:00:00.000Z' });
+  const second = store.createJob({ kind: 'genesis', now: '2026-06-07T00:01:00.000Z' });
+  const third = store.createJob({ kind: 'genesis', now: '2026-06-07T00:02:00.000Z' });
+
+  assert(store.getJob(first.job.jobId) === null, 'oldest job should be evicted when max size is reached');
+  assert(store.getJob(second.job.jobId)?.job.jobId === second.job.jobId, 'second job should remain after eviction');
+  assert(store.getJob(third.job.jobId)?.job.jobId === third.job.jobId, 'newest job should remain after eviction');
 }
 
 async function testProductionMissingProviderCreatesFailedJob(): Promise<void> {
@@ -225,6 +256,8 @@ async function run(): Promise<void> {
   await testEventsReplaySnapshotsAndClose();
   await testInvalidAndUnknownJobIds();
   await testReservedJobKindsAreRejected();
+  await testMalformedContinuationStoryIdReturnsInvalidRequest();
+  testStoreEvictsOldestJobs();
   await testProductionMissingProviderCreatesFailedJob();
 
   console.log('Story Lab job route tests passed');

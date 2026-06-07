@@ -35,6 +35,20 @@ interface ResponseLike {
   end(): void;
 }
 
+export async function handleStoryLabJobsRoute(req: RequestLike, res: ResponseLike): Promise<void> {
+  if ((req.method ?? '').toUpperCase() === 'POST') {
+    await handleCreateStoryLabJob(req, res);
+    return;
+  }
+
+  if (isEventsRequest(req)) {
+    await handleStreamStoryLabJobEvents(req, res);
+    return;
+  }
+
+  await handleGetStoryLabJob(req, res);
+}
+
 export async function handleCreateStoryLabJob(req: RequestLike, res: ResponseLike): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: ['POST', 'OPTIONS'],
@@ -239,7 +253,7 @@ function normalizeContinuationInput(input: unknown): StoryContinuationSeam['inpu
   }
 
   const partial = input as Partial<StoryContinuationSeam['input']>;
-  const storyId = partial.storyId?.trim() ?? '';
+  const storyId = typeof partial.storyId === 'string' ? partial.storyId.trim() : '';
   const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
   const hasChapters = Array.isArray(partial.previouslyGeneratedChapters);
   const batchSizeNumber = Number(partial.chapterBatchSize);
@@ -288,6 +302,15 @@ function readValidJobIdOrRespond(req: RequestLike, res: ResponseLike): string | 
   return jobId;
 }
 
+function isEventsRequest(req: RequestLike): boolean {
+  const eventsFlag = Array.isArray(req.query?.events) ? req.query?.events[0] : req.query?.events;
+  if (eventsFlag === '1' || eventsFlag === 'true') {
+    return true;
+  }
+
+  return (req.url ?? '').split('?')[0].endsWith('/events');
+}
+
 function readJobId(req: RequestLike): string | null {
   const queryJobId = Array.isArray(req.query?.jobId) ? req.query?.jobId[0] : req.query?.jobId;
   if (queryJobId) {
@@ -300,7 +323,15 @@ function readJobId(req: RequestLike): string | null {
 
   const pathname = req.url.split('?')[0];
   const match = /\/api\/story-lab\/jobs\/([^/]+)/.exec(pathname);
-  return match ? decodeURIComponent(match[1]) : null;
+  if (!match) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 function sendJson<T>(res: ResponseLike, statusCode: number, body: T): void {
