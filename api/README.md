@@ -3,21 +3,19 @@
 This directory contains Vercel serverless functions for the Story Lab recovery branch.
 Audio endpoints are intentionally deferred for this recovery; story-generation ideas mined from
 audio PRs are tracked in `NOT_TAKEN_FEATURE_LEDGER.md`.
+The active route budget is intentionally kept at 9 deployable functions out of the 12-function guard
+so future Story Lab job routes can be added without exceeding deployment capacity.
 
 ## 📁 API Structure
 
 ```
 api/
 ├── health.ts              # Health check endpoint (GET /api/health)
-├── image/
-│   └── generate.ts        # Image generation stub/service (POST /api/image/generate)
 ├── story/
 │   ├── generate.ts        # Story generation (POST /api/story/generate)
 │   ├── continue.ts        # Story continuation (POST /api/story/continue)
-│   ├── stream.ts          # Story streaming (POST /api/story/stream)
-│   └── stream-demo.ts     # Stream demo endpoint (GET /api/story/stream-demo)
+│   └── stream.ts          # Story streaming (POST /api/story/stream)
 ├── story-lab/
-│   ├── health.ts          # Story Lab health/readiness (GET /api/story-lab/health)
 │   ├── stories.ts         # Story Lab mock genesis (POST /api/story-lab/stories)
 │   ├── stories/[storyId]/continue.ts
 │   │                         # Story Lab continuation (POST /api/story-lab/stories/:storyId/continue)
@@ -113,14 +111,21 @@ The API is automatically deployed to Vercel when changes are pushed to the main 
 - `/api/story/generate` → `/api/story/generate.ts`
 - `/api/story/continue` → `/api/story/continue.ts`
 - `/api/story/stream` → `/api/story/stream.ts`
-- `/api/story-lab/health` → `/api/story-lab/health.ts`
 - `/api/story-lab/stories` → `/api/story-lab/stories.ts`
 - `/api/story-lab/stories/:storyId/continue` → `/api/story-lab/stories/[storyId]/continue.ts`
 - `/api/story-lab/evaluate` → `/api/story-lab/evaluate.ts`
 - `/api/story-lab/stream/genesis` → `/api/story-lab/stream/genesis.ts`
-- `/api/image/generate` → `/api/image/generate.ts`
 - `/api/export/save` → `/api/export/save.ts`
 - `/api/health` → `/api/health.ts`
+
+Retired route files:
+
+- `/api/story/stream-demo`
+- `/api/story-lab/health`
+- `/api/image/generate`
+
+Do not restore retired routes without updating `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md` and
+`scripts/recovery/check-vercel-function-count.sh`.
 
 ### CORS Configuration
 

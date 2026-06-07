@@ -1845,3 +1845,28 @@ Validation:
 - `npm run test:story-lab-state`: passed.
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `12/12`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-07 06:20 EDT - Story Lab Route Budget Consolidation
+
+Actions:
+
+- Added `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md` with a hostile-review checklist for freeing three Vercel function slots before Phase D job routes.
+- Retired deployable route files that are duplicate, demo-only, or unused by the Angular app:
+  - `api/story-lab/health.ts`;
+  - `api/story/stream-demo.ts`;
+  - `api/image/generate.ts`.
+- Redirected the debug panel and browser smoke mock from `/api/story-lab/health` to the existing root `/api/health` response shape.
+- Updated the Vercel function-count allow-list and active API/platform docs for the new 9-function route shape.
+
+Validation:
+
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `9/12`.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+Self-review:
+
+- Good: This branch frees exactly three function slots without changing the active story-generation routes or deleting reusable service code under `api/_lib`.
+- Good: The one live duplicate-health consumer now uses the root health endpoint and has a focused spec for the response shape.
+- Remaining risk: PR checks and automated review still need to run after push.

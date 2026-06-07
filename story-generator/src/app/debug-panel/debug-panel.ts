@@ -19,8 +19,16 @@ interface HealthStatus {
 }
 
 interface HealthPayload {
-  status: string;
-  time: string;
+  status: 'healthy';
+  timestamp: string;
+  version: string;
+  environment: string;
+  services: {
+    grok: 'configured' | 'mock';
+  };
+  cors: {
+    allowedOrigin: string;
+  };
 }
 
 @Component({
@@ -60,7 +68,7 @@ export class DebugPanel {
     this.health.set({ state: 'checking' });
     const started = performance.now();
 
-    this.http.get<ApiResponse<HealthPayload>>('/api/story-lab/health').subscribe({
+    this.http.get<ApiResponse<HealthPayload>>('/api/health').subscribe({
       next: response => {
         if (!response.success) {
           this.health.set({
@@ -73,10 +81,10 @@ export class DebugPanel {
         }
 
         this.health.set({
-          state: response.data.status === 'ok' ? 'healthy' : 'unhealthy',
-          timestamp: response.data.time,
+          state: response.data.status === 'healthy' ? 'healthy' : 'unhealthy',
+          timestamp: response.data.timestamp,
           latencyMs: Math.round(performance.now() - started),
-          message: response.data.status
+          message: `grok: ${response.data.services.grok}`
         });
       },
       error: error => {

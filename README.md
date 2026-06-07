@@ -365,20 +365,10 @@ Content-Type: application/json
 }
 ```
 
-### **Image Generation** (New!)
-```http
-POST /api/image/generate
-Content-Type: application/json
+### **Image Generation Status**
 
-{
-  "storyId": "story_123",
-  "content": "A vampire prince in Victorian London",
-  "creature": "vampire",
-  "themes": ["romance", "dark_secrets"],
-  "style": "dark",
-  "aspectRatio": "16:9"
-}
-```
+The Vercel `/api/image/generate` route is retired to preserve Story Lab function budget.
+Image service code may remain available for local tooling or a later route-budgeted feature plan.
 
 [View complete API documentation](./DIGITAL_OCEAN_DEPLOYMENT.md#api-endpoints)
 

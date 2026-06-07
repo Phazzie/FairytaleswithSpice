@@ -52,6 +52,10 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] centralized credentialed CORS and disallowed-origin rejection;
   - [x] documented retention/deletion/export policy and implemented the server export sanitizer;
   - [x] added opaque job-id streaming contracts without adding deployable job routes.
+- [x] Executed route-budget consolidation on `feature/story-lab-route-budget`:
+  - [x] retired duplicate/demo/unused Vercel routes for Story Lab health, stream demo, and image generation;
+  - [x] redirected the debug panel and browser smoke mock to root `/api/health`;
+  - [x] reduced the expected Vercel function count from `12/12` to `9/12`.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -62,10 +66,10 @@ The key product goal is not "more features." The key product goal is a story stu
 - Dedicated style banks can be implemented safely before cloud/workflow work because they are deterministic prompt-quality improvements with local tests. This is now done for all five new creatures.
 - Heat Contract v0 gave the first useful "spice safety" primitive without adding accounts, database rows, audio providers, or server export.
 - A broad account/storage/workflow/audio/export implementation would be a risky mixed rewrite. It needs phased migration with compatibility adapters and explicit provisioning gates.
-- The repo is already at the Vercel function-count guard limit (`12/12`), so any future job/export route work must consolidate or retire existing functions before adding routes.
+- The repo was at the Vercel function-count guard limit (`12/12`). Route-budget consolidation retired three duplicate/demo/unused route entrypoints so the expected current guard result is `9/12`.
 - Phase B was too broad as one executable block. It mixed shared parser extraction, account auth seams, privacy/redaction, CORS, retention/deletion policy, export-sanitizer planning, and the future opaque job-id stream. It is now split into smaller checklist gates.
 - Phase B1 can be completed without adding routes, dependencies, storage writes, or an auth provider.
-- Phase B2-B4 can also be completed route-free: shared CORS, sanitizer, retention policy, and job-id contracts all live under `api/_lib` plus tests, so the Vercel function-count guard stays at `12/12`.
+- Phase B2-B4 was completed route-free: shared CORS, sanitizer, retention policy, and job-id contracts all live under `api/_lib` plus tests, so that gate kept the Vercel function-count guard at `12/12` before later route-budget consolidation.
 - Local Angular/Karma remains environment-sensitive: Node 20 could build the targeted error-logging spec bundle, but Chrome did not capture within 60 seconds in this runner.
 
 ## Decision Log
@@ -123,6 +127,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - `git diff --check`, direct app/spec `tsc`, `npm run test:story-lab-real-engine`, `npm exec -- tsx tests/story-lab-stream-parse.test.ts`, `npm run smoke:story-lab-live-provider` default skip, `scripts/recovery/check-vercel-function-count.sh`, and `scripts/recovery/preflight.sh --quick --skip-status` all completed successfully.
   - Phase B1 focused tests passed: `npm exec -- tsx tests/story-lab-blueprint-parser.test.ts`, `npm exec -- tsx tests/story-lab-auth.test.ts`, `npm exec -- tsx tests/log-redaction.test.ts`, `npm exec -- tsx tests/story-lab-stream-parse.test.ts`, `npm run test:story-lab-state`, and `npm run test:story-lab-real-engine`.
   - Phase B2-B4 focused tests passed: `npx tsx tests/cors-policy.test.ts`, `npx tsx tests/export-sanitizer.test.ts`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/log-redaction.test.ts`, `npx tsx tests/story-lab-blueprint-parser.test.ts`, `npx tsx tests/story-lab-auth.test.ts`, `npx tsx tests/story-lab-stream-parse.test.ts`, `npx tsx tests/story-lab-real-engine.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh`, and `scripts/recovery/preflight.sh --quick --skip-status`.
+  - Route-budget consolidation focused checks passed: `git diff --check`, `scripts/recovery/check-vercel-function-count.sh` at `9/12`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, and `scripts/recovery/preflight.sh --quick --skip-status`.
 
 ## Context and Orientation
 
@@ -267,7 +272,7 @@ Preferred path with Vercel Workflow:
 - `api/story-lab/jobs.ts` creates a job and invokes `runStoryGenerationWorkflow`.
 - `api/story-lab/jobs/[jobId].ts` returns job state.
 - `api/story-lab/jobs/[jobId]/events.ts` streams job events as SSE.
-- These routes cannot be added while the function-count guard is still `12/12`; consolidate or retire existing function routes first.
+- These routes require the three slots freed by `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md`; rerun the function-count guard before and after adding them.
 - Workflow steps:
   1. validate request;
   2. load project/state;
@@ -475,6 +480,8 @@ Files:
   - `api/story-lab/stream/genesis.ts`
   - `api/story-lab/health.ts`
 - [x] Added `tests/cors-policy.test.ts`.
+
+Later route-budget consolidation retired `api/story/stream-demo.ts`, `api/image/generate.ts`, and `api/story-lab/health.ts`; the CORS helper remains on active private routes.
 
 Rules:
 
@@ -684,8 +691,8 @@ Full platform is accepted only when:
 - If a dependency install is needed, update both root and app lockfiles intentionally and run `npm run install:all` before validation.
 - If Vercel Marketplace provisioning is missing, stop before implementing provider-specific database code beyond lazy adapter scaffolding.
 - If Workflow is unavailable, document fallback behavior as non-durable and do not claim crash safety.
-- Run `scripts/recovery/check-vercel-function-count.sh` before and after every API route change; the current guard is already `12/12`.
-- If function count would exceed 12, consolidate or retire routes before adding new deployable functions.
+- Run `scripts/recovery/check-vercel-function-count.sh` before and after every API route change; after route-budget consolidation the expected guard result is `9/12`.
+- If function count would exceed 12, consolidate or retire routes before adding new deployable functions. Future Phase D job routes may spend the three freed slots only if the guard still passes.
 - If browser smoke fails because of selectors, prefer preserving explicit `data-testid` hooks in the template.
 - If live provider smoke fails for missing credentials, it must skip in normal CI and print the exact env needed without exposing secrets.
 - If `STORY_LAB_SMOKE_URL` points at a protected Vercel preview, add an explicit bypass/auth mechanism before treating that smoke as production proof.
