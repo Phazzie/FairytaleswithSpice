@@ -17,6 +17,7 @@ import {
 
 const STORAGE_KEY = 'fairytales_story_lab_projects_v1';
 const SKIN_STORAGE_KEY = 'fairytales_story_lab_skin_v1';
+const ACTIVE_JOB_STORAGE_KEY = 'fairytales_story_lab_active_job_v1';
 type GenesisJobOverrides = Partial<StoryLabJobCreationResponse<StoryIterationPayload>['job']>;
 
 function createChapter(overrides: Partial<GeneratedChapter> = {}): GeneratedChapter {
@@ -110,6 +111,22 @@ function createGenesisJobEvent(
   };
 }
 
+function createActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    jobId: 'job_123e4567-e89b-12d3-a456-426614174000',
+    kind: 'genesis',
+    batchId: 'batch-recovered',
+    batchSize: 1,
+    statusPath: '/api/story-lab/jobs/job_123e4567-e89b-12d3-a456-426614174000',
+    startedAt: new Date().toISOString(),
+    ...overrides
+  };
+}
+
+function storeActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) {
+  sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, JSON.stringify(createActiveJobMarker(overrides)));
+}
+
 const confirmedHeatContract = {
   adultOnlyConfirmed: true,
   tensionMode: 'slow_burn' as const,
@@ -126,6 +143,7 @@ describe('App', () => {
     queryParamMap$ = new BehaviorSubject<ParamMap>(convertToParamMap({}));
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SKIN_STORAGE_KEY);
+    sessionStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
 
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'beginStory',
@@ -156,6 +174,7 @@ describe('App', () => {
   afterEach(() => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SKIN_STORAGE_KEY);
+    sessionStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
   });
 
   function configureValidBlueprint(logline: string) {
@@ -359,6 +378,85 @@ describe('App', () => {
     expect(creation$.observed).toBeTrue();
     component.ngOnDestroy();
     expect(creation$.observed).toBeFalse();
+  });
+
+  it('stores an active genesis job marker while job snapshots are running', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+
+    startGenesisJobFlow('A siren spy steals a vow from a forbidden archive.', events$);
+
+    const marker = JSON.parse(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY) ?? '{}');
+    expect(marker).toEqual(jasmine.objectContaining({
+      jobId: 'job_123e4567-e89b-12d3-a456-426614174000',
+      kind: 'genesis',
+      batchSize: 1,
+      statusPath: '/api/story-lab/jobs/job_123e4567-e89b-12d3-a456-426614174000'
+    }));
+    expect(marker.batchId).toMatch(/^batch-/);
+  });
+
+  it('recovers a running genesis job from browser storage and resumes events', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+    storeActiveJobMarker();
+    storyService.getStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'generating_story',
+        progressPercent: 41
+      })
+    }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_123e4567-e89b-12d3-a456-426614174000');
+    expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(
+      'job_123e4567-e89b-12d3-a456-426614174000',
+      jasmine.any(Function)
+    );
+    expect(recovered.generationProgress().active).toBeTrue();
+    expect(recovered.generationProgress().percent).toBe(41);
+    expect(recovered.statusMessage()).toContain('Grok');
+  });
+
+  it('recovers a completed genesis job and clears the active job marker', () => {
+    const payload: StoryIterationPayload = {
+      summary: createSummary({ title: 'Recovered Pact' }),
+      batch: {
+        chapters: [createChapter()],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      },
+      state: createState(),
+      telemetry: {
+        engine: 'grok',
+        model: 'grok-4.3',
+        totalLatencyMs: 1200,
+        averageChapterLatencyMs: 1200,
+        tokensConsumed: 900,
+        retryCount: 0
+      }
+    };
+    storeActiveJobMarker();
+    storyService.getStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(payload)
+    }));
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(recovered.workbench().story?.title).toBe('Recovered Pact');
+    expect(recovered.workbench().chapterHistory.length).toBe(1);
+    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
+  });
+
+  it('clears malformed active job storage without crashing startup', () => {
+    sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, '{not-json');
+
+    expect(() => TestBed.createComponent(App).componentInstance).not.toThrow();
+    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
+    expect(storyService.getStoryLabJob).not.toHaveBeenCalled();
   });
 
   it('loads a saved browser-local project into the workbench', () => {

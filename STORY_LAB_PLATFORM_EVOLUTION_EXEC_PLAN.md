@@ -65,6 +65,10 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] moved the primary genesis Generate flow from direct `beginStory` calls to `POST /api/story-lab/jobs`;
   - [x] wired genesis progress, completion, and failure handling to Story Lab job snapshots/events;
   - [x] kept reload-safe job resume and browser smoke coverage as explicit pending follow-up work.
+- [x] Continued Phase D reload-safe genesis progress on `feature/story-lab-job-resume-smoke`:
+  - [x] added browser-session active genesis job recovery through `getStoryLabJob`;
+  - [x] cleared malformed, completed, failed, and cancelled active job markers;
+  - [x] moved mocked browser smoke genesis coverage to `/api/story-lab/jobs` plus SSE job events.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -609,8 +613,8 @@ Files:
 - [x] Modified `story-generator/src/app/story.service.ts`.
 - [x] Modified `story-generator/src/app/app.ts` to use job routes for genesis visible progress.
 - [x] Modified `story-generator/src/app/app.spec.ts` for genesis job creation, event progress, completion, and failed-job handling.
-- [ ] Modify `story-generator/src/app/app.html` for reload-safe job progress.
-- [ ] Modify `scripts/recovery/story-lab-browser-smoke.mjs` for queued -> running -> terminal job progress.
+- [x] Reused `story-generator/src/app/app.html` existing progress panel for reload-safe job progress.
+- [x] Modified `scripts/recovery/story-lab-browser-smoke.mjs` for queued -> running -> terminal job progress.
 
 Contracts:
 
@@ -639,8 +643,8 @@ Acceptance:
 - [x] Function count stays within the repo's allow-list before and after the API route change.
 - [x] Non-Workflow fallback is labeled non-durable.
 - [x] UI can start a genesis job and complete/fail from job snapshots/events.
-- [ ] UI can survive reload by polling job id.
-- [ ] Mocked browser smoke sees queued -> running -> completed through the visible UI.
+- [x] UI can survive reload by polling job id inside the current browser session.
+- [x] Mocked browser smoke sees queued -> running -> completed through the visible UI.
 
 ### Phase E: Account Sync
 

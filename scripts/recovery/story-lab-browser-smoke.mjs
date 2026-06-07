@@ -355,6 +355,9 @@ async function runSmoke() {
 
     await page.locator(smokeSelectors.generateButton).click();
     await page.locator(smokeSelectors.progress).waitFor({ timeout: 20_000 });
+    if (!liveMode) {
+      await expectText(page.locator(smokeSelectors.progress), 'Grok is writing your first chapter');
+    }
     await page.locator(smokeSelectors.storyPanel).waitFor({ timeout: liveMode ? 90_000 : 20_000 });
     await expectNonEmptyText(page.locator(smokeSelectors.storyTitle), 'story title');
     await page.locator(smokeSelectors.chapterView(1)).waitFor({ timeout: 20_000 });
@@ -398,6 +401,9 @@ async function runSmoke() {
 }
 
 async function installMockStoryLabRoutes(page) {
+  const smokeJobId = 'job_00000000-0000-4000-8000-000000000105';
+  let latestGenesisJob = null;
+
   await page.route('**/api/health', async route => {
     await route.fulfill({
       status: 200,
@@ -425,11 +431,119 @@ async function installMockStoryLabRoutes(page) {
       await route.fallback();
       return;
     }
+    await route.fulfill({
+      status: 410,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        error: {
+          code: 'LEGACY_GENESIS_ROUTE_USED',
+          message: 'Smoke mode expects genesis to use /api/story-lab/jobs.'
+        }
+      })
+    });
+  });
+
+  await page.route('**/api/story-lab/jobs', async route => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback();
+      return;
+    }
+
+    let body = null;
+    try {
+      body = route.request().postDataJSON();
+    } catch {
+      body = null;
+    }
+
+    if (body?.kind !== 'genesis') {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: {
+            code: 'SMOKE_EXPECTED_GENESIS_JOB',
+            message: 'Smoke expected a genesis Story Lab job request.'
+          }
+        })
+      });
+      return;
+    }
+
+    latestGenesisJob = buildJobSnapshot(smokeJobId, 'running', 'generating_story', 38);
     await delay(250);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, data: buildPayload([buildChapter(1)], 1) })
+      body: JSON.stringify(buildJobResponse(latestGenesisJob))
+    });
+  });
+
+  await page.route('**/api/story-lab/jobs/*/events', async route => {
+    const jobId = extractJobId(route.request().url(), '/events');
+    if (jobId !== smokeJobId || !latestGenesisJob) {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: {
+            code: 'JOB_NOT_FOUND',
+            message: 'Smoke job was not created.'
+          }
+        })
+      });
+      return;
+    }
+
+    const completedJob = buildJobSnapshot(
+      smokeJobId,
+      'completed',
+      'completed',
+      100,
+      buildPayload([buildChapter(1)], 1)
+    );
+    const events = [
+      buildJobSnapshot(smokeJobId, 'queued', 'queued', 8),
+      latestGenesisJob,
+      completedJob
+    ];
+    latestGenesisJob = completedJob;
+
+    await delay(500);
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache'
+      },
+      body: events.map((job, index) => `data: ${JSON.stringify(buildJobEvent(job, index + 1))}\n\n`).join('')
+    });
+  });
+
+  await page.route('**/api/story-lab/jobs/*', async route => {
+    const jobId = extractJobId(route.request().url());
+    if (jobId !== smokeJobId || !latestGenesisJob) {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: {
+            code: 'JOB_NOT_FOUND',
+            message: 'Smoke job was not created.'
+          }
+        })
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(buildJobResponse(latestGenesisJob))
     });
   });
 
@@ -461,6 +575,55 @@ async function installMockStoryLabRoutes(page) {
       body: JSON.stringify({ success: true, data: { ...buildPayload([buildChapter(2)], 2), appendedChapterNumbers: [2] } })
     });
   });
+}
+
+function buildJobSnapshot(jobId, status, currentStep, progressPercent, result) {
+  const now = new Date().toISOString();
+  return {
+    jobId,
+    kind: 'genesis',
+    status,
+    currentStep,
+    progressPercent,
+    createdAt: now,
+    updatedAt: now,
+    result
+  };
+}
+
+function buildJobResponse(job) {
+  return {
+    success: true,
+    data: {
+      job,
+      paths: {
+        statusPath: `/api/story-lab/jobs/${job.jobId}`,
+        eventsPath: `/api/story-lab/jobs/${job.jobId}/events`
+      },
+      durability: {
+        mode: 'non_durable_memory',
+        durable: false,
+        warning: 'Smoke jobs are held in memory for this mocked browser run.'
+      }
+    }
+  };
+}
+
+function buildJobEvent(job, eventIndex) {
+  return {
+    eventId: `event-${eventIndex}`,
+    type: 'snapshot',
+    emittedAt: job.updatedAt,
+    job
+  };
+}
+
+function extractJobId(rawUrl, suffix = '') {
+  const url = new URL(rawUrl);
+  const path = suffix && url.pathname.endsWith(suffix)
+    ? url.pathname.slice(0, -suffix.length)
+    : url.pathname;
+  return path.split('/').at(-1);
 }
 
 function buildPayload(chapters, revision) {
