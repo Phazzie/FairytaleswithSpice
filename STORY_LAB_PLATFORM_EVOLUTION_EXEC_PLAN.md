@@ -61,6 +61,10 @@ The key product goal is not "more features." The key product goal is a story stu
   - [x] added a `non_durable_memory` in-process job store and replaying SSE snapshots;
   - [x] added Angular `StoryService` job seam methods without migrating the visible progress UI yet;
   - [x] left the Vercel function-count guard at `10/12`.
+- [x] Started the Phase D visible UI migration on `feature/story-lab-job-ui`:
+  - [x] moved the primary genesis Generate flow from direct `beginStory` calls to `POST /api/story-lab/jobs`;
+  - [x] wired genesis progress, completion, and failure handling to Story Lab job snapshots/events;
+  - [x] kept reload-safe job resume and browser smoke coverage as explicit pending follow-up work.
 - [ ] Leave final handoff describing what remains and what requires external provisioning.
 
 ## Surprises & Discoveries
@@ -124,10 +128,10 @@ The key product goal is not "more features." The key product goal is a story stu
   - Future Story Lab job streaming now has an opaque `job_<uuid>` contract and path builder that keeps blueprint/story/private fields out of status and events URLs.
   - Story Lab job routes now create opaque jobs, replay queued/running/terminal snapshots, and label the in-process store as `non_durable_memory`.
 - What was intentionally deferred:
-  - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, visible job progress/reload UI, Blob export, email, and audio runtime.
+  - Accounts, cloud storage, durable Workflow execution, owner-scoped job persistence, reload-safe job resume UI, Blob export, email, and audio runtime.
 - What hostile review still objected to:
-  - The current staged progress UI is not real durable progress.
-  - The legacy direct Story Lab stream route still accepts blueprint fields in an EventSource URL until the visible UI is migrated to POST-created job ids.
+  - The genesis UI now uses job snapshots/events, but the in-memory scaffold is still not real durable Workflow/database-backed progress.
+  - The legacy direct Story Lab stream route still exists for compatibility; future work should retire it after job UI smoke coverage and reload-safe resume are in place.
   - Existing `/api/export/save` is safer for mock server export, but it is still not a durable Blob/email export path.
   - Full Angular build and Karma browser spec validation must be rerun under a stable local/CI environment because Node v23 Angular build/Karma runners hung here.
 - What validation proved:
@@ -136,6 +140,7 @@ The key product goal is not "more features." The key product goal is a story stu
   - Phase B2-B4 focused tests passed: `npx tsx tests/cors-policy.test.ts`, `npx tsx tests/export-sanitizer.test.ts`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/log-redaction.test.ts`, `npx tsx tests/story-lab-blueprint-parser.test.ts`, `npx tsx tests/story-lab-auth.test.ts`, `npx tsx tests/story-lab-stream-parse.test.ts`, `npx tsx tests/story-lab-real-engine.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh`, and `scripts/recovery/preflight.sh --quick --skip-status`.
   - Route-budget consolidation focused checks passed: `git diff --check`, `scripts/recovery/check-vercel-function-count.sh` at `9/12`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, and `scripts/recovery/preflight.sh --quick --skip-status`.
   - Phase D backend job-route focused checks passed: `git diff --check`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh` at `10/12`, and `scripts/recovery/preflight.sh --quick --skip-status`.
+  - Phase D genesis UI job migration focused checks passed: `git diff --check`, app/spec TypeScript compiles, targeted Angular `app.spec.ts` Karma run, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, and `scripts/recovery/check-vercel-function-count.sh` at `10/12`.
 
 ## Context and Orientation
 
@@ -602,7 +607,8 @@ Files:
 - [x] Created `api/story-lab/jobs.ts`.
 - [x] Added `vercel.json` rewrites for `/api/story-lab/jobs/:jobId` and `/api/story-lab/jobs/:jobId/events`.
 - [x] Modified `story-generator/src/app/story.service.ts`.
-- [ ] Modify `story-generator/src/app/app.ts` to use job routes for visible progress.
+- [x] Modified `story-generator/src/app/app.ts` to use job routes for genesis visible progress.
+- [x] Modified `story-generator/src/app/app.spec.ts` for genesis job creation, event progress, completion, and failed-job handling.
 - [ ] Modify `story-generator/src/app/app.html` for reload-safe job progress.
 - [ ] Modify `scripts/recovery/story-lab-browser-smoke.mjs` for queued -> running -> terminal job progress.
 
@@ -632,7 +638,8 @@ Acceptance:
 - [x] Production missing key creates a failed job with `AI_UNAVAILABLE`, not mock prose.
 - [x] Function count stays within the repo's allow-list before and after the API route change.
 - [x] Non-Workflow fallback is labeled non-durable.
-- [ ] UI can start a job and survive reload by polling job id.
+- [x] UI can start a genesis job and complete/fail from job snapshots/events.
+- [ ] UI can survive reload by polling job id.
 - [ ] Mocked browser smoke sees queued -> running -> completed through the visible UI.
 
 ### Phase E: Account Sync

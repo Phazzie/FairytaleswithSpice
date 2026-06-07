@@ -1,12 +1,14 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
-import { BehaviorSubject, of } from 'rxjs';
+import { BehaviorSubject, of, Subject } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import {
   StoryIterationPayload,
+  StoryLabJobCreationResponse,
+  StoryLabJobEvent,
   StoryStateSnapshot,
   StorySummary,
   GeneratedChapter
@@ -63,6 +65,49 @@ function createState(overrides: Partial<StoryStateSnapshot> = {}): StoryStateSna
   };
 }
 
+function createGenesisJobResponse(
+  payload?: StoryIterationPayload,
+  overrides: Partial<StoryLabJobCreationResponse<StoryIterationPayload>['job']> = {}
+): StoryLabJobCreationResponse<StoryIterationPayload> {
+  const now = new Date().toISOString();
+  const jobId = overrides.jobId ?? 'job_123e4567-e89b-12d3-a456-426614174000';
+
+  return {
+    job: {
+      jobId,
+      kind: 'genesis',
+      status: overrides.status ?? 'completed',
+      currentStep: overrides.currentStep ?? 'completed',
+      progressPercent: overrides.progressPercent ?? 100,
+      createdAt: overrides.createdAt ?? now,
+      updatedAt: overrides.updatedAt ?? now,
+      result: payload,
+      error: overrides.error,
+      ...overrides
+    },
+    paths: {
+      statusPath: `/api/story-lab/jobs/${jobId}`,
+      eventsPath: `/api/story-lab/jobs/${jobId}/events`
+    },
+    durability: {
+      mode: 'non_durable_memory',
+      durable: false,
+      warning: 'Jobs are held in memory for this deployment.'
+    }
+  };
+}
+
+function createGenesisJobEvent(
+  response: StoryLabJobCreationResponse<StoryIterationPayload>
+): StoryLabJobEvent<StoryIterationPayload> {
+  return {
+    eventId: `event-${response.job.status}`,
+    type: 'snapshot',
+    emittedAt: response.job.updatedAt,
+    job: response.job
+  };
+}
+
 const confirmedHeatContract = {
   adultOnlyConfirmed: true,
   tensionMode: 'slow_burn' as const,
@@ -83,6 +128,9 @@ describe('App', () => {
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'beginStory',
       'continueStory',
+      'createStoryLabJob',
+      'getStoryLabJob',
+      'streamStoryLabJobEvents',
       'streamStoryGeneration'
     ]);
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
@@ -172,9 +220,10 @@ describe('App', () => {
   it('prevents genesis without a logline', () => {
     component.startGenesis();
     expect(storyService.beginStory).not.toHaveBeenCalled();
+    expect(storyService.createStoryLabJob).not.toHaveBeenCalled();
   });
 
-  it('starts genesis and hydrates the workbench on success', () => {
+  it('starts genesis through a Story Lab job and hydrates the workbench on completion', () => {
     const payload: StoryIterationPayload = {
       summary: createSummary(),
       batch: {
@@ -191,8 +240,17 @@ describe('App', () => {
         retryCount: 0
       }
     };
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
 
-    storyService.beginStory.and.returnValue(of({ success: true, data: payload }));
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'generating_story',
+        progressPercent: 32
+      })
+    }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
 
     component.blueprint.set({
       ...component.blueprint(),
@@ -202,7 +260,23 @@ describe('App', () => {
     });
     component.startGenesis();
 
-    expect(storyService.beginStory).toHaveBeenCalled();
+    expect(storyService.beginStory).not.toHaveBeenCalled();
+    expect(storyService.createStoryLabJob).toHaveBeenCalled();
+    expect(storyService.createStoryLabJob.calls.mostRecent().args[0]).toEqual(jasmine.objectContaining({
+      kind: 'genesis',
+      blueprint: jasmine.objectContaining({
+        logline: 'A vampire princess bound by forbidden vows.',
+        chapterBatchSize: 1
+      })
+    }));
+    expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(
+      'job_123e4567-e89b-12d3-a456-426614174000',
+      jasmine.any(Function)
+    );
+
+    events$.next(createGenesisJobEvent(createGenesisJobResponse(payload)));
+    events$.complete();
+
     expect(component.workbench().story?.storyId).toBe('story-123');
     expect(component.workbench().chapterHistory.length).toBe(2);
     expect(component.selectedChapter()?.chapterNumber).toBe(2);
@@ -212,14 +286,49 @@ describe('App', () => {
     expect(component.workspaceSaveStatus()).toBe('Saved in this browser.');
   });
 
-  it('shows a friendly AI configuration error when generation cannot use Grok', () => {
-    storyService.beginStory.and.returnValue(of({
-      success: false,
-      error: {
-        code: 'AI_UNAVAILABLE',
-        message: 'The AI story engine is not configured for this deployment.'
-      }
+  it('updates genesis progress from Story Lab job snapshots', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'queued',
+        progressPercent: 10
+      })
     }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+
+    component.blueprint.set({
+      ...component.blueprint(),
+      logline: 'A siren archivist bargains with a moonlit duke.',
+      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Forbidden romance.' }],
+      heatContract: confirmedHeatContract
+    });
+    component.startGenesis();
+
+    events$.next(createGenesisJobEvent(createGenesisJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'generating_story',
+      progressPercent: 47
+    })));
+
+    expect(component.generationProgress().active).toBeTrue();
+    expect(component.generationProgress().percent).toBe(47);
+    expect(component.generationProgress().stage).toContain('Grok');
+    expect(component.statusMessage()).toContain('Grok');
+  });
+
+  it('shows a friendly AI configuration error when a genesis job cannot use Grok', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'generating_story',
+        progressPercent: 32
+      })
+    }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
 
     component.blueprint.set({
       ...component.blueprint(),
@@ -228,6 +337,15 @@ describe('App', () => {
       heatContract: confirmedHeatContract
     });
     component.startGenesis();
+    events$.next(createGenesisJobEvent(createGenesisJobResponse(undefined, {
+      status: 'failed',
+      currentStep: 'failed',
+      progressPercent: 100,
+      error: {
+        code: 'AI_UNAVAILABLE',
+        message: 'The AI story engine is not configured for this deployment.'
+      }
+    })));
 
     expect(component.statusMessage()).toContain('missing its Grok configuration');
     expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
@@ -252,7 +370,10 @@ describe('App', () => {
       }
     };
 
-    storyService.beginStory.and.returnValue(of({ success: true, data: payload }));
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(payload)
+    }));
     component.blueprint.set({
       ...component.blueprint(),
       logline: 'A vampire princess bound by forbidden vows.',
