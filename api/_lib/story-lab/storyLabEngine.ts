@@ -340,7 +340,8 @@ function withContinuationStrategyBrief(continuationBrief: string | undefined, st
   return [
     trimmedBrief,
     buildContinuityCourtroomBrief(storyState),
-    buildChapterEndingStressTestBrief(storyState, trimmedBrief)
+    buildChapterEndingStressTestBrief(storyState, trimmedBrief),
+    buildClicheAlarmBrief(storyState, trimmedBrief)
   ]
     .filter((line): line is string => Boolean(line))
     .join('\n\n') || undefined;
@@ -413,12 +414,7 @@ function buildChapterEndingStressTestBrief(storyState: StoryStateSnapshot, conti
 function chooseChapterEndingPressure(storyState: StoryStateSnapshot, continuationBrief: string | undefined): ChapterEndingPressure {
   const unresolvedThreads = storyState.threads.filter(isUnresolvedThread);
   const unresolvedArtifacts = storyState.artifacts.filter(artifact => !artifact.resolvedInChapter);
-  const pressureSource = [
-    continuationBrief ?? '',
-    ...unresolvedThreads.flatMap(thread => [thread.label, thread.description, ...thread.foreshadowedDevices]),
-    ...unresolvedArtifacts.map(artifact => `${artifact.name} ${artifact.significance}`),
-    ...storyState.continuityWarnings
-  ].join(' ').toLowerCase();
+  const pressureSource = buildContinuationPressureSource(storyState, continuationBrief);
   const scores: Record<ChapterEndingPressureId, number> = {
     emotional_reveal: 1,
     danger_escalation: 1,
@@ -452,6 +448,58 @@ function chooseChapterEndingPressure(storyState: StoryStateSnapshot, continuatio
 
 function containsAny(value: string, needles: readonly string[]): boolean {
   return needles.some(needle => value.includes(needle));
+}
+
+function buildContinuationPressureSource(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  const unresolvedThreads = storyState.threads.filter(isUnresolvedThread);
+  const unresolvedArtifacts = storyState.artifacts.filter(artifact => !artifact.resolvedInChapter);
+  return [
+    continuationBrief ?? '',
+    ...unresolvedThreads.flatMap(thread => [thread.label, thread.description, ...thread.foreshadowedDevices]),
+    ...unresolvedArtifacts.map(artifact => `${artifact.name} ${artifact.significance}`),
+    ...storyState.continuityWarnings
+  ].join(' ').toLowerCase();
+}
+
+function buildClicheAlarmBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  return [
+    'Cliche Alarm:',
+    `- Obvious stale path to avoid: ${chooseClicheAlarmPath(storyState, continuationBrief)}`,
+    `- Freshness rule: turn the scene through ${chooseFreshnessTarget(storyState)}, not generic conflict.`
+  ].join('\n');
+}
+
+function chooseClicheAlarmPath(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  const source = buildContinuationPressureSource(storyState, continuationBrief);
+  if (containsAny(source, ['debt', 'payment', 'price', 'bargain', 'vow', 'court', 'demand'])) {
+    return 'a formal demand with no personal cost or surprising consequence.';
+  }
+
+  if (containsAny(source, ['love', 'kiss', 'desire', 'choose', 'confess', 'heart', 'want'])) {
+    return 'a confession that says exactly what both characters already know.';
+  }
+
+  if (containsAny(source, ['danger', 'attack', 'threat', 'trap', 'hunt', 'deadline', 'force', 'blood'])) {
+    return 'a sudden threat that interrupts the scene without changing a relationship.';
+  }
+
+  return 'a familiar beat that repeats the last chapter without changing the cost.';
+}
+
+function chooseFreshnessTarget(storyState: StoryStateSnapshot): string {
+  const thread = storyState.threads.find(candidate => candidate.status === 'escalating')
+    ?? storyState.threads.find(candidate => candidate.status === 'active')
+    ?? storyState.threads.find(isUnresolvedThread);
+  if (thread) {
+    return compactPromptLine(thread.label);
+  }
+
+  const artifact = storyState.artifacts.find(candidate => !candidate.resolvedInChapter);
+  if (artifact) {
+    return compactPromptLine(artifact.name);
+  }
+
+  return 'the most recent unresolved choice';
 }
 
 function buildStoryLabPayloadFromContinuation(

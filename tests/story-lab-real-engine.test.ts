@@ -495,6 +495,9 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(capturedInput?.userInput?.includes('Considered endings: emotional reveal, danger escalation, secret exposed.'), 'ending stress test should keep the candidate set visible to the model');
     assert(capturedInput?.userInput?.includes('Chosen ending pressure: Secret exposed'), 'unresolved lore and debt language should choose the secret-exposed ending pressure');
     assert(capturedInput?.userInput?.includes('leave one sharper question active'), 'ending stress test should preserve serialized momentum');
+    assert(capturedInput?.userInput?.includes('Cliche Alarm:'), 'service input should include the cliche alarm anchor');
+    assert(capturedInput?.userInput?.includes('Obvious stale path to avoid: a formal demand with no personal cost or surprising consequence.'), 'debt/payment continuation should avoid the obvious formal-demand scene');
+    assert(capturedInput?.userInput?.includes('Freshness rule: turn the scene through Forbidden Love'), 'cliche alarm should tie freshness to a concrete unresolved story thread');
   });
 
   console.log('Story Lab real-engine mapping tests passed');

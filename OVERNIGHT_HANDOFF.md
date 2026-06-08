@@ -806,3 +806,59 @@ Known issues:
 Next recommended task:
 
 - If continuing without external credentials, either implement the `Cliche Alarm` Weird Lab item or test the continuation mock-length policy. If provider/database details become available, return to the auth/storage adapter path.
+
+### 2026-06-08 09:21 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the Cliche Alarm commit.
+
+User request:
+
+- Keep working autonomously and try bounded creative/story-output improvements.
+
+Work completed:
+
+- Implemented the `Cliche Alarm` Weird Lab experiment in the real Story Lab continuation path.
+- Added a compact hidden stale-path anchor alongside the continuity courtroom and chapter-ending anchors.
+- The anchor names one obvious stale path to avoid and one freshness rule tied to a concrete unresolved story thread or lore artifact.
+- The tested debt/payment continuation avoids a formal-demand scene with no personal cost or surprising consequence.
+- The tested state ties freshness to the unresolved `Forbidden Love` thread.
+- Marked the idea as done in `STORY_LAB_IDEA_BOARD.md` and added fresh evidence to `STORY_LAB_APP_AUDIT.md`.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-real-engine.test.ts` failed because the continuation service input did not include `Cliche Alarm:`.
+- GREEN: `npx tsx tests/story-lab-real-engine.test.ts` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+- Before/after trope-freshness comparison; this slice proves the anchor reaches the provider seam, not that the resulting prose is measurably fresher.
+
+Known issues:
+
+- Three hidden continuation anchors now compose through `userInput`; this is still compact, but live provider comparison should watch for over-instruction.
+- Continuation mock chapters remain fixed-size flow placeholders with no explicit word-budget contract.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without external credentials, either test the continuation mock-length policy or run the next bounded idea-board experiment, `Scene Pressure Mixer`. If provider/database details become available, return to the auth/storage adapter path.

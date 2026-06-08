@@ -276,7 +276,7 @@ Status:
 - The first selector is intentionally simple and deterministic. It does not claim to evaluate generated prose quality.
 - Verified by `tests/story-lab-real-engine.test.ts`, which captures the continuation service input and proves the ending-pressure anchor reaches the real-engine seam.
 
-### Weird Lab: Cliche Alarm
+### Done: Cliche Alarm
 
 Name the most obvious stale version of the next scene, then instruct the generator to avoid that path.
 
@@ -289,6 +289,14 @@ Experiment:
 
 - Add a pre-generation "avoid this obvious beat" note.
 - Compare output against existing trope-subversion checks.
+
+Status:
+
+- Done in overnight slice on 2026-06-08.
+- Real Story Lab continuations now append a hidden `Cliche Alarm` anchor alongside the continuity and ending-pressure anchors.
+- The anchor names one concrete stale path to avoid and one freshness rule tied to an unresolved story thread or artifact.
+- The tested debt/payment continuation avoids the obvious formal-demand scene and ties freshness to `Forbidden Love`.
+- Verified by `tests/story-lab-real-engine.test.ts`, which captures the continuation service input and proves the cliche alarm reaches the real-engine seam.
 
 ### Weird Lab: Scene Pressure Mixer
 
