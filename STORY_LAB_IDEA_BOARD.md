@@ -60,7 +60,7 @@ Product translation:
 - Keep account identity separate from profile data. `AuthUser.userId` owns records; editable profile fields do not authorize anything.
 - Keep Story Lab jobs non-durable until a Workflow/database decision exists.
 
-### Now: Mock Word Budget Gap
+### Done: Mock Word Budget Gap
 
 The root tests pass while mock generation ignores requested story length. Decide whether mocks should scale with requested word count or whether tests should stop presenting mock length as quality evidence.
 
@@ -68,6 +68,13 @@ Acceptance:
 
 - Either mock generation roughly scales with requested length, or the tests make the limitation explicit.
 - The story-quality checks record length variance as a meaningful signal.
+
+Status:
+
+- Done in overnight slices on 2026-06-08.
+- Classic single-story mock generation now scales to 700, 900, and 1200 word requests within the existing 30% tolerance.
+- Multi-chapter mock genesis now scales by per-chapter target and fails if the total falls outside tolerance.
+- Remaining caveat: continuation mock chapters still have no explicit word-budget contract and are treated as flow placeholders.
 
 ### Soon: Live Provider Proof
 
