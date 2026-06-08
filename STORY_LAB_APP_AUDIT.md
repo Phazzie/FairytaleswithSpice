@@ -72,6 +72,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Visible Proving Grounds quality-report evidence:
   - Proving Grounds now renders `heuristicReport` inside evaluated story results as a compact Deterministic Quality Scan panel.
   - The panel shows the advisory overall score, each dimension score, rationale, and the first two explainable signals per dimension.
+  - Proving Grounds history cards now show a compact `Quality N` badge for evaluated results with heuristic reports, and comparison cards include the heuristic quality score beside the AI score.
   - `proving-grounds.spec.ts` seeds an evaluated result and fails unless the deterministic panel renders continuity, audio-readiness, overall score, and concrete signals.
   - The new CSS was trimmed back under the component warning budget; `npm run build` no longer reports a Proving Grounds CSS warning.
 - Angular browser-suite evidence:

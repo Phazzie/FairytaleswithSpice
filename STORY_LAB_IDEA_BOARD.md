@@ -112,6 +112,7 @@ Status:
 - `tests/story-quality-evals.test.ts` guards the dimension count, dimension ids, score bounds, and presence of signals.
 - Proving Grounds now renders the report as a compact Deterministic Quality Scan panel after evaluation.
 - `proving-grounds.spec.ts` guards that the visible panel includes the score, continuity, audio-readiness, and concrete signals.
+- Proving Grounds history cards now show a compact `Quality N` badge, and comparison cards include the heuristic quality score beside the AI score.
 
 ### Soon: Durable Job Storage
 

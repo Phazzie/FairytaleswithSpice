@@ -278,13 +278,16 @@
                 </div>
 
                 @if (test.aiEvaluation) {
-                  <div class="evaluation-summary">
-                    <div class="score-badge" [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
-                      {{ test.aiEvaluation.score }}/100
-                    </div>
-                    <p class="feedback">{{ test.aiEvaluation.overallFeedback }}</p>
+                <div class="evaluation-summary">
+                  <div class="score-badge" [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
+                    {{ test.aiEvaluation.score }}/100
                   </div>
-                }
+                  @if (test.aiEvaluation.heuristicReport) {
+                    <p class="feedback"><strong>Quality:</strong> {{ test.aiEvaluation.heuristicReport.overallScore }}/100</p>
+                  }
+                  <p class="feedback">{{ test.aiEvaluation.overallFeedback }}</p>
+                </div>
+              }
 
                 <div class="story-preview">
                   <div [innerHTML]="sanitizeHtml(test.generatedStory)"></div>
@@ -481,6 +484,13 @@
                       [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
                       {{ test.aiEvaluation.score }}
                     </span>
+                    @if (test.aiEvaluation.heuristicReport) {
+                      <span
+                        class="score-badge mini"
+                        [class]="'score-' + (test.aiEvaluation.heuristicReport.overallScore >= 80 ? 'high' : test.aiEvaluation.heuristicReport.overallScore >= 60 ? 'medium' : 'low')">
+                        Quality {{ test.aiEvaluation.heuristicReport.overallScore }}
+                      </span>
+                    }
                   }
                 </div>
 

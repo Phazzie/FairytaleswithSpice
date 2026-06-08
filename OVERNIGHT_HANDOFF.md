@@ -1563,3 +1563,51 @@ Known issues:
 Next recommended task:
 
 - Continue provider-backed auth/storage work, or add a compact heuristic-score summary in Proving Grounds history/comparison cards.
+
+### 2026-06-08 10:36 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the Proving Grounds heuristic-summary commit.
+
+User request:
+
+- Keep working autonomously and make story-quality improvements easier to scan.
+
+Work completed:
+
+- Added a compact `Quality N` badge to Proving Grounds history cards when an evaluated result has a heuristic report.
+- Added a heuristic quality score line to comparison cards beside the existing AI evaluation score.
+- Extended the Proving Grounds spec so history cards must show the deterministic quality score.
+
+Files changed:
+
+- `story-generator/src/app/proving-grounds/proving-grounds.html`
+- `story-generator/src/app/proving-grounds/proving-grounds.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: targeted Proving Grounds spec failed because history cards did not contain `Quality 78`.
+- GREEN: `npx -p node@20 node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include='src/app/proving-grounds/proving-grounds.spec.ts'` -> `2 SUCCESS`.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` -> passed.
+- `npm run build` -> passed; remaining warnings are the existing initial bundle warning and `app.css` warning.
+- `STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui` -> passed in mock mode.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- The quality report remains deterministic and advisory.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Continue provider-backed auth/storage work, or start a tiny comparison-sort/filter experiment for Proving Grounds evaluated results.

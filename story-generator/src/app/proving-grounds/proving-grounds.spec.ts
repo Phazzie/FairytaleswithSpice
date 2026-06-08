@@ -3,6 +3,65 @@ import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { ProvingGroundsComponent } from './proving-grounds';
 
+function createEvaluatedResult(): any {
+  return {
+    id: 'test-quality-report',
+    timestamp: new Date('2026-06-08T10:20:00.000Z'),
+    configuration: {
+      creature: 'siren',
+      themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Rules make romance dangerous.' }],
+      spicyLevel: 3,
+      wordCount: 900,
+      userInput: '',
+      promptTemplate: {
+        id: 'template',
+        name: 'Template',
+        description: 'Template description.',
+        systemPrompt: 'System',
+        userPromptTemplate: 'User',
+        category: 'experimental'
+      },
+      promptPreview: {
+        system: 'System',
+        user: 'User'
+      }
+    },
+    generatedStory: '<p>Mira held the witness shell.</p>',
+    generationTime: 1200,
+    chapterCount: 1,
+    totalWordCount: 900,
+    aiEvaluation: {
+      score: 82,
+      strengths: ['Strong hook.'],
+      weaknesses: ['Needs sharper voice.'],
+      suggestions: ['Name the cost.'],
+      overallFeedback: 'Useful draft.',
+      heuristicReport: {
+        source: 'heuristic',
+        heuristicOnly: true,
+        overallScore: 78,
+        summary: 'Deterministic story-quality scan completed with 7 advisory dimensions.',
+        dimensions: [
+          {
+            id: 'continuity',
+            label: 'Continuity',
+            score: 88,
+            rationale: 'Story text repeats configured state.',
+            signals: ['Creature appears: siren', 'Theme echo appears: forbidden_love']
+          },
+          {
+            id: 'audio_readiness',
+            label: 'Audio-readiness',
+            score: 74,
+            rationale: 'Audio-readiness checks dialogue tags and paragraph length.',
+            signals: ['No overlong paragraphs detected.']
+          }
+        ]
+      }
+    }
+  };
+}
+
 describe('ProvingGroundsComponent', () => {
   let fixture: ComponentFixture<ProvingGroundsComponent>;
   let component: ProvingGroundsComponent;
@@ -23,62 +82,7 @@ describe('ProvingGroundsComponent', () => {
   });
 
   it('renders deterministic heuristic report dimensions for evaluated stories', () => {
-    component.currentTest.set({
-      id: 'test-quality-report',
-      timestamp: new Date('2026-06-08T10:20:00.000Z'),
-      configuration: {
-        creature: 'siren',
-        themes: [{ id: 'forbidden_love', label: 'Forbidden Love', description: 'Rules make romance dangerous.' }],
-        spicyLevel: 3,
-        wordCount: 900,
-        userInput: '',
-        promptTemplate: {
-          id: 'template',
-          name: 'Template',
-          description: 'Template description.',
-          systemPrompt: 'System',
-          userPromptTemplate: 'User',
-          category: 'experimental'
-        },
-        promptPreview: {
-          system: 'System',
-          user: 'User'
-        }
-      },
-      generatedStory: '<p>Mira held the witness shell.</p>',
-      generationTime: 1200,
-      chapterCount: 1,
-      totalWordCount: 900,
-      aiEvaluation: {
-        score: 82,
-        strengths: ['Strong hook.'],
-        weaknesses: ['Needs sharper voice.'],
-        suggestions: ['Name the cost.'],
-        overallFeedback: 'Useful draft.',
-        heuristicReport: {
-          source: 'heuristic',
-          heuristicOnly: true,
-          overallScore: 78,
-          summary: 'Deterministic story-quality scan completed with 7 advisory dimensions.',
-          dimensions: [
-            {
-              id: 'continuity',
-              label: 'Continuity',
-              score: 88,
-              rationale: 'Story text repeats configured state.',
-              signals: ['Creature appears: siren', 'Theme echo appears: forbidden_love']
-            },
-            {
-              id: 'audio_readiness',
-              label: 'Audio-readiness',
-              score: 74,
-              rationale: 'Audio-readiness checks dialogue tags and paragraph length.',
-              signals: ['No overlong paragraphs detected.']
-            }
-          ]
-        }
-      }
-    });
+    component.currentTest.set(createEvaluatedResult());
 
     fixture.detectChanges();
 
@@ -88,5 +92,14 @@ describe('ProvingGroundsComponent', () => {
     expect(text).toContain('Continuity');
     expect(text).toContain('Audio-readiness');
     expect(text).toContain('Creature appears: siren');
+  });
+
+  it('summarizes deterministic heuristic scores in history cards', () => {
+    component.testHistory.set([createEvaluatedResult()]);
+
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Quality 78');
   });
 });
