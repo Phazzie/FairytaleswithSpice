@@ -2853,3 +2853,56 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with a small route-safe auth/cloud hardening task or another bounded story-output experiment.
+
+### 2026-06-08 Profile Preference Runtime Hardening
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the profile preference hardening commit.
+
+User request:
+
+- Keep working autonomously toward auth, storage, profiles, and cloud-library readiness without overstating unfinished live auth/cloud behavior.
+
+Work completed:
+
+- Hardened `normalizeStoryLabProfilePreferences` so profile preferences are treated as runtime data, not trusted TypeScript shapes.
+- Added allow-list normalization for heat-contract booleans/enums, favorite creature ids, favorite tone ids, library sort values, and optional string fields before profile persistence.
+- Added regression coverage so malformed payload values such as string adult confirmation, unknown creatures, non-array favorites, invalid content boundaries, and invalid library sort fall back or get stripped.
+- Updated the app audit and auth/profile/cloud-library plan with the profile-preference hardening status.
+
+Files changed:
+
+- `api/_lib/story-lab/profile/storyLabProfileStore.ts`
+- `tests/story-lab-profile-store.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-lab-profile-store` -> failed because invalid runtime profile values survived normalization.
+- GREEN: `npm run test:story-lab-profile-store` -> passed.
+- `git diff --check` -> passed.
+- First `npm run test:all` -> passed.
+- First `scripts/recovery/preflight.sh --quick --skip-status` -> failed Vercel API function typecheck because `heatOverrides` needed an explicit `Record<string, unknown>` type.
+- Fixed the type annotation.
+- `npm run test:story-lab-profile-store` -> passed again.
+- `git diff --check` -> passed again.
+- Second `npm run test:all` -> passed.
+- Second `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is runtime preference hardening, not live sign-in or real cloud sync.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with either account UI sign-in affordances, a small cloud-library route hardening task, or another bounded story-output experiment.

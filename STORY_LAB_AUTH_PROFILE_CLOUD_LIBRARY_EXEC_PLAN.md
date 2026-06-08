@@ -59,6 +59,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - Current job routes use credentialed CORS but not account ownership. They must not be described as user-private durable jobs until a later job-persistence plan.
 - The existing storage port takes `AuthUser` already, which is the right seam. Future route work should call `authPort.requireUser(req)` once and pass the resulting `AuthUser` into storage.
 - Current provider research says editable auth metadata is not a safe authorization source. User profile preferences can live in metadata only if they are treated as display/preferences, never ownership.
+- Profile preferences arrive as runtime data from clients or stored JSON. They now need allow-list normalization before persistence; static TypeScript types are not enough at this boundary.
 - Clerk's current backend docs describe bearer session tokens for cross-origin requests and the `__session` cookie for same-origin requests. The adapter scaffold extracts only those token sources and still requires an injected verifier before it returns a user. Sources: https://clerk.com/docs/request-authentication/backend and https://clerk.com/docs/backend-requests/manual-jwt, accessed 2026-06-08.
 - Vercel function budget is usable but tighter after Slice 3. Account/profile/project cloud APIs now share one deployable route file, and the branch count is `11/12`.
 - The cloud library UI can land before live auth/database provisioning as long as it tells the truth: local browser saves remain active, and cloud sync shows unavailable or failed until the account route is configured.
@@ -122,6 +123,7 @@ Current implementation state as of 2026-06-08:
 - Added an injectable job route handler seam so tests can prove authenticated durable creation receives `ownerUserId`.
 - Added owner-aware job-store read contracts so durable status/event reads can filter by `ownerUserId`; route tests prove durable status/events pass authenticated owner context.
 - Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
+- Hardened `normalizeStoryLabProfilePreferences` so malformed runtime values are sanitized through allow-lists before profile persistence.
 - Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
 - Added `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts` as an injected-executor Postgres profile scaffold that fails closed when `DATABASE_URL` or an executor is missing.
 - Added `api/story-lab/account.ts` as the single deployable Story Lab account route.

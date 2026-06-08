@@ -1,7 +1,14 @@
 // Created: 2026-06-08 08:10 EDT
 
 import type { AuthUser } from '../auth/authPort';
-import type { HeatContract, StoryLabProfilePreferences, StoryLabUserProfile } from '../contracts';
+import type {
+  CreatureArchetype,
+  HeatContract,
+  NarrativeTone,
+  StoryLabLibrarySort,
+  StoryLabProfilePreferences,
+  StoryLabUserProfile
+} from '../contracts';
 import { createDefaultStoryLabProfilePreferences } from './profileDefaults';
 
 export type StoryLabProfileStorageMode = 'non_durable_memory' | 'postgres';
@@ -59,6 +66,28 @@ export interface CreateStoredStoryLabProfileRecordInput {
   existingCreatedAt?: string;
 }
 
+const VALID_CREATURES = new Set<string>([
+  'vampire',
+  'werewolf',
+  'fairy',
+  'siren',
+  'djinn',
+  'witch',
+  'dragon',
+  'demon',
+  'angel',
+  'mermaid'
+]);
+const VALID_TONES = new Set<string>(['romance', 'dark_romance', 'mystery', 'adventure', 'comedy', 'tragedy']);
+const VALID_TENSION_MODES = new Set<string>([
+  'slow_burn',
+  'dangerous_proximity',
+  'playful_banter',
+  'devotional_longing'
+]);
+const VALID_INTIMACY_BOUNDARIES = new Set<string>(['fade_to_black', 'closed_door', 'literary_on_page']);
+const VALID_LIBRARY_SORTS = new Set<string>(['updated_desc', 'created_desc', 'title_asc']);
+
 export function createDefaultStoryLabUserProfile(
   user: AuthUser,
   options: CreateDefaultStoryLabUserProfileOptions = {}
@@ -108,22 +137,39 @@ export function normalizeStoryLabUserProfile(
 }
 
 export function normalizeStoryLabProfilePreferences(
-  preferences?: Partial<StoryLabProfilePreferences> & {
+  preferences?: (Partial<StoryLabProfilePreferences> & {
     defaultHeatContract?: Partial<HeatContract>;
-  }
+  }) | null
 ): StoryLabProfilePreferences {
   const defaults = createDefaultStoryLabProfilePreferences();
-  const overrides = preferences ? structuredClone(preferences) : {};
+  const overrides: Record<string, unknown> = isRecord(preferences) ? preferences : {};
+  const heatOverrides: Record<string, unknown> = isRecord(overrides.defaultHeatContract)
+    ? overrides.defaultHeatContract
+    : {};
 
   return {
     defaultHeatContract: {
-      ...defaults.defaultHeatContract,
-      ...overrides.defaultHeatContract
+      adultOnlyConfirmed: readBoolean(heatOverrides.adultOnlyConfirmed, defaults.defaultHeatContract.adultOnlyConfirmed),
+      tensionMode: readAllowedString<HeatContract['tensionMode']>(
+        heatOverrides.tensionMode,
+        VALID_TENSION_MODES,
+        defaults.defaultHeatContract.tensionMode
+      ),
+      intimacyBoundary: readAllowedString<HeatContract['intimacyBoundary']>(
+        heatOverrides.intimacyBoundary,
+        VALID_INTIMACY_BOUNDARIES,
+        defaults.defaultHeatContract.intimacyBoundary
+      ),
+      noGoContent: readOptionalString(heatOverrides.noGoContent, defaults.defaultHeatContract.noGoContent)
     },
-    favoriteCreatures: overrides.favoriteCreatures ?? defaults.favoriteCreatures,
-    favoriteTones: overrides.favoriteTones ?? defaults.favoriteTones,
-    contentBoundaries: overrides.contentBoundaries,
-    librarySort: overrides.librarySort ?? defaults.librarySort
+    favoriteCreatures: readAllowedStringArray<CreatureArchetype>(
+      overrides.favoriteCreatures,
+      VALID_CREATURES,
+      defaults.favoriteCreatures
+    ),
+    favoriteTones: readAllowedStringArray<NarrativeTone>(overrides.favoriteTones, VALID_TONES, defaults.favoriteTones),
+    contentBoundaries: readOptionalString(overrides.contentBoundaries, defaults.contentBoundaries),
+    librarySort: readAllowedString<StoryLabLibrarySort>(overrides.librarySort, VALID_LIBRARY_SORTS, defaults.librarySort)
   };
 }
 
@@ -168,4 +214,32 @@ export function errorResult<T>(error: StoryLabProfileStoreError): StoryLabProfil
     success: false,
     error
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function readBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function readOptionalString(value: unknown, fallback?: string): string | undefined {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function readAllowedString<T extends string>(value: unknown, allowedValues: ReadonlySet<string>, fallback: T): T {
+  return typeof value === 'string' && allowedValues.has(value) ? (value as T) : fallback;
+}
+
+function readAllowedStringArray<T extends string>(
+  value: unknown,
+  allowedValues: ReadonlySet<string>,
+  fallback: readonly T[]
+): T[] {
+  if (!Array.isArray(value)) {
+    return [...fallback];
+  }
+
+  return value.filter((entry): entry is T => typeof entry === 'string' && allowedValues.has(entry));
 }

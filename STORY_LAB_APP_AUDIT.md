@@ -103,6 +103,10 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - `scripts/recovery/apply-story-lab-cloud-schema.ts` is a guarded real-database apply script that refuses to run unless `DATABASE_URL` is configured.
   - `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts` and `scripts/recovery/story-lab-cloud-db-smoke.ts` can check the required profile/project/job tables and owner/event indexes when a real `DATABASE_URL` is present.
   - The helper is migration-ready, but no live database has been provisioned or migrated in this environment yet.
+- Profile preference hardening evidence:
+  - `normalizeStoryLabProfilePreferences` now treats profile preferences as runtime data and allow-lists heat-contract enums, favorite creature ids, favorite tone ids, library sort values, strings, and booleans before persistence.
+  - `tests/story-lab-profile-store.test.ts` now fails if malformed client or stored preference values such as unknown creatures, invalid library sort, non-array favorite lists, or string adult confirmation can survive normalization.
+  - This hardens profile storage without changing authorization; `AuthUser.userId` remains the ownership source.
 - Cloud storage configuration seam evidence:
   - `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts` now centralizes default profile/project store construction for the account route.
   - `@neondatabase/serverless` and `api/_lib/story-lab/storage/neonStoryLabExecutor.ts` now provide the real Neon/Postgres executor adapter behind that seam.
