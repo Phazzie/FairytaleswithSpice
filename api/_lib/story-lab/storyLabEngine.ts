@@ -408,7 +408,7 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuat
     lines.push(relationshipPressure);
   }
 
-  for (const artifact of storyState.artifacts.filter(artifact => !artifact.resolvedInChapter).slice(0, CONTINUITY_COURTROOM_MAX_ARTIFACTS)) {
+  for (const artifact of selectCourtroomArtifacts(storyState, continuationBrief)) {
     lines.push(`- World clue: ${compactPromptLine(artifact.name)}${formatCourtroomDetail(artifact.significance)}`);
   }
 
@@ -440,6 +440,20 @@ function selectCourtroomThreads(storyState: StoryStateSnapshot, continuationBrie
     .map(item => item.thread);
 }
 
+function selectCourtroomArtifacts(storyState: StoryStateSnapshot, continuationBrief: string | undefined): LoreArtifact[] {
+  const source = normalizeActivationText(continuationBrief ?? '');
+  return storyState.artifacts
+    .filter(artifact => !artifact.resolvedInChapter)
+    .map((artifact, index) => ({
+      artifact,
+      index,
+      activationScore: scoreArtifactActivation(artifact, source)
+    }))
+    .sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))
+    .slice(0, CONTINUITY_COURTROOM_MAX_ARTIFACTS)
+    .map(item => item.artifact);
+}
+
 function scoreThreadActivation(thread: PlotThread, source: string): number {
   if (!source) {
     return 0;
@@ -449,6 +463,32 @@ function scoreThreadActivation(thread: PlotThread, source: string): number {
     thread.label,
     thread.description,
     ...thread.foreshadowedDevices
+  ].map(normalizeActivationText).filter(Boolean);
+  let score = 0;
+
+  for (const candidate of candidates) {
+    if (source.includes(candidate)) {
+      score += 6;
+    }
+
+    for (const token of candidate.split(' ').filter(value => value.length > 3)) {
+      if (source.includes(token)) {
+        score += 1;
+      }
+    }
+  }
+
+  return score;
+}
+
+function scoreArtifactActivation(artifact: LoreArtifact, source: string): number {
+  if (!source) {
+    return 0;
+  }
+
+  const candidates = [
+    artifact.name,
+    artifact.significance
   ].map(normalizeActivationText).filter(Boolean);
   let score = 0;
 

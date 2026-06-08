@@ -205,6 +205,35 @@ async function main(): Promise<void> {
     }
   });
   assert(activationPreview.hiddenGuidance.includes('Open promise: Blood Oath'), 'continuation guidance should prioritize a brief-matched thread when the courtroom is compacted.');
+  const artifactActivationPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Use the glass key now; make it unlock the forbidden tide door.',
+    storyState: {
+      ...genesisPayload.state,
+      threads: [],
+      artifacts: [
+        {
+          id: 'artifact-silver-ladle',
+          name: 'Silver Ladle',
+          significance: 'The kitchen staff hid it after the court dinner.',
+          introducedInChapter: 1
+        },
+        {
+          id: 'artifact-storm-ledger',
+          name: 'Storm Ledger',
+          significance: 'The reef court taxes storms by moon phase.',
+          introducedInChapter: 1
+        },
+        {
+          id: 'artifact-glass-key',
+          name: 'Glass Key',
+          significance: 'A brittle key that opens the forbidden tide door only once.',
+          introducedInChapter: 1
+        }
+      ],
+      continuityWarnings: []
+    }
+  });
+  assert(artifactActivationPreview.hiddenGuidance.includes('World clue: Glass Key'), 'continuation guidance should prioritize a brief-matched artifact when the courtroom is compacted.');
 
   let continuationInput: ClassicContinuationSeam['input'] | null = null;
   const continuationResponse = await withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, () => continueStoryLab({

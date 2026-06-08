@@ -1998,6 +1998,59 @@ Next recommended task:
 
 - Commit this slice, then continue either auth sign-in wiring or the next no-credentials story-output/evaluation experiment.
 
+### 2026-06-08 Context Activation Artifact Slice
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the context activation artifact commit.
+
+User request:
+
+- Keep working autonomously on useful story-output improvements while preserving compact continuation guidance.
+
+Work completed:
+
+- Extended the `Context Activation Rules` idea from active plot threads to unresolved lore artifacts.
+- Real continuation guidance now prioritizes a brief-matched artifact when the compact `Continuity Courtroom` anchor has more unresolved world clues than it can include.
+- The guarded case pulls `Glass Key` into hidden guidance when the continuation brief says to use the glass key.
+- The slice keeps the same three hidden anchor blocks and the same max artifact count; it only changes ordering inside the existing courtroom anchor.
+- Activation scoring stays internal and is not shown to the model.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-quality` -> failed because `Glass Key` was compacted out of the courtroom anchor.
+- GREEN: `npm run test:story-quality` -> passed.
+- `npm run test:story-quality` -> passed.
+- `npm run test:story-lab-real-engine` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is a deterministic lexical activation rule, not semantic retrieval.
+- Relationship activation and continuity-warning activation are still future follow-ups.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with another no-credentials story-output slice or a route-safe auth/cloud integration test.
+
 ### 2026-06-08 Context Activation Rules Slice
 
 Branch:
