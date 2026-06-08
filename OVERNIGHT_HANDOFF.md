@@ -3931,3 +3931,58 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then either add accepted-card reorder controls or run a live-provider story-output comparison when credentials are available.
+
+### 2026-06-08 Accepted Memory Reorder Controls
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the accepted memory reorder controls commit.
+
+User request:
+
+- Keep improving the new Story Memory UI without stopping.
+
+Plan and critique:
+
+- Plan: add Up/Down controls for accepted memory cards and prove the chosen order saves, reloads, and reaches the continuation brief.
+- Hostile critique applied: no new data shape, no CSS, no route, no cloud claim, and no reorder side effect beyond the accepted-card array.
+
+Work completed:
+
+- Added `moveAcceptedMemoryCard(cardId, direction)` to swap an accepted card with its neighbor.
+- Accepted memory cards now render `Up` and `Down` controls in view mode.
+- First-card `Up` and last-card `Down` controls are disabled.
+- Reordered accepted-card order now persists through browser-local save/load.
+- Continuation briefs use the user-chosen accepted-card order.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because `move-accepted-memory-card-up` and `move-accepted-memory-card-down` controls did not exist.
+- GREEN: same Angular browser command -> `TOTAL: 63 SUCCESS`; ChromeHeadless cleanup emitted the known SIGKILL warning after the result.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `558.09 kB` over the 500 kB warning budget and `app.css` `14.96 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Accepted memory cards are still local project JSON, not a separate durable cloud memory table.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then either add a compact accepted-memory preview/count in the continuation area or switch back to auth/cloud work if credentials are available.

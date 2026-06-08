@@ -367,6 +367,7 @@ Triggered Card Drafts progress:
 - Accepted-card editing started on 2026-06-08: accepted card title, detail, and trigger text can be edited before saving/reloading or continuing.
 - Accepted-card deletion started on 2026-06-08: accepted cards can be removed before save/reload or continuation.
 - Accepted-card output comparison started on 2026-06-08: the story-quality eval now compares a neutral continuation brief against the same brief plus accepted card text and proves the accepted card can activate a different continuity anchor.
+- Accepted-card reorder started on 2026-06-08: accepted cards can be moved up/down, saved/reloaded, and sent to continuation in the chosen order.
 - Accepted cards and pinned drafts influence continuation only through the visible continuation brief path.
 
 ### Research: User Library And Profile Patterns

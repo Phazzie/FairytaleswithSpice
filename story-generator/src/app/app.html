@@ -699,7 +699,7 @@
         <div class="memory-card-drafts accepted-memory-cards" data-testid="accepted-memory-cards-panel" *ngIf="acceptedMemoryCards().length">
           <p class="eyebrow">Accepted Memory Cards</p>
           <ul>
-            <li *ngFor="let card of acceptedMemoryCards(); trackBy: trackAcceptedMemoryCard">
+            <li *ngFor="let card of acceptedMemoryCards(); let first = first; let last = last; trackBy: trackAcceptedMemoryCard">
               <ng-container *ngIf="editingAcceptedMemoryCardId() === card.id; else acceptedMemoryCardView">
                 <span class="eyebrow">{{ card.label }}</span>
                 <input
@@ -735,6 +735,12 @@
                 <strong>{{ card.title }}</strong>
                 <span class="muted">{{ card.detail }}</span>
                 <span class="muted continuity-source">{{ card.triggerLabel }}</span>
+                <button type="button" class="ghost compact memory-card-pin" data-testid="move-accepted-memory-card-up" (click)="moveAcceptedMemoryCard(card.id, -1)" [disabled]="first">
+                  Up
+                </button>
+                <button type="button" class="ghost compact memory-card-pin" data-testid="move-accepted-memory-card-down" (click)="moveAcceptedMemoryCard(card.id, 1)" [disabled]="last">
+                  Down
+                </button>
                 <button type="button" class="ghost compact memory-card-pin" data-testid="edit-accepted-memory-card" (click)="editAcceptedMemoryCard(card)">
                   Edit
                 </button>

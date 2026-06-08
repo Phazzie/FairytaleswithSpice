@@ -1097,6 +1097,21 @@ export class App implements OnDestroy {
     });
   }
 
+  moveAcceptedMemoryCard(cardId: string, direction: -1 | 1) {
+    this.acceptedMemoryCards.update(current => {
+      const currentIndex = current.findIndex(card => card.id === cardId);
+      const nextIndex = currentIndex + direction;
+      if (currentIndex === -1 || nextIndex < 0 || nextIndex >= current.length) {
+        return current;
+      }
+
+      const next = [...current];
+      [next[currentIndex], next[nextIndex]] = [next[nextIndex], next[currentIndex]];
+      return next;
+    });
+    this.statusMessage.set('Accepted memory card order updated.');
+  }
+
   deleteAcceptedMemoryCard(cardId: string) {
     this.acceptedMemoryCards.update(current => current.filter(card => card.id !== cardId));
     if (this.editingAcceptedMemoryCardId() === cardId) {

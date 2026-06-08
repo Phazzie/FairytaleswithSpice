@@ -1194,6 +1194,90 @@ describe('App', () => {
     expect(jobRequest.continuation.continuationBrief).toContain('Trigger: Mara, ledger');
   });
 
+  it('reorders accepted memory cards across saved projects and continuation briefs', () => {
+    const genesisPayload = seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ],
+        artifacts: [
+          {
+            id: 'glass-key',
+            name: 'Glass Key',
+            significance: 'A brittle key that opens the forbidden tide door only once.',
+            introducedInChapter: 1
+          }
+        ]
+      })
+    });
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    const acceptButtons = Array.from(renderedMemoryCardDraftsPanel()?.querySelectorAll('[data-testid="accept-memory-card-draft"]') ?? []) as HTMLButtonElement[];
+    expect(acceptButtons.length).toBe(3);
+    acceptButtons.forEach(button => button.click());
+    fixture.detectChanges();
+
+    const initialText = renderedAcceptedMemoryCardsText() ?? '';
+    expect(initialText.indexOf('Mara')).toBeLessThan(initialText.indexOf('Moonlit oath'));
+    expect(initialText.indexOf('Moonlit oath')).toBeLessThan(initialText.indexOf('Glass Key'));
+
+    const upButtons = Array.from(renderedAcceptedMemoryCardsPanel()?.querySelectorAll('[data-testid="move-accepted-memory-card-up"]') ?? []) as HTMLButtonElement[];
+    const downButtons = Array.from(renderedAcceptedMemoryCardsPanel()?.querySelectorAll('[data-testid="move-accepted-memory-card-down"]') ?? []) as HTMLButtonElement[];
+    expect(upButtons.length).toBe(3);
+    expect(downButtons.length).toBe(3);
+    expect(upButtons[0].disabled).toBeTrue();
+    expect(downButtons[2].disabled).toBeTrue();
+
+    downButtons[0].click();
+    fixture.detectChanges();
+
+    const reorderedText = renderedAcceptedMemoryCardsText() ?? '';
+    expect(reorderedText.indexOf('Moonlit oath')).toBeLessThan(reorderedText.indexOf('Mara'));
+    expect(reorderedText.indexOf('Mara')).toBeLessThan(reorderedText.indexOf('Glass Key'));
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    const restoredText = renderedAcceptedMemoryCardsText() ?? '';
+    expect(restoredText.indexOf('Moonlit oath')).toBeLessThan(restoredText.indexOf('Mara'));
+    expect(restoredText.indexOf('Mara')).toBeLessThan(restoredText.indexOf('Glass Key'));
+
+    component.continueSaga('Use accepted memory order.');
+
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    const continuationBrief = jobRequest.continuation.continuationBrief ?? '';
+    expect(continuationBrief.indexOf('Moonlit oath')).toBeLessThan(continuationBrief.indexOf('Mara'));
+    expect(continuationBrief.indexOf('Mara')).toBeLessThan(continuationBrief.indexOf('Glass Key'));
+  });
+
   it('deletes accepted memory cards from saved projects and continuation briefs', () => {
     const genesisPayload = seedWorkbenchForContinuation({
       state: createState({
