@@ -286,7 +286,7 @@ Triage was recorded in `STORY_LAB_IDEA_BOARD.md` on 2026-06-08. Current decision
 
 The user wants autonomous research, idea mining, and occasional weird experiments. Before this doc pass, there was no durable place to store research leads, experiment hypotheses, source links, or rejected ideas.
 
-This is now addressed by `STORY_LAB_IDEA_BOARD.md`, but the board still needs to be populated by actual research passes.
+This is now addressed by `STORY_LAB_IDEA_BOARD.md`. The 2026-06-08 research passes have started populating it with source-backed patterns from adjacent writing tools. The strongest new follow-up is `Context Source Map`: make the app explain why a continuity item was activated for the next generation.
 
 ## Auth, Storage, And Profiles Recommendation
 

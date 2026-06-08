@@ -316,6 +316,26 @@ Context Activation Rules progress:
 - The same activation rule now applies to continuity warnings; the guarded case pulls the `Coral Scribe` ledger warning into the compact hidden guidance when the user asks for that warning.
 - This does not add a new hidden anchor block or expose activation scoring to the model.
 
+Additional research pass, 2026-06-08:
+
+- Sudowrite Story Bible docs emphasize a persistent project source of truth that informs synopsis, characters, worldbuilding, outline, scenes, and prose generation; they also note that scene/prose generation only looks at explicitly mentioned characters and worldbuilding elements. Source: https://docs.sudowrite.com/using-sudowrite/1ow1qkGqof9rtcyGnrWUBS/what-is-story-bible/jmWepHcQdJetNrE991fjJC, accessed 2026-06-08.
+- Novelcrafter positions its Codex as a project wiki for characters, places, lore, and review, with automatic tracking/linking as a key value. Source: https://www.novelcrafter.com/, accessed 2026-06-08.
+- AI Dungeon describes Memory System context as story text plus AI Instructions, Plot Essentials, Author's Note, and relevant Story Cards; its Story Cards split user-visible type/name metadata from the entry text visible to the AI. Sources: https://help.aidungeon.com/faq/the-memory-system and https://help.aidungeon.com/faq/story-cards, accessed 2026-06-08.
+- FictionLab Story Cards use trigger words to decide when a card's content becomes available to the AI, while card name/type are mainly user-facing organization metadata. Source: https://fictionlab.gitbook.io/fictionlab/getting-started/story-and-memory-cards, accessed 2026-06-08.
+- Twine variables reinforce a simple interactive-fiction lesson: durable story variables and temporary passage variables need different lifetimes. Source: https://twinery.org/cookbook/terms/terms_variables.html, accessed 2026-06-08.
+
+Additional patterns worth mining:
+
+- The next trust layer is activation explanation: show why a memory item is active now, not just that the app has memory somewhere.
+- Memory-card metadata should serve the human, while only compact entry text should reach the model.
+- Story facts need lifetime labels so scene-only pressure does not become permanent continuity.
+
+Additional candidate slices:
+
+- `Context Source Map`: add a route-free preview field that explains which thread, artifact, warning, and relationship item activated the current continuation anchors.
+- `Triggered Card Drafts`: transform detected characters, places, objects, and promises into suggested memory cards with trigger words, but do not auto-inject them until accepted.
+- `Variable Lifetime Labels`: tag story facts as `scene`, `chapter`, or `series` lifetime so transient pressure does not pollute long-term continuity.
+
 ### Research: User Library And Profile Patterns
 
 Research how creative apps present account identity, project libraries, saved drafts, and profile/taste preferences.

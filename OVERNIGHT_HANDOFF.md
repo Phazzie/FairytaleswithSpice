@@ -3107,3 +3107,48 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with either another bounded story-quality lens or a route-free account/cloud hardening task.
+
+### 2026-06-08 Adjacent Writing Tool Research Pass
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the adjacent writing tool research commit.
+
+User request:
+
+- Use some autonomous time to research similar or competing apps and mine them for ideas, not only repair existing code.
+
+Work completed:
+
+- Ran a source-backed research pass over adjacent writing/interactive-fiction tools:
+  - Sudowrite Story Bible documentation.
+  - Novelcrafter Codex product page.
+  - AI Dungeon Memory System and Story Cards help pages.
+  - FictionLab Story & Memory Cards docs.
+  - Twine variable documentation.
+- Recorded the common product pattern: persistent story facts are valuable when the app explains which facts are active, why they were activated, and how long they should live.
+- Added three follow-up candidates to the idea board: Context Source Map, Triggered Card Drafts, and Variable Lifetime Labels.
+- Updated the app audit P2 research section.
+
+Files changed:
+
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- `git diff --check` -> passed.
+
+Known issues:
+
+- This is research and planning, not implementation.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this research slice, then implement the smallest route-free candidate: Context Source Map.
