@@ -45,6 +45,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - [x] Add Clerk-shaped `AuthPort` adapter scaffold with token extraction and injected verifier.
 - [x] Add migration-ready cloud schema SQL contract and focused schema drift test.
 - [x] Add lazy cloud storage config factory and focused executor-readiness test.
+- [x] Add Neon/Postgres driver dependency and executor adapter behind the storage config seam.
 - [x] Run validation and update handoff for Slice 1.
 - [x] Run validation and update handoff for Slices 2 and 3.
 - [x] Run validation and update handoff for Slice 4a service methods.
@@ -61,6 +62,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - The cloud library UI can land before live auth/database provisioning as long as it tells the truth: local browser saves remain active, and cloud sync shows unavailable or failed until the account route is configured.
 - The Postgres profile/project scaffolds had implied table expectations, but there was no tracked migration-ready SQL artifact until `api/_lib/story-lab/storage/storyLabCloudSchema.sql`.
 - The default account route used to construct Postgres stores directly. It now routes through `storyLabCloudStorageConfig.ts`, so future driver wiring has one lazy, test-covered seam.
+- `@neondatabase/serverless@1.1.0` requires Node `>=19.0.0`; the repo's existing preflight/build path uses Node 20 for Angular validation and the local API typecheck passed after the dependency landed.
 
 ## Decision Log
 
@@ -90,16 +92,19 @@ Current implementation state as of 2026-06-08:
 - Added `api/_lib/story-lab/auth/clerkAuthPort.ts`, a Clerk-shaped adapter scaffold that extracts bearer or `__session` tokens, requires an injected verifier, and fails closed without leaking token text.
 - Added `api/_lib/story-lab/storage/storyLabCloudSchema.sql` as the migration-ready cloud library schema contract for private profiles and owner-scoped story projects.
 - Added `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts` as the lazy cloud storage configuration seam for account-route profile/project stores.
+- Added `api/_lib/story-lab/storage/neonStoryLabExecutor.ts`, a Neon driver adapter that maps `sql.query(text, params)` into the existing `{ rows }` executor shape.
 - Updated `api/_lib/story-lab/account/accountRouteHandlers.ts` so default stores come from the cloud storage config factory instead of direct Postgres construction.
+- Added `@neondatabase/serverless` to root dependencies.
 - Added focused tests:
   - `tests/story-lab-profile-contracts.test.ts`
   - `tests/story-lab-configured-auth.test.ts`
   - `tests/story-lab-clerk-auth.test.ts`
   - `tests/story-lab-cloud-schema.test.ts`
   - `tests/story-lab-cloud-storage-config.test.ts`
+  - `tests/story-lab-neon-executor.test.ts`
   - `tests/story-lab-profile-store.test.ts`
 - Added npm scripts for the new focused tests and included them in `npm run test:all`.
-- Added `test:story-lab-clerk-auth`, `test:story-lab-cloud-schema`, and `test:story-lab-cloud-storage-config` to `npm run test:all`.
+- Added `test:story-lab-clerk-auth`, `test:story-lab-cloud-schema`, `test:story-lab-cloud-storage-config`, and `test:story-lab-neon-executor` to `npm run test:all`.
 - Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
 - Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
 - Added `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts` as an injected-executor Postgres profile scaffold that fails closed when `DATABASE_URL` or an executor is missing.
@@ -142,6 +147,16 @@ Current implementation state as of 2026-06-08:
   - `npm run test:all`;
   - `scripts/recovery/preflight.sh --quick --skip-status`;
   - function count remained `11/12`.
+- Neon executor validation passed:
+  - RED: `npx tsx tests/story-lab-neon-executor.test.ts` failed on the missing executor module;
+  - `npm install @neondatabase/serverless --no-audit --no-fund`;
+  - GREEN: `npm run test:story-lab-neon-executor`;
+  - `npm run test:story-lab-cloud-storage-config`;
+  - `npm run test:story-lab-account-routes`;
+  - Vercel API function typecheck command from `scripts/recovery/preflight.sh`;
+  - `npm run test:all`;
+  - `scripts/recovery/preflight.sh --quick --skip-status`;
+  - function count remained `11/12`.
 - Slice 4a validation passed:
   - RED: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` failed on missing `StoryService` cloud/profile methods;
   - GREEN: same Angular spec typecheck passed;
@@ -178,8 +193,9 @@ Current implementation state as of 2026-06-08:
   - `scripts/recovery/check-vercel-function-count.sh` -> `10/12`;
   - `npm run test:all`;
   - `scripts/recovery/preflight.sh --quick --skip-status`.
-- No provider SDK, executed database migration/provisioning, live auth provider, live database executor, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
+- No executed database migration/provisioning, live auth provider, live database proof, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
 - A migration-ready SQL contract exists, but it is not automatically executed by the app.
+- A Neon executor adapter exists, but it has only been validated with injected fake queries and typechecks, not a live database.
 - The Clerk adapter scaffold is not live auth by itself; it still needs a real Clerk verifier/SDK wiring and frontend sign-in flow.
 
 Expected retrospective evidence after implementation:
@@ -208,6 +224,7 @@ Important files:
 - `api/_lib/story-lab/storage/postgresStoryProjectStore.ts`: injected Postgres adapter scaffold.
 - `api/_lib/story-lab/storage/storyLabCloudSchema.sql`: migration-ready profile/project schema contract.
 - `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`: lazy database URL/executor seam for the account route.
+- `api/_lib/story-lab/storage/neonStoryLabExecutor.ts`: Neon driver adapter for the shared query executor.
 - `story-generator/src/app/story-workspace-storage.service.ts`: anonymous browser-local library.
 - `story-generator/src/app/app.ts` and `story-generator/src/app/app.html`: visible Story Lab UI and library panel.
 - `story-generator/src/app/story.service.ts`: Angular API client seam.
@@ -250,6 +267,7 @@ Add a profile store beside the project store:
 - `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts`
 - `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts`
 - `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`
+- `api/_lib/story-lab/storage/neonStoryLabExecutor.ts`
 
 The migration-ready table shape now lives in:
 

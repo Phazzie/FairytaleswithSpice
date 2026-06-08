@@ -1775,3 +1775,64 @@ Known issues:
 Next recommended task:
 
 - Add the actual Neon/Postgres driver adapter behind this factory once the dependency/provider choice is ready, or continue a bounded story-output experiment if credentials remain unavailable.
+
+### 2026-06-08 10:57 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the Neon executor adapter commit.
+
+User request:
+
+- Continue turning cloud storage from scaffold into real provider-backed storage without faking live sync.
+
+Work completed:
+
+- Installed `@neondatabase/serverless@1.1.0` in root `package.json`/`package-lock.json`.
+- Added `api/_lib/story-lab/storage/neonStoryLabExecutor.ts`.
+- The Neon adapter wraps `sql.query(text, params)` into the existing `{ rows }` executor shape used by profile/project Postgres stores.
+- Updated `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts` so valid `DATABASE_URL` values create the bundled Neon executor by default.
+- Kept injected executors first so tests and future alternate drivers can still replace the default.
+- Invalid/malformed database URLs now fail closed by leaving the executor unconfigured instead of crashing account-route store construction.
+- Added `tests/story-lab-neon-executor.test.ts` and wired `test:story-lab-neon-executor` into `npm run test:all`.
+- Updated `tests/story-lab-cloud-storage-config.test.ts` for the new behavior: valid database URLs configure the bundled Neon executor; invalid URLs stay fail-closed.
+- Restored tracked `node_modules` changes caused by `npm install`; only package metadata is intended for commit.
+
+Files changed:
+
+- `api/_lib/story-lab/storage/neonStoryLabExecutor.ts`
+- `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`
+- `tests/story-lab-neon-executor.test.ts`
+- `tests/story-lab-cloud-storage-config.test.ts`
+- `package.json`
+- `package-lock.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-neon-executor.test.ts` -> failed because `neonStoryLabExecutor` did not exist.
+- `npm install @neondatabase/serverless --no-audit --no-fund` -> installed `1.1.0`.
+- GREEN: `npm run test:story-lab-neon-executor` -> passed.
+- `npm run test:story-lab-cloud-storage-config` -> passed.
+- `npm run test:story-lab-account-routes` -> passed.
+- `find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 | xargs -0 ./node_modules/.bin/tsc --noEmit --target es2020 --lib es2020,dom --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node` -> passed.
+- `npm run test:all` -> passed with `test:story-lab-neon-executor` included.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This still does not prove live cloud sync; no real `DATABASE_URL` was available here.
+- The SQL schema still needs an executed migration/provisioning path.
+- Live auth still needs a real Clerk verifier/SDK wiring and frontend sign-in flow.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Add a safe schema-application/provisioning path or database readiness smoke that can run when a real `DATABASE_URL` is present.

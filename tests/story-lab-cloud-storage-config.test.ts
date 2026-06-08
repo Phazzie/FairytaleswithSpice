@@ -42,7 +42,8 @@ const now = '2026-06-08T10:50:00.000Z';
 async function main() {
   await testMissingDatabaseDoesNotCreateExecutor();
   await testConfiguredExecutorFactoryBuildsProfileAndProjectStores();
-  await testDatabaseWithoutExecutorFailsClosed();
+  await testValidDatabaseUrlCreatesBundledNeonExecutor();
+  await testInvalidDatabaseUrlFailsClosed();
 
   console.log('Story Lab cloud storage config tests passed');
 }
@@ -110,15 +111,26 @@ async function testConfiguredExecutorFactoryBuildsProfileAndProjectStores() {
   assert(executor.queries.some(query => query.sql.includes('story_projects')), 'shared executor should receive project SQL');
 }
 
-async function testDatabaseWithoutExecutorFailsClosed() {
+async function testValidDatabaseUrlCreatesBundledNeonExecutor() {
+  const storage = createStoryLabCloudStorage({
+    env: { DATABASE_URL: 'postgresql://user:password@example.invalid/story_lab' },
+    now: () => now
+  });
+
+  assert(storage.databaseUrlConfigured, 'valid database URL should be detected');
+  assert(storage.executorConfigured, 'valid database URL should create the bundled Neon executor');
+  assert(storage.isConfigured(), 'valid database URL plus bundled driver should configure cloud storage');
+}
+
+async function testInvalidDatabaseUrlFailsClosed() {
   const storage = createStoryLabCloudStorage({
     env: { DATABASE_URL: 'postgres://example.invalid/story_lab' },
     now: () => now
   });
 
-  assert(storage.databaseUrlConfigured, 'database URL should be detected');
-  assert(!storage.executorConfigured, 'missing executor should be reported');
-  assert(!storage.isConfigured(), 'storage without executor should not claim configured cloud sync');
+  assert(storage.databaseUrlConfigured, 'invalid database URL should still be detected as present');
+  assert(!storage.executorConfigured, 'invalid database URL should not configure an executor');
+  assert(!storage.isConfigured(), 'invalid database URL should not claim configured cloud sync');
 
   const profileResult = await storage.profileStore.loadProfile(owner);
   assert(!profileResult.success, 'profile store without executor should fail closed');

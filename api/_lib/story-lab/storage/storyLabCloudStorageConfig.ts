@@ -9,6 +9,7 @@ import {
   createPostgresStoryProjectStore,
   type PostgresQueryExecutor
 } from './postgresStoryProjectStore';
+import { createNeonStoryLabQueryExecutor } from './neonStoryLabExecutor';
 import type { StoryProjectStore } from './storyProjectStore';
 
 export interface StoryLabCloudQueryExecutor extends PostgresProfileQueryExecutor, PostgresQueryExecutor {}
@@ -68,12 +69,8 @@ function resolveExecutor(
     return options.executor;
   }
 
-  if (!options.createExecutor) {
-    return undefined;
-  }
-
   try {
-    return options.createExecutor(databaseUrl);
+    return options.createExecutor?.(databaseUrl) ?? createNeonStoryLabQueryExecutor(databaseUrl);
   } catch {
     return undefined;
   }
