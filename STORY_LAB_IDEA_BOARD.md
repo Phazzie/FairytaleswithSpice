@@ -58,6 +58,12 @@ Acceptance:
 - Missing-key behavior skips cleanly.
 - Live run proves Grok/non-mock telemetry when credentials exist.
 
+Triage note, 2026-06-08:
+
+- `tests/grok-smoke.test.ts` remains untracked and should not be adopted as-is.
+- The repo already has tracked live-provider smoke paths: `smoke:story-lab-live-provider`, `smoke:grok`, and `tests/grok-multi-agent-smoke.test.ts`.
+- If a canonical low-level `StoryService` Grok smoke is still wanted later, revise the untracked file first, fix whitespace, add a deliberate package script, and document how it differs from the tracked live-provider smoke.
+
 ### Soon: Durable Job Storage
 
 Replace or supplement `non_durable_memory` job state with an owner-scoped durable job table and runner plan.
@@ -95,6 +101,51 @@ Output:
 - What should stay local/private.
 - What should sync.
 - What should never be logged.
+
+## Untracked File Triage
+
+Triage date: 2026-06-08
+
+### Parked: `SPARK_TRIAL_TASKS.md`
+
+Decision:
+
+- Leave untracked for now.
+- Treat as a historical Spark trial log, not active product guidance.
+- Do not commit it into the product repo unless the user wants a permanent experiment-history folder.
+
+Why:
+
+- The checklist is already completed.
+- Several items describe old branch and PR #87 context.
+- The durable lessons are now better represented by `OVERNIGHT_MODE.md`, `STORY_LAB_APP_AUDIT.md`, and current execution plans.
+
+### Adopt As Source Material: `STORY_QUALITY_EVALS_PLAN.md`
+
+Decision:
+
+- Keep as useful source material for story-quality work.
+- Do not commit it unchanged yet.
+- Fold the useful parts into a current story-quality or auth/profile/cloud-library plan when that implementation slice starts.
+
+Why:
+
+- The plan identifies useful eval dimensions: continuity, cliffhanger quality, trope freshness, emotional variety, character consistency, prose quality, and audio-readiness.
+- The repo already has tracked `tests/story-quality-evals.test.ts`, so the untracked plan needs a current-state reconciliation before becoming durable docs.
+
+### Park/Revise Before Adoption: `tests/grok-smoke.test.ts`
+
+Decision:
+
+- Leave untracked for now.
+- Do not add a package script yet.
+- Revisit only if a low-level `StoryService` smoke is needed in addition to the existing tracked live-provider smoke paths.
+
+Why:
+
+- It overlaps with tracked smoke scripts.
+- It is gated correctly in spirit, but it needs cleanup and a clear reason to exist before becoming part of the suite.
+- Live-provider work needs credentials and telemetry proof; this file alone would not prove deployed Story Lab behavior.
 
 ## Weird Lab Queue
 

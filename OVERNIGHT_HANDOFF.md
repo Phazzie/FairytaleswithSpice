@@ -65,9 +65,8 @@ Updated repo guidance:
 
 1. Reconcile stale progress language in `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`.
 2. Create a concrete auth/profile/cloud-library implementation plan.
-3. Triage `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts`.
-4. Run one source-backed research-mining pass and update `STORY_LAB_IDEA_BOARD.md`.
-5. Pick one small story-quality or Weird Lab experiment and implement it with focused tests.
+3. Run one source-backed research-mining pass and update `STORY_LAB_IDEA_BOARD.md`.
+4. Pick one small story-quality or Weird Lab experiment and implement it with focused tests.
 
 ## Handoff Template
 
@@ -138,8 +137,50 @@ Checks skipped:
 Known issues:
 
 - Auth provider integration, user profiles, cloud project library UI, durable database provisioning, storage routes, and signed-in cloud sync remain unimplemented.
-- Existing untracked files still need triage: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+- Existing untracked files are triaged in `STORY_LAB_IDEA_BOARD.md` but intentionally left untracked for now: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
 
 Next recommended task:
 
-- Create a concrete auth/profile/cloud-library implementation plan, or triage the three untracked files if staying purely local.
+- Create a concrete auth/profile/cloud-library implementation plan, or run one source-backed research-mining pass.
+
+### 2026-06-08 07:06 EDT
+
+Branch:
+
+- `main`
+
+Commit:
+
+- Pending; this slice is not committed yet.
+
+User request:
+
+- Continue overnight work using the audit and overnight-mode rules.
+
+Work completed:
+
+- Triaged the three persistent untracked files.
+- Recorded decisions in `STORY_LAB_IDEA_BOARD.md`.
+- Updated `STORY_LAB_APP_AUDIT.md` so it no longer says the files still need first-pass triage.
+
+Files changed:
+
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- `git diff --check` -> passed.
+
+Checks skipped:
+
+- Code tests; this is a docs-only triage slice.
+
+Known issues:
+
+- The files remain untracked by design: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Run source-backed research for auth/profile/cloud-library patterns, then turn it into an implementation plan.

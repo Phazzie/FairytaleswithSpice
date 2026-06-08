@@ -155,7 +155,7 @@ The following files are untracked:
 - `STORY_QUALITY_EVALS_PLAN.md`
 - `tests/grok-smoke.test.ts`
 
-Do not delete or absorb them without a specific decision. They may be useful for the overnight idea board, story-quality evals, or live-provider smoke work.
+Triage was recorded in `STORY_LAB_IDEA_BOARD.md` on 2026-06-08. Current decision: park `SPARK_TRIAL_TASKS.md`, keep `STORY_QUALITY_EVALS_PLAN.md` as source material for future story-quality planning, and park/revise `tests/grok-smoke.test.ts` before adoption because tracked live-provider smoke paths already exist.
 
 ### P2: Competitor/Research Mining Has No Durable Workflow Yet
 
@@ -182,6 +182,5 @@ Use this order unless a newer user request or failing PR check supersedes it:
 
 1. Reconcile stale storage-port plan progress language.
 2. Turn auth/storage/profile into a concrete implementation plan with provider decision gates.
-3. Triage the three untracked files and either adopt, revise, or park them.
-4. Run one research-mining pass and populate the idea board with source-backed ideas.
-5. Pick one small story-quality improvement from the idea board and implement it behind tests.
+3. Run one research-mining pass and populate the idea board with source-backed ideas.
+4. Pick one small story-quality improvement from the idea board and implement it behind tests.
