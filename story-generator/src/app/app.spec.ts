@@ -405,10 +405,13 @@ describe('App', () => {
     return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
-  function renderedMemoryCardDraftsText(targetFixture: ComponentFixture<App> = fixture): string | null {
+  function renderedMemoryCardDraftsPanel(targetFixture: ComponentFixture<App> = fixture): HTMLElement | null {
     targetFixture.detectChanges();
-    const panel = targetFixture.nativeElement.querySelector('[data-testid="memory-card-drafts-panel"]') as HTMLElement | null;
-    return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+    return targetFixture.nativeElement.querySelector('[data-testid="memory-card-drafts-panel"]') as HTMLElement | null;
+  }
+
+  function renderedMemoryCardDraftsText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    return renderedMemoryCardDraftsPanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
   it('creates the workbench with default blueprint values', () => {
@@ -951,6 +954,48 @@ describe('App', () => {
     expect(cardDraftText).toContain('World card');
     expect(cardDraftText).toContain('Witness Shell');
     expect(cardDraftText).toContain('Trigger: Witness Shell');
+  });
+
+  it('pins a memory card draft in the current session', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+
+    const pinButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="pin-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(pinButton?.textContent?.trim()).toBe('Pin');
+
+    pinButton?.click();
+    fixture.detectChanges();
+
+    const pinnedText = renderedMemoryCardDraftsText() ?? '';
+    const pinnedButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="pin-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(pinnedText).toContain('Pinned cards: 1');
+    expect(pinnedButton?.textContent?.trim()).toBe('Pinned');
+    expect(pinnedButton?.disabled).toBeTrue();
   });
 
   it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {

@@ -359,6 +359,7 @@ Triggered Card Drafts progress:
 - Read-only UI experiment started on 2026-06-08.
 - Story Memory now drafts compact character, promise, and world cards from the current `StoryStateSnapshot`.
 - Each draft shows a human-facing card type, title, detail, and trigger phrase such as `Trigger: Mara`.
+- In-session pinning started on 2026-06-08: each draft can be pinned locally and shows `Pinned` plus a pinned-card count.
 - Drafts are not accepted, edited, persisted, or auto-injected yet; this is the trust-building preview before any memory-card write path exists.
 
 ### Research: User Library And Profile Patterns

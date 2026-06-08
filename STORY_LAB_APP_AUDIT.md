@@ -39,6 +39,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The preview now shows compact source reasons such as `Active story thread`, `Current relationship edge`, `Unresolved world clue`, and `Continuity note to honor`, so users can see why each memory item is active.
   - The preview now shows compact lifetime labels such as `Series memory` and `Chapter memory` for lifetime-tagged threads and lore artifacts.
   - Story Memory now also renders read-only Memory Card Drafts for the first current character, active promise, and world clue, with trigger phrases such as `Trigger: Mara`.
+  - Memory Card Drafts can now be pinned for the current session; pinned state clears when the story/project changes and is not persisted yet.
   - The preview uses current `StoryStateSnapshot` data already present on the client, so it adds no route and does not spend the remaining Vercel function slot.
   - Angular spec coverage proves `Pressure rising`, `Relationship pressure`, `World clue`, and `Continuity note` render from seeded story state.
   - Follow-up CSS cleanup reduced the built component CSS budget warning from 14.95 KB to 14.60 KB after the preview landed.

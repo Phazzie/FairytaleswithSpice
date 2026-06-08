@@ -156,6 +156,7 @@ type MemoryCardDraftItem = {
   title: string;
   detail: string;
   triggerLabel: string;
+  pinned: boolean;
 };
 
 type GenerationProgressState = {
@@ -356,6 +357,7 @@ export class App implements OnDestroy {
     'ending-bet': 'revelation'
   });
   readonly directorRoomDecisions = signal<Record<string, DirectorRoomNoteStatus>>({});
+  readonly pinnedMemoryCardDraftIds = signal<Set<string>>(new Set());
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
@@ -475,30 +477,38 @@ export class App implements OnDestroy {
 
   readonly memoryCardDrafts = computed<MemoryCardDraftItem[]>(() => {
     const continuity = this.continuityPanel();
+    const pinnedDraftIds = this.pinnedMemoryCardDraftIds();
     const characterDrafts = continuity.characters.slice(0, 1).map(character => ({
       id: `memory-card-character-${character.id}`,
       label: 'Character card',
       title: character.displayName,
       detail: character.currentGoal || character.summary || character.externalConflict,
-      triggerLabel: `Trigger: ${character.displayName}`
+      triggerLabel: `Trigger: ${character.displayName}`,
+      pinned: pinnedDraftIds.has(`memory-card-character-${character.id}`)
     }));
     const threadDrafts = continuity.activeThreads.slice(0, 1).map(thread => ({
       id: `memory-card-thread-${thread.id}`,
       label: 'Promise card',
       title: thread.label,
       detail: thread.description,
-      triggerLabel: `Trigger: ${thread.label}`
+      triggerLabel: `Trigger: ${thread.label}`,
+      pinned: pinnedDraftIds.has(`memory-card-thread-${thread.id}`)
     }));
     const artifactDrafts = continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
       id: `memory-card-artifact-${artifact.id}`,
       label: 'World card',
       title: artifact.name,
       detail: artifact.significance,
-      triggerLabel: `Trigger: ${artifact.name}`
+      triggerLabel: `Trigger: ${artifact.name}`,
+      pinned: pinnedDraftIds.has(`memory-card-artifact-${artifact.id}`)
     }));
 
     return [...characterDrafts, ...threadDrafts, ...artifactDrafts].filter(item => item.title && item.detail);
   });
+
+  readonly pinnedMemoryCardDraftCount = computed(() =>
+    this.memoryCardDrafts().filter(draft => draft.pinned).length
+  );
 
   private formatStoryMemoryLifetimeLabel(lifetime: StoryMemoryLifetime | undefined): string | undefined {
     if (lifetime === 'scene') {
@@ -960,6 +970,19 @@ export class App implements OnDestroy {
     this.statusMessage.set('Director Room note moved into the custom continuation brief.');
   }
 
+  pinMemoryCardDraft(draftId: string) {
+    this.pinnedMemoryCardDraftIds.update(current => {
+      if (current.has(draftId)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.add(draftId);
+      return next;
+    });
+    this.statusMessage.set('Memory card draft pinned for this session.');
+  }
+
   continueWithDirectorRoomNotes() {
     const acceptedNotes = this.acceptedDirectorRoomNotes();
     if (!acceptedNotes.length) {
@@ -976,6 +999,7 @@ export class App implements OnDestroy {
 
   resetWorkbench() {
     this.clearActiveStoryLabJob();
+    this.pinnedMemoryCardDraftIds.set(new Set());
     this.workbench.set({
       story: null,
       state: null,
@@ -1281,6 +1305,7 @@ ${chapters}
   }
 
   private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize, batchId?: string) {
+    const previousStoryId = this.workbench().story?.storyId;
     const existingQueue = this.activeBatchQueue();
     const batchQueue = batchId
       ? existingQueue.map(item => item.id === batchId
@@ -1310,6 +1335,9 @@ ${chapters}
       ...nextSession,
       savedProjectId
     });
+    if (previousStoryId !== payload.summary.storyId) {
+      this.pinnedMemoryCardDraftIds.set(new Set());
+    }
     this.collapsedChapterGroups.set(new Set());
 
     const newestChapter = payload.batch.chapters[payload.batch.chapters.length - 1];
@@ -1898,6 +1926,7 @@ ${chapters}
       batchQueue: [],
       savedProjectId: project.id
     });
+    this.pinnedMemoryCardDraftIds.set(new Set());
     this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.workspaceSaveStatus.set(`Loaded "${project.title}" from this browser.`);
@@ -1925,6 +1954,7 @@ ${chapters}
       batchQueue: [],
       savedProjectId: project.id
     });
+    this.pinnedMemoryCardDraftIds.set(new Set());
     this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');

@@ -668,12 +668,22 @@
         </div>
         <div class="memory-card-drafts" data-testid="memory-card-drafts-panel" *ngIf="memoryCardDrafts().length">
           <p class="eyebrow">Memory Card Drafts</p>
+          <p class="muted continuity-source" *ngIf="pinnedMemoryCardDraftCount()">Pinned cards: {{ pinnedMemoryCardDraftCount() }}</p>
           <ul>
             <li *ngFor="let draft of memoryCardDrafts()">
               <span class="eyebrow">{{ draft.label }}</span>
               <strong>{{ draft.title }}</strong>
               <span class="muted">{{ draft.detail }}</span>
               <span class="muted continuity-source">{{ draft.triggerLabel }}</span>
+              <button
+                type="button"
+                class="ghost compact memory-card-pin"
+                data-testid="pin-memory-card-draft"
+                (click)="pinMemoryCardDraft(draft.id)"
+                [disabled]="draft.pinned"
+              >
+                {{ draft.pinned ? 'Pinned' : 'Pin' }}
+              </button>
             </li>
           </ul>
         </div>

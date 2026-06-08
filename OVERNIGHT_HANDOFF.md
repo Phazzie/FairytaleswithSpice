@@ -3453,3 +3453,54 @@ Known issues:
 Next recommended task:
 
 - Run full verification, commit this slice, then add either accepted-card persistence or alias/trigger enrichment as a bounded follow-up.
+
+### 2026-06-08 Memory Card Draft Pinning
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the memory card draft pinning commit.
+
+User request:
+
+- Keep moving past passive previews into practical Story Lab UI improvements without adding unsafe storage or provider behavior.
+
+Work completed:
+
+- Added local in-session pin state for Memory Card Drafts.
+- Each draft now has a `Pin` button that changes to disabled `Pinned` after selection.
+- The draft panel shows a compact `Pinned cards: N` count once at least one draft is pinned.
+- Pins clear when the workbench resets, a different story is generated, or a saved/cloud project is loaded.
+- Kept the feature route-free, persistence-free, and provider-free.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.css`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because draft rows had no `Pin` button or pinned count.
+- GREEN: same Angular browser command -> `TOTAL: 57 SUCCESS`.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `550.76 kB` over the 500 kB warning budget and `app.css` `14.96 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Pinned cards are still in-session only and not stored with projects.
+- Pinned cards do not alter continuation prompts yet.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Run full verification, commit this slice, then decide whether pinned draft cards should persist in local/cloud project state or stay as temporary planning aids.

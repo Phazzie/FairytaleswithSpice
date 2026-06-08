@@ -955,6 +955,12 @@ button:disabled {
   font-size: 0.76rem;
 }
 
+.memory-card-pin {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 6px 9px;
+}
+
 @media (max-width: 1180px) {
   .story-layout {
     grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
