@@ -263,6 +263,7 @@ export interface CloudStoryProjectListItem {
   title: string;
   synopsis: string;
   chapterCount: number;
+  acceptedMemoryCardCount: number;
   createdAt: string;
   updatedAt: string;
 }

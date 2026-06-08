@@ -4040,3 +4040,66 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then switch to an auth/cloud readiness task or a bundle-size cleanup task because the Story Memory UI is accumulating initial bundle weight.
+
+### 2026-06-08 Cloud Accepted Memory Count Metadata
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud accepted memory count metadata commit.
+
+User request:
+
+- Keep working autonomously and include storage/account readiness, not only UI work.
+
+Plan and critique:
+
+- Plan: add accepted-memory-card count metadata to cloud project list items so future cloud library UI can summarize memory status.
+- Hostile critique applied: do not expose full accepted-card text in project lists because card details can contain private story content. Count-only metadata is enough.
+
+Work completed:
+
+- Added `acceptedMemoryCardCount` to shared cloud project list contracts.
+- Storage list mapping now derives the count from `SavedStoryProject.acceptedMemoryCards`.
+- Client cloud-list upsert now preserves the count when saving an active project.
+- Account-route tests now prove list responses carry the count while full accepted card text remains available only on project load.
+- Storage-port tests now cover non-durable memory, Postgres row mapping, and missing accepted-memory fallback.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/contracts.ts`
+- `api/_lib/story-lab/storage/storyProjectStore.ts`
+- `story-generator/src/app/app.ts`
+- `tests/story-lab-storage-port.test.ts`
+- `tests/story-lab-account-routes.test.ts`
+- `tests/story-lab-profile-contracts.test.ts`
+- `story-generator/src/app/story.service.spec.ts`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-lab-storage-port` -> failed because list items did not expose `acceptedMemoryCardCount`.
+- GREEN: `npm run test:story-lab-storage-port` -> passed.
+- `npm run test:story-lab-account-routes` -> passed.
+- `npm run test:story-lab-profile-contracts` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `558.78 kB` over the 500 kB warning budget and `app.css` `14.96 kB` over the 12 kB warning budget.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This does not create a separate durable accepted-memory table; accepted cards still live inside saved project JSON.
+- Live cloud sync still requires real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then consider a bundle-size cleanup or another route-free cloud readiness test.

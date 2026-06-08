@@ -130,6 +130,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - It only creates an executor when a database URL exists, so deploy/build paths still fail closed instead of initializing a missing driver at import time.
   - `tests/story-lab-cloud-storage-config.test.ts` proves missing database env does not initialize a driver, shared injected executors wire both stores, valid database URLs create the bundled Neon executor, and invalid URLs return typed fail-closed errors.
   - `tests/story-lab-neon-executor.test.ts` proves SQL text and params are passed through the Neon wrapper without making live database calls.
+  - Cloud project list items now include `acceptedMemoryCardCount`, derived from saved project JSON, so future cloud library UI can show memory-card status without exposing full private card text in list responses.
 - Job storage configuration seam evidence:
   - `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts` now centralizes future job-store selection.
   - The default mode remains `non_durable_memory`, so anonymous job routes are not accidentally changed.

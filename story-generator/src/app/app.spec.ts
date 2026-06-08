@@ -545,6 +545,7 @@ describe('App', () => {
       title: 'Cloud Chapel',
       synopsis: 'A cloud-synced oath.',
       chapterCount: 2,
+      acceptedMemoryCardCount: 0,
       createdAt: '2026-06-08T08:37:00.000Z',
       updatedAt: '2026-06-08T08:38:00.000Z'
     }]);
@@ -593,6 +594,7 @@ describe('App', () => {
         title: 'Cloud Chapel',
         synopsis: 'A cloud-synced oath.',
         chapterCount: 2,
+        acceptedMemoryCardCount: 0,
         createdAt: '2026-06-08T08:37:00.000Z',
         updatedAt: '2026-06-08T08:38:00.000Z'
       }]

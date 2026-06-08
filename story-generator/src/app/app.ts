@@ -2389,6 +2389,7 @@ ${chapters}
       title: project.title,
       synopsis: project.synopsis,
       chapterCount: project.chapters.length,
+      acceptedMemoryCardCount: project.acceptedMemoryCards?.length ?? 0,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt
     };

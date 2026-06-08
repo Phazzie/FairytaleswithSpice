@@ -162,6 +162,7 @@ async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
   assert(listBody.data.ownerUserId === owner.userId, 'project list should carry owner id');
   assert(listBody.data.projects.length === 1, 'owner should see saved project');
   assert(listBody.data.projects[0].title === project.title, 'list item should carry project title');
+  assert(listBody.data.projects[0].acceptedMemoryCardCount === 1, 'list item should carry accepted memory count without full card text');
 
   const loadResponse = new FakeResponse();
   await handler(createRequest('GET', 'project', undefined, project.id), loadResponse);
@@ -169,6 +170,7 @@ async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
   const loadBody = loadResponse.body as any;
   assert(loadBody.success === true, 'project load should use success envelope');
   assert(loadBody.data.project.id === project.id, 'project load should return saved project');
+  assert(loadBody.data.project.acceptedMemoryCards[0].title === 'Avery', 'project load should preserve accepted memory cards');
 
   const deleteResponse = new FakeResponse();
   await handler(createRequest('DELETE', 'project', undefined, project.id), deleteResponse);
@@ -358,6 +360,16 @@ function createProject(): SavedStoryProject {
           foreshadowedArtifacts: [],
           continuityFlags: []
         }
+      }
+    ],
+    acceptedMemoryCards: [
+      {
+        id: 'memory-card-character-avery',
+        label: 'Character card',
+        title: 'Avery',
+        detail: 'Avery is the only one who knows the private chapel oath.',
+        triggerLabel: 'Trigger: Avery',
+        acceptedAt: now
       }
     ],
     createdAt: now,
