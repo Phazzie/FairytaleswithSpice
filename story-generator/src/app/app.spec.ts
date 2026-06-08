@@ -414,6 +414,15 @@ describe('App', () => {
     return renderedMemoryCardDraftsPanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
+  function renderedAcceptedMemoryCardsPanel(targetFixture: ComponentFixture<App> = fixture): HTMLElement | null {
+    targetFixture.detectChanges();
+    return targetFixture.nativeElement.querySelector('[data-testid="accepted-memory-cards-panel"]') as HTMLElement | null;
+  }
+
+  function renderedAcceptedMemoryCardsText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    return renderedAcceptedMemoryCardsPanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -1040,6 +1049,62 @@ describe('App', () => {
     expect(restoredText).toContain('Pinned cards: 1');
     expect(restoredButton?.textContent?.trim()).toBe('Pinned');
     expect(restoredButton?.disabled).toBeTrue();
+  });
+
+  it('accepts memory card draft records into browser-local saved projects', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+
+    const acceptButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="accept-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(acceptButton).not.toBeNull();
+
+    acceptButton?.click();
+    fixture.detectChanges();
+
+    const acceptedText = renderedAcceptedMemoryCardsText() ?? '';
+    const acceptedButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="accept-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(acceptedText).toContain('Accepted Memory Cards');
+    expect(acceptedText).toContain('Character card');
+    expect(acceptedText).toContain('Mara');
+    expect(acceptedText).toContain('Keep the moonlit bargain from consuming her archive.');
+    expect(acceptedButton?.textContent?.trim()).toBe('Accepted');
+    expect(acceptedButton?.disabled).toBeTrue();
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    const restoredAcceptedText = renderedAcceptedMemoryCardsText() ?? '';
+    const restoredAcceptedButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="accept-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(restoredAcceptedText).toContain('Accepted Memory Cards');
+    expect(restoredAcceptedText).toContain('Mara');
+    expect(restoredAcceptedButton?.textContent?.trim()).toBe('Accepted');
+    expect(restoredAcceptedButton?.disabled).toBeTrue();
   });
 
   it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {

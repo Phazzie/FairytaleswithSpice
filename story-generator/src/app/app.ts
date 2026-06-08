@@ -21,6 +21,7 @@ import {
   SavedStoryProject,
   SpicyLevel,
   StoryMemoryLifetime,
+  StoryMemoryCard,
   StoryBlueprint,
   StoryIterationPayload,
   StoryLabJob,
@@ -157,6 +158,7 @@ type MemoryCardDraftItem = {
   detail: string;
   triggerLabel: string;
   pinned: boolean;
+  accepted: boolean;
 };
 
 type GenerationProgressState = {
@@ -358,6 +360,7 @@ export class App implements OnDestroy {
   });
   readonly directorRoomDecisions = signal<Record<string, DirectorRoomNoteStatus>>({});
   readonly pinnedMemoryCardDraftIds = signal<Set<string>>(new Set());
+  readonly acceptedMemoryCards = signal<StoryMemoryCard[]>([]);
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
@@ -478,13 +481,15 @@ export class App implements OnDestroy {
   readonly memoryCardDrafts = computed<MemoryCardDraftItem[]>(() => {
     const continuity = this.continuityPanel();
     const pinnedDraftIds = this.pinnedMemoryCardDraftIds();
+    const acceptedCardIds = new Set(this.acceptedMemoryCards().map(card => card.id));
     const characterDrafts = continuity.characters.slice(0, 1).map(character => ({
       id: `memory-card-character-${character.id}`,
       label: 'Character card',
       title: character.displayName,
       detail: character.currentGoal || character.summary || character.externalConflict,
       triggerLabel: this.buildMemoryCardTriggerLabel(character.displayName),
-      pinned: pinnedDraftIds.has(`memory-card-character-${character.id}`)
+      pinned: pinnedDraftIds.has(`memory-card-character-${character.id}`),
+      accepted: acceptedCardIds.has(`memory-card-character-${character.id}`)
     }));
     const threadDrafts = continuity.activeThreads.slice(0, 1).map(thread => ({
       id: `memory-card-thread-${thread.id}`,
@@ -492,7 +497,8 @@ export class App implements OnDestroy {
       title: thread.label,
       detail: thread.description,
       triggerLabel: this.buildMemoryCardTriggerLabel(thread.label),
-      pinned: pinnedDraftIds.has(`memory-card-thread-${thread.id}`)
+      pinned: pinnedDraftIds.has(`memory-card-thread-${thread.id}`),
+      accepted: acceptedCardIds.has(`memory-card-thread-${thread.id}`)
     }));
     const artifactDrafts = continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
       id: `memory-card-artifact-${artifact.id}`,
@@ -500,7 +506,8 @@ export class App implements OnDestroy {
       title: artifact.name,
       detail: artifact.significance,
       triggerLabel: this.buildMemoryCardTriggerLabel(artifact.name),
-      pinned: pinnedDraftIds.has(`memory-card-artifact-${artifact.id}`)
+      pinned: pinnedDraftIds.has(`memory-card-artifact-${artifact.id}`),
+      accepted: acceptedCardIds.has(`memory-card-artifact-${artifact.id}`)
     }));
 
     return [...characterDrafts, ...threadDrafts, ...artifactDrafts].filter(item => item.title && item.detail);
@@ -891,7 +898,7 @@ export class App implements OnDestroy {
     this.showStartingJobStatus('continuation');
     this.closeJobSubscriptions();
     const batchId = this.enqueueBatch('Continuation', this.blueprint().chapterBatchSize);
-    const continuationBrief = this.withPinnedMemoryCardBriefs(brief);
+    const continuationBrief = this.withStoryMemoryCardBriefs(brief);
 
     const request = {
       storyId: session.story.storyId,
@@ -999,6 +1006,32 @@ export class App implements OnDestroy {
     this.statusMessage.set('Memory card draft pinned for this session.');
   }
 
+  acceptMemoryCardDraft(draftId: string) {
+    const draft = this.memoryCardDrafts().find(item => item.id === draftId);
+    if (!draft) {
+      return;
+    }
+
+    this.acceptedMemoryCards.update(current => {
+      if (current.some(card => card.id === draft.id)) {
+        return current;
+      }
+
+      return [
+        ...current,
+        {
+          id: draft.id,
+          label: draft.label,
+          title: draft.title,
+          detail: draft.detail,
+          triggerLabel: draft.triggerLabel,
+          acceptedAt: new Date().toISOString()
+        }
+      ];
+    });
+    this.statusMessage.set('Memory card accepted into this story.');
+  }
+
   continueWithDirectorRoomNotes() {
     const acceptedNotes = this.acceptedDirectorRoomNotes();
     if (!acceptedNotes.length) {
@@ -1016,6 +1049,7 @@ export class App implements OnDestroy {
   resetWorkbench() {
     this.clearActiveStoryLabJob();
     this.pinnedMemoryCardDraftIds.set(new Set());
+    this.acceptedMemoryCards.set([]);
     this.workbench.set({
       story: null,
       state: null,
@@ -1349,6 +1383,7 @@ ${chapters}
 
     if (isNewStory) {
       this.pinnedMemoryCardDraftIds.set(new Set());
+      this.acceptedMemoryCards.set([]);
     }
 
     const savedProjectId = this.persistSession(nextSession);
@@ -1945,6 +1980,7 @@ ${chapters}
       savedProjectId: project.id
     });
     this.pinnedMemoryCardDraftIds.set(new Set(project.pinnedMemoryCardDraftIds ?? []));
+    this.acceptedMemoryCards.set(project.acceptedMemoryCards ?? []);
     this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.workspaceSaveStatus.set(`Loaded "${project.title}" from this browser.`);
@@ -1973,6 +2009,7 @@ ${chapters}
       savedProjectId: project.id
     });
     this.pinnedMemoryCardDraftIds.set(new Set(project.pinnedMemoryCardDraftIds ?? []));
+    this.acceptedMemoryCards.set(project.acceptedMemoryCards ?? []);
     this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');
@@ -2218,6 +2255,7 @@ ${chapters}
     const currentProjectId = session.savedProjectId ?? session.story.storyId;
     const existingProject = this.workspaceStorage.loadProject(currentProjectId);
     const pinnedMemoryCardDraftIds = Array.from(this.pinnedMemoryCardDraftIds());
+    const acceptedMemoryCards = this.acceptedMemoryCards().map(card => ({ ...card }));
 
     return {
       id: currentProjectId,
@@ -2231,6 +2269,7 @@ ${chapters}
       telemetry: session.lastTelemetry,
       continuityExtraction: session.lastContinuityExtraction,
       pinnedMemoryCardDraftIds,
+      acceptedMemoryCards,
       createdAt: existingProject?.createdAt ?? session.story.createdAt ?? now,
       updatedAt: now
     };
@@ -2296,6 +2335,10 @@ ${chapters}
     return option.id;
   }
 
+  trackAcceptedMemoryCard(_index: number, card: StoryMemoryCard): string {
+    return card.id;
+  }
+
   formatDirectorRoomNoteStatus(status: DirectorRoomNoteStatus): string {
     switch (status) {
       case 'accepted':
@@ -2344,19 +2387,29 @@ ${chapters}
     return trimmedBrief ? `${trimmedBrief}\n\n${dialBrief}` : dialBrief;
   }
 
-  private withPinnedMemoryCardBriefs(brief?: string): string | undefined {
+  private withStoryMemoryCardBriefs(brief?: string): string | undefined {
     const trimmedBrief = brief?.trim();
-    const pinnedDrafts = this.memoryCardDrafts().filter(draft => draft.pinned);
-    if (!pinnedDrafts.length) {
+    const acceptedCards = this.acceptedMemoryCards();
+    const acceptedCardIds = new Set(acceptedCards.map(card => card.id));
+    const pinnedDrafts = this.memoryCardDrafts().filter(draft => draft.pinned && !acceptedCardIds.has(draft.id));
+    if (!acceptedCards.length && !pinnedDrafts.length) {
       return trimmedBrief || undefined;
     }
 
     const memoryBrief = [
-      'Pinned Memory Cards:',
-      ...pinnedDrafts.map(draft => `- ${draft.label}: ${draft.title}. ${draft.detail} ${draft.triggerLabel}.`)
+      ...(acceptedCards.length
+        ? ['Accepted Memory Cards:', ...acceptedCards.map(card => this.formatMemoryCardBrief(card))]
+        : []),
+      ...(pinnedDrafts.length
+        ? ['Pinned Memory Cards:', ...pinnedDrafts.map(draft => this.formatMemoryCardBrief(draft))]
+        : [])
     ].join('\n');
 
     return trimmedBrief ? `${trimmedBrief}\n\n${memoryBrief}` : memoryBrief;
+  }
+
+  private formatMemoryCardBrief(card: Pick<StoryMemoryCard, 'label' | 'title' | 'detail' | 'triggerLabel'>): string {
+    return `- ${card.label}: ${card.title}. ${card.detail} ${card.triggerLabel}.`;
   }
 
   toggleChapterGroup(groupId: number) {

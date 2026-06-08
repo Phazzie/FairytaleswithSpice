@@ -3704,3 +3704,63 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then consider editable accepted memory-card records as the next Story Memory step.
+
+### 2026-06-08 Accepted Memory Cards Shelf
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the accepted memory cards shelf commit.
+
+User request:
+
+- Continue the Story Memory work beyond pinned draft rows toward practical memory cards.
+
+Plan and critique:
+
+- Plan: add one accepted-card shelf behavior first: accept a draft, show it as accepted, save it with the browser-local project, and restore it on reload.
+- Hostile critique applied: keep this local and route-free, do not claim editing yet, do not add cloud schema, and keep continuation influence in the visible brief path.
+
+Work completed:
+
+- Added `StoryMemoryCard` and optional `acceptedMemoryCards` to the saved project contract.
+- Added an `Accept` action for Memory Card Drafts.
+- Accepted cards render in a compact `Accepted Memory Cards` shelf under Story Memory.
+- Accepted cards save with browser-local projects and restore after reset/load.
+- Accepted cards are included in continuation briefs through the same compact memory-card composer as pinned drafts.
+- New story/reset clears accepted cards so memory cards do not leak between stories.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/contracts.ts`
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because `accept-memory-card-draft` did not exist and no `Accepted Memory Cards` shelf restored after save/load.
+- GREEN: same Angular browser command -> `TOTAL: 60 SUCCESS`; ChromeHeadless cleanup emitted the known SIGKILL warning after the result.
+- `git diff --check` -> passed.
+- First `npm run build` -> failed because `src/app/app.css` exceeded the hard 15 KB budget by 4 bytes.
+- CSS budget fix: reused the existing `memory-card-drafts` class for the accepted shelf instead of adding duplicate accepted-shelf selectors.
+- Second `npm run build` -> passed. Existing warnings remained: initial bundle `553.64 kB` over the 500 kB warning budget and `app.css` `14.96 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Accepted cards are not editable yet.
+- Accepted cards are saved in project JSON, not a separate durable cloud memory table.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then add editing for accepted memory cards or run a small story-output comparison.

@@ -203,6 +203,15 @@ export interface StoryIterationPayload {
   telemetry: GenerationTelemetry;
 }
 
+export interface StoryMemoryCard {
+  id: string;
+  label: string;
+  title: string;
+  detail: string;
+  triggerLabel: string;
+  acceptedAt: string;
+}
+
 export interface SavedStoryProject {
   id: string;
   storyId: string;
@@ -215,6 +224,7 @@ export interface SavedStoryProject {
   telemetry?: GenerationTelemetry;
   continuityExtraction?: ContinuityExtractionReceipt;
   pinnedMemoryCardDraftIds?: string[];
+  acceptedMemoryCards?: StoryMemoryCard[];
   createdAt: string;
   updatedAt: string;
 }

@@ -678,12 +678,32 @@
               <button
                 type="button"
                 class="ghost compact memory-card-pin"
+                data-testid="accept-memory-card-draft"
+                (click)="acceptMemoryCardDraft(draft.id)"
+                [disabled]="draft.accepted"
+              >
+                {{ draft.accepted ? 'Accepted' : 'Accept' }}
+              </button>
+              <button
+                type="button"
+                class="ghost compact memory-card-pin"
                 data-testid="pin-memory-card-draft"
                 (click)="pinMemoryCardDraft(draft.id)"
                 [disabled]="draft.pinned"
               >
                 {{ draft.pinned ? 'Pinned' : 'Pin' }}
               </button>
+            </li>
+          </ul>
+        </div>
+        <div class="memory-card-drafts accepted-memory-cards" data-testid="accepted-memory-cards-panel" *ngIf="acceptedMemoryCards().length">
+          <p class="eyebrow">Accepted Memory Cards</p>
+          <ul>
+            <li *ngFor="let card of acceptedMemoryCards(); trackBy: trackAcceptedMemoryCard">
+              <span class="eyebrow">{{ card.label }}</span>
+              <strong>{{ card.title }}</strong>
+              <span class="muted">{{ card.detail }}</span>
+              <span class="muted continuity-source">{{ card.triggerLabel }}</span>
             </li>
           </ul>
         </div>

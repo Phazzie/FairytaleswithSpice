@@ -42,6 +42,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Memory Card Drafts can now be pinned; pinned draft IDs save with browser-local projects and restore when the project reloads.
   - Multi-word memory card draft triggers now include a short alias, such as `Trigger: Moonlit oath, oath`, so a future trigger system has both exact and compact match text.
   - Pinned Memory Card Drafts now append compact `Pinned Memory Cards` prose anchors to UI-driven continuation requests, so pinned cards affect the next chapter without adding a backend route or claiming durable cloud memory.
+  - Drafts can now be accepted into a local `Accepted Memory Cards` shelf; accepted cards save with browser-local projects, restore on reload, and use the same visible continuation brief path.
   - The preview uses current `StoryStateSnapshot` data already present on the client, so it adds no route and does not spend the remaining Vercel function slot.
   - Angular spec coverage proves `Pressure rising`, `Relationship pressure`, `World clue`, and `Continuity note` render from seeded story state.
   - Follow-up CSS cleanup reduced the built component CSS budget warning from 14.95 KB to 14.60 KB after the preview landed.
