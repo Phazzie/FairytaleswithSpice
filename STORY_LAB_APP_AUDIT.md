@@ -76,6 +76,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Cliche Alarm slice evidence:
   - Real Story Lab continuations now add a compact hidden stale-path warning before the continuation provider call.
   - The anchor names one obvious stale path to avoid and ties freshness to a concrete unresolved thread or artifact.
+  - The same compact block now includes a `Subtext receipt` line that asks the model to prove the selected relationship or story pressure by behavior before explanation.
   - The tested debt/payment continuation avoids a formal-demand scene with no personal cost and ties freshness to `Forbidden Love`.
   - `tests/story-lab-real-engine.test.ts` captures the continuation service input and proves the cliche alarm reaches the real-engine seam.
 - Hidden-anchor compactness guard evidence:
@@ -84,6 +85,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Hidden-anchor prose-label eval evidence:
   - `tests/story-quality-evals.test.ts` now fails if hidden continuation guidance exposes mechanical labels such as `Escalating thread`, `Open thread`, `Unresolved artifact`, or `Warning to honor`.
   - The same eval now fails if the Cliche Alarm tells the model to avoid `generic conflict`; the stale-path guidance instead asks for freshness through a concrete target with visible cost.
+  - The eval now also fails if the behavior-first `Subtext receipt` line is missing or becomes a separate fourth hidden block.
   - The eval also fails if world clues keep the generic `World Details` name; seeded world artifacts now derive compact names such as `Witness Shells` or `Vow-Binding Songs` from the world-detail text.
   - The eval now fails if a continuation brief asks for a compacted-out thread such as `Blood Oath` and the `Continuity Courtroom` anchor does not prioritize that brief-matched memory.
   - The eval now also fails if a continuation brief asks for a compacted-out unresolved artifact such as `Glass Key` and the `Continuity Courtroom` anchor does not prioritize that brief-matched world clue.

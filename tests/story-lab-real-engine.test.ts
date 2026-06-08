@@ -509,8 +509,13 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(capturedInput?.userInput?.includes('Scene pressure mix: Secret + Setting;'), 'scene pressure mixer should reuse the ending anchor');
     assert(capturedInput?.userInput?.includes('leave one sharper'), 'ending stress test should preserve serialized momentum');
     assert(capturedInput?.userInput?.includes('Cliche Alarm:'), 'service input should include the cliche alarm anchor');
-    assert(capturedInput?.userInput?.includes('Obvious stale path to avoid: a formal demand with no personal cost or surprising consequence.'), 'debt/payment continuation should avoid the obvious formal-demand scene');
-    assert(capturedInput?.userInput?.includes('Freshness rule: turn the scene through Forbidden Love'), 'cliche alarm should tie freshness to a concrete unresolved story thread');
+    assert(capturedInput?.userInput?.includes('Avoid: formal demand with no personal cost.'), 'debt/payment continuation should avoid the obvious formal-demand scene');
+    assert(capturedInput?.userInput?.includes('Freshness: turn Forbidden Love'), 'cliche alarm should tie freshness to a concrete unresolved story thread');
+    assert(!capturedInput?.userInput?.includes('Subtext Receipt:'), 'subtext receipt should not add a fourth hidden anchor block');
+    assert(
+      capturedInput?.userInput?.includes('Subtext receipt: prove Mira and Lord Brine by behavior before explanation.'),
+      'subtext receipt should reach the real continuation seam as behavior-first guidance'
+    );
     assert((capturedInput?.userInput?.length ?? 0) <= 900, 'hidden continuation anchors should stay under the compactness budget');
   });
 

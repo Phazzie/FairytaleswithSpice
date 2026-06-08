@@ -4525,3 +4525,64 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with a route-safe story-output experiment or the next local auth/cloud readiness improvement.
+
+### 2026-06-08 16:48 EDT Subtext Receipt Guidance
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- `Add subtext receipt continuation guidance` (same commit as this handoff entry)
+
+User request:
+
+- Keep working autonomously and include weird, bounded story-output experiments rather than only repair/cleanup.
+
+Plan and critique:
+
+- Plan: add a compact behavior-first `Subtext receipt` line to continuation guidance so emotional change has to show through action before explanation.
+- Hostile critique applied: do not add a fourth hidden anchor block, do not add UI/routes/provider calls, and do not blow past the 900-character compactness budget. Reuse `Cliche Alarm` and compress that block's wording to make room.
+
+Work completed:
+
+- Added `Subtext receipt` inside the existing `Cliche Alarm` hidden guidance.
+- Relationship pressure is the preferred subtext target; unresolved story pressure remains the fallback.
+- Compressed stale-path and freshness wording so the extra behavior-first line still fits under the existing compactness guard.
+- Added story-quality eval coverage that fails if the subtext line is missing or becomes a new `Subtext Receipt:` anchor.
+- Added real-engine seam coverage proving the line reaches `StoryService.continueChapter` while the composed continuation input stays under 900 characters.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-quality` -> failed because the behavior-first `Subtext receipt` line was missing.
+- First GREEN attempt exposed a compactness regression: `npm run test:story-lab-real-engine` failed because the composed hidden anchors exceeded 900 characters.
+- GREEN after compression: `npm run test:story-quality && npm run test:story-lab-real-engine` -> passed.
+- `git diff --check` -> passed.
+- `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url` -> no open PRs.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `npm run build` -> passed; initial browser total is `485.18 kB`, Proving Grounds remains lazy, and no budget warnings were emitted.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Known issues:
+
+- This changes prompt guidance only; it does not prove live Grok prose improved without provider credentials.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- Live cloud sync still requires real auth, database configuration, schema application, and browser sign-in.
+- Jobs still default to `non_durable_memory` in the live product path.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with another compact story-output experiment only if it can reuse existing anchors, otherwise switch back to a local auth/cloud readiness improvement.

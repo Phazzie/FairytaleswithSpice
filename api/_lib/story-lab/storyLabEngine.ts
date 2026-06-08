@@ -875,26 +875,27 @@ function buildContinuationPressureSource(storyState: StoryStateSnapshot, continu
 function buildClicheAlarmBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
   return [
     'Cliche Alarm:',
-    `- Obvious stale path to avoid: ${chooseClicheAlarmPath(storyState, continuationBrief)}`,
-    `- Freshness rule: turn the scene through ${chooseFreshnessTarget(storyState)} with a visible cost.`
+    `- Avoid: ${chooseClicheAlarmPath(storyState, continuationBrief)}`,
+    `- Freshness: turn ${chooseFreshnessTarget(storyState)} with visible cost.`,
+    `- Subtext receipt: prove ${chooseSubtextReceiptTarget(storyState, continuationBrief)} by behavior before explanation.`
   ].join('\n');
 }
 
 function chooseClicheAlarmPath(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
   const source = buildContinuationPressureSource(storyState, continuationBrief);
   if (containsAny(source, ['debt', 'payment', 'price', 'bargain', 'vow', 'court', 'demand'])) {
-    return 'a formal demand with no personal cost or surprising consequence.';
+    return 'formal demand with no personal cost.';
   }
 
   if (containsAny(source, ['love', 'kiss', 'desire', 'choose', 'confess', 'heart', 'want'])) {
-    return 'a confession that says exactly what both characters already know.';
+    return 'confession of what they already know.';
   }
 
   if (containsAny(source, ['danger', 'attack', 'threat', 'trap', 'hunt', 'deadline', 'force', 'blood'])) {
-    return 'a sudden threat that interrupts the scene without changing a relationship.';
+    return 'threat that changes no relationship.';
   }
 
-  return 'a familiar beat that repeats the last chapter without changing the cost.';
+  return 'repeat of the last chapter without new cost.';
 }
 
 function chooseFreshnessTarget(storyState: StoryStateSnapshot): string {
@@ -911,6 +912,15 @@ function chooseFreshnessTarget(storyState: StoryStateSnapshot): string {
   }
 
   return 'the most recent unresolved choice';
+}
+
+function chooseSubtextReceiptTarget(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  const relationshipPressure = selectRelationshipPressure(storyState, continuationBrief);
+  if (relationshipPressure) {
+    return `${compactPromptLine(relationshipPressure.sourceCharacter.displayName)} and ${compactPromptLine(relationshipPressure.targetCharacter.displayName)}`;
+  }
+
+  return chooseFreshnessTarget(storyState);
 }
 
 function buildStoryLabPayloadFromContinuation(

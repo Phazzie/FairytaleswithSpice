@@ -569,8 +569,31 @@ Status:
 - Done in overnight slice on 2026-06-08.
 - Real Story Lab continuations now append a hidden `Cliche Alarm` anchor alongside the continuity and ending-pressure anchors.
 - The anchor names one concrete stale path to avoid and one freshness rule tied to an unresolved story thread or artifact.
+- The anchor now also carries a compact `Subtext receipt` line: prove the selected relationship or story pressure by behavior before explanation.
 - The tested debt/payment continuation avoids the obvious formal-demand scene and ties freshness to `Forbidden Love`.
 - Verified by `tests/story-lab-real-engine.test.ts`, which captures the continuation service input and proves the cliche alarm reaches the real-engine seam.
+
+### Done: Subtext Receipt
+
+Origin:
+
+- The user liked the "say less, mean more" tension-thread pattern where story state becomes behavioral prose instead of abstract labels.
+
+Hypothesis:
+
+- Continuations will feel less explainy if the hidden guidance asks the model to show one behavioral proof before explanation.
+
+Smallest experiment:
+
+- Reuse the existing `Cliche Alarm` hidden block and add one compact behavior-first line.
+- Prefer the currently selected relationship pressure target; fall back to the same unresolved story target used by freshness.
+
+Status:
+
+- Done in overnight slice on 2026-06-08.
+- The line stays inside `Cliche Alarm`, so no fourth hidden anchor block is added.
+- `tests/story-quality-evals.test.ts` fails if the line is missing or becomes a new `Subtext Receipt:` block.
+- `tests/story-lab-real-engine.test.ts` proves the line reaches the real continuation seam while the composed continuation brief stays under the 900-character compactness budget.
 
 ### Done: Scene Pressure Mixer
 

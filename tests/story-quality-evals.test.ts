@@ -469,8 +469,13 @@ async function main(): Promise<void> {
   assert(hiddenGuidance.includes('Chapter Ending Stress Test:'), 'continuation guidance should include ending pressure.');
   assert(hiddenGuidance.includes('Cliche Alarm:'), 'continuation guidance should include stale-path avoidance.');
   assert(!hiddenGuidance.includes('Scene Pressure Mixer:'), 'scene pressure should reuse an existing anchor instead of adding a fourth hidden block.');
+  assert(!hiddenGuidance.includes('Subtext Receipt:'), 'subtext receipt should stay inside an existing hidden block.');
   assert(hiddenGuidance.includes('Scene pressure mix: Secret + Setting;'), 'continuation guidance should add a compact pressure mix inside the ending anchor.');
   assert(!hiddenGuidance.includes('Scene pressure mix: Secret + Setting.'), 'scene pressure should include a concrete seeded variant, not just labels.');
+  assert(
+    hiddenGuidance.includes('Subtext receipt: prove Mira and Lord Brine by behavior before explanation.'),
+    'continuation guidance should force emotional change to show through behavior before explanation.'
+  );
   assert(!hiddenGuidance.includes('Escalating thread:'), 'continuation guidance should not expose mechanical thread labels.');
   assert(!hiddenGuidance.includes('Open thread:'), 'continuation guidance should not expose mechanical thread labels.');
   assert(!hiddenGuidance.includes('Unresolved artifact:'), 'continuation guidance should not expose mechanical artifact labels.');
