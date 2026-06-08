@@ -45,6 +45,7 @@ interface GeneratedChaptersResult {
 }
 
 const EXTRA_BATCH_CHAPTER_TIMEOUT_MS = 9000;
+const MOCK_CONTINUATION_TARGET_BODY_WORDS = 450;
 
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
@@ -1670,22 +1671,38 @@ ${renderBody()}`;
 
   private generateMockChapter(input: ChapterContinuationSeam['input'], chapterNumber?: number): string {
     const nextNumber = chapterNumber ?? input.currentChapterCount + 1;
+    const paragraphs = [
+      `The morning light pierced through heavy velvet curtains, but Arabella felt no warmth from its golden rays. Instead, a strange energy coursed through her veins, awakening senses she never knew existed.`,
+      `Every sound was amplified - the distant clip-clop of carriage horses, the rustle of leaves in the garden, even the steady beat of her own heart. And beneath it all, a hunger that gnawed at her very soul.`,
+      `Her reflection in the mirror showed a woman transformed. Her skin glowed with an otherworldly luminescence, her eyes held a predatory gleam. The creature had given her a gift... or was it a curse?`,
+      `As night fell once more, she waited impatiently for his return. The hours stretched like taffy, each minute an eternity of anticipation. When he finally appeared at her balcony, silent as a shadow, Arabella knew there was no turning back.`,
+      `Their second encounter was even more intense than the first. His hands explored her body with a possessiveness that made her arch and cry out. The passion burned hotter, threatening to consume them both.`,
+      `But in the aftermath, as they lay entwined in sweat-dampened sheets, Arabella began to question the true cost of her transformation. What price would she pay for eternal passion?`
+    ];
+    const expansionBeats = [
+      `The answer did not arrive as a grand prophecy. It came as a practical problem: a servant waiting outside the door with breakfast she could no longer stomach, a visiting aunt asking why the curtains stayed drawn, and a letter sealed in black wax on the breakfast tray.`,
+      `Arabella broke the seal with fingers that still remembered his touch. The note named three debts: the ring she had accepted, the rival she had humiliated, and the family name she had placed between herself and the creature who now owned half her future.`,
+      `She tried to rehearse a lie for the household, but every version sounded like a child covering a broken vase. The truth was worse and steadier. She had chosen this, and choice made a stronger cage than force ever could.`,
+      `When dusk returned, he found her in the library with ledgers spread across the floor. She had traced the estate's debts to a lender who used no human bank. The supernatural world had not seduced her away from danger; it had merely given danger better handwriting.`,
+      `He reached for the papers, and she stopped him with one hand on his wrist. The gesture startled them both. Last night she had been prey, guest, lover, and fool by turns. Tonight she needed to become someone whose questions could not be dismissed.`,
+      `The chapter turned when she named the cost out loud. If he wanted her beside him, he would answer like a partner, not a prince visiting a distraction. The silence after that sentence felt sharper than any kiss they had shared.`,
+      `Outside, the first carriage rolled through the fog. Someone had come early, and whoever waited below carried enough authority to make every servant in the house fall quiet. Arabella looked at him and understood the next choice would have witnesses.`,
+      `He offered her one escape. She refused it before he finished speaking, because escape had started to sound too much like being managed. Instead she took the black-wax letter, folded it into her bodice, and walked toward the stairs.`
+    ];
+
+    const renderBody = () => [
+      ...paragraphs.map(paragraph => `<p>${paragraph}</p>`),
+      '<p><em>This is a mock chapter generated without AI.</em></p>'
+    ].join('\n\n');
+    let beatIndex = 0;
+    while (this.countWords(renderBody()) < MOCK_CONTINUATION_TARGET_BODY_WORDS) {
+      paragraphs.push(expansionBeats[beatIndex % expansionBeats.length]);
+      beatIndex += 1;
+    }
 
     return `<h3>Chapter ${nextNumber}: The Deeper Shadows</h3>
 
-<p>The morning light pierced through heavy velvet curtains, but Arabella felt no warmth from its golden rays. Instead, a strange energy coursed through her veins, awakening senses she never knew existed.</p>
-
-<p>Every sound was amplified - the distant clip-clop of carriage horses, the rustle of leaves in the garden, even the steady beat of her own heart. And beneath it all, a hunger that gnawed at her very soul.</p>
-
-<p>Her reflection in the mirror showed a woman transformed. Her skin glowed with an otherworldly luminescence, her eyes held a predatory gleam. The creature had given her a gift... or was it a curse?</p>
-
-<p>As night fell once more, she waited impatiently for his return. The hours stretched like taffy, each minute an eternity of anticipation. When he finally appeared at her balcony, silent as a shadow, Arabella knew there was no turning back.</p>
-
-<p>Their second encounter was even more intense than the first. His hands explored her body with a possessiveness that made her arch and cry out. The passion burned hotter, threatening to consume them both.</p>
-
-<p>But in the aftermath, as they lay entwined in sweat-dampened sheets, Arabella began to question the true cost of her transformation. What price would she pay for eternal passion?</p>
-
-<p><em>This is a mock chapter generated without AI.</em></p>`;
+${renderBody()}`;
   }
 
   private getCreatureDisplayName(creature: string): string {

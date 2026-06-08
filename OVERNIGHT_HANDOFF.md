@@ -862,3 +862,58 @@ Known issues:
 Next recommended task:
 
 - If continuing without external credentials, either test the continuation mock-length policy or run the next bounded idea-board experiment, `Scene Pressure Mixer`. If provider/database details become available, return to the auth/storage adapter path.
+
+### 2026-06-08 09:25 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the continuation mock-length commit.
+
+User request:
+
+- Keep working autonomously and address useful no-credentials story-output issues.
+
+Work completed:
+
+- Added a real continuation mock-length contract to `tests/story-service-improved.test.ts`.
+- The multi-chapter continuation test now fails if any mock continuation chapter falls outside the live continuation prompt's 400-600 word target.
+- Scaled `StoryService.generateMockChapter` with deterministic expansion beats until mock continuation chapters reach the default continuation target.
+- Focused validation showed the single continuation chapter and each multi-chapter continuation chapter now generate 477 words instead of 214.
+- Updated `STORY_LAB_APP_AUDIT.md` and `STORY_LAB_IDEA_BOARD.md` to remove the stale "fixed-size placeholder" caveat.
+
+Files changed:
+
+- `api/_lib/services/storyService.ts`
+- `tests/story-service-improved.test.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-service-improved.test.ts` failed because mock continuation chapter 2 was 214 words, below the 400-600 target.
+- GREEN: `npx tsx tests/story-service-improved.test.ts` -> passed; continuation chapters generated 477 words each.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+- User-configurable continuation word-budget implementation; the current seam has no explicit continuation word-count field, so this slice uses the live prompt's 400-600 default.
+
+Known issues:
+
+- Continuation length is still not user-configurable.
+- Three hidden continuation anchors now compose through `userInput`; live provider comparison should watch for over-instruction.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without external credentials, run the next bounded story-output experiment, `Scene Pressure Mixer`, or start a story-quality eval that compares continuation output with and without hidden anchors. If provider/database details become available, return to the auth/storage adapter path.

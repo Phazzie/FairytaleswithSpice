@@ -158,17 +158,19 @@ Required before live-story claims:
 - Prove telemetry says Grok/live provider, not mock.
 - Record the exact command, env requirements, and pass/fail result in a handoff or deployment proof doc.
 
-### P1: Continuation Mock Length Has No Explicit Budget
+### Resolved: Continuation Mock Length Uses The Live Prompt Default
 
-The classic genesis mock path now scales to requested word count for both single-story and multi-chapter generation. Continuation mock chapters still use fixed placeholder lengths because `ChapterContinuationSeam['input']` does not carry an explicit word budget.
+The classic genesis mock path now scales to requested word count for both single-story and multi-chapter generation. Continuation mock chapters now scale to the live continuation prompt's default 400-600 word target.
 
-This matters because continuation tests are currently flow evidence, not proof of continuation length or quality.
+Current proof:
 
-Possible fixes:
+- `tests/story-service-improved.test.ts` fails if mock continuation chapters fall outside 400-600 words.
+- Focused validation showed mock continuation chapters at 477 words each.
+- This is still a default-length contract. `ChapterContinuationSeam['input']` does not carry a user-configurable continuation word budget.
 
-- Add an explicit continuation word-budget field and scale continuation mock output behind tests.
-- Or explicitly label continuation mock tests as flow smoke, not quality/length proof.
-- Add a story-quality eval that records length variance by generation path as a first-class score.
+Remaining future option:
+
+- Add an explicit continuation word-budget field if the product needs continuation length controls beyond the live prompt's 400-600 word default.
 
 ### P1: Vercel Function Budget Is Tight
 

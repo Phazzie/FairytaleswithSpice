@@ -434,6 +434,11 @@ const testSuite = {
       expect(continuation.appendedToStory).toContain('Chapter 3');
       expect(continuation.totalWordCount).toBeGreaterThan(0);
       expect(continuation.cliffhangerAnalysis).toBeDefined();
+      for (const chapter of continuation.chapters!) {
+        if (chapter.wordCount < 400 || chapter.wordCount > 600) {
+          throw new Error(`Mock continuation chapter ${chapter.chapterNumber} word count ${chapter.wordCount} should stay within the 400-600 prompt target`);
+        }
+      }
 
       console.log(`   ✓ Continued chapters: ${continuation.chapters!.map(chapter => chapter.chapterNumber).join(', ')}`);
       console.log(`   ✓ Appended story word count: ${continuation.totalWordCount}`);

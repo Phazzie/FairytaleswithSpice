@@ -74,7 +74,8 @@ Status:
 - Done in overnight slices on 2026-06-08.
 - Classic single-story mock generation now scales to 700, 900, and 1200 word requests within the existing 30% tolerance.
 - Multi-chapter mock genesis now scales by per-chapter target and fails if the total falls outside tolerance.
-- Remaining caveat: continuation mock chapters still have no explicit word-budget contract and are treated as flow placeholders.
+- Mock continuation chapters now scale to the live continuation prompt's 400-600 word default, with tests failing outside that range.
+- Remaining caveat: continuation has no user-configurable word-budget field; it only has the default continuation prompt target.
 
 ### Soon: Live Provider Proof
 
