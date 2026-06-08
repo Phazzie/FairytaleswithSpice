@@ -1,10 +1,13 @@
 # Story Lab Storage Port ExecPlan
 
 Created: 2026-06-05 03:48 EDT
+Reconciled: 2026-06-08
 
 ## Purpose / Big Picture
 
 Implement Phase C from `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md`: a Story Lab storage port and local/test adapters without provisioning a database, adding deployable routes, or claiming cloud persistence.
+
+Current state as of 2026-06-08: this route-free storage-port scaffold is merged into `main` through PR #102 (`4d21e4f`). The remaining platform work is not this Phase C scaffold; it is the later auth/provider/profile/cloud-library work that turns the scaffold into a signed-in user feature.
 
 The user-visible outcome is not account sync yet. The observable technical outcome is that the app has a typed owner-scoped persistence boundary ready for future account sync:
 
@@ -15,7 +18,7 @@ The user-visible outcome is not account sync yet. The observable technical outco
 - the in-memory store is explicitly non-durable;
 - the Postgres adapter is a dependency-injected scaffold that lazy-reads configuration and fails closed until a real executor/migration is provided.
 
-This plan is intentionally route-free. The Vercel function-count guard is already `12/12`; Phase C must not add `api/story-lab/storage*` or job/export routes.
+This plan is intentionally route-free. At the time Phase C was written, the Vercel function-count guard was `12/12`; route-budget work later reduced the current count to `10/12`. Phase C still must not add `api/story-lab/storage*` routes or claim cloud sync.
 
 ## Progress
 
@@ -33,7 +36,9 @@ This plan is intentionally route-free. The Vercel function-count guard is alread
 - [x] Update platform plan, changelog, and lessons with focused storage evidence.
 - [x] Address Gemini review comments for missing metadata and corrupt stored JSON handling.
 - [x] Run focused validation and recovery preflight.
-- [ ] Push, open PR, address review/checks, and merge the PR.
+- [x] Push, open PR, address review/checks, and merge the PR.
+- [x] Reconcile this plan on 2026-06-08 against current `main`, PR #102 merge evidence, current route count, and focused storage/auth tests.
+- [ ] Create the next auth/profile/cloud-library implementation plan before wiring this storage port into user-visible cloud sync.
 
 ## Surprises & Discoveries
 
@@ -55,11 +60,11 @@ This plan is intentionally route-free. The Vercel function-count guard is alread
 - Decision: The Postgres adapter lazy-reads `DATABASE_URL` only when an operation is called.
   Rationale: Module import must be safe in tests, preflight, and Vercel builds where no cloud database exists.
 - Decision: No route files are added.
-  Rationale: Function count is `12/12`; route consolidation is required before Phase D job routes or cloud-sync endpoints.
+  Rationale: Phase C is a backend seam only. The route budget was `12/12` when this work started, and even after later consolidation brought the current count to `10/12`, cloud-sync endpoints still need an auth/provider/storage plan first.
 
 ## Outcomes & Retrospective
 
-Current implementation state as of 2026-06-07 05:20 EDT:
+Current implementation state as of 2026-06-08:
 
 - Files changed for this slice:
   - `AGENTS.md`: points agents at this active storage-port plan.
@@ -77,13 +82,22 @@ Current implementation state as of 2026-06-07 05:20 EDT:
   - `npm run test:story-lab-state` -> `Story-lab state delta tests passed`;
   - `scripts/recovery/check-vercel-function-count.sh` -> `Vercel function count check: 12/12`;
   - `scripts/recovery/preflight.sh --quick --skip-status` -> `Preflight completed`.
-- Push, PR checks, review follow-up, and merge are still pending.
+- PR #102 was merged into `main` with merge commit `4d21e4f`.
+- Current revalidation on `main` passed:
+  - `npx tsx tests/story-lab-storage-port.test.ts` -> `Story Lab storage port tests passed`;
+  - `npx tsx tests/story-lab-auth.test.ts` -> `Story Lab auth and authorization tests passed`;
+  - `npm run test:story-lab-state` -> `Story-lab state delta tests passed`;
+  - `scripts/recovery/check-vercel-function-count.sh` -> `Vercel function count check: 10/12`.
+- This plan is complete for Phase C storage-port scaffolding only.
+- Still not implemented: auth provider integration, user profiles, cloud project library UI, durable database provisioning/migrations, storage routes, owner-scoped cloud save/load/list/delete endpoints, and signed-in account sync.
 
 ## Context and Orientation
 
 Repository root: this checkout. Run commands from the repository root.
 
-Active branch for this plan: `feature/story-lab-storage-port`.
+Active branch for the original implementation: `feature/story-lab-storage-port`.
+
+Current branch during 2026-06-08 reconciliation: `main`.
 
 Important files:
 
@@ -93,7 +107,7 @@ Important files:
 - `api/_lib/story-lab/auth/authPort.ts`: `AuthUser` and deny-by-default auth port.
 - `api/_lib/story-lab/auth/authorizeProjectAccess.ts`: owner authorization helper.
 - `api/_lib/story-lab/stateStore.ts`: transient continuity state. Do not confuse it with durable account storage.
-- `scripts/recovery/check-vercel-function-count.sh`: route guard; must stay `12/12`.
+- `scripts/recovery/check-vercel-function-count.sh`: route guard; current observed count is `10/12`.
 
 Unrelated untracked files to leave alone:
 
@@ -183,6 +197,7 @@ Keep frontend storage unchanged. Phase C only prepares the backend storage port;
 12. Update `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md`, `PR70_RECOVERY_CHANGELOG.md`, and `LESSONS_LEARNED.md`.
 13. Validate.
 14. Commit, push, create PR, address checks/review, and merge.
+15. For any future cloud-sync work, stop using this Phase C plan as implementation permission and create a new auth/profile/cloud-library plan.
 
 ## Validation and Acceptance
 
@@ -198,7 +213,7 @@ Run from the repository root:
 Expected results:
 
 - all commands pass;
-- function count remains `12/12`;
+- function count remains within the Vercel limit;
 - importing the Postgres adapter without `DATABASE_URL` passes;
 - in-memory store save/load/list/delete is owner-scoped;
 - cross-owner load/delete returns forbidden/not accessible behavior and does not leak private story text;
@@ -220,6 +235,11 @@ PR #100 was merged before this plan started:
 
 - PR: `https://github.com/Phazzie/FairytaleswithSpice/pull/100`
 - Merge commit: `e4add59eb4dfaf128effe6fb0547fc4f27308566`
+
+PR #102 merged this Phase C storage-port scaffold:
+
+- PR: `https://github.com/Phazzie/FairytaleswithSpice/pull/102`
+- Merge commit: `4d21e4f`
 
 Phase C must remain smaller than account sync:
 

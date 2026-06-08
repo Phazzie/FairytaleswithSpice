@@ -94,3 +94,52 @@ Known issues:
 
 Next recommended task:
 ```
+
+### 2026-06-08 07:01 EDT
+
+Branch:
+
+- `main`
+
+Commit:
+
+- Pending; this slice is not committed yet.
+
+User request:
+
+- Begin overnight work after building the audit and overnight-mode docs.
+
+Work completed:
+
+- Reconciled `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` against current `main`.
+- Marked the storage-port PR/review/merge step complete based on PR #102 / merge commit `4d21e4f`.
+- Updated the plan so it no longer reads like cloud account sync is part of the completed Phase C scaffold.
+- Recorded that current route count is `10/12`, while the old `12/12` references are historical.
+- Added the next required work: create an auth/profile/cloud-library implementation plan before wiring storage into user-visible cloud sync.
+
+Files changed:
+
+- `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- `gh pr list --state open --json number,title,headRefName,baseRefName,url` -> no open PRs.
+- `scripts/recovery/check-vercel-function-count.sh` -> `10/12`, within limit.
+- `npx tsx tests/story-lab-storage-port.test.ts` -> passed.
+- `npx tsx tests/story-lab-auth.test.ts` -> passed.
+- `npm run test:story-lab-state` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Full `npm run test:all`; this was a docs/plan reconciliation slice and focused storage/auth/state checks covered the touched plan claims.
+
+Known issues:
+
+- Auth provider integration, user profiles, cloud project library UI, durable database provisioning, storage routes, and signed-in cloud sync remain unimplemented.
+- Existing untracked files still need triage: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Create a concrete auth/profile/cloud-library implementation plan, or triage the three untracked files if staying purely local.
