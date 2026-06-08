@@ -395,6 +395,12 @@ const testSuite = {
       expect(story.appendedToStory).toContain('Chapter 3');
       expect(story.failedChapters).toBeUndefined();
 
+      const minWords = input.wordCount * 0.7;
+      const maxWords = input.wordCount * 1.3;
+      if (story.totalWordCount < minWords || story.totalWordCount > maxWords) {
+        throw new Error(`Multi-chapter mock total ${story.totalWordCount} should be within 30% of ${input.wordCount}`);
+      }
+
       console.log(`   ✓ Generated chapters: ${story.chapters!.map(chapter => chapter.chapterNumber).join(', ')}`);
       console.log(`   ✓ Total word count: ${story.totalWordCount}`);
     });

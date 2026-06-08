@@ -639,3 +639,56 @@ Known issues:
 Next recommended task:
 
 - If continuing without external credentials, add an explicit multi-chapter mock-length policy or a story-quality eval that separates flow smoke from length/quality evidence. If credentials/provider decisions become available, switch back to the auth/database adapter path.
+
+### 2026-06-08 09:04 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the multi-chapter mock length commit.
+
+User request:
+
+- Keep working autonomously and continue the no-credentials story-quality track after the single-story mock length fix.
+
+Work completed:
+
+- Added a failing multi-chapter mock genesis length assertion to `tests/story-service-improved.test.ts`.
+- Passed per-chapter target word counts into mock initial-chapter generation.
+- Scaled mock initial chapters with deterministic fallback beats so a three-chapter 900-word mock genesis lands inside the same 30% tolerance as single-story generation.
+- Kept live Grok/provider behavior untouched.
+- Updated the audit to move the remaining length caveat to continuation mocks, which do not currently have an explicit word-budget contract.
+
+Files changed:
+
+- `api/_lib/services/storyService.ts`
+- `tests/story-service-improved.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-service-improved.test.ts` failed on `Multi-Chapter Story Generation Batch` because 900 requested words produced 381 total words.
+- GREEN: `npx tsx tests/story-service-improved.test.ts` -> passed; three 900-word mock genesis chapters produced 828 total words.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+- `npm run test:all` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+- Continuation mock length enforcement; continuation inputs do not currently carry an explicit word budget.
+
+Known issues:
+
+- Continuation mock chapters remain fixed-size flow placeholders.
+- The cloud/auth/storage known issues from the previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without credentials, either add a continuation word-budget contract behind tests or move to a different small story-output experiment from the idea board. If provider/database details become available, return to the auth/storage adapter path.

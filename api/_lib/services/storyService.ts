@@ -652,6 +652,10 @@ export class StoryService {
     tropeSelection?: TropeSelection,
     chapterOptions?: ChapterGenerationOptions
   ): Promise<GeneratedTextResult> {
+    const targetWordCount = chapterOptions
+      ? Math.max(200, Math.ceil(input.wordCount / Math.max(1, chapterOptions.totalChapters)))
+      : input.wordCount;
+
     if (!this.xaiClient.hasApiKey()) {
       if (this.isProductionRuntime()) {
         throw this.missingProviderError();
@@ -661,14 +665,11 @@ export class StoryService {
       // Fallback to mock generation if no API key
       return {
         content: chapterOptions
-          ? this.generateMockInitialChapter(input, chapterOptions.chapterNumber)
+          ? this.generateMockInitialChapter(input, chapterOptions.chapterNumber, targetWordCount)
           : this.generateMockStory(input, tropeSelection)
       };
     }
 
-    const targetWordCount = chapterOptions
-      ? Math.max(200, Math.ceil(input.wordCount / Math.max(1, chapterOptions.totalChapters)))
-      : input.wordCount;
     const systemPrompt = this.buildSystemPrompt(input, tropeSelection, chapterOptions);
     const userPrompt = chapterOptions
       ? this.buildChapterUserPrompt(input, chapterOptions)
@@ -1636,21 +1637,35 @@ ${renderBody()}
 <p><em>This is a mock story generated without AI. Add XAI_API_KEY to use real AI generation.</em></p>`;
   }
 
-  private generateMockInitialChapter(input: StoryGenerationSeam['input'], chapterNumber: number): string {
+  private generateMockInitialChapter(input: StoryGenerationSeam['input'], chapterNumber: number, targetWordCount: number): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const baseTitle = chapterNumber === 1
       ? `The ${creatureName}'s Forbidden Passion`
       : `Secrets of the ${creatureName} - Part ${chapterNumber}`;
+    const targetBodyWords = Math.max(160, Math.floor(targetWordCount * 0.9));
+    const paragraphs = [
+      `[Narrator]: Moonlight dripped across the manor's stone balustrades as whispers of destiny curled around our lovers. The ${creatureName.toLowerCase()} aristocrat studied their prey with patient hunger, weighing desire against the oaths that bound their bloodline.`,
+      `[Narrator]: Each chapter in this mock sequence leans into danger, seduction, and supernatural stakes. Expect clandestine meetings beneath stained glass, confessions that scorch the night air, and the steady escalation of ${creatureName.toLowerCase()} power games.`,
+      `[Narrator]: This placeholder chapter lets the application exercise multi-chapter flows without live Grok calls. In production the AI will weave bespoke intrigue, but here we provide atmospheric beats and a tidy cliffhanger.`,
+      `[Narrator]: Just before dawn, a coded message slips beneath the chamber door promising either salvation or ruin. Our heroes must decide whether to follow it, setting up the next chapter's peril.`
+    ];
+    const expansionBeats = [
+      `[Narrator]: Chapter ${chapterNumber} also tracks a concrete emotional turn. One lover asks for trust, the other asks for proof, and neither request can be answered without giving the enemy a weakness to exploit.`,
+      `[Narrator]: A secondary bargain tightens the plot. Servants move through the halls with lowered eyes, carrying letters, keys, and warnings that make the romance feel watched from every doorway.`,
+      `[Narrator]: By the end of the scene, the ${creatureName.toLowerCase()} power dynamic has changed hands. What began as pursuit becomes negotiation, and what looked like surrender becomes a deliberate tactical choice.`,
+      `[Narrator]: The chapter closes with a visible consequence: a torn glove, a missing signet, a witness who should have been asleep. The next chapter has something specific to answer.`
+    ];
+
+    const renderBody = () => paragraphs.map(paragraph => `<p>${paragraph}</p>`).join('\n\n');
+    let beatIndex = 0;
+    while (this.countWords(renderBody()) < targetBodyWords) {
+      paragraphs.push(expansionBeats[beatIndex % expansionBeats.length]);
+      beatIndex += 1;
+    }
 
     return `<h3>Chapter ${chapterNumber}: ${baseTitle}</h3>
 
-<p>[Narrator]: Moonlight dripped across the manor's stone balustrades as whispers of destiny curled around our lovers. The ${creatureName.toLowerCase()} aristocrat studied their prey with patient hunger, weighing desire against the oaths that bound their bloodline.</p>
-
-<p>[Narrator]: Each chapter in this mock sequence leans into danger, seduction, and supernatural stakes. Expect clandestine meetings beneath stained glass, confessions that scorch the night air, and the steady escalation of ${creatureName.toLowerCase()} power games.</p>
-
-<p>[Narrator]: This placeholder chapter lets the application exercise multi-chapter flows without live Grok calls. In production the AI will weave bespoke intrigue, but here we provide atmospheric beats and a tidy cliffhanger.</p>
-
-<p>[Narrator]: Just before dawn, a coded message slips beneath the chamber door promising either salvation or ruin. Our heroes must decide whether to follow it, setting up the next chapter's peril.</p>`;
+${renderBody()}`;
   }
 
   private generateMockChapter(input: ChapterContinuationSeam['input'], chapterNumber?: number): string {
