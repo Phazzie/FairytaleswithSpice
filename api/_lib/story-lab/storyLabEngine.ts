@@ -403,7 +403,7 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuat
     lines.push(`- ${formatThreadDebtLabel(thread)}: ${compactPromptLine(thread.label)}${formatCourtroomDetail(thread.description)}`);
   }
 
-  const relationshipPressure = buildRelationshipPressureLine(storyState);
+  const relationshipPressure = buildRelationshipPressureLine(storyState, continuationBrief);
   if (relationshipPressure) {
     lines.push(relationshipPressure);
   }
@@ -529,17 +529,70 @@ function formatThreadDebtLabel(thread: PlotThread): string {
   return 'Open promise';
 }
 
-function buildRelationshipPressureLine(storyState: StoryStateSnapshot): string | undefined {
-  for (const character of storyState.characters) {
-    for (const relationship of character.relationships) {
-      const target = storyState.characters.find(candidate => candidate.id === relationship.characterId);
-      if (target) {
-        return `- Relationship pressure: ${compactPromptLine(character.displayName)} and ${compactPromptLine(target.displayName)}.`;
+function buildRelationshipPressureLine(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string | undefined {
+  const source = normalizeActivationText(continuationBrief ?? '');
+  const candidates: Array<{
+    sourceCharacter: CharacterProfile;
+    targetCharacter: CharacterProfile;
+    relationship: CharacterProfile['relationships'][number];
+    index: number;
+    activationScore: number;
+  }> = [];
+
+  for (const sourceCharacter of storyState.characters) {
+    for (const relationship of sourceCharacter.relationships) {
+      const targetCharacter = storyState.characters.find(candidate => candidate.id === relationship.characterId);
+      if (targetCharacter) {
+        candidates.push({
+          sourceCharacter,
+          targetCharacter,
+          relationship,
+          index: candidates.length,
+          activationScore: scoreRelationshipActivation(sourceCharacter, targetCharacter, relationship, source)
+        });
       }
     }
   }
 
+  const selected = candidates.sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))[0];
+  if (selected) {
+    return `- Relationship pressure: ${compactPromptLine(selected.sourceCharacter.displayName)} and ${compactPromptLine(selected.targetCharacter.displayName)}.`;
+  }
+
   return undefined;
+}
+
+function scoreRelationshipActivation(
+  sourceCharacter: CharacterProfile,
+  targetCharacter: CharacterProfile,
+  relationship: CharacterProfile['relationships'][number],
+  source: string
+): number {
+  if (!source) {
+    return 0;
+  }
+
+  const candidates = [
+    sourceCharacter.displayName,
+    targetCharacter.displayName,
+    relationship.relationship,
+    relationship.notes
+  ].map(normalizeActivationText).filter(Boolean);
+  let score = 0;
+
+  for (const candidate of candidates) {
+    if (source.includes(candidate)) {
+      score += 6;
+    }
+
+    for (const token of candidate.split(' ').filter(value => value.length > 3)) {
+      if (source.includes(token)) {
+        score += 1;
+      }
+    }
+  }
+
+  return score;
 }
 
 function formatCourtroomDetail(value: string): string {

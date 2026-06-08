@@ -2051,6 +2051,59 @@ Next recommended task:
 
 - Commit this slice, then continue with another no-credentials story-output slice or a route-safe auth/cloud integration test.
 
+### 2026-06-08 Relationship Activation Slice
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the relationship activation commit.
+
+User request:
+
+- Keep working autonomously on useful story-output improvements while preserving compact continuation guidance.
+
+Work completed:
+
+- Extended the existing `Relationship pressure` line so it chooses the relationship pair most relevant to the continuation brief.
+- The guarded case creates two relationships on Mira, asks for `Coral Scribe`, and proves the courtroom line selects `Mira and Coral Scribe` instead of the older first pair.
+- The slice keeps the same three hidden anchor blocks and still emits only one compact relationship line.
+- Relationship scoring stays internal and is not shown to the model.
+- Updated the app audit, idea board, and handoff.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-quality` -> failed because the relationship line kept the first pair instead of `Mira and Coral Scribe`.
+- GREEN: `npm run test:story-quality` -> passed.
+- `npm run test:story-quality` -> passed.
+- `npm run test:story-lab-real-engine` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is a deterministic lexical activation rule, not semantic retrieval.
+- The UI Story Memory preview still shows the first available relationship pressure item from client state; this slice only improves the provider continuation brief.
+- Continuity-warning activation is still a future follow-up.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with continuity-warning activation or a route-safe auth/cloud integration test.
+
 ### 2026-06-08 Context Activation Rules Slice
 
 Branch:

@@ -234,6 +234,65 @@ async function main(): Promise<void> {
     }
   });
   assert(artifactActivationPreview.hiddenGuidance.includes('World clue: Glass Key'), 'continuation guidance should prioritize a brief-matched artifact when the courtroom is compacted.');
+  const relationshipActivationPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Let Coral Scribe betray Mira with the court ledger.',
+    storyState: {
+      ...genesisPayload.state,
+      characters: [
+        {
+          id: 'mira',
+          displayName: 'Mira',
+          archetype: 'protagonist',
+          summary: 'A siren diplomat carrying a forbidden oath.',
+          currentGoal: 'Keep the reef court from owning her lover.',
+          internalConflict: 'She wants help but fears being seen needing it.',
+          externalConflict: 'The court wants the oath made public.',
+          secrets: [],
+          relationships: [
+            {
+              characterId: 'lord-brine',
+              relationship: 'rival',
+              notes: 'Lord Brine can turn the vow into leverage.'
+            },
+            {
+              characterId: 'coral-scribe',
+              relationship: 'ally',
+              notes: 'Coral Scribe knows which ledger proves the betrayal.'
+            }
+          ],
+          spiceCompatibilities: [3]
+        },
+        {
+          id: 'lord-brine',
+          displayName: 'Lord Brine',
+          archetype: 'antagonist',
+          summary: 'A reef lord with a claim on the oath.',
+          currentGoal: 'Own the court record.',
+          internalConflict: 'He wants Mira to choose him and the court.',
+          externalConflict: 'Mira can make him look desperate.',
+          secrets: [],
+          relationships: [],
+          spiceCompatibilities: [3]
+        },
+        {
+          id: 'coral-scribe',
+          displayName: 'Coral Scribe',
+          archetype: 'supporting',
+          summary: 'A court recordkeeper who knows which ledger can hurt Mira.',
+          currentGoal: 'Survive whichever side wins.',
+          internalConflict: 'Loyalty costs more than silence.',
+          externalConflict: 'Both Mira and Lord Brine need the ledger.',
+          secrets: [],
+          relationships: [],
+          spiceCompatibilities: [3]
+        }
+      ],
+      threads: [],
+      artifacts: [],
+      continuityWarnings: []
+    }
+  });
+  assert(relationshipActivationPreview.hiddenGuidance.includes('Relationship pressure: Mira and Coral Scribe'), 'continuation guidance should prioritize a brief-matched relationship pair.');
 
   let continuationInput: ClassicContinuationSeam['input'] | null = null;
   const continuationResponse = await withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, () => continueStoryLab({

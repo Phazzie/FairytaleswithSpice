@@ -67,6 +67,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The eval also fails if world clues keep the generic `World Details` name; seeded world artifacts now derive compact names such as `Witness Shells` or `Vow-Binding Songs` from the world-detail text.
   - The eval now fails if a continuation brief asks for a compacted-out thread such as `Blood Oath` and the `Continuity Courtroom` anchor does not prioritize that brief-matched memory.
   - The eval now also fails if a continuation brief asks for a compacted-out unresolved artifact such as `Glass Key` and the `Continuity Courtroom` anchor does not prioritize that brief-matched world clue.
+  - The eval now also fails if a continuation brief names a non-first relationship participant such as `Coral Scribe` and the `Relationship pressure` line keeps selecting the older first pair.
   - `previewStoryLabContinuationGuidance` now exposes the same provider brief, hidden guidance, anchor headings, and character count for future visible continuity-preview UI without adding a route or invoking the provider.
   - The deterministic state still drives the guidance; only the wording shown to the model is less mechanical.
 - Deterministic story-quality report evidence:
