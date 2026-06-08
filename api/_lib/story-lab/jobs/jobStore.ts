@@ -4,31 +4,16 @@ import { randomUUID } from 'node:crypto';
 import type {
   StoryLabJob,
   StoryLabJobCreationResponse,
-  StoryLabJobError,
   StoryLabJobEvent,
-  StoryLabJobKind,
-  StoryLabJobStatus
 } from '../contracts';
+import type { CreateStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from './jobStorePort';
 import {
   buildStoryLabJobPaths,
   createOpaqueStoryLabJobId,
   NON_DURABLE_STORY_LAB_JOB_DURABILITY
 } from './jobContracts';
 
-export interface CreateStoryLabJobInput {
-  kind: StoryLabJobKind;
-  currentStep?: string;
-  now?: string;
-}
-
-export interface UpdateStoryLabJobInput<TPublicResult = unknown> {
-  status: StoryLabJobStatus;
-  currentStep: string;
-  progressPercent: number;
-  result?: TPublicResult;
-  error?: StoryLabJobError;
-  now?: string;
-}
+export type { CreateStoryLabJobInput, UpdateStoryLabJobInput } from './jobStorePort';
 
 interface StoredStoryLabJob<TPublicResult = unknown> {
   response: StoryLabJobCreationResponse<TPublicResult>;
@@ -37,10 +22,16 @@ interface StoredStoryLabJob<TPublicResult = unknown> {
 
 const DEFAULT_MAX_STORY_LAB_JOBS = 1000;
 
-export class NonDurableStoryLabJobStore {
+export class NonDurableStoryLabJobStore implements StoryLabJobStore {
+  readonly mode = 'non_durable_memory';
+  readonly durable = false;
   private readonly jobs = new Map<string, StoredStoryLabJob>();
 
   constructor(private readonly maxJobs = DEFAULT_MAX_STORY_LAB_JOBS) {}
+
+  isConfigured(): boolean {
+    return true;
+  }
 
   createJob<TPublicResult = unknown>(input: CreateStoryLabJobInput): StoryLabJobCreationResponse<TPublicResult> {
     this.evictOldestJobIfNeeded();

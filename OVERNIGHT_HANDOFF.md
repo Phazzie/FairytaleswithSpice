@@ -2109,3 +2109,62 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with a job-store port scaffold or browser-visible sign-in affordances.
+
+### 2026-06-08 12:30 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the durable job store scaffold commit.
+
+User request:
+
+- Keep advancing the remaining platform gaps autonomously without claiming unfinished durable behavior.
+
+Work completed:
+
+- Added `api/_lib/story-lab/jobs/jobStorePort.ts`, a common `StoryLabJobStore` interface for non-durable and future durable stores.
+- Expanded `StoryLabJobDurability` to allow a future `postgres` durable mode while keeping current route responses labelled `non_durable_memory`.
+- Updated `NonDurableStoryLabJobStore` to implement the port and explicitly expose `mode`, `durable`, and `isConfigured`.
+- Added `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts`, an injected-executor Postgres scaffold for durable job snapshots/events.
+- The Postgres scaffold fails closed without `DATABASE_URL` or an executor, requires an owner for durable job creation, writes sanitized request/result/error JSON, and maps loaded job/event rows.
+- Added `tests/story-lab-job-store-port.test.ts` and wired `test:story-lab-job-store-port` into `npm run test:all`.
+- Updated the audit and auth/profile/cloud-library plan with the port/scaffold status and the caveat that active routes still use the non-durable store.
+
+Files changed:
+
+- `story-generator/src/app/contracts.ts`
+- `api/_lib/story-lab/jobs/jobContracts.ts`
+- `api/_lib/story-lab/jobs/jobStore.ts`
+- `api/_lib/story-lab/jobs/jobStorePort.ts`
+- `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts`
+- `tests/story-lab-job-store-port.test.ts`
+- `package.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-job-store-port.test.ts` -> failed because `postgresStoryLabJobStore` did not exist.
+- GREEN: `npx tsx tests/story-lab-job-store-port.test.ts` -> passed.
+- `npm run test:story-lab-job-store-port` -> passed.
+- `npx tsx tests/story-lab-job-contracts.test.ts` -> passed.
+- `npx tsx tests/story-lab-job-routes.test.ts` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed with `test:story-lab-job-store-port` included.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- The active job route still uses `non_durable_memory`; this slice only creates the port and Postgres scaffold.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then integrate the job route behind auth or switch to browser-visible sign-in affordances.

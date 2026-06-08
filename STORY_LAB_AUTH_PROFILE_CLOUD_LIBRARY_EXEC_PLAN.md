@@ -95,6 +95,7 @@ Current implementation state as of 2026-06-08:
 - Added `api/_lib/story-lab/auth/clerkAuthPort.ts`, a Clerk-shaped adapter scaffold that extracts bearer or `__session` tokens, requires an injected verifier, and fails closed without leaking token text.
 - Added `api/_lib/story-lab/storage/storyLabCloudSchema.sql` as the migration-ready cloud library schema contract for private profiles and owner-scoped story projects.
 - Extended `storyLabCloudSchema.sql` with future durable job tables: `story_lab_jobs` for owner-scoped job snapshots and `story_lab_job_events` for ordered public event snapshots.
+- Added `api/_lib/story-lab/jobs/jobStorePort.ts` and `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` as the tested port and injected-executor Postgres scaffold for future durable job snapshots/events.
 - Added `api/_lib/story-lab/storage/storyLabCloudSchemaMigration.ts` to split and apply the tracked schema through an injected executor.
 - Added `scripts/recovery/apply-story-lab-cloud-schema.ts` and `db:story-lab-apply-schema` for guarded real-database schema application.
 - Added `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts` and `scripts/recovery/story-lab-cloud-db-smoke.ts` to check the required profile/project/job tables and owner/event indexes when a real database URL is configured.
@@ -111,6 +112,7 @@ Current implementation state as of 2026-06-08:
   - `tests/story-lab-cloud-db-readiness.test.ts`
   - `tests/story-lab-cloud-storage-config.test.ts`
   - `tests/story-lab-neon-executor.test.ts`
+  - `tests/story-lab-job-store-port.test.ts`
   - `tests/story-lab-profile-store.test.ts`
 - Added npm scripts for the new focused tests and included them in `npm run test:all`.
 - Added `test:story-lab-clerk-auth`, `test:story-lab-cloud-schema`, `test:story-lab-cloud-schema-migration`, `test:story-lab-cloud-db-readiness`, `test:story-lab-cloud-storage-config`, and `test:story-lab-neon-executor` to `npm run test:all`.
@@ -167,6 +169,11 @@ Current implementation state as of 2026-06-08:
   - RED: `npx tsx tests/story-lab-cloud-db-readiness.test.ts` failed because missing job tables/indexes were not reported;
   - GREEN: `npx tsx tests/story-lab-cloud-schema.test.ts`;
   - GREEN: `npx tsx tests/story-lab-cloud-db-readiness.test.ts`.
+- Durable job store port validation passed:
+  - RED: `npx tsx tests/story-lab-job-store-port.test.ts` failed because the port/Postgres scaffold did not exist;
+  - GREEN: `npm run test:story-lab-job-store-port`;
+  - `npx tsx tests/story-lab-job-contracts.test.ts`;
+  - `npx tsx tests/story-lab-job-routes.test.ts`.
 - Cloud storage config validation passed:
   - RED: `npx tsx tests/story-lab-cloud-storage-config.test.ts` failed on the missing config module;
   - GREEN: `npm run test:story-lab-cloud-storage-config`;
@@ -225,7 +232,7 @@ Current implementation state as of 2026-06-08:
   - `scripts/recovery/preflight.sh --quick --skip-status`.
 - No executed database migration/provisioning, live auth provider, live database proof, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
 - A migration-ready SQL contract exists, but it is not automatically executed by the app.
-- The migration-ready SQL contract includes future durable job tables, but the active job route still uses `non_durable_memory`.
+- The migration-ready SQL contract includes future durable job tables, and a Postgres job store scaffold exists, but the active job route still uses `non_durable_memory`.
 - A guarded schema-apply script exists, but it has only been tested with fake executors and missing-env refusal here.
 - A guarded cloud database readiness smoke exists, but it has only been tested with fake executors and missing-env refusal here.
 - A Neon executor adapter exists, but it has only been validated with injected fake queries and typechecks, not a live database.
@@ -303,12 +310,14 @@ Add a profile store beside the project store:
 - `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts`
 - `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`
 - `api/_lib/story-lab/storage/neonStoryLabExecutor.ts`
+- `api/_lib/story-lab/jobs/jobStorePort.ts`
+- `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts`
 
 The migration-ready table shape now lives in:
 
 - `api/_lib/story-lab/storage/storyLabCloudSchema.sql`
 
-It defines `story_lab_profiles` with `preferences_json`, `story_projects` with `owner_user_id`, `story_id`, denormalized display fields, and `project_json`, plus future durable `story_lab_jobs` and `story_lab_job_events` tables. The guarded apply path is `npm run db:story-lab-apply-schema` when a real `DATABASE_URL` is present. The guarded readiness path is `npm run smoke:story-lab-cloud-db`. Keep project storage on the existing `StoryProjectStore` contract. Do not create a second project persistence shape. Keep job routes labelled non-durable until a store uses the job tables.
+It defines `story_lab_profiles` with `preferences_json`, `story_projects` with `owner_user_id`, `story_id`, denormalized display fields, and `project_json`, plus future durable `story_lab_jobs` and `story_lab_job_events` tables. The guarded apply path is `npm run db:story-lab-apply-schema` when a real `DATABASE_URL` is present. The guarded readiness path is `npm run smoke:story-lab-cloud-db`. Keep project storage on the existing `StoryProjectStore` contract. Do not create a second project persistence shape. Keep job routes labelled non-durable until route/auth wiring uses `StoryLabJobStore`.
 
 ### Slice 3: Consolidated Account Route
 

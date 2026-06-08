@@ -194,11 +194,11 @@ Required before this becomes a user feature:
 
 ### P0: Job Progress Is Not Durable
 
-The Story Lab job route scaffold is useful, but the active store is process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, but no route or store uses it yet. It should not be described as crash-safe progress.
+The Story Lab job route scaffold is useful, but the active route store is still process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, and `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` provides a tested injected-executor scaffold. No route uses that durable store yet, so the product should not be described as crash-safe progress.
 
 Required before this becomes durable:
 
-- Add a database-backed job store that uses the tracked job tables.
+- Integrate the database-backed job store into the job route behind auth.
 - Add owner-scoped job authorization.
 - Add a Workflow or equivalent durable runner decision.
 - Persist job events/snapshots outside the current process.
