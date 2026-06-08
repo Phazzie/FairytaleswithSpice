@@ -113,7 +113,9 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The default mode remains `non_durable_memory`, so anonymous job routes are not accidentally changed.
   - Explicit `STORY_LAB_JOB_STORE=postgres` creates the tested Postgres job-store scaffold only when database URL and executor configuration exist.
   - Unknown job-store modes fail closed with `STORY_LAB_JOB_STORE_UNSUPPORTED_MODE` instead of silently falling back.
+  - The active job route now resolves through that config seam for the default memory store, rejects unsupported modes with `JOB_STORE_UNAVAILABLE`, and blocks durable Postgres mode until owner-scoped route auth is present.
   - `tests/story-lab-job-store-config.test.ts` guards those config paths.
+  - `tests/story-lab-job-routes.test.ts` is now included in `npm run test:all` so route-level store-mode failure behavior is covered by normal verification.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, cloud-schema, cloud-storage-config, Neon executor, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
@@ -208,7 +210,7 @@ Required before this becomes a user feature:
 
 ### P0: Job Progress Is Not Durable
 
-The Story Lab job route scaffold is useful, but the active route store is still process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` provides a tested injected-executor scaffold, and `storyLabJobStoreConfig.ts` provides an env-gated future selection seam. No route uses that durable store yet, so the product should not be described as crash-safe progress.
+The Story Lab job route scaffold is useful, but the active route store is still process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` provides a tested injected-executor scaffold, and `storyLabJobStoreConfig.ts` provides an env-gated future selection seam. The route now uses that seam for default memory storage and fails closed for unsupported or unauthenticated durable modes, but no route uses the durable Postgres store yet, so the product should not be described as crash-safe progress.
 
 Required before this becomes durable:
 

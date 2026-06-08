@@ -13,7 +13,11 @@ import { continueStoryLab, generateStoryLabGenesis } from '../storyLabEngine';
 import { getTransientStorySnapshot } from '../stateStore';
 import { parseStoryLabBlueprintFromBody } from '../validation/blueprintParser';
 import { assertOpaqueStoryLabJobId } from './jobContracts';
-import { nonDurableStoryLabJobStore } from './jobStore';
+import type { StoryLabJobStore } from './jobStorePort';
+import {
+  createStoryLabJobStoreConfig,
+  type StoryLabJobStoreConfig
+} from './storyLabJobStoreConfig';
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 type JobResult = StoryIterationPayload | ContinuationJobResult;
@@ -108,7 +112,12 @@ export async function handleGetStoryLabJob(req: RequestLike, res: ResponseLike):
     return;
   }
 
-  const job = nonDurableStoryLabJobStore.getJob(jobId);
+  const store = resolveJobStoreOrRespond(res);
+  if (!store) {
+    return;
+  }
+
+  const job = await store.getJob(jobId);
   if (!job) {
     sendJson(res, 404, jobNotFound());
     return;
@@ -134,7 +143,12 @@ export async function handleStreamStoryLabJobEvents(req: RequestLike, res: Respo
     return;
   }
 
-  const events = nonDurableStoryLabJobStore.getEvents<JobResult>(jobId);
+  const store = resolveJobStoreOrRespond(res);
+  if (!store) {
+    return;
+  }
+
+  const events = await store.getEvents<JobResult>(jobId);
   if (!events) {
     sendJson(res, 404, jobNotFound());
     return;
@@ -180,11 +194,23 @@ async function createGenesisJob(
     return;
   }
 
-  const job = nonDurableStoryLabJobStore.createJob<StoryIterationPayload>({
+  const store = resolveJobStoreOrRespond(res);
+  if (!store) {
+    return;
+  }
+
+  const job = await store.createJob<StoryIterationPayload>({
     kind: 'genesis',
-    currentStep: 'queued'
+    currentStep: 'queued',
+    idempotencyKey: request.idempotencyKey,
+    storyId: request.storyId,
+    request: {
+      projectId: request.projectId,
+      storyId: request.storyId,
+      blueprint: parsed.blueprint
+    }
   });
-  nonDurableStoryLabJobStore.updateJob<StoryIterationPayload>(job.job.jobId, {
+  await store.updateJob<StoryIterationPayload>(job.job.jobId, {
     status: 'running',
     currentStep: 'generating_story',
     progressPercent: 25
@@ -193,7 +219,7 @@ async function createGenesisJob(
   const result = await generateStoryLabGenesis(parsed.blueprint);
   sendJson(res, 200, {
     success: true,
-    data: finishJob(job.job.jobId, result)
+    data: await finishJob(store, job.job.jobId, result)
   });
 }
 
@@ -209,11 +235,23 @@ async function createContinuationJob(
     return;
   }
 
-  const job = nonDurableStoryLabJobStore.createJob<ContinuationJobResult>({
+  const store = resolveJobStoreOrRespond(res);
+  if (!store) {
+    return;
+  }
+
+  const job = await store.createJob<ContinuationJobResult>({
     kind: 'continuation',
-    currentStep: 'queued'
+    currentStep: 'queued',
+    idempotencyKey: request.idempotencyKey,
+    storyId: request.storyId ?? normalized.storyId,
+    request: {
+      projectId: request.projectId,
+      storyId: request.storyId ?? normalized.storyId,
+      continuation: normalized
+    }
   });
-  nonDurableStoryLabJobStore.updateJob<ContinuationJobResult>(job.job.jobId, {
+  await store.updateJob<ContinuationJobResult>(job.job.jobId, {
     status: 'running',
     currentStep: 'continuing_story',
     progressPercent: 25
@@ -222,29 +260,40 @@ async function createContinuationJob(
   const result = await continueStoryLab(normalized);
   sendJson(res, 200, {
     success: true,
-    data: finishJob(job.job.jobId, result)
+    data: await finishJob(store, job.job.jobId, result)
   });
 }
 
-function finishJob<TPublicResult extends JobResult>(
+async function finishJob<TPublicResult extends JobResult>(
+  store: StoryLabJobStore,
   jobId: string,
   result: ApiResponse<TPublicResult>
-): StoryLabJobCreationResponse<TPublicResult> {
+): Promise<StoryLabJobCreationResponse<TPublicResult>> {
   if (result.success) {
-    return nonDurableStoryLabJobStore.updateJob<TPublicResult>(jobId, {
+    return (await store.updateJob<TPublicResult>(jobId, {
       status: 'completed',
       currentStep: 'completed',
       progressPercent: 100,
       result: result.data
-    })!;
+    }))!;
   }
 
-  return nonDurableStoryLabJobStore.updateJob<TPublicResult>(jobId, {
+  return (await store.updateJob<TPublicResult>(jobId, {
     status: 'failed',
     currentStep: 'failed',
     progressPercent: 100,
     error: toJobError(result.error)
-  })!;
+  }))!;
+}
+
+function resolveJobStoreOrRespond(res: ResponseLike): StoryLabJobStore | null {
+  const config = createStoryLabJobStoreConfig();
+  if (!config.store || !config.isConfigured() || config.store.durable) {
+    sendJson(res, 503, jobStoreUnavailable(config));
+    return null;
+  }
+
+  return config.store;
 }
 
 function normalizeContinuationInput(input: unknown): StoryContinuationSeam['input'] | null {
@@ -374,6 +423,30 @@ function jobNotFound(): ApiResponse<never> {
     error: {
       code: 'JOB_NOT_FOUND',
       message: 'Story Lab job was not found. Non-durable jobs may disappear after a cold start or deploy.'
+    }
+  };
+}
+
+function jobStoreUnavailable(config: StoryLabJobStoreConfig): ApiResponse<never> {
+  const routeAuthRequired = Boolean(config.store?.durable);
+  const message = config.mode === 'unsupported'
+    ? 'Story Lab job storage mode is not supported.'
+    : routeAuthRequired
+      ? 'Durable Story Lab job storage requires owner-scoped route auth before it can be enabled.'
+      : 'Story Lab job storage is not configured.';
+  return {
+    success: false,
+    error: {
+      code: 'JOB_STORE_UNAVAILABLE',
+      message,
+      details: {
+        requestedMode: config.requestedMode,
+        mode: config.mode,
+        databaseUrlConfigured: config.databaseUrlConfigured,
+        executorConfigured: config.executorConfigured,
+        errorCode: config.errorCode,
+        routeAuthRequired
+      }
     }
   };
 }

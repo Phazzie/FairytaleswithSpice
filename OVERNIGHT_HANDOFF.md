@@ -1998,6 +1998,59 @@ Next recommended task:
 
 - Commit this slice, then continue either auth sign-in wiring or the next no-credentials story-output/evaluation experiment.
 
+### 2026-06-08 Job Route Store Config Guard
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the job route store config guard commit.
+
+User request:
+
+- Keep working autonomously toward auth, storage, profiles, and durable job readiness without overstating unfinished cloud behavior.
+
+Work completed:
+
+- Wired active Story Lab job routes through `storyLabJobStoreConfig` for the default non-durable memory store.
+- Added route-level fail-closed behavior for unsupported job-store modes, returning `JOB_STORE_UNAVAILABLE` instead of silently falling back to memory.
+- Explicit durable Postgres mode is still blocked at the route because owner-scoped auth is not integrated into job routes yet.
+- Added route tests for unsupported store mode and Postgres-without-route-auth/config.
+- Added `test:story-lab-job-routes` to `npm run test:all`.
+- Updated the app audit and auth/profile/cloud plan.
+
+Files changed:
+
+- `api/_lib/story-lab/jobs/jobRouteHandlers.ts`
+- `tests/story-lab-job-routes.test.ts`
+- `package.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-job-routes.test.ts` -> failed because unsupported `STORY_LAB_JOB_STORE=planet-scale` still created a non-durable job.
+- GREEN: `npx tsx tests/story-lab-job-routes.test.ts` -> passed.
+- `npm run test:story-lab-job-routes` -> passed.
+- `npm run test:story-lab-job-store-config` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed with `test:story-lab-job-routes` included.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Jobs are still not durable in the product path.
+- Durable jobs still need authenticated owner context, owner-scoped job authorization, a real `DATABASE_URL`, executed schema, and recovery tests.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with owner-scoped job-route auth tests or another bounded story-quality experiment.
+
 ### 2026-06-08 Context Activation Artifact Slice
 
 Branch:

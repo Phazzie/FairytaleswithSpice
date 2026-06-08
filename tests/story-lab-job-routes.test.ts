@@ -55,7 +55,9 @@ const originalEnv = {
   NODE_ENV: process.env['NODE_ENV'],
   VERCEL_ENV: process.env['VERCEL_ENV'],
   STORY_LAB_FORCE_MOCK: process.env['STORY_LAB_FORCE_MOCK'],
-  XAI_API_KEY: process.env['XAI_API_KEY']
+  XAI_API_KEY: process.env['XAI_API_KEY'],
+  STORY_LAB_JOB_STORE: process.env['STORY_LAB_JOB_STORE'],
+  DATABASE_URL: process.env['DATABASE_URL']
 };
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -113,6 +115,8 @@ function setMockRuntime(): void {
   delete process.env['VERCEL_ENV'];
   process.env['STORY_LAB_FORCE_MOCK'] = '1';
   delete process.env['XAI_API_KEY'];
+  delete process.env['STORY_LAB_JOB_STORE'];
+  delete process.env['DATABASE_URL'];
 }
 
 function setProductionMissingProviderRuntime(): void {
@@ -120,6 +124,8 @@ function setProductionMissingProviderRuntime(): void {
   process.env['VERCEL_ENV'] = 'production';
   delete process.env['STORY_LAB_FORCE_MOCK'];
   delete process.env['XAI_API_KEY'];
+  delete process.env['STORY_LAB_JOB_STORE'];
+  delete process.env['DATABASE_URL'];
 }
 
 function restoreEnv(): void {
@@ -208,6 +214,36 @@ async function testReservedJobKindsAreRejected(): Promise<void> {
   assert(body.error.code === 'UNSUPPORTED_JOB_KIND', 'reserved job response should explain unsupported kind');
 }
 
+async function testUnsupportedConfiguredJobStoreFailsClosed(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+  process.env['STORY_LAB_JOB_STORE'] = 'planet-scale';
+
+  const response = await postGenesisJob();
+
+  assert(response.statusCode === 503, 'unsupported job store mode should return 503');
+  const body = response.body as any;
+  assert(body.success === false, 'unsupported job store mode should not create a job envelope');
+  assert(body.error.code === 'JOB_STORE_UNAVAILABLE', 'unsupported job store mode should expose job store unavailable');
+  assert(body.error.details.requestedMode === 'planet-scale', 'unsupported job store response should preserve requested mode');
+  assert(body.error.details.errorCode === 'STORY_LAB_JOB_STORE_UNSUPPORTED_MODE', 'unsupported job store response should expose config error code');
+}
+
+async function testPostgresJobStoreWithoutRouteAuthFailsClosed(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+  process.env['STORY_LAB_JOB_STORE'] = 'postgres';
+
+  const response = await postGenesisJob();
+
+  assert(response.statusCode === 503, 'postgres job store without route auth/config should return 503');
+  const body = response.body as any;
+  assert(body.success === false, 'postgres job store without route auth/config should not create a job envelope');
+  assert(body.error.code === 'JOB_STORE_UNAVAILABLE', 'postgres job store without route auth/config should expose job store unavailable');
+  assert(body.error.details.mode === 'postgres', 'postgres job store response should report postgres mode');
+  assert(body.error.details.databaseUrlConfigured === false, 'postgres job store response should report missing database URL');
+}
+
 async function testMalformedContinuationStoryIdReturnsInvalidRequest(): Promise<void> {
   nonDurableStoryLabJobStore.reset();
   setMockRuntime();
@@ -256,6 +292,8 @@ async function run(): Promise<void> {
   await testEventsReplaySnapshotsAndClose();
   await testInvalidAndUnknownJobIds();
   await testReservedJobKindsAreRejected();
+  await testUnsupportedConfiguredJobStoreFailsClosed();
+  await testPostgresJobStoreWithoutRouteAuthFailsClosed();
   await testMalformedContinuationStoryIdReturnsInvalidRequest();
   testStoreEvictsOldestJobs();
   await testProductionMissingProviderCreatesFailedJob();
