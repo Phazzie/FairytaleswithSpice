@@ -1713,3 +1713,65 @@ Known issues:
 Next recommended task:
 
 - Add an explicit database executor/configuration seam for the cloud schema, or continue a bounded story-output experiment if provider/database credentials are unavailable.
+
+### 2026-06-08 10:50 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud storage config seam commit.
+
+User request:
+
+- Keep moving on auth/storage readiness while failing closed until real credentials and providers are configured.
+
+Work completed:
+
+- Added `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`.
+- The factory centralizes default profile/project store construction for the account route.
+- It resolves `DATABASE_URL` lazily and does not call an executor factory when the database URL is missing.
+- It can wire one shared executor into both Postgres profile and project stores, but still reports unconfigured/driver-missing states when credentials or driver wiring are absent.
+- Updated `api/_lib/story-lab/account/accountRouteHandlers.ts` so default stores come from the factory instead of direct Postgres store construction.
+- Added `tests/story-lab-cloud-storage-config.test.ts` and wired `test:story-lab-cloud-storage-config` into `npm run test:all`.
+- Updated the app audit and auth/profile/cloud-library plan with the new seam and the remaining live-storage caveat.
+
+Files changed:
+
+- `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`
+- `api/_lib/story-lab/account/accountRouteHandlers.ts`
+- `tests/story-lab-cloud-storage-config.test.ts`
+- `package.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-cloud-storage-config.test.ts` -> failed because `storyLabCloudStorageConfig` did not exist.
+- GREEN: `npm run test:story-lab-cloud-storage-config` -> passed.
+- `npm run test:story-lab-account-routes` -> passed.
+- `npm run test:story-lab-storage-port` -> passed.
+- `npm run test:story-lab-profile-store` -> passed.
+- `find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 | xargs -0 ./node_modules/.bin/tsc --noEmit --target es2020 --lib es2020,dom --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node` -> passed.
+- `git diff --check` -> passed before doc edits.
+- `npm run test:all` -> passed with `test:story-lab-cloud-storage-config` included.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Correction note:
+
+- I first tried `npx -p node@20 node ./node_modules/typescript/bin/tsc -p tsconfig.api.json --noEmit`; that failed because this repo has no `tsconfig.api.json`. The preflight script's API typecheck command above is the correct route.
+
+Known issues:
+
+- This still does not install a database driver or provision a database.
+- The SQL schema still needs an executed migration/provisioning path.
+- Real cloud sync still requires live auth plus a configured database executor.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Add the actual Neon/Postgres driver adapter behind this factory once the dependency/provider choice is ready, or continue a bounded story-output experiment if credentials remain unavailable.

@@ -44,6 +44,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - [x] Add focused owner-isolation, profile, route, and UI tests.
 - [x] Add Clerk-shaped `AuthPort` adapter scaffold with token extraction and injected verifier.
 - [x] Add migration-ready cloud schema SQL contract and focused schema drift test.
+- [x] Add lazy cloud storage config factory and focused executor-readiness test.
 - [x] Run validation and update handoff for Slice 1.
 - [x] Run validation and update handoff for Slices 2 and 3.
 - [x] Run validation and update handoff for Slice 4a service methods.
@@ -59,6 +60,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - Vercel function budget is usable but tighter after Slice 3. Account/profile/project cloud APIs now share one deployable route file, and the branch count is `11/12`.
 - The cloud library UI can land before live auth/database provisioning as long as it tells the truth: local browser saves remain active, and cloud sync shows unavailable or failed until the account route is configured.
 - The Postgres profile/project scaffolds had implied table expectations, but there was no tracked migration-ready SQL artifact until `api/_lib/story-lab/storage/storyLabCloudSchema.sql`.
+- The default account route used to construct Postgres stores directly. It now routes through `storyLabCloudStorageConfig.ts`, so future driver wiring has one lazy, test-covered seam.
 
 ## Decision Log
 
@@ -87,14 +89,17 @@ Current implementation state as of 2026-06-08:
 - Added `api/_lib/story-lab/auth/configuredAuthPort.ts`, which delegates only to an injected provider and otherwise denies by default.
 - Added `api/_lib/story-lab/auth/clerkAuthPort.ts`, a Clerk-shaped adapter scaffold that extracts bearer or `__session` tokens, requires an injected verifier, and fails closed without leaking token text.
 - Added `api/_lib/story-lab/storage/storyLabCloudSchema.sql` as the migration-ready cloud library schema contract for private profiles and owner-scoped story projects.
+- Added `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts` as the lazy cloud storage configuration seam for account-route profile/project stores.
+- Updated `api/_lib/story-lab/account/accountRouteHandlers.ts` so default stores come from the cloud storage config factory instead of direct Postgres construction.
 - Added focused tests:
   - `tests/story-lab-profile-contracts.test.ts`
   - `tests/story-lab-configured-auth.test.ts`
   - `tests/story-lab-clerk-auth.test.ts`
   - `tests/story-lab-cloud-schema.test.ts`
+  - `tests/story-lab-cloud-storage-config.test.ts`
   - `tests/story-lab-profile-store.test.ts`
 - Added npm scripts for the new focused tests and included them in `npm run test:all`.
-- Added `test:story-lab-clerk-auth` and `test:story-lab-cloud-schema` to `npm run test:all`.
+- Added `test:story-lab-clerk-auth`, `test:story-lab-cloud-schema`, and `test:story-lab-cloud-storage-config` to `npm run test:all`.
 - Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
 - Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
 - Added `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts` as an injected-executor Postgres profile scaffold that fails closed when `DATABASE_URL` or an executor is missing.
@@ -124,6 +129,16 @@ Current implementation state as of 2026-06-08:
 - Cloud schema validation passed:
   - RED: `npx tsx tests/story-lab-cloud-schema.test.ts` failed on the missing schema file;
   - GREEN: `npm run test:story-lab-cloud-schema`;
+  - `npm run test:all`;
+  - `scripts/recovery/preflight.sh --quick --skip-status`;
+  - function count remained `11/12`.
+- Cloud storage config validation passed:
+  - RED: `npx tsx tests/story-lab-cloud-storage-config.test.ts` failed on the missing config module;
+  - GREEN: `npm run test:story-lab-cloud-storage-config`;
+  - `npm run test:story-lab-account-routes`;
+  - `npm run test:story-lab-storage-port`;
+  - `npm run test:story-lab-profile-store`;
+  - Vercel API function typecheck command from `scripts/recovery/preflight.sh`;
   - `npm run test:all`;
   - `scripts/recovery/preflight.sh --quick --skip-status`;
   - function count remained `11/12`.
@@ -192,6 +207,7 @@ Important files:
 - `api/_lib/story-lab/storage/storyProjectStore.ts`: owner-scoped saved-project store contract.
 - `api/_lib/story-lab/storage/postgresStoryProjectStore.ts`: injected Postgres adapter scaffold.
 - `api/_lib/story-lab/storage/storyLabCloudSchema.sql`: migration-ready profile/project schema contract.
+- `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`: lazy database URL/executor seam for the account route.
 - `story-generator/src/app/story-workspace-storage.service.ts`: anonymous browser-local library.
 - `story-generator/src/app/app.ts` and `story-generator/src/app/app.html`: visible Story Lab UI and library panel.
 - `story-generator/src/app/story.service.ts`: Angular API client seam.
@@ -233,6 +249,7 @@ Add a profile store beside the project store:
 - `api/_lib/story-lab/profile/storyLabProfileStore.ts`
 - `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts`
 - `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts`
+- `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`
 
 The migration-ready table shape now lives in:
 

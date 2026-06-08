@@ -13,13 +13,12 @@ import type {
   StoryLabUserProfile
 } from '../contracts';
 import { applyCorsPolicy } from '../../http/corsPolicy';
-import { createPostgresStoryLabProfileStore } from '../profile/postgresStoryLabProfileStore';
 import {
   createDefaultStoryLabUserProfile,
   StoryLabProfileStore,
   StoryLabProfileStoreError
 } from '../profile/storyLabProfileStore';
-import { createPostgresStoryProjectStore } from '../storage/postgresStoryProjectStore';
+import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
 import {
   StoryProjectListItem,
   StoryProjectStore,
@@ -66,11 +65,13 @@ interface StoryLabAccountRouteContext {
 export function createStoryLabAccountRouteHandler(
   dependencies: StoryLabAccountRouteDependencies = {}
 ): (req: RequestLike, res: ResponseLike) => Promise<void> {
+  const now = dependencies.now ?? (() => new Date().toISOString());
+  const cloudStorage = createStoryLabCloudStorage({ now });
   const context: StoryLabAccountRouteContext = {
     authPort: dependencies.authPort ?? configuredAuthPort,
-    profileStore: dependencies.profileStore ?? createPostgresStoryLabProfileStore(),
-    projectStore: dependencies.projectStore ?? createPostgresStoryProjectStore(),
-    now: dependencies.now ?? (() => new Date().toISOString())
+    profileStore: dependencies.profileStore ?? cloudStorage.profileStore,
+    projectStore: dependencies.projectStore ?? cloudStorage.projectStore,
+    now
   };
 
   return async function storyLabAccountRouteHandler(req: RequestLike, res: ResponseLike): Promise<void> {

@@ -88,8 +88,12 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - `api/_lib/story-lab/storage/storyLabCloudSchema.sql` now records the migration-ready table shape for private profiles and owner-scoped cloud projects.
   - `tests/story-lab-cloud-schema.test.ts` fails if the tracked schema loses the profile table, project table, owner column, project JSON payload, or owner indexes.
   - This is a durable schema contract only; no database has been provisioned or executed from the app yet.
+- Cloud storage configuration seam evidence:
+  - `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts` now centralizes default profile/project store construction for the account route.
+  - It only creates an executor when a database URL exists, so deploy/build paths still fail closed instead of initializing a missing driver at import time.
+  - `tests/story-lab-cloud-storage-config.test.ts` proves missing database env does not initialize a driver, shared executors wire both stores, and database-without-driver returns typed fail-closed errors.
 - `npm run test:all`
-  - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, cloud-schema, and story-quality eval tests.
+  - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, cloud-schema, cloud-storage-config, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
 
 Additional branch evidence after the auth/profile account-route slices on `feature/story-lab-auth-profile-contracts`:
@@ -121,7 +125,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - Quick preflight passes.
 - Root integration/unit checks pass.
 - Story Lab UI work has landed through narrative dials, villain pressure, Director's Room notes, job status, batch queue, and job-backed genesis/continuation flows.
-- The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, a tracked cloud schema, one consolidated account route, and visible local/cloud library state.
+- The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, a tracked cloud schema, lazy cloud storage configuration, one consolidated account route, and visible local/cloud library state.
 - The auth seam now has a Clerk-shaped adapter scaffold, but live Clerk verification/sign-in is still not wired.
 - Classic genesis mock generation now has enforced word-count tolerance instead of warning-only length checks.
 - Real continuations now receive hidden, deterministic continuity-debt, ending-pressure, and stale-path anchors before generation.
@@ -168,13 +172,13 @@ Required before this becomes a user feature:
 
 ### P0: Cloud Project Storage Is Visible But Not Real Yet
 
-The storage port exists and models owner-scoped saved projects. A consolidated account route exposes profile and project operations behind auth/storage seams, `StoryService` has client methods for those calls, the app now shows a Cloud account panel, and `storyLabCloudSchema.sql` records the profile/project table contract. The panel is deliberately honest: it keeps local browser storage visible and reports cloud unavailable/failed until auth and durable storage are configured.
+The storage port exists and models owner-scoped saved projects. A consolidated account route exposes profile and project operations behind auth/storage seams, `StoryService` has client methods for those calls, the app now shows a Cloud account panel, `storyLabCloudSchema.sql` records the profile/project table contract, and `storyLabCloudStorageConfig.ts` centralizes lazy default store construction. The panel is deliberately honest: it keeps local browser storage visible and reports cloud unavailable/failed until auth and durable storage are configured.
 
 Required before this becomes a user feature:
 
 - Provision or configure a durable database.
 - Execute or wire the tracked schema through an explicit migration/provisioning path.
-- Configure a durable database executor for the route.
+- Install/configure a durable database driver and executor for the route.
 - Save, load, list, and delete projects by authenticated owner against real durable storage.
 - Make local browser storage a fallback/cache instead of the canonical signed-in source for signed-in users.
 - Add login/profile affordances and configured cloud-library states.
@@ -266,6 +270,6 @@ Recommended order:
 Use this order unless a newer user request or failing PR check supersedes it:
 
 1. Implement the provider-backed `AuthPort` adapter behind explicit environment configuration.
-2. Connect the account route to a durable database executor/migration path.
+2. Install/configure the actual durable database driver and executor behind the existing cloud storage config seam.
 3. If no provider/database decision is available, decide and test the continuation mock-length policy or run the next bounded story-output experiment from `STORY_LAB_IDEA_BOARD.md`.
 4. Replace the fail-closed cloud UI path with configured auth/storage behavior without breaking anonymous local save once credentials and storage configuration exist.
