@@ -116,6 +116,14 @@ function defineNarrativeDialOptions<TId extends string>(
   return definitions.map(([id, label, description, brief]) => ({ id, label, description, brief }));
 }
 
+function defineNarrativeDial(
+  id: NarrativeDialId,
+  label: string,
+  options: NarrativeDialOption[]
+): NarrativeDial {
+  return { id, label, options };
+}
+
 type DirectorRoomNoteId = 'desire-ledger' | 'continuity-keeper' | 'chapter-ending';
 
 type DirectorRoomNoteStatus = 'pending' | 'accepted' | 'dismissed';
@@ -259,43 +267,39 @@ export class App implements OnDestroy {
   ]);
 
   readonly narrativeDials: NarrativeDial[] = [
-    {
-      id: 'villain-pressure',
-      label: 'Villain Pressure',
-      options: this.villainPressureOptions
-    },
-    {
-      id: 'chapter-payload',
-      label: 'Chapter Payload',
-      options: defineNarrativeDialOptions([
+    defineNarrativeDial('villain-pressure', 'Villain Pressure', this.villainPressureOptions),
+    defineNarrativeDial(
+      'chapter-payload',
+      'Chapter Payload',
+      defineNarrativeDialOptions([
         ['romance', 'More romance', 'Put desire under pressure.', 'Chapter Payload: Put desire under pressure and reveal it through behavior, restraint, jealousy, protection, or sacrifice.'],
         ['danger', 'More danger', 'Move the threat close enough that it changes what the characters do next.', 'Chapter Payload: Move the threat close enough that it changes what the characters do next.'],
         ['lore', 'More lore', 'Reveal one world rule and make it personal.', 'Chapter Payload: Reveal one rule of the world, but make it personal and costly.'],
         ['intimacy', 'More intimacy', 'Deepen trust, vulnerability, or consent.', 'Chapter Payload: Deepen trust, vulnerability, or consent through behavior rather than explanation.'],
         ['plot', 'More plot', 'Change the situation in a way nobody can ignore.', 'Chapter Payload: Change the situation in a concrete way that nobody can ignore.']
       ])
-    },
-    {
-      id: 'pacing',
-      label: 'Pacing',
-      options: defineNarrativeDialOptions([
+    ),
+    defineNarrativeDial(
+      'pacing',
+      'Pacing',
+      defineNarrativeDialOptions([
         ['linger', 'Linger', 'Slow down for texture, longing, and consequence.', 'Pacing: Linger on texture, longing, and consequence before the next turn.'],
         ['balanced', 'Balanced', 'Move plot and emotion together.', 'Pacing: Balance external movement with emotional consequence.'],
         ['escalate', 'Escalate', 'Make each beat cost more than the last.', 'Pacing: Escalate so each beat costs more than the last.'],
         ['sprint', 'Sprint', 'Drive hard toward a cliffhanger.', 'Pacing: Sprint toward a cliffhanger without skipping the emotional cost.']
       ])
-    },
-    {
-      id: 'ending-bet',
-      label: 'Ending Bet',
-      options: defineNarrativeDialOptions([
+    ),
+    defineNarrativeDial(
+      'ending-bet',
+      'Ending Bet',
+      defineNarrativeDialOptions([
         ['revelation', 'Revelation', 'End by making hidden truth visible.', 'Ending Bet: Build the ending around a revelation that changes what came before.'],
         ['betrayal', 'Betrayal', 'End where trust breaks or appears to break.', 'Ending Bet: Build the ending around betrayal, and let behavior make the rupture land.'],
         ['impossible-choice', 'Impossible choice', 'End with no clean option left.', 'Ending Bet: Build the ending around an impossible choice with no clean escape.'],
         ['arrival', 'Arrival', 'End with someone or something entering too late.', 'Ending Bet: End with an arrival that changes the room before anyone is ready.'],
         ['deadline', 'Deadline', 'End when the clock becomes impossible to ignore.', 'Ending Bet: End by making the deadline impossible to ignore.']
       ])
-    }
+    )
   ];
 
   readonly blueprint = signal<BlueprintForm>({

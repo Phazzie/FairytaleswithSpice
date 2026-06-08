@@ -67,7 +67,7 @@ Give Story Lab one shared continuation-dial system and ship the next three compa
 - Spec TypeScript compile: clean.
 - Vercel function count: `10/12`.
 - Story Lab browser smoke: passed in mock mode. Build warnings remained the known initial bundle budget warning and `app.css` at `14.95 kB`.
-- Sonar duplication follow-up: repeated dial option object literals were compacted behind `defineNarrativeDialOptions`.
+- Sonar duplication follow-up: repeated dial option object literals and dial object blocks were compacted behind `defineNarrativeDialOptions` and `defineNarrativeDial`.
 
 ## Stop Conditions
 
