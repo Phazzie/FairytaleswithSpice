@@ -2050,3 +2050,62 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with browser-visible sign-in affordances or another no-credentials story-output experiment.
+
+### 2026-06-08 12:10 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the durable job schema contract commit.
+
+User request:
+
+- Keep working autonomously on the remaining app gaps, including platform issues that can be advanced without live credentials.
+
+Work completed:
+
+- Extended `api/_lib/story-lab/storage/storyLabCloudSchema.sql` with future durable job tables:
+  - `story_lab_jobs` for owner-scoped job snapshots;
+  - `story_lab_job_events` for ordered public job event snapshots.
+- Added owner, idempotency, and event-sequence indexes for the future durable job store.
+- Extended `storyLabCloudDatabaseReadiness.ts` so the real DB smoke will fail if job tables or job indexes are missing.
+- Updated schema/readiness tests so this contract cannot drift silently.
+- Updated the audit and auth/profile/cloud-library plan to say clearly that active job routes are still `non_durable_memory` until a real job store uses these tables.
+
+Files changed:
+
+- `api/_lib/story-lab/storage/storyLabCloudSchema.sql`
+- `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts`
+- `tests/story-lab-cloud-schema.test.ts`
+- `tests/story-lab-cloud-db-readiness.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-cloud-schema.test.ts` -> failed because `story_lab_jobs` did not exist.
+- RED: `npx tsx tests/story-lab-cloud-db-readiness.test.ts` -> failed because missing job tables/indexes were not reported.
+- GREEN: `npx tsx tests/story-lab-cloud-schema.test.ts` -> passed.
+- GREEN: `npx tsx tests/story-lab-cloud-db-readiness.test.ts` -> passed.
+- `npm run test:story-lab-cloud-schema` -> passed.
+- `npm run test:story-lab-cloud-db-readiness` -> passed.
+- `npm run test:story-lab-cloud-schema-migration` -> passed.
+- `env -u DATABASE_URL npm run db:story-lab-apply-schema` -> exited `1` with `DATABASE_URL is not configured`, as expected.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- The active job route still uses `non_durable_memory`; this is only the schema/readiness contract.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with a job-store port scaffold or browser-visible sign-in affordances.

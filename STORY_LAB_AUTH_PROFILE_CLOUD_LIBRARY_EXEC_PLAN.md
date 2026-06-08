@@ -94,9 +94,10 @@ Current implementation state as of 2026-06-08:
 - `configuredAuthPort` now explicitly supports `STORY_LAB_AUTH_PROVIDER=clerk`, still fails closed for blank/unknown providers, and still requires a verifier before Clerk sessions become app users.
 - Added `api/_lib/story-lab/auth/clerkAuthPort.ts`, a Clerk-shaped adapter scaffold that extracts bearer or `__session` tokens, requires an injected verifier, and fails closed without leaking token text.
 - Added `api/_lib/story-lab/storage/storyLabCloudSchema.sql` as the migration-ready cloud library schema contract for private profiles and owner-scoped story projects.
+- Extended `storyLabCloudSchema.sql` with future durable job tables: `story_lab_jobs` for owner-scoped job snapshots and `story_lab_job_events` for ordered public event snapshots.
 - Added `api/_lib/story-lab/storage/storyLabCloudSchemaMigration.ts` to split and apply the tracked schema through an injected executor.
 - Added `scripts/recovery/apply-story-lab-cloud-schema.ts` and `db:story-lab-apply-schema` for guarded real-database schema application.
-- Added `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts` and `scripts/recovery/story-lab-cloud-db-smoke.ts` to check the required tables and owner indexes when a real database URL is configured.
+- Added `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts` and `scripts/recovery/story-lab-cloud-db-smoke.ts` to check the required profile/project/job tables and owner/event indexes when a real database URL is configured.
 - Added `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts` as the lazy cloud storage configuration seam for account-route profile/project stores.
 - Added `api/_lib/story-lab/storage/neonStoryLabExecutor.ts`, a Neon driver adapter that maps `sql.query(text, params)` into the existing `{ rows }` executor shape.
 - Updated `api/_lib/story-lab/account/accountRouteHandlers.ts` so default stores come from the cloud storage config factory instead of direct Postgres construction.
@@ -161,6 +162,11 @@ Current implementation state as of 2026-06-08:
   - `npm run test:all`;
   - `scripts/recovery/preflight.sh --quick --skip-status`;
   - function count remained `11/12`.
+- Durable job schema readiness validation passed:
+  - RED: `npx tsx tests/story-lab-cloud-schema.test.ts` failed because `story_lab_jobs` did not exist;
+  - RED: `npx tsx tests/story-lab-cloud-db-readiness.test.ts` failed because missing job tables/indexes were not reported;
+  - GREEN: `npx tsx tests/story-lab-cloud-schema.test.ts`;
+  - GREEN: `npx tsx tests/story-lab-cloud-db-readiness.test.ts`.
 - Cloud storage config validation passed:
   - RED: `npx tsx tests/story-lab-cloud-storage-config.test.ts` failed on the missing config module;
   - GREEN: `npm run test:story-lab-cloud-storage-config`;
@@ -219,6 +225,7 @@ Current implementation state as of 2026-06-08:
   - `scripts/recovery/preflight.sh --quick --skip-status`.
 - No executed database migration/provisioning, live auth provider, live database proof, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
 - A migration-ready SQL contract exists, but it is not automatically executed by the app.
+- The migration-ready SQL contract includes future durable job tables, but the active job route still uses `non_durable_memory`.
 - A guarded schema-apply script exists, but it has only been tested with fake executors and missing-env refusal here.
 - A guarded cloud database readiness smoke exists, but it has only been tested with fake executors and missing-env refusal here.
 - A Neon executor adapter exists, but it has only been validated with injected fake queries and typechecks, not a live database.
@@ -301,7 +308,7 @@ The migration-ready table shape now lives in:
 
 - `api/_lib/story-lab/storage/storyLabCloudSchema.sql`
 
-It defines `story_lab_profiles` with `preferences_json`, and `story_projects` with `owner_user_id`, `story_id`, denormalized display fields, and `project_json`. The guarded apply path is `npm run db:story-lab-apply-schema` when a real `DATABASE_URL` is present. The guarded readiness path is `npm run smoke:story-lab-cloud-db`. Keep project storage on the existing `StoryProjectStore` contract. Do not create a second project persistence shape.
+It defines `story_lab_profiles` with `preferences_json`, `story_projects` with `owner_user_id`, `story_id`, denormalized display fields, and `project_json`, plus future durable `story_lab_jobs` and `story_lab_job_events` tables. The guarded apply path is `npm run db:story-lab-apply-schema` when a real `DATABASE_URL` is present. The guarded readiness path is `npm run smoke:story-lab-cloud-db`. Keep project storage on the existing `StoryProjectStore` contract. Do not create a second project persistence shape. Keep job routes labelled non-durable until a store uses the job tables.
 
 ### Slice 3: Consolidated Account Route
 

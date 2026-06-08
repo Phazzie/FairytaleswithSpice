@@ -88,11 +88,11 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - `tests/story-lab-configured-auth.test.ts` proves env-gated Clerk selection and unknown-provider denial.
   - `npm run test:all` now includes `test:story-lab-clerk-auth`.
 - Cloud schema scaffold evidence:
-  - `api/_lib/story-lab/storage/storyLabCloudSchema.sql` now records the migration-ready table shape for private profiles and owner-scoped cloud projects.
-  - `tests/story-lab-cloud-schema.test.ts` fails if the tracked schema loses the profile table, project table, owner column, project JSON payload, or owner indexes.
+  - `api/_lib/story-lab/storage/storyLabCloudSchema.sql` now records the migration-ready table shape for private profiles, owner-scoped cloud projects, and future durable job snapshots/events.
+  - `tests/story-lab-cloud-schema.test.ts` fails if the tracked schema loses the profile table, project table, owner column, project JSON payload, durable job tables, event ordering, or owner indexes.
   - `api/_lib/story-lab/storage/storyLabCloudSchemaMigration.ts` can split and apply that tracked schema through an injected executor.
   - `scripts/recovery/apply-story-lab-cloud-schema.ts` is a guarded real-database apply script that refuses to run unless `DATABASE_URL` is configured.
-  - `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts` and `scripts/recovery/story-lab-cloud-db-smoke.ts` can check the required profile/project tables and owner indexes when a real `DATABASE_URL` is present.
+  - `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts` and `scripts/recovery/story-lab-cloud-db-smoke.ts` can check the required profile/project/job tables and owner/event indexes when a real `DATABASE_URL` is present.
   - The helper is migration-ready, but no live database has been provisioned or migrated in this environment yet.
 - Cloud storage configuration seam evidence:
   - `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts` now centralizes default profile/project store construction for the account route.
@@ -194,11 +194,11 @@ Required before this becomes a user feature:
 
 ### P0: Job Progress Is Not Durable
 
-The Story Lab job route scaffold is useful, but the store is process-local and labelled `non_durable_memory`. It should not be described as crash-safe progress.
+The Story Lab job route scaffold is useful, but the active store is process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, but no route or store uses it yet. It should not be described as crash-safe progress.
 
 Required before this becomes durable:
 
-- Add a database-backed job table.
+- Add a database-backed job store that uses the tracked job tables.
 - Add owner-scoped job authorization.
 - Add a Workflow or equivalent durable runner decision.
 - Persist job events/snapshots outside the current process.
