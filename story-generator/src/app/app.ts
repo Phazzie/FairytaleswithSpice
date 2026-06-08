@@ -150,6 +150,14 @@ type ContinuityPreviewItem = {
   lifetimeLabel?: string;
 };
 
+type MemoryCardDraftItem = {
+  id: string;
+  label: string;
+  title: string;
+  detail: string;
+  triggerLabel: string;
+};
+
 type GenerationProgressState = {
   active: boolean;
   percent: number;
@@ -463,6 +471,33 @@ export class App implements OnDestroy {
         sourceReason: 'Continuity note to honor'
       }))
     ].filter(item => item.title || item.detail);
+  });
+
+  readonly memoryCardDrafts = computed<MemoryCardDraftItem[]>(() => {
+    const continuity = this.continuityPanel();
+    const characterDrafts = continuity.characters.slice(0, 1).map(character => ({
+      id: `memory-card-character-${character.id}`,
+      label: 'Character card',
+      title: character.displayName,
+      detail: character.currentGoal || character.summary || character.externalConflict,
+      triggerLabel: `Trigger: ${character.displayName}`
+    }));
+    const threadDrafts = continuity.activeThreads.slice(0, 1).map(thread => ({
+      id: `memory-card-thread-${thread.id}`,
+      label: 'Promise card',
+      title: thread.label,
+      detail: thread.description,
+      triggerLabel: `Trigger: ${thread.label}`
+    }));
+    const artifactDrafts = continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
+      id: `memory-card-artifact-${artifact.id}`,
+      label: 'World card',
+      title: artifact.name,
+      detail: artifact.significance,
+      triggerLabel: `Trigger: ${artifact.name}`
+    }));
+
+    return [...characterDrafts, ...threadDrafts, ...artifactDrafts].filter(item => item.title && item.detail);
   });
 
   private formatStoryMemoryLifetimeLabel(lifetime: StoryMemoryLifetime | undefined): string | undefined {

@@ -934,6 +934,22 @@ button:disabled {
   line-height: 1.5;
 }
 
+.continuity-preview,
+.memory-card-drafts {
+  margin-top: 12px;
+}
+
+.continuity-preview li,
+.memory-card-drafts li {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card-bg);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .continuity-source,
 .continuity-lifetime {
   font-size: 0.76rem;

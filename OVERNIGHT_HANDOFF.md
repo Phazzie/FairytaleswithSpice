@@ -3402,3 +3402,54 @@ Known issues:
 Next recommended task:
 
 - Run full verification, commit this slice, then either structure continuity warnings for lifetime metadata or expose the continuation source map in the UI.
+
+### 2026-06-08 Memory Card Drafts UI Experiment
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the memory card drafts UI experiment commit.
+
+User request:
+
+- Use autonomous time for weird/eclectic feature experiments and mine similar writing tools for ideas, not only repair work.
+
+Work completed:
+
+- Added a read-only `memoryCardDrafts` view model built from already-loaded `StoryStateSnapshot` data.
+- Story Memory now suggests one `Character card`, one `Promise card`, and one `World card` when the current state has a character, active thread, and unresolved artifact.
+- Each draft includes a compact trigger phrase such as `Trigger: Mara`, `Trigger: Moonlit oath`, or `Trigger: Witness Shell`.
+- Kept the feature route-free, persistence-free, and provider-free: these are draft suggestions only, not accepted cards and not injected into generation prompts.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.css`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because the Memory Card Drafts panel was absent.
+- GREEN: same Angular browser command -> `TOTAL: 56 SUCCESS`; ChromeHeadless cleanup emitted the known SIGKILL warning after the result.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `549.42 kB` over the 500 kB warning budget and `app.css` `14.88 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Draft cards are not editable, accepted, persisted, or injected yet.
+- Trigger phrases are simple exact names/titles, not alias sets or semantic retrieval.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Run full verification, commit this slice, then add either accepted-card persistence or alias/trigger enrichment as a bounded follow-up.

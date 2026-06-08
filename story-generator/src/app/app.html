@@ -666,6 +666,17 @@
             </li>
           </ul>
         </div>
+        <div class="memory-card-drafts" data-testid="memory-card-drafts-panel" *ngIf="memoryCardDrafts().length">
+          <p class="eyebrow">Memory Card Drafts</p>
+          <ul>
+            <li *ngFor="let draft of memoryCardDrafts()">
+              <span class="eyebrow">{{ draft.label }}</span>
+              <strong>{{ draft.title }}</strong>
+              <span class="muted">{{ draft.detail }}</span>
+              <span class="muted continuity-source">{{ draft.triggerLabel }}</span>
+            </li>
+          </ul>
+        </div>
         <div class="prompt-list" *ngIf="suggestedNextPrompts().length">
           <button
             type="button"

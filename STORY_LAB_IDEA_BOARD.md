@@ -354,6 +354,13 @@ Variable Lifetime Labels progress:
 - Story Memory / Continuity Preview rows now show compact labels such as `Series memory` and `Chapter memory` when a thread or artifact has lifetime metadata.
 - Continuity warnings still use the existing plain-string contract; migrating them to structured lifetime-aware objects is a separate compatibility slice.
 
+Triggered Card Drafts progress:
+
+- Read-only UI experiment started on 2026-06-08.
+- Story Memory now drafts compact character, promise, and world cards from the current `StoryStateSnapshot`.
+- Each draft shows a human-facing card type, title, detail, and trigger phrase such as `Trigger: Mara`.
+- Drafts are not accepted, edited, persisted, or auto-injected yet; this is the trust-building preview before any memory-card write path exists.
+
 ### Research: User Library And Profile Patterns
 
 Research how creative apps present account identity, project libraries, saved drafts, and profile/taste preferences.

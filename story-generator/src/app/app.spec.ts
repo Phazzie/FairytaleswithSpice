@@ -405,6 +405,12 @@ describe('App', () => {
     return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
+  function renderedMemoryCardDraftsText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    targetFixture.detectChanges();
+    const panel = targetFixture.nativeElement.querySelector('[data-testid="memory-card-drafts-panel"]') as HTMLElement | null;
+    return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -894,6 +900,57 @@ describe('App', () => {
     expect(previewText).toContain('Continuity note');
     expect(previewText).toContain('Resolve the vow');
     expect(previewText).toContain('Continuity note to honor');
+  });
+
+  it('renders suggested memory card drafts from current story state', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ],
+        artifacts: [
+          {
+            id: 'shell',
+            name: 'Witness Shell',
+            significance: 'The shell repeats any vow spoken near the reef court.',
+            introducedInChapter: 1
+          }
+        ]
+      })
+    });
+
+    const cardDraftText = renderedMemoryCardDraftsText() ?? '';
+
+    expect(cardDraftText).toContain('Memory Card Drafts');
+    expect(cardDraftText).toContain('Character card');
+    expect(cardDraftText).toContain('Mara');
+    expect(cardDraftText).toContain('Trigger: Mara');
+    expect(cardDraftText).toContain('Promise card');
+    expect(cardDraftText).toContain('Moonlit oath');
+    expect(cardDraftText).toContain('Trigger: Moonlit oath');
+    expect(cardDraftText).toContain('World card');
+    expect(cardDraftText).toContain('Witness Shell');
+    expect(cardDraftText).toContain('Trigger: Witness Shell');
   });
 
   it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {
