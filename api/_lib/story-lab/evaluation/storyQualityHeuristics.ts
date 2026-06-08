@@ -30,7 +30,7 @@ export function buildStoryQualityHeuristicReport(input: StoryQualityHeuristicInp
     scoreTropeFreshness(lowerStory),
     scoreEmotionalVariety(lowerStory),
     scoreCharacterConsistency(input.storyContent, dialogueLines),
-    scoreProseQuality(words.length, sentences.length, paragraphs.length),
+    scoreProseQuality(input.storyContent, words.length, sentences.length, paragraphs.length),
     scoreAudioReadiness(dialogueLines.length, paragraphs)
   ].map(normalizeDimension);
   const overallScore = clampScore(Math.round(
@@ -143,21 +143,26 @@ function scoreCharacterConsistency(storyContent: string, dialogueLines: string[]
   };
 }
 
-function scoreProseQuality(wordCount: number, sentenceCount: number, paragraphCount: number): DimensionDraft {
+function scoreProseQuality(storyContent: string, wordCount: number, sentenceCount: number, paragraphCount: number): DimensionDraft {
   const averageSentenceLength = sentenceCount ? wordCount / sentenceCount : wordCount;
   const signals: string[] = [
     `Words: ${wordCount}`,
     `Paragraphs: ${paragraphCount}`,
     `Average sentence length: ${averageSentenceLength.toFixed(1)}`
   ];
+  const specificAnchors = extractConcreteAnchors(storyContent);
+  if (specificAnchors.length) {
+    signals.push(`Specific anchors: ${specificAnchors.slice(0, 3).join(', ')}`);
+  }
   const sentenceScore = averageSentenceLength >= 8 && averageSentenceLength <= 28 ? 24 : 10;
   const paragraphScore = paragraphCount >= 2 ? 18 : 8;
+  const specificityScore = Math.min(2, specificAnchors.length) * 4;
 
   return {
     id: 'prose_quality',
     label: 'Prose quality',
-    score: 48 + sentenceScore + paragraphScore,
-    rationale: 'Deterministic readability scan uses sentence and paragraph shape only.',
+    score: 48 + sentenceScore + paragraphScore + specificityScore,
+    rationale: 'Deterministic readability scan uses sentence shape and concrete-anchor signals.',
     signals
   };
 }
@@ -198,4 +203,91 @@ function containsAny(value: string, needles: readonly string[]): boolean {
 
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function extractConcreteAnchors(storyContent: string): string[] {
+  const objectNouns = new Set([
+    'arch',
+    'bargain',
+    'blade',
+    'book',
+    'bridge',
+    'car',
+    'contract',
+    'court',
+    'crown',
+    'door',
+    'envelope',
+    'house',
+    'key',
+    'ledger',
+    'letter',
+    'map',
+    'mirror',
+    'oath',
+    'phone',
+    'reef',
+    'ring',
+    'shell',
+    'sleeve',
+    'ticket',
+    'vow'
+  ]);
+  const weakFirstTokens = new Set([
+    'a',
+    'an',
+    'and',
+    'every',
+    'her',
+    'his',
+    'my',
+    'now',
+    'our',
+    'that',
+    'the',
+    'then',
+    'their',
+    'this',
+    'under',
+    'which',
+    'your'
+  ]);
+  const weakVerbPrefixes = new Set([
+    'choose',
+    'glowed',
+    'listened',
+    'owns',
+    'pressed',
+    'recorded',
+    'repeats',
+    'survives',
+    'touched',
+    'wanted'
+  ]);
+  const anchors: string[] = [];
+  const normalized = storyContent
+    .toLowerCase()
+    .replace(/[^a-z'\s-]/g, ' ')
+    .replace(/\s+/g, ' ');
+  const tokens = normalized.split(' ').filter(token => token.length > 2);
+
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const phrase = `${tokens[index]} ${tokens[index + 1]}`;
+    const noun = tokens[index + 1].replace(/s$/, '');
+    const firstToken = tokens[index];
+    if (
+      weakFirstTokens.has(firstToken) ||
+      weakVerbPrefixes.has(firstToken) ||
+      !objectNouns.has(noun) ||
+      anchors.includes(phrase)
+    ) {
+      continue;
+    }
+    anchors.push(phrase);
+    if (anchors.length >= 5) {
+      break;
+    }
+  }
+
+  return anchors;
 }

@@ -125,6 +125,8 @@ async function main(): Promise<void> {
   assert(heuristicDimensionIds.includes('audio_readiness'), 'quality report should include audio readiness.');
   assert(heuristicReport.dimensions.every(dimension => dimension.score >= 0 && dimension.score <= 100), 'quality scores should stay normalized.');
   assert(heuristicReport.dimensions.some(dimension => dimension.signals.length > 0), 'quality report should include explainable signals.');
+  const proseQuality = heuristicReport.dimensions.find(dimension => dimension.id === 'prose_quality');
+  assert(proseQuality?.signals.some(signal => signal.includes('Specific anchors: witness shell, reef arch, blood oath')), 'prose quality should report concrete specificity anchors.');
 
   const classicInput = toClassicGenerationInput(blueprint);
   assert(classicInput.generationContext?.protagonistName === 'Mira', 'protagonist name should survive Story Lab mapping.');

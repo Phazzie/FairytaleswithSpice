@@ -67,7 +67,8 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Deterministic story-quality report evidence:
   - The Story Lab evaluate route now attaches an optional `heuristicReport` to both mock and live evaluation responses.
   - The report is deterministic and advisory: it scores continuity, cliffhanger quality, trope freshness, emotional variety, character consistency, prose quality, and audio-readiness from bounded text signals.
-  - `tests/story-quality-evals.test.ts` now fails unless the report includes all seven planned dimensions, normalized 0-100 scores, and explainable signals.
+  - Prose quality now includes a small Specificity Lens signal for concrete anchors such as `witness shell`, `reef arch`, and `blood oath`, so the quality scan can distinguish textured story matter from only sentence shape.
+  - `tests/story-quality-evals.test.ts` now fails unless the report includes all seven planned dimensions, normalized 0-100 scores, explainable signals, and the prose-quality specificity anchor.
   - This folds the useful dimensions from the untracked `STORY_QUALITY_EVALS_PLAN.md` into tracked code without committing the untracked planning file unchanged.
 - Visible Proving Grounds quality-report evidence:
   - Proving Grounds now renders `heuristicReport` inside evaluated story results as a compact Deterministic Quality Scan panel.

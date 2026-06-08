@@ -110,9 +110,40 @@ Status:
 - `buildStoryQualityHeuristicReport` now returns a deterministic advisory report with the seven planned dimensions.
 - `/api/story-lab/evaluate` attaches the report to both mock and live evaluation responses as optional `heuristicReport`.
 - `tests/story-quality-evals.test.ts` guards the dimension count, dimension ids, score bounds, and presence of signals.
+- The prose-quality dimension now includes a small Specificity Lens signal that names concrete anchors in the story text, such as `witness shell`, `reef arch`, and `blood oath`.
 - Proving Grounds now renders the report as a compact Deterministic Quality Scan panel after evaluation.
 - `proving-grounds.spec.ts` guards that the visible panel includes the score, continuity, audio-readiness, and concrete signals.
 - Proving Grounds history cards now show a compact `Quality N` badge, and comparison cards include the heuristic quality score beside the AI score.
+
+### Done: Specificity Lens
+
+Origin:
+
+- The user wanted weird/eclectic story-output experiments during autonomous work, not just cleanup.
+- Existing quality reporting could say whether prose had decent sentence shape, but not whether the story was using concrete story matter.
+
+Hypothesis:
+
+- A cheap specificity signal can help users and future agents notice when story output has named objects, places, promises, or consequences instead of only generic mood.
+
+User value:
+
+- Proving Grounds quality output becomes more explainable without calling an AI judge or increasing generation prompt length.
+
+Smallest experiment:
+
+- Add a deterministic concrete-anchor extractor to the existing `prose_quality` dimension.
+- Keep the seven-dimension contract stable.
+
+Guardrails:
+
+- Do not add provider calls.
+- Do not add another hidden continuation anchor.
+- Keep the signal advisory and explainable.
+
+Acceptance:
+
+- `tests/story-quality-evals.test.ts` now fails unless the fixture's prose-quality dimension reports `Specific anchors: witness shell, reef arch, blood oath`.
 
 ### Soon: Durable Job Storage
 
