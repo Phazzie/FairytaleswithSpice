@@ -79,6 +79,11 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The stale `App re-enables cloud controls after an account route error` spec assertion was corrected to test the visible local-library heading and re-enabled cloud button instead of the unrelated local save-status signal.
   - Targeted app spec run passed with `52 SUCCESS`.
   - Full Angular browser run passed with `93 SUCCESS`.
+- Clerk auth adapter scaffold evidence:
+  - `api/_lib/story-lab/auth/clerkAuthPort.ts` now extracts Clerk session tokens from `Authorization: Bearer ...`, `cookies.__session`, or raw `Cookie` headers.
+  - The adapter still fails closed unless an explicit verifier is injected, so raw provider tokens do not become app users.
+  - `tests/story-lab-clerk-auth.test.ts` proves missing verifier denial, bearer-token verification, `__session` extraction, and invalid-token rejection without leaking token text.
+  - `npm run test:all` now includes `test:story-lab-clerk-auth`.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
@@ -113,6 +118,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - Root integration/unit checks pass.
 - Story Lab UI work has landed through narrative dials, villain pressure, Director's Room notes, job status, batch queue, and job-backed genesis/continuation flows.
 - The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, one consolidated account route, and visible local/cloud library state.
+- The auth seam now has a Clerk-shaped adapter scaffold, but live Clerk verification/sign-in is still not wired.
 - Classic genesis mock generation now has enforced word-count tolerance instead of warning-only length checks.
 - Real continuations now receive hidden, deterministic continuity-debt, ending-pressure, and stale-path anchors before generation.
 - Story evaluation responses now carry a deterministic advisory quality report with seven explainable craft dimensions.

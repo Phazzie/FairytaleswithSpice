@@ -1611,3 +1611,53 @@ Known issues:
 Next recommended task:
 
 - Continue provider-backed auth/storage work, or start a tiny comparison-sort/filter experiment for Proving Grounds evaluated results.
+
+### 2026-06-08 10:40 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the Clerk auth adapter scaffold commit.
+
+User request:
+
+- Keep moving toward auth/storage without faking login or weakening owner isolation.
+
+Work completed:
+
+- Added `api/_lib/story-lab/auth/clerkAuthPort.ts`.
+- The adapter reads Clerk session tokens from `Authorization: Bearer ...`, `cookies.__session`, or raw `Cookie` headers.
+- It requires an injected verifier before it returns an `AuthUser`; without a verifier, missing token, invalid token, or verifier errors all fail closed.
+- Auth errors do not echo raw session token text.
+- Added `tests/story-lab-clerk-auth.test.ts` and wired `test:story-lab-clerk-auth` into `npm run test:all`.
+- Updated the auth/profile/cloud-library plan with the Clerk token-source note and explicit caveat that this is not live auth until a real verifier/SDK and frontend sign-in flow are wired.
+
+Files changed:
+
+- `api/_lib/story-lab/auth/clerkAuthPort.ts`
+- `tests/story-lab-clerk-auth.test.ts`
+- `package.json`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-clerk-auth.test.ts` -> failed on missing `clerkAuthPort` module.
+- GREEN: `npm run test:story-lab-clerk-auth` -> passed.
+- `npm run test:all` -> passed with `test:story-lab-clerk-auth` included.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+
+Known issues:
+
+- This is still not live Clerk auth. It needs a real Clerk verifier/SDK wiring and frontend sign-in flow.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- Real cloud sync still requires durable database configuration.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Wire the adapter into `configuredAuthPort` only after choosing/installing the actual verifier path, or continue storage/database provisioning work.

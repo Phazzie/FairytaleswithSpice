@@ -42,6 +42,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - [x] Wire cloud library methods into the Angular service.
 - [x] Wire cloud library UI into the Angular app.
 - [x] Add focused owner-isolation, profile, route, and UI tests.
+- [x] Add Clerk-shaped `AuthPort` adapter scaffold with token extraction and injected verifier.
 - [x] Run validation and update handoff for Slice 1.
 - [x] Run validation and update handoff for Slices 2 and 3.
 - [x] Run validation and update handoff for Slice 4a service methods.
@@ -53,6 +54,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - Current job routes use credentialed CORS but not account ownership. They must not be described as user-private durable jobs until a later job-persistence plan.
 - The existing storage port takes `AuthUser` already, which is the right seam. Future route work should call `authPort.requireUser(req)` once and pass the resulting `AuthUser` into storage.
 - Current provider research says editable auth metadata is not a safe authorization source. User profile preferences can live in metadata only if they are treated as display/preferences, never ownership.
+- Clerk's current backend docs describe bearer session tokens for cross-origin requests and the `__session` cookie for same-origin requests. The adapter scaffold extracts only those token sources and still requires an injected verifier before it returns a user. Sources: https://clerk.com/docs/request-authentication/backend and https://clerk.com/docs/backend-requests/manual-jwt, accessed 2026-06-08.
 - Vercel function budget is usable but tighter after Slice 3. Account/profile/project cloud APIs now share one deployable route file, and the branch count is `11/12`.
 - The cloud library UI can land before live auth/database provisioning as long as it tells the truth: local browser saves remain active, and cloud sync shows unavailable or failed until the account route is configured.
 
@@ -81,11 +83,14 @@ Current implementation state as of 2026-06-08:
 - Re-exported those types through `api/_lib/story-lab/contracts.ts`.
 - Added `api/_lib/story-lab/profile/profileDefaults.ts` with fail-closed, adult-unconfirmed default profile preferences.
 - Added `api/_lib/story-lab/auth/configuredAuthPort.ts`, which delegates only to an injected provider and otherwise denies by default.
+- Added `api/_lib/story-lab/auth/clerkAuthPort.ts`, a Clerk-shaped adapter scaffold that extracts bearer or `__session` tokens, requires an injected verifier, and fails closed without leaking token text.
 - Added focused tests:
   - `tests/story-lab-profile-contracts.test.ts`
   - `tests/story-lab-configured-auth.test.ts`
+  - `tests/story-lab-clerk-auth.test.ts`
   - `tests/story-lab-profile-store.test.ts`
 - Added npm scripts for the new focused tests and included them in `npm run test:all`.
+- Added `test:story-lab-clerk-auth` to `npm run test:all`.
 - Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
 - Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
 - Added `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts` as an injected-executor Postgres profile scaffold that fails closed when `DATABASE_URL` or an executor is missing.
@@ -149,6 +154,7 @@ Current implementation state as of 2026-06-08:
   - `npm run test:all`;
   - `scripts/recovery/preflight.sh --quick --skip-status`.
 - No provider SDK, database migration, live auth provider, live database executor, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
+- The Clerk adapter scaffold is not live auth by itself; it still needs a real Clerk verifier/SDK wiring and frontend sign-in flow.
 
 Expected retrospective evidence after implementation:
 
