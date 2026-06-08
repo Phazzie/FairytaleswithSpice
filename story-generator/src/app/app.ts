@@ -205,7 +205,7 @@ type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: n
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink, NotificationsComponent, DebugPanel],
   templateUrl: './app.html',
-  styleUrl: './app.css'
+  styleUrls: ['./app.css', './app-reader-library.css']
 })
 export class App implements OnDestroy {
   private readonly storyService = inject(StoryService);

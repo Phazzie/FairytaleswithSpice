@@ -75,7 +75,24 @@ Status:
 
 - Done in overnight slice on 2026-06-08.
 - `npm run build -- --stats-json` showed the initial browser total at `481.61 kB` and Proving Grounds as a lazy `78.52 kB` chunk.
-- The remaining frontend budget issue is `app.css` at `14.96 kB`, over the 12 kB warning budget but below the hard failure budget.
+- The follow-up CSS budget slice cleared the remaining `app.css` warning by splitting scoped root styles into `app.css` and `app-reader-library.css`.
+
+### Done: Root Component Style Budget Guard
+
+The root Story Lab stylesheet had become a hidden dumping ground for every panel. That made the build warn at `14.96 kB` and made future UI work likely to trip the hard style budget.
+
+Acceptance:
+
+- Reader/library/story-memory styles are separated from shell/form/progress styles while staying component-scoped.
+- A tracked test fails if any Story Lab app component style file minifies above 12,000 bytes.
+- The production build no longer reports a component-style budget warning.
+
+Status:
+
+- Done in overnight slice on 2026-06-08.
+- `app.css` now minifies to `11371` bytes.
+- `app-reader-library.css` minifies to `3638` bytes.
+- `npm run build` passed with initial browser total `481.66 kB` and no CSS budget warnings.
 
 ### Done: Mock Word Budget Gap
 

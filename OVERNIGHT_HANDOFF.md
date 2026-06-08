@@ -4163,3 +4163,65 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then either trim `app.css` warning headroom or continue route-free auth/cloud readiness work.
+
+### 2026-06-08 15:58 EDT Root Component Style Budget Split
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the root component style budget split commit.
+
+User request:
+
+- Keep working autonomously and keep app health moving after the Proving Grounds bundle split.
+
+Plan and critique:
+
+- Plan: clear the remaining component CSS budget warning without redesigning the UI.
+- Hostile critique applied: do not move scoped component selectors into global styles and leak them onto Proving Grounds. Split the root component into multiple scoped `styleUrls`, preserve mobile override order, and add a guard so the root app stylesheet cannot silently grow past the 12 kB warning budget again.
+
+Work completed:
+
+- Added `tests/story-generator-component-style-budget.test.ts`.
+- Added `test:story-generator-component-style-budget` to `npm run test:all`.
+- Split reader, chapter, library, saved-project, and story-memory styles into `story-generator/src/app/app-reader-library.css`.
+- Changed the root component to use `styleUrls`.
+- Kept shell, form, generation progress, job status, and responsive layout styles in `app.css`.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.css`
+- `story-generator/src/app/app-reader-library.css`
+- `tests/story-generator-component-style-budget.test.ts`
+- `package.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-generator-component-style-budget` -> failed because `app.css` minified to `14959` bytes.
+- GREEN: `npm run test:story-generator-component-style-budget` -> passed.
+- Minified style sizes: `app.css` `11371` bytes; `app-reader-library.css` `3638` bytes.
+- Targeted Angular browser test: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` -> `TOTAL: 64 SUCCESS`.
+- `npm run build` -> passed; initial browser total is `481.66 kB`, Proving Grounds remains lazy, and no component-style budget warning was emitted.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url` -> no open PRs.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This clears the per-file component style warning; it does not materially reduce total CSS payload.
+- Live prose/provider proof still requires `XAI_API_KEY`.
+- Live cloud sync still requires real auth, database configuration, schema application, and browser sign-in.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue route-free auth/cloud readiness or pick the next bounded story-output experiment.
