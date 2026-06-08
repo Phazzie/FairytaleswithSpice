@@ -93,6 +93,24 @@ Triage note, 2026-06-08:
 - The repo already has tracked live-provider smoke paths: `smoke:story-lab-live-provider`, `smoke:grok`, and `tests/grok-multi-agent-smoke.test.ts`.
 - If a canonical low-level `StoryService` Grok smoke is still wanted later, revise the untracked file first, fix whitespace, add a deliberate package script, and document how it differs from the tracked live-provider smoke.
 
+### Done: Deterministic Story Quality Report
+
+Turn the useful dimensions from `STORY_QUALITY_EVALS_PLAN.md` into a tracked, no-credentials evaluation slice before any AI judging work.
+
+Acceptance:
+
+- Evaluation output includes continuity, cliffhanger quality, trope freshness, emotional variety, character consistency, prose quality, and audio-readiness.
+- Scores are bounded 0-100.
+- Signals are explainable enough to debug why the advisory score moved.
+- The slice does not require credentials and does not claim to replace live/AI review.
+
+Status:
+
+- Done in overnight slice on 2026-06-08.
+- `buildStoryQualityHeuristicReport` now returns a deterministic advisory report with the seven planned dimensions.
+- `/api/story-lab/evaluate` attaches the report to both mock and live evaluation responses as optional `heuristicReport`.
+- `tests/story-quality-evals.test.ts` guards the dimension count, dimension ids, score bounds, and presence of signals.
+
 ### Soon: Durable Job Storage
 
 Replace or supplement `non_durable_memory` job state with an owner-scoped durable job table and runner plan.
@@ -187,13 +205,14 @@ Why:
 - Several items describe old branch and PR #87 context.
 - The durable lessons are now better represented by `OVERNIGHT_MODE.md`, `STORY_LAB_APP_AUDIT.md`, and current execution plans.
 
-### Adopt As Source Material: `STORY_QUALITY_EVALS_PLAN.md`
+### Partially Adopted As Source Material: `STORY_QUALITY_EVALS_PLAN.md`
 
 Decision:
 
 - Keep as useful source material for story-quality work.
 - Do not commit it unchanged yet.
-- Fold the useful parts into a current story-quality or auth/profile/cloud-library plan when that implementation slice starts.
+- The seven core quality dimensions have been folded into tracked code as a deterministic advisory `heuristicReport`.
+- Leave the untracked plan parked until any remaining AI-judge, audio, or reporting ideas are reconciled with current code.
 
 Why:
 

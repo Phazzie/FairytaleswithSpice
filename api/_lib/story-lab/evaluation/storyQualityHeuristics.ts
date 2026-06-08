@@ -1,0 +1,201 @@
+import type {
+  StoryQualityDimensionScore,
+  StoryQualityHeuristicReport
+} from '../contracts';
+
+export interface StoryQualityHeuristicInput {
+  storyContent: string;
+  configuration: {
+    creature: string;
+    themes: string[];
+    spicyLevel: number;
+    wordCount: number;
+  };
+}
+
+type DimensionDraft = Omit<StoryQualityDimensionScore, 'score'> & {
+  score: number;
+};
+
+export function buildStoryQualityHeuristicReport(input: StoryQualityHeuristicInput): StoryQualityHeuristicReport {
+  const storyText = collapseWhitespace(input.storyContent);
+  const lowerStory = storyText.toLowerCase();
+  const paragraphs = input.storyContent.split(/\n\s*\n/).map(paragraph => paragraph.trim()).filter(Boolean);
+  const sentences = storyText.split(/[.!?]+/).map(sentence => sentence.trim()).filter(Boolean);
+  const words = storyText.split(/\s+/).filter(Boolean);
+  const dialogueLines = input.storyContent.split('\n').filter(line => /^\s*\[[^\]]+\]:/.test(line));
+  const dimensions: StoryQualityDimensionScore[] = [
+    scoreContinuity(lowerStory, input.configuration),
+    scoreCliffhangerQuality(lowerStory, paragraphs),
+    scoreTropeFreshness(lowerStory),
+    scoreEmotionalVariety(lowerStory),
+    scoreCharacterConsistency(input.storyContent, dialogueLines),
+    scoreProseQuality(words.length, sentences.length, paragraphs.length),
+    scoreAudioReadiness(dialogueLines.length, paragraphs)
+  ].map(normalizeDimension);
+  const overallScore = clampScore(Math.round(
+    dimensions.reduce((sum, dimension) => sum + dimension.score, 0) / Math.max(1, dimensions.length)
+  ));
+
+  return {
+    source: 'heuristic',
+    heuristicOnly: true,
+    overallScore,
+    dimensions,
+    summary: `Deterministic story-quality scan completed with ${dimensions.length} advisory dimensions.`
+  };
+}
+
+function scoreContinuity(storyText: string, configuration: StoryQualityHeuristicInput['configuration']): DimensionDraft {
+  const signals: string[] = [];
+  if (configuration.creature && storyText.includes(configuration.creature.toLowerCase())) {
+    signals.push(`Creature appears: ${configuration.creature}`);
+  }
+  for (const theme of configuration.themes) {
+    const themeWords = theme.split(/[_\s-]+/).filter(word => word.length > 3);
+    if (themeWords.some(word => storyText.includes(word.toLowerCase()))) {
+      signals.push(`Theme echo appears: ${theme}`);
+    }
+  }
+  if (containsAny(storyText, ['oath', 'vow', 'bargain', 'debt', 'secret'])) {
+    signals.push('Continuity object or promise is repeated.');
+  }
+
+  return {
+    id: 'continuity',
+    label: 'Continuity',
+    score: 55 + signals.length * 12,
+    rationale: signals.length ? 'Story text repeats configured or established state.' : 'Few configured story anchors were detected.',
+    signals
+  };
+}
+
+function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): DimensionDraft {
+  const finalParagraph = (paragraphs[paragraphs.length - 1] ?? storyText).toLowerCase();
+  const signals: string[] = [];
+  if (/[?!]\s*$/.test(finalParagraph)) {
+    signals.push('Ending closes on a question or exclamation.');
+  }
+  if (containsAny(finalParagraph, ['choose', 'secret', 'reveal', 'blood', 'price', 'door', 'name', 'truth'])) {
+    signals.push('Ending contains an unresolved hook word.');
+  }
+  if (containsAny(finalParagraph, ['cliff', 'continued', 'to be continued'])) {
+    signals.push('Ending uses explicit cliffhanger language.');
+  }
+
+  return {
+    id: 'cliffhanger_quality',
+    label: 'Cliffhanger quality',
+    score: 50 + signals.length * 16,
+    rationale: signals.length ? 'The ending carries unresolved pressure.' : 'The ending may need a sharper unresolved turn.',
+    signals
+  };
+}
+
+function scoreTropeFreshness(storyText: string): DimensionDraft {
+  const staleSignals = ['damsel in distress', 'it was all a dream', 'love at first sight', 'chosen one'];
+  const staleHits = staleSignals.filter(signal => storyText.includes(signal));
+  const freshSignals = ['cost', 'bargain', 'choice', 'consequence', 'leverage'].filter(signal => storyText.includes(signal));
+  return {
+    id: 'trope_freshness',
+    label: 'Trope freshness',
+    score: 72 + freshSignals.length * 6 - staleHits.length * 18,
+    rationale: staleHits.length ? 'Potential stale trope language was detected.' : 'No obvious stale trope phrase was detected.',
+    signals: staleHits.length ? staleHits.map(hit => `Stale phrase: ${hit}`) : freshSignals.map(hit => `Freshness signal: ${hit}`)
+  };
+}
+
+function scoreEmotionalVariety(storyText: string): DimensionDraft {
+  const emotionGroups = [
+    ['want', 'desire', 'hunger'],
+    ['fear', 'dread', 'afraid'],
+    ['anger', 'rage', 'fury'],
+    ['grief', 'ache', 'loss'],
+    ['hope', 'trust', 'mercy']
+  ];
+  const matchedGroups = emotionGroups.filter(group => group.some(word => storyText.includes(word)));
+  return {
+    id: 'emotional_variety',
+    label: 'Emotional variety',
+    score: 48 + matchedGroups.length * 12,
+    rationale: matchedGroups.length > 1 ? 'Multiple emotional registers are present.' : 'Emotional range looks narrow in the deterministic scan.',
+    signals: matchedGroups.map(group => `Emotion family: ${group[0]}`)
+  };
+}
+
+function scoreCharacterConsistency(storyContent: string, dialogueLines: string[]): DimensionDraft {
+  const speakers = Array.from(new Set(dialogueLines
+    .map(line => line.match(/^\s*\[([^\]]+)\]:/)?.[1]?.trim())
+    .filter((speaker): speaker is string => Boolean(speaker))));
+  const namedCharacters = Array.from(new Set((storyContent.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g) ?? [])
+    .filter(name => !['Narrator'].includes(name))));
+  const signals = [
+    ...speakers.map(speaker => `Speaker: ${speaker}`),
+    ...(namedCharacters.length ? [`Named character count: ${namedCharacters.length}`] : [])
+  ];
+
+  return {
+    id: 'character_consistency',
+    label: 'Character consistency',
+    score: 52 + Math.min(3, speakers.length) * 12 + Math.min(2, namedCharacters.length) * 6,
+    rationale: speakers.length ? 'Dialogue speakers and named characters are identifiable.' : 'Few character identity signals were detected.',
+    signals
+  };
+}
+
+function scoreProseQuality(wordCount: number, sentenceCount: number, paragraphCount: number): DimensionDraft {
+  const averageSentenceLength = sentenceCount ? wordCount / sentenceCount : wordCount;
+  const signals: string[] = [
+    `Words: ${wordCount}`,
+    `Paragraphs: ${paragraphCount}`,
+    `Average sentence length: ${averageSentenceLength.toFixed(1)}`
+  ];
+  const sentenceScore = averageSentenceLength >= 8 && averageSentenceLength <= 28 ? 24 : 10;
+  const paragraphScore = paragraphCount >= 2 ? 18 : 8;
+
+  return {
+    id: 'prose_quality',
+    label: 'Prose quality',
+    score: 48 + sentenceScore + paragraphScore,
+    rationale: 'Deterministic readability scan uses sentence and paragraph shape only.',
+    signals
+  };
+}
+
+function scoreAudioReadiness(dialogueLineCount: number, paragraphs: string[]): DimensionDraft {
+  const longParagraphs = paragraphs.filter(paragraph => paragraph.split(/\s+/).filter(Boolean).length > 90);
+  const signals: string[] = [];
+  if (dialogueLineCount > 0) {
+    signals.push(`Tagged dialogue lines: ${dialogueLineCount}`);
+  }
+  if (!longParagraphs.length) {
+    signals.push('No overlong paragraphs detected.');
+  }
+
+  return {
+    id: 'audio_readiness',
+    label: 'Audio-readiness',
+    score: 58 + Math.min(3, dialogueLineCount) * 8 + (longParagraphs.length ? -18 : 12),
+    rationale: 'Audio-readiness checks dialogue tags and paragraph length.',
+    signals
+  };
+}
+
+function normalizeDimension(dimension: DimensionDraft): StoryQualityDimensionScore {
+  return {
+    ...dimension,
+    score: clampScore(Math.round(dimension.score))
+  };
+}
+
+function clampScore(score: number): number {
+  return Math.max(0, Math.min(100, score));
+}
+
+function containsAny(value: string, needles: readonly string[]): boolean {
+  return needles.some(needle => value.includes(needle));
+}
+
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}

@@ -64,6 +64,11 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The eval also fails if world clues keep the generic `World Details` name; seeded world artifacts now derive compact names such as `Witness Shells` or `Vow-Binding Songs` from the world-detail text.
   - `previewStoryLabContinuationGuidance` now exposes the same provider brief, hidden guidance, anchor headings, and character count for future visible continuity-preview UI without adding a route or invoking the provider.
   - The deterministic state still drives the guidance; only the wording shown to the model is less mechanical.
+- Deterministic story-quality report evidence:
+  - The Story Lab evaluate route now attaches an optional `heuristicReport` to both mock and live evaluation responses.
+  - The report is deterministic and advisory: it scores continuity, cliffhanger quality, trope freshness, emotional variety, character consistency, prose quality, and audio-readiness from bounded text signals.
+  - `tests/story-quality-evals.test.ts` now fails unless the report includes all seven planned dimensions, normalized 0-100 scores, and explainable signals.
+  - This folds the useful dimensions from the untracked `STORY_QUALITY_EVALS_PLAN.md` into tracked code without committing the untracked planning file unchanged.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
@@ -100,6 +105,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, one consolidated account route, and visible local/cloud library state.
 - Classic genesis mock generation now has enforced word-count tolerance instead of warning-only length checks.
 - Real continuations now receive hidden, deterministic continuity-debt, ending-pressure, and stale-path anchors before generation.
+- Story evaluation responses now carry a deterministic advisory quality report with seven explainable craft dimensions.
 - Server/client logging and privacy scaffolding have already received meaningful work in prior phases.
 
 ## Current Product Reality

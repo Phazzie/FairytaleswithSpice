@@ -1410,3 +1410,58 @@ Known issues:
 Next recommended task:
 
 - If continuing without credentials, build the next focused story-quality eval from `STORY_QUALITY_EVALS_PLAN.md` source material, or return to auth/storage provider work when provider/database details are available.
+
+### 2026-06-08 10:10 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the story-quality heuristic report commit.
+
+User request:
+
+- Keep working autonomously and mine useful story-quality/source-material ideas without stopping.
+
+Work completed:
+
+- Added a deterministic `buildStoryQualityHeuristicReport` helper for Story Lab evaluation.
+- The report returns seven advisory dimensions from the eval plan source material: continuity, cliffhanger quality, trope freshness, emotional variety, character consistency, prose quality, and audio-readiness.
+- Each dimension has a bounded 0-100 score, rationale, and concrete signals so future UI/debugging can explain why a score moved.
+- `/api/story-lab/evaluate` now attaches the report to both mock and live evaluation responses as optional `heuristicReport`.
+- API contract exports now include the new story-quality report types.
+- `STORY_QUALITY_EVALS_PLAN.md` remains untracked and parked, but its seven core dimensions have been folded into tracked code.
+
+Files changed:
+
+- `api/_lib/story-lab/contracts.ts`
+- `api/_lib/story-lab/evaluation/storyQualityHeuristics.ts`
+- `api/story-lab/evaluate.ts`
+- `story-generator/src/app/contracts.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- `npx tsx tests/story-quality-evals.test.ts` -> passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed after replacing `Array.at()` with API-target-compatible index access.
+- `git diff --check` -> passed.
+
+Known issues:
+
+- This is a deterministic advisory report, not a real AI judge of story quality.
+- The current UI does not display the report yet.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Add a small visible Proving Grounds quality-report panel for `heuristicReport`, or continue provider-backed auth/storage work when provider/database details are available.
