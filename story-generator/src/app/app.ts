@@ -145,6 +145,7 @@ type ContinuityPreviewItem = {
   label: string;
   title: string;
   detail: string;
+  sourceReason: string;
 };
 
 type GenerationProgressState = {
@@ -439,20 +440,23 @@ export class App implements OnDestroy {
             ? 'Quiet promise'
             : 'Open promise',
         title: thread.label,
-        detail: thread.description
+        detail: thread.description,
+        sourceReason: 'Active story thread'
       })),
       ...(relationshipItem ? [relationshipItem] : []),
       ...continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
         id: `artifact-${artifact.id}`,
         label: 'World clue',
         title: artifact.name,
-        detail: artifact.significance
+        detail: artifact.significance,
+        sourceReason: 'Unresolved world clue'
       })),
       ...continuity.continuityWarnings.slice(0, 1).map((warning, index) => ({
         id: `warning-${index}`,
         label: 'Continuity note',
         title: 'Carry forward',
-        detail: warning
+        detail: warning,
+        sourceReason: 'Continuity note to honor'
       }))
     ].filter(item => item.title || item.detail);
   });
@@ -466,7 +470,8 @@ export class App implements OnDestroy {
             id: `relationship-${character.id}-${target.id}`,
             label: 'Relationship pressure',
             title: `${character.displayName} and ${target.displayName}`,
-            detail: relationship.notes || this.formatRelationshipPreviewDetail(relationship.relationship)
+            detail: relationship.notes || this.formatRelationshipPreviewDetail(relationship.relationship),
+            sourceReason: 'Current relationship edge'
           };
         }
       }

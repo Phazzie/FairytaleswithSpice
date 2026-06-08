@@ -880,12 +880,16 @@ describe('App', () => {
     expect(previewText).toContain('Continuity Preview');
     expect(previewText).toContain('Pressure rising');
     expect(previewText).toContain('Moonlit oath');
+    expect(previewText).toContain('Active story thread');
     expect(previewText).toContain('Relationship pressure');
     expect(previewText).toContain('Mara and Duke Vale');
+    expect(previewText).toContain('Current relationship edge');
     expect(previewText).toContain('World clue');
     expect(previewText).toContain('Witness Shell');
+    expect(previewText).toContain('Unresolved world clue');
     expect(previewText).toContain('Continuity note');
     expect(previewText).toContain('Resolve the vow');
+    expect(previewText).toContain('Continuity note to honor');
   });
 
   it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {

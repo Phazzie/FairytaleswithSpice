@@ -3243,3 +3243,56 @@ Known issues:
 Next recommended task:
 
 - Commit this docs slice, then continue with the next route-free product or quality improvement.
+
+### 2026-06-08 Continuity Preview Source Reasons
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the continuity preview source reasons commit.
+
+User request:
+
+- Continue autonomous route-free UI/product improvements and make story memory more understandable in normal user terms.
+
+Work completed:
+
+- Added `sourceReason` to visible Continuity Preview items.
+- The sidebar now shows compact source reasons for tracked story memory:
+  - `Active story thread`
+  - `Current relationship edge`
+  - `Unresolved world clue`
+  - `Continuity note to honor`
+- Kept the UI route-free and based only on already-loaded `StoryStateSnapshot` data.
+- Added focused Angular coverage for the new visible source reasons.
+- Updated the app audit.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.css`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because source reasons were absent.
+- GREEN: same Angular browser command -> `TOTAL: 55 SUCCESS`; ChromeHeadless cleanup emitted the known SIGKILL warning after the result.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `547.26 kB` over the 500 kB warning budget and `app.css` `14.63 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is visible source wording from current state, not the precise continuation-brief source map yet.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with another small story-memory/product improvement or a route-free cloud/account hardening task.
