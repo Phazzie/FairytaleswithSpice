@@ -3876,3 +3876,58 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then run a story-output comparison using edited accepted memory cards.
+
+### 2026-06-08 Accepted Memory Output Comparison
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the accepted memory output comparison commit.
+
+User request:
+
+- Keep working autonomously and experiment with ways to improve story output, not just cleanup.
+
+Plan and critique:
+
+- Plan: compare a continuation brief with and without accepted-card text and prove the accepted-card version changes hidden continuity-anchor selection.
+- Hostile critique applied: this is not live prose proof because no provider key is configured; it is a deterministic prompt/anchor comparison. No new route, no UI, no CSS, and no claim that the model output itself has improved until a live provider run is available.
+
+Work completed:
+
+- Added an eval comparison where a neutral brief does not activate the lower-priority `Moonlit Oath` thread.
+- The same brief plus an `Accepted Memory Cards` block now activates `Moonlit Oath` in hidden continuation guidance.
+- Updated continuation source-map reasons so accepted-card matches say `Matched words from accepted memory card text.`
+- Refactored activation scoring to share candidate extraction for threads, relationships, artifacts, and warnings.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-quality` -> failed because the source map still reported generic continuation-brief activation.
+- GREEN: `npm run test:story-quality` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `557.26 kB` over the 500 kB warning budget and `app.css` `14.96 kB` over the 12 kB warning budget.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This proves prompt/anchor behavior only; live prose comparison still requires `XAI_API_KEY`.
+- Accepted memory cards still do not have reorder controls.
+- Accepted memory cards are still local project JSON, not a separate durable cloud memory table.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then either add accepted-card reorder controls or run a live-provider story-output comparison when credentials are available.
