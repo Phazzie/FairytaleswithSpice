@@ -1508,7 +1508,7 @@ Checks run:
 Known issues:
 
 - The quality report remains deterministic and advisory; it is not a live AI quality judge.
-- The full Angular suite still has an unrelated existing failure in `App re-enables cloud controls after an account route error` when run through Karma.
+- The full Angular suite failure in `App re-enables cloud controls after an account route error` was fixed in the following 10:29 EDT slice.
 - Live Grok/provider proof still requires `XAI_API_KEY`.
 - The cloud/auth/storage known issues from previous entries still apply.
 - The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
@@ -1516,3 +1516,50 @@ Known issues:
 Next recommended task:
 
 - Investigate and fix the unrelated Angular cloud-controls spec failure, then continue auth/storage provider work or add a small comparator view for heuristic report scores in Proving Grounds history.
+
+### 2026-06-08 10:29 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud-controls spec correction commit.
+
+User request:
+
+- Keep working autonomously and do not leave known validation failures unaddressed.
+
+Root cause:
+
+- The production cloud-refresh behavior was correct: account-route errors set cloud state unavailable and re-enable cloud controls, but they do not change the local browser save-status signal.
+- The failing spec was asserting `workspaceSaveStatus()` should contain `Saved here`, even though `Saved here` is a visible local-library section heading and there may be no local saved project.
+
+Work completed:
+
+- Corrected the cloud-controls spec to assert the user-facing contract: cloud check button re-enabled, cloud mode unavailable, and the local `Saved here` section still visible.
+- No production code changed.
+
+Files changed:
+
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` -> passed.
+- `npx -p node@20 node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include='src/app/app.spec.ts'` -> `52 SUCCESS`.
+- `npx -p node@20 node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless` -> `93 SUCCESS`.
+
+Known issues:
+
+- Full Angular tests print expected error-logging test console noise, but the suite result is green.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Continue provider-backed auth/storage work, or add a compact heuristic-score summary in Proving Grounds history/comparison cards.

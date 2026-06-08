@@ -74,6 +74,10 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The panel shows the advisory overall score, each dimension score, rationale, and the first two explainable signals per dimension.
   - `proving-grounds.spec.ts` seeds an evaluated result and fails unless the deterministic panel renders continuity, audio-readiness, overall score, and concrete signals.
   - The new CSS was trimmed back under the component warning budget; `npm run build` no longer reports a Proving Grounds CSS warning.
+- Angular browser-suite evidence:
+  - The stale `App re-enables cloud controls after an account route error` spec assertion was corrected to test the visible local-library heading and re-enabled cloud button instead of the unrelated local save-status signal.
+  - Targeted app spec run passed with `52 SUCCESS`.
+  - Full Angular browser run passed with `93 SUCCESS`.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
