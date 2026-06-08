@@ -32,8 +32,9 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - `npm run build` passed after the new CSS was trimmed below the hard component budget.
 - Continuity Preview UI slice evidence:
   - The sidebar Story Memory section now shows a read-only Continuity Preview with prose labels for the first active/open story debts, world clue, and continuity note.
+  - The preview now also shows one `Relationship pressure` item when current character state has a relationship edge.
   - The preview uses current `StoryStateSnapshot` data already present on the client, so it adds no route and does not spend the remaining Vercel function slot.
-  - Angular spec coverage proves `Pressure rising`, `World clue`, and `Continuity note` render from seeded story state.
+  - Angular spec coverage proves `Pressure rising`, `Relationship pressure`, `World clue`, and `Continuity note` render from seeded story state.
   - Follow-up CSS cleanup reduced the built component CSS budget warning from 14.95 KB to 14.60 KB after the preview landed.
 - Mock story length slice evidence:
   - The classic genesis mock story path now scales deterministic fallback prose toward the requested word count for single and multi-chapter requests.

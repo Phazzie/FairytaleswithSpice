@@ -429,6 +429,7 @@ export class App implements OnDestroy {
 
   readonly continuityPreviewItems = computed<ContinuityPreviewItem[]>(() => {
     const continuity = this.continuityPanel();
+    const relationshipItem = this.buildContinuityRelationshipPreviewItem(continuity.characters);
     return [
       ...continuity.activeThreads.slice(0, 2).map(thread => ({
         id: `thread-${thread.id}`,
@@ -440,6 +441,7 @@ export class App implements OnDestroy {
         title: thread.label,
         detail: thread.description
       })),
+      ...(relationshipItem ? [relationshipItem] : []),
       ...continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
         id: `artifact-${artifact.id}`,
         label: 'World clue',
@@ -454,6 +456,43 @@ export class App implements OnDestroy {
       }))
     ].filter(item => item.title || item.detail);
   });
+
+  private buildContinuityRelationshipPreviewItem(characters: ContinuityPanelViewModel['characters']): ContinuityPreviewItem | null {
+    for (const character of characters) {
+      for (const relationship of character.relationships) {
+        const target = characters.find(candidate => candidate.id === relationship.characterId);
+        if (target) {
+          return {
+            id: `relationship-${character.id}-${target.id}`,
+            label: 'Relationship pressure',
+            title: `${character.displayName} and ${target.displayName}`,
+            detail: relationship.notes || this.formatRelationshipPreviewDetail(relationship.relationship)
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private formatRelationshipPreviewDetail(
+    relationship: ContinuityPanelViewModel['characters'][number]['relationships'][number]['relationship']
+  ): string {
+    if (relationship === 'lover') {
+      return 'Want has a cost in the next scene.';
+    }
+    if (relationship === 'rival') {
+      return 'Opposition should change what someone risks.';
+    }
+    if (relationship === 'ally') {
+      return 'Trust should require an action.';
+    }
+    if (relationship === 'family') {
+      return 'Loyalty should complicate the next choice.';
+    }
+
+    return 'This connection should change the next scene.';
+  }
 
   readonly selectedChapter = computed(() => {
     const id = this.selectedChapterId();

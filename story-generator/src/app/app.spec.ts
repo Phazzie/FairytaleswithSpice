@@ -728,6 +728,38 @@ describe('App', () => {
   it('renders a read-only Continuity Preview from current story state', () => {
     seedWorkbenchForContinuation({
       state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [
+              {
+                characterId: 'duke-vale',
+                relationship: 'rival',
+                notes: 'Duke Vale can turn the vow into leverage.'
+              }
+            ],
+            spiceCompatibilities: [3]
+          },
+          {
+            id: 'duke-vale',
+            displayName: 'Duke Vale',
+            archetype: 'antagonist',
+            summary: 'A moonlit duke with a claim on the reef archive.',
+            currentGoal: 'Turn Mara toward the court bargain.',
+            internalConflict: 'His desire compromises his strategy.',
+            externalConflict: 'Mara can refuse him in public.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
         threads: [
           {
             id: 'oath',
@@ -754,6 +786,8 @@ describe('App', () => {
     expect(previewText).toContain('Continuity Preview');
     expect(previewText).toContain('Pressure rising');
     expect(previewText).toContain('Moonlit oath');
+    expect(previewText).toContain('Relationship pressure');
+    expect(previewText).toContain('Mara and Duke Vale');
     expect(previewText).toContain('World clue');
     expect(previewText).toContain('Witness Shell');
     expect(previewText).toContain('Continuity note');

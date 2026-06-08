@@ -232,6 +232,7 @@ Continuity Preview progress:
 - `previewStoryLabContinuationGuidance` exposes the exact continuation provider brief, hidden guidance, anchor headings, and character count without calling the AI provider.
 - Read-only UI preview started on 2026-06-08.
 - The sidebar Story Memory section now lists prose-labeled state items such as `Pressure rising`, `World clue`, and `Continuity note` from the current client-side `StoryStateSnapshot`.
+- The sidebar Story Memory section now also lists one `Relationship pressure` item when current character state has a relationship edge.
 - The current UI preview is not editable yet and does not call the backend preview seam; it is the first visible trust layer using already-loaded state.
 
 Relationship Web Lite progress:
@@ -239,6 +240,7 @@ Relationship Web Lite progress:
 - Backend/test seam started on 2026-06-08.
 - Initial Story Lab protagonist and antagonist records now include typed `rival` relationship edges instead of leaving the relationship arrays empty.
 - Real continuation guidance folds one compact `Relationship pressure` line into the existing `Continuity Courtroom` anchor.
+- The existing read-only Story Memory preview now renders one visible `Relationship pressure` item from already-loaded state.
 - This is not an editable relationship graph yet; it is the first state/guidance slice for relationship-aware continuation.
 
 ### Research: User Library And Profile Patterns

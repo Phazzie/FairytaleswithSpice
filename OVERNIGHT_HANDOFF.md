@@ -2052,6 +2052,57 @@ Next recommended task:
 
 - Commit this slice, then continue with either a visible continuity/relationship preview improvement or a bounded auth/cloud-readiness slice.
 
+### 2026-06-08 Visible Relationship Preview Slice
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the visible relationship preview commit.
+
+User request:
+
+- Keep working autonomously and continue UI/story-output work that makes story state less mechanical and more visible.
+
+Work completed:
+
+- Extended the existing read-only Story Memory / Continuity Preview panel to include one `Relationship pressure` item when current `StoryStateSnapshot.characters` include a relationship edge.
+- The item renders as a normal continuity preview row using the existing template and CSS, so this adds no route and no new component styles.
+- The visible title joins the two character names, for example `Mara and Duke Vale`, and the detail uses the relationship note when present.
+- Added Angular spec coverage for the relationship preview inside the existing Continuity Preview test.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` -> failed with `1 FAILED, 51 SUCCESS` because the preview did not render `Relationship pressure` or `Mara and Duke Vale`.
+- GREEN: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` -> passed with `52 SUCCESS`.
+- `npm run build` -> passed. Existing warnings remained: initial bundle budget `545.56 kB` and `app.css` `14.60 kB`.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- The relationship preview is read-only and shows only the first relationship edge found in current state.
+- This is still not an editable relationship graph.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with a bounded auth/cloud-readiness or story-output slice.
+
 ### 2026-06-08 11:50 EDT
 
 Branch:
