@@ -207,7 +207,7 @@ Why:
 
 ## Weird Lab Queue
 
-### Weird Lab: Tension Thread Translator
+### Done: Tension Thread Translator
 
 Build a tiny deterministic translator that turns numeric/internal narrative state into prose anchors before generation.
 
@@ -222,6 +222,13 @@ Experiment:
 - Map each to behavioral prose.
 - Feed only prose anchors into continuation context.
 - Compare before/after continuation samples.
+
+Status:
+
+- Covered by the narrative dials UI merge and verified again during the 2026-06-08 overnight pass.
+- The app stores selected dial option IDs internally and appends only prose anchors to UI-driven continuation briefs.
+- `STORY_LAB_NARRATIVE_DIALS_UI_EXEC_PLAN.md` records the original RED/GREEN proof, and `story-generator/src/app/app.spec.ts` covers every narrative dial option.
+- Future numeric story-state translators can build on this pattern, but this idea is no longer an unstarted Weird Lab item.
 
 ### Weird Lab: Continuity Courtroom
 
