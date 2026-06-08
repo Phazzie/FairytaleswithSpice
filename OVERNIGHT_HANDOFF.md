@@ -184,3 +184,46 @@ Known issues:
 Next recommended task:
 
 - Run source-backed research for auth/profile/cloud-library patterns, then turn it into an implementation plan.
+
+### 2026-06-08 07:09 EDT
+
+Branch:
+
+- `main`
+
+Commit:
+
+- Pending; this slice is not committed yet.
+
+User request:
+
+- Keep overnight work moving and include research-mined ideas.
+
+Work completed:
+
+- Ran a source-backed research pass across adjacent AI/writing tools and platform docs.
+- Added research notes to `STORY_LAB_IDEA_BOARD.md`.
+- Translated findings into Story Lab experiments: Story Memory Shelf, Context Activation Rules, Relationship Web Lite, and Continuity Preview.
+- Added platform notes for auth/profile/cloud-library planning: private writing preferences first, owner ID for authorization, Marketplace Postgres decision, and Workflow/database gate for durable jobs.
+
+Files changed:
+
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- Web/source review of Sudowrite, Novelcrafter, NovelAI, LivingWriter, Supabase Auth, Vercel Postgres, and Vercel Workflow docs.
+- `git diff --check` -> passed.
+
+Checks skipped:
+
+- Code tests; this is a docs/research slice.
+
+Known issues:
+
+- Research findings are not implementation permission. Auth provider choice, database provisioning, and Workflow adoption still need a concrete plan and user/provider constraints.
+
+Next recommended task:
+
+- Create the auth/profile/cloud-library implementation plan, using the research notes and storage-port scaffold as inputs.

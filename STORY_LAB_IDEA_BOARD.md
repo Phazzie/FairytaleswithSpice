@@ -27,6 +27,10 @@ Acceptance:
 - `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` accurately distinguishes completed storage-port scaffolding from unfinished cloud account sync.
 - No production auth/storage claims are added.
 
+Status:
+
+- Done in overnight slice on 2026-06-08.
+
 ### Now: Auth, Profiles, And Cloud Library Plan
 
 Turn auth/storage/profiles into a concrete implementation plan before touching provider code.
@@ -38,6 +42,19 @@ Acceptance:
 - Cloud project save/list/load/delete flow is scoped.
 - Route/function budget impact is called out.
 - Owner-isolation tests are listed.
+
+Research notes from 2026-06-08:
+
+- Supabase Auth models permanent and anonymous users, issues access tokens tied to users, and supports RLS-driven access. Its docs warn that user-editable metadata must not be used for security-sensitive authorization. Source: https://supabase.com/docs/guides/auth/users, accessed 2026-06-08.
+- Vercel's current Postgres guidance says new projects should use Marketplace Postgres integrations rather than legacy Vercel Postgres. Source: https://vercel.com/docs/postgres, accessed 2026-06-08.
+- Vercel's Workflow material now positions Workflow SDK as the path for long-running durable work with step isolation, retries, persistence, and observability. Sources: https://vercel.com/workflows and https://vercel.com/blog/a-new-programming-model-for-durable-execution, accessed 2026-06-08.
+
+Product translation:
+
+- Start profiles as private writing preferences, not social profiles.
+- Profile fields should be deliberately boring first: display name, default heat contract, default tone/creature preferences, content boundaries, library sort preference, created/updated timestamps.
+- Keep account identity separate from profile data. `AuthUser.userId` owns records; editable profile fields do not authorize anything.
+- Keep Story Lab jobs non-durable until a Workflow/database decision exists.
 
 ### Now: Mock Word Budget Gap
 
@@ -91,6 +108,29 @@ Output:
 - Three patterns worth stealing in spirit, not copying.
 - One small experiment per pattern.
 
+Research pass, 2026-06-08:
+
+Sources:
+
+- Sudowrite docs list Story Bible, Characters, Worldbuilding, Outline, Scenes & Draft, Chapter Continuity, Visibility Settings, and Saliency Engine as writing-system concepts. Source: https://docs.sudowrite.com/using-sudowrite/1ow1qkGqof9rtcyGnrWUBS, accessed 2026-06-08.
+- Novelcrafter's Codex stores story elements such as characters, locations, objects, and research notes as a central story reference. Source: https://www.novelcrafter.com/help/docs/codex/the-codex, accessed 2026-06-08.
+- NovelAI Lorebook supports key-triggered context insertion and advanced placement settings. Source: https://docs.novelai.net/en/text/lorebook/, accessed 2026-06-08.
+- LivingWriter Elements organize characters, settings, objects, tags, notes, and relationships. Source: https://guides.livingwriter.com/desktop-app-+-web-version/chapters-and-elements/elements-section, accessed 2026-06-08.
+
+Patterns worth mining:
+
+- Structured story memory beats raw prompt stuffing.
+- Story elements need relationships and tags, not just freeform text.
+- AI context should be selective: activate only the memory that matters to the current scene.
+- Continuity tooling should be visible enough for trust but compressed enough not to feel like homework.
+
+Experiments:
+
+- `Story Memory Shelf`: extract characters, places, objects, promises, and pressure threads from saved projects, then let continuation use only the active shelf items.
+- `Context Activation Rules`: give each memory item aliases and trigger phrases, then include the item only when current story text or continuation brief references it.
+- `Relationship Web Lite`: start with simple typed links such as wants, owes, hides from, protects, betrays, and fears.
+- `Continuity Preview`: before Continue Saga, show a compact "what the model will remember" list that can be accepted, edited, or hidden.
+
 ### Research: User Library And Profile Patterns
 
 Research how creative apps present account identity, project libraries, saved drafts, and profile/taste preferences.
@@ -101,6 +141,13 @@ Output:
 - What should stay local/private.
 - What should sync.
 - What should never be logged.
+
+Research pass, 2026-06-08:
+
+- User profiles should begin as private writing preferences and library controls.
+- Cloud library should sync saved projects, chapter metadata, story state, accepted craft notes, and continuity summaries.
+- Raw story text, prompts, heat boundaries, and generated artifacts need redaction and owner-scoped access before cloud sync.
+- A future profile table should not trust user-editable metadata for authorization; authorization should stay tied to `AuthUser.userId` and owner columns.
 
 ## Untracked File Triage
 
