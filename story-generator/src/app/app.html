@@ -648,6 +648,16 @@
           <li>{{ continuityPanel().activeThreads.length }} active thread{{ continuityPanel().activeThreads.length === 1 ? '' : 's' }}</li>
           <li>{{ continuityPanel().unresolvedArtifacts.length }} unresolved artifact{{ continuityPanel().unresolvedArtifacts.length === 1 ? '' : 's' }}</li>
         </ul>
+        <div class="continuity-preview" data-testid="continuity-preview-panel" *ngIf="continuityPreviewItems().length">
+          <p class="eyebrow">Continuity Preview</p>
+          <ul>
+            <li *ngFor="let item of continuityPreviewItems()">
+              <span class="eyebrow">{{ item.label }}</span>
+              <strong>{{ item.title }}</strong>
+              <span class="muted">{{ item.detail }}</span>
+            </li>
+          </ul>
+        </div>
         <div class="prompt-list" *ngIf="suggestedNextPrompts().length">
           <button
             type="button"

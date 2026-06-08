@@ -140,6 +140,13 @@ type DirectorRoomNote = {
   chapterId: string;
 };
 
+type ContinuityPreviewItem = {
+  id: string;
+  label: string;
+  title: string;
+  detail: string;
+};
+
 type GenerationProgressState = {
   active: boolean;
   percent: number;
@@ -418,6 +425,34 @@ export class App implements OnDestroy {
       unresolvedArtifacts: session.state.artifacts.filter(artifact => !artifact.resolvedInChapter),
       continuityWarnings: session.state.continuityWarnings
     };
+  });
+
+  readonly continuityPreviewItems = computed<ContinuityPreviewItem[]>(() => {
+    const continuity = this.continuityPanel();
+    return [
+      ...continuity.activeThreads.slice(0, 2).map(thread => ({
+        id: `thread-${thread.id}`,
+        label: thread.status === 'escalating'
+          ? 'Pressure rising'
+          : thread.status === 'dormant'
+            ? 'Quiet promise'
+            : 'Open promise',
+        title: thread.label,
+        detail: thread.description
+      })),
+      ...continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
+        id: `artifact-${artifact.id}`,
+        label: 'World clue',
+        title: artifact.name,
+        detail: artifact.significance
+      })),
+      ...continuity.continuityWarnings.slice(0, 1).map((warning, index) => ({
+        id: `warning-${index}`,
+        label: 'Continuity note',
+        title: 'Carry forward',
+        detail: warning
+      }))
+    ].filter(item => item.title || item.detail);
   });
 
   readonly selectedChapter = computed(() => {

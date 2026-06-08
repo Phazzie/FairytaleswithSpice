@@ -29,6 +29,10 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The panel shows honest unavailable/synced/failed/local-only states and calls the account service for refresh, save, load, and delete.
   - Local browser saves remain visible as "Saved here" and are not replaced by cloud state.
   - `npm run build` passed after the new CSS was trimmed below the hard component budget.
+- Continuity Preview UI slice evidence:
+  - The sidebar Story Memory section now shows a read-only Continuity Preview with prose labels for the first active/open story debts, world clue, and continuity note.
+  - The preview uses current `StoryStateSnapshot` data already present on the client, so it adds no route and does not spend the remaining Vercel function slot.
+  - Angular spec coverage proves `Pressure rising`, `World clue`, and `Continuity note` render from seeded story state.
 - Mock story length slice evidence:
   - The classic genesis mock story path now scales deterministic fallback prose toward the requested word count for single and multi-chapter requests.
   - `tests/story-service-improved.test.ts` now fails if 700, 900, or 1200 word single-story mock requests fall outside the existing 30% tolerance.

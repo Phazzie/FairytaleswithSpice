@@ -1304,3 +1304,60 @@ Known issues:
 Next recommended task:
 
 - If continuing without credentials, either wire a read-only Continuity Preview into the UI using this seam or return to provider/database work when auth/storage decisions are available.
+
+### 2026-06-08 09:58 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the Continuity Preview UI commit.
+
+User request:
+
+- Continue UI/story-output work without adding routes or making false provider/auth claims.
+
+Work completed:
+
+- Added a read-only Continuity Preview to the existing Story Memory sidebar.
+- The preview shows top active/open story debts, one world clue, and one continuity note with prose-facing labels: `Pressure rising`, `Open promise`, `Quiet promise`, `World clue`, and `Continuity note`.
+- Added `continuityPreviewItems` as a client-side computed view model built from the already-loaded `StoryStateSnapshot`.
+- Added Angular spec coverage for rendering `Pressure rising`, `World clue`, and `Continuity note` from seeded workbench state.
+- Kept the change route-free and function-budget neutral.
+- Removed the first custom CSS pass after `npm run build` caught the hard app CSS budget; the final UI reuses existing sidebar text styles.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- Angular spec typecheck after adding the spec: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` -> passed.
+- `npm run build` initially failed because `app.css` exceeded the hard 15 KB budget by 435 bytes.
+- After removing custom CSS and reusing existing styles, `npm run build` -> passed with CSS at 14.95 KB and only budget warnings.
+- `STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui` -> passed in mock mode.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+
+Known issues:
+
+- The visible Continuity Preview is read-only and state-derived; it is not yet editable and does not call the backend preview seam.
+- The app CSS remains close to the hard budget at 14.95 KB.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without credentials, either tighten CSS budget headroom before adding more UI or build the next small story-quality eval from `STORY_QUALITY_EVALS_PLAN.md` source material.

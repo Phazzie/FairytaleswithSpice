@@ -147,7 +147,9 @@ Continuity Preview progress:
 
 - Backend/test seam started on 2026-06-08.
 - `previewStoryLabContinuationGuidance` exposes the exact continuation provider brief, hidden guidance, anchor headings, and character count without calling the AI provider.
-- This is not visible UI yet; it is the safe seam future UI can call or adapt without duplicating hidden-guidance construction.
+- Read-only UI preview started on 2026-06-08.
+- The sidebar Story Memory section now lists prose-labeled state items such as `Pressure rising`, `World clue`, and `Continuity note` from the current client-side `StoryStateSnapshot`.
+- The current UI preview is not editable yet and does not call the backend preview seam; it is the first visible trust layer using already-loaded state.
 
 ### Research: User Library And Profile Patterns
 

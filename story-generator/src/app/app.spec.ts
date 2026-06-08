@@ -399,6 +399,12 @@ describe('App', () => {
     return renderedNarrativeDial(dialId, targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
+  function renderedContinuityPreviewText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    targetFixture.detectChanges();
+    const panel = targetFixture.nativeElement.querySelector('[data-testid="continuity-preview-panel"]') as HTMLElement | null;
+    return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -708,6 +714,41 @@ describe('App', () => {
     expect(directorText).toContain('Chapter Ending');
     expect(directorText).toContain('Mara');
     expect(directorText).toContain('Moonlit oath');
+  });
+
+  it('renders a read-only Continuity Preview from current story state', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ],
+        artifacts: [
+          {
+            id: 'shell',
+            name: 'Witness Shell',
+            significance: 'The shell repeats any vow spoken near the reef court.',
+            introducedInChapter: 1
+          }
+        ],
+        continuityWarnings: ['Resolve the vow before changing courts.']
+      })
+    });
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    expect(previewText).toContain('Continuity Preview');
+    expect(previewText).toContain('Pressure rising');
+    expect(previewText).toContain('Moonlit oath');
+    expect(previewText).toContain('World clue');
+    expect(previewText).toContain('Witness Shell');
+    expect(previewText).toContain('Continuity note');
+    expect(previewText).toContain('Resolve the vow');
   });
 
   it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {
