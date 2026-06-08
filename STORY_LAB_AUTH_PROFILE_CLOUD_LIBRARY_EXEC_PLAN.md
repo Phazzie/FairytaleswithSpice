@@ -112,10 +112,12 @@ Current implementation state as of 2026-06-08:
   - `tests/story-lab-cloud-db-readiness.test.ts`
   - `tests/story-lab-cloud-storage-config.test.ts`
   - `tests/story-lab-neon-executor.test.ts`
+  - `tests/story-lab-job-store-config.test.ts`
   - `tests/story-lab-job-store-port.test.ts`
   - `tests/story-lab-profile-store.test.ts`
 - Added npm scripts for the new focused tests and included them in `npm run test:all`.
-- Added `test:story-lab-clerk-auth`, `test:story-lab-cloud-schema`, `test:story-lab-cloud-schema-migration`, `test:story-lab-cloud-db-readiness`, `test:story-lab-cloud-storage-config`, and `test:story-lab-neon-executor` to `npm run test:all`.
+- Added `test:story-lab-clerk-auth`, `test:story-lab-cloud-schema`, `test:story-lab-cloud-schema-migration`, `test:story-lab-cloud-db-readiness`, `test:story-lab-cloud-storage-config`, `test:story-lab-neon-executor`, and `test:story-lab-job-store-config` to `npm run test:all`.
+- Added `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts` as the env-gated future job-store selection seam; default routes stay non-durable until route/auth integration is tested.
 - Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
 - Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
 - Added `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts` as an injected-executor Postgres profile scaffold that fails closed when `DATABASE_URL` or an executor is missing.

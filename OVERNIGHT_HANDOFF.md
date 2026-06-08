@@ -2324,6 +2324,60 @@ Next recommended task:
 
 - Commit this slice, then continue with authenticated job-route integration, Clerk verification/sign-in wiring, or another no-credentials story-output experiment.
 
+### 2026-06-08 Job Store Config Seam
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the job-store config seam commit.
+
+User request:
+
+- Keep working autonomously and chip away at platform gaps without making false durable/auth claims.
+
+Work completed:
+
+- Added `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts` as the env-gated future job-store selection seam.
+- Default config remains `non_durable_memory`, so active anonymous job-route behavior is not changed by this slice.
+- Explicit `STORY_LAB_JOB_STORE=postgres` creates the tested Postgres job-store scaffold only when database URL and executor configuration exist.
+- Unknown job-store modes fail closed with `STORY_LAB_JOB_STORE_UNSUPPORTED_MODE` and do not silently fall back to non-durable memory.
+- Added `tests/story-lab-job-store-config.test.ts` and wired `test:story-lab-job-store-config` into `npm run test:all`.
+- Updated the app audit and auth/profile/cloud-library plan.
+
+Files changed:
+
+- `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts`
+- `tests/story-lab-job-store-config.test.ts`
+- `package.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-lab-job-store-config` -> failed because `storyLabJobStoreConfig` did not exist.
+- GREEN attempt: `npm run test:story-lab-job-store-config` -> failed because diagnostics normalized the unknown requested mode instead of preserving it.
+- GREEN: `npm run test:story-lab-job-store-config` -> passed.
+- `npm run test:story-lab-job-store-port` -> passed.
+- `npx tsx tests/story-lab-job-routes.test.ts` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed with `test:story-lab-job-store-config` included.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Active job routes still use `non_durable_memory`; this is only the route-safe configuration seam.
+- Durable jobs still need auth, owner-scoped route integration, a real `DATABASE_URL`, executed schema, and recovery tests.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with either route integration planning/tests or another no-credentials story-output slice.
+
 ### 2026-06-08 Dialogue Texture Lens
 
 Branch:

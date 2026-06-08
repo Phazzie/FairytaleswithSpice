@@ -104,6 +104,12 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - It only creates an executor when a database URL exists, so deploy/build paths still fail closed instead of initializing a missing driver at import time.
   - `tests/story-lab-cloud-storage-config.test.ts` proves missing database env does not initialize a driver, shared injected executors wire both stores, valid database URLs create the bundled Neon executor, and invalid URLs return typed fail-closed errors.
   - `tests/story-lab-neon-executor.test.ts` proves SQL text and params are passed through the Neon wrapper without making live database calls.
+- Job storage configuration seam evidence:
+  - `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts` now centralizes future job-store selection.
+  - The default mode remains `non_durable_memory`, so anonymous job routes are not accidentally changed.
+  - Explicit `STORY_LAB_JOB_STORE=postgres` creates the tested Postgres job-store scaffold only when database URL and executor configuration exist.
+  - Unknown job-store modes fail closed with `STORY_LAB_JOB_STORE_UNSUPPORTED_MODE` instead of silently falling back.
+  - `tests/story-lab-job-store-config.test.ts` guards those config paths.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, cloud-schema, cloud-storage-config, Neon executor, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
@@ -198,7 +204,7 @@ Required before this becomes a user feature:
 
 ### P0: Job Progress Is Not Durable
 
-The Story Lab job route scaffold is useful, but the active route store is still process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, and `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` provides a tested injected-executor scaffold. No route uses that durable store yet, so the product should not be described as crash-safe progress.
+The Story Lab job route scaffold is useful, but the active route store is still process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` provides a tested injected-executor scaffold, and `storyLabJobStoreConfig.ts` provides an env-gated future selection seam. No route uses that durable store yet, so the product should not be described as crash-safe progress.
 
 Required before this becomes durable:
 
