@@ -243,6 +243,13 @@ Relationship Web Lite progress:
 - The existing read-only Story Memory preview now renders one visible `Relationship pressure` item from already-loaded state.
 - This is not an editable relationship graph yet; it is the first state/guidance slice for relationship-aware continuation.
 
+Context Activation Rules progress:
+
+- Backend/test seam started on 2026-06-08.
+- When more active threads exist than the compact `Continuity Courtroom` anchor can include, Story Lab now prioritizes a thread whose label/detail matches the continuation brief.
+- The first guarded case pulls `Blood Oath` into the compact hidden guidance when the user asks to bring the blood oath into the next room.
+- This does not add a new hidden anchor block or expose activation scoring to the model.
+
 ### Research: User Library And Profile Patterns
 
 Research how creative apps present account identity, project libraries, saved drafts, and profile/taste preferences.

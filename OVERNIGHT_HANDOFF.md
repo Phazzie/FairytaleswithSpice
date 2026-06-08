@@ -1998,6 +1998,58 @@ Next recommended task:
 
 - Commit this slice, then continue either auth sign-in wiring or the next no-credentials story-output/evaluation experiment.
 
+### 2026-06-08 Context Activation Rules Slice
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the context activation continuation commit.
+
+User request:
+
+- Keep working autonomously and try bounded story-output improvements mined from adjacent story tools.
+
+Work completed:
+
+- Started the `Context Activation Rules` idea from `STORY_LAB_IDEA_BOARD.md`.
+- Real continuation guidance now prioritizes a brief-matched active thread when the compact `Continuity Courtroom` anchor has more open threads than it can include.
+- The first guarded case pulls `Blood Oath` into hidden guidance when the continuation brief says to bring the blood oath into the next room.
+- The slice keeps the same three hidden anchor blocks and the same max thread count; it only changes ordering inside the existing courtroom anchor.
+- Activation scoring stays internal and is not shown to the model.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-quality` -> failed because `Blood Oath` was compacted out of the courtroom anchor.
+- GREEN: `npm run test:story-quality` -> passed.
+- `npm run test:story-lab-real-engine` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is a deterministic lexical activation rule, not semantic retrieval.
+- It only prioritizes active threads today; artifacts, relationships, and continuity notes can get activation rules later.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue either auth sign-in wiring or another no-credentials story-output/evaluation experiment.
+
 ### 2026-06-08 Relationship Web Lite Continuation Slice
 
 Branch:

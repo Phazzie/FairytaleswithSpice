@@ -372,7 +372,7 @@ function withContinuationStrategyBrief(continuationBrief: string | undefined, st
   const trimmedBrief = continuationBrief?.trim();
   return [
     trimmedBrief,
-    buildContinuityCourtroomBrief(storyState),
+    buildContinuityCourtroomBrief(storyState, trimmedBrief),
     buildChapterEndingStressTestBrief(storyState, trimmedBrief),
     buildClicheAlarmBrief(storyState, trimmedBrief)
   ]
@@ -396,10 +396,10 @@ function extractAnchorHeadings(hiddenGuidance: string): string[] {
     .map(line => line.slice(0, -1));
 }
 
-function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot): string | undefined {
+function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string | undefined {
   const lines: string[] = [];
 
-  for (const thread of storyState.threads.filter(isUnresolvedThread).slice(0, CONTINUITY_COURTROOM_MAX_THREADS)) {
+  for (const thread of selectCourtroomThreads(storyState, continuationBrief)) {
     lines.push(`- ${formatThreadDebtLabel(thread)}: ${compactPromptLine(thread.label)}${formatCourtroomDetail(thread.description)}`);
   }
 
@@ -424,6 +424,55 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot): string |
     'Continuity Courtroom:',
     ...lines
   ].join('\n');
+}
+
+function selectCourtroomThreads(storyState: StoryStateSnapshot, continuationBrief: string | undefined): PlotThread[] {
+  const source = normalizeActivationText(continuationBrief ?? '');
+  return storyState.threads
+    .filter(isUnresolvedThread)
+    .map((thread, index) => ({
+      thread,
+      index,
+      activationScore: scoreThreadActivation(thread, source)
+    }))
+    .sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))
+    .slice(0, CONTINUITY_COURTROOM_MAX_THREADS)
+    .map(item => item.thread);
+}
+
+function scoreThreadActivation(thread: PlotThread, source: string): number {
+  if (!source) {
+    return 0;
+  }
+
+  const candidates = [
+    thread.label,
+    thread.description,
+    ...thread.foreshadowedDevices
+  ].map(normalizeActivationText).filter(Boolean);
+  let score = 0;
+
+  for (const candidate of candidates) {
+    if (source.includes(candidate)) {
+      score += 6;
+    }
+
+    for (const token of candidate.split(' ').filter(value => value.length > 3)) {
+      if (source.includes(token)) {
+        score += 1;
+      }
+    }
+  }
+
+  return score;
+}
+
+function normalizeActivationText(value: string): string {
+  return collapseWhitespace(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function isUnresolvedThread(thread: PlotThread): boolean {

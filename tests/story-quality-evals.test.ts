@@ -166,6 +166,45 @@ async function main(): Promise<void> {
   assert(guidancePreview.hiddenGuidance.includes('Continuity Courtroom:'), 'guidance preview should expose hidden continuity anchors for future UI preview work.');
   assert(guidancePreview.anchorHeadings.length === 3, 'guidance preview should report the three hidden anchor blocks.');
   assert(guidancePreview.characterCount <= 900, 'guidance preview should expose the same compactness budget guarded by real-engine tests.');
+  const activationPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Bring the blood oath into the next room.',
+    storyState: {
+      ...genesisPayload.state,
+      threads: [
+        {
+          id: 'thread-weather-tax',
+          label: 'Weather Tax',
+          status: 'active',
+          description: 'The court taxes every storm that crosses the reef.',
+          foreshadowedDevices: []
+        },
+        {
+          id: 'thread-kitchen-claim',
+          label: 'Kitchen Claim',
+          status: 'active',
+          description: 'The servants know who stole the silver ladle.',
+          foreshadowedDevices: []
+        },
+        {
+          id: 'thread-silent-harbor',
+          label: 'Silent Harbor',
+          status: 'active',
+          description: 'The harbor stopped answering ships at midnight.',
+          foreshadowedDevices: []
+        },
+        {
+          id: 'thread-blood-oath',
+          label: 'Blood Oath',
+          status: 'active',
+          description: 'The old vow follows Mira into every negotiation.',
+          foreshadowedDevices: []
+        }
+      ],
+      artifacts: [],
+      continuityWarnings: []
+    }
+  });
+  assert(activationPreview.hiddenGuidance.includes('Open promise: Blood Oath'), 'continuation guidance should prioritize a brief-matched thread when the courtroom is compacted.');
 
   let continuationInput: ClassicContinuationSeam['input'] | null = null;
   const continuationResponse = await withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, () => continueStoryLab({
