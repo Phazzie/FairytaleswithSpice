@@ -111,6 +111,7 @@ Status:
 - `/api/story-lab/evaluate` attaches the report to both mock and live evaluation responses as optional `heuristicReport`.
 - `tests/story-quality-evals.test.ts` guards the dimension count, dimension ids, score bounds, and presence of signals.
 - The prose-quality dimension now includes a small Specificity Lens signal that names concrete anchors in the story text, such as `witness shell`, `reef arch`, and `blood oath`.
+- The audio-readiness dimension now includes a small Dialogue Texture signal that names concrete speaker variety, such as `Mira`, `Narrator`, and `Lord Brine`.
 - Proving Grounds now renders the report as a compact Deterministic Quality Scan panel after evaluation.
 - `proving-grounds.spec.ts` guards that the visible panel includes the score, continuity, audio-readiness, and concrete signals.
 - Proving Grounds history cards now show a compact `Quality N` badge, and comparison cards include the heuristic quality score beside the AI score.
@@ -144,6 +145,36 @@ Guardrails:
 Acceptance:
 
 - `tests/story-quality-evals.test.ts` now fails unless the fixture's prose-quality dimension reports `Specific anchors: witness shell, reef arch, blood oath`.
+
+### Done: Dialogue Texture Lens
+
+Origin:
+
+- The user wanted all narrative dials/signals to read as concrete story-state prose instead of abstract numbers.
+- Audio-readiness could count dialogue tags, but it could not say whether a scene actually had multiple voices in play.
+
+Hypothesis:
+
+- A cheap speaker-variety signal helps future UI/eval work explain whether a scene is shaped for audio performance, without asking an AI judge to grade voice quality.
+
+User value:
+
+- The quality scan can now say what voices it sees, not only that some tagged dialogue exists.
+
+Smallest experiment:
+
+- Reuse existing `[Speaker]:` tags and add a deterministic `Speaker variety` signal to the existing `audio_readiness` dimension.
+- Strip first-appearance voice annotations down to the speaker name so report signals stay readable.
+
+Guardrails:
+
+- Do not add provider calls.
+- Do not add another score dimension.
+- Keep the signal advisory and human-readable.
+
+Acceptance:
+
+- `tests/story-quality-evals.test.ts` now fails unless the fixture's audio-readiness dimension reports `Speaker variety: Mira, Narrator, Lord Brine`.
 
 ### Soon: Durable Job Storage
 

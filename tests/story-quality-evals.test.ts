@@ -127,6 +127,8 @@ async function main(): Promise<void> {
   assert(heuristicReport.dimensions.some(dimension => dimension.signals.length > 0), 'quality report should include explainable signals.');
   const proseQuality = heuristicReport.dimensions.find(dimension => dimension.id === 'prose_quality');
   assert(proseQuality?.signals.some(signal => signal.includes('Specific anchors: witness shell, reef arch, blood oath')), 'prose quality should report concrete specificity anchors.');
+  const audioReadiness = heuristicReport.dimensions.find(dimension => dimension.id === 'audio_readiness');
+  assert(audioReadiness?.signals.some(signal => signal.includes('Speaker variety: Mira, Narrator, Lord Brine')), 'audio-readiness should report concrete speaker variety.');
 
   const classicInput = toClassicGenerationInput(blueprint);
   assert(classicInput.generationContext?.protagonistName === 'Mira', 'protagonist name should survive Story Lab mapping.');

@@ -31,7 +31,7 @@ export function buildStoryQualityHeuristicReport(input: StoryQualityHeuristicInp
     scoreEmotionalVariety(lowerStory),
     scoreCharacterConsistency(input.storyContent, dialogueLines),
     scoreProseQuality(input.storyContent, words.length, sentences.length, paragraphs.length),
-    scoreAudioReadiness(dialogueLines.length, paragraphs)
+    scoreAudioReadiness(dialogueLines, paragraphs)
   ].map(normalizeDimension);
   const overallScore = clampScore(Math.round(
     dimensions.reduce((sum, dimension) => sum + dimension.score, 0) / Math.max(1, dimensions.length)
@@ -124,9 +124,7 @@ function scoreEmotionalVariety(storyText: string): DimensionDraft {
 }
 
 function scoreCharacterConsistency(storyContent: string, dialogueLines: string[]): DimensionDraft {
-  const speakers = Array.from(new Set(dialogueLines
-    .map(line => line.match(/^\s*\[([^\]]+)\]:/)?.[1]?.trim())
-    .filter((speaker): speaker is string => Boolean(speaker))));
+  const speakers = extractDialogueSpeakers(dialogueLines);
   const namedCharacters = Array.from(new Set((storyContent.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g) ?? [])
     .filter(name => !['Narrator'].includes(name))));
   const signals = [
@@ -167,11 +165,18 @@ function scoreProseQuality(storyContent: string, wordCount: number, sentenceCoun
   };
 }
 
-function scoreAudioReadiness(dialogueLineCount: number, paragraphs: string[]): DimensionDraft {
+function scoreAudioReadiness(dialogueLines: string[], paragraphs: string[]): DimensionDraft {
+  const dialogueLineCount = dialogueLines.length;
+  const speakers = extractDialogueSpeakers(dialogueLines);
   const longParagraphs = paragraphs.filter(paragraph => paragraph.split(/\s+/).filter(Boolean).length > 90);
   const signals: string[] = [];
   if (dialogueLineCount > 0) {
     signals.push(`Tagged dialogue lines: ${dialogueLineCount}`);
+  }
+  if (speakers.length > 1) {
+    signals.push(`Speaker variety: ${speakers.slice(0, 4).join(', ')}`);
+  } else if (speakers.length === 1) {
+    signals.push(`Single speaker: ${speakers[0]}`);
   }
   if (!longParagraphs.length) {
     signals.push('No overlong paragraphs detected.');
@@ -181,7 +186,7 @@ function scoreAudioReadiness(dialogueLineCount: number, paragraphs: string[]): D
     id: 'audio_readiness',
     label: 'Audio-readiness',
     score: 58 + Math.min(3, dialogueLineCount) * 8 + (longParagraphs.length ? -18 : 12),
-    rationale: 'Audio-readiness checks dialogue tags and paragraph length.',
+    rationale: 'Audio-readiness checks dialogue tags, speaker variety, and paragraph length.',
     signals
   };
 }
@@ -203,6 +208,13 @@ function containsAny(value: string, needles: readonly string[]): boolean {
 
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function extractDialogueSpeakers(dialogueLines: string[]): string[] {
+  return Array.from(new Set(dialogueLines
+    .map(line => line.match(/^\s*\[([^\]]+)\]:/)?.[1]?.trim())
+    .map(speaker => speaker?.split(',')[0]?.trim())
+    .filter((speaker): speaker is string => Boolean(speaker))));
 }
 
 function extractConcreteAnchors(storyContent: string): string[] {

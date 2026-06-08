@@ -2218,3 +2218,54 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with authenticated job-route integration, Clerk verification/sign-in wiring, or another no-credentials story-output experiment.
+
+### 2026-06-08 Dialogue Texture Lens
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the dialogue texture story-quality commit.
+
+User request:
+
+- Keep working autonomously and include useful creative/story-output experiments while live provider/database credentials are unavailable.
+
+Work completed:
+
+- Added a small Dialogue Texture Lens inside the deterministic story-quality report's existing `audio_readiness` dimension.
+- The lens extracts readable speaker names from existing `[Speaker]:` tags and reports concrete speaker variety, such as `Mira`, `Narrator`, and `Lord Brine`.
+- First-appearance voice annotations are stripped down to the speaker name so report signals stay readable.
+- The report still has the same seven dimensions and remains deterministic/advisory.
+- This does not add another provider call, route, score dimension, or hidden continuation prompt block.
+- Updated the app audit and idea board with the new story-quality experiment.
+
+Files changed:
+
+- `api/_lib/story-lab/evaluation/storyQualityHeuristics.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-quality-evals.test.ts` -> failed because audio-readiness did not report concrete speaker variety.
+- GREEN: `npx tsx tests/story-quality-evals.test.ts` -> passed.
+- `npm run test:story-quality` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- The dialogue texture lens is a deterministic tag scan, not an AI judgment of whether the voices are actually distinct.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue either auth sign-in wiring or the next no-credentials story-output/evaluation experiment.
