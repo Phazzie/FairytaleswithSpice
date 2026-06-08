@@ -89,6 +89,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - `tests/story-lab-cloud-schema.test.ts` fails if the tracked schema loses the profile table, project table, owner column, project JSON payload, or owner indexes.
   - `api/_lib/story-lab/storage/storyLabCloudSchemaMigration.ts` can split and apply that tracked schema through an injected executor.
   - `scripts/recovery/apply-story-lab-cloud-schema.ts` is a guarded real-database apply script that refuses to run unless `DATABASE_URL` is configured.
+  - `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts` and `scripts/recovery/story-lab-cloud-db-smoke.ts` can check the required profile/project tables and owner indexes when a real `DATABASE_URL` is present.
   - The helper is migration-ready, but no live database has been provisioned or migrated in this environment yet.
 - Cloud storage configuration seam evidence:
   - `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts` now centralizes default profile/project store construction for the account route.
@@ -182,7 +183,8 @@ Required before this becomes a user feature:
 
 - Provision or configure a durable database.
 - Run `npm run db:story-lab-apply-schema` against a real provisioned database, or execute the tracked schema through the equivalent deployment migration path.
-- Configure a real `DATABASE_URL` and prove the Neon executor against the provisioned database.
+- Run `npm run smoke:story-lab-cloud-db` with a real `DATABASE_URL` to prove the profile/project tables and owner indexes exist.
+- Prove the Neon executor against the provisioned database.
 - Save, load, list, and delete projects by authenticated owner against real durable storage.
 - Make local browser storage a fallback/cache instead of the canonical signed-in source for signed-in users.
 - Add login/profile affordances and configured cloud-library states.

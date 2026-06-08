@@ -1891,3 +1891,59 @@ Known issues:
 Next recommended task:
 
 - Add a guarded database readiness smoke that checks the profile/project tables against a real `DATABASE_URL`, or continue with story-output experiments if database credentials remain unavailable.
+
+### 2026-06-08 11:10 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud database readiness smoke commit.
+
+User request:
+
+- Continue making the cloud database path provable while failing closed without credentials.
+
+Work completed:
+
+- Added `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts`.
+- The readiness helper checks for `story_lab_profiles`, `story_projects`, `story_projects_owner_updated_idx`, and `story_projects_owner_story_idx`.
+- It returns a safe, non-leaky failure result if the database query fails.
+- Added `scripts/recovery/story-lab-cloud-db-smoke.ts`.
+- Added `smoke:story-lab-cloud-db` for real-database readiness checks when `DATABASE_URL` is configured.
+- The smoke refuses to run without `DATABASE_URL`.
+- Added `tests/story-lab-cloud-db-readiness.test.ts` and wired `test:story-lab-cloud-db-readiness` into `npm run test:all`.
+- Updated the app audit and auth/profile/cloud-library plan with the readiness smoke and remaining live-database caveat.
+
+Files changed:
+
+- `api/_lib/story-lab/storage/storyLabCloudDatabaseReadiness.ts`
+- `scripts/recovery/story-lab-cloud-db-smoke.ts`
+- `tests/story-lab-cloud-db-readiness.test.ts`
+- `package.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-cloud-db-readiness.test.ts` -> failed because `storyLabCloudDatabaseReadiness` did not exist.
+- GREEN: `npm run test:story-lab-cloud-db-readiness` -> passed.
+- `env -u DATABASE_URL npm run smoke:story-lab-cloud-db` -> exited `1` with `DATABASE_URL is not configured`, as expected.
+- `find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 | xargs -0 ./node_modules/.bin/tsc --noEmit --target es2020 --lib es2020,dom --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node` -> passed.
+- `git diff --check` -> passed before doc edits.
+- `npm run test:all` -> passed with `test:story-lab-cloud-db-readiness` included.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- No live database was available, so readiness against real storage was not proven.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Continue auth sign-in wiring, or switch to a story-output experiment while live database credentials are unavailable.
