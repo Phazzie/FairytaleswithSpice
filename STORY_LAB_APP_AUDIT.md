@@ -44,6 +44,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Pinned Memory Card Drafts now append compact `Pinned Memory Cards` prose anchors to UI-driven continuation requests, so pinned cards affect the next chapter without adding a backend route or claiming durable cloud memory.
   - Drafts can now be accepted into a local `Accepted Memory Cards` shelf; accepted cards save with browser-local projects, restore on reload, and use the same visible continuation brief path.
   - Accepted memory cards can now be edited in place for title, detail, and trigger text before save/reload or continuation.
+  - Accepted memory cards can now be deleted so rejected memory does not persist into saves or continuation briefs.
   - The preview uses current `StoryStateSnapshot` data already present on the client, so it adds no route and does not spend the remaining Vercel function slot.
   - Angular spec coverage proves `Pressure rising`, `Relationship pressure`, `World clue`, and `Continuity note` render from seeded story state.
   - Follow-up CSS cleanup reduced the built component CSS budget warning from 14.95 KB to 14.60 KB after the preview landed.

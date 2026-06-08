@@ -1194,6 +1194,69 @@ describe('App', () => {
     expect(jobRequest.continuation.continuationBrief).toContain('Trigger: Mara, ledger');
   });
 
+  it('deletes accepted memory cards from saved projects and continuation briefs', () => {
+    const genesisPayload = seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    (renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="accept-memory-card-draft"]') as HTMLButtonElement | null)?.click();
+    fixture.detectChanges();
+    expect(renderedAcceptedMemoryCardsText()).toContain('Mara');
+
+    const deleteButton = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="delete-accepted-memory-card"]') as HTMLButtonElement | null;
+    expect(deleteButton).not.toBeNull();
+
+    deleteButton?.click();
+    fixture.detectChanges();
+
+    expect(renderedAcceptedMemoryCardsPanel()).toBeNull();
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    expect(renderedAcceptedMemoryCardsPanel()).toBeNull();
+
+    component.continueSaga('Use only the fresh brief.');
+
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    expect(jobRequest.continuation.continuationBrief).toContain('Use only the fresh brief.');
+    expect(jobRequest.continuation.continuationBrief).not.toContain('Accepted Memory Cards:');
+    expect(jobRequest.continuation.continuationBrief).not.toContain('Mara');
+  });
+
   it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {
     seedWorkbenchForContinuation();
 

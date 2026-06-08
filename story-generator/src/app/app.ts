@@ -1097,6 +1097,14 @@ export class App implements OnDestroy {
     });
   }
 
+  deleteAcceptedMemoryCard(cardId: string) {
+    this.acceptedMemoryCards.update(current => current.filter(card => card.id !== cardId));
+    if (this.editingAcceptedMemoryCardId() === cardId) {
+      this.cancelAcceptedMemoryCardEdit();
+    }
+    this.statusMessage.set('Accepted memory card removed.');
+  }
+
   continueWithDirectorRoomNotes() {
     const acceptedNotes = this.acceptedDirectorRoomNotes();
     if (!acceptedNotes.length) {

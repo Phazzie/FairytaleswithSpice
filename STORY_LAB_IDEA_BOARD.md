@@ -365,6 +365,7 @@ Triggered Card Drafts progress:
 - Continuation-brief integration started on 2026-06-08: pinned drafts are appended to UI-driven continuation requests as compact `Pinned Memory Cards` prose anchors.
 - Accepted-card shelf started on 2026-06-08: draft cards can be accepted into a local `Accepted Memory Cards` shelf, saved with browser-local projects, and restored when the project reloads.
 - Accepted-card editing started on 2026-06-08: accepted card title, detail, and trigger text can be edited before saving/reloading or continuing.
+- Accepted-card deletion started on 2026-06-08: accepted cards can be removed before save/reload or continuation.
 - Accepted cards and pinned drafts influence continuation only through the visible continuation brief path.
 
 ### Research: User Library And Profile Patterns
