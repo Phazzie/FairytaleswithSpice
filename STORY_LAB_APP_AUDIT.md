@@ -73,6 +73,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The eval now also fails if a continuation brief names a non-first relationship participant such as `Coral Scribe` and the `Relationship pressure` line keeps selecting the older first pair.
   - The eval now also fails if a continuation brief names a compacted-out continuity warning such as the `Coral Scribe` ledger note and the `Continuity note` line keeps selecting older unrelated warnings.
   - `previewStoryLabContinuationGuidance` now exposes the same provider brief, hidden guidance, anchor headings, and character count for future visible continuity-preview UI without adding a route or invoking the provider.
+  - `previewStoryLabContinuationGuidance` now also exposes a route-free Context Source Map explaining which thread, artifact, relationship, or warning was activated and whether it matched the continuation brief.
   - The deterministic state still drives the guidance; only the wording shown to the model is less mechanical.
 - Deterministic story-quality report evidence:
   - The Story Lab evaluate route now attaches an optional `heuristicReport` to both mock and live evaluation responses.

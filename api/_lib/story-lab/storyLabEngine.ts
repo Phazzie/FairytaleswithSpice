@@ -43,7 +43,18 @@ export interface StoryLabContinuationGuidancePreview {
   providerBrief: string;
   hiddenGuidance: string;
   anchorHeadings: string[];
+  contextSourceMap: StoryLabContinuationSourceMapEntry[];
   characterCount: number;
+}
+
+type StoryLabContinuationSourceKind = 'thread' | 'relationship' | 'artifact' | 'warning';
+
+export interface StoryLabContinuationSourceMapEntry {
+  kind: StoryLabContinuationSourceKind;
+  label: string;
+  anchorLabel: string;
+  reason: string;
+  activationScore: number;
 }
 
 const MOCK_FLAG_VALUES = new Set(['1', 'true', 'yes']);
@@ -127,6 +138,7 @@ export function previewStoryLabContinuationGuidance(input: {
     providerBrief,
     hiddenGuidance,
     anchorHeadings: extractAnchorHeadings(hiddenGuidance),
+    contextSourceMap: buildContinuationContextSourceMap(input.storyState, originalBrief),
     characterCount: providerBrief.length
   };
 }
@@ -403,9 +415,9 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuat
     lines.push(`- ${formatThreadDebtLabel(thread)}: ${compactPromptLine(thread.label)}${formatCourtroomDetail(thread.description)}`);
   }
 
-  const relationshipPressure = buildRelationshipPressureLine(storyState, continuationBrief);
+  const relationshipPressure = selectRelationshipPressure(storyState, continuationBrief);
   if (relationshipPressure) {
-    lines.push(relationshipPressure);
+    lines.push(formatRelationshipPressureLine(relationshipPressure));
   }
 
   for (const artifact of selectCourtroomArtifacts(storyState, continuationBrief)) {
@@ -426,7 +438,71 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuat
   ].join('\n');
 }
 
+function buildContinuationContextSourceMap(
+  storyState: StoryStateSnapshot,
+  continuationBrief: string | undefined
+): StoryLabContinuationSourceMapEntry[] {
+  const entries: StoryLabContinuationSourceMapEntry[] = [];
+
+  for (const item of selectScoredCourtroomThreads(storyState, continuationBrief)) {
+    entries.push({
+      kind: 'thread',
+      label: item.thread.label,
+      anchorLabel: formatThreadDebtLabel(item.thread),
+      reason: formatActivationReason(item.activationScore),
+      activationScore: item.activationScore
+    });
+  }
+
+  const relationshipPressure = selectRelationshipPressure(storyState, continuationBrief);
+  if (relationshipPressure) {
+    entries.push({
+      kind: 'relationship',
+      label: `${relationshipPressure.sourceCharacter.displayName} and ${relationshipPressure.targetCharacter.displayName}`,
+      anchorLabel: 'Relationship pressure',
+      reason: formatActivationReason(relationshipPressure.activationScore),
+      activationScore: relationshipPressure.activationScore
+    });
+  }
+
+  for (const item of selectScoredCourtroomArtifacts(storyState, continuationBrief)) {
+    entries.push({
+      kind: 'artifact',
+      label: item.artifact.name,
+      anchorLabel: 'World clue',
+      reason: formatActivationReason(item.activationScore),
+      activationScore: item.activationScore
+    });
+  }
+
+  for (const item of selectScoredCourtroomWarnings(storyState, continuationBrief)) {
+    entries.push({
+      kind: 'warning',
+      label: item.warning,
+      anchorLabel: 'Continuity note',
+      reason: formatActivationReason(item.activationScore),
+      activationScore: item.activationScore
+    });
+  }
+
+  return entries;
+}
+
+function formatActivationReason(activationScore: number): string {
+  return activationScore > 0
+    ? 'Matched words from the continuation brief.'
+    : 'Included by unresolved-story priority.';
+}
+
 function selectCourtroomThreads(storyState: StoryStateSnapshot, continuationBrief: string | undefined): PlotThread[] {
+  return selectScoredCourtroomThreads(storyState, continuationBrief).map(item => item.thread);
+}
+
+function selectScoredCourtroomThreads(storyState: StoryStateSnapshot, continuationBrief: string | undefined): Array<{
+  thread: PlotThread;
+  index: number;
+  activationScore: number;
+}> {
   const source = normalizeActivationText(continuationBrief ?? '');
   return storyState.threads
     .filter(isUnresolvedThread)
@@ -436,11 +512,18 @@ function selectCourtroomThreads(storyState: StoryStateSnapshot, continuationBrie
       activationScore: scoreThreadActivation(thread, source)
     }))
     .sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))
-    .slice(0, CONTINUITY_COURTROOM_MAX_THREADS)
-    .map(item => item.thread);
+    .slice(0, CONTINUITY_COURTROOM_MAX_THREADS);
 }
 
 function selectCourtroomArtifacts(storyState: StoryStateSnapshot, continuationBrief: string | undefined): LoreArtifact[] {
+  return selectScoredCourtroomArtifacts(storyState, continuationBrief).map(item => item.artifact);
+}
+
+function selectScoredCourtroomArtifacts(storyState: StoryStateSnapshot, continuationBrief: string | undefined): Array<{
+  artifact: LoreArtifact;
+  index: number;
+  activationScore: number;
+}> {
   const source = normalizeActivationText(continuationBrief ?? '');
   return storyState.artifacts
     .filter(artifact => !artifact.resolvedInChapter)
@@ -450,8 +533,7 @@ function selectCourtroomArtifacts(storyState: StoryStateSnapshot, continuationBr
       activationScore: scoreArtifactActivation(artifact, source)
     }))
     .sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))
-    .slice(0, CONTINUITY_COURTROOM_MAX_ARTIFACTS)
-    .map(item => item.artifact);
+    .slice(0, CONTINUITY_COURTROOM_MAX_ARTIFACTS);
 }
 
 function scoreThreadActivation(thread: PlotThread, source: string): number {
@@ -508,6 +590,14 @@ function scoreArtifactActivation(artifact: LoreArtifact, source: string): number
 }
 
 function selectCourtroomWarnings(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string[] {
+  return selectScoredCourtroomWarnings(storyState, continuationBrief).map(item => item.warning);
+}
+
+function selectScoredCourtroomWarnings(storyState: StoryStateSnapshot, continuationBrief: string | undefined): Array<{
+  warning: string;
+  index: number;
+  activationScore: number;
+}> {
   const source = normalizeActivationText(continuationBrief ?? '');
   return storyState.continuityWarnings
     .map((warning, index) => ({
@@ -516,8 +606,7 @@ function selectCourtroomWarnings(storyState: StoryStateSnapshot, continuationBri
       activationScore: scoreWarningActivation(warning, source)
     }))
     .sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))
-    .slice(0, CONTINUITY_COURTROOM_MAX_WARNINGS)
-    .map(item => item.warning);
+    .slice(0, CONTINUITY_COURTROOM_MAX_WARNINGS);
 }
 
 function scoreWarningActivation(warning: string, source: string): number {
@@ -562,15 +651,20 @@ function formatThreadDebtLabel(thread: PlotThread): string {
   return 'Open promise';
 }
 
-function buildRelationshipPressureLine(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string | undefined {
+interface RelationshipPressureSelection {
+  sourceCharacter: CharacterProfile;
+  targetCharacter: CharacterProfile;
+  relationship: CharacterProfile['relationships'][number];
+  index: number;
+  activationScore: number;
+}
+
+function selectRelationshipPressure(
+  storyState: StoryStateSnapshot,
+  continuationBrief: string | undefined
+): RelationshipPressureSelection | undefined {
   const source = normalizeActivationText(continuationBrief ?? '');
-  const candidates: Array<{
-    sourceCharacter: CharacterProfile;
-    targetCharacter: CharacterProfile;
-    relationship: CharacterProfile['relationships'][number];
-    index: number;
-    activationScore: number;
-  }> = [];
+  const candidates: RelationshipPressureSelection[] = [];
 
   for (const sourceCharacter of storyState.characters) {
     for (const relationship of sourceCharacter.relationships) {
@@ -587,12 +681,11 @@ function buildRelationshipPressureLine(storyState: StoryStateSnapshot, continuat
     }
   }
 
-  const selected = candidates.sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))[0];
-  if (selected) {
-    return `- Relationship pressure: ${compactPromptLine(selected.sourceCharacter.displayName)} and ${compactPromptLine(selected.targetCharacter.displayName)}.`;
-  }
+  return candidates.sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))[0];
+}
 
-  return undefined;
+function formatRelationshipPressureLine(selected: RelationshipPressureSelection): string {
+  return `- Relationship pressure: ${compactPromptLine(selected.sourceCharacter.displayName)} and ${compactPromptLine(selected.targetCharacter.displayName)}.`;
 }
 
 function scoreRelationshipActivation(

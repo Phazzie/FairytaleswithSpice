@@ -208,6 +208,14 @@ async function main(): Promise<void> {
     }
   });
   assert(activationPreview.hiddenGuidance.includes('Open promise: Blood Oath'), 'continuation guidance should prioritize a brief-matched thread when the courtroom is compacted.');
+  assert(
+    activationPreview.contextSourceMap.some(item =>
+      item.kind === 'thread'
+      && item.label === 'Blood Oath'
+      && item.anchorLabel === 'Open promise'
+      && item.reason.includes('Matched words from the continuation brief')),
+    'guidance preview should explain why the Blood Oath thread was activated.'
+  );
   const artifactActivationPreview = previewStoryLabContinuationGuidance({
     continuationBrief: 'Use the glass key now; make it unlock the forbidden tide door.',
     storyState: {
@@ -237,6 +245,14 @@ async function main(): Promise<void> {
     }
   });
   assert(artifactActivationPreview.hiddenGuidance.includes('World clue: Glass Key'), 'continuation guidance should prioritize a brief-matched artifact when the courtroom is compacted.');
+  assert(
+    artifactActivationPreview.contextSourceMap.some(item =>
+      item.kind === 'artifact'
+      && item.label === 'Glass Key'
+      && item.anchorLabel === 'World clue'
+      && item.reason.includes('Matched words from the continuation brief')),
+    'guidance preview should explain why the Glass Key artifact was activated.'
+  );
   const relationshipActivationPreview = previewStoryLabContinuationGuidance({
     continuationBrief: 'Let Coral Scribe betray Mira with the court ledger.',
     storyState: {
@@ -296,6 +312,14 @@ async function main(): Promise<void> {
     }
   });
   assert(relationshipActivationPreview.hiddenGuidance.includes('Relationship pressure: Mira and Coral Scribe'), 'continuation guidance should prioritize a brief-matched relationship pair.');
+  assert(
+    relationshipActivationPreview.contextSourceMap.some(item =>
+      item.kind === 'relationship'
+      && item.label === 'Mira and Coral Scribe'
+      && item.anchorLabel === 'Relationship pressure'
+      && item.reason.includes('Matched words from the continuation brief')),
+    'guidance preview should explain why the Coral Scribe relationship was activated.'
+  );
   const warningActivationPreview = previewStoryLabContinuationGuidance({
     continuationBrief: 'Make Coral Scribe honor the ledger warning before the court leaves.',
     storyState: {
@@ -311,6 +335,14 @@ async function main(): Promise<void> {
     }
   });
   assert(warningActivationPreview.hiddenGuidance.includes('Continuity note: Coral Scribe must betray Mira before the ledger leaves court.'), 'continuation guidance should prioritize a brief-matched continuity warning when the courtroom is compacted.');
+  assert(
+    warningActivationPreview.contextSourceMap.some(item =>
+      item.kind === 'warning'
+      && item.label === 'Coral Scribe must betray Mira before the ledger leaves court.'
+      && item.anchorLabel === 'Continuity note'
+      && item.reason.includes('Matched words from the continuation brief')),
+    'guidance preview should explain why the Coral Scribe warning was activated.'
+  );
 
   let continuationInput: ClassicContinuationSeam['input'] | null = null;
   const continuationResponse = await withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, () => continueStoryLab({

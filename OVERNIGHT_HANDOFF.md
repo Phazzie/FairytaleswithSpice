@@ -3152,3 +3152,54 @@ Known issues:
 Next recommended task:
 
 - Commit this research slice, then implement the smallest route-free candidate: Context Source Map.
+
+### 2026-06-08 Context Source Map Preview Seam
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the context source map preview seam commit.
+
+User request:
+
+- Use research-mined ideas to improve story output and continuity behavior without adding unnecessary routes or false feature claims.
+
+Work completed:
+
+- Added `contextSourceMap` to `previewStoryLabContinuationGuidance`.
+- The source map explains selected continuation-anchor inputs by kind: thread, artifact, relationship, or warning.
+- It records the visible anchor label, selected item label, activation score, and a human-facing reason such as `Matched words from the continuation brief.`
+- Refactored the continuity selectors so hidden guidance and source-map metadata use the same selected items.
+- Kept the source map route-free and provider-invisible; it does not add prompt text.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-quality` -> failed because `contextSourceMap` was missing.
+- GREEN: `npm run test:story-quality` -> passed after adding the source map.
+- `npm run test:story-lab-real-engine` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- The source map is not rendered in the Angular UI yet.
+- It explains deterministic activation; it does not claim AI/literary judgment.
+- Real Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then either render the source map in Continuity Preview or continue with another small story-quality/control experiment.

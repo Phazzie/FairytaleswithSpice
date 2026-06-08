@@ -336,6 +336,14 @@ Additional candidate slices:
 - `Triggered Card Drafts`: transform detected characters, places, objects, and promises into suggested memory cards with trigger words, but do not auto-inject them until accepted.
 - `Variable Lifetime Labels`: tag story facts as `scene`, `chapter`, or `series` lifetime so transient pressure does not pollute long-term continuity.
 
+Context Source Map progress:
+
+- Backend/test seam completed on 2026-06-08.
+- `previewStoryLabContinuationGuidance` now returns `contextSourceMap` alongside the provider brief, hidden guidance, anchor headings, and character count.
+- The source map uses the same selection rules as the hidden continuation anchors, so it explains the actual selected thread, artifact, relationship, and warning rather than a separate guess.
+- The first guarded cases explain brief-matched activation for `Blood Oath`, `Glass Key`, `Mira and Coral Scribe`, and the `Coral Scribe` ledger warning.
+- This is not visible in the Angular UI yet; it is the route-free metadata seam needed for the next Continuity Preview trust layer.
+
 ### Research: User Library And Profile Patterns
 
 Research how creative apps present account identity, project libraries, saved drafts, and profile/taste preferences.
