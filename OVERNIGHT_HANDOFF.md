@@ -4348,3 +4348,61 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then either continue durable-job route integration behind real auth/storage config or switch to the next bounded story-output experiment.
+
+### 2026-06-08 16:24 EDT Custom-Brief Continuity Preview
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the custom-brief continuity preview commit.
+
+User request:
+
+- Keep working autonomously and include useful story-output/product experiments, not only platform repair.
+
+Plan and critique:
+
+- Plan: make the visible Continuity Preview respond to the user's custom continuation brief.
+- Hostile critique applied: do not call the backend preview seam from Angular, do not duplicate hidden provider prompt construction, and do not add routes or provider calls. Use the already-loaded client story state as a trust layer and keep the same compact preview limits.
+
+Work completed:
+
+- Added a Continuity Preview test where relevant items are not the first defaults.
+- The visible preview now ranks active threads, world clues, one relationship edge, and continuity notes against `customContinuationBrief`.
+- Matching rows show the existing preview item shape with `Matched custom brief` as the source reason.
+- The fallback behavior still preserves existing first-item preview selection when no custom-brief match exists.
+- Updated the app audit, idea board, and handoff.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because the preview still showed the older first thread, relationship, artifact, and warning instead of `Blood Oath`, `Glass Key`, `Mara and Coral Scribe`, and the ledger warning.
+- GREEN: same Angular browser command -> `TOTAL: 66 SUCCESS`.
+- `git diff --check` -> passed.
+- `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url` -> no open PRs.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `npm run build` -> passed; initial browser total is `484.12 kB`, Proving Grounds remains lazy, and no budget warnings were emitted.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Known issues:
+
+- This is deterministic lexical matching, not semantic retrieval.
+- The UI preview still does not call or render the backend `contextSourceMap` directly.
+- Live cloud sync still requires real auth, database configuration, schema application, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with another visible story-memory refinement or a route-safe auth/cloud readiness task.

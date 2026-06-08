@@ -961,6 +961,113 @@ describe('App', () => {
     expect(previewText).toContain('Continuity note to honor');
   });
 
+  it('prioritizes custom-brief matches in the Continuity Preview', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the truth and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [
+              {
+                characterId: 'duke-vale',
+                relationship: 'rival',
+                notes: 'Duke Vale can turn the vow into leverage.'
+              },
+              {
+                characterId: 'coral-scribe',
+                relationship: 'ally',
+                notes: 'Coral Scribe knows where Mara hid the archive ledger.'
+              }
+            ],
+            spiceCompatibilities: [3]
+          },
+          {
+            id: 'duke-vale',
+            displayName: 'Duke Vale',
+            archetype: 'antagonist',
+            summary: 'A moonlit duke with a claim on the reef archive.',
+            currentGoal: 'Turn Mara toward the court bargain.',
+            internalConflict: 'His desire compromises his strategy.',
+            externalConflict: 'Mara can refuse him in public.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          },
+          {
+            id: 'coral-scribe',
+            displayName: 'Coral Scribe',
+            archetype: 'supporting',
+            summary: 'A court archivist who knows the dangerous ledger path.',
+            currentGoal: 'Make the ledger truth impossible to ignore.',
+            internalConflict: 'He owes two courts and one truth.',
+            externalConflict: 'The reef court can silence him.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [2]
+          }
+        ],
+        threads: [
+          {
+            id: 'moonlit-oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          },
+          {
+            id: 'reef-trial',
+            label: 'Reef trial',
+            status: 'active',
+            description: 'The court wants testimony before dawn.',
+            foreshadowedDevices: []
+          },
+          {
+            id: 'blood-oath',
+            label: 'Blood Oath',
+            status: 'active',
+            description: 'The old promise makes the next confession costly.',
+            foreshadowedDevices: []
+          }
+        ],
+        artifacts: [
+          {
+            id: 'witness-shell',
+            name: 'Witness Shell',
+            significance: 'The shell repeats any vow spoken near the reef court.',
+            introducedInChapter: 1
+          },
+          {
+            id: 'glass-key',
+            name: 'Glass Key',
+            significance: 'The key opens the forbidden tide door beneath the ledger room.',
+            introducedInChapter: 1
+          }
+        ],
+        continuityWarnings: [
+          'Resolve the duke wager before changing courts.',
+          'Make Coral Scribe honor the ledger warning before the court leaves.'
+        ]
+      })
+    });
+    component.customContinuationBrief.set('Bring the blood oath, glass key, and Coral Scribe ledger into the next scene.');
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    expect(previewText).toContain('Blood Oath');
+    expect(previewText).toContain('Glass Key');
+    expect(previewText).toContain('Mara and Coral Scribe');
+    expect(previewText).toContain('Coral Scribe honor the ledger warning');
+    expect(previewText).toContain('Matched custom brief');
+    expect(previewText).not.toContain('Witness Shell');
+  });
+
   it('renders suggested memory card drafts from current story state', () => {
     seedWorkbenchForContinuation({
       state: createState({

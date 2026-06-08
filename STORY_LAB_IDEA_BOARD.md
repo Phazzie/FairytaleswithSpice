@@ -335,7 +335,8 @@ Continuity Preview progress:
 - Read-only UI preview started on 2026-06-08.
 - The sidebar Story Memory section now lists prose-labeled state items such as `Pressure rising`, `World clue`, and `Continuity note` from the current client-side `StoryStateSnapshot`.
 - The sidebar Story Memory section now also lists one `Relationship pressure` item when current character state has a relationship edge.
-- The current UI preview is not editable yet and does not call the backend preview seam; it is the first visible trust layer using already-loaded state.
+- The UI preview now prioritizes custom-brief matches across threads, world clues, relationship pressure, and continuity notes, then labels selected rows as `Matched custom brief`.
+- The current UI preview is not editable yet and does not call the backend preview seam; it is a visible trust layer using already-loaded state.
 
 Relationship Web Lite progress:
 
@@ -381,7 +382,7 @@ Context Source Map progress:
 - `previewStoryLabContinuationGuidance` now returns `contextSourceMap` alongside the provider brief, hidden guidance, anchor headings, and character count.
 - The source map uses the same selection rules as the hidden continuation anchors, so it explains the actual selected thread, artifact, relationship, and warning rather than a separate guess.
 - The first guarded cases explain brief-matched activation for `Blood Oath`, `Glass Key`, `Mira and Coral Scribe`, and the `Coral Scribe` ledger warning.
-- This is not visible in the Angular UI yet; it is the route-free metadata seam needed for the next Continuity Preview trust layer.
+- The Angular UI now has a client-side visible trust layer for the same idea: custom-brief matches can pull `Blood Oath`, `Glass Key`, `Mara and Coral Scribe`, and the ledger warning into the rendered Continuity Preview without adding a route or provider call.
 
 Variable Lifetime Labels progress:
 

@@ -38,6 +38,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The sidebar Story Memory section now shows a read-only Continuity Preview with prose labels for the first active/open story debts, world clue, and continuity note.
   - The preview now also shows one `Relationship pressure` item when current character state has a relationship edge.
   - The preview now shows compact source reasons such as `Active story thread`, `Current relationship edge`, `Unresolved world clue`, and `Continuity note to honor`, so users can see why each memory item is active.
+  - When the user types a custom continuation brief, the visible preview now prioritizes matching threads, world clues, relationship pressure, and continuity notes, and labels those rows as `Matched custom brief`.
   - The preview now shows compact lifetime labels such as `Series memory` and `Chapter memory` for lifetime-tagged threads and lore artifacts.
   - Story Memory now also renders read-only Memory Card Drafts for the first current character, active promise, and world clue, with trigger phrases such as `Trigger: Mara`.
   - Memory Card Drafts can now be pinned; pinned draft IDs save with browser-local projects and restore when the project reloads.
@@ -207,6 +208,7 @@ What users can meaningfully experience now:
 - Use local browser save/load behavior for recent projects.
 - See a Cloud account panel that clearly says cloud sync is unavailable until account storage is configured.
 - See accepted memory-card counts on saved cloud/local library rows when those projects have accepted memory.
+- See the Story Memory / Continuity Preview adjust to a typed custom continuation brief before continuing.
 - Use narrative controls such as heat contract, Director's Room notes, villain pressure, and narrative dials.
 - Use Proving Grounds evaluation to see a deterministic advisory quality scan when the evaluation response includes `heuristicReport`.
 

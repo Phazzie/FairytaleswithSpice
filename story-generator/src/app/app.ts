@@ -151,6 +151,11 @@ type ContinuityPreviewItem = {
   lifetimeLabel?: string;
 };
 
+type ContinuityPreviewSelection<T> = {
+  item: T;
+  matched: boolean;
+};
+
 type MemoryCardDraftItem = {
   id: string;
   label: string;
@@ -457,9 +462,28 @@ export class App implements OnDestroy {
 
   readonly continuityPreviewItems = computed<ContinuityPreviewItem[]>(() => {
     const continuity = this.continuityPanel();
-    const relationshipItem = this.buildContinuityRelationshipPreviewItem(continuity.characters);
+    const activationSource = this.normalizePreviewActivationText(this.customContinuationBrief());
+    const threadSelections = this.selectContinuityPreviewMatches(
+      continuity.activeThreads,
+      2,
+      thread => [thread.label, thread.description],
+      activationSource
+    );
+    const artifactSelections = this.selectContinuityPreviewMatches(
+      continuity.unresolvedArtifacts,
+      1,
+      artifact => [artifact.name, artifact.significance],
+      activationSource
+    );
+    const warningSelections = this.selectContinuityPreviewMatches(
+      continuity.continuityWarnings,
+      1,
+      warning => [warning],
+      activationSource
+    );
+    const relationshipItem = this.buildContinuityRelationshipPreviewItem(continuity.characters, activationSource);
     return [
-      ...continuity.activeThreads.slice(0, 2).map(thread => ({
+      ...threadSelections.map(({ item: thread, matched }) => ({
         id: `thread-${thread.id}`,
         label: thread.status === 'escalating'
           ? 'Pressure rising'
@@ -468,24 +492,24 @@ export class App implements OnDestroy {
             : 'Open promise',
         title: thread.label,
         detail: thread.description,
-        sourceReason: 'Active story thread',
+        sourceReason: this.formatContinuityPreviewSourceReason(matched, 'Active story thread'),
         lifetimeLabel: this.formatStoryMemoryLifetimeLabel(thread.lifetime)
       })),
       ...(relationshipItem ? [relationshipItem] : []),
-      ...continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
+      ...artifactSelections.map(({ item: artifact, matched }) => ({
         id: `artifact-${artifact.id}`,
         label: 'World clue',
         title: artifact.name,
         detail: artifact.significance,
-        sourceReason: 'Unresolved world clue',
+        sourceReason: this.formatContinuityPreviewSourceReason(matched, 'Unresolved world clue'),
         lifetimeLabel: this.formatStoryMemoryLifetimeLabel(artifact.lifetime)
       })),
-      ...continuity.continuityWarnings.slice(0, 1).map((warning, index) => ({
+      ...warningSelections.map(({ item: warning, index, matched }) => ({
         id: `warning-${index}`,
         label: 'Continuity note',
         title: 'Carry forward',
         detail: warning,
-        sourceReason: 'Continuity note to honor'
+        sourceReason: this.formatContinuityPreviewSourceReason(matched, 'Continuity note to honor')
       }))
     ].filter(item => item.title || item.detail);
   });
@@ -573,23 +597,104 @@ export class App implements OnDestroy {
     return undefined;
   }
 
-  private buildContinuityRelationshipPreviewItem(characters: ContinuityPanelViewModel['characters']): ContinuityPreviewItem | null {
+  private buildContinuityRelationshipPreviewItem(
+    characters: ContinuityPanelViewModel['characters'],
+    activationSource: string
+  ): ContinuityPreviewItem | null {
+    const relationshipItems: Array<ContinuityPreviewItem & { activationScore: number; sourceIndex: number }> = [];
+    let sourceIndex = 0;
     for (const character of characters) {
       for (const relationship of character.relationships) {
         const target = characters.find(candidate => candidate.id === relationship.characterId);
         if (target) {
-          return {
+          relationshipItems.push({
             id: `relationship-${character.id}-${target.id}`,
             label: 'Relationship pressure',
             title: `${character.displayName} and ${target.displayName}`,
             detail: relationship.notes || this.formatRelationshipPreviewDetail(relationship.relationship),
-            sourceReason: 'Current relationship edge'
-          };
+            sourceReason: 'Current relationship edge',
+            activationScore: this.scorePreviewActivationMatch(activationSource, [
+              character.displayName,
+              target.displayName,
+              relationship.relationship,
+              relationship.notes
+            ]),
+            sourceIndex
+          });
+          sourceIndex += 1;
         }
       }
     }
 
-    return null;
+    if (!relationshipItems.length) {
+      return null;
+    }
+
+    const selected = relationshipItems.sort((first, second) =>
+      second.activationScore - first.activationScore || first.sourceIndex - second.sourceIndex
+    )[0];
+    const { activationScore, sourceIndex: _sourceIndex, ...item } = selected;
+
+    return {
+      ...item,
+      sourceReason: this.formatContinuityPreviewSourceReason(activationScore > 0, 'Current relationship edge')
+    };
+  }
+
+  private selectContinuityPreviewMatches<T>(
+    items: T[],
+    limit: number,
+    getCandidates: (item: T) => Array<string | undefined>,
+    activationSource: string
+  ): Array<ContinuityPreviewSelection<T> & { index: number }> {
+    return items
+      .map((item, index) => ({
+        item,
+        index,
+        matched: false,
+        activationScore: this.scorePreviewActivationMatch(activationSource, getCandidates(item))
+      }))
+      .sort((first, second) => second.activationScore - first.activationScore || first.index - second.index)
+      .slice(0, limit)
+      .map(({ item, index, activationScore }) => ({
+        item,
+        index,
+        matched: activationScore > 0
+      }));
+  }
+
+  private formatContinuityPreviewSourceReason(matched: boolean, fallback: string): string {
+    return matched ? 'Matched custom brief' : fallback;
+  }
+
+  private scorePreviewActivationMatch(
+    activationSource: string,
+    candidates: Array<string | undefined>
+  ): number {
+    if (!activationSource) {
+      return 0;
+    }
+
+    return candidates.reduce((highestScore, candidate) => {
+      const normalizedCandidate = this.normalizePreviewActivationText(candidate ?? '');
+      if (!normalizedCandidate) {
+        return highestScore;
+      }
+
+      if (activationSource.includes(normalizedCandidate)) {
+        return Math.max(highestScore, normalizedCandidate.split(' ').length + 5);
+      }
+
+      const wordScore = normalizedCandidate
+        .split(' ')
+        .filter(word => word.length > 2 && activationSource.includes(word))
+        .length;
+      return Math.max(highestScore, wordScore);
+    }, 0);
+  }
+
+  private normalizePreviewActivationText(value: string): string {
+    return (value.toLowerCase().match(/[a-z0-9']+/g) ?? []).join(' ');
   }
 
   private formatRelationshipPreviewDetail(
