@@ -30,12 +30,14 @@ This plan starts from the current merged state:
 - [x] Ran source-backed research pass for adjacent writing tools and platform docs; recorded findings in `STORY_LAB_IDEA_BOARD.md`.
 - [x] Wrote this implementation plan as the next platform slice after the route-free storage port.
 - [ ] Review this plan before installing auth/database dependencies or adding production routes.
-- [ ] Implement profile/account contracts.
+- [x] Implement profile/account contracts.
+- [x] Add fail-closed `configuredAuthPort` boundary without installing a provider SDK.
+- [x] Add focused profile/cloud contract and configured-auth tests, and wire them into `npm run test:all`.
 - [ ] Implement provider-backed `AuthPort` adapter behind explicit env configuration.
 - [ ] Implement one consolidated Story Lab account route with rewrites instead of many deployable function files.
 - [ ] Wire cloud library methods into the Angular service and UI.
 - [ ] Add focused owner-isolation, profile, route, and UI tests.
-- [ ] Run validation and update handoff.
+- [x] Run validation and update handoff for Slice 1.
 
 ## Surprises & Discoveries
 
@@ -64,7 +66,22 @@ This plan starts from the current merged state:
 
 ## Outcomes & Retrospective
 
-This plan is newly created. No auth/profile/cloud-library implementation has landed yet.
+Current implementation state as of 2026-06-08:
+
+- Added profile/cloud-library contract types to `story-generator/src/app/contracts.ts`.
+- Re-exported those types through `api/_lib/story-lab/contracts.ts`.
+- Added `api/_lib/story-lab/profile/profileDefaults.ts` with fail-closed, adult-unconfirmed default profile preferences.
+- Added `api/_lib/story-lab/auth/configuredAuthPort.ts`, which delegates only to an injected provider and otherwise denies by default.
+- Added focused tests:
+  - `tests/story-lab-profile-contracts.test.ts`
+  - `tests/story-lab-configured-auth.test.ts`
+- Added npm scripts for the new focused tests and included them in `npm run test:all`.
+- Slice 1 validation passed:
+  - `git diff --check`;
+  - `scripts/recovery/check-vercel-function-count.sh` -> `10/12`;
+  - `npm run test:all`;
+  - `scripts/recovery/preflight.sh --quick --skip-status`.
+- No provider SDK, route, database migration, UI cloud sync, or durable job behavior has landed yet.
 
 Expected retrospective evidence after implementation:
 

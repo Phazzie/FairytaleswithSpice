@@ -273,3 +273,66 @@ Known issues:
 Next recommended task:
 
 - Begin Slice 1 of `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`, or take one smaller story-quality experiment if staying away from provider boundaries.
+
+### 2026-06-08 07:44 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this slice is not committed yet.
+
+User request:
+
+- Continue overnight work and start the auth/profile/cloud-library plan safely.
+
+Work completed:
+
+- Created feature branch `feature/story-lab-auth-profile-contracts`.
+- Added Story Lab profile and cloud-library contract types.
+- Re-exported the new contract types through the backend Story Lab contract barrel.
+- Added default private profile preferences that do not pre-confirm adult-only content.
+- Added `configuredAuthPort`, which fails closed unless an auth provider is explicitly injected.
+- Added RED/GREEN tests for profile contracts/defaults and configured auth.
+- Added npm scripts for the new tests and wired them into `npm run test:all`.
+- Updated `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` progress/outcomes.
+
+Files changed:
+
+- `story-generator/src/app/contracts.ts`
+- `api/_lib/story-lab/contracts.ts`
+- `api/_lib/story-lab/profile/profileDefaults.ts`
+- `api/_lib/story-lab/auth/configuredAuthPort.ts`
+- `tests/story-lab-profile-contracts.test.ts`
+- `tests/story-lab-configured-auth.test.ts`
+- `package.json`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-profile-contracts.test.ts` failed on missing `profileDefaults`.
+- RED: `npx tsx tests/story-lab-configured-auth.test.ts` failed on missing `configuredAuthPort`.
+- GREEN: `npx tsx tests/story-lab-profile-contracts.test.ts` -> passed.
+- GREEN: `npx tsx tests/story-lab-configured-auth.test.ts` -> passed.
+- Regression: `npx tsx tests/story-lab-auth.test.ts` -> passed.
+- Regression: `npx tsx tests/story-lab-storage-port.test.ts` -> passed.
+- Final validation:
+  - `git diff --check` -> passed.
+  - `scripts/recovery/check-vercel-function-count.sh` -> `10/12`, within limit.
+  - `npm run test:all` -> passed.
+  - `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Live provider/auth/storage proof with real credentials; no provider SDK, `XAI_API_KEY`, database, or auth service was configured in this slice.
+
+Known issues:
+
+- This is not login. No provider SDK, route, database migration, UI cloud sync, or durable job implementation has landed.
+
+Next recommended task:
+
+- Commit this Slice 1 implementation, then either start profile store Slice 2 or pause before provider/dependency work.

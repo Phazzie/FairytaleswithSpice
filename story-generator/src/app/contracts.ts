@@ -214,6 +214,57 @@ export interface SavedStoryProject {
   updatedAt: string;
 }
 
+export type StoryLabLibrarySort = 'updated_desc' | 'created_desc' | 'title_asc';
+
+export interface StoryLabProfilePreferences {
+  defaultHeatContract: HeatContract;
+  favoriteCreatures: CreatureArchetype[];
+  favoriteTones: NarrativeTone[];
+  contentBoundaries?: string;
+  librarySort: StoryLabLibrarySort;
+}
+
+export interface StoryLabUserProfile {
+  userId: string;
+  displayName: string;
+  preferences: StoryLabProfilePreferences;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CloudLibrarySyncMode = 'local_only' | 'cloud_synced' | 'sync_failed' | 'cloud_unavailable';
+
+export interface CloudLibrarySyncState {
+  mode: CloudLibrarySyncMode;
+  lastSyncedAt?: string;
+  message?: string;
+}
+
+export type CloudStoryProjectStorageMode = 'cloud_postgres';
+
+export interface CloudStoryProjectListItem {
+  projectId: string;
+  storyId: string;
+  title: string;
+  synopsis: string;
+  chapterCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CloudStoryProjectList {
+  ownerUserId: string;
+  storageMode: CloudStoryProjectStorageMode;
+  projects: CloudStoryProjectListItem[];
+}
+
+export interface CloudStoryProjectSaveReceipt {
+  projectId: string;
+  storyId: string;
+  savedAt: string;
+  syncState: CloudLibrarySyncState;
+}
+
 export type BatchProgressStatus = 'queued' | 'in_progress' | 'completed' | 'failed';
 
 export interface BatchProgressState {
