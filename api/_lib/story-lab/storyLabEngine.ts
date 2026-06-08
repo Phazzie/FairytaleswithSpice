@@ -38,6 +38,14 @@ interface StoryLabEngineOptions {
   serviceFactory?: () => StoryServiceLike;
 }
 
+export interface StoryLabContinuationGuidancePreview {
+  originalBrief: string;
+  providerBrief: string;
+  hiddenGuidance: string;
+  anchorHeadings: string[];
+  characterCount: number;
+}
+
 const MOCK_FLAG_VALUES = new Set(['1', 'true', 'yes']);
 const CONTINUITY_COURTROOM_MAX_THREADS = 3;
 const CONTINUITY_COURTROOM_MAX_ARTIFACTS = 2;
@@ -105,6 +113,22 @@ const DEFAULT_CLASSIC_THEME: ThemeType = 'forbidden_love';
 export function shouldUseMockStoryLab(): boolean {
   const forceMock = process.env['STORY_LAB_FORCE_MOCK'] ?? '';
   return !isProductionRuntime() && (MOCK_FLAG_VALUES.has(forceMock.toLowerCase()) || !process.env['XAI_API_KEY']);
+}
+
+export function previewStoryLabContinuationGuidance(input: {
+  continuationBrief?: string;
+  storyState: StoryStateSnapshot;
+}): StoryLabContinuationGuidancePreview {
+  const originalBrief = input.continuationBrief?.trim() ?? '';
+  const providerBrief = withContinuationStrategyBrief(input.continuationBrief, input.storyState) ?? originalBrief;
+  const hiddenGuidance = extractHiddenContinuationGuidance(providerBrief, originalBrief);
+  return {
+    originalBrief,
+    providerBrief,
+    hiddenGuidance,
+    anchorHeadings: extractAnchorHeadings(hiddenGuidance),
+    characterCount: providerBrief.length
+  };
 }
 
 function isProductionRuntime(): boolean {
@@ -354,6 +378,22 @@ function withContinuationStrategyBrief(continuationBrief: string | undefined, st
   ]
     .filter((line): line is string => Boolean(line))
     .join('\n\n') || undefined;
+}
+
+function extractHiddenContinuationGuidance(providerBrief: string, originalBrief: string): string {
+  if (!originalBrief || !providerBrief.startsWith(originalBrief)) {
+    return providerBrief.trim();
+  }
+
+  return providerBrief.slice(originalBrief.length).trim();
+}
+
+function extractAnchorHeadings(hiddenGuidance: string): string[] {
+  return hiddenGuidance
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => /^[A-Za-z][A-Za-z ]+:$/.test(line))
+    .map(line => line.slice(0, -1));
 }
 
 function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot): string | undefined {

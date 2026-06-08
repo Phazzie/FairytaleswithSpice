@@ -1249,3 +1249,58 @@ Known issues:
 Next recommended task:
 
 - If continuing without credentials, build a lightweight prompt-guidance preview/test helper, or return to auth/storage provider integration once provider/database details are available.
+
+### 2026-06-08 09:51 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the continuation-guidance preview seam commit.
+
+User request:
+
+- Keep working autonomously and improve story-output tooling without needing external credentials.
+
+Work completed:
+
+- Added `previewStoryLabContinuationGuidance` as a backend/test seam for future Continuity Preview UI.
+- The preview returns the original user brief, exact provider brief, hidden guidance, anchor headings, and character count.
+- The preview uses the same hidden guidance builder as `continueStoryLab`, so tests and future UI do not need to duplicate prompt construction.
+- Added story-quality eval coverage proving the preview preserves the user brief, exposes the hidden continuity anchors, reports the three hidden blocks, and stays within the compactness budget.
+- Updated the audit and idea board to describe this as a preview seam, not as shipped visible UI.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-quality-evals.test.ts` failed because `previewStoryLabContinuationGuidance` did not exist.
+- GREEN: `npx tsx tests/story-quality-evals.test.ts` -> passed.
+- GREEN: `npx tsx tests/story-lab-real-engine.test.ts` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+- `git diff --check` -> passed.
+
+Checks skipped:
+
+- Visible UI preview; this slice creates the safe seam first.
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+
+Known issues:
+
+- The preview seam is not yet wired into Angular UI.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without credentials, either wire a read-only Continuity Preview into the UI using this seam or return to provider/database work when auth/storage decisions are available.

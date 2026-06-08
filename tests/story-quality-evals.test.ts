@@ -4,6 +4,7 @@
 import {
   buildStoryLabPayloadFromGeneratedStory,
   continueStoryLab,
+  previewStoryLabContinuationGuidance,
   toClassicGenerationInput
 } from '../api/_lib/story-lab/storyLabEngine';
 import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
@@ -129,6 +130,15 @@ async function main(): Promise<void> {
   });
   assert(continuity.receipt.source === 'heuristic', 'continuity extraction should label heuristic fallback.');
   assert(continuity.receipt.warning?.includes('heuristic'), 'heuristic fallback should be visible.');
+
+  const guidancePreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Pay off the witness shell and make Lord Brine escalate.',
+    storyState: genesisPayload.state
+  });
+  assert(guidancePreview.providerBrief.includes('Pay off the witness shell'), 'guidance preview should preserve the user continuation brief.');
+  assert(guidancePreview.hiddenGuidance.includes('Continuity Courtroom:'), 'guidance preview should expose hidden continuity anchors for future UI preview work.');
+  assert(guidancePreview.anchorHeadings.length === 3, 'guidance preview should report the three hidden anchor blocks.');
+  assert(guidancePreview.characterCount <= 900, 'guidance preview should expose the same compactness budget guarded by real-engine tests.');
 
   let continuationInput: ClassicContinuationSeam['input'] | null = null;
   const continuationResponse = await withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, () => continueStoryLab({

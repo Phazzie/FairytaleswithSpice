@@ -143,6 +143,12 @@ Experiments:
 - `Relationship Web Lite`: start with simple typed links such as wants, owes, hides from, protects, betrays, and fears.
 - `Continuity Preview`: before Continue Saga, show a compact "what the model will remember" list that can be accepted, edited, or hidden.
 
+Continuity Preview progress:
+
+- Backend/test seam started on 2026-06-08.
+- `previewStoryLabContinuationGuidance` exposes the exact continuation provider brief, hidden guidance, anchor headings, and character count without calling the AI provider.
+- This is not visible UI yet; it is the safe seam future UI can call or adapt without duplicating hidden-guidance construction.
+
 ### Research: User Library And Profile Patterns
 
 Research how creative apps present account identity, project libraries, saved drafts, and profile/taste preferences.
