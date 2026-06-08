@@ -118,7 +118,8 @@ Current implementation state as of 2026-06-08:
   - `tests/story-lab-profile-store.test.ts`
 - Added npm scripts for the new focused tests and included them in `npm run test:all`.
 - Added `test:story-lab-clerk-auth`, `test:story-lab-cloud-schema`, `test:story-lab-cloud-schema-migration`, `test:story-lab-cloud-db-readiness`, `test:story-lab-cloud-storage-config`, `test:story-lab-neon-executor`, `test:story-lab-job-routes`, and `test:story-lab-job-store-config` to `npm run test:all`.
-- Added `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts` as the env-gated future job-store selection seam; default routes stay non-durable, unsupported modes fail closed, and durable Postgres mode is blocked until owner-scoped route auth is implemented.
+- Added `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts` as the env-gated future job-store selection seam; default routes stay non-durable, unsupported modes fail closed, and injected durable stores require route auth before creation.
+- Added an injectable job route handler seam so tests can prove authenticated durable creation receives `ownerUserId`; owner-scoped status/event reads still need a future port and route change.
 - Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
 - Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
 - Added `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts` as an injected-executor Postgres profile scaffold that fails closed when `DATABASE_URL` or an executor is missing.
@@ -238,6 +239,7 @@ Current implementation state as of 2026-06-08:
 - No executed database migration/provisioning, live auth provider, live database proof, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
 - A migration-ready SQL contract exists, but it is not automatically executed by the app.
 - The migration-ready SQL contract includes future durable job tables, and a Postgres job store scaffold exists, but the active job route still uses `non_durable_memory` unless a future owner-scoped durable route is implemented.
+- Job route tests now prove durable creation can receive authenticated owner context through injection, but they do not prove owner-scoped job status/event authorization.
 - A guarded schema-apply script exists, but it has only been tested with fake executors and missing-env refusal here.
 - A guarded cloud database readiness smoke exists, but it has only been tested with fake executors and missing-env refusal here.
 - A Neon executor adapter exists, but it has only been validated with injected fake queries and typechecks, not a live database.

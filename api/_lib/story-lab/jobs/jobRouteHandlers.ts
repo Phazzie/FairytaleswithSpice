@@ -8,6 +8,9 @@ import type {
   StoryLabJobCreationResponse,
   StoryLabJobError
 } from '../contracts';
+import type { AuthPort, AuthUser } from '../auth/authPort';
+import { isAuthError } from '../auth/authPort';
+import { configuredAuthPort } from '../auth/configuredAuthPort';
 import { applyCorsPolicy } from '../../http/corsPolicy';
 import { continueStoryLab, generateStoryLabGenesis } from '../storyLabEngine';
 import { getTransientStorySnapshot } from '../stateStore';
@@ -39,21 +42,63 @@ interface ResponseLike {
   end(): void;
 }
 
-export async function handleStoryLabJobsRoute(req: RequestLike, res: ResponseLike): Promise<void> {
+export interface StoryLabJobRouteDependencies {
+  authPort?: AuthPort;
+  createJobStoreConfig?: () => StoryLabJobStoreConfig;
+}
+
+interface StoryLabJobRouteContext {
+  authPort: AuthPort;
+  createJobStoreConfig: () => StoryLabJobStoreConfig;
+}
+
+interface ResolvedJobStore {
+  store: StoryLabJobStore;
+  ownerUserId?: string;
+}
+
+export function createStoryLabJobsRouteHandler(
+  dependencies: StoryLabJobRouteDependencies = {}
+): (req: RequestLike, res: ResponseLike) => Promise<void> {
+  const context: StoryLabJobRouteContext = {
+    authPort: dependencies.authPort ?? configuredAuthPort,
+    createJobStoreConfig: dependencies.createJobStoreConfig ?? (() => createStoryLabJobStoreConfig())
+  };
+
+  return async function storyLabJobsRouteHandler(req: RequestLike, res: ResponseLike): Promise<void> {
+    await handleStoryLabJobsRouteWithContext(context, req, res);
+  };
+}
+
+export const handleStoryLabJobsRoute = createStoryLabJobsRouteHandler();
+
+async function handleStoryLabJobsRouteWithContext(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<void> {
   if ((req.method ?? '').toUpperCase() === 'POST') {
-    await handleCreateStoryLabJob(req, res);
+    await handleCreateStoryLabJobWithContext(context, req, res);
     return;
   }
 
   if (isEventsRequest(req)) {
-    await handleStreamStoryLabJobEvents(req, res);
+    await handleStreamStoryLabJobEventsWithContext(context, req, res);
     return;
   }
 
-  await handleGetStoryLabJob(req, res);
+  await handleGetStoryLabJobWithContext(context, req, res);
 }
 
 export async function handleCreateStoryLabJob(req: RequestLike, res: ResponseLike): Promise<void> {
+  await handleCreateStoryLabJobWithContext(createDefaultJobRouteContext(), req, res);
+}
+
+async function handleCreateStoryLabJobWithContext(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: ['POST', 'OPTIONS'],
     credentials: true
@@ -86,12 +131,12 @@ export async function handleCreateStoryLabJob(req: RequestLike, res: ResponseLik
   }
 
   if (request.kind === 'genesis') {
-    await createGenesisJob(request, res);
+    await createGenesisJob(context, request, req, res);
     return;
   }
 
   if (request.kind === 'continuation') {
-    await createContinuationJob(request, res);
+    await createContinuationJob(context, request, req, res);
     return;
   }
 
@@ -99,6 +144,14 @@ export async function handleCreateStoryLabJob(req: RequestLike, res: ResponseLik
 }
 
 export async function handleGetStoryLabJob(req: RequestLike, res: ResponseLike): Promise<void> {
+  await handleGetStoryLabJobWithContext(createDefaultJobRouteContext(), req, res);
+}
+
+async function handleGetStoryLabJobWithContext(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: ['GET', 'OPTIONS'],
     credentials: true
@@ -112,12 +165,12 @@ export async function handleGetStoryLabJob(req: RequestLike, res: ResponseLike):
     return;
   }
 
-  const store = resolveJobStoreOrRespond(res);
-  if (!store) {
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  if (!resolvedStore) {
     return;
   }
 
-  const job = await store.getJob(jobId);
+  const job = await resolvedStore.store.getJob(jobId);
   if (!job) {
     sendJson(res, 404, jobNotFound());
     return;
@@ -130,6 +183,14 @@ export async function handleGetStoryLabJob(req: RequestLike, res: ResponseLike):
 }
 
 export async function handleStreamStoryLabJobEvents(req: RequestLike, res: ResponseLike): Promise<void> {
+  await handleStreamStoryLabJobEventsWithContext(createDefaultJobRouteContext(), req, res);
+}
+
+async function handleStreamStoryLabJobEventsWithContext(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: ['GET', 'OPTIONS'],
     credentials: true
@@ -143,12 +204,12 @@ export async function handleStreamStoryLabJobEvents(req: RequestLike, res: Respo
     return;
   }
 
-  const store = resolveJobStoreOrRespond(res);
-  if (!store) {
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  if (!resolvedStore) {
     return;
   }
 
-  const events = await store.getEvents<JobResult>(jobId);
+  const events = await resolvedStore.store.getEvents<JobResult>(jobId);
   if (!events) {
     sendJson(res, 404, jobNotFound());
     return;
@@ -176,7 +237,9 @@ export async function handleStreamStoryLabJobEvents(req: RequestLike, res: Respo
 }
 
 async function createGenesisJob(
+  context: StoryLabJobRouteContext,
   request: Extract<StoryLabJobCreationRequest, { kind: 'genesis' }>,
+  req: RequestLike,
   res: ResponseLike
 ): Promise<void> {
   const parsed = parseStoryLabBlueprintFromBody(request.blueprint);
@@ -194,13 +257,15 @@ async function createGenesisJob(
     return;
   }
 
-  const store = resolveJobStoreOrRespond(res);
-  if (!store) {
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  if (!resolvedStore) {
     return;
   }
+  const { store, ownerUserId } = resolvedStore;
 
   const job = await store.createJob<StoryIterationPayload>({
     kind: 'genesis',
+    ownerUserId,
     currentStep: 'queued',
     idempotencyKey: request.idempotencyKey,
     storyId: request.storyId,
@@ -224,7 +289,9 @@ async function createGenesisJob(
 }
 
 async function createContinuationJob(
+  context: StoryLabJobRouteContext,
   request: Extract<StoryLabJobCreationRequest, { kind: 'continuation' }>,
+  req: RequestLike,
   res: ResponseLike
 ): Promise<void> {
   const normalized = normalizeContinuationInput(request.continuation);
@@ -235,13 +302,15 @@ async function createContinuationJob(
     return;
   }
 
-  const store = resolveJobStoreOrRespond(res);
-  if (!store) {
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  if (!resolvedStore) {
     return;
   }
+  const { store, ownerUserId } = resolvedStore;
 
   const job = await store.createJob<ContinuationJobResult>({
     kind: 'continuation',
+    ownerUserId,
     currentStep: 'queued',
     idempotencyKey: request.idempotencyKey,
     storyId: request.storyId ?? normalized.storyId,
@@ -286,14 +355,65 @@ async function finishJob<TPublicResult extends JobResult>(
   }))!;
 }
 
-function resolveJobStoreOrRespond(res: ResponseLike): StoryLabJobStore | null {
-  const config = createStoryLabJobStoreConfig();
-  if (!config.store || !config.isConfigured() || config.store.durable) {
+async function resolveJobStoreOrRespond(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<ResolvedJobStore | null> {
+  const config = context.createJobStoreConfig();
+  if (!config.store || !config.isConfigured()) {
     sendJson(res, 503, jobStoreUnavailable(config));
     return null;
   }
 
-  return config.store;
+  if (config.store.durable) {
+    const user = await requireJobRouteUser(context.authPort, req, res);
+    if (!user) {
+      return null;
+    }
+
+    return {
+      store: config.store,
+      ownerUserId: user.userId
+    };
+  }
+
+  return {
+    store: config.store
+  };
+}
+
+function createDefaultJobRouteContext(): StoryLabJobRouteContext {
+  return {
+    authPort: configuredAuthPort,
+    createJobStoreConfig: () => createStoryLabJobStoreConfig()
+  };
+}
+
+async function requireJobRouteUser(authPort: AuthPort, req: RequestLike, res: ResponseLike): Promise<AuthUser | null> {
+  try {
+    return await authPort.requireUser(req);
+  } catch (error) {
+    if (isAuthError(error)) {
+      sendJson(res, error.statusCode, {
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message
+        }
+      });
+      return null;
+    }
+
+    sendJson(res, 401, {
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Account authentication is required.'
+      }
+    });
+    return null;
+  }
 }
 
 function normalizeContinuationInput(input: unknown): StoryContinuationSeam['input'] | null {

@@ -2,8 +2,17 @@
 // Created: 2026-06-07 07:17 EDT
 
 import jobHandler from '../api/story-lab/jobs';
-import type { StoryGenerationSeam, StoryLabJobCreationRequest } from '../api/_lib/story-lab/contracts';
+import type { AuthPort, AuthUser } from '../api/_lib/story-lab/auth/authPort';
+import { AuthError } from '../api/_lib/story-lab/auth/authPort';
+import type {
+  StoryGenerationSeam,
+  StoryLabJobCreationRequest,
+  StoryLabJobCreationResponse
+} from '../api/_lib/story-lab/contracts';
+import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 import { NonDurableStoryLabJobStore, nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
+import type { CreateStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from '../api/_lib/story-lab/jobs/jobStorePort';
+import type { StoryLabJobStoreConfig } from '../api/_lib/story-lab/jobs/storyLabJobStoreConfig';
 
 interface FakeRequest {
   method: string;
@@ -58,6 +67,10 @@ const originalEnv = {
   XAI_API_KEY: process.env['XAI_API_KEY'],
   STORY_LAB_JOB_STORE: process.env['STORY_LAB_JOB_STORE'],
   DATABASE_URL: process.env['DATABASE_URL']
+};
+const owner: AuthUser = {
+  userId: 'user_job_owner',
+  email: 'owner@example.com'
 };
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -244,6 +257,42 @@ async function testPostgresJobStoreWithoutRouteAuthFailsClosed(): Promise<void> 
   assert(body.error.details.databaseUrlConfigured === false, 'postgres job store response should report missing database URL');
 }
 
+async function testDurableInjectedJobStoreRequiresAuth(): Promise<void> {
+  setMockRuntime();
+  const store = new CapturingDurableJobStore();
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createRejectingAuthPort(),
+    createJobStoreConfig: () => createDurableJobStoreConfig(store)
+  });
+  const response = new FakeResponse();
+
+  await handler(createRequest('POST', createGenesisJobRequest()), response);
+
+  assert(response.statusCode === 401, 'durable job route should require account auth');
+  const body = response.body as any;
+  assert(body.success === false, 'unauthenticated durable job route should use a failure envelope');
+  assert(body.error.code === 'UNAUTHORIZED', 'unauthenticated durable job route should expose UNAUTHORIZED');
+  assert(store.createdOwnerUserIds.length === 0, 'durable job route should not create jobs before auth succeeds');
+}
+
+async function testDurableInjectedJobCreationReceivesOwnerContext(): Promise<void> {
+  setMockRuntime();
+  const store = new CapturingDurableJobStore();
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    createJobStoreConfig: () => createDurableJobStoreConfig(store)
+  });
+  const response = new FakeResponse();
+
+  await handler(createRequest('POST', createGenesisJobRequest()), response);
+
+  assert(response.statusCode === 200, 'authenticated durable job route should create a job envelope');
+  const body = response.body as any;
+  assert(body.success === true, 'authenticated durable job route should return success');
+  assert(body.data.durability.mode === 'postgres', 'durable injected store should preserve durable mode in the route response');
+  assert(store.createdOwnerUserIds[0] === owner.userId, 'durable job creation should receive authenticated owner id');
+}
+
 async function testMalformedContinuationStoryIdReturnsInvalidRequest(): Promise<void> {
   nonDurableStoryLabJobStore.reset();
   setMockRuntime();
@@ -294,6 +343,8 @@ async function run(): Promise<void> {
   await testReservedJobKindsAreRejected();
   await testUnsupportedConfiguredJobStoreFailsClosed();
   await testPostgresJobStoreWithoutRouteAuthFailsClosed();
+  await testDurableInjectedJobStoreRequiresAuth();
+  await testDurableInjectedJobCreationReceivesOwnerContext();
   await testMalformedContinuationStoryIdReturnsInvalidRequest();
   testStoreEvictsOldestJobs();
   await testProductionMissingProviderCreatesFailedJob();
@@ -309,3 +360,83 @@ run()
   .finally(() => {
     restoreEnv();
   });
+
+class CapturingDurableJobStore implements StoryLabJobStore {
+  readonly mode = 'postgres';
+  readonly durable = true;
+  readonly createdOwnerUserIds: Array<string | undefined> = [];
+  private readonly inner = new NonDurableStoryLabJobStore();
+
+  isConfigured(): boolean {
+    return true;
+  }
+
+  createJob<TPublicResult = unknown>(input: CreateStoryLabJobInput): StoryLabJobCreationResponse<TPublicResult> {
+    this.createdOwnerUserIds.push(input.ownerUserId);
+    return this.withDurableReceipt(this.inner.createJob<TPublicResult>(input));
+  }
+
+  updateJob<TPublicResult = unknown>(
+    jobId: string,
+    input: UpdateStoryLabJobInput<TPublicResult>
+  ): StoryLabJobCreationResponse<TPublicResult> | null {
+    return this.withDurableReceipt(this.inner.updateJob<TPublicResult>(jobId, input));
+  }
+
+  getJob<TPublicResult = unknown>(jobId: string): StoryLabJobCreationResponse<TPublicResult> | null {
+    return this.withDurableReceipt(this.inner.getJob<TPublicResult>(jobId));
+  }
+
+  getEvents<TPublicResult = unknown>(jobId: string) {
+    return this.inner.getEvents<TPublicResult>(jobId);
+  }
+
+  private withDurableReceipt<TPublicResult>(
+    response: StoryLabJobCreationResponse<TPublicResult> | null
+  ): StoryLabJobCreationResponse<TPublicResult> | null {
+    return response
+      ? {
+        ...response,
+        durability: {
+          mode: 'postgres',
+          durable: true
+        }
+      }
+      : null;
+  }
+}
+
+function createDurableJobStoreConfig(store: StoryLabJobStore): StoryLabJobStoreConfig {
+  return {
+    requestedMode: 'postgres',
+    mode: 'postgres',
+    databaseUrlConfigured: true,
+    executorConfigured: true,
+    store,
+    isConfigured() {
+      return store.isConfigured();
+    }
+  };
+}
+
+function createStaticAuthPort(user: AuthUser): AuthPort {
+  return {
+    async getCurrentUser() {
+      return user;
+    },
+    async requireUser() {
+      return user;
+    }
+  };
+}
+
+function createRejectingAuthPort(): AuthPort {
+  return {
+    async getCurrentUser() {
+      return null;
+    },
+    async requireUser() {
+      throw new AuthError('Account authentication is required.');
+    }
+  };
+}

@@ -2051,6 +2051,59 @@ Next recommended task:
 
 - Commit this slice, then continue with owner-scoped job-route auth tests or another bounded story-quality experiment.
 
+### 2026-06-08 Job Route Owner Context Slice
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the job route owner context commit.
+
+User request:
+
+- Keep working autonomously toward auth, storage, profiles, and durable job readiness without overstating unfinished durable behavior.
+
+Work completed:
+
+- Added `createStoryLabJobsRouteHandler` so job route tests/future wiring can inject auth and job-store config like the account route already does.
+- Default exported job route behavior still uses the existing non-durable memory store and does not require auth.
+- Durable injected stores now require account auth before job creation.
+- Durable job creation receives `ownerUserId` from the authenticated user.
+- Added tests proving unauthenticated durable job creation returns `UNAUTHORIZED` and authenticated durable job creation passes owner context.
+- Updated the app audit and auth/profile/cloud plan.
+
+Files changed:
+
+- `api/_lib/story-lab/jobs/jobRouteHandlers.ts`
+- `tests/story-lab-job-routes.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-lab-job-routes` -> failed because `createStoryLabJobsRouteHandler` did not exist.
+- GREEN: `npm run test:story-lab-job-routes` -> passed.
+- `npm run test:story-lab-job-routes` -> passed.
+- `npm run test:story-lab-job-store-config` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is owner context on durable job creation, not owner-scoped status/event authorization.
+- Jobs are still not durable in the product path.
+- Durable jobs still need owner-aware job-store read methods, route authorization for status/events, a real `DATABASE_URL`, executed schema, and recovery tests.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then decide whether to add owner-aware job-store read contracts or switch back to a story-quality experiment.
+
 ### 2026-06-08 Context Activation Artifact Slice
 
 Branch:
