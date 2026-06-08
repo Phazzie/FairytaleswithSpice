@@ -108,4 +108,17 @@ describe('ErrorLoggingService', () => {
     expect(details).toContain('real root cause');
     expect(details).not.toContain('forged root cause');
   });
+
+  it('should serialize circular Error causes without recursion', () => {
+    const circularError = new Error('loop root') as Error & { cause?: unknown };
+    circularError.cause = circularError;
+
+    const result = service.logError(circularError, 'Cause Loop', 'error');
+
+    const latest = service.getLatestErrors(1)[0];
+    const details = JSON.stringify(latest.details);
+    expect(result.logged).toBeTrue();
+    expect(details).toContain('loop root');
+    expect(details).toContain('[Circular]');
+  });
 });

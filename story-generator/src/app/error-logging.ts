@@ -207,6 +207,25 @@ export class ErrorLoggingService {
       return value;
     }
 
+    if (value instanceof Error) {
+      if (seen.has(value)) {
+        return '[Circular]';
+      }
+      seen.add(value);
+
+      const redactedError: Record<string, unknown> = {
+        name: value.name,
+        message: this.redactSensitiveText(value.message, sensitiveValues)
+      };
+      if (value.stack) {
+        redactedError['stack'] = this.redactSensitiveText(value.stack, sensitiveValues);
+      }
+      if ('cause' in value && value.cause !== undefined) {
+        redactedError['cause'] = this.redactSensitiveLogData(value.cause, sensitiveValues, seen, 'cause');
+      }
+      return redactedError;
+    }
+
     if (value instanceof Date) {
       return value;
     }

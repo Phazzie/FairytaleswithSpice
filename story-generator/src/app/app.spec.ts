@@ -384,6 +384,15 @@ describe('App', () => {
     return renderedVillainPressureDial(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
+  function renderedNarrativeDial(dialId: string, targetFixture: ComponentFixture<App> = fixture): HTMLElement | null {
+    targetFixture.detectChanges();
+    return targetFixture.nativeElement.querySelector(`[data-testid="narrative-dial"][data-dial-id="${dialId}"]`) as HTMLElement | null;
+  }
+
+  function renderedNarrativeDialText(dialId: string, targetFixture: ComponentFixture<App> = fixture): string | null {
+    return renderedNarrativeDial(dialId, targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -677,6 +686,36 @@ describe('App', () => {
     expect(pressureText).toContain('Deadline');
   });
 
+  it('renders compact narrative dials for continuation steering after a story exists', () => {
+    seedWorkbenchForContinuation();
+    fixture.detectChanges();
+
+    const dials = fixture.nativeElement.querySelectorAll('[data-testid="narrative-dial"]') as NodeListOf<HTMLElement>;
+
+    expect(dials.length).toBe(4);
+    expect(renderedNarrativeDialText('villain-pressure')).toContain('Villain Pressure');
+    expect(renderedNarrativeDialText('chapter-payload')).toContain('Chapter Payload');
+    expect(renderedNarrativeDialText('pacing')).toContain('Pacing');
+    expect(renderedNarrativeDialText('ending-bet')).toContain('Ending Bet');
+    expect(renderedNarrativeDialText('chapter-payload')).toContain('More romance');
+    expect(renderedNarrativeDialText('pacing')).toContain('Escalate');
+    expect(renderedNarrativeDialText('ending-bet')).toContain('Betrayal');
+  });
+
+  it('updates selected narrative dial descriptions without exposing numeric levels', () => {
+    seedWorkbenchForContinuation();
+
+    const dangerButton = renderedNarrativeDial('chapter-payload')
+      ?.querySelector('[data-dial-option-id="danger"]') as HTMLButtonElement | null;
+    dangerButton?.click();
+    fixture.detectChanges();
+
+    const payloadText = renderedNarrativeDialText('chapter-payload') ?? '';
+    expect(payloadText).toContain('Move the threat close enough');
+    expect(payloadText).not.toContain('1/5');
+    expect(payloadText).not.toContain('level 3');
+  });
+
   it('continues with selected deadline pressure through the existing job flow', () => {
     const genesisPayload = seedWorkbenchForContinuation();
     const continuationPayload = createContinuationPayload(genesisPayload);
@@ -698,6 +737,68 @@ describe('App', () => {
     };
     expect(jobRequest.kind).toBe('continuation');
     expect(jobRequest.continuation.continuationBrief).toContain('tight deadline');
+  });
+
+  it('adds selected narrative dial prose anchors to UI-driven continuation briefs', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    (renderedNarrativeDial('chapter-payload')?.querySelector('[data-dial-option-id="romance"]') as HTMLButtonElement | null)?.click();
+    (renderedNarrativeDial('pacing')?.querySelector('[data-dial-option-id="sprint"]') as HTMLButtonElement | null)?.click();
+    (renderedNarrativeDial('ending-bet')?.querySelector('[data-dial-option-id="betrayal"]') as HTMLButtonElement | null)?.click();
+    (renderedVillainPressureDial()?.querySelector('[data-pressure-id="deadline"]') as HTMLButtonElement | null)?.click();
+    fixture.detectChanges();
+    const continueButton = fixture.nativeElement.querySelector('[data-testid="continue-saga"]') as HTMLButtonElement;
+    continueButton.click();
+
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    expect(jobRequest.kind).toBe('continuation');
+    expect(jobRequest.continuation.continuationBrief).toContain('Chapter Payload: Put desire under pressure');
+    expect(jobRequest.continuation.continuationBrief).toContain('Pacing: Sprint toward a cliffhanger');
+    expect(jobRequest.continuation.continuationBrief).toContain('Ending Bet: Build the ending around betrayal');
+    expect(jobRequest.continuation.continuationBrief).toContain('Villain Pressure: Put the characters under a tight deadline');
+  });
+
+  it('supports every narrative dial option in the UI and continuation brief', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    for (const dial of component.narrativeDials) {
+      for (const option of dial.options) {
+        const optionButton = renderedNarrativeDial(dial.id)
+          ?.querySelector(`[data-dial-option-id="${option.id}"]`) as HTMLButtonElement | null;
+
+        expect(optionButton)
+          .withContext(`${dial.id} should render option ${option.id}`)
+          .not.toBeNull();
+
+        optionButton?.click();
+        fixture.detectChanges();
+        component.continueWithCustomDirection();
+
+        const dialText = renderedNarrativeDialText(dial.id) ?? '';
+        const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+          kind: 'continuation';
+          continuation: { continuationBrief?: string };
+        };
+
+        expect(dialText).withContext(`${dial.id} should show option ${option.id} description`).toContain(option.description);
+        expect(jobRequest.continuation.continuationBrief)
+          .withContext(`${dial.id} should include option ${option.id} brief`)
+          .toContain(option.brief);
+      }
+    }
   });
 
   it('adds selected pressure to Director Room continuation notes', () => {
