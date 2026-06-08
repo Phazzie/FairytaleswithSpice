@@ -1193,3 +1193,59 @@ Known issues:
 Next recommended task:
 
 - If continuing without credentials, either add a seeded randomness contract for creative prompt variants, or return to auth/storage planning once provider/database details are available.
+
+### 2026-06-08 09:48 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the seeded pressure-variant commit.
+
+User request:
+
+- Keep some randomness/creativity in autonomous story-output experiments while preserving testability.
+
+Work completed:
+
+- Added seeded micro-variants to the `Scene pressure mix` line.
+- The line now includes the pressure pair plus a compact variant selected by stable hash from story id, revision, continuation brief, primary pressure, and secondary pressure.
+- Avoided uncontrolled randomness so the same continuation request remains reproducible in tests and handoffs.
+- Shortened the chapter-ending momentum line to keep the hidden continuation anchors within the 900-character compactness budget.
+- Updated story-quality and real-engine tests to require the pressure mix to include a concrete variant after the pressure pair.
+- Updated the audit and idea board to describe the seeded, repeatable version of the creativity/randomness contract.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-quality-evals.test.ts` failed because the pressure mix only had labels.
+- GREEN: `npx tsx tests/story-quality-evals.test.ts` -> passed.
+- GREEN: `npx tsx tests/story-lab-real-engine.test.ts` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+- `git diff --check` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+
+Known issues:
+
+- The seeded variant affects prompt guidance, not measured live prose quality.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without credentials, build a lightweight prompt-guidance preview/test helper, or return to auth/storage provider integration once provider/database details are available.

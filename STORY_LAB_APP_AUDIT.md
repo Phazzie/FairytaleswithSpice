@@ -42,7 +42,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Chapter Ending Stress Test slice evidence:
   - Real Story Lab continuations now add a compact hidden ending-pressure anchor before the continuation provider call.
   - The anchor considers emotional reveal, danger escalation, and secret exposed, then chooses one deterministic pressure from current story state and the continuation brief.
-  - It also folds in a compact scene-pressure mix such as `Secret + Setting` without adding a fourth hidden anchor block.
+  - It also folds in a compact scene-pressure mix such as `Secret + Setting` plus a seeded micro-variant without adding a fourth hidden anchor block.
   - The tested state with unresolved lore, continuity warning, and debt/payment language selects `Secret exposed`.
   - `tests/story-lab-real-engine.test.ts` captures the continuation service input and proves the ending-pressure anchor reaches the real-engine seam.
 - Cliche Alarm slice evidence:

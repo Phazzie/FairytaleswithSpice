@@ -72,6 +72,13 @@ const CHAPTER_ENDING_PRESSURES: readonly ChapterEndingPressure[] = [
     instruction: 'end by exposing a hidden bargain, motive, or identity that changes the next chapter.'
   }
 ];
+const SCENE_PRESSURE_VARIANTS: Record<ScenePressureLabel, readonly string[]> = {
+  Emotional: ['private truth costs status', 'want changes the bargain', 'affection becomes leverage'],
+  Secret: ['truth changes leverage', 'hidden motive costs safety', 'named lie changes power'],
+  Deadline: ['clock forces choice', 'delay costs safety', 'time makes refusal visible'],
+  Social: ['witnesses make retreat costly', 'status turns into pressure', 'audience changes the bargain'],
+  Setting: ['place enforces cost', 'room becomes leverage', 'world rule tightens']
+};
 const CLASSIC_THEME_TYPES: readonly ThemeType[] = [
   'betrayal',
   'obsession',
@@ -409,7 +416,7 @@ function buildChapterEndingStressTestBrief(storyState: StoryStateSnapshot, conti
     `- Endings: ${CHAPTER_ENDING_PRESSURES.map(pressure => pressure.candidateLabel).join(', ')}.`,
     `- Chosen: ${selectedPressure.label} - ${selectedPressure.instruction}`,
     `- Scene pressure mix: ${chooseScenePressureMix(storyState, continuationBrief, selectedPressure)}.`,
-    '- Let the chapter answer one question and leave one sharper question active.'
+    '- Answer one question; leave one sharper.'
   ].join('\n');
 }
 
@@ -481,7 +488,7 @@ function chooseScenePressureMix(
 
   const secondary = secondaryCandidates.find(candidate => candidate !== primary)
     ?? (primary === 'Setting' ? 'Social' : 'Setting');
-  return `${primary} + ${secondary}`;
+  return `${primary} + ${secondary}; ${chooseScenePressureVariant(storyState, continuationBrief, primary, secondary)}`;
 }
 
 function mapEndingPressureToScenePressure(pressureId: ChapterEndingPressureId): ScenePressureLabel {
@@ -492,6 +499,25 @@ function mapEndingPressureToScenePressure(pressureId: ChapterEndingPressureId): 
     return 'Deadline';
   }
   return 'Secret';
+}
+
+function chooseScenePressureVariant(
+  storyState: StoryStateSnapshot,
+  continuationBrief: string | undefined,
+  primary: ScenePressureLabel,
+  secondary: ScenePressureLabel
+): string {
+  const variants = SCENE_PRESSURE_VARIANTS[secondary];
+  const seed = `${storyState.storyId}|${storyState.revision}|${continuationBrief ?? ''}|${primary}|${secondary}`;
+  return variants[stableSeedIndex(seed, variants.length)] ?? variants[0];
+}
+
+function stableSeedIndex(seed: string, modulo: number): number {
+  let hash = 0;
+  for (const char of seed) {
+    hash = ((hash * 31) + char.charCodeAt(0)) >>> 0;
+  }
+  return modulo > 0 ? hash % modulo : 0;
 }
 
 function containsAny(value: string, needles: readonly string[]): boolean {

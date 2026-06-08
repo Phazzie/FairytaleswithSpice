@@ -318,8 +318,8 @@ Status:
 
 - Done in overnight slice on 2026-06-08.
 - Implemented as one compact `Scene pressure mix` line inside the existing `Chapter Ending Stress Test` hidden anchor, not as a fourth hidden block.
-- The first version is deterministic rather than random so it can be tested: the chosen ending supplies the primary pressure, and current story state supplies the secondary pressure.
-- `tests/story-quality-evals.test.ts` proves the pressure mix appears as `Secret + Setting` for the fixture and that no new `Scene Pressure Mixer:` block is added.
+- The first version is seeded rather than uncontrolled random so it can be tested: the chosen ending supplies the primary pressure, current story state supplies the secondary pressure, and a stable hash selects a compact micro-variant.
+- `tests/story-quality-evals.test.ts` proves the pressure mix appears as `Secret + Setting; ...` for the fixture and that no new `Scene Pressure Mixer:` block is added.
 - `tests/story-lab-real-engine.test.ts` proves the line reaches the real continuation seam while the 900-character compactness guard still passes.
 
 ## Idea Template
