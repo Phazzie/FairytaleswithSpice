@@ -214,6 +214,7 @@ export interface SavedStoryProject {
   chapters: GeneratedChapter[];
   telemetry?: GenerationTelemetry;
   continuityExtraction?: ContinuityExtractionReceipt;
+  pinnedMemoryCardDraftIds?: string[];
   createdAt: string;
   updatedAt: string;
 }

@@ -361,7 +361,8 @@ Triggered Card Drafts progress:
 - Each draft shows a human-facing card type, title, detail, and trigger phrase such as `Trigger: Mara`.
 - In-session pinning started on 2026-06-08: each draft can be pinned locally and shows `Pinned` plus a pinned-card count.
 - Trigger enrichment started on 2026-06-08: multi-word promise/world titles now add a short alias such as `Trigger: Moonlit oath, oath`.
-- Drafts are not accepted, edited, persisted, or auto-injected yet; this is the trust-building preview before any memory-card write path exists.
+- Local save persistence started on 2026-06-08: pinned draft IDs are saved with browser-local projects and restored when the project reloads.
+- Draft cards are not accepted, edited, or auto-injected yet; only pinned draft IDs persist with browser-local projects.
 
 ### Research: User Library And Profile Patterns
 

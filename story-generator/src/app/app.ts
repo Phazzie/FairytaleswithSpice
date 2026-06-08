@@ -1321,6 +1321,7 @@ ${chapters}
 
   private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize, batchId?: string) {
     const previousStoryId = this.workbench().story?.storyId;
+    const isNewStory = previousStoryId !== payload.summary.storyId;
     const existingQueue = this.activeBatchQueue();
     const batchQueue = batchId
       ? existingQueue.map(item => item.id === batchId
@@ -1345,14 +1346,15 @@ ${chapters}
       batchQueue
     };
 
+    if (isNewStory) {
+      this.pinnedMemoryCardDraftIds.set(new Set());
+    }
+
     const savedProjectId = this.persistSession(nextSession);
     this.workbench.set({
       ...nextSession,
       savedProjectId
     });
-    if (previousStoryId !== payload.summary.storyId) {
-      this.pinnedMemoryCardDraftIds.set(new Set());
-    }
     this.collapsedChapterGroups.set(new Set());
 
     const newestChapter = payload.batch.chapters[payload.batch.chapters.length - 1];
@@ -1941,7 +1943,7 @@ ${chapters}
       batchQueue: [],
       savedProjectId: project.id
     });
-    this.pinnedMemoryCardDraftIds.set(new Set());
+    this.pinnedMemoryCardDraftIds.set(new Set(project.pinnedMemoryCardDraftIds ?? []));
     this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.workspaceSaveStatus.set(`Loaded "${project.title}" from this browser.`);
@@ -1969,7 +1971,7 @@ ${chapters}
       batchQueue: [],
       savedProjectId: project.id
     });
-    this.pinnedMemoryCardDraftIds.set(new Set());
+    this.pinnedMemoryCardDraftIds.set(new Set(project.pinnedMemoryCardDraftIds ?? []));
     this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');
@@ -2214,6 +2216,7 @@ ${chapters}
     const now = new Date().toISOString();
     const currentProjectId = session.savedProjectId ?? session.story.storyId;
     const existingProject = this.workspaceStorage.loadProject(currentProjectId);
+    const pinnedMemoryCardDraftIds = Array.from(this.pinnedMemoryCardDraftIds());
 
     return {
       id: currentProjectId,
@@ -2226,6 +2229,7 @@ ${chapters}
       chapters: session.chapterHistory,
       telemetry: session.lastTelemetry,
       continuityExtraction: session.lastContinuityExtraction,
+      pinnedMemoryCardDraftIds,
       createdAt: existingProject?.createdAt ?? session.story.createdAt ?? now,
       updatedAt: now
     };

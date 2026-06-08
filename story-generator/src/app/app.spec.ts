@@ -998,6 +998,50 @@ describe('App', () => {
     expect(pinnedButton?.disabled).toBeTrue();
   });
 
+  it('restores pinned memory card drafts from a browser-local saved project', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+
+    const pinButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="pin-memory-card-draft"]') as HTMLButtonElement | null;
+    pinButton?.click();
+    fixture.detectChanges();
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    const restoredText = renderedMemoryCardDraftsText() ?? '';
+    const restoredButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="pin-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(restoredText).toContain('Pinned cards: 1');
+    expect(restoredButton?.textContent?.trim()).toBe('Pinned');
+    expect(restoredButton?.disabled).toBeTrue();
+  });
+
   it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {
     seedWorkbenchForContinuation();
 
