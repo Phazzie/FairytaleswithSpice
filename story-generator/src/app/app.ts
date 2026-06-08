@@ -891,13 +891,14 @@ export class App implements OnDestroy {
     this.showStartingJobStatus('continuation');
     this.closeJobSubscriptions();
     const batchId = this.enqueueBatch('Continuation', this.blueprint().chapterBatchSize);
+    const continuationBrief = this.withPinnedMemoryCardBriefs(brief);
 
     const request = {
       storyId: session.story.storyId,
       chapterBatchSize: this.blueprint().chapterBatchSize,
       storyState: session.state,
       previouslyGeneratedChapters: session.chapterHistory,
-      continuationBrief: brief ?? undefined,
+      continuationBrief,
       existingSummary: session.story,
       heatContract: this.activeHeatContract()
     } as const;
@@ -2341,6 +2342,21 @@ ${chapters}
       .join('\n');
 
     return trimmedBrief ? `${trimmedBrief}\n\n${dialBrief}` : dialBrief;
+  }
+
+  private withPinnedMemoryCardBriefs(brief?: string): string | undefined {
+    const trimmedBrief = brief?.trim();
+    const pinnedDrafts = this.memoryCardDrafts().filter(draft => draft.pinned);
+    if (!pinnedDrafts.length) {
+      return trimmedBrief || undefined;
+    }
+
+    const memoryBrief = [
+      'Pinned Memory Cards:',
+      ...pinnedDrafts.map(draft => `- ${draft.label}: ${draft.title}. ${draft.detail} ${draft.triggerLabel}.`)
+    ].join('\n');
+
+    return trimmedBrief ? `${trimmedBrief}\n\n${memoryBrief}` : memoryBrief;
   }
 
   toggleChapterGroup(groupId: number) {

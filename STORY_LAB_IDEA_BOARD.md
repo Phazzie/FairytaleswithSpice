@@ -362,7 +362,8 @@ Triggered Card Drafts progress:
 - In-session pinning started on 2026-06-08: each draft can be pinned locally and shows `Pinned` plus a pinned-card count.
 - Trigger enrichment started on 2026-06-08: multi-word promise/world titles now add a short alias such as `Trigger: Moonlit oath, oath`.
 - Local save persistence started on 2026-06-08: pinned draft IDs are saved with browser-local projects and restored when the project reloads.
-- Draft cards are not accepted, edited, or auto-injected yet; only pinned draft IDs persist with browser-local projects.
+- Continuation-brief integration started on 2026-06-08: pinned drafts are appended to UI-driven continuation requests as compact `Pinned Memory Cards` prose anchors.
+- Draft cards are not accepted or edited yet; pinned draft IDs persist with browser-local projects, and pinned drafts influence continuation only through the visible continuation brief path.
 
 ### Research: User Library And Profile Patterns
 

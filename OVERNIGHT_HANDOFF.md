@@ -3650,3 +3650,57 @@ Known issues:
 Next recommended task:
 
 - Commit this documentation slice, then continue with the next Story Memory task from `OVERNIGHT_MODE.md` and `STORY_LAB_IDEA_BOARD.md`.
+
+### 2026-06-08 Pinned Memory Cards Influence Continuation
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the pinned memory card continuation commit.
+
+User request:
+
+- Continue the Story Memory work so pinned memory card drafts become useful, not only saved UI state.
+
+Plan and critique:
+
+- Plan: prove a pinned card reaches the existing continuation job request, then append pinned cards through the same UI-driven continuation brief path used by dials and Director Room notes.
+- Hostile critique applied: do not add a backend route, do not create another hidden provider anchor, do not claim durable memory, and do not change cloud schema for a local UI experiment.
+
+Work completed:
+
+- Added a browser spec proving pinned memory card drafts are appended to continuation job requests.
+- Added `withPinnedMemoryCardBriefs()` in `app.ts` and routed `continueSaga()` through it.
+- Pinned draft anchors now appear as compact `Pinned Memory Cards` prose in the continuation brief.
+- Existing custom briefs, narrative dials, Director Room notes, and prompt chips still use the same continuation job flow.
+- Updated the app audit and idea board with the new behavior and caveats.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because the continuation request only contained `Focus on the betrayal arc.` and did not contain `Pinned Memory Cards`, `Character card: Mara`, the pinned detail, or `Trigger: Mara`.
+- GREEN: same Angular browser command -> `TOTAL: 59 SUCCESS`; ChromeHeadless cleanup emitted the known SIGKILL warning after the result.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `551.54 kB` over the 500 kB warning budget and `app.css` `14.96 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Pinned memory cards are still generated draft rows, not editable accepted memory-card records.
+- The continuation influence is visible brief text, not a separate backend memory engine.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then consider editable accepted memory-card records as the next Story Memory step.

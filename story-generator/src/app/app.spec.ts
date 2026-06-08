@@ -1176,6 +1176,57 @@ describe('App', () => {
     expect(jobRequest.continuation.continuationBrief).toContain('Villain Pressure: Put the characters under a tight deadline');
   });
 
+  it('adds pinned memory card prose anchors to continuation briefs', () => {
+    const genesisPayload = seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    const pinButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="pin-memory-card-draft"]') as HTMLButtonElement | null;
+    pinButton?.click();
+    fixture.detectChanges();
+    component.continueSaga('Focus on the betrayal arc.');
+
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    expect(jobRequest.kind).toBe('continuation');
+    expect(jobRequest.continuation.continuationBrief).toContain('Focus on the betrayal arc.');
+    expect(jobRequest.continuation.continuationBrief).toContain('Pinned Memory Cards:');
+    expect(jobRequest.continuation.continuationBrief).toContain('Character card: Mara');
+    expect(jobRequest.continuation.continuationBrief).toContain('Keep the moonlit bargain from consuming her archive.');
+    expect(jobRequest.continuation.continuationBrief).toContain('Trigger: Mara');
+  });
+
   it('supports every narrative dial option in the UI and continuation brief', () => {
     const genesisPayload = seedWorkbenchForContinuation();
     const continuationPayload = createContinuationPayload(genesisPayload);
