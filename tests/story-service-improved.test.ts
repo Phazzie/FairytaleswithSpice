@@ -242,33 +242,42 @@ const testSuite = {
   
   // Test 5: Different word counts
   testWordCounts: test('Different Word Count Targets', async () => {
-    const service = new StoryService();
-    const wordCounts: Array<700 | 900 | 1200> = [700, 900, 1200];
-    
-    for (const wordCount of wordCounts) {
-      console.log(`   Testing ${wordCount} words...`);
-      
-      const input: StoryGenerationSeam['input'] = {
-        creature: 'vampire',
-        themes: ['romance'],
-        userInput: 'Test story',
-        spicyLevel: 2,
-        wordCount
-      };
-      
-      const result = await service.generateStory(input);
-      
-      if (!result.success) {
-        throw new Error(`Failed to generate ${wordCount}-word story: ${result.error?.message}`);
+    await withMockGrok(async () => {
+      const service = new StoryService();
+      const wordCounts: Array<700 | 900 | 1200> = [700, 900, 1200];
+      const tolerance = 0.3;
+
+      for (const wordCount of wordCounts) {
+        console.log(`   Testing ${wordCount} words...`);
+
+        const input: StoryGenerationSeam['input'] = {
+          creature: 'vampire',
+          themes: ['romance'],
+          userInput: 'Test story',
+          spicyLevel: 2,
+          wordCount
+        };
+
+        const result = await service.generateStory(input);
+
+        if (!result.success) {
+          throw new Error(`Failed to generate ${wordCount}-word story: ${result.error?.message}`);
+        }
+
+        const actualWords = result.data!.actualWordCount;
+        const variance = Math.abs(actualWords - wordCount) / wordCount * 100;
+        const minWords = wordCount * (1 - tolerance);
+        const maxWords = wordCount * (1 + tolerance);
+
+        console.log(`   ✓ Target ${wordCount}, actual ${actualWords} (${variance.toFixed(1)}% variance)`);
+
+        if (actualWords < minWords || actualWords > maxWords) {
+          throw new Error(`Mock story word count ${actualWords} should be within 30% of ${wordCount}`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-      
-      const actualWords = result.data!.actualWordCount;
-      const variance = Math.abs(actualWords - wordCount) / wordCount * 100;
-      
-      console.log(`   ✓ Target ${wordCount}, actual ${actualWords} (${variance.toFixed(1)}% variance)`);
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+    });
   }),
   
   // Test 6: Invalid inputs

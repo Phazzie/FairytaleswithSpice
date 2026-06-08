@@ -29,6 +29,10 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The panel shows honest unavailable/synced/failed/local-only states and calls the account service for refresh, save, load, and delete.
   - Local browser saves remain visible as "Saved here" and are not replaced by cloud state.
   - `npm run build` passed after the new CSS was trimmed below the hard component budget.
+- Mock story length slice evidence:
+  - The classic mock story path now scales deterministic fallback prose toward the requested word count.
+  - `tests/story-service-improved.test.ts` now fails if 700, 900, or 1200 word mock requests fall outside the existing 30% tolerance.
+  - Validation output showed 700 -> 665 words, 900 -> 833 words, and 1200 -> 1107 words in mock mode.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
@@ -63,6 +67,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - Root integration/unit checks pass.
 - Story Lab UI work has landed through narrative dials, villain pressure, Director's Room notes, job status, batch queue, and job-backed genesis/continuation flows.
 - The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, one consolidated account route, and visible local/cloud library state.
+- Classic single-story mock generation now has enforced word-count tolerance instead of warning-only length checks.
 - Server/client logging and privacy scaffolding have already received meaningful work in prior phases.
 
 ## Current Product Reality
@@ -136,17 +141,17 @@ Required before live-story claims:
 - Prove telemetry says Grok/live provider, not mock.
 - Record the exact command, env requirements, and pass/fail result in a handoff or deployment proof doc.
 
-### P0: Mock Story Length Tests Are Too Weak
+### P1: Multi-Chapter Mock Length Still Needs A Clear Policy
 
-`npm run test:all` passes, but mock generation repeatedly produces around 211 words for 700, 900, and 1200 word targets. The test logs warnings instead of failing.
+The classic single-story mock path now scales to requested word count and the 700/900/1200 checks fail if they drift outside tolerance. Multi-chapter mock generation still uses fixed short placeholder chapters around 127 words each, so that path is flow evidence, not length or quality evidence.
 
-This matters because green tests can hide a broken expectation: requested length should either be honored or the test should explicitly say mock length is intentionally fixed and not quality evidence.
+This matters because green tests can still hide a broken expectation if a future reader treats multi-chapter mock output as quality proof.
 
 Possible fixes:
 
-- Make mock generation scale roughly with requested word count.
-- Or split tests into "contract smoke" and "quality/length" checks so the length mismatch is not ignored.
-- Add a story-quality eval that records length variance as a first-class score.
+- Make multi-chapter mock generation scale roughly with per-chapter requested word count.
+- Or explicitly split multi-chapter tests into "flow smoke" and "quality/length" checks.
+- Add a story-quality eval that records length variance by generation path as a first-class score.
 
 ### P1: Vercel Function Budget Is Tight
 
@@ -200,5 +205,5 @@ Use this order unless a newer user request or failing PR check supersedes it:
 
 1. Implement the provider-backed `AuthPort` adapter behind explicit environment configuration.
 2. Connect the account route to a durable database executor/migration path.
-3. Replace the fail-closed cloud UI path with configured auth/storage behavior without breaking anonymous local save.
-4. Pick one small story-quality improvement from the idea board and implement it behind tests.
+3. If no provider/database decision is available, resolve the multi-chapter mock-length policy behind tests.
+4. Replace the fail-closed cloud UI path with configured auth/storage behavior without breaking anonymous local save once credentials and storage configuration exist.

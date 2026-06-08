@@ -587,3 +587,55 @@ Known issues:
 Next recommended task:
 
 - Decide whether to make the next autonomous slice a real provider/database adapter scaffold or a story-quality experiment. Given the user asked for overnight autonomy and experiments, the next high-value code slice is to improve mock/story-quality length behavior behind tests, because it does not require external credentials and the audit already flags it as a P0 gap.
+
+### 2026-06-08 09:01 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the mock story length commit.
+
+User request:
+
+- Continue autonomous overnight work after the cloud UI slice and take a useful story-quality task that does not require external credentials.
+
+Work completed:
+
+- Converted the classic mock story word-count check from warning-only to a real failing assertion.
+- Made the no-API-key mock story generator expand deterministic fallback prose toward the requested word count.
+- Kept the live Grok/provider path untouched.
+- Recorded the remaining limitation: multi-chapter mock generation still uses short fixed placeholder chapters, so it is flow evidence rather than length-quality evidence.
+
+Files changed:
+
+- `api/_lib/services/storyService.ts`
+- `tests/story-service-improved.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-service-improved.test.ts` failed on `Different Word Count Targets` because 700 requested words produced 211 words.
+- GREEN: `npx tsx tests/story-service-improved.test.ts` -> passed; mock outputs were 700 -> 665, 900 -> 833, 1200 -> 1107.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+- `npm run test:all` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+- Multi-chapter mock length enforcement; this slice intentionally fixed the classic single-story mock path first.
+
+Known issues:
+
+- Multi-chapter mock chapters remain short placeholders.
+- The cloud/auth/storage known issues from the previous entry still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without external credentials, add an explicit multi-chapter mock-length policy or a story-quality eval that separates flow smoke from length/quality evidence. If credentials/provider decisions become available, switch back to the auth/database adapter path.
