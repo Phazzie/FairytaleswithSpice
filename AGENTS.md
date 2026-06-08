@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-06-08 13:30 EDT
+Last updated: 2026-06-08 14:30 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous overnight sessions.
 
@@ -23,6 +23,15 @@ The current app snapshot and priority queue are documented in `STORY_LAB_APP_AUD
 The autonomous overnight operating guide is `OVERNIGHT_MODE.md`. Use it before long-running autonomous task selection, research mining, or Weird Lab work. Keep `STORY_LAB_IDEA_BOARD.md` and `OVERNIGHT_HANDOFF.md` current during those runs.
 
 When the user authorizes overnight/autonomous work, do not stop after one completed task. Finish a coherent slice, verify it, commit it when appropriate, update `OVERNIGHT_HANDOFF.md`, then select the next task using `OVERNIGHT_MODE.md`. Ask the user only for blockers that require credentials, provider/account setup, destructive actions, unsafe deploy/merge decisions, or product choices that cannot be inferred from the repo.
+
+Autonomous enforcement rules:
+
+- At the start of a long run and after each commit, inspect live GitHub state with `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url`. If the current branch has a PR, inspect review comments before selecting feature work. If no PR exists for the branch, record that fact in `OVERNIGHT_HANDOFF.md` instead of claiming review comments were addressed.
+- When checks or PR comments fail, repair them before research, UI experiments, or roadmap polish unless the failure requires user credentials or a destructive external action.
+- Each coherent slice should leave one of two outcomes: a commit hash with verification evidence, or a clear no-commit reason in `OVERNIGHT_HANDOFF.md`.
+- After a slice is committed, choose the next task from `OVERNIGHT_MODE.md` and continue unless a stop condition from that file is met.
+- Research and Weird Lab work must be source-backed or test-backed, recorded in `STORY_LAB_IDEA_BOARD.md`, and kept small enough to revert or park cleanly.
+- Do not convert scaffolded local behavior into product claims. Auth, cloud save, durable jobs, live AI, and review-comment status require current verification.
 
 `PR70_RECOVERY_PLAN.md` remains the broad PR-recovery plan. Use it before broad PR reconciliation, old-PR mining, or PR ledger work. Do not treat it as the default next task when the user asks for platform, storage, auth, profile, story-quality, or overnight-mode work.
 
@@ -237,13 +246,15 @@ Some tests are historically stale or environment-dependent. If a check cannot ru
 1. Start with live repo state, `STORY_LAB_APP_AUDIT.md`, and the matching execution plan for the behavior being changed.
 2. For autonomous sessions, follow `OVERNIGHT_MODE.md` and update `OVERNIGHT_HANDOFF.md` after each coherent slice.
 3. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas and bounded experiments; do not leave useful product ideas only in chat.
-4. Keep `LESSONS_LEARNED.md` current when a recurring failure mode or correction is discovered.
-5. Resolve path drift intentionally: `api/_lib` is the current Vercel shared-code target.
-6. Do not reintroduce DigitalOcean as the active deployment target.
-7. Do not reintroduce active audio scope unless the user asks.
-8. Do not claim auth, cloud save, user profiles, durable jobs, or live AI verification unless the current implementation and verification prove those claims.
-9. Prefer small, attributed ports and test-backed slices instead of large mixed merges.
-10. Run self-review before committing, before handoff, after every three PR dispositions, and after every story-generation port.
+4. Check current PR comments/reviews before saying review comments are addressed; if no current PR exists, say that precisely and keep working from local priorities.
+5. Keep `LESSONS_LEARNED.md` current when a recurring failure mode or correction is discovered.
+6. Resolve path drift intentionally: `api/_lib` is the current Vercel shared-code target.
+7. Do not reintroduce DigitalOcean as the active deployment target.
+8. Do not reintroduce active audio scope unless the user asks.
+9. Do not claim auth, cloud save, user profiles, durable jobs, or live AI verification unless the current implementation and verification prove those claims.
+10. Prefer small, attributed ports and test-backed slices instead of large mixed merges.
+11. Run self-review before committing, before handoff, after every three PR dispositions, and after every story-generation port.
+12. For `AGENTS.md` edits, update the timestamp, run `git diff --check`, and record the audit/change in `OVERNIGHT_HANDOFF.md`.
 
 For broad PR recovery only:
 

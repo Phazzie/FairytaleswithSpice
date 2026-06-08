@@ -3604,3 +3604,49 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then either add editable card records or decide how pinned cards should influence continuation context.
+
+### 2026-06-08 AGENTS.md Autonomous Audit
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the AGENTS.md autonomous audit commit.
+
+User request:
+
+- Ensure overnight/autonomous work will be followed, decide whether `AGENTS.md` needs edits, and audit `AGENTS.md`.
+
+Audit finding:
+
+- `AGENTS.md` already pointed agents to `OVERNIGHT_MODE.md`, `OVERNIGHT_HANDOFF.md`, `STORY_LAB_APP_AUDIT.md`, and the active execution plans.
+- The missing enforcement details were PR-comment inspection cadence, what to record when no PR exists, what a completed slice must leave behind, and how research/Weird Lab work stays bounded.
+
+Work completed:
+
+- Updated the `AGENTS.md` timestamp.
+- Added autonomous enforcement rules for live PR inspection, failure-first repair, commit-or-no-commit outcomes, continued task selection after each slice, source-backed research, and verified product claims.
+- Added a working rule that review comments can only be called addressed after current PR reviews/comments are inspected.
+- Added a working rule requiring `AGENTS.md` edits to update the timestamp, run `git diff --check`, and record the audit/change here.
+
+Files changed:
+
+- `AGENTS.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url` -> `[]`.
+- `gh pr view --json number,title,state,reviewDecision,reviews,comments,url` -> no pull requests found for `feature/story-lab-auth-profile-contracts`.
+- `git diff --check` -> passed.
+
+Known issues:
+
+- There are no live PR review comments to address on this branch because there is no current PR.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this documentation slice, then continue with the next Story Memory task from `OVERNIGHT_MODE.md` and `STORY_LAB_IDEA_BOARD.md`.
