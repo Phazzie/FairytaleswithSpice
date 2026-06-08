@@ -107,7 +107,7 @@ async function main(): Promise<void> {
   const heuristicReport = buildStoryQualityHeuristicReport({
     storyContent: [
       '[Mira]: "If the shell repeats my vow, Lord Brine owns the court by sunrise."',
-      '[Narrator]: The witness shell glowed under the reef arch, bright enough for every rival to see.',
+      "[Narrator]: Salt stung Mira's wrist as the witness shell glowed under the reef arch, bright enough for every rival to see.",
       '[Lord Brine]: "Then choose which secret survives the tide."',
       'Mira touched the blood oath hidden under her sleeve. The bargain had followed her from the first chapter, and now it wanted a name.'
     ].join('\n\n'),
@@ -127,6 +127,7 @@ async function main(): Promise<void> {
   assert(heuristicReport.dimensions.some(dimension => dimension.signals.length > 0), 'quality report should include explainable signals.');
   const proseQuality = heuristicReport.dimensions.find(dimension => dimension.id === 'prose_quality');
   assert(proseQuality?.signals.some(signal => signal.includes('Specific anchors: witness shell, reef arch, blood oath')), 'prose quality should report concrete specificity anchors.');
+  assert(proseQuality?.signals.some(signal => signal.includes('Sensory texture: glow, salt, sting')), 'prose quality should report concrete sensory texture.');
   const audioReadiness = heuristicReport.dimensions.find(dimension => dimension.id === 'audio_readiness');
   assert(audioReadiness?.signals.some(signal => signal.includes('Speaker variety: Mira, Narrator, Lord Brine')), 'audio-readiness should report concrete speaker variety.');
 

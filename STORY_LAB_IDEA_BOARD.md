@@ -111,6 +111,7 @@ Status:
 - `/api/story-lab/evaluate` attaches the report to both mock and live evaluation responses as optional `heuristicReport`.
 - `tests/story-quality-evals.test.ts` guards the dimension count, dimension ids, score bounds, and presence of signals.
 - The prose-quality dimension now includes a small Specificity Lens signal that names concrete anchors in the story text, such as `witness shell`, `reef arch`, and `blood oath`.
+- The prose-quality dimension now includes a small Sensory Texture signal that names concrete sensory cues, such as `glow`, `salt`, and `sting`.
 - The audio-readiness dimension now includes a small Dialogue Texture signal that names concrete speaker variety, such as `Mira`, `Narrator`, and `Lord Brine`.
 - Proving Grounds now renders the report as a compact Deterministic Quality Scan panel after evaluation.
 - `proving-grounds.spec.ts` guards that the visible panel includes the score, continuity, audio-readiness, and concrete signals.
@@ -175,6 +176,37 @@ Guardrails:
 Acceptance:
 
 - `tests/story-quality-evals.test.ts` now fails unless the fixture's audio-readiness dimension reports `Speaker variety: Mira, Narrator, Lord Brine`.
+
+### Done: Sensory Texture Lens
+
+Origin:
+
+- The user wanted story-output experiments that improve generated prose rather than only platform plumbing.
+- The existing prose-quality scan could detect concrete story objects, but it could not say whether the passage had physical texture on the page.
+
+Hypothesis:
+
+- A tiny sensory signal helps distinguish scene matter that can be felt, seen, heard, or tasted from prose that only moves plot labels around.
+
+User value:
+
+- Proving Grounds quality output can show why a scene reads more grounded without calling an AI judge or changing generation prompts.
+
+Smallest experiment:
+
+- Add a deterministic sensory extractor to the existing `prose_quality` dimension.
+- Map word variants such as `glowed` and `stung` to compact report labels such as `glow` and `sting`.
+- Keep the seven-dimension contract stable.
+
+Guardrails:
+
+- Do not add provider calls.
+- Do not add another score dimension.
+- Do not claim the scan can judge beauty, voice, or style quality.
+
+Acceptance:
+
+- `tests/story-quality-evals.test.ts` now fails unless the fixture's prose-quality dimension reports `Sensory texture: glow, salt, sting`.
 
 ### Soon: Durable Job Storage
 

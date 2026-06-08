@@ -2804,3 +2804,52 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue either auth sign-in wiring or the next no-credentials story-output/evaluation experiment.
+
+### 2026-06-08 Sensory Texture Lens
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the sensory texture story-quality commit.
+
+User request:
+
+- Keep working autonomously and include useful creative/story-output experiments while live provider/database credentials are unavailable.
+
+Work completed:
+
+- Added a small Sensory Texture Lens inside the deterministic story-quality report's existing `prose_quality` dimension.
+- The lens maps concrete sensory terms and variants into compact report labels, such as `glow`, `salt`, and `sting`.
+- The report still has the same seven dimensions and remains deterministic/advisory.
+- This does not add another provider call, route, score dimension, or hidden continuation prompt block.
+- Updated the app audit and idea board with the new story-quality experiment.
+
+Files changed:
+
+- `api/_lib/story-lab/evaluation/storyQualityHeuristics.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-quality` -> failed because prose quality did not report concrete sensory texture.
+- GREEN: `npm run test:story-quality` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- The sensory texture lens is a deterministic lexicon scan, not an AI judgment of whether the prose is beautiful or voice-rich.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with a small route-safe auth/cloud hardening task or another bounded story-output experiment.

@@ -152,15 +152,20 @@ function scoreProseQuality(storyContent: string, wordCount: number, sentenceCoun
   if (specificAnchors.length) {
     signals.push(`Specific anchors: ${specificAnchors.slice(0, 3).join(', ')}`);
   }
+  const sensoryTextures = extractSensoryTextures(storyContent);
+  if (sensoryTextures.length) {
+    signals.push(`Sensory texture: ${sensoryTextures.slice(0, 4).join(', ')}`);
+  }
   const sentenceScore = averageSentenceLength >= 8 && averageSentenceLength <= 28 ? 24 : 10;
   const paragraphScore = paragraphCount >= 2 ? 18 : 8;
   const specificityScore = Math.min(2, specificAnchors.length) * 4;
+  const sensoryScore = Math.min(3, sensoryTextures.length) * 3;
 
   return {
     id: 'prose_quality',
     label: 'Prose quality',
-    score: 48 + sentenceScore + paragraphScore + specificityScore,
-    rationale: 'Deterministic readability scan uses sentence shape and concrete-anchor signals.',
+    score: 48 + sentenceScore + paragraphScore + specificityScore + sensoryScore,
+    rationale: 'Deterministic readability scan uses sentence shape, concrete anchors, and sensory texture signals.',
     signals
   };
 }
@@ -302,4 +307,21 @@ function extractConcreteAnchors(storyContent: string): string[] {
   }
 
   return anchors;
+}
+
+function extractSensoryTextures(storyContent: string): string[] {
+  const normalized = storyContent.toLowerCase();
+  const sensoryLexicon: Array<{ label: string; terms: readonly string[] }> = [
+    { label: 'glow', terms: ['glow', 'glowed', 'glowing', 'bright', 'shimmer', 'shimmered'] },
+    { label: 'salt', terms: ['salt', 'salty'] },
+    { label: 'sting', terms: ['sting', 'stung', 'stinging'] },
+    { label: 'cold', terms: ['cold', 'chill', 'chilled'] },
+    { label: 'heat', terms: ['heat', 'hot', 'warm'] },
+    { label: 'scent', terms: ['scent', 'smell', 'perfume', 'smoke'] },
+    { label: 'sound', terms: ['sound', 'sang', 'whisper', 'rang'] }
+  ];
+
+  return sensoryLexicon
+    .filter(entry => entry.terms.some(term => new RegExp(`\\b${term}\\b`).test(normalized)))
+    .map(entry => entry.label);
 }
