@@ -3986,3 +3986,57 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then either add a compact accepted-memory preview/count in the continuation area or switch back to auth/cloud work if credentials are available.
+
+### 2026-06-08 Continuation Accepted Memory Preview
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the continuation accepted memory preview commit.
+
+User request:
+
+- Keep improving the new Story Memory UI and make the behavior understandable.
+
+Plan and critique:
+
+- Plan: show a compact accepted-memory line near the Continue Story button so users know memory cards will affect the next chapter.
+- Hostile critique applied: no new prompt block, no route, no CSS, no hidden behavior, and no claim beyond disclosing existing accepted-card inclusion.
+
+Work completed:
+
+- Added `acceptedMemoryContinuationSummary` to summarize accepted-card count and the first card titles.
+- Rendered the summary inside the continuation panel using existing muted/source text styles.
+- Added browser spec coverage proving no preview appears before accepted cards and the preview appears after accepting a card.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because `accepted-memory-continuation-preview` was missing.
+- GREEN: same Angular browser command -> `TOTAL: 64 SUCCESS`.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `558.72 kB` over the 500 kB warning budget and `app.css` `14.96 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Accepted memory cards are still local project JSON, not a separate durable cloud memory table.
+- Live prose comparison still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then switch to an auth/cloud readiness task or a bundle-size cleanup task because the Story Memory UI is accumulating initial bundle weight.

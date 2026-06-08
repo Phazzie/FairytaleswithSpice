@@ -46,6 +46,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Accepted memory cards can now be edited in place for title, detail, and trigger text before save/reload or continuation.
   - Accepted memory cards can now be deleted so rejected memory does not persist into saves or continuation briefs.
   - Accepted memory cards can now be reordered with disabled boundary controls; the order saves with browser-local projects and controls the order of the `Accepted Memory Cards` continuation brief.
+  - The continuation panel now shows a compact accepted-memory preview line with count and card titles before users continue.
   - Accepted memory card text now appears in the continuation source map when it activates a hidden continuity anchor, and `tests/story-quality-evals.test.ts` compares the same continuation brief with and without an accepted card to prove the selected anchor changes.
   - The preview uses current `StoryStateSnapshot` data already present on the client, so it adds no route and does not spend the remaining Vercel function slot.
   - Angular spec coverage proves `Pressure rising`, `Relationship pressure`, `World clue`, and `Continuity note` render from seeded story state.

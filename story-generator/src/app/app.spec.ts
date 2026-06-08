@@ -423,6 +423,12 @@ describe('App', () => {
     return renderedAcceptedMemoryCardsPanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
+  function renderedAcceptedMemoryContinuationPreviewText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    targetFixture.detectChanges();
+    const panel = targetFixture.nativeElement.querySelector('[data-testid="accepted-memory-continuation-preview"]') as HTMLElement | null;
+    return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
   it('creates the workbench with default blueprint values', () => {
     expect(component.blueprint().creature).toBe('vampire');
     expect(component.blueprint().tone).toBe('dark_romance');
@@ -1105,6 +1111,37 @@ describe('App', () => {
     expect(restoredAcceptedText).toContain('Mara');
     expect(restoredAcceptedButton?.textContent?.trim()).toBe('Accepted');
     expect(restoredAcceptedButton?.disabled).toBeTrue();
+  });
+
+  it('shows accepted memory near continuation controls before continuing', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ]
+      })
+    });
+
+    expect(renderedAcceptedMemoryContinuationPreviewText()).toBeNull();
+
+    const acceptButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="accept-memory-card-draft"]') as HTMLButtonElement | null;
+    acceptButton?.click();
+    fixture.detectChanges();
+
+    const previewText = renderedAcceptedMemoryContinuationPreviewText() ?? '';
+    expect(previewText).toContain('1 accepted memory card will be included');
+    expect(previewText).toContain('Mara');
   });
 
   it('edits accepted memory cards and carries edited text into continuations', () => {

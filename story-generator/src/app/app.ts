@@ -529,6 +529,21 @@ export class App implements OnDestroy {
     this.memoryCardDrafts().filter(draft => draft.pinned).length
   );
 
+  readonly acceptedMemoryContinuationSummary = computed(() => {
+    const cards = this.acceptedMemoryCards();
+    if (!cards.length) {
+      return '';
+    }
+
+    const noun = cards.length === 1 ? 'card' : 'cards';
+    const visibleTitles = cards.slice(0, 2).map(card => card.title);
+    const hiddenCount = cards.length - visibleTitles.length;
+    const titleSummary = hiddenCount > 0
+      ? `${visibleTitles.join(', ')} +${hiddenCount}`
+      : visibleTitles.join(', ');
+    return `${cards.length} accepted memory ${noun} will be included: ${titleSummary}.`;
+  });
+
   private buildMemoryCardTriggerLabel(title: string): string {
     const alias = this.extractMemoryCardTriggerAlias(title);
     return alias ? `Trigger: ${title}, ${alias}` : `Trigger: ${title}`;
