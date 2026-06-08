@@ -227,3 +227,49 @@ Known issues:
 Next recommended task:
 
 - Create the auth/profile/cloud-library implementation plan, using the research notes and storage-port scaffold as inputs.
+
+### 2026-06-08 07:17 EDT
+
+Branch:
+
+- `main`
+
+Commit:
+
+- Pending; this slice is not committed yet.
+
+User request:
+
+- Continue overnight work toward auth, storage, and user profiles without needing more input.
+
+Work completed:
+
+- Created `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`.
+- Linked the new plan from `AGENTS.md`.
+- Updated `STORY_LAB_IDEA_BOARD.md` to mark the auth/profile/cloud-library plan as created.
+- Made the plan explicit about provider boundaries, private profile preferences, one consolidated account route, owner-isolation tests, route budget, and no durable-job claim.
+
+Files changed:
+
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `AGENTS.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- `git diff --check` -> passed.
+- ExecPlan self-review for placeholders/vague language -> passed.
+
+Checks skipped:
+
+- Code tests; this slice creates a plan and repo guidance, not implementation code.
+
+Known issues:
+
+- This plan recommends Clerk as the first auth adapter path but still requires provider/env setup before implementation can honestly claim login.
+- Cloud save, profiles, and durable jobs remain unimplemented.
+
+Next recommended task:
+
+- Begin Slice 1 of `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`, or take one smaller story-quality experiment if staying away from provider boundaries.

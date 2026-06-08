@@ -43,6 +43,10 @@ Acceptance:
 - Route/function budget impact is called out.
 - Owner-isolation tests are listed.
 
+Status:
+
+- Plan created in `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` during overnight work on 2026-06-08.
+
 Research notes from 2026-06-08:
 
 - Supabase Auth models permanent and anonymous users, issues access tokens tied to users, and supports RLS-driven access. Its docs warn that user-editable metadata must not be used for security-sensitive authorization. Source: https://supabase.com/docs/guides/auth/users, accessed 2026-06-08.
