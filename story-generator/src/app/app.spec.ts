@@ -860,7 +860,8 @@ describe('App', () => {
             label: 'Moonlit oath',
             status: 'escalating',
             description: 'The bargain demands a public sacrifice.',
-            foreshadowedDevices: []
+            foreshadowedDevices: [],
+            lifetime: 'series'
           }
         ],
         artifacts: [
@@ -868,7 +869,8 @@ describe('App', () => {
             id: 'shell',
             name: 'Witness Shell',
             significance: 'The shell repeats any vow spoken near the reef court.',
-            introducedInChapter: 1
+            introducedInChapter: 1,
+            lifetime: 'chapter'
           }
         ],
         continuityWarnings: ['Resolve the vow before changing courts.']
@@ -881,12 +883,14 @@ describe('App', () => {
     expect(previewText).toContain('Pressure rising');
     expect(previewText).toContain('Moonlit oath');
     expect(previewText).toContain('Active story thread');
+    expect(previewText).toContain('Series memory');
     expect(previewText).toContain('Relationship pressure');
     expect(previewText).toContain('Mara and Duke Vale');
     expect(previewText).toContain('Current relationship edge');
     expect(previewText).toContain('World clue');
     expect(previewText).toContain('Witness Shell');
     expect(previewText).toContain('Unresolved world clue');
+    expect(previewText).toContain('Chapter memory');
     expect(previewText).toContain('Continuity note');
     expect(previewText).toContain('Resolve the vow');
     expect(previewText).toContain('Continuity note to honor');

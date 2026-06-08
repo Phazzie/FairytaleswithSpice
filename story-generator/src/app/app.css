@@ -934,7 +934,8 @@ button:disabled {
   line-height: 1.5;
 }
 
-.continuity-source {
+.continuity-source,
+.continuity-lifetime {
   font-size: 0.76rem;
 }
 

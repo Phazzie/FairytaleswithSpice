@@ -661,6 +661,7 @@
               <span class="eyebrow">{{ item.label }}</span>
               <strong>{{ item.title }}</strong>
               <span class="muted">{{ item.detail }}</span>
+              <span class="muted continuity-lifetime" *ngIf="item.lifetimeLabel">{{ item.lifetimeLabel }}</span>
               <span class="muted continuity-source">{{ item.sourceReason }}</span>
             </li>
           </ul>

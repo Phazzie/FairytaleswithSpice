@@ -3351,3 +3351,54 @@ Known issues:
 Next recommended task:
 
 - Run full verification, commit this slice, then continue with either structured warning lifetimes or a visible lifetime label in Story Memory.
+
+### 2026-06-08 Visible Story Memory Lifetime Labels
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the visible story memory lifetime labels commit.
+
+User request:
+
+- Keep improving Story Lab UI and make the new memory-state work understandable in normal user terms.
+
+Work completed:
+
+- Added optional `lifetimeLabel` text to Continuity Preview view models.
+- Story threads with lifetime metadata now render labels such as `Series memory`.
+- Lore artifacts with lifetime metadata now render labels such as `Chapter memory`.
+- Kept relationship rows and plain-string continuity warnings unchanged because they do not have lifetime metadata yet.
+- Kept the UI route-free and based on already-loaded `StoryStateSnapshot`.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.css`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because the preview did not render `Series memory` or `Chapter memory`.
+- GREEN: same Angular browser command -> `TOTAL: 55 SUCCESS`; ChromeHeadless cleanup emitted the known SIGKILL warning after the result.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `547.81 kB` over the 500 kB warning budget and `app.css` `14.65 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Continuity warnings still use the plain-string contract and cannot show lifetime labels yet.
+- The labels are visible state explanations only; they do not change provider prompt behavior.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Run full verification, commit this slice, then either structure continuity warnings for lifetime metadata or expose the continuation source map in the UI.

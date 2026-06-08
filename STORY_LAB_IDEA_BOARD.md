@@ -350,6 +350,8 @@ Variable Lifetime Labels progress:
 - `PlotThread` and `LoreArtifact` now accept optional `scene`, `chapter`, or `series` lifetime metadata.
 - Generated Story Lab theme threads, fallback romance threads, and world artifacts default to `series`.
 - Mock base story threads and the `Crimson Signet Ring` artifact default to `series`; mock chapter-foreshadowed `Broken Oath Scroll` artifacts default to `chapter`.
+- Read-only UI preview started on 2026-06-08.
+- Story Memory / Continuity Preview rows now show compact labels such as `Series memory` and `Chapter memory` when a thread or artifact has lifetime metadata.
 - Continuity warnings still use the existing plain-string contract; migrating them to structured lifetime-aware objects is a separate compatibility slice.
 
 ### Research: User Library And Profile Patterns

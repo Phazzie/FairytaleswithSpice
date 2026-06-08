@@ -20,6 +20,7 @@ import {
   HeatTensionMode,
   SavedStoryProject,
   SpicyLevel,
+  StoryMemoryLifetime,
   StoryBlueprint,
   StoryIterationPayload,
   StoryLabJob,
@@ -146,6 +147,7 @@ type ContinuityPreviewItem = {
   title: string;
   detail: string;
   sourceReason: string;
+  lifetimeLabel?: string;
 };
 
 type GenerationProgressState = {
@@ -441,7 +443,8 @@ export class App implements OnDestroy {
             : 'Open promise',
         title: thread.label,
         detail: thread.description,
-        sourceReason: 'Active story thread'
+        sourceReason: 'Active story thread',
+        lifetimeLabel: this.formatStoryMemoryLifetimeLabel(thread.lifetime)
       })),
       ...(relationshipItem ? [relationshipItem] : []),
       ...continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
@@ -449,7 +452,8 @@ export class App implements OnDestroy {
         label: 'World clue',
         title: artifact.name,
         detail: artifact.significance,
-        sourceReason: 'Unresolved world clue'
+        sourceReason: 'Unresolved world clue',
+        lifetimeLabel: this.formatStoryMemoryLifetimeLabel(artifact.lifetime)
       })),
       ...continuity.continuityWarnings.slice(0, 1).map((warning, index) => ({
         id: `warning-${index}`,
@@ -460,6 +464,20 @@ export class App implements OnDestroy {
       }))
     ].filter(item => item.title || item.detail);
   });
+
+  private formatStoryMemoryLifetimeLabel(lifetime: StoryMemoryLifetime | undefined): string | undefined {
+    if (lifetime === 'scene') {
+      return 'Scene memory';
+    }
+    if (lifetime === 'chapter') {
+      return 'Chapter memory';
+    }
+    if (lifetime === 'series') {
+      return 'Series memory';
+    }
+
+    return undefined;
+  }
 
   private buildContinuityRelationshipPreviewItem(characters: ContinuityPanelViewModel['characters']): ContinuityPreviewItem | null {
     for (const character of characters) {
