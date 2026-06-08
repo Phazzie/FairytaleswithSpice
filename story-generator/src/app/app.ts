@@ -1790,6 +1790,29 @@ ${chapters}
     this.stopProgress();
   }
 
+  private failRecoveredStoryLabJob(kind: ActiveStoryLabJobState['kind'], batchId: string, message: string) {
+    this.clearActiveStoryLabJob();
+    this.clearJobStatusPanel();
+    this.closeJobEventSubscription();
+    this.statusMessage.set(message);
+    this.markBatchFailed(batchId, message);
+    this.notificationService.warning(
+      kind === 'genesis' ? 'Story job not restored' : 'Continuation not restored',
+      message
+    );
+    this.isGenerating.set(false);
+    this.stopProgress();
+  }
+
+  private formatRecoveredJobUnavailableMessage(
+    kind: ActiveStoryLabJobState['kind'],
+    detailMessage: string
+  ): string {
+    const jobLabel = kind === 'genesis' ? 'story job' : 'continuation job';
+    const detail = detailMessage ? ` ${detailMessage}` : '';
+    return `That ${jobLabel} could not be restored because its in-memory job state is no longer available.${detail}`;
+  }
+
   private closeJobEventSubscription() {
     if (this.jobEventSubscription) {
       this.jobEventSubscription.unsubscribe();
@@ -1828,8 +1851,11 @@ ${chapters}
     this.storyService.getStoryLabJob<StoryIterationPayload>(activeJob.jobId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          const message = this.formatApiError(response.error, 'That story job is no longer available.');
-          this.failGenesisJob(activeJob.batchId, message);
+          const message = this.formatRecoveredJobUnavailableMessage(
+            activeJob.kind,
+            this.formatApiError(response.error, '')
+          );
+          this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
           return;
         }
 
@@ -1845,8 +1871,11 @@ ${chapters}
       },
       error: error => {
         this.errorLogging.logError(error, 'App.restoreActiveStoryLabJob');
-        const message = this.formatHttpError(error, 'That story job is no longer available.');
-        this.failGenesisJob(activeJob.batchId, message);
+        const message = this.formatRecoveredJobUnavailableMessage(
+          activeJob.kind,
+          this.formatHttpError(error, '')
+        );
+        this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
       }
     });
   }
@@ -1875,8 +1904,11 @@ ${chapters}
     this.storyService.getStoryLabJob<ContinuationJobResult>(activeJob.jobId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          const message = this.formatApiError(response.error, 'That continuation job is no longer available.');
-          this.failContinuationJob(activeJob.batchId, message);
+          const message = this.formatRecoveredJobUnavailableMessage(
+            activeJob.kind,
+            this.formatApiError(response.error, '')
+          );
+          this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
           return;
         }
 
@@ -1892,8 +1924,11 @@ ${chapters}
       },
       error: error => {
         this.errorLogging.logError(error, 'App.restoreActiveContinuationJob');
-        const message = this.formatHttpError(error, 'That continuation job is no longer available.');
-        this.failContinuationJob(activeJob.batchId, message);
+        const message = this.formatRecoveredJobUnavailableMessage(
+          activeJob.kind,
+          this.formatHttpError(error, '')
+        );
+        this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
       }
     });
   }

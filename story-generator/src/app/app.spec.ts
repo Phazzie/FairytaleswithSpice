@@ -1884,6 +1884,28 @@ describe('App', () => {
     expect(recovered.statusMessage()).toContain('Grok');
   });
 
+  it('clears an unavailable recovered genesis job with recovery-specific status copy', () => {
+    storeActiveJobMarker();
+    storyService.getStoryLabJob.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'STORY_LAB_JOB_NOT_FOUND',
+        message: 'The story job is no longer in memory.'
+      }
+    } as ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>));
+
+    const recoveredFixture = TestBed.createComponent(App);
+    const recovered = recoveredFixture.componentInstance;
+
+    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_123e4567-e89b-12d3-a456-426614174000');
+    expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
+    expect(recovered.generationProgress().active).toBeFalse();
+    expect(renderedJobStatusText(recoveredFixture)).toBeNull();
+    expect(recovered.statusMessage()).toContain('could not be restored');
+    expect(recovered.statusMessage()).toContain('in-memory job state is no longer available');
+  });
+
   it('recovers a completed genesis job and clears the active job marker', () => {
     const payload: StoryIterationPayload = {
       summary: createSummary({ title: 'Recovered Pact' }),
@@ -1956,6 +1978,31 @@ describe('App', () => {
     expect(recovered.generationProgress().percent).toBe(44);
     expect(recovered.statusMessage()).toContain('Grok');
     expect(recovered.activeBatchQueue().at(-1)?.label).toBe('Continuation');
+  });
+
+  it('clears an unavailable recovered continuation job with recovery-specific status copy', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    component.saveActiveProject();
+    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
+    storyService.getStoryLabJob.calls.reset();
+    storyService.getStoryLabJob.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'STORY_LAB_JOB_NOT_FOUND',
+        message: 'The continuation job is no longer in memory.'
+      }
+    } as ApiResponse<StoryLabJobCreationResponse<ContinuationJobResult>>));
+
+    const recoveredFixture = TestBed.createComponent(App);
+    const recovered = recoveredFixture.componentInstance;
+
+    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_223e4567-e89b-12d3-a456-426614174000');
+    expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
+    expect(recovered.generationProgress().active).toBeFalse();
+    expect(renderedJobStatusText(recoveredFixture)).toBeNull();
+    expect(recovered.statusMessage()).toContain('could not be restored');
+    expect(recovered.statusMessage()).toContain('in-memory job state is no longer available');
   });
 
   it('renders a recovered continuation job status panel after reload', () => {

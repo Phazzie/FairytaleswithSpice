@@ -36,6 +36,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - `npm run build` passed after the new CSS was trimmed below the hard component budget.
 - Job status UI honesty evidence:
   - The running job panel now shows the server-provided `non_durable_memory` warning while process-local jobs are active, so the UI does not silently imply crash-safe progress.
+  - Browser reload recovery now has focused coverage for vanished process-local genesis and continuation jobs; the app clears stale markers/panels and tells the user the job could not be restored because in-memory job state is gone.
 - Continuity Preview UI slice evidence:
   - The sidebar Story Memory section now shows a read-only Continuity Preview with prose labels for the first active/open story debts, world clue, and continuity note.
   - The preview now also shows one `Relationship pressure` item when current character state has a relationship edge.
@@ -263,7 +264,7 @@ Required before this becomes durable:
 - Prove owner-scoped job authorization against a real database-backed route.
 - Add a Workflow or equivalent durable runner decision.
 - Persist job events/snapshots outside the current process.
-- Add recovery tests that simulate missing in-memory state.
+- Add durable-store recovery tests once the production route can actually read durable job state after process loss.
 
 ### P0: Live Provider Proof Is Missing In This Environment
 
