@@ -1030,3 +1030,55 @@ Known issues:
 Next recommended task:
 
 - If continuing without external credentials, add a small story-quality eval for anchor specificity/uniqueness or run `Scene Pressure Mixer` only if it replaces or reuses an existing anchor instead of adding a fourth hidden block.
+
+### 2026-06-08 09:37 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the Cliche Alarm wording commit.
+
+User request:
+
+- Keep improving story output quality autonomously and make the hidden continuation guidance less generic.
+
+Work completed:
+
+- Added a story-quality eval guard against the phrase `generic conflict` in hidden continuation guidance.
+- Replaced the Cliche Alarm freshness line with a more concrete instruction: turn the scene through the selected story target with a visible cost.
+- Kept the same deterministic stale-path and freshness-target behavior; only the model-facing wording changed.
+- Added audit evidence for the wording guard.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-quality-evals.test.ts` failed because hidden guidance still contained `generic conflict`.
+- GREEN: `npx tsx tests/story-quality-evals.test.ts` -> passed.
+- GREEN: `npx tsx tests/story-lab-real-engine.test.ts` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+
+Known issues:
+
+- The eval guards hidden guidance wording, not generated live prose.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without external credentials, add an anchor-specificity/uniqueness eval before adding any more hidden guidance, or use `Scene Pressure Mixer` only by replacing/reusing an existing anchor.

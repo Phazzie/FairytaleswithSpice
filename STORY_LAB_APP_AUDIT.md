@@ -54,6 +54,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The redundant generic courtroom instruction was removed; concrete thread, artifact, warning, ending-pressure, and stale-path lines still reach the continuation seam.
 - Hidden-anchor prose-label eval evidence:
   - `tests/story-quality-evals.test.ts` now fails if hidden continuation guidance exposes mechanical labels such as `Escalating thread`, `Open thread`, `Unresolved artifact`, or `Warning to honor`.
+  - The same eval now fails if the Cliche Alarm tells the model to avoid `generic conflict`; the stale-path guidance instead asks for freshness through a concrete target with visible cost.
   - The deterministic state still drives the guidance; only the wording shown to the model is less mechanical.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.

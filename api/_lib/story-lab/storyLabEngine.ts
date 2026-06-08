@@ -464,7 +464,7 @@ function buildClicheAlarmBrief(storyState: StoryStateSnapshot, continuationBrief
   return [
     'Cliche Alarm:',
     `- Obvious stale path to avoid: ${chooseClicheAlarmPath(storyState, continuationBrief)}`,
-    `- Freshness rule: turn the scene through ${chooseFreshnessTarget(storyState)}, not generic conflict.`
+    `- Freshness rule: turn the scene through ${chooseFreshnessTarget(storyState)} with a visible cost.`
   ].join('\n');
 }
 
