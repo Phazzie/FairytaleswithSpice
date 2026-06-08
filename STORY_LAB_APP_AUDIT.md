@@ -84,8 +84,12 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The adapter still fails closed unless an explicit verifier is injected, so raw provider tokens do not become app users.
   - `tests/story-lab-clerk-auth.test.ts` proves missing verifier denial, bearer-token verification, `__session` extraction, and invalid-token rejection without leaking token text.
   - `npm run test:all` now includes `test:story-lab-clerk-auth`.
+- Cloud schema scaffold evidence:
+  - `api/_lib/story-lab/storage/storyLabCloudSchema.sql` now records the migration-ready table shape for private profiles and owner-scoped cloud projects.
+  - `tests/story-lab-cloud-schema.test.ts` fails if the tracked schema loses the profile table, project table, owner column, project JSON payload, or owner indexes.
+  - This is a durable schema contract only; no database has been provisioned or executed from the app yet.
 - `npm run test:all`
-  - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
+  - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, cloud-schema, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
 
 Additional branch evidence after the auth/profile account-route slices on `feature/story-lab-auth-profile-contracts`:
@@ -117,7 +121,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - Quick preflight passes.
 - Root integration/unit checks pass.
 - Story Lab UI work has landed through narrative dials, villain pressure, Director's Room notes, job status, batch queue, and job-backed genesis/continuation flows.
-- The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, one consolidated account route, and visible local/cloud library state.
+- The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, a tracked cloud schema, one consolidated account route, and visible local/cloud library state.
 - The auth seam now has a Clerk-shaped adapter scaffold, but live Clerk verification/sign-in is still not wired.
 - Classic genesis mock generation now has enforced word-count tolerance instead of warning-only length checks.
 - Real continuations now receive hidden, deterministic continuity-debt, ending-pressure, and stale-path anchors before generation.
@@ -164,11 +168,12 @@ Required before this becomes a user feature:
 
 ### P0: Cloud Project Storage Is Visible But Not Real Yet
 
-The storage port exists and models owner-scoped saved projects. A consolidated account route exposes profile and project operations behind auth/storage seams, `StoryService` has client methods for those calls, and the app now shows a Cloud account panel. The panel is deliberately honest: it keeps local browser storage visible and reports cloud unavailable/failed until auth and durable storage are configured.
+The storage port exists and models owner-scoped saved projects. A consolidated account route exposes profile and project operations behind auth/storage seams, `StoryService` has client methods for those calls, the app now shows a Cloud account panel, and `storyLabCloudSchema.sql` records the profile/project table contract. The panel is deliberately honest: it keeps local browser storage visible and reports cloud unavailable/failed until auth and durable storage are configured.
 
 Required before this becomes a user feature:
 
 - Provision or configure a durable database.
+- Execute or wire the tracked schema through an explicit migration/provisioning path.
 - Configure a durable database executor for the route.
 - Save, load, list, and delete projects by authenticated owner against real durable storage.
 - Make local browser storage a fallback/cache instead of the canonical signed-in source for signed-in users.

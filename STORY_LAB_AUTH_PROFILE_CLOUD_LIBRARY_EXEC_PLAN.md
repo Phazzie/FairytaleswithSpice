@@ -43,6 +43,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - [x] Wire cloud library UI into the Angular app.
 - [x] Add focused owner-isolation, profile, route, and UI tests.
 - [x] Add Clerk-shaped `AuthPort` adapter scaffold with token extraction and injected verifier.
+- [x] Add migration-ready cloud schema SQL contract and focused schema drift test.
 - [x] Run validation and update handoff for Slice 1.
 - [x] Run validation and update handoff for Slices 2 and 3.
 - [x] Run validation and update handoff for Slice 4a service methods.
@@ -57,6 +58,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - Clerk's current backend docs describe bearer session tokens for cross-origin requests and the `__session` cookie for same-origin requests. The adapter scaffold extracts only those token sources and still requires an injected verifier before it returns a user. Sources: https://clerk.com/docs/request-authentication/backend and https://clerk.com/docs/backend-requests/manual-jwt, accessed 2026-06-08.
 - Vercel function budget is usable but tighter after Slice 3. Account/profile/project cloud APIs now share one deployable route file, and the branch count is `11/12`.
 - The cloud library UI can land before live auth/database provisioning as long as it tells the truth: local browser saves remain active, and cloud sync shows unavailable or failed until the account route is configured.
+- The Postgres profile/project scaffolds had implied table expectations, but there was no tracked migration-ready SQL artifact until `api/_lib/story-lab/storage/storyLabCloudSchema.sql`.
 
 ## Decision Log
 
@@ -84,13 +86,15 @@ Current implementation state as of 2026-06-08:
 - Added `api/_lib/story-lab/profile/profileDefaults.ts` with fail-closed, adult-unconfirmed default profile preferences.
 - Added `api/_lib/story-lab/auth/configuredAuthPort.ts`, which delegates only to an injected provider and otherwise denies by default.
 - Added `api/_lib/story-lab/auth/clerkAuthPort.ts`, a Clerk-shaped adapter scaffold that extracts bearer or `__session` tokens, requires an injected verifier, and fails closed without leaking token text.
+- Added `api/_lib/story-lab/storage/storyLabCloudSchema.sql` as the migration-ready cloud library schema contract for private profiles and owner-scoped story projects.
 - Added focused tests:
   - `tests/story-lab-profile-contracts.test.ts`
   - `tests/story-lab-configured-auth.test.ts`
   - `tests/story-lab-clerk-auth.test.ts`
+  - `tests/story-lab-cloud-schema.test.ts`
   - `tests/story-lab-profile-store.test.ts`
 - Added npm scripts for the new focused tests and included them in `npm run test:all`.
-- Added `test:story-lab-clerk-auth` to `npm run test:all`.
+- Added `test:story-lab-clerk-auth` and `test:story-lab-cloud-schema` to `npm run test:all`.
 - Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
 - Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
 - Added `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts` as an injected-executor Postgres profile scaffold that fails closed when `DATABASE_URL` or an executor is missing.
@@ -117,6 +121,12 @@ Current implementation state as of 2026-06-08:
   - `npm run test:all` passed;
   - `scripts/recovery/preflight.sh --quick --skip-status` passed;
   - `scripts/recovery/check-vercel-function-count.sh` -> `11/12`.
+- Cloud schema validation passed:
+  - RED: `npx tsx tests/story-lab-cloud-schema.test.ts` failed on the missing schema file;
+  - GREEN: `npm run test:story-lab-cloud-schema`;
+  - `npm run test:all`;
+  - `scripts/recovery/preflight.sh --quick --skip-status`;
+  - function count remained `11/12`.
 - Slice 4a validation passed:
   - RED: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` failed on missing `StoryService` cloud/profile methods;
   - GREEN: same Angular spec typecheck passed;
@@ -153,7 +163,8 @@ Current implementation state as of 2026-06-08:
   - `scripts/recovery/check-vercel-function-count.sh` -> `10/12`;
   - `npm run test:all`;
   - `scripts/recovery/preflight.sh --quick --skip-status`.
-- No provider SDK, database migration, live auth provider, live database executor, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
+- No provider SDK, executed database migration/provisioning, live auth provider, live database executor, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
+- A migration-ready SQL contract exists, but it is not automatically executed by the app.
 - The Clerk adapter scaffold is not live auth by itself; it still needs a real Clerk verifier/SDK wiring and frontend sign-in flow.
 
 Expected retrospective evidence after implementation:
@@ -180,6 +191,7 @@ Important files:
 - `api/_lib/story-lab/auth/authorizeProjectAccess.ts`: owner authorization helper.
 - `api/_lib/story-lab/storage/storyProjectStore.ts`: owner-scoped saved-project store contract.
 - `api/_lib/story-lab/storage/postgresStoryProjectStore.ts`: injected Postgres adapter scaffold.
+- `api/_lib/story-lab/storage/storyLabCloudSchema.sql`: migration-ready profile/project schema contract.
 - `story-generator/src/app/story-workspace-storage.service.ts`: anonymous browser-local library.
 - `story-generator/src/app/app.ts` and `story-generator/src/app/app.html`: visible Story Lab UI and library panel.
 - `story-generator/src/app/story.service.ts`: Angular API client seam.
@@ -222,23 +234,11 @@ Add a profile store beside the project store:
 - `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts`
 - `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts`
 
-Use this conceptual table shape:
+The migration-ready table shape now lives in:
 
-```sql
-create table story_lab_profiles (
-  user_id text primary key,
-  display_name text,
-  default_heat_contract jsonb not null,
-  favorite_creatures text[] not null default '{}',
-  favorite_tones text[] not null default '{}',
-  content_boundaries text,
-  library_sort text not null default 'updated_desc',
-  created_at timestamptz not null,
-  updated_at timestamptz not null
-);
-```
+- `api/_lib/story-lab/storage/storyLabCloudSchema.sql`
 
-Keep project storage on the existing `StoryProjectStore` contract. Do not create a second project persistence shape.
+It defines `story_lab_profiles` with `preferences_json`, and `story_projects` with `owner_user_id`, `story_id`, denormalized display fields, and `project_json`. Keep project storage on the existing `StoryProjectStore` contract. Do not create a second project persistence shape.
 
 ### Slice 3: Consolidated Account Route
 

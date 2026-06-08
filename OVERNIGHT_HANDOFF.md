@@ -1661,3 +1661,55 @@ Known issues:
 Next recommended task:
 
 - Wire the adapter into `configuredAuthPort` only after choosing/installing the actual verifier path, or continue storage/database provisioning work.
+
+### 2026-06-08 10:45 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud schema scaffold commit.
+
+User request:
+
+- Continue auth/storage readiness without claiming cloud sync is live before the database is actually configured.
+
+Work completed:
+
+- Added `api/_lib/story-lab/storage/storyLabCloudSchema.sql` as a migration-ready schema contract for Story Lab profiles and owner-scoped cloud projects.
+- The schema includes `story_lab_profiles`, `story_projects`, owner-scoped project indexes, JSON payload columns, and comments warning that editable profile fields are not authorization data.
+- Added `tests/story-lab-cloud-schema.test.ts` so the tracked schema fails if the core profile/project tables, owner column, JSON payloads, or owner indexes drift out.
+- Wired `test:story-lab-cloud-schema` into `package.json` and the root `npm run test:all` suite.
+- Updated the app audit and auth/profile/cloud-library plan to state that the schema contract exists, but no live database provisioning/execution path has landed yet.
+
+Files changed:
+
+- `api/_lib/story-lab/storage/storyLabCloudSchema.sql`
+- `tests/story-lab-cloud-schema.test.ts`
+- `package.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-cloud-schema.test.ts` -> failed because `storyLabCloudSchema.sql` did not exist.
+- GREEN: `npx tsx tests/story-lab-cloud-schema.test.ts` -> passed.
+- `npm run test:story-lab-cloud-schema` -> passed.
+- `git diff --check` -> passed before doc edits.
+- `npm run test:all` -> passed with `test:story-lab-cloud-schema` included.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- The SQL file is not an executed migration and no database has been provisioned from this branch.
+- Real cloud sync still requires a configured database executor and live auth.
+- This is still not live Clerk auth. It needs a real Clerk verifier/SDK wiring and frontend sign-in flow.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Add an explicit database executor/configuration seam for the cloud schema, or continue a bounded story-output experiment if provider/database credentials are unavailable.
