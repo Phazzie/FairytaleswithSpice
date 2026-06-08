@@ -280,6 +280,7 @@ async function createGenesisJob(
     }
   });
   await store.updateJob<StoryIterationPayload>(job.job.jobId, {
+    ownerUserId,
     status: 'running',
     currentStep: 'generating_story',
     progressPercent: 25
@@ -288,7 +289,7 @@ async function createGenesisJob(
   const result = await generateStoryLabGenesis(parsed.blueprint);
   sendJson(res, 200, {
     success: true,
-    data: await finishJob(store, job.job.jobId, result)
+    data: await finishJob(store, ownerUserId, job.job.jobId, result)
   });
 }
 
@@ -325,6 +326,7 @@ async function createContinuationJob(
     }
   });
   await store.updateJob<ContinuationJobResult>(job.job.jobId, {
+    ownerUserId,
     status: 'running',
     currentStep: 'continuing_story',
     progressPercent: 25
@@ -333,17 +335,19 @@ async function createContinuationJob(
   const result = await continueStoryLab(normalized);
   sendJson(res, 200, {
     success: true,
-    data: await finishJob(store, job.job.jobId, result)
+    data: await finishJob(store, ownerUserId, job.job.jobId, result)
   });
 }
 
 async function finishJob<TPublicResult extends JobResult>(
   store: StoryLabJobStore,
+  ownerUserId: string | undefined,
   jobId: string,
   result: ApiResponse<TPublicResult>
 ): Promise<StoryLabJobCreationResponse<TPublicResult>> {
   if (result.success) {
     return (await store.updateJob<TPublicResult>(jobId, {
+      ownerUserId,
       status: 'completed',
       currentStep: 'completed',
       progressPercent: 100,
@@ -352,6 +356,7 @@ async function finishJob<TPublicResult extends JobResult>(
   }
 
   return (await store.updateJob<TPublicResult>(jobId, {
+    ownerUserId,
     status: 'failed',
     currentStep: 'failed',
     progressPercent: 100,

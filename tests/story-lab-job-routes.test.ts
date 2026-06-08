@@ -291,6 +291,11 @@ async function testDurableInjectedJobCreationReceivesOwnerContext(): Promise<voi
   assert(body.success === true, 'authenticated durable job route should return success');
   assert(body.data.durability.mode === 'postgres', 'durable injected store should preserve durable mode in the route response');
   assert(store.createdOwnerUserIds[0] === owner.userId, 'durable job creation should receive authenticated owner id');
+  assert(store.updateOwnerUserIds.length >= 2, 'durable job execution should update the created job');
+  assert(
+    store.updateOwnerUserIds.every(ownerUserId => ownerUserId === owner.userId),
+    'durable job updates should receive authenticated owner id'
+  );
 
   const jobId = body.data.job.jobId as string;
   const statusResponse = new FakeResponse();
@@ -376,6 +381,7 @@ class CapturingDurableJobStore implements StoryLabJobStore {
   readonly mode = 'postgres';
   readonly durable = true;
   readonly createdOwnerUserIds: Array<string | undefined> = [];
+  readonly updateOwnerUserIds: Array<string | undefined> = [];
   readonly readOwnerUserIds: Array<string | undefined> = [];
   readonly eventOwnerUserIds: Array<string | undefined> = [];
   private readonly inner = new NonDurableStoryLabJobStore();
@@ -393,6 +399,7 @@ class CapturingDurableJobStore implements StoryLabJobStore {
     jobId: string,
     input: UpdateStoryLabJobInput<TPublicResult>
   ): StoryLabJobCreationResponse<TPublicResult> | null {
+    this.updateOwnerUserIds.push(input.ownerUserId);
     return this.withDurableReceipt(this.inner.updateJob<TPublicResult>(jobId, input));
   }
 

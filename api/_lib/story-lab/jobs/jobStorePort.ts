@@ -22,6 +22,7 @@ export interface CreateStoryLabJobInput {
 }
 
 export interface UpdateStoryLabJobInput<TPublicResult = unknown> {
+  ownerUserId?: string;
   status: StoryLabJobStatus;
   currentStep: string;
   progressPercent: number;

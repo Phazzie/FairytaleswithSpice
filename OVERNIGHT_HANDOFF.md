@@ -4282,3 +4282,69 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue route-free auth/cloud readiness or choose the next bounded story-output experiment.
+
+### 2026-06-08 16:14 EDT Durable Job Update Owner Guard
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the durable job update owner guard commit.
+
+User request:
+
+- Keep working autonomously on platform durability and review gaps without overstating unfinished live cloud behavior.
+
+Plan and critique:
+
+- Plan: close the remaining owner-context hole in durable job execution updates.
+- Hostile critique applied: durable create/read owner checks are not enough if the lower-level Postgres update path can update by opaque `job_id` alone. Require owner context at the update contract and SQL boundary before a future runner reuses the store.
+
+Work completed:
+
+- Added `ownerUserId` to `UpdateStoryLabJobInput`.
+- Durable route execution now passes authenticated owner context into running, completed, and failed job updates.
+- Postgres job updates now require owner context before SQL and filter the update by `owner_user_id`.
+- Event snapshots written after an update use the authenticated owner id instead of preserving a fallback owner string.
+- Route tests now prove durable execution updates receive authenticated owner context.
+- Store tests now prove Postgres update queries include owner id and ownerless updates fail before SQL.
+- Updated the app audit, auth/profile/cloud plan, idea board, and handoff.
+
+Files changed:
+
+- `api/_lib/story-lab/jobs/jobStorePort.ts`
+- `api/_lib/story-lab/jobs/jobRouteHandlers.ts`
+- `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts`
+- `tests/story-lab-job-routes.test.ts`
+- `tests/story-lab-job-store-port.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-lab-job-routes` -> failed because durable job updates did not receive authenticated owner context.
+- RED: `npm run test:story-lab-job-store-port` -> failed because Postgres update did not pass owner id into the update query.
+- GREEN: `npm run test:story-lab-job-routes` -> passed.
+- GREEN: `npm run test:story-lab-job-store-port` -> passed.
+- `git diff --check` -> passed.
+- `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url` -> no open PRs.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `npm run build` -> passed; initial browser total is `482.33 kB`, Proving Grounds remains lazy, and no budget warnings were emitted.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Known issues:
+
+- Jobs are still not durable in the live product path; the default store remains `non_durable_memory`.
+- Live durable jobs still need real auth, a real `DATABASE_URL`, executed schema, runner/recovery behavior, and deployment proof.
+- Live cloud sync still requires real auth, database configuration, schema application, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then either continue durable-job route integration behind real auth/storage config or switch to the next bounded story-output experiment.

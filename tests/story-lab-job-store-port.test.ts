@@ -125,6 +125,7 @@ async function testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots() {
     }
   ]);
   const updated = await store.updateJob(fixedJobId, {
+    ownerUserId: 'user_job_owner',
     status: 'completed',
     currentStep: 'completed',
     progressPercent: 200,
@@ -136,7 +137,10 @@ async function testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots() {
 
   assert(updated?.job.status === 'completed', 'Postgres update should return the updated job snapshot');
   assert(updated?.job.progressPercent === 100, 'Postgres update should normalize progress percent');
-  assert(executor.queries.some(query => query.sql.toLowerCase().includes('update story_lab_jobs')), 'update should update a job snapshot');
+  const updateQuery = executor.queries.find(query => query.sql.toLowerCase().includes('update story_lab_jobs'));
+  assert(updateQuery, 'update should update a job snapshot');
+  assert(updateQuery.sql.toLowerCase().includes('owner_user_id'), 'Postgres update should be scoped by owner user id');
+  assert(updateQuery.params.includes('user_job_owner'), 'Postgres update should pass owner user id to the query');
 
   executor.enqueueRows([
     {
@@ -180,6 +184,31 @@ async function testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots() {
     return sql.includes('select event_json') && sql.includes('from story_lab_job_events');
   });
   assert(loadEventsQuery?.params.includes('user_job_owner'), 'Postgres getEvents should filter by owner user id');
+
+  const queryCountBeforeMissingOwnerUpdate = executor.queries.length;
+  let missingOwnerError: unknown;
+  try {
+    await store.updateJob(fixedJobId, {
+      status: 'completed',
+      currentStep: 'completed',
+      progressPercent: 100,
+      now: updatedAt
+    });
+  } catch (error) {
+    missingOwnerError = error;
+  }
+  assert(
+    isStoryLabJobStoreError(missingOwnerError),
+    'Postgres update without owner should fail closed with a typed store error'
+  );
+  assert(
+    missingOwnerError.code === 'STORY_LAB_JOB_OWNER_REQUIRED',
+    'Postgres update without owner should use owner-required code'
+  );
+  assert(
+    executor.queries.length === queryCountBeforeMissingOwnerUpdate,
+    'Postgres update without owner should fail before issuing SQL'
+  );
 }
 
 main().catch(error => {

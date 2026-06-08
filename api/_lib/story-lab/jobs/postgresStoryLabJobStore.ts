@@ -79,14 +79,15 @@ insert into story_lab_jobs (
 const UPDATE_JOB_SQL = `
 update story_lab_jobs
 set
-  status = $2,
-  current_step = $3,
-  progress_percent = $4,
-  result_json = $5::jsonb,
-  error_json = $6::jsonb,
-  updated_at = $7,
-  completed_at = case when $2 in ('completed', 'failed', 'cancelled') then $7 else completed_at end
+  status = $3,
+  current_step = $4,
+  progress_percent = $5,
+  result_json = $6::jsonb,
+  error_json = $7::jsonb,
+  updated_at = $8,
+  completed_at = case when $3 in ('completed', 'failed', 'cancelled') then $8 else completed_at end
 where job_id = $1
+  and owner_user_id = $2
 returning job_id, owner_user_id, kind, status, current_step, progress_percent, created_at, updated_at, result_json, error_json
 `;
 
@@ -191,11 +192,13 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
   ): Promise<StoryLabJobCreationResponse<TPublicResult> | null> {
     this.assertReady();
     assertValidJobId(jobId);
+    const ownerUserId = requireOwnerUserId(input.ownerUserId);
     const now = input.now ?? this.getNow();
 
     try {
       const result = await this.executor().query<StoryLabJobRow>(UPDATE_JOB_SQL, [
         jobId,
+        ownerUserId,
         input.status,
         input.currentStep,
         normalizeProgressPercent(input.progressPercent),
@@ -212,7 +215,7 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
       const event = this.createSnapshotEvent(job, now);
       await this.executor().query(INSERT_EVENT_SQL, [
         jobId,
-        row.owner_user_id ?? 'unknown_owner_preserved_by_existing_job',
+        ownerUserId,
         JSON.stringify(event),
         now
       ]);

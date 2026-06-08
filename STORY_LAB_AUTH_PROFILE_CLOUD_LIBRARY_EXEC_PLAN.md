@@ -48,6 +48,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - [x] Add Neon/Postgres driver dependency and executor adapter behind the storage config seam.
 - [x] Add schema application helper and guarded recovery script for real `DATABASE_URL` runs.
 - [x] Add guarded cloud database readiness smoke for real `DATABASE_URL` runs.
+- [x] Harden durable job update ownership in the route and Postgres job-store scaffold.
 - [x] Run validation and update handoff for Slice 1.
 - [x] Run validation and update handoff for Slices 2 and 3.
 - [x] Run validation and update handoff for Slice 4a service methods.
@@ -122,6 +123,7 @@ Current implementation state as of 2026-06-08:
 - Added `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts` as the env-gated future job-store selection seam; default routes stay non-durable, unsupported modes fail closed, and injected durable stores require route auth before creation.
 - Added an injectable job route handler seam so tests can prove authenticated durable creation receives `ownerUserId`.
 - Added owner-aware job-store read contracts so durable status/event reads can filter by `ownerUserId`; route tests prove durable status/events pass authenticated owner context.
+- Added owner-aware job-store update contracts so durable route execution passes `ownerUserId` on running/completed/failed updates, and the Postgres scaffold refuses ownerless updates before issuing SQL.
 - Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
 - Hardened `normalizeStoryLabProfilePreferences` so malformed runtime values are sanitized through allow-lists before profile persistence.
 - Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
@@ -189,6 +191,11 @@ Current implementation state as of 2026-06-08:
   - GREEN: `npm run test:story-lab-job-store-port`;
   - `npx tsx tests/story-lab-job-contracts.test.ts`;
   - `npx tsx tests/story-lab-job-routes.test.ts`.
+- Durable job update owner validation passed:
+  - RED: `npm run test:story-lab-job-routes` failed because durable job updates did not receive authenticated owner context;
+  - RED: `npm run test:story-lab-job-store-port` failed because Postgres updates did not pass owner id into the update query;
+  - GREEN: `npm run test:story-lab-job-routes`;
+  - GREEN: `npm run test:story-lab-job-store-port`.
 - Cloud storage config validation passed:
   - RED: `npx tsx tests/story-lab-cloud-storage-config.test.ts` failed on the missing config module;
   - GREEN: `npm run test:story-lab-cloud-storage-config`;
@@ -248,7 +255,7 @@ Current implementation state as of 2026-06-08:
 - No executed database migration/provisioning, live auth provider, live database proof, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
 - A migration-ready SQL contract exists, but it is not automatically executed by the app.
 - The migration-ready SQL contract includes future durable job tables, and a Postgres job store scaffold exists, but the active job route still uses `non_durable_memory` unless a future owner-scoped durable route is implemented.
-- Job route tests now prove durable creation, status reads, and event reads receive authenticated owner context through injection, but they do not prove live database-backed durable operation.
+- Job route tests now prove durable creation, status reads, event reads, and execution updates receive authenticated owner context through injection, but they do not prove live database-backed durable operation.
 - A guarded schema-apply script exists, but it has only been tested with fake executors and missing-env refusal here.
 - A guarded cloud database readiness smoke exists, but it has only been tested with fake executors and missing-env refusal here.
 - A Neon executor adapter exists, but it has only been validated with injected fake queries and typechecks, not a live database.
