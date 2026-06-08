@@ -5,7 +5,8 @@ import type { AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import { createNonDurableInMemoryStoryLabProfileStore } from '../api/_lib/story-lab/profile/inMemoryStoryLabProfileStore';
 import {
   createDefaultStoryLabUserProfile,
-  createStoryLabProfileStoreError
+  createStoryLabProfileStoreError,
+  normalizeStoryLabProfilePreferences
 } from '../api/_lib/story-lab/profile/storyLabProfileStore';
 import {
   createPostgresStoryLabProfileStore,
@@ -83,6 +84,27 @@ async function testDefaultProfileHelpers() {
     403
   );
   assert(forbidden.code === 'STORY_LAB_PROFILE_FORBIDDEN', 'profile errors should carry typed codes');
+
+  const normalizedPreferences = normalizeStoryLabProfilePreferences({
+    defaultHeatContract: {
+      adultOnlyConfirmed: 'yes',
+      tensionMode: 'instant_fire',
+      intimacyBoundary: 'graphic',
+      noGoContent: 42
+    },
+    favoriteCreatures: ['witch', 'unknown-creature', 17],
+    favoriteTones: 'romance',
+    contentBoundaries: 99,
+    librarySort: 'owner_first'
+  } as any);
+  assert(normalizedPreferences.defaultHeatContract.adultOnlyConfirmed === false, 'invalid adult confirmation should fall back to default false');
+  assert(normalizedPreferences.defaultHeatContract.tensionMode === 'slow_burn', 'invalid tension mode should fall back to default');
+  assert(normalizedPreferences.defaultHeatContract.intimacyBoundary === 'closed_door', 'invalid intimacy boundary should fall back to default');
+  assert(normalizedPreferences.defaultHeatContract.noGoContent === undefined, 'invalid no-go content should not be saved');
+  assert(normalizedPreferences.favoriteCreatures.length === 1 && normalizedPreferences.favoriteCreatures[0] === 'witch', 'favorite creatures should keep only known creature ids');
+  assert(normalizedPreferences.favoriteTones.length === 0, 'favorite tones should fall back when the payload is not an array');
+  assert(normalizedPreferences.contentBoundaries === undefined, 'invalid content boundaries should not be saved');
+  assert(normalizedPreferences.librarySort === 'updated_desc', 'invalid library sort should fall back to updated-desc');
 }
 
 async function testNonDurableMemoryProfileStore() {
