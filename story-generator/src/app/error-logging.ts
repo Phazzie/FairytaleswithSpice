@@ -208,6 +208,11 @@ export class ErrorLoggingService {
     }
 
     if (value instanceof Error) {
+      if (seen.has(value)) {
+        return '[Circular]';
+      }
+      seen.add(value);
+
       const redactedError: Record<string, unknown> = {
         name: value.name,
         message: this.redactSensitiveText(value.message, sensitiveValues)

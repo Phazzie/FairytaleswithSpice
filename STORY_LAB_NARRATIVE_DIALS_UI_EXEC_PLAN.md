@@ -49,21 +49,25 @@ Give Story Lab one shared continuation-dial system and ship the next three compa
 - [x] `npx -p node@20 -c "node story-generator/node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`
 - [x] `npx -p node@20 -c "node story-generator/node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`
 - [x] Focused Angular app spec run.
-- [x] Full Angular app spec run.
+- [x] Isolated error logging spec run.
+- [x] Remaining Angular spec shard run.
+- [x] Full Angular suite attempted; one-piece run hit Chrome capture/ping timeout after bundle generation, so specs were verified in shards.
 - [x] `scripts/recovery/check-vercel-function-count.sh`
 - [x] `npm run smoke:story-lab-ui`
 
 ## Validation Evidence
 
 - RED focused app spec: `3 FAILED, 43 SUCCESS`; failures were missing narrative dials and missing dial prose anchors.
-- GREEN focused app spec: `46 SUCCESS`.
-- Isolated error logging regression: RED `1 FAILED, 6 SUCCESS`, then GREEN `7 SUCCESS`.
-- Full Angular suite: `83 SUCCESS`.
+- GREEN focused app spec after CodeRabbit option-coverage expansion: `47 SUCCESS`.
+- Gemini/CodeRabbit circular `Error.cause` review fix: RED isolated error logging spec `1 FAILED, 7 SUCCESS`, then GREEN `8 SUCCESS`.
+- Remaining Angular spec shard: `30 SUCCESS` across debug panel, streaming story, workspace storage, story service, form validation, error display, and notification specs.
+- Full Angular suite one-piece retry: build completed, but Chrome disconnected with a ping timeout before completing specs. The app, error logging, and remaining shards covered the same spec files with `85 SUCCESS` total.
 - `git diff --check`: clean.
 - App TypeScript compile: clean.
 - Spec TypeScript compile: clean.
 - Vercel function count: `10/12`.
 - Story Lab browser smoke: passed in mock mode. Build warnings remained the known initial bundle budget warning and `app.css` at `14.95 kB`.
+- Sonar duplication follow-up: repeated dial option object literals were compacted behind `defineNarrativeDialOptions`.
 
 ## Stop Conditions
 

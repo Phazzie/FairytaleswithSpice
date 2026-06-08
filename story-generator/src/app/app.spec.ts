@@ -766,6 +766,41 @@ describe('App', () => {
     expect(jobRequest.continuation.continuationBrief).toContain('Villain Pressure: Put the characters under a tight deadline');
   });
 
+  it('supports every narrative dial option in the UI and continuation brief', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    for (const dial of component.narrativeDials) {
+      for (const option of dial.options) {
+        const optionButton = renderedNarrativeDial(dial.id)
+          ?.querySelector(`[data-dial-option-id="${option.id}"]`) as HTMLButtonElement | null;
+
+        expect(optionButton)
+          .withContext(`${dial.id} should render option ${option.id}`)
+          .not.toBeNull();
+
+        optionButton?.click();
+        fixture.detectChanges();
+        component.continueWithCustomDirection();
+
+        const dialText = renderedNarrativeDialText(dial.id) ?? '';
+        const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+          kind: 'continuation';
+          continuation: { continuationBrief?: string };
+        };
+
+        expect(dialText).withContext(`${dial.id} should show option ${option.id} description`).toContain(option.description);
+        expect(jobRequest.continuation.continuationBrief)
+          .withContext(`${dial.id} should include option ${option.id} brief`)
+          .toContain(option.brief);
+      }
+    }
+  });
+
   it('adds selected pressure to Director Room continuation notes', () => {
     const genesisPayload = seedWorkbenchForContinuation();
     const continuationPayload = createContinuationPayload(genesisPayload);

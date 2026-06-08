@@ -83,6 +83,13 @@ type NarrativeDialOption = {
   brief: string;
 };
 
+type NarrativeDialOptionDefinition<TId extends string = string> = readonly [
+  id: TId,
+  label: string,
+  description: string,
+  brief: string
+];
+
 type NarrativeDial = {
   id: NarrativeDialId;
   label: string;
@@ -102,6 +109,12 @@ type VillainPressureId = 'antagonist' | 'environment' | 'secret' | 'deadline' | 
 type VillainPressureOption = NarrativeDialOption & {
   id: VillainPressureId;
 };
+
+function defineNarrativeDialOptions<TId extends string>(
+  definitions: readonly NarrativeDialOptionDefinition<TId>[]
+): Array<NarrativeDialOption & { id: TId }> {
+  return definitions.map(([id, label, description, brief]) => ({ id, label, description, brief }));
+}
 
 type DirectorRoomNoteId = 'desire-ledger' | 'continuity-keeper' | 'chapter-ending';
 
@@ -237,38 +250,13 @@ export class App implements OnDestroy {
     { label: 'Slow down and linger', brief: 'Slow down for atmosphere, longing, and character intimacy before the next plot turn.' }
   ];
 
-  readonly villainPressureOptions: VillainPressureOption[] = [
-    {
-      id: 'antagonist',
-      label: 'Antagonist',
-      description: 'Make the rival or villain act directly.',
-      brief: 'Villain Pressure: Let the antagonist directly raise the cost of the next choice.'
-    },
-    {
-      id: 'environment',
-      label: 'Environment',
-      description: 'Make the setting itself push back.',
-      brief: 'Villain Pressure: Let the environment itself become dangerous and force a decision.'
-    },
-    {
-      id: 'secret',
-      label: 'Secret',
-      description: 'Let hidden truth create pressure.',
-      brief: 'Villain Pressure: Let a secret create pressure before anyone fully explains it.'
-    },
-    {
-      id: 'deadline',
-      label: 'Deadline',
-      description: 'Put the scene under a clock.',
-      brief: 'Villain Pressure: Put the characters under a tight deadline that makes delay costly.'
-    },
-    {
-      id: 'inner-desire',
-      label: 'Inner Desire',
-      description: 'Make want itself the problem.',
-      brief: 'Villain Pressure: Let inner desire pressure the character into a dangerous choice.'
-    }
-  ];
+  readonly villainPressureOptions: VillainPressureOption[] = defineNarrativeDialOptions<VillainPressureId>([
+    ['antagonist', 'Antagonist', 'Make the rival or villain act directly.', 'Villain Pressure: Let the antagonist directly raise the cost of the next choice.'],
+    ['environment', 'Environment', 'Make the setting itself push back.', 'Villain Pressure: Let the environment itself become dangerous and force a decision.'],
+    ['secret', 'Secret', 'Let hidden truth create pressure.', 'Villain Pressure: Let a secret create pressure before anyone fully explains it.'],
+    ['deadline', 'Deadline', 'Put the scene under a clock.', 'Villain Pressure: Put the characters under a tight deadline that makes delay costly.'],
+    ['inner-desire', 'Inner Desire', 'Make want itself the problem.', 'Villain Pressure: Let inner desire pressure the character into a dangerous choice.']
+  ]);
 
   readonly narrativeDials: NarrativeDial[] = [
     {
@@ -279,104 +267,34 @@ export class App implements OnDestroy {
     {
       id: 'chapter-payload',
       label: 'Chapter Payload',
-      options: [
-        {
-          id: 'romance',
-          label: 'More romance',
-          description: 'Put desire under pressure.',
-          brief: 'Chapter Payload: Put desire under pressure and reveal it through behavior, restraint, jealousy, protection, or sacrifice.'
-        },
-        {
-          id: 'danger',
-          label: 'More danger',
-          description: 'Move the threat close enough that it changes what the characters do next.',
-          brief: 'Chapter Payload: Move the threat close enough that it changes what the characters do next.'
-        },
-        {
-          id: 'lore',
-          label: 'More lore',
-          description: 'Reveal one world rule and make it personal.',
-          brief: 'Chapter Payload: Reveal one rule of the world, but make it personal and costly.'
-        },
-        {
-          id: 'intimacy',
-          label: 'More intimacy',
-          description: 'Deepen trust, vulnerability, or consent.',
-          brief: 'Chapter Payload: Deepen trust, vulnerability, or consent through behavior rather than explanation.'
-        },
-        {
-          id: 'plot',
-          label: 'More plot',
-          description: 'Change the situation in a way nobody can ignore.',
-          brief: 'Chapter Payload: Change the situation in a concrete way that nobody can ignore.'
-        }
-      ]
+      options: defineNarrativeDialOptions([
+        ['romance', 'More romance', 'Put desire under pressure.', 'Chapter Payload: Put desire under pressure and reveal it through behavior, restraint, jealousy, protection, or sacrifice.'],
+        ['danger', 'More danger', 'Move the threat close enough that it changes what the characters do next.', 'Chapter Payload: Move the threat close enough that it changes what the characters do next.'],
+        ['lore', 'More lore', 'Reveal one world rule and make it personal.', 'Chapter Payload: Reveal one rule of the world, but make it personal and costly.'],
+        ['intimacy', 'More intimacy', 'Deepen trust, vulnerability, or consent.', 'Chapter Payload: Deepen trust, vulnerability, or consent through behavior rather than explanation.'],
+        ['plot', 'More plot', 'Change the situation in a way nobody can ignore.', 'Chapter Payload: Change the situation in a concrete way that nobody can ignore.']
+      ])
     },
     {
       id: 'pacing',
       label: 'Pacing',
-      options: [
-        {
-          id: 'linger',
-          label: 'Linger',
-          description: 'Slow down for texture, longing, and consequence.',
-          brief: 'Pacing: Linger on texture, longing, and consequence before the next turn.'
-        },
-        {
-          id: 'balanced',
-          label: 'Balanced',
-          description: 'Move plot and emotion together.',
-          brief: 'Pacing: Balance external movement with emotional consequence.'
-        },
-        {
-          id: 'escalate',
-          label: 'Escalate',
-          description: 'Make each beat cost more than the last.',
-          brief: 'Pacing: Escalate so each beat costs more than the last.'
-        },
-        {
-          id: 'sprint',
-          label: 'Sprint',
-          description: 'Drive hard toward a cliffhanger.',
-          brief: 'Pacing: Sprint toward a cliffhanger without skipping the emotional cost.'
-        }
-      ]
+      options: defineNarrativeDialOptions([
+        ['linger', 'Linger', 'Slow down for texture, longing, and consequence.', 'Pacing: Linger on texture, longing, and consequence before the next turn.'],
+        ['balanced', 'Balanced', 'Move plot and emotion together.', 'Pacing: Balance external movement with emotional consequence.'],
+        ['escalate', 'Escalate', 'Make each beat cost more than the last.', 'Pacing: Escalate so each beat costs more than the last.'],
+        ['sprint', 'Sprint', 'Drive hard toward a cliffhanger.', 'Pacing: Sprint toward a cliffhanger without skipping the emotional cost.']
+      ])
     },
     {
       id: 'ending-bet',
       label: 'Ending Bet',
-      options: [
-        {
-          id: 'revelation',
-          label: 'Revelation',
-          description: 'End by making hidden truth visible.',
-          brief: 'Ending Bet: Build the ending around a revelation that changes what came before.'
-        },
-        {
-          id: 'betrayal',
-          label: 'Betrayal',
-          description: 'End where trust breaks or appears to break.',
-          brief: 'Ending Bet: Build the ending around betrayal, and let behavior make the rupture land.'
-        },
-        {
-          id: 'impossible-choice',
-          label: 'Impossible choice',
-          description: 'End with no clean option left.',
-          brief: 'Ending Bet: Build the ending around an impossible choice with no clean escape.'
-        },
-        {
-          id: 'arrival',
-          label: 'Arrival',
-          description: 'End with someone or something entering too late.',
-          brief: 'Ending Bet: End with an arrival that changes the room before anyone is ready.'
-        },
-        {
-          id: 'deadline',
-          label: 'Deadline',
-          description: 'End when the clock becomes impossible to ignore.',
-          brief: 'Ending Bet: End by making the deadline impossible to ignore.'
-        }
-      ]
+      options: defineNarrativeDialOptions([
+        ['revelation', 'Revelation', 'End by making hidden truth visible.', 'Ending Bet: Build the ending around a revelation that changes what came before.'],
+        ['betrayal', 'Betrayal', 'End where trust breaks or appears to break.', 'Ending Bet: Build the ending around betrayal, and let behavior make the rupture land.'],
+        ['impossible-choice', 'Impossible choice', 'End with no clean option left.', 'Ending Bet: Build the ending around an impossible choice with no clean escape.'],
+        ['arrival', 'Arrival', 'End with someone or something entering too late.', 'Ending Bet: End with an arrival that changes the room before anyone is ready.'],
+        ['deadline', 'Deadline', 'End when the clock becomes impossible to ignore.', 'Ending Bet: End by making the deadline impossible to ignore.']
+      ])
     }
   ];
 
