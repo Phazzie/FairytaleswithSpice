@@ -83,7 +83,9 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Clerk auth adapter scaffold evidence:
   - `api/_lib/story-lab/auth/clerkAuthPort.ts` now extracts Clerk session tokens from `Authorization: Bearer ...`, `cookies.__session`, or raw `Cookie` headers.
   - The adapter still fails closed unless an explicit verifier is injected, so raw provider tokens do not become app users.
+  - `api/_lib/story-lab/auth/configuredAuthPort.ts` now supports explicit `STORY_LAB_AUTH_PROVIDER=clerk` selection and fails closed for blank or unknown providers without leaking bearer token text.
   - `tests/story-lab-clerk-auth.test.ts` proves missing verifier denial, bearer-token verification, `__session` extraction, and invalid-token rejection without leaking token text.
+  - `tests/story-lab-configured-auth.test.ts` proves env-gated Clerk selection and unknown-provider denial.
   - `npm run test:all` now includes `test:story-lab-clerk-auth`.
 - Cloud schema scaffold evidence:
   - `api/_lib/story-lab/storage/storyLabCloudSchema.sql` now records the migration-ready table shape for private profiles and owner-scoped cloud projects.
@@ -132,7 +134,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - Root integration/unit checks pass.
 - Story Lab UI work has landed through narrative dials, villain pressure, Director's Room notes, job status, batch queue, and job-backed genesis/continuation flows.
 - The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, a tracked cloud schema, lazy Neon-backed cloud storage configuration, one consolidated account route, and visible local/cloud library state.
-- The auth seam now has a Clerk-shaped adapter scaffold, but live Clerk verification/sign-in is still not wired.
+- The auth seam now has an env-selectable Clerk-shaped adapter scaffold, but live Clerk verification/sign-in is still not wired.
 - Classic genesis mock generation now has enforced word-count tolerance instead of warning-only length checks.
 - Real continuations now receive hidden, deterministic continuity-debt, ending-pressure, and stale-path anchors before generation.
 - Story evaluation responses now carry a deterministic advisory quality report with seven explainable craft dimensions.

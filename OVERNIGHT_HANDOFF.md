@@ -1997,3 +1997,56 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue either auth sign-in wiring or the next no-credentials story-output/evaluation experiment.
+
+### 2026-06-08 11:50 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the auth provider config commit.
+
+User request:
+
+- Continue the overnight work and move cloud account/auth forward when it can be done safely without live credentials.
+
+Work completed:
+
+- Updated `configuredAuthPort` so account routes can explicitly select Clerk through `STORY_LAB_AUTH_PROVIDER=clerk`.
+- Injection still takes precedence for tests and future providers.
+- Blank, `none`, or `disabled` auth provider config remains deny-by-default.
+- Unknown provider names fail closed with a safe auth error and do not trust raw bearer tokens.
+- Clerk selection still requires a verifier before any session token becomes an app user, so this does not claim live sign-in is complete.
+- Updated the auth/profile/cloud-library plan and app audit with the env-gated Clerk selection status.
+
+Files changed:
+
+- `api/_lib/story-lab/auth/configuredAuthPort.ts`
+- `tests/story-lab-configured-auth.test.ts`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-configured-auth.test.ts` -> failed because env-selected Clerk auth still used deny-by-default auth.
+- GREEN: `npx tsx tests/story-lab-configured-auth.test.ts` -> passed.
+- `npm run test:story-lab-configured-auth` -> passed.
+- `npm run test:story-lab-clerk-auth` -> passed.
+- `npm run test:story-lab-account-routes` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Live Clerk sign-in UI and backend session verification are not complete.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with browser-visible sign-in affordances or another no-credentials story-output experiment.

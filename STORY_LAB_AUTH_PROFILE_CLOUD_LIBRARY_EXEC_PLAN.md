@@ -37,7 +37,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - [x] Add focused profile/cloud contract and configured-auth tests, and wire them into `npm run test:all`.
 - [x] Implement profile store contracts with non-durable memory and injected Postgres scaffolds.
 - [x] Add focused profile store tests and wire them into `npm run test:all`.
-- [ ] Implement provider-backed `AuthPort` adapter behind explicit env configuration.
+- [x] Implement provider-backed `AuthPort` adapter behind explicit env configuration.
 - [x] Implement one consolidated Story Lab account route with rewrites instead of many deployable function files.
 - [x] Wire cloud library methods into the Angular service.
 - [x] Wire cloud library UI into the Angular app.
@@ -91,6 +91,7 @@ Current implementation state as of 2026-06-08:
 - Re-exported those types through `api/_lib/story-lab/contracts.ts`.
 - Added `api/_lib/story-lab/profile/profileDefaults.ts` with fail-closed, adult-unconfirmed default profile preferences.
 - Added `api/_lib/story-lab/auth/configuredAuthPort.ts`, which delegates only to an injected provider and otherwise denies by default.
+- `configuredAuthPort` now explicitly supports `STORY_LAB_AUTH_PROVIDER=clerk`, still fails closed for blank/unknown providers, and still requires a verifier before Clerk sessions become app users.
 - Added `api/_lib/story-lab/auth/clerkAuthPort.ts`, a Clerk-shaped adapter scaffold that extracts bearer or `__session` tokens, requires an injected verifier, and fails closed without leaking token text.
 - Added `api/_lib/story-lab/storage/storyLabCloudSchema.sql` as the migration-ready cloud library schema contract for private profiles and owner-scoped story projects.
 - Added `api/_lib/story-lab/storage/storyLabCloudSchemaMigration.ts` to split and apply the tracked schema through an injected executor.
