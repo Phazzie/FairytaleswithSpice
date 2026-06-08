@@ -127,16 +127,20 @@ function scoreCharacterConsistency(storyContent: string, dialogueLines: string[]
   const speakers = extractDialogueSpeakers(dialogueLines);
   const namedCharacters = Array.from(new Set((storyContent.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g) ?? [])
     .filter(name => !['Narrator'].includes(name))));
+  const agencyActions = extractAgencyActions(storyContent, namedCharacters);
   const signals = [
     ...speakers.map(speaker => `Speaker: ${speaker}`),
-    ...(namedCharacters.length ? [`Named character count: ${namedCharacters.length}`] : [])
+    ...(namedCharacters.length ? [`Named character count: ${namedCharacters.length}`] : []),
+    ...(agencyActions.length ? [`Agency actions: ${agencyActions.slice(0, 4).join(', ')}`] : [])
   ];
 
   return {
     id: 'character_consistency',
     label: 'Character consistency',
-    score: 52 + Math.min(3, speakers.length) * 12 + Math.min(2, namedCharacters.length) * 6,
-    rationale: speakers.length ? 'Dialogue speakers and named characters are identifiable.' : 'Few character identity signals were detected.',
+    score: 52 + Math.min(3, speakers.length) * 12 + Math.min(2, namedCharacters.length) * 6 + Math.min(2, agencyActions.length) * 5,
+    rationale: agencyActions.length
+      ? 'Dialogue speakers, named characters, and concrete character actions are identifiable.'
+      : speakers.length ? 'Dialogue speakers and named characters are identifiable.' : 'Few character identity signals were detected.',
     signals
   };
 }
@@ -220,6 +224,46 @@ function extractDialogueSpeakers(dialogueLines: string[]): string[] {
     .map(line => line.match(/^\s*\[([^\]]+)\]:/)?.[1]?.trim())
     .map(speaker => speaker?.split(',')[0]?.trim())
     .filter((speaker): speaker is string => Boolean(speaker))));
+}
+
+function extractAgencyActions(storyContent: string, namedCharacters: readonly string[]): string[] {
+  const agencyLexicon: Array<{ label: string; terms: readonly string[] }> = [
+    { label: 'pressed', terms: ['press', 'pressed', 'presses'] },
+    { label: 'touched', terms: ['touch', 'touched', 'touches'] },
+    { label: 'chose', terms: ['chose', 'chooses'] },
+    { label: 'refused', terms: ['refuse', 'refused', 'refuses'] },
+    { label: 'revealed', terms: ['reveal', 'revealed', 'reveals'] },
+    { label: 'risked', terms: ['risk', 'risked', 'risks'] },
+    { label: 'protected', terms: ['protect', 'protected', 'protects'] },
+    { label: 'challenged', terms: ['challenge', 'challenged', 'challenges'] },
+    { label: 'paid', terms: ['pay', 'paid', 'pays'] },
+    { label: 'escaped', terms: ['escape', 'escaped', 'escapes'] }
+  ];
+  const normalized = storyContent
+    .toLowerCase()
+    .replace(/[^a-z'\s-]/g, ' ')
+    .replace(/\s+/g, ' ');
+  const lowerNames = namedCharacters
+    .map(name => name.toLowerCase().replace(/[^a-z'\s-]/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(name => name.length > 2);
+  const actions: string[] = [];
+
+  for (const entry of agencyLexicon) {
+    const termPattern = entry.terms.map(escapeRegExp).join('|');
+    const hasNamedAction = lowerNames.some(name => {
+      const pattern = new RegExp(`\\b${escapeRegExp(name)}\\b(?:\\s+[a-z']+){0,4}\\s+(${termPattern})\\b`);
+      return pattern.test(normalized);
+    });
+    if (hasNamedAction) {
+      actions.push(entry.label);
+    }
+  }
+
+  return actions;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function extractConcreteAnchors(storyContent: string): string[] {

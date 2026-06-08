@@ -208,6 +208,37 @@ Acceptance:
 
 - `tests/story-quality-evals.test.ts` now fails unless the fixture's prose-quality dimension reports `Sensory texture: glow, salt, sting`.
 
+### Done: Agency Lens
+
+Origin:
+
+- The user wanted weird/eclectic story-output experiments during autonomous work, not only platform cleanup.
+- The existing character-consistency scan could identify speakers and named characters, but it could not say whether those characters were acting with visible agency.
+
+Hypothesis:
+
+- A cheap named-action signal helps distinguish scenes where characters make concrete moves from scenes where story pressure only happens around them.
+
+User value:
+
+- Proving Grounds quality output can now explain one more practical craft issue: whether named characters are doing things on the page.
+
+Smallest experiment:
+
+- Add a deterministic agency-action extractor to the existing `character_consistency` dimension.
+- Only count actions tied to named-character subjects, so generic instructions or hook words do not inflate the signal.
+- Keep the seven-dimension contract stable.
+
+Guardrails:
+
+- Do not add provider calls.
+- Do not add another score dimension.
+- Do not claim the scan can judge whether the choices are emotionally good, only whether concrete named-character actions are present.
+
+Acceptance:
+
+- `tests/story-quality-evals.test.ts` now fails unless the fixture's character-consistency dimension reports `Agency actions: pressed, touched`.
+
 ### Soon: Durable Job Storage
 
 Replace or supplement `non_durable_memory` job state with an owner-scoped durable job table and runner plan.

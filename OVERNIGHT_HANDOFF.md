@@ -3060,3 +3060,50 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then switch back to a bounded story-output experiment or continue route-free cloud-library hardening.
+
+### 2026-06-08 Story Quality Agency Lens
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the story quality agency lens commit.
+
+User request:
+
+- Keep working autonomously, including bounded creative/story-output experiments, not only cleanup and repair.
+
+Work completed:
+
+- Added a deterministic Agency Lens to the existing character-consistency dimension in the story-quality heuristic report.
+- The lens reports compact named-character actions such as `pressed` and `touched` when those actions are tied to a named-character subject.
+- Kept the existing seven-dimension quality-report contract stable; no provider calls, routes, or prompt changes were added.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `api/_lib/story-lab/evaluation/storyQualityHeuristics.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-quality` -> failed because character consistency did not report protagonist agency actions.
+- GREEN: `npm run test:story-quality` -> passed after adding named-action extraction.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is an advisory deterministic signal, not a literary judge.
+- Real Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with either another bounded story-quality lens or a route-free account/cloud hardening task.
