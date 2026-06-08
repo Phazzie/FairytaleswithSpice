@@ -2958,3 +2958,54 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with a no-new-route cloud/account hardening task or return to a bounded story-output experiment.
+
+### 2026-06-08 Cloud Save Account Gate
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud save account gate commit.
+
+User request:
+
+- Keep working autonomously toward auth, storage, profiles, and visible cloud-library readiness without pretending unfinished cloud sync works.
+
+Work completed:
+
+- Added `canUseCloudLibrary`, which only enables cloud write actions after the cloud state is connected.
+- Disabled `Save to cloud` when account/cloud sync is unavailable, even if a local story exists.
+- Guarded the direct `saveActiveProjectToCloud()` method so unavailable account state surfaces the setup-status message instead of calling `saveCloudStoryProject`.
+- Kept successful cloud save covered by setting the test state to `cloud_synced` first.
+- Updated the app audit and auth/profile/cloud-library plan.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because `Save to cloud` was enabled while account state was unavailable and direct save called the cloud service.
+- GREEN: same Angular browser command -> `TOTAL: 54 SUCCESS`.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle budget over 500 kB and `app.css` at 14.60 kB; this slice added no CSS.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This prevents doomed cloud-save calls; it is not live sign-in or real cloud sync.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then switch back to a bounded story-output experiment or continue cloud-library hardening without adding routes.

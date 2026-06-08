@@ -487,6 +487,33 @@ describe('App', () => {
     expect(fullText).toContain('Saved here');
   });
 
+  it('blocks cloud save until the account is connected', () => {
+    seedWorkbenchForContinuation();
+    storyService.saveCloudStoryProject.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Account required.'
+      }
+    } as ApiResponse<CloudStoryProjectSaveReceipt>));
+
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const saveButton = Array.from(panel?.querySelectorAll('button') ?? [])
+      .find(button => button.textContent?.includes('Save to cloud')) as HTMLButtonElement | undefined;
+
+    expect(saveButton?.disabled).toBeTrue();
+
+    component.saveActiveProjectToCloud();
+    fixture.detectChanges();
+
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
+    expect(storyService.saveCloudStoryProject).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(fullText).toContain('Sign-in setup is not configured yet.');
+  });
+
   it('refreshes visible cloud projects through the account service', () => {
     const cloudList: CloudStoryProjectList = {
       ownerUserId: 'user-owner',
@@ -524,6 +551,10 @@ describe('App', () => {
       }
     };
     storyService.saveCloudStoryProject.and.returnValue(of({ success: true, data: receipt }));
+    component.cloudLibrarySyncState.set({
+      mode: 'cloud_synced',
+      lastSyncedAt: payload.summary.updatedAt
+    });
 
     component.saveActiveProjectToCloud();
 

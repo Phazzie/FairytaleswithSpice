@@ -643,6 +643,7 @@ export class App implements OnDestroy {
         return 'Connect account';
     }
   });
+  readonly canUseCloudLibrary = computed(() => this.cloudLibrarySyncState().mode === 'cloud_synced');
   readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
     const chapters = this.workbench().chapterHistory;
     if (!chapters.length) {
@@ -1100,6 +1101,11 @@ ${chapters}
         mode: 'local_only',
         message: 'Generate a story before saving to cloud.'
       });
+      return;
+    }
+
+    if (!this.canUseCloudLibrary()) {
+      this.showCloudAccountSetupStatus();
       return;
     }
 
