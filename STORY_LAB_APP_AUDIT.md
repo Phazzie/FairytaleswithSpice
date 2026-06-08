@@ -25,6 +25,15 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
 
+Additional branch evidence after the auth/profile account-route slices on `feature/story-lab-auth-profile-contracts`:
+
+- `scripts/recovery/check-vercel-function-count.sh`
+  - Result: `11/12`, within limit after intentionally adding `api/story-lab/account.ts`.
+- `npm run test:all`
+  - Result: passed with `tests/story-lab-account-routes.test.ts` included.
+- `scripts/recovery/preflight.sh --quick --skip-status`
+  - Result: passed required tools, whitespace/conflict markers, Vercel function count, Angular app typecheck, Angular spec typecheck, and Vercel API function typecheck.
+
 Files inspected during this audit:
 
 - `AGENTS.md`
@@ -39,13 +48,13 @@ Files inspected during this audit:
 
 The app is mechanically healthier than it was before the repo cleanup.
 
-- The active branch is `main`, and local `main` is aligned with `origin/main`.
+- The original audit snapshot was on `main`, aligned with `origin/main`; current overnight auth/profile work is on `feature/story-lab-auth-profile-contracts`.
 - There are no currently open PRs to address.
-- The Vercel function budget is not exhausted: `10/12`.
+- The Vercel function budget is not exhausted: `11/12` on the account-route branch.
 - Quick preflight passes.
 - Root integration/unit checks pass.
 - Story Lab UI work has landed through narrative dials, villain pressure, Director's Room notes, job status, batch queue, and job-backed genesis/continuation flows.
-- The codebase has explicit seams for future account auth and owner-scoped project storage.
+- The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, and one consolidated account route.
 - Server/client logging and privacy scaffolding have already received meaningful work in prior phases.
 
 ## Current Product Reality
@@ -63,8 +72,8 @@ What users can meaningfully experience now:
 What users cannot honestly rely on yet:
 
 - Signing in.
-- Having a profile.
-- Saving stories to a cloud account.
+- Having a user-visible profile.
+- Saving stories to a cloud account through the UI.
 - Opening their story library across devices.
 - Resuming background generation after a server process dies.
 - Getting durable long-running Workflow-backed progress.
@@ -74,25 +83,25 @@ What users cannot honestly rely on yet:
 
 ### P0: Account Auth Is Not Implemented
 
-There is an `AuthPort` and `authorizeProjectAccess`, but the active auth port is deny-by-default. That is good architecture scaffolding. It is not a login system.
+There is an `AuthPort`, `authorizeProjectAccess`, and a consolidated account route that calls `authPort.requireUser(req)`, but the active auth port is still deny-by-default. That is good architecture scaffolding. It is not a login system.
 
 Required before this becomes a user feature:
 
 - Pick an auth provider.
 - Define session/cookie behavior for Vercel.
 - Add login/logout/profile UI.
-- Wire authenticated route calls through `AuthPort`.
-- Prove forbidden cross-user access with tests.
+- Wire a real provider adapter through `AuthPort`.
+- Keep forbidden cross-user access covered by tests as the provider adapter lands.
 
 ### P0: Cloud Project Storage Is Not User-Visible
 
-The storage port exists and models owner-scoped saved projects. The browser still uses `StoryWorkspaceStorageService` and local storage for visible saving.
+The storage port exists and models owner-scoped saved projects. A consolidated account route now exposes profile and project operations behind auth/storage seams, but the browser still uses `StoryWorkspaceStorageService` and local storage for visible saving.
 
 Required before this becomes a user feature:
 
 - Provision or configure a durable database.
-- Add API routes or consolidate into existing Story Lab route capacity.
-- Save, load, list, and delete projects by authenticated owner.
+- Configure a durable database executor for the route.
+- Save, load, list, and delete projects by authenticated owner against real durable storage.
 - Make local browser storage a fallback/cache instead of the canonical signed-in source.
 - Add UI for "my stories" or a project library.
 
@@ -132,16 +141,16 @@ Possible fixes:
 
 ### P1: Vercel Function Budget Is Tight
 
-The current count is `10/12`. There is room, but not enough to add auth, storage, profile, export, and job routes casually.
+The current branch count is `11/12`. There is room, but not enough to add auth, storage, profile, export, and job routes casually.
 
 Rule:
 
 - Before adding deployable route files, run `scripts/recovery/check-vercel-function-count.sh`.
 - If the count reaches `12/12`, consolidate or retire routes before adding more.
 
-### P1: Storage Plan Status Needs Reconciliation
+### P1: Storage Plan Status Was Reconciled
 
-The storage port files exist on `main`, but `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` still contains progress language that can read like PR/push/merge work remains. Treat the code and current git state as authoritative, then reconcile the plan doc in a small docs cleanup.
+`STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` was reconciled during the overnight docs pass. Treat the current plan docs and live git state as authoritative if this drifts again.
 
 ### P1: Full Browser/Angular Validation Remains Environment-Sensitive
 
@@ -180,7 +189,7 @@ Recommended order:
 
 Use this order unless a newer user request or failing PR check supersedes it:
 
-1. Reconcile stale storage-port plan progress language.
-2. Turn auth/storage/profile into a concrete implementation plan with provider decision gates.
-3. Run one research-mining pass and populate the idea board with source-backed ideas.
+1. Implement the provider-backed `AuthPort` adapter behind explicit environment configuration.
+2. Connect the account route to a durable database executor/migration path.
+3. Wire Angular cloud-library methods and UI states without breaking anonymous local save.
 4. Pick one small story-quality improvement from the idea board and implement it behind tests.

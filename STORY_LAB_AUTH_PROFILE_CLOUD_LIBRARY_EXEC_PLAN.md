@@ -24,6 +24,8 @@ This plan starts from the current merged state:
 - Story Lab jobs are still `non_durable_memory` and not account-owned.
 - Vercel function count is currently `10/12`.
 
+Slice 3 adds the consolidated account route and moves the branch function count to `11/12`.
+
 ## Progress
 
 - [x] Read `.agent/PLANS.md`, `AGENTS.md`, `STORY_LAB_APP_AUDIT.md`, `OVERNIGHT_MODE.md`, `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`, current auth/storage contracts, job route handlers, and local storage UI references.
@@ -36,10 +38,11 @@ This plan starts from the current merged state:
 - [x] Implement profile store contracts with non-durable memory and injected Postgres scaffolds.
 - [x] Add focused profile store tests and wire them into `npm run test:all`.
 - [ ] Implement provider-backed `AuthPort` adapter behind explicit env configuration.
-- [ ] Implement one consolidated Story Lab account route with rewrites instead of many deployable function files.
+- [x] Implement one consolidated Story Lab account route with rewrites instead of many deployable function files.
 - [ ] Wire cloud library methods into the Angular service and UI.
 - [ ] Add focused owner-isolation, profile, route, and UI tests.
 - [x] Run validation and update handoff for Slice 1.
+- [x] Run validation and update handoff for Slices 2 and 3.
 
 ## Surprises & Discoveries
 
@@ -47,7 +50,7 @@ This plan starts from the current merged state:
 - Current job routes use credentialed CORS but not account ownership. They must not be described as user-private durable jobs until a later job-persistence plan.
 - The existing storage port takes `AuthUser` already, which is the right seam. Future route work should call `authPort.requireUser(req)` once and pass the resulting `AuthUser` into storage.
 - Current provider research says editable auth metadata is not a safe authorization source. User profile preferences can live in metadata only if they are treated as display/preferences, never ownership.
-- Vercel function budget is usable but tight. Account/profile/project cloud APIs should share one deployable route file.
+- Vercel function budget is usable but tighter after Slice 3. Account/profile/project cloud APIs now share one deployable route file, and the branch count is `11/12`.
 
 ## Decision Log
 
@@ -60,7 +63,7 @@ This plan starts from the current merged state:
 - Decision: Use Marketplace Postgres/Neon-compatible storage for the first durable library path.
   Rationale: The existing Postgres storage adapter already accepts an injected executor and the platform plan previously selected relational storage for projects, chapters, story state, exports, and jobs.
 - Decision: Add one deployable account route file, not separate profile/project route files.
-  Rationale: Function count is `10/12`. One route plus rewrites preserves capacity.
+  Rationale: Function count was `10/12` at plan creation. One route plus rewrites raises it to `11/12` while preserving one remaining slot.
 - Decision: Keep local browser storage active after cloud sync lands.
   Rationale: Anonymous users should not lose the product. Signed-in users need a cloud canonical source, but local storage can remain a recent-project cache and import source.
 - Decision: Do not implement durable jobs in this plan.
@@ -82,6 +85,23 @@ Current implementation state as of 2026-06-08:
 - Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
 - Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
 - Added `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts` as an injected-executor Postgres profile scaffold that fails closed when `DATABASE_URL` or an executor is missing.
+- Added `api/story-lab/account.ts` as the single deployable Story Lab account route.
+- Added `api/_lib/story-lab/account/accountRouteHandlers.ts` for profile/project account route behavior behind injectable auth, profile-store, and project-store seams.
+- Added `vercel.json` rewrites for profile, project collection, and project item paths into the single account function.
+- Updated `scripts/recovery/check-vercel-function-count.sh` to intentionally allow `api/story-lab/account.ts`; function count is now `11/12`.
+- Added `tests/story-lab-account-routes.test.ts` for fail-closed auth, credentialed CORS, profile read/write, project save/list/load/delete, cross-owner denial, and missing-storage failures.
+- Added the account route test script to `npm run test:all`.
+- Slice 3 validation passed:
+  - RED: `./node_modules/.bin/tsx tests/story-lab-account-routes.test.ts` failed on missing account route module;
+  - GREEN: `./node_modules/.bin/tsx tests/story-lab-account-routes.test.ts`;
+  - `npm run test:story-lab-account-routes`;
+  - `./node_modules/.bin/tsx tests/story-lab-job-routes.test.ts`;
+  - `npm run test:story-lab-profile-store`;
+  - `npm run test:story-lab-storage-port`;
+  - `scripts/recovery/check-vercel-function-count.sh` -> `11/12`;
+  - `git diff --check`;
+  - `scripts/recovery/preflight.sh --quick --skip-status`;
+  - `npm run test:all`.
 - Slice 2 focused validation passed:
   - RED: `npx tsx tests/story-lab-profile-store.test.ts` failed on missing profile store modules;
   - GREEN: `npx tsx tests/story-lab-profile-store.test.ts`;
@@ -99,7 +119,7 @@ Current implementation state as of 2026-06-08:
   - `scripts/recovery/check-vercel-function-count.sh` -> `10/12`;
   - `npm run test:all`;
   - `scripts/recovery/preflight.sh --quick --skip-status`.
-- No provider SDK, route, database migration, UI cloud sync, or durable job behavior has landed yet.
+- No provider SDK, database migration, Angular cloud UI, live auth provider, live database executor, or durable job behavior has landed yet.
 
 Expected retrospective evidence after implementation:
 

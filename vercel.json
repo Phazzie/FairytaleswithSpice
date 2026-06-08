@@ -14,6 +14,18 @@
       "destination": "/api/story-lab/jobs?jobId=:jobId"
     },
     {
+      "source": "/api/story-lab/account/profile",
+      "destination": "/api/story-lab/account?resource=profile"
+    },
+    {
+      "source": "/api/story-lab/account/projects/:projectId",
+      "destination": "/api/story-lab/account?resource=project&projectId=:projectId"
+    },
+    {
+      "source": "/api/story-lab/account/projects",
+      "destination": "/api/story-lab/account?resource=projects"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }

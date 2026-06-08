@@ -12,9 +12,9 @@ Overnight baseline commit before the documentation slice:
 
 - `4834914` - merge of PR #113, `feature/story-lab-narrative-dials-ui`.
 
-Latest completed local implementation slice before the current profile-store work:
+Latest completed local implementation slice before the current account-route work:
 
-- `75b485f` - `Add Story Lab auth profile contract slice`
+- `6459454` - `Add Story Lab profile store slice`
 
 Open PRs:
 
@@ -402,3 +402,68 @@ Known issues:
 Next recommended task:
 
 - Run full validation, commit Slice 2, then begin the consolidated account-route slice if function count remains within budget.
+
+### 2026-06-08 08:31 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the Slice 3 commit.
+
+User request:
+
+- Continue overnight work and advance the auth/profile/cloud-library plan without adding route sprawl.
+
+Work completed:
+
+- Added one deployable account route at `api/story-lab/account.ts`.
+- Added shared account route handlers under `api/_lib/story-lab/account/accountRouteHandlers.ts`.
+- Added rewrites so profile, project list/save, and project load/delete all flow into the single account route.
+- Added credentialed CORS handling and fail-closed default auth behavior.
+- Added profile GET/PUT behavior behind `StoryLabProfileStore`.
+- Added project list/save/load/delete behavior behind the existing `StoryProjectStore`.
+- Added route tests for missing auth, credentialed CORS preflight, profile read/write, profile cross-owner denial, project save/list/load/delete, project cross-owner denial, missing storage config, and invalid route/method responses.
+- Updated the function-count allow-list intentionally for `api/story-lab/account.ts`.
+- Updated `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` and `STORY_LAB_APP_AUDIT.md`.
+
+Files changed:
+
+- `api/story-lab/account.ts`
+- `api/_lib/story-lab/account/accountRouteHandlers.ts`
+- `tests/story-lab-account-routes.test.ts`
+- `vercel.json`
+- `package.json`
+- `scripts/recovery/check-vercel-function-count.sh`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `./node_modules/.bin/tsx tests/story-lab-account-routes.test.ts` failed on missing account route module.
+- GREEN: `./node_modules/.bin/tsx tests/story-lab-account-routes.test.ts` -> passed.
+- `npm run test:story-lab-account-routes` -> passed.
+- `./node_modules/.bin/tsx tests/story-lab-job-routes.test.ts` -> passed.
+- `npm run test:story-lab-profile-store` -> passed.
+- `npm run test:story-lab-storage-port` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed after changing account-route result checks to explicit `success === false` narrowing.
+- `npm run test:all` -> passed after the typecheck fix.
+
+Checks skipped:
+
+- Live provider/auth/storage proof with real credentials; no provider SDK, database executor, Angular cloud UI, or durable job runner exists yet.
+
+Known issues:
+
+- This is still not visible login or cloud sync. The default auth route fails closed until a real provider adapter is configured.
+- Function budget is now `11/12`; future deployable route work must consolidate or retire routes before adding much else.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Implement the provider-backed `AuthPort` adapter or wire Angular cloud-library methods/UI against the fail-closed account route, depending on whether provider/database environment details are available.
