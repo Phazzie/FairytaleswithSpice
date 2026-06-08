@@ -917,3 +917,56 @@ Known issues:
 Next recommended task:
 
 - If continuing without external credentials, run the next bounded story-output experiment, `Scene Pressure Mixer`, or start a story-quality eval that compares continuation output with and without hidden anchors. If provider/database details become available, return to the auth/storage adapter path.
+
+### 2026-06-08 09:30 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the hidden-anchor compactness commit.
+
+User request:
+
+- Keep working autonomously while protecting the story-output improvements from becoming messy or overbuilt.
+
+Work completed:
+
+- Added a compactness guard to the real Story Lab continuation seam test.
+- The test now fails if composed hidden continuation anchors exceed 900 characters.
+- Removed the redundant generic instruction line from the `Continuity Courtroom` anchor.
+- Kept the concrete state anchors intact: unresolved/escalating threads, unresolved artifacts, warnings, ending pressure, and cliche alarm still reach `StoryService.continueChapter`.
+- Added audit evidence for the compactness guard.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-real-engine.test.ts` failed because hidden continuation anchors exceeded the 900-character compactness budget.
+- GREEN: `npx tsx tests/story-lab-real-engine.test.ts` -> passed after removing the redundant courtroom instruction.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+
+Known issues:
+
+- The compactness guard protects character count, not prose quality.
+- Three hidden continuation anchors still need live/provider comparison for over-instruction risk.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without external credentials, start a story-quality eval that compares continuation prompt anchors as text artifacts, or run the next bounded idea-board experiment only if it fits under the compactness guard.

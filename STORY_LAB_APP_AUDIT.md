@@ -49,6 +49,9 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The anchor names one obvious stale path to avoid and ties freshness to a concrete unresolved thread or artifact.
   - The tested debt/payment continuation avoids a formal-demand scene with no personal cost and ties freshness to `Forbidden Love`.
   - `tests/story-lab-real-engine.test.ts` captures the continuation service input and proves the cliche alarm reaches the real-engine seam.
+- Hidden-anchor compactness guard evidence:
+  - The real-engine seam test now fails if the composed hidden continuation anchors exceed 900 characters.
+  - The redundant generic courtroom instruction was removed; concrete thread, artifact, warning, ending-pressure, and stale-path lines still reach the continuation seam.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.

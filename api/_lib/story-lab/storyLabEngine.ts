@@ -368,7 +368,6 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot): string |
 
   return [
     'Continuity Courtroom:',
-    '- Pay off these existing story debts before inventing new ones.',
     ...lines
   ].join('\n');
 }

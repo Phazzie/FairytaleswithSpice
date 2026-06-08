@@ -498,6 +498,7 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(capturedInput?.userInput?.includes('Cliche Alarm:'), 'service input should include the cliche alarm anchor');
     assert(capturedInput?.userInput?.includes('Obvious stale path to avoid: a formal demand with no personal cost or surprising consequence.'), 'debt/payment continuation should avoid the obvious formal-demand scene');
     assert(capturedInput?.userInput?.includes('Freshness rule: turn the scene through Forbidden Love'), 'cliche alarm should tie freshness to a concrete unresolved story thread');
+    assert((capturedInput?.userInput?.length ?? 0) <= 900, 'hidden continuation anchors should stay under the compactness budget');
   });
 
   console.log('Story Lab real-engine mapping tests passed');
