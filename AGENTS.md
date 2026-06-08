@@ -1,12 +1,28 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-06-07 07:13 EDT
+Last updated: 2026-06-08 09:45 EDT
 
-This file is read automatically by AI coding agents. It is the repo-level operating guide for the current recovery effort.
+This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous overnight sessions.
 
-## Current Recovery Direction
+## Required Start Order
 
-The active direction is documented in `PR70_RECOVERY_PLAN.md`.
+Before planning, editing, or claiming readiness:
+
+1. Run `git status --short --branch` and treat the live worktree as authoritative.
+2. Read `STORY_LAB_APP_AUDIT.md` before claiming app health, platform readiness, or auth/storage/profile status.
+3. For long-running autonomous work, read `OVERNIGHT_MODE.md` before selecting the next task.
+4. Keep `OVERNIGHT_HANDOFF.md` current after each coherent autonomous slice.
+5. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas, story-quality experiments, and Weird Lab candidates.
+6. Read the execution plan named below that matches the files or behavior being changed.
+7. Run `scripts/recovery/check-vercel-function-count.sh` before adding, retiring, consolidating, or documenting deployable Vercel route files.
+
+## Current Operating Direction
+
+The current app snapshot and priority queue are documented in `STORY_LAB_APP_AUDIT.md`.
+
+The autonomous overnight operating guide is `OVERNIGHT_MODE.md`. Use it before long-running autonomous task selection, research mining, or Weird Lab work. Keep `STORY_LAB_IDEA_BOARD.md` and `OVERNIGHT_HANDOFF.md` current during those runs.
+
+`PR70_RECOVERY_PLAN.md` remains the broad PR-recovery plan. Use it before broad PR reconciliation, old-PR mining, or PR ledger work. Do not treat it as the default next task when the user asks for platform, storage, auth, profile, story-quality, or overnight-mode work.
 
 The next Story Lab real-engine execution plan is `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md`. Use it before changing Story Lab generation semantics.
 
@@ -34,7 +50,7 @@ The active Story Lab job-route scaffold plan is `STORY_LAB_JOB_ROUTES_EXEC_PLAN.
 
 The previous parallel-agent execution plan is `plan.md`. Treat it as superseded for the immediate Story Lab real-engine work; do not use it as permission to broaden this branch.
 
-Follow that plan before doing broad PR reconciliation work. The intended recovery path is:
+For broad PR reconciliation work only, follow `PR70_RECOVERY_PLAN.md`. The recovery path is:
 
 1. Create a new recovery branch from current `main`.
 2. Merge PR #70 as the story-lab baseline.
@@ -44,7 +60,7 @@ Follow that plan before doing broad PR reconciliation work. The intended recover
 
 The companion inventory is `PR_USEFUL_MATERIAL_INVENTORY.md`.
 
-Keep these files current during the recovery:
+Keep these files current during broad PR recovery:
 
 - `PR70_RECOVERY_CHANGELOG.md` - chronological work log and decisions.
 - `PR70_RECOVERY_LEDGER.md` - one row/section per PR disposition.
@@ -65,7 +81,7 @@ Keep these files current during the recovery:
 | Integration Tests | Custom `tsx` harness in root `tests/` |
 | Deployment | Vercel |
 
-Do not steer this recovery toward DigitalOcean. Existing DigitalOcean files/docs are historical unless the user explicitly asks to restore that path.
+Do not steer this work toward DigitalOcean. Existing DigitalOcean files/docs are historical unless the user explicitly asks to restore that path.
 
 ## Repository Layout
 
@@ -92,7 +108,7 @@ fairytaleswithspice/
             └── ...
 ```
 
-Important path note: older PRs may touch `api/lib/*` or `story-generator/src/api/lib/*`. For the Vercel recovery, normalize shared API code toward `api/_lib/*` unless a deliberate later architecture decision replaces it. Do not add another active story service copy.
+Important path note: older PRs may touch `api/lib/*` or `story-generator/src/api/lib/*`. For the Vercel app, normalize shared API code toward `api/_lib/*` unless a deliberate later architecture decision replaces it. Do not add another active story service copy.
 
 ## Architecture: Seam-Driven Development
 
@@ -109,7 +125,7 @@ Rules:
 { success: false, error: { code: string, message: string } }
 ```
 
-Contract locations during recovery:
+Current contract locations:
 
 | File | Purpose |
 |---|---|
@@ -120,7 +136,7 @@ When mining old PRs, treat contracts in old paths as source material, not automa
 
 ## Story Generation Priorities
 
-Protect story-generation quality during the PR #70 recovery.
+Protect story-generation quality during recovery, platform work, and experiments.
 
 Preserve or deliberately replace:
 
@@ -137,7 +153,7 @@ For any PR that is closed or only partially ported, record story-generation mate
 
 ## Vercel Rules
 
-Vercel is the deployment target for this recovery.
+Vercel is the deployment target for this app.
 
 1. Keep `vercel.json` coherent with root `api/` functions and the Angular build output.
 2. Prefer `api/_lib` for shared API services and types so helper files do not become separate Vercel functions.
@@ -168,7 +184,7 @@ Story Lab job routes are currently process-local and explicitly non-durable. The
 
 ## Audio Scope
 
-Audio is deferred for this recovery.
+Audio is deferred for this app.
 
 Some legacy audio files/routes may still exist in the repo or old PRs. Do not expand, wire up, or prioritize audio unless explicitly asked. When closing audio PRs, mine story-generation-relevant ideas first:
 
@@ -196,22 +212,32 @@ Mock mode is valuable. Services should be testable without external credentials 
 
 ```bash
 npm run install:all
+scripts/recovery/check-vercel-function-count.sh
+scripts/recovery/preflight.sh --quick --skip-status
+npm run test:all
 npm run build
 npm run test:story
 cd story-generator && npm test
 ```
 
-Some tests are historically stale or environment-dependent. If a check cannot run, document the exact command and failure reason in the recovery changelog or PR ledger.
+Some tests are historically stale or environment-dependent. If a check cannot run, document the exact command and failure reason in `OVERNIGHT_HANDOFF.md`, the active execution plan, the recovery changelog, or the PR ledger depending on the workstream.
 
 ## Working Rules For Agents
 
-1. Start with `PR70_RECOVERY_PLAN.md` before broad PR work.
-2. Keep `PR70_RECOVERY_CHANGELOG.md` current as work proceeds.
-3. Keep `LESSONS_LEARNED.md` current when a recurring failure mode or correction is discovered.
-4. Do not close a PR until accepted and not-taken material is recorded.
-5. Do not silently discard story-generation ideas from stale or audio-heavy PRs.
-6. Resolve path drift intentionally: `api/_lib` is the current Vercel recovery target.
-7. Do not reintroduce DigitalOcean as the active deployment target.
-8. Do not reintroduce active audio scope unless the user asks.
-9. Prefer small, attributed ports after PR #70 instead of large mixed merges.
-10. Run a self-review after #70, after every three PR dispositions, after every story-generation port, and before the final recovery PR.
+1. Start with live repo state, `STORY_LAB_APP_AUDIT.md`, and the matching execution plan for the behavior being changed.
+2. For autonomous sessions, follow `OVERNIGHT_MODE.md` and update `OVERNIGHT_HANDOFF.md` after each coherent slice.
+3. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas and bounded experiments; do not leave useful product ideas only in chat.
+4. Keep `LESSONS_LEARNED.md` current when a recurring failure mode or correction is discovered.
+5. Resolve path drift intentionally: `api/_lib` is the current Vercel shared-code target.
+6. Do not reintroduce DigitalOcean as the active deployment target.
+7. Do not reintroduce active audio scope unless the user asks.
+8. Do not claim auth, cloud save, user profiles, durable jobs, or live AI verification unless the current implementation and verification prove those claims.
+9. Prefer small, attributed ports and test-backed slices instead of large mixed merges.
+10. Run self-review before committing, before handoff, after every three PR dispositions, and after every story-generation port.
+
+For broad PR recovery only:
+
+- Start with `PR70_RECOVERY_PLAN.md`.
+- Keep `PR70_RECOVERY_CHANGELOG.md` current as work proceeds.
+- Do not close a PR until accepted and not-taken material is recorded.
+- Do not silently discard story-generation ideas from stale or audio-heavy PRs.
