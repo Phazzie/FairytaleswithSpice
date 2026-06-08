@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-06-08 09:45 EDT
+Last updated: 2026-06-08 13:30 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous overnight sessions.
 
@@ -21,6 +21,8 @@ Before planning, editing, or claiming readiness:
 The current app snapshot and priority queue are documented in `STORY_LAB_APP_AUDIT.md`.
 
 The autonomous overnight operating guide is `OVERNIGHT_MODE.md`. Use it before long-running autonomous task selection, research mining, or Weird Lab work. Keep `STORY_LAB_IDEA_BOARD.md` and `OVERNIGHT_HANDOFF.md` current during those runs.
+
+When the user authorizes overnight/autonomous work, do not stop after one completed task. Finish a coherent slice, verify it, commit it when appropriate, update `OVERNIGHT_HANDOFF.md`, then select the next task using `OVERNIGHT_MODE.md`. Ask the user only for blockers that require credentials, provider/account setup, destructive actions, unsafe deploy/merge decisions, or product choices that cannot be inferred from the repo.
 
 `PR70_RECOVERY_PLAN.md` remains the broad PR-recovery plan. Use it before broad PR reconciliation, old-PR mining, or PR ledger work. Do not treat it as the default next task when the user asks for platform, storage, auth, profile, story-quality, or overnight-mode work.
 
@@ -177,6 +179,9 @@ Current Vercel-facing route families include:
 | `/api/story-lab/jobs` | Create a non-durable Story Lab job scaffold |
 | `/api/story-lab/jobs/:jobId` | Read a non-durable Story Lab job snapshot |
 | `/api/story-lab/jobs/:jobId/events` | Replay non-durable Story Lab job snapshots as SSE |
+| `/api/story-lab/account` | Consolidated account/profile/cloud-project route target used by Vercel rewrites |
+
+Story Lab account/profile/cloud-library calls should stay consolidated through `api/story-lab/account.ts` and `vercel.json` rewrites unless a route-budget plan explicitly changes that. The current account route is auth/storage gated; it is not proof that live sign-in or durable cloud sync is configured.
 
 SSE must remain SSE. Do not convert `/api/story/stream` to WebSocket or polling unless explicitly requested.
 
@@ -207,6 +212,9 @@ Record mined ideas in `NOT_TAKEN_FEATURE_LEDGER.md`.
 | `XAI_API_KEY` | Required for real story generation | xAI/Grok API key |
 | `FRONTEND_URL` or allowed-origin config | Production dependent | CORS origin control |
 | `NODE_ENV` | Optional | Environment mode |
+| `STORY_LAB_AUTH_PROVIDER` | Optional until live auth wiring | Explicit auth provider selector; blank fails closed |
+| `DATABASE_URL` | Required only for real cloud database operations | Story Lab profile/project/job storage when Postgres/Neon mode is selected |
+| `STORY_LAB_JOB_STORE` | Optional | Future durable job-store selector; default remains non-durable memory |
 
 Mock mode is valuable. Services should be testable without external credentials where practical.
 

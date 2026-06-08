@@ -3203,3 +3203,43 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then either render the source map in Continuity Preview or continue with another small story-quality/control experiment.
+
+### 2026-06-08 AGENTS Overnight Enforcement Audit
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the AGENTS overnight enforcement audit commit.
+
+User request:
+
+- Audit `AGENTS.md` and make sure future agents will follow the autonomous overnight workflow.
+
+Work completed:
+
+- Read `AGENTS.md`, `OVERNIGHT_MODE.md`, `.agent/PLANS.md`, current branch status, recent commits, and current audit references.
+- Confirmed `AGENTS.md` already points agents to `OVERNIGHT_MODE.md`, `OVERNIGHT_HANDOFF.md`, `STORY_LAB_APP_AUDIT.md`, and `STORY_LAB_IDEA_BOARD.md`.
+- Made the autonomous behavior explicit at repo level: after an authorized overnight/autonomous run, agents should verify, commit, update the handoff, and select the next task instead of stopping after one slice.
+- Updated the API route table to include the consolidated Story Lab account/profile/cloud-project route target.
+- Updated the environment-variable table with the current auth/database/job-store selectors.
+
+Files changed:
+
+- `AGENTS.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- `git diff --check` -> passed.
+
+Known issues:
+
+- This is instruction/docs enforcement, not an app behavior change.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this docs slice, then continue with the next route-free product or quality improvement.
