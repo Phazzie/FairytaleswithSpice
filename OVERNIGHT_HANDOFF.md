@@ -4225,3 +4225,60 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue route-free auth/cloud readiness or pick the next bounded story-output experiment.
+
+### 2026-06-08 16:06 EDT Library Memory Count Rows
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the library memory count rows commit.
+
+User request:
+
+- Keep working autonomously on storage/account readiness and practical Story Memory UI behavior.
+
+Plan and critique:
+
+- Plan: expose accepted-memory count metadata in saved project rows now that cloud list items carry `acceptedMemoryCardCount`.
+- Hostile critique applied: do not expose accepted-card detail text in list rows, do not add routes, and do not imply cloud sync is live. Show count-only metadata for cloud and local saved projects.
+
+Work completed:
+
+- Added Angular spec coverage proving cloud and local saved-project rows show accepted memory counts.
+- Added `data-testid` markers for cloud and local project metadata rows.
+- Cloud rows now show `N memory card(s)` when `acceptedMemoryCardCount` is nonzero.
+- Local rows now show `N memory card(s)` when saved project JSON includes accepted cards.
+- The spec also checks that private accepted-card detail text does not appear in row metadata.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because `cloud-project-meta` and `local-project-meta` did not exist and the counts were absent.
+- GREEN: same Angular browser command -> `TOTAL: 65 SUCCESS`; known ChromeHeadless SIGKILL cleanup warning appeared after results.
+- `npm run build` -> passed; initial browser total is `482.33 kB`, Proving Grounds remains lazy, and no budget warnings were emitted.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url` -> no open PRs.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Accepted memory cards still live inside saved project JSON, not a separate durable memory table.
+- Live prose/provider proof still requires `XAI_API_KEY`.
+- Live cloud sync still requires real auth, database configuration, schema application, and browser sign-in.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue route-free auth/cloud readiness or choose the next bounded story-output experiment.

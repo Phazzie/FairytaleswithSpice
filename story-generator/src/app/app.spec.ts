@@ -610,6 +610,45 @@ describe('App', () => {
     expect(fixture.nativeElement.textContent).toContain('Cloud Chapel');
   });
 
+  it('renders accepted memory counts in cloud and local library rows without card text', () => {
+    const cloudList: CloudStoryProjectList = {
+      ownerUserId: 'user-owner',
+      storageMode: 'cloud_postgres',
+      projects: [{
+        projectId: 'project-cloud',
+        storyId: 'story-cloud',
+        title: 'Cloud Chapel',
+        synopsis: 'A cloud-synced oath.',
+        chapterCount: 2,
+        acceptedMemoryCardCount: 2,
+        createdAt: '2026-06-08T08:37:00.000Z',
+        updatedAt: '2026-06-08T08:38:00.000Z'
+      }]
+    };
+    storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
+    component.refreshCloudLibrary();
+
+    seedWorkbenchForContinuation();
+    component.acceptedMemoryCards.set([{
+      id: 'accepted-card-private',
+      label: 'Promise',
+      title: 'Moonlit Oath',
+      detail: 'Private accepted memory detail should not appear in project list metadata.',
+      triggerLabel: 'Trigger: oath',
+      acceptedAt: '2026-06-08T08:39:00.000Z'
+    }]);
+    component.saveActiveProject();
+    fixture.detectChanges();
+
+    const cloudMeta = fixture.nativeElement.querySelector('[data-testid="cloud-project-meta"]') as HTMLElement | null;
+    const localMeta = fixture.nativeElement.querySelector('[data-testid="local-project-meta"]') as HTMLElement | null;
+
+    expect(cloudMeta?.textContent).toContain('2 memory cards');
+    expect(localMeta?.textContent).toContain('1 memory card');
+    expect(cloudMeta?.textContent).not.toContain('Private accepted memory detail');
+    expect(localMeta?.textContent).not.toContain('Private accepted memory detail');
+  });
+
   it('saves the active workbench project to cloud without disabling local save', () => {
     const payload = seedWorkbenchForContinuation();
     const receipt: CloudStoryProjectSaveReceipt = {

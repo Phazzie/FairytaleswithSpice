@@ -31,6 +31,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Cloud save is now gated on a connected cloud state, so unavailable account state does not fire a doomed save request.
   - Cloud load and delete are now gated on the same connected cloud state, so stale visible cloud projects cannot fire route calls while account sync is unavailable.
   - The panel shows honest unavailable/synced/failed/local-only states and calls the account service for refresh, save, load, and delete.
+  - Cloud and local saved-project rows now show accepted memory-card counts when present, using count-only metadata rather than exposing full private card text.
   - Local browser saves remain visible as "Saved here" and are not replaced by cloud state.
   - `npm run build` passed after the new CSS was trimmed below the hard component budget.
 - Continuity Preview UI slice evidence:
@@ -204,6 +205,7 @@ What users can meaningfully experience now:
 - See job progress/status while the current process is alive.
 - Use local browser save/load behavior for recent projects.
 - See a Cloud account panel that clearly says cloud sync is unavailable until account storage is configured.
+- See accepted memory-card counts on saved cloud/local library rows when those projects have accepted memory.
 - Use narrative controls such as heat contract, Director's Room notes, villain pressure, and narrative dials.
 - Use Proving Grounds evaluation to see a deterministic advisory quality scan when the evaluation response includes `heuristicReport`.
 

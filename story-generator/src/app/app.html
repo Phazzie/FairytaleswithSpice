@@ -612,7 +612,12 @@
           <li class="saved-item" *ngFor="let project of cloudProjects(); trackBy: trackCloudProject">
             <button type="button" class="saved-load" (click)="loadCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy() || !canUseCloudLibrary()">
               <span class="saved-title">{{ project.title }}</span>
-              <span class="saved-meta">{{ project.chapterCount }} chapter{{ project.chapterCount === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}</span>
+              <span class="saved-meta" data-testid="cloud-project-meta">
+                {{ project.chapterCount }} chapter{{ project.chapterCount === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}
+                <ng-container *ngIf="project.acceptedMemoryCardCount">
+                  · {{ project.acceptedMemoryCardCount }} memory card{{ project.acceptedMemoryCardCount === 1 ? '' : 's' }}
+                </ng-container>
+              </span>
             </button>
             <button type="button" class="saved-delete" (click)="deleteCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy() || !canUseCloudLibrary()">
               Delete
@@ -636,7 +641,12 @@
               (click)="loadSavedProject(project.id)"
             >
               <span class="saved-title">{{ project.title }}</span>
-              <span class="saved-meta">{{ project.chapters.length }} chapter{{ project.chapters.length === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}</span>
+              <span class="saved-meta" data-testid="local-project-meta">
+                {{ project.chapters.length }} chapter{{ project.chapters.length === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}
+                <ng-container *ngIf="project.acceptedMemoryCards?.length">
+                  · {{ project.acceptedMemoryCards?.length }} memory card{{ project.acceptedMemoryCards?.length === 1 ? '' : 's' }}
+                </ng-container>
+              </span>
             </button>
             <button
               type="button"
