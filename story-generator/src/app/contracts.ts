@@ -73,12 +73,15 @@ export interface CharacterProfile {
   spiceCompatibilities: SpicyLevel[];
 }
 
+export type StoryMemoryLifetime = 'scene' | 'chapter' | 'series';
+
 export interface PlotThread {
   id: string;
   label: string;
   status: 'active' | 'escalating' | 'resolved' | 'dormant';
   description: string;
   foreshadowedDevices: string[];
+  lifetime?: StoryMemoryLifetime;
 }
 
 export interface LoreArtifact {
@@ -87,6 +90,7 @@ export interface LoreArtifact {
   significance: string;
   introducedInChapter?: number;
   resolvedInChapter?: number;
+  lifetime?: StoryMemoryLifetime;
 }
 
 export interface StoryBeat {

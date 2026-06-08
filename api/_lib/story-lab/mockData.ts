@@ -97,7 +97,8 @@ function createBaseThread(storyId: string, batchSize: ChapterBatchSize): PlotThr
     label: 'Forbidden diplomacy pact',
     status: batchSize > 1 ? 'escalating' : 'active',
     description: 'A secret alliance between rival courts threatens to collapse.',
-    foreshadowedDevices: ['Crimson signet ring', 'Broken oath scroll']
+    foreshadowedDevices: ['Crimson signet ring', 'Broken oath scroll'],
+    lifetime: 'series'
   };
 }
 
@@ -106,7 +107,8 @@ function createSignetArtifact(storyId: string): LoreArtifact {
     id: `${storyId}-artifact-ring`,
     name: 'Crimson Signet Ring',
     significance: 'Unlocks the sealed crypt beneath the court.',
-    introducedInChapter: 1
+    introducedInChapter: 1,
+    lifetime: 'series'
   };
 }
 
@@ -115,7 +117,8 @@ function createOathScroll(storyId: string, chapterNumber: number): LoreArtifact 
     id: `${storyId}-artifact-oath-scroll`,
     name: 'Broken Oath Scroll',
     significance: 'Records the pact that can bind or free both courts.',
-    introducedInChapter: chapterNumber
+    introducedInChapter: chapterNumber,
+    lifetime: 'chapter'
   };
 }
 

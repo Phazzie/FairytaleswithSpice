@@ -1090,7 +1090,8 @@ function buildInitialThreads(storyId: string, input: LabGenerationSeam['input'])
         label: theme.label,
         status: 'active' as const,
         description: theme.description,
-        foreshadowedDevices: []
+        foreshadowedDevices: [],
+        lifetime: 'series' as const
       }))
     : [];
 
@@ -1099,7 +1100,8 @@ function buildInitialThreads(storyId: string, input: LabGenerationSeam['input'])
     label: 'Central romance',
     status: 'active',
     description: input.logline,
-    foreshadowedDevices: []
+    foreshadowedDevices: [],
+    lifetime: 'series'
   }];
 }
 
@@ -1108,7 +1110,8 @@ function buildWorldArtifact(storyId: string, worldDetails: string): LoreArtifact
     id: `${storyId}-world-details`,
     name: deriveWorldArtifactName(worldDetails),
     significance: worldDetails,
-    introducedInChapter: 1
+    introducedInChapter: 1,
+    lifetime: 'series'
   };
 }
 

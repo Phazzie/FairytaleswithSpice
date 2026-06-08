@@ -344,6 +344,14 @@ Context Source Map progress:
 - The first guarded cases explain brief-matched activation for `Blood Oath`, `Glass Key`, `Mira and Coral Scribe`, and the `Coral Scribe` ledger warning.
 - This is not visible in the Angular UI yet; it is the route-free metadata seam needed for the next Continuity Preview trust layer.
 
+Variable Lifetime Labels progress:
+
+- Contract/test seam completed on 2026-06-08.
+- `PlotThread` and `LoreArtifact` now accept optional `scene`, `chapter`, or `series` lifetime metadata.
+- Generated Story Lab theme threads, fallback romance threads, and world artifacts default to `series`.
+- Mock base story threads and the `Crimson Signet Ring` artifact default to `series`; mock chapter-foreshadowed `Broken Oath Scroll` artifacts default to `chapter`.
+- Continuity warnings still use the existing plain-string contract; migrating them to structured lifetime-aware objects is a separate compatibility slice.
+
 ### Research: User Library And Profile Patterns
 
 Research how creative apps present account identity, project libraries, saved drafts, and profile/taste preferences.

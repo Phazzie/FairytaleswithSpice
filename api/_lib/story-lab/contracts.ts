@@ -13,6 +13,7 @@ export type {
   StoryBlueprint,
   RelationshipEdge,
   CharacterProfile,
+  StoryMemoryLifetime,
   PlotThread,
   LoreArtifact,
   StoryBeat,

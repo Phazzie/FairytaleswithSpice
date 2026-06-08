@@ -3296,3 +3296,58 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with another small story-memory/product improvement or a route-free cloud/account hardening task.
+
+### 2026-06-08 Story Memory Lifetime Labels
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the story memory lifetime labels commit.
+
+User request:
+
+- Continue autonomous story-output and continuity improvements mined from adjacent writing-tool research.
+
+Work completed:
+
+- Added a `StoryMemoryLifetime` contract with `scene`, `chapter`, and `series` values.
+- Added optional lifetime metadata to `PlotThread` and `LoreArtifact`.
+- Seeded generated Story Lab theme threads, fallback romance threads, and world artifacts with `series` lifetime.
+- Seeded mock base story threads and the `Crimson Signet Ring` artifact with `series` lifetime.
+- Seeded mock chapter-foreshadowed `Broken Oath Scroll` artifacts with `chapter` lifetime.
+- Added focused state and real-engine coverage so mock and generated story memory agree on the default lifetime labels.
+- Updated the app audit and idea board with the compatibility boundary.
+
+Files changed:
+
+- `story-generator/src/app/contracts.ts`
+- `api/_lib/story-lab/contracts.ts`
+- `api/_lib/story-lab/mockData.ts`
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-lab-state.test.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-lab-state` -> failed because genesis story threads did not yet carry `series` lifetime.
+- GREEN: `npm run test:story-lab-state` -> passed.
+- `npm run test:story-lab-real-engine` -> passed after adding generated-payload lifetime assertions.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Continuity warnings still use the existing plain-string contract; structured warning lifetimes should be a separate compatibility slice.
+- The UI does not render lifetime labels yet.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Run full verification, commit this slice, then continue with either structured warning lifetimes or a visible lifetime label in Story Memory.

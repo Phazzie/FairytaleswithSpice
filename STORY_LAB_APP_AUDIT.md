@@ -166,6 +166,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - The auth seam now has an env-selectable Clerk-shaped adapter scaffold, but live Clerk verification/sign-in is still not wired.
 - Classic genesis mock generation now has enforced word-count tolerance instead of warning-only length checks.
 - Real continuations now receive hidden, deterministic continuity-debt, ending-pressure, and stale-path anchors before generation.
+- Story memory contracts now support optional lifetime labels on plot threads and lore artifacts, so future continuation logic can distinguish scene, chapter, and series facts without changing the visible model prompt yet.
 - Story evaluation responses now carry a deterministic advisory quality report with seven explainable craft dimensions.
 - Server/client logging and privacy scaffolding have already received meaningful work in prior phases.
 
