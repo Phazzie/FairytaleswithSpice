@@ -77,7 +77,7 @@ const CHAPTER_ENDING_PRESSURES: readonly ChapterEndingPressure[] = [
     id: 'secret_exposed',
     label: 'Secret exposed',
     candidateLabel: 'secret exposed',
-    instruction: 'end by exposing a hidden bargain, motive, or identity that changes the next chapter.'
+    instruction: 'expose a secret that changes the next chapter.'
   }
 ];
 const SCENE_PRESSURE_VARIANTS: Record<ScenePressureLabel, readonly string[]> = {
@@ -403,6 +403,11 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot): string |
     lines.push(`- ${formatThreadDebtLabel(thread)}: ${compactPromptLine(thread.label)}${formatCourtroomDetail(thread.description)}`);
   }
 
+  const relationshipPressure = buildRelationshipPressureLine(storyState);
+  if (relationshipPressure) {
+    lines.push(relationshipPressure);
+  }
+
   for (const artifact of storyState.artifacts.filter(artifact => !artifact.resolvedInChapter).slice(0, CONTINUITY_COURTROOM_MAX_ARTIFACTS)) {
     lines.push(`- World clue: ${compactPromptLine(artifact.name)}${formatCourtroomDetail(artifact.significance)}`);
   }
@@ -433,6 +438,19 @@ function formatThreadDebtLabel(thread: PlotThread): string {
     return 'Quiet promise';
   }
   return 'Open promise';
+}
+
+function buildRelationshipPressureLine(storyState: StoryStateSnapshot): string | undefined {
+  for (const character of storyState.characters) {
+    for (const relationship of character.relationships) {
+      const target = storyState.characters.find(candidate => candidate.id === relationship.characterId);
+      if (target) {
+        return `- Relationship pressure: ${compactPromptLine(character.displayName)} and ${compactPromptLine(target.displayName)}.`;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 function formatCourtroomDetail(value: string): string {
@@ -753,32 +771,43 @@ function buildStateSnapshot(
 
 function buildInitialCharacters(storyId: string, input: LabGenerationSeam['input']): CharacterProfile[] {
   const protagonistName = input.protagonistName?.trim() || `${capitalize(input.creature)} protagonist`;
+  const antagonistName = input.antagonistName?.trim();
+  const protagonistId = `${storyId}-protagonist`;
+  const antagonistId = `${storyId}-antagonist`;
   const characters: CharacterProfile[] = [
     {
-      id: `${storyId}-protagonist`,
+      id: protagonistId,
       displayName: protagonistName,
       archetype: 'protagonist',
       summary: `${protagonistName} anchors the ${input.creature} story promised by the blueprint.`,
       currentGoal: input.logline,
       internalConflict: 'Desire and self-protection pull in opposite directions.',
-      externalConflict: input.antagonistName?.trim() || 'The supernatural world resists the romance.',
+      externalConflict: antagonistName || 'The supernatural world resists the romance.',
       secrets: [],
-      relationships: [],
+      relationships: antagonistName ? [{
+        characterId: antagonistId,
+        relationship: 'rival',
+        notes: `${antagonistName} pressures ${protagonistName} into a costly choice.`
+      }] : [],
       spiceCompatibilities: [input.spicyLevel]
     }
   ];
 
-  if (input.antagonistName?.trim()) {
+  if (antagonistName) {
     characters.push({
-      id: `${storyId}-antagonist`,
-      displayName: input.antagonistName.trim(),
+      id: antagonistId,
+      displayName: antagonistName,
       archetype: 'antagonist',
       summary: 'An opposing force named in the Story Lab blueprint.',
       currentGoal: 'Pressure the protagonist into a costly choice.',
       internalConflict: 'Their own desire complicates the threat they represent.',
       externalConflict: input.logline,
       secrets: [],
-      relationships: [],
+      relationships: [{
+        characterId: protagonistId,
+        relationship: 'rival',
+        notes: `${protagonistName} can expose or refuse the costly choice.`
+      }],
       spiceCompatibilities: [input.spicyLevel]
     });
   }

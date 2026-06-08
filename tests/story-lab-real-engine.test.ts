@@ -204,6 +204,15 @@ assert(payload.batch.chapters.length === 1, 'real chapters should be mapped into
 assert(payload.batch.chapters[0].rawContent?.includes('[Mira'), 'raw speaker-tag content should survive');
 assert(payload.batch.suggestedNextPrompts.some(prompt => prompt.includes('Reveal what waits')), 'next chapter hint should become a prompt');
 assert(payload.state.characters.some(character => character.displayName === 'Mira'), 'protagonist should seed continuity state');
+assert(
+  payload.state.characters.some(character =>
+    character.displayName === 'Mira'
+    && character.relationships.some(relationship =>
+      relationship.characterId === 'story-test-antagonist'
+      && relationship.relationship === 'rival'
+      && relationship.notes.includes('costly choice'))),
+  'protagonist should seed a typed relationship edge to the antagonist'
+);
 assert(payload.state.threads.some(thread => thread.label === 'Court Intrigue'), 'theme seeds should become continuity threads');
 assert(payload.telemetry.engine === 'grok', 'real StoryService mapping should report grok telemetry');
 assert(payload.telemetry.totalLatencyMs === 2000, 'real StoryService latency metadata should reach Story Lab telemetry');
@@ -487,6 +496,7 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(capturedInput?.userInput?.includes('Continuity Courtroom:'), 'service input should include the continuity courtroom anchor');
     assert(capturedInput?.userInput?.includes('Pressure rising: Forbidden Love'), 'escalating threads should be named for payoff');
     assert(capturedInput?.userInput?.includes('Open promise: Court Intrigue'), 'active threads should be named for payoff');
+    assert(capturedInput?.userInput?.includes('Relationship pressure: Mira and Lord Brine'), 'relationship pressure should be carried into the continuity courtroom anchor');
     assert(capturedInput?.userInput?.includes('World clue: Vow-Binding Songs'), 'unresolved artifacts should be named for payoff');
     assert(capturedInput?.userInput?.includes('Continuity note: Resolve the vow-binding song before changing courts.'), 'continuity warnings should be carried into the next chapter request');
     assert(!capturedInput?.userInput?.includes('Settled Debt'), 'resolved threads should not be repeated as open courtroom debts');

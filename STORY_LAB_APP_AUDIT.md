@@ -43,6 +43,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Continuity Courtroom slice evidence:
   - Real Story Lab continuations now translate `StoryStateSnapshot` into a compact hidden continuity anchor before calling `StoryService.continueChapter`.
   - The anchor names story debts with prose-facing labels such as `Pressure rising`, `Open promise`, `World clue`, and `Continuity note`.
+  - Initial protagonist/antagonist state now seeds a typed relationship edge, and continuation guidance folds one compact `Relationship pressure` line into the existing courtroom anchor.
   - Resolved threads and artifacts are filtered out so the next chapter is not dragged back to already-paid story debts.
   - `tests/story-lab-real-engine.test.ts` captures the continuation service input and proves the original brief plus the `Continuity Courtroom` anchor reach the real-engine seam.
 - Chapter Ending Stress Test slice evidence:

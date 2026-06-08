@@ -1998,6 +1998,60 @@ Next recommended task:
 
 - Commit this slice, then continue either auth sign-in wiring or the next no-credentials story-output/evaluation experiment.
 
+### 2026-06-08 Relationship Web Lite Continuation Slice
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the relationship web continuation commit.
+
+User request:
+
+- Keep working autonomously and include bounded creative/story-output experiments, especially ideas mined from adjacent story tools.
+
+Work completed:
+
+- Started the `Relationship Web Lite` idea from `STORY_LAB_IDEA_BOARD.md`.
+- Initial Story Lab protagonist and antagonist records now include typed `rival` relationship edges instead of empty relationship arrays.
+- Real Story Lab continuation guidance now folds one compact `Relationship pressure` line into the existing `Continuity Courtroom` hidden anchor.
+- The slice reuses the existing three hidden anchor blocks and does not add another route, provider call, score dimension, or UI surface.
+- Shortened the `Secret exposed` ending-pressure instruction so the full continuation request stays under the existing compactness guard after the relationship line is added.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-real-engine.test.ts` -> failed because protagonist state did not seed a typed relationship edge to the antagonist.
+- GREEN attempt: `npx tsx tests/story-lab-real-engine.test.ts` -> failed because the relationship-pressure line pushed the full continuation request over the 900-character compactness guard.
+- GREEN: `npx tsx tests/story-lab-real-engine.test.ts` -> passed after shortening the added guidance and the older `Secret exposed` instruction.
+- `npm run test:story-lab-real-engine` -> passed.
+- `npm run test:story-quality` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is not an editable relationship graph or visible relationship UI yet.
+- The relationship seed is currently protagonist/antagonist only; richer relationship extraction still needs future work.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with either a visible continuity/relationship preview improvement or a bounded auth/cloud-readiness slice.
+
 ### 2026-06-08 11:50 EDT
 
 Branch:

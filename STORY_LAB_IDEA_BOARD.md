@@ -234,6 +234,13 @@ Continuity Preview progress:
 - The sidebar Story Memory section now lists prose-labeled state items such as `Pressure rising`, `World clue`, and `Continuity note` from the current client-side `StoryStateSnapshot`.
 - The current UI preview is not editable yet and does not call the backend preview seam; it is the first visible trust layer using already-loaded state.
 
+Relationship Web Lite progress:
+
+- Backend/test seam started on 2026-06-08.
+- Initial Story Lab protagonist and antagonist records now include typed `rival` relationship edges instead of leaving the relationship arrays empty.
+- Real continuation guidance folds one compact `Relationship pressure` line into the existing `Continuity Courtroom` anchor.
+- This is not an editable relationship graph yet; it is the first state/guidance slice for relationship-aware continuation.
+
 ### Research: User Library And Profile Patterns
 
 Research how creative apps present account identity, project libraries, saved drafts, and profile/taste preferences.
