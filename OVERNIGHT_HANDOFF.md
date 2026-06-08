@@ -1361,3 +1361,52 @@ Known issues:
 Next recommended task:
 
 - If continuing without credentials, either tighten CSS budget headroom before adding more UI or build the next small story-quality eval from `STORY_QUALITY_EVALS_PLAN.md` source material.
+
+### 2026-06-08 10:03 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the CSS budget headroom commit.
+
+User request:
+
+- Keep working autonomously and keep the UI safe to extend.
+
+Work completed:
+
+- Recovered Story Lab component CSS budget headroom after the Continuity Preview UI slice.
+- Moved repeated card background, focus border, and serif font declarations into existing CSS variables.
+- Consolidated repeated flex-column and header rules.
+- Removed one redundant `spice-card` color rule and reused the card background variable for the empty reader panel.
+- Reduced built `app.css` from 14.95 KB to 14.60 KB, giving about 400 bytes of hard-budget room below the 15 KB failure threshold.
+
+Files changed:
+
+- `story-generator/src/app/app.css`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- `npm run build` -> passed; CSS warning now reports 14.60 KB.
+- `STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui` -> passed in mock mode.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+- `git diff --check` -> passed.
+
+Checks skipped:
+
+- `npm run test:all`; this was CSS-only cleanup after the previous UI slice already passed the root suite.
+
+Known issues:
+
+- CSS still exceeds the 12 KB warning budget, but it is no longer sitting on the 15 KB hard failure line.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without credentials, build the next focused story-quality eval from `STORY_QUALITY_EVALS_PLAN.md` source material, or return to auth/storage provider work when provider/database details are available.
