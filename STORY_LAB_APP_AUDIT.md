@@ -26,6 +26,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - `story.service.spec.ts` now type-checks profile get/update and cloud project list/save/load/delete client calls.
 - Visible cloud-library UI slice evidence:
   - The Angular app now has a Cloud account panel above the local browser save list.
+  - The panel now separates account connection state from cloud sync state with a visible `Account Not connected` row until cloud sync actually succeeds.
   - The panel shows honest unavailable/synced/failed/local-only states and calls the account service for refresh, save, load, and delete.
   - Local browser saves remain visible as "Saved here" and are not replaced by cloud state.
   - `npm run build` passed after the new CSS was trimmed below the hard component budget.

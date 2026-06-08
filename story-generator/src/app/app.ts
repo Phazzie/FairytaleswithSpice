@@ -582,6 +582,17 @@ export class App implements OnDestroy {
 
     return 'Account sync is not connected yet.';
   });
+  readonly cloudAccountStatusLabel = computed(() => {
+    switch (this.cloudLibrarySyncState().mode) {
+      case 'cloud_synced':
+        return 'Connected';
+      case 'sync_failed':
+        return 'Needs attention';
+      case 'local_only':
+      case 'cloud_unavailable':
+        return 'Not connected';
+    }
+  });
   readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
     const chapters = this.workbench().chapterHistory;
     if (!chapters.length) {

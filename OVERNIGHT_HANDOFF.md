@@ -2168,3 +2168,53 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then integrate the job route behind auth or switch to browser-visible sign-in affordances.
+
+### 2026-06-08 12:55 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud account status UI commit.
+
+User request:
+
+- Keep working autonomously and improve user-visible account/cloud progress without faking unfinished sign-in.
+
+Work completed:
+
+- Added a visible account connection row to the Cloud account panel.
+- The panel now distinguishes cloud sync status (`Cloud unavailable`, `Cloud synced`, etc.) from account status (`Account Not connected`, `Connected`, or `Needs attention`).
+- The row uses existing muted styling instead of new CSS so this slice does not add app CSS budget pressure.
+- Extended the Angular app spec so unavailable cloud state must still show local browser saves and the account connection row.
+- Updated the app audit and auth/profile/cloud-library plan.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` -> failed because the cloud panel did not render `Account Not connected`.
+- GREEN: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` -> passed with `52 SUCCESS`.
+- `npm run build` -> passed. Existing warnings remained: initial bundle budget `544.86 kB` and `app.css` `14.60 kB`; the custom CSS was removed so this slice returned the app CSS warning to the prior level.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is not live sign-in. It only makes account state visible.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with authenticated job-route integration, Clerk verification/sign-in wiring, or another no-credentials story-output experiment.
