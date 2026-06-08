@@ -521,6 +521,41 @@
   font-size: 1.1rem;
   line-height: 1.6;
 }
+.heuristic-report {
+  margin-bottom: 2rem;
+}
+.heuristic-header,
+.heuristic-dimension-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.heuristic-header {
+  align-items: start;
+  margin-bottom: 1rem;
+}
+.heuristic-header h4 {
+  margin: 0 0 0.35rem;
+  color: #c084fc;
+}
+.heuristic-header p,
+.heuristic-dimension p {
+  margin: 0;
+}
+.heuristic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+}
+.heuristic-dimension-header {
+  align-items: center;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+.heuristic-dimension ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1rem;
+}
 .evaluation-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

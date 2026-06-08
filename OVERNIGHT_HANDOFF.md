@@ -1457,7 +1457,7 @@ Checks run:
 Known issues:
 
 - This is a deterministic advisory report, not a real AI judge of story quality.
-- The current UI does not display the report yet.
+- This commit did not display the report yet; the following 10:25 EDT slice adds the Proving Grounds panel.
 - Live Grok/provider proof still requires `XAI_API_KEY`.
 - The cloud/auth/storage known issues from previous entries still apply.
 - The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
@@ -1465,3 +1465,54 @@ Known issues:
 Next recommended task:
 
 - Add a small visible Proving Grounds quality-report panel for `heuristicReport`, or continue provider-backed auth/storage work when provider/database details are available.
+
+### 2026-06-08 10:25 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the Proving Grounds quality-report UI commit.
+
+User request:
+
+- Keep working autonomously and make useful story-quality improvements visible in the app.
+
+Work completed:
+
+- Added a compact Deterministic Quality Scan panel to Proving Grounds evaluation results.
+- The panel renders the heuristic report's advisory overall score, dimension scores, rationale, and the first two concrete signals per dimension.
+- Added a Proving Grounds component spec that seeds an evaluated story and proves the visible panel includes the score, continuity, audio-readiness, and a concrete signal.
+- Trimmed the new CSS so `npm run build` no longer reports a Proving Grounds component-style budget warning.
+
+Files changed:
+
+- `story-generator/src/app/proving-grounds/proving-grounds.html`
+- `story-generator/src/app/proving-grounds/proving-grounds.css`
+- `story-generator/src/app/proving-grounds/proving-grounds.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx -p node@20 node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless` -> failed for the new Proving Grounds spec because the deterministic panel did not exist yet; also surfaced one unrelated existing `App re-enables cloud controls after an account route error` failure.
+- GREEN: `npx -p node@20 node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include='src/app/proving-grounds/proving-grounds.spec.ts'` -> `1 SUCCESS`.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` -> passed.
+- `npm run build` -> passed; remaining warnings are the existing initial bundle warning and `app.css` warning, with no Proving Grounds CSS warning after trimming.
+- `STORY_LAB_SMOKE_SKIP_BUILD=1 npm run smoke:story-lab-ui` -> passed in mock mode.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- The quality report remains deterministic and advisory; it is not a live AI quality judge.
+- The full Angular suite still has an unrelated existing failure in `App re-enables cloud controls after an account route error` when run through Karma.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Investigate and fix the unrelated Angular cloud-controls spec failure, then continue auth/storage provider work or add a small comparator view for heuristic report scores in Proving Grounds history.

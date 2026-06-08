@@ -69,6 +69,11 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The report is deterministic and advisory: it scores continuity, cliffhanger quality, trope freshness, emotional variety, character consistency, prose quality, and audio-readiness from bounded text signals.
   - `tests/story-quality-evals.test.ts` now fails unless the report includes all seven planned dimensions, normalized 0-100 scores, and explainable signals.
   - This folds the useful dimensions from the untracked `STORY_QUALITY_EVALS_PLAN.md` into tracked code without committing the untracked planning file unchanged.
+- Visible Proving Grounds quality-report evidence:
+  - Proving Grounds now renders `heuristicReport` inside evaluated story results as a compact Deterministic Quality Scan panel.
+  - The panel shows the advisory overall score, each dimension score, rationale, and the first two explainable signals per dimension.
+  - `proving-grounds.spec.ts` seeds an evaluated result and fails unless the deterministic panel renders continuity, audio-readiness, overall score, and concrete signals.
+  - The new CSS was trimmed back under the component warning budget; `npm run build` no longer reports a Proving Grounds CSS warning.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
@@ -120,6 +125,7 @@ What users can meaningfully experience now:
 - Use local browser save/load behavior for recent projects.
 - See a Cloud account panel that clearly says cloud sync is unavailable until account storage is configured.
 - Use narrative controls such as heat contract, Director's Room notes, villain pressure, and narrative dials.
+- Use Proving Grounds evaluation to see a deterministic advisory quality scan when the evaluation response includes `heuristicReport`.
 
 What users cannot honestly rely on yet:
 

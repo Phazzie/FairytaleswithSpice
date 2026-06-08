@@ -110,6 +110,8 @@ Status:
 - `buildStoryQualityHeuristicReport` now returns a deterministic advisory report with the seven planned dimensions.
 - `/api/story-lab/evaluate` attaches the report to both mock and live evaluation responses as optional `heuristicReport`.
 - `tests/story-quality-evals.test.ts` guards the dimension count, dimension ids, score bounds, and presence of signals.
+- Proving Grounds now renders the report as a compact Deterministic Quality Scan panel after evaluation.
+- `proving-grounds.spec.ts` guards that the visible panel includes the score, continuity, audio-readiness, and concrete signals.
 
 ### Soon: Durable Job Storage
 
