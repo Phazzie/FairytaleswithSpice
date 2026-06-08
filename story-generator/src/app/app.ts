@@ -74,13 +74,33 @@ type ContinuationDirection = {
   brief: string;
 };
 
-type VillainPressureId = 'antagonist' | 'environment' | 'secret' | 'deadline' | 'inner-desire';
+type NarrativeDialId = 'villain-pressure' | 'chapter-payload' | 'pacing' | 'ending-bet';
 
-type VillainPressureOption = {
-  id: VillainPressureId;
+type NarrativeDialOption = {
+  id: string;
   label: string;
   description: string;
   brief: string;
+};
+
+type NarrativeDial = {
+  id: NarrativeDialId;
+  label: string;
+  options: NarrativeDialOption[];
+};
+
+type NarrativeDialViewModel = NarrativeDial & {
+  selectedOptionId: string;
+  selectedDescription: string;
+  selectedBrief: string;
+};
+
+type SelectedNarrativeDialOptions = Record<NarrativeDialId, string>;
+
+type VillainPressureId = 'antagonist' | 'environment' | 'secret' | 'deadline' | 'inner-desire';
+
+type VillainPressureOption = NarrativeDialOption & {
+  id: VillainPressureId;
 };
 
 type DirectorRoomNoteId = 'desire-ledger' | 'continuity-keeper' | 'chapter-ending';
@@ -250,6 +270,116 @@ export class App implements OnDestroy {
     }
   ];
 
+  readonly narrativeDials: NarrativeDial[] = [
+    {
+      id: 'villain-pressure',
+      label: 'Villain Pressure',
+      options: this.villainPressureOptions
+    },
+    {
+      id: 'chapter-payload',
+      label: 'Chapter Payload',
+      options: [
+        {
+          id: 'romance',
+          label: 'More romance',
+          description: 'Put desire under pressure.',
+          brief: 'Chapter Payload: Put desire under pressure and reveal it through behavior, restraint, jealousy, protection, or sacrifice.'
+        },
+        {
+          id: 'danger',
+          label: 'More danger',
+          description: 'Move the threat close enough that it changes what the characters do next.',
+          brief: 'Chapter Payload: Move the threat close enough that it changes what the characters do next.'
+        },
+        {
+          id: 'lore',
+          label: 'More lore',
+          description: 'Reveal one world rule and make it personal.',
+          brief: 'Chapter Payload: Reveal one rule of the world, but make it personal and costly.'
+        },
+        {
+          id: 'intimacy',
+          label: 'More intimacy',
+          description: 'Deepen trust, vulnerability, or consent.',
+          brief: 'Chapter Payload: Deepen trust, vulnerability, or consent through behavior rather than explanation.'
+        },
+        {
+          id: 'plot',
+          label: 'More plot',
+          description: 'Change the situation in a way nobody can ignore.',
+          brief: 'Chapter Payload: Change the situation in a concrete way that nobody can ignore.'
+        }
+      ]
+    },
+    {
+      id: 'pacing',
+      label: 'Pacing',
+      options: [
+        {
+          id: 'linger',
+          label: 'Linger',
+          description: 'Slow down for texture, longing, and consequence.',
+          brief: 'Pacing: Linger on texture, longing, and consequence before the next turn.'
+        },
+        {
+          id: 'balanced',
+          label: 'Balanced',
+          description: 'Move plot and emotion together.',
+          brief: 'Pacing: Balance external movement with emotional consequence.'
+        },
+        {
+          id: 'escalate',
+          label: 'Escalate',
+          description: 'Make each beat cost more than the last.',
+          brief: 'Pacing: Escalate so each beat costs more than the last.'
+        },
+        {
+          id: 'sprint',
+          label: 'Sprint',
+          description: 'Drive hard toward a cliffhanger.',
+          brief: 'Pacing: Sprint toward a cliffhanger without skipping the emotional cost.'
+        }
+      ]
+    },
+    {
+      id: 'ending-bet',
+      label: 'Ending Bet',
+      options: [
+        {
+          id: 'revelation',
+          label: 'Revelation',
+          description: 'End by making hidden truth visible.',
+          brief: 'Ending Bet: Build the ending around a revelation that changes what came before.'
+        },
+        {
+          id: 'betrayal',
+          label: 'Betrayal',
+          description: 'End where trust breaks or appears to break.',
+          brief: 'Ending Bet: Build the ending around betrayal, and let behavior make the rupture land.'
+        },
+        {
+          id: 'impossible-choice',
+          label: 'Impossible choice',
+          description: 'End with no clean option left.',
+          brief: 'Ending Bet: Build the ending around an impossible choice with no clean escape.'
+        },
+        {
+          id: 'arrival',
+          label: 'Arrival',
+          description: 'End with someone or something entering too late.',
+          brief: 'Ending Bet: End with an arrival that changes the room before anyone is ready.'
+        },
+        {
+          id: 'deadline',
+          label: 'Deadline',
+          description: 'End when the clock becomes impossible to ignore.',
+          brief: 'Ending Bet: End by making the deadline impossible to ignore.'
+        }
+      ]
+    }
+  ];
+
   readonly blueprint = signal<BlueprintForm>({
     creature: 'vampire',
     themes: [],
@@ -283,7 +413,12 @@ export class App implements OnDestroy {
   readonly collapsedChapterGroups = signal<Set<number>>(new Set());
   readonly activeSkin = signal<StorySkinId>('writing-desk');
   readonly customContinuationBrief = signal('');
-  readonly selectedVillainPressureId = signal<VillainPressureId>('secret');
+  readonly selectedNarrativeDialOptionIds = signal<SelectedNarrativeDialOptions>({
+    'villain-pressure': 'secret',
+    'chapter-payload': 'plot',
+    pacing: 'balanced',
+    'ending-bet': 'revelation'
+  });
   readonly directorRoomDecisions = signal<Record<string, DirectorRoomNoteStatus>>({});
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
@@ -310,8 +445,24 @@ export class App implements OnDestroy {
     this.spiceOptions.find(option => option.level === Number(this.blueprint().spicyLevel)) ?? this.spiceOptions[2]
   );
   readonly activeHeatContract = computed(() => this.normalizeHeatContract(this.blueprint().heatContract));
+  readonly narrativeDialViewModels = computed<NarrativeDialViewModel[]>(() => {
+    const selections = this.selectedNarrativeDialOptionIds();
+
+    return this.narrativeDials.map(dial => {
+      const selectedOption = this.getSelectedNarrativeDialOption(dial, selections);
+      return {
+        ...dial,
+        selectedOptionId: selectedOption.id,
+        selectedDescription: selectedOption.description,
+        selectedBrief: selectedOption.brief
+      };
+    });
+  });
+  readonly selectedVillainPressureId = computed(() =>
+    this.selectedNarrativeDialOptionIds()['villain-pressure'] as VillainPressureId
+  );
   readonly selectedVillainPressure = computed(() =>
-    this.villainPressureOptions.find(option => option.id === this.selectedVillainPressureId())!
+    this.villainPressureOptions.find(option => option.id === this.selectedVillainPressureId()) ?? this.villainPressureOptions[0]
   );
 
   readonly timeline = computed<ChapterTimelineEntry[]>(() => {
@@ -652,22 +803,34 @@ export class App implements OnDestroy {
   }
 
   continueWithDirection(direction: ContinuationDirection) {
-    this.continueSaga(this.withVillainPressureBrief(direction.brief));
+    this.continueSaga(this.withNarrativeDialBriefs(direction.brief));
   }
 
   continueWithCustomDirection() {
     const brief = this.customContinuationBrief().trim();
     if (!brief) {
-      this.continueSaga(this.withVillainPressureBrief());
+      this.continueSaga(this.withNarrativeDialBriefs());
       return;
     }
 
     this.customContinuationBrief.set('');
-    this.continueSaga(this.withVillainPressureBrief(brief));
+    this.continueSaga(this.withNarrativeDialBriefs(brief));
+  }
+
+  selectNarrativeDialOption(dialId: NarrativeDialId, optionId: string) {
+    const dial = this.narrativeDials.find(candidate => candidate.id === dialId);
+    if (!dial?.options.some(option => option.id === optionId)) {
+      return;
+    }
+
+    this.selectedNarrativeDialOptionIds.update(current => ({
+      ...current,
+      [dialId]: optionId
+    }));
   }
 
   selectVillainPressure(pressureId: VillainPressureId) {
-    this.selectedVillainPressureId.set(pressureId);
+    this.selectNarrativeDialOption('villain-pressure', pressureId);
   }
 
   acceptDirectorRoomNote(note: DirectorRoomNote) {
@@ -691,7 +854,7 @@ export class App implements OnDestroy {
       return;
     }
 
-    this.continueSaga(this.withVillainPressureBrief(this.buildDirectorRoomContinuationBrief(acceptedNotes)));
+    this.continueSaga(this.withNarrativeDialBriefs(this.buildDirectorRoomContinuationBrief(acceptedNotes)));
   }
 
   getSafeHtml(html: string): string {
@@ -1721,6 +1884,14 @@ ${chapters}
     return option.id;
   }
 
+  trackNarrativeDial(_index: number, dial: NarrativeDialViewModel): string {
+    return dial.id;
+  }
+
+  trackNarrativeDialOption(_index: number, option: NarrativeDialOption): string {
+    return option.id;
+  }
+
   formatDirectorRoomNoteStatus(status: DirectorRoomNoteStatus): string {
     switch (status) {
       case 'accepted':
@@ -1753,11 +1924,20 @@ ${chapters}
     return customBrief ? `${customBrief}\n\n${directorBrief}` : directorBrief;
   }
 
-  private withVillainPressureBrief(brief?: string): string {
-    const trimmedBrief = brief?.trim();
-    const pressureBrief = this.selectedVillainPressure().brief;
+  private getSelectedNarrativeDialOption(
+    dial: NarrativeDial,
+    selections: SelectedNarrativeDialOptions
+  ): NarrativeDialOption {
+    return dial.options.find(option => option.id === selections[dial.id]) ?? dial.options[0];
+  }
 
-    return trimmedBrief ? `${trimmedBrief}\n\n${pressureBrief}` : pressureBrief;
+  private withNarrativeDialBriefs(brief?: string): string {
+    const trimmedBrief = brief?.trim();
+    const dialBrief = this.narrativeDialViewModels()
+      .map(dial => dial.selectedBrief)
+      .join('\n');
+
+    return trimmedBrief ? `${trimmedBrief}\n\n${dialBrief}` : dialBrief;
   }
 
   toggleChapterGroup(groupId: number) {

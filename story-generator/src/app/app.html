@@ -476,23 +476,32 @@
           <p class="eyebrow">Next chapter</p>
           <h3>Where should it go?</h3>
         </div>
-        <div data-testid="villain-pressure-dial">
-          <p class="eyebrow">Villain Pressure</p>
-          <p class="muted">{{ selectedVillainPressure().description }}</p>
-          <div class="heat-option-grid">
-            <button
-              type="button"
-              class="heat-option"
-              data-testid="villain-pressure-option"
-              [attr.data-pressure-id]="pressure.id"
-              [class.heat-option--active]="selectedVillainPressureId() === pressure.id"
-              *ngFor="let pressure of villainPressureOptions; trackBy: trackVillainPressure"
-              (click)="selectVillainPressure(pressure.id)"
-              [disabled]="isGenerating()"
-            >
-              <strong>{{ pressure.label }}</strong>
-              <span>{{ pressure.description }}</span>
-            </button>
+        <div
+          class="heat-option-group"
+          data-testid="narrative-dial"
+          [attr.data-dial-id]="dial.id"
+          *ngFor="let dial of narrativeDialViewModels(); trackBy: trackNarrativeDial"
+        >
+          <div [attr.data-testid]="dial.id === 'villain-pressure' ? 'villain-pressure-dial' : null">
+            <p class="eyebrow">{{ dial.label }}</p>
+            <p class="muted">{{ dial.selectedDescription }}</p>
+            <div class="heat-option-grid">
+              <button
+                type="button"
+                class="heat-option"
+                [attr.data-testid]="dial.id === 'villain-pressure' ? 'villain-pressure-option' : 'narrative-dial-option'"
+                [attr.data-dial-option-id]="option.id"
+                [attr.data-pressure-id]="dial.id === 'villain-pressure' ? option.id : null"
+                [attr.aria-pressed]="dial.selectedOptionId === option.id"
+                [class.heat-option--active]="dial.selectedOptionId === option.id"
+                *ngFor="let option of dial.options; trackBy: trackNarrativeDialOption"
+                (click)="selectNarrativeDialOption(dial.id, option.id)"
+                [disabled]="isGenerating()"
+              >
+                <strong>{{ option.label }}</strong>
+                <span>{{ option.description }}</span>
+              </button>
+            </div>
           </div>
         </div>
         <div class="direction-grid">
