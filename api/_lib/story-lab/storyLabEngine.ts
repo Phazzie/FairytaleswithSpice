@@ -45,6 +45,7 @@ const CONTINUITY_COURTROOM_MAX_WARNINGS = 2;
 const CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH = 180;
 const WORLD_ARTIFACT_MAX_NAME_WORDS = 4;
 type ChapterEndingPressureId = 'emotional_reveal' | 'danger_escalation' | 'secret_exposed';
+type ScenePressureLabel = 'Emotional' | 'Secret' | 'Deadline' | 'Social' | 'Setting';
 interface ChapterEndingPressure {
   id: ChapterEndingPressureId;
   label: string;
@@ -405,8 +406,9 @@ function buildChapterEndingStressTestBrief(storyState: StoryStateSnapshot, conti
   const selectedPressure = chooseChapterEndingPressure(storyState, continuationBrief);
   return [
     'Chapter Ending Stress Test:',
-    `- Considered endings: ${CHAPTER_ENDING_PRESSURES.map(pressure => pressure.candidateLabel).join(', ')}.`,
-    `- Chosen ending pressure: ${selectedPressure.label} - ${selectedPressure.instruction}`,
+    `- Endings: ${CHAPTER_ENDING_PRESSURES.map(pressure => pressure.candidateLabel).join(', ')}.`,
+    `- Chosen: ${selectedPressure.label} - ${selectedPressure.instruction}`,
+    `- Scene pressure mix: ${chooseScenePressureMix(storyState, continuationBrief, selectedPressure)}.`,
     '- Let the chapter answer one question and leave one sharper question active.'
   ].join('\n');
 }
@@ -444,6 +446,52 @@ function chooseChapterEndingPressure(storyState: StoryStateSnapshot, continuatio
   return CHAPTER_ENDING_PRESSURES.reduce((best, candidate) =>
     scores[candidate.id] > scores[best.id] ? candidate : best
   );
+}
+
+function chooseScenePressureMix(
+  storyState: StoryStateSnapshot,
+  continuationBrief: string | undefined,
+  selectedPressure: ChapterEndingPressure
+): string {
+  const primary = mapEndingPressureToScenePressure(selectedPressure.id);
+  const pressureSource = buildContinuationPressureSource(storyState, continuationBrief);
+  const secondaryCandidates: ScenePressureLabel[] = [];
+
+  if (containsAny(pressureSource, ['deadline', 'clock', 'tonight', 'hour', 'sunrise'])) {
+    secondaryCandidates.push('Deadline');
+  }
+
+  if (storyState.artifacts.some(artifact => !artifact.resolvedInChapter)
+    || containsAny(pressureSource, ['court', 'room', 'place', 'reef', 'shell', 'song', 'door', 'hall'])) {
+    secondaryCandidates.push('Setting');
+  }
+
+  if (storyState.characters.length > 1
+    || containsAny(pressureSource, ['family', 'crowd', 'witness', 'lord', 'queen', 'council'])) {
+    secondaryCandidates.push('Social');
+  }
+
+  if (containsAny(pressureSource, ['secret', 'hidden', 'truth', 'lie', 'bargain', 'debt', 'payment', 'price', 'vow'])) {
+    secondaryCandidates.push('Secret');
+  }
+
+  if (containsAny(pressureSource, ['love', 'kiss', 'desire', 'choose', 'confess', 'heart', 'betray'])) {
+    secondaryCandidates.push('Emotional');
+  }
+
+  const secondary = secondaryCandidates.find(candidate => candidate !== primary)
+    ?? (primary === 'Setting' ? 'Social' : 'Setting');
+  return `${primary} + ${secondary}`;
+}
+
+function mapEndingPressureToScenePressure(pressureId: ChapterEndingPressureId): ScenePressureLabel {
+  if (pressureId === 'emotional_reveal') {
+    return 'Emotional';
+  }
+  if (pressureId === 'danger_escalation') {
+    return 'Deadline';
+  }
+  return 'Secret';
 }
 
 function containsAny(value: string, needles: readonly string[]): boolean {

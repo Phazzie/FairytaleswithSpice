@@ -1136,3 +1136,60 @@ Known issues:
 Next recommended task:
 
 - If continuing without external credentials, add a compactness-aware `Scene Pressure Mixer` by replacing/reusing an existing anchor, or shift back to auth/storage once provider/database details are available.
+
+### 2026-06-08 09:45 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the Scene Pressure Mixer commit.
+
+User request:
+
+- Keep autonomous work moving and try bounded weird/eclectic story-output improvements without bloating the hidden prompt.
+
+Work completed:
+
+- Implemented `Scene Pressure Mixer` inside the existing `Chapter Ending Stress Test` anchor instead of adding a fourth hidden block.
+- The pressure mixer now combines a primary pressure from the selected ending intent with a secondary pressure from current story state.
+- Added eval coverage that expects `Scene pressure mix: Secret + Setting.` for the current story-quality fixture.
+- Added a guard that fails if a new `Scene Pressure Mixer:` hidden block appears.
+- Tightened ending-anchor wording so the real-engine 900-character compactness guard still passes.
+- Removed the overly broad `before` deadline trigger after the seam test exposed a false deadline classification from a continuity warning.
+- Marked the idea-board item done with the current deterministic/testable scope.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-quality-evals.test.ts` failed because the pressure mix line was missing.
+- GREEN: `npx tsx tests/story-quality-evals.test.ts` -> passed.
+- GREEN after compactness and trigger fixes: `npx tsx tests/story-lab-real-engine.test.ts` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+- `git diff --check` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+
+Known issues:
+
+- The pressure mix is deterministic for testability. The "random secondary pressure" version is deferred until there is a seeded/randomness contract.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without credentials, either add a seeded randomness contract for creative prompt variants, or return to auth/storage planning once provider/database details are available.

@@ -299,7 +299,7 @@ Status:
 - The tested debt/payment continuation avoids the obvious formal-demand scene and ties freshness to `Forbidden Love`.
 - Verified by `tests/story-lab-real-engine.test.ts`, which captures the continuation service input and proves the cliche alarm reaches the real-engine seam.
 
-### Weird Lab: Scene Pressure Mixer
+### Done: Scene Pressure Mixer
 
 Combine emotional, secret, deadline, social, and setting pressure into one compact continuation anchor.
 
@@ -313,6 +313,14 @@ Experiment:
 - Use existing villain pressure UI as the first source.
 - Add one random secondary pressure only when it does not contradict the story state.
 - Keep the generated brief visible to the user.
+
+Status:
+
+- Done in overnight slice on 2026-06-08.
+- Implemented as one compact `Scene pressure mix` line inside the existing `Chapter Ending Stress Test` hidden anchor, not as a fourth hidden block.
+- The first version is deterministic rather than random so it can be tested: the chosen ending supplies the primary pressure, and current story state supplies the secondary pressure.
+- `tests/story-quality-evals.test.ts` proves the pressure mix appears as `Secret + Setting` for the fixture and that no new `Scene Pressure Mixer:` block is added.
+- `tests/story-lab-real-engine.test.ts` proves the line reaches the real continuation seam while the 900-character compactness guard still passes.
 
 ## Idea Template
 
