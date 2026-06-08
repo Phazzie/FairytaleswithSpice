@@ -33,6 +33,8 @@ This plan starts from the current merged state:
 - [x] Implement profile/account contracts.
 - [x] Add fail-closed `configuredAuthPort` boundary without installing a provider SDK.
 - [x] Add focused profile/cloud contract and configured-auth tests, and wire them into `npm run test:all`.
+- [x] Implement profile store contracts with non-durable memory and injected Postgres scaffolds.
+- [x] Add focused profile store tests and wire them into `npm run test:all`.
 - [ ] Implement provider-backed `AuthPort` adapter behind explicit env configuration.
 - [ ] Implement one consolidated Story Lab account route with rewrites instead of many deployable function files.
 - [ ] Wire cloud library methods into the Angular service and UI.
@@ -75,7 +77,23 @@ Current implementation state as of 2026-06-08:
 - Added focused tests:
   - `tests/story-lab-profile-contracts.test.ts`
   - `tests/story-lab-configured-auth.test.ts`
+  - `tests/story-lab-profile-store.test.ts`
 - Added npm scripts for the new focused tests and included them in `npm run test:all`.
+- Added `api/_lib/story-lab/profile/storyLabProfileStore.ts` with typed profile storage results, clone helpers, default profile construction, owner checks, and no-email-leak error helpers.
+- Added `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts` as a non-durable local/test profile store.
+- Added `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts` as an injected-executor Postgres profile scaffold that fails closed when `DATABASE_URL` or an executor is missing.
+- Slice 2 focused validation passed:
+  - RED: `npx tsx tests/story-lab-profile-store.test.ts` failed on missing profile store modules;
+  - GREEN: `npx tsx tests/story-lab-profile-store.test.ts`;
+  - Script path: `npm run test:story-lab-profile-store`.
+- Slice 2 final validation passed:
+  - `git diff --check`;
+  - `scripts/recovery/check-vercel-function-count.sh` -> `10/12`;
+  - `npm run test:story-lab-configured-auth`;
+  - `npm run test:story-lab-auth`;
+  - `npm run test:story-lab-storage-port`;
+  - `npm run test:all`;
+  - `scripts/recovery/preflight.sh --quick --skip-status`.
 - Slice 1 validation passed:
   - `git diff --check`;
   - `scripts/recovery/check-vercel-function-count.sh` -> `10/12`;

@@ -4,13 +4,17 @@ Last updated: 2026-06-08
 
 ## Current Snapshot
 
-Branch:
+Current working branch:
 
-- `main`
+- `feature/story-lab-auth-profile-contracts`
 
-Baseline commit before this docs slice:
+Overnight baseline commit before the documentation slice:
 
 - `4834914` - merge of PR #113, `feature/story-lab-narrative-dials-ui`.
+
+Latest completed local implementation slice before the current profile-store work:
+
+- `75b485f` - `Add Story Lab auth profile contract slice`
 
 Open PRs:
 
@@ -102,7 +106,7 @@ Branch:
 
 Commit:
 
-- Pending; this slice is not committed yet.
+- This entry is included in the Slice 2 commit.
 
 User request:
 
@@ -336,3 +340,65 @@ Known issues:
 Next recommended task:
 
 - Commit this Slice 1 implementation, then either start profile store Slice 2 or pause before provider/dependency work.
+
+### 2026-06-08 08:10 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this slice is not committed yet.
+
+User request:
+
+- Keep working autonomously on the overnight plan and advance auth/profile/cloud-library foundations.
+
+Work completed:
+
+- Added `StoryLabProfileStore` contracts and typed profile-store result/error helpers.
+- Added default profile construction that uses the authenticated user id and keeps adult-only content unconfirmed by default.
+- Added a non-durable in-memory profile store for local tests and future anonymous/unconfigured development paths.
+- Added an injected-executor Postgres profile store scaffold that fails closed when `DATABASE_URL` or the database executor is missing.
+- Added owner checks so one user cannot save another user's profile.
+- Added malformed stored-profile JSON handling that returns a generic storage error without leaking email addresses.
+- Added the profile-store test script and wired it into `npm run test:all`.
+- Updated `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` with Slice 2 progress and evidence.
+
+Files changed:
+
+- `api/_lib/story-lab/profile/storyLabProfileStore.ts`
+- `api/_lib/story-lab/profile/inMemoryStoryLabProfileStore.ts`
+- `api/_lib/story-lab/profile/postgresStoryLabProfileStore.ts`
+- `tests/story-lab-profile-store.test.ts`
+- `package.json`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-profile-store.test.ts` failed on missing profile store modules.
+- GREEN: `npx tsx tests/story-lab-profile-store.test.ts` -> passed.
+- Script path: `npm run test:story-lab-profile-store` -> passed.
+- `git diff --check` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `10/12`, within limit.
+- `npx tsx tests/story-lab-profile-contracts.test.ts` -> passed.
+- `npm run test:story-lab-configured-auth` -> passed.
+- `npm run test:story-lab-auth` -> passed.
+- `npm run test:story-lab-storage-port` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Live provider/auth/storage proof with real credentials; no provider SDK, database executor, account route, or UI cloud sync exists yet.
+
+Known issues:
+
+- This is still not a live login/cloud-save feature. No provider SDK, account route, database migration, Angular cloud UI, or durable jobs landed in this slice.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Run full validation, commit Slice 2, then begin the consolidated account-route slice if function count remains within budget.
