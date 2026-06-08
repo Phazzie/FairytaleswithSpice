@@ -141,6 +141,7 @@ Current implementation state as of 2026-06-08:
   - a visible account-connection row that reads `Account Not connected` while sign-in/cloud sync is not available;
   - a visible `Connect account` action that reports setup status without calling cloud-library routes or claiming live sign-in;
   - cloud save gating so unavailable account state does not fire a doomed save request;
+  - cloud load/delete gating so visible cloud projects cannot call account routes until cloud state is connected;
   - visible unavailable/synced/failed/local-only status text;
   - refresh, save-to-cloud, load, and delete hooks through `StoryService`;
   - local browser save behavior remains visible and available.
@@ -148,6 +149,7 @@ Current implementation state as of 2026-06-08:
 - Extended the cloud UI spec so the panel must show the account connection row without pretending login is live.
 - Extended the cloud UI spec so the account action must surface setup status without calling the cloud project list service.
 - Extended the cloud UI spec so `Save to cloud` is disabled until cloud state is connected, and the direct save method also avoids cloud-save calls while sign-in is unavailable.
+- Extended the cloud UI spec so cloud load/delete buttons and direct methods avoid route calls while sign-in is unavailable.
 - Slice 4b validation passed:
   - RED: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` failed on missing app cloud-library UI state/methods;
   - GREEN: same Angular spec typecheck passed after implementation;

@@ -3009,3 +3009,54 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then switch back to a bounded story-output experiment or continue cloud-library hardening without adding routes.
+
+### 2026-06-08 Cloud Load Delete Account Gate
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud load/delete account gate commit.
+
+User request:
+
+- Keep working autonomously toward auth, storage, profiles, and visible cloud-library readiness without pretending unfinished cloud sync works.
+
+Work completed:
+
+- Disabled cloud project load/delete buttons unless the cloud library state is connected.
+- Guarded the direct `loadCloudProject()` and `deleteCloudProject()` methods so unavailable account state surfaces the setup-status message instead of calling cloud project routes.
+- Added Angular coverage that proves stale visible cloud projects cannot trigger load/delete route calls before sign-in/cloud sync is configured.
+- Updated the app audit and auth/profile/cloud-library plan.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because cloud load/delete controls were enabled, direct methods called the account service, and the setup-status message was absent.
+- GREEN: same Angular browser command -> `TOTAL: 55 SUCCESS`.
+- `git diff --check` -> passed.
+- Fresh focused app spec: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> `TOTAL: 55 SUCCESS`; ChromeHeadless cleanup emitted the known SIGKILL warning after the result.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `546.97 kB` over the 500 kB warning budget and `app.css` `14.60 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This prevents doomed cloud load/delete calls; it is not live sign-in or real cloud sync.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then switch back to a bounded story-output experiment or continue route-free cloud-library hardening.

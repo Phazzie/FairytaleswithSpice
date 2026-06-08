@@ -514,6 +514,51 @@ describe('App', () => {
     expect(fullText).toContain('Sign-in setup is not configured yet.');
   });
 
+  it('blocks cloud load and delete until the account is connected', () => {
+    component.cloudProjects.set([{
+      projectId: 'project-cloud',
+      storyId: 'story-cloud',
+      title: 'Cloud Chapel',
+      synopsis: 'A cloud-synced oath.',
+      chapterCount: 2,
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    }]);
+    storyService.loadCloudStoryProject.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Account required.'
+      }
+    } as ApiResponse<any>));
+    storyService.deleteCloudStoryProject.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Account required.'
+      }
+    } as ApiResponse<any>));
+
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const loadButton = panel?.querySelector('.saved-load') as HTMLButtonElement | null;
+    const deleteButton = panel?.querySelector('.saved-delete') as HTMLButtonElement | null;
+
+    expect(loadButton?.disabled).toBeTrue();
+    expect(deleteButton?.disabled).toBeTrue();
+
+    component.loadCloudProject('project-cloud');
+    component.deleteCloudProject('project-cloud');
+    fixture.detectChanges();
+
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
+    expect(storyService.loadCloudStoryProject).not.toHaveBeenCalled();
+    expect(storyService.deleteCloudStoryProject).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(fullText).toContain('Sign-in setup is not configured yet.');
+  });
+
   it('refreshes visible cloud projects through the account service', () => {
     const cloudList: CloudStoryProjectList = {
       ownerUserId: 'user-owner',

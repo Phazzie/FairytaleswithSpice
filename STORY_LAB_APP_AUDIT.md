@@ -29,6 +29,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - The panel now separates account connection state from cloud sync state with a visible `Account Not connected` row until cloud sync actually succeeds.
   - The panel now includes a `Connect account` action that reports sign-in setup status without calling the cloud library route or pretending live auth is configured.
   - Cloud save is now gated on a connected cloud state, so unavailable account state does not fire a doomed save request.
+  - Cloud load and delete are now gated on the same connected cloud state, so stale visible cloud projects cannot fire route calls while account sync is unavailable.
   - The panel shows honest unavailable/synced/failed/local-only states and calls the account service for refresh, save, load, and delete.
   - Local browser saves remain visible as "Saved here" and are not replaced by cloud state.
   - `npm run build` passed after the new CSS was trimmed below the hard component budget.
