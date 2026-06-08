@@ -4586,3 +4586,62 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with another compact story-output experiment only if it can reuse existing anchors, otherwise switch back to a local auth/cloud readiness improvement.
+
+### 2026-06-08 16:52 EDT Account Storage Mode Honesty
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- `Report non-durable account storage mode` (same commit as this handoff entry)
+
+User request:
+
+- Keep working autonomously on auth/cloud readiness without overstating unfinished cloud storage.
+
+Plan and critique:
+
+- Plan: make cloud project list/load responses report the actual account project-store mode instead of always saying `cloud_postgres`.
+- Hostile critique applied: do not add routes, do not provision a database, and do not claim cloud storage is live. This is response honesty for existing account-route seams.
+
+Work completed:
+
+- Expanded `CloudStoryProjectStorageMode` to include `non_durable_memory`.
+- Added route mapping from `StoryProjectStore.mode` to response storage mode.
+- Project list/load responses now return `non_durable_memory` when the account route is backed by the injected non-durable store.
+- Added account-route test coverage so non-durable list/load responses cannot claim cloud Postgres.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `api/_lib/story-lab/account/accountRouteHandlers.ts`
+- `story-generator/src/app/contracts.ts`
+- `tests/story-lab-account-routes.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-lab-account-routes` -> failed because non-durable project list responses still reported `cloud_postgres`.
+- GREEN: `npm run test:story-lab-account-routes` -> passed.
+- `git diff --check` -> passed.
+- `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url` -> no open PRs.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `npm run build` -> passed; initial browser total is `485.18 kB`, Proving Grounds remains lazy, and no budget warnings were emitted.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Known issues:
+
+- This does not make cloud storage durable; it only makes the account route's storage-mode reporting accurate.
+- Live cloud sync still requires real auth, database configuration, schema application, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- Jobs still default to `non_durable_memory` in the live product path.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then choose the next route-safe auth/cloud readiness task or a bounded story-output experiment with focused tests.

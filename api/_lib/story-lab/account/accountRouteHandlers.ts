@@ -6,6 +6,7 @@ import { configuredAuthPort } from '../auth/configuredAuthPort';
 import type {
   ApiResponse,
   CloudLibrarySyncState,
+  CloudStoryProjectStorageMode,
   CloudStoryProjectList,
   CloudStoryProjectLoadResult,
   CloudStoryProjectSaveReceipt,
@@ -180,7 +181,7 @@ async function handleProjectsRoute(
 
     sendJson(res, 200, {
       success: true,
-      data: toCloudProjectList(user, listResult.data)
+      data: toCloudProjectList(context, user, listResult.data)
     });
     return;
   }
@@ -236,7 +237,7 @@ async function handleProjectRoute(
 
     sendJson(res, 200, {
       success: true,
-      data: toCloudProjectLoadResult(user, loadResult.data)
+      data: toCloudProjectLoadResult(context, user, loadResult.data)
     });
     return;
   }
@@ -378,10 +379,10 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
   return project as SavedStoryProject;
 }
 
-function toCloudProjectList(user: AuthUser, projects: StoryProjectListItem[]): CloudStoryProjectList {
+function toCloudProjectList(context: StoryLabAccountRouteContext, user: AuthUser, projects: StoryProjectListItem[]): CloudStoryProjectList {
   return {
     ownerUserId: user.userId,
-    storageMode: 'cloud_postgres',
+    storageMode: toCloudStorageMode(context.projectStore),
     projects
   };
 }
@@ -399,18 +400,23 @@ function toCloudSaveReceipt(
 }
 
 function toCloudProjectLoadResult(
+  context: StoryLabAccountRouteContext,
   user: AuthUser,
   record: StoredStoryProjectRecord
 ): CloudStoryProjectLoadResult {
   return {
     ownerUserId: user.userId,
-    storageMode: 'cloud_postgres',
+    storageMode: toCloudStorageMode(context.projectStore),
     projectId: record.projectId,
     storyId: record.storyId,
     project: record.project,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };
+}
+
+function toCloudStorageMode(projectStore: StoryProjectStore): CloudStoryProjectStorageMode {
+  return projectStore.mode === 'postgres' ? 'cloud_postgres' : 'non_durable_memory';
 }
 
 function buildSyncState(context: StoryLabAccountRouteContext): CloudLibrarySyncState {

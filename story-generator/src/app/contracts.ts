@@ -255,7 +255,7 @@ export interface CloudLibrarySyncState {
   message?: string;
 }
 
-export type CloudStoryProjectStorageMode = 'cloud_postgres';
+export type CloudStoryProjectStorageMode = 'cloud_postgres' | 'non_durable_memory';
 
 export interface CloudStoryProjectListItem {
   projectId: string;

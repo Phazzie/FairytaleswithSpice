@@ -34,6 +34,9 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Cloud and local saved-project rows now show accepted memory-card counts when present, using count-only metadata rather than exposing full private card text.
   - Local browser saves remain visible as "Saved here" and are not replaced by cloud state.
   - `npm run build` passed after the new CSS was trimmed below the hard component budget.
+- Account route storage-mode honesty evidence:
+  - Cloud project list/load responses now report `non_durable_memory` when the backing project store is non-durable, instead of claiming `cloud_postgres`.
+  - `tests/story-lab-account-routes.test.ts` fails if injected non-durable account storage reports cloud Postgres storage.
 - Job status UI honesty evidence:
   - The running job panel now shows the server-provided `non_durable_memory` warning while process-local jobs are active, so the UI does not silently imply crash-safe progress.
   - Browser reload recovery now has focused coverage for vanished process-local genesis and continuation jobs; the app clears stale markers/panels and tells the user the job could not be restored because in-memory job state is gone.

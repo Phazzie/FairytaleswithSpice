@@ -160,6 +160,7 @@ async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
   assert(listResponse.statusCode === 200, 'project list should return 200');
   const listBody = listResponse.body as any;
   assert(listBody.data.ownerUserId === owner.userId, 'project list should carry owner id');
+  assert(listBody.data.storageMode === 'non_durable_memory', 'non-durable project list should not claim cloud Postgres storage');
   assert(listBody.data.projects.length === 1, 'owner should see saved project');
   assert(listBody.data.projects[0].title === project.title, 'list item should carry project title');
   assert(listBody.data.projects[0].acceptedMemoryCardCount === 1, 'list item should carry accepted memory count without full card text');
@@ -169,6 +170,7 @@ async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
   assert(loadResponse.statusCode === 200, 'project load should return 200');
   const loadBody = loadResponse.body as any;
   assert(loadBody.success === true, 'project load should use success envelope');
+  assert(loadBody.data.storageMode === 'non_durable_memory', 'non-durable project load should not claim cloud Postgres storage');
   assert(loadBody.data.project.id === project.id, 'project load should return saved project');
   assert(loadBody.data.project.acceptedMemoryCards[0].title === 'Avery', 'project load should preserve accepted memory cards');
 

@@ -46,6 +46,7 @@ Acceptance:
 Status:
 
 - Plan created in `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` during overnight work on 2026-06-08.
+- Account route storage-mode honesty added on 2026-06-08: list/load responses now report `non_durable_memory` when the project store is non-durable instead of claiming cloud Postgres.
 
 Research notes from 2026-06-08:
 
