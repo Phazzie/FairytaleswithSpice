@@ -3764,3 +3764,60 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then add editing for accepted memory cards or run a small story-output comparison.
+
+### 2026-06-08 Editable Accepted Memory Cards
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the editable accepted memory cards commit.
+
+User request:
+
+- Continue the Story Memory work toward practical, user-controlled memory cards.
+
+Plan and critique:
+
+- Plan: add in-place editing for accepted card title, detail, and trigger text; prove edited text persists through save/load and reaches continuation.
+- Hostile critique applied: avoid new CSS budget pressure, avoid a new backend route, and keep this as visible user-controlled context rather than an invisible memory engine.
+
+Work completed:
+
+- Added edit state for one accepted memory card at a time.
+- Accepted cards now render an `Edit` action.
+- Editing exposes title, detail, and trigger fields using existing global form styles.
+- Save updates the accepted card with trimmed text; cancel clears edit mode.
+- Reset/new story/project load clears edit mode.
+- Edited accepted-card text saves with browser-local projects, restores on reload, and reaches the continuation job request through `Accepted Memory Cards` brief text.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because the edit button and edit fields were missing.
+- GREEN: same Angular browser command -> `TOTAL: 61 SUCCESS`; ChromeHeadless cleanup emitted the known SIGKILL warning after the result.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `556.79 kB` over the 500 kB warning budget and `app.css` `14.96 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Accepted memory cards still do not have delete/reorder controls.
+- Accepted memory cards are still local project JSON, not a separate durable cloud memory table.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then either add delete/reorder controls or run a story-output comparison using edited memory cards.

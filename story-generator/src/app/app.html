@@ -700,10 +700,45 @@
           <p class="eyebrow">Accepted Memory Cards</p>
           <ul>
             <li *ngFor="let card of acceptedMemoryCards(); trackBy: trackAcceptedMemoryCard">
-              <span class="eyebrow">{{ card.label }}</span>
-              <strong>{{ card.title }}</strong>
-              <span class="muted">{{ card.detail }}</span>
-              <span class="muted continuity-source">{{ card.triggerLabel }}</span>
+              <ng-container *ngIf="editingAcceptedMemoryCardId() === card.id; else acceptedMemoryCardView">
+                <span class="eyebrow">{{ card.label }}</span>
+                <input
+                  type="text"
+                  aria-label="Memory card title"
+                  data-testid="accepted-memory-card-title"
+                  [ngModel]="acceptedMemoryCardEditDraft().title"
+                  (ngModelChange)="updateAcceptedMemoryCardEditDraft('title', $event)"
+                >
+                <textarea
+                  rows="2"
+                  aria-label="Memory card detail"
+                  data-testid="accepted-memory-card-detail"
+                  [ngModel]="acceptedMemoryCardEditDraft().detail"
+                  (ngModelChange)="updateAcceptedMemoryCardEditDraft('detail', $event)"
+                ></textarea>
+                <input
+                  type="text"
+                  aria-label="Memory card trigger"
+                  data-testid="accepted-memory-card-trigger"
+                  [ngModel]="acceptedMemoryCardEditDraft().triggerLabel"
+                  (ngModelChange)="updateAcceptedMemoryCardEditDraft('triggerLabel', $event)"
+                >
+                <button type="button" class="ghost compact memory-card-pin" data-testid="save-accepted-memory-card" (click)="saveAcceptedMemoryCardEdit()">
+                  Save
+                </button>
+                <button type="button" class="ghost compact memory-card-pin" data-testid="cancel-accepted-memory-card" (click)="cancelAcceptedMemoryCardEdit()">
+                  Cancel
+                </button>
+              </ng-container>
+              <ng-template #acceptedMemoryCardView>
+                <span class="eyebrow">{{ card.label }}</span>
+                <strong>{{ card.title }}</strong>
+                <span class="muted">{{ card.detail }}</span>
+                <span class="muted continuity-source">{{ card.triggerLabel }}</span>
+                <button type="button" class="ghost compact memory-card-pin" data-testid="edit-accepted-memory-card" (click)="editAcceptedMemoryCard(card)">
+                  Edit
+                </button>
+              </ng-template>
             </li>
           </ul>
         </div>

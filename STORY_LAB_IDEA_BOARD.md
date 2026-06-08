@@ -364,7 +364,8 @@ Triggered Card Drafts progress:
 - Local save persistence started on 2026-06-08: pinned draft IDs are saved with browser-local projects and restored when the project reloads.
 - Continuation-brief integration started on 2026-06-08: pinned drafts are appended to UI-driven continuation requests as compact `Pinned Memory Cards` prose anchors.
 - Accepted-card shelf started on 2026-06-08: draft cards can be accepted into a local `Accepted Memory Cards` shelf, saved with browser-local projects, and restored when the project reloads.
-- Draft cards are not edited yet; accepted cards and pinned drafts influence continuation only through the visible continuation brief path.
+- Accepted-card editing started on 2026-06-08: accepted card title, detail, and trigger text can be edited before saving/reloading or continuing.
+- Accepted cards and pinned drafts influence continuation only through the visible continuation brief path.
 
 ### Research: User Library And Profile Patterns
 

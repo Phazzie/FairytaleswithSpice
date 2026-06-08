@@ -1107,6 +1107,93 @@ describe('App', () => {
     expect(restoredAcceptedButton?.disabled).toBeTrue();
   });
 
+  it('edits accepted memory cards and carries edited text into continuations', () => {
+    const genesisPayload = seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    (renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="accept-memory-card-draft"]') as HTMLButtonElement | null)?.click();
+    fixture.detectChanges();
+    const editButton = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="edit-accepted-memory-card"]') as HTMLButtonElement | null;
+    expect(editButton).not.toBeNull();
+
+    editButton?.click();
+    fixture.detectChanges();
+
+    const titleInput = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="accepted-memory-card-title"]') as HTMLInputElement | null;
+    const detailInput = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="accepted-memory-card-detail"]') as HTMLTextAreaElement | null;
+    const triggerInput = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="accepted-memory-card-trigger"]') as HTMLInputElement | null;
+    expect(titleInput).not.toBeNull();
+    expect(detailInput).not.toBeNull();
+    expect(triggerInput).not.toBeNull();
+
+    titleInput!.value = 'Mara the Archive Blade';
+    titleInput!.dispatchEvent(new Event('input'));
+    detailInput!.value = 'She will burn the moonlit ledger before she lets the duke own the vow.';
+    detailInput!.dispatchEvent(new Event('input'));
+    triggerInput!.value = 'Trigger: Mara, ledger';
+    triggerInput!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const saveButton = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="save-accepted-memory-card"]') as HTMLButtonElement | null;
+    saveButton?.click();
+    fixture.detectChanges();
+
+    const editedText = renderedAcceptedMemoryCardsText() ?? '';
+    expect(editedText).toContain('Mara the Archive Blade');
+    expect(editedText).toContain('She will burn the moonlit ledger before she lets the duke own the vow.');
+    expect(editedText).toContain('Trigger: Mara, ledger');
+    expect(editedText).not.toContain('Keep the moonlit bargain from consuming her archive.');
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    const restoredText = renderedAcceptedMemoryCardsText() ?? '';
+    expect(restoredText).toContain('Mara the Archive Blade');
+    expect(restoredText).toContain('She will burn the moonlit ledger before she lets the duke own the vow.');
+
+    component.continueSaga('Use the accepted card.');
+
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    expect(jobRequest.continuation.continuationBrief).toContain('Accepted Memory Cards:');
+    expect(jobRequest.continuation.continuationBrief).toContain('Mara the Archive Blade');
+    expect(jobRequest.continuation.continuationBrief).toContain('moonlit ledger');
+    expect(jobRequest.continuation.continuationBrief).toContain('Trigger: Mara, ledger');
+  });
+
   it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {
     seedWorkbenchForContinuation();
 

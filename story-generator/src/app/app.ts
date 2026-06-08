@@ -161,6 +161,12 @@ type MemoryCardDraftItem = {
   accepted: boolean;
 };
 
+type AcceptedMemoryCardEditDraft = {
+  title: string;
+  detail: string;
+  triggerLabel: string;
+};
+
 type GenerationProgressState = {
   active: boolean;
   percent: number;
@@ -361,6 +367,12 @@ export class App implements OnDestroy {
   readonly directorRoomDecisions = signal<Record<string, DirectorRoomNoteStatus>>({});
   readonly pinnedMemoryCardDraftIds = signal<Set<string>>(new Set());
   readonly acceptedMemoryCards = signal<StoryMemoryCard[]>([]);
+  readonly editingAcceptedMemoryCardId = signal<string | null>(null);
+  readonly acceptedMemoryCardEditDraft = signal<AcceptedMemoryCardEditDraft>({
+    title: '',
+    detail: '',
+    triggerLabel: ''
+  });
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
@@ -1032,6 +1044,59 @@ export class App implements OnDestroy {
     this.statusMessage.set('Memory card accepted into this story.');
   }
 
+  editAcceptedMemoryCard(card: StoryMemoryCard) {
+    this.editingAcceptedMemoryCardId.set(card.id);
+    this.acceptedMemoryCardEditDraft.set({
+      title: card.title,
+      detail: card.detail,
+      triggerLabel: card.triggerLabel
+    });
+  }
+
+  updateAcceptedMemoryCardEditDraft(field: keyof AcceptedMemoryCardEditDraft, value: string) {
+    this.acceptedMemoryCardEditDraft.update(current => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  saveAcceptedMemoryCardEdit() {
+    const cardId = this.editingAcceptedMemoryCardId();
+    if (!cardId) {
+      return;
+    }
+
+    const draft = this.acceptedMemoryCardEditDraft();
+    const title = draft.title.trim();
+    const detail = draft.detail.trim();
+    const triggerLabel = draft.triggerLabel.trim() || this.buildMemoryCardTriggerLabel(title);
+    if (!title || !detail) {
+      this.statusMessage.set('Accepted memory cards need a title and detail.');
+      return;
+    }
+
+    this.acceptedMemoryCards.update(current => current.map(card => card.id === cardId
+      ? {
+          ...card,
+          title,
+          detail,
+          triggerLabel
+        }
+      : card
+    ));
+    this.cancelAcceptedMemoryCardEdit();
+    this.statusMessage.set('Accepted memory card updated.');
+  }
+
+  cancelAcceptedMemoryCardEdit() {
+    this.editingAcceptedMemoryCardId.set(null);
+    this.acceptedMemoryCardEditDraft.set({
+      title: '',
+      detail: '',
+      triggerLabel: ''
+    });
+  }
+
   continueWithDirectorRoomNotes() {
     const acceptedNotes = this.acceptedDirectorRoomNotes();
     if (!acceptedNotes.length) {
@@ -1050,6 +1115,7 @@ export class App implements OnDestroy {
     this.clearActiveStoryLabJob();
     this.pinnedMemoryCardDraftIds.set(new Set());
     this.acceptedMemoryCards.set([]);
+    this.cancelAcceptedMemoryCardEdit();
     this.workbench.set({
       story: null,
       state: null,
@@ -1384,6 +1450,7 @@ ${chapters}
     if (isNewStory) {
       this.pinnedMemoryCardDraftIds.set(new Set());
       this.acceptedMemoryCards.set([]);
+      this.cancelAcceptedMemoryCardEdit();
     }
 
     const savedProjectId = this.persistSession(nextSession);
@@ -1981,6 +2048,7 @@ ${chapters}
     });
     this.pinnedMemoryCardDraftIds.set(new Set(project.pinnedMemoryCardDraftIds ?? []));
     this.acceptedMemoryCards.set(project.acceptedMemoryCards ?? []);
+    this.cancelAcceptedMemoryCardEdit();
     this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.workspaceSaveStatus.set(`Loaded "${project.title}" from this browser.`);
@@ -2010,6 +2078,7 @@ ${chapters}
     });
     this.pinnedMemoryCardDraftIds.set(new Set(project.pinnedMemoryCardDraftIds ?? []));
     this.acceptedMemoryCards.set(project.acceptedMemoryCards ?? []);
+    this.cancelAcceptedMemoryCardEdit();
     this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');
