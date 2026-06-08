@@ -14,6 +14,8 @@ function assert(condition: unknown, message: string): asserts condition {
 async function main() {
   await testConfiguredAuthFailsClosedWithoutProvider();
   await testConfiguredAuthDelegatesToInjectedProvider();
+  await testConfiguredAuthSelectsClerkProviderWhenConfigured();
+  await testConfiguredAuthFailsClosedForUnknownProvider();
 
   console.log('Story Lab configured auth tests passed');
 }
@@ -56,6 +58,61 @@ async function testConfiguredAuthDelegatesToInjectedProvider() {
 
   const requiredUser = await auth.requireUser({});
   assert(requiredUser.userId === expectedUser.userId, 'configured auth should delegate requireUser to provider');
+}
+
+async function testConfiguredAuthSelectsClerkProviderWhenConfigured() {
+  const seenTokens: string[] = [];
+  const auth = createConfiguredAuthPort({
+    env: {
+      STORY_LAB_AUTH_PROVIDER: 'clerk'
+    },
+    clerk: {
+      verifySessionToken: async token => {
+        seenTokens.push(token);
+        return {
+          userId: 'user_selected_clerk',
+          email: 'selected@example.com'
+        };
+      }
+    }
+  });
+
+  const user = await auth.requireUser({
+    headers: {
+      authorization: 'Bearer selected-clerk-token'
+    }
+  });
+
+  assert(seenTokens[0] === 'selected-clerk-token', 'configured auth should pass bearer tokens to the selected Clerk adapter');
+  assert(user.userId === 'user_selected_clerk', 'configured auth should return Clerk-verified users when Clerk is explicitly selected');
+}
+
+async function testConfiguredAuthFailsClosedForUnknownProvider() {
+  const auth = createConfiguredAuthPort({
+    env: {
+      STORY_LAB_AUTH_PROVIDER: 'mystery-provider'
+    }
+  });
+
+  const currentUser = await auth.getCurrentUser({
+    headers: {
+      authorization: 'Bearer unknown-provider-token'
+    }
+  });
+  assert(currentUser === null, 'unknown auth providers should not create users from raw headers');
+
+  try {
+    await auth.requireUser({
+      headers: {
+        authorization: 'Bearer unknown-provider-token'
+      }
+    });
+    throw new Error('unknown auth providers should require configured account auth');
+  } catch (error) {
+    assert(isAuthError(error), 'unknown auth provider should throw AuthError');
+    assert(error.message.includes('Unsupported Story Lab auth provider'), 'unknown auth provider should be explicit');
+    assert(!error.message.includes('unknown-provider-token'), 'unknown auth provider error should not leak bearer tokens');
+  }
 }
 
 main().catch(error => {
