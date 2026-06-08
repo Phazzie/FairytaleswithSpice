@@ -16,7 +16,7 @@ import {
   createOpaqueStoryLabJobId,
   POSTGRES_STORY_LAB_JOB_DURABILITY
 } from './jobContracts';
-import type { CreateStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from './jobStorePort';
+import type { CreateStoryLabJobInput, ReadStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from './jobStorePort';
 
 export type StoryLabJobStoreErrorCode =
   | 'STORY_LAB_JOB_STORAGE_UNCONFIGURED'
@@ -94,6 +94,7 @@ const LOAD_JOB_SQL = `
 select job_id, kind, status, current_step, progress_percent, created_at, updated_at, result_json, error_json
 from story_lab_jobs
 where job_id = $1
+  and owner_user_id = $2
 limit 1
 `;
 
@@ -115,6 +116,7 @@ const LOAD_EVENTS_SQL = `
 select event_json
 from story_lab_job_events
 where job_id = $1
+  and owner_user_id = $2
 order by sequence_number asc
 `;
 
@@ -220,12 +222,16 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
     }
   }
 
-  async getJob<TPublicResult = unknown>(jobId: string): Promise<StoryLabJobCreationResponse<TPublicResult> | null> {
+  async getJob<TPublicResult = unknown>(
+    jobId: string,
+    input: ReadStoryLabJobInput = {}
+  ): Promise<StoryLabJobCreationResponse<TPublicResult> | null> {
     this.assertReady();
     assertValidJobId(jobId);
+    const ownerUserId = requireOwnerUserId(input.ownerUserId);
 
     try {
-      const result = await this.executor().query<StoryLabJobRow>(LOAD_JOB_SQL, [jobId]);
+      const result = await this.executor().query<StoryLabJobRow>(LOAD_JOB_SQL, [jobId, ownerUserId]);
       const row = result.rows[0];
       return row ? createResponse(jobFromRow<TPublicResult>(row)) : null;
     } catch {
@@ -233,12 +239,16 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
     }
   }
 
-  async getEvents<TPublicResult = unknown>(jobId: string): Promise<StoryLabJobEvent<TPublicResult>[] | null> {
+  async getEvents<TPublicResult = unknown>(
+    jobId: string,
+    input: ReadStoryLabJobInput = {}
+  ): Promise<StoryLabJobEvent<TPublicResult>[] | null> {
     this.assertReady();
     assertValidJobId(jobId);
+    const ownerUserId = requireOwnerUserId(input.ownerUserId);
 
     try {
-      const result = await this.executor().query<StoryLabJobEventRow>(LOAD_EVENTS_SQL, [jobId]);
+      const result = await this.executor().query<StoryLabJobEventRow>(LOAD_EVENTS_SQL, [jobId, ownerUserId]);
       return result.rows.map(row => eventFromRow<TPublicResult>(row)).filter((event): event is StoryLabJobEvent<TPublicResult> => Boolean(event));
     } catch {
       throw storageError();

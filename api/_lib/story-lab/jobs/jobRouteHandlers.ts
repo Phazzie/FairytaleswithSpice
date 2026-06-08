@@ -170,7 +170,9 @@ async function handleGetStoryLabJobWithContext(
     return;
   }
 
-  const job = await resolvedStore.store.getJob(jobId);
+  const job = await resolvedStore.store.getJob(jobId, {
+    ownerUserId: resolvedStore.ownerUserId
+  });
   if (!job) {
     sendJson(res, 404, jobNotFound());
     return;
@@ -209,7 +211,9 @@ async function handleStreamStoryLabJobEventsWithContext(
     return;
   }
 
-  const events = await resolvedStore.store.getEvents<JobResult>(jobId);
+  const events = await resolvedStore.store.getEvents<JobResult>(jobId, {
+    ownerUserId: resolvedStore.ownerUserId
+  });
   if (!events) {
     sendJson(res, 404, jobNotFound());
     return;

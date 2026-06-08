@@ -151,8 +151,17 @@ async function testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots() {
       error_json: null
     }
   ]);
-  const loaded = await store.getJob<{ storyId: string }>(fixedJobId);
+  const loaded = await store.getJob<{ storyId: string }>(fixedJobId, { ownerUserId: 'user_job_owner' });
   assert(loaded?.job.result?.storyId === 'story_owner_safe', 'Postgres getJob should map result json');
+  const loadJobQuery = executor.queries.find(query => {
+    const sql = query.sql.toLowerCase();
+    return sql.includes('select job_id') && sql.includes('from story_lab_jobs');
+  });
+  assert(loadJobQuery?.params.includes('user_job_owner'), 'Postgres getJob should filter by owner user id');
+
+  executor.enqueueRows([]);
+  const denied = await store.getJob<{ storyId: string }>(fixedJobId, { ownerUserId: 'other_user' });
+  assert(denied === null, 'Postgres getJob should return null when owner does not match');
 
   executor.enqueueRows([
     {
@@ -164,8 +173,13 @@ async function testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots() {
       }
     }
   ]);
-  const events = await store.getEvents<{ storyId: string }>(fixedJobId);
+  const events = await store.getEvents<{ storyId: string }>(fixedJobId, { ownerUserId: 'user_job_owner' });
   assert(events?.[0]?.eventId === 'event_loaded', 'Postgres getEvents should map event json');
+  const loadEventsQuery = executor.queries.find(query => {
+    const sql = query.sql.toLowerCase();
+    return sql.includes('select event_json') && sql.includes('from story_lab_job_events');
+  });
+  assert(loadEventsQuery?.params.includes('user_job_owner'), 'Postgres getEvents should filter by owner user id');
 }
 
 main().catch(error => {

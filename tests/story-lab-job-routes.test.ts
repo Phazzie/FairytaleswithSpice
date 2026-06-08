@@ -291,6 +291,17 @@ async function testDurableInjectedJobCreationReceivesOwnerContext(): Promise<voi
   assert(body.success === true, 'authenticated durable job route should return success');
   assert(body.data.durability.mode === 'postgres', 'durable injected store should preserve durable mode in the route response');
   assert(store.createdOwnerUserIds[0] === owner.userId, 'durable job creation should receive authenticated owner id');
+
+  const jobId = body.data.job.jobId as string;
+  const statusResponse = new FakeResponse();
+  await handler(createRequest('GET', undefined, jobId), statusResponse);
+  assert(statusResponse.statusCode === 200, 'authenticated durable status route should read the created job');
+  assert(store.readOwnerUserIds[0] === owner.userId, 'durable job status route should pass authenticated owner id');
+
+  const eventsResponse = new FakeResponse();
+  await handler(createRequest('GET', undefined, jobId, true), eventsResponse);
+  assert(eventsResponse.statusCode === 200, 'authenticated durable events route should read job events');
+  assert(store.eventOwnerUserIds[0] === owner.userId, 'durable job events route should pass authenticated owner id');
 }
 
 async function testMalformedContinuationStoryIdReturnsInvalidRequest(): Promise<void> {
@@ -365,6 +376,8 @@ class CapturingDurableJobStore implements StoryLabJobStore {
   readonly mode = 'postgres';
   readonly durable = true;
   readonly createdOwnerUserIds: Array<string | undefined> = [];
+  readonly readOwnerUserIds: Array<string | undefined> = [];
+  readonly eventOwnerUserIds: Array<string | undefined> = [];
   private readonly inner = new NonDurableStoryLabJobStore();
 
   isConfigured(): boolean {
@@ -383,11 +396,19 @@ class CapturingDurableJobStore implements StoryLabJobStore {
     return this.withDurableReceipt(this.inner.updateJob<TPublicResult>(jobId, input));
   }
 
-  getJob<TPublicResult = unknown>(jobId: string): StoryLabJobCreationResponse<TPublicResult> | null {
+  getJob<TPublicResult = unknown>(
+    jobId: string,
+    options?: { ownerUserId?: string }
+  ): StoryLabJobCreationResponse<TPublicResult> | null {
+    this.readOwnerUserIds.push(options?.ownerUserId);
     return this.withDurableReceipt(this.inner.getJob<TPublicResult>(jobId));
   }
 
-  getEvents<TPublicResult = unknown>(jobId: string) {
+  getEvents<TPublicResult = unknown>(
+    jobId: string,
+    options?: { ownerUserId?: string }
+  ) {
+    this.eventOwnerUserIds.push(options?.ownerUserId);
     return this.inner.getEvents<TPublicResult>(jobId);
   }
 

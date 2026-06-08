@@ -2104,6 +2104,65 @@ Next recommended task:
 
 - Commit this slice, then decide whether to add owner-aware job-store read contracts or switch back to a story-quality experiment.
 
+### 2026-06-08 Owner-Aware Job Read Slice
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the owner-aware job read commit.
+
+User request:
+
+- Keep working autonomously toward durable job readiness without overstating unfinished production cloud behavior.
+
+Work completed:
+
+- Extended the job-store read port so `getJob` and `getEvents` accept optional `ownerUserId` context.
+- Non-durable memory jobs now remember optional owner ids and filter reads when an owner id is supplied.
+- Postgres job reads now require owner id and filter status/event queries by `owner_user_id`.
+- Durable route status and event reads now pass the authenticated owner id into the store.
+- Added tests proving Postgres read queries include the owner id and mismatched owners return no job.
+- Added route tests proving durable status/events pass authenticated owner context.
+- Updated the app audit and auth/profile/cloud plan.
+
+Files changed:
+
+- `api/_lib/story-lab/jobs/jobStorePort.ts`
+- `api/_lib/story-lab/jobs/jobStore.ts`
+- `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts`
+- `api/_lib/story-lab/jobs/jobRouteHandlers.ts`
+- `tests/story-lab-job-store-port.test.ts`
+- `tests/story-lab-job-routes.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-lab-job-store-port` -> failed because Postgres `getJob` did not filter by owner.
+- RED: `npm run test:story-lab-job-routes` -> failed because durable status reads did not pass owner context.
+- GREEN: `npm run test:story-lab-job-store-port` -> passed.
+- GREEN: `npm run test:story-lab-job-routes` -> passed.
+- `npm run test:story-lab-job-store-port` -> passed.
+- `npm run test:story-lab-job-routes` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Jobs are still not durable in the product path.
+- Live durable jobs still need real `DATABASE_URL`, executed schema, live auth, recovery tests, and deployment proof.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then switch back to a bounded story-quality experiment unless live database/provider credentials are available.
+
 ### 2026-06-08 Context Activation Artifact Slice
 
 Branch:

@@ -115,7 +115,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Unknown job-store modes fail closed with `STORY_LAB_JOB_STORE_UNSUPPORTED_MODE` instead of silently falling back.
   - The active job route now resolves through that config seam for the default memory store, rejects unsupported modes with `JOB_STORE_UNAVAILABLE`, and blocks durable Postgres mode until owner-scoped route auth is present.
   - `createStoryLabJobsRouteHandler` now supports injected auth and job-store config for tests/future wiring; durable stores require account auth before job creation and receive `ownerUserId` on create.
-  - This is owner context for creation, not owner-scoped status/event authorization yet; the job-store port still needs owner-aware read methods before durable job reads are private.
+  - Job-store status and event reads now accept owner context; non-durable memory filters owner-scoped reads when an owner is supplied, Postgres reads require `ownerUserId`, and route status/event reads pass the authenticated owner for durable stores.
   - `tests/story-lab-job-store-config.test.ts` guards those config paths.
   - `tests/story-lab-job-routes.test.ts` is now included in `npm run test:all` so route-level store-mode failure behavior is covered by normal verification.
 - `npm run test:all`
@@ -212,12 +212,12 @@ Required before this becomes a user feature:
 
 ### P0: Job Progress Is Not Durable
 
-The Story Lab job route scaffold is useful, but the active route store is still process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` provides a tested injected-executor scaffold, and `storyLabJobStoreConfig.ts` provides an env-gated future selection seam. The route now uses that seam for default memory storage, fails closed for unsupported durable modes, and can pass authenticated owner context into injected durable stores in tests. No production route uses the durable Postgres store yet, and status/event reads are not owner-scoped, so the product should not be described as crash-safe progress.
+The Story Lab job route scaffold is useful, but the active route store is still process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` provides a tested injected-executor scaffold, and `storyLabJobStoreConfig.ts` provides an env-gated future selection seam. The route now uses that seam for default memory storage, fails closed for unsupported durable modes, and can pass authenticated owner context into injected durable stores in tests. Status/event read contracts are owner-aware now, but no production route uses the durable Postgres store yet, so the product should not be described as crash-safe progress.
 
 Required before this becomes durable:
 
 - Integrate the database-backed job store into the job route behind auth.
-- Add owner-scoped job authorization.
+- Prove owner-scoped job authorization against a real database-backed route.
 - Add a Workflow or equivalent durable runner decision.
 - Persist job events/snapshots outside the current process.
 - Add recovery tests that simulate missing in-memory state.

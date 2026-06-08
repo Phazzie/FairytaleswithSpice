@@ -30,6 +30,10 @@ export interface UpdateStoryLabJobInput<TPublicResult = unknown> {
   now?: string;
 }
 
+export interface ReadStoryLabJobInput {
+  ownerUserId?: string;
+}
+
 export interface StoryLabJobStore {
   readonly mode: StoryLabJobStorageMode;
   readonly durable: boolean;
@@ -39,6 +43,12 @@ export interface StoryLabJobStore {
     jobId: string,
     input: UpdateStoryLabJobInput<TPublicResult>
   ): MaybePromise<StoryLabJobCreationResponse<TPublicResult> | null>;
-  getJob<TPublicResult = unknown>(jobId: string): MaybePromise<StoryLabJobCreationResponse<TPublicResult> | null>;
-  getEvents<TPublicResult = unknown>(jobId: string): MaybePromise<StoryLabJobEvent<TPublicResult>[] | null>;
+  getJob<TPublicResult = unknown>(
+    jobId: string,
+    input?: ReadStoryLabJobInput
+  ): MaybePromise<StoryLabJobCreationResponse<TPublicResult> | null>;
+  getEvents<TPublicResult = unknown>(
+    jobId: string,
+    input?: ReadStoryLabJobInput
+  ): MaybePromise<StoryLabJobEvent<TPublicResult>[] | null>;
 }
