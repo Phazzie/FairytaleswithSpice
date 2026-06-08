@@ -1082,3 +1082,57 @@ Known issues:
 Next recommended task:
 
 - If continuing without external credentials, add an anchor-specificity/uniqueness eval before adding any more hidden guidance, or use `Scene Pressure Mixer` only by replacing/reusing an existing anchor.
+
+### 2026-06-08 09:41 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the world-clue specificity commit.
+
+User request:
+
+- Continue no-credentials story-output work and make hidden continuation anchors more specific.
+
+Work completed:
+
+- Added a story-quality eval guard that fails if hidden continuation guidance says `World clue: World Details`.
+- Added a positive eval expectation that the fixture's world clue is named `Witness Shells`.
+- Replaced the generic seeded world artifact name with a compact derived name from the world-detail text.
+- Updated the real-engine seam test to expect the concrete `Vow-Binding Songs` clue from its fixture.
+- Kept artifact significance intact so the hidden anchor still includes the full world-detail sentence after the compact name.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-quality-evals.test.ts` failed because hidden guidance still contained `World clue: World Details`.
+- GREEN: `npx tsx tests/story-quality-evals.test.ts` -> passed.
+- GREEN after expectation update: `npx tsx tests/story-lab-real-engine.test.ts` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+- `git diff --check` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+
+Known issues:
+
+- The world-name derivation is heuristic. It improves the current world-detail fixtures, but it is not a full noun-phrase parser.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without external credentials, add a compactness-aware `Scene Pressure Mixer` by replacing/reusing an existing anchor, or shift back to auth/storage once provider/database details are available.

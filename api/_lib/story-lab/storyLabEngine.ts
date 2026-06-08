@@ -43,6 +43,7 @@ const CONTINUITY_COURTROOM_MAX_THREADS = 3;
 const CONTINUITY_COURTROOM_MAX_ARTIFACTS = 2;
 const CONTINUITY_COURTROOM_MAX_WARNINGS = 2;
 const CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH = 180;
+const WORLD_ARTIFACT_MAX_NAME_WORDS = 4;
 type ChapterEndingPressureId = 'emotional_reveal' | 'danger_escalation' | 'secret_exposed';
 interface ChapterEndingPressure {
   id: ChapterEndingPressureId;
@@ -694,10 +695,44 @@ function buildInitialThreads(storyId: string, input: LabGenerationSeam['input'])
 function buildWorldArtifact(storyId: string, worldDetails: string): LoreArtifact {
   return {
     id: `${storyId}-world-details`,
-    name: 'World Details',
+    name: deriveWorldArtifactName(worldDetails),
     significance: worldDetails,
     introducedInChapter: 1
   };
+}
+
+function deriveWorldArtifactName(worldDetails: string): string {
+  const compacted = collapseWhitespace(worldDetails).replace(/[.!?]+$/g, '').trim();
+  const whereMatch = compacted.match(/\bwhere\s+(.+?)(?:\s+(?:record|records|rule|rules|bind|binds|hold|holds|keep|keeps|hide|hides|guard|guards|demand|demands|remember|remembers|change|changes|cost|costs|make|makes)\b|$)/i);
+  if (whereMatch?.[1]) {
+    return formatWorldArtifactName(whereMatch[1]);
+  }
+
+  const byMatch = compacted.match(/\b(?:ruled|bound|guarded|haunted|recorded|kept|protected)\s+by\s+(.+?)(?:[.,;:]|$)/i);
+  if (byMatch?.[1]) {
+    return formatWorldArtifactName(byMatch[1]);
+  }
+
+  const withoutArticle = compacted.replace(/^(?:a|an|the)\s+/i, '');
+  const beforeRelation = withoutArticle.split(/\b(?:where|ruled by|bound by|guarded by|with|whose|that)\b/i)[0] ?? withoutArticle;
+  return formatWorldArtifactName(beforeRelation);
+}
+
+function formatWorldArtifactName(value: string): string {
+  const cleaned = value
+    .replace(/^(?:a|an|the)\s+/i, '')
+    .replace(/[.!?,;:]+$/g, '')
+    .trim();
+  const words = cleaned.split(/\s+/).filter(Boolean).slice(0, WORLD_ARTIFACT_MAX_NAME_WORDS);
+  if (!words.length) {
+    return 'World Texture';
+  }
+
+  return words.map(formatWorldArtifactWord).join(' ');
+}
+
+function formatWorldArtifactWord(word: string): string {
+  return word.split('-').map(capitalize).join('-');
 }
 
 function buildChapterDelta(

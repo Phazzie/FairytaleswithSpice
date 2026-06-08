@@ -195,6 +195,8 @@ async function main(): Promise<void> {
   assert(!hiddenGuidance.includes('Unresolved artifact:'), 'continuation guidance should not expose mechanical artifact labels.');
   assert(!hiddenGuidance.includes('Warning to honor:'), 'continuation guidance should not expose mechanical warning labels.');
   assert(!hiddenGuidance.includes('generic conflict'), 'continuation guidance should not ask the model to avoid generic conflict with generic wording.');
+  assert(!hiddenGuidance.includes('World clue: World Details'), 'continuation guidance should not use a generic world artifact name.');
+  assert(hiddenGuidance.includes('World clue: Witness Shells'), 'continuation guidance should name the concrete world clue.');
   assert(continuationResponse.data.batch.chapters[0].chapterNumber === 2, 'continuation should append the next chapter number.');
   assert(continuationResponse.data.continuityExtraction?.source === 'heuristic', 'test-injected service should keep heuristic continuity labeling.');
 
