@@ -1836,3 +1836,58 @@ Known issues:
 Next recommended task:
 
 - Add a safe schema-application/provisioning path or database readiness smoke that can run when a real `DATABASE_URL` is present.
+
+### 2026-06-08 11:05 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud schema migration helper commit.
+
+User request:
+
+- Continue making cloud storage operational without pretending a live database exists in this environment.
+
+Work completed:
+
+- Added `api/_lib/story-lab/storage/storyLabCloudSchemaMigration.ts`.
+- The helper loads the tracked `storyLabCloudSchema.sql`, splits it into executable SQL statements while preserving semicolons inside quoted text, and applies each statement through an injected executor.
+- Added `scripts/recovery/apply-story-lab-cloud-schema.ts`.
+- Added `db:story-lab-apply-schema` for real-database schema application when `DATABASE_URL` is configured.
+- The script refuses to run without `DATABASE_URL` and does not print database credentials.
+- Added `tests/story-lab-cloud-schema-migration.test.ts` and wired `test:story-lab-cloud-schema-migration` into `npm run test:all`.
+- Updated the app audit and auth/profile/cloud-library plan to record that a schema-apply path exists, while live database proof is still pending.
+
+Files changed:
+
+- `api/_lib/story-lab/storage/storyLabCloudSchemaMigration.ts`
+- `scripts/recovery/apply-story-lab-cloud-schema.ts`
+- `tests/story-lab-cloud-schema-migration.test.ts`
+- `package.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-cloud-schema-migration.test.ts` -> failed because `storyLabCloudSchemaMigration` did not exist.
+- GREEN: `npm run test:story-lab-cloud-schema-migration` -> passed.
+- `env -u DATABASE_URL npm run db:story-lab-apply-schema` -> exited `1` with `DATABASE_URL is not configured`, as expected.
+- `find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 | xargs -0 ./node_modules/.bin/tsc --noEmit --target es2020 --lib es2020,dom --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node` -> passed.
+- `git diff --check` -> passed before doc edits.
+- `npm run test:all` -> passed with `test:story-lab-cloud-schema-migration` included.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- No live database was available, so the schema was not applied to real storage.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Add a guarded database readiness smoke that checks the profile/project tables against a real `DATABASE_URL`, or continue with story-output experiments if database credentials remain unavailable.

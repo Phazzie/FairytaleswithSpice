@@ -87,7 +87,9 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Cloud schema scaffold evidence:
   - `api/_lib/story-lab/storage/storyLabCloudSchema.sql` now records the migration-ready table shape for private profiles and owner-scoped cloud projects.
   - `tests/story-lab-cloud-schema.test.ts` fails if the tracked schema loses the profile table, project table, owner column, project JSON payload, or owner indexes.
-  - This is a durable schema contract only; no database has been provisioned or executed from the app yet.
+  - `api/_lib/story-lab/storage/storyLabCloudSchemaMigration.ts` can split and apply that tracked schema through an injected executor.
+  - `scripts/recovery/apply-story-lab-cloud-schema.ts` is a guarded real-database apply script that refuses to run unless `DATABASE_URL` is configured.
+  - The helper is migration-ready, but no live database has been provisioned or migrated in this environment yet.
 - Cloud storage configuration seam evidence:
   - `api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts` now centralizes default profile/project store construction for the account route.
   - `@neondatabase/serverless` and `api/_lib/story-lab/storage/neonStoryLabExecutor.ts` now provide the real Neon/Postgres executor adapter behind that seam.
@@ -179,7 +181,7 @@ The storage port exists and models owner-scoped saved projects. A consolidated a
 Required before this becomes a user feature:
 
 - Provision or configure a durable database.
-- Execute or wire the tracked schema through an explicit migration/provisioning path.
+- Run `npm run db:story-lab-apply-schema` against a real provisioned database, or execute the tracked schema through the equivalent deployment migration path.
 - Configure a real `DATABASE_URL` and prove the Neon executor against the provisioned database.
 - Save, load, list, and delete projects by authenticated owner against real durable storage.
 - Make local browser storage a fallback/cache instead of the canonical signed-in source for signed-in users.
