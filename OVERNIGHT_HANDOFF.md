@@ -4406,3 +4406,64 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with another visible story-memory refinement or a route-safe auth/cloud readiness task.
+
+### 2026-06-08 16:32 EDT Visible Non-Durable Job Warning
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the visible non-durable job warning commit.
+
+User request:
+
+- Keep working autonomously on useful product/platform gaps without overstating unfinished durability.
+
+Plan and critique:
+
+- Plan: surface the server-provided job durability warning in the existing job status panel.
+- Hostile critique applied: do not invent new durability language, do not claim recovery is better than it is, and do not change job execution. Display the actual `non_durable_memory` warning already returned by the API and preserve it across event snapshots.
+
+Work completed:
+
+- Added `durabilityWarning` to the job status panel state.
+- Genesis and continuation job create/status responses now pass `response.data.durability.warning` into the panel.
+- SSE event updates preserve the existing warning when events do not carry durability metadata.
+- The job status panel now renders the warning while non-durable jobs are running.
+- Added Angular spec coverage for the warning surviving a running event update.
+- Updated the app audit, idea board, and handoff.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because the job status panel did not show `Jobs are held in memory for this deployment.`
+- GREEN: same Angular browser command -> `TOTAL: 67 SUCCESS`.
+- `git diff --check` -> passed.
+- `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url` -> no open PRs.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `npm run build` -> passed; initial browser total is `484.56 kB`, Proving Grounds remains lazy, and no budget warnings were emitted.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Known issues:
+
+- The warning is honest UI copy, not durable execution.
+- Jobs still default to `non_durable_memory` in the live product path.
+- Live durable jobs still need real auth, a real database, executed schema, runner/recovery behavior, and deployment proof.
+- Live cloud sync still requires real auth, database configuration, schema application, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with another P0-safe durability/cloud readiness task or a bounded story-output experiment.

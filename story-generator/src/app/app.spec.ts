@@ -1791,6 +1791,29 @@ describe('App', () => {
     expect(statusText).not.toContain('NaN%');
   });
 
+  it('shows the job durability warning while a non-durable story job is running', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+    const response = createGenesisJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'generating_story',
+      progressPercent: 18
+    });
+    storyService.createStoryLabJob.and.returnValue(of({ success: true, data: response }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+    configureValidBlueprint('A selkie spy signs a forbidden library contract.');
+
+    component.startGenesis();
+    events$.next(createJobEvent(createGenesisJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'generating_story',
+      progressPercent: 33
+    })));
+
+    const statusText = renderedJobStatusText();
+    expect(statusText).toContain('33%');
+    expect(statusText).toContain('Jobs are held in memory for this deployment.');
+  });
+
   it('shows a friendly AI configuration error when a genesis job cannot use Grok', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
 

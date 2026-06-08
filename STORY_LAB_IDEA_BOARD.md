@@ -286,6 +286,7 @@ Acceptance:
 Progress:
 
 - Schema, readiness smoke, job-store port, injected Postgres scaffold, owner-scoped reads, and owner-scoped updates are now tested.
+- The running job panel now surfaces the server-provided `non_durable_memory` warning so users can see that current progress is not crash-safe.
 - Active product routes still default to `non_durable_memory`; live durable jobs still need real auth, a real database, executed schema, and a runner/recovery plan.
 
 ### Research: Similar Product Mining

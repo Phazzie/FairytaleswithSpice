@@ -34,6 +34,8 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Cloud and local saved-project rows now show accepted memory-card counts when present, using count-only metadata rather than exposing full private card text.
   - Local browser saves remain visible as "Saved here" and are not replaced by cloud state.
   - `npm run build` passed after the new CSS was trimmed below the hard component budget.
+- Job status UI honesty evidence:
+  - The running job panel now shows the server-provided `non_durable_memory` warning while process-local jobs are active, so the UI does not silently imply crash-safe progress.
 - Continuity Preview UI slice evidence:
   - The sidebar Story Memory section now shows a read-only Continuity Preview with prose labels for the first active/open story debts, world clue, and continuity note.
   - The preview now also shows one `Relationship pressure` item when current character state has a relationship edge.
@@ -205,6 +207,7 @@ What users can meaningfully experience now:
 - Build a Story Lab idea with richer story controls.
 - Generate and continue stories through the job-backed UI path.
 - See job progress/status while the current process is alive.
+- See a warning that current job progress is held in memory for this deployment.
 - Use local browser save/load behavior for recent projects.
 - See a Cloud account panel that clearly says cloud sync is unavailable until account storage is configured.
 - See accepted memory-card counts on saved cloud/local library rows when those projects have accepted memory.
@@ -252,7 +255,7 @@ Required before this becomes a user feature:
 
 ### P0: Job Progress Is Not Durable
 
-The Story Lab job route scaffold is useful, but the active route store is still process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` provides a tested injected-executor scaffold, and `storyLabJobStoreConfig.ts` provides an env-gated future selection seam. The route now uses that seam for default memory storage, fails closed for unsupported durable modes, and can pass authenticated owner context into injected durable stores in tests. Status/event reads and job updates are owner-aware now, but no production route uses the durable Postgres store yet, so the product should not be described as crash-safe progress.
+The Story Lab job route scaffold is useful, but the active route store is still process-local and labelled `non_durable_memory`. A migration-ready `story_lab_jobs` / `story_lab_job_events` schema contract now exists, `api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts` provides a tested injected-executor scaffold, and `storyLabJobStoreConfig.ts` provides an env-gated future selection seam. The route now uses that seam for default memory storage, fails closed for unsupported durable modes, and can pass authenticated owner context into injected durable stores in tests. Status/event reads and job updates are owner-aware now, and the UI now displays the non-durable warning while jobs run, but no production route uses the durable Postgres store yet, so the product should not be described as crash-safe progress.
 
 Required before this becomes durable:
 
