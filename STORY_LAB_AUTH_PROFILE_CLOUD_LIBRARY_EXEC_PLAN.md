@@ -40,11 +40,12 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - [ ] Implement provider-backed `AuthPort` adapter behind explicit env configuration.
 - [x] Implement one consolidated Story Lab account route with rewrites instead of many deployable function files.
 - [x] Wire cloud library methods into the Angular service.
-- [ ] Wire cloud library UI into the Angular app.
-- [ ] Add focused owner-isolation, profile, route, and UI tests.
+- [x] Wire cloud library UI into the Angular app.
+- [x] Add focused owner-isolation, profile, route, and UI tests.
 - [x] Run validation and update handoff for Slice 1.
 - [x] Run validation and update handoff for Slices 2 and 3.
 - [x] Run validation and update handoff for Slice 4a service methods.
+- [x] Run validation and update handoff for Slice 4b visible UI state.
 
 ## Surprises & Discoveries
 
@@ -53,6 +54,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - The existing storage port takes `AuthUser` already, which is the right seam. Future route work should call `authPort.requireUser(req)` once and pass the resulting `AuthUser` into storage.
 - Current provider research says editable auth metadata is not a safe authorization source. User profile preferences can live in metadata only if they are treated as display/preferences, never ownership.
 - Vercel function budget is usable but tighter after Slice 3. Account/profile/project cloud APIs now share one deployable route file, and the branch count is `11/12`.
+- The cloud library UI can land before live auth/database provisioning as long as it tells the truth: local browser saves remain active, and cloud sync shows unavailable or failed until the account route is configured.
 
 ## Decision Log
 
@@ -97,6 +99,19 @@ Current implementation state as of 2026-06-08:
 - Added `StoryService` methods for profile get/update and cloud project list/save/load/delete.
 - Added Angular service specs for the new account-route client methods.
 - Adjusted the account route project-load response to return a cloud-facing load result instead of exposing the backend store record shape.
+- Added visible cloud/local library state to the Angular app:
+  - a Cloud account panel above the existing local saved-project list;
+  - visible unavailable/synced/failed/local-only status text;
+  - refresh, save-to-cloud, load, and delete hooks through `StoryService`;
+  - local browser save behavior remains visible and available.
+- Added Angular component specs that prove cloud unavailable state does not replace local saves, refresh can render cloud projects, saving the active workbench calls the account service without disabling local save, and failed cloud refreshes re-enable cloud controls.
+- Slice 4b validation passed:
+  - RED: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` failed on missing app cloud-library UI state/methods;
+  - GREEN: same Angular spec typecheck passed after implementation;
+  - `npm run build` passed after trimming the new CSS under the hard component budget;
+  - `npm run test:all` passed;
+  - `scripts/recovery/preflight.sh --quick --skip-status` passed;
+  - `scripts/recovery/check-vercel-function-count.sh` -> `11/12`.
 - Slice 4a validation passed:
   - RED: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` failed on missing `StoryService` cloud/profile methods;
   - GREEN: same Angular spec typecheck passed;
@@ -133,7 +148,7 @@ Current implementation state as of 2026-06-08:
   - `scripts/recovery/check-vercel-function-count.sh` -> `10/12`;
   - `npm run test:all`;
   - `scripts/recovery/preflight.sh --quick --skip-status`.
-- No provider SDK, database migration, Angular cloud UI, live auth provider, live database executor, or durable job behavior has landed yet.
+- No provider SDK, database migration, live auth provider, live database executor, real cloud sync, login/profile management UI, or durable job behavior has landed yet.
 
 Expected retrospective evidence after implementation:
 

@@ -529,3 +529,61 @@ Known issues:
 Next recommended task:
 
 - Add a restrained Angular cloud/local library UI state that uses these service methods but honestly shows account/cloud unavailable until auth and storage are configured.
+
+### 2026-06-08 08:53 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the Slice 4b commit.
+
+User request:
+
+- Continue autonomous overnight work and add the next UI slice without overstating unfinished cloud/auth behavior.
+
+Work completed:
+
+- Added a visible Cloud account panel above the existing local saved-project library.
+- Added cloud library state for unavailable, synced, failed, and local-only conditions.
+- Wired refresh, save-to-cloud, load-cloud-project, and delete-cloud-project UI hooks through `StoryService`.
+- Kept local browser save/load visible as "Saved here" so anonymous use remains intact.
+- Added Angular component specs for cloud-unavailable state, cloud-project refresh, saving the active workbench project to cloud, and re-enabling cloud controls after an account-route error.
+- Trimmed the new CSS so the Angular production build stays under the hard component CSS budget.
+- Updated `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` and `STORY_LAB_APP_AUDIT.md` to show that UI exists but live auth/database sync is still not implemented.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.css`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` failed on missing cloud-library app state/methods.
+- GREEN: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` -> passed.
+- `npm run build` -> passed after CSS trimming; remaining output includes existing soft budget warnings for initial bundle size and component CSS warning budget.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Browser/Karma runtime execution; this environment has a history of browser test hangs, so this slice used Angular spec typecheck, full repo tests, production build, and preflight.
+- Live auth/database/cloud sync proof; no provider SDK, database executor, login UI, or live database configuration exists yet.
+
+Known issues:
+
+- Cloud controls are visible, but the default account route still fails closed until a real auth provider and durable storage executor are configured.
+- The app still cannot sign in, sync across devices, or prove live cloud saves.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Decide whether to make the next autonomous slice a real provider/database adapter scaffold or a story-quality experiment. Given the user asked for overnight autonomy and experiments, the next high-value code slice is to improve mock/story-quality length behavior behind tests, because it does not require external credentials and the audit already flags it as a P0 gap.

@@ -24,6 +24,11 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Angular service-method slice evidence:
   - Story Lab profile/cloud project methods were added to `StoryService`.
   - `story.service.spec.ts` now type-checks profile get/update and cloud project list/save/load/delete client calls.
+- Visible cloud-library UI slice evidence:
+  - The Angular app now has a Cloud account panel above the local browser save list.
+  - The panel shows honest unavailable/synced/failed/local-only states and calls the account service for refresh, save, load, and delete.
+  - Local browser saves remain visible as "Saved here" and are not replaced by cloud state.
+  - `npm run build` passed after the new CSS was trimmed below the hard component budget.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
@@ -57,7 +62,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - Quick preflight passes.
 - Root integration/unit checks pass.
 - Story Lab UI work has landed through narrative dials, villain pressure, Director's Room notes, job status, batch queue, and job-backed genesis/continuation flows.
-- The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, and one consolidated account route.
+- The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, one consolidated account route, and visible local/cloud library state.
 - Server/client logging and privacy scaffolding have already received meaningful work in prior phases.
 
 ## Current Product Reality
@@ -70,13 +75,14 @@ What users can meaningfully experience now:
 - Generate and continue stories through the job-backed UI path.
 - See job progress/status while the current process is alive.
 - Use local browser save/load behavior for recent projects.
+- See a Cloud account panel that clearly says cloud sync is unavailable until account storage is configured.
 - Use narrative controls such as heat contract, Director's Room notes, villain pressure, and narrative dials.
 
 What users cannot honestly rely on yet:
 
 - Signing in.
 - Having a user-visible profile.
-- Saving stories to a cloud account through the UI.
+- Actually saving stories to a cloud account across devices.
 - Opening their story library across devices.
 - Resuming background generation after a server process dies.
 - Getting durable long-running Workflow-backed progress.
@@ -96,17 +102,17 @@ Required before this becomes a user feature:
 - Wire a real provider adapter through `AuthPort`.
 - Keep forbidden cross-user access covered by tests as the provider adapter lands.
 
-### P0: Cloud Project Storage Is Not User-Visible
+### P0: Cloud Project Storage Is Visible But Not Real Yet
 
-The storage port exists and models owner-scoped saved projects. A consolidated account route now exposes profile and project operations behind auth/storage seams, and `StoryService` has client methods for those calls. The visible browser UI still uses `StoryWorkspaceStorageService` and local storage for saving.
+The storage port exists and models owner-scoped saved projects. A consolidated account route exposes profile and project operations behind auth/storage seams, `StoryService` has client methods for those calls, and the app now shows a Cloud account panel. The panel is deliberately honest: it keeps local browser storage visible and reports cloud unavailable/failed until auth and durable storage are configured.
 
 Required before this becomes a user feature:
 
 - Provision or configure a durable database.
 - Configure a durable database executor for the route.
 - Save, load, list, and delete projects by authenticated owner against real durable storage.
-- Make local browser storage a fallback/cache instead of the canonical signed-in source.
-- Add UI for "my stories" or a project library using the new service methods.
+- Make local browser storage a fallback/cache instead of the canonical signed-in source for signed-in users.
+- Add login/profile affordances and configured cloud-library states.
 
 ### P0: Job Progress Is Not Durable
 
@@ -194,5 +200,5 @@ Use this order unless a newer user request or failing PR check supersedes it:
 
 1. Implement the provider-backed `AuthPort` adapter behind explicit environment configuration.
 2. Connect the account route to a durable database executor/migration path.
-3. Wire Angular cloud-library methods and UI states without breaking anonymous local save.
+3. Replace the fail-closed cloud UI path with configured auth/storage behavior without breaking anonymous local save.
 4. Pick one small story-quality improvement from the idea board and implement it behind tests.

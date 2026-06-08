@@ -10,6 +10,8 @@ import {
   BatchProgressState,
   ChapterBatchSize,
   ChapterTimelineEntry,
+  CloudLibrarySyncState,
+  CloudStoryProjectListItem,
   ContinuityPanelViewModel,
   CreatureArchetype,
   GeneratedChapter,
@@ -340,6 +342,12 @@ export class App implements OnDestroy {
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
   readonly savedProjects = signal<SavedStoryProject[]>([]);
+  readonly cloudProjects = signal<CloudStoryProjectListItem[]>([]);
+  readonly cloudLibrarySyncState = signal<CloudLibrarySyncState>({
+    mode: 'cloud_unavailable',
+    message: 'Account sync is not connected yet.'
+  });
+  readonly isCloudLibraryBusy = signal(false);
   readonly generationProgress = signal<GenerationProgressState>({
     active: false,
     percent: 0,
@@ -504,6 +512,40 @@ export class App implements OnDestroy {
     return telemetry.reasoningEffort
       ? `${modelLabel} · ${telemetry.reasoningEffort}`
       : modelLabel;
+  });
+  readonly cloudLibraryStatusLabel = computed(() => {
+    switch (this.cloudLibrarySyncState().mode) {
+      case 'cloud_synced':
+        return 'Cloud synced';
+      case 'sync_failed':
+        return 'Cloud sync failed';
+      case 'local_only':
+        return 'Local only';
+      case 'cloud_unavailable':
+        return 'Cloud unavailable';
+    }
+  });
+  readonly cloudLibraryStatusMessage = computed(() => {
+    const state = this.cloudLibrarySyncState();
+    if (state.message) {
+      return state.message;
+    }
+
+    if (state.mode === 'cloud_synced') {
+      return state.lastSyncedAt
+        ? `Last checked ${new Date(state.lastSyncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`
+        : 'Cloud library is available.';
+    }
+
+    if (state.mode === 'sync_failed') {
+      return 'Cloud sync failed. Local browser saves are still available.';
+    }
+
+    if (state.mode === 'local_only') {
+      return 'This story is saved in this browser.';
+    }
+
+    return 'Account sync is not connected yet.';
   });
   readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
     const chapters = this.workbench().chapterHistory;
@@ -890,6 +932,161 @@ ${chapters}
       }));
     }
     this.workspaceSaveStatus.set('Saved story removed from this browser.');
+  }
+
+  refreshCloudLibrary() {
+    if (this.isCloudLibraryBusy()) {
+      return;
+    }
+
+    this.isCloudLibraryBusy.set(true);
+    this.storyService.listCloudStoryProjects().subscribe({
+      next: response => {
+        if (!response.success || !response.data) {
+          this.cloudLibrarySyncState.set({
+            mode: 'sync_failed',
+            message: this.formatApiError(response.error, 'Cloud library is unavailable.')
+          });
+          return;
+        }
+
+        this.cloudProjects.set(response.data.projects);
+        this.cloudLibrarySyncState.set({
+          mode: 'cloud_synced',
+          lastSyncedAt: new Date().toISOString(),
+          message: `${response.data.projects.length} cloud project${response.data.projects.length === 1 ? '' : 's'} loaded.`
+        });
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.refreshCloudLibrary');
+        this.cloudLibrarySyncState.set({
+          mode: 'cloud_unavailable',
+          message: this.formatHttpError(error, 'Cloud library is unavailable until account sync is configured.')
+        });
+        this.isCloudLibraryBusy.set(false);
+      },
+      complete: () => {
+        this.isCloudLibraryBusy.set(false);
+      }
+    });
+  }
+
+  saveActiveProjectToCloud() {
+    if (this.isCloudLibraryBusy()) {
+      return;
+    }
+
+    const project = this.buildSavedProjectFromSession(this.workbench());
+    if (!project) {
+      this.notificationService.warning('Nothing to save', 'Generate a story before saving to cloud.');
+      this.cloudLibrarySyncState.set({
+        mode: 'local_only',
+        message: 'Generate a story before saving to cloud.'
+      });
+      return;
+    }
+
+    this.isCloudLibraryBusy.set(true);
+    this.storyService.saveCloudStoryProject(project).subscribe({
+      next: response => {
+        if (!response.success || !response.data) {
+          this.cloudLibrarySyncState.set({
+            mode: 'sync_failed',
+            message: this.formatApiError(response.error, 'Cloud save failed.')
+          });
+          return;
+        }
+
+        this.upsertCloudProject(project, response.data.projectId);
+        this.cloudLibrarySyncState.set(response.data.syncState);
+        this.notificationService.success('Cloud save requested', project.title);
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.saveActiveProjectToCloud');
+        this.cloudLibrarySyncState.set({
+          mode: 'cloud_unavailable',
+          message: this.formatHttpError(error, 'Cloud save is unavailable until account sync is configured.')
+        });
+        this.isCloudLibraryBusy.set(false);
+      },
+      complete: () => {
+        this.isCloudLibraryBusy.set(false);
+      }
+    });
+  }
+
+  loadCloudProject(projectId: string) {
+    if (this.isCloudLibraryBusy()) {
+      return;
+    }
+
+    this.isCloudLibraryBusy.set(true);
+    this.storyService.loadCloudStoryProject(projectId).subscribe({
+      next: response => {
+        if (!response.success || !response.data) {
+          this.cloudLibrarySyncState.set({
+            mode: 'sync_failed',
+            message: this.formatApiError(response.error, 'Cloud story could not be loaded.')
+          });
+          return;
+        }
+
+        this.hydrateCloudProject(response.data.project);
+        this.cloudLibrarySyncState.set({
+          mode: 'cloud_synced',
+          lastSyncedAt: new Date().toISOString(),
+          message: `Loaded "${response.data.project.title}" from cloud.`
+        });
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.loadCloudProject');
+        this.cloudLibrarySyncState.set({
+          mode: 'sync_failed',
+          message: this.formatHttpError(error, 'Cloud story could not be loaded.')
+        });
+        this.isCloudLibraryBusy.set(false);
+      },
+      complete: () => {
+        this.isCloudLibraryBusy.set(false);
+      }
+    });
+  }
+
+  deleteCloudProject(projectId: string) {
+    if (this.isCloudLibraryBusy()) {
+      return;
+    }
+
+    this.isCloudLibraryBusy.set(true);
+    this.storyService.deleteCloudStoryProject(projectId).subscribe({
+      next: response => {
+        if (!response.success || !response.data) {
+          this.cloudLibrarySyncState.set({
+            mode: 'sync_failed',
+            message: this.formatApiError(response.error, 'Cloud delete failed.')
+          });
+          return;
+        }
+
+        this.cloudProjects.set(this.cloudProjects().filter(project => project.projectId !== projectId));
+        this.cloudLibrarySyncState.set({
+          mode: 'cloud_synced',
+          lastSyncedAt: new Date().toISOString(),
+          message: response.data.deleted ? 'Cloud story deleted.' : 'Cloud story was already absent.'
+        });
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.deleteCloudProject');
+        this.cloudLibrarySyncState.set({
+          mode: 'sync_failed',
+          message: this.formatHttpError(error, 'Cloud delete failed.')
+        });
+        this.isCloudLibraryBusy.set(false);
+      },
+      complete: () => {
+        this.isCloudLibraryBusy.set(false);
+      }
+    });
   }
 
   private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize, batchId?: string) {
@@ -1520,6 +1717,29 @@ ${chapters}
     }
   }
 
+  private hydrateCloudProject(project: SavedStoryProject) {
+    this.blueprint.set({
+      ...project.blueprint,
+      heatContract: this.normalizeHeatContract(project.blueprint.heatContract),
+      narrativeDirectives: project.blueprint.narrativeDirectives ?? ''
+    });
+    this.workbench.set({
+      story: project.summary,
+      state: project.state,
+      chapterHistory: project.chapters,
+      activeBatchSize: project.blueprint.chapterBatchSize,
+      lastTelemetry: project.telemetry,
+      lastContinuityExtraction: project.continuityExtraction,
+      lastSuggestedPrompts: [],
+      batchQueue: [],
+      savedProjectId: project.id
+    });
+    this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
+    this.collapsedChapterGroups.set(new Set());
+    this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');
+    this.notificationService.info('Cloud story loaded', project.title);
+  }
+
   private findSavedProjectByStoryId(storyId: string): SavedStoryProject | null {
     return this.workspaceStorage.loadProject(storyId)
       ?? this.workspaceStorage.listProjects().find(project => project.storyId === storyId)
@@ -1733,14 +1953,33 @@ ${chapters}
   }
 
   private persistSession(session: StoryWorkbenchSession): string | undefined {
-    if (!session.story || !session.state || !session.chapterHistory.length) {
+    const project = this.buildSavedProjectFromSession(session);
+    if (!project) {
       return undefined;
+    }
+
+    const result = this.workspaceStorage.saveProject(project);
+
+    if (!result.success) {
+      this.workspaceSaveStatus.set(result.message);
+      return undefined;
+    }
+
+    this.refreshSavedProjects();
+    this.workspaceSaveStatus.set('Saved in this browser.');
+    return result.data.id;
+  }
+
+  private buildSavedProjectFromSession(session: StoryWorkbenchSession): SavedStoryProject | null {
+    if (!session.story || !session.state || !session.chapterHistory.length) {
+      return null;
     }
 
     const now = new Date().toISOString();
     const currentProjectId = session.savedProjectId ?? session.story.storyId;
     const existingProject = this.workspaceStorage.loadProject(currentProjectId);
-    const project: SavedStoryProject = {
+
+    return {
       id: currentProjectId,
       storyId: session.story.storyId,
       title: session.story.title,
@@ -1754,16 +1993,20 @@ ${chapters}
       createdAt: existingProject?.createdAt ?? session.story.createdAt ?? now,
       updatedAt: now
     };
-    const result = this.workspaceStorage.saveProject(project);
+  }
 
-    if (!result.success) {
-      this.workspaceSaveStatus.set(result.message);
-      return undefined;
-    }
-
-    this.refreshSavedProjects();
-    this.workspaceSaveStatus.set('Saved in this browser.');
-    return result.data.id;
+  private upsertCloudProject(project: SavedStoryProject, projectId = project.id) {
+    const nextItem: CloudStoryProjectListItem = {
+      projectId,
+      storyId: project.storyId,
+      title: project.title,
+      synopsis: project.synopsis,
+      chapterCount: project.chapters.length,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt
+    };
+    const existing = this.cloudProjects().filter(item => item.projectId !== projectId);
+    this.cloudProjects.set([nextItem, ...existing]);
   }
 
   clearFinishedBatchQueue() {
@@ -1772,6 +2015,10 @@ ${chapters}
 
   trackBatch(_index: number, batch: BatchProgressState): string {
     return batch.id;
+  }
+
+  trackCloudProject(_index: number, project: CloudStoryProjectListItem): string {
+    return project.projectId;
   }
 
   formatBatchStatus(status: BatchProgressState['status']): string {

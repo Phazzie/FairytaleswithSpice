@@ -1,7 +1,7 @@
 import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
-import { BehaviorSubject, of, Subject } from 'rxjs';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
@@ -12,6 +12,8 @@ import {
   StoryLabJobEvent,
   StoryStateSnapshot,
   StorySummary,
+  CloudStoryProjectList,
+  CloudStoryProjectSaveReceipt,
   GeneratedChapter
 } from './contracts';
 
@@ -252,7 +254,11 @@ describe('App', () => {
       'createStoryLabJob',
       'getStoryLabJob',
       'streamStoryLabJobEvents',
-      'streamStoryGeneration'
+      'streamStoryGeneration',
+      'listCloudStoryProjects',
+      'saveCloudStoryProject',
+      'loadCloudStoryProject',
+      'deleteCloudStoryProject'
     ]);
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
       'logInfo',
@@ -439,6 +445,78 @@ describe('App', () => {
 
     expect(component.blueprint().creature).toBe('dragon');
     expect(component.activeSpiceOption().label).toBe('Inferno');
+  });
+
+  it('renders cloud library as unavailable without replacing local browser saves', () => {
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const text = panel?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
+
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(text).toContain('Cloud account');
+    expect(text).toContain('Cloud unavailable');
+    expect(fullText).toContain('Saved here');
+  });
+
+  it('refreshes visible cloud projects through the account service', () => {
+    const cloudList: CloudStoryProjectList = {
+      ownerUserId: 'user-owner',
+      storageMode: 'cloud_postgres',
+      projects: [{
+        projectId: 'project-cloud',
+        storyId: 'story-cloud',
+        title: 'Cloud Chapel',
+        synopsis: 'A cloud-synced oath.',
+        chapterCount: 2,
+        createdAt: '2026-06-08T08:37:00.000Z',
+        updatedAt: '2026-06-08T08:38:00.000Z'
+      }]
+    };
+    storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
+
+    component.refreshCloudLibrary();
+    fixture.detectChanges();
+
+    expect(storyService.listCloudStoryProjects).toHaveBeenCalled();
+    expect(component.cloudProjects().length).toBe(1);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
+    expect(fixture.nativeElement.textContent).toContain('Cloud Chapel');
+  });
+
+  it('saves the active workbench project to cloud without disabling local save', () => {
+    const payload = seedWorkbenchForContinuation();
+    const receipt: CloudStoryProjectSaveReceipt = {
+      projectId: payload.summary.storyId,
+      storyId: payload.summary.storyId,
+      savedAt: payload.summary.updatedAt,
+      syncState: {
+        mode: 'cloud_synced',
+        lastSyncedAt: payload.summary.updatedAt
+      }
+    };
+    storyService.saveCloudStoryProject.and.returnValue(of({ success: true, data: receipt }));
+
+    component.saveActiveProjectToCloud();
+
+    expect(storyService.saveCloudStoryProject).toHaveBeenCalledWith(jasmine.objectContaining({
+      id: payload.summary.storyId,
+      storyId: payload.summary.storyId,
+      title: payload.summary.title
+    }));
+    expect(component.workspaceSaveStatus()).not.toContain('Cloud');
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
+  });
+
+  it('re-enables cloud controls after an account route error', () => {
+    storyService.listCloudStoryProjects.and.returnValue(throwError(() => new Error('offline')));
+
+    component.refreshCloudLibrary();
+
+    expect(component.isCloudLibraryBusy()).toBeFalse();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.workspaceSaveStatus()).toContain('Saved here');
   });
 
   it('updates the Heat Contract without changing the rest of the blueprint', () => {
