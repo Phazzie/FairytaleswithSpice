@@ -253,7 +253,7 @@ Status:
 - Resolved threads and resolved artifacts are intentionally filtered out so already-paid debts do not keep polluting the next chapter.
 - Verified by `tests/story-lab-real-engine.test.ts`, which captures the service input and proves the anchor reaches the real-engine seam.
 
-### Weird Lab: Chapter Ending Stress Test
+### Done: Chapter Ending Stress Test
 
 Generate or score three possible chapter-ending directions before selecting the final continuation brief.
 
@@ -267,6 +267,14 @@ Experiment:
 - Produce three ending intents: emotional reveal, danger escalation, secret exposed.
 - Score for specificity, consequence, and next-chapter pull.
 - Use the winning intent as continuation context.
+
+Status:
+
+- Done in overnight slice on 2026-06-08.
+- Real Story Lab continuations now append a hidden `Chapter Ending Stress Test` anchor alongside the continuity courtroom anchor.
+- The anchor lists the three ending candidates, chooses one deterministic ending pressure from current story state plus the continuation brief, and tells the model to answer one question while leaving a sharper one active.
+- The first selector is intentionally simple and deterministic. It does not claim to evaluate generated prose quality.
+- Verified by `tests/story-lab-real-engine.test.ts`, which captures the continuation service input and proves the ending-pressure anchor reaches the real-engine seam.
 
 ### Weird Lab: Cliche Alarm
 

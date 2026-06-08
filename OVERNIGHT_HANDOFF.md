@@ -749,3 +749,60 @@ Known issues:
 Next recommended task:
 
 - If continuing without external credentials, either test the continuation mock-length policy or run the next bounded Weird Lab item from the idea board, such as `Chapter Ending Stress Test` or `Cliche Alarm`. If provider/database details become available, return to the auth/storage adapter path.
+
+### 2026-06-08 09:18 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the Chapter Ending Stress Test commit.
+
+User request:
+
+- Keep working autonomously and include bounded creative/story-output experiments, not only cleanup.
+
+Work completed:
+
+- Implemented the `Chapter Ending Stress Test` Weird Lab experiment in the real Story Lab continuation path.
+- Added a compact hidden ending-pressure anchor alongside the continuity courtroom anchor.
+- The anchor lists three considered ending directions: emotional reveal, danger escalation, and secret exposed.
+- It chooses one deterministic ending pressure from unresolved story state plus the user's continuation brief.
+- The tested debt/payment continuation state selects `Secret exposed`.
+- The anchor instructs the continuation to answer one question and leave one sharper question active, preserving serialized momentum.
+- Marked the idea as done in `STORY_LAB_IDEA_BOARD.md` and added fresh evidence to `STORY_LAB_APP_AUDIT.md`.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-real-engine.test.ts` failed because the continuation service input did not include `Chapter Ending Stress Test:`.
+- GREEN: `npx tsx tests/story-lab-real-engine.test.ts` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+- Before/after prose comparison; this slice proves the anchor reaches the provider seam, not that generated chapter endings are objectively better.
+
+Known issues:
+
+- The ending selector is deliberately simple and deterministic; it does not yet evaluate generated prose.
+- Continuation mock chapters remain fixed-size flow placeholders with no explicit word-budget contract.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without external credentials, either implement the `Cliche Alarm` Weird Lab item or test the continuation mock-length policy. If provider/database details become available, return to the auth/storage adapter path.

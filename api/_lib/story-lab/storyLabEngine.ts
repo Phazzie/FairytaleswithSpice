@@ -43,6 +43,33 @@ const CONTINUITY_COURTROOM_MAX_THREADS = 3;
 const CONTINUITY_COURTROOM_MAX_ARTIFACTS = 2;
 const CONTINUITY_COURTROOM_MAX_WARNINGS = 2;
 const CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH = 180;
+type ChapterEndingPressureId = 'emotional_reveal' | 'danger_escalation' | 'secret_exposed';
+interface ChapterEndingPressure {
+  id: ChapterEndingPressureId;
+  label: string;
+  candidateLabel: string;
+  instruction: string;
+}
+const CHAPTER_ENDING_PRESSURES: readonly ChapterEndingPressure[] = [
+  {
+    id: 'emotional_reveal',
+    label: 'Emotional reveal',
+    candidateLabel: 'emotional reveal',
+    instruction: 'end on a private truth the characters cannot comfortably take back.'
+  },
+  {
+    id: 'danger_escalation',
+    label: 'Danger escalation',
+    candidateLabel: 'danger escalation',
+    instruction: 'end with the outside threat entering the scene in a way that forces motion.'
+  },
+  {
+    id: 'secret_exposed',
+    label: 'Secret exposed',
+    candidateLabel: 'secret exposed',
+    instruction: 'end by exposing a hidden bargain, motive, or identity that changes the next chapter.'
+  }
+];
 const CLASSIC_THEME_TYPES: readonly ThemeType[] = [
   'betrayal',
   'obsession',
@@ -228,7 +255,7 @@ export async function continueStoryLab(
   const service = options.serviceFactory?.() ?? new StoryService();
   const currentChapterCount = Math.max(...previousChapters.map(chapter => chapter.chapterNumber));
   const existingContent = previousChapters.map(chapter => chapter.rawContent || chapter.htmlContent).join('\n\n');
-  const continuationBrief = withContinuityCourtroomBrief(input.continuationBrief, storyState);
+  const continuationBrief = withContinuationStrategyBrief(input.continuationBrief, storyState);
   const result = await service.continueChapter({
     storyId: input.storyId,
     currentChapterCount,
@@ -308,16 +335,15 @@ export function buildStoryLabPayloadFromGeneratedStory(
   };
 }
 
-function withContinuityCourtroomBrief(continuationBrief: string | undefined, storyState: StoryStateSnapshot): string | undefined {
+function withContinuationStrategyBrief(continuationBrief: string | undefined, storyState: StoryStateSnapshot): string | undefined {
   const trimmedBrief = continuationBrief?.trim();
-  const courtroomBrief = buildContinuityCourtroomBrief(storyState);
-  if (!courtroomBrief) {
-    return trimmedBrief || undefined;
-  }
-
-  return [trimmedBrief, courtroomBrief]
+  return [
+    trimmedBrief,
+    buildContinuityCourtroomBrief(storyState),
+    buildChapterEndingStressTestBrief(storyState, trimmedBrief)
+  ]
     .filter((line): line is string => Boolean(line))
-    .join('\n\n');
+    .join('\n\n') || undefined;
 }
 
 function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot): string | undefined {
@@ -372,6 +398,60 @@ function compactPromptLine(value: string): string {
   }
 
   return `${compacted.slice(0, CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH - 3).trim()}...`;
+}
+
+function buildChapterEndingStressTestBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  const selectedPressure = chooseChapterEndingPressure(storyState, continuationBrief);
+  return [
+    'Chapter Ending Stress Test:',
+    `- Considered endings: ${CHAPTER_ENDING_PRESSURES.map(pressure => pressure.candidateLabel).join(', ')}.`,
+    `- Chosen ending pressure: ${selectedPressure.label} - ${selectedPressure.instruction}`,
+    '- Let the chapter answer one question and leave one sharper question active.'
+  ].join('\n');
+}
+
+function chooseChapterEndingPressure(storyState: StoryStateSnapshot, continuationBrief: string | undefined): ChapterEndingPressure {
+  const unresolvedThreads = storyState.threads.filter(isUnresolvedThread);
+  const unresolvedArtifacts = storyState.artifacts.filter(artifact => !artifact.resolvedInChapter);
+  const pressureSource = [
+    continuationBrief ?? '',
+    ...unresolvedThreads.flatMap(thread => [thread.label, thread.description, ...thread.foreshadowedDevices]),
+    ...unresolvedArtifacts.map(artifact => `${artifact.name} ${artifact.significance}`),
+    ...storyState.continuityWarnings
+  ].join(' ').toLowerCase();
+  const scores: Record<ChapterEndingPressureId, number> = {
+    emotional_reveal: 1,
+    danger_escalation: 1,
+    secret_exposed: 1
+  };
+
+  if (containsAny(pressureSource, ['love', 'kiss', 'desire', 'choose', 'confess', 'heart', 'boundary', 'want', 'betray'])) {
+    scores.emotional_reveal += 2;
+  }
+
+  if (containsAny(pressureSource, ['danger', 'attack', 'threat', 'trap', 'hunt', 'deadline', 'demand', 'force', 'blood'])) {
+    scores.danger_escalation += 2;
+  }
+
+  if (unresolvedThreads.some(thread => thread.status === 'escalating')) {
+    scores.danger_escalation += 2;
+  }
+
+  if (containsAny(pressureSource, ['secret', 'hidden', 'truth', 'lie', 'name', 'bargain', 'debt', 'payment', 'price', 'vow'])) {
+    scores.secret_exposed += 3;
+  }
+
+  if (unresolvedArtifacts.length > 0 || storyState.continuityWarnings.length > 0) {
+    scores.secret_exposed += 2;
+  }
+
+  return CHAPTER_ENDING_PRESSURES.reduce((best, candidate) =>
+    scores[candidate.id] > scores[best.id] ? candidate : best
+  );
+}
+
+function containsAny(value: string, needles: readonly string[]): boolean {
+  return needles.some(needle => value.includes(needle));
 }
 
 function buildStoryLabPayloadFromContinuation(
