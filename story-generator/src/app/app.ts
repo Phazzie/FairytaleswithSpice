@@ -632,6 +632,17 @@ export class App implements OnDestroy {
         return 'Not connected';
     }
   });
+  readonly cloudAccountActionLabel = computed(() => {
+    switch (this.cloudLibrarySyncState().mode) {
+      case 'cloud_synced':
+        return 'Profile';
+      case 'sync_failed':
+        return 'Account status';
+      case 'local_only':
+      case 'cloud_unavailable':
+        return 'Connect account';
+    }
+  });
   readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
     const chapters = this.workbench().chapterHistory;
     if (!chapters.length) {
@@ -1054,6 +1065,27 @@ ${chapters}
         this.isCloudLibraryBusy.set(false);
       }
     });
+  }
+
+  showCloudAccountSetupStatus() {
+    if (this.isCloudLibraryBusy()) {
+      return;
+    }
+
+    if (this.cloudLibrarySyncState().mode === 'cloud_synced') {
+      this.cloudLibrarySyncState.update(state => ({
+        ...state,
+        message: state.message ?? 'Account is connected.'
+      }));
+      this.notificationService.info('Account connected', 'Cloud sync is available.');
+      return;
+    }
+
+    this.cloudLibrarySyncState.set({
+      mode: 'cloud_unavailable',
+      message: 'Sign-in setup is not configured yet. Local browser saves are still available.'
+    });
+    this.notificationService.info('Account setup pending', 'Sign-in setup is not configured yet.');
   }
 
   saveActiveProjectToCloud() {

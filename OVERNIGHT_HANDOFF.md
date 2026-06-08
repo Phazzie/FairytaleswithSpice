@@ -2906,3 +2906,55 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then continue with either account UI sign-in affordances, a small cloud-library route hardening task, or another bounded story-output experiment.
+
+### 2026-06-08 Cloud Account Setup Action
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the cloud account setup action commit.
+
+User request:
+
+- Keep working autonomously toward auth, storage, profiles, and visible cloud-library readiness without pretending unfinished sign-in is live.
+
+Work completed:
+
+- Added a visible `Connect account` action to the Cloud account panel.
+- The action reports `Sign-in setup is not configured yet. Local browser saves are still available.` and does not call cloud project routes.
+- The action label adapts for future synced/failed account states without adding new routes or provider dependencies.
+- Extended the Angular app spec so the Cloud panel must show the action and prove it does not call `listCloudStoryProjects` while sign-in is unavailable.
+- Updated the app audit and auth/profile/cloud-library plan.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.html`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because `cloud-account-action` did not exist and the setup-status message was absent.
+- GREEN: same Angular browser command printed `TOTAL: 53 SUCCESS`; the Karma cleanup process hung after success and was terminated manually.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle budget over 500 kB and `app.css` at 14.60 kB; this slice added no CSS.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is an honest setup/status affordance, not live sign-in.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- Local Angular/Karma browser cleanup can hang after successful assertions in this environment.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with a no-new-route cloud/account hardening task or return to a bounded story-output experiment.

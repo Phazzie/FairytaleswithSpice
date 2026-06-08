@@ -139,11 +139,13 @@ Current implementation state as of 2026-06-08:
 - Added visible cloud/local library state to the Angular app:
   - a Cloud account panel above the existing local saved-project list;
   - a visible account-connection row that reads `Account Not connected` while sign-in/cloud sync is not available;
+  - a visible `Connect account` action that reports setup status without calling cloud-library routes or claiming live sign-in;
   - visible unavailable/synced/failed/local-only status text;
   - refresh, save-to-cloud, load, and delete hooks through `StoryService`;
   - local browser save behavior remains visible and available.
 - Added Angular component specs that prove cloud unavailable state does not replace local saves, refresh can render cloud projects, saving the active workbench calls the account service without disabling local save, and failed cloud refreshes re-enable cloud controls.
 - Extended the cloud UI spec so the panel must show the account connection row without pretending login is live.
+- Extended the cloud UI spec so the account action must surface setup status without calling the cloud project list service.
 - Slice 4b validation passed:
   - RED: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` failed on missing app cloud-library UI state/methods;
   - GREEN: same Angular spec typecheck passed after implementation;
