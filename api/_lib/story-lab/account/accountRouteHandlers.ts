@@ -7,6 +7,7 @@ import type {
   ApiResponse,
   CloudLibrarySyncState,
   CloudStoryProjectList,
+  CloudStoryProjectLoadResult,
   CloudStoryProjectSaveReceipt,
   SavedStoryProject,
   StoryLabUserProfile
@@ -234,7 +235,7 @@ async function handleProjectRoute(
 
     sendJson(res, 200, {
       success: true,
-      data: loadResult.data
+      data: toCloudProjectLoadResult(user, loadResult.data)
     });
     return;
   }
@@ -393,6 +394,21 @@ function toCloudSaveReceipt(
     storyId: record.storyId,
     savedAt: record.updatedAt,
     syncState: buildSyncState(context)
+  };
+}
+
+function toCloudProjectLoadResult(
+  user: AuthUser,
+  record: StoredStoryProjectRecord
+): CloudStoryProjectLoadResult {
+  return {
+    ownerUserId: user.userId,
+    storageMode: 'cloud_postgres',
+    projectId: record.projectId,
+    storyId: record.storyId,
+    project: record.project,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt
   };
 }
 

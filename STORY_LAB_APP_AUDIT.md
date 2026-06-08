@@ -21,6 +21,9 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Result: `10/12`, within limit.
 - `scripts/recovery/preflight.sh --quick --skip-status`
   - Result: passed required tools, whitespace/conflict markers, Vercel function count, Angular app typecheck, Angular spec typecheck, and Vercel API function typecheck.
+- Angular service-method slice evidence:
+  - Story Lab profile/cloud project methods were added to `StoryService`.
+  - `story.service.spec.ts` now type-checks profile get/update and cloud project list/save/load/delete client calls.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
@@ -95,7 +98,7 @@ Required before this becomes a user feature:
 
 ### P0: Cloud Project Storage Is Not User-Visible
 
-The storage port exists and models owner-scoped saved projects. A consolidated account route now exposes profile and project operations behind auth/storage seams, but the browser still uses `StoryWorkspaceStorageService` and local storage for visible saving.
+The storage port exists and models owner-scoped saved projects. A consolidated account route now exposes profile and project operations behind auth/storage seams, and `StoryService` has client methods for those calls. The visible browser UI still uses `StoryWorkspaceStorageService` and local storage for saving.
 
 Required before this becomes a user feature:
 
@@ -103,7 +106,7 @@ Required before this becomes a user feature:
 - Configure a durable database executor for the route.
 - Save, load, list, and delete projects by authenticated owner against real durable storage.
 - Make local browser storage a fallback/cache instead of the canonical signed-in source.
-- Add UI for "my stories" or a project library.
+- Add UI for "my stories" or a project library using the new service methods.
 
 ### P0: Job Progress Is Not Durable
 

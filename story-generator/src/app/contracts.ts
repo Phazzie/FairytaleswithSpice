@@ -265,6 +265,21 @@ export interface CloudStoryProjectSaveReceipt {
   syncState: CloudLibrarySyncState;
 }
 
+export interface CloudStoryProjectLoadResult {
+  ownerUserId: string;
+  storageMode: CloudStoryProjectStorageMode;
+  projectId: string;
+  storyId: string;
+  project: SavedStoryProject;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CloudStoryProjectDeleteReceipt {
+  projectId: string;
+  deleted: boolean;
+}
+
 export type BatchProgressStatus = 'queued' | 'in_progress' | 'completed' | 'failed';
 
 export interface BatchProgressState {

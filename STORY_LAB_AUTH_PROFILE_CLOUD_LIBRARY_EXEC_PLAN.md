@@ -39,10 +39,12 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - [x] Add focused profile store tests and wire them into `npm run test:all`.
 - [ ] Implement provider-backed `AuthPort` adapter behind explicit env configuration.
 - [x] Implement one consolidated Story Lab account route with rewrites instead of many deployable function files.
-- [ ] Wire cloud library methods into the Angular service and UI.
+- [x] Wire cloud library methods into the Angular service.
+- [ ] Wire cloud library UI into the Angular app.
 - [ ] Add focused owner-isolation, profile, route, and UI tests.
 - [x] Run validation and update handoff for Slice 1.
 - [x] Run validation and update handoff for Slices 2 and 3.
+- [x] Run validation and update handoff for Slice 4a service methods.
 
 ## Surprises & Discoveries
 
@@ -91,6 +93,18 @@ Current implementation state as of 2026-06-08:
 - Updated `scripts/recovery/check-vercel-function-count.sh` to intentionally allow `api/story-lab/account.ts`; function count is now `11/12`.
 - Added `tests/story-lab-account-routes.test.ts` for fail-closed auth, credentialed CORS, profile read/write, project save/list/load/delete, cross-owner denial, and missing-storage failures.
 - Added the account route test script to `npm run test:all`.
+- Added cloud-facing project load/delete contract types.
+- Added `StoryService` methods for profile get/update and cloud project list/save/load/delete.
+- Added Angular service specs for the new account-route client methods.
+- Adjusted the account route project-load response to return a cloud-facing load result instead of exposing the backend store record shape.
+- Slice 4a validation passed:
+  - RED: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` failed on missing `StoryService` cloud/profile methods;
+  - GREEN: same Angular spec typecheck passed;
+  - `npm run test:story-lab-account-routes`;
+  - `git diff --check`;
+  - `scripts/recovery/check-vercel-function-count.sh` -> `11/12`;
+  - `npm run test:all`;
+  - `scripts/recovery/preflight.sh --quick --skip-status`.
 - Slice 3 validation passed:
   - RED: `./node_modules/.bin/tsx tests/story-lab-account-routes.test.ts` failed on missing account route module;
   - GREEN: `./node_modules/.bin/tsx tests/story-lab-account-routes.test.ts`;

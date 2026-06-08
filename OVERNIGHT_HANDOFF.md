@@ -467,3 +467,65 @@ Known issues:
 Next recommended task:
 
 - Implement the provider-backed `AuthPort` adapter or wire Angular cloud-library methods/UI against the fail-closed account route, depending on whether provider/database environment details are available.
+
+### 2026-06-08 08:37 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the Slice 4a commit.
+
+User request:
+
+- Continue autonomous overnight work after the account route slice.
+
+Work completed:
+
+- Added cloud-facing project load/delete contract types.
+- Added `StoryService.getStoryLabProfile`.
+- Added `StoryService.updateStoryLabProfile`.
+- Added `StoryService.listCloudStoryProjects`.
+- Added `StoryService.saveCloudStoryProject`.
+- Added `StoryService.loadCloudStoryProject`.
+- Added `StoryService.deleteCloudStoryProject`.
+- Added Angular service specs for profile get/update and cloud project list/save/load/delete request URLs, methods, and bodies.
+- Adjusted account-route project load responses to return `CloudStoryProjectLoadResult` instead of the backend store record shape.
+- Updated the active plan and app audit to show that service methods exist but visible cloud UI is still pending.
+
+Files changed:
+
+- `story-generator/src/app/contracts.ts`
+- `story-generator/src/app/story.service.ts`
+- `story-generator/src/app/story.service.spec.ts`
+- `api/_lib/story-lab/contracts.ts`
+- `api/_lib/story-lab/account/accountRouteHandlers.ts`
+- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` failed on missing `StoryService` profile/cloud methods.
+- GREEN: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit` -> passed.
+- `npm run test:story-lab-account-routes` -> passed.
+- `git diff --check` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Browser/Karma runtime execution; this environment has a history of browser test hangs, so this slice used Angular spec typecheck plus preflight.
+- Visible cloud-library UI is not implemented in this slice.
+
+Known issues:
+
+- The service methods call a route that still fails closed by default without a configured auth provider and database executor.
+- Users still do not see cloud library controls in the app.
+
+Next recommended task:
+
+- Add a restrained Angular cloud/local library UI state that uses these service methods but honestly shows account/cloud unavailable until auth and storage are configured.
