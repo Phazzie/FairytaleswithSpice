@@ -10,7 +10,11 @@ import {
 } from '../api/_lib/story-lab/storyLabEngine';
 import { getAuthorStylesForCreature } from '../api/_lib/config/authorStyles';
 import type { StoryGenerationSeam as LabGenerationSeam } from '../api/_lib/story-lab/contracts';
-import type { CreatureType, StoryGenerationSeam as ClassicGenerationSeam } from '../api/_lib/types/contracts';
+import type {
+  ChapterContinuationSeam as ClassicContinuationSeam,
+  CreatureType,
+  StoryGenerationSeam as ClassicGenerationSeam
+} from '../api/_lib/types/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -401,6 +405,92 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
 
     assert(response.success, 'continuation with Heat Contract should succeed through service seam');
     assert(sawHeatContract, 'continuation service input should receive the original Heat Contract');
+  });
+
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    let capturedInput: ClassicContinuationSeam['input'] | undefined;
+    const courtroomState = {
+      ...payload.state,
+      threads: [
+        ...payload.state.threads,
+        {
+          id: 'story-test-thread-resolved',
+          label: 'Settled Debt',
+          status: 'resolved' as const,
+          description: 'This bargain has already been paid.',
+          foreshadowedDevices: []
+        }
+      ],
+      artifacts: [
+        ...payload.state.artifacts,
+        {
+          id: 'story-test-paid-charm',
+          name: 'Paid Charm',
+          significance: 'A charm whose bargain has already closed.',
+          introducedInChapter: 1,
+          resolvedInChapter: 1
+        }
+      ],
+      continuityWarnings: [
+        'Resolve the vow-binding song before changing courts.'
+      ]
+    };
+
+    const response = await continueStoryLab({
+      storyId: payload.summary.storyId,
+      chapterBatchSize: 1,
+      storyState: courtroomState,
+      previouslyGeneratedChapters: payload.batch.chapters,
+      continuationBrief: 'Let the court demand payment.',
+      existingSummary: payload.summary
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by continuity courtroom test');
+        },
+        continueChapter: async input => {
+          capturedInput = input;
+          return {
+            success: true,
+            data: {
+              chapterId: 'chapter-2',
+              chapterNumber: 2,
+              title: 'Court Payment',
+              content: '<h3>Chapter 2: Court Payment</h3><p>The court called the debt due.</p>',
+              rawContent: '<p>[Mira]: "Name the price."</p>',
+              wordCount: 8,
+              cliffhangerEnding: true,
+              themesContinued: ['forbidden_love'],
+              spicyLevelMaintained: 3,
+              appendedToStory: '<h3>Chapter 2: Court Payment</h3><p>The court called the debt due.</p>',
+              tropeMetadata: payload.summary.tropeMetadata,
+              chapters: [{
+                chapterId: 'chapter-2',
+                chapterNumber: 2,
+                title: 'Court Payment',
+                content: '<h3>Chapter 2: Court Payment</h3><p>The court called the debt due.</p>',
+                rawContent: '<p>[Mira]: "Name the price."</p>',
+                wordCount: 8,
+                generatedAt: new Date(),
+                hasAudio: false,
+                cliffhangerEnding: true
+              }],
+              totalWordCount: 8
+            }
+          };
+        }
+      })
+    });
+
+    assert(response.success, 'continuation with continuity courtroom anchors should succeed');
+    assert(capturedInput?.userInput?.includes('Let the court demand payment.'), 'original continuation brief should stay in service input');
+    assert(capturedInput?.userInput?.includes('Continuity Courtroom:'), 'service input should include the continuity courtroom anchor');
+    assert(capturedInput?.userInput?.includes('Escalating thread: Forbidden Love'), 'escalating threads should be named for payoff');
+    assert(capturedInput?.userInput?.includes('Open thread: Court Intrigue'), 'active threads should be named for payoff');
+    assert(capturedInput?.userInput?.includes('Unresolved artifact: World Details'), 'unresolved artifacts should be named for payoff');
+    assert(capturedInput?.userInput?.includes('Warning to honor: Resolve the vow-binding song before changing courts.'), 'continuity warnings should be carried into the next chapter request');
+    assert(!capturedInput?.userInput?.includes('Settled Debt'), 'resolved threads should not be repeated as open courtroom debts');
+    assert(!capturedInput?.userInput?.includes('Paid Charm'), 'resolved artifacts should not be repeated as unresolved courtroom debts');
   });
 
   console.log('Story Lab real-engine mapping tests passed');

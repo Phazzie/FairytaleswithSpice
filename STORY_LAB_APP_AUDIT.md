@@ -34,6 +34,11 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - `tests/story-service-improved.test.ts` now fails if 700, 900, or 1200 word single-story mock requests fall outside the existing 30% tolerance.
   - It also fails if the 900-word, three-chapter mock genesis total falls outside the same tolerance.
   - Validation output showed single-story mock outputs of 700 -> 665 words, 900 -> 833 words, and 1200 -> 1107 words; three-chapter 900-word mock genesis produced 828 total words.
+- Continuity Courtroom slice evidence:
+  - Real Story Lab continuations now translate `StoryStateSnapshot` into a compact hidden continuity anchor before calling `StoryService.continueChapter`.
+  - The anchor names unresolved/escalating/dormant threads, unresolved lore artifacts, and current continuity warnings.
+  - Resolved threads and artifacts are filtered out so the next chapter is not dragged back to already-paid story debts.
+  - `tests/story-lab-real-engine.test.ts` captures the continuation service input and proves the original brief plus the `Continuity Courtroom` anchor reach the real-engine seam.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
@@ -69,6 +74,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - Story Lab UI work has landed through narrative dials, villain pressure, Director's Room notes, job status, batch queue, and job-backed genesis/continuation flows.
 - The codebase has explicit seams for account auth, owner-scoped project storage, private profiles, one consolidated account route, and visible local/cloud library state.
 - Classic genesis mock generation now has enforced word-count tolerance instead of warning-only length checks.
+- Real continuations now receive a hidden, deterministic continuity-debt anchor before generation.
 - Server/client logging and privacy scaffolding have already received meaningful work in prior phases.
 
 ## Current Product Reality
@@ -206,5 +212,5 @@ Use this order unless a newer user request or failing PR check supersedes it:
 
 1. Implement the provider-backed `AuthPort` adapter behind explicit environment configuration.
 2. Connect the account route to a durable database executor/migration path.
-3. If no provider/database decision is available, decide and test the continuation mock-length policy.
+3. If no provider/database decision is available, decide and test the continuation mock-length policy or run the next bounded story-output experiment from `STORY_LAB_IDEA_BOARD.md`.
 4. Replace the fail-closed cloud UI path with configured auth/storage behavior without breaking anonymous local save once credentials and storage configuration exist.

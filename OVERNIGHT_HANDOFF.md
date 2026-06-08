@@ -692,3 +692,60 @@ Known issues:
 Next recommended task:
 
 - If continuing without credentials, either add a continuation word-budget contract behind tests or move to a different small story-output experiment from the idea board. If provider/database details become available, return to the auth/storage adapter path.
+
+### 2026-06-08 09:13 EDT
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- This entry is included in the Continuity Courtroom commit.
+
+User request:
+
+- Keep working autonomously, including useful weird/eclectic story-output experiments when repair work is not blocked by missing credentials.
+
+Work completed:
+
+- Implemented the `Continuity Courtroom` Weird Lab experiment in the real Story Lab continuation path.
+- Added a deterministic translator from `StoryStateSnapshot` to a compact hidden continuation anchor.
+- The anchor carries unresolved/escalating/dormant plot threads, unresolved lore artifacts, and continuity warnings into `StoryService.continueChapter`.
+- The original user continuation brief is preserved and appears before the hidden anchor.
+- Resolved plot threads and resolved artifacts are filtered out so already-closed story debts do not keep steering the next chapter.
+- Added a service-seam regression test that captures the continuation input and proves the anchor reaches the real-engine path.
+- Marked the idea as done in `STORY_LAB_IDEA_BOARD.md` and added fresh evidence to `STORY_LAB_APP_AUDIT.md`.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-lab-real-engine.test.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npx tsx tests/story-lab-real-engine.test.ts` failed because the continuation service input did not include `Continuity Courtroom:`.
+- GREEN: `npx tsx tests/story-lab-real-engine.test.ts` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/check-vercel-function-count.sh` -> `11/12`, within limit.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed.
+
+Checks skipped:
+
+- Live Grok/provider proof; no `XAI_API_KEY` is configured in this environment.
+- User-visible Director's Room display for the courtroom anchor; this slice intentionally kept the experiment hidden in the engine seam.
+
+Known issues:
+
+- The courtroom anchor is deterministic and state-based; it does not yet perform AI-assisted contradiction review.
+- Continuation mock chapters remain fixed-size flow placeholders with no explicit word-budget contract.
+- The cloud/auth/storage known issues from previous entries still apply.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- If continuing without external credentials, either test the continuation mock-length policy or run the next bounded Weird Lab item from the idea board, such as `Chapter Ending Stress Test` or `Cliche Alarm`. If provider/database details become available, return to the auth/storage adapter path.

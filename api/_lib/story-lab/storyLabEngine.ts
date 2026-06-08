@@ -39,6 +39,10 @@ interface StoryLabEngineOptions {
 }
 
 const MOCK_FLAG_VALUES = new Set(['1', 'true', 'yes']);
+const CONTINUITY_COURTROOM_MAX_THREADS = 3;
+const CONTINUITY_COURTROOM_MAX_ARTIFACTS = 2;
+const CONTINUITY_COURTROOM_MAX_WARNINGS = 2;
+const CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH = 180;
 const CLASSIC_THEME_TYPES: readonly ThemeType[] = [
   'betrayal',
   'obsession',
@@ -224,11 +228,12 @@ export async function continueStoryLab(
   const service = options.serviceFactory?.() ?? new StoryService();
   const currentChapterCount = Math.max(...previousChapters.map(chapter => chapter.chapterNumber));
   const existingContent = previousChapters.map(chapter => chapter.rawContent || chapter.htmlContent).join('\n\n');
+  const continuationBrief = withContinuityCourtroomBrief(input.continuationBrief, storyState);
   const result = await service.continueChapter({
     storyId: input.storyId,
     currentChapterCount,
     existingContent,
-    userInput: input.continuationBrief,
+    userInput: continuationBrief,
     maintainTone: true,
     tropeMetadata: existingSummary?.tropeMetadata,
     requestedChapterCount: input.chapterBatchSize,
@@ -301,6 +306,72 @@ export function buildStoryLabPayloadFromGeneratedStory(
     stateDelta: buildStateDelta(story.storyId, null, state, chapters),
     telemetry: buildGrokTelemetry(metadata, chapters.length)
   };
+}
+
+function withContinuityCourtroomBrief(continuationBrief: string | undefined, storyState: StoryStateSnapshot): string | undefined {
+  const trimmedBrief = continuationBrief?.trim();
+  const courtroomBrief = buildContinuityCourtroomBrief(storyState);
+  if (!courtroomBrief) {
+    return trimmedBrief || undefined;
+  }
+
+  return [trimmedBrief, courtroomBrief]
+    .filter((line): line is string => Boolean(line))
+    .join('\n\n');
+}
+
+function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot): string | undefined {
+  const lines: string[] = [];
+
+  for (const thread of storyState.threads.filter(isUnresolvedThread).slice(0, CONTINUITY_COURTROOM_MAX_THREADS)) {
+    lines.push(`- ${formatThreadDebtLabel(thread)}: ${compactPromptLine(thread.label)}${formatCourtroomDetail(thread.description)}`);
+  }
+
+  for (const artifact of storyState.artifacts.filter(artifact => !artifact.resolvedInChapter).slice(0, CONTINUITY_COURTROOM_MAX_ARTIFACTS)) {
+    lines.push(`- Unresolved artifact: ${compactPromptLine(artifact.name)}${formatCourtroomDetail(artifact.significance)}`);
+  }
+
+  for (const warning of storyState.continuityWarnings.slice(0, CONTINUITY_COURTROOM_MAX_WARNINGS)) {
+    lines.push(`- Warning to honor: ${compactPromptLine(warning)}`);
+  }
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  return [
+    'Continuity Courtroom:',
+    '- Pay off these existing story debts before inventing new ones.',
+    ...lines
+  ].join('\n');
+}
+
+function isUnresolvedThread(thread: PlotThread): boolean {
+  return thread.status !== 'resolved';
+}
+
+function formatThreadDebtLabel(thread: PlotThread): string {
+  if (thread.status === 'escalating') {
+    return 'Escalating thread';
+  }
+  if (thread.status === 'dormant') {
+    return 'Dormant thread';
+  }
+  return 'Open thread';
+}
+
+function formatCourtroomDetail(value: string): string {
+  const detail = compactPromptLine(value);
+  return detail ? ` - ${detail}` : '';
+}
+
+function compactPromptLine(value: string): string {
+  const compacted = collapseWhitespace(value).trim();
+  if (compacted.length <= CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH) {
+    return compacted;
+  }
+
+  return `${compacted.slice(0, CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH - 3).trim()}...`;
 }
 
 function buildStoryLabPayloadFromContinuation(

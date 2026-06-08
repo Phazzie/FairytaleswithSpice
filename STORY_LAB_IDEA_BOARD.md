@@ -230,7 +230,7 @@ Status:
 - `STORY_LAB_NARRATIVE_DIALS_UI_EXEC_PLAN.md` records the original RED/GREEN proof, and `story-generator/src/app/app.spec.ts` covers every narrative dial option.
 - Future numeric story-state translators can build on this pattern, but this idea is no longer an unstarted Weird Lab item.
 
-### Weird Lab: Continuity Courtroom
+### Done: Continuity Courtroom
 
 Before a continuation runs, generate a compact list of contradictions, open promises, and unresolved emotional debts.
 
@@ -244,6 +244,14 @@ Experiment:
 - Start with deterministic extraction from current story state.
 - Add one optional AI-assisted review later.
 - Show the result as a hidden generation anchor or Director's Room note.
+
+Status:
+
+- Done in overnight slice on 2026-06-08.
+- Real Story Lab continuations now append a hidden `Continuity Courtroom` anchor to the continuation request sent through `StoryService.continueChapter`.
+- The anchor is deterministic and compact: it includes unresolved plot threads, unresolved lore artifacts, and continuity warnings from `StoryStateSnapshot`.
+- Resolved threads and resolved artifacts are intentionally filtered out so already-paid debts do not keep polluting the next chapter.
+- Verified by `tests/story-lab-real-engine.test.ts`, which captures the service input and proves the anchor reaches the real-engine seam.
 
 ### Weird Lab: Chapter Ending Stress Test
 
