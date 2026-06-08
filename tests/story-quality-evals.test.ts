@@ -186,6 +186,14 @@ async function main(): Promise<void> {
     `continuation should receive previous chapter context. Received: ${continuationInput?.existingContent ?? 'none'}`
   );
   assert(continuationInput?.userInput?.includes('Lord Brine'), 'continuation brief should reach the story service.');
+  const hiddenGuidance = continuationInput?.userInput ?? '';
+  assert(hiddenGuidance.includes('Continuity Courtroom:'), 'continuation guidance should include continuity anchors.');
+  assert(hiddenGuidance.includes('Chapter Ending Stress Test:'), 'continuation guidance should include ending pressure.');
+  assert(hiddenGuidance.includes('Cliche Alarm:'), 'continuation guidance should include stale-path avoidance.');
+  assert(!hiddenGuidance.includes('Escalating thread:'), 'continuation guidance should not expose mechanical thread labels.');
+  assert(!hiddenGuidance.includes('Open thread:'), 'continuation guidance should not expose mechanical thread labels.');
+  assert(!hiddenGuidance.includes('Unresolved artifact:'), 'continuation guidance should not expose mechanical artifact labels.');
+  assert(!hiddenGuidance.includes('Warning to honor:'), 'continuation guidance should not expose mechanical warning labels.');
   assert(continuationResponse.data.batch.chapters[0].chapterNumber === 2, 'continuation should append the next chapter number.');
   assert(continuationResponse.data.continuityExtraction?.source === 'heuristic', 'test-injected service should keep heuristic continuity labeling.');
 

@@ -355,11 +355,11 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot): string |
   }
 
   for (const artifact of storyState.artifacts.filter(artifact => !artifact.resolvedInChapter).slice(0, CONTINUITY_COURTROOM_MAX_ARTIFACTS)) {
-    lines.push(`- Unresolved artifact: ${compactPromptLine(artifact.name)}${formatCourtroomDetail(artifact.significance)}`);
+    lines.push(`- World clue: ${compactPromptLine(artifact.name)}${formatCourtroomDetail(artifact.significance)}`);
   }
 
   for (const warning of storyState.continuityWarnings.slice(0, CONTINUITY_COURTROOM_MAX_WARNINGS)) {
-    lines.push(`- Warning to honor: ${compactPromptLine(warning)}`);
+    lines.push(`- Continuity note: ${compactPromptLine(warning)}`);
   }
 
   if (lines.length === 0) {
@@ -378,12 +378,12 @@ function isUnresolvedThread(thread: PlotThread): boolean {
 
 function formatThreadDebtLabel(thread: PlotThread): string {
   if (thread.status === 'escalating') {
-    return 'Escalating thread';
+    return 'Pressure rising';
   }
   if (thread.status === 'dormant') {
-    return 'Dormant thread';
+    return 'Quiet promise';
   }
-  return 'Open thread';
+  return 'Open promise';
 }
 
 function formatCourtroomDetail(value: string): string {

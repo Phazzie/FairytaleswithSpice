@@ -485,10 +485,10 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(response.success, 'continuation with continuity courtroom anchors should succeed');
     assert(capturedInput?.userInput?.includes('Let the court demand payment.'), 'original continuation brief should stay in service input');
     assert(capturedInput?.userInput?.includes('Continuity Courtroom:'), 'service input should include the continuity courtroom anchor');
-    assert(capturedInput?.userInput?.includes('Escalating thread: Forbidden Love'), 'escalating threads should be named for payoff');
-    assert(capturedInput?.userInput?.includes('Open thread: Court Intrigue'), 'active threads should be named for payoff');
-    assert(capturedInput?.userInput?.includes('Unresolved artifact: World Details'), 'unresolved artifacts should be named for payoff');
-    assert(capturedInput?.userInput?.includes('Warning to honor: Resolve the vow-binding song before changing courts.'), 'continuity warnings should be carried into the next chapter request');
+    assert(capturedInput?.userInput?.includes('Pressure rising: Forbidden Love'), 'escalating threads should be named for payoff');
+    assert(capturedInput?.userInput?.includes('Open promise: Court Intrigue'), 'active threads should be named for payoff');
+    assert(capturedInput?.userInput?.includes('World clue: World Details'), 'unresolved artifacts should be named for payoff');
+    assert(capturedInput?.userInput?.includes('Continuity note: Resolve the vow-binding song before changing courts.'), 'continuity warnings should be carried into the next chapter request');
     assert(!capturedInput?.userInput?.includes('Settled Debt'), 'resolved threads should not be repeated as open courtroom debts');
     assert(!capturedInput?.userInput?.includes('Paid Charm'), 'resolved artifacts should not be repeated as unresolved courtroom debts');
     assert(capturedInput?.userInput?.includes('Chapter Ending Stress Test:'), 'service input should include the chapter ending stress-test anchor');

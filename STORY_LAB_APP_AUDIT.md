@@ -36,7 +36,7 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Validation output showed single-story mock outputs of 700 -> 665 words, 900 -> 833 words, and 1200 -> 1107 words; three-chapter 900-word mock genesis produced 828 total words.
 - Continuity Courtroom slice evidence:
   - Real Story Lab continuations now translate `StoryStateSnapshot` into a compact hidden continuity anchor before calling `StoryService.continueChapter`.
-  - The anchor names unresolved/escalating/dormant threads, unresolved lore artifacts, and current continuity warnings.
+  - The anchor names story debts with prose-facing labels such as `Pressure rising`, `Open promise`, `World clue`, and `Continuity note`.
   - Resolved threads and artifacts are filtered out so the next chapter is not dragged back to already-paid story debts.
   - `tests/story-lab-real-engine.test.ts` captures the continuation service input and proves the original brief plus the `Continuity Courtroom` anchor reach the real-engine seam.
 - Chapter Ending Stress Test slice evidence:
@@ -52,6 +52,9 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
 - Hidden-anchor compactness guard evidence:
   - The real-engine seam test now fails if the composed hidden continuation anchors exceed 900 characters.
   - The redundant generic courtroom instruction was removed; concrete thread, artifact, warning, ending-pressure, and stale-path lines still reach the continuation seam.
+- Hidden-anchor prose-label eval evidence:
+  - `tests/story-quality-evals.test.ts` now fails if hidden continuation guidance exposes mechanical labels such as `Escalating thread`, `Open thread`, `Unresolved artifact`, or `Warning to honor`.
+  - The deterministic state still drives the guidance; only the wording shown to the model is less mechanical.
 - `npm run test:all`
   - Result: passed root story, trope, cliffhanger, Story Lab state, Story Lab real-engine, and story-quality eval tests.
   - Caveat: ran in mock mode because `XAI_API_KEY` was not present.
