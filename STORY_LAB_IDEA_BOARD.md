@@ -360,6 +360,7 @@ Triggered Card Drafts progress:
 - Story Memory now drafts compact character, promise, and world cards from the current `StoryStateSnapshot`.
 - Each draft shows a human-facing card type, title, detail, and trigger phrase such as `Trigger: Mara`.
 - In-session pinning started on 2026-06-08: each draft can be pinned locally and shows `Pinned` plus a pinned-card count.
+- Trigger enrichment started on 2026-06-08: multi-word promise/world titles now add a short alias such as `Trigger: Moonlit oath, oath`.
 - Drafts are not accepted, edited, persisted, or auto-injected yet; this is the trust-building preview before any memory-card write path exists.
 
 ### Research: User Library And Profile Patterns

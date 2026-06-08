@@ -483,7 +483,7 @@ export class App implements OnDestroy {
       label: 'Character card',
       title: character.displayName,
       detail: character.currentGoal || character.summary || character.externalConflict,
-      triggerLabel: `Trigger: ${character.displayName}`,
+      triggerLabel: this.buildMemoryCardTriggerLabel(character.displayName),
       pinned: pinnedDraftIds.has(`memory-card-character-${character.id}`)
     }));
     const threadDrafts = continuity.activeThreads.slice(0, 1).map(thread => ({
@@ -491,7 +491,7 @@ export class App implements OnDestroy {
       label: 'Promise card',
       title: thread.label,
       detail: thread.description,
-      triggerLabel: `Trigger: ${thread.label}`,
+      triggerLabel: this.buildMemoryCardTriggerLabel(thread.label),
       pinned: pinnedDraftIds.has(`memory-card-thread-${thread.id}`)
     }));
     const artifactDrafts = continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
@@ -499,7 +499,7 @@ export class App implements OnDestroy {
       label: 'World card',
       title: artifact.name,
       detail: artifact.significance,
-      triggerLabel: `Trigger: ${artifact.name}`,
+      triggerLabel: this.buildMemoryCardTriggerLabel(artifact.name),
       pinned: pinnedDraftIds.has(`memory-card-artifact-${artifact.id}`)
     }));
 
@@ -509,6 +509,21 @@ export class App implements OnDestroy {
   readonly pinnedMemoryCardDraftCount = computed(() =>
     this.memoryCardDrafts().filter(draft => draft.pinned).length
   );
+
+  private buildMemoryCardTriggerLabel(title: string): string {
+    const alias = this.extractMemoryCardTriggerAlias(title);
+    return alias ? `Trigger: ${title}, ${alias}` : `Trigger: ${title}`;
+  }
+
+  private extractMemoryCardTriggerAlias(title: string): string | null {
+    const words = title.match(/[A-Za-z0-9']+/g) ?? [];
+    if (words.length < 2) {
+      return null;
+    }
+
+    const alias = words[words.length - 1].toLowerCase();
+    return alias === title.toLowerCase() ? null : alias;
+  }
 
   private formatStoryMemoryLifetimeLabel(lifetime: StoryMemoryLifetime | undefined): string | undefined {
     if (lifetime === 'scene') {

@@ -3504,3 +3504,52 @@ Known issues:
 Next recommended task:
 
 - Run full verification, commit this slice, then decide whether pinned draft cards should persist in local/cloud project state or stay as temporary planning aids.
+
+### 2026-06-08 Memory Card Trigger Aliases
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the memory card trigger aliases commit.
+
+User request:
+
+- Continue improving research-mined memory-card behavior in a bounded, route-free way.
+
+Work completed:
+
+- Added trigger alias enrichment for Memory Card Drafts.
+- Single-word titles still render exact triggers, such as `Trigger: Mara`.
+- Multi-word titles now render exact plus compact alias triggers, such as `Trigger: Moonlit oath, oath` and `Trigger: Witness Shell, shell`.
+- Kept aliases deterministic and local to the visible draft UI; no provider prompt or persistence behavior changed.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/app.ts`
+- `story-generator/src/app/app.spec.ts`
+- `STORY_LAB_IDEA_BOARD.md`
+- `STORY_LAB_APP_AUDIT.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts` from `story-generator/` -> failed because triggers only showed exact titles.
+- GREEN: same Angular browser command -> `TOTAL: 57 SUCCESS`.
+- `git diff --check` -> passed.
+- `npm run build` -> passed. Existing warnings remained: initial bundle `551.11 kB` over the 500 kB warning budget and `app.css` `14.96 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- Aliases are simple last-word aliases, not editable trigger sets.
+- Aliases do not change generation prompts yet.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Run full verification, commit this slice, then decide whether to persist pinned cards or add an editable alias list.

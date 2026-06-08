@@ -950,10 +950,10 @@ describe('App', () => {
     expect(cardDraftText).toContain('Trigger: Mara');
     expect(cardDraftText).toContain('Promise card');
     expect(cardDraftText).toContain('Moonlit oath');
-    expect(cardDraftText).toContain('Trigger: Moonlit oath');
+    expect(cardDraftText).toContain('Trigger: Moonlit oath, oath');
     expect(cardDraftText).toContain('World card');
     expect(cardDraftText).toContain('Witness Shell');
-    expect(cardDraftText).toContain('Trigger: Witness Shell');
+    expect(cardDraftText).toContain('Trigger: Witness Shell, shell');
   });
 
   it('pins a memory card draft in the current session', () => {
