@@ -4103,3 +4103,63 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then consider a bundle-size cleanup or another route-free cloud readiness test.
+
+### 2026-06-08 15:48 EDT Proving Grounds Lazy Route Split
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the Proving Grounds lazy route split commit.
+
+User request:
+
+- Keep working autonomously after the Story Memory UI work and address accumulated app health issues.
+
+Plan and critique:
+
+- Plan: lazy-load the debug Proving Grounds route because stats showed it was contributing to the initial browser bundle.
+- Hostile critique applied: do not change the route URL, title, component behavior, backend routes, or CSS. Add a small route contract test so this does not regress silently.
+
+Work completed:
+
+- Added `tests/story-generator-route-splitting.test.ts`.
+- Added `test:story-generator-route-splitting` to the root test suite.
+- Changed `/proving-grounds` from an eager route component import to Angular `loadComponent`.
+- Proved the browser initial bundle moved below the 500 kB soft warning budget.
+- Updated the app audit and idea board.
+
+Files changed:
+
+- `story-generator/src/app/app.routes.ts`
+- `tests/story-generator-route-splitting.test.ts`
+- `package.json`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-generator-route-splitting` -> failed because `app.routes.ts` eagerly imported Proving Grounds.
+- GREEN: `npm run test:story-generator-route-splitting` -> passed.
+- `npm run build -- --stats-json` from `story-generator/` -> passed; browser main output is now `131760` bytes and Proving Grounds is a lazy `78.52 kB` browser chunk.
+- Stats inspection -> no `src/app/proving-grounds/` inputs remain in browser `main-H7VW2DYB.js`.
+- Targeted Angular browser test: `npm test -- --watch=false --browsers=ChromeHeadless --include=src/app/proving-grounds/proving-grounds.spec.ts` -> `TOTAL: 2 SUCCESS`; known ChromeHeadless SIGKILL cleanup warning appeared after results.
+- `npm run build` -> passed; initial browser total is now `481.61 kB` and the Vercel fallback index was recreated. Remaining warning: `app.css` `14.96 kB` over the 12 kB warning budget.
+- `npm run test:all` -> passed in mock mode because `XAI_API_KEY` is not configured.
+- `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url` -> no open PRs.
+- `git diff --check` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- `app.css` still exceeds the 12 kB warning budget at `14.96 kB`.
+- Live prose/provider proof still requires `XAI_API_KEY`.
+- Live cloud sync still requires real auth, database configuration, schema application, and browser sign-in.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then either trim `app.css` warning headroom or continue route-free auth/cloud readiness work.

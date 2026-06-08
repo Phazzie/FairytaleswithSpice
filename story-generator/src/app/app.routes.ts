@@ -1,6 +1,5 @@
 import { Routes } from '@angular/router';
 import { App } from './app';
-import { ProvingGroundsComponent } from './proving-grounds/proving-grounds';
 
 export const routes: Routes = [
   {
@@ -11,7 +10,7 @@ export const routes: Routes = [
   },
   {
     path: 'proving-grounds',
-    component: ProvingGroundsComponent,
+    loadComponent: () => import('./proving-grounds/proving-grounds').then((module) => module.ProvingGroundsComponent),
     title: 'Fairytales with Spice - Proving Grounds'
   },
   {

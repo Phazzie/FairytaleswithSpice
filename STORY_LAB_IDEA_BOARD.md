@@ -60,6 +60,23 @@ Product translation:
 - Keep account identity separate from profile data. `AuthUser.userId` owns records; editable profile fields do not authorize anything.
 - Keep Story Lab jobs non-durable until a Workflow/database decision exists.
 
+### Done: Proving Grounds Route Split
+
+The Story Memory UI work pushed the initial browser bundle above the soft 500 kB warning budget. Proving Grounds was the best narrow target because it is a debug/evaluation route, not the first Story Lab screen.
+
+Acceptance:
+
+- `/proving-grounds` keeps the same route and title.
+- Proving Grounds is lazy-loaded instead of eagerly imported by `app.routes.ts`.
+- A tracked route-splitting test fails if the route becomes eager again.
+- Build stats prove Proving Grounds moved out of the initial browser `main` chunk.
+
+Status:
+
+- Done in overnight slice on 2026-06-08.
+- `npm run build -- --stats-json` showed the initial browser total at `481.61 kB` and Proving Grounds as a lazy `78.52 kB` chunk.
+- The remaining frontend budget issue is `app.css` at `14.96 kB`, over the 12 kB warning budget but below the hard failure budget.
+
 ### Done: Mock Word Budget Gap
 
 The root tests pass while mock generation ignores requested story length. Decide whether mocks should scale with requested word count or whether tests should stop presenting mock length as quality evidence.

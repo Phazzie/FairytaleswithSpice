@@ -102,6 +102,11 @@ Commands run from `/Users/hbpheonix/fairytaleswithspice` on 2026-06-08:
   - Proving Grounds history cards now show a compact `Quality N` badge for evaluated results with heuristic reports, and comparison cards include the heuristic quality score beside the AI score.
   - `proving-grounds.spec.ts` seeds an evaluated result and fails unless the deterministic panel renders continuity, audio-readiness, overall score, and concrete signals.
   - The new CSS was trimmed back under the component warning budget; `npm run build` no longer reports a Proving Grounds CSS warning.
+- Bundle-size cleanup evidence:
+  - The Proving Grounds route is now lazy-loaded with `loadComponent`, so the debug/evaluation surface is no longer part of the first-page browser `main` chunk.
+  - `tests/story-generator-route-splitting.test.ts` fails if `app.routes.ts` eagerly imports Proving Grounds or uses an eager `component` route for `/proving-grounds`.
+  - `npm run build -- --stats-json` showed the previous browser main chunk was `524192` bytes before the split; after the split, `main-H7VW2DYB.js` is `131760` bytes and Proving Grounds is a lazy `78.52 kB` browser chunk.
+  - The production build initial total dropped from the prior `558.78 kB` warning state to `481.61 kB`, under the 500 kB soft initial bundle budget.
 - Angular browser-suite evidence:
   - The stale `App re-enables cloud controls after an account route error` spec assertion was corrected to test the visible local-library heading and re-enabled cloud button instead of the unrelated local save-status signal.
   - Targeted app spec run passed with `52 SUCCESS`.
@@ -180,6 +185,7 @@ The app is mechanically healthier than it was before the repo cleanup.
 - Real continuations now receive hidden, deterministic continuity-debt, ending-pressure, and stale-path anchors before generation.
 - Story memory contracts now support optional lifetime labels on plot threads and lore artifacts, so future continuation logic can distinguish scene, chapter, and series facts without changing the visible model prompt yet.
 - Story evaluation responses now carry a deterministic advisory quality report with seven explainable craft dimensions.
+- The initial browser bundle warning has been cleared by lazy-loading Proving Grounds; the app CSS warning remains.
 - Server/client logging and privacy scaffolding have already received meaningful work in prior phases.
 
 ## Current Product Reality
@@ -269,6 +275,21 @@ Current proof:
 Remaining future option:
 
 - Add an explicit continuation word-budget field if the product needs continuation length controls beyond the live prompt's 400-600 word default.
+
+### Resolved: Initial Bundle Warning Was Reduced By Route Splitting
+
+Proving Grounds is useful, but it is a debug/evaluation surface rather than the first Story Lab screen. It was contributing component and service code to the initial browser bundle.
+
+Current proof:
+
+- RED: `npm run test:story-generator-route-splitting` failed while `app.routes.ts` eagerly imported Proving Grounds.
+- GREEN: the same test passed after `/proving-grounds` moved to `loadComponent`.
+- `npm run build -- --stats-json` showed no `src/app/proving-grounds/` files in browser `main-H7VW2DYB.js`.
+- `npm run build` showed the initial browser total at `481.61 kB`, with Proving Grounds emitted as a lazy `78.52 kB` browser chunk.
+
+Remaining future option:
+
+- Trim `src/app/app.css`, which still exceeds the 12 kB warning budget at `14.96 kB`.
 
 ### P1: Vercel Function Budget Is Tight
 
