@@ -2104,6 +2104,59 @@ Next recommended task:
 
 - Commit this slice, then continue with continuity-warning activation or a route-safe auth/cloud integration test.
 
+### 2026-06-08 Continuity Warning Activation Slice
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- Pending; this entry is included in the continuity warning activation commit.
+
+User request:
+
+- Keep working autonomously on useful story-output improvements while preserving compact continuation guidance.
+
+Work completed:
+
+- Extended `Context Activation Rules` to continuity warnings.
+- Real continuation guidance now prioritizes a brief-matched warning when the compact `Continuity Courtroom` anchor has more continuity notes than it can include.
+- The guarded case pulls the `Coral Scribe` ledger warning into hidden guidance when the continuation brief asks for that warning.
+- The slice keeps the same three hidden anchor blocks and the same max warning count; it only changes ordering inside the existing courtroom anchor.
+- Activation scoring stays internal and is not shown to the model.
+- Updated the app audit, idea board, and handoff.
+
+Files changed:
+
+- `api/_lib/story-lab/storyLabEngine.ts`
+- `tests/story-quality-evals.test.ts`
+- `STORY_LAB_APP_AUDIT.md`
+- `STORY_LAB_IDEA_BOARD.md`
+- `OVERNIGHT_HANDOFF.md`
+
+Checks run:
+
+- RED: `npm run test:story-quality` -> failed because the `Coral Scribe` ledger warning was compacted out of the courtroom anchor.
+- GREEN: `npm run test:story-quality` -> passed.
+- `npm run test:story-quality` -> passed.
+- `npm run test:story-lab-real-engine` -> passed.
+- `git diff --check` -> passed.
+- `npm run test:all` -> passed.
+- `scripts/recovery/preflight.sh --quick --skip-status` -> passed; function count remains `11/12`.
+
+Known issues:
+
+- This is a deterministic lexical activation rule, not semantic retrieval.
+- Context Activation now covers threads, artifacts, one relationship line, and continuity warnings; richer semantic retrieval remains future work.
+- Real cloud sync still needs a real `DATABASE_URL`, executed schema, live auth, and browser sign-in.
+- Live Grok/provider proof still requires `XAI_API_KEY`.
+- The parked untracked files remain intentionally untouched: `SPARK_TRIAL_TASKS.md`, `STORY_QUALITY_EVALS_PLAN.md`, `tests/grok-smoke.test.ts`.
+
+Next recommended task:
+
+- Commit this slice, then continue with a route-safe auth/cloud integration test or a new story-quality experiment.
+
 ### 2026-06-08 Context Activation Rules Slice
 
 Branch:

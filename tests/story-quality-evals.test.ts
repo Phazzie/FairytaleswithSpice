@@ -293,6 +293,21 @@ async function main(): Promise<void> {
     }
   });
   assert(relationshipActivationPreview.hiddenGuidance.includes('Relationship pressure: Mira and Coral Scribe'), 'continuation guidance should prioritize a brief-matched relationship pair.');
+  const warningActivationPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Make Coral Scribe honor the ledger warning before the court leaves.',
+    storyState: {
+      ...genesisPayload.state,
+      characters: [],
+      threads: [],
+      artifacts: [],
+      continuityWarnings: [
+        'Do not move the storm tax before the reef bell rings.',
+        'Keep the kitchen staff out of the oath scene.',
+        'Coral Scribe must betray Mira before the ledger leaves court.'
+      ]
+    }
+  });
+  assert(warningActivationPreview.hiddenGuidance.includes('Continuity note: Coral Scribe must betray Mira before the ledger leaves court.'), 'continuation guidance should prioritize a brief-matched continuity warning when the courtroom is compacted.');
 
   let continuationInput: ClassicContinuationSeam['input'] | null = null;
   const continuationResponse = await withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, () => continueStoryLab({

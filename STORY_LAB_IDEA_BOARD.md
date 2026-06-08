@@ -250,6 +250,7 @@ Context Activation Rules progress:
 - When more active threads exist than the compact `Continuity Courtroom` anchor can include, Story Lab now prioritizes a thread whose label/detail matches the continuation brief.
 - The first guarded case pulls `Blood Oath` into the compact hidden guidance when the user asks to bring the blood oath into the next room.
 - The same activation rule now applies to unresolved lore artifacts; the guarded case pulls `Glass Key` into the compact hidden guidance when the user asks to use the glass key.
+- The same activation rule now applies to continuity warnings; the guarded case pulls the `Coral Scribe` ledger warning into the compact hidden guidance when the user asks for that warning.
 - This does not add a new hidden anchor block or expose activation scoring to the model.
 
 ### Research: User Library And Profile Patterns

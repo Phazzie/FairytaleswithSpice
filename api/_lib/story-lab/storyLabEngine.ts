@@ -412,7 +412,7 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuat
     lines.push(`- World clue: ${compactPromptLine(artifact.name)}${formatCourtroomDetail(artifact.significance)}`);
   }
 
-  for (const warning of storyState.continuityWarnings.slice(0, CONTINUITY_COURTROOM_MAX_WARNINGS)) {
+  for (const warning of selectCourtroomWarnings(storyState, continuationBrief)) {
     lines.push(`- Continuity note: ${compactPromptLine(warning)}`);
   }
 
@@ -501,6 +501,39 @@ function scoreArtifactActivation(artifact: LoreArtifact, source: string): number
       if (source.includes(token)) {
         score += 1;
       }
+    }
+  }
+
+  return score;
+}
+
+function selectCourtroomWarnings(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string[] {
+  const source = normalizeActivationText(continuationBrief ?? '');
+  return storyState.continuityWarnings
+    .map((warning, index) => ({
+      warning,
+      index,
+      activationScore: scoreWarningActivation(warning, source)
+    }))
+    .sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))
+    .slice(0, CONTINUITY_COURTROOM_MAX_WARNINGS)
+    .map(item => item.warning);
+}
+
+function scoreWarningActivation(warning: string, source: string): number {
+  if (!source) {
+    return 0;
+  }
+
+  const candidate = normalizeActivationText(warning);
+  if (!candidate) {
+    return 0;
+  }
+
+  let score = source.includes(candidate) ? 6 : 0;
+  for (const token of candidate.split(' ').filter(value => value.length > 3)) {
+    if (source.includes(token)) {
+      score += 1;
     }
   }
 
