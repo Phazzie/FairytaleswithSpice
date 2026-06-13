@@ -29,12 +29,14 @@ import {
   StoredStoryProjectRecord
 } from '../storage/storyProjectStore';
 
+type RequestValue = string | string[] | undefined;
+
 interface RequestLike {
   method?: string;
   body?: unknown;
-  query?: Record<string, string | string[] | undefined>;
+  query?: Record<string, RequestValue>;
   url?: string;
-  headers?: Record<string, string | string[] | undefined>;
+  headers?: Record<string, RequestValue>;
 }
 
 interface ResponseLike {
@@ -341,7 +343,7 @@ function readAccountRouteTargetFromUrl(url: string | undefined): AccountRouteTar
 
 function readProjectIdFromUrl(url: string | undefined): string | undefined {
   const pathname = url?.split('?')[0] ?? '';
-  const match = /\/account\/projects\/([^/]+)$/.exec(pathname);
+  const match = pathname.match(/\/account\/projects\/([^/]+)$/);
   if (!match) {
     return undefined;
   }

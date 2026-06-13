@@ -331,7 +331,7 @@ async function testInvalidProjectIdsFailClosedBeforeStoreAccess() {
     ' project-account-1',
     'project-account-1 ',
     'project/account-1',
-    'project\\account-1',
+    String.raw`project\account-1`,
     'project%account-1',
     `project-${'\u0001'}`,
     'p'.repeat(129)
