@@ -53,6 +53,9 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - [x] Run validation and update handoff for Slices 2 and 3.
 - [x] Run validation and update handoff for Slice 4a service methods.
 - [x] Run validation and update handoff for Slice 4b visible UI state.
+- [ ] Stop feature expansion and publish/split the accumulated local branch into reviewable PRs.
+- [ ] Push a remote backup branch or first split branch before further implementation.
+- [ ] Open PRs, address checks/review comments, and merge the completed work in reviewable slices.
 
 ## Surprises & Discoveries
 
@@ -67,6 +70,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - The Postgres profile/project scaffolds had implied table expectations, but there was no tracked migration-ready SQL artifact until `api/_lib/story-lab/storage/storyLabCloudSchema.sql`.
 - The default account route used to construct Postgres stores directly. It now routes through `storyLabCloudStorageConfig.ts`, so future driver wiring has one lazy, test-covered seam.
 - `@neondatabase/serverless@1.1.0` requires Node `>=19.0.0`; the repo's existing preflight/build path uses Node 20 for Angular validation and the local API typecheck passed after the dependency landed.
+- As of 2026-06-13, the active local branch `feature/story-lab-auth-profile-contracts` had no upstream branch, no open PR, and a large stack of unpublished local commits plus a small uncommitted Angular diff. This work must move into PR/review/merge mode before any new feature implementation.
 
 ## Decision Log
 
@@ -268,6 +272,13 @@ Expected retrospective evidence after implementation:
 - cross-user project access fails in route tests;
 - function count stays within limit;
 - live provider/auth/storage behavior is documented in `OVERNIGHT_HANDOFF.md` or the active PR.
+
+Current publication state as of 2026-06-13:
+
+- `feature/story-lab-auth-profile-contracts` exists only locally and has no upstream.
+- No GitHub PR is open for this branch.
+- The next work is not more product code. The next work is to inventory commits, split them into reviewable PRs, validate each slice, push, address review/checks, and merge.
+- If the split takes more than one sitting, push a clearly named remote backup branch first so the current work is not only local.
 
 ## Context and Orientation
 
