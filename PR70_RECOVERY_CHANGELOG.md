@@ -2381,7 +2381,7 @@ Actions:
 - Confirmed the branch has no configured upstream and no open GitHub PR.
 - Confirmed the branch contains a large local commit stack ahead of `origin/main`.
 - Confirmed the only tracked uncommitted files are `story-generator/src/app/app.ts` and `story-generator/src/app/app.spec.ts`; the diff marks non-durable account storage as cloud-unavailable in the UI and adds a focused spec.
-- Recorded the process correction in this changelog, the active auth/profile/cloud-library plan, and `LESSONS_LEARNED.md`.
+- Recorded the process correction in this changelog, the split plan, and `LESSONS_LEARNED.md`.
 - Update: final live audit state is `ecba20e`. The branch is 89 commits ahead of `origin/main`, has no upstream or matching remote branch, and has no open PR. The app diff previously described as uncommitted is now committed as `9465073`; tracked files are clean.
 
 Decision:
@@ -2398,3 +2398,21 @@ Self-review:
 
 - Problem found: The implementation cadence violated the intended finish-validate-PR-review-merge loop and created a large unpublished local branch.
 - Correction: Treat publishing/splitting as the active task. Do not add more Story Lab features until the existing stack is landed or intentionally discarded.
+
+## 2026-06-13 08:01 EDT - PR 114 Reviewability Correction
+
+Actions:
+
+- Opened PR #114 for the first recovery slice.
+- Found Sourcery feedback that the docs diff was too large for automated review.
+- Reduced PR #114 to publication discipline, lessons, changelog, and the split checklist.
+- Moved large operating/audit documents back to the planned PR #2 scope.
+
+Decision:
+
+- Treat automated-review size limits as real reviewability feedback, even for docs-only PRs.
+- Keep PR #114 small enough to review before merging.
+
+Validation:
+
+- Pending after scope correction.

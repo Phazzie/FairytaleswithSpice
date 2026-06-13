@@ -36,6 +36,8 @@ Current verified state when this plan was written:
 
 Goal: land the process guardrails and the split plan before touching feature code.
 
+Scope correction: after PR #114 opened, Sourcery reported the docs diff was too large for automated review. PR 1 must stay limited to publication discipline, lessons, changelog, and this split checklist. Larger operating/audit docs move to PR 2.
+
 Likely commits:
 
 - `ecba20e Document unpublished branch recovery plan`
@@ -44,12 +46,8 @@ Likely commits:
 Key files:
 
 - `AGENTS.md`
-- `OVERNIGHT_MODE.md`
-- `OVERNIGHT_HANDOFF.md`
 - `LESSONS_LEARNED.md`
 - `PR70_RECOVERY_CHANGELOG.md`
-- `STORY_LAB_APP_AUDIT.md`
-- `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
 - `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md`
 
 Validation:
@@ -77,6 +75,8 @@ Key files:
 - `OVERNIGHT_HANDOFF.md`
 - `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
 - `AGENTS.md`
+- `LESSONS_LEARNED.md`
+- `PR70_RECOVERY_CHANGELOG.md`
 
 Validation:
 
