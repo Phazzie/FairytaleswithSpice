@@ -150,6 +150,11 @@ async function handleProfileRoute(
       return;
     }
 
+    if (profile.userId !== user.userId) {
+      sendJson(res, 403, profileForbidden());
+      return;
+    }
+
     const saveResult = await context.profileStore.saveProfile(user, profile);
     if (saveResult.success === false) {
       sendJson(res, saveResult.error.statusCode, profileStoreErrorResponse(saveResult.error));
@@ -357,7 +362,13 @@ function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
   }
 
   const profile = candidate as Partial<StoryLabUserProfile>;
-  if (typeof profile.userId !== 'string' || typeof profile.displayName !== 'string' || !profile.preferences) {
+  if (
+    typeof profile.userId !== 'string' ||
+    typeof profile.displayName !== 'string' ||
+    !profile.preferences ||
+    typeof profile.preferences !== 'object' ||
+    Array.isArray(profile.preferences)
+  ) {
     return null;
   }
 
@@ -571,6 +582,16 @@ function projectNotFound(): ApiResponse<never> {
     error: {
       code: 'PROJECT_NOT_FOUND',
       message: 'Story Lab project was not found.'
+    }
+  };
+}
+
+function profileForbidden(): ApiResponse<never> {
+  return {
+    success: false,
+    error: {
+      code: 'STORY_LAB_PROFILE_FORBIDDEN',
+      message: 'You do not have access to this Story Lab profile.'
     }
   };
 }

@@ -2603,3 +2603,22 @@ Self-review:
 - The account route now proves owner-scoped route contracts and error/privacy boundaries, not end-user cloud persistence.
 - Review risk found and fixed before PR: global wildcard API headers were incompatible with private credentialed account CORS.
 - Remaining work belongs in the next slice: Angular cloud library service/UI and connected-account honesty, still without claiming durable sync until live auth/database proof exists.
+
+## 2026-06-13 09:38 EDT - PR 119 Review Follow-Up
+
+Actions:
+
+- Addressed Gemini review feedback by rejecting cross-user profile updates at the route boundary before store access.
+- Hardened profile request parsing so malformed `preferences` payloads must be non-array objects.
+- Added an account-route test for malformed profile preference payloads returning `400 INVALID_REQUEST`.
+- Reduced Sonar new-code duplication risk by moving the shared saved-project test fixture out of individual account/storage tests and reusing it from both suites.
+
+Validation:
+
+- `npm run test:story-lab-account-routes`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+
+Follow-up pending:
+
+- Rerun the full local validation gate after this review-fix commit.
+- Push the update and confirm Sonar's new-code duplication gate clears on PR #119.

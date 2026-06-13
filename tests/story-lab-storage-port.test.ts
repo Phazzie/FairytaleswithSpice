@@ -8,6 +8,7 @@ import {
   PostgresQueryExecutor
 } from '../api/_lib/story-lab/storage/postgresStoryProjectStore';
 import type { SavedStoryProject } from '../story-generator/src/app/contracts';
+import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -273,87 +274,19 @@ function createProjectRow(project: SavedStoryProject) {
 }
 
 function createProject(): SavedStoryProject {
-  return {
+  return createSavedStoryProjectFixture({
     id: 'project-1',
     storyId: 'story-1',
     title: 'Moonlit Chapel',
     synopsis: 'A forbidden romance in a haunted chapel.',
-    blueprint: {
-      creature: 'witch',
-      themes: [
-        {
-          id: 'forbidden-oath',
-          label: 'Forbidden oath',
-          description: 'A vow that binds two enemies together.'
-        }
-      ],
-      logline: 'A witch and her rival uncover a cursed chapel.',
-      spicyLevel: 3,
-      tone: 'dark_romance',
-      desiredWordBudget: 900,
-      chapterBatchSize: 1,
-      heatContract: {
-        adultOnlyConfirmed: true,
-        tensionMode: 'slow_burn',
-        intimacyBoundary: 'closed_door',
-        noGoContent: 'No humiliation.'
-      }
-    },
-    summary: {
-      storyId: 'story-1',
-      title: 'Moonlit Chapel',
-      synopsis: 'A forbidden romance in a haunted chapel.',
-      tone: 'dark_romance',
-      spicyLevel: 3,
-      createdAt: now,
-      updatedAt: now
-    },
-    state: {
-      storyId: 'story-1',
-      revision: 1,
-      characters: [],
-      threads: [],
-      artifacts: [],
-      beats: [],
-      continuityWarnings: [],
-      narrativeVoice: 'Gothic, intimate, and tense.',
-      lastUpdatedAt: now
-    },
-    chapters: [
-      {
-        chapterId: 'chapter-1',
-        chapterNumber: 1,
-        title: 'Chapter One',
-        htmlContent: `<p>${privateStoryText}</p>`,
-        rawContent: privateStoryText,
-        summary: 'Elena finds the hidden vault.',
-        wordCount: 9,
-        hasCliffhanger: true,
-        delta: {
-          introducedCharacters: [],
-          resolvedThreads: [],
-          escalatedThreads: [],
-          foreshadowedArtifacts: [],
-          continuityFlags: []
-        }
-      }
-    ],
-    telemetry: {
-      engine: 'grok',
-      model: 'grok-4',
-      totalLatencyMs: 100,
-      averageChapterLatencyMs: 100,
-      tokensConsumed: 200,
-      retryCount: 0
-    },
-    continuityExtraction: {
-      source: 'heuristic',
-      extractedAt: now,
-      confidence: 0.7
-    },
-    createdAt: now,
-    updatedAt: now
-  };
+    now,
+    privateStoryText,
+    themeId: 'forbidden-oath',
+    themeLabel: 'Forbidden oath',
+    themeDescription: 'A vow that binds two enemies together.',
+    logline: 'A witch and her rival uncover a cursed chapel.',
+    chapterSummary: 'Elena finds the hidden vault.'
+  });
 }
 
 function createProjectWithMissingMetadata(): SavedStoryProject {

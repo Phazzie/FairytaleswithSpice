@@ -18,6 +18,7 @@ import type {
   StoryProjectStoreResult
 } from '../api/_lib/story-lab/storage/storyProjectStore';
 import type { SavedStoryProject } from '../story-generator/src/app/contracts';
+import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 
 interface FakeRequest {
   method: string;
@@ -76,6 +77,7 @@ async function main() {
   await testDisallowedCorsOriginFailsClosed();
   await testProfileReadWriteUsesAuthenticatedOwner();
   await testProfileCrossOwnerSaveIsForbidden();
+  await testMalformedProfileBodyFailsClosed();
   await testProjectSaveListLoadDeleteUsesAuthenticatedOwner();
   await testProjectCrossOwnerReadIsForbidden();
   await testMissingStorageConfigFailsClosed();
@@ -187,6 +189,23 @@ async function testProfileCrossOwnerSaveIsForbidden() {
   const body = response.body as any;
   assert(body.error.code === 'STORY_LAB_PROFILE_FORBIDDEN', 'cross-owner profile save should be forbidden');
   assert(!body.error.message.includes(owner.email ?? ''), 'cross-owner profile error should not leak owner email');
+}
+
+async function testMalformedProfileBodyFailsClosed() {
+  const handler = createTestHandler(owner);
+  const response = new FakeResponse();
+  await handler(createRequest('PUT', 'profile', {
+    profile: {
+      userId: owner.userId,
+      displayName: 'Avery',
+      preferences: 'not-a-profile-preferences-object'
+    }
+  }), response);
+
+  assert(response.statusCode === 400, 'profile save with malformed preferences should return 400');
+  const body = response.body as any;
+  assert(body.error.code === 'INVALID_REQUEST', 'malformed profile body should use invalid request code');
+  assert(!body.error.message.includes(owner.email ?? ''), 'malformed profile body error should not leak user email');
 }
 
 async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
@@ -452,74 +471,19 @@ function createRequest(
 }
 
 function createProject(): SavedStoryProject {
-  return {
+  return createSavedStoryProjectFixture({
     id: 'project-account-1',
     storyId: 'story-account-1',
     title: 'Account Moonlit Chapel',
     synopsis: 'A private oath in a haunted chapel.',
-    blueprint: {
-      creature: 'witch',
-      themes: [
-        {
-          id: 'private-oath',
-          label: 'Private oath',
-          description: 'A vow only the owner can see.'
-        }
-      ],
-      logline: privateStoryText,
-      spicyLevel: 3,
-      tone: 'dark_romance',
-      desiredWordBudget: 900,
-      chapterBatchSize: 1,
-      heatContract: {
-        adultOnlyConfirmed: true,
-        tensionMode: 'slow_burn',
-        intimacyBoundary: 'closed_door',
-        noGoContent: 'No humiliation.'
-      }
-    },
-    summary: {
-      storyId: 'story-account-1',
-      title: 'Account Moonlit Chapel',
-      synopsis: 'A private oath in a haunted chapel.',
-      tone: 'dark_romance',
-      spicyLevel: 3,
-      createdAt: now,
-      updatedAt: now
-    },
-    state: {
-      storyId: 'story-account-1',
-      revision: 1,
-      characters: [],
-      threads: [],
-      artifacts: [],
-      beats: [],
-      continuityWarnings: [],
-      narrativeVoice: 'Gothic, intimate, and tense.',
-      lastUpdatedAt: now
-    },
-    chapters: [
-      {
-        chapterId: 'chapter-1',
-        chapterNumber: 1,
-        title: 'Chapter One',
-        htmlContent: `<p>${privateStoryText}</p>`,
-        rawContent: privateStoryText,
-        summary: 'A private chapel oath begins.',
-        wordCount: 9,
-        hasCliffhanger: true,
-        delta: {
-          introducedCharacters: [],
-          resolvedThreads: [],
-          escalatedThreads: [],
-          foreshadowedArtifacts: [],
-          continuityFlags: []
-        }
-      }
-    ],
-    createdAt: now,
-    updatedAt: now
-  };
+    now,
+    privateStoryText,
+    themeId: 'private-oath',
+    themeLabel: 'Private oath',
+    themeDescription: 'A vow only the owner can see.',
+    logline: privateStoryText,
+    chapterSummary: 'A private chapel oath begins.'
+  });
 }
 
 main().catch(error => {
