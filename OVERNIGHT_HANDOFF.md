@@ -4645,3 +4645,23 @@ Known issues:
 Next recommended task:
 
 - Commit this slice, then choose the next route-safe auth/cloud readiness task or a bounded story-output experiment with focused tests.
+
+### 2026-06-13 Unpublished Branch Recovery
+
+Branch:
+
+- `feature/story-lab-auth-profile-contracts`
+
+Commit:
+
+- `ecba20e` - `Document unpublished branch recovery plan`
+
+State:
+
+- 89 commits ahead of `origin/main`.
+- No upstream, no matching remote branch, no open PR.
+- Tracked worktree clean; parked untracked files remain.
+
+Next recommended task:
+
+- Do not add features. Push a backup or first split branch, create reviewable PR slices, address checks/comments, and merge each slice.

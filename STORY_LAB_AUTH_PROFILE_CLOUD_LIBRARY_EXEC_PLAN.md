@@ -70,7 +70,7 @@ Slice 3 adds the consolidated account route and moves the branch function count 
 - The Postgres profile/project scaffolds had implied table expectations, but there was no tracked migration-ready SQL artifact until `api/_lib/story-lab/storage/storyLabCloudSchema.sql`.
 - The default account route used to construct Postgres stores directly. It now routes through `storyLabCloudStorageConfig.ts`, so future driver wiring has one lazy, test-covered seam.
 - `@neondatabase/serverless@1.1.0` requires Node `>=19.0.0`; the repo's existing preflight/build path uses Node 20 for Angular validation and the local API typecheck passed after the dependency landed.
-- As of 2026-06-13, the active local branch `feature/story-lab-auth-profile-contracts` had no upstream branch, no open PR, and a large stack of unpublished local commits plus a small uncommitted Angular diff. This work must move into PR/review/merge mode before any new feature implementation.
+- As of 2026-06-13, the active local branch `feature/story-lab-auth-profile-contracts` has no upstream branch, no remote branch, no open PR, and is 89 commits ahead of `origin/main`. The non-durable cloud-unavailable UI fix is committed as `9465073`; the tracked worktree is clean except for parked untracked files. This work must move into PR/review/merge mode before any new feature implementation.
 
 ## Decision Log
 

@@ -1,6 +1,6 @@
 # Overnight Mode
 
-Last updated: 2026-06-08
+Last updated: 2026-06-13
 
 ## Purpose
 
@@ -15,7 +15,9 @@ The mode should create forward motion in four ways:
 
 ## Core Rule
 
-Do not stop just because one task is done. Finish a coherent slice, record the handoff, then select the next task from the queue below.
+Do not stop just because one task is done. Finish a coherent slice, record the handoff, then continue through publication: push it, open a PR, address checks/review comments, and merge it before selecting another feature task.
+
+Continuing after a slice means continuing through publication. If a committed slice is not pushed, PR'd, reviewed, and merged, the next autonomous task is publishing/recovery, not another feature.
 
 Stopping is appropriate only when:
 

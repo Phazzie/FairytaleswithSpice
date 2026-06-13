@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-06-08 14:30 EDT
+Last updated: 2026-06-13 00:00 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous overnight sessions.
 
@@ -254,7 +254,9 @@ Some tests are historically stale or environment-dependent. If a check cannot ru
 9. Do not claim auth, cloud save, user profiles, durable jobs, or live AI verification unless the current implementation and verification prove those claims.
 10. Prefer small, attributed ports and test-backed slices instead of large mixed merges.
 11. Run self-review before committing, before handoff, after every three PR dispositions, and after every story-generation port.
-12. For `AGENTS.md` edits, update the timestamp, run `git diff --check`, and record the audit/change in `OVERNIGHT_HANDOFF.md`.
+12. After a coherent slice validates and is committed, do not start another feature slice until the work is pushed, a PR exists, checks/review comments are addressed, and the PR is merged, unless the user explicitly asks for a local-only spike.
+13. If the current branch has unpublished commits but no upstream or PR, stop feature selection. Record the state, push a backup or split branch, open the next reviewable PR, address checks/comments, and merge before adding more product work.
+14. For `AGENTS.md` edits, update the timestamp, run `git diff --check`, and record the audit/change in `OVERNIGHT_HANDOFF.md`.
 
 For broad PR recovery only:
 

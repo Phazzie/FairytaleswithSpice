@@ -2382,6 +2382,7 @@ Actions:
 - Confirmed the branch contains a large local commit stack ahead of `origin/main`.
 - Confirmed the only tracked uncommitted files are `story-generator/src/app/app.ts` and `story-generator/src/app/app.spec.ts`; the diff marks non-durable account storage as cloud-unavailable in the UI and adds a focused spec.
 - Recorded the process correction in this changelog, the active auth/profile/cloud-library plan, and `LESSONS_LEARNED.md`.
+- Update: final live audit state is `ecba20e`. The branch is 89 commits ahead of `origin/main`, has no upstream or matching remote branch, and has no open PR. The app diff previously described as uncommitted is now committed as `9465073`; tracked files are clean.
 
 Decision:
 

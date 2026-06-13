@@ -134,3 +134,4 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Do not log full streaming URLs when query strings carry story input. Log opaque ids and safe counts/status fields instead, and keep private blueprint text in request bodies or server-side state.
 - Large autonomous implementation blocks still need merge discipline. Once a slice validates, push it, open a PR, address review/checks, and merge before starting the next slice. A long local-only commit stack makes good work harder to trust, review, and land.
 - If a branch accumulates multiple validated slices locally, stop feature work immediately and turn it into a publishing task. Inventory commits, split into reviewable PRs, and use a remote backup branch only as a safety anchor, not as a substitute for mergeable PRs.
+- A validated but unpublished slice is a stop condition for feature work: publishing, PR review, checks, and merge become the next task.

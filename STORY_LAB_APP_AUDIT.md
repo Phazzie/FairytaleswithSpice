@@ -187,6 +187,8 @@ Files inspected during this audit:
 
 ## Current Health
 
+Publication risk: current Story Lab work is local-only on `feature/story-lab-auth-profile-contracts`, 89 commits ahead of `origin/main`, with no upstream, no remote branch, and no PR. Treat splitting, pushing, PR review, and merge as the next P0 before further feature work.
+
 The app is mechanically healthier than it was before the repo cleanup.
 
 - The original audit snapshot was on `main`, aligned with `origin/main`; current overnight auth/profile work is on `feature/story-lab-auth-profile-contracts`.
