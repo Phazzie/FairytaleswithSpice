@@ -61,6 +61,19 @@ Tracking:
 
 - `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
 
+### Done: Auth And Profile Contracts
+
+PR #116 merged on 2026-06-13 and added the account/profile domain seam without live provider or database claims.
+
+Acceptance evidence:
+
+- Missing auth provider config fails closed.
+- The Clerk-shaped adapter does not turn raw tokens into users without an injected verifier.
+- Profile preferences are normalized as runtime data.
+- Runtime preference allowed values are shared contract constants rather than duplicated string sets.
+- Auth/profile storage warnings are redacted and do not log tokens, emails, story text, SQL params, or raw provider payloads.
+- Focused auth/profile tests, TypeScript checks, function-count check, `npm run test:all`, and preflight passed before merge.
+
 ### Now: Storage Plan Reconciliation
 
 The storage port plan should continue to distinguish the merged route-free Phase C scaffold from unfinished account/cloud sync work.
@@ -71,34 +84,14 @@ Acceptance:
 - Current route count wording reflects the post-route-budget baseline.
 - Remaining work points to auth/profile/cloud-library planning instead of treating storage-port scaffolding as unfinished.
 
-### Local-only: Auth And Profile Contracts
+### Now: Cloud Storage And Database Scaffold
 
-Add the account/profile domain seam without live provider or database claims.
+Add schema, migration, readiness, and storage-config seams while staying guarded when no real `DATABASE_URL` exists.
 
 Status:
 
-- Implemented on `recovery/story-lab-auth-profile-contracts`.
-- Pending PR checks, review comments, and merge before it counts as `Done`.
-
-Candidate source commits from the local stack:
-
-- `75b485f Add Story Lab auth profile contract slice`
-- `6459454 Add Story Lab profile store slice`
-- `b99ad12 Add Clerk auth adapter scaffold`
-- `99317f1 Add env-gated Story Lab Clerk auth config`
-- `448d0c3 Harden Story Lab profile preferences`
-
-Acceptance:
-
-- Missing auth provider config fails closed.
-- The Clerk-shaped adapter does not turn raw tokens into users without an injected verifier.
-- Profile preferences are normalized as runtime data.
-- Tests prove profile contracts, configured auth, Clerk adapter behavior, and profile store behavior.
-- PR language says "contracts/store seams/scaffold," not "cloud library shipped."
-
-### Soon: Cloud Storage And Database Scaffold
-
-Add schema, migration, readiness, and storage-config seams while staying guarded when no real `DATABASE_URL` exists.
+- Implemented and locally validated on `recovery/story-lab-cloud-storage-scaffold`; PR/review/merge pending before it counts as `Done`.
+- Storage-only scope: no account route, signed-in UI, live migration, or cloud-sync claim.
 
 Acceptance:
 

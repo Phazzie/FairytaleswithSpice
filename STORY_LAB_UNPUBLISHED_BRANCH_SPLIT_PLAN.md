@@ -86,7 +86,7 @@ Validation:
 
 Goal: add the account/profile domain seam without live provider or database claims.
 
-Status: implemented on `recovery/story-lab-auth-profile-contracts`; PR/review/merge pending.
+Status: merged through PR #116 on 2026-06-13.
 
 Likely commits:
 
@@ -118,6 +118,8 @@ Validation:
 ### PR 4: Cloud Storage And Database Scaffold
 
 Goal: add schema/readiness/config/executor scaffolding while staying guarded when no real `DATABASE_URL` exists.
+
+Status: implemented and locally validated on `recovery/story-lab-cloud-storage-scaffold` after PR #116 merged; PR/review/merge pending. Keep this slice storage-only; do not include the later consolidated account route or stale handoff/audit files.
 
 Likely commits:
 
