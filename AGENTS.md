@@ -2,7 +2,28 @@
 
 Last updated: 2026-06-13 00:00 EDT
 
-This file is read automatically by AI coding agents. It is the repo-level operating guide for the current recovery effort.
+This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
+
+## Required Start Order
+
+Before planning, editing, or claiming readiness:
+
+1. Run `git status --short --branch` and treat the live worktree as authoritative.
+2. Read `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` when recovering the local Story Lab stack.
+3. For long-running autonomous work, read `OVERNIGHT_MODE.md` before selecting the next task.
+4. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas, story-quality experiments, and Weird Lab candidates.
+5. Read the execution plan that matches the files or behavior being changed.
+6. Run `scripts/recovery/check-vercel-function-count.sh` before adding, retiring, consolidating, or documenting deployable Vercel route files.
+
+## Current Operating Direction
+
+The current recovery task is to split the unpublished `feature/story-lab-auth-profile-contracts` stack into reviewable PRs, address checks/review comments, and merge each slice before starting more feature work.
+
+The autonomous operating guide is `OVERNIGHT_MODE.md`. Use it before long-running task selection, research mining, or Weird Lab work.
+
+The idea/backlog board is `STORY_LAB_IDEA_BOARD.md`. Keep it honest: `Done` means merged to `main`; use `Local-only` for unpublished branch material.
+
+The active Story Lab auth/profile/cloud-library plan is `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`. Use it before adding provider-backed auth, private user profiles, cloud project library APIs, account route rewrites, or signed-in save/load/list/delete behavior.
 
 ## Current Recovery Direction
 
@@ -27,6 +48,8 @@ The active Story Lab Villain Pressure UI plan is `STORY_LAB_VILLAIN_PRESSURE_UI_
 The active Story Lab privacy/streaming gate plan is `STORY_LAB_PRIVACY_STREAMING_GATES_EXEC_PLAN.md`. Use it before changing CORS policy, account-boundary headers, export sanitization, retention/deletion policy, or opaque job-id streaming contracts.
 
 The active Story Lab storage-port plan is `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`. Use it before changing Story Lab storage ports, in-memory account-store scaffolding, Postgres adapter scaffolding, or account-sync persistence boundaries.
+
+The active Story Lab auth/profile/cloud-library checklist is `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`. Use it before changing provider-backed auth, private user profiles, cloud project library APIs, account route rewrites, or signed-in save/load/list/delete behavior.
 
 The active Story Lab route-budget plan is `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md`. Use it before retiring, adding, consolidating, or documenting Vercel-facing route files for Story Lab capacity work.
 

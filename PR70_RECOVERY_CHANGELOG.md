@@ -2418,3 +2418,21 @@ Decision:
 Validation:
 
 - Pending after scope correction.
+
+## 2026-06-13 08:09 EDT - PR 114 Merged And PR 2 Scope Set
+
+Actions:
+
+- Merged PR #114 into `main` after checks passed and review comments were answered.
+- Preserved the polluted local `main` tip as `backup/local-main-docs-stack-2026-06-13`.
+- Started `recovery/story-lab-operating-docs` from `origin/main`.
+- Set PR #2 scope to operating docs, idea board, storage-plan reconciliation, and auth/profile/cloud-library checklist.
+- Deferred the old full app audit and overnight handoff because they describe unpublished work as current reality and are too stale/large for a clean docs PR.
+
+Decision:
+
+- Operating docs can land before code only when they avoid current-evidence claims about unpublished slices.
+
+Validation:
+
+- Pending for PR #2.

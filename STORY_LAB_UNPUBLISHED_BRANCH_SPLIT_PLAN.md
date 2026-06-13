@@ -56,7 +56,9 @@ Validation:
 
 ### PR 2: Operating Docs And Auth/Profile Plan Baseline
 
-Goal: preserve the non-code audit, idea board, overnight plan, and auth/profile plan setup that later code slices reference.
+Goal: preserve the operating rules, idea board, storage-plan reconciliation, and auth/profile/cloud-library checklist that later code slices reference.
+
+Scope correction: do not land the old full `STORY_LAB_APP_AUDIT.md` or `OVERNIGHT_HANDOFF.md` from the unpublished branch in this PR. The audit describes later unpublished work as current reality, and the handoff is too large/stale for a clean review. Reintroduce either doc later only after rewriting it against the landed `main` state.
 
 Likely commits:
 
@@ -69,13 +71,11 @@ Likely commits:
 
 Key files:
 
-- `STORY_LAB_APP_AUDIT.md`
 - `STORY_LAB_IDEA_BOARD.md`
 - `OVERNIGHT_MODE.md`
-- `OVERNIGHT_HANDOFF.md`
 - `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`
+- `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`
 - `AGENTS.md`
-- `LESSONS_LEARNED.md`
 - `PR70_RECOVERY_CHANGELOG.md`
 
 Validation:
