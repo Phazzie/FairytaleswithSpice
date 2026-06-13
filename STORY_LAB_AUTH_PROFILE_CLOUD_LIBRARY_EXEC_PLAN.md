@@ -17,7 +17,7 @@ The desired user-visible outcome is:
 
 ## Current Reality On Main
 
-This checklist is current after PR #116.
+This checklist is current after PR #118 and the consolidated account-route change set.
 
 - `AuthPort` exists and is deny-by-default.
 - `authorizeProjectAccess` exists.
@@ -26,9 +26,11 @@ This checklist is current after PR #116.
 - Configured auth selection fails closed unless a supported provider is configured.
 - A Clerk-shaped auth adapter scaffold exists, but it still requires an injected verifier and is not a live sign-in flow.
 - Profile stores exist for non-durable memory and injected Postgres execution.
+- Cloud schema, guarded migration/readiness helpers, guarded cloud storage config, and Neon executor scaffolding exist.
+- One consolidated account route exists for profile and project operations behind injectable auth/profile/project stores.
 - Browser-local `StoryWorkspaceStorageService` remains the current user-visible save path.
 - Story Lab jobs are still `non_durable_memory` and not account-owned.
-- Vercel function count must stay within the repo guard.
+- Vercel function count is `11/12` with the account route included.
 - The large local branch is being split through `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md`.
 
 Not live yet:
@@ -36,7 +38,7 @@ Not live yet:
 - production auth provider wiring;
 - signed-in browser flow;
 - private user profiles in durable storage;
-- cloud project save/list/load/delete against durable storage;
+- cloud project save/list/load/delete proven against a live durable database;
 - database provisioning or executed migrations;
 - durable jobs.
 
@@ -61,8 +63,8 @@ Not live yet:
 - [x] Merge PR #114.
 - [x] Land the operating-docs baseline through PR #115.
 - [x] Land auth/profile contracts through PR #116.
-- [ ] Land cloud schema/storage readiness.
-- [ ] Land consolidated account route.
+- [x] Land cloud schema/storage readiness through PR #118.
+- [x] Land consolidated account route.
 - [ ] Land Angular cloud library UI.
 - [ ] Land durable job owner scaffolding only if kept honest as non-durable in the active UI.
 
@@ -138,14 +140,15 @@ Validation on 2026-06-13:
 
 Goal: add schema/readiness/config/executor scaffolding while staying guarded when no real `DATABASE_URL` exists.
 
-Status on `recovery/story-lab-cloud-storage-scaffold`:
+Status:
 
-- Implemented and locally validated after PR #116 merged; PR/review/merge pending.
+- Merged through PR #118 on 2026-06-13.
 - Adds migration-ready SQL for private profiles and owner-scoped story projects.
 - Adds cloud storage config that creates profile/project stores only when `DATABASE_URL` and an executor are available.
 - Adds a Neon executor wrapper with injectable query creation for tests.
 - Adds guarded schema-apply and readiness-smoke scripts that refuse missing `DATABASE_URL`.
 - Does not execute a migration, provision a database, add an account route, or claim live cloud persistence.
+- Review follow-up fixed explicit empty env handling, CommonJS-safe schema loading, SQL splitting, readiness table detection, and Neon `.query(text, params)` regression coverage.
 
 Candidate local commits:
 
@@ -193,9 +196,23 @@ Validation on 2026-06-13:
 
 Goal: add one deployable account route for profile and project cloud library operations.
 
+Status:
+
+- Implemented in the consolidated account-route change set.
+- Adds one Vercel function at `api/story-lab/account.ts`.
+- Adds rewrites for profile, project collection, and project item account paths into the single function.
+- Uses `createStoryLabCloudStorage()` for default profile/project stores so missing cloud configuration fails closed.
+- Supports injected non-durable stores for tests without claiming `cloud_postgres`.
+- Rejects malformed project ids and incomplete project save bodies before store access.
+- Sanitizes public store error messages from injected/future stores.
+- Removes the global wildcard `/api/*` Vercel CORS header so private account routes rely on route-level credentialed CORS.
+- Still not live provider auth, signed-in Angular UI, executed database migration, provisioned database, or durable cloud sync proof.
+
 Candidate local commits:
 
 - `0d5b659 Add Story Lab account route slice`
+- account-route hunk from `aa8d848 Add Story Lab cloud storage config seam`
+- backend account service contract part of `ca79e26 Add Story Lab account service methods`
 - backend account-route part of `a7fbacd Report non-durable account storage mode`
 
 Validation:
@@ -212,6 +229,20 @@ Acceptance:
 - function count stays within the limit;
 - cross-owner access fails;
 - non-durable injected stores report `non_durable_memory`, not `cloud_postgres`.
+
+Validation on 2026-06-13:
+
+- RED baseline: `npm run test:story-lab-account-routes` was missing before the slice.
+- `npm run test:story-lab-account-routes`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+- `npm run test:story-lab-profile-store`: passed.
+- `npm run test:story-lab-cloud-storage-config`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- `npm run test:all`: passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
 ### Phase 4: Angular Cloud Library Service And UI
 

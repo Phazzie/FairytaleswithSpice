@@ -281,7 +281,7 @@ export interface CloudLibrarySyncState {
   message?: string;
 }
 
-export type CloudStoryProjectStorageMode = 'cloud_postgres';
+export type CloudStoryProjectStorageMode = 'cloud_postgres' | 'non_durable_memory';
 
 export interface CloudStoryProjectListItem {
   projectId: string;
@@ -304,6 +304,21 @@ export interface CloudStoryProjectSaveReceipt {
   storyId: string;
   savedAt: string;
   syncState: CloudLibrarySyncState;
+}
+
+export interface CloudStoryProjectLoadResult {
+  ownerUserId: string;
+  storageMode: CloudStoryProjectStorageMode;
+  projectId: string;
+  storyId: string;
+  project: SavedStoryProject;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CloudStoryProjectDeleteReceipt {
+  projectId: string;
+  deleted: boolean;
 }
 
 export type BatchProgressStatus = 'queued' | 'in_progress' | 'completed' | 'failed';

@@ -37,6 +37,8 @@ export type {
   CloudStoryProjectListItem,
   CloudStoryProjectList,
   CloudStoryProjectSaveReceipt,
+  CloudStoryProjectLoadResult,
+  CloudStoryProjectDeleteReceipt,
   StoryGenerationSeam,
   StoryContinuationSeam,
   StoryPersistenceSeam,

@@ -84,30 +84,28 @@ Acceptance:
 - Current route count wording reflects the post-route-budget baseline.
 - Remaining work points to auth/profile/cloud-library planning instead of treating storage-port scaffolding as unfinished.
 
-### Now: Cloud Storage And Database Scaffold
+### Done: Cloud Storage And Database Scaffold
 
-Add schema, migration, readiness, and storage-config seams while staying guarded when no real `DATABASE_URL` exists.
+PR #118 merged on 2026-06-13 and added schema, migration, readiness, and storage-config seams while staying guarded when no real `DATABASE_URL` exists.
 
-Status:
-
-- Implemented and locally validated on `recovery/story-lab-cloud-storage-scaffold`; PR/review/merge pending before it counts as `Done`.
-- Storage-only scope: no account route, signed-in UI, live migration, or cloud-sync claim.
-
-Acceptance:
+Acceptance evidence:
 
 - Schema and readiness tests are deterministic.
 - Real database scripts refuse to run without explicit `DATABASE_URL`.
 - No live cloud persistence is claimed without executed migration and live smoke evidence.
+- Function count stayed `10/12`.
+- PR #118 review follow-up and checks passed before merge.
 
-### Soon: Consolidated Account Route
+### Done: Consolidated Account Route
 
-Add one deployable account route for profile and project cloud library operations without spending multiple Vercel function slots.
+The account-route change set adds one deployable account route for profile and project cloud library operations without spending multiple Vercel function slots.
 
-Acceptance:
+Acceptance evidence:
 
-- Function count stays within the Vercel limit.
-- Route tests prove fail-closed auth, credentialed CORS, profile read/write, project save/list/load/delete, cross-owner denial, and missing-storage failures.
+- Function count stays within the Vercel limit at `11/12`.
+- Route tests prove fail-closed auth, credentialed CORS, disallowed-origin rejection, profile read/write, project save/list/load/delete, cross-owner denial, missing-storage failures, invalid route inputs, non-durable storage-mode honesty, and injected-store error sanitization.
 - The route remains one consolidated function target.
+- The route does not add live provider auth, signed-in Angular UI, executed database migration, database provisioning, or durable cloud sync proof.
 
 ### Soon: Angular Cloud Library UI
 
