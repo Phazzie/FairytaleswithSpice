@@ -2408,6 +2408,7 @@ Actions:
 - Reduced PR #114 to publication discipline, lessons, changelog, and the split checklist.
 - Moved large operating/audit documents back to the planned PR #2 scope.
 - Removed the remaining `AGENTS.md` dependency on `OVERNIGHT_HANDOFF.md` so this PR does not require a doc that was moved out of scope.
+- Clarified that parked untracked-file inventory is local workspace evidence, not a fresh-clone expectation.
 
 Decision:
 

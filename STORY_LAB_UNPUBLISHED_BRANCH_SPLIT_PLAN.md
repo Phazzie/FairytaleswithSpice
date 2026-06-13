@@ -15,7 +15,7 @@ Current verified state when this plan was written:
 - matching remote branch: none
 - open PR: none
 - tracked worktree: clean
-- parked untracked files remain intentionally out of scope:
+- local-only untracked files observed in this workspace remain intentionally out of PR scope; these are not expected to exist in fresh clones:
   - `SPARK_TRIAL_TASKS.md`
   - `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`
   - `STORY_QUALITY_EVALS_PLAN.md`
