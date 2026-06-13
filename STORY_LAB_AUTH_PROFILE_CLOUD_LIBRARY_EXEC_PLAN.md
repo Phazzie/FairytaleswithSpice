@@ -55,7 +55,7 @@ Not live yet:
 - [x] Open PR #114 for publication discipline and split planning.
 - [x] Address PR #114 review comments.
 - [x] Merge PR #114.
-- [ ] Land the operating-docs baseline.
+- [x] Land the operating-docs baseline through PR #115.
 - [ ] Land auth/profile contracts.
 - [ ] Land cloud schema/storage readiness.
 - [ ] Land consolidated account route.
@@ -65,6 +65,15 @@ Not live yet:
 ### Phase 1: Auth And Profile Contracts
 
 Goal: add the account/profile domain seam without live provider or database claims.
+
+Status on `recovery/story-lab-auth-profile-contracts`:
+
+- Implemented profile/cloud-library contract types.
+- Added fail-closed configured auth selection.
+- Added Clerk-shaped auth adapter scaffold that requires an injected verifier.
+- Added non-durable and injected-Postgres profile store scaffolds.
+- Hardened profile preference normalization from runtime data.
+- Still not live auth, signed-in UI, durable profiles, or cloud project sync.
 
 Candidate local commits:
 
@@ -101,6 +110,22 @@ Acceptance:
 - Clerk-shaped token extraction requires an injected verifier before returning an app user;
 - profile preferences are normalized from runtime data before persistence;
 - no route or UI claims cloud sync.
+
+Validation on 2026-06-13:
+
+- RED baseline: `npm run test:story-lab-profile-contracts`, `npm run test:story-lab-configured-auth`, and `npm run test:story-lab-profile-store` were missing scripts before the slice.
+- `npm run test:story-lab-auth`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+- `npm run test:story-lab-configured-auth`: passed.
+- `npm run test:story-lab-clerk-auth`: passed.
+- `npm run test:story-lab-profile-contracts`: passed.
+- `npm run test:story-lab-profile-store`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npm run test:all`: passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
 ### Phase 2: Cloud Schema And Storage Readiness
 

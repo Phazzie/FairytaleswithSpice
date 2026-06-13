@@ -2436,3 +2436,39 @@ Decision:
 Validation:
 
 - Pending for PR #2.
+
+## 2026-06-13 08:21 EDT - Auth/Profile Contracts Slice Ready For PR
+
+Actions:
+
+- Started `recovery/story-lab-auth-profile-contracts` from `origin/main` after PR #115 merged.
+- Cherry-picked the auth/profile contract slice in dependency order:
+  - `75b485f`
+  - `6459454`
+  - `b99ad12`
+  - `99317f1`
+  - `448d0c3`
+- Dropped stale `OVERNIGHT_HANDOFF.md` and `STORY_LAB_APP_AUDIT.md` conflicts from the code slice.
+- Kept package scripts scoped to auth/profile tests; did not import account-route scripts from later route work.
+- Updated the auth/profile checklist and idea board with local-only status.
+
+Decision:
+
+- This slice adds contracts, fail-closed auth selection, a Clerk-shaped adapter scaffold, profile stores, and preference normalization only.
+- It does not claim live auth, signed-in UI, durable profiles, account routes, or cloud project sync.
+
+Validation:
+
+- RED baseline: targeted auth/profile scripts were missing before the slice.
+- `npm run test:story-lab-auth`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+- `npm run test:story-lab-configured-auth`: passed.
+- `npm run test:story-lab-clerk-auth`: passed.
+- `npm run test:story-lab-profile-contracts`: passed.
+- `npm run test:story-lab-profile-store`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npm run test:all`: passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.

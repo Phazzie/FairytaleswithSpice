@@ -71,9 +71,14 @@ Acceptance:
 - Current route count wording reflects the post-route-budget baseline.
 - Remaining work points to auth/profile/cloud-library planning instead of treating storage-port scaffolding as unfinished.
 
-### Soon: Auth And Profile Contracts
+### Local-only: Auth And Profile Contracts
 
 Add the account/profile domain seam without live provider or database claims.
+
+Status:
+
+- Implemented on `recovery/story-lab-auth-profile-contracts`.
+- Pending PR checks, review comments, and merge before it counts as `Done`.
 
 Candidate source commits from the local stack:
 
