@@ -41,6 +41,7 @@ const now = '2026-06-08T10:50:00.000Z';
 
 async function main() {
   await testMissingDatabaseDoesNotCreateExecutor();
+  await testExplicitEnvDoesNotFallThroughToProcessEnv();
   await testConfiguredExecutorFactoryBuildsProfileAndProjectStores();
   await testValidDatabaseUrlCreatesBundledNeonExecutor();
   await testInvalidDatabaseUrlFailsClosed();
@@ -71,6 +72,34 @@ async function testMissingDatabaseDoesNotCreateExecutor() {
   const projectResult = await storage.projectStore.listProjects(owner);
   assert(!projectResult.success, 'project store should fail closed without DATABASE_URL');
   assert(projectResult.error.code === 'STORY_LAB_STORAGE_UNCONFIGURED', 'project store should expose project storage config error');
+}
+
+async function testExplicitEnvDoesNotFallThroughToProcessEnv() {
+  const originalDatabaseUrl = process.env['DATABASE_URL'];
+  process.env['DATABASE_URL'] = 'postgresql://user:password@process-env.example.invalid/story_lab';
+  let factoryCalls = 0;
+
+  try {
+    const storage = createStoryLabCloudStorage({
+      env: {},
+      now: () => now,
+      createExecutor() {
+        factoryCalls += 1;
+        throw new Error('explicit empty env should not create an executor from process.env');
+      }
+    });
+
+    assert(!storage.databaseUrlConfigured, 'explicit empty env should keep database URL unconfigured');
+    assert(!storage.executorConfigured, 'explicit empty env should not create an executor');
+    assert(!storage.isConfigured(), 'explicit empty env should not claim cloud storage is configured');
+    assert(factoryCalls === 0, 'explicit env should prevent implicit process.env executor creation');
+  } finally {
+    if (originalDatabaseUrl === undefined) {
+      delete process.env['DATABASE_URL'];
+    } else {
+      process.env['DATABASE_URL'] = originalDatabaseUrl;
+    }
+  }
 }
 
 async function testConfiguredExecutorFactoryBuildsProfileAndProjectStores() {

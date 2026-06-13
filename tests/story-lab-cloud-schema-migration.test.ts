@@ -26,7 +26,9 @@ class FakeSchemaExecutor implements StoryLabCloudQueryExecutor {
 async function main() {
   await testApplyRunsTrackedSchemaStatementsInOrder();
   testSqlSplitterKeepsSemicolonsInsideStrings();
+  testSqlSplitterKeepsSemicolonsInsideBlockCommentsAndDollarQuotes();
   await testEmptySchemaFailsBeforeExecutorCall();
+  testSchemaLoaderIsIndependentOfCurrentWorkingDirectory();
 
   console.log('Story Lab cloud schema migration tests passed');
 }
@@ -58,12 +60,28 @@ create index example_idx on example (id);
   assert(statements[1]?.includes('semicolon; inside text'), 'splitter should keep semicolons inside quoted strings');
 }
 
+function testSqlSplitterKeepsSemicolonsInsideBlockCommentsAndDollarQuotes() {
+  const statements = splitStoryLabCloudSchemaStatements(`
+/* block comment with ; and ' characters */
+create function example_fn() returns text as $$
+begin
+  return 'quoted; value';
+end;
+$$ language plpgsql;
+create table example (id text);
+  `);
+
+  assert(statements.length === 2, 'splitter should ignore semicolons inside block comments and dollar quotes');
+  assert(statements[0]?.includes("return 'quoted; value'"), 'splitter should preserve dollar-quoted function body');
+  assert(statements[1]?.includes('create table example'), 'splitter should continue after dollar-quoted statement');
+}
+
 async function testEmptySchemaFailsBeforeExecutorCall() {
   const executor = new FakeSchemaExecutor();
 
   try {
     await applyStoryLabCloudSchema(executor, {
-      schemaSql: ' -- comments only\n',
+      schemaSql: "/* block comment with ; and ' only */\n -- comments only\n",
       now: () => '2026-06-08T11:05:00.000Z'
     });
     throw new Error('empty schema should throw');
@@ -73,6 +91,18 @@ async function testEmptySchemaFailsBeforeExecutorCall() {
   }
 
   assert(executor.queries.length === 0, 'empty schema should not call executor');
+}
+
+function testSchemaLoaderIsIndependentOfCurrentWorkingDirectory() {
+  const originalCwd = process.cwd();
+
+  try {
+    process.chdir('tests');
+    const loadedSchema = loadStoryLabCloudSchemaSql();
+    assert(loadedSchema.includes('story_lab_profiles'), 'schema loader should use the module-relative schema path');
+  } finally {
+    process.chdir(originalCwd);
+  }
 }
 
 const loadedSchema = loadStoryLabCloudSchemaSql();

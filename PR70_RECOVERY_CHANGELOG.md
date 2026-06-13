@@ -2530,5 +2530,32 @@ Validation:
 
 Self-review:
 
-- Scope risk found: one source commit touched the later account-route handler. That hunk was deliberately removed so PR #4 stays storage-only.
+- Scope risk found: one source commit touched the later account-route handler. That hunk was deliberately removed so this change set stays storage-only.
 - Honesty check: docs and PR language must say schema/config/readiness scaffold, not cloud save, live database, or durable sync.
+
+## 2026-06-13 08:48 EDT - PR 118 Review Follow-Up
+
+Actions:
+
+- Addressed PR #118 review feedback:
+  - made explicit `env: {}` cloud-storage config ignore ambient `process.env.DATABASE_URL`;
+  - loaded the tracked SQL schema relative to the module directory instead of the process CWD;
+  - extended the schema statement splitter for block comments and dollar-quoted SQL bodies;
+  - cast readiness `to_regclass(...)` values to text and accepted schema-prefixed table names;
+  - reworded the changelog self-review note to avoid confusing internal slice numbering with GitHub PR numbers.
+- Checked the installed `@neondatabase/serverless` package and confirmed `neon()` returns a function with a documented `.query(text, params)` method in this version; added a non-network regression test for that API shape rather than switching to an incompatible direct-call form.
+
+Validation:
+
+- `npm run test:story-lab-cloud-storage-config`: passed.
+- `npm run test:story-lab-neon-executor`: passed.
+- `npm run test:story-lab-cloud-schema-migration`: passed.
+- `npm run test:story-lab-cloud-db-readiness`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npm run test:all`: passed in mock mode because `XAI_API_KEY` is not configured.
+- First `scripts/recovery/preflight.sh --quick --skip-status` run failed because `import.meta.url` is not allowed under the API CommonJS typecheck.
+- After switching the schema loader to `__dirname`, `npm run test:story-lab-cloud-schema-migration` passed.
+- After switching the schema loader to `__dirname`, `scripts/recovery/preflight.sh --quick --skip-status` passed.

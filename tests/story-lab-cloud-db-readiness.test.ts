@@ -43,8 +43,8 @@ async function testReadyDatabaseReportsReady() {
   const executor = new FakeReadinessExecutor();
   executor.enqueueRows([
     {
-      story_lab_profiles: 'story_lab_profiles',
-      story_projects: 'story_projects'
+      story_lab_profiles: 'public.story_lab_profiles',
+      story_projects: 'public.story_projects'
     }
   ]);
   executor.enqueueRows([
@@ -60,6 +60,7 @@ async function testReadyDatabaseReportsReady() {
   assert(result.checkedAt === '2026-06-08T11:10:00.000Z', 'readiness should use injected clock');
   assert(result.missing.length === 0, 'ready database should not report missing items');
   assert(executor.queries[0]?.sql.includes('to_regclass'), 'readiness should check required tables');
+  assert(executor.queries[0]?.sql.includes('::text'), 'readiness should cast regclass values to text for drivers');
   assert(executor.queries[1]?.sql.includes('pg_indexes'), 'readiness should check required indexes');
 }
 

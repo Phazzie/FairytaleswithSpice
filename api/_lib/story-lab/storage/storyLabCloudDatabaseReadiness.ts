@@ -27,8 +27,8 @@ const REQUIRED_INDEXES = ['story_projects_owner_updated_idx', 'story_projects_ow
 
 const TABLE_READINESS_SQL = `
 select
-  to_regclass('public.story_lab_profiles') as story_lab_profiles,
-  to_regclass('public.story_projects') as story_projects
+  to_regclass('public.story_lab_profiles')::text as story_lab_profiles,
+  to_regclass('public.story_projects')::text as story_projects
 `;
 
 const INDEX_READINESS_SQL = `
@@ -75,5 +75,9 @@ function missingTables(row: TableReadinessRow | undefined): string[] {
     return [...REQUIRED_TABLES];
   }
 
-  return REQUIRED_TABLES.filter(tableName => row[tableName] !== tableName);
+  return REQUIRED_TABLES.filter(tableName => !matchesTableName(row[tableName], tableName));
+}
+
+function matchesTableName(value: string | null, tableName: string): boolean {
+  return value?.split('.').pop() === tableName;
 }

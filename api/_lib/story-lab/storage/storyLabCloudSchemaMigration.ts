@@ -38,7 +38,7 @@ export async function applyStoryLabCloudSchema(
 }
 
 export function loadStoryLabCloudSchemaSql(): string {
-  return readFileSync(resolve('api/_lib/story-lab/storage/storyLabCloudSchema.sql'), 'utf8');
+  return readFileSync(resolve(__dirname, 'storyLabCloudSchema.sql'), 'utf8');
 }
 
 export function splitStoryLabCloudSchemaStatements(schemaSql: string): string[] {
@@ -46,10 +46,23 @@ export function splitStoryLabCloudSchemaStatements(schemaSql: string): string[] 
   let current = '';
   let inSingleQuote = false;
   let inLineComment = false;
+  let inBlockComment = false;
+  let dollarQuoteTag: string | null = null;
 
   for (let index = 0; index < schemaSql.length; index += 1) {
     const char = schemaSql[index] ?? '';
     const next = schemaSql[index + 1] ?? '';
+
+    if (dollarQuoteTag) {
+      if (schemaSql.startsWith(dollarQuoteTag, index)) {
+        current += dollarQuoteTag;
+        index += dollarQuoteTag.length - 1;
+        dollarQuoteTag = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
 
     if (inLineComment) {
       current += char;
@@ -59,9 +72,33 @@ export function splitStoryLabCloudSchemaStatements(schemaSql: string): string[] 
       continue;
     }
 
+    if (inBlockComment) {
+      current += char;
+      if (char === '*' && next === '/') {
+        current += next;
+        index += 1;
+        inBlockComment = false;
+      }
+      continue;
+    }
+
     if (!inSingleQuote && char === '-' && next === '-') {
       inLineComment = true;
       current += char;
+      continue;
+    }
+
+    if (!inSingleQuote && char === '/' && next === '*') {
+      inBlockComment = true;
+      current += char;
+      continue;
+    }
+
+    const openingDollarQuoteTag = !inSingleQuote ? readDollarQuoteTag(schemaSql, index) : null;
+    if (openingDollarQuoteTag) {
+      dollarQuoteTag = openingDollarQuoteTag;
+      current += openingDollarQuoteTag;
+      index += openingDollarQuoteTag.length - 1;
       continue;
     }
 
@@ -99,10 +136,19 @@ function pushStatement(statements: string[], statement: string): void {
 }
 
 function hasSqlBody(statement: string): boolean {
-  return statement
+  return stripBlockComments(statement)
     .split('\n')
     .some(line => {
-      const trimmedLine = line.trim();
-      return trimmedLine && !trimmedLine.startsWith('--');
+      const [sqlBeforeLineComment] = line.split('--');
+      return Boolean(sqlBeforeLineComment?.trim());
     });
+}
+
+function readDollarQuoteTag(schemaSql: string, index: number): string | null {
+  const match = schemaSql.slice(index).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/);
+  return match?.[0] ?? null;
+}
+
+function stripBlockComments(statement: string): string {
+  return statement.replace(/\/\*[\s\S]*?\*\//g, '');
 }

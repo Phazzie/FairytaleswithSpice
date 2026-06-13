@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 // Created: 2026-06-08 11:00 EDT
 
+import { neon } from '@neondatabase/serverless';
 import { createNeonStoryLabQueryExecutor } from '../api/_lib/story-lab/storage/neonStoryLabExecutor';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -10,11 +11,17 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function main() {
+  testInstalledNeonClientExposesPlaceholderQueryMethod();
   await testInjectedNeonQueryReceivesSqlAndParams();
   await testMissingDatabaseUrlFailsBeforeCreatingQuery();
   await testQueryErrorsPropagateToStores();
 
   console.log('Story Lab Neon executor tests passed');
+}
+
+function testInstalledNeonClientExposesPlaceholderQueryMethod() {
+  const sql = neon('postgresql://user:password@example.invalid/story_lab');
+  assert(typeof sql.query === 'function', 'installed Neon client should expose query(text, params)');
 }
 
 async function testInjectedNeonQueryReceivesSqlAndParams() {

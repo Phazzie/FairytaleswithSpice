@@ -58,7 +58,15 @@ export function createStoryLabCloudStorage(
 }
 
 function resolveDatabaseUrl(options: StoryLabCloudStorageConfigOptions): string {
-  return options.databaseUrl ?? options.env?.['DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? '';
+  if (options.databaseUrl !== undefined) {
+    return options.databaseUrl;
+  }
+
+  if (options.env) {
+    return options.env['DATABASE_URL'] ?? '';
+  }
+
+  return process.env['DATABASE_URL'] ?? '';
 }
 
 function resolveExecutor(
