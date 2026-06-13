@@ -3,6 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import accountHandler from '../api/story-lab/account';
+import healthHandler from '../api/health';
 import type { AuthPort, AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import { createStoryLabAccountRouteHandler } from '../api/_lib/story-lab/account/accountRouteHandlers';
 import { createNonDurableInMemoryStoryLabProfileStore } from '../api/_lib/story-lab/profile/inMemoryStoryLabProfileStore';
@@ -72,6 +73,7 @@ const privateStoryText = 'The private chapel oath belongs only to Avery.';
 
 async function main() {
   testVercelConfigDoesNotSetWildcardApiCors();
+  await testHealthEndpointUsesRouteLevelCors();
   await testDefaultAccountRouteFailsClosedWithoutAuthProvider();
   await testOptionsCorsPreflightUsesCredentialedPolicy();
   await testDisallowedCorsOriginFailsClosed();
@@ -246,6 +248,11 @@ async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
   await handler(createRequest('DELETE', 'project', undefined, project.id), deleteResponse);
   assert(deleteResponse.statusCode === 200, 'project delete should return 200');
   const deleteBody = deleteResponse.body as any;
+  assert(deleteBody.data.ownerUserId === owner.userId, 'project delete receipt should carry owner id');
+  assert(
+    deleteBody.data.storageMode === 'non_durable_memory',
+    'non-durable project delete should not claim cloud Postgres storage'
+  );
   assert(deleteBody.data.deleted, 'project delete should report deleted');
 }
 
@@ -355,6 +362,24 @@ async function testInvalidProjectBodyFailsClosedBeforeStoreAccess() {
   const body = response.body as any;
   assert(body.error.code === 'INVALID_REQUEST', 'project save with incomplete body should use invalid request code');
   assert(!body.error.message.includes(privateStoryText), 'invalid project body error should not leak story text');
+
+  const arrayShapeResponse = new FakeResponse();
+  await handler(createRequest('POST', 'projects', {
+    project: {
+      id: 'project-account-1',
+      storyId: 'story-account-1',
+      title: 'Array shaped project internals',
+      summary: [],
+      state: [],
+      blueprint: [],
+      chapters: []
+    }
+  }), arrayShapeResponse);
+  assert(arrayShapeResponse.statusCode === 400, 'project save with array-shaped internals should return 400');
+  assert(
+    (arrayShapeResponse.body as any).error.code === 'INVALID_REQUEST',
+    'project save with array-shaped internals should use invalid request code'
+  );
 }
 
 async function testInjectedStoreErrorMessageIsSanitized() {
@@ -391,6 +416,20 @@ function createTestHandler(user: AuthUser) {
     createNonDurableInMemoryStoryLabProfileStore({ now: () => now }),
     createNonDurableInMemoryStoryProjectStore({ now: () => now })
   );
+}
+
+async function testHealthEndpointUsesRouteLevelCors() {
+  const response = new FakeResponse();
+  await healthHandler({
+    method: 'OPTIONS',
+    headers: {
+      origin: 'http://localhost:4200'
+    }
+  }, response);
+
+  assert(response.statusCode === 200, 'health OPTIONS should be handled by route-level CORS');
+  assert(response.headers['Access-Control-Allow-Origin'] === 'http://localhost:4200', 'health CORS should allow known local origin');
+  assert(response.headers['Access-Control-Allow-Origin'] !== '*', 'health CORS should not rely on wildcard API headers');
 }
 
 function createHandlerFor(

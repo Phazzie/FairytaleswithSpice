@@ -317,6 +317,8 @@ export interface CloudStoryProjectLoadResult {
 }
 
 export interface CloudStoryProjectDeleteReceipt {
+  ownerUserId: string;
+  storageMode: CloudStoryProjectStorageMode;
   projectId: string;
   deleted: boolean;
 }

@@ -2622,3 +2622,25 @@ Follow-up pending:
 
 - Rerun the full local validation gate after this review-fix commit.
 - Push the update and confirm Sonar's new-code duplication gate clears on PR #119.
+
+## 2026-06-13 09:52 EDT - PR 119 Second Review Follow-Up
+
+Actions:
+
+- Addressed CodeRabbit's delete-contract feedback by returning a cloud-shaped delete receipt with owner id and storage mode instead of the raw store receipt.
+- Tightened project body validation to reject array-shaped `summary`, `state`, and `blueprint` payloads.
+- Added route-level CORS to `/api/health` after removing the global wildcard `/api/*` Vercel CORS header.
+- Added focused tests for health CORS, array-shaped project payload rejection, and cloud-shaped delete receipts.
+- Updated the profile/cloud-library contract smoke test for the expanded delete receipt shape.
+
+Validation:
+
+- `npm run test:story-lab-account-routes`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+- `npm run test:story-lab-profile-contracts`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+
+Follow-up pending:
+
+- Rerun `npm run test:all` and preflight after these review fixes.
+- Push the update and confirm PR #119 checks/review threads are clear.

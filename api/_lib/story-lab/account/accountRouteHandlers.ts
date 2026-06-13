@@ -6,6 +6,7 @@ import { configuredAuthPort } from '../auth/configuredAuthPort';
 import type {
   ApiResponse,
   CloudLibrarySyncState,
+  CloudStoryProjectDeleteReceipt,
   CloudStoryProjectLoadResult,
   CloudStoryProjectList,
   CloudStoryProjectStorageMode,
@@ -21,6 +22,7 @@ import {
 } from '../profile/storyLabProfileStore';
 import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
 import {
+  StoryProjectDeleteReceipt,
   StoryProjectListItem,
   StoryProjectStore,
   StoryProjectStoreError,
@@ -259,7 +261,7 @@ async function handleProjectRoute(
 
     sendJson(res, 200, {
       success: true,
-      data: deleteResult.data
+      data: toCloudDeleteReceipt(context, user, deleteResult.data)
     });
     return;
   }
@@ -364,7 +366,9 @@ function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
   const profile = candidate as Partial<StoryLabUserProfile>;
   if (
     typeof profile.userId !== 'string' ||
+    !profile.userId.trim() ||
     typeof profile.displayName !== 'string' ||
+    !profile.displayName.trim() ||
     !profile.preferences ||
     typeof profile.preferences !== 'object' ||
     Array.isArray(profile.preferences)
@@ -394,10 +398,13 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
     !project.title.trim() ||
     !project.summary ||
     typeof project.summary !== 'object' ||
+    Array.isArray(project.summary) ||
     !project.state ||
     typeof project.state !== 'object' ||
+    Array.isArray(project.state) ||
     !project.blueprint ||
     typeof project.blueprint !== 'object' ||
+    Array.isArray(project.blueprint) ||
     !Array.isArray(project.chapters)
   ) {
     return null;
@@ -461,6 +468,19 @@ function toCloudProjectLoadResult(
     project: record.project,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
+  };
+}
+
+function toCloudDeleteReceipt(
+  context: StoryLabAccountRouteContext,
+  user: AuthUser,
+  receipt: StoryProjectDeleteReceipt
+): CloudStoryProjectDeleteReceipt {
+  return {
+    ownerUserId: user.userId,
+    storageMode: toCloudStorageMode(context.projectStore),
+    projectId: receipt.projectId,
+    deleted: receipt.deleted
   };
 }
 

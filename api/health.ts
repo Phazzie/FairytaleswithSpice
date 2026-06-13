@@ -1,4 +1,5 @@
 import type { ApiResponse } from './_lib/types/contracts';
+import { applyCorsPolicy } from './_lib/http/corsPolicy';
 
 type HealthPayload = {
   status: 'healthy';
@@ -14,6 +15,13 @@ type HealthPayload = {
 };
 
 export default async function handler(req: any, res: any) {
+  const cors = applyCorsPolicy(req, res, {
+    methods: ['GET', 'OPTIONS']
+  });
+  if (cors.handled) {
+    return;
+  }
+
   // Only allow GET requests
   if (req.method !== 'GET') {
     return res.status(405).json({
