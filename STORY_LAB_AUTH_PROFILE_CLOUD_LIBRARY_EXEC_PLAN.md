@@ -17,11 +17,15 @@ The desired user-visible outcome is:
 
 ## Current Reality On Main
 
-This checklist starts after PR #114.
+This checklist is current after PR #116.
 
 - `AuthPort` exists and is deny-by-default.
 - `authorizeProjectAccess` exists.
 - `StoryProjectStore` exists with non-durable memory and injected Postgres scaffolds.
+- Story Lab profile, cloud-library, and preference contract types exist.
+- Configured auth selection fails closed unless a supported provider is configured.
+- A Clerk-shaped auth adapter scaffold exists, but it still requires an injected verifier and is not a live sign-in flow.
+- Profile stores exist for non-durable memory and injected Postgres execution.
 - Browser-local `StoryWorkspaceStorageService` remains the current user-visible save path.
 - Story Lab jobs are still `non_durable_memory` and not account-owned.
 - Vercel function count must stay within the repo guard.
@@ -56,7 +60,7 @@ Not live yet:
 - [x] Address PR #114 review comments.
 - [x] Merge PR #114.
 - [x] Land the operating-docs baseline through PR #115.
-- [ ] Land auth/profile contracts.
+- [x] Land auth/profile contracts through PR #116.
 - [ ] Land cloud schema/storage readiness.
 - [ ] Land consolidated account route.
 - [ ] Land Angular cloud library UI.
@@ -66,13 +70,16 @@ Not live yet:
 
 Goal: add the account/profile domain seam without live provider or database claims.
 
-Status on `recovery/story-lab-auth-profile-contracts`:
+Status:
 
+- Merged through PR #116 on 2026-06-13.
 - Implemented profile/cloud-library contract types.
 - Added fail-closed configured auth selection.
 - Added Clerk-shaped auth adapter scaffold that requires an injected verifier.
 - Added non-durable and injected-Postgres profile store scaffolds.
 - Hardened profile preference normalization from runtime data.
+- Centralized runtime preference allowed values in shared contract constants to prevent type/runtime drift.
+- Added redacted auth/profile storage warnings that avoid logging tokens, emails, story text, SQL params, or raw provider payloads.
 - Still not live auth, signed-in UI, durable profiles, or cloud project sync.
 
 Candidate local commits:
@@ -131,6 +138,15 @@ Validation on 2026-06-13:
 
 Goal: add schema/readiness/config/executor scaffolding while staying guarded when no real `DATABASE_URL` exists.
 
+Status on `recovery/story-lab-cloud-storage-scaffold`:
+
+- Implemented and locally validated after PR #116 merged; PR/review/merge pending.
+- Adds migration-ready SQL for private profiles and owner-scoped story projects.
+- Adds cloud storage config that creates profile/project stores only when `DATABASE_URL` and an executor are available.
+- Adds a Neon executor wrapper with injectable query creation for tests.
+- Adds guarded schema-apply and readiness-smoke scripts that refuse missing `DATABASE_URL`.
+- Does not execute a migration, provision a database, add an account route, or claim live cloud persistence.
+
 Candidate local commits:
 
 - `7144dff Add Story Lab cloud schema scaffold`
@@ -155,6 +171,23 @@ Acceptance:
 - guarded scripts refuse missing `DATABASE_URL`;
 - driver creation is lazy and testable with injected executors;
 - no live database migration is claimed unless actually run.
+
+Validation on 2026-06-13:
+
+- RED baseline: all five cloud-storage scripts were missing before the slice.
+- `npm run test:story-lab-cloud-schema`: passed.
+- `npm run test:story-lab-cloud-storage-config`: passed.
+- `npm run test:story-lab-neon-executor`: passed.
+- `npm run test:story-lab-cloud-schema-migration`: passed.
+- `npm run test:story-lab-cloud-db-readiness`: passed.
+- `npm run test:story-lab-profile-store`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
+- `npm run test:all`: passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
 ### Phase 3: Consolidated Account Route
 
