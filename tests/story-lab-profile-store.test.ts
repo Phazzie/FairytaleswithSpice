@@ -223,10 +223,13 @@ async function testPostgresProfileStoreMalformedRowsFailClosed() {
       preferences_json: '{not valid json'
     }
   ]);
-  const loadResult = await store.loadProfile(owner);
+  const { result: loadResult, warnings } = await captureWarnings(() => store.loadProfile(owner));
   assert(!loadResult.success, 'malformed profile JSON should fail closed on load');
   assert(loadResult.error.code === 'STORY_LAB_PROFILE_STORAGE_ERROR', 'malformed profile should return storage error');
   assert(!loadResult.error.message.includes(owner.email ?? ''), 'malformed profile error should not leak user email');
+  assert(warnings.length === 1, 'malformed profile load should emit one redacted diagnostic warning');
+  assert(JSON.stringify(warnings).includes('STORY_LAB_PROFILE_STORAGE_ERROR') === false, 'diagnostic warning should not include typed storage payloads');
+  assert(!JSON.stringify(warnings).includes(owner.email ?? ''), 'diagnostic warning should not leak user email');
 }
 
 function createProfileRow(profile: ReturnType<typeof createDefaultStoryLabUserProfile>) {
@@ -237,6 +240,23 @@ function createProfileRow(profile: ReturnType<typeof createDefaultStoryLabUserPr
     created_at: profile.createdAt,
     updated_at: profile.updatedAt
   };
+}
+
+async function captureWarnings<T>(fn: () => Promise<T>): Promise<{ result: T; warnings: unknown[][] }> {
+  const originalWarn = console.warn;
+  const warnings: unknown[][] = [];
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+
+  try {
+    return {
+      result: await fn(),
+      warnings
+    };
+  } finally {
+    console.warn = originalWarn;
+  }
 }
 
 main().catch(error => {

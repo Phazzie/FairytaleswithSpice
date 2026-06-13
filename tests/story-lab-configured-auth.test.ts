@@ -16,6 +16,7 @@ async function main() {
   await testConfiguredAuthDelegatesToInjectedProvider();
   await testConfiguredAuthSelectsClerkProviderWhenConfigured();
   await testConfiguredAuthFailsClosedForUnknownProvider();
+  await testConfiguredAuthIgnoresMalformedRuntimeProviderName();
 
   console.log('Story Lab configured auth tests passed');
 }
@@ -113,6 +114,19 @@ async function testConfiguredAuthFailsClosedForUnknownProvider() {
     assert(error.message.includes('Unsupported Story Lab auth provider'), 'unknown auth provider should be explicit');
     assert(!error.message.includes('unknown-provider-token'), 'unknown auth provider error should not leak bearer tokens');
   }
+}
+
+async function testConfiguredAuthIgnoresMalformedRuntimeProviderName() {
+  const auth = createConfiguredAuthPort({
+    providerName: 42 as any
+  });
+
+  const currentUser = await auth.getCurrentUser({
+    headers: {
+      authorization: 'Bearer malformed-provider-token'
+    }
+  });
+  assert(currentUser === null, 'non-string auth provider names should fail closed');
 }
 
 main().catch(error => {

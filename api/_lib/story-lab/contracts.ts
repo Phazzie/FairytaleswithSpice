@@ -60,5 +60,13 @@ export type {
   ErrorLoggingSeam
 } from '../../../story-generator/src/app/contracts';
 
+export {
+  CREATURE_ARCHETYPES,
+  HEAT_INTIMACY_BOUNDARIES,
+  HEAT_TENSION_MODES,
+  NARRATIVE_TONES,
+  STORY_LAB_LIBRARY_SORTS
+} from '../../../story-generator/src/app/contracts';
+
 export type ApiResponse<T> = import('../../../story-generator/src/app/contracts').ApiResponse<T>;
 export type ApiEnvelope<T> = ApiResponse<T>;

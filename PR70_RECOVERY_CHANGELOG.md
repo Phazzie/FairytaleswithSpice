@@ -1872,6 +1872,15 @@ Follow-up review-gate fix:
 - Replaced regex bearer parsing with deterministic header parsing to avoid regex backtracking concerns.
 - Revalidated with `npm run test:story-lab-configured-auth`, `npm run test:story-lab-clerk-auth`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, and `git diff --check`.
 
+Follow-up review comments:
+
+- Added runtime type guards for non-string auth provider config, cookie values, and header values.
+- Replaced duplicated profile preference allowed-value sets with shared contract constants.
+- Removed avoidable profile-store clone work while preserving clone-safe return values.
+- Added redacted diagnostic warnings for auth/profile storage failures without logging raw tokens, emails, SQL params, or profile/story payloads.
+- Added focused regression coverage for malformed runtime headers/provider names and redacted warning output.
+- Revalidated with focused auth/profile tests, both Angular typechecks, `scripts/recovery/check-vercel-function-count.sh`, `npm run test:all`, and `scripts/recovery/preflight.sh --quick --skip-status`.
+
 Self-review:
 
 - Good: The Charmed MVP is now validated against the card-based UI instead of the old workbench controls.

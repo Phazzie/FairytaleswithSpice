@@ -51,6 +51,7 @@ export function createClerkAuthPort(options: ClerkAuthPortOptions = {}): AuthPor
         if (error instanceof AuthError) {
           throw error;
         }
+        warnAuthVerificationFailure(error);
         throw new AuthError('Clerk session could not be verified.');
       }
     }
@@ -63,9 +64,12 @@ export function readClerkSessionToken(req: AuthRequestLike): string | null {
     return bearerToken;
   }
 
-  const cookieSession = req.cookies?.['__session']?.trim();
-  if (cookieSession) {
-    return cookieSession;
+  const cookieSession = req.cookies?.['__session'];
+  if (typeof cookieSession === 'string') {
+    const trimmedCookieSession = cookieSession.trim();
+    if (trimmedCookieSession) {
+      return trimmedCookieSession;
+    }
   }
 
   const rawCookieHeader = readHeader(req, 'cookie');
@@ -97,9 +101,10 @@ function readHeader(req: AuthRequestLike, headerName: string): string | null {
   const matchingKey = Object.keys(headers).find(key => key.toLowerCase() === headerName.toLowerCase());
   const value = matchingKey ? headers[matchingKey] : undefined;
   if (Array.isArray(value)) {
-    return value.find(item => item.trim())?.trim() ?? null;
+    const matchingValue = value.find(item => typeof item === 'string' && item.trim());
+    return typeof matchingValue === 'string' ? matchingValue.trim() : null;
   }
-  return value?.trim() || null;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 function readCookieValue(rawCookieHeader: string, cookieName: string): string | null {
@@ -125,6 +130,11 @@ function findFirstWhitespaceIndex(value: string): number {
     }
   }
   return -1;
+}
+
+function warnAuthVerificationFailure(error: unknown): void {
+  const errorName = error instanceof Error ? error.name : typeof error;
+  console.warn('Clerk session verification failed.', { errorName });
 }
 
 function toAuthUser(session: VerifiedClerkSession): AuthUser {

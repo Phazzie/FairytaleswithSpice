@@ -108,7 +108,8 @@ class PostgresStoryLabProfileStore implements StoryLabProfileStore {
       }
 
       return successResult(recordFromRow(row));
-    } catch {
+    } catch (error) {
+      warnProfileStorageFailure('save', error);
       return errorResult(this.storageError());
     }
   }
@@ -127,7 +128,8 @@ class PostgresStoryLabProfileStore implements StoryLabProfileStore {
       }
 
       return successResult(recordFromRow(row));
-    } catch {
+    } catch (error) {
+      warnProfileStorageFailure('load', error);
       return errorResult(this.storageError());
     }
   }
@@ -230,6 +232,11 @@ function preferencesFromJson(value: unknown): StoryLabProfilePreferences {
   } catch {
     throw new Error('Stored Story Lab profile preferences are invalid.');
   }
+}
+
+function warnProfileStorageFailure(operation: 'save' | 'load', error: unknown): void {
+  const errorName = error instanceof Error ? error.name : typeof error;
+  console.warn('Story Lab profile storage operation failed.', { operation, errorName });
 }
 
 function toIsoString(value: string | Date): string {

@@ -53,7 +53,7 @@ class NonDurableInMemoryStoryLabProfileStore implements StoryLabProfileStore {
       existingCreatedAt: existing?.createdAt
     });
 
-    this.records.set(record.userId, cloneStoredStoryLabProfileRecord(record));
+    this.records.set(record.userId, record);
     return successResult(cloneStoredStoryLabProfileRecord(record));
   }
 

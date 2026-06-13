@@ -17,6 +17,7 @@ async function main() {
   await testClerkAuthFailsClosedWithoutVerifier();
   await testClerkAuthVerifiesBearerToken();
   await testClerkAuthReadsSessionCookie();
+  await testClerkAuthIgnoresMalformedRuntimeHeaders();
   await testClerkAuthRejectsInvalidSessionWithoutLeakingToken();
 
   console.log('Story Lab Clerk auth tests passed');
@@ -74,6 +75,26 @@ async function testClerkAuthReadsSessionCookie() {
       cookie: 'theme=dark; __session=raw-cookie-session-token; other=value'
     }
   }) === 'raw-cookie-session-token', 'Clerk auth should read __session from raw cookie headers');
+}
+
+async function testClerkAuthIgnoresMalformedRuntimeHeaders() {
+  assert(readClerkSessionToken({
+    cookies: {
+      __session: 42
+    }
+  } as any) === null, 'Clerk auth should ignore non-string cookie values');
+
+  assert(readClerkSessionToken({
+    headers: {
+      authorization: 123
+    }
+  } as any) === null, 'Clerk auth should ignore non-string authorization headers');
+
+  assert(readClerkSessionToken({
+    headers: {
+      authorization: [' ', 99, 'Bearer array-session-token']
+    }
+  } as any) === 'array-session-token', 'Clerk auth should skip malformed array header values');
 }
 
 async function testClerkAuthRejectsInvalidSessionWithoutLeakingToken() {

@@ -38,7 +38,11 @@ export function createConfiguredAuthPort(options: ConfiguredAuthPortOptions = {}
 
 export function resolveConfiguredAuthProviderName(options: ConfiguredAuthPortOptions = {}): string | null {
   const rawProviderName = options.providerName ?? options.env?.['STORY_LAB_AUTH_PROVIDER'] ?? process.env['STORY_LAB_AUTH_PROVIDER'];
-  const providerName = rawProviderName?.trim().toLowerCase();
+  if (typeof rawProviderName !== 'string') {
+    return null;
+  }
+
+  const providerName = rawProviderName.trim().toLowerCase();
   if (!providerName) {
     return null;
   }

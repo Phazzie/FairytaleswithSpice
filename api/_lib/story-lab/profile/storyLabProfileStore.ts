@@ -1,13 +1,18 @@
 // Created: 2026-06-08 08:10 EDT
 
 import type { AuthUser } from '../auth/authPort';
-import type {
-  CreatureArchetype,
-  HeatContract,
-  NarrativeTone,
-  StoryLabLibrarySort,
-  StoryLabProfilePreferences,
-  StoryLabUserProfile
+import {
+  CREATURE_ARCHETYPES,
+  HEAT_INTIMACY_BOUNDARIES,
+  HEAT_TENSION_MODES,
+  NARRATIVE_TONES,
+  STORY_LAB_LIBRARY_SORTS,
+  type CreatureArchetype,
+  type HeatContract,
+  type NarrativeTone,
+  type StoryLabLibrarySort,
+  type StoryLabProfilePreferences,
+  type StoryLabUserProfile
 } from '../contracts';
 import { createDefaultStoryLabProfilePreferences } from './profileDefaults';
 
@@ -66,27 +71,11 @@ export interface CreateStoredStoryLabProfileRecordInput {
   existingCreatedAt?: string;
 }
 
-const VALID_CREATURES = new Set<string>([
-  'vampire',
-  'werewolf',
-  'fairy',
-  'siren',
-  'djinn',
-  'witch',
-  'dragon',
-  'demon',
-  'angel',
-  'mermaid'
-]);
-const VALID_TONES = new Set<string>(['romance', 'dark_romance', 'mystery', 'adventure', 'comedy', 'tragedy']);
-const VALID_TENSION_MODES = new Set<string>([
-  'slow_burn',
-  'dangerous_proximity',
-  'playful_banter',
-  'devotional_longing'
-]);
-const VALID_INTIMACY_BOUNDARIES = new Set<string>(['fade_to_black', 'closed_door', 'literary_on_page']);
-const VALID_LIBRARY_SORTS = new Set<string>(['updated_desc', 'created_desc', 'title_asc']);
+const VALID_CREATURES = new Set<string>(CREATURE_ARCHETYPES);
+const VALID_TONES = new Set<string>(NARRATIVE_TONES);
+const VALID_TENSION_MODES = new Set<string>(HEAT_TENSION_MODES);
+const VALID_INTIMACY_BOUNDARIES = new Set<string>(HEAT_INTIMACY_BOUNDARIES);
+const VALID_LIBRARY_SORTS = new Set<string>(STORY_LAB_LIBRARY_SORTS);
 
 export function createDefaultStoryLabUserProfile(
   user: AuthUser,
@@ -124,14 +113,11 @@ export function normalizeStoryLabUserProfile(
   now: string,
   existingCreatedAt?: string
 ): StoryLabUserProfile {
-  const clonedProfile = cloneStoryLabUserProfile(profile);
-
   return {
-    ...clonedProfile,
     userId: user.userId,
-    displayName: clonedProfile.displayName || 'Story Lab Writer',
-    preferences: normalizeStoryLabProfilePreferences(clonedProfile.preferences),
-    createdAt: existingCreatedAt ?? clonedProfile.createdAt ?? now,
+    displayName: profile.displayName || 'Story Lab Writer',
+    preferences: normalizeStoryLabProfilePreferences(profile.preferences),
+    createdAt: existingCreatedAt ?? profile.createdAt ?? now,
     updatedAt: now
   };
 }
