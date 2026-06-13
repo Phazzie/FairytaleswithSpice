@@ -2371,3 +2371,30 @@ Validation:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `10/12`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+## 2026-06-13 00:00 EDT - Unpublished Branch Recovery Point
+
+Actions:
+
+- Re-checked the live repository state after a long local implementation run.
+- Confirmed current branch is `feature/story-lab-auth-profile-contracts`.
+- Confirmed the branch has no configured upstream and no open GitHub PR.
+- Confirmed the branch contains a large local commit stack ahead of `origin/main`.
+- Confirmed the only tracked uncommitted files are `story-generator/src/app/app.ts` and `story-generator/src/app/app.spec.ts`; the diff marks non-durable account storage as cloud-unavailable in the UI and adds a focused spec.
+- Recorded the process correction in this changelog, the active auth/profile/cloud-library plan, and `LESSONS_LEARNED.md`.
+- Update: final live audit state is `ecba20e`. The branch is 89 commits ahead of `origin/main`, has no upstream or matching remote branch, and has no open PR. The app diff previously described as uncommitted is now committed as `9465073`; tracked files are clean.
+
+Decision:
+
+- Stop feature expansion on this branch.
+- Inventory the local commits into reviewable PR slices before any further product work.
+- Prefer small PRs that can be checked, reviewed, fixed, and merged in sequence. Use a remote backup branch only as a safety anchor, not as the default merge PR.
+
+Validation:
+
+- Status/inventory only. No code validation was rerun in this documentation checkpoint.
+
+Self-review:
+
+- Problem found: The implementation cadence violated the intended finish-validate-PR-review-merge loop and created a large unpublished local branch.
+- Correction: Treat publishing/splitting as the active task. Do not add more Story Lab features until the existing stack is landed or intentionally discarded.

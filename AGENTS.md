@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-06-07 07:13 EDT
+Last updated: 2026-06-13 00:00 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for the current recovery effort.
 
@@ -213,5 +213,16 @@ Some tests are historically stale or environment-dependent. If a check cannot ru
 6. Resolve path drift intentionally: `api/_lib` is the current Vercel recovery target.
 7. Do not reintroduce DigitalOcean as the active deployment target.
 8. Do not reintroduce active audio scope unless the user asks.
-9. Prefer small, attributed ports after PR #70 instead of large mixed merges.
-10. Run a self-review after #70, after every three PR dispositions, after every story-generation port, and before the final recovery PR.
+9. Do not claim auth, cloud save, user profiles, durable jobs, or live AI verification unless the current implementation and verification prove those claims.
+10. Prefer small, attributed ports and test-backed slices instead of large mixed merges.
+11. Run self-review before committing, before handoff, after every three PR dispositions, and after every story-generation port.
+12. After a coherent slice validates and is committed, do not start another feature slice until the work is pushed, a PR exists, checks/review comments are addressed, and the PR is merged, unless the user explicitly asks for a local-only spike.
+13. If the current branch has unpublished commits but no upstream or PR, stop feature selection. Record the state, push a backup or split branch, open the next reviewable PR, address checks/comments, and merge before adding more product work.
+14. For `AGENTS.md` edits, update the timestamp, run `git diff --check`, and record the audit/change in `OVERNIGHT_HANDOFF.md`.
+
+For broad PR recovery only:
+
+- Start with `PR70_RECOVERY_PLAN.md`.
+- Keep `PR70_RECOVERY_CHANGELOG.md` current as work proceeds.
+- Do not close a PR until accepted and not-taken material is recorded.
+- Do not silently discard story-generation ideas from stale or audio-heavy PRs.
