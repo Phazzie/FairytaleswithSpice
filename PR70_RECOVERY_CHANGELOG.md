@@ -2407,6 +2407,7 @@ Actions:
 - Found Sourcery feedback that the docs diff was too large for automated review.
 - Reduced PR #114 to publication discipline, lessons, changelog, and the split checklist.
 - Moved large operating/audit documents back to the planned PR #2 scope.
+- Removed the remaining `AGENTS.md` dependency on `OVERNIGHT_HANDOFF.md` so this PR does not require a doc that was moved out of scope.
 
 Decision:
 

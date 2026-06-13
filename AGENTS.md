@@ -218,7 +218,7 @@ Some tests are historically stale or environment-dependent. If a check cannot ru
 11. Run self-review before committing, before handoff, after every three PR dispositions, and after every story-generation port.
 12. After a coherent slice validates and is committed, do not start another feature slice until the work is pushed, a PR exists, checks/review comments are addressed, and the PR is merged, unless the user explicitly asks for a local-only spike.
 13. If the current branch has unpublished commits but no upstream or PR, stop feature selection. Record the state, push a backup or split branch, open the next reviewable PR, address checks/comments, and merge before adding more product work.
-14. For `AGENTS.md` edits, update the timestamp, run `git diff --check`, and record the audit/change in `OVERNIGHT_HANDOFF.md`.
+14. For `AGENTS.md` edits, update the timestamp, run `git diff --check`, and record the audit/change in the active changelog or execution plan that is part of the same PR.
 
 For broad PR recovery only:
 
