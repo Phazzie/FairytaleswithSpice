@@ -28,6 +28,41 @@ export type WordBudget = 600 | 900 | 1200 | 1500;
 export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_banter' | 'devotional_longing';
 export type HeatIntimacyBoundary = 'fade_to_black' | 'closed_door' | 'literary_on_page';
 
+export const CREATURE_ARCHETYPES = [
+  'vampire',
+  'werewolf',
+  'fairy',
+  'siren',
+  'djinn',
+  'witch',
+  'dragon',
+  'demon',
+  'angel',
+  'mermaid'
+] as const satisfies readonly CreatureArchetype[];
+
+export const NARRATIVE_TONES = [
+  'romance',
+  'dark_romance',
+  'mystery',
+  'adventure',
+  'comedy',
+  'tragedy'
+] as const satisfies readonly NarrativeTone[];
+
+export const HEAT_TENSION_MODES = [
+  'slow_burn',
+  'dangerous_proximity',
+  'playful_banter',
+  'devotional_longing'
+] as const satisfies readonly HeatTensionMode[];
+
+export const HEAT_INTIMACY_BOUNDARIES = [
+  'fade_to_black',
+  'closed_door',
+  'literary_on_page'
+] as const satisfies readonly HeatIntimacyBoundary[];
+
 export interface ThemeSeed {
   id: string;
   label: string;
@@ -212,6 +247,63 @@ export interface SavedStoryProject {
   continuityExtraction?: ContinuityExtractionReceipt;
   createdAt: string;
   updatedAt: string;
+}
+
+export type StoryLabLibrarySort = 'updated_desc' | 'created_desc' | 'title_asc';
+
+export const STORY_LAB_LIBRARY_SORTS = [
+  'updated_desc',
+  'created_desc',
+  'title_asc'
+] as const satisfies readonly StoryLabLibrarySort[];
+
+export interface StoryLabProfilePreferences {
+  defaultHeatContract: HeatContract;
+  favoriteCreatures: CreatureArchetype[];
+  favoriteTones: NarrativeTone[];
+  contentBoundaries?: string;
+  librarySort: StoryLabLibrarySort;
+}
+
+export interface StoryLabUserProfile {
+  userId: string;
+  displayName: string;
+  preferences: StoryLabProfilePreferences;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CloudLibrarySyncMode = 'local_only' | 'cloud_synced' | 'sync_failed' | 'cloud_unavailable';
+
+export interface CloudLibrarySyncState {
+  mode: CloudLibrarySyncMode;
+  lastSyncedAt?: string;
+  message?: string;
+}
+
+export type CloudStoryProjectStorageMode = 'cloud_postgres';
+
+export interface CloudStoryProjectListItem {
+  projectId: string;
+  storyId: string;
+  title: string;
+  synopsis: string;
+  chapterCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CloudStoryProjectList {
+  ownerUserId: string;
+  storageMode: CloudStoryProjectStorageMode;
+  projects: CloudStoryProjectListItem[];
+}
+
+export interface CloudStoryProjectSaveReceipt {
+  projectId: string;
+  storyId: string;
+  savedAt: string;
+  syncState: CloudLibrarySyncState;
 }
 
 export type BatchProgressStatus = 'queued' | 'in_progress' | 'completed' | 'failed';

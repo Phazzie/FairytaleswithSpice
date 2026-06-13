@@ -28,6 +28,15 @@ export type {
   ContinuityExtractionReceipt,
   StoryIterationPayload,
   SavedStoryProject,
+  StoryLabLibrarySort,
+  StoryLabProfilePreferences,
+  StoryLabUserProfile,
+  CloudLibrarySyncMode,
+  CloudLibrarySyncState,
+  CloudStoryProjectStorageMode,
+  CloudStoryProjectListItem,
+  CloudStoryProjectList,
+  CloudStoryProjectSaveReceipt,
   StoryGenerationSeam,
   StoryContinuationSeam,
   StoryPersistenceSeam,
@@ -49,6 +58,14 @@ export type {
   ErrorSeverity,
   ErrorLog,
   ErrorLoggingSeam
+} from '../../../story-generator/src/app/contracts';
+
+export {
+  CREATURE_ARCHETYPES,
+  HEAT_INTIMACY_BOUNDARIES,
+  HEAT_TENSION_MODES,
+  NARRATIVE_TONES,
+  STORY_LAB_LIBRARY_SORTS
 } from '../../../story-generator/src/app/contracts';
 
 export type ApiResponse<T> = import('../../../story-generator/src/app/contracts').ApiResponse<T>;

@@ -86,12 +86,14 @@ Validation:
 
 Goal: add the account/profile domain seam without live provider or database claims.
 
+Status: implemented on `recovery/story-lab-auth-profile-contracts`; PR/review/merge pending.
+
 Likely commits:
 
 - `75b485f Add Story Lab auth profile contract slice`
 - `6459454 Add Story Lab profile store slice`
-- `99317f1 Add env-gated Story Lab Clerk auth config`
 - `b99ad12 Add Clerk auth adapter scaffold`
+- `99317f1 Add env-gated Story Lab Clerk auth config`
 - `448d0c3 Harden Story Lab profile preferences`
 
 Key files:
