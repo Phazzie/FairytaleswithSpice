@@ -78,8 +78,18 @@ function readBearerToken(req: AuthRequestLike): string | null {
     return null;
   }
 
-  const match = authorization.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() || null;
+  const separatorIndex = findFirstWhitespaceIndex(authorization);
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const scheme = authorization.slice(0, separatorIndex).toLowerCase();
+  if (scheme !== 'bearer') {
+    return null;
+  }
+
+  const token = authorization.slice(separatorIndex + 1).trim();
+  return token || null;
 }
 
 function readHeader(req: AuthRequestLike, headerName: string): string | null {
@@ -105,6 +115,16 @@ function readCookieValue(rawCookieHeader: string, cookieName: string): string | 
     }
   }
   return null;
+}
+
+function findFirstWhitespaceIndex(value: string): number {
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char === ' ' || char === '\t') {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function toAuthUser(session: VerifiedClerkSession): AuthUser {

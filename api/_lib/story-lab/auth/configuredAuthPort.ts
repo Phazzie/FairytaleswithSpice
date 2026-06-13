@@ -36,7 +36,7 @@ export function createConfiguredAuthPort(options: ConfiguredAuthPortOptions = {}
   return createUnsupportedAuthProviderPort(providerName);
 }
 
-export function resolveConfiguredAuthProviderName(options: ConfiguredAuthPortOptions = {}): StoryLabAuthProviderName | string | null {
+export function resolveConfiguredAuthProviderName(options: ConfiguredAuthPortOptions = {}): string | null {
   const rawProviderName = options.providerName ?? options.env?.['STORY_LAB_AUTH_PROVIDER'] ?? process.env['STORY_LAB_AUTH_PROVIDER'];
   const providerName = rawProviderName?.trim().toLowerCase();
   if (!providerName) {

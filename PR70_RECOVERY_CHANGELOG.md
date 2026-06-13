@@ -1865,6 +1865,13 @@ Validation:
 - `npm run smoke:story-lab-ui`: passed in mocked mode after a fresh Angular build.
 - `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 
+Follow-up review-gate fix:
+
+- SonarCloud Code Analysis flagged a redundant auth-provider union type and the bearer-token regex parser.
+- Replaced the redundant return type with `string | null`.
+- Replaced regex bearer parsing with deterministic header parsing to avoid regex backtracking concerns.
+- Revalidated with `npm run test:story-lab-configured-auth`, `npm run test:story-lab-clerk-auth`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, and `git diff --check`.
+
 Self-review:
 
 - Good: The Charmed MVP is now validated against the card-based UI instead of the old workbench controls.
