@@ -119,7 +119,7 @@ Validation:
 
 Goal: add schema/readiness/config/executor scaffolding while staying guarded when no real `DATABASE_URL` exists.
 
-Status: implemented and locally validated on `recovery/story-lab-cloud-storage-scaffold` after PR #116 merged; PR/review/merge pending. Keep this slice storage-only; do not include the later consolidated account route or stale handoff/audit files.
+Status: merged through PR #118 on 2026-06-13. This slice stayed storage-only; it did not include the later consolidated account route or stale handoff/audit files.
 
 Likely commits:
 
@@ -152,13 +152,23 @@ Validation:
 - `npm run test:all`
 - `scripts/recovery/check-vercel-function-count.sh`
 
+Merge evidence:
+
+- PR #118 merged after review follow-up and green checks.
+- Function count stayed `10/12`.
+- No migration was executed and no live cloud persistence was claimed.
+
 ### PR 5: Consolidated Account Route
 
 Goal: add one deployable account route for profile and project cloud library operations without spending multiple Vercel function slots.
 
+Status: implemented and locally validated in this account-route change set. Keep this slice route/backend-only; Angular cloud library service/UI remains PR 6.
+
 Likely commits:
 
 - `0d5b659 Add Story Lab account route slice`
+- account-route hunk from `aa8d848 Add Story Lab cloud storage config seam`
+- backend account service contract part of `ca79e26 Add Story Lab account service methods`
 - backend account-route part of `a7fbacd Report non-durable account storage mode`
 
 Key files:
@@ -168,6 +178,7 @@ Key files:
 - `vercel.json`
 - `scripts/recovery/check-vercel-function-count.sh`
 - `tests/story-lab-account-routes.test.ts`
+- shared cloud project load/delete contract types
 
 Validation:
 
@@ -176,6 +187,14 @@ Validation:
 - `npm run test:story-lab-profile-store`
 - `scripts/recovery/check-vercel-function-count.sh`
 - `scripts/recovery/preflight.sh --quick --skip-status`
+
+Validation evidence:
+
+- RED baseline: account-route script was missing before this slice.
+- Focused route tests passed, including fail-closed auth, credentialed CORS, disallowed origins, profile read/write, project save/list/load/delete, cross-owner denial, missing storage, invalid ids/bodies, non-durable storage-mode honesty, and injected-store error sanitization.
+- `scripts/recovery/check-vercel-function-count.sh` passed at `11/12`.
+- `npm run test:all` and `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- No live provider auth, signed-in UI, executed migration, database provisioning, or durable cloud sync proof is included.
 
 ### PR 6: Angular Cloud Library Service And UI
 

@@ -14,27 +14,20 @@
       "destination": "/api/story-lab/jobs?jobId=:jobId"
     },
     {
+      "source": "/api/story-lab/account/profile",
+      "destination": "/api/story-lab/account?resource=profile"
+    },
+    {
+      "source": "/api/story-lab/account/projects/:projectId",
+      "destination": "/api/story-lab/account?resource=project&projectId=:projectId"
+    },
+    {
+      "source": "/api/story-lab/account/projects",
+      "destination": "/api/story-lab/account?resource=projects"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, PUT, DELETE, OPTIONS"
-        },
-        {
-          "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type, Authorization"
-        }
-      ]
     }
   ],
   "functions": {

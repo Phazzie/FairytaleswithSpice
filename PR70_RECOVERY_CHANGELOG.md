@@ -2559,3 +2559,88 @@ Validation:
 - First `scripts/recovery/preflight.sh --quick --skip-status` run failed because `import.meta.url` is not allowed under the API CommonJS typecheck.
 - After switching the schema loader to `__dirname`, `npm run test:story-lab-cloud-schema-migration` passed.
 - After switching the schema loader to `__dirname`, `scripts/recovery/preflight.sh --quick --skip-status` passed.
+
+## 2026-06-13 09:20 EDT - Account Route Slice Ready For PR
+
+Actions:
+
+- Confirmed PR #118 merged into `main` as `3aa797b`.
+- Started `recovery/story-lab-account-route` from `origin/main` after PR #118 merged.
+- Ported the consolidated account route from the local unpublished stack while dropping stale `OVERNIGHT_HANDOFF.md` and `STORY_LAB_APP_AUDIT.md` conflicts.
+- Added `api/story-lab/account.ts` as the single deployable account function and rewrote profile/project account paths into it.
+- Added `api/_lib/story-lab/account/accountRouteHandlers.ts` behind injectable auth, profile-store, and project-store seams.
+- Defaulted the route stores through `createStoryLabCloudStorage()` so missing `DATABASE_URL` fails closed through the guarded cloud-storage config.
+- Added shared cloud project load/delete response contract types.
+- Hardened route behavior after hostile review:
+  - non-durable injected stores report `non_durable_memory`, not `cloud_postgres`;
+  - route-level credentialed CORS owns account responses, and the global wildcard `/api/*` Vercel CORS header was removed;
+  - malformed project ids and incomplete project save bodies are rejected before store access;
+  - injected/future store error messages are mapped to generic public messages.
+- Updated the auth/profile/cloud-library checklist, split plan, idea board, and lessons with route-only status and validation evidence.
+
+Decision:
+
+- This slice spends one Vercel function slot intentionally, raising the guard from `10/12` to `11/12`.
+- This slice is backend route/contract work only.
+- It does not add live provider auth, signed-in Angular UI, executed database migration, database provisioning, or durable cloud sync proof.
+
+Validation:
+
+- RED baseline: `npm run test:story-lab-account-routes` was missing before the slice.
+- `npm run test:story-lab-account-routes`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+- `npm run test:story-lab-profile-store`: passed.
+- `npm run test:story-lab-cloud-storage-config`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- `npm run test:all`: passed in mock mode because `XAI_API_KEY` is not configured.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
+
+Self-review:
+
+- The account route now proves owner-scoped route contracts and error/privacy boundaries, not end-user cloud persistence.
+- Review risk found and fixed before PR: global wildcard API headers were incompatible with private credentialed account CORS.
+- Remaining work belongs in the next slice: Angular cloud library service/UI and connected-account honesty, still without claiming durable sync until live auth/database proof exists.
+
+## 2026-06-13 09:38 EDT - PR 119 Review Follow-Up
+
+Actions:
+
+- Addressed Gemini review feedback by rejecting cross-user profile updates at the route boundary before store access.
+- Hardened profile request parsing so malformed `preferences` payloads must be non-array objects.
+- Added an account-route test for malformed profile preference payloads returning `400 INVALID_REQUEST`.
+- Reduced Sonar new-code duplication risk by moving the shared saved-project test fixture out of individual account/storage tests and reusing it from both suites.
+
+Validation:
+
+- `npm run test:story-lab-account-routes`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+
+Follow-up pending:
+
+- Rerun the full local validation gate after this review-fix commit.
+- Push the update and confirm Sonar's new-code duplication gate clears on PR #119.
+
+## 2026-06-13 09:52 EDT - PR 119 Second Review Follow-Up
+
+Actions:
+
+- Addressed CodeRabbit's delete-contract feedback by returning a cloud-shaped delete receipt with owner id and storage mode instead of the raw store receipt.
+- Tightened project body validation to reject array-shaped `summary`, `state`, and `blueprint` payloads.
+- Added route-level CORS to `/api/health` after removing the global wildcard `/api/*` Vercel CORS header.
+- Added focused tests for health CORS, array-shaped project payload rejection, and cloud-shaped delete receipts.
+- Updated the profile/cloud-library contract smoke test for the expanded delete receipt shape.
+
+Validation:
+
+- `npm run test:story-lab-account-routes`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+- `npm run test:story-lab-profile-contracts`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+
+Follow-up pending:
+
+- Rerun `npm run test:all` and preflight after these review fixes.
+- Push the update and confirm PR #119 checks/review threads are clear.

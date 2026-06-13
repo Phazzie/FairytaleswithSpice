@@ -3,6 +3,7 @@
 
 import type {
   CloudLibrarySyncState,
+  CloudStoryProjectDeleteReceipt,
   CloudStoryProjectList,
   CloudStoryProjectSaveReceipt,
   StoryLabProfilePreferences,
@@ -64,6 +65,12 @@ const saveReceipt: CloudStoryProjectSaveReceipt = {
   savedAt: '2026-06-08T07:22:00.000Z',
   syncState: syncedState
 };
+const deleteReceipt: CloudStoryProjectDeleteReceipt = {
+  ownerUserId: profile.userId,
+  storageMode: 'cloud_postgres',
+  projectId: 'project-1',
+  deleted: true
+};
 const defaultPreferences = createDefaultStoryLabProfilePreferences();
 
 assert(profile.preferences.defaultHeatContract.adultOnlyConfirmed, 'profile should carry a default Heat Contract');
@@ -71,6 +78,7 @@ assert(profile.preferences.favoriteCreatures.includes('witch'), 'profile should 
 assert(projectList.ownerUserId === profile.userId, 'cloud list should carry the owner user id');
 assert(projectList.projects[0]?.chapterCount === 2, 'cloud list items should summarize chapter count');
 assert(saveReceipt.syncState.mode === 'cloud_synced', 'save receipt should report cloud sync state');
+assert(deleteReceipt.ownerUserId === profile.userId, 'delete receipt should carry owner user id');
 assert(defaultPreferences.librarySort === 'updated_desc', 'default profile preferences should use updated-first library sort');
 assert(defaultPreferences.defaultHeatContract.adultOnlyConfirmed === false, 'default profile preferences should not pre-confirm adult-only content');
 

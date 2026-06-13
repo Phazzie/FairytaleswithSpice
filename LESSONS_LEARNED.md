@@ -137,3 +137,5 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - A validated but unpublished slice is a stop condition for feature work: publishing, PR review, checks, and merge become the next task.
 - Runtime validation should consume shared contract constants, not duplicate string literal unions. Otherwise preference normalizers, tests, and UI contracts can drift while TypeScript still appears clean.
 - Auth and private-storage observability must be redacted by default. Log safe operation names and error classes, not raw provider errors that may include tokens, emails, story text, SQL params, URLs, or profile payloads.
+- Private account routes cannot share a global wildcard API CORS header. Credentialed route-level CORS needs deploy config tests so local handlers and Vercel headers do not disagree.
+- Consolidated account routes can prove owner-scoped contracts without proving product cloud persistence. Keep responses honest about `non_durable_memory`, and keep docs separate from signed-in UI or live database claims.
