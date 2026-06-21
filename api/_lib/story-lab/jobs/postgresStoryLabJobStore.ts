@@ -17,6 +17,7 @@ import {
   POSTGRES_STORY_LAB_JOB_DURABILITY
 } from './jobContracts';
 import type { CreateStoryLabJobInput, ReadStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from './jobStorePort';
+import { logWarn } from '../../utils/logger';
 
 export type StoryLabJobStoreErrorCode =
   | 'STORY_LAB_JOB_STORAGE_UNCONFIGURED'
@@ -121,6 +122,8 @@ where job_id = $1
 order by sequence_number asc
 `;
 
+const MAX_EVENT_INSERT_ATTEMPTS = 3;
+
 export function createPostgresStoryLabJobStore(
   options: PostgresStoryLabJobStoreOptions = {}
 ): StoryLabJobStore {
@@ -174,15 +177,10 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
         job.createdAt,
         job.updatedAt
       ]);
-      await this.executor().query(INSERT_EVENT_SQL, [
-        job.jobId,
-        ownerUserId,
-        JSON.stringify(event),
-        now
-      ]);
+      await this.insertEvent(job.jobId, ownerUserId, event, now);
       return clone(response);
-    } catch {
-      throw storageError();
+    } catch (error) {
+      throw storageError('create_job', error);
     }
   }
 
@@ -213,15 +211,10 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
 
       const job = jobFromRow<TPublicResult>(row);
       const event = this.createSnapshotEvent(job, now);
-      await this.executor().query(INSERT_EVENT_SQL, [
-        jobId,
-        ownerUserId,
-        JSON.stringify(event),
-        now
-      ]);
+      await this.insertEvent(jobId, ownerUserId, event, now);
       return clone(createResponse(job));
-    } catch {
-      throw storageError();
+    } catch (error) {
+      throw storageError('update_job', error);
     }
   }
 
@@ -237,8 +230,8 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
       const result = await this.executor().query<StoryLabJobRow>(LOAD_JOB_SQL, [jobId, ownerUserId]);
       const row = result.rows[0];
       return row ? createResponse(jobFromRow<TPublicResult>(row)) : null;
-    } catch {
-      throw storageError();
+    } catch (error) {
+      throw storageError('get_job', error);
     }
   }
 
@@ -253,8 +246,31 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
     try {
       const result = await this.executor().query<StoryLabJobEventRow>(LOAD_EVENTS_SQL, [jobId, ownerUserId]);
       return result.rows.map(row => eventFromRow<TPublicResult>(row)).filter((event): event is StoryLabJobEvent<TPublicResult> => Boolean(event));
-    } catch {
-      throw storageError();
+    } catch (error) {
+      throw storageError('get_events', error);
+    }
+  }
+
+  private async insertEvent<TPublicResult>(
+    jobId: string,
+    ownerUserId: string,
+    event: StoryLabJobEvent<TPublicResult>,
+    now: string
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= MAX_EVENT_INSERT_ATTEMPTS; attempt += 1) {
+      try {
+        await this.executor().query(INSERT_EVENT_SQL, [
+          jobId,
+          ownerUserId,
+          JSON.stringify(event),
+          now
+        ]);
+        return;
+      } catch (error) {
+        if (!isJobEventSequenceConflict(error) || attempt === MAX_EVENT_INSERT_ATTEMPTS) {
+          throw error;
+        }
+      }
     }
   }
 
@@ -384,11 +400,35 @@ function toIsoString(value: string | Date): string {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function storageError(): StoryLabJobStoreError {
+function storageError(operation: string, error?: unknown): StoryLabJobStoreError {
+  logWarn('Story Lab job storage operation failed', {
+    endpoint: '/api/story-lab/jobs'
+  }, {
+    operation,
+    errorType: error instanceof Error ? error.name : typeof error,
+    errorCode: typeof (error as { code?: unknown } | null)?.code === 'string'
+      ? (error as { code: string }).code
+      : undefined
+  });
   return new StoryLabJobStoreError(
     'STORY_LAB_JOB_STORAGE_FAILED',
     'Story Lab job storage failed.'
   );
+}
+
+function isJobEventSequenceConflict(error: unknown): boolean {
+  const candidate = error as {
+    code?: unknown;
+    constraint?: unknown;
+    message?: unknown;
+  } | null;
+  if (candidate?.code !== '23505') {
+    return false;
+  }
+
+  return candidate.constraint === 'story_lab_job_events_job_sequence_idx'
+    || String(candidate.message ?? '').includes('story_lab_job_events_job_sequence_idx')
+    || String(candidate.message ?? '').includes('sequence_number');
 }
 
 function clone<T>(value: T): T {

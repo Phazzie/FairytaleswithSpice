@@ -18,6 +18,7 @@ function assert(condition: unknown, message: string): asserts condition {
 class FakeJobExecutor implements StoryLabCloudQueryExecutor {
   readonly queries: Array<{ sql: string; params: readonly unknown[] }> = [];
   private readonly queuedRows: unknown[][] = [];
+  failNextEventInsertConflicts = 0;
 
   enqueueRows(rows: unknown[]): void {
     this.queuedRows.push(rows);
@@ -25,6 +26,16 @@ class FakeJobExecutor implements StoryLabCloudQueryExecutor {
 
   async query<T = unknown>(sql: string, params: readonly unknown[]): Promise<{ rows: T[] }> {
     this.queries.push({ sql, params });
+    if (this.failNextEventInsertConflicts > 0 && sql.toLowerCase().includes('insert into story_lab_job_events')) {
+      this.failNextEventInsertConflicts -= 1;
+      const error = new Error('duplicate key value violates unique constraint "story_lab_job_events_job_sequence_idx"') as Error & {
+        code?: string;
+        constraint?: string;
+      };
+      error.code = '23505';
+      error.constraint = 'story_lab_job_events_job_sequence_idx';
+      throw error;
+    }
     return {
       rows: (this.queuedRows.shift() ?? []) as T[]
     };
@@ -35,8 +46,32 @@ async function main() {
   await testNonDurableStoreImplementsJobStorePort();
   await testPostgresStoreFailsClosedWithoutDatabaseConfig();
   await testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots();
+  await testPostgresStoreRetriesEventSequenceConflicts();
 
   console.log('Story Lab job store port tests passed');
+}
+
+async function testPostgresStoreRetriesEventSequenceConflicts() {
+  const executor = new FakeJobExecutor();
+  executor.failNextEventInsertConflicts = 1;
+  const store = createPostgresStoryLabJobStore({
+    databaseUrl: 'postgres://story-lab.example/test',
+    executor,
+    now: () => '2026-06-08T12:30:00.000Z',
+    jobIdFactory: () => 'job_22222222-2222-4222-8222-222222222222',
+    eventIdFactory: () => 'event_retry'
+  });
+
+  const created = await store.createJob({
+    kind: 'genesis',
+    ownerUserId: 'user_job_owner'
+  });
+  const eventInsertQueries = executor.queries.filter(query => (
+    query.sql.toLowerCase().includes('insert into story_lab_job_events')
+  ));
+
+  assert(created.job.jobId === 'job_22222222-2222-4222-8222-222222222222', 'create should still return the created job after event retry');
+  assert(eventInsertQueries.length === 2, 'event sequence conflicts should be retried once before succeeding');
 }
 
 async function testNonDurableStoreImplementsJobStorePort() {

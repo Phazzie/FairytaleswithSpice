@@ -2737,3 +2737,19 @@ Validation:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
 - `npm run build`: passed with existing Angular bundle and CSS budget warnings.
+
+## 2026-06-21 07:33 EDT - PR 124 Review Follow-Up
+
+Actions:
+
+- Addressed Gemini and Sourcery review feedback on durable job scaffolding.
+- Removed internal job-store configuration flags from public `JOB_STORE_UNAVAILABLE` responses and kept those details in server-side diagnostics.
+- Added redacted storage-operation warning logs that report only operation and error type/code.
+- Added bounded retry handling for Postgres job event sequence conflicts caused by concurrent inserts.
+- Added regression coverage for event sequence retry and public job-store error redaction.
+
+Validation:
+
+- `npm run test:story-lab-job-store-port`: passed.
+- `npm run test:story-lab-job-routes`: passed.
+- `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.

@@ -238,8 +238,7 @@ async function testUnsupportedConfiguredJobStoreFailsClosed(): Promise<void> {
   const body = response.body as any;
   assert(body.success === false, 'unsupported job store mode should not create a job envelope');
   assert(body.error.code === 'JOB_STORE_UNAVAILABLE', 'unsupported job store mode should expose job store unavailable');
-  assert(body.error.details.requestedMode === 'planet-scale', 'unsupported job store response should preserve requested mode');
-  assert(body.error.details.errorCode === 'STORY_LAB_JOB_STORE_UNSUPPORTED_MODE', 'unsupported job store response should expose config error code');
+  assert(!('details' in body.error), 'unsupported job store response should not expose config details');
 }
 
 async function testPostgresJobStoreWithoutRouteAuthFailsClosed(): Promise<void> {
@@ -253,8 +252,7 @@ async function testPostgresJobStoreWithoutRouteAuthFailsClosed(): Promise<void> 
   const body = response.body as any;
   assert(body.success === false, 'postgres job store without route auth/config should not create a job envelope');
   assert(body.error.code === 'JOB_STORE_UNAVAILABLE', 'postgres job store without route auth/config should expose job store unavailable');
-  assert(body.error.details.mode === 'postgres', 'postgres job store response should report postgres mode');
-  assert(body.error.details.databaseUrlConfigured === false, 'postgres job store response should report missing database URL');
+  assert(!('details' in body.error), 'postgres job store response should not expose config details');
 }
 
 async function testDurableInjectedJobStoreRequiresAuth(): Promise<void> {

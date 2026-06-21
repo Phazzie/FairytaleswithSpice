@@ -12,6 +12,7 @@ import type { AuthPort, AuthUser } from '../auth/authPort';
 import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort } from '../auth/configuredAuthPort';
 import { applyCorsPolicy } from '../../http/corsPolicy';
+import { logWarn } from '../../utils/logger';
 import { continueStoryLab, generateStoryLabGenesis } from '../storyLabEngine';
 import { getTransientStorySnapshot } from '../stateStore';
 import { parseStoryLabBlueprintFromBody } from '../validation/blueprintParser';
@@ -563,19 +564,22 @@ function jobStoreUnavailable(config: StoryLabJobStoreConfig): ApiResponse<never>
     : routeAuthRequired
       ? 'Durable Story Lab job storage requires owner-scoped route auth before it can be enabled.'
       : 'Story Lab job storage is not configured.';
+  logWarn('Story Lab job store unavailable', {
+    endpoint: '/api/story-lab/jobs',
+    statusCode: 503
+  }, {
+    requestedMode: config.requestedMode,
+    mode: config.mode,
+    databaseUrlConfigured: config.databaseUrlConfigured,
+    executorConfigured: config.executorConfigured,
+    errorCode: config.errorCode,
+    routeAuthRequired
+  });
   return {
     success: false,
     error: {
       code: 'JOB_STORE_UNAVAILABLE',
-      message,
-      details: {
-        requestedMode: config.requestedMode,
-        mode: config.mode,
-        databaseUrlConfigured: config.databaseUrlConfigured,
-        executorConfigured: config.executorConfigured,
-        errorCode: config.errorCode,
-        routeAuthRequired
-      }
+      message
     }
   };
 }
