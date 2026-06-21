@@ -8,43 +8,22 @@ import {
   ChapterBatchSize,
   CreatureArchetype,
   GeneratedChapter,
-  EvaluationCriteria,
+  PromptTemplate,
+  ProvingGroundsTestResult,
   SpicyLevel,
   StoryGenerationSeam,
   StoryIterationPayload,
+  StoredProvingGroundsTestResult,
   ThemeSeed,
   WordBudget
 } from '../contracts';
 import { StoryService } from '../story.service';
 import { GenerationLogic, GenerationLogicService } from './generation-logic.service';
 import { PromptEvaluationService } from './prompt-evaluation.service';
-import { PromptTemplate, PromptTemplatesService } from './prompt-templates.service';
+import { PromptTemplatesService } from './prompt-templates.service';
 
-interface TestConfiguration {
-  creature: CreatureArchetype;
-  themes: ThemeSeed[];
-  spicyLevel: SpicyLevel;
-  wordCount: WordBudget;
-  userInput: string;
-  promptTemplate: PromptTemplate;
-  promptPreview: {
-    system: string;
-    user: string;
-  };
-}
-
-interface TestResult {
-  id: string;
-  timestamp: Date;
-  configuration: TestConfiguration;
-  generatedStory: string;
-  generationTime: number;
-  chapterCount: number;
-  totalWordCount: number;
-  aiEvaluation?: EvaluationCriteria;
-}
-
-type StoredTestResult = Omit<TestResult, 'timestamp'> & { timestamp: string };
+type TestResult = ProvingGroundsTestResult;
+type StoredTestResult = StoredProvingGroundsTestResult;
 
 @Component({
   selector: 'app-proving-grounds',
@@ -325,6 +304,16 @@ export class ProvingGroundsComponent implements OnInit {
 
   themeSummary(themes: ThemeSeed[]): string {
     return themes.map(theme => theme.label).join(', ');
+  }
+
+  scoreToneClass(score: number): 'score-high' | 'score-medium' | 'score-low' {
+    if (score >= 80) {
+      return 'score-high';
+    }
+    if (score >= 60) {
+      return 'score-medium';
+    }
+    return 'score-low';
   }
 
   private buildGenerationInput(

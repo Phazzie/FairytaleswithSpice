@@ -278,13 +278,16 @@
                 </div>
 
                 @if (test.aiEvaluation) {
-                  <div class="evaluation-summary">
-                    <div class="score-badge" [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
-                      {{ test.aiEvaluation.score }}/100
-                    </div>
-                    <p class="feedback">{{ test.aiEvaluation.overallFeedback }}</p>
+                <div class="evaluation-summary">
+                  <div class="score-badge" [ngClass]="scoreToneClass(test.aiEvaluation.score)">
+                    {{ test.aiEvaluation.score }}/100
                   </div>
-                }
+                  @if (test.aiEvaluation.heuristicReport) {
+                    <p class="feedback"><strong>Quality:</strong> {{ test.aiEvaluation.heuristicReport.overallScore }}/100</p>
+                  }
+                  <p class="feedback">{{ test.aiEvaluation.overallFeedback }}</p>
+                </div>
+              }
 
                 <div class="story-preview">
                   <div [innerHTML]="sanitizeHtml(test.generatedStory)"></div>
@@ -327,7 +330,7 @@
               <h3>AI Evaluation Results</h3>
 
               <div class="score-display">
-                <div class="score-circle" [class]="'score-' + (currentTest()!.aiEvaluation!.score >= 80 ? 'high' : currentTest()!.aiEvaluation!.score >= 60 ? 'medium' : 'low')">
+                <div class="score-circle" [ngClass]="scoreToneClass(currentTest()!.aiEvaluation!.score)">
                   <span class="score-value">{{ currentTest()!.aiEvaluation!.score }}</span>
                   <span class="score-label">/100</span>
                 </div>
@@ -336,6 +339,45 @@
                   <p>{{ currentTest()!.aiEvaluation!.overallFeedback }}</p>
                 </div>
               </div>
+
+              @if (currentTest()!.aiEvaluation!.heuristicReport; as report) {
+                <section class="heuristic-report" aria-label="Deterministic quality scan">
+                  <div class="heuristic-header">
+                    <div>
+                      <h4>Deterministic Quality Scan</h4>
+                      <p>{{ report.summary }}</p>
+                    </div>
+                    <span
+                      class="score-badge"
+                      [ngClass]="scoreToneClass(report.overallScore)">
+                      {{ report.overallScore }}
+                    </span>
+                  </div>
+
+                  <div class="heuristic-grid">
+                    @for (dimension of report.dimensions; track dimension.id) {
+                      <article class="evaluation-section heuristic-dimension">
+                        <div class="heuristic-dimension-header">
+                          <span>{{ dimension.label }}</span>
+                          <span
+                            class="score-badge mini"
+                            [ngClass]="scoreToneClass(dimension.score)">
+                            {{ dimension.score }}
+                          </span>
+                        </div>
+                        <p>{{ dimension.rationale }}</p>
+                        @if (dimension.signals.length) {
+                          <ul>
+                            @for (signal of dimension.signals.slice(0, 2); track signal) {
+                              <li>{{ signal }}</li>
+                            }
+                          </ul>
+                        }
+                      </article>
+                    }
+                  </div>
+                </section>
+              }
 
               <div class="evaluation-grid">
                 <div class="evaluation-section strengths">
@@ -439,9 +481,16 @@
                   @if (test.aiEvaluation) {
                     <span
                       class="score-badge mini"
-                      [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
+                      [ngClass]="scoreToneClass(test.aiEvaluation.score)">
                       {{ test.aiEvaluation.score }}
                     </span>
+                    @if (test.aiEvaluation.heuristicReport) {
+                      <span
+                        class="score-badge mini"
+                        [ngClass]="scoreToneClass(test.aiEvaluation.heuristicReport.overallScore)">
+                        Quality {{ test.aiEvaluation.heuristicReport.overallScore }}
+                      </span>
+                    }
                   }
                 </div>
 

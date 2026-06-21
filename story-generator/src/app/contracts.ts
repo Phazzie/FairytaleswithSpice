@@ -541,12 +541,38 @@ export interface StoryLabJobCreationResponse<TPublicResult = unknown> {
   durability: StoryLabJobDurability;
 }
 
+export type StoryQualityDimensionId =
+  | 'continuity'
+  | 'cliffhanger_quality'
+  | 'trope_freshness'
+  | 'emotional_variety'
+  | 'character_consistency'
+  | 'prose_quality'
+  | 'audio_readiness';
+
+export interface StoryQualityDimensionScore {
+  id: StoryQualityDimensionId;
+  label: string;
+  score: number;
+  rationale: string;
+  signals: string[];
+}
+
+export interface StoryQualityHeuristicReport {
+  source: 'heuristic';
+  heuristicOnly: true;
+  overallScore: number;
+  dimensions: StoryQualityDimensionScore[];
+  summary: string;
+}
+
 export interface EvaluationCriteria {
   score: number;
   strengths: string[];
   weaknesses: string[];
   suggestions: string[];
   overallFeedback: string;
+  heuristicReport?: StoryQualityHeuristicReport;
 }
 
 export interface EvaluationRequest {
@@ -560,6 +586,43 @@ export interface EvaluationRequest {
 }
 
 // ==================== FRONTEND VIEW MODELS ====================
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  userPromptTemplate: string;
+  category: 'production' | 'experimental' | 'custom';
+}
+
+export interface ProvingGroundsTestConfiguration {
+  creature: CreatureArchetype;
+  themes: ThemeSeed[];
+  spicyLevel: SpicyLevel;
+  wordCount: WordBudget;
+  userInput: string;
+  promptTemplate: PromptTemplate;
+  promptPreview: {
+    system: string;
+    user: string;
+  };
+}
+
+export interface ProvingGroundsTestResult {
+  id: string;
+  timestamp: Date;
+  configuration: ProvingGroundsTestConfiguration;
+  generatedStory: string;
+  generationTime: number;
+  chapterCount: number;
+  totalWordCount: number;
+  aiEvaluation?: EvaluationCriteria;
+}
+
+export type StoredProvingGroundsTestResult = Omit<ProvingGroundsTestResult, 'timestamp'> & {
+  timestamp: string;
+};
 
 export interface StoryWorkbenchSession {
   story: StorySummary | null;

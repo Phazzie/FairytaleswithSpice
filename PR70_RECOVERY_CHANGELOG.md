@@ -2866,3 +2866,37 @@ Validation:
 - `npm run test:story`: passed.
 - `npm run recovery:preflight -- story-quality-guidance`: passed and wrote `tmp/recovery/story-quality-guidance-evidence.md`.
 - Function count stayed `11/12`.
+
+## 2026-06-21 08:47 EDT - Quality Report And Proving Grounds Slice
+
+Actions:
+
+- Extracted the deterministic Story Lab quality-report slice without bringing in memory cards, CSS lazy-loading, or stale handoff/audit docs.
+- Added a heuristic story-quality report with continuity, cliffhanger, trope freshness, emotional variety, character consistency, prose quality, and audio-readiness dimensions.
+- Attached the deterministic report to Story Lab evaluation responses for both mock/no-key and live Grok evaluation paths.
+- Exposed quality scores and dimension details in the Proving Grounds current result, comparison, and history views.
+- Added focused backend eval assertions and a Proving Grounds component spec for the quality report display.
+- Addressed PR #137 review feedback:
+  - added the required creation header to the new Proving Grounds spec;
+  - moved the Proving Grounds result fixture shape into frontend contracts instead of using `any`;
+  - centralized score tone class selection in the component;
+  - cleaned up SonarCloud's local code-smell findings in the heuristic and focused test.
+- Created #138 for the broader Sourcery follow-up to split `storyQualityHeuristics.ts` into smaller modules.
+
+Self-review:
+
+- Good: The extraction stayed inside the PR #9 boundary and did not use the full remaining branch diff as a shortcut.
+- Problem found: the fresh worktree lacked both root and Angular workspace dependencies, so the first validation failed before reaching slice code.
+- Problem found: the first Sonar cleanup used `.at(-1)`, but the recovery preflight's API TypeScript target is ES2020; a later `slice(-1)[0]` workaround still tripped Sonar, so the final version uses an ES2020-safe loop and reran preflight.
+- Process correction: install root and `story-generator` dependencies up front for UI/report slices, then restore tracked `node_modules` churn before committing.
+
+Validation:
+
+- `npm run test:story-quality`: passed.
+- `npm run recovery:preflight -- quality-report-proving-grounds`: passed and wrote `tmp/recovery/quality-report-proving-grounds-evidence.md`.
+- Review-fix rerun: `npm run test:story-quality`: passed.
+- Review-fix rerun: `npm run recovery:preflight -- quality-report-proving-grounds`: passed and rewrote `tmp/recovery/quality-report-proving-grounds-evidence.md`.
+- Final Sonar-cleanup rerun: `npm run test:story-quality`: passed.
+- Final Sonar-cleanup rerun: `npm run recovery:preflight -- quality-report-proving-grounds`: passed and rewrote `tmp/recovery/quality-report-proving-grounds-evidence.md`.
+- Function count stayed `11/12`.
+- `npm run build` passed with existing Node non-LTS, Baseline data, Angular bundle, and CSS budget warnings.
