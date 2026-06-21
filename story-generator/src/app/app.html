@@ -358,6 +358,9 @@
         <div class="job-status-panel__meta">
           <span>{{ jobStatusPanel().stage }}</span>
           <span *ngIf="jobStatusPanel().jobId">Job {{ jobStatusPanel().jobId }}</span>
+          <span *ngIf="jobStatusPanel().durabilityWarning" data-testid="job-durability-warning">
+            {{ jobStatusPanel().durabilityWarning }}
+          </span>
         </div>
       </section>
 

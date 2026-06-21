@@ -8,12 +8,24 @@ import type {
   StoryLabJobCreationResponse,
   StoryLabJobError
 } from '../contracts';
+import type { AuthPort, AuthUser } from '../auth/authPort';
+import { isAuthError } from '../auth/authPort';
+import { configuredAuthPort } from '../auth/configuredAuthPort';
 import { applyCorsPolicy } from '../../http/corsPolicy';
+import { logWarn } from '../../utils/logger';
 import { continueStoryLab, generateStoryLabGenesis } from '../storyLabEngine';
 import { getTransientStorySnapshot } from '../stateStore';
 import { parseStoryLabBlueprintFromBody } from '../validation/blueprintParser';
 import { assertOpaqueStoryLabJobId } from './jobContracts';
-import { nonDurableStoryLabJobStore } from './jobStore';
+import type { StoryLabJobStore } from './jobStorePort';
+import {
+  isStoryLabJobStoreError,
+  type StoryLabJobStoreError
+} from './postgresStoryLabJobStore';
+import {
+  createStoryLabJobStoreConfig,
+  type StoryLabJobStoreConfig
+} from './storyLabJobStoreConfig';
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 type JobResult = StoryIterationPayload | ContinuationJobResult;
@@ -35,21 +47,67 @@ interface ResponseLike {
   end(): void;
 }
 
-export async function handleStoryLabJobsRoute(req: RequestLike, res: ResponseLike): Promise<void> {
+export interface StoryLabJobRouteDependencies {
+  authPort?: AuthPort;
+  createJobStoreConfig?: () => StoryLabJobStoreConfig;
+}
+
+interface StoryLabJobRouteContext {
+  authPort: AuthPort;
+  createJobStoreConfig: () => StoryLabJobStoreConfig;
+}
+
+interface ResolvedJobStore {
+  store: StoryLabJobStore;
+  ownerUserId?: string;
+}
+
+type JobStoreOperationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false };
+
+export function createStoryLabJobsRouteHandler(
+  dependencies: StoryLabJobRouteDependencies = {}
+): (req: RequestLike, res: ResponseLike) => Promise<void> {
+  const context: StoryLabJobRouteContext = {
+    authPort: dependencies.authPort ?? configuredAuthPort,
+    createJobStoreConfig: dependencies.createJobStoreConfig ?? (() => createStoryLabJobStoreConfig())
+  };
+
+  return async function storyLabJobsRouteHandler(req: RequestLike, res: ResponseLike): Promise<void> {
+    await handleStoryLabJobsRouteWithContext(context, req, res);
+  };
+}
+
+export const handleStoryLabJobsRoute = createStoryLabJobsRouteHandler();
+
+async function handleStoryLabJobsRouteWithContext(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<void> {
   if ((req.method ?? '').toUpperCase() === 'POST') {
-    await handleCreateStoryLabJob(req, res);
+    await handleCreateStoryLabJobWithContext(context, req, res);
     return;
   }
 
   if (isEventsRequest(req)) {
-    await handleStreamStoryLabJobEvents(req, res);
+    await handleStreamStoryLabJobEventsWithContext(context, req, res);
     return;
   }
 
-  await handleGetStoryLabJob(req, res);
+  await handleGetStoryLabJobWithContext(context, req, res);
 }
 
 export async function handleCreateStoryLabJob(req: RequestLike, res: ResponseLike): Promise<void> {
+  await handleCreateStoryLabJobWithContext(createDefaultJobRouteContext(), req, res);
+}
+
+async function handleCreateStoryLabJobWithContext(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: ['POST', 'OPTIONS'],
     credentials: true
@@ -82,12 +140,12 @@ export async function handleCreateStoryLabJob(req: RequestLike, res: ResponseLik
   }
 
   if (request.kind === 'genesis') {
-    await createGenesisJob(request, res);
+    await createGenesisJob(context, request, req, res);
     return;
   }
 
   if (request.kind === 'continuation') {
-    await createContinuationJob(request, res);
+    await createContinuationJob(context, request, req, res);
     return;
   }
 
@@ -95,6 +153,14 @@ export async function handleCreateStoryLabJob(req: RequestLike, res: ResponseLik
 }
 
 export async function handleGetStoryLabJob(req: RequestLike, res: ResponseLike): Promise<void> {
+  await handleGetStoryLabJobWithContext(createDefaultJobRouteContext(), req, res);
+}
+
+async function handleGetStoryLabJobWithContext(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: ['GET', 'OPTIONS'],
     credentials: true
@@ -108,7 +174,19 @@ export async function handleGetStoryLabJob(req: RequestLike, res: ResponseLike):
     return;
   }
 
-  const job = nonDurableStoryLabJobStore.getJob(jobId);
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  if (!resolvedStore) {
+    return;
+  }
+
+  const jobResult = await tryJobStoreOperation(res, () => resolvedStore.store.getJob(jobId, {
+    ownerUserId: resolvedStore.ownerUserId
+  }));
+  if (!jobResult.ok) {
+    return;
+  }
+
+  const job = jobResult.value;
   if (!job) {
     sendJson(res, 404, jobNotFound());
     return;
@@ -121,6 +199,14 @@ export async function handleGetStoryLabJob(req: RequestLike, res: ResponseLike):
 }
 
 export async function handleStreamStoryLabJobEvents(req: RequestLike, res: ResponseLike): Promise<void> {
+  await handleStreamStoryLabJobEventsWithContext(createDefaultJobRouteContext(), req, res);
+}
+
+async function handleStreamStoryLabJobEventsWithContext(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: ['GET', 'OPTIONS'],
     credentials: true
@@ -134,7 +220,19 @@ export async function handleStreamStoryLabJobEvents(req: RequestLike, res: Respo
     return;
   }
 
-  const events = nonDurableStoryLabJobStore.getEvents<JobResult>(jobId);
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  if (!resolvedStore) {
+    return;
+  }
+
+  const eventsResult = await tryJobStoreOperation(res, () => resolvedStore.store.getEvents<JobResult>(jobId, {
+    ownerUserId: resolvedStore.ownerUserId
+  }));
+  if (!eventsResult.ok) {
+    return;
+  }
+
+  const events = eventsResult.value;
   if (!events) {
     sendJson(res, 404, jobNotFound());
     return;
@@ -162,7 +260,9 @@ export async function handleStreamStoryLabJobEvents(req: RequestLike, res: Respo
 }
 
 async function createGenesisJob(
+  context: StoryLabJobRouteContext,
   request: Extract<StoryLabJobCreationRequest, { kind: 'genesis' }>,
+  req: RequestLike,
   res: ResponseLike
 ): Promise<void> {
   const parsed = parseStoryLabBlueprintFromBody(request.blueprint);
@@ -180,25 +280,62 @@ async function createGenesisJob(
     return;
   }
 
-  const job = nonDurableStoryLabJobStore.createJob<StoryIterationPayload>({
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  if (!resolvedStore) {
+    return;
+  }
+  const { store, ownerUserId } = resolvedStore;
+
+  const jobResult = await tryJobStoreOperation(res, () => store.createJob<StoryIterationPayload>({
     kind: 'genesis',
-    currentStep: 'queued'
-  });
-  nonDurableStoryLabJobStore.updateJob<StoryIterationPayload>(job.job.jobId, {
+    ownerUserId,
+    currentStep: 'queued',
+    idempotencyKey: request.idempotencyKey,
+    storyId: request.storyId,
+    request: {
+      projectId: request.projectId,
+      storyId: request.storyId,
+      blueprint: parsed.blueprint
+    }
+  }));
+  if (!jobResult.ok) {
+    return;
+  }
+
+  const job = jobResult.value;
+  const startedResult = await tryJobStoreOperation(res, () => store.updateJob<StoryIterationPayload>(job.job.jobId, {
+    ownerUserId,
     status: 'running',
     currentStep: 'generating_story',
     progressPercent: 25
-  });
+  }));
+  if (!startedResult.ok) {
+    return;
+  }
+  if (!startedResult.value) {
+    sendJson(res, 503, jobStorageFailed());
+    return;
+  }
 
   const result = await generateStoryLabGenesis(parsed.blueprint);
+  const finishedResult = await tryJobStoreOperation(res, () => finishJob(store, ownerUserId, job.job.jobId, result));
+  if (!finishedResult.ok) {
+    return;
+  }
+  if (!finishedResult.value) {
+    sendJson(res, 503, jobStorageFailed());
+    return;
+  }
   sendJson(res, 200, {
     success: true,
-    data: finishJob(job.job.jobId, result)
+    data: finishedResult.value
   });
 }
 
 async function createContinuationJob(
+  context: StoryLabJobRouteContext,
   request: Extract<StoryLabJobCreationRequest, { kind: 'continuation' }>,
+  req: RequestLike,
   res: ResponseLike
 ): Promise<void> {
   const normalized = normalizeContinuationInput(request.continuation);
@@ -209,42 +346,163 @@ async function createContinuationJob(
     return;
   }
 
-  const job = nonDurableStoryLabJobStore.createJob<ContinuationJobResult>({
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  if (!resolvedStore) {
+    return;
+  }
+  const { store, ownerUserId } = resolvedStore;
+
+  const jobResult = await tryJobStoreOperation(res, () => store.createJob<ContinuationJobResult>({
     kind: 'continuation',
-    currentStep: 'queued'
-  });
-  nonDurableStoryLabJobStore.updateJob<ContinuationJobResult>(job.job.jobId, {
+    ownerUserId,
+    currentStep: 'queued',
+    idempotencyKey: request.idempotencyKey,
+    storyId: request.storyId ?? normalized.storyId,
+    request: {
+      projectId: request.projectId,
+      storyId: request.storyId ?? normalized.storyId,
+      continuation: normalized
+    }
+  }));
+  if (!jobResult.ok) {
+    return;
+  }
+
+  const job = jobResult.value;
+  const startedResult = await tryJobStoreOperation(res, () => store.updateJob<ContinuationJobResult>(job.job.jobId, {
+    ownerUserId,
     status: 'running',
     currentStep: 'continuing_story',
     progressPercent: 25
-  });
+  }));
+  if (!startedResult.ok) {
+    return;
+  }
+  if (!startedResult.value) {
+    sendJson(res, 503, jobStorageFailed());
+    return;
+  }
 
   const result = await continueStoryLab(normalized);
+  const finishedResult = await tryJobStoreOperation(res, () => finishJob(store, ownerUserId, job.job.jobId, result));
+  if (!finishedResult.ok) {
+    return;
+  }
+  if (!finishedResult.value) {
+    sendJson(res, 503, jobStorageFailed());
+    return;
+  }
   sendJson(res, 200, {
     success: true,
-    data: finishJob(job.job.jobId, result)
+    data: finishedResult.value
   });
 }
 
-function finishJob<TPublicResult extends JobResult>(
+async function finishJob<TPublicResult extends JobResult>(
+  store: StoryLabJobStore,
+  ownerUserId: string | undefined,
   jobId: string,
   result: ApiResponse<TPublicResult>
-): StoryLabJobCreationResponse<TPublicResult> {
+): Promise<StoryLabJobCreationResponse<TPublicResult> | null> {
   if (result.success) {
-    return nonDurableStoryLabJobStore.updateJob<TPublicResult>(jobId, {
+    return store.updateJob<TPublicResult>(jobId, {
+      ownerUserId,
       status: 'completed',
       currentStep: 'completed',
       progressPercent: 100,
       result: result.data
-    })!;
+    });
   }
 
-  return nonDurableStoryLabJobStore.updateJob<TPublicResult>(jobId, {
+  return store.updateJob<TPublicResult>(jobId, {
+    ownerUserId,
     status: 'failed',
     currentStep: 'failed',
     progressPercent: 100,
     error: toJobError(result.error)
-  })!;
+  });
+}
+
+async function tryJobStoreOperation<T>(
+  res: ResponseLike,
+  operation: () => T | Promise<T>
+): Promise<JobStoreOperationResult<T>> {
+  try {
+    return {
+      ok: true,
+      value: await operation()
+    };
+  } catch (error) {
+    if (!isStoryLabJobStoreError(error)) {
+      throw error;
+    }
+
+    sendJson(res, jobStoreErrorStatus(error), jobStoreErrorResponse(error));
+    return {
+      ok: false
+    };
+  }
+}
+
+async function resolveJobStoreOrRespond(
+  context: StoryLabJobRouteContext,
+  req: RequestLike,
+  res: ResponseLike
+): Promise<ResolvedJobStore | null> {
+  const config = context.createJobStoreConfig();
+  if (!config.store || !config.isConfigured()) {
+    sendJson(res, 503, jobStoreUnavailable(config));
+    return null;
+  }
+
+  if (config.store.durable) {
+    const user = await requireJobRouteUser(context.authPort, req, res);
+    if (!user) {
+      return null;
+    }
+
+    return {
+      store: config.store,
+      ownerUserId: user.userId
+    };
+  }
+
+  return {
+    store: config.store
+  };
+}
+
+function createDefaultJobRouteContext(): StoryLabJobRouteContext {
+  return {
+    authPort: configuredAuthPort,
+    createJobStoreConfig: () => createStoryLabJobStoreConfig()
+  };
+}
+
+async function requireJobRouteUser(authPort: AuthPort, req: RequestLike, res: ResponseLike): Promise<AuthUser | null> {
+  try {
+    return await authPort.requireUser(req);
+  } catch (error) {
+    if (isAuthError(error)) {
+      sendJson(res, error.statusCode, {
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message
+        }
+      });
+      return null;
+    }
+
+    sendJson(res, 401, {
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Account authentication is required.'
+      }
+    });
+    return null;
+  }
 }
 
 function normalizeContinuationInput(input: unknown): StoryContinuationSeam['input'] | null {
@@ -376,6 +634,78 @@ function jobNotFound(): ApiResponse<never> {
       message: 'Story Lab job was not found. Non-durable jobs may disappear after a cold start or deploy.'
     }
   };
+}
+
+function jobStoreUnavailable(config: StoryLabJobStoreConfig): ApiResponse<never> {
+  const routeAuthRequired = Boolean(config.store?.durable);
+  const durableMisconfigured = config.mode === 'postgres' && (!config.databaseUrlConfigured || !config.executorConfigured);
+  const message = config.mode === 'unsupported'
+    ? 'Story Lab job storage mode is not supported.'
+    : durableMisconfigured
+      ? 'Durable Story Lab job storage is not configured.'
+    : routeAuthRequired
+      ? 'Durable Story Lab job storage requires owner-scoped route auth before it can be enabled.'
+      : 'Story Lab job storage is not configured.';
+  logWarn('Story Lab job store unavailable', {
+    endpoint: '/api/story-lab/jobs',
+    statusCode: 503
+  }, {
+    requestedMode: config.requestedMode,
+    mode: config.mode,
+    databaseUrlConfigured: config.databaseUrlConfigured,
+    executorConfigured: config.executorConfigured,
+    errorCode: config.errorCode,
+    routeAuthRequired
+  });
+  return {
+    success: false,
+    error: {
+      code: 'JOB_STORE_UNAVAILABLE',
+      message
+    }
+  };
+}
+
+function jobStorageFailed(): ApiResponse<never> {
+  return {
+    success: false,
+    error: {
+      code: 'STORY_LAB_JOB_STORAGE_FAILED',
+      message: 'Story Lab job storage failed.'
+    }
+  };
+}
+
+function jobStoreErrorResponse(error: StoryLabJobStoreError): ApiResponse<never> {
+  return {
+    success: false,
+    error: {
+      code: error.code,
+      message: jobStorePublicMessage(error)
+    }
+  };
+}
+
+function jobStoreErrorStatus(error: StoryLabJobStoreError): number {
+  if (error.code === 'STORY_LAB_JOB_OWNER_REQUIRED') {
+    return 401;
+  }
+
+  return 503;
+}
+
+function jobStorePublicMessage(error: StoryLabJobStoreError): string {
+  switch (error.code) {
+    case 'STORY_LAB_JOB_STORAGE_UNCONFIGURED':
+      return 'Story Lab job storage is not configured.';
+    case 'STORY_LAB_JOB_STORAGE_DRIVER_MISSING':
+      return 'Story Lab job storage driver is not configured.';
+    case 'STORY_LAB_JOB_OWNER_REQUIRED':
+      return 'Story Lab job storage requires an authenticated owner.';
+    case 'STORY_LAB_JOB_STORAGE_FAILED':
+    default:
+      return 'Story Lab job storage failed.';
+  }
 }
 
 function toJobError(error: ApiResponse<never>['error']): StoryLabJobError {

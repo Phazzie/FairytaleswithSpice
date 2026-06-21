@@ -44,12 +44,18 @@ async function testReadyDatabaseReportsReady() {
   executor.enqueueRows([
     {
       story_lab_profiles: 'public.story_lab_profiles',
-      story_projects: 'public.story_projects'
+      story_projects: 'public.story_projects',
+      story_lab_jobs: 'public.story_lab_jobs',
+      story_lab_job_events: 'public.story_lab_job_events'
     }
   ]);
   executor.enqueueRows([
     { indexname: 'story_projects_owner_updated_idx' },
-    { indexname: 'story_projects_owner_story_idx' }
+    { indexname: 'story_projects_owner_story_idx' },
+    { indexname: 'story_lab_jobs_owner_updated_idx' },
+    { indexname: 'story_lab_jobs_owner_idempotency_idx' },
+    { indexname: 'story_lab_job_events_job_sequence_idx' },
+    { indexname: 'story_lab_job_events_owner_job_idx' }
   ]);
 
   const result = await checkStoryLabCloudDatabaseReadiness(executor, {
@@ -69,10 +75,17 @@ async function testMissingTableOrIndexReportsNotReady() {
   executor.enqueueRows([
     {
       story_lab_profiles: null,
-      story_projects: 'story_projects'
+      story_projects: 'story_projects',
+      story_lab_jobs: 'story_lab_jobs',
+      story_lab_job_events: null
     }
   ]);
-  executor.enqueueRows([{ indexname: 'story_projects_owner_updated_idx' }]);
+  executor.enqueueRows([
+    { indexname: 'story_projects_owner_updated_idx' },
+    { indexname: 'story_projects_owner_story_idx' },
+    { indexname: 'story_lab_jobs_owner_updated_idx' },
+    { indexname: 'story_lab_job_events_job_sequence_idx' }
+  ]);
 
   const result = await checkStoryLabCloudDatabaseReadiness(executor, {
     now: () => '2026-06-08T11:10:00.000Z'
@@ -80,7 +93,9 @@ async function testMissingTableOrIndexReportsNotReady() {
 
   assert(!result.ready, 'missing table/index should report not ready');
   assert(result.missing.includes('story_lab_profiles'), 'missing profile table should be reported');
-  assert(result.missing.includes('story_projects_owner_story_idx'), 'missing owner story index should be reported');
+  assert(result.missing.includes('story_lab_job_events'), 'missing job events table should be reported');
+  assert(result.missing.includes('story_lab_jobs_owner_idempotency_idx'), 'missing owner idempotency index should be reported');
+  assert(result.missing.includes('story_lab_job_events_owner_job_idx'), 'missing owner job events index should be reported');
 }
 
 async function testDatabaseErrorsFailClosedWithoutLeakingProviderDetails() {

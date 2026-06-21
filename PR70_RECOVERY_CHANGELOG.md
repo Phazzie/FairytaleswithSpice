@@ -2710,3 +2710,90 @@ Actions:
 Validation:
 
 - `npm run recovery:preflight -- cloud-library-ui --quick`: passed.
+
+## 2026-06-21 07:28 EDT - Durable Job Owner Scaffolding Extraction
+
+Actions:
+
+- Extracted the durable job owner scaffolding slice onto `recovery/story-lab-durable-job-owner`.
+- Added cloud schema/readiness coverage for future `story_lab_jobs` and `story_lab_job_events` tables and indexes.
+- Added a Story Lab job store port, non-durable adapter compatibility, Postgres job store scaffold, and guarded job-store config.
+- Routed Story Lab job create/read/event operations through configured job storage and authenticated owner context where durable storage is configured.
+- Guarded job reads and updates by owner so cross-owner access fails closed.
+- Added job-status UI/recovery copy for non-durable in-memory jobs so the app does not imply crash-safe progress.
+
+Decision:
+
+- Included the `44f3e9b` and `13a95f4` UI honesty commits in this slice because they enforce the same durable-job honesty invariant.
+- Kept stale `OVERNIGHT_HANDOFF.md`, `STORY_LAB_APP_AUDIT.md`, and unrelated idea-board edits out of the extraction.
+- This slice still does not claim a live Workflow runner, executed migrations, database provisioning, process-loss recovery, or live durable job proof.
+
+Validation:
+
+- `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+- `npm run test:story-lab-job-store-config`: passed.
+- `npm run test:story-lab-job-store-port`: passed.
+- `npm run test:story-lab-job-routes`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `npm run build`: passed with existing Angular bundle and CSS budget warnings.
+
+## 2026-06-21 07:33 EDT - PR 124 Review Follow-Up
+
+Actions:
+
+- Addressed Gemini and Sourcery review feedback on durable job scaffolding.
+- Removed internal job-store configuration flags from public `JOB_STORE_UNAVAILABLE` responses and kept those details in server-side diagnostics.
+- Added redacted storage-operation warning logs that report only operation and error type/code.
+- Added bounded retry handling for Postgres job event sequence conflicts caused by concurrent inserts.
+- Added regression coverage for event sequence retry and public job-store error redaction.
+
+Validation:
+
+- `npm run test:story-lab-job-store-port`: passed.
+- `npm run test:story-lab-job-routes`: passed.
+- `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+
+## 2026-06-21 07:45 EDT - PR 124 Codex Review Follow-Up
+
+Actions:
+
+- Addressed Codex review feedback on durable job owner scaffolding.
+- Rejected cross-owner updates in the non-durable job store when owner context is supplied.
+- Made explicit job-store `env` options authoritative so tests and injected configs do not fall through to process environment variables.
+- Returned `null` for missing owner-scoped Postgres job event streams so routes keep unknown/cross-owner event requests as 404.
+- Translated typed job-store failures in create, running-update, status, event, and finish paths into sanitized API envelopes.
+- Added regression coverage for cross-owner mutation, env isolation, missing event streams, and sanitized create/update/finish store failures.
+
+Validation:
+
+- `npm run test:story-lab-job-store-port`: passed.
+- `npm run test:story-lab-job-store-config`: passed.
+- `npm run test:story-lab-job-routes`: passed.
+- `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+- `npm run build`: passed with existing Node non-LTS, Baseline data, Angular bundle, and CSS budget warnings.
+
+## 2026-06-21 07:55 EDT - PR 124 Review Inventory Follow-Up
+
+Actions:
+
+- Addressed additional CodeRabbit/Codex comments that were present in review text even though status checks were green.
+- Rejected ownerless reads and writes for owner-scoped non-durable memory jobs while preserving ownerless access for jobs created without an owner.
+- Made misconfigured Postgres job storage return storage-configuration copy instead of auth-required copy.
+- Trimmed job-store `DATABASE_URL` inputs before configured/executor checks.
+- Added the owner-scoped job-events index to readiness checks and schema assertions.
+- Added owner-consistent foreign key coverage between `story_lab_jobs` and `story_lab_job_events`.
+- Gated recovered in-memory-loss copy to actual job-not-found responses so generic API/transport failures keep their own message.
+- Converted heavier follow-ups into issues instead of silently deferring them: #125 atomic Postgres job mutations, #126 engine exception hardening, and #127 live index migration strategy.
+
+Validation:
+
+- `npm run test:story-lab-job-store-port`: passed.
+- `npm run test:story-lab-job-store-config`: passed.
+- `npm run test:story-lab-job-routes`: passed.
+- `npm run test:story-lab-cloud-schema`: passed.
+- `npm run test:story-lab-cloud-db-readiness`: passed.
+- `npm run test:story-lab-cloud-schema-migration`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+- `npm run build`: passed with existing Node non-LTS, Baseline data, Angular bundle, and CSS budget warnings.

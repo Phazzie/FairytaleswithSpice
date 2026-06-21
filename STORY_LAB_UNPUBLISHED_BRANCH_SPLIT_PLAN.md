@@ -242,6 +242,8 @@ Validation evidence:
 
 Goal: prepare owner-scoped durable job storage seams while keeping active jobs labelled non-durable until Workflow/database route wiring is real.
 
+Status: implemented in the durable job owner scaffolding change set. This slice includes the job schema/readiness contract, store/config scaffolds, route owner guards, and the UI honesty commits `44f3e9b` and `13a95f4`; it still does not claim a live Workflow runner or process-loss durable jobs.
+
 Likely commits:
 
 - `206e6ea Add Story Lab durable job schema contract`
@@ -269,6 +271,17 @@ Validation:
 - `npm run test:story-lab-job-routes`
 - schema/readiness tests
 - `scripts/recovery/preflight.sh --quick --skip-status`
+
+Validation evidence:
+
+- `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+- `npm run test:story-lab-job-store-config`: passed.
+- `npm run test:story-lab-job-store-port`: passed.
+- `npm run test:story-lab-job-routes`: passed.
+- Angular spec/app typechecks passed because this slice includes job-status UI honesty.
+- `npm run build`: passed with existing Angular bundle and CSS budget warnings.
+- Function count stayed `11/12`.
+- No Workflow runner, executed migration, database provisioning, process-loss recovery, or live durable job proof is included.
 
 ### PR 8: Story Quality And Continuation Guidance
 

@@ -31,7 +31,8 @@ This checklist is current after PR #118, the consolidated account-route change s
 - The Angular app can load account status, show local-vs-cloud library state, and call the consolidated account route for profile/project operations.
 - Cloud save/load/delete controls are gated on connected account state, and `non_durable_memory` account storage is shown as cloud-unavailable.
 - Browser-local `StoryWorkspaceStorageService` remains the current user-visible save path.
-- Story Lab jobs are still `non_durable_memory` and not account-owned.
+- Story Lab job storage now has owner-scoped store ports, a Postgres scaffold, guarded config, and route owner checks.
+- The active default job mode remains `non_durable_memory`, and the UI shows non-durable job warnings instead of claiming crash-safe progress.
 - Vercel function count is `11/12` with the account route included.
 - The large local branch is being split through `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md`.
 
@@ -68,7 +69,7 @@ Not live yet:
 - [x] Land cloud schema/storage readiness through PR #118.
 - [x] Land consolidated account route.
 - [x] Land Angular cloud library UI.
-- [ ] Land durable job owner scaffolding only if kept honest as non-durable in the active UI.
+- [x] Land durable job owner scaffolding only if kept honest as non-durable in the active UI.
 
 ### Phase 1: Auth And Profile Contracts
 
@@ -300,6 +301,16 @@ Validation on 2026-06-21:
 
 Goal: prepare owner-scoped durable job storage seams while keeping active jobs labelled non-durable until Workflow/database route wiring is real.
 
+Status:
+
+- Implemented by the durable job owner scaffolding change set.
+- Added job schema/readiness contract coverage for future `story_lab_jobs` and `story_lab_job_events` tables.
+- Added a `StoryLabJobStore` port, non-durable adapter compatibility, Postgres job store scaffold, and guarded job-store config.
+- Routed job create/read/event operations through configured job storage and authenticated owner context where durable storage is configured.
+- Guarded job reads and updates by owner so cross-owner job access fails closed.
+- Kept the active default job mode as `non_durable_memory` and added UI/recovery copy that says in-memory job state is not crash-safe.
+- Still not a live Workflow runner, not executed database migration proof, not provisioned database proof, and not process-loss durable job proof.
+
 Candidate local commits:
 
 - `206e6ea Add Story Lab durable job schema contract`
@@ -315,6 +326,16 @@ Acceptance:
 - durable stores require authenticated owner context;
 - default job mode remains `non_durable_memory`;
 - UI and docs do not claim crash-safe progress.
+
+Validation on 2026-06-21:
+
+- `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+- `npm run test:story-lab-job-store-config`: passed.
+- `npm run test:story-lab-job-store-port`: passed.
+- `npm run test:story-lab-job-routes`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `npm run build`: passed with existing Angular bundle and CSS budget warnings.
 
 ## Research Notes
 

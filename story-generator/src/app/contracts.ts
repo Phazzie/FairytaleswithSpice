@@ -494,11 +494,17 @@ export interface StoryLabJobPaths {
   eventsPath: string;
 }
 
-export interface StoryLabJobDurability {
-  mode: 'non_durable_memory';
-  durable: false;
-  warning: string;
-}
+export type StoryLabJobDurability =
+  | {
+      mode: 'non_durable_memory';
+      durable: false;
+      warning: string;
+    }
+  | {
+      mode: 'postgres';
+      durable: true;
+      warning?: string;
+    };
 
 export interface StoryLabJobEvent<TPublicResult = unknown> {
   eventId: string;

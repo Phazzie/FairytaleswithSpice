@@ -21,5 +21,20 @@ assert(schema.includes('owner_user_id text not null'), 'projects should carry ow
 assert(schema.includes('project_json jsonb not null'), 'projects should persist full saved project json');
 assert(schema.includes('create index if not exists story_projects_owner_updated_idx'), 'schema should index owner library ordering');
 assert(schema.includes('where owner_user_id is not null'), 'owner index should be explicitly scoped to owner rows');
+assert(schema.includes('create table if not exists story_lab_jobs'), 'schema should create durable Story Lab jobs');
+assert(schema.includes('job_id text primary key'), 'jobs should be keyed by opaque job id');
+assert(schema.includes('owner_user_id text not null'), 'jobs should carry owner_user_id');
+assert(schema.includes('request_json jsonb not null'), 'jobs should persist sanitized request json');
+assert(schema.includes('result_json jsonb'), 'jobs should persist result json when completed');
+assert(schema.includes('error_json jsonb'), 'jobs should persist safe error json when failed');
+assert(schema.includes('create table if not exists story_lab_job_events'), 'schema should create durable Story Lab job events');
+assert(schema.includes('sequence_number integer not null'), 'job events should preserve event ordering');
+assert(schema.includes('event_json jsonb not null'), 'job events should persist public event snapshots');
+assert(schema.includes('story_lab_jobs_owner_updated_idx'), 'schema should index owner job ordering');
+assert(schema.includes('story_lab_jobs_owner_idempotency_idx'), 'schema should support owner idempotency lookup');
+assert(schema.includes('story_lab_job_events_job_sequence_idx'), 'schema should make job event streams resumable in sequence order');
+assert(schema.includes('story_lab_job_events_owner_job_idx'), 'schema should index owner-scoped event stream lookups');
+assert(schema.includes('unique (job_id, owner_user_id)'), 'jobs should support owner-consistent event foreign keys');
+assert(schema.includes('foreign key (job_id, owner_user_id)'), 'job events should enforce owner consistency with parent jobs');
 
 console.log('Story Lab cloud schema tests passed');

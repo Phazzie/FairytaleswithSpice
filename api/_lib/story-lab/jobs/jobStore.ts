@@ -4,43 +4,35 @@ import { randomUUID } from 'node:crypto';
 import type {
   StoryLabJob,
   StoryLabJobCreationResponse,
-  StoryLabJobError,
   StoryLabJobEvent,
-  StoryLabJobKind,
-  StoryLabJobStatus
 } from '../contracts';
+import type { CreateStoryLabJobInput, ReadStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from './jobStorePort';
 import {
   buildStoryLabJobPaths,
   createOpaqueStoryLabJobId,
   NON_DURABLE_STORY_LAB_JOB_DURABILITY
 } from './jobContracts';
 
-export interface CreateStoryLabJobInput {
-  kind: StoryLabJobKind;
-  currentStep?: string;
-  now?: string;
-}
-
-export interface UpdateStoryLabJobInput<TPublicResult = unknown> {
-  status: StoryLabJobStatus;
-  currentStep: string;
-  progressPercent: number;
-  result?: TPublicResult;
-  error?: StoryLabJobError;
-  now?: string;
-}
+export type { CreateStoryLabJobInput, UpdateStoryLabJobInput } from './jobStorePort';
 
 interface StoredStoryLabJob<TPublicResult = unknown> {
+  ownerUserId?: string;
   response: StoryLabJobCreationResponse<TPublicResult>;
   events: StoryLabJobEvent<TPublicResult>[];
 }
 
 const DEFAULT_MAX_STORY_LAB_JOBS = 1000;
 
-export class NonDurableStoryLabJobStore {
+export class NonDurableStoryLabJobStore implements StoryLabJobStore {
+  readonly mode = 'non_durable_memory';
+  readonly durable = false;
   private readonly jobs = new Map<string, StoredStoryLabJob>();
 
   constructor(private readonly maxJobs = DEFAULT_MAX_STORY_LAB_JOBS) {}
+
+  isConfigured(): boolean {
+    return true;
+  }
 
   createJob<TPublicResult = unknown>(input: CreateStoryLabJobInput): StoryLabJobCreationResponse<TPublicResult> {
     this.evictOldestJobIfNeeded();
@@ -61,6 +53,7 @@ export class NonDurableStoryLabJobStore {
       durability: NON_DURABLE_STORY_LAB_JOB_DURABILITY
     };
     const stored: StoredStoryLabJob<TPublicResult> = {
+      ownerUserId: input.ownerUserId,
       response: clone(response),
       events: [createSnapshotEvent(job, now)]
     };
@@ -75,6 +68,9 @@ export class NonDurableStoryLabJobStore {
   ): StoryLabJobCreationResponse<TPublicResult> | null {
     const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
     if (!stored) {
+      return null;
+    }
+    if (!canAccessStoredJob(stored, input)) {
       return null;
     }
 
@@ -100,13 +96,27 @@ export class NonDurableStoryLabJobStore {
     return clone(response);
   }
 
-  getJob<TPublicResult = unknown>(jobId: string): StoryLabJobCreationResponse<TPublicResult> | null {
+  getJob<TPublicResult = unknown>(
+    jobId: string,
+    input: ReadStoryLabJobInput = {}
+  ): StoryLabJobCreationResponse<TPublicResult> | null {
     const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
+    if (stored && !canAccessStoredJob(stored, input)) {
+      return null;
+    }
+
     return stored ? clone(stored.response) : null;
   }
 
-  getEvents<TPublicResult = unknown>(jobId: string): StoryLabJobEvent<TPublicResult>[] | null {
+  getEvents<TPublicResult = unknown>(
+    jobId: string,
+    input: ReadStoryLabJobInput = {}
+  ): StoryLabJobEvent<TPublicResult>[] | null {
     const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
+    if (stored && !canAccessStoredJob(stored, input)) {
+      return null;
+    }
+
     return stored ? clone(stored.events) : null;
   }
 
@@ -127,6 +137,14 @@ export class NonDurableStoryLabJobStore {
 }
 
 export const nonDurableStoryLabJobStore = new NonDurableStoryLabJobStore();
+
+function canAccessStoredJob(stored: StoredStoryLabJob, input: ReadStoryLabJobInput): boolean {
+  if (stored.ownerUserId === undefined) {
+    return true;
+  }
+
+  return input.ownerUserId !== undefined && stored.ownerUserId === input.ownerUserId;
+}
 
 function createSnapshotEvent<TPublicResult>(
   job: StoryLabJob<TPublicResult>,
