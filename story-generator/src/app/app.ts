@@ -169,6 +169,7 @@ type JobStatusPanelState = {
   jobId?: string;
   statusPath?: string;
   startedAt?: string;
+  durabilityWarning?: string;
 };
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
@@ -690,7 +691,12 @@ export class App implements OnDestroy {
           return;
         }
 
-        const isTerminal = this.handleGenesisJobSnapshot(response.data.job, batchId, blueprint.chapterBatchSize);
+        const isTerminal = this.handleGenesisJobSnapshot(
+          response.data.job,
+          batchId,
+          blueprint.chapterBatchSize,
+          response.data.durability.warning
+        );
         if (!isTerminal) {
           this.storeActiveStoryLabJob({
             jobId: response.data.job.jobId,
@@ -757,7 +763,12 @@ export class App implements OnDestroy {
           return;
         }
 
-        const isTerminal = this.handleContinuationJobSnapshot(response.data.job, batchId, request.chapterBatchSize);
+        const isTerminal = this.handleContinuationJobSnapshot(
+          response.data.job,
+          batchId,
+          request.chapterBatchSize,
+          response.data.durability.warning
+        );
         if (!isTerminal) {
           this.storeActiveStoryLabJob({
             jobId: response.data.job.jobId,
@@ -1214,10 +1225,11 @@ ${chapters}
   private handleGenesisJobSnapshot(
     job: StoryLabJob<StoryIterationPayload>,
     batchId: string,
-    batchSize: ChapterBatchSize
+    batchSize: ChapterBatchSize,
+    durabilityWarning?: string
   ): boolean {
     this.updateProgressFromJob(job);
-    this.updateJobStatusFromJob(job);
+    this.updateJobStatusFromJob(job, durabilityWarning);
 
     if (job.status === 'completed') {
       if (!job.result) {
@@ -1278,10 +1290,11 @@ ${chapters}
   private handleContinuationJobSnapshot(
     job: StoryLabJob<ContinuationJobResult>,
     batchId: string,
-    batchSize: ChapterBatchSize
+    batchSize: ChapterBatchSize,
+    durabilityWarning?: string
   ): boolean {
     this.updateProgressFromJob(job);
-    this.updateJobStatusFromJob(job);
+    this.updateJobStatusFromJob(job, durabilityWarning);
 
     if (job.status === 'completed') {
       if (!this.hasRenderableIterationPayload(job.result)) {
@@ -1379,6 +1392,29 @@ ${chapters}
     this.stopProgress();
   }
 
+  private failRecoveredStoryLabJob(kind: ActiveStoryLabJobState['kind'], batchId: string, message: string) {
+    this.clearActiveStoryLabJob();
+    this.clearJobStatusPanel();
+    this.closeJobEventSubscription();
+    this.statusMessage.set(message);
+    this.markBatchFailed(batchId, message);
+    this.notificationService.warning(
+      kind === 'genesis' ? 'Story job not restored' : 'Continuation not restored',
+      message
+    );
+    this.isGenerating.set(false);
+    this.stopProgress();
+  }
+
+  private formatRecoveredJobUnavailableMessage(
+    kind: ActiveStoryLabJobState['kind'],
+    detailMessage: string
+  ): string {
+    const jobLabel = kind === 'genesis' ? 'story job' : 'continuation job';
+    const detail = detailMessage ? ` ${detailMessage}` : '';
+    return `That ${jobLabel} could not be restored because its in-memory job state is no longer available.${detail}`;
+  }
+
   private closeJobEventSubscription() {
     if (this.jobEventSubscription) {
       this.jobEventSubscription.unsubscribe();
@@ -1417,20 +1453,31 @@ ${chapters}
     this.storyService.getStoryLabJob<StoryIterationPayload>(activeJob.jobId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          const message = this.formatApiError(response.error, 'That story job is no longer available.');
-          this.failGenesisJob(activeJob.batchId, message);
+          const message = this.formatRecoveredJobUnavailableMessage(
+            activeJob.kind,
+            this.formatApiError(response.error, '')
+          );
+          this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
           return;
         }
 
-        const isTerminal = this.handleGenesisJobSnapshot(response.data.job, activeJob.batchId, activeJob.batchSize);
+        const isTerminal = this.handleGenesisJobSnapshot(
+          response.data.job,
+          activeJob.batchId,
+          activeJob.batchSize,
+          response.data.durability.warning
+        );
         if (!isTerminal) {
           this.openGenesisJobEventStream(activeJob.jobId, activeJob.batchId, activeJob.batchSize);
         }
       },
       error: error => {
         this.errorLogging.logError(error, 'App.restoreActiveStoryLabJob');
-        const message = this.formatHttpError(error, 'That story job is no longer available.');
-        this.failGenesisJob(activeJob.batchId, message);
+        const message = this.formatRecoveredJobUnavailableMessage(
+          activeJob.kind,
+          this.formatHttpError(error, '')
+        );
+        this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
       }
     });
   }
@@ -1459,20 +1506,31 @@ ${chapters}
     this.storyService.getStoryLabJob<ContinuationJobResult>(activeJob.jobId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          const message = this.formatApiError(response.error, 'That continuation job is no longer available.');
-          this.failContinuationJob(activeJob.batchId, message);
+          const message = this.formatRecoveredJobUnavailableMessage(
+            activeJob.kind,
+            this.formatApiError(response.error, '')
+          );
+          this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
           return;
         }
 
-        const isTerminal = this.handleContinuationJobSnapshot(response.data.job, activeJob.batchId, activeJob.batchSize);
+        const isTerminal = this.handleContinuationJobSnapshot(
+          response.data.job,
+          activeJob.batchId,
+          activeJob.batchSize,
+          response.data.durability.warning
+        );
         if (!isTerminal) {
           this.openContinuationJobEventStream(activeJob.jobId, activeJob.batchId, activeJob.batchSize);
         }
       },
       error: error => {
         this.errorLogging.logError(error, 'App.restoreActiveContinuationJob');
-        const message = this.formatHttpError(error, 'That continuation job is no longer available.');
-        this.failContinuationJob(activeJob.batchId, message);
+        const message = this.formatRecoveredJobUnavailableMessage(
+          activeJob.kind,
+          this.formatHttpError(error, '')
+        );
+        this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
       }
     });
   }
@@ -1625,7 +1683,7 @@ ${chapters}
     });
   }
 
-  private updateJobStatusFromJob(job: StoryLabJob<unknown>) {
+  private updateJobStatusFromJob(job: StoryLabJob<unknown>, durabilityWarning?: string) {
     const kind: ActiveStoryLabJobState['kind'] = job.kind === 'continuation' ? 'continuation' : 'genesis';
     const current = this.jobStatusPanel();
     const tone = current.visible && current.tone === 'recovering' ? 'recovering' : 'running';
@@ -1639,13 +1697,14 @@ ${chapters}
       stage,
       jobId: this.formatShortJobId(job.jobId),
       statusPath: current.visible ? current.statusPath : undefined,
-      startedAt: job.createdAt
+      startedAt: job.createdAt,
+      durabilityWarning: durabilityWarning ?? current.durabilityWarning
     });
   }
 
   private setJobStatusPanel(status: Pick<
     JobStatusPanelState,
-    'kind' | 'tone' | 'progressPercent' | 'stage' | 'jobId' | 'statusPath' | 'startedAt'
+    'kind' | 'tone' | 'progressPercent' | 'stage' | 'jobId' | 'statusPath' | 'startedAt' | 'durabilityWarning'
   >) {
     this.jobStatusPanel.set({
       visible: true,

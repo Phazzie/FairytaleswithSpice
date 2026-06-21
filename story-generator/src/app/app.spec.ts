@@ -1139,6 +1139,29 @@ describe('App', () => {
     expect(statusText).not.toContain('NaN%');
   });
 
+  it('shows the job durability warning while a non-durable story job is running', () => {
+    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+    const response = createGenesisJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'generating_story',
+      progressPercent: 18
+    });
+    storyService.createStoryLabJob.and.returnValue(of({ success: true, data: response }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+    configureValidBlueprint('A selkie spy signs a forbidden library contract.');
+
+    component.startGenesis();
+    events$.next(createJobEvent(createGenesisJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'generating_story',
+      progressPercent: 33
+    })));
+
+    const statusText = renderedJobStatusText();
+    expect(statusText).toContain('33%');
+    expect(statusText).toContain('Jobs are held in memory for this deployment.');
+  });
+
   it('shows a friendly AI configuration error when a genesis job cannot use Grok', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
 
@@ -1207,6 +1230,28 @@ describe('App', () => {
     expect(recovered.generationProgress().active).toBeTrue();
     expect(recovered.generationProgress().percent).toBe(41);
     expect(recovered.statusMessage()).toContain('Grok');
+  });
+
+  it('clears an unavailable recovered genesis job with recovery-specific status copy', () => {
+    storeActiveJobMarker();
+    storyService.getStoryLabJob.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'STORY_LAB_JOB_NOT_FOUND',
+        message: 'The story job is no longer in memory.'
+      }
+    } as ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>));
+
+    const recoveredFixture = TestBed.createComponent(App);
+    const recovered = recoveredFixture.componentInstance;
+
+    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_123e4567-e89b-12d3-a456-426614174000');
+    expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
+    expect(recovered.generationProgress().active).toBeFalse();
+    expect(renderedJobStatusText(recoveredFixture)).toBeNull();
+    expect(recovered.statusMessage()).toContain('could not be restored');
+    expect(recovered.statusMessage()).toContain('in-memory job state is no longer available');
   });
 
   it('recovers a completed genesis job and clears the active job marker', () => {
@@ -1281,6 +1326,31 @@ describe('App', () => {
     expect(recovered.generationProgress().percent).toBe(44);
     expect(recovered.statusMessage()).toContain('Grok');
     expect(recovered.activeBatchQueue().at(-1)?.label).toBe('Continuation');
+  });
+
+  it('clears an unavailable recovered continuation job with recovery-specific status copy', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    component.saveActiveProject();
+    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
+    storyService.getStoryLabJob.calls.reset();
+    storyService.getStoryLabJob.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'STORY_LAB_JOB_NOT_FOUND',
+        message: 'The continuation job is no longer in memory.'
+      }
+    } as ApiResponse<StoryLabJobCreationResponse<ContinuationJobResult>>));
+
+    const recoveredFixture = TestBed.createComponent(App);
+    const recovered = recoveredFixture.componentInstance;
+
+    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_223e4567-e89b-12d3-a456-426614174000');
+    expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
+    expect(recovered.generationProgress().active).toBeFalse();
+    expect(renderedJobStatusText(recoveredFixture)).toBeNull();
+    expect(recovered.statusMessage()).toContain('could not be restored');
+    expect(recovered.statusMessage()).toContain('in-memory job state is no longer available');
   });
 
   it('renders a recovered continuation job status panel after reload', () => {
