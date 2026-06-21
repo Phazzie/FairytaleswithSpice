@@ -414,7 +414,12 @@ async function main(): Promise<void> {
       chapterBatchSize: 1,
       storyState: genesisPayload.state,
       previouslyGeneratedChapters: genesisPayload.batch.chapters,
-      continuationBrief: 'Pay off the witness shell and make Lord Brine escalate.',
+      continuationBrief: [
+        'Pay off the witness shell and make Lord Brine escalate.',
+        '',
+        'Accepted Memory Cards:',
+        '- Promise card: Private ledger. The private card detail names the hidden betrayal. Trigger: Private ledger, betrayal.'
+      ].join('\n'),
       existingSummary: genesisPayload.summary
     }, {
       serviceFactory: () => ({
@@ -485,6 +490,10 @@ async function main(): Promise<void> {
   assert(hiddenGuidance.includes('World clue: Witness Shells'), 'continuation guidance should name the concrete world clue.');
   assert(continuationResponse.data.batch.chapters[0].chapterNumber === 2, 'continuation should append the next chapter number.');
   assert(continuationResponse.data.continuityExtraction?.source === 'heuristic', 'test-injected service should keep heuristic continuity labeling.');
+  const suggestedPromptText = continuationResponse.data.batch.suggestedNextPrompts.join(' ');
+  assert(suggestedPromptText.includes('Pay off the witness shell'), 'public continuation brief should still seed suggested prompt chips.');
+  assert(!suggestedPromptText.includes('Accepted Memory Cards'), 'suggested prompt chips should not expose internal accepted memory sections.');
+  assert(!suggestedPromptText.includes('private card detail'), 'suggested prompt chips should not expose private memory card detail.');
 
   console.log('Story quality evals passed');
 }

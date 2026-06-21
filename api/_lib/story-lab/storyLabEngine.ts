@@ -1244,11 +1244,27 @@ function buildSuggestedPrompts(input: LabGenerationSeam['input'], nextChapterHin
 }
 
 function buildContinuationPrompts(input: LabContinuationSeam['input'], nextChapterHint?: string): string[] {
+  const publicContinuationBrief = stripStoryMemoryCardSections(input.continuationBrief);
   return [
     nextChapterHint,
-    input.continuationBrief ? `Pay off: ${input.continuationBrief}` : undefined,
+    publicContinuationBrief ? `Pay off: ${publicContinuationBrief}` : undefined,
     'Answer one open question and raise a sharper one.'
   ].filter((prompt): prompt is string => Boolean(prompt));
+}
+
+function stripStoryMemoryCardSections(continuationBrief: string | undefined): string | undefined {
+  const lines = continuationBrief?.split(/\r?\n/) ?? [];
+  const publicLines: string[] = [];
+
+  for (const line of lines) {
+    if (line === 'Accepted Memory Cards:' || line === 'Pinned Memory Cards:') {
+      break;
+    }
+    publicLines.push(line);
+  }
+
+  const publicBrief = publicLines.join('\n').trim();
+  return publicBrief || undefined;
 }
 
 function buildGrokTelemetry(metadata: ApiResponseMetadata | undefined, chapterCount: number): GenerationTelemetry {

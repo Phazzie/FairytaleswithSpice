@@ -2945,6 +2945,8 @@ Actions:
 - Added safe hydration fallbacks for malformed saved memory-card metadata.
 - Made pinned memory-card drafts toggleable and removed stale pinned draft state when deleting an accepted card.
 - Displayed explicit zero accepted-memory counts when project metadata is present.
+- Kept accepted/pinned memory-card guidance in generation steering while stripping those private sections from public suggested prompt chips.
+- Included accepted/pinned memory-card guidance in Continuity Preview activation scoring so the preview matches the submitted continuation request.
 - Added privacy assertions so list rows expose accepted-card counts without accepted-card detail payloads.
 - Removed the CSS budget test regex hotspot by replacing regex compaction with a small deterministic scanner.
 
@@ -2966,6 +2968,10 @@ Validation:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
 - `npm test -- --watch=false --browsers=ChromeHeadless` in `story-generator`: test bundle built, but ChromeHeadless failed to capture twice and exited before running specs.
-- `npm run recovery:preflight -- story-memory-cards`: passed and wrote `tmp/recovery/story-memory-cards-evidence.md`; initial browser bundle was 484.78 kB and Proving Grounds remained a lazy chunk.
+- Follow-up review rerun: `npm run test:story-quality`: passed.
+- Follow-up review rerun: `npm run test:story-generator-component-style-budget`: passed.
+- Follow-up review rerun: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- Follow-up review rerun: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `npm run recovery:preflight -- story-memory-cards`: passed and wrote `tmp/recovery/story-memory-cards-evidence.md`; latest initial browser bundle was 484.83 kB and Proving Grounds remained a lazy chunk.
 - `npm run recovery:preflight -- css-lazy-loading --quick`: passed and wrote `tmp/recovery/css-lazy-loading-evidence.md`.
 - Function count stayed `11/12`.

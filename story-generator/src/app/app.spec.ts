@@ -1290,7 +1290,7 @@ describe('App', () => {
     expect(previewText).toContain('Glass Key');
     expect(previewText).toContain('Mara and Coral Scribe');
     expect(previewText).toContain('Coral Scribe honor the ledger warning');
-    expect(previewText).toContain('Matched custom brief');
+    expect(previewText).toContain('Matched continuation guidance');
     expect(previewText).not.toContain('Witness Shell');
   });
 
@@ -1340,9 +1340,46 @@ describe('App', () => {
     const previewText = renderedContinuityPreviewText() ?? '';
     const draftText = renderedMemoryCardDraftsText() ?? '';
 
-    expect(previewText).toContain('Matched custom brief');
+    expect(previewText).toContain('Matched continuation guidance');
     expect(draftText).toContain('Trigger: Corazón Encantado, encantado');
     expect(draftText).toContain('Trigger: Promesa del Corazón, corazón');
+  });
+
+  it('uses accepted memory cards when scoring the continuity preview', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        threads: [
+          {
+            id: 'reef-trial',
+            label: 'Reef trial',
+            status: 'active',
+            description: 'The court wants testimony before dawn.',
+            foreshadowedDevices: []
+          },
+          {
+            id: 'moonlit-oath',
+            label: 'Moonlit oath',
+            status: 'active',
+            description: 'Mara promised the duke a ledger that would cost her the archive.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+    component.customContinuationBrief.set('Raise pressure somewhere else.');
+    component.acceptedMemoryCards.set([{
+      id: 'memory-card-thread-moonlit-oath',
+      label: 'Promise card',
+      title: 'Moonlit oath',
+      detail: 'Mara will burn the moonlit ledger before she lets the duke own the vow.',
+      triggerLabel: 'Trigger: Moonlit oath, ledger',
+      acceptedAt: '2026-06-21T11:35:00.000Z'
+    }]);
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    expect(previewText).toContain('Moonlit oath');
+    expect(previewText).toContain('Matched continuation guidance');
   });
 
   it('pins a memory card draft in the current session', () => {

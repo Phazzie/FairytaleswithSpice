@@ -464,7 +464,9 @@ export class App implements OnDestroy {
 
   readonly continuityPreviewItems = computed<ContinuityPreviewItem[]>(() => {
     const continuity = this.continuityPanel();
-    const activationSource = this.normalizePreviewActivationText(this.customContinuationBrief());
+    const activationSource = this.normalizePreviewActivationText(
+      this.withStoryMemoryCardBriefs(this.customContinuationBrief()) ?? ''
+    );
     const threadSelections = this.selectContinuityPreviewMatches(
       continuity.activeThreads,
       2,
@@ -667,7 +669,7 @@ export class App implements OnDestroy {
   }
 
   private formatContinuityPreviewSourceReason(matched: boolean, fallback: string): string {
-    return matched ? 'Matched custom brief' : fallback;
+    return matched ? 'Matched continuation guidance' : fallback;
   }
 
   private formatContinuityThreadPreviewLabel(status: PlotThread['status']): string {
