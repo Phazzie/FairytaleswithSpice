@@ -232,6 +232,51 @@ function makePayloadForStory(storyId: string, title: string): Partial<StoryItera
   };
 }
 
+function createMaraMemoryCardState(options: {
+  includeThread?: boolean;
+  includeArtifact?: boolean;
+  artifactName?: string;
+  artifactSignificance?: string;
+} = {}): StoryStateSnapshot {
+  return createState({
+    characters: [{
+      id: 'mara',
+      displayName: 'Mara',
+      archetype: 'protagonist',
+      summary: 'A siren archivist guarding a forbidden oath.',
+      currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+      internalConflict: 'She wants the duke and fears the cost.',
+      externalConflict: 'Duke Vale wants the same vow.',
+      secrets: [],
+      relationships: [],
+      spiceCompatibilities: [3]
+    }],
+    threads: options.includeThread === false ? [] : [{
+      id: 'oath',
+      label: 'Moonlit oath',
+      status: 'escalating',
+      description: 'The bargain demands a public sacrifice.',
+      foreshadowedDevices: []
+    }],
+    artifacts: options.includeArtifact ? [{
+      id: 'memory-artifact',
+      name: options.artifactName ?? 'Witness Shell',
+      significance: options.artifactSignificance ?? 'The shell repeats any vow spoken near the reef court.',
+      introducedInChapter: 1
+    }] : []
+  });
+}
+
+function expectTextOrder(text: string, expectedItems: string[]): void {
+  let previousIndex = -1;
+  for (const item of expectedItems) {
+    const itemIndex = text.indexOf(item);
+    expect(itemIndex).withContext(`${item} should be rendered`).toBeGreaterThanOrEqual(0);
+    expect(itemIndex).withContext(`${item} should follow the previous memory card`).toBeGreaterThan(previousIndex);
+    previousIndex = itemIndex;
+  }
+}
+
 const confirmedHeatContract = {
   adultOnlyConfirmed: true,
   tensionMode: 'slow_burn' as const,
@@ -353,41 +398,6 @@ describe('App', () => {
     return payload;
   }
 
-  function createMaraMemoryCardState(options: {
-    includeThread?: boolean;
-    includeArtifact?: boolean;
-    artifactName?: string;
-    artifactSignificance?: string;
-  } = {}): StoryStateSnapshot {
-    return createState({
-      characters: [{
-        id: 'mara',
-        displayName: 'Mara',
-        archetype: 'protagonist',
-        summary: 'A siren archivist guarding a forbidden oath.',
-        currentGoal: 'Keep the moonlit bargain from consuming her archive.',
-        internalConflict: 'She wants the duke and fears the cost.',
-        externalConflict: 'Duke Vale wants the same vow.',
-        secrets: [],
-        relationships: [],
-        spiceCompatibilities: [3]
-      }],
-      threads: options.includeThread === false ? [] : [{
-        id: 'oath',
-        label: 'Moonlit oath',
-        status: 'escalating',
-        description: 'The bargain demands a public sacrifice.',
-        foreshadowedDevices: []
-      }],
-      artifacts: options.includeArtifact ? [{
-        id: 'memory-artifact',
-        name: options.artifactName ?? 'Witness Shell',
-        significance: options.artifactSignificance ?? 'The shell repeats any vow spoken near the reef court.',
-        introducedInChapter: 1
-      }] : []
-    });
-  }
-
   function seedMaraMemoryCardWorkbench(options: Parameters<typeof createMaraMemoryCardState>[0] = {}): StoryIterationPayload {
     return seedWorkbenchForContinuation({ state: createMaraMemoryCardState(options) });
   }
@@ -423,16 +433,6 @@ describe('App', () => {
     };
     expect(jobRequest.kind).toBe('continuation');
     return jobRequest.continuation.continuationBrief ?? '';
-  }
-
-  function expectTextOrder(text: string, expectedItems: string[]): void {
-    let previousIndex = -1;
-    for (const item of expectedItems) {
-      const itemIndex = text.indexOf(item);
-      expect(itemIndex).withContext(`${item} should be rendered`).toBeGreaterThanOrEqual(0);
-      expect(itemIndex).withContext(`${item} should follow the previous memory card`).toBeGreaterThan(previousIndex);
-      previousIndex = itemIndex;
-    }
   }
 
   function prepareRunningContinuationRecovery(): StoryIterationPayload {

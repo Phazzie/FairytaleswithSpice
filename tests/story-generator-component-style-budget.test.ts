@@ -14,14 +14,44 @@ function assert(condition: unknown, message: string): asserts condition {
 
 function compactCss(source: string): string {
   let compacted = '';
+  let lastCompactedChar = '';
+  let pendingSlash = false;
+  let insideComment = false;
+  let commentMayEnd = false;
   let previousWasWhitespace = false;
 
-  for (let index = 0; index < source.length; index += 1) {
-    const current = source[index];
-    const next = source[index + 1];
-    if (current === '/' && next === '*') {
-      const commentEnd = source.indexOf('*/', index + 2);
-      index = commentEnd === -1 ? source.length : commentEnd + 1;
+  for (const current of source) {
+    if (insideComment) {
+      if (commentMayEnd && current === '/') {
+        insideComment = false;
+        commentMayEnd = false;
+        continue;
+      }
+
+      commentMayEnd = current === '*';
+      continue;
+    }
+
+    if (pendingSlash) {
+      if (current === '*') {
+        insideComment = true;
+        pendingSlash = false;
+        commentMayEnd = false;
+        continue;
+      }
+
+      if (previousWasWhitespace && lastCompactedChar && !isCssSeparator(lastCompactedChar)) {
+        compacted += ' ';
+        lastCompactedChar = ' ';
+      }
+      compacted += '/';
+      lastCompactedChar = '/';
+      pendingSlash = false;
+      previousWasWhitespace = false;
+    }
+
+    if (current === '/') {
+      pendingSlash = true;
       continue;
     }
 
@@ -32,15 +62,22 @@ function compactCss(source: string): string {
 
     if (isCssSeparator(current)) {
       compacted = compacted.trimEnd() + current;
+      lastCompactedChar = current;
       previousWasWhitespace = false;
       continue;
     }
 
-    if (previousWasWhitespace && !isCssSeparator(compacted[compacted.length - 1] ?? '')) {
+    if (previousWasWhitespace && lastCompactedChar && !isCssSeparator(lastCompactedChar)) {
       compacted += ' ';
+      lastCompactedChar = ' ';
     }
     compacted += current;
+    lastCompactedChar = current;
     previousWasWhitespace = false;
+  }
+
+  if (pendingSlash) {
+    compacted += '/';
   }
 
   return compacted.trim();

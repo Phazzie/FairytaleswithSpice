@@ -2949,6 +2949,7 @@ Actions:
 - Included accepted/pinned memory-card guidance in Continuity Preview activation scoring so the preview matches the submitted continuation request.
 - Added privacy assertions so list rows expose accepted-card counts without accepted-card detail payloads.
 - Removed the CSS budget test regex hotspot by replacing regex compaction with a small deterministic scanner.
+- Cleaned up follow-up Sonar code-smell findings by moving pure spec helpers out of the Jasmine closure and removing CSS scanner loop-counter mutation.
 
 Self-review:
 
@@ -2972,6 +2973,9 @@ Validation:
 - Follow-up review rerun: `npm run test:story-generator-component-style-budget`: passed.
 - Follow-up review rerun: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - Follow-up review rerun: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- Follow-up Sonar cleanup rerun: `npm run test:story-quality`: passed.
+- Follow-up Sonar cleanup rerun: `npm run test:story-generator-component-style-budget`: passed.
+- Follow-up Sonar cleanup rerun: `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `npm run recovery:preflight -- story-memory-cards`: passed and wrote `tmp/recovery/story-memory-cards-evidence.md`; latest initial browser bundle was 484.83 kB and Proving Grounds remained a lazy chunk.
 - `npm run recovery:preflight -- css-lazy-loading --quick`: passed and wrote `tmp/recovery/css-lazy-loading-evidence.md`.
 - Function count stayed `11/12`.
