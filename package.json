@@ -8,6 +8,7 @@
     "build:full": "npm run build && npm run build:verify",
     "recovery:status": "scripts/recovery/slice-status.sh",
     "recovery:preflight": "scripts/recovery/slice-preflight.sh",
+    "review:unresolved": "node scripts/recovery/list-unresolved-review-threads.mjs",
     "test": "npm run test:all",
     "test:story": "tsx tests/story-service-improved.test.ts",
     "test:tropes": "tsx tests/trope-subversion.test.ts",

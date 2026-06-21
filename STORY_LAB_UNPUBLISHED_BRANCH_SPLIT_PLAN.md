@@ -6,6 +6,8 @@ Created: 2026-06-13 00:00 EDT
 
 Recover the local-only `feature/story-lab-auth-profile-contracts` work by publishing it as small reviewable PRs instead of one oversized PR.
 
+Post-PR #151 status: this split plan is now historical publication evidence. The unpublished stack has been split, followed up, and merged through PR #151. Use `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` for the remaining work: review-comment triage, Dependabot handling, live auth/database proof, durable-job hardening, tooling cleanup, story-quality follow-up, and final reporting.
+
 Current verified state when this plan was written:
 
 - local branch: `feature/story-lab-auth-profile-contracts`

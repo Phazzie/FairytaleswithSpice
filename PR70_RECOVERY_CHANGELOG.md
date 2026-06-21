@@ -3103,3 +3103,33 @@ Validation:
 - API TypeScript check with the Node 20 wrapper: passed.
 - `git diff --check`: passed.
 - `npm run recovery:preflight -- story-quality-guidance`: passed and rewrote `tmp/recovery/story-quality-guidance-evidence.md`; function count stayed `11/12`.
+
+## 2026-06-21 15:04 EDT - Completion Hardening Plan And Review Audit Tooling
+
+Actions:
+
+- Added `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` as the authoritative post-PR #151 plan for review-comment triage, Dependabot handling, auth/database live integration, durable-job hardening, tooling cleanup, story-quality refactor, and final reporting.
+- Added `npm run review:unresolved` to make active unresolved GitHub review-thread audits repeatable from the repo.
+- Updated `AGENTS.md` so future agents audit review comments after each PR and use #152/#153 for comment backlog disposition.
+- Marked `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` as historical publication evidence now that the split stack has landed through PR #151.
+- Addressed PR #154 SonarCloud feedback by reducing audit-script argument-parser complexity and cleaning minor JavaScript style warnings.
+- Addressed PR #154 review comments by surfacing `gh` stderr on command failures, honoring `--repo` during PR listing, and paginating review threads beyond the first 100 threads.
+- Addressed the remaining PR #154 SonarCloud security hotspot by resolving `gh` from fixed absolute install paths instead of relying on `PATH` lookup.
+
+Self-review:
+
+- Good: The remaining work is split by independent risk boundary instead of by how much context an agent can carry.
+- Problem found: Review-comment tracking previously lived partly in chat and copied GraphQL snippets; the repo now has a command and an explicit post-merge rule.
+- Problem found: The first audit-script parser was functionally correct but too complex; the refactor keeps behavior while lowering static-analysis risk.
+- Non-claim: This slice does not implement live auth/database wiring, durable jobs, or review-comment cleanup itself; it makes those gates explicit and measurable.
+
+Validation:
+
+- `node --check scripts/recovery/list-unresolved-review-threads.mjs`: passed.
+- `npm run review:unresolved -- --help`: passed.
+- `npm run review:unresolved -- --prs 149,150,151`: passed, no active unresolved review threads found.
+- `npm run review:unresolved -- --prs 116 --json`: passed, returning the expected three active PR #116 threads from #152.
+- `npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --prs 154 --json`: passed, proving explicit repo override still works for focused PR audits.
+- `git diff --check`: passed.
+- `npm run recovery:status`: passed with expected tracked/untracked files for this slice; function count stayed `11/12`.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
