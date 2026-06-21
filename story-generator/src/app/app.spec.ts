@@ -610,10 +610,16 @@ describe('App', () => {
     storyService.listCloudStoryProjects.and.returnValue(throwError(() => new Error('offline')));
 
     component.refreshCloudLibrary();
+    fixture.detectChanges();
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const checkButton = Array.from(panel?.querySelectorAll('button') ?? [])
+      .find(button => button.textContent?.includes('Check cloud')) as HTMLButtonElement | undefined;
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
 
     expect(component.isCloudLibraryBusy()).toBeFalse();
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
-    expect(component.workspaceSaveStatus()).toContain('Saved here');
+    expect(checkButton?.disabled).toBeFalse();
+    expect(fullText).toContain('Saved here');
   });
 
   it('updates the Heat Contract without changing the rest of the blueprint', () => {
