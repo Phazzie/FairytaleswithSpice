@@ -3059,3 +3059,27 @@ Validation:
 - `git diff --check`: passed.
 - `npm run recovery:preflight -- story-quality-guidance`: passed and wrote `tmp/recovery/story-quality-guidance-evidence.md`; function count stayed `11/12`.
 - Oversized `/api/story/stream` GET smoke with `wordCount=5000`: passed with `400 INVALID_INPUT` before SSE opened.
+
+## 2026-06-21 14:41 EDT - CodeRabbit Docstring Coverage Policy
+
+Actions:
+
+- Addressed issue #146 by inspecting the current repo for CodeRabbit configuration and finding no existing `.coderabbit.yaml`; PR comments showed CodeRabbit was using organization UI configuration.
+- Checked CodeRabbit's current configuration reference: docstring coverage is a pre-merge check with `warning` default mode and `80` default threshold, while repository-root `.coderabbit.yaml` is detected from the branch under review.
+- Added `.coderabbit.yaml` with `reviews.pre_merge_checks.docstrings.mode: "off"` so recovery PRs do not receive generic docstring-coverage warnings.
+- Addressed PR #150 Codex review by adding root `inheritance: true`, preserving organization-level CodeRabbit settings while overriding only the docstring coverage check.
+- Added an `AGENTS.md` review-tooling policy: document public contracts, exported ports/adapters, security/privacy invariants, cross-process storage behavior, and non-obvious story-generation constraints selectively; do not mass-add comments to satisfy a generic percentage.
+- PR #150 CodeRabbit noted that OSS repositories apply only base-branch configuration while reviewing config-file changes, so this PR cannot prove the new config against itself; once merged to `main`, future PRs should use the repo config.
+
+Self-review:
+
+- Good: The decision fixes the noisy warning at the tool boundary instead of degrading TypeScript/Angular code with mechanical docstrings.
+- Problem found: The repo relied on organization UI defaults, so future agents could not see why CodeRabbit was warning about docstrings from local files alone.
+- Problem found: The first PR body implied branch config would apply immediately; CodeRabbit's OSS security rule means config PRs must be evaluated by YAML validity, review comments, and future-PR behavior after merge.
+- Problem found: The first `.coderabbit.yaml` would have disabled docstring coverage but could have dropped inherited organization settings; root inheritance keeps the override narrow.
+- Process correction: review-tool policy belongs in versioned repo config and `AGENTS.md`, not only in chat or bot UI state.
+
+Validation:
+
+- CodeRabbit docs checked: `https://docs.coderabbit.ai/reference/configuration` and `https://docs.coderabbit.ai/getting-started/yaml-configuration`.
+- CodeRabbit inheritance docs checked: `https://docs.coderabbit.ai/configuration/configuration-inheritance`.

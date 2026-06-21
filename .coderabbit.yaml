@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+inheritance: true
+
+reviews:
+  pre_merge_checks:
+    # Fairytales documents public contracts and non-obvious behavior selectively.
+    # A blanket TypeScript/Angular docstring coverage threshold creates noisy
+    # recovery warnings and encourages low-value comments on tests/callbacks.
+    docstrings:
+      mode: "off"

@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-06-21 06:43 EDT
+Last updated: 2026-06-21 14:41 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -47,6 +47,12 @@ Default loop for unpublished Story Lab work:
 6. Stop after the PR is opened or merged; do not begin the next feature on the same branch.
 
 If a branch contains more than one planned slice, stop and split before adding more code. If a branch's upstream is gone, first check whether it was merged into `origin/main`; do not keep working on stale branch tips.
+
+## Review Tooling Policy
+
+CodeRabbit configuration lives in `.coderabbit.yaml`. The repository intentionally disables the blanket docstring-coverage pre-merge check. Do not mass-add JSDoc/docstrings to satisfy a generic percentage threshold.
+
+Add focused documentation when it clarifies public contracts, exported ports/adapters, security/privacy invariants, cross-process storage behavior, or non-obvious story-generation constraints. If a bot asks for broad docstring coverage, treat that as review-tooling drift: tune the tool or open a follow-up issue instead of adding low-value comments.
 
 ## Current Operating Direction
 
