@@ -16,27 +16,43 @@ export interface StoryLabCloudDatabaseReadinessResult {
 interface TableReadinessRow {
   story_lab_profiles: string | null;
   story_projects: string | null;
+  story_lab_jobs: string | null;
+  story_lab_job_events: string | null;
 }
 
 interface IndexReadinessRow {
   indexname: string;
 }
 
-const REQUIRED_TABLES = ['story_lab_profiles', 'story_projects'] as const;
-const REQUIRED_INDEXES = ['story_projects_owner_updated_idx', 'story_projects_owner_story_idx'] as const;
+const REQUIRED_TABLES = ['story_lab_profiles', 'story_projects', 'story_lab_jobs', 'story_lab_job_events'] as const;
+const REQUIRED_INDEXES = [
+  'story_projects_owner_updated_idx',
+  'story_projects_owner_story_idx',
+  'story_lab_jobs_owner_updated_idx',
+  'story_lab_jobs_owner_idempotency_idx',
+  'story_lab_job_events_job_sequence_idx'
+] as const;
 
 const TABLE_READINESS_SQL = `
 select
   to_regclass('public.story_lab_profiles')::text as story_lab_profiles,
-  to_regclass('public.story_projects')::text as story_projects
+  to_regclass('public.story_projects')::text as story_projects,
+  to_regclass('public.story_lab_jobs')::text as story_lab_jobs,
+  to_regclass('public.story_lab_job_events')::text as story_lab_job_events
 `;
 
 const INDEX_READINESS_SQL = `
 select indexname
 from pg_indexes
 where schemaname = 'public'
-  and tablename = 'story_projects'
-  and indexname in ('story_projects_owner_updated_idx', 'story_projects_owner_story_idx')
+  and tablename in ('story_projects', 'story_lab_jobs', 'story_lab_job_events')
+  and indexname in (
+    'story_projects_owner_updated_idx',
+    'story_projects_owner_story_idx',
+    'story_lab_jobs_owner_updated_idx',
+    'story_lab_jobs_owner_idempotency_idx',
+    'story_lab_job_events_job_sequence_idx'
+  )
 `;
 
 export async function checkStoryLabCloudDatabaseReadiness(
