@@ -2797,3 +2797,48 @@ Validation:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
 - `npm run build`: passed with existing Node non-LTS, Baseline data, Angular bundle, and CSS budget warnings.
+
+## 2026-06-21 08:09 EDT - Cross-PR Review Comment Audit
+
+Actions:
+
+- Audited review comments, review summaries, and top-level PR comments across PR #114 through PR #124 after PR #124 merged.
+- Created the reference-only branch `ai-review/story-lab-unsliced-reference-do-not-merge` for external AI review of the raw unpublished stack. It includes `AI_REVIEW_DO_NOT_MERGE.md` and must not be opened as a merge PR.
+- Fixed the merged recovery preflight script so it checks committed branch diffs, keeps working-tree whitespace checks, adds the missing durable job store config/port tests, and runs Vercel API typechecks for backend-touching slices.
+- Marked the storage-port plan's handoff to `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` as complete because later account/profile/cloud-library slices have been using that plan.
+- Converted still-valid comments that were not safe to fold into this tooling fix into tracked issues:
+  - #128: Story Lab recovery docs guidance drift and tool fallback notes.
+  - #129: stable UI-slice validation hooks for cloud library, memory cards, and CSS/lazy-loading.
+  - #130: network-dependent Node 20 typecheck wrappers in recovery preflight.
+  - #131: per-process memoization decision for Story Lab job store config.
+  - #132: failed Vercel preview comments on open Dependabot PRs #120 and #121.
+  - #133: SonarCloud new-issues audit for PR #118 and PR #119.
+
+Self-review:
+
+- Good: The audit treats comments as work inventory even when the PR already merged.
+- Problem found: PR #124's focused durable-job validation was stronger than the merged slice preflight, so a future agent could have run the official preflight and missed job-store config/port regressions.
+- Problem found: Some older review feedback was addressed in code/docs but never explicitly replied to, which makes later recovery audits harder.
+- Process correction: future slices should not merge until actionable review comments are either replied to with the fixing commit/evidence or linked to a follow-up issue.
+
+Validation:
+
+- `bash -n scripts/recovery/slice-preflight.sh`: passed.
+- `npm run recovery:preflight -- durable-job-owner --dry-run`: passed and showed job-store config/port tests plus Vercel API typecheck.
+- `npm run recovery:preflight -- story-quality-guidance --dry-run`: passed and showed Vercel API typecheck.
+- `npm run recovery:preflight -- css-lazy-loading --dry-run`: passed.
+- `npm run recovery:preflight -- durable-job-owner --quick`: first run failed because the fresh audit worktree lacked root `node_modules`; after `npm install --no-audit --no-fund`, it passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+
+## 2026-06-21 08:13 EDT - PR 134 Review Follow-Up
+
+Actions:
+
+- Addressed PR #134 Gemini/Sourcery feedback on the recovery preflight cleanup.
+- Removed the redundant working-tree diff fallback from the branch-diff command; the following common command remains the single working-tree whitespace check.
+- Aligned Vercel API typechecking with the same Node 20 wrapper used by Angular typechecks. The broader network-fetch concern remains tracked in #130.
+
+Validation:
+
+- `bash -n scripts/recovery/slice-preflight.sh`: passed.
+- `npm run recovery:preflight -- durable-job-owner --dry-run`: passed and showed the simplified branch-diff command plus Node 20 API typecheck.
+- `npm run recovery:preflight -- durable-job-owner --quick`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
