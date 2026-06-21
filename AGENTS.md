@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-06-13 00:00 EDT
+Last updated: 2026-06-21 06:43 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -14,6 +14,39 @@ Before planning, editing, or claiming readiness:
 4. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas, story-quality experiments, and Weird Lab candidates.
 5. Read the execution plan that matches the files or behavior being changed.
 6. Run `scripts/recovery/check-vercel-function-count.sh` before adding, retiring, consolidating, or documenting deployable Vercel route files.
+
+## Publication Discipline
+
+Treat "merged to `main`" as the only meaning of `Done`. Work that exists only on a local branch, backup branch, or open PR must be labeled `Local-only`, `PR-ready`, `In review`, or `Parked`.
+
+Before starting or resuming a Story Lab slice, run:
+
+```bash
+npm run recovery:status
+```
+
+Use the output as a stop sign when it reports a missing/gone upstream, a dirty tree, unrelated untracked files, or a branch that is already far ahead of `origin/main`.
+
+Story Lab slices should be sized by review boundary, not by how much code an agent can keep in context. A slice may be moderately sized if all changes prove one coherent behavior, but it must split when it crosses independent risk areas such as:
+
+- account/auth/profile/storage boundaries;
+- deployable route or Vercel function-budget changes;
+- Angular user-facing UI;
+- durable job/workflow claims;
+- story-quality generation behavior;
+- Proving Grounds/reporting visibility;
+- CSS/lazy-loading cleanup.
+
+Default loop for unpublished Story Lab work:
+
+1. Start from updated `main`.
+2. Create one `recovery/story-lab-*` branch for one slice.
+3. Extract only the commits/hunks named by the matching plan.
+4. Run focused validation with `npm run recovery:preflight -- <slice-name>`.
+5. Open the PR with scope, validation commands, non-claims, and next-slice notes.
+6. Stop after the PR is opened or merged; do not begin the next feature on the same branch.
+
+If a branch contains more than one planned slice, stop and split before adding more code. If a branch's upstream is gone, first check whether it was merged into `origin/main`; do not keep working on stale branch tips.
 
 ## Current Operating Direction
 

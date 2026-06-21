@@ -2644,3 +2644,26 @@ Follow-up pending:
 
 - Rerun `npm run test:all` and preflight after these review fixes.
 - Push the update and confirm PR #119 checks/review threads are clear.
+
+## 2026-06-21 06:43 EDT - Publication Discipline Tooling Follow-Up
+
+Actions:
+
+- Updated `AGENTS.md` with explicit publication discipline rules for Story Lab slices.
+- Added `npm run recovery:status` to report branch/upstream health, dirty-tree state, recent commits, and Vercel function budget before choosing work.
+- Added `npm run recovery:preflight -- <slice-name>` to run focused slice validation and write copyable evidence under `tmp/recovery/`.
+- Created the local Codex skill `fairytales-story-lab-slice` so future agents default to one review boundary, one branch, one PR, and a stop after PR/merge.
+
+Decision:
+
+- Slices may be larger when they share one review boundary, but they still split across independent risk areas such as Angular UI, durable jobs, story-quality behavior, Proving Grounds, or CSS cleanup.
+- `Done` continues to mean merged to `main`; local-only work remains `Local-only`, `PR-ready`, `In review`, or `Parked`.
+
+Validation:
+
+- `bash -n scripts/recovery/slice-status.sh scripts/recovery/slice-preflight.sh`: passed.
+- `node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package json ok')"`: passed.
+- `npm run recovery:status`: passed and reported the parked untracked files.
+- `npm run recovery:preflight -- cloud-library-ui --dry-run`: passed.
+- `npm run recovery:preflight -- story-memory-cards --quick --dry-run`: passed.
+- `git diff --check`: passed.
