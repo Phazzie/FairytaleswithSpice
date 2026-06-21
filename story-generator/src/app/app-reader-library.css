@@ -1,3 +1,5 @@
+/* Created: 2026-06-21 10:38 */
+
 .reader-panel {
   min-height: 680px;
 }
@@ -221,8 +223,8 @@
 }
 
 .saved-delete {
-  background: #6f1d33;
-  color: #fff9ee;
+  background: var(--accent-3);
+  color: var(--accent-ink);
   padding: 0 8px;
   font-size: 0.76rem;
 }

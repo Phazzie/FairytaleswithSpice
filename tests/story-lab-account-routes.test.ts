@@ -233,6 +233,12 @@ async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
   assert(listBody.data.projects.length === 1, 'owner should see saved project');
   assert(listBody.data.projects[0].title === project.title, 'list item should carry project title');
   assert(listBody.data.projects[0].acceptedMemoryCardCount === 1, 'list item should carry accepted memory count without full card text');
+  const acceptedMemoryDetail = project.acceptedMemoryCards?.[0]?.detail ?? '';
+  assert(acceptedMemoryDetail.length > 0, 'test fixture should include accepted memory detail');
+  assert(
+    !JSON.stringify(listBody.data.projects[0]).includes(acceptedMemoryDetail),
+    'project list item should not expose accepted memory card detail'
+  );
 
   const loadResponse = new FakeResponse();
   await handler(createRequest('GET', 'project', undefined, project.id), loadResponse);

@@ -572,13 +572,17 @@ export class App implements OnDestroy {
   }
 
   private extractMemoryCardTriggerAlias(title: string): string | null {
-    const words = title.match(/[A-Za-z0-9']+/g) ?? [];
+    const trimmedTitle = title.trim();
+    const words = trimmedTitle
+      .split(/\s+/)
+      .map(word => word.replace(/[^\p{L}\p{N}']+/gu, ''))
+      .filter(Boolean);
     if (words.length < 2) {
       return null;
     }
 
     const alias = words.pop()?.toLowerCase() ?? '';
-    return alias === title.toLowerCase() ? null : alias;
+    return alias === trimmedTitle.toLowerCase() ? null : alias;
   }
 
   private formatStoryMemoryLifetimeLabel(lifetime: StoryMemoryLifetime | undefined): string | undefined {
@@ -705,7 +709,7 @@ export class App implements OnDestroy {
   }
 
   private normalizePreviewActivationText(value: string): string {
-    return (value.toLowerCase().match(/[a-z0-9']+/g) ?? []).join(' ');
+    return (value.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []).join(' ');
   }
 
   private formatRelationshipPreviewDetail(
@@ -1148,16 +1152,22 @@ export class App implements OnDestroy {
   }
 
   pinMemoryCardDraft(draftId: string) {
+    let draftPinned = false;
     this.pinnedMemoryCardDraftIds.update(current => {
-      if (current.has(draftId)) {
-        return current;
+      const next = new Set(current);
+      if (next.has(draftId)) {
+        next.delete(draftId);
+      } else {
+        next.add(draftId);
+        draftPinned = true;
       }
 
-      const next = new Set(current);
-      next.add(draftId);
       return next;
     });
-    this.statusMessage.set('Memory card draft pinned for this session.');
+    this.statusMessage.set(draftPinned
+      ? 'Memory card draft pinned for this session.'
+      : 'Memory card draft unpinned for this session.'
+    );
   }
 
   acceptMemoryCardDraft(draftId: string) {
@@ -1256,6 +1266,15 @@ export class App implements OnDestroy {
 
   deleteAcceptedMemoryCard(cardId: string) {
     this.acceptedMemoryCards.update(current => current.filter(card => card.id !== cardId));
+    this.pinnedMemoryCardDraftIds.update(current => {
+      if (!current.has(cardId)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.delete(cardId);
+      return next;
+    });
     if (this.editingAcceptedMemoryCardId() === cardId) {
       this.cancelAcceptedMemoryCardEdit();
     }
@@ -2282,27 +2301,7 @@ ${chapters}
   }
 
   private hydrateSavedProject(project: SavedStoryProject, shouldNotify: boolean) {
-    this.blueprint.set({
-      ...project.blueprint,
-      heatContract: this.normalizeHeatContract(project.blueprint.heatContract),
-      narrativeDirectives: project.blueprint.narrativeDirectives ?? ''
-    });
-    this.workbench.set({
-      story: project.summary,
-      state: project.state,
-      chapterHistory: project.chapters,
-      activeBatchSize: project.blueprint.chapterBatchSize,
-      lastTelemetry: project.telemetry,
-      lastContinuityExtraction: project.continuityExtraction,
-      lastSuggestedPrompts: [],
-      batchQueue: [],
-      savedProjectId: project.id
-    });
-    this.pinnedMemoryCardDraftIds.set(new Set(project.pinnedMemoryCardDraftIds ?? []));
-    this.acceptedMemoryCards.set(project.acceptedMemoryCards ?? []);
-    this.cancelAcceptedMemoryCardEdit();
-    this.selectedChapterId.set(project.chapters[project.chapters.length - 1]?.chapterId ?? null);
-    this.collapsedChapterGroups.set(new Set());
+    this.hydrateProjectState(project);
     this.workspaceSaveStatus.set(`Loaded "${project.title}" from this browser.`);
     this.statusMessage.set('Saved story loaded. Continue the saga whenever you are ready.');
 
@@ -2312,6 +2311,12 @@ ${chapters}
   }
 
   private hydrateCloudProject(project: SavedStoryProject) {
+    this.hydrateProjectState(project);
+    this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');
+    this.notificationService.info('Cloud story loaded', project.title);
+  }
+
+  private hydrateProjectState(project: SavedStoryProject) {
     this.blueprint.set({
       ...project.blueprint,
       heatContract: this.normalizeHeatContract(project.blueprint.heatContract),
@@ -2328,13 +2333,37 @@ ${chapters}
       batchQueue: [],
       savedProjectId: project.id
     });
-    this.pinnedMemoryCardDraftIds.set(new Set(project.pinnedMemoryCardDraftIds ?? []));
-    this.acceptedMemoryCards.set(project.acceptedMemoryCards ?? []);
+    this.pinnedMemoryCardDraftIds.set(new Set(this.normalizePinnedMemoryCardDraftIds(project.pinnedMemoryCardDraftIds)));
+    this.acceptedMemoryCards.set(this.normalizeAcceptedMemoryCards(project.acceptedMemoryCards));
     this.cancelAcceptedMemoryCardEdit();
     this.selectedChapterId.set(project.chapters[project.chapters.length - 1]?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
-    this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');
-    this.notificationService.info('Cloud story loaded', project.title);
+  }
+
+  private normalizePinnedMemoryCardDraftIds(ids: unknown): string[] {
+    return Array.isArray(ids)
+      ? ids.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [];
+  }
+
+  private normalizeAcceptedMemoryCards(cards: unknown): StoryMemoryCard[] {
+    if (!Array.isArray(cards)) {
+      return [];
+    }
+
+    return cards.filter((card): card is StoryMemoryCard => {
+      if (!card || typeof card !== 'object') {
+        return false;
+      }
+
+      const candidate = card as Partial<StoryMemoryCard>;
+      return typeof candidate.id === 'string'
+        && typeof candidate.label === 'string'
+        && typeof candidate.title === 'string'
+        && typeof candidate.detail === 'string'
+        && typeof candidate.triggerLabel === 'string'
+        && typeof candidate.acceptedAt === 'string';
+    });
   }
 
   private findSavedProjectByStoryId(storyId: string): SavedStoryProject | null {

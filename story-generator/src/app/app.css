@@ -21,7 +21,7 @@
   --card-bg: color-mix(in srgb, var(--paper-strong) 86%, var(--paper) 14%);
   --focus-line: color-mix(in srgb, var(--accent) 62%, var(--paper) 38%);
   --hero-image: url("/story-lab-atmosphere.png");
-  --serif: Georgia, "Times New Roman", serif;
+  --serif: georgia, "Times New Roman", serif;
 
   width: 100%;
   min-height: 100vh;

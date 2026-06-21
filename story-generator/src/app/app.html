@@ -617,7 +617,7 @@
               <span class="saved-title">{{ project.title }}</span>
               <span class="saved-meta" data-testid="cloud-project-meta">
                 {{ project.chapterCount }} chapter{{ project.chapterCount === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}
-                <ng-container *ngIf="project.acceptedMemoryCardCount">
+                <ng-container *ngIf="project.acceptedMemoryCardCount !== undefined && project.acceptedMemoryCardCount !== null">
                   · {{ project.acceptedMemoryCardCount }} memory card{{ project.acceptedMemoryCardCount === 1 ? '' : 's' }}
                 </ng-container>
               </span>
@@ -646,8 +646,8 @@
               <span class="saved-title">{{ project.title }}</span>
               <span class="saved-meta" data-testid="local-project-meta">
                 {{ project.chapters.length }} chapter{{ project.chapters.length === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}
-                <ng-container *ngIf="project.acceptedMemoryCards?.length">
-                  · {{ project.acceptedMemoryCards?.length }} memory card{{ project.acceptedMemoryCards?.length === 1 ? '' : 's' }}
+                <ng-container *ngIf="project.acceptedMemoryCards !== undefined">
+                  · {{ project.acceptedMemoryCards.length }} memory card{{ project.acceptedMemoryCards.length === 1 ? '' : 's' }}
                 </ng-container>
               </span>
             </button>
@@ -709,9 +709,8 @@
                 class="ghost compact memory-card-pin"
                 data-testid="pin-memory-card-draft"
                 (click)="pinMemoryCardDraft(draft.id)"
-                [disabled]="draft.pinned"
               >
-                {{ draft.pinned ? 'Pinned' : 'Pin' }}
+                {{ draft.pinned ? 'Unpin' : 'Pin' }}
               </button>
             </li>
           </ul>

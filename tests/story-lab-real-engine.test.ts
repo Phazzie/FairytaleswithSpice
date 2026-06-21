@@ -215,7 +215,7 @@ assert(
 );
 assert(payload.state.threads.some(thread => thread.label === 'Court Intrigue'), 'theme seeds should become continuity threads');
 assert(payload.state.threads.every(thread => thread.lifetime === 'series'), 'real genesis threads should default to series lifetime');
-assert(payload.state.artifacts.some(artifact => artifact.lifetime === 'series'), 'real world artifacts should default to series lifetime');
+assert(payload.state.artifacts.every(artifact => artifact.lifetime === 'series'), 'real world artifacts should default to series lifetime');
 assert(payload.telemetry.engine === 'grok', 'real StoryService mapping should report grok telemetry');
 assert(payload.telemetry.totalLatencyMs === 2000, 'real StoryService latency metadata should reach Story Lab telemetry');
 

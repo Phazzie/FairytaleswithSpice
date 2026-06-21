@@ -2933,3 +2933,39 @@ Validation:
 - `npm run recovery:preflight -- css-lazy-loading --quick`: passed and wrote `tmp/recovery/css-lazy-loading-evidence.md`.
 - Function count stayed `11/12`.
 - `npm run build` passed inside memory-card preflight; the initial browser bundle dropped to 484.71 kB and Proving Grounds moved into a lazy chunk.
+
+## 2026-06-21 11:35 EDT - Memory Cards Review Fix Pass
+
+Actions:
+
+- Addressed PR #139 Sonar and review feedback instead of merging with unresolved comments.
+- Removed Sonar code smells from memory-card activation parsing and continuity preview helpers.
+- Hardened accepted-memory parsing for Windows line endings and Unicode words.
+- Preserved story memory lifetimes through AI continuity merges.
+- Added safe hydration fallbacks for malformed saved memory-card metadata.
+- Made pinned memory-card drafts toggleable and removed stale pinned draft state when deleting an accepted card.
+- Displayed explicit zero accepted-memory counts when project metadata is present.
+- Added privacy assertions so list rows expose accepted-card counts without accepted-card detail payloads.
+- Removed the CSS budget test regex hotspot by replacing regex compaction with a small deterministic scanner.
+
+Self-review:
+
+- Good: Review comments were checked before merge and most were valid enough to fix inside the slice.
+- Problem found: the first PR push still had unresolved review findings and a failing Sonar quality gate; this should have been caught before opening the PR.
+- Problem found: the Angular unit-test runner built successfully but local ChromeHeadless could not capture, so the executable browser spec gate is still not reliable on this machine.
+- Process correction: for future UI slices, run the PR comment/thread audit immediately after opening the PR and before calling the slice merge-ready.
+
+Validation:
+
+- `npm run test:story-generator-component-style-budget`: passed.
+- `npm run test:story-lab-real-engine`: passed.
+- `npm run test:story-lab-account-routes`: passed.
+- `npm run test:story-lab-profile-contracts`: passed.
+- `npm run test:story-quality`: passed.
+- `npm run test:story-generator-route-splitting`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `npm test -- --watch=false --browsers=ChromeHeadless` in `story-generator`: test bundle built, but ChromeHeadless failed to capture twice and exited before running specs.
+- `npm run recovery:preflight -- story-memory-cards`: passed and wrote `tmp/recovery/story-memory-cards-evidence.md`; initial browser bundle was 484.78 kB and Proving Grounds remained a lazy chunk.
+- `npm run recovery:preflight -- css-lazy-loading --quick`: passed and wrote `tmp/recovery/css-lazy-loading-evidence.md`.
+- Function count stayed `11/12`.

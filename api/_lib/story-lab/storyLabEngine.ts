@@ -727,7 +727,7 @@ function extractAcceptedMemoryCardSection(continuationBrief = ''): string {
   }
 
   const acceptedText = continuationBrief.slice(acceptedStart + acceptedHeading.length);
-  const pinnedStart = acceptedText.indexOf('\nPinned Memory Cards:');
+  const pinnedStart = acceptedText.search(/\r?\nPinned Memory Cards:/);
   return pinnedStart === -1 ? acceptedText : acceptedText.slice(0, pinnedStart);
 }
 

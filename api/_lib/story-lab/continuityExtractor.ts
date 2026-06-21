@@ -248,7 +248,8 @@ function mergeThreads(existing: PlotThread[], incoming: Partial<PlotThread>[]): 
       label: candidate.label,
       status: normalizeThreadStatus(candidate.status) ?? previous?.status ?? 'active',
       description: stringOr(candidate.description, previous?.description, 'Active thread extracted from the latest chapter.'),
-      foreshadowedDevices: arrayOfStrings(candidate.foreshadowedDevices, previous?.foreshadowedDevices)
+      foreshadowedDevices: arrayOfStrings(candidate.foreshadowedDevices, previous?.foreshadowedDevices),
+      lifetime: normalizeStoryMemoryLifetime(candidate.lifetime) ?? previous?.lifetime
     });
   }
 
@@ -274,7 +275,8 @@ function mergeArtifacts(existing: LoreArtifact[], incoming: Partial<LoreArtifact
       name: candidate.name,
       significance: stringOr(candidate.significance, previous?.significance, 'Unresolved story artifact.'),
       introducedInChapter: typeof candidate.introducedInChapter === 'number' ? candidate.introducedInChapter : previous?.introducedInChapter,
-      resolvedInChapter: typeof candidate.resolvedInChapter === 'number' ? candidate.resolvedInChapter : previous?.resolvedInChapter
+      resolvedInChapter: typeof candidate.resolvedInChapter === 'number' ? candidate.resolvedInChapter : previous?.resolvedInChapter,
+      lifetime: normalizeStoryMemoryLifetime(candidate.lifetime) ?? previous?.lifetime
     });
   }
 
@@ -289,6 +291,12 @@ function normalizeArchetype(value: unknown): CharacterProfile['archetype'] | und
 
 function normalizeThreadStatus(value: unknown): PlotThread['status'] | undefined {
   return value === 'active' || value === 'escalating' || value === 'resolved' || value === 'dormant'
+    ? value
+    : undefined;
+}
+
+function normalizeStoryMemoryLifetime(value: unknown): PlotThread['lifetime'] | undefined {
+  return value === 'scene' || value === 'chapter' || value === 'series'
     ? value
     : undefined;
 }
