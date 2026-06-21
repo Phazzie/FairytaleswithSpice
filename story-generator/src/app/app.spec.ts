@@ -1917,6 +1917,18 @@ describe('App', () => {
     expect(creation$.observed).toBeFalse();
   });
 
+  it('cancels an in-flight recovered genesis job snapshot on destroy', () => {
+    const restore$ = new Subject<ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>>();
+    storeActiveJobMarker();
+    storyService.getStoryLabJob.and.returnValue(restore$.asObservable());
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(restore$.observed).toBeTrue();
+    recovered.ngOnDestroy();
+    expect(restore$.observed).toBeFalse();
+  });
+
   it('stores an active genesis job marker while job snapshots are running', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
 
@@ -2113,6 +2125,21 @@ describe('App', () => {
     expect(recovered.activeBatchQueue().at(-1)?.label).toBe('Continuation');
   });
 
+  it('cancels an in-flight recovered continuation job snapshot on destroy', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const restore$ = new Subject<ApiResponse<StoryLabJobCreationResponse<ContinuationJobResult>>>();
+    component.saveActiveProject();
+    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
+    storyService.getStoryLabJob.calls.reset();
+    storyService.getStoryLabJob.and.returnValue(restore$.asObservable());
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(restore$.observed).toBeTrue();
+    recovered.ngOnDestroy();
+    expect(restore$.observed).toBeFalse();
+  });
+
   it('clears an unavailable recovered continuation job with recovery-specific status copy', () => {
     const genesisPayload = seedWorkbenchForContinuation();
     component.saveActiveProject();
@@ -2233,6 +2260,14 @@ describe('App', () => {
 
   it('clears malformed active job storage without crashing startup', () => {
     sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, '{not-json');
+
+    expect(() => TestBed.createComponent(App).componentInstance).not.toThrow();
+    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
+    expect(storyService.getStoryLabJob).not.toHaveBeenCalled();
+  });
+
+  it('clears null active job storage without crashing startup', () => {
+    sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, 'null');
 
     expect(() => TestBed.createComponent(App).componentInstance).not.toThrow();
     expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
