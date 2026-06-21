@@ -3083,3 +3083,23 @@ Validation:
 
 - CodeRabbit docs checked: `https://docs.coderabbit.ai/reference/configuration` and `https://docs.coderabbit.ai/getting-started/yaml-configuration`.
 - CodeRabbit inheritance docs checked: `https://docs.coderabbit.ai/configuration/configuration-inheritance`.
+
+## 2026-06-21 14:55 EDT - Mock Expansion Guard Review Follow-Up
+
+Actions:
+
+- Addressed the post-merge PR #149 Gemini review comment on `expandMockParagraphsToWordTarget`.
+- Filtered expansion beats to positive-word entries before the mock expansion loop so future empty/zero-word mock beats cannot keep the loop from making progress.
+
+Self-review:
+
+- Good: Filtering by counted words removes the infinite-loop class without adding an arbitrary iteration cap.
+- Problem found: The PR #149 comment arrived after the API merge, so the first review audit missed it; the follow-up sweep caught it before final handoff.
+- Process correction: after API-merging a PR, rerun the review-thread query once more because late bot comments can land seconds after merge.
+
+Validation:
+
+- `npm run test:story`: passed with `15` tests.
+- API TypeScript check with the Node 20 wrapper: passed.
+- `git diff --check`: passed.
+- `npm run recovery:preflight -- story-quality-guidance`: passed and rewrote `tmp/recovery/story-quality-guidance-evidence.md`; function count stayed `11/12`.
