@@ -1709,13 +1709,19 @@ ${renderBody()}`;
     targetBodyWords: number,
     initialWordCount = this.countWords(paragraphs.join(' '))
   ): void {
+    const countedExpansionBeats = expansionBeats
+      .map(beat => ({
+        beat,
+        wordCount: this.countWords(beat)
+      }))
+      .filter(({ wordCount }) => wordCount > 0);
     let bodyWordCount = initialWordCount;
     let beatIndex = 0;
 
-    while (bodyWordCount < targetBodyWords && expansionBeats.length > 0) {
-      const nextBeat = expansionBeats[beatIndex % expansionBeats.length];
-      paragraphs.push(nextBeat);
-      bodyWordCount += this.countWords(nextBeat);
+    while (bodyWordCount < targetBodyWords && countedExpansionBeats.length > 0) {
+      const nextBeat = countedExpansionBeats[beatIndex % countedExpansionBeats.length];
+      paragraphs.push(nextBeat.beat);
+      bodyWordCount += nextBeat.wordCount;
       beatIndex += 1;
     }
   }
