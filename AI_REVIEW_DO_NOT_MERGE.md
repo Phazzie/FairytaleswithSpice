@@ -1,0 +1,46 @@
+Created: 2026-06-21 08:01 EDT
+
+# AI Review Reference Branch - Do Not Merge
+
+This branch is intentionally not mergeable.
+
+Branch: `ai-review/story-lab-unsliced-reference-do-not-merge`
+Source stack: `feature/story-lab-auth-profile-contracts`
+Source commit: `35a3d1bc6186031affacdeb196ff878277de3ef8`
+Current production baseline for future real work: `origin/main` after PR #124 merged as `410cf3afc7591b0ec2a181ea2610674591b04928`
+
+## Purpose
+
+Use this branch only as a reference snapshot for another AI reviewer. It contains the raw unpublished Story Lab stack, including work that has already been extracted and merged through recovery PRs, plus remaining unsliced work that still needs reviewable recovery slices.
+
+Do not open a merge PR from this branch. Do not merge this branch into `main`.
+
+## Review Focus
+
+The useful review target is the remaining unsliced work, not the already-merged recovery slices.
+
+Remaining planned implementation slices:
+
+- `story-quality-guidance`
+- `quality-report-proving-grounds`
+- `story-memory-cards`
+- `css-lazy-loading`
+- production auth/accounts after the recovery stack is clean enough to wire live providers safely
+
+Known durable-job follow-up issues already tracked from PR #124 review:
+
+- #125: transaction-capable Postgres job mutations before durable rollout
+- #126: route-backed job execution should handle engine exceptions
+- #127: concurrent index migration strategy before live durable tables
+
+## Important Caveats
+
+- This branch includes stale docs and commits that were intentionally split into smaller PRs.
+- Current real implementation branches must be created from `origin/main`, not from this branch.
+- Local untracked files in the main worktree were intentionally not added here:
+  - `SPARK_TRIAL_TASKS.md`
+  - `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`
+  - `STORY_QUALITY_EVALS_PLAN.md`
+  - `tests/grok-smoke.test.ts`
+- Treat this branch as an audit aid only. Any accepted finding should become a focused slice, issue, or comment on the relevant PR.
+
