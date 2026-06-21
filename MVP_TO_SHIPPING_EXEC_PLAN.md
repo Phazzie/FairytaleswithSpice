@@ -50,7 +50,7 @@ Shipping means the MVP is hardened enough for broader release. Main branch CI, V
 - The repo still tracks some root `node_modules` files from old history. This branch should not commit generated `node_modules` churn; use package manifests and lockfiles as the source of truth.
 - Main Sonar's top returned source findings were in the browser smoke harness and Story Lab engine. Both were small enough to fix inside the shipping branch instead of leaving as report-only triage.
 - PR #94 passed its checks and merged cleanly. PR #88 was closed as superseded after the fresher dependency update landed, leaving no open PRs at the time of the final shipping evidence update.
-- A follow-up Dependabot PR #95 appeared immediately after #94/#96. It was worth merging because it was lockfile-only, checks were green, and it cut the remaining dev/test audit findings from seven to four.
+- A follow-up Dependabot PR #95 appeared immediately after #94. It was worth merging because it was lockfile-only, checks were green, and it cut the remaining dev/test audit findings from seven to four.
 
 ## Decision Log
 
