@@ -590,6 +590,9 @@
           <strong>Account </strong>{{ cloudAccountStatusLabel() }}
         </p>
         <div class="story-actions">
+          <button type="button" class="ghost compact" data-testid="cloud-account-action" (click)="showCloudAccountSetupStatus()" [disabled]="isCloudLibraryBusy()">
+            {{ cloudAccountActionLabel() }}
+          </button>
           <button type="button" class="ghost compact" (click)="refreshCloudLibrary()" [disabled]="isCloudLibraryBusy()">
             {{ isCloudLibraryBusy() ? 'Checking' : 'Check cloud' }}
           </button>

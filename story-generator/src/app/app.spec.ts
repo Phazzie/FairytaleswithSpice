@@ -463,6 +463,24 @@ describe('App', () => {
     expect(fullText).toContain('Saved here');
   });
 
+  it('shows an honest account setup action before sign-in is configured', () => {
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const accountAction = panel?.querySelector('[data-testid="cloud-account-action"]') as HTMLButtonElement | null;
+
+    expect(accountAction?.textContent?.trim()).toBe('Connect account');
+
+    accountAction?.click();
+    fixture.detectChanges();
+
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
+    expect(storyService.listCloudStoryProjects).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(fullText).toContain('Sign-in setup is not configured yet.');
+    expect(fullText).toContain('Saved here');
+  });
+
   it('refreshes visible cloud projects through the account service', () => {
     const cloudList: CloudStoryProjectList = {
       ownerUserId: 'user-owner',
