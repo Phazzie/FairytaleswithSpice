@@ -278,13 +278,16 @@
                 </div>
 
                 @if (test.aiEvaluation) {
-                  <div class="evaluation-summary">
-                    <div class="score-badge" [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
-                      {{ test.aiEvaluation.score }}/100
-                    </div>
-                    <p class="feedback">{{ test.aiEvaluation.overallFeedback }}</p>
+                <div class="evaluation-summary">
+                  <div class="score-badge" [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
+                    {{ test.aiEvaluation.score }}/100
                   </div>
-                }
+                  @if (test.aiEvaluation.heuristicReport) {
+                    <p class="feedback"><strong>Quality:</strong> {{ test.aiEvaluation.heuristicReport.overallScore }}/100</p>
+                  }
+                  <p class="feedback">{{ test.aiEvaluation.overallFeedback }}</p>
+                </div>
+              }
 
                 <div class="story-preview">
                   <div [innerHTML]="sanitizeHtml(test.generatedStory)"></div>
@@ -336,6 +339,45 @@
                   <p>{{ currentTest()!.aiEvaluation!.overallFeedback }}</p>
                 </div>
               </div>
+
+              @if (currentTest()!.aiEvaluation!.heuristicReport; as report) {
+                <section class="heuristic-report" aria-label="Deterministic quality scan">
+                  <div class="heuristic-header">
+                    <div>
+                      <h4>Deterministic Quality Scan</h4>
+                      <p>{{ report.summary }}</p>
+                    </div>
+                    <span
+                      class="score-badge"
+                      [class]="'score-' + (report.overallScore >= 80 ? 'high' : report.overallScore >= 60 ? 'medium' : 'low')">
+                      {{ report.overallScore }}
+                    </span>
+                  </div>
+
+                  <div class="heuristic-grid">
+                    @for (dimension of report.dimensions; track dimension.id) {
+                      <article class="evaluation-section heuristic-dimension">
+                        <div class="heuristic-dimension-header">
+                          <span>{{ dimension.label }}</span>
+                          <span
+                            class="score-badge mini"
+                            [class]="'score-' + (dimension.score >= 80 ? 'high' : dimension.score >= 60 ? 'medium' : 'low')">
+                            {{ dimension.score }}
+                          </span>
+                        </div>
+                        <p>{{ dimension.rationale }}</p>
+                        @if (dimension.signals.length) {
+                          <ul>
+                            @for (signal of dimension.signals.slice(0, 2); track signal) {
+                              <li>{{ signal }}</li>
+                            }
+                          </ul>
+                        }
+                      </article>
+                    }
+                  </div>
+                </section>
+              }
 
               <div class="evaluation-grid">
                 <div class="evaluation-section strengths">
@@ -442,6 +484,13 @@
                       [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
                       {{ test.aiEvaluation.score }}
                     </span>
+                    @if (test.aiEvaluation.heuristicReport) {
+                      <span
+                        class="score-badge mini"
+                        [class]="'score-' + (test.aiEvaluation.heuristicReport.overallScore >= 80 ? 'high' : test.aiEvaluation.heuristicReport.overallScore >= 60 ? 'medium' : 'low')">
+                        Quality {{ test.aiEvaluation.heuristicReport.overallScore }}
+                      </span>
+                    }
                   }
                 </div>
 

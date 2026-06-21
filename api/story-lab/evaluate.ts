@@ -2,6 +2,7 @@ import type { ApiResponse, EvaluationCriteria, EvaluationRequest } from '../_lib
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { XaiTextClient } from '../_lib/services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
+import { buildStoryQualityHeuristicReport } from '../_lib/story-lab/evaluation/storyQualityHeuristics';
 
 interface NormalizedEvaluationRequest {
   storyContent: string;
@@ -13,7 +14,7 @@ interface NormalizedEvaluationRequest {
   };
 }
 
-function getMockEvaluation(): EvaluationCriteria {
+function getMockEvaluation(request: NormalizedEvaluationRequest): EvaluationCriteria {
   return {
     score: 75,
     strengths: [
@@ -31,7 +32,8 @@ function getMockEvaluation(): EvaluationCriteria {
       'Vary dialogue patterns between characters for distinct voices',
       'Strengthen the final scene to increase stakes and reader investment'
     ],
-    overallFeedback: 'Solid story with good fundamentals. The pacing works well and sensory details are effective. Main area for improvement is making character voices more distinct and memorable.'
+    overallFeedback: 'Solid story with good fundamentals. The pacing works well and sensory details are effective. Main area for improvement is making character voices more distinct and memorable.',
+    heuristicReport: buildStoryQualityHeuristicReport(request)
   };
 }
 
@@ -124,7 +126,7 @@ export default async function handler(req: any, res: any) {
   if (!xaiClient.hasApiKey()) {
     const payload: ApiResponse<EvaluationCriteria> = {
       success: true,
-      data: getMockEvaluation()
+      data: getMockEvaluation(request)
     };
     res.status(200).json(payload);
     return;
@@ -145,7 +147,10 @@ export default async function handler(req: any, res: any) {
 
     const responsePayload: ApiResponse<EvaluationCriteria> = {
       success: true,
-      data: parseEvaluation(evaluationResponse.text)
+      data: {
+        ...parseEvaluation(evaluationResponse.text),
+        heuristicReport: buildStoryQualityHeuristicReport(request)
+      }
     };
     res.status(200).json(responsePayload);
   } catch (error) {

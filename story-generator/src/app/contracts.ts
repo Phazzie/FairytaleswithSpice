@@ -541,12 +541,38 @@ export interface StoryLabJobCreationResponse<TPublicResult = unknown> {
   durability: StoryLabJobDurability;
 }
 
+export type StoryQualityDimensionId =
+  | 'continuity'
+  | 'cliffhanger_quality'
+  | 'trope_freshness'
+  | 'emotional_variety'
+  | 'character_consistency'
+  | 'prose_quality'
+  | 'audio_readiness';
+
+export interface StoryQualityDimensionScore {
+  id: StoryQualityDimensionId;
+  label: string;
+  score: number;
+  rationale: string;
+  signals: string[];
+}
+
+export interface StoryQualityHeuristicReport {
+  source: 'heuristic';
+  heuristicOnly: true;
+  overallScore: number;
+  dimensions: StoryQualityDimensionScore[];
+  summary: string;
+}
+
 export interface EvaluationCriteria {
   score: number;
   strengths: string[];
   weaknesses: string[];
   suggestions: string[];
   overallFeedback: string;
+  heuristicReport?: StoryQualityHeuristicReport;
 }
 
 export interface EvaluationRequest {

@@ -8,6 +8,7 @@ import {
   toClassicGenerationInput
 } from '../api/_lib/story-lab/storyLabEngine';
 import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
+import { buildStoryQualityHeuristicReport } from '../api/_lib/story-lab/evaluation/storyQualityHeuristics';
 import type { StoryGenerationSeam as LabGenerationSeam } from '../api/_lib/story-lab/contracts';
 import type {
   ChapterContinuationSeam as ClassicContinuationSeam,
@@ -103,6 +104,35 @@ const classicStory: ClassicGenerationSeam['output'] = {
 };
 
 async function main(): Promise<void> {
+  const heuristicReport = buildStoryQualityHeuristicReport({
+    storyContent: [
+      '[Mira]: "If the shell repeats my vow, Lord Brine owns the court by sunrise."',
+      "[Narrator]: Mira pressed her palm to the witness shell. Salt stung Mira's wrist as the witness shell glowed under the reef arch, bright enough for every rival to see.",
+      '[Lord Brine]: "Then choose which secret survives the tide."',
+      'Mira touched the blood oath hidden under her sleeve. The bargain had followed her from the first chapter, and now it wanted a name.'
+    ].join('\n\n'),
+    configuration: {
+      creature: 'siren',
+      themes: ['forbidden_love', 'blood_oaths'],
+      spicyLevel: 3,
+      wordCount: 900
+    }
+  });
+  const heuristicDimensionIds = heuristicReport.dimensions.map(dimension => dimension.id);
+  assert(heuristicReport.source === 'heuristic', 'quality report should identify deterministic heuristic mode.');
+  assert(heuristicReport.dimensions.length === 7, 'quality report should include the seven planned dimensions.');
+  assert(heuristicDimensionIds.includes('continuity'), 'quality report should include continuity.');
+  assert(heuristicDimensionIds.includes('audio_readiness'), 'quality report should include audio readiness.');
+  assert(heuristicReport.dimensions.every(dimension => dimension.score >= 0 && dimension.score <= 100), 'quality scores should stay normalized.');
+  assert(heuristicReport.dimensions.some(dimension => dimension.signals.length > 0), 'quality report should include explainable signals.');
+  const proseQuality = heuristicReport.dimensions.find(dimension => dimension.id === 'prose_quality');
+  assert(proseQuality?.signals.some(signal => signal.includes('Specific anchors: witness shell, reef arch, blood oath')), 'prose quality should report concrete specificity anchors.');
+  assert(proseQuality?.signals.some(signal => signal.includes('Sensory texture: glow, salt, sting')), 'prose quality should report concrete sensory texture.');
+  const characterConsistency = heuristicReport.dimensions.find(dimension => dimension.id === 'character_consistency');
+  assert(characterConsistency?.signals.some(signal => signal.includes('Agency actions: pressed, touched')), 'character consistency should report protagonist agency actions.');
+  const audioReadiness = heuristicReport.dimensions.find(dimension => dimension.id === 'audio_readiness');
+  assert(audioReadiness?.signals.some(signal => signal.includes('Speaker variety: Mira, Narrator, Lord Brine')), 'audio-readiness should report concrete speaker variety.');
+
   const classicInput = toClassicGenerationInput(blueprint);
   assert(classicInput.generationContext?.protagonistName === 'Mira', 'protagonist name should survive Story Lab mapping.');
   assert(classicInput.generationContext?.antagonistName === 'Lord Brine', 'antagonist name should survive Story Lab mapping.');
