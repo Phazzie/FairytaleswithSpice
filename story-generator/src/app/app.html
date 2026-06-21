@@ -596,7 +596,7 @@
           <button type="button" class="ghost compact" (click)="refreshCloudLibrary()" [disabled]="isCloudLibraryBusy()">
             {{ isCloudLibraryBusy() ? 'Checking' : 'Check cloud' }}
           </button>
-          <button type="button" class="ghost compact" (click)="saveActiveProjectToCloud()" [disabled]="!workbench().story || isCloudLibraryBusy()">
+          <button type="button" class="ghost compact" (click)="saveActiveProjectToCloud()" [disabled]="!workbench().story || isCloudLibraryBusy() || !canUseCloudLibrary()">
             Save to cloud
           </button>
         </div>
