@@ -50,7 +50,8 @@ create table if not exists story_lab_jobs (
   error_json jsonb,
   created_at timestamptz not null,
   updated_at timestamptz not null,
-  completed_at timestamptz
+  completed_at timestamptz,
+  unique (job_id, owner_user_id)
 );
 
 create index if not exists story_lab_jobs_owner_updated_idx
@@ -63,11 +64,14 @@ create unique index if not exists story_lab_jobs_owner_idempotency_idx
 
 create table if not exists story_lab_job_events (
   event_id bigserial primary key,
-  job_id text not null references story_lab_jobs(job_id) on delete cascade,
+  job_id text not null,
   owner_user_id text not null,
   sequence_number integer not null,
   event_json jsonb not null,
-  created_at timestamptz not null
+  created_at timestamptz not null,
+  foreign key (job_id, owner_user_id)
+    references story_lab_jobs(job_id, owner_user_id)
+    on delete cascade
 );
 
 create unique index if not exists story_lab_job_events_job_sequence_idx

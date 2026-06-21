@@ -1254,6 +1254,23 @@ describe('App', () => {
     expect(recovered.statusMessage()).toContain('in-memory job state is no longer available');
   });
 
+  it('keeps recovered genesis API failures out of in-memory unavailable copy', () => {
+    storeActiveJobMarker();
+    storyService.getStoryLabJob.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'JOB_STORE_UNAVAILABLE',
+        message: 'Story Lab job storage is not configured.'
+      }
+    } as ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>));
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_123e4567-e89b-12d3-a456-426614174000');
+    expect(recovered.statusMessage()).toBe('Story Lab job storage is not configured.');
+    expect(recovered.statusMessage()).not.toContain('in-memory job state is no longer available');
+  });
+
   it('recovers a completed genesis job and clears the active job marker', () => {
     const payload: StoryIterationPayload = {
       summary: createSummary({ title: 'Recovered Pact' }),
@@ -1351,6 +1368,27 @@ describe('App', () => {
     expect(renderedJobStatusText(recoveredFixture)).toBeNull();
     expect(recovered.statusMessage()).toContain('could not be restored');
     expect(recovered.statusMessage()).toContain('in-memory job state is no longer available');
+  });
+
+  it('keeps recovered continuation transport failures out of in-memory unavailable copy', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    component.saveActiveProject();
+    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
+    storyService.getStoryLabJob.calls.reset();
+    storyService.getStoryLabJob.and.returnValue(throwError(() => ({
+      error: {
+        error: {
+          code: 'JOB_STORE_UNAVAILABLE',
+          message: 'Story Lab job storage is not configured.'
+        }
+      }
+    })));
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_223e4567-e89b-12d3-a456-426614174000');
+    expect(recovered.statusMessage()).toBe('Story Lab job storage is not configured.');
+    expect(recovered.statusMessage()).not.toContain('in-memory job state is no longer available');
   });
 
   it('renders a recovered continuation job status panel after reload', () => {

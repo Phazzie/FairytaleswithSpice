@@ -91,15 +91,16 @@ export function createStoryLabJobStoreConfig(
 }
 
 function resolveRawJobStoreMode(options: StoryLabJobStoreConfigOptions): string {
+  const normalizeRawMode = (value: string) => value.trim();
   if (options.jobStoreMode !== undefined) {
-    return options.jobStoreMode;
+    return normalizeRawMode(options.jobStoreMode);
   }
 
   if (options.env) {
-    return options.env['STORY_LAB_JOB_STORE'] ?? 'non_durable_memory';
+    return normalizeRawMode(options.env['STORY_LAB_JOB_STORE'] ?? 'non_durable_memory');
   }
 
-  return process.env['STORY_LAB_JOB_STORE'] ?? 'non_durable_memory';
+  return normalizeRawMode(process.env['STORY_LAB_JOB_STORE'] ?? 'non_durable_memory');
 }
 
 function normalizeMode(value: string): string {
@@ -108,14 +109,14 @@ function normalizeMode(value: string): string {
 
 function resolveDatabaseUrl(options: StoryLabJobStoreConfigOptions): string {
   if (options.databaseUrl !== undefined) {
-    return options.databaseUrl;
+    return options.databaseUrl.trim();
   }
 
   if (options.env) {
-    return options.env['DATABASE_URL'] ?? '';
+    return (options.env['DATABASE_URL'] ?? '').trim();
   }
 
-  return process.env['DATABASE_URL'] ?? '';
+  return (process.env['DATABASE_URL'] ?? '').trim();
 }
 
 function resolveExecutor(

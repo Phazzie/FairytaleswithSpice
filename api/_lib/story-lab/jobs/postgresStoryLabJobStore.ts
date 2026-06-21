@@ -295,14 +295,14 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
 
   private getDatabaseUrl(): string {
     if (this.options.databaseUrl !== undefined) {
-      return this.options.databaseUrl;
+      return this.options.databaseUrl.trim();
     }
 
     if (this.options.env) {
-      return this.options.env['DATABASE_URL'] ?? '';
+      return (this.options.env['DATABASE_URL'] ?? '').trim();
     }
 
-    return process.env['DATABASE_URL'] ?? '';
+    return (process.env['DATABASE_URL'] ?? '').trim();
   }
 
   private getNow(): string {

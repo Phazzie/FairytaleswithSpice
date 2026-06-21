@@ -23,6 +23,7 @@ class FakeJobExecutor implements StoryLabCloudQueryExecutor {
 async function main() {
   await testDefaultConfigKeepsNonDurableMemoryStore();
   await testExplicitEnvDoesNotFallThroughToProcessEnv();
+  await testWhitespaceDatabaseUrlIsUnconfigured();
   await testPostgresConfigRequiresDatabaseAndExecutor();
   await testPostgresConfigBuildsDurableStoreWhenExplicitlyConfigured();
   await testUnknownJobStoreModeFailsClosed();
@@ -96,6 +97,23 @@ async function testExplicitEnvDoesNotFallThroughToProcessEnv() {
       process.env['DATABASE_URL'] = previousDatabaseUrl;
     }
   }
+}
+
+async function testWhitespaceDatabaseUrlIsUnconfigured() {
+  const config = createStoryLabJobStoreConfig({
+    env: {
+      STORY_LAB_JOB_STORE: 'postgres',
+      DATABASE_URL: '   '
+    },
+    createExecutor() {
+      throw new Error('whitespace DATABASE_URL should not create an executor');
+    }
+  });
+
+  assert(config.mode === 'postgres', 'postgres mode should still be reported for whitespace DATABASE_URL');
+  assert(!config.databaseUrlConfigured, 'whitespace DATABASE_URL should be treated as missing');
+  assert(!config.executorConfigured, 'whitespace DATABASE_URL should not create an executor');
+  assert(!config.isConfigured(), 'whitespace DATABASE_URL should fail closed');
 }
 
 async function testPostgresConfigRequiresDatabaseAndExecutor() {

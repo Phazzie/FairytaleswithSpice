@@ -1415,6 +1415,19 @@ ${chapters}
     return `That ${jobLabel} could not be restored because its in-memory job state is no longer available.${detail}`;
   }
 
+  private formatRecoveredRestoreFailureMessage(
+    kind: ActiveStoryLabJobState['kind'],
+    detailMessage: string,
+    errorCode?: string
+  ): string {
+    if (errorCode === 'JOB_NOT_FOUND' || errorCode === 'STORY_LAB_JOB_NOT_FOUND') {
+      return this.formatRecoveredJobUnavailableMessage(kind, detailMessage);
+    }
+
+    const jobLabel = kind === 'genesis' ? 'story job' : 'continuation job';
+    return detailMessage || `That ${jobLabel} could not be restored right now. Please try again.`;
+  }
+
   private closeJobEventSubscription() {
     if (this.jobEventSubscription) {
       this.jobEventSubscription.unsubscribe();
@@ -1453,9 +1466,10 @@ ${chapters}
     this.storyService.getStoryLabJob<StoryIterationPayload>(activeJob.jobId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          const message = this.formatRecoveredJobUnavailableMessage(
+          const message = this.formatRecoveredRestoreFailureMessage(
             activeJob.kind,
-            this.formatApiError(response.error, '')
+            this.formatApiError(response.error, ''),
+            response.error?.code
           );
           this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
           return;
@@ -1473,7 +1487,7 @@ ${chapters}
       },
       error: error => {
         this.errorLogging.logError(error, 'App.restoreActiveStoryLabJob');
-        const message = this.formatRecoveredJobUnavailableMessage(
+        const message = this.formatRecoveredRestoreFailureMessage(
           activeJob.kind,
           this.formatHttpError(error, '')
         );
@@ -1506,9 +1520,10 @@ ${chapters}
     this.storyService.getStoryLabJob<ContinuationJobResult>(activeJob.jobId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          const message = this.formatRecoveredJobUnavailableMessage(
+          const message = this.formatRecoveredRestoreFailureMessage(
             activeJob.kind,
-            this.formatApiError(response.error, '')
+            this.formatApiError(response.error, ''),
+            response.error?.code
           );
           this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
           return;
@@ -1526,7 +1541,7 @@ ${chapters}
       },
       error: error => {
         this.errorLogging.logError(error, 'App.restoreActiveContinuationJob');
-        const message = this.formatRecoveredJobUnavailableMessage(
+        const message = this.formatRecoveredRestoreFailureMessage(
           activeJob.kind,
           this.formatHttpError(error, '')
         );

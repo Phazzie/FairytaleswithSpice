@@ -253,6 +253,7 @@ async function testPostgresJobStoreWithoutRouteAuthFailsClosed(): Promise<void> 
   const body = response.body as any;
   assert(body.success === false, 'postgres job store without route auth/config should not create a job envelope');
   assert(body.error.code === 'JOB_STORE_UNAVAILABLE', 'postgres job store without route auth/config should expose job store unavailable');
+  assert(body.error.message === 'Durable Story Lab job storage is not configured.', 'postgres job store without config should report storage configuration, not auth');
   assert(!('details' in body.error), 'postgres job store response should not expose config details');
 }
 
@@ -468,7 +469,7 @@ class CapturingDurableJobStore implements StoryLabJobStore {
     options?: { ownerUserId?: string }
   ): StoryLabJobCreationResponse<TPublicResult> | null {
     this.readOwnerUserIds.push(options?.ownerUserId);
-    return this.withDurableReceipt(this.inner.getJob<TPublicResult>(jobId));
+    return this.withDurableReceipt(this.inner.getJob<TPublicResult>(jobId, options));
   }
 
   getEvents<TPublicResult = unknown>(
@@ -476,7 +477,7 @@ class CapturingDurableJobStore implements StoryLabJobStore {
     options?: { ownerUserId?: string }
   ) {
     this.eventOwnerUserIds.push(options?.ownerUserId);
-    return this.inner.getEvents<TPublicResult>(jobId);
+    return this.inner.getEvents<TPublicResult>(jobId, options);
   }
 
   private withDurableReceipt<TPublicResult>(

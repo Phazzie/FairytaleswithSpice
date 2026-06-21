@@ -30,7 +30,8 @@ const REQUIRED_INDEXES = [
   'story_projects_owner_story_idx',
   'story_lab_jobs_owner_updated_idx',
   'story_lab_jobs_owner_idempotency_idx',
-  'story_lab_job_events_job_sequence_idx'
+  'story_lab_job_events_job_sequence_idx',
+  'story_lab_job_events_owner_job_idx'
 ] as const;
 
 const TABLE_READINESS_SQL = `
@@ -51,7 +52,8 @@ where schemaname = 'public'
     'story_projects_owner_story_idx',
     'story_lab_jobs_owner_updated_idx',
     'story_lab_jobs_owner_idempotency_idx',
-    'story_lab_job_events_job_sequence_idx'
+    'story_lab_job_events_job_sequence_idx',
+    'story_lab_job_events_owner_job_idx'
   )
 `;
 

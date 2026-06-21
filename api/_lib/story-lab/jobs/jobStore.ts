@@ -139,7 +139,11 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
 export const nonDurableStoryLabJobStore = new NonDurableStoryLabJobStore();
 
 function canAccessStoredJob(stored: StoredStoryLabJob, input: ReadStoryLabJobInput): boolean {
-  return input.ownerUserId === undefined || stored.ownerUserId === input.ownerUserId;
+  if (stored.ownerUserId === undefined) {
+    return true;
+  }
+
+  return input.ownerUserId !== undefined && stored.ownerUserId === input.ownerUserId;
 }
 
 function createSnapshotEvent<TPublicResult>(

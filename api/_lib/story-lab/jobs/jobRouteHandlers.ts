@@ -638,8 +638,11 @@ function jobNotFound(): ApiResponse<never> {
 
 function jobStoreUnavailable(config: StoryLabJobStoreConfig): ApiResponse<never> {
   const routeAuthRequired = Boolean(config.store?.durable);
+  const durableMisconfigured = config.mode === 'postgres' && (!config.databaseUrlConfigured || !config.executorConfigured);
   const message = config.mode === 'unsupported'
     ? 'Story Lab job storage mode is not supported.'
+    : durableMisconfigured
+      ? 'Durable Story Lab job storage is not configured.'
     : routeAuthRequired
       ? 'Durable Story Lab job storage requires owner-scoped route auth before it can be enabled.'
       : 'Story Lab job storage is not configured.';

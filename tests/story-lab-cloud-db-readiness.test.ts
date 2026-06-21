@@ -54,7 +54,8 @@ async function testReadyDatabaseReportsReady() {
     { indexname: 'story_projects_owner_story_idx' },
     { indexname: 'story_lab_jobs_owner_updated_idx' },
     { indexname: 'story_lab_jobs_owner_idempotency_idx' },
-    { indexname: 'story_lab_job_events_job_sequence_idx' }
+    { indexname: 'story_lab_job_events_job_sequence_idx' },
+    { indexname: 'story_lab_job_events_owner_job_idx' }
   ]);
 
   const result = await checkStoryLabCloudDatabaseReadiness(executor, {
@@ -94,6 +95,7 @@ async function testMissingTableOrIndexReportsNotReady() {
   assert(result.missing.includes('story_lab_profiles'), 'missing profile table should be reported');
   assert(result.missing.includes('story_lab_job_events'), 'missing job events table should be reported');
   assert(result.missing.includes('story_lab_jobs_owner_idempotency_idx'), 'missing owner idempotency index should be reported');
+  assert(result.missing.includes('story_lab_job_events_owner_job_idx'), 'missing owner job events index should be reported');
 }
 
 async function testDatabaseErrorsFailClosedWithoutLeakingProviderDetails() {

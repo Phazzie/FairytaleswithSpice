@@ -47,6 +47,7 @@ async function main() {
   await testNonDurableStoreRejectsCrossOwnerUpdates();
   await testPostgresStoreFailsClosedWithoutDatabaseConfig();
   await testPostgresStoreHonorsExplicitEnvOverride();
+  await testPostgresStoreTrimsDatabaseUrl();
   await testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots();
   await testPostgresStoreRetriesEventSequenceConflicts();
 
@@ -110,12 +111,23 @@ async function testNonDurableStoreRejectsCrossOwnerUpdates() {
     progressPercent: 100,
     now: '2026-06-08T12:31:00.000Z'
   });
+  const ownerlessDenied = await store.updateJob(created.job.jobId, {
+    status: 'completed',
+    currentStep: 'completed',
+    progressPercent: 100,
+    now: '2026-06-08T12:32:00.000Z'
+  });
   const ownerSnapshot = await store.getJob(created.job.jobId, { ownerUserId: 'owner_a' });
+  const ownerlessSnapshot = await store.getJob(created.job.jobId);
   const otherEvents = await store.getEvents(created.job.jobId, { ownerUserId: 'owner_b' });
+  const ownerlessEvents = await store.getEvents(created.job.jobId);
 
   assert(denied === null, 'non-durable owner-scoped update should reject a different owner');
+  assert(ownerlessDenied === null, 'non-durable owner-scoped update should reject missing owner context');
   assert(ownerSnapshot?.job.status === 'queued', 'denied non-durable update should leave the original snapshot unchanged');
+  assert(ownerlessSnapshot === null, 'missing owner context should not read owner-scoped non-durable jobs');
   assert(otherEvents === null, 'different owner should not read non-durable job events');
+  assert(ownerlessEvents === null, 'missing owner context should not read owner-scoped non-durable job events');
 }
 
 async function testPostgresStoreFailsClosedWithoutDatabaseConfig() {
@@ -162,6 +174,15 @@ async function testPostgresStoreHonorsExplicitEnvOverride() {
       process.env['DATABASE_URL'] = previousDatabaseUrl;
     }
   }
+}
+
+async function testPostgresStoreTrimsDatabaseUrl() {
+  const store = createPostgresStoryLabJobStore({
+    databaseUrl: '   ',
+    executor: new FakeJobExecutor()
+  });
+
+  assert(!store.isConfigured(), 'whitespace-only explicit DATABASE_URL should not configure Postgres job storage');
 }
 
 async function testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots() {
