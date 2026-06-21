@@ -586,6 +586,9 @@
         <p class="muted" [attr.data-cloud-mode]="cloudLibrarySyncState().mode">
           {{ cloudLibraryStatusMessage() }}
         </p>
+        <p class="muted" data-testid="cloud-account-state">
+          <strong>Account </strong>{{ cloudAccountStatusLabel() }}
+        </p>
         <div class="story-actions">
           <button type="button" class="ghost compact" (click)="refreshCloudLibrary()" [disabled]="isCloudLibraryBusy()">
             {{ isCloudLibraryBusy() ? 'Checking' : 'Check cloud' }}

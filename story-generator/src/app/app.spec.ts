@@ -451,12 +451,15 @@ describe('App', () => {
     fixture.detectChanges();
 
     const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const accountState = panel?.querySelector('[data-testid="cloud-account-state"]') as HTMLElement | null;
     const text = panel?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    const accountText = accountState?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
 
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
     expect(text).toContain('Cloud account');
     expect(text).toContain('Cloud unavailable');
+    expect(accountText).toContain('Account Not connected');
     expect(fullText).toContain('Saved here');
   });
 
