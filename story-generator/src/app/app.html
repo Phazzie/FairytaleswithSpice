@@ -647,7 +647,7 @@
               <span class="saved-meta" data-testid="local-project-meta">
                 {{ project.chapters.length }} chapter{{ project.chapters.length === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}
                 <ng-container *ngIf="project.acceptedMemoryCards !== undefined">
-                  · {{ project.acceptedMemoryCards.length }} memory card{{ project.acceptedMemoryCards.length === 1 ? '' : 's' }}
+                  · {{ acceptedMemoryCardCount(project) }} memory card{{ acceptedMemoryCardCount(project) === 1 ? '' : 's' }}
                 </ng-container>
               </span>
             </button>

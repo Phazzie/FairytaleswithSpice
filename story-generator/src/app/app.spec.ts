@@ -791,6 +791,21 @@ describe('App', () => {
     expect(localMeta?.textContent).toContain('0 memory cards');
   });
 
+  it('renders malformed browser-local accepted memory metadata as zero count', () => {
+    seedWorkbenchForContinuation();
+    component.saveActiveProject();
+
+    const savedProjects = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as Array<Record<string, unknown>>;
+    savedProjects[0]['acceptedMemoryCards'] = null;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProjects));
+
+    const recoveredFixture = TestBed.createComponent(App);
+
+    expect(() => recoveredFixture.detectChanges()).not.toThrow();
+    const localMeta = recoveredFixture.nativeElement.querySelector('[data-testid="local-project-meta"]') as HTMLElement | null;
+    expect(localMeta?.textContent).toContain('0 memory cards');
+  });
+
   it('saves the active workbench project to cloud without disabling local save', () => {
     const payload = seedWorkbenchForContinuation();
     const receipt: CloudStoryProjectSaveReceipt = {
@@ -2017,6 +2032,49 @@ describe('App', () => {
       storyId: 'story-123'
     }));
     expect(marker.batchId).toMatch(/^batch-/);
+  });
+
+  it('persists accepted and pinned memory cards before continuation job recovery', () => {
+    const genesisPayload = seedMaraMemoryCardWorkbench();
+    const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'continuing_story',
+        progressPercent: 28
+      })
+    }));
+    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
+
+    clickFirstMemoryCardDraftAction('accept-memory-card-draft');
+    component.pinMemoryCardDraft('memory-card-thread-oath');
+    component.continueSaga('Make the betrayal more dangerous.');
+
+    const savedProjects = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as Array<Record<string, unknown>>;
+    const acceptedCards = savedProjects[0]['acceptedMemoryCards'] as unknown[];
+    const pinnedDraftIds = savedProjects[0]['pinnedMemoryCardDraftIds'] as string[];
+    expect(acceptedCards).toEqual([
+      jasmine.objectContaining({
+        id: 'memory-card-character-mara',
+        title: 'Mara',
+        detail: 'Keep the moonlit bargain from consuming her archive.'
+      })
+    ]);
+    expect(pinnedDraftIds).toContain('memory-card-thread-oath');
+
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.getStoryLabJob.calls.reset();
+    storyService.getStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(recovered.workbench().chapterHistory.length).toBe(2);
+    expect(recovered.acceptedMemoryCards()[0]?.title).toBe('Mara');
+    expect(recovered.pinnedMemoryCardDraftIds().has('memory-card-thread-oath')).toBeTrue();
   });
 
   it('recovers a running continuation job from browser storage and resumes events', () => {

@@ -3014,3 +3014,24 @@ Validation:
 - `npm run recovery:preflight -- story-memory-cards`: passed and wrote `tmp/recovery/story-memory-cards-evidence.md`; latest initial browser bundle was 484.83 kB and Proving Grounds remained a lazy chunk.
 - `npm run recovery:preflight -- css-lazy-loading --quick`: passed and wrote `tmp/recovery/css-lazy-loading-evidence.md`.
 - Function count stayed `11/12`.
+
+## 2026-06-21 14:22 EDT - Memory Card Review Follow-Ups
+
+Actions:
+
+- Addressed issue #140 by saving the active browser-local project, including accepted and pinned memory-card state, before creating a continuation job.
+- Addressed issue #141 by rendering malformed browser-local accepted-memory metadata as a zero-card count instead of reading `.length` from non-array metadata.
+- Added Angular regressions for pre-continuation memory-card persistence, completed continuation recovery after reload, and malformed local library metadata rendering.
+
+Self-review:
+
+- Good: The fix stayed inside the existing Angular save/recovery path and did not add routes, cloud-sync claims, or durable-job claims.
+- Problem found: The previous memory-card review pass normalized malformed metadata during hydration, but the saved-project list could still render raw stale metadata before hydration; the display layer now guards the count too.
+- Problem found: Continuation jobs already stored a reload marker, but they did not first flush the current accepted/pinned card state into the saved project that reload recovery depends on.
+
+Validation:
+
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `git diff --check`: passed.
+- `npm run recovery:preflight -- story-memory-cards`: passed and wrote `tmp/recovery/story-memory-cards-evidence.md`; latest initial browser bundle was 485.03 kB and Proving Grounds remained a lazy chunk.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"` in `story-generator`: passed with `TOTAL: 81 SUCCESS` after one initial ChromeHeadless capture retry.
