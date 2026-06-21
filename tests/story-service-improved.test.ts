@@ -444,8 +444,34 @@ const testSuite = {
       console.log(`   ✓ Appended story word count: ${continuation.totalWordCount}`);
     });
   }),
+
+  // Test 10: Streaming mock mode rejects oversized word counts before emitting chunks
+  testStreamingRejectsOversizedMockWordCount: test('Streaming Mock Mode Rejects Oversized Word Count', async () => {
+    await withMockGrok(async () => {
+      const service = new StoryService();
+      let chunkCount = 0;
+      const input: StoryGenerationSeam['input'] = {
+        creature: 'vampire',
+        themes: ['forbidden_love'],
+        userInput: 'A streaming request that should be rejected before mock generation.',
+        spicyLevel: 3,
+        wordCount: 5000 as any
+      };
+
+      try {
+        await service.generateStoryStreaming(input, () => {
+          chunkCount++;
+        });
+        throw new Error('oversized streaming mock request should have been rejected');
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain('Invalid word count');
+        expect(chunkCount).toBe(0);
+      }
+    });
+  }),
   
-  // Test 10: Performance test
+  // Test 11: Performance test
   testPerformance: test('Performance Benchmarking', async () => {
     const service = new StoryService();
     const iterations = 3;

@@ -3035,3 +3035,27 @@ Validation:
 - `git diff --check`: passed.
 - `npm run recovery:preflight -- story-memory-cards`: passed and wrote `tmp/recovery/story-memory-cards-evidence.md`; latest initial browser bundle was 485.03 kB and Proving Grounds remained a lazy chunk.
 - `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"` in `story-generator`: passed with `TOTAL: 81 SUCCESS` after one initial ChromeHeadless capture retry.
+
+## 2026-06-21 14:35 EDT - Story Quality Guidance Review Follow-Ups
+
+Actions:
+
+- Addressed issue #142 by adding an `860` character budget for assembled hidden continuation guidance, with per-section caps that preserve the Continuity Courtroom, Chapter Ending Stress Test, and Cliche Alarm anchors.
+- Addressed issue #143 by replacing repeated full rendered-body word recounts in no-key mock generation with incremental paragraph word tracking, and by rejecting oversized classic streaming word-count inputs before SSE starts.
+- Addressed issue #144 by hardening activation helpers against stale/partial continuity state: missing thread descriptions/devices, missing relationship arrays or notes, and nullish activation candidates now fail closed.
+- Added regression coverage for rich hidden-guidance states, stale partial continuity shapes, and oversized no-key streaming requests.
+
+Self-review:
+
+- Good: The slice stayed inside the PR #136 story-quality/mock-generation boundary and did not change auth, storage, routes beyond the existing classic stream validation, or UI behavior.
+- Problem found: The first hidden-guidance cap was too tight and trimmed an existing "leave one sharper" instruction; the final cap keeps prior guidance intent while bounding rich states.
+- Problem found: The stream route accepted any positive word count even though the story-service contract already limits allowed budgets; route validation now matches the service boundary.
+
+Validation:
+
+- `npm run test:story-lab-real-engine`: passed after the cap adjustment.
+- `npm run test:story`: passed with `15` tests, including the oversized no-key streaming regression.
+- `find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 | xargs -0 npx -p node@20 node ./node_modules/typescript/bin/tsc --noEmit --target es2020 --lib es2020,dom --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node`: passed.
+- `git diff --check`: passed.
+- `npm run recovery:preflight -- story-quality-guidance`: passed and wrote `tmp/recovery/story-quality-guidance-evidence.md`; function count stayed `11/12`.
+- Oversized `/api/story/stream` GET smoke with `wordCount=5000`: passed with `400 INVALID_INPUT` before SSE opened.

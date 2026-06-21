@@ -548,6 +548,11 @@ export class StoryService {
       generationSpeed: number;
     }) => void
   ): Promise<void> {
+    const validationError = this.validateStoryInput(input);
+    if (validationError) {
+      throw new Error(validationError.message);
+    }
+
     const tropeSelection = this.selectTropeSubversions(input);
 
     if (!this.xaiClient.hasApiKey()) {
@@ -1625,11 +1630,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     ];
 
     const renderBody = () => paragraphs.map(paragraph => `<p>${paragraph}</p>`).join('\n\n');
-    let beatIndex = 0;
-    while (this.countWords(renderBody()) < targetBodyWords) {
-      paragraphs.push(expansionBeats[beatIndex % expansionBeats.length]);
-      beatIndex += 1;
-    }
+    this.expandMockParagraphsToWordTarget(paragraphs, expansionBeats, targetBodyWords);
 
     return `<h3>The ${creatureName}'s Forbidden Passion</h3>
 
@@ -1658,11 +1659,7 @@ ${renderBody()}
     ];
 
     const renderBody = () => paragraphs.map(paragraph => `<p>${paragraph}</p>`).join('\n\n');
-    let beatIndex = 0;
-    while (this.countWords(renderBody()) < targetBodyWords) {
-      paragraphs.push(expansionBeats[beatIndex % expansionBeats.length]);
-      beatIndex += 1;
-    }
+    this.expandMockParagraphsToWordTarget(paragraphs, expansionBeats, targetBodyWords);
 
     return `<h3>Chapter ${chapterNumber}: ${baseTitle}</h3>
 
@@ -1694,15 +1691,33 @@ ${renderBody()}`;
       ...paragraphs.map(paragraph => `<p>${paragraph}</p>`),
       '<p><em>This is a mock chapter generated without AI.</em></p>'
     ].join('\n\n');
-    let beatIndex = 0;
-    while (this.countWords(renderBody()) < MOCK_CONTINUATION_TARGET_BODY_WORDS) {
-      paragraphs.push(expansionBeats[beatIndex % expansionBeats.length]);
-      beatIndex += 1;
-    }
+    this.expandMockParagraphsToWordTarget(
+      paragraphs,
+      expansionBeats,
+      MOCK_CONTINUATION_TARGET_BODY_WORDS,
+      this.countWords(renderBody())
+    );
 
     return `<h3>Chapter ${nextNumber}: The Deeper Shadows</h3>
 
 ${renderBody()}`;
+  }
+
+  private expandMockParagraphsToWordTarget(
+    paragraphs: string[],
+    expansionBeats: string[],
+    targetBodyWords: number,
+    initialWordCount = this.countWords(paragraphs.join(' '))
+  ): void {
+    let bodyWordCount = initialWordCount;
+    let beatIndex = 0;
+
+    while (bodyWordCount < targetBodyWords && expansionBeats.length > 0) {
+      const nextBeat = expansionBeats[beatIndex % expansionBeats.length];
+      paragraphs.push(nextBeat);
+      bodyWordCount += this.countWords(nextBeat);
+      beatIndex += 1;
+    }
   }
 
   private getCreatureDisplayName(creature: string): string {
