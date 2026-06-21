@@ -2828,3 +2828,17 @@ Validation:
 - `npm run recovery:preflight -- story-quality-guidance --dry-run`: passed and showed Vercel API typecheck.
 - `npm run recovery:preflight -- css-lazy-loading --dry-run`: passed.
 - `npm run recovery:preflight -- durable-job-owner --quick`: first run failed because the fresh audit worktree lacked root `node_modules`; after `npm install --no-audit --no-fund`, it passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+
+## 2026-06-21 08:13 EDT - PR 134 Review Follow-Up
+
+Actions:
+
+- Addressed PR #134 Gemini/Sourcery feedback on the recovery preflight cleanup.
+- Removed the redundant working-tree diff fallback from the branch-diff command; the following common command remains the single working-tree whitespace check.
+- Aligned Vercel API typechecking with the same Node 20 wrapper used by Angular typechecks. The broader network-fetch concern remains tracked in #130.
+
+Validation:
+
+- `bash -n scripts/recovery/slice-preflight.sh`: passed.
+- `npm run recovery:preflight -- durable-job-owner --dry-run`: passed and showed the simplified branch-diff command plus Node 20 API typecheck.
+- `npm run recovery:preflight -- durable-job-owner --quick`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
