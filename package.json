@@ -6,6 +6,8 @@
     "build:vercel-index": "scripts/recovery/ensure-vercel-index.sh",
     "build:verify": "npm run build:vercel-index && test -f story-generator/dist/story-generator/browser/index.html",
     "build:full": "npm run build && npm run build:verify",
+    "recovery:status": "scripts/recovery/slice-status.sh",
+    "recovery:preflight": "scripts/recovery/slice-preflight.sh",
     "test": "npm run test:all",
     "test:story": "tsx tests/story-service-improved.test.ts",
     "test:tropes": "tsx tests/trope-subversion.test.ts",
