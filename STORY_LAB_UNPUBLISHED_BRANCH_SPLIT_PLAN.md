@@ -200,6 +200,8 @@ Validation evidence:
 
 Goal: expose local-vs-cloud library state honestly in the Angular app, while preserving anonymous browser-local saves.
 
+Status: implemented in the Angular cloud-library UI change set. This slice stays frontend/service-only; durable job ownership, story-quality guidance, Proving Grounds reporting, memory cards, and CSS lazy-loading remain separate slices.
+
 Likely commits:
 
 - `ca79e26 Add Story Lab account service methods`
@@ -227,6 +229,14 @@ Validation:
 - targeted Angular app spec if Chrome is stable
 - `npm run build`
 - `scripts/recovery/preflight.sh --quick --skip-status`
+
+Validation evidence:
+
+- `npm run recovery:preflight -- cloud-library-ui --quick`: passed.
+- `npm run recovery:preflight -- cloud-library-ui`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`.
+- Function count stayed `11/12`.
+- Targeted Angular browser specs were attempted, but local `ChromeHeadless` failed to capture after the bundle built; no browser-spec pass is claimed.
+- No production auth provider, signed-in browser flow, executed migration, database provisioning, live durable cloud sync, or durable jobs are included.
 
 ### PR 7: Durable Job Owner Scaffolding
 

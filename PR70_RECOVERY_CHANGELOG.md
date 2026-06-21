@@ -2667,3 +2667,32 @@ Validation:
 - `npm run recovery:preflight -- cloud-library-ui --dry-run`: passed.
 - `npm run recovery:preflight -- story-memory-cards --quick --dry-run`: passed.
 - `git diff --check`: passed.
+
+## 2026-06-21 07:12 EDT - Angular Cloud Library UI Extraction
+
+Actions:
+
+- Extracted the Angular cloud-library service/UI slice from the unpublished Story Lab stack onto `recovery/story-lab-cloud-library-ui`.
+- Added account service methods for profile status and cloud project save/list/load/delete calls.
+- Added UI state and controls for account setup, local-vs-cloud library status, cloud save, cloud project load/delete, and connected-account gating.
+- Kept anonymous browser-local saves as the active user-visible save path.
+- Mapped `non_durable_memory` account storage to cloud-unavailable UI copy so tests and product language do not imply durable sync.
+
+Decision:
+
+- This is a larger slice than a single cherry-pick, but it stays inside one review boundary: Angular service/UI cloud-library honesty.
+- Durable job ownership, story-quality guidance, Proving Grounds reporting, story memory cards, and CSS lazy-loading remain separate slices.
+- The slice does not claim production auth provider wiring, signed-in browser flow, executed migrations, provisioned database, live durable cloud sync, or durable jobs.
+
+Validation:
+
+- `npm run recovery:preflight -- cloud-library-ui --quick`: passed.
+- `npm run recovery:preflight -- cloud-library-ui`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `npm run build`: passed with existing Angular bundle and CSS budget warnings.
+
+Known local proof gap:
+
+- Targeted Angular browser specs built successfully, but local `ChromeHeadless` failed to capture after two retries; browser specs are not claimed as passing from this workstation run.
