@@ -6,7 +6,7 @@ import type {
   StoryLabJobCreationResponse,
   StoryLabJobEvent,
 } from '../contracts';
-import type { CreateStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from './jobStorePort';
+import type { CreateStoryLabJobInput, ReadStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from './jobStorePort';
 import {
   buildStoryLabJobPaths,
   createOpaqueStoryLabJobId,
@@ -16,6 +16,7 @@ import {
 export type { CreateStoryLabJobInput, UpdateStoryLabJobInput } from './jobStorePort';
 
 interface StoredStoryLabJob<TPublicResult = unknown> {
+  ownerUserId?: string;
   response: StoryLabJobCreationResponse<TPublicResult>;
   events: StoryLabJobEvent<TPublicResult>[];
 }
@@ -52,6 +53,7 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
       durability: NON_DURABLE_STORY_LAB_JOB_DURABILITY
     };
     const stored: StoredStoryLabJob<TPublicResult> = {
+      ownerUserId: input.ownerUserId,
       response: clone(response),
       events: [createSnapshotEvent(job, now)]
     };
@@ -91,13 +93,27 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
     return clone(response);
   }
 
-  getJob<TPublicResult = unknown>(jobId: string): StoryLabJobCreationResponse<TPublicResult> | null {
+  getJob<TPublicResult = unknown>(
+    jobId: string,
+    input: ReadStoryLabJobInput = {}
+  ): StoryLabJobCreationResponse<TPublicResult> | null {
     const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
+    if (stored && !canReadStoredJob(stored, input)) {
+      return null;
+    }
+
     return stored ? clone(stored.response) : null;
   }
 
-  getEvents<TPublicResult = unknown>(jobId: string): StoryLabJobEvent<TPublicResult>[] | null {
+  getEvents<TPublicResult = unknown>(
+    jobId: string,
+    input: ReadStoryLabJobInput = {}
+  ): StoryLabJobEvent<TPublicResult>[] | null {
     const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
+    if (stored && !canReadStoredJob(stored, input)) {
+      return null;
+    }
+
     return stored ? clone(stored.events) : null;
   }
 
@@ -118,6 +134,10 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
 }
 
 export const nonDurableStoryLabJobStore = new NonDurableStoryLabJobStore();
+
+function canReadStoredJob(stored: StoredStoryLabJob, input: ReadStoryLabJobInput): boolean {
+  return input.ownerUserId === undefined || stored.ownerUserId === input.ownerUserId;
+}
 
 function createSnapshotEvent<TPublicResult>(
   job: StoryLabJob<TPublicResult>,

@@ -22,12 +22,17 @@ export interface CreateStoryLabJobInput {
 }
 
 export interface UpdateStoryLabJobInput<TPublicResult = unknown> {
+  ownerUserId?: string;
   status: StoryLabJobStatus;
   currentStep: string;
   progressPercent: number;
   result?: TPublicResult;
   error?: StoryLabJobError;
   now?: string;
+}
+
+export interface ReadStoryLabJobInput {
+  ownerUserId?: string;
 }
 
 export interface StoryLabJobStore {
@@ -39,6 +44,12 @@ export interface StoryLabJobStore {
     jobId: string,
     input: UpdateStoryLabJobInput<TPublicResult>
   ): MaybePromise<StoryLabJobCreationResponse<TPublicResult> | null>;
-  getJob<TPublicResult = unknown>(jobId: string): MaybePromise<StoryLabJobCreationResponse<TPublicResult> | null>;
-  getEvents<TPublicResult = unknown>(jobId: string): MaybePromise<StoryLabJobEvent<TPublicResult>[] | null>;
+  getJob<TPublicResult = unknown>(
+    jobId: string,
+    input?: ReadStoryLabJobInput
+  ): MaybePromise<StoryLabJobCreationResponse<TPublicResult> | null>;
+  getEvents<TPublicResult = unknown>(
+    jobId: string,
+    input?: ReadStoryLabJobInput
+  ): MaybePromise<StoryLabJobEvent<TPublicResult>[] | null>;
 }
