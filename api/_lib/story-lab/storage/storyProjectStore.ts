@@ -93,7 +93,7 @@ export function normalizeSavedStoryProject(
     id: project.id || project.storyId,
     title: project.title || project.summary?.title || 'Untitled Story Lab Project',
     synopsis: project.synopsis || project.summary?.synopsis || '',
-    createdAt: existingCreatedAt ?? project.createdAt ?? now,
+    createdAt: (existingCreatedAt ?? project.createdAt) || now,
     updatedAt: now
   };
 

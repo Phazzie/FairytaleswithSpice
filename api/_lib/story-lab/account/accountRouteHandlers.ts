@@ -17,6 +17,7 @@ import type {
 import { applyCorsPolicy } from '../../http/corsPolicy';
 import {
   createDefaultStoryLabUserProfile,
+  normalizeStoryLabProfilePreferences,
   StoryLabProfileStore,
   StoryLabProfileStoreError
 } from '../profile/storyLabProfileStore';
@@ -68,6 +69,7 @@ interface StoryLabAccountRouteContext {
 }
 
 const MAX_PROJECT_ID_LENGTH = 128;
+const PROJECT_ID_ROUTE_PATTERN = /\/account\/projects\/([^/]+)$/;
 
 export function createStoryLabAccountRouteHandler(
   dependencies: StoryLabAccountRouteDependencies = {}
@@ -343,7 +345,7 @@ function readAccountRouteTargetFromUrl(url: string | undefined): AccountRouteTar
 
 function readProjectIdFromUrl(url: string | undefined): string | undefined {
   const pathname = url?.split('?')[0] ?? '';
-  const match = pathname.match(/\/account\/projects\/([^/]+)$/);
+  const match = PROJECT_ID_ROUTE_PATTERN.exec(pathname);
   if (!match) {
     return undefined;
   }
@@ -356,63 +358,105 @@ function readProjectIdFromUrl(url: string | undefined): string | undefined {
 }
 
 function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+  if (!isObjectRecord(body)) {
     return null;
   }
 
-  const candidate = 'profile' in body ? (body as { profile?: unknown }).profile : body;
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+  const candidate = readWrappedOrBareBodyRecord(body, 'profile');
+  if (!isObjectRecord(candidate)) {
     return null;
   }
 
-  const profile = candidate as Partial<StoryLabUserProfile>;
+  const userId = candidate.userId;
+  const displayName = candidate.displayName;
+  const createdAt = readOptionalString(candidate.createdAt);
+  const updatedAt = readOptionalString(candidate.updatedAt);
   if (
-    typeof profile.userId !== 'string' ||
-    !profile.userId.trim() ||
-    typeof profile.displayName !== 'string' ||
-    !profile.displayName.trim() ||
-    !profile.preferences ||
-    typeof profile.preferences !== 'object' ||
-    Array.isArray(profile.preferences)
+    typeof userId !== 'string' ||
+    !userId.trim() ||
+    typeof displayName !== 'string' ||
+    !displayName.trim() ||
+    !isObjectRecord(candidate.preferences) ||
+    createdAt === null ||
+    updatedAt === null
   ) {
     return null;
   }
 
-  return profile as StoryLabUserProfile;
+  return {
+    userId,
+    displayName,
+    preferences: normalizeStoryLabProfilePreferences(candidate.preferences),
+    createdAt: createdAt ?? '',
+    updatedAt: updatedAt ?? ''
+  };
 }
 
 function readProjectFromBody(body: unknown): SavedStoryProject | null {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+  if (!isObjectRecord(body)) {
     return null;
   }
 
-  const candidate = 'project' in body ? (body as { project?: unknown }).project : body;
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+  const candidate = readWrappedOrBareBodyRecord(body, 'project');
+  if (!isObjectRecord(candidate)) {
     return null;
   }
 
-  const project = candidate as Partial<SavedStoryProject>;
+  const projectId = normalizeProjectId(candidate.id);
+  const synopsis = readOptionalString(candidate.synopsis);
+  const createdAt = readOptionalString(candidate.createdAt);
+  const updatedAt = readOptionalString(candidate.updatedAt);
   if (
-    !normalizeProjectId(project.id) ||
-    typeof project.storyId !== 'string' ||
-    !project.storyId.trim() ||
-    typeof project.title !== 'string' ||
-    !project.title.trim() ||
-    !project.summary ||
-    typeof project.summary !== 'object' ||
-    Array.isArray(project.summary) ||
-    !project.state ||
-    typeof project.state !== 'object' ||
-    Array.isArray(project.state) ||
-    !project.blueprint ||
-    typeof project.blueprint !== 'object' ||
-    Array.isArray(project.blueprint) ||
-    !Array.isArray(project.chapters)
+    !projectId ||
+    !isNonBlankString(candidate.storyId) ||
+    !isNonBlankString(candidate.title) ||
+    synopsis === null ||
+    createdAt === null ||
+    updatedAt === null ||
+    !isObjectRecord(candidate.summary) ||
+    !isObjectRecord(candidate.state) ||
+    !isObjectRecord(candidate.blueprint) ||
+    !Array.isArray(candidate.chapters)
   ) {
     return null;
   }
 
-  return project as SavedStoryProject;
+  return {
+    id: projectId,
+    storyId: candidate.storyId,
+    title: candidate.title,
+    synopsis: synopsis ?? '',
+    blueprint: candidate.blueprint as unknown as SavedStoryProject['blueprint'],
+    summary: candidate.summary as unknown as SavedStoryProject['summary'],
+    state: candidate.state as unknown as SavedStoryProject['state'],
+    chapters: candidate.chapters as SavedStoryProject['chapters'],
+    telemetry: candidate.telemetry as SavedStoryProject['telemetry'],
+    continuityExtraction: candidate.continuityExtraction as SavedStoryProject['continuityExtraction'],
+    pinnedMemoryCardDraftIds: candidate.pinnedMemoryCardDraftIds as SavedStoryProject['pinnedMemoryCardDraftIds'],
+    acceptedMemoryCards: candidate.acceptedMemoryCards as SavedStoryProject['acceptedMemoryCards'],
+    createdAt: createdAt ?? '',
+    updatedAt: updatedAt ?? ''
+  };
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function readWrappedOrBareBodyRecord(body: Record<string, unknown>, key: string): unknown {
+  return Object.keys(body).includes(key) ? body[key] : body;
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === 'string' && Boolean(value.trim());
+}
+
+function readOptionalString(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return typeof value === 'string' ? value : null;
 }
 
 function normalizeProjectId(projectId: unknown): string | null {

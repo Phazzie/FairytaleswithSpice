@@ -43,89 +43,173 @@ export function loadStoryLabCloudSchemaSql(): string {
 
 export function splitStoryLabCloudSchemaStatements(schemaSql: string): string[] {
   const statements: string[] = [];
-  let current = '';
-  let inSingleQuote = false;
-  let inLineComment = false;
-  let inBlockComment = false;
-  let dollarQuoteTag: string | null = null;
+  const state: SchemaSqlSplitState = {
+    current: '',
+    inSingleQuote: false,
+    inLineComment: false,
+    inBlockComment: false,
+    dollarQuoteTag: null
+  };
 
-  for (let index = 0; index < schemaSql.length; index += 1) {
-    const char = schemaSql[index] ?? '';
-    const next = schemaSql[index + 1] ?? '';
-
-    if (dollarQuoteTag) {
-      if (schemaSql.startsWith(dollarQuoteTag, index)) {
-        current += dollarQuoteTag;
-        index += dollarQuoteTag.length - 1;
-        dollarQuoteTag = null;
-      } else {
-        current += char;
-      }
-      continue;
-    }
-
-    if (inLineComment) {
-      current += char;
-      if (char === '\n') {
-        inLineComment = false;
-      }
-      continue;
-    }
-
-    if (inBlockComment) {
-      current += char;
-      if (char === '*' && next === '/') {
-        current += next;
-        index += 1;
-        inBlockComment = false;
-      }
-      continue;
-    }
-
-    if (!inSingleQuote && char === '-' && next === '-') {
-      inLineComment = true;
-      current += char;
-      continue;
-    }
-
-    if (!inSingleQuote && char === '/' && next === '*') {
-      inBlockComment = true;
-      current += char;
-      continue;
-    }
-
-    const openingDollarQuoteTag = !inSingleQuote ? readDollarQuoteTag(schemaSql, index) : null;
-    if (openingDollarQuoteTag) {
-      dollarQuoteTag = openingDollarQuoteTag;
-      current += openingDollarQuoteTag;
-      index += openingDollarQuoteTag.length - 1;
-      continue;
-    }
-
-    if (char === "'") {
-      current += char;
-      if (inSingleQuote && next === "'") {
-        current += next;
-        index += 1;
-        continue;
-      }
-
-      inSingleQuote = !inSingleQuote;
-      continue;
-    }
-
-    if (char === ';' && !inSingleQuote) {
-      pushStatement(statements, current);
-      current = '';
-      continue;
-    }
-
-    current += char;
+  let index = 0;
+  while (index < schemaSql.length) {
+    index = consumeSchemaSqlCharacter(schemaSql, index, state, statements) + 1;
   }
 
-  pushStatement(statements, current);
+  pushStatement(statements, state.current);
 
   return statements.filter(statement => hasSqlBody(statement));
+}
+
+interface SchemaSqlSplitState {
+  current: string;
+  inSingleQuote: boolean;
+  inLineComment: boolean;
+  inBlockComment: boolean;
+  dollarQuoteTag: string | null;
+}
+
+function consumeSchemaSqlCharacter(
+  schemaSql: string,
+  index: number,
+  state: SchemaSqlSplitState,
+  statements: string[]
+): number {
+  const contextIndex = consumeActiveSqlContext(schemaSql, index, state);
+  if (contextIndex !== null) {
+    return contextIndex;
+  }
+
+  const openingIndex = consumeOpeningSqlContext(schemaSql, index, state);
+  if (openingIndex !== null) {
+    return openingIndex;
+  }
+
+  return consumePlainSqlCharacter(schemaSql, index, state, statements);
+}
+
+function consumeActiveSqlContext(schemaSql: string, index: number, state: SchemaSqlSplitState): number | null {
+  if (state.dollarQuoteTag) {
+    return consumeDollarQuotedSql(schemaSql, index, state);
+  }
+
+  if (state.inLineComment) {
+    return consumeLineComment(schemaSql, index, state);
+  }
+
+  if (state.inBlockComment) {
+    return consumeBlockComment(schemaSql, index, state);
+  }
+
+  return null;
+}
+
+function consumeDollarQuotedSql(schemaSql: string, index: number, state: SchemaSqlSplitState): number {
+  const tag = state.dollarQuoteTag ?? '';
+  if (schemaSql.startsWith(tag, index)) {
+    state.current += tag;
+    state.dollarQuoteTag = null;
+    return index + tag.length - 1;
+  }
+
+  state.current += schemaSql[index] ?? '';
+  return index;
+}
+
+function consumeLineComment(schemaSql: string, index: number, state: SchemaSqlSplitState): number {
+  const char = schemaSql[index] ?? '';
+  state.current += char;
+  if (char === '\n') {
+    state.inLineComment = false;
+  }
+
+  return index;
+}
+
+function consumeBlockComment(schemaSql: string, index: number, state: SchemaSqlSplitState): number {
+  const char = schemaSql[index] ?? '';
+  const next = schemaSql[index + 1] ?? '';
+  state.current += char;
+  if (char === '*' && next === '/') {
+    state.current += next;
+    state.inBlockComment = false;
+    return index + 1;
+  }
+
+  return index;
+}
+
+function consumeOpeningSqlContext(schemaSql: string, index: number, state: SchemaSqlSplitState): number | null {
+  const char = schemaSql[index] ?? '';
+  const next = schemaSql[index + 1] ?? '';
+
+  if (state.inSingleQuote) {
+    return null;
+  }
+
+  if (char === '-' && next === '-') {
+    state.inLineComment = true;
+    state.current += char;
+    return index;
+  }
+
+  if (char === '/' && next === '*') {
+    state.inBlockComment = true;
+    state.current += char;
+    return index;
+  }
+
+  return consumeOpeningDollarQuote(schemaSql, index, state);
+}
+
+function consumeOpeningDollarQuote(schemaSql: string, index: number, state: SchemaSqlSplitState): number | null {
+  const openingDollarQuoteTag = readDollarQuoteTag(schemaSql, index);
+  if (!openingDollarQuoteTag) {
+    return null;
+  }
+
+  state.dollarQuoteTag = openingDollarQuoteTag;
+  state.current += openingDollarQuoteTag;
+  return index + openingDollarQuoteTag.length - 1;
+}
+
+function consumePlainSqlCharacter(
+  schemaSql: string,
+  index: number,
+  state: SchemaSqlSplitState,
+  statements: string[]
+): number {
+  const char = schemaSql[index] ?? '';
+  const next = schemaSql[index + 1] ?? '';
+
+  if (char === "'") {
+    return consumeSingleQuote(schemaSql, index, state, next);
+  }
+
+  if (char === ';' && !state.inSingleQuote) {
+    pushStatement(statements, state.current);
+    state.current = '';
+    return index;
+  }
+
+  state.current += char;
+  return index;
+}
+
+function consumeSingleQuote(
+  schemaSql: string,
+  index: number,
+  state: SchemaSqlSplitState,
+  next: string
+): number {
+  state.current += schemaSql[index] ?? '';
+  if (state.inSingleQuote && next === "'") {
+    state.current += next;
+    return index + 1;
+  }
+
+  state.inSingleQuote = !state.inSingleQuote;
+  return index;
 }
 
 function pushStatement(statements: string[], statement: string): void {
@@ -145,8 +229,46 @@ function hasSqlBody(statement: string): boolean {
 }
 
 function readDollarQuoteTag(schemaSql: string, index: number): string | null {
-  const match = schemaSql.slice(index).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/);
-  return match?.[0] ?? null;
+  if (schemaSql[index] !== '$') {
+    return null;
+  }
+
+  const closingIndex = findDollarQuoteTagEnd(schemaSql, index + 1);
+  return closingIndex === null ? null : schemaSql.slice(index, closingIndex + 1);
+}
+
+function findDollarQuoteTagEnd(schemaSql: string, index: number): number | null {
+  const firstTagChar = schemaSql[index] ?? '';
+  if (firstTagChar === '$') {
+    return index;
+  }
+
+  if (!isDollarQuoteTagStart(firstTagChar)) {
+    return null;
+  }
+
+  let cursor = index + 1;
+  while (cursor < schemaSql.length && isDollarQuoteTagPart(schemaSql[cursor] ?? '')) {
+    cursor += 1;
+  }
+
+  return schemaSql[cursor] === '$' ? cursor : null;
+}
+
+function isDollarQuoteTagStart(char: string): boolean {
+  return char === '_' || isAsciiLetter(char);
+}
+
+function isDollarQuoteTagPart(char: string): boolean {
+  return char === '_' || isAsciiLetter(char) || isAsciiDigit(char);
+}
+
+function isAsciiLetter(char: string): boolean {
+  return (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z');
+}
+
+function isAsciiDigit(char: string): boolean {
+  return char >= '0' && char <= '9';
 }
 
 function stripBlockComments(statement: string): string {
