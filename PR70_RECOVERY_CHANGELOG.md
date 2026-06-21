@@ -3158,3 +3158,22 @@ Validation:
 - `npm run recovery:preflight -- cloud-library-ui --quick`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`; function count stayed `11/12`.
 - `npm run build`: passed; Angular reported the existing Node 23 odd-version warning and stale `baseline-browser-mapping` warning.
 - `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: did not pass because ChromeHeadless failed to capture twice, then disconnected after the second retry connected; no Jasmine assertion failure was reported.
+
+## 2026-06-21 15:48 EDT - Batch Queue Review Comment Follow-Up
+
+Actions:
+
+- Continued #152 review-thread cleanup after PR #155.
+- Addressed PR #110 by replacing the batch-status `switch` with an exhaustive `Record<BatchProgressState['status'], string>` map.
+- Addressed PR #156 review feedback by adding a defensive fallback for unknown runtime batch statuses and focused spec coverage.
+
+Self-review:
+
+- Good: This is a small still-valid maintainability fix with compile-time exhaustiveness if batch statuses change.
+- Non-claim: This slice does not address the remaining job-route or PR #87 backlog threads.
+
+Validation:
+
+- `npm run recovery:preflight -- cloud-library-ui --quick`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`; function count stayed `11/12`.
+- `git diff --check`: passed.
+- `npm run review:unresolved -- --prs 110`: still reports the one PR #110 thread that this slice fixes after merge.
