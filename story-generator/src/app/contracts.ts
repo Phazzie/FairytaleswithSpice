@@ -211,7 +211,7 @@ export interface StoryPersistenceReceipt {
 export interface GenerationTelemetry {
   engine: 'gpt' | 'grok' | 'custom';
   model?: string;
-  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
   fallbackFromModel?: string;
   totalLatencyMs: number;
   averageChapterLatencyMs: number;

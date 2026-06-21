@@ -63,7 +63,7 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
       maxOutputTokens: 1200,
       temperature: 0.2,
       topP: 0.9,
-      timeoutMs: Math.min(getXaiFastTimeoutMs(), 5000),
+      timeoutMs: getXaiFastTimeoutMs(),
       modelPreference: 'fast',
       allowFallback: false
     });

@@ -814,9 +814,11 @@ export class StoryService {
       return existing;
     }
 
+    const modelChanged = Boolean(next.model && existing?.model && next.model !== existing.model);
+
     return {
       model: next.model ?? existing?.model,
-      reasoningEffort: next.reasoningEffort ?? existing?.reasoningEffort,
+      reasoningEffort: next.reasoningEffort ?? (modelChanged ? undefined : existing?.reasoningEffort),
       fallbackFromModel: existing?.fallbackFromModel ?? next.fallbackFromModel
     };
   }

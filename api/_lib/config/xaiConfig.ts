@@ -5,9 +5,9 @@ export const XAI_RESPONSES_API_URL = 'https://api.x.ai/v1/responses';
 export const DEFAULT_XAI_PRIMARY_TIMEOUT_MS = 40000;
 export const DEFAULT_XAI_FAST_TIMEOUT_MS = 40000;
 
-export type XaiReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+export type XaiReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh';
 
-const VALID_REASONING_EFFORTS = new Set<XaiReasoningEffort>(['low', 'medium', 'high', 'xhigh']);
+const VALID_REASONING_EFFORTS = new Set<XaiReasoningEffort>(['none', 'low', 'medium', 'high', 'xhigh']);
 
 export function getXaiStoryModel(): string {
   return process.env['XAI_STORY_MODEL']?.trim() || DEFAULT_XAI_STORY_MODEL;
@@ -32,7 +32,30 @@ export function isHighAgentEffort(effort: XaiReasoningEffort = getXaiReasoningEf
 }
 
 export function supportsXaiReasoningParameter(model: string): boolean {
-  return model.includes('multi-agent');
+  const normalizedModel = model.toLowerCase();
+  return normalizedModel.includes('grok-4.3') || normalizedModel.includes('multi-agent');
+}
+
+export function getXaiFastReasoningEffort(): XaiReasoningEffort {
+  return 'none';
+}
+
+export function getXaiReasoningEffortForModel(model: string, modelPreference: 'primary' | 'fast' = 'primary'): XaiReasoningEffort | undefined {
+  if (!supportsXaiReasoningParameter(model)) {
+    return undefined;
+  }
+
+  const normalizedModel = model.toLowerCase();
+  if (modelPreference === 'fast' && normalizedModel.includes('grok-4.3')) {
+    return getXaiFastReasoningEffort();
+  }
+
+  const configuredEffort = getXaiReasoningEffort();
+  if (normalizedModel.includes('grok-4.3') && configuredEffort === 'xhigh') {
+    return 'high';
+  }
+
+  return configuredEffort;
 }
 
 export function getXaiPrimaryTimeoutMs(): number {

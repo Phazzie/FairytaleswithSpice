@@ -485,7 +485,7 @@ export interface ApiResponseMetadata {
   chaptersGenerated?: number;
   partialFailures?: ChapterFailure[];
   model?: string;
-  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
   fallbackFromModel?: string;
 }
 
