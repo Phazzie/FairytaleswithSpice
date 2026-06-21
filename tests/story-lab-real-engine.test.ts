@@ -9,7 +9,10 @@ import {
   toClassicGenerationInput
 } from '../api/_lib/story-lab/storyLabEngine';
 import { getAuthorStylesForCreature } from '../api/_lib/config/authorStyles';
-import type { StoryGenerationSeam as LabGenerationSeam } from '../api/_lib/story-lab/contracts';
+import type {
+  StoryGenerationSeam as LabGenerationSeam,
+  StoryStateSnapshot
+} from '../api/_lib/story-lab/contracts';
 import type {
   ChapterContinuationSeam as ClassicContinuationSeam,
   CreatureType,
@@ -516,6 +519,180 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
       'subtext receipt should reach the real continuation seam as behavior-first guidance'
     );
     assert((capturedInput?.userInput?.length ?? 0) <= 900, 'hidden continuation anchors should stay under the compactness budget');
+  });
+
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    let capturedInput: ClassicContinuationSeam['input'] | undefined;
+    const longText = 'Ninth mirror debt '.repeat(60).trim();
+    const richState: StoryStateSnapshot = {
+      ...payload.state,
+      threads: Array.from({ length: 6 }, (_item, index) => ({
+        id: `story-test-long-thread-${index}`,
+        label: index === 0 ? 'Ninth Mirror Debt' : `Long Court Debt ${index}`,
+        status: index % 2 === 0 ? 'escalating' as const : 'active' as const,
+        description: `${longText} thread ${index} must not overflow the hidden guidance budget.`,
+        foreshadowedDevices: [`Mirror shard ${index}`, `${longText} device ${index}`],
+        lifetime: 'series' as const
+      })),
+      artifacts: Array.from({ length: 4 }, (_item, index) => ({
+        id: `story-test-long-artifact-${index}`,
+        name: `Ninth Mirror ${index}`,
+        significance: `${longText} artifact ${index} keeps repeating expensive court context.`,
+        introducedInChapter: 1
+      })),
+      continuityWarnings: Array.from({ length: 5 }, (_item, index) =>
+        `${longText} warning ${index} should be selected deterministically without overrunning the budget.`
+      )
+    };
+
+    const response = await continueStoryLab({
+      storyId: payload.summary.storyId,
+      chapterBatchSize: 1,
+      storyState: richState,
+      previouslyGeneratedChapters: payload.batch.chapters,
+      continuationBrief: 'Focus on the ninth mirror debt.',
+      existingSummary: payload.summary
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by hidden-guidance budget test');
+        },
+        continueChapter: async input => {
+          capturedInput = input;
+          return {
+            success: true,
+            data: {
+              chapterId: 'chapter-2',
+              chapterNumber: 2,
+              title: 'Budgeted Mirror',
+              content: '<h3>Chapter 2: Budgeted Mirror</h3><p>The mirror debt narrowed.</p>',
+              rawContent: '<p>[Mira]: "Name the mirror."</p>',
+              wordCount: 8,
+              cliffhangerEnding: true,
+              themesContinued: ['forbidden_love'],
+              spicyLevelMaintained: 3,
+              appendedToStory: '<h3>Chapter 2: Budgeted Mirror</h3><p>The mirror debt narrowed.</p>',
+              tropeMetadata: payload.summary.tropeMetadata,
+              chapters: [{
+                chapterId: 'chapter-2',
+                chapterNumber: 2,
+                title: 'Budgeted Mirror',
+                content: '<h3>Chapter 2: Budgeted Mirror</h3><p>The mirror debt narrowed.</p>',
+                rawContent: '<p>[Mira]: "Name the mirror."</p>',
+                wordCount: 8,
+                generatedAt: new Date(),
+                hasAudio: false,
+                cliffhangerEnding: true
+              }],
+              totalWordCount: 8
+            }
+          };
+        }
+      })
+    });
+
+    const providerBrief = capturedInput?.userInput ?? '';
+    const hiddenGuidance = providerBrief.replace('Focus on the ninth mirror debt.', '').trim();
+    assert(response.success, 'continuation with rich hidden guidance should succeed');
+    assert(providerBrief.includes('Continuity Courtroom:'), 'budgeted guidance should retain the courtroom heading');
+    assert(providerBrief.includes('Pressure rising: Ninth Mirror Debt'), 'activated long thread should remain selected first');
+    assert(providerBrief.includes('Chapter Ending Stress Test:'), 'budgeted guidance should retain ending strategy');
+    assert(providerBrief.includes('Cliche Alarm:'), 'budgeted guidance should retain freshness guidance');
+    assert(hiddenGuidance.length <= 860, 'assembled hidden guidance should stay inside its documented budget');
+  });
+
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    let capturedInput: ClassicContinuationSeam['input'] | undefined;
+    const partialState = {
+      ...payload.state,
+      threads: [{
+        id: 'story-test-partial-thread',
+        label: 'Partial Oath',
+        status: 'active' as const
+      }],
+      characters: [
+        {
+          id: 'mira',
+          displayName: 'Mira',
+          archetype: 'protagonist',
+          summary: 'A diplomat with stale partial continuity.',
+          currentGoal: 'Protect the oath.',
+          internalConflict: '',
+          externalConflict: '',
+          secrets: [],
+          relationships: [{
+            characterId: 'lord-brine',
+            relationship: 'rival'
+          }],
+          spiceCompatibilities: [3]
+        },
+        {
+          id: 'lord-brine',
+          displayName: 'Lord Brine',
+          archetype: 'antagonist',
+          summary: 'A rival in a partial relationship edge.',
+          currentGoal: 'Collect the debt.',
+          internalConflict: '',
+          externalConflict: '',
+          secrets: [],
+          spiceCompatibilities: [3]
+        }
+      ],
+      continuityWarnings: [undefined, 'Carry the partial oath forward.']
+    } as unknown as StoryStateSnapshot;
+
+    const response = await continueStoryLab({
+      storyId: payload.summary.storyId,
+      chapterBatchSize: 1,
+      storyState: partialState,
+      previouslyGeneratedChapters: payload.batch.chapters,
+      continuationBrief: undefined,
+      existingSummary: payload.summary
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by partial continuity test');
+        },
+        continueChapter: async input => {
+          capturedInput = input;
+          return {
+            success: true,
+            data: {
+              chapterId: 'chapter-2',
+              chapterNumber: 2,
+              title: 'Partial Oath',
+              content: '<h3>Chapter 2: Partial Oath</h3><p>Mira protected the oath.</p>',
+              rawContent: '<p>[Mira]: "The oath remains."</p>',
+              wordCount: 8,
+              cliffhangerEnding: true,
+              themesContinued: ['forbidden_love'],
+              spicyLevelMaintained: 3,
+              appendedToStory: '<h3>Chapter 2: Partial Oath</h3><p>Mira protected the oath.</p>',
+              tropeMetadata: payload.summary.tropeMetadata,
+              chapters: [{
+                chapterId: 'chapter-2',
+                chapterNumber: 2,
+                title: 'Partial Oath',
+                content: '<h3>Chapter 2: Partial Oath</h3><p>Mira protected the oath.</p>',
+                rawContent: '<p>[Mira]: "The oath remains."</p>',
+                wordCount: 8,
+                generatedAt: new Date(),
+                hasAudio: false,
+                cliffhangerEnding: true
+              }],
+              totalWordCount: 8
+            }
+          };
+        }
+      })
+    });
+
+    const providerBrief = capturedInput?.userInput ?? '';
+    assert(response.success, 'partial continuity state should not break continuation guidance');
+    assert(providerBrief.includes('Partial Oath'), 'thread label should survive when description/devices are missing');
+    assert(providerBrief.includes('Mira and Lord Brine'), 'relationship pressure should tolerate missing optional notes');
+    assert(providerBrief.includes('Carry the partial oath forward.'), 'valid continuity warning should survive stale warning entries');
+    assert(!providerBrief.includes('undefined'), 'partial continuity state should not inject undefined into hidden guidance');
   });
 
   console.log('Story Lab real-engine mapping tests passed');

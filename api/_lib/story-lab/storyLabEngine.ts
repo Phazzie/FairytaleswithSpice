@@ -62,6 +62,11 @@ const CONTINUITY_COURTROOM_MAX_THREADS = 3;
 const CONTINUITY_COURTROOM_MAX_ARTIFACTS = 2;
 const CONTINUITY_COURTROOM_MAX_WARNINGS = 2;
 const CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH = 180;
+// Hidden anchors share one compact provider budget so guidance cannot crowd prior-chapter context.
+const CONTINUATION_HIDDEN_GUIDANCE_MAX_LENGTH = 860;
+const CONTINUITY_COURTROOM_MAX_SECTION_LENGTH = 420;
+const CHAPTER_ENDING_STRESS_TEST_MAX_SECTION_LENGTH = 320;
+const CLICHE_ALARM_MAX_SECTION_LENGTH = 300;
 const WORLD_ARTIFACT_MAX_NAME_WORDS = 4;
 type ChapterEndingPressureId = 'emotional_reveal' | 'danger_escalation' | 'secret_exposed';
 type ScenePressureLabel = 'Emotional' | 'Secret' | 'Deadline' | 'Social' | 'Setting';
@@ -382,11 +387,15 @@ export function buildStoryLabPayloadFromGeneratedStory(
 
 function withContinuationStrategyBrief(continuationBrief: string | undefined, storyState: StoryStateSnapshot): string | undefined {
   const trimmedBrief = continuationBrief?.trim();
-  return [
-    trimmedBrief,
+  const hiddenGuidance = joinGuidanceSectionsWithinBudget([
     buildContinuityCourtroomBrief(storyState, trimmedBrief),
     buildChapterEndingStressTestBrief(storyState, trimmedBrief),
     buildClicheAlarmBrief(storyState, trimmedBrief)
+  ], CONTINUATION_HIDDEN_GUIDANCE_MAX_LENGTH);
+
+  return [
+    trimmedBrief,
+    hiddenGuidance
   ]
     .filter((line): line is string => Boolean(line))
     .join('\n\n') || undefined;
@@ -406,6 +415,79 @@ function extractAnchorHeadings(hiddenGuidance: string): string[] {
     .map(line => line.trim())
     .filter(line => /^[A-Za-z][A-Za-z ]+:$/.test(line))
     .map(line => line.slice(0, -1));
+}
+
+function joinGuidanceSectionsWithinBudget(sections: Array<string | undefined>, maxLength: number): string | undefined {
+  const acceptedSections: string[] = [];
+  let usedLength = 0;
+
+  for (const section of sections) {
+    if (!section) {
+      continue;
+    }
+
+    const separatorLength = acceptedSections.length > 0 ? 2 : 0;
+    const remainingLength = maxLength - usedLength - separatorLength;
+    const trimmedSection = limitGuidanceSection(section.split('\n'), remainingLength);
+    if (!trimmedSection) {
+      continue;
+    }
+
+    acceptedSections.push(trimmedSection);
+    usedLength += separatorLength + trimmedSection.length;
+  }
+
+  return acceptedSections.join('\n\n') || undefined;
+}
+
+function limitGuidanceSection(lines: string[], maxLength: number): string | undefined {
+  const heading = lines[0]?.trim();
+  if (!heading || maxLength <= heading.length + 2) {
+    return undefined;
+  }
+
+  const selectedLines = [heading];
+  let usedLength = heading.length;
+
+  for (const line of lines.slice(1)) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) {
+      continue;
+    }
+
+    const remainingLength = maxLength - usedLength - 1;
+    if (remainingLength <= 0) {
+      break;
+    }
+
+    const nextLine = trimmedLine.length <= remainingLength
+      ? trimmedLine
+      : compactPromptLineToLength(trimmedLine, remainingLength);
+    if (!nextLine) {
+      break;
+    }
+
+    selectedLines.push(nextLine);
+    usedLength += 1 + nextLine.length;
+    if (nextLine !== trimmedLine) {
+      break;
+    }
+  }
+
+  return selectedLines.length > 1 ? selectedLines.join('\n') : undefined;
+}
+
+function compactPromptLineToLength(value: string, maxLength: number): string {
+  const compacted = collapseWhitespace(value).trim();
+  if (compacted.length <= maxLength) {
+    return compacted;
+  }
+
+  if (maxLength < 12) {
+    return '';
+  }
+
+  return `${compacted.slice(0, maxLength - 3).trim()}...`;
 }
 
 function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string | undefined {
@@ -432,10 +514,10 @@ function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuat
     return undefined;
   }
 
-  return [
+  return limitGuidanceSection([
     'Continuity Courtroom:',
     ...lines
-  ].join('\n');
+  ], CONTINUITY_COURTROOM_MAX_SECTION_LENGTH);
 }
 
 function buildContinuationContextSourceMap(
@@ -519,8 +601,8 @@ function selectScoredCourtroomThreads(storyState: StoryStateSnapshot, continuati
   index: number;
   activationScore: number;
 }> {
-  const source = normalizeActivationText(continuationBrief ?? '');
-  return storyState.threads
+  const source = normalizeActivationText(continuationBrief);
+  return getStateThreads(storyState)
     .filter(isUnresolvedThread)
     .map((thread, index) => ({
       thread,
@@ -540,8 +622,8 @@ function selectScoredCourtroomArtifacts(storyState: StoryStateSnapshot, continua
   index: number;
   activationScore: number;
 }> {
-  const source = normalizeActivationText(continuationBrief ?? '');
-  return storyState.artifacts
+  const source = normalizeActivationText(continuationBrief);
+  return getStateArtifacts(storyState)
     .filter(artifact => !artifact.resolvedInChapter)
     .map((artifact, index) => ({
       artifact,
@@ -558,9 +640,9 @@ function scoreThreadActivation(thread: PlotThread, source: string): number {
 
 function getThreadActivationCandidates(thread: PlotThread): string[] {
   return [
-    thread.label,
-    thread.description,
-    ...thread.foreshadowedDevices
+    safeString(thread.label),
+    safeString(thread.description),
+    ...getThreadForeshadowedDevices(thread)
   ];
 }
 
@@ -570,8 +652,8 @@ function scoreArtifactActivation(artifact: LoreArtifact, source: string): number
 
 function getArtifactActivationCandidates(artifact: LoreArtifact): string[] {
   return [
-    artifact.name,
-    artifact.significance
+    safeString(artifact.name),
+    safeString(artifact.significance)
   ];
 }
 
@@ -584,8 +666,8 @@ function selectScoredCourtroomWarnings(storyState: StoryStateSnapshot, continuat
   index: number;
   activationScore: number;
 }> {
-  const source = normalizeActivationText(continuationBrief ?? '');
-  return storyState.continuityWarnings
+  const source = normalizeActivationText(continuationBrief);
+  return getStateContinuityWarnings(storyState)
     .map((warning, index) => ({
       warning,
       index,
@@ -603,8 +685,8 @@ function getWarningActivationCandidates(warning: string): string[] {
   return [warning];
 }
 
-function normalizeActivationText(value: string): string {
-  return collapseWhitespace(value)
+function normalizeActivationText(value: unknown): string {
+  return collapseWhitespace(safeString(value))
     .toLowerCase()
     .replace(/[^a-z0-9 ]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -613,6 +695,54 @@ function normalizeActivationText(value: string): string {
 
 function isUnresolvedThread(thread: PlotThread): boolean {
   return thread.status !== 'resolved';
+}
+
+function getStateThreads(storyState: StoryStateSnapshot): PlotThread[] {
+  return Array.isArray((storyState as Partial<StoryStateSnapshot>).threads)
+    ? (storyState as Partial<StoryStateSnapshot>).threads as PlotThread[]
+    : [];
+}
+
+function getStateArtifacts(storyState: StoryStateSnapshot): LoreArtifact[] {
+  return Array.isArray((storyState as Partial<StoryStateSnapshot>).artifacts)
+    ? (storyState as Partial<StoryStateSnapshot>).artifacts as LoreArtifact[]
+    : [];
+}
+
+function getStateCharacters(storyState: StoryStateSnapshot): CharacterProfile[] {
+  return Array.isArray((storyState as Partial<StoryStateSnapshot>).characters)
+    ? (storyState as Partial<StoryStateSnapshot>).characters as CharacterProfile[]
+    : [];
+}
+
+function getStateContinuityWarnings(storyState: StoryStateSnapshot): string[] {
+  const warnings = (storyState as Partial<StoryStateSnapshot>).continuityWarnings;
+  return Array.isArray(warnings)
+    ? warnings.filter((warning): warning is string => typeof warning === 'string' && warning.trim().length > 0)
+    : [];
+}
+
+function getThreadForeshadowedDevices(thread: PlotThread): string[] {
+  const devices = (thread as Partial<PlotThread>).foreshadowedDevices;
+  return Array.isArray(devices)
+    ? devices.filter((device): device is string => typeof device === 'string' && device.trim().length > 0)
+    : [];
+}
+
+function getCharacterRelationships(character: CharacterProfile): CharacterProfile['relationships'] {
+  const relationships = (character as Partial<CharacterProfile>).relationships;
+  return Array.isArray(relationships)
+    ? relationships.filter((relationship): relationship is CharacterProfile['relationships'][number] =>
+        Boolean(relationship)
+        && typeof relationship === 'object'
+        && typeof relationship.characterId === 'string'
+        && typeof relationship.relationship === 'string'
+      )
+    : [];
+}
+
+function safeString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function formatThreadDebtLabel(thread: PlotThread): string {
@@ -637,12 +767,13 @@ function selectRelationshipPressure(
   storyState: StoryStateSnapshot,
   continuationBrief: string | undefined
 ): RelationshipPressureSelection | undefined {
-  const source = normalizeActivationText(continuationBrief ?? '');
+  const source = normalizeActivationText(continuationBrief);
   const candidates: RelationshipPressureSelection[] = [];
+  const characters = getStateCharacters(storyState);
 
-  for (const sourceCharacter of storyState.characters) {
-    for (const relationship of sourceCharacter.relationships) {
-      const targetCharacter = storyState.characters.find(candidate => candidate.id === relationship.characterId);
+  for (const sourceCharacter of characters) {
+    for (const relationship of getCharacterRelationships(sourceCharacter)) {
+      const targetCharacter = characters.find(candidate => candidate.id === relationship.characterId);
       if (targetCharacter) {
         candidates.push({
           sourceCharacter,
@@ -680,14 +811,14 @@ function getRelationshipActivationCandidates(
   relationship: CharacterProfile['relationships'][number]
 ): string[] {
   return [
-    sourceCharacter.displayName,
-    targetCharacter.displayName,
-    relationship.relationship,
-    relationship.notes
+    safeString(sourceCharacter.displayName),
+    safeString(targetCharacter.displayName),
+    safeString(relationship.relationship),
+    safeString(relationship.notes)
   ];
 }
 
-function scoreActivationCandidates(candidates: string[], source: string): number {
+function scoreActivationCandidates(candidates: unknown[], source: string): number {
   if (!source) {
     return 0;
   }
@@ -731,13 +862,13 @@ function extractAcceptedMemoryCardSection(continuationBrief = ''): string {
   return pinnedStart === -1 ? acceptedText : acceptedText.slice(0, pinnedStart);
 }
 
-function formatCourtroomDetail(value: string): string {
+function formatCourtroomDetail(value: unknown): string {
   const detail = compactPromptLine(value);
   return detail ? ` - ${detail}` : '';
 }
 
-function compactPromptLine(value: string): string {
-  const compacted = collapseWhitespace(value).trim();
+function compactPromptLine(value: unknown): string {
+  const compacted = collapseWhitespace(safeString(value)).trim();
   if (compacted.length <= CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH) {
     return compacted;
   }
@@ -747,18 +878,18 @@ function compactPromptLine(value: string): string {
 
 function buildChapterEndingStressTestBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
   const selectedPressure = chooseChapterEndingPressure(storyState, continuationBrief);
-  return [
+  return limitGuidanceSection([
     'Chapter Ending Stress Test:',
     `- Endings: ${CHAPTER_ENDING_PRESSURES.map(pressure => pressure.candidateLabel).join(', ')}.`,
     `- Chosen: ${selectedPressure.label} - ${selectedPressure.instruction}`,
     `- Scene pressure mix: ${chooseScenePressureMix(storyState, continuationBrief, selectedPressure)}.`,
     '- Answer one question; leave one sharper.'
-  ].join('\n');
+  ], CHAPTER_ENDING_STRESS_TEST_MAX_SECTION_LENGTH) ?? '';
 }
 
 function chooseChapterEndingPressure(storyState: StoryStateSnapshot, continuationBrief: string | undefined): ChapterEndingPressure {
-  const unresolvedThreads = storyState.threads.filter(isUnresolvedThread);
-  const unresolvedArtifacts = storyState.artifacts.filter(artifact => !artifact.resolvedInChapter);
+  const unresolvedThreads = getStateThreads(storyState).filter(isUnresolvedThread);
+  const unresolvedArtifacts = getStateArtifacts(storyState).filter(artifact => !artifact.resolvedInChapter);
   const pressureSource = buildContinuationPressureSource(storyState, continuationBrief);
   const scores: Record<ChapterEndingPressureId, number> = {
     emotional_reveal: 1,
@@ -782,7 +913,7 @@ function chooseChapterEndingPressure(storyState: StoryStateSnapshot, continuatio
     scores.secret_exposed += 3;
   }
 
-  if (unresolvedArtifacts.length > 0 || storyState.continuityWarnings.length > 0) {
+  if (unresolvedArtifacts.length > 0 || getStateContinuityWarnings(storyState).length > 0) {
     scores.secret_exposed += 2;
   }
 
@@ -804,12 +935,12 @@ function chooseScenePressureMix(
     secondaryCandidates.push('Deadline');
   }
 
-  if (storyState.artifacts.some(artifact => !artifact.resolvedInChapter)
+  if (getStateArtifacts(storyState).some(artifact => !artifact.resolvedInChapter)
     || containsAny(pressureSource, ['court', 'room', 'place', 'reef', 'shell', 'song', 'door', 'hall'])) {
     secondaryCandidates.push('Setting');
   }
 
-  if (storyState.characters.length > 1
+  if (getStateCharacters(storyState).length > 1
     || containsAny(pressureSource, ['family', 'crowd', 'witness', 'lord', 'queen', 'council'])) {
     secondaryCandidates.push('Social');
   }
@@ -861,23 +992,27 @@ function containsAny(value: string, needles: readonly string[]): boolean {
 }
 
 function buildContinuationPressureSource(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
-  const unresolvedThreads = storyState.threads.filter(isUnresolvedThread);
-  const unresolvedArtifacts = storyState.artifacts.filter(artifact => !artifact.resolvedInChapter);
+  const unresolvedThreads = getStateThreads(storyState).filter(isUnresolvedThread);
+  const unresolvedArtifacts = getStateArtifacts(storyState).filter(artifact => !artifact.resolvedInChapter);
   return [
     continuationBrief ?? '',
-    ...unresolvedThreads.flatMap(thread => [thread.label, thread.description, ...thread.foreshadowedDevices]),
-    ...unresolvedArtifacts.map(artifact => `${artifact.name} ${artifact.significance}`),
-    ...storyState.continuityWarnings
+    ...unresolvedThreads.flatMap(thread => [
+      safeString(thread.label),
+      safeString(thread.description),
+      ...getThreadForeshadowedDevices(thread)
+    ]),
+    ...unresolvedArtifacts.map(artifact => `${safeString(artifact.name)} ${safeString(artifact.significance)}`),
+    ...getStateContinuityWarnings(storyState)
   ].join(' ').toLowerCase();
 }
 
 function buildClicheAlarmBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
-  return [
+  return limitGuidanceSection([
     'Cliche Alarm:',
     `- Avoid: ${chooseClicheAlarmPath(storyState, continuationBrief)}`,
     `- Freshness: turn ${chooseFreshnessTarget(storyState)} with visible cost.`,
     `- Subtext receipt: prove ${chooseSubtextReceiptTarget(storyState, continuationBrief)} by behavior before explanation.`
-  ].join('\n');
+  ], CLICHE_ALARM_MAX_SECTION_LENGTH) ?? '';
 }
 
 function chooseClicheAlarmPath(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
@@ -898,14 +1033,15 @@ function chooseClicheAlarmPath(storyState: StoryStateSnapshot, continuationBrief
 }
 
 function chooseFreshnessTarget(storyState: StoryStateSnapshot): string {
-  const thread = storyState.threads.find(candidate => candidate.status === 'escalating')
-    ?? storyState.threads.find(candidate => candidate.status === 'active')
-    ?? storyState.threads.find(isUnresolvedThread);
+  const threads = getStateThreads(storyState);
+  const thread = threads.find(candidate => candidate.status === 'escalating')
+    ?? threads.find(candidate => candidate.status === 'active')
+    ?? threads.find(isUnresolvedThread);
   if (thread) {
     return compactPromptLine(thread.label);
   }
 
-  const artifact = storyState.artifacts.find(candidate => !candidate.resolvedInChapter);
+  const artifact = getStateArtifacts(storyState).find(candidate => !candidate.resolvedInChapter);
   if (artifact) {
     return compactPromptLine(artifact.name);
   }

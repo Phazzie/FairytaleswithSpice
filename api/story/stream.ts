@@ -9,11 +9,12 @@
 import { StoryService } from '../_lib/services/storyService';
 import { randomUUID } from 'node:crypto';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
-import { StoryGenerationSeam, StreamingStoryGenerationSeam } from '../_lib/types/contracts';
+import { StoryGenerationSeam, StreamingStoryGenerationSeam, VALIDATION_RULES } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 
 const storyService = new StoryService();
 const VALID_REQUESTED_CHAPTER_COUNTS = new Set([1, 2, 3]);
+const VALID_STREAMING_WORD_COUNTS = new Set<number>(VALIDATION_RULES.wordCount.allowedValues);
 
 /**
  * GET/POST /api/story/stream
@@ -72,14 +73,14 @@ export default async function handler(req: any, res: any) {
       input.spicyLevel < 1 ||
       input.spicyLevel > 5 ||
       !Number.isInteger(input.wordCount) ||
-      input.wordCount < 1
+      !VALID_STREAMING_WORD_COUNTS.has(input.wordCount)
     ) {
       logWarn('Invalid streaming input', { requestId, endpoint: '/api/story/stream' }, { receivedFields: input ? Object.keys(input) : [] });
       return res.status(400).json({
         success: false,
         error: { 
           code: 'INVALID_INPUT', 
-          message: 'Invalid or missing fields: creature, themes, spicyLevel, wordCount'
+          message: `Invalid or missing fields: creature, themes, spicyLevel, wordCount. wordCount must be one of ${VALIDATION_RULES.wordCount.allowedValues.join(', ')}.`
         }
       });
     }
