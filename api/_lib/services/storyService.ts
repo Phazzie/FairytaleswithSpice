@@ -46,6 +46,11 @@ interface GeneratedChaptersResult {
 
 const EXTRA_BATCH_CHAPTER_TIMEOUT_MS = 9000;
 const MOCK_CONTINUATION_TARGET_BODY_WORDS = 450;
+const STORY_LAB_THEME_SEED_LIMIT = 5;
+const STORY_LAB_THEME_LABEL_MAX_LENGTH = 80;
+const STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH = 280;
+const STORY_LAB_CONTEXT_VALUE_MAX_LENGTH = 320;
+const STORY_LAB_NO_GO_CONTENT_MAX_LENGTH = 220;
 
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
@@ -1221,14 +1226,18 @@ Plant your Chekhov elements naturally and ensure the moral dilemma occurs at mid
   }
 
   private formatThemeContext(input: StoryGenerationSeam['input']): string {
-    const themeSeeds = input.generationContext?.themeSeeds ?? [];
+    const themeSeeds = this.getSafeStoryLabThemeSeeds(input);
     if (themeSeeds.length > 0) {
       return themeSeeds
         .map(theme => `${theme.label} (${theme.description})`)
         .join('; ');
     }
 
-    return input.themes.join(', ');
+    const themes = Array.isArray(input.themes)
+      ? input.themes.filter(theme => typeof theme === 'string' && theme.trim().length > 0)
+      : [];
+
+    return themes.join(', ');
   }
 
   private formatStoryLabContext(input: StoryGenerationSeam['input']): string {
@@ -1242,40 +1251,83 @@ Plant your Chekhov elements naturally and ensure the moral dilemma occurs at mid
       'STORY LAB BLUEPRINT - FIRST-CLASS CREATIVE CONSTRAINTS:'
     ];
 
-    if (context.logline) {
-      lines.push(`- Logline: ${context.logline}`);
+    const logline = this.limitStoryLabPromptText(context.logline, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    if (logline) {
+      lines.push(`- Logline: ${logline}`);
     }
-    if (context.tone) {
-      lines.push(`- Narrative tone: ${context.tone.split('_').join(' ')}`);
+    const tone = this.limitStoryLabPromptText(context.tone, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    if (tone) {
+      lines.push(`- Narrative tone: ${tone.split('_').join(' ')}`);
     }
-    if (context.protagonistName) {
-      lines.push(`- Protagonist name: ${context.protagonistName}`);
+    const protagonistName = this.limitStoryLabPromptText(context.protagonistName, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    if (protagonistName) {
+      lines.push(`- Protagonist name: ${protagonistName}`);
     }
-    if (context.antagonistName) {
-      lines.push(`- Antagonist name or opposing force: ${context.antagonistName}`);
+    const antagonistName = this.limitStoryLabPromptText(context.antagonistName, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    if (antagonistName) {
+      lines.push(`- Antagonist name or opposing force: ${antagonistName}`);
     }
-    if (context.worldDetails) {
-      lines.push(`- World details: ${context.worldDetails}`);
+    const worldDetails = this.limitStoryLabPromptText(context.worldDetails, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    if (worldDetails) {
+      lines.push(`- World details: ${worldDetails}`);
     }
-    if (context.narrativeDirectives) {
-      lines.push(`- Narrative directives: ${context.narrativeDirectives}`);
+    const narrativeDirectives = this.limitStoryLabPromptText(context.narrativeDirectives, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    if (narrativeDirectives) {
+      lines.push(`- Narrative directives: ${narrativeDirectives}`);
     }
     if (context.heatContract) {
       lines.push(`- Heat contract: adult readers only confirmed; tension mode ${this.formatHeatContractLabel(context.heatContract.tensionMode)}; boundary ${this.formatHeatContractLabel(context.heatContract.intimacyBoundary)}.`);
-      if (context.heatContract.noGoContent?.trim()) {
-        lines.push(`- No-go content: ${context.heatContract.noGoContent.trim()}`);
+      const noGoContent = this.limitStoryLabPromptText(context.heatContract.noGoContent, STORY_LAB_NO_GO_CONTENT_MAX_LENGTH);
+      if (noGoContent) {
+        lines.push(`- No-go content: ${noGoContent}`);
       }
       lines.push('- Keep intimate material consensual and do not exceed the Heat Contract boundary.');
     }
-    if (context.themeSeeds?.length) {
+    const themeSeeds = this.getSafeStoryLabThemeSeeds(input);
+    if (themeSeeds.length) {
       lines.push('- Theme seed intent:');
-      for (const theme of context.themeSeeds) {
+      for (const theme of themeSeeds) {
         lines.push(`  * ${theme.label}: ${theme.description}`);
       }
     }
 
     lines.push('- Treat these blueprint fields as binding story intent, not as optional flavor.');
     return lines.join('\n');
+  }
+
+  private getSafeStoryLabThemeSeeds(input: StoryGenerationSeam['input']): Array<{ label: string; description: string }> {
+    const rawSeeds: unknown[] = Array.isArray(input.generationContext?.themeSeeds)
+      ? input.generationContext.themeSeeds
+      : [];
+
+    return rawSeeds
+      .map(seed => {
+        if (!seed || typeof seed !== 'object') {
+          return null;
+        }
+
+        const candidate = seed as { label?: unknown; description?: unknown };
+        const label = this.limitStoryLabPromptText(candidate.label, STORY_LAB_THEME_LABEL_MAX_LENGTH);
+        const description = this.limitStoryLabPromptText(candidate.description, STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH);
+        return label && description ? { label, description } : null;
+      })
+      .filter((seed): seed is { label: string; description: string } => Boolean(seed))
+      .slice(0, STORY_LAB_THEME_SEED_LIMIT);
+  }
+
+  private limitStoryLabPromptText(value: unknown, maxLength: number): string | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const compacted = value.trim().replace(/\s+/g, ' ');
+    if (!compacted) {
+      return undefined;
+    }
+
+    return compacted.length > maxLength
+      ? compacted.slice(0, maxLength).trim()
+      : compacted;
   }
 
   private formatHeatContractLabel(value: string): string {

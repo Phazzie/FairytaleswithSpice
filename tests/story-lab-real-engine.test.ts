@@ -222,6 +222,25 @@ assert(payload.state.artifacts.every(artifact => artifact.lifetime === 'series')
 assert(payload.telemetry.engine === 'grok', 'real StoryService mapping should report grok telemetry');
 assert(payload.telemetry.totalLatencyMs === 2000, 'real StoryService latency metadata should reach Story Lab telemetry');
 
+const payloadWithoutRawChapterContent = buildStoryLabPayloadFromGeneratedStory(blueprint, {
+  ...classicStory,
+  storyId: 'story-test-without-raw-content',
+  chapters: [{
+    ...classicStory.chapters[0],
+    rawContent: undefined,
+    content: '<p>Mira chose the visible chapter text.</p>'
+  }]
+}, {
+  requestId: 'req-test',
+  processingTime: 2000,
+  chaptersRequested: 1,
+  chaptersGenerated: 1
+});
+assert(
+  payloadWithoutRawChapterContent.batch.chapters[0].rawContent === '<p>Mira chose the visible chapter text.</p>',
+  'Story Lab chapters should fall back to htmlContent when rawContent is missing'
+);
+
 withEnv({ XAI_API_KEY: undefined, STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, () => {
   assert(shouldUseMockStoryLab(), 'missing provider key should use mock Story Lab fallback outside production');
 });
@@ -287,7 +306,8 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
           success: false,
           error: {
             code: 'UPSTREAM_DOWN',
-            message: 'Provider was configured but unavailable.'
+            message: 'Provider was configured but unavailable.',
+            details: { providerStack: 'private upstream detail' }
           }
         }),
         continueChapter: async () => {
@@ -299,6 +319,7 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(!response.success, 'configured provider failure should return an error');
     assert(response.error.code === 'UPSTREAM_DOWN', 'provider error code should be preserved');
     assert(response.error.message.includes('configured'), 'provider error message should be preserved');
+    assert(!('details' in response.error), 'Story Lab generation errors should not expose provider details');
   });
 
   await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
@@ -366,6 +387,35 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
 
     assert(!response.success, 'production continuation missing provider key should fail closed');
     assert(response.error.code === 'AI_UNAVAILABLE', 'production continuation missing provider key should use AI_UNAVAILABLE');
+  });
+
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    const response = await continueStoryLab({
+      storyId: payload.summary.storyId,
+      chapterBatchSize: 1,
+      storyState: payload.state,
+      previouslyGeneratedChapters: payload.batch.chapters,
+      continuationBrief: 'Raise the danger.',
+      existingSummary: payload.summary
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by continuation failure test');
+        },
+        continueChapter: async () => ({
+          success: false,
+          error: {
+            code: 'CONTINUATION_UPSTREAM_DOWN',
+            message: 'Continuation provider unavailable.',
+            details: { providerStack: 'private continuation detail' }
+          }
+        })
+      })
+    });
+
+    assert(!response.success, 'configured continuation provider failure should return an error');
+    assert(response.error.code === 'CONTINUATION_UPSTREAM_DOWN', 'continuation provider error code should be preserved');
+    assert(!('details' in response.error), 'Story Lab continuation errors should not expose provider details');
   });
 
   await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {

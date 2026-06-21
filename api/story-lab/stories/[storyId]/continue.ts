@@ -2,6 +2,7 @@
 
 import type { ApiResponse, StoryContinuationSeam, StoryIterationPayload } from '../../../_lib/story-lab/contracts';
 import { applyCorsPolicy } from '../../../_lib/http/corsPolicy';
+import { getStoryLabResponseStatus } from '../../../_lib/story-lab/routeStatus';
 import { continueStoryLab } from '../../../_lib/story-lab/storyLabEngine';
 import { getTransientStorySnapshot } from '../../../_lib/story-lab/stateStore';
 
@@ -72,5 +73,5 @@ export default async function handler(req: any, res: any) {
 
   const payload: ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }> =
     await continueStoryLab(normalizedInput);
-  res.status(200).json(payload);
+  res.status(getStoryLabResponseStatus(payload)).json(payload);
 }
