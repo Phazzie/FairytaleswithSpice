@@ -369,16 +369,16 @@ function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
 
   const userId = candidate.userId;
   const displayName = candidate.displayName;
-  const createdAt = candidate.createdAt;
-  const updatedAt = candidate.updatedAt;
+  const createdAt = readOptionalString(candidate.createdAt);
+  const updatedAt = readOptionalString(candidate.updatedAt);
   if (
     typeof userId !== 'string' ||
     !userId.trim() ||
     typeof displayName !== 'string' ||
     !displayName.trim() ||
     !isObjectRecord(candidate.preferences) ||
-    typeof createdAt !== 'string' ||
-    typeof updatedAt !== 'string'
+    createdAt === null ||
+    updatedAt === null
   ) {
     return null;
   }
@@ -387,8 +387,8 @@ function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
     userId,
     displayName,
     preferences: normalizeStoryLabProfilePreferences(candidate.preferences),
-    createdAt,
-    updatedAt
+    createdAt: createdAt ?? '',
+    updatedAt: updatedAt ?? ''
   };
 }
 
@@ -403,13 +403,16 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
   }
 
   const projectId = normalizeProjectId(candidate.id);
+  const synopsis = readOptionalString(candidate.synopsis);
+  const createdAt = readOptionalString(candidate.createdAt);
+  const updatedAt = readOptionalString(candidate.updatedAt);
   if (
     !projectId ||
     !isNonBlankString(candidate.storyId) ||
     !isNonBlankString(candidate.title) ||
-    !isNonBlankString(candidate.synopsis) ||
-    !isNonBlankString(candidate.createdAt) ||
-    !isNonBlankString(candidate.updatedAt) ||
+    synopsis === null ||
+    createdAt === null ||
+    updatedAt === null ||
     !isObjectRecord(candidate.summary) ||
     !isObjectRecord(candidate.state) ||
     !isObjectRecord(candidate.blueprint) ||
@@ -422,7 +425,7 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
     id: projectId,
     storyId: candidate.storyId,
     title: candidate.title,
-    synopsis: candidate.synopsis,
+    synopsis: synopsis ?? '',
     blueprint: candidate.blueprint as unknown as SavedStoryProject['blueprint'],
     summary: candidate.summary as unknown as SavedStoryProject['summary'],
     state: candidate.state as unknown as SavedStoryProject['state'],
@@ -431,8 +434,8 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
     continuityExtraction: candidate.continuityExtraction as SavedStoryProject['continuityExtraction'],
     pinnedMemoryCardDraftIds: candidate.pinnedMemoryCardDraftIds as SavedStoryProject['pinnedMemoryCardDraftIds'],
     acceptedMemoryCards: candidate.acceptedMemoryCards as SavedStoryProject['acceptedMemoryCards'],
-    createdAt: candidate.createdAt,
-    updatedAt: candidate.updatedAt
+    createdAt: createdAt ?? '',
+    updatedAt: updatedAt ?? ''
   };
 }
 
@@ -446,6 +449,14 @@ function readWrappedOrBareBodyRecord(body: Record<string, unknown>, key: string)
 
 function isNonBlankString(value: unknown): value is string {
   return typeof value === 'string' && Boolean(value.trim());
+}
+
+function readOptionalString(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return typeof value === 'string' ? value : null;
 }
 
 function normalizeProjectId(projectId: unknown): string | null {

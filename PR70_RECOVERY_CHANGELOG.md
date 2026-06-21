@@ -2944,6 +2944,7 @@ Actions:
 - Reworked profile/project body parsing to use explicit record helpers instead of broad final return casts.
 - Added regression coverage that malformed `profile` or `project` wrapper bodies are rejected instead of falling back to outer fields.
 - Follow-up review pass: asserted the `INVALID_REQUEST` error code for malformed wrapper regressions, renamed the wrapped-or-bare body helper to make direct body compatibility explicit, and replaced per-character dollar-quote substring matching with an in-place tag parser.
+- Gemini follow-up: restored optional wire compatibility for profile timestamps and project synopsis/timestamps while still rejecting malformed provided values, with regression coverage for missing optional fields and numeric malformed values.
 
 Self-review:
 
@@ -2951,6 +2952,7 @@ Self-review:
 - Problem found: a generic review issue asked for a Neon API change that contradicts the locked package type surface; future review triage should verify provider API claims against the installed package before opening defect issues.
 - Problem found: `npm run install:all` modifies tracked `node_modules` in this repository; install artifacts must be restored before source diffs are reviewed or committed.
 - Problem found: the first wrapper regression tests asserted only HTTP status; review was right that route tests should assert the typed API error contract too.
+- Problem found: the first typed-parser cleanup made optional wire fields mandatory; the route parser now lets store normalization fill omitted values while rejecting malformed values.
 
 Validation:
 

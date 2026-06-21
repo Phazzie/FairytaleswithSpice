@@ -79,9 +79,11 @@ async function main() {
   await testDisallowedCorsOriginFailsClosed();
   await testProfileReadWriteUsesAuthenticatedOwner();
   await testProfileCrossOwnerSaveIsForbidden();
+  await testProfileSaveAllowsMissingOptionalTimestamps();
   await testMalformedProfileBodyFailsClosed();
   await testProjectSaveListLoadDeleteUsesAuthenticatedOwner();
   await testProjectCrossOwnerReadIsForbidden();
+  await testProjectSaveAllowsMissingOptionalMetadata();
   await testMissingStorageConfigFailsClosed();
   await testMalformedProjectIdFailsClosed();
   await testInvalidProjectIdsFailClosedBeforeStoreAccess();
@@ -193,6 +195,24 @@ async function testProfileCrossOwnerSaveIsForbidden() {
   assert(!body.error.message.includes(owner.email ?? ''), 'cross-owner profile error should not leak owner email');
 }
 
+async function testProfileSaveAllowsMissingOptionalTimestamps() {
+  const handler = createTestHandler(owner);
+  const profile = createDefaultStoryLabUserProfile(owner, {
+    displayName: 'Avery',
+    now
+  }) as Partial<ReturnType<typeof createDefaultStoryLabUserProfile>>;
+  delete profile.createdAt;
+  delete profile.updatedAt;
+
+  const response = new FakeResponse();
+  await handler(createRequest('PUT', 'profile', { profile }), response);
+
+  assert(response.statusCode === 200, 'profile save without timestamps should still return 200');
+  const body = response.body as any;
+  assert(body.data.createdAt === now, 'profile save should fill missing createdAt through store normalization');
+  assert(body.data.updatedAt === now, 'profile save should fill missing updatedAt through store normalization');
+}
+
 async function testMalformedProfileBodyFailsClosed() {
   const handler = createTestHandler(owner);
   const response = new FakeResponse();
@@ -220,6 +240,21 @@ async function testMalformedProfileBodyFailsClosed() {
   assert(
     (malformedWrapperResponse.body as any).error.code === 'INVALID_REQUEST',
     'malformed profile wrapper should use invalid request code'
+  );
+
+  const malformedTimestampResponse = new FakeResponse();
+  await handler(createRequest('PUT', 'profile', {
+    profile: {
+      userId: owner.userId,
+      displayName: 'Avery',
+      preferences: {},
+      createdAt: 42
+    }
+  }), malformedTimestampResponse);
+  assert(malformedTimestampResponse.statusCode === 400, 'profile save with malformed timestamp should return 400');
+  assert(
+    (malformedTimestampResponse.body as any).error.code === 'INVALID_REQUEST',
+    'malformed profile timestamp should use invalid request code'
   );
 }
 
@@ -295,6 +330,27 @@ async function testProjectCrossOwnerReadIsForbidden() {
   const body = otherLoadResponse.body as any;
   assert(body.error.code === 'STORY_LAB_PROJECT_FORBIDDEN', 'cross-owner project read should be forbidden');
   assert(!body.error.message.includes(privateStoryText), 'cross-owner project error should not leak private story text');
+}
+
+async function testProjectSaveAllowsMissingOptionalMetadata() {
+  const handler = createTestHandler(owner);
+  const project = createProject() as Partial<SavedStoryProject>;
+  project.id = 'project-account-no-optional-metadata';
+  delete project.synopsis;
+  delete project.createdAt;
+  delete project.updatedAt;
+
+  const saveResponse = new FakeResponse();
+  await handler(createRequest('POST', 'projects', { project }), saveResponse);
+  assert(saveResponse.statusCode === 200, 'project save without optional metadata should return 200');
+
+  const loadResponse = new FakeResponse();
+  await handler(createRequest('GET', 'project', undefined, 'project-account-no-optional-metadata'), loadResponse);
+  assert(loadResponse.statusCode === 200, 'project without optional metadata should remain loadable');
+  const loadBody = loadResponse.body as any;
+  assert(loadBody.data.project.createdAt === now, 'project save should fill missing createdAt through store normalization');
+  assert(loadBody.data.project.updatedAt === now, 'project save should fill missing updatedAt through store normalization');
+  assert(loadBody.data.project.synopsis === 'A private oath in a haunted chapel.', 'project save should derive missing synopsis from summary');
 }
 
 async function testMissingStorageConfigFailsClosed() {
@@ -400,6 +456,19 @@ async function testInvalidProjectBodyFailsClosedBeforeStoreAccess() {
   assert(
     (arrayShapeResponse.body as any).error.code === 'INVALID_REQUEST',
     'project save with array-shaped internals should use invalid request code'
+  );
+
+  const malformedOptionalStringResponse = new FakeResponse();
+  await handler(createRequest('POST', 'projects', {
+    project: {
+      ...createProject(),
+      synopsis: 42
+    }
+  }), malformedOptionalStringResponse);
+  assert(malformedOptionalStringResponse.statusCode === 400, 'project save with malformed synopsis should return 400');
+  assert(
+    (malformedOptionalStringResponse.body as any).error.code === 'INVALID_REQUEST',
+    'malformed project synopsis should use invalid request code'
   );
 
   const malformedWrapperResponse = new FakeResponse();

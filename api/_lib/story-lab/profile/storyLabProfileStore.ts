@@ -117,7 +117,7 @@ export function normalizeStoryLabUserProfile(
     userId: user.userId,
     displayName: profile.displayName || 'Story Lab Writer',
     preferences: normalizeStoryLabProfilePreferences(profile.preferences),
-    createdAt: existingCreatedAt ?? profile.createdAt ?? now,
+    createdAt: (existingCreatedAt ?? profile.createdAt) || now,
     updatedAt: now
   };
 }
