@@ -13,48 +13,36 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 function compactCss(source: string): string {
+  return compactCssWhitespace(stripCssComments(source)).trim();
+}
+
+function stripCssComments(source: string): string {
+  let stripped = '';
+  let cursor = 0;
+
+  while (cursor < source.length) {
+    const commentStart = source.indexOf('/*', cursor);
+    if (commentStart === -1) {
+      return stripped + source.slice(cursor);
+    }
+
+    stripped += source.slice(cursor, commentStart);
+    const commentEnd = source.indexOf('*/', commentStart + 2);
+    if (commentEnd === -1) {
+      return stripped;
+    }
+
+    cursor = commentEnd + 2;
+  }
+
+  return stripped;
+}
+
+function compactCssWhitespace(source: string): string {
   let compacted = '';
-  let lastCompactedChar = '';
-  let pendingSlash = false;
-  let insideComment = false;
-  let commentMayEnd = false;
   let previousWasWhitespace = false;
 
   for (const current of source) {
-    if (insideComment) {
-      if (commentMayEnd && current === '/') {
-        insideComment = false;
-        commentMayEnd = false;
-        continue;
-      }
-
-      commentMayEnd = current === '*';
-      continue;
-    }
-
-    if (pendingSlash) {
-      if (current === '*') {
-        insideComment = true;
-        pendingSlash = false;
-        commentMayEnd = false;
-        continue;
-      }
-
-      if (previousWasWhitespace && lastCompactedChar && !isCssSeparator(lastCompactedChar)) {
-        compacted += ' ';
-        lastCompactedChar = ' ';
-      }
-      compacted += '/';
-      lastCompactedChar = '/';
-      pendingSlash = false;
-      previousWasWhitespace = false;
-    }
-
-    if (current === '/') {
-      pendingSlash = true;
-      continue;
-    }
-
     if (isCssWhitespace(current)) {
       previousWasWhitespace = compacted.length > 0;
       continue;
@@ -62,25 +50,23 @@ function compactCss(source: string): string {
 
     if (isCssSeparator(current)) {
       compacted = compacted.trimEnd() + current;
-      lastCompactedChar = current;
       previousWasWhitespace = false;
       continue;
     }
 
-    if (previousWasWhitespace && lastCompactedChar && !isCssSeparator(lastCompactedChar)) {
+    if (shouldPreserveCssWhitespace(previousWasWhitespace, compacted)) {
       compacted += ' ';
-      lastCompactedChar = ' ';
     }
     compacted += current;
-    lastCompactedChar = current;
     previousWasWhitespace = false;
   }
 
-  if (pendingSlash) {
-    compacted += '/';
-  }
+  return compacted;
+}
 
-  return compacted.trim();
+function shouldPreserveCssWhitespace(previousWasWhitespace: boolean, compacted: string): boolean {
+  const previous = compacted.at(-1) ?? '';
+  return previousWasWhitespace && previous.length > 0 && !isCssSeparator(previous);
 }
 
 function isCssWhitespace(value: string): boolean {
