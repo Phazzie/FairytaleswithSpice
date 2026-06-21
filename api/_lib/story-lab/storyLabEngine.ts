@@ -38,7 +38,66 @@ interface StoryLabEngineOptions {
   serviceFactory?: () => StoryServiceLike;
 }
 
+export interface StoryLabContinuationGuidancePreview {
+  originalBrief: string;
+  providerBrief: string;
+  hiddenGuidance: string;
+  anchorHeadings: string[];
+  contextSourceMap: StoryLabContinuationSourceMapEntry[];
+  characterCount: number;
+}
+
+type StoryLabContinuationSourceKind = 'thread' | 'relationship' | 'artifact' | 'warning';
+
+export interface StoryLabContinuationSourceMapEntry {
+  kind: StoryLabContinuationSourceKind;
+  label: string;
+  anchorLabel: string;
+  reason: string;
+  activationScore: number;
+}
+
 const MOCK_FLAG_VALUES = new Set(['1', 'true', 'yes']);
+const CONTINUITY_COURTROOM_MAX_THREADS = 3;
+const CONTINUITY_COURTROOM_MAX_ARTIFACTS = 2;
+const CONTINUITY_COURTROOM_MAX_WARNINGS = 2;
+const CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH = 180;
+const WORLD_ARTIFACT_MAX_NAME_WORDS = 4;
+type ChapterEndingPressureId = 'emotional_reveal' | 'danger_escalation' | 'secret_exposed';
+type ScenePressureLabel = 'Emotional' | 'Secret' | 'Deadline' | 'Social' | 'Setting';
+interface ChapterEndingPressure {
+  id: ChapterEndingPressureId;
+  label: string;
+  candidateLabel: string;
+  instruction: string;
+}
+const CHAPTER_ENDING_PRESSURES: readonly ChapterEndingPressure[] = [
+  {
+    id: 'emotional_reveal',
+    label: 'Emotional reveal',
+    candidateLabel: 'emotional reveal',
+    instruction: 'end on a private truth the characters cannot comfortably take back.'
+  },
+  {
+    id: 'danger_escalation',
+    label: 'Danger escalation',
+    candidateLabel: 'danger escalation',
+    instruction: 'end with the outside threat entering the scene in a way that forces motion.'
+  },
+  {
+    id: 'secret_exposed',
+    label: 'Secret exposed',
+    candidateLabel: 'secret exposed',
+    instruction: 'expose a secret that changes the next chapter.'
+  }
+];
+const SCENE_PRESSURE_VARIANTS: Record<ScenePressureLabel, readonly string[]> = {
+  Emotional: ['private truth costs status', 'want changes the bargain', 'affection becomes leverage'],
+  Secret: ['truth changes leverage', 'hidden motive costs safety', 'named lie changes power'],
+  Deadline: ['clock forces choice', 'delay costs safety', 'time makes refusal visible'],
+  Social: ['witnesses make retreat costly', 'status turns into pressure', 'audience changes the bargain'],
+  Setting: ['place enforces cost', 'room becomes leverage', 'world rule tightens']
+};
 const CLASSIC_THEME_TYPES: readonly ThemeType[] = [
   'betrayal',
   'obsession',
@@ -65,6 +124,23 @@ const DEFAULT_CLASSIC_THEME: ThemeType = 'forbidden_love';
 export function shouldUseMockStoryLab(): boolean {
   const forceMock = process.env['STORY_LAB_FORCE_MOCK'] ?? '';
   return !isProductionRuntime() && (MOCK_FLAG_VALUES.has(forceMock.toLowerCase()) || !process.env['XAI_API_KEY']);
+}
+
+export function previewStoryLabContinuationGuidance(input: {
+  continuationBrief?: string;
+  storyState: StoryStateSnapshot;
+}): StoryLabContinuationGuidancePreview {
+  const originalBrief = input.continuationBrief?.trim() ?? '';
+  const providerBrief = withContinuationStrategyBrief(input.continuationBrief, input.storyState) ?? originalBrief;
+  const hiddenGuidance = extractHiddenContinuationGuidance(providerBrief, originalBrief);
+  return {
+    originalBrief,
+    providerBrief,
+    hiddenGuidance,
+    anchorHeadings: extractAnchorHeadings(hiddenGuidance),
+    contextSourceMap: buildContinuationContextSourceMap(input.storyState, originalBrief),
+    characterCount: providerBrief.length
+  };
 }
 
 function isProductionRuntime(): boolean {
@@ -224,11 +300,12 @@ export async function continueStoryLab(
   const service = options.serviceFactory?.() ?? new StoryService();
   const currentChapterCount = Math.max(...previousChapters.map(chapter => chapter.chapterNumber));
   const existingContent = previousChapters.map(chapter => chapter.rawContent || chapter.htmlContent).join('\n\n');
+  const continuationBrief = withContinuationStrategyBrief(input.continuationBrief, storyState);
   const result = await service.continueChapter({
     storyId: input.storyId,
     currentChapterCount,
     existingContent,
-    userInput: input.continuationBrief,
+    userInput: continuationBrief,
     maintainTone: true,
     tropeMetadata: existingSummary?.tropeMetadata,
     requestedChapterCount: input.chapterBatchSize,
@@ -301,6 +378,538 @@ export function buildStoryLabPayloadFromGeneratedStory(
     stateDelta: buildStateDelta(story.storyId, null, state, chapters),
     telemetry: buildGrokTelemetry(metadata, chapters.length)
   };
+}
+
+function withContinuationStrategyBrief(continuationBrief: string | undefined, storyState: StoryStateSnapshot): string | undefined {
+  const trimmedBrief = continuationBrief?.trim();
+  return [
+    trimmedBrief,
+    buildContinuityCourtroomBrief(storyState, trimmedBrief),
+    buildChapterEndingStressTestBrief(storyState, trimmedBrief),
+    buildClicheAlarmBrief(storyState, trimmedBrief)
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join('\n\n') || undefined;
+}
+
+function extractHiddenContinuationGuidance(providerBrief: string, originalBrief: string): string {
+  if (!originalBrief || !providerBrief.startsWith(originalBrief)) {
+    return providerBrief.trim();
+  }
+
+  return providerBrief.slice(originalBrief.length).trim();
+}
+
+function extractAnchorHeadings(hiddenGuidance: string): string[] {
+  return hiddenGuidance
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => /^[A-Za-z][A-Za-z ]+:$/.test(line))
+    .map(line => line.slice(0, -1));
+}
+
+function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string | undefined {
+  const lines: string[] = [];
+
+  for (const thread of selectCourtroomThreads(storyState, continuationBrief)) {
+    lines.push(`- ${formatThreadDebtLabel(thread)}: ${compactPromptLine(thread.label)}${formatCourtroomDetail(thread.description)}`);
+  }
+
+  const relationshipPressure = selectRelationshipPressure(storyState, continuationBrief);
+  if (relationshipPressure) {
+    lines.push(formatRelationshipPressureLine(relationshipPressure));
+  }
+
+  for (const artifact of selectCourtroomArtifacts(storyState, continuationBrief)) {
+    lines.push(`- World clue: ${compactPromptLine(artifact.name)}${formatCourtroomDetail(artifact.significance)}`);
+  }
+
+  for (const warning of selectCourtroomWarnings(storyState, continuationBrief)) {
+    lines.push(`- Continuity note: ${compactPromptLine(warning)}`);
+  }
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  return [
+    'Continuity Courtroom:',
+    ...lines
+  ].join('\n');
+}
+
+function buildContinuationContextSourceMap(
+  storyState: StoryStateSnapshot,
+  continuationBrief: string | undefined
+): StoryLabContinuationSourceMapEntry[] {
+  const entries: StoryLabContinuationSourceMapEntry[] = [];
+
+  for (const item of selectScoredCourtroomThreads(storyState, continuationBrief)) {
+    entries.push({
+      kind: 'thread',
+      label: item.thread.label,
+      anchorLabel: formatThreadDebtLabel(item.thread),
+      reason: formatActivationReason(item.activationScore),
+      activationScore: item.activationScore
+    });
+  }
+
+  const relationshipPressure = selectRelationshipPressure(storyState, continuationBrief);
+  if (relationshipPressure) {
+    entries.push({
+      kind: 'relationship',
+      label: `${relationshipPressure.sourceCharacter.displayName} and ${relationshipPressure.targetCharacter.displayName}`,
+      anchorLabel: 'Relationship pressure',
+      reason: formatActivationReason(relationshipPressure.activationScore),
+      activationScore: relationshipPressure.activationScore
+    });
+  }
+
+  for (const item of selectScoredCourtroomArtifacts(storyState, continuationBrief)) {
+    entries.push({
+      kind: 'artifact',
+      label: item.artifact.name,
+      anchorLabel: 'World clue',
+      reason: formatActivationReason(item.activationScore),
+      activationScore: item.activationScore
+    });
+  }
+
+  for (const item of selectScoredCourtroomWarnings(storyState, continuationBrief)) {
+    entries.push({
+      kind: 'warning',
+      label: item.warning,
+      anchorLabel: 'Continuity note',
+      reason: formatActivationReason(item.activationScore),
+      activationScore: item.activationScore
+    });
+  }
+
+  return entries;
+}
+
+function formatActivationReason(activationScore: number): string {
+  return activationScore > 0
+    ? 'Matched words from the continuation brief.'
+    : 'Included by unresolved-story priority.';
+}
+
+function selectCourtroomThreads(storyState: StoryStateSnapshot, continuationBrief: string | undefined): PlotThread[] {
+  return selectScoredCourtroomThreads(storyState, continuationBrief).map(item => item.thread);
+}
+
+function selectScoredCourtroomThreads(storyState: StoryStateSnapshot, continuationBrief: string | undefined): Array<{
+  thread: PlotThread;
+  index: number;
+  activationScore: number;
+}> {
+  const source = normalizeActivationText(continuationBrief ?? '');
+  return storyState.threads
+    .filter(isUnresolvedThread)
+    .map((thread, index) => ({
+      thread,
+      index,
+      activationScore: scoreThreadActivation(thread, source)
+    }))
+    .sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))
+    .slice(0, CONTINUITY_COURTROOM_MAX_THREADS);
+}
+
+function selectCourtroomArtifacts(storyState: StoryStateSnapshot, continuationBrief: string | undefined): LoreArtifact[] {
+  return selectScoredCourtroomArtifacts(storyState, continuationBrief).map(item => item.artifact);
+}
+
+function selectScoredCourtroomArtifacts(storyState: StoryStateSnapshot, continuationBrief: string | undefined): Array<{
+  artifact: LoreArtifact;
+  index: number;
+  activationScore: number;
+}> {
+  const source = normalizeActivationText(continuationBrief ?? '');
+  return storyState.artifacts
+    .filter(artifact => !artifact.resolvedInChapter)
+    .map((artifact, index) => ({
+      artifact,
+      index,
+      activationScore: scoreArtifactActivation(artifact, source)
+    }))
+    .sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))
+    .slice(0, CONTINUITY_COURTROOM_MAX_ARTIFACTS);
+}
+
+function scoreThreadActivation(thread: PlotThread, source: string): number {
+  if (!source) {
+    return 0;
+  }
+
+  const candidates = [
+    thread.label,
+    thread.description,
+    ...thread.foreshadowedDevices
+  ].map(normalizeActivationText).filter(Boolean);
+  let score = 0;
+
+  for (const candidate of candidates) {
+    if (source.includes(candidate)) {
+      score += 6;
+    }
+
+    for (const token of candidate.split(' ').filter(value => value.length > 3)) {
+      if (source.includes(token)) {
+        score += 1;
+      }
+    }
+  }
+
+  return score;
+}
+
+function scoreArtifactActivation(artifact: LoreArtifact, source: string): number {
+  if (!source) {
+    return 0;
+  }
+
+  const candidates = [
+    artifact.name,
+    artifact.significance
+  ].map(normalizeActivationText).filter(Boolean);
+  let score = 0;
+
+  for (const candidate of candidates) {
+    if (source.includes(candidate)) {
+      score += 6;
+    }
+
+    for (const token of candidate.split(' ').filter(value => value.length > 3)) {
+      if (source.includes(token)) {
+        score += 1;
+      }
+    }
+  }
+
+  return score;
+}
+
+function selectCourtroomWarnings(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string[] {
+  return selectScoredCourtroomWarnings(storyState, continuationBrief).map(item => item.warning);
+}
+
+function selectScoredCourtroomWarnings(storyState: StoryStateSnapshot, continuationBrief: string | undefined): Array<{
+  warning: string;
+  index: number;
+  activationScore: number;
+}> {
+  const source = normalizeActivationText(continuationBrief ?? '');
+  return storyState.continuityWarnings
+    .map((warning, index) => ({
+      warning,
+      index,
+      activationScore: scoreWarningActivation(warning, source)
+    }))
+    .sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))
+    .slice(0, CONTINUITY_COURTROOM_MAX_WARNINGS);
+}
+
+function scoreWarningActivation(warning: string, source: string): number {
+  if (!source) {
+    return 0;
+  }
+
+  const candidate = normalizeActivationText(warning);
+  if (!candidate) {
+    return 0;
+  }
+
+  let score = source.includes(candidate) ? 6 : 0;
+  for (const token of candidate.split(' ').filter(value => value.length > 3)) {
+    if (source.includes(token)) {
+      score += 1;
+    }
+  }
+
+  return score;
+}
+
+function normalizeActivationText(value: string): string {
+  return collapseWhitespace(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isUnresolvedThread(thread: PlotThread): boolean {
+  return thread.status !== 'resolved';
+}
+
+function formatThreadDebtLabel(thread: PlotThread): string {
+  if (thread.status === 'escalating') {
+    return 'Pressure rising';
+  }
+  if (thread.status === 'dormant') {
+    return 'Quiet promise';
+  }
+  return 'Open promise';
+}
+
+interface RelationshipPressureSelection {
+  sourceCharacter: CharacterProfile;
+  targetCharacter: CharacterProfile;
+  relationship: CharacterProfile['relationships'][number];
+  index: number;
+  activationScore: number;
+}
+
+function selectRelationshipPressure(
+  storyState: StoryStateSnapshot,
+  continuationBrief: string | undefined
+): RelationshipPressureSelection | undefined {
+  const source = normalizeActivationText(continuationBrief ?? '');
+  const candidates: RelationshipPressureSelection[] = [];
+
+  for (const sourceCharacter of storyState.characters) {
+    for (const relationship of sourceCharacter.relationships) {
+      const targetCharacter = storyState.characters.find(candidate => candidate.id === relationship.characterId);
+      if (targetCharacter) {
+        candidates.push({
+          sourceCharacter,
+          targetCharacter,
+          relationship,
+          index: candidates.length,
+          activationScore: scoreRelationshipActivation(sourceCharacter, targetCharacter, relationship, source)
+        });
+      }
+    }
+  }
+
+  return candidates.sort((left, right) => (right.activationScore - left.activationScore) || (left.index - right.index))[0];
+}
+
+function formatRelationshipPressureLine(selected: RelationshipPressureSelection): string {
+  return `- Relationship pressure: ${compactPromptLine(selected.sourceCharacter.displayName)} and ${compactPromptLine(selected.targetCharacter.displayName)}.`;
+}
+
+function scoreRelationshipActivation(
+  sourceCharacter: CharacterProfile,
+  targetCharacter: CharacterProfile,
+  relationship: CharacterProfile['relationships'][number],
+  source: string
+): number {
+  if (!source) {
+    return 0;
+  }
+
+  const candidates = [
+    sourceCharacter.displayName,
+    targetCharacter.displayName,
+    relationship.relationship,
+    relationship.notes
+  ].map(normalizeActivationText).filter(Boolean);
+  let score = 0;
+
+  for (const candidate of candidates) {
+    if (source.includes(candidate)) {
+      score += 6;
+    }
+
+    for (const token of candidate.split(' ').filter(value => value.length > 3)) {
+      if (source.includes(token)) {
+        score += 1;
+      }
+    }
+  }
+
+  return score;
+}
+
+function formatCourtroomDetail(value: string): string {
+  const detail = compactPromptLine(value);
+  return detail ? ` - ${detail}` : '';
+}
+
+function compactPromptLine(value: string): string {
+  const compacted = collapseWhitespace(value).trim();
+  if (compacted.length <= CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH) {
+    return compacted;
+  }
+
+  return `${compacted.slice(0, CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH - 3).trim()}...`;
+}
+
+function buildChapterEndingStressTestBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  const selectedPressure = chooseChapterEndingPressure(storyState, continuationBrief);
+  return [
+    'Chapter Ending Stress Test:',
+    `- Endings: ${CHAPTER_ENDING_PRESSURES.map(pressure => pressure.candidateLabel).join(', ')}.`,
+    `- Chosen: ${selectedPressure.label} - ${selectedPressure.instruction}`,
+    `- Scene pressure mix: ${chooseScenePressureMix(storyState, continuationBrief, selectedPressure)}.`,
+    '- Answer one question; leave one sharper.'
+  ].join('\n');
+}
+
+function chooseChapterEndingPressure(storyState: StoryStateSnapshot, continuationBrief: string | undefined): ChapterEndingPressure {
+  const unresolvedThreads = storyState.threads.filter(isUnresolvedThread);
+  const unresolvedArtifacts = storyState.artifacts.filter(artifact => !artifact.resolvedInChapter);
+  const pressureSource = buildContinuationPressureSource(storyState, continuationBrief);
+  const scores: Record<ChapterEndingPressureId, number> = {
+    emotional_reveal: 1,
+    danger_escalation: 1,
+    secret_exposed: 1
+  };
+
+  if (containsAny(pressureSource, ['love', 'kiss', 'desire', 'choose', 'confess', 'heart', 'boundary', 'want', 'betray'])) {
+    scores.emotional_reveal += 2;
+  }
+
+  if (containsAny(pressureSource, ['danger', 'attack', 'threat', 'trap', 'hunt', 'deadline', 'demand', 'force', 'blood'])) {
+    scores.danger_escalation += 2;
+  }
+
+  if (unresolvedThreads.some(thread => thread.status === 'escalating')) {
+    scores.danger_escalation += 2;
+  }
+
+  if (containsAny(pressureSource, ['secret', 'hidden', 'truth', 'lie', 'name', 'bargain', 'debt', 'payment', 'price', 'vow'])) {
+    scores.secret_exposed += 3;
+  }
+
+  if (unresolvedArtifacts.length > 0 || storyState.continuityWarnings.length > 0) {
+    scores.secret_exposed += 2;
+  }
+
+  return CHAPTER_ENDING_PRESSURES.reduce((best, candidate) =>
+    scores[candidate.id] > scores[best.id] ? candidate : best
+  );
+}
+
+function chooseScenePressureMix(
+  storyState: StoryStateSnapshot,
+  continuationBrief: string | undefined,
+  selectedPressure: ChapterEndingPressure
+): string {
+  const primary = mapEndingPressureToScenePressure(selectedPressure.id);
+  const pressureSource = buildContinuationPressureSource(storyState, continuationBrief);
+  const secondaryCandidates: ScenePressureLabel[] = [];
+
+  if (containsAny(pressureSource, ['deadline', 'clock', 'tonight', 'hour', 'sunrise'])) {
+    secondaryCandidates.push('Deadline');
+  }
+
+  if (storyState.artifacts.some(artifact => !artifact.resolvedInChapter)
+    || containsAny(pressureSource, ['court', 'room', 'place', 'reef', 'shell', 'song', 'door', 'hall'])) {
+    secondaryCandidates.push('Setting');
+  }
+
+  if (storyState.characters.length > 1
+    || containsAny(pressureSource, ['family', 'crowd', 'witness', 'lord', 'queen', 'council'])) {
+    secondaryCandidates.push('Social');
+  }
+
+  if (containsAny(pressureSource, ['secret', 'hidden', 'truth', 'lie', 'bargain', 'debt', 'payment', 'price', 'vow'])) {
+    secondaryCandidates.push('Secret');
+  }
+
+  if (containsAny(pressureSource, ['love', 'kiss', 'desire', 'choose', 'confess', 'heart', 'betray'])) {
+    secondaryCandidates.push('Emotional');
+  }
+
+  const secondary = secondaryCandidates.find(candidate => candidate !== primary)
+    ?? (primary === 'Setting' ? 'Social' : 'Setting');
+  return `${primary} + ${secondary}; ${chooseScenePressureVariant(storyState, continuationBrief, primary, secondary)}`;
+}
+
+function mapEndingPressureToScenePressure(pressureId: ChapterEndingPressureId): ScenePressureLabel {
+  if (pressureId === 'emotional_reveal') {
+    return 'Emotional';
+  }
+  if (pressureId === 'danger_escalation') {
+    return 'Deadline';
+  }
+  return 'Secret';
+}
+
+function chooseScenePressureVariant(
+  storyState: StoryStateSnapshot,
+  continuationBrief: string | undefined,
+  primary: ScenePressureLabel,
+  secondary: ScenePressureLabel
+): string {
+  const variants = SCENE_PRESSURE_VARIANTS[secondary];
+  const seed = `${storyState.storyId}|${storyState.revision}|${continuationBrief ?? ''}|${primary}|${secondary}`;
+  return variants[stableSeedIndex(seed, variants.length)] ?? variants[0];
+}
+
+function stableSeedIndex(seed: string, modulo: number): number {
+  let hash = 0;
+  for (const char of seed) {
+    hash = ((hash * 31) + char.charCodeAt(0)) >>> 0;
+  }
+  return modulo > 0 ? hash % modulo : 0;
+}
+
+function containsAny(value: string, needles: readonly string[]): boolean {
+  return needles.some(needle => value.includes(needle));
+}
+
+function buildContinuationPressureSource(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  const unresolvedThreads = storyState.threads.filter(isUnresolvedThread);
+  const unresolvedArtifacts = storyState.artifacts.filter(artifact => !artifact.resolvedInChapter);
+  return [
+    continuationBrief ?? '',
+    ...unresolvedThreads.flatMap(thread => [thread.label, thread.description, ...thread.foreshadowedDevices]),
+    ...unresolvedArtifacts.map(artifact => `${artifact.name} ${artifact.significance}`),
+    ...storyState.continuityWarnings
+  ].join(' ').toLowerCase();
+}
+
+function buildClicheAlarmBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  return [
+    'Cliche Alarm:',
+    `- Avoid: ${chooseClicheAlarmPath(storyState, continuationBrief)}`,
+    `- Freshness: turn ${chooseFreshnessTarget(storyState)} with visible cost.`,
+    `- Subtext receipt: prove ${chooseSubtextReceiptTarget(storyState, continuationBrief)} by behavior before explanation.`
+  ].join('\n');
+}
+
+function chooseClicheAlarmPath(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  const source = buildContinuationPressureSource(storyState, continuationBrief);
+  if (containsAny(source, ['debt', 'payment', 'price', 'bargain', 'vow', 'court', 'demand'])) {
+    return 'formal demand with no personal cost.';
+  }
+
+  if (containsAny(source, ['love', 'kiss', 'desire', 'choose', 'confess', 'heart', 'want'])) {
+    return 'confession of what they already know.';
+  }
+
+  if (containsAny(source, ['danger', 'attack', 'threat', 'trap', 'hunt', 'deadline', 'force', 'blood'])) {
+    return 'threat that changes no relationship.';
+  }
+
+  return 'repeat of the last chapter without new cost.';
+}
+
+function chooseFreshnessTarget(storyState: StoryStateSnapshot): string {
+  const thread = storyState.threads.find(candidate => candidate.status === 'escalating')
+    ?? storyState.threads.find(candidate => candidate.status === 'active')
+    ?? storyState.threads.find(isUnresolvedThread);
+  if (thread) {
+    return compactPromptLine(thread.label);
+  }
+
+  const artifact = storyState.artifacts.find(candidate => !candidate.resolvedInChapter);
+  if (artifact) {
+    return compactPromptLine(artifact.name);
+  }
+
+  return 'the most recent unresolved choice';
+}
+
+function chooseSubtextReceiptTarget(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
+  const relationshipPressure = selectRelationshipPressure(storyState, continuationBrief);
+  if (relationshipPressure) {
+    return `${compactPromptLine(relationshipPressure.sourceCharacter.displayName)} and ${compactPromptLine(relationshipPressure.targetCharacter.displayName)}`;
+  }
+
+  return chooseFreshnessTarget(storyState);
 }
 
 function buildStoryLabPayloadFromContinuation(
@@ -440,32 +1049,43 @@ function buildStateSnapshot(
 
 function buildInitialCharacters(storyId: string, input: LabGenerationSeam['input']): CharacterProfile[] {
   const protagonistName = input.protagonistName?.trim() || `${capitalize(input.creature)} protagonist`;
+  const antagonistName = input.antagonistName?.trim();
+  const protagonistId = `${storyId}-protagonist`;
+  const antagonistId = `${storyId}-antagonist`;
   const characters: CharacterProfile[] = [
     {
-      id: `${storyId}-protagonist`,
+      id: protagonistId,
       displayName: protagonistName,
       archetype: 'protagonist',
       summary: `${protagonistName} anchors the ${input.creature} story promised by the blueprint.`,
       currentGoal: input.logline,
       internalConflict: 'Desire and self-protection pull in opposite directions.',
-      externalConflict: input.antagonistName?.trim() || 'The supernatural world resists the romance.',
+      externalConflict: antagonistName || 'The supernatural world resists the romance.',
       secrets: [],
-      relationships: [],
+      relationships: antagonistName ? [{
+        characterId: antagonistId,
+        relationship: 'rival',
+        notes: `${antagonistName} pressures ${protagonistName} into a costly choice.`
+      }] : [],
       spiceCompatibilities: [input.spicyLevel]
     }
   ];
 
-  if (input.antagonistName?.trim()) {
+  if (antagonistName) {
     characters.push({
-      id: `${storyId}-antagonist`,
-      displayName: input.antagonistName.trim(),
+      id: antagonistId,
+      displayName: antagonistName,
       archetype: 'antagonist',
       summary: 'An opposing force named in the Story Lab blueprint.',
       currentGoal: 'Pressure the protagonist into a costly choice.',
       internalConflict: 'Their own desire complicates the threat they represent.',
       externalConflict: input.logline,
       secrets: [],
-      relationships: [],
+      relationships: [{
+        characterId: protagonistId,
+        relationship: 'rival',
+        notes: `${protagonistName} can expose or refuse the costly choice.`
+      }],
       spiceCompatibilities: [input.spicyLevel]
     });
   }
@@ -496,10 +1116,44 @@ function buildInitialThreads(storyId: string, input: LabGenerationSeam['input'])
 function buildWorldArtifact(storyId: string, worldDetails: string): LoreArtifact {
   return {
     id: `${storyId}-world-details`,
-    name: 'World Details',
+    name: deriveWorldArtifactName(worldDetails),
     significance: worldDetails,
     introducedInChapter: 1
   };
+}
+
+function deriveWorldArtifactName(worldDetails: string): string {
+  const compacted = collapseWhitespace(worldDetails).replace(/[.!?]+$/g, '').trim();
+  const whereMatch = compacted.match(/\bwhere\s+(.+?)(?:\s+(?:record|records|rule|rules|bind|binds|hold|holds|keep|keeps|hide|hides|guard|guards|demand|demands|remember|remembers|change|changes|cost|costs|make|makes)\b|$)/i);
+  if (whereMatch?.[1]) {
+    return formatWorldArtifactName(whereMatch[1]);
+  }
+
+  const byMatch = compacted.match(/\b(?:ruled|bound|guarded|haunted|recorded|kept|protected)\s+by\s+(.+?)(?:[.,;:]|$)/i);
+  if (byMatch?.[1]) {
+    return formatWorldArtifactName(byMatch[1]);
+  }
+
+  const withoutArticle = compacted.replace(/^(?:a|an|the)\s+/i, '');
+  const beforeRelation = withoutArticle.split(/\b(?:where|ruled by|bound by|guarded by|with|whose|that)\b/i)[0] ?? withoutArticle;
+  return formatWorldArtifactName(beforeRelation);
+}
+
+function formatWorldArtifactName(value: string): string {
+  const cleaned = value
+    .replace(/^(?:a|an|the)\s+/i, '')
+    .replace(/[.!?,;:]+$/g, '')
+    .trim();
+  const words = cleaned.split(/\s+/).filter(Boolean).slice(0, WORLD_ARTIFACT_MAX_NAME_WORDS);
+  if (!words.length) {
+    return 'World Texture';
+  }
+
+  return words.map(formatWorldArtifactWord).join(' ');
+}
+
+function formatWorldArtifactWord(word: string): string {
+  return word.split('-').map(capitalize).join('-');
 }
 
 function buildChapterDelta(

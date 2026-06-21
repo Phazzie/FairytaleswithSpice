@@ -10,7 +10,11 @@ import {
 } from '../api/_lib/story-lab/storyLabEngine';
 import { getAuthorStylesForCreature } from '../api/_lib/config/authorStyles';
 import type { StoryGenerationSeam as LabGenerationSeam } from '../api/_lib/story-lab/contracts';
-import type { CreatureType, StoryGenerationSeam as ClassicGenerationSeam } from '../api/_lib/types/contracts';
+import type {
+  ChapterContinuationSeam as ClassicContinuationSeam,
+  CreatureType,
+  StoryGenerationSeam as ClassicGenerationSeam
+} from '../api/_lib/types/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -200,6 +204,15 @@ assert(payload.batch.chapters.length === 1, 'real chapters should be mapped into
 assert(payload.batch.chapters[0].rawContent?.includes('[Mira'), 'raw speaker-tag content should survive');
 assert(payload.batch.suggestedNextPrompts.some(prompt => prompt.includes('Reveal what waits')), 'next chapter hint should become a prompt');
 assert(payload.state.characters.some(character => character.displayName === 'Mira'), 'protagonist should seed continuity state');
+assert(
+  payload.state.characters.some(character =>
+    character.displayName === 'Mira'
+    && character.relationships.some(relationship =>
+      relationship.characterId === 'story-test-antagonist'
+      && relationship.relationship === 'rival'
+      && relationship.notes.includes('costly choice'))),
+  'protagonist should seed a typed relationship edge to the antagonist'
+);
 assert(payload.state.threads.some(thread => thread.label === 'Court Intrigue'), 'theme seeds should become continuity threads');
 assert(payload.telemetry.engine === 'grok', 'real StoryService mapping should report grok telemetry');
 assert(payload.telemetry.totalLatencyMs === 2000, 'real StoryService latency metadata should reach Story Lab telemetry');
@@ -401,6 +414,106 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
 
     assert(response.success, 'continuation with Heat Contract should succeed through service seam');
     assert(sawHeatContract, 'continuation service input should receive the original Heat Contract');
+  });
+
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    let capturedInput: ClassicContinuationSeam['input'] | undefined;
+    const courtroomState = {
+      ...payload.state,
+      threads: [
+        ...payload.state.threads,
+        {
+          id: 'story-test-thread-resolved',
+          label: 'Settled Debt',
+          status: 'resolved' as const,
+          description: 'This bargain has already been paid.',
+          foreshadowedDevices: []
+        }
+      ],
+      artifacts: [
+        ...payload.state.artifacts,
+        {
+          id: 'story-test-paid-charm',
+          name: 'Paid Charm',
+          significance: 'A charm whose bargain has already closed.',
+          introducedInChapter: 1,
+          resolvedInChapter: 1
+        }
+      ],
+      continuityWarnings: [
+        'Resolve the vow-binding song before changing courts.'
+      ]
+    };
+
+    const response = await continueStoryLab({
+      storyId: payload.summary.storyId,
+      chapterBatchSize: 1,
+      storyState: courtroomState,
+      previouslyGeneratedChapters: payload.batch.chapters,
+      continuationBrief: 'Let the court demand payment.',
+      existingSummary: payload.summary
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by continuity courtroom test');
+        },
+        continueChapter: async input => {
+          capturedInput = input;
+          return {
+            success: true,
+            data: {
+              chapterId: 'chapter-2',
+              chapterNumber: 2,
+              title: 'Court Payment',
+              content: '<h3>Chapter 2: Court Payment</h3><p>The court called the debt due.</p>',
+              rawContent: '<p>[Mira]: "Name the price."</p>',
+              wordCount: 8,
+              cliffhangerEnding: true,
+              themesContinued: ['forbidden_love'],
+              spicyLevelMaintained: 3,
+              appendedToStory: '<h3>Chapter 2: Court Payment</h3><p>The court called the debt due.</p>',
+              tropeMetadata: payload.summary.tropeMetadata,
+              chapters: [{
+                chapterId: 'chapter-2',
+                chapterNumber: 2,
+                title: 'Court Payment',
+                content: '<h3>Chapter 2: Court Payment</h3><p>The court called the debt due.</p>',
+                rawContent: '<p>[Mira]: "Name the price."</p>',
+                wordCount: 8,
+                generatedAt: new Date(),
+                hasAudio: false,
+                cliffhangerEnding: true
+              }],
+              totalWordCount: 8
+            }
+          };
+        }
+      })
+    });
+
+    assert(response.success, 'continuation with continuity courtroom anchors should succeed');
+    assert(capturedInput?.userInput?.includes('Let the court demand payment.'), 'original continuation brief should stay in service input');
+    assert(capturedInput?.userInput?.includes('Continuity Courtroom:'), 'service input should include the continuity courtroom anchor');
+    assert(capturedInput?.userInput?.includes('Pressure rising: Forbidden Love'), 'escalating threads should be named for payoff');
+    assert(capturedInput?.userInput?.includes('Open promise: Court Intrigue'), 'active threads should be named for payoff');
+    assert(capturedInput?.userInput?.includes('World clue: Vow-Binding Songs'), 'unresolved artifacts should be named for payoff');
+    assert(capturedInput?.userInput?.includes('Continuity note: Resolve the vow-binding song before changing courts.'), 'continuity warnings should be carried into the next chapter request');
+    assert(!capturedInput?.userInput?.includes('Settled Debt'), 'resolved threads should not be repeated as open courtroom debts');
+    assert(!capturedInput?.userInput?.includes('Paid Charm'), 'resolved artifacts should not be repeated as unresolved courtroom debts');
+    assert(capturedInput?.userInput?.includes('Chapter Ending Stress Test:'), 'service input should include the chapter ending stress-test anchor');
+    assert(capturedInput?.userInput?.includes('Endings: emotional reveal, danger escalation, secret exposed.'), 'ending stress test should keep the candidate set visible to the model');
+    assert(capturedInput?.userInput?.includes('Chosen: Secret exposed'), 'unresolved lore and debt language should choose the secret-exposed ending pressure');
+    assert(capturedInput?.userInput?.includes('Scene pressure mix: Secret + Setting;'), 'scene pressure mixer should reuse the ending anchor');
+    assert(capturedInput?.userInput?.includes('leave one sharper'), 'ending stress test should preserve serialized momentum');
+    assert(capturedInput?.userInput?.includes('Cliche Alarm:'), 'service input should include the cliche alarm anchor');
+    assert(capturedInput?.userInput?.includes('Avoid: formal demand with no personal cost.'), 'debt/payment continuation should avoid the obvious formal-demand scene');
+    assert(capturedInput?.userInput?.includes('Freshness: turn Forbidden Love'), 'cliche alarm should tie freshness to a concrete unresolved story thread');
+    assert(!capturedInput?.userInput?.includes('Subtext Receipt:'), 'subtext receipt should not add a fourth hidden anchor block');
+    assert(
+      capturedInput?.userInput?.includes('Subtext receipt: prove Mira and Lord Brine by behavior before explanation.'),
+      'subtext receipt should reach the real continuation seam as behavior-first guidance'
+    );
+    assert((capturedInput?.userInput?.length ?? 0) <= 900, 'hidden continuation anchors should stay under the compactness budget');
   });
 
   console.log('Story Lab real-engine mapping tests passed');
