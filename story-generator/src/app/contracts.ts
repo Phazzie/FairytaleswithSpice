@@ -587,6 +587,43 @@ export interface EvaluationRequest {
 
 // ==================== FRONTEND VIEW MODELS ====================
 
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  userPromptTemplate: string;
+  category: 'production' | 'experimental' | 'custom';
+}
+
+export interface ProvingGroundsTestConfiguration {
+  creature: CreatureArchetype;
+  themes: ThemeSeed[];
+  spicyLevel: SpicyLevel;
+  wordCount: WordBudget;
+  userInput: string;
+  promptTemplate: PromptTemplate;
+  promptPreview: {
+    system: string;
+    user: string;
+  };
+}
+
+export interface ProvingGroundsTestResult {
+  id: string;
+  timestamp: Date;
+  configuration: ProvingGroundsTestConfiguration;
+  generatedStory: string;
+  generationTime: number;
+  chapterCount: number;
+  totalWordCount: number;
+  aiEvaluation?: EvaluationCriteria;
+}
+
+export type StoredProvingGroundsTestResult = Omit<ProvingGroundsTestResult, 'timestamp'> & {
+  timestamp: string;
+};
+
 export interface StoryWorkbenchSession {
   story: StorySummary | null;
   state: StoryStateSnapshot | null;

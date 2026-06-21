@@ -279,7 +279,7 @@
 
                 @if (test.aiEvaluation) {
                 <div class="evaluation-summary">
-                  <div class="score-badge" [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
+                  <div class="score-badge" [ngClass]="scoreToneClass(test.aiEvaluation.score)">
                     {{ test.aiEvaluation.score }}/100
                   </div>
                   @if (test.aiEvaluation.heuristicReport) {
@@ -330,7 +330,7 @@
               <h3>AI Evaluation Results</h3>
 
               <div class="score-display">
-                <div class="score-circle" [class]="'score-' + (currentTest()!.aiEvaluation!.score >= 80 ? 'high' : currentTest()!.aiEvaluation!.score >= 60 ? 'medium' : 'low')">
+                <div class="score-circle" [ngClass]="scoreToneClass(currentTest()!.aiEvaluation!.score)">
                   <span class="score-value">{{ currentTest()!.aiEvaluation!.score }}</span>
                   <span class="score-label">/100</span>
                 </div>
@@ -349,7 +349,7 @@
                     </div>
                     <span
                       class="score-badge"
-                      [class]="'score-' + (report.overallScore >= 80 ? 'high' : report.overallScore >= 60 ? 'medium' : 'low')">
+                      [ngClass]="scoreToneClass(report.overallScore)">
                       {{ report.overallScore }}
                     </span>
                   </div>
@@ -361,7 +361,7 @@
                           <span>{{ dimension.label }}</span>
                           <span
                             class="score-badge mini"
-                            [class]="'score-' + (dimension.score >= 80 ? 'high' : dimension.score >= 60 ? 'medium' : 'low')">
+                            [ngClass]="scoreToneClass(dimension.score)">
                             {{ dimension.score }}
                           </span>
                         </div>
@@ -481,13 +481,13 @@
                   @if (test.aiEvaluation) {
                     <span
                       class="score-badge mini"
-                      [class]="'score-' + (test.aiEvaluation.score >= 80 ? 'high' : test.aiEvaluation.score >= 60 ? 'medium' : 'low')">
+                      [ngClass]="scoreToneClass(test.aiEvaluation.score)">
                       {{ test.aiEvaluation.score }}
                     </span>
                     @if (test.aiEvaluation.heuristicReport) {
                       <span
                         class="score-badge mini"
-                        [class]="'score-' + (test.aiEvaluation.heuristicReport.overallScore >= 80 ? 'high' : test.aiEvaluation.heuristicReport.overallScore >= 60 ? 'medium' : 'low')">
+                        [ngClass]="scoreToneClass(test.aiEvaluation.heuristicReport.overallScore)">
                         Quality {{ test.aiEvaluation.heuristicReport.overallScore }}
                       </span>
                     }

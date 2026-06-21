@@ -1,9 +1,11 @@
+// Created: 2026-06-21 08:56
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
+import { ProvingGroundsTestResult } from '../contracts';
 import { ProvingGroundsComponent } from './proving-grounds';
 
-function createEvaluatedResult(): any {
+function createEvaluatedResult(): ProvingGroundsTestResult {
   return {
     id: 'test-quality-report',
     timestamp: new Date('2026-06-08T10:20:00.000Z'),

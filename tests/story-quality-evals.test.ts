@@ -118,11 +118,11 @@ async function main(): Promise<void> {
       wordCount: 900
     }
   });
-  const heuristicDimensionIds = heuristicReport.dimensions.map(dimension => dimension.id);
+  const heuristicDimensionIds = new Set(heuristicReport.dimensions.map(dimension => dimension.id));
   assert(heuristicReport.source === 'heuristic', 'quality report should identify deterministic heuristic mode.');
   assert(heuristicReport.dimensions.length === 7, 'quality report should include the seven planned dimensions.');
-  assert(heuristicDimensionIds.includes('continuity'), 'quality report should include continuity.');
-  assert(heuristicDimensionIds.includes('audio_readiness'), 'quality report should include audio readiness.');
+  assert(heuristicDimensionIds.has('continuity'), 'quality report should include continuity.');
+  assert(heuristicDimensionIds.has('audio_readiness'), 'quality report should include audio readiness.');
   assert(heuristicReport.dimensions.every(dimension => dimension.score >= 0 && dimension.score <= 100), 'quality scores should stay normalized.');
   assert(heuristicReport.dimensions.some(dimension => dimension.signals.length > 0), 'quality report should include explainable signals.');
   const proseQuality = heuristicReport.dimensions.find(dimension => dimension.id === 'prose_quality');

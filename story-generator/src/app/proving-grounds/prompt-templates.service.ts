@@ -1,15 +1,6 @@
 // Created: 2025-10-31 06:43
 import { Injectable } from '@angular/core';
-import { CreatureArchetype, SpicyLevel, ThemeSeed, WordBudget } from '../contracts';
-
-export interface PromptTemplate {
-  id: string;
-  name: string;
-  description: string;
-  systemPrompt: string;
-  userPromptTemplate: string;
-  category: 'production' | 'experimental' | 'custom';
-}
+import { CreatureArchetype, PromptTemplate, SpicyLevel, ThemeSeed, WordBudget } from '../contracts';
 
 export interface PromptVariables {
   creature: CreatureArchetype;

@@ -71,7 +71,7 @@ function scoreContinuity(storyText: string, configuration: StoryQualityHeuristic
 }
 
 function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): DimensionDraft {
-  const finalParagraph = (paragraphs[paragraphs.length - 1] ?? storyText).toLowerCase();
+  const finalParagraph = (paragraphs.slice(-1)[0] ?? storyText).toLowerCase();
   const signals: string[] = [];
   if (/[?!]\s*$/.test(finalParagraph)) {
     signals.push('Ending closes on a question or exclamation.');
@@ -128,6 +128,12 @@ function scoreCharacterConsistency(storyContent: string, dialogueLines: string[]
   const namedCharacters = Array.from(new Set((storyContent.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g) ?? [])
     .filter(name => !['Narrator'].includes(name))));
   const agencyActions = extractAgencyActions(storyContent, namedCharacters);
+  let rationale = 'Few character identity signals were detected.';
+  if (agencyActions.length) {
+    rationale = 'Dialogue speakers, named characters, and concrete character actions are identifiable.';
+  } else if (speakers.length) {
+    rationale = 'Dialogue speakers and named characters are identifiable.';
+  }
   const signals = [
     ...speakers.map(speaker => `Speaker: ${speaker}`),
     ...(namedCharacters.length ? [`Named character count: ${namedCharacters.length}`] : []),
@@ -138,9 +144,7 @@ function scoreCharacterConsistency(storyContent: string, dialogueLines: string[]
     id: 'character_consistency',
     label: 'Character consistency',
     score: 52 + Math.min(3, speakers.length) * 12 + Math.min(2, namedCharacters.length) * 6 + Math.min(2, agencyActions.length) * 5,
-    rationale: agencyActions.length
-      ? 'Dialogue speakers, named characters, and concrete character actions are identifiable.'
-      : speakers.length ? 'Dialogue speakers and named characters are identifiable.' : 'Few character identity signals were detected.',
+    rationale,
     signals
   };
 }
@@ -221,7 +225,7 @@ function collapseWhitespace(value: string): string {
 
 function extractDialogueSpeakers(dialogueLines: string[]): string[] {
   return Array.from(new Set(dialogueLines
-    .map(line => line.match(/^\s*\[([^\]]+)\]:/)?.[1]?.trim())
+    .map(line => /^\s*\[([^\]]+)\]:/.exec(line)?.[1]?.trim())
     .map(speaker => speaker?.split(',')[0]?.trim())
     .filter((speaker): speaker is string => Boolean(speaker))));
 }
@@ -251,7 +255,7 @@ function extractAgencyActions(storyContent: string, namedCharacters: readonly st
   for (const entry of agencyLexicon) {
     const termPattern = entry.terms.map(escapeRegExp).join('|');
     const hasNamedAction = lowerNames.some(name => {
-      const pattern = new RegExp(`\\b${escapeRegExp(name)}\\b(?:\\s+[a-z']+){0,4}\\s+(${termPattern})\\b`);
+      const pattern = new RegExp(String.raw`\b${escapeRegExp(name)}\b(?:\s+[a-z']+){0,4}\s+(${termPattern})\b`);
       return pattern.test(normalized);
     });
     if (hasNamedAction) {
@@ -263,7 +267,7 @@ function extractAgencyActions(storyContent: string, namedCharacters: readonly st
 }
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 function extractConcreteAnchors(storyContent: string): string[] {
@@ -366,6 +370,6 @@ function extractSensoryTextures(storyContent: string): string[] {
   ];
 
   return sensoryLexicon
-    .filter(entry => entry.terms.some(term => new RegExp(`\\b${term}\\b`).test(normalized)))
+    .filter(entry => entry.terms.some(term => new RegExp(String.raw`\b${escapeRegExp(term)}\b`).test(normalized)))
     .map(entry => entry.label);
 }
