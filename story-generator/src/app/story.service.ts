@@ -4,12 +4,18 @@ import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import {
   ApiResponse,
+  CloudStoryProjectDeleteReceipt,
+  CloudStoryProjectList,
+  CloudStoryProjectLoadResult,
+  CloudStoryProjectSaveReceipt,
+  SavedStoryProject,
   StoryGenerationSeam,
   StoryIterationPayload,
   StoryContinuationSeam,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
   StoryLabJobEvent,
+  StoryLabUserProfile,
   StreamingProgressChunk
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
@@ -103,6 +109,85 @@ export class StoryService {
     return this.http
       .get<ApiResponse<StoryLabJobCreationResponse<TResult>>>(`${this.apiUrl}/jobs/${encodeURIComponent(jobId)}`)
       .pipe(catchError(error => this.handleHttpError(error, 'getStoryLabJob')));
+  }
+
+  /**
+   * Read the signed-in Story Lab profile through the account route.
+   */
+  getStoryLabProfile(): Observable<ApiResponse<StoryLabUserProfile>> {
+    this.errorLogging.logInfo('Reading Story Lab profile', 'StoryService.getStoryLabProfile');
+
+    return this.http
+      .get<ApiResponse<StoryLabUserProfile>>(`${this.apiUrl}/account/profile`)
+      .pipe(catchError(error => this.handleHttpError(error, 'getStoryLabProfile')));
+  }
+
+  /**
+   * Update the signed-in Story Lab profile through the account route.
+   */
+  updateStoryLabProfile(profile: StoryLabUserProfile): Observable<ApiResponse<StoryLabUserProfile>> {
+    this.errorLogging.logInfo('Updating Story Lab profile', 'StoryService.updateStoryLabProfile', {
+      userId: profile.userId
+    });
+
+    return this.http
+      .put<ApiResponse<StoryLabUserProfile>>(`${this.apiUrl}/account/profile`, { profile })
+      .pipe(catchError(error => this.handleHttpError(error, 'updateStoryLabProfile')));
+  }
+
+  /**
+   * List the signed-in user's cloud Story Lab projects.
+   */
+  listCloudStoryProjects(): Observable<ApiResponse<CloudStoryProjectList>> {
+    this.errorLogging.logInfo('Listing Story Lab cloud projects', 'StoryService.listCloudStoryProjects');
+
+    return this.http
+      .get<ApiResponse<CloudStoryProjectList>>(`${this.apiUrl}/account/projects`)
+      .pipe(catchError(error => this.handleHttpError(error, 'listCloudStoryProjects')));
+  }
+
+  /**
+   * Save the current project to the signed-in user's cloud library.
+   */
+  saveCloudStoryProject(project: SavedStoryProject): Observable<ApiResponse<CloudStoryProjectSaveReceipt>> {
+    this.errorLogging.logInfo('Saving Story Lab cloud project', 'StoryService.saveCloudStoryProject', {
+      projectId: project.id,
+      storyId: project.storyId
+    });
+
+    return this.http
+      .post<ApiResponse<CloudStoryProjectSaveReceipt>>(`${this.apiUrl}/account/projects`, { project })
+      .pipe(catchError(error => this.handleHttpError(error, 'saveCloudStoryProject')));
+  }
+
+  /**
+   * Load a single signed-in cloud Story Lab project.
+   */
+  loadCloudStoryProject(projectId: string): Observable<ApiResponse<CloudStoryProjectLoadResult>> {
+    this.errorLogging.logInfo('Loading Story Lab cloud project', 'StoryService.loadCloudStoryProject', {
+      projectId
+    });
+
+    return this.http
+      .get<ApiResponse<CloudStoryProjectLoadResult>>(
+        `${this.apiUrl}/account/projects/${encodeURIComponent(projectId)}`
+      )
+      .pipe(catchError(error => this.handleHttpError(error, 'loadCloudStoryProject')));
+  }
+
+  /**
+   * Delete a signed-in cloud Story Lab project.
+   */
+  deleteCloudStoryProject(projectId: string): Observable<ApiResponse<CloudStoryProjectDeleteReceipt>> {
+    this.errorLogging.logInfo('Deleting Story Lab cloud project', 'StoryService.deleteCloudStoryProject', {
+      projectId
+    });
+
+    return this.http
+      .delete<ApiResponse<CloudStoryProjectDeleteReceipt>>(
+        `${this.apiUrl}/account/projects/${encodeURIComponent(projectId)}`
+      )
+      .pipe(catchError(error => this.handleHttpError(error, 'deleteCloudStoryProject')));
   }
 
   /**
