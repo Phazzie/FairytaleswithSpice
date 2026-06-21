@@ -2696,3 +2696,17 @@ Validation:
 Known local proof gap:
 
 - Targeted Angular browser specs built successfully, but local `ChromeHeadless` failed to capture after two retries; browser specs are not claimed as passing from this workstation run.
+
+## 2026-06-21 07:26 EDT - PR 123 Review Follow-Up
+
+Actions:
+
+- Addressed Gemini review feedback on cloud-library state honesty.
+- Preserved the existing connected/cloud-unavailable state when a user tries to cloud-save an empty workbench.
+- Kept cloud load/delete receipts with `non_durable_memory` storage out of the `cloud_synced` UI state.
+- Removed runtime `Array.prototype.at()` usage from `app.ts` chapter selection paths for browser compatibility.
+- Added focused app specs covering empty cloud save, non-durable cloud load, and non-durable cloud delete behavior.
+
+Validation:
+
+- `npm run recovery:preflight -- cloud-library-ui --quick`: passed.

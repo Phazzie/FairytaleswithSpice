@@ -7,14 +7,17 @@ import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import {
   ApiResponse,
+  CloudStoryProjectDeleteReceipt,
   StoryIterationPayload,
   StoryLabJobCreationResponse,
   StoryLabJobEvent,
   StoryStateSnapshot,
   StorySummary,
   CloudStoryProjectList,
+  CloudStoryProjectLoadResult,
   CloudStoryProjectSaveReceipt,
-  GeneratedChapter
+  GeneratedChapter,
+  SavedStoryProject
 } from './contracts';
 
 const STORAGE_KEY = 'fairytales_story_lab_projects_v1';
@@ -630,6 +633,89 @@ describe('App', () => {
     }));
     expect(component.workspaceSaveStatus()).not.toContain('Cloud');
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
+  });
+
+  it('keeps connected cloud state when there is no active workbench project to save', () => {
+    component.cloudLibrarySyncState.set({
+      mode: 'cloud_synced',
+      lastSyncedAt: '2026-06-08T08:38:00.000Z'
+    });
+
+    component.saveActiveProjectToCloud();
+
+    expect(storyService.saveCloudStoryProject).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
+    expect(component.cloudLibrarySyncState().message).toBe('Generate a story before saving to cloud.');
+  });
+
+  it('keeps non-durable loaded projects out of cloud-synced state', () => {
+    const payload = seedWorkbenchForContinuation({
+      summary: createSummary({ storyId: 'story-cloud', title: 'Cloud Chapel' }),
+      state: createState({ storyId: 'story-cloud' }),
+      batch: {
+        chapters: [createChapter({ chapterId: 'chapter-cloud' })],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      }
+    });
+    const project: SavedStoryProject = {
+      id: 'project-cloud',
+      storyId: payload.summary.storyId,
+      title: payload.summary.title,
+      synopsis: payload.summary.synopsis,
+      blueprint: component.blueprint(),
+      summary: payload.summary,
+      state: payload.state,
+      chapters: payload.batch.chapters,
+      telemetry: payload.telemetry,
+      createdAt: payload.summary.createdAt,
+      updatedAt: payload.summary.updatedAt
+    };
+    const loadResult: CloudStoryProjectLoadResult = {
+      ownerUserId: 'user-owner',
+      storageMode: 'non_durable_memory',
+      projectId: project.id,
+      storyId: project.storyId,
+      project,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt
+    };
+    storyService.loadCloudStoryProject.and.returnValue(of({ success: true, data: loadResult }));
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+
+    component.loadCloudProject(project.id);
+
+    expect(storyService.loadCloudStoryProject).toHaveBeenCalledWith(project.id);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toContain('non-durable account storage');
+    expect(component.selectedChapter()?.chapterId).toBe('chapter-cloud');
+  });
+
+  it('keeps non-durable deleted projects out of cloud-synced state', () => {
+    const receipt: CloudStoryProjectDeleteReceipt = {
+      ownerUserId: 'user-owner',
+      storageMode: 'non_durable_memory',
+      projectId: 'project-cloud',
+      deleted: true
+    };
+    component.cloudProjects.set([{
+      projectId: 'project-cloud',
+      storyId: 'story-cloud',
+      title: 'Cloud Chapel',
+      synopsis: 'A cloud route backed by non-durable memory.',
+      chapterCount: 2,
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    }]);
+    storyService.deleteCloudStoryProject.and.returnValue(of({ success: true, data: receipt }));
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+
+    component.deleteCloudProject('project-cloud');
+
+    expect(storyService.deleteCloudStoryProject).toHaveBeenCalledWith('project-cloud');
+    expect(component.cloudProjects().length).toBe(0);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toContain('non-durable account storage');
   });
 
   it('re-enables cloud controls after an account route error', () => {

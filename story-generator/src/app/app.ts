@@ -423,7 +423,8 @@ export class App implements OnDestroy {
   readonly selectedChapter = computed(() => {
     const id = this.selectedChapterId();
     if (!id) {
-      return this.workbench().chapterHistory.at(-1) ?? null;
+      const chapters = this.workbench().chapterHistory;
+      return chapters[chapters.length - 1] ?? null;
     }
 
     return this.workbench().chapterHistory.find(chapter => chapter.chapterId === id) ?? null;
@@ -1031,10 +1032,10 @@ ${chapters}
     const project = this.buildSavedProjectFromSession(this.workbench());
     if (!project) {
       this.notificationService.warning('Nothing to save', 'Generate a story before saving to cloud.');
-      this.cloudLibrarySyncState.set({
-        mode: 'local_only',
+      this.cloudLibrarySyncState.update(state => ({
+        ...state,
         message: 'Generate a story before saving to cloud.'
-      });
+      }));
       return;
     }
 
@@ -1094,11 +1095,18 @@ ${chapters}
         }
 
         this.hydrateCloudProject(response.data.project);
-        this.cloudLibrarySyncState.set({
-          mode: 'cloud_synced',
-          lastSyncedAt: new Date().toISOString(),
-          message: `Loaded "${response.data.project.title}" from cloud.`
-        });
+        if (response.data.storageMode === 'non_durable_memory') {
+          this.cloudLibrarySyncState.set({
+            mode: 'cloud_unavailable',
+            message: `Loaded "${response.data.project.title}" from non-durable account storage.`
+          });
+        } else {
+          this.cloudLibrarySyncState.set({
+            mode: 'cloud_synced',
+            lastSyncedAt: new Date().toISOString(),
+            message: `Loaded "${response.data.project.title}" from cloud.`
+          });
+        }
       },
       error: error => {
         this.errorLogging.logError(error, 'App.loadCloudProject');
@@ -1136,11 +1144,20 @@ ${chapters}
         }
 
         this.cloudProjects.set(this.cloudProjects().filter(project => project.projectId !== projectId));
-        this.cloudLibrarySyncState.set({
-          mode: 'cloud_synced',
-          lastSyncedAt: new Date().toISOString(),
-          message: response.data.deleted ? 'Cloud story deleted.' : 'Cloud story was already absent.'
-        });
+        if (response.data.storageMode === 'non_durable_memory') {
+          this.cloudLibrarySyncState.set({
+            mode: 'cloud_unavailable',
+            message: response.data.deleted
+              ? 'Cloud story deleted from non-durable account storage.'
+              : 'Cloud story was already absent from non-durable account storage.'
+          });
+        } else {
+          this.cloudLibrarySyncState.set({
+            mode: 'cloud_synced',
+            lastSyncedAt: new Date().toISOString(),
+            message: response.data.deleted ? 'Cloud story deleted.' : 'Cloud story was already absent.'
+          });
+        }
       },
       error: error => {
         this.errorLogging.logError(error, 'App.deleteCloudProject');
@@ -1774,7 +1791,7 @@ ${chapters}
       batchQueue: [],
       savedProjectId: project.id
     });
-    this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
+    this.selectedChapterId.set(project.chapters[project.chapters.length - 1]?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.workspaceSaveStatus.set(`Loaded "${project.title}" from this browser.`);
     this.statusMessage.set('Saved story loaded. Continue the saga whenever you are ready.');
@@ -1801,7 +1818,7 @@ ${chapters}
       batchQueue: [],
       savedProjectId: project.id
     });
-    this.selectedChapterId.set(project.chapters.at(-1)?.chapterId ?? null);
+    this.selectedChapterId.set(project.chapters[project.chapters.length - 1]?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
     this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');
     this.notificationService.info('Cloud story loaded', project.title);
