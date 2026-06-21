@@ -208,6 +208,15 @@ async function testMalformedProfileBodyFailsClosed() {
   const body = response.body as any;
   assert(body.error.code === 'INVALID_REQUEST', 'malformed profile body should use invalid request code');
   assert(!body.error.message.includes(owner.email ?? ''), 'malformed profile body error should not leak user email');
+
+  const malformedWrapperResponse = new FakeResponse();
+  await handler(createRequest('PUT', 'profile', {
+    profile: 'not-a-profile-object',
+    userId: owner.userId,
+    displayName: 'Avery',
+    preferences: {}
+  }), malformedWrapperResponse);
+  assert(malformedWrapperResponse.statusCode === 400, 'malformed profile wrapper should not fall back to outer fields');
 }
 
 async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
@@ -388,6 +397,13 @@ async function testInvalidProjectBodyFailsClosedBeforeStoreAccess() {
     (arrayShapeResponse.body as any).error.code === 'INVALID_REQUEST',
     'project save with array-shaped internals should use invalid request code'
   );
+
+  const malformedWrapperResponse = new FakeResponse();
+  await handler(createRequest('POST', 'projects', {
+    project: 'not-a-project-object',
+    ...createProject()
+  }), malformedWrapperResponse);
+  assert(malformedWrapperResponse.statusCode === 400, 'malformed project wrapper should not fall back to outer fields');
 }
 
 async function testInjectedStoreErrorMessageIsSanitized() {

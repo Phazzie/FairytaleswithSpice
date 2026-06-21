@@ -2932,6 +2932,32 @@ Validation:
 - `npm run recovery:preflight -- story-memory-cards`: passed and wrote `tmp/recovery/story-memory-cards-evidence.md`.
 - `npm run recovery:preflight -- css-lazy-loading --quick`: passed and wrote `tmp/recovery/css-lazy-loading-evidence.md`.
 - Function count stayed `11/12`.
+
+## 2026-06-21 14:06 EDT - Auth/Database Review Debt Cleanup
+
+Actions:
+
+- Audited the remaining PR #118/#119 Sonar follow-up issue after the memory-card slice merged.
+- Closed #145 as a false-positive Neon executor follow-up after confirming `@neondatabase/serverless@1.1.0` exposes `NeonQueryFunction.query(queryWithPlaceholders, params?)` and `npm run test:story-lab-neon-executor` passes.
+- Refactored the Story Lab cloud schema SQL splitter into small scanner helpers so schema migration readiness remains testable without a live database.
+- Replaced account route project-id path parsing with `RegExp.exec()`.
+- Reworked profile/project body parsing to use explicit record helpers instead of broad final return casts.
+- Added regression coverage that malformed `profile` or `project` wrapper bodies are rejected instead of falling back to outer fields.
+
+Self-review:
+
+- Good: This cleanup stayed inside the auth/database seam and did not add provider dependencies, routes, secrets, or real database migration behavior.
+- Problem found: a generic review issue asked for a Neon API change that contradicts the locked package type surface; future review triage should verify provider API claims against the installed package before opening defect issues.
+- Problem found: `npm run install:all` modifies tracked `node_modules` in this repository; install artifacts must be restored before source diffs are reviewed or committed.
+
+Validation:
+
+- `npm run test:story-lab-cloud-schema-migration`: passed.
+- `npm run test:story-lab-account-routes`: passed.
+- `npm run test:story-lab-cloud-storage-config`: passed.
+- `npm run test:story-lab-neon-executor`: passed.
+- `git diff --check`: passed.
+- `scripts/recovery/preflight.sh --quick --skip-status`: passed.
 - `npm run build` passed inside memory-card preflight; the initial browser bundle dropped to 484.71 kB and Proving Grounds moved into a lazy chunk.
 
 ## 2026-06-21 11:35 EDT - Memory Cards Review Fix Pass
