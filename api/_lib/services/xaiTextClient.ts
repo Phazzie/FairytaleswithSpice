@@ -2,9 +2,8 @@ import axios from 'axios';
 import {
   getXaiFastModel,
   getXaiFastTimeoutMs,
-  getXaiReasoningEffort,
+  getXaiReasoningEffortForModel,
   getXaiStoryModel,
-  supportsXaiReasoningParameter,
   XAI_RESPONSES_API_URL,
   type XaiReasoningEffort
 } from '../config/xaiConfig';
@@ -77,7 +76,7 @@ export class XaiTextClient {
     const allowFallback = request.allowFallback ?? (request.operation !== 'smoke' && request.modelPreference !== 'fast');
 
     try {
-      return await this.callResponsesApi(request, preferredModel, request.timeoutMs);
+      return await this.callResponsesApi(request, preferredModel, request.timeoutMs, request.modelPreference ?? 'primary');
     } catch (error: any) {
       const fastModel = getXaiFastModel();
       if (allowFallback && fastModel !== preferredModel && this.isRetryableProviderError(error)) {
@@ -93,7 +92,8 @@ export class XaiTextClient {
           const fallbackResponse = await this.callResponsesApi(
             request,
             fastModel,
-            request.fallbackTimeoutMs ?? getXaiFastTimeoutMs()
+            request.fallbackTimeoutMs ?? getXaiFastTimeoutMs(),
+            'fast'
           );
 
           return {
@@ -114,12 +114,11 @@ export class XaiTextClient {
   private async callResponsesApi(
     request: XaiTextRequest,
     model: string,
-    timeoutMs: number
+    timeoutMs: number,
+    modelPreference: XaiModelPreference
   ): Promise<XaiTextResponse> {
     const startedAt = Date.now();
-    const reasoningEffort = supportsXaiReasoningParameter(model)
-      ? getXaiReasoningEffort()
-      : undefined;
+    const reasoningEffort = getXaiReasoningEffortForModel(model, modelPreference);
 
     logInfo('Calling xAI Responses API', request.context, {
       operation: request.operation,

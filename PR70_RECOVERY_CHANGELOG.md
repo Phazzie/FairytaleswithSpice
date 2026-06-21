@@ -4,6 +4,46 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-06-21 16:45 EDT - PR99 Grok Fast-Path Review Follow-Up
+
+Problem:
+
+- PR #99 had three unresolved review threads:
+  - continuity extraction forced the fast model into a 5-second cap instead of the configured fast timeout;
+  - Grok 4.3 fast-path calls omitted explicit no-reasoning control, so they accepted the API default reasoning behavior;
+  - story metadata could carry primary-model reasoning effort forward when later chapters used a fast model without reasoning metadata.
+
+Actions:
+
+- Changed Story Lab continuity extraction to use the full configured `getXaiFastTimeoutMs()` budget.
+- Added model-aware xAI reasoning effort selection:
+  - `grok-4.3` now supports explicit `reasoning.effort`;
+  - fast `grok-4.3` requests send `none`;
+  - primary `grok-4.3` requests keep the configured default effort;
+  - `xhigh` remains available for multi-agent models but is capped to `high` for `grok-4.3`.
+- Treated retry fallback calls as fast-model calls so primary timeout fallback to `grok-4.3` also sends `none`.
+- Updated API and Angular telemetry contracts to allow `reasoningEffort: 'none'`.
+- Stopped carrying stale reasoning effort forward when merged AI metadata changes models and the next call has no explicit reasoning effort.
+- Added `tests/xai-fast-path-review.test.ts` and included it in `npm run test:all`.
+
+Validation:
+
+- `npm run test:xai-fast-path-review`: passed.
+- `npm run test:story`: passed.
+- `npm run test:story-quality`: passed.
+- `npm run test:story-lab-real-engine`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npm run recovery:preflight -- story-quality-guidance --dry-run`: selected the expected gate.
+- `git diff --check`: passed.
+- `npm run build`: passed.
+- `npm run recovery:preflight -- story-quality-guidance --quick`: passed and wrote `tmp/recovery/story-quality-guidance-evidence.md`.
+
+Self-review:
+
+- Good: This closes the review comments directly instead of turning them into a future issue because the fixes are small, testable, and inside one provider/metadata boundary.
+- Good: The new regression test covers configured timeout, explicit fast-path `none` reasoning, retry fallback behavior, and stale metadata merging.
+- Remaining risk: This does not prove live Grok quality or latency against production credentials; it proves request-shaping and local contract behavior.
+
 ## 2026-06-07 10:31 EDT - PR112 Review Follow-Up
 
 Problem:
