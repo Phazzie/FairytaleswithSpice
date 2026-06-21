@@ -1039,12 +1039,23 @@ export class App implements OnDestroy {
       return;
     }
 
-    const session = this.workbench();
+    let session = this.workbench();
     if (!session.story || !session.state) {
       const message = 'Generate a story before requesting continuations.';
       this.statusMessage.set(message);
       this.notificationService.warning('No active story', message);
       return;
+    }
+    const story = session.story;
+    const storyState = session.state;
+
+    const savedProjectId = this.persistSession(session);
+    if (savedProjectId) {
+      session = {
+        ...session,
+        savedProjectId
+      };
+      this.workbench.set(session);
     }
 
     this.isGenerating.set(true);
@@ -1056,12 +1067,12 @@ export class App implements OnDestroy {
     const continuationBrief = this.withStoryMemoryCardBriefs(brief);
 
     const request = {
-      storyId: session.story.storyId,
+      storyId: story.storyId,
       chapterBatchSize: this.blueprint().chapterBatchSize,
-      storyState: session.state,
+      storyState,
       previouslyGeneratedChapters: session.chapterHistory,
       continuationBrief,
-      existingSummary: session.story,
+      existingSummary: story,
       heatContract: this.activeHeatContract()
     } as const;
 
@@ -2652,6 +2663,10 @@ ${chapters}
 
   trackCloudProject(_index: number, project: CloudStoryProjectListItem): string {
     return project.projectId;
+  }
+
+  acceptedMemoryCardCount(project: SavedStoryProject): number {
+    return Array.isArray(project.acceptedMemoryCards) ? project.acceptedMemoryCards.length : 0;
   }
 
   formatBatchStatus(status: BatchProgressState['status']): string {
