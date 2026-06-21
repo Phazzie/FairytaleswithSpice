@@ -3133,3 +3133,28 @@ Validation:
 - `git diff --check`: passed.
 - `npm run recovery:status`: passed with expected tracked/untracked files for this slice; function count stayed `11/12`.
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+
+## 2026-06-21 15:38 EDT - Review Comment Triage UI Cleanup
+
+Actions:
+
+- Began the post-PR #154 unresolved review-thread cleanup from issue #152.
+- Resolved PR #116, #115, #114, and #113 review threads after verifying the fixes or linked issues were present on `main`.
+- Addressed the remaining PR #112 stale villain-pressure fallback by removing unused `selectedVillainPressure` computed state that still depended on option index fallback.
+- Addressed PR #111 Director Room review comments by keeping the Continuity Keeper label/detail from the same continuity item and clearing the custom continuation brief after dispatching accepted Director Room notes.
+- Addressed PR #155 review feedback by making the continuity-item selection an explicit `if`/`else` block instead of a nested ternary.
+- Left the PR #111/#112 code-fix threads unresolved until this cleanup PR lands.
+
+Self-review:
+
+- Good: Resolved threads only after checking current code, linked issues, or reachable refs instead of relying on old chat memory.
+- Problem found: The old PR #112 thread had been answered, but a later narrative-dials refactor left a stale unused fallback computed in place.
+- Problem found: The local ChromeHeadless app-spec run remained flaky and disconnected after capture; this needs to be reported as a runner failure, not claimed as passing.
+
+Validation:
+
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `git diff --check`: passed.
+- `npm run recovery:preflight -- cloud-library-ui --quick`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`; function count stayed `11/12`.
+- `npm run build`: passed; Angular reported the existing Node 23 odd-version warning and stale `baseline-browser-mapping` warning.
+- `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts"`: did not pass because ChromeHeadless failed to capture twice, then disconnected after the second retry connected; no Jasmine assertion failure was reported.
