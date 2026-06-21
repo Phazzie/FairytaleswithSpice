@@ -603,11 +603,11 @@
         <p class="muted" *ngIf="!cloudProjects().length">No cloud projects loaded.</p>
         <ol class="saved-list" *ngIf="cloudProjects().length">
           <li class="saved-item" *ngFor="let project of cloudProjects(); trackBy: trackCloudProject">
-            <button type="button" class="saved-load" (click)="loadCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy()">
+            <button type="button" class="saved-load" (click)="loadCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy() || !canUseCloudLibrary()">
               <span class="saved-title">{{ project.title }}</span>
               <span class="saved-meta">{{ project.chapterCount }} chapter{{ project.chapterCount === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}</span>
             </button>
-            <button type="button" class="saved-delete" (click)="deleteCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy()">
+            <button type="button" class="saved-delete" (click)="deleteCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy() || !canUseCloudLibrary()">
               Delete
             </button>
           </li>

@@ -1069,6 +1069,11 @@ ${chapters}
       return;
     }
 
+    if (!this.canUseCloudLibrary()) {
+      this.showCloudAccountSetupStatus();
+      return;
+    }
+
     this.isCloudLibraryBusy.set(true);
     this.storyService.loadCloudStoryProject(projectId).subscribe({
       next: response => {
@@ -1103,6 +1108,11 @@ ${chapters}
 
   deleteCloudProject(projectId: string) {
     if (this.isCloudLibraryBusy()) {
+      return;
+    }
+
+    if (!this.canUseCloudLibrary()) {
+      this.showCloudAccountSetupStatus();
       return;
     }
 
