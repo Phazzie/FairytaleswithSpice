@@ -1,18 +1,23 @@
 import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
-import { BehaviorSubject, of, Subject } from 'rxjs';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
 import {
   ApiResponse,
+  CloudStoryProjectDeleteReceipt,
   StoryIterationPayload,
   StoryLabJobCreationResponse,
   StoryLabJobEvent,
   StoryStateSnapshot,
   StorySummary,
-  GeneratedChapter
+  CloudStoryProjectList,
+  CloudStoryProjectLoadResult,
+  CloudStoryProjectSaveReceipt,
+  GeneratedChapter,
+  SavedStoryProject
 } from './contracts';
 
 const STORAGE_KEY = 'fairytales_story_lab_projects_v1';
@@ -252,7 +257,11 @@ describe('App', () => {
       'createStoryLabJob',
       'getStoryLabJob',
       'streamStoryLabJobEvents',
-      'streamStoryGeneration'
+      'streamStoryGeneration',
+      'listCloudStoryProjects',
+      'saveCloudStoryProject',
+      'loadCloudStoryProject',
+      'deleteCloudStoryProject'
     ]);
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
       'logInfo',
@@ -439,6 +448,290 @@ describe('App', () => {
 
     expect(component.blueprint().creature).toBe('dragon');
     expect(component.activeSpiceOption().label).toBe('Inferno');
+  });
+
+  it('renders cloud library as unavailable without replacing local browser saves', () => {
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const accountState = panel?.querySelector('[data-testid="cloud-account-state"]') as HTMLElement | null;
+    const text = panel?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    const accountText = accountState?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
+
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(text).toContain('Cloud account');
+    expect(text).toContain('Cloud unavailable');
+    expect(accountText).toContain('Account Not connected');
+    expect(fullText).toContain('Saved here');
+  });
+
+  it('shows an honest account setup action before sign-in is configured', () => {
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const accountAction = panel?.querySelector('[data-testid="cloud-account-action"]') as HTMLButtonElement | null;
+
+    expect(accountAction?.textContent?.trim()).toBe('Connect account');
+
+    accountAction?.click();
+    fixture.detectChanges();
+
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
+    expect(storyService.listCloudStoryProjects).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(fullText).toContain('Sign-in setup is not configured yet.');
+    expect(fullText).toContain('Saved here');
+  });
+
+  it('blocks cloud save until the account is connected', () => {
+    seedWorkbenchForContinuation();
+    storyService.saveCloudStoryProject.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Account required.'
+      }
+    } as ApiResponse<CloudStoryProjectSaveReceipt>));
+
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const saveButton = Array.from(panel?.querySelectorAll('button') ?? [])
+      .find(button => button.textContent?.includes('Save to cloud')) as HTMLButtonElement | undefined;
+
+    expect(saveButton?.disabled).toBeTrue();
+
+    component.saveActiveProjectToCloud();
+    fixture.detectChanges();
+
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
+    expect(storyService.saveCloudStoryProject).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(fullText).toContain('Sign-in setup is not configured yet.');
+  });
+
+  it('blocks cloud load and delete until the account is connected', () => {
+    component.cloudProjects.set([{
+      projectId: 'project-cloud',
+      storyId: 'story-cloud',
+      title: 'Cloud Chapel',
+      synopsis: 'A cloud-synced oath.',
+      chapterCount: 2,
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    }]);
+    storyService.loadCloudStoryProject.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Account required.'
+      }
+    } as ApiResponse<any>));
+    storyService.deleteCloudStoryProject.and.returnValue(of({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Account required.'
+      }
+    } as ApiResponse<any>));
+
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const loadButton = panel?.querySelector('.saved-load') as HTMLButtonElement | null;
+    const deleteButton = panel?.querySelector('.saved-delete') as HTMLButtonElement | null;
+
+    expect(loadButton?.disabled).toBeTrue();
+    expect(deleteButton?.disabled).toBeTrue();
+
+    component.loadCloudProject('project-cloud');
+    component.deleteCloudProject('project-cloud');
+    fixture.detectChanges();
+
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
+    expect(storyService.loadCloudStoryProject).not.toHaveBeenCalled();
+    expect(storyService.deleteCloudStoryProject).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(fullText).toContain('Sign-in setup is not configured yet.');
+  });
+
+  it('refreshes visible cloud projects through the account service', () => {
+    const cloudList: CloudStoryProjectList = {
+      ownerUserId: 'user-owner',
+      storageMode: 'cloud_postgres',
+      projects: [{
+        projectId: 'project-cloud',
+        storyId: 'story-cloud',
+        title: 'Cloud Chapel',
+        synopsis: 'A cloud-synced oath.',
+        chapterCount: 2,
+        createdAt: '2026-06-08T08:37:00.000Z',
+        updatedAt: '2026-06-08T08:38:00.000Z'
+      }]
+    };
+    storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
+
+    component.refreshCloudLibrary();
+    fixture.detectChanges();
+
+    expect(storyService.listCloudStoryProjects).toHaveBeenCalled();
+    expect(component.cloudProjects().length).toBe(1);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
+    expect(fixture.nativeElement.textContent).toContain('Cloud Chapel');
+  });
+
+  it('does not mark cloud library synced when account storage is non-durable', () => {
+    const cloudList: CloudStoryProjectList = {
+      ownerUserId: 'user-owner',
+      storageMode: 'non_durable_memory',
+      projects: [{
+        projectId: 'project-cloud',
+        storyId: 'story-cloud',
+        title: 'Cloud Chapel',
+        synopsis: 'A cloud route backed by non-durable memory.',
+        chapterCount: 2,
+        createdAt: '2026-06-08T08:37:00.000Z',
+        updatedAt: '2026-06-08T08:38:00.000Z'
+      }]
+    };
+    storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
+
+    component.refreshCloudLibrary();
+    fixture.detectChanges();
+
+    expect(component.cloudProjects().length).toBe(1);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toContain('non-durable account storage');
+    expect(fixture.nativeElement.textContent).toContain('Cloud unavailable');
+    expect(fixture.nativeElement.textContent).toContain('Cloud Chapel');
+  });
+
+  it('saves the active workbench project to cloud without disabling local save', () => {
+    const payload = seedWorkbenchForContinuation();
+    const receipt: CloudStoryProjectSaveReceipt = {
+      projectId: payload.summary.storyId,
+      storyId: payload.summary.storyId,
+      savedAt: payload.summary.updatedAt,
+      syncState: {
+        mode: 'cloud_synced',
+        lastSyncedAt: payload.summary.updatedAt
+      }
+    };
+    storyService.saveCloudStoryProject.and.returnValue(of({ success: true, data: receipt }));
+    component.cloudLibrarySyncState.set({
+      mode: 'cloud_synced',
+      lastSyncedAt: payload.summary.updatedAt
+    });
+
+    component.saveActiveProjectToCloud();
+
+    expect(storyService.saveCloudStoryProject).toHaveBeenCalledWith(jasmine.objectContaining({
+      id: payload.summary.storyId,
+      storyId: payload.summary.storyId,
+      title: payload.summary.title
+    }));
+    expect(component.workspaceSaveStatus()).not.toContain('Cloud');
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
+  });
+
+  it('keeps connected cloud state when there is no active workbench project to save', () => {
+    component.cloudLibrarySyncState.set({
+      mode: 'cloud_synced',
+      lastSyncedAt: '2026-06-08T08:38:00.000Z'
+    });
+
+    component.saveActiveProjectToCloud();
+
+    expect(storyService.saveCloudStoryProject).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
+    expect(component.cloudLibrarySyncState().message).toBe('Generate a story before saving to cloud.');
+  });
+
+  it('keeps non-durable loaded projects out of cloud-synced state', () => {
+    const payload = seedWorkbenchForContinuation({
+      summary: createSummary({ storyId: 'story-cloud', title: 'Cloud Chapel' }),
+      state: createState({ storyId: 'story-cloud' }),
+      batch: {
+        chapters: [createChapter({ chapterId: 'chapter-cloud' })],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      }
+    });
+    const project: SavedStoryProject = {
+      id: 'project-cloud',
+      storyId: payload.summary.storyId,
+      title: payload.summary.title,
+      synopsis: payload.summary.synopsis,
+      blueprint: component.blueprint(),
+      summary: payload.summary,
+      state: payload.state,
+      chapters: payload.batch.chapters,
+      telemetry: payload.telemetry,
+      createdAt: payload.summary.createdAt,
+      updatedAt: payload.summary.updatedAt
+    };
+    const loadResult: CloudStoryProjectLoadResult = {
+      ownerUserId: 'user-owner',
+      storageMode: 'non_durable_memory',
+      projectId: project.id,
+      storyId: project.storyId,
+      project,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt
+    };
+    storyService.loadCloudStoryProject.and.returnValue(of({ success: true, data: loadResult }));
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+
+    component.loadCloudProject(project.id);
+
+    expect(storyService.loadCloudStoryProject).toHaveBeenCalledWith(project.id);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toContain('non-durable account storage');
+    expect(component.selectedChapter()?.chapterId).toBe('chapter-cloud');
+  });
+
+  it('keeps non-durable deleted projects out of cloud-synced state', () => {
+    const receipt: CloudStoryProjectDeleteReceipt = {
+      ownerUserId: 'user-owner',
+      storageMode: 'non_durable_memory',
+      projectId: 'project-cloud',
+      deleted: true
+    };
+    component.cloudProjects.set([{
+      projectId: 'project-cloud',
+      storyId: 'story-cloud',
+      title: 'Cloud Chapel',
+      synopsis: 'A cloud route backed by non-durable memory.',
+      chapterCount: 2,
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    }]);
+    storyService.deleteCloudStoryProject.and.returnValue(of({ success: true, data: receipt }));
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+
+    component.deleteCloudProject('project-cloud');
+
+    expect(storyService.deleteCloudStoryProject).toHaveBeenCalledWith('project-cloud');
+    expect(component.cloudProjects().length).toBe(0);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toContain('non-durable account storage');
+  });
+
+  it('re-enables cloud controls after an account route error', () => {
+    storyService.listCloudStoryProjects.and.returnValue(throwError(() => new Error('offline')));
+
+    component.refreshCloudLibrary();
+    fixture.detectChanges();
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const checkButton = Array.from(panel?.querySelectorAll('button') ?? [])
+      .find(button => button.textContent?.includes('Check cloud')) as HTMLButtonElement | undefined;
+    const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
+
+    expect(component.isCloudLibraryBusy()).toBeFalse();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(checkButton?.disabled).toBeFalse();
+    expect(fullText).toContain('Saved here');
   });
 
   it('updates the Heat Contract without changing the rest of the blueprint', () => {

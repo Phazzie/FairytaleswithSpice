@@ -578,6 +578,42 @@
     </ng-template>
 
     <aside class="library-panel" aria-label="Saved stories and story state">
+      <section class="cloud-library-panel" data-testid="cloud-library-panel">
+        <div class="section-heading">
+          <p class="eyebrow">Cloud account</p>
+          <h2>{{ cloudLibraryStatusLabel() }}</h2>
+        </div>
+        <p class="muted" [attr.data-cloud-mode]="cloudLibrarySyncState().mode">
+          {{ cloudLibraryStatusMessage() }}
+        </p>
+        <p class="muted" data-testid="cloud-account-state">
+          <strong>Account </strong>{{ cloudAccountStatusLabel() }}
+        </p>
+        <div class="story-actions">
+          <button type="button" class="ghost compact" data-testid="cloud-account-action" (click)="showCloudAccountSetupStatus()" [disabled]="isCloudLibraryBusy()">
+            {{ cloudAccountActionLabel() }}
+          </button>
+          <button type="button" class="ghost compact" (click)="refreshCloudLibrary()" [disabled]="isCloudLibraryBusy()">
+            {{ isCloudLibraryBusy() ? 'Checking' : 'Check cloud' }}
+          </button>
+          <button type="button" class="ghost compact" (click)="saveActiveProjectToCloud()" [disabled]="!workbench().story || isCloudLibraryBusy() || !canUseCloudLibrary()">
+            Save to cloud
+          </button>
+        </div>
+        <p class="muted" *ngIf="!cloudProjects().length">No cloud projects loaded.</p>
+        <ol class="saved-list" *ngIf="cloudProjects().length">
+          <li class="saved-item" *ngFor="let project of cloudProjects(); trackBy: trackCloudProject">
+            <button type="button" class="saved-load" (click)="loadCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy() || !canUseCloudLibrary()">
+              <span class="saved-title">{{ project.title }}</span>
+              <span class="saved-meta">{{ project.chapterCount }} chapter{{ project.chapterCount === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}</span>
+            </button>
+            <button type="button" class="saved-delete" (click)="deleteCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy() || !canUseCloudLibrary()">
+              Delete
+            </button>
+          </li>
+        </ol>
+      </section>
+
       <section>
         <div class="section-heading">
           <p class="eyebrow">Library</p>

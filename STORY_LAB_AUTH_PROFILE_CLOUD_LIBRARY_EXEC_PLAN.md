@@ -17,7 +17,7 @@ The desired user-visible outcome is:
 
 ## Current Reality On Main
 
-This checklist is current after PR #118 and the consolidated account-route change set.
+This checklist is current after PR #118, the consolidated account-route change set, and the Angular cloud-library UI change set.
 
 - `AuthPort` exists and is deny-by-default.
 - `authorizeProjectAccess` exists.
@@ -28,6 +28,8 @@ This checklist is current after PR #118 and the consolidated account-route chang
 - Profile stores exist for non-durable memory and injected Postgres execution.
 - Cloud schema, guarded migration/readiness helpers, guarded cloud storage config, and Neon executor scaffolding exist.
 - One consolidated account route exists for profile and project operations behind injectable auth/profile/project stores.
+- The Angular app can load account status, show local-vs-cloud library state, and call the consolidated account route for profile/project operations.
+- Cloud save/load/delete controls are gated on connected account state, and `non_durable_memory` account storage is shown as cloud-unavailable.
 - Browser-local `StoryWorkspaceStorageService` remains the current user-visible save path.
 - Story Lab jobs are still `non_durable_memory` and not account-owned.
 - Vercel function count is `11/12` with the account route included.
@@ -65,7 +67,7 @@ Not live yet:
 - [x] Land auth/profile contracts through PR #116.
 - [x] Land cloud schema/storage readiness through PR #118.
 - [x] Land consolidated account route.
-- [ ] Land Angular cloud library UI.
+- [x] Land Angular cloud library UI.
 - [ ] Land durable job owner scaffolding only if kept honest as non-durable in the active UI.
 
 ### Phase 1: Auth And Profile Contracts
@@ -248,6 +250,15 @@ Validation on 2026-06-13:
 
 Goal: expose local-vs-cloud library state honestly in the Angular app while preserving anonymous browser-local saves.
 
+Status:
+
+- Implemented by the Angular cloud-library UI change set.
+- Adds account-service methods for profile status and project save/list/load/delete calls against the consolidated account route.
+- Adds cloud-library UI state for account status, setup action, cloud save/load/delete controls, and local-vs-cloud messaging.
+- Gates cloud project actions on connected account state while preserving anonymous browser-local saves.
+- Displays non-durable account storage as unavailable for cloud sync instead of implying durability.
+- Still not live provider auth, signed-in browser flow, executed migration, provisioned database, durable cloud sync proof, or durable jobs.
+
 Candidate local commits:
 
 - `ca79e26 Add Story Lab account service methods`
@@ -273,6 +284,17 @@ Acceptance:
 - cloud calls are gated until account state is connected;
 - failed or unavailable account state does not imply durable cloud sync;
 - non-durable account storage is displayed as cloud-unavailable.
+
+Validation on 2026-06-21:
+
+- `npm run recovery:preflight -- cloud-library-ui --quick`: passed.
+- `npm run recovery:preflight -- cloud-library-ui`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`.
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `npm run build`: passed with existing Angular bundle and CSS budget warnings.
+- Targeted Angular browser specs built successfully, but local `ChromeHeadless` did not capture before timeout after two retries; this was not counted as passing browser-spec proof.
 
 ### Phase 5: Durable Job Owner Scaffolding
 

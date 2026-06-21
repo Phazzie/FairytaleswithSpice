@@ -9,6 +9,10 @@ import {
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
   StoryLabJobEvent,
+  StoryLabUserProfile,
+  CloudStoryProjectList,
+  CloudStoryProjectSaveReceipt,
+  SavedStoryProject,
   StorySummary,
   StoryStateSnapshot
 } from './contracts';
@@ -57,6 +61,45 @@ function createState(): StoryStateSnapshot {
     continuityWarnings: [],
     narrativeVoice: 'Whispers in velvet',
     lastUpdatedAt: now
+  };
+}
+
+function createProfile(): StoryLabUserProfile {
+  const now = new Date().toISOString();
+  return {
+    userId: 'user-owner',
+    displayName: 'Avery',
+    preferences: {
+      defaultHeatContract: {
+        adultOnlyConfirmed: false,
+        tensionMode: 'slow_burn',
+        intimacyBoundary: 'closed_door'
+      },
+      favoriteCreatures: ['witch'],
+      favoriteTones: ['dark_romance'],
+      librarySort: 'updated_desc'
+    },
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function createSavedProject(): SavedStoryProject {
+  const now = new Date().toISOString();
+  const input = createGenesisInput();
+  const summary = createSummary();
+
+  return {
+    id: 'project-cloud-1',
+    storyId: summary.storyId,
+    title: summary.title,
+    synopsis: summary.synopsis,
+    blueprint: input,
+    summary,
+    state: createState(),
+    chapters: [],
+    createdAt: now,
+    updatedAt: now
   };
 }
 
@@ -286,6 +329,105 @@ describe('StoryService', () => {
     const req = httpMock.expectOne(`/api/story-lab/jobs/${jobId}`);
     expect(req.request.method).toBe('GET');
     req.flush({ success: true, data: payload });
+  });
+
+  it('gets and updates the Story Lab account profile', () => {
+    const profile = createProfile();
+
+    service.getStoryLabProfile().subscribe(response => {
+      expect(response.success).toBeTrue();
+      expect(response.data?.userId).toBe(profile.userId);
+    });
+
+    const getReq = httpMock.expectOne('/api/story-lab/account/profile');
+    expect(getReq.request.method).toBe('GET');
+    getReq.flush({ success: true, data: profile });
+
+    service.updateStoryLabProfile(profile).subscribe(response => {
+      expect(response.success).toBeTrue();
+      expect(response.data?.displayName).toBe('Avery');
+    });
+
+    const putReq = httpMock.expectOne('/api/story-lab/account/profile');
+    expect(putReq.request.method).toBe('PUT');
+    expect(putReq.request.body).toEqual({ profile });
+    putReq.flush({ success: true, data: profile });
+  });
+
+  it('lists, saves, loads, and deletes cloud Story Lab projects', () => {
+    const project = createSavedProject();
+    const list: CloudStoryProjectList = {
+      ownerUserId: 'user-owner',
+      storageMode: 'cloud_postgres',
+      projects: [{
+        projectId: project.id,
+        storyId: project.storyId,
+        title: project.title,
+        synopsis: project.synopsis,
+        chapterCount: 0,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      }]
+    };
+    const saveReceipt: CloudStoryProjectSaveReceipt = {
+      projectId: project.id,
+      storyId: project.storyId,
+      savedAt: project.updatedAt,
+      syncState: {
+        mode: 'cloud_synced',
+        lastSyncedAt: project.updatedAt
+      }
+    };
+
+    service.listCloudStoryProjects().subscribe(response => {
+      expect(response.success).toBeTrue();
+      expect(response.data?.projects.length).toBe(1);
+    });
+    const listReq = httpMock.expectOne('/api/story-lab/account/projects');
+    expect(listReq.request.method).toBe('GET');
+    listReq.flush({ success: true, data: list });
+
+    service.saveCloudStoryProject(project).subscribe(response => {
+      expect(response.success).toBeTrue();
+      expect(response.data?.projectId).toBe(project.id);
+    });
+    const saveReq = httpMock.expectOne('/api/story-lab/account/projects');
+    expect(saveReq.request.method).toBe('POST');
+    expect(saveReq.request.body).toEqual({ project });
+    saveReq.flush({ success: true, data: saveReceipt });
+
+    service.loadCloudStoryProject(project.id).subscribe(response => {
+      expect(response.success).toBeTrue();
+      expect(response.data?.project.id).toBe(project.id);
+    });
+    const loadReq = httpMock.expectOne(`/api/story-lab/account/projects/${project.id}`);
+    expect(loadReq.request.method).toBe('GET');
+    loadReq.flush({
+      success: true,
+      data: {
+        projectId: project.id,
+        storyId: project.storyId,
+        ownerUserId: 'user-owner',
+        project,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+        storageMode: 'postgres'
+      }
+    });
+
+    service.deleteCloudStoryProject(project.id).subscribe(response => {
+      expect(response.success).toBeTrue();
+      expect(response.data?.deleted).toBeTrue();
+    });
+    const deleteReq = httpMock.expectOne(`/api/story-lab/account/projects/${project.id}`);
+    expect(deleteReq.request.method).toBe('DELETE');
+    deleteReq.flush({
+      success: true,
+      data: {
+        projectId: project.id,
+        deleted: true
+      }
+    });
   });
 
   it('streams Story Lab job events by opaque job id', () => {
