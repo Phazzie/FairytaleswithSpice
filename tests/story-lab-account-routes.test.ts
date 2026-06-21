@@ -197,12 +197,14 @@ async function testProfileCrossOwnerSaveIsForbidden() {
 
 async function testProfileSaveAllowsMissingOptionalTimestamps() {
   const handler = createTestHandler(owner);
-  const profile = createDefaultStoryLabUserProfile(owner, {
+  const {
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...profile
+  } = createDefaultStoryLabUserProfile(owner, {
     displayName: 'Avery',
     now
-  }) as Partial<ReturnType<typeof createDefaultStoryLabUserProfile>>;
-  delete profile.createdAt;
-  delete profile.updatedAt;
+  });
 
   const response = new FakeResponse();
   await handler(createRequest('PUT', 'profile', { profile }), response);
@@ -334,14 +336,19 @@ async function testProjectCrossOwnerReadIsForbidden() {
 
 async function testProjectSaveAllowsMissingOptionalMetadata() {
   const handler = createTestHandler(owner);
-  const project = createProject() as Partial<SavedStoryProject>;
-  project.id = 'project-account-no-optional-metadata';
-  delete project.synopsis;
-  delete project.createdAt;
-  delete project.updatedAt;
+  const {
+    synopsis: _synopsis,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...project
+  } = createProject();
+  const projectWithoutOptionalMetadata = {
+    ...project,
+    id: 'project-account-no-optional-metadata'
+  };
 
   const saveResponse = new FakeResponse();
-  await handler(createRequest('POST', 'projects', { project }), saveResponse);
+  await handler(createRequest('POST', 'projects', { project: projectWithoutOptionalMetadata }), saveResponse);
   assert(saveResponse.statusCode === 200, 'project save without optional metadata should return 200');
 
   const loadResponse = new FakeResponse();
