@@ -38,7 +38,7 @@ This plan is intentionally route-free. At the time Phase C was written, the Verc
 - [x] Run focused validation and recovery preflight.
 - [x] Push, open PR, address review/checks, and merge the PR.
 - [x] Reconcile this plan against PR #102 merge evidence, route-budget changes, and the later split-recovery plan.
-- [ ] Use `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` for future account/profile/cloud-library work instead of treating this Phase C storage plan as active implementation permission.
+- [x] Use `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` for future account/profile/cloud-library work instead of treating this Phase C storage plan as active implementation permission.
 
 ## Surprises & Discoveries
 

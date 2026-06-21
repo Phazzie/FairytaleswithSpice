@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 EVIDENCE_DIR="${REPO_ROOT}/tmp/recovery"
 ANGULAR_SPEC_TSC="npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"
 ANGULAR_APP_TSC="npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"
+API_TSC="find api -name '*.ts' ! -name '*.spec.ts' ! -name '*.test.ts' -print0 | xargs -0 node ./node_modules/typescript/bin/tsc --noEmit --target es2020 --lib es2020,dom --module commonjs --moduleResolution node --esModuleInterop --skipLibCheck --types node"
 BUILD_COMMAND="npm run build"
 
 SLICE=""
@@ -48,6 +49,10 @@ add_angular_typecheck_commands() {
   )
 }
 
+add_api_typecheck_command() {
+  SLICE_COMMANDS+=("${API_TSC}")
+}
+
 add_build_command_unless_quick() {
   if [[ "${QUICK}" -eq 0 ]]; then
     SLICE_COMMANDS+=("${BUILD_COMMAND}")
@@ -84,6 +89,7 @@ if [[ -z "${SLICE}" ]]; then
 fi
 
 COMMON_COMMANDS=(
+  "if git rev-parse --verify --quiet origin/main >/dev/null; then git diff --check origin/main...HEAD -- . ':(exclude)node_modules/**' ':(exclude)story-generator/node_modules/**'; else git diff --check -- . ':(exclude)node_modules/**' ':(exclude)story-generator/node_modules/**'; fi"
   "git diff --check -- . ':(exclude)node_modules/**' ':(exclude)story-generator/node_modules/**'"
   "scripts/recovery/check-vercel-function-count.sh"
 )
@@ -97,10 +103,13 @@ case "${SLICE}" in
   durable-job-owner)
     SLICE_COMMANDS=(
       "npx tsx tests/story-lab-job-contracts.test.ts"
+      "npm run test:story-lab-job-store-config"
+      "npm run test:story-lab-job-store-port"
       "npx tsx tests/story-lab-job-routes.test.ts"
       "npm run test:story-lab-cloud-schema"
       "npm run test:story-lab-cloud-db-readiness"
     )
+    add_api_typecheck_command
     ;;
   story-quality-guidance)
     SLICE_COMMANDS=(
@@ -108,11 +117,13 @@ case "${SLICE}" in
       "npm run test:story-quality"
       "npm run test:story"
     )
+    add_api_typecheck_command
     ;;
   quality-report-proving-grounds)
     SLICE_COMMANDS=(
       "npm run test:story-quality"
     )
+    add_api_typecheck_command
     add_angular_typecheck_commands
     add_build_command_unless_quick
     ;;
@@ -121,6 +132,7 @@ case "${SLICE}" in
       "npm run test:story-quality"
       "npm run test:story-lab-real-engine"
     )
+    add_api_typecheck_command
     add_angular_typecheck_commands
     add_build_command_unless_quick
     ;;
