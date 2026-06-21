@@ -137,6 +137,10 @@ case "${SLICE}" in
     add_build_command_unless_quick
     ;;
   css-lazy-loading)
+    SLICE_COMMANDS=(
+      "npm run test:story-generator-route-splitting"
+      "npm run test:story-generator-component-style-budget"
+    )
     add_angular_typecheck_commands
     add_build_command_unless_quick
     ;;

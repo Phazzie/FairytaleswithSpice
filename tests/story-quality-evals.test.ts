@@ -216,6 +216,70 @@ async function main(): Promise<void> {
       && item.reason.includes('Matched words from the continuation brief')),
     'guidance preview should explain why the Blood Oath thread was activated.'
   );
+  const memoryComparisonState = {
+    ...genesisPayload.state,
+    characters: [],
+    threads: [
+      {
+        id: 'thread-weather-tax',
+        label: 'Weather Tax',
+        status: 'active' as const,
+        description: 'The court taxes every storm that crosses the reef.',
+        foreshadowedDevices: []
+      },
+      {
+        id: 'thread-kitchen-claim',
+        label: 'Kitchen Claim',
+        status: 'active' as const,
+        description: 'The servants know who stole the silver ladle.',
+        foreshadowedDevices: []
+      },
+      {
+        id: 'thread-silent-harbor',
+        label: 'Silent Harbor',
+        status: 'active' as const,
+        description: 'The harbor stopped answering ships at midnight.',
+        foreshadowedDevices: []
+      },
+      {
+        id: 'thread-moonlit-oath',
+        label: 'Moonlit Oath',
+        status: 'active' as const,
+        description: 'Mara promised the duke a ledger that would cost her the archive.',
+        foreshadowedDevices: []
+      }
+    ],
+    artifacts: [],
+    continuityWarnings: []
+  };
+  const neutralMemoryPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Raise the pressure in the next room.',
+    storyState: memoryComparisonState
+  });
+  assert(
+    !neutralMemoryPreview.contextSourceMap.some(item => item.kind === 'thread' && item.label === 'Moonlit Oath'),
+    'neutral continuation brief should not activate the lower-priority Moonlit Oath thread.'
+  );
+  const acceptedMemoryPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: [
+      'Raise the pressure in the next room.',
+      '',
+      'Accepted Memory Cards:',
+      '- Promise card: Moonlit Oath. Mara will burn the moonlit ledger before she lets the duke own the vow. Trigger: Moonlit oath, ledger.'
+    ].join('\n'),
+    storyState: memoryComparisonState
+  });
+  assert(
+    acceptedMemoryPreview.hiddenGuidance.includes('Open promise: Moonlit Oath'),
+    'accepted memory card text should change the selected continuity anchor.'
+  );
+  assert(
+    acceptedMemoryPreview.contextSourceMap.some(item =>
+      item.kind === 'thread'
+      && item.label === 'Moonlit Oath'
+      && item.reason.includes('accepted memory card text')),
+    'guidance preview should explain when accepted memory card text activated an anchor.'
+  );
   const artifactActivationPreview = previewStoryLabContinuationGuidance({
     continuationBrief: 'Use the glass key now; make it unlock the forbidden tide door.',
     storyState: {
@@ -350,7 +414,12 @@ async function main(): Promise<void> {
       chapterBatchSize: 1,
       storyState: genesisPayload.state,
       previouslyGeneratedChapters: genesisPayload.batch.chapters,
-      continuationBrief: 'Pay off the witness shell and make Lord Brine escalate.',
+      continuationBrief: [
+        'Pay off the witness shell and make Lord Brine escalate.',
+        '',
+        'Accepted Memory Cards:',
+        '- Promise card: Private ledger. The private card detail names the hidden betrayal. Trigger: Private ledger, betrayal.'
+      ].join('\n'),
       existingSummary: genesisPayload.summary
     }, {
       serviceFactory: () => ({
@@ -421,6 +490,10 @@ async function main(): Promise<void> {
   assert(hiddenGuidance.includes('World clue: Witness Shells'), 'continuation guidance should name the concrete world clue.');
   assert(continuationResponse.data.batch.chapters[0].chapterNumber === 2, 'continuation should append the next chapter number.');
   assert(continuationResponse.data.continuityExtraction?.source === 'heuristic', 'test-injected service should keep heuristic continuity labeling.');
+  const suggestedPromptText = continuationResponse.data.batch.suggestedNextPrompts.join(' ');
+  assert(suggestedPromptText.includes('Pay off the witness shell'), 'public continuation brief should still seed suggested prompt chips.');
+  assert(!suggestedPromptText.includes('Accepted Memory Cards'), 'suggested prompt chips should not expose internal accepted memory sections.');
+  assert(!suggestedPromptText.includes('private card detail'), 'suggested prompt chips should not expose private memory card detail.');
 
   console.log('Story quality evals passed');
 }

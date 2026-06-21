@@ -365,6 +365,7 @@ describe('StoryService', () => {
         title: project.title,
         synopsis: project.synopsis,
         chapterCount: 0,
+        acceptedMemoryCardCount: 0,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt
       }]

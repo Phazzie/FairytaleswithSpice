@@ -449,7 +449,7 @@ function buildContinuationContextSourceMap(
       kind: 'thread',
       label: item.thread.label,
       anchorLabel: formatThreadDebtLabel(item.thread),
-      reason: formatActivationReason(item.activationScore),
+      reason: formatActivationReason(item.activationScore, continuationBrief, getThreadActivationCandidates(item.thread)),
       activationScore: item.activationScore
     });
   }
@@ -460,7 +460,15 @@ function buildContinuationContextSourceMap(
       kind: 'relationship',
       label: `${relationshipPressure.sourceCharacter.displayName} and ${relationshipPressure.targetCharacter.displayName}`,
       anchorLabel: 'Relationship pressure',
-      reason: formatActivationReason(relationshipPressure.activationScore),
+      reason: formatActivationReason(
+        relationshipPressure.activationScore,
+        continuationBrief,
+        getRelationshipActivationCandidates(
+          relationshipPressure.sourceCharacter,
+          relationshipPressure.targetCharacter,
+          relationshipPressure.relationship
+        )
+      ),
       activationScore: relationshipPressure.activationScore
     });
   }
@@ -470,7 +478,7 @@ function buildContinuationContextSourceMap(
       kind: 'artifact',
       label: item.artifact.name,
       anchorLabel: 'World clue',
-      reason: formatActivationReason(item.activationScore),
+      reason: formatActivationReason(item.activationScore, continuationBrief, getArtifactActivationCandidates(item.artifact)),
       activationScore: item.activationScore
     });
   }
@@ -480,7 +488,7 @@ function buildContinuationContextSourceMap(
       kind: 'warning',
       label: item.warning,
       anchorLabel: 'Continuity note',
-      reason: formatActivationReason(item.activationScore),
+      reason: formatActivationReason(item.activationScore, continuationBrief, getWarningActivationCandidates(item.warning)),
       activationScore: item.activationScore
     });
   }
@@ -488,10 +496,18 @@ function buildContinuationContextSourceMap(
   return entries;
 }
 
-function formatActivationReason(activationScore: number): string {
-  return activationScore > 0
-    ? 'Matched words from the continuation brief.'
-    : 'Included by unresolved-story priority.';
+function formatActivationReason(
+  activationScore: number,
+  continuationBrief: string | undefined,
+  activationCandidates: string[]
+): string {
+  if (activationScore <= 0) {
+    return 'Included by unresolved-story priority.';
+  }
+
+  return hasAcceptedMemoryCardActivation(continuationBrief, activationCandidates)
+    ? 'Matched words from accepted memory card text.'
+    : 'Matched words from the continuation brief.';
 }
 
 function selectCourtroomThreads(storyState: StoryStateSnapshot, continuationBrief: string | undefined): PlotThread[] {
@@ -537,56 +553,26 @@ function selectScoredCourtroomArtifacts(storyState: StoryStateSnapshot, continua
 }
 
 function scoreThreadActivation(thread: PlotThread, source: string): number {
-  if (!source) {
-    return 0;
-  }
+  return scoreActivationCandidates(getThreadActivationCandidates(thread), source);
+}
 
-  const candidates = [
+function getThreadActivationCandidates(thread: PlotThread): string[] {
+  return [
     thread.label,
     thread.description,
     ...thread.foreshadowedDevices
-  ].map(normalizeActivationText).filter(Boolean);
-  let score = 0;
-
-  for (const candidate of candidates) {
-    if (source.includes(candidate)) {
-      score += 6;
-    }
-
-    for (const token of candidate.split(' ').filter(value => value.length > 3)) {
-      if (source.includes(token)) {
-        score += 1;
-      }
-    }
-  }
-
-  return score;
+  ];
 }
 
 function scoreArtifactActivation(artifact: LoreArtifact, source: string): number {
-  if (!source) {
-    return 0;
-  }
+  return scoreActivationCandidates(getArtifactActivationCandidates(artifact), source);
+}
 
-  const candidates = [
+function getArtifactActivationCandidates(artifact: LoreArtifact): string[] {
+  return [
     artifact.name,
     artifact.significance
-  ].map(normalizeActivationText).filter(Boolean);
-  let score = 0;
-
-  for (const candidate of candidates) {
-    if (source.includes(candidate)) {
-      score += 6;
-    }
-
-    for (const token of candidate.split(' ').filter(value => value.length > 3)) {
-      if (source.includes(token)) {
-        score += 1;
-      }
-    }
-  }
-
-  return score;
+  ];
 }
 
 function selectCourtroomWarnings(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string[] {
@@ -610,23 +596,11 @@ function selectScoredCourtroomWarnings(storyState: StoryStateSnapshot, continuat
 }
 
 function scoreWarningActivation(warning: string, source: string): number {
-  if (!source) {
-    return 0;
-  }
+  return scoreActivationCandidates(getWarningActivationCandidates(warning), source);
+}
 
-  const candidate = normalizeActivationText(warning);
-  if (!candidate) {
-    return 0;
-  }
-
-  let score = source.includes(candidate) ? 6 : 0;
-  for (const token of candidate.split(' ').filter(value => value.length > 3)) {
-    if (source.includes(token)) {
-      score += 1;
-    }
-  }
-
-  return score;
+function getWarningActivationCandidates(warning: string): string[] {
+  return [warning];
 }
 
 function normalizeActivationText(value: string): string {
@@ -694,19 +668,34 @@ function scoreRelationshipActivation(
   relationship: CharacterProfile['relationships'][number],
   source: string
 ): number {
-  if (!source) {
-    return 0;
-  }
+  return scoreActivationCandidates(
+    getRelationshipActivationCandidates(sourceCharacter, targetCharacter, relationship),
+    source
+  );
+}
 
-  const candidates = [
+function getRelationshipActivationCandidates(
+  sourceCharacter: CharacterProfile,
+  targetCharacter: CharacterProfile,
+  relationship: CharacterProfile['relationships'][number]
+): string[] {
+  return [
     sourceCharacter.displayName,
     targetCharacter.displayName,
     relationship.relationship,
     relationship.notes
-  ].map(normalizeActivationText).filter(Boolean);
+  ];
+}
+
+function scoreActivationCandidates(candidates: string[], source: string): number {
+  if (!source) {
+    return 0;
+  }
+
+  const normalizedCandidates = candidates.map(normalizeActivationText).filter(Boolean);
   let score = 0;
 
-  for (const candidate of candidates) {
+  for (const candidate of normalizedCandidates) {
     if (source.includes(candidate)) {
       score += 6;
     }
@@ -719,6 +708,27 @@ function scoreRelationshipActivation(
   }
 
   return score;
+}
+
+function hasAcceptedMemoryCardActivation(continuationBrief: string | undefined, activationCandidates: string[]): boolean {
+  const acceptedMemoryText = extractAcceptedMemoryCardSection(continuationBrief);
+  if (!acceptedMemoryText) {
+    return false;
+  }
+
+  return scoreActivationCandidates(activationCandidates, normalizeActivationText(acceptedMemoryText)) > 0;
+}
+
+function extractAcceptedMemoryCardSection(continuationBrief = ''): string {
+  const acceptedHeading = 'Accepted Memory Cards:';
+  const acceptedStart = continuationBrief.indexOf(acceptedHeading);
+  if (acceptedStart === -1) {
+    return '';
+  }
+
+  const acceptedText = continuationBrief.slice(acceptedStart + acceptedHeading.length);
+  const pinnedStart = acceptedText.search(/\r?\nPinned Memory Cards:/);
+  return pinnedStart === -1 ? acceptedText : acceptedText.slice(0, pinnedStart);
 }
 
 function formatCourtroomDetail(value: string): string {
@@ -1100,7 +1110,8 @@ function buildInitialThreads(storyId: string, input: LabGenerationSeam['input'])
         label: theme.label,
         status: 'active' as const,
         description: theme.description,
-        foreshadowedDevices: []
+        foreshadowedDevices: [],
+        lifetime: 'series' as const
       }))
     : [];
 
@@ -1109,7 +1120,8 @@ function buildInitialThreads(storyId: string, input: LabGenerationSeam['input'])
     label: 'Central romance',
     status: 'active',
     description: input.logline,
-    foreshadowedDevices: []
+    foreshadowedDevices: [],
+    lifetime: 'series'
   }];
 }
 
@@ -1118,7 +1130,8 @@ function buildWorldArtifact(storyId: string, worldDetails: string): LoreArtifact
     id: `${storyId}-world-details`,
     name: deriveWorldArtifactName(worldDetails),
     significance: worldDetails,
-    introducedInChapter: 1
+    introducedInChapter: 1,
+    lifetime: 'series'
   };
 }
 
@@ -1231,11 +1244,27 @@ function buildSuggestedPrompts(input: LabGenerationSeam['input'], nextChapterHin
 }
 
 function buildContinuationPrompts(input: LabContinuationSeam['input'], nextChapterHint?: string): string[] {
+  const publicContinuationBrief = stripStoryMemoryCardSections(input.continuationBrief);
   return [
     nextChapterHint,
-    input.continuationBrief ? `Pay off: ${input.continuationBrief}` : undefined,
+    publicContinuationBrief ? `Pay off: ${publicContinuationBrief}` : undefined,
     'Answer one open question and raise a sharper one.'
   ].filter((prompt): prompt is string => Boolean(prompt));
+}
+
+function stripStoryMemoryCardSections(continuationBrief: string | undefined): string | undefined {
+  const lines = continuationBrief?.split(/\r?\n/) ?? [];
+  const publicLines: string[] = [];
+
+  for (const line of lines) {
+    if (line === 'Accepted Memory Cards:' || line === 'Pinned Memory Cards:') {
+      break;
+    }
+    publicLines.push(line);
+  }
+
+  const publicBrief = publicLines.join('\n').trim();
+  return publicBrief || undefined;
 }
 
 function buildGrokTelemetry(metadata: ApiResponseMetadata | undefined, chapterCount: number): GenerationTelemetry {

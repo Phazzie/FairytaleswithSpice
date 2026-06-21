@@ -232,6 +232,51 @@ function makePayloadForStory(storyId: string, title: string): Partial<StoryItera
   };
 }
 
+function createMaraMemoryCardState(options: {
+  includeThread?: boolean;
+  includeArtifact?: boolean;
+  artifactName?: string;
+  artifactSignificance?: string;
+} = {}): StoryStateSnapshot {
+  return createState({
+    characters: [{
+      id: 'mara',
+      displayName: 'Mara',
+      archetype: 'protagonist',
+      summary: 'A siren archivist guarding a forbidden oath.',
+      currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+      internalConflict: 'She wants the duke and fears the cost.',
+      externalConflict: 'Duke Vale wants the same vow.',
+      secrets: [],
+      relationships: [],
+      spiceCompatibilities: [3]
+    }],
+    threads: options.includeThread === false ? [] : [{
+      id: 'oath',
+      label: 'Moonlit oath',
+      status: 'escalating',
+      description: 'The bargain demands a public sacrifice.',
+      foreshadowedDevices: []
+    }],
+    artifacts: options.includeArtifact ? [{
+      id: 'memory-artifact',
+      name: options.artifactName ?? 'Witness Shell',
+      significance: options.artifactSignificance ?? 'The shell repeats any vow spoken near the reef court.',
+      introducedInChapter: 1
+    }] : []
+  });
+}
+
+function expectTextOrder(text: string, expectedItems: string[]): void {
+  let previousIndex = -1;
+  for (const item of expectedItems) {
+    const itemIndex = text.indexOf(item);
+    expect(itemIndex).withContext(`${item} should be rendered`).toBeGreaterThanOrEqual(0);
+    expect(itemIndex).withContext(`${item} should follow the previous memory card`).toBeGreaterThan(previousIndex);
+    previousIndex = itemIndex;
+  }
+}
+
 const confirmedHeatContract = {
   adultOnlyConfirmed: true,
   tensionMode: 'slow_burn' as const,
@@ -353,6 +398,43 @@ describe('App', () => {
     return payload;
   }
 
+  function seedMaraMemoryCardWorkbench(options: Parameters<typeof createMaraMemoryCardState>[0] = {}): StoryIterationPayload {
+    return seedWorkbenchForContinuation({ state: createMaraMemoryCardState(options) });
+  }
+
+  function stubCompletedContinuationJob(genesisPayload: StoryIterationPayload): void {
+    const continuationPayload = createContinuationPayload(genesisPayload);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createContinuationJobResponse(continuationPayload)
+    }));
+  }
+
+  function clickFirstMemoryCardDraftAction(testId: 'accept-memory-card-draft' | 'pin-memory-card-draft'): HTMLButtonElement | null {
+    const button = renderedMemoryCardDraftsPanel()?.querySelector(`[data-testid="${testId}"]`) as HTMLButtonElement | null;
+    button?.click();
+    fixture.detectChanges();
+    return button;
+  }
+
+  function acceptAllMemoryCardDrafts(): void {
+    const acceptButtons = Array.from(
+      renderedMemoryCardDraftsPanel()?.querySelectorAll('[data-testid="accept-memory-card-draft"]') ?? []
+    ) as HTMLButtonElement[];
+    expect(acceptButtons.length).toBe(3);
+    acceptButtons.forEach(button => button.click());
+    fixture.detectChanges();
+  }
+
+  function latestContinuationBrief(): string {
+    const jobRequest = storyService.createStoryLabJob.calls.mostRecent().args[0] as {
+      kind: 'continuation';
+      continuation: { continuationBrief?: string };
+    };
+    expect(jobRequest.kind).toBe('continuation');
+    return jobRequest.continuation.continuationBrief ?? '';
+  }
+
   function prepareRunningContinuationRecovery(): StoryIterationPayload {
     const genesisPayload = seedWorkbenchForContinuation();
     component.saveActiveProject();
@@ -400,6 +482,36 @@ describe('App', () => {
 
   function renderedNarrativeDialText(dialId: string, targetFixture: ComponentFixture<App> = fixture): string | null {
     return renderedNarrativeDial(dialId, targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
+  function renderedContinuityPreviewText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    targetFixture.detectChanges();
+    const panel = targetFixture.nativeElement.querySelector('[data-testid="continuity-preview-panel"]') as HTMLElement | null;
+    return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
+  function renderedMemoryCardDraftsPanel(targetFixture: ComponentFixture<App> = fixture): HTMLElement | null {
+    targetFixture.detectChanges();
+    return targetFixture.nativeElement.querySelector('[data-testid="memory-card-drafts-panel"]') as HTMLElement | null;
+  }
+
+  function renderedMemoryCardDraftsText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    return renderedMemoryCardDraftsPanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
+  function renderedAcceptedMemoryCardsPanel(targetFixture: ComponentFixture<App> = fixture): HTMLElement | null {
+    targetFixture.detectChanges();
+    return targetFixture.nativeElement.querySelector('[data-testid="accepted-memory-cards-panel"]') as HTMLElement | null;
+  }
+
+  function renderedAcceptedMemoryCardsText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    return renderedAcceptedMemoryCardsPanel(targetFixture)?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
+  }
+
+  function renderedAcceptedMemoryContinuationPreviewText(targetFixture: ComponentFixture<App> = fixture): string | null {
+    targetFixture.detectChanges();
+    const panel = targetFixture.nativeElement.querySelector('[data-testid="accepted-memory-continuation-preview"]') as HTMLElement | null;
+    return panel?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
   }
 
   it('creates the workbench with default blueprint values', () => {
@@ -518,6 +630,7 @@ describe('App', () => {
       title: 'Cloud Chapel',
       synopsis: 'A cloud-synced oath.',
       chapterCount: 2,
+      acceptedMemoryCardCount: 0,
       createdAt: '2026-06-08T08:37:00.000Z',
       updatedAt: '2026-06-08T08:38:00.000Z'
     }]);
@@ -566,6 +679,7 @@ describe('App', () => {
         title: 'Cloud Chapel',
         synopsis: 'A cloud-synced oath.',
         chapterCount: 2,
+        acceptedMemoryCardCount: 0,
         createdAt: '2026-06-08T08:37:00.000Z',
         updatedAt: '2026-06-08T08:38:00.000Z'
       }]
@@ -591,6 +705,7 @@ describe('App', () => {
         title: 'Cloud Chapel',
         synopsis: 'A cloud route backed by non-durable memory.',
         chapterCount: 2,
+        acceptedMemoryCardCount: 0,
         createdAt: '2026-06-08T08:37:00.000Z',
         updatedAt: '2026-06-08T08:38:00.000Z'
       }]
@@ -605,6 +720,75 @@ describe('App', () => {
     expect(component.cloudLibrarySyncState().message).toContain('non-durable account storage');
     expect(fixture.nativeElement.textContent).toContain('Cloud unavailable');
     expect(fixture.nativeElement.textContent).toContain('Cloud Chapel');
+  });
+
+  it('renders accepted memory counts in cloud and local library rows without card text', () => {
+    const cloudList: CloudStoryProjectList = {
+      ownerUserId: 'user-owner',
+      storageMode: 'cloud_postgres',
+      projects: [{
+        projectId: 'project-cloud',
+        storyId: 'story-cloud',
+        title: 'Cloud Chapel',
+        synopsis: 'A cloud-synced oath.',
+        chapterCount: 2,
+        acceptedMemoryCardCount: 2,
+        createdAt: '2026-06-08T08:37:00.000Z',
+        updatedAt: '2026-06-08T08:38:00.000Z'
+      }]
+    };
+    storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
+    component.refreshCloudLibrary();
+
+    seedWorkbenchForContinuation();
+    component.acceptedMemoryCards.set([{
+      id: 'accepted-card-private',
+      label: 'Promise',
+      title: 'Moonlit Oath',
+      detail: 'Private accepted memory detail should not appear in project list metadata.',
+      triggerLabel: 'Trigger: oath',
+      acceptedAt: '2026-06-08T08:39:00.000Z'
+    }]);
+    component.saveActiveProject();
+    fixture.detectChanges();
+
+    const cloudMeta = fixture.nativeElement.querySelector('[data-testid="cloud-project-meta"]') as HTMLElement | null;
+    const localMeta = fixture.nativeElement.querySelector('[data-testid="local-project-meta"]') as HTMLElement | null;
+
+    expect(cloudMeta?.textContent).toContain('2 memory cards');
+    expect(localMeta?.textContent).toContain('1 memory card');
+    expect(cloudMeta?.textContent).not.toContain('Private accepted memory detail');
+    expect(localMeta?.textContent).not.toContain('Private accepted memory detail');
+  });
+
+  it('renders zero accepted memory counts when project metadata is present', () => {
+    const cloudList: CloudStoryProjectList = {
+      ownerUserId: 'user-owner',
+      storageMode: 'cloud_postgres',
+      projects: [{
+        projectId: 'project-cloud',
+        storyId: 'story-cloud',
+        title: 'Cloud Chapel',
+        synopsis: 'A cloud-synced oath.',
+        chapterCount: 2,
+        acceptedMemoryCardCount: 0,
+        createdAt: '2026-06-08T08:37:00.000Z',
+        updatedAt: '2026-06-08T08:38:00.000Z'
+      }]
+    };
+    storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
+    component.refreshCloudLibrary();
+
+    seedWorkbenchForContinuation();
+    component.acceptedMemoryCards.set([]);
+    component.saveActiveProject();
+    fixture.detectChanges();
+
+    const cloudMeta = fixture.nativeElement.querySelector('[data-testid="cloud-project-meta"]') as HTMLElement | null;
+    const localMeta = fixture.nativeElement.querySelector('[data-testid="local-project-meta"]') as HTMLElement | null;
+
+    expect(cloudMeta?.textContent).toContain('0 memory cards');
+    expect(localMeta?.textContent).toContain('0 memory cards');
   });
 
   it('saves the active workbench project to cloud without disabling local save', () => {
@@ -704,6 +888,7 @@ describe('App', () => {
       title: 'Cloud Chapel',
       synopsis: 'A cloud route backed by non-durable memory.',
       chapterCount: 2,
+      acceptedMemoryCardCount: 0,
       createdAt: '2026-06-08T08:37:00.000Z',
       updatedAt: '2026-06-08T08:38:00.000Z'
     }]);
@@ -925,6 +1110,497 @@ describe('App', () => {
     expect(directorText).toContain('Moonlit oath');
   });
 
+  it('renders a read-only Continuity Preview from current story state', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [
+              {
+                characterId: 'duke-vale',
+                relationship: 'rival',
+                notes: 'Duke Vale can turn the vow into leverage.'
+              }
+            ],
+            spiceCompatibilities: [3]
+          },
+          {
+            id: 'duke-vale',
+            displayName: 'Duke Vale',
+            archetype: 'antagonist',
+            summary: 'A moonlit duke with a claim on the reef archive.',
+            currentGoal: 'Turn Mara toward the court bargain.',
+            internalConflict: 'His desire compromises his strategy.',
+            externalConflict: 'Mara can refuse him in public.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        threads: [
+          {
+            id: 'oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: [],
+            lifetime: 'series'
+          }
+        ],
+        artifacts: [
+          {
+            id: 'shell',
+            name: 'Witness Shell',
+            significance: 'The shell repeats any vow spoken near the reef court.',
+            introducedInChapter: 1,
+            lifetime: 'chapter'
+          }
+        ],
+        continuityWarnings: ['Resolve the vow before changing courts.']
+      })
+    });
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    expect(previewText).toContain('Continuity Preview');
+    expect(previewText).toContain('Pressure rising');
+    expect(previewText).toContain('Moonlit oath');
+    expect(previewText).toContain('Active story thread');
+    expect(previewText).toContain('Series memory');
+    expect(previewText).toContain('Relationship pressure');
+    expect(previewText).toContain('Mara and Duke Vale');
+    expect(previewText).toContain('Current relationship edge');
+    expect(previewText).toContain('World clue');
+    expect(previewText).toContain('Witness Shell');
+    expect(previewText).toContain('Unresolved world clue');
+    expect(previewText).toContain('Chapter memory');
+    expect(previewText).toContain('Continuity note');
+    expect(previewText).toContain('Resolve the vow');
+    expect(previewText).toContain('Continuity note to honor');
+  });
+
+  it('prioritizes custom-brief matches in the Continuity Preview', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the truth and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [
+              {
+                characterId: 'duke-vale',
+                relationship: 'rival',
+                notes: 'Duke Vale can turn the vow into leverage.'
+              },
+              {
+                characterId: 'coral-scribe',
+                relationship: 'ally',
+                notes: 'Coral Scribe knows where Mara hid the archive ledger.'
+              }
+            ],
+            spiceCompatibilities: [3]
+          },
+          {
+            id: 'duke-vale',
+            displayName: 'Duke Vale',
+            archetype: 'antagonist',
+            summary: 'A moonlit duke with a claim on the reef archive.',
+            currentGoal: 'Turn Mara toward the court bargain.',
+            internalConflict: 'His desire compromises his strategy.',
+            externalConflict: 'Mara can refuse him in public.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          },
+          {
+            id: 'coral-scribe',
+            displayName: 'Coral Scribe',
+            archetype: 'supporting',
+            summary: 'A court archivist who knows the dangerous ledger path.',
+            currentGoal: 'Make the ledger truth impossible to ignore.',
+            internalConflict: 'He owes two courts and one truth.',
+            externalConflict: 'The reef court can silence him.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [2]
+          }
+        ],
+        threads: [
+          {
+            id: 'moonlit-oath',
+            label: 'Moonlit oath',
+            status: 'escalating',
+            description: 'The bargain demands a public sacrifice.',
+            foreshadowedDevices: []
+          },
+          {
+            id: 'reef-trial',
+            label: 'Reef trial',
+            status: 'active',
+            description: 'The court wants testimony before dawn.',
+            foreshadowedDevices: []
+          },
+          {
+            id: 'blood-oath',
+            label: 'Blood Oath',
+            status: 'active',
+            description: 'The old promise makes the next confession costly.',
+            foreshadowedDevices: []
+          }
+        ],
+        artifacts: [
+          {
+            id: 'witness-shell',
+            name: 'Witness Shell',
+            significance: 'The shell repeats any vow spoken near the reef court.',
+            introducedInChapter: 1
+          },
+          {
+            id: 'glass-key',
+            name: 'Glass Key',
+            significance: 'The key opens the forbidden tide door beneath the ledger room.',
+            introducedInChapter: 1
+          }
+        ],
+        continuityWarnings: [
+          'Resolve the duke wager before changing courts.',
+          'Make Coral Scribe honor the ledger warning before the court leaves.'
+        ]
+      })
+    });
+    component.customContinuationBrief.set('Bring the blood oath, glass key, and Coral Scribe ledger into the next scene.');
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    expect(previewText).toContain('Blood Oath');
+    expect(previewText).toContain('Glass Key');
+    expect(previewText).toContain('Mara and Coral Scribe');
+    expect(previewText).toContain('Coral Scribe honor the ledger warning');
+    expect(previewText).toContain('Matched continuation guidance');
+    expect(previewText).not.toContain('Witness Shell');
+  });
+
+  it('renders suggested memory card drafts from current story state', () => {
+    seedMaraMemoryCardWorkbench({ includeArtifact: true });
+
+    const cardDraftText = renderedMemoryCardDraftsText() ?? '';
+
+    expect(cardDraftText).toContain('Memory Card Drafts');
+    expect(cardDraftText).toContain('Character card');
+    expect(cardDraftText).toContain('Mara');
+    expect(cardDraftText).toContain('Trigger: Mara');
+    expect(cardDraftText).toContain('Promise card');
+    expect(cardDraftText).toContain('Moonlit oath');
+    expect(cardDraftText).toContain('Trigger: Moonlit oath, oath');
+    expect(cardDraftText).toContain('World card');
+    expect(cardDraftText).toContain('Witness Shell');
+    expect(cardDraftText).toContain('Trigger: Witness Shell, shell');
+  });
+
+  it('keeps Unicode words intact in continuity matching and memory-card triggers', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [{
+          id: 'corazon',
+          displayName: 'Corazón Encantado',
+          archetype: 'protagonist',
+          summary: 'A witch guarding a vow written in salt.',
+          currentGoal: 'Keep the corazón promise alive.',
+          internalConflict: 'She fears the promise will name her desire.',
+          externalConflict: 'The court wants the vow erased.',
+          secrets: [],
+          relationships: [],
+          spiceCompatibilities: [3]
+        }],
+        threads: [{
+          id: 'promesa',
+          label: 'Promesa del Corazón',
+          status: 'active',
+          description: 'The promise binds the next confession.',
+          foreshadowedDevices: []
+        }]
+      })
+    });
+    component.customContinuationBrief.set('Recuerda el corazón antes del baile.');
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+    const draftText = renderedMemoryCardDraftsText() ?? '';
+
+    expect(previewText).toContain('Matched continuation guidance');
+    expect(draftText).toContain('Trigger: Corazón Encantado, encantado');
+    expect(draftText).toContain('Trigger: Promesa del Corazón, corazón');
+  });
+
+  it('uses accepted memory cards when scoring the continuity preview', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        threads: [
+          {
+            id: 'reef-trial',
+            label: 'Reef trial',
+            status: 'active',
+            description: 'The court wants testimony before dawn.',
+            foreshadowedDevices: []
+          },
+          {
+            id: 'moonlit-oath',
+            label: 'Moonlit oath',
+            status: 'active',
+            description: 'Mara promised the duke a ledger that would cost her the archive.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+    component.customContinuationBrief.set('Raise pressure somewhere else.');
+    component.acceptedMemoryCards.set([{
+      id: 'memory-card-thread-moonlit-oath',
+      label: 'Promise card',
+      title: 'Moonlit oath',
+      detail: 'Mara will burn the moonlit ledger before she lets the duke own the vow.',
+      triggerLabel: 'Trigger: Moonlit oath, ledger',
+      acceptedAt: '2026-06-21T11:35:00.000Z'
+    }]);
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    expect(previewText).toContain('Moonlit oath');
+    expect(previewText).toContain('Matched continuation guidance');
+  });
+
+  it('pins a memory card draft in the current session', () => {
+    seedMaraMemoryCardWorkbench();
+
+    const pinButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="pin-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(pinButton?.textContent?.trim()).toBe('Pin');
+
+    pinButton?.click();
+    fixture.detectChanges();
+
+    const pinnedText = renderedMemoryCardDraftsText() ?? '';
+    const pinnedButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="pin-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(pinnedText).toContain('Pinned cards: 1');
+    expect(pinnedButton?.textContent?.trim()).toBe('Unpin');
+    expect(pinnedButton?.disabled).toBeFalse();
+
+    pinnedButton?.click();
+    fixture.detectChanges();
+
+    const unpinnedText = renderedMemoryCardDraftsText() ?? '';
+    const unpinnedButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="pin-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(unpinnedText).not.toContain('Pinned cards: 1');
+    expect(unpinnedButton?.textContent?.trim()).toBe('Pin');
+  });
+
+  it('restores pinned memory card drafts from a browser-local saved project', () => {
+    seedMaraMemoryCardWorkbench();
+
+    clickFirstMemoryCardDraftAction('pin-memory-card-draft');
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    const restoredText = renderedMemoryCardDraftsText() ?? '';
+    const restoredButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="pin-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(restoredText).toContain('Pinned cards: 1');
+    expect(restoredButton?.textContent?.trim()).toBe('Unpin');
+    expect(restoredButton?.disabled).toBeFalse();
+  });
+
+  it('accepts memory card draft records into browser-local saved projects', () => {
+    seedMaraMemoryCardWorkbench();
+
+    const acceptButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="accept-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(acceptButton).not.toBeNull();
+
+    acceptButton?.click();
+    fixture.detectChanges();
+
+    const acceptedText = renderedAcceptedMemoryCardsText() ?? '';
+    const acceptedButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="accept-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(acceptedText).toContain('Accepted Memory Cards');
+    expect(acceptedText).toContain('Character card');
+    expect(acceptedText).toContain('Mara');
+    expect(acceptedText).toContain('Keep the moonlit bargain from consuming her archive.');
+    expect(acceptedButton?.textContent?.trim()).toBe('Accepted');
+    expect(acceptedButton?.disabled).toBeTrue();
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    const restoredAcceptedText = renderedAcceptedMemoryCardsText() ?? '';
+    const restoredAcceptedButton = renderedMemoryCardDraftsPanel()?.querySelector('[data-testid="accept-memory-card-draft"]') as HTMLButtonElement | null;
+    expect(restoredAcceptedText).toContain('Accepted Memory Cards');
+    expect(restoredAcceptedText).toContain('Mara');
+    expect(restoredAcceptedButton?.textContent?.trim()).toBe('Accepted');
+    expect(restoredAcceptedButton?.disabled).toBeTrue();
+  });
+
+  it('normalizes malformed saved memory metadata before hydrating browser-local projects', () => {
+    seedMaraMemoryCardWorkbench();
+    component.saveActiveProject();
+
+    const savedProjects = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as Array<Record<string, unknown>>;
+    savedProjects[0]['pinnedMemoryCardDraftIds'] = {};
+    savedProjects[0]['acceptedMemoryCards'] = {};
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedProjects));
+
+    component.resetWorkbench();
+
+    expect(() => component.loadSavedProject('story-123')).not.toThrow();
+    expect(renderedAcceptedMemoryCardsPanel()).toBeNull();
+    expect(renderedMemoryCardDraftsText()).not.toContain('Pinned cards: 1');
+  });
+
+  it('shows accepted memory near continuation controls before continuing', () => {
+    seedMaraMemoryCardWorkbench({ includeThread: false });
+
+    expect(renderedAcceptedMemoryContinuationPreviewText()).toBeNull();
+
+    clickFirstMemoryCardDraftAction('accept-memory-card-draft');
+
+    const previewText = renderedAcceptedMemoryContinuationPreviewText() ?? '';
+    expect(previewText).toContain('1 accepted memory card will be included');
+    expect(previewText).toContain('Mara');
+  });
+
+  it('edits accepted memory cards and carries edited text into continuations', () => {
+    const genesisPayload = seedMaraMemoryCardWorkbench();
+    stubCompletedContinuationJob(genesisPayload);
+
+    clickFirstMemoryCardDraftAction('accept-memory-card-draft');
+    const editButton = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="edit-accepted-memory-card"]') as HTMLButtonElement | null;
+    expect(editButton).not.toBeNull();
+
+    editButton?.click();
+    fixture.detectChanges();
+
+    const titleInput = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="accepted-memory-card-title"]') as HTMLInputElement | null;
+    const detailInput = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="accepted-memory-card-detail"]') as HTMLTextAreaElement | null;
+    const triggerInput = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="accepted-memory-card-trigger"]') as HTMLInputElement | null;
+    expect(titleInput).not.toBeNull();
+    expect(detailInput).not.toBeNull();
+    expect(triggerInput).not.toBeNull();
+
+    titleInput!.value = 'Mara the Archive Blade';
+    titleInput!.dispatchEvent(new Event('input'));
+    detailInput!.value = 'She will burn the moonlit ledger before she lets the duke own the vow.';
+    detailInput!.dispatchEvent(new Event('input'));
+    triggerInput!.value = 'Trigger: Mara, ledger';
+    triggerInput!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const saveButton = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="save-accepted-memory-card"]') as HTMLButtonElement | null;
+    saveButton?.click();
+    fixture.detectChanges();
+
+    const editedText = renderedAcceptedMemoryCardsText() ?? '';
+    expect(editedText).toContain('Mara the Archive Blade');
+    expect(editedText).toContain('She will burn the moonlit ledger before she lets the duke own the vow.');
+    expect(editedText).toContain('Trigger: Mara, ledger');
+    expect(editedText).not.toContain('Keep the moonlit bargain from consuming her archive.');
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    const restoredText = renderedAcceptedMemoryCardsText() ?? '';
+    expect(restoredText).toContain('Mara the Archive Blade');
+    expect(restoredText).toContain('She will burn the moonlit ledger before she lets the duke own the vow.');
+
+    component.continueSaga('Use the accepted card.');
+
+    const continuationBrief = latestContinuationBrief();
+    expect(continuationBrief).toContain('Accepted Memory Cards:');
+    expect(continuationBrief).toContain('Mara the Archive Blade');
+    expect(continuationBrief).toContain('moonlit ledger');
+    expect(continuationBrief).toContain('Trigger: Mara, ledger');
+  });
+
+  it('reorders accepted memory cards across saved projects and continuation briefs', () => {
+    const genesisPayload = seedMaraMemoryCardWorkbench({
+      includeArtifact: true,
+      artifactName: 'Glass Key',
+      artifactSignificance: 'A brittle key that opens the forbidden tide door only once.'
+    });
+    stubCompletedContinuationJob(genesisPayload);
+    acceptAllMemoryCardDrafts();
+
+    const initialText = renderedAcceptedMemoryCardsText() ?? '';
+    expectTextOrder(initialText, ['Mara', 'Moonlit oath', 'Glass Key']);
+
+    const upButtons = Array.from(renderedAcceptedMemoryCardsPanel()?.querySelectorAll('[data-testid="move-accepted-memory-card-up"]') ?? []) as HTMLButtonElement[];
+    const downButtons = Array.from(renderedAcceptedMemoryCardsPanel()?.querySelectorAll('[data-testid="move-accepted-memory-card-down"]') ?? []) as HTMLButtonElement[];
+    expect(upButtons.length).toBe(3);
+    expect(downButtons.length).toBe(3);
+    expect(upButtons[0].disabled).toBeTrue();
+    expect(downButtons[2].disabled).toBeTrue();
+
+    downButtons[0].click();
+    fixture.detectChanges();
+
+    const reorderedText = renderedAcceptedMemoryCardsText() ?? '';
+    expectTextOrder(reorderedText, ['Moonlit oath', 'Mara', 'Glass Key']);
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    const restoredText = renderedAcceptedMemoryCardsText() ?? '';
+    expectTextOrder(restoredText, ['Moonlit oath', 'Mara', 'Glass Key']);
+
+    component.continueSaga('Use accepted memory order.');
+
+    expectTextOrder(latestContinuationBrief(), ['Moonlit oath', 'Mara', 'Glass Key']);
+  });
+
+  it('deletes accepted memory cards from saved projects and continuation briefs', () => {
+    const genesisPayload = seedMaraMemoryCardWorkbench();
+    stubCompletedContinuationJob(genesisPayload);
+
+    clickFirstMemoryCardDraftAction('pin-memory-card-draft');
+    clickFirstMemoryCardDraftAction('accept-memory-card-draft');
+    expect(renderedAcceptedMemoryCardsText()).toContain('Mara');
+
+    const deleteButton = renderedAcceptedMemoryCardsPanel()?.querySelector('[data-testid="delete-accepted-memory-card"]') as HTMLButtonElement | null;
+    expect(deleteButton).not.toBeNull();
+
+    deleteButton?.click();
+    fixture.detectChanges();
+
+    expect(renderedAcceptedMemoryCardsPanel()).toBeNull();
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    component.loadSavedProject('story-123');
+
+    expect(renderedAcceptedMemoryCardsPanel()).toBeNull();
+
+    component.continueSaga('Use only the fresh brief.');
+
+    const continuationBrief = latestContinuationBrief();
+    expect(continuationBrief).toContain('Use only the fresh brief.');
+    expect(continuationBrief).not.toContain('Accepted Memory Cards:');
+    expect(continuationBrief).not.toContain('Pinned Memory Cards:');
+    expect(continuationBrief).not.toContain('Mara');
+  });
+
   it('moves a Director Room note into the custom continuation brief and keeps dismissed notes visible', () => {
     seedWorkbenchForContinuation();
 
@@ -1057,6 +1733,21 @@ describe('App', () => {
     expect(jobRequest.continuation.continuationBrief).toContain('Pacing: Sprint toward a cliffhanger');
     expect(jobRequest.continuation.continuationBrief).toContain('Ending Bet: Build the ending around betrayal');
     expect(jobRequest.continuation.continuationBrief).toContain('Villain Pressure: Put the characters under a tight deadline');
+  });
+
+  it('adds pinned memory card prose anchors to continuation briefs', () => {
+    const genesisPayload = seedMaraMemoryCardWorkbench();
+    stubCompletedContinuationJob(genesisPayload);
+
+    clickFirstMemoryCardDraftAction('pin-memory-card-draft');
+    component.continueSaga('Focus on the betrayal arc.');
+
+    const continuationBrief = latestContinuationBrief();
+    expect(continuationBrief).toContain('Focus on the betrayal arc.');
+    expect(continuationBrief).toContain('Pinned Memory Cards:');
+    expect(continuationBrief).toContain('Character card: Mara');
+    expect(continuationBrief).toContain('Keep the moonlit bargain from consuming her archive.');
+    expect(continuationBrief).toContain('Trigger: Mara');
   });
 
   it('supports every narrative dial option in the UI and continuation brief', () => {

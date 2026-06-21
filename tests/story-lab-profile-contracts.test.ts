@@ -53,6 +53,7 @@ const projectList: CloudStoryProjectList = {
       title: 'The Moonlit Library',
       synopsis: 'A vampire librarian finds a hidden oath.',
       chapterCount: 2,
+      acceptedMemoryCardCount: 1,
       createdAt: '2026-06-08T07:10:00.000Z',
       updatedAt: '2026-06-08T07:22:00.000Z'
     }
@@ -77,6 +78,11 @@ assert(profile.preferences.defaultHeatContract.adultOnlyConfirmed, 'profile shou
 assert(profile.preferences.favoriteCreatures.includes('witch'), 'profile should carry favorite creature preferences');
 assert(projectList.ownerUserId === profile.userId, 'cloud list should carry the owner user id');
 assert(projectList.projects[0]?.chapterCount === 2, 'cloud list items should summarize chapter count');
+assert(projectList.projects[0]?.acceptedMemoryCardCount === 1, 'cloud list items should summarize accepted memory card count without card text');
+assert(
+  !('acceptedMemoryCards' in (projectList.projects[0] as Record<string, unknown>)),
+  'cloud list rows should not include accepted memory card payload'
+);
 assert(saveReceipt.syncState.mode === 'cloud_synced', 'save receipt should report cloud sync state');
 assert(deleteReceipt.ownerUserId === profile.userId, 'delete receipt should carry owner user id');
 assert(defaultPreferences.librarySort === 'updated_desc', 'default profile preferences should use updated-first library sort');

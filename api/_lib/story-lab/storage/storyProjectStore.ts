@@ -40,6 +40,7 @@ export interface StoryProjectListItem {
   title: string;
   synopsis: string;
   chapterCount: number;
+  acceptedMemoryCardCount: number;
   updatedAt: string;
   createdAt: string;
 }
@@ -117,6 +118,7 @@ export function toStoryProjectListItem(record: StoredStoryProjectRecord): StoryP
     title: record.project.title,
     synopsis: record.project.synopsis,
     chapterCount: record.project.chapters?.length ?? 0,
+    acceptedMemoryCardCount: record.project.acceptedMemoryCards?.length ?? 0,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };

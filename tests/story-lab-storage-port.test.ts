@@ -103,6 +103,7 @@ async function testNonDurableMemoryStore() {
   assert(ownerList.success, 'owner list should succeed');
   assert(ownerList.data.length === 1, 'owner should see exactly one project');
   assert(ownerList.data[0]?.chapterCount === 1, 'list item should expose chapter count');
+  assert(ownerList.data[0]?.acceptedMemoryCardCount === 1, 'list item should expose accepted memory card count without full card text');
 
   const otherList = await store.listProjects(otherUser);
   assert(otherList.success, 'other user list should succeed');
@@ -163,6 +164,7 @@ async function testMissingProjectMetadataFallbacks() {
   assert(listResult.success, 'store should list project snapshots with missing derived metadata');
   assert(listResult.data[0]?.title === 'Untitled Story Lab Project', 'list should use normalized title fallback');
   assert(listResult.data[0]?.chapterCount === 0, 'missing chapter array should list as zero chapters');
+  assert(listResult.data[0]?.acceptedMemoryCardCount === 0, 'missing accepted memory array should list as zero memory cards');
 }
 
 async function testPostgresStoreMalformedRowsFailClosed() {
@@ -232,6 +234,7 @@ async function testPostgresStoreExecutorPath() {
   assert(listResult.success, 'configured Postgres list should succeed');
   assert(listResult.data.length === 1, 'configured Postgres list should map rows');
   assert(listResult.data[0]?.projectId === project.id, 'list item should include project id');
+  assert(listResult.data[0]?.acceptedMemoryCardCount === 1, 'Postgres list item should include accepted memory card count');
   const listQuery = executor.latestQuery();
   assert(listQuery.sql.includes('where owner_user_id = $1'), 'list SQL should scope by owner id');
 
@@ -285,7 +288,17 @@ function createProject(): SavedStoryProject {
     themeLabel: 'Forbidden oath',
     themeDescription: 'A vow that binds two enemies together.',
     logline: 'A witch and her rival uncover a cursed chapel.',
-    chapterSummary: 'Elena finds the hidden vault.'
+    chapterSummary: 'Elena finds the hidden vault.',
+    acceptedMemoryCards: [
+      {
+        id: 'memory-card-character-elena',
+        label: 'Character card',
+        title: 'Elena',
+        detail: 'Elena knows where the private vault starts.',
+        triggerLabel: 'Trigger: Elena',
+        acceptedAt: now
+      }
+    ]
   });
 }
 
@@ -295,7 +308,8 @@ function createProjectWithMissingMetadata(): SavedStoryProject {
     title: '',
     synopsis: '',
     summary: undefined,
-    chapters: undefined
+    chapters: undefined,
+    acceptedMemoryCards: undefined
   } as unknown as SavedStoryProject;
 }
 

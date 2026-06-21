@@ -32,6 +32,9 @@ assert(genesis.data.state.characters.length >= 3, 'genesis should apply introduc
 assert(genesis.data.state.beats.length === 2, 'genesis should create one beat per generated chapter');
 assert(genesis.data.stateDelta.addedChapterNumbers.join(',') === '1,2', 'genesis delta should list added chapters');
 assert(genesis.data.batch.chapters.some(chapter => chapter.delta.introducedCharacters.length), 'chapter deltas should introduce characters');
+assert(genesis.data.state.threads.every(thread => thread.lifetime === 'series'), 'genesis story threads should default to series lifetime');
+assert(genesis.data.state.artifacts.some(artifact => artifact.name === 'Crimson Signet Ring' && artifact.lifetime === 'series'), 'base story artifacts should default to series lifetime');
+assert(genesis.data.state.artifacts.some(artifact => artifact.name === 'Broken Oath Scroll' && artifact.lifetime === 'chapter'), 'chapter-foreshadowed artifacts should carry chapter lifetime');
 
 const continuation = buildContinuationResponse({
   storyId: genesis.data.summary.storyId,

@@ -18,8 +18,11 @@ import {
   HeatContract,
   HeatIntimacyBoundary,
   HeatTensionMode,
+  PlotThread,
   SavedStoryProject,
   SpicyLevel,
+  StoryMemoryLifetime,
+  StoryMemoryCard,
   StoryBlueprint,
   StoryIterationPayload,
   StoryLabJob,
@@ -140,6 +143,36 @@ type DirectorRoomNote = {
   chapterId: string;
 };
 
+type ContinuityPreviewItem = {
+  id: string;
+  label: string;
+  title: string;
+  detail: string;
+  sourceReason: string;
+  lifetimeLabel?: string;
+};
+
+type ContinuityPreviewSelection<T> = {
+  item: T;
+  matched: boolean;
+};
+
+type MemoryCardDraftItem = {
+  id: string;
+  label: string;
+  title: string;
+  detail: string;
+  triggerLabel: string;
+  pinned: boolean;
+  accepted: boolean;
+};
+
+type AcceptedMemoryCardEditDraft = {
+  title: string;
+  detail: string;
+  triggerLabel: string;
+};
+
 type GenerationProgressState = {
   active: boolean;
   percent: number;
@@ -179,7 +212,7 @@ type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: n
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink, NotificationsComponent, DebugPanel],
   templateUrl: './app.html',
-  styleUrl: './app.css'
+  styleUrls: ['./app.css', './app-reader-library.css']
 })
 export class App implements OnDestroy {
   private readonly storyService = inject(StoryService);
@@ -339,6 +372,14 @@ export class App implements OnDestroy {
     'ending-bet': 'revelation'
   });
   readonly directorRoomDecisions = signal<Record<string, DirectorRoomNoteStatus>>({});
+  readonly pinnedMemoryCardDraftIds = signal<Set<string>>(new Set());
+  readonly acceptedMemoryCards = signal<StoryMemoryCard[]>([]);
+  readonly editingAcceptedMemoryCardId = signal<string | null>(null);
+  readonly acceptedMemoryCardEditDraft = signal<AcceptedMemoryCardEditDraft>({
+    title: '',
+    detail: '',
+    triggerLabel: ''
+  });
   readonly isGenerating = signal(false);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
@@ -420,6 +461,277 @@ export class App implements OnDestroy {
       continuityWarnings: session.state.continuityWarnings
     };
   });
+
+  readonly continuityPreviewItems = computed<ContinuityPreviewItem[]>(() => {
+    const continuity = this.continuityPanel();
+    const activationSource = this.normalizePreviewActivationText(
+      this.withStoryMemoryCardBriefs(this.customContinuationBrief()) ?? ''
+    );
+    const threadSelections = this.selectContinuityPreviewMatches(
+      continuity.activeThreads,
+      2,
+      thread => [thread.label, thread.description],
+      activationSource
+    );
+    const artifactSelections = this.selectContinuityPreviewMatches(
+      continuity.unresolvedArtifacts,
+      1,
+      artifact => [artifact.name, artifact.significance],
+      activationSource
+    );
+    const warningSelections = this.selectContinuityPreviewMatches(
+      continuity.continuityWarnings,
+      1,
+      warning => [warning],
+      activationSource
+    );
+    const relationshipItem = this.buildContinuityRelationshipPreviewItem(continuity.characters, activationSource);
+    return [
+      ...threadSelections.map(({ item: thread, matched }) => ({
+        id: `thread-${thread.id}`,
+        label: this.formatContinuityThreadPreviewLabel(thread.status),
+        title: thread.label,
+        detail: thread.description,
+        sourceReason: this.formatContinuityPreviewSourceReason(matched, 'Active story thread'),
+        lifetimeLabel: this.formatStoryMemoryLifetimeLabel(thread.lifetime)
+      })),
+      ...(relationshipItem ? [relationshipItem] : []),
+      ...artifactSelections.map(({ item: artifact, matched }) => ({
+        id: `artifact-${artifact.id}`,
+        label: 'World clue',
+        title: artifact.name,
+        detail: artifact.significance,
+        sourceReason: this.formatContinuityPreviewSourceReason(matched, 'Unresolved world clue'),
+        lifetimeLabel: this.formatStoryMemoryLifetimeLabel(artifact.lifetime)
+      })),
+      ...warningSelections.map(({ item: warning, index, matched }) => ({
+        id: `warning-${index}`,
+        label: 'Continuity note',
+        title: 'Carry forward',
+        detail: warning,
+        sourceReason: this.formatContinuityPreviewSourceReason(matched, 'Continuity note to honor')
+      }))
+    ].filter(item => item.title || item.detail);
+  });
+
+  readonly memoryCardDrafts = computed<MemoryCardDraftItem[]>(() => {
+    const continuity = this.continuityPanel();
+    const pinnedDraftIds = this.pinnedMemoryCardDraftIds();
+    const acceptedCardIds = new Set(this.acceptedMemoryCards().map(card => card.id));
+    const characterDrafts = continuity.characters.slice(0, 1).map(character => ({
+      id: `memory-card-character-${character.id}`,
+      label: 'Character card',
+      title: character.displayName,
+      detail: character.currentGoal || character.summary || character.externalConflict,
+      triggerLabel: this.buildMemoryCardTriggerLabel(character.displayName),
+      pinned: pinnedDraftIds.has(`memory-card-character-${character.id}`),
+      accepted: acceptedCardIds.has(`memory-card-character-${character.id}`)
+    }));
+    const threadDrafts = continuity.activeThreads.slice(0, 1).map(thread => ({
+      id: `memory-card-thread-${thread.id}`,
+      label: 'Promise card',
+      title: thread.label,
+      detail: thread.description,
+      triggerLabel: this.buildMemoryCardTriggerLabel(thread.label),
+      pinned: pinnedDraftIds.has(`memory-card-thread-${thread.id}`),
+      accepted: acceptedCardIds.has(`memory-card-thread-${thread.id}`)
+    }));
+    const artifactDrafts = continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
+      id: `memory-card-artifact-${artifact.id}`,
+      label: 'World card',
+      title: artifact.name,
+      detail: artifact.significance,
+      triggerLabel: this.buildMemoryCardTriggerLabel(artifact.name),
+      pinned: pinnedDraftIds.has(`memory-card-artifact-${artifact.id}`),
+      accepted: acceptedCardIds.has(`memory-card-artifact-${artifact.id}`)
+    }));
+
+    return [...characterDrafts, ...threadDrafts, ...artifactDrafts].filter(item => item.title && item.detail);
+  });
+
+  readonly pinnedMemoryCardDraftCount = computed(() =>
+    this.memoryCardDrafts().filter(draft => draft.pinned).length
+  );
+
+  readonly acceptedMemoryContinuationSummary = computed(() => {
+    const cards = this.acceptedMemoryCards();
+    if (!cards.length) {
+      return '';
+    }
+
+    const noun = cards.length === 1 ? 'card' : 'cards';
+    const visibleTitles = cards.slice(0, 2).map(card => card.title);
+    const hiddenCount = cards.length - visibleTitles.length;
+    const titleSummary = hiddenCount > 0
+      ? `${visibleTitles.join(', ')} +${hiddenCount}`
+      : visibleTitles.join(', ');
+    return `${cards.length} accepted memory ${noun} will be included: ${titleSummary}.`;
+  });
+
+  private buildMemoryCardTriggerLabel(title: string): string {
+    const alias = this.extractMemoryCardTriggerAlias(title);
+    return alias ? `Trigger: ${title}, ${alias}` : `Trigger: ${title}`;
+  }
+
+  private extractMemoryCardTriggerAlias(title: string): string | null {
+    const trimmedTitle = title.trim();
+    const words = trimmedTitle
+      .split(/\s+/)
+      .map(word => word.replace(/[^\p{L}\p{N}']+/gu, ''))
+      .filter(Boolean);
+    if (words.length < 2) {
+      return null;
+    }
+
+    const alias = words.pop()?.toLowerCase() ?? '';
+    return alias === trimmedTitle.toLowerCase() ? null : alias;
+  }
+
+  private formatStoryMemoryLifetimeLabel(lifetime: StoryMemoryLifetime | undefined): string | undefined {
+    if (lifetime === 'scene') {
+      return 'Scene memory';
+    }
+    if (lifetime === 'chapter') {
+      return 'Chapter memory';
+    }
+    if (lifetime === 'series') {
+      return 'Series memory';
+    }
+
+    return undefined;
+  }
+
+  private buildContinuityRelationshipPreviewItem(
+    characters: ContinuityPanelViewModel['characters'],
+    activationSource: string
+  ): ContinuityPreviewItem | null {
+    const relationshipItems: Array<ContinuityPreviewItem & { activationScore: number; sourceIndex: number }> = [];
+    let sourceIndex = 0;
+    for (const character of characters) {
+      for (const relationship of character.relationships) {
+        const target = characters.find(candidate => candidate.id === relationship.characterId);
+        if (target) {
+          relationshipItems.push({
+            id: `relationship-${character.id}-${target.id}`,
+            label: 'Relationship pressure',
+            title: `${character.displayName} and ${target.displayName}`,
+            detail: relationship.notes || this.formatRelationshipPreviewDetail(relationship.relationship),
+            sourceReason: 'Current relationship edge',
+            activationScore: this.scorePreviewActivationMatch(activationSource, [
+              character.displayName,
+              target.displayName,
+              relationship.relationship,
+              relationship.notes
+            ]),
+            sourceIndex
+          });
+          sourceIndex += 1;
+        }
+      }
+    }
+
+    if (!relationshipItems.length) {
+      return null;
+    }
+
+    relationshipItems.sort((first, second) =>
+      second.activationScore - first.activationScore || first.sourceIndex - second.sourceIndex
+    );
+    const selected = relationshipItems[0];
+    const { activationScore, sourceIndex: _sourceIndex, ...item } = selected;
+
+    return {
+      ...item,
+      sourceReason: this.formatContinuityPreviewSourceReason(activationScore > 0, 'Current relationship edge')
+    };
+  }
+
+  private selectContinuityPreviewMatches<T>(
+    items: T[],
+    limit: number,
+    getCandidates: (item: T) => Array<string | undefined>,
+    activationSource: string
+  ): Array<ContinuityPreviewSelection<T> & { index: number }> {
+    return items
+      .map((item, index) => ({
+        item,
+        index,
+        matched: false,
+        activationScore: this.scorePreviewActivationMatch(activationSource, getCandidates(item))
+      }))
+      .sort((first, second) => second.activationScore - first.activationScore || first.index - second.index)
+      .slice(0, limit)
+      .map(({ item, index, activationScore }) => ({
+        item,
+        index,
+        matched: activationScore > 0
+      }));
+  }
+
+  private formatContinuityPreviewSourceReason(matched: boolean, fallback: string): string {
+    return matched ? 'Matched continuation guidance' : fallback;
+  }
+
+  private formatContinuityThreadPreviewLabel(status: PlotThread['status']): string {
+    if (status === 'escalating') {
+      return 'Pressure rising';
+    }
+
+    if (status === 'dormant') {
+      return 'Quiet promise';
+    }
+
+    return 'Open promise';
+  }
+
+  private scorePreviewActivationMatch(
+    activationSource: string,
+    candidates: Array<string | undefined>
+  ): number {
+    if (!activationSource) {
+      return 0;
+    }
+
+    return candidates.reduce((highestScore, candidate) => {
+      const normalizedCandidate = this.normalizePreviewActivationText(candidate ?? '');
+      if (!normalizedCandidate) {
+        return highestScore;
+      }
+
+      if (activationSource.includes(normalizedCandidate)) {
+        return Math.max(highestScore, normalizedCandidate.split(' ').length + 5);
+      }
+
+      const wordScore = normalizedCandidate
+        .split(' ')
+        .filter(word => word.length > 2 && activationSource.includes(word))
+        .length;
+      return Math.max(highestScore, wordScore);
+    }, 0);
+  }
+
+  private normalizePreviewActivationText(value: string): string {
+    return (value.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []).join(' ');
+  }
+
+  private formatRelationshipPreviewDetail(
+    relationship: ContinuityPanelViewModel['characters'][number]['relationships'][number]['relationship']
+  ): string {
+    if (relationship === 'lover') {
+      return 'Want has a cost in the next scene.';
+    }
+    if (relationship === 'rival') {
+      return 'Opposition should change what someone risks.';
+    }
+    if (relationship === 'ally') {
+      return 'Trust should require an action.';
+    }
+    if (relationship === 'family') {
+      return 'Loyalty should complicate the next choice.';
+    }
+
+    return 'This connection should change the next scene.';
+  }
 
   readonly selectedChapter = computed(() => {
     const id = this.selectedChapterId();
@@ -741,13 +1053,14 @@ export class App implements OnDestroy {
     this.showStartingJobStatus('continuation');
     this.closeJobSubscriptions();
     const batchId = this.enqueueBatch('Continuation', this.blueprint().chapterBatchSize);
+    const continuationBrief = this.withStoryMemoryCardBriefs(brief);
 
     const request = {
       storyId: session.story.storyId,
       chapterBatchSize: this.blueprint().chapterBatchSize,
       storyState: session.state,
       previouslyGeneratedChapters: session.chapterHistory,
-      continuationBrief: brief ?? undefined,
+      continuationBrief,
       existingSummary: session.story,
       heatContract: this.activeHeatContract()
     } as const;
@@ -840,6 +1153,136 @@ export class App implements OnDestroy {
     this.statusMessage.set('Director Room note moved into the custom continuation brief.');
   }
 
+  pinMemoryCardDraft(draftId: string) {
+    let draftPinned = false;
+    this.pinnedMemoryCardDraftIds.update(current => {
+      const next = new Set(current);
+      if (next.has(draftId)) {
+        next.delete(draftId);
+      } else {
+        next.add(draftId);
+        draftPinned = true;
+      }
+
+      return next;
+    });
+    this.statusMessage.set(draftPinned
+      ? 'Memory card draft pinned for this session.'
+      : 'Memory card draft unpinned for this session.'
+    );
+  }
+
+  acceptMemoryCardDraft(draftId: string) {
+    const draft = this.memoryCardDrafts().find(item => item.id === draftId);
+    if (!draft) {
+      return;
+    }
+
+    this.acceptedMemoryCards.update(current => {
+      if (current.some(card => card.id === draft.id)) {
+        return current;
+      }
+
+      return [
+        ...current,
+        {
+          id: draft.id,
+          label: draft.label,
+          title: draft.title,
+          detail: draft.detail,
+          triggerLabel: draft.triggerLabel,
+          acceptedAt: new Date().toISOString()
+        }
+      ];
+    });
+    this.statusMessage.set('Memory card accepted into this story.');
+  }
+
+  editAcceptedMemoryCard(card: StoryMemoryCard) {
+    this.editingAcceptedMemoryCardId.set(card.id);
+    this.acceptedMemoryCardEditDraft.set({
+      title: card.title,
+      detail: card.detail,
+      triggerLabel: card.triggerLabel
+    });
+  }
+
+  updateAcceptedMemoryCardEditDraft(field: keyof AcceptedMemoryCardEditDraft, value: string) {
+    this.acceptedMemoryCardEditDraft.update(current => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  saveAcceptedMemoryCardEdit() {
+    const cardId = this.editingAcceptedMemoryCardId();
+    if (!cardId) {
+      return;
+    }
+
+    const draft = this.acceptedMemoryCardEditDraft();
+    const title = draft.title.trim();
+    const detail = draft.detail.trim();
+    const triggerLabel = draft.triggerLabel.trim() || this.buildMemoryCardTriggerLabel(title);
+    if (!title || !detail) {
+      this.statusMessage.set('Accepted memory cards need a title and detail.');
+      return;
+    }
+
+    this.acceptedMemoryCards.update(current => current.map(card => card.id === cardId
+      ? {
+          ...card,
+          title,
+          detail,
+          triggerLabel
+        }
+      : card
+    ));
+    this.cancelAcceptedMemoryCardEdit();
+    this.statusMessage.set('Accepted memory card updated.');
+  }
+
+  cancelAcceptedMemoryCardEdit() {
+    this.editingAcceptedMemoryCardId.set(null);
+    this.acceptedMemoryCardEditDraft.set({
+      title: '',
+      detail: '',
+      triggerLabel: ''
+    });
+  }
+
+  moveAcceptedMemoryCard(cardId: string, direction: -1 | 1) {
+    this.acceptedMemoryCards.update(current => {
+      const currentIndex = current.findIndex(card => card.id === cardId);
+      const nextIndex = currentIndex + direction;
+      if (currentIndex === -1 || nextIndex < 0 || nextIndex >= current.length) {
+        return current;
+      }
+
+      const next = [...current];
+      [next[currentIndex], next[nextIndex]] = [next[nextIndex], next[currentIndex]];
+      return next;
+    });
+    this.statusMessage.set('Accepted memory card order updated.');
+  }
+
+  deleteAcceptedMemoryCard(cardId: string) {
+    this.acceptedMemoryCards.update(current => current.filter(card => card.id !== cardId));
+    this.pinnedMemoryCardDraftIds.update(current => {
+      if (!current.has(cardId)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.delete(cardId);
+      return next;
+    });
+    if (this.editingAcceptedMemoryCardId() === cardId) {
+      this.cancelAcceptedMemoryCardEdit();
+    }
+    this.statusMessage.set('Accepted memory card removed.');
+  }
+
   continueWithDirectorRoomNotes() {
     const acceptedNotes = this.acceptedDirectorRoomNotes();
     if (!acceptedNotes.length) {
@@ -856,6 +1299,9 @@ export class App implements OnDestroy {
 
   resetWorkbench() {
     this.clearActiveStoryLabJob();
+    this.pinnedMemoryCardDraftIds.set(new Set());
+    this.acceptedMemoryCards.set([]);
+    this.cancelAcceptedMemoryCardEdit();
     this.workbench.set({
       story: null,
       state: null,
@@ -1185,6 +1631,8 @@ ${chapters}
   }
 
   private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize, batchId?: string) {
+    const previousStoryId = this.workbench().story?.storyId;
+    const isNewStory = previousStoryId !== payload.summary.storyId;
     const existingQueue = this.activeBatchQueue();
     const batchQueue = batchId
       ? existingQueue.map(item => item.id === batchId
@@ -1208,6 +1656,12 @@ ${chapters}
       lastSuggestedPrompts: payload.batch.suggestedNextPrompts,
       batchQueue
     };
+
+    if (isNewStory) {
+      this.pinnedMemoryCardDraftIds.set(new Set());
+      this.acceptedMemoryCards.set([]);
+      this.cancelAcceptedMemoryCardEdit();
+    }
 
     const savedProjectId = this.persistSession(nextSession);
     this.workbench.set({
@@ -1849,24 +2303,7 @@ ${chapters}
   }
 
   private hydrateSavedProject(project: SavedStoryProject, shouldNotify: boolean) {
-    this.blueprint.set({
-      ...project.blueprint,
-      heatContract: this.normalizeHeatContract(project.blueprint.heatContract),
-      narrativeDirectives: project.blueprint.narrativeDirectives ?? ''
-    });
-    this.workbench.set({
-      story: project.summary,
-      state: project.state,
-      chapterHistory: project.chapters,
-      activeBatchSize: project.blueprint.chapterBatchSize,
-      lastTelemetry: project.telemetry,
-      lastContinuityExtraction: project.continuityExtraction,
-      lastSuggestedPrompts: [],
-      batchQueue: [],
-      savedProjectId: project.id
-    });
-    this.selectedChapterId.set(project.chapters[project.chapters.length - 1]?.chapterId ?? null);
-    this.collapsedChapterGroups.set(new Set());
+    this.hydrateProjectState(project);
     this.workspaceSaveStatus.set(`Loaded "${project.title}" from this browser.`);
     this.statusMessage.set('Saved story loaded. Continue the saga whenever you are ready.');
 
@@ -1876,6 +2313,12 @@ ${chapters}
   }
 
   private hydrateCloudProject(project: SavedStoryProject) {
+    this.hydrateProjectState(project);
+    this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');
+    this.notificationService.info('Cloud story loaded', project.title);
+  }
+
+  private hydrateProjectState(project: SavedStoryProject) {
     this.blueprint.set({
       ...project.blueprint,
       heatContract: this.normalizeHeatContract(project.blueprint.heatContract),
@@ -1892,10 +2335,37 @@ ${chapters}
       batchQueue: [],
       savedProjectId: project.id
     });
+    this.pinnedMemoryCardDraftIds.set(new Set(this.normalizePinnedMemoryCardDraftIds(project.pinnedMemoryCardDraftIds)));
+    this.acceptedMemoryCards.set(this.normalizeAcceptedMemoryCards(project.acceptedMemoryCards));
+    this.cancelAcceptedMemoryCardEdit();
     this.selectedChapterId.set(project.chapters[project.chapters.length - 1]?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
-    this.statusMessage.set('Cloud story loaded. Continue the saga whenever you are ready.');
-    this.notificationService.info('Cloud story loaded', project.title);
+  }
+
+  private normalizePinnedMemoryCardDraftIds(ids: unknown): string[] {
+    return Array.isArray(ids)
+      ? ids.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [];
+  }
+
+  private normalizeAcceptedMemoryCards(cards: unknown): StoryMemoryCard[] {
+    if (!Array.isArray(cards)) {
+      return [];
+    }
+
+    return cards.filter((card): card is StoryMemoryCard => {
+      if (!card || typeof card !== 'object') {
+        return false;
+      }
+
+      const candidate = card as Partial<StoryMemoryCard>;
+      return typeof candidate.id === 'string'
+        && typeof candidate.label === 'string'
+        && typeof candidate.title === 'string'
+        && typeof candidate.detail === 'string'
+        && typeof candidate.triggerLabel === 'string'
+        && typeof candidate.acceptedAt === 'string';
+    });
   }
 
   private findSavedProjectByStoryId(storyId: string): SavedStoryProject | null {
@@ -2136,6 +2606,8 @@ ${chapters}
     const now = new Date().toISOString();
     const currentProjectId = session.savedProjectId ?? session.story.storyId;
     const existingProject = this.workspaceStorage.loadProject(currentProjectId);
+    const pinnedMemoryCardDraftIds = Array.from(this.pinnedMemoryCardDraftIds());
+    const acceptedMemoryCards = this.acceptedMemoryCards().map(card => ({ ...card }));
 
     return {
       id: currentProjectId,
@@ -2148,6 +2620,8 @@ ${chapters}
       chapters: session.chapterHistory,
       telemetry: session.lastTelemetry,
       continuityExtraction: session.lastContinuityExtraction,
+      pinnedMemoryCardDraftIds,
+      acceptedMemoryCards,
       createdAt: existingProject?.createdAt ?? session.story.createdAt ?? now,
       updatedAt: now
     };
@@ -2160,6 +2634,7 @@ ${chapters}
       title: project.title,
       synopsis: project.synopsis,
       chapterCount: project.chapters.length,
+      acceptedMemoryCardCount: project.acceptedMemoryCards?.length ?? 0,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt
     };
@@ -2213,6 +2688,10 @@ ${chapters}
     return option.id;
   }
 
+  trackAcceptedMemoryCard(_index: number, card: StoryMemoryCard): string {
+    return card.id;
+  }
+
   formatDirectorRoomNoteStatus(status: DirectorRoomNoteStatus): string {
     switch (status) {
       case 'accepted':
@@ -2259,6 +2738,31 @@ ${chapters}
       .join('\n');
 
     return trimmedBrief ? `${trimmedBrief}\n\n${dialBrief}` : dialBrief;
+  }
+
+  private withStoryMemoryCardBriefs(brief?: string): string | undefined {
+    const trimmedBrief = brief?.trim();
+    const acceptedCards = this.acceptedMemoryCards();
+    const acceptedCardIds = new Set(acceptedCards.map(card => card.id));
+    const pinnedDrafts = this.memoryCardDrafts().filter(draft => draft.pinned && !acceptedCardIds.has(draft.id));
+    if (!acceptedCards.length && !pinnedDrafts.length) {
+      return trimmedBrief || undefined;
+    }
+
+    const memoryBrief = [
+      ...(acceptedCards.length
+        ? ['Accepted Memory Cards:', ...acceptedCards.map(card => this.formatMemoryCardBrief(card))]
+        : []),
+      ...(pinnedDrafts.length
+        ? ['Pinned Memory Cards:', ...pinnedDrafts.map(draft => this.formatMemoryCardBrief(draft))]
+        : [])
+    ].join('\n');
+
+    return trimmedBrief ? `${trimmedBrief}\n\n${memoryBrief}` : memoryBrief;
+  }
+
+  private formatMemoryCardBrief(card: Pick<StoryMemoryCard, 'label' | 'title' | 'detail' | 'triggerLabel'>): string {
+    return `- ${card.label}: ${card.title}. ${card.detail} ${card.triggerLabel}.`;
   }
 
   toggleChapterGroup(groupId: number) {
