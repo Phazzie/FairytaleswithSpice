@@ -14,6 +14,7 @@ export interface SavedStoryProjectFixtureOptions {
   themeDescription?: string;
   logline?: string;
   chapterSummary?: string;
+  acceptedMemoryCards?: SavedStoryProject['acceptedMemoryCards'];
 }
 
 export function createSavedStoryProjectFixture(
@@ -104,6 +105,7 @@ export function createSavedStoryProjectFixture(
       extractedAt: now,
       confidence: 0.7
     },
+    acceptedMemoryCards: options.acceptedMemoryCards,
     createdAt: now,
     updatedAt: now
   };

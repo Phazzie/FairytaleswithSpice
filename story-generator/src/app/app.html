@@ -530,6 +530,13 @@
             (ngModelChange)="updateCustomContinuationBrief($event)"
           ></textarea>
         </label>
+        <p
+          class="muted continuity-source"
+          data-testid="accepted-memory-continuation-preview"
+          *ngIf="acceptedMemoryContinuationSummary() as acceptedMemorySummary"
+        >
+          {{ acceptedMemorySummary }}
+        </p>
         <button
           type="button"
           class="secondary"
@@ -608,7 +615,12 @@
           <li class="saved-item" *ngFor="let project of cloudProjects(); trackBy: trackCloudProject">
             <button type="button" class="saved-load" (click)="loadCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy() || !canUseCloudLibrary()">
               <span class="saved-title">{{ project.title }}</span>
-              <span class="saved-meta">{{ project.chapterCount }} chapter{{ project.chapterCount === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}</span>
+              <span class="saved-meta" data-testid="cloud-project-meta">
+                {{ project.chapterCount }} chapter{{ project.chapterCount === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}
+                <ng-container *ngIf="project.acceptedMemoryCardCount">
+                  · {{ project.acceptedMemoryCardCount }} memory card{{ project.acceptedMemoryCardCount === 1 ? '' : 's' }}
+                </ng-container>
+              </span>
             </button>
             <button type="button" class="saved-delete" (click)="deleteCloudProject(project.projectId)" [disabled]="isCloudLibraryBusy() || !canUseCloudLibrary()">
               Delete
@@ -632,7 +644,12 @@
               (click)="loadSavedProject(project.id)"
             >
               <span class="saved-title">{{ project.title }}</span>
-              <span class="saved-meta">{{ project.chapters.length }} chapter{{ project.chapters.length === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}</span>
+              <span class="saved-meta" data-testid="local-project-meta">
+                {{ project.chapters.length }} chapter{{ project.chapters.length === 1 ? '' : 's' }} · {{ project.updatedAt | date:'MMM d, h:mm a' }}
+                <ng-container *ngIf="project.acceptedMemoryCards?.length">
+                  · {{ project.acceptedMemoryCards?.length }} memory card{{ project.acceptedMemoryCards?.length === 1 ? '' : 's' }}
+                </ng-container>
+              </span>
             </button>
             <button
               type="button"
@@ -657,6 +674,103 @@
           <li>{{ continuityPanel().activeThreads.length }} active thread{{ continuityPanel().activeThreads.length === 1 ? '' : 's' }}</li>
           <li>{{ continuityPanel().unresolvedArtifacts.length }} unresolved artifact{{ continuityPanel().unresolvedArtifacts.length === 1 ? '' : 's' }}</li>
         </ul>
+        <div class="continuity-preview" data-testid="continuity-preview-panel" *ngIf="continuityPreviewItems().length">
+          <p class="eyebrow">Continuity Preview</p>
+          <ul>
+            <li *ngFor="let item of continuityPreviewItems()">
+              <span class="eyebrow">{{ item.label }}</span>
+              <strong>{{ item.title }}</strong>
+              <span class="muted">{{ item.detail }}</span>
+              <span class="muted continuity-lifetime" *ngIf="item.lifetimeLabel">{{ item.lifetimeLabel }}</span>
+              <span class="muted continuity-source">{{ item.sourceReason }}</span>
+            </li>
+          </ul>
+        </div>
+        <div class="memory-card-drafts" data-testid="memory-card-drafts-panel" *ngIf="memoryCardDrafts().length">
+          <p class="eyebrow">Memory Card Drafts</p>
+          <p class="muted continuity-source" *ngIf="pinnedMemoryCardDraftCount()">Pinned cards: {{ pinnedMemoryCardDraftCount() }}</p>
+          <ul>
+            <li *ngFor="let draft of memoryCardDrafts()">
+              <span class="eyebrow">{{ draft.label }}</span>
+              <strong>{{ draft.title }}</strong>
+              <span class="muted">{{ draft.detail }}</span>
+              <span class="muted continuity-source">{{ draft.triggerLabel }}</span>
+              <button
+                type="button"
+                class="ghost compact memory-card-pin"
+                data-testid="accept-memory-card-draft"
+                (click)="acceptMemoryCardDraft(draft.id)"
+                [disabled]="draft.accepted"
+              >
+                {{ draft.accepted ? 'Accepted' : 'Accept' }}
+              </button>
+              <button
+                type="button"
+                class="ghost compact memory-card-pin"
+                data-testid="pin-memory-card-draft"
+                (click)="pinMemoryCardDraft(draft.id)"
+                [disabled]="draft.pinned"
+              >
+                {{ draft.pinned ? 'Pinned' : 'Pin' }}
+              </button>
+            </li>
+          </ul>
+        </div>
+        <div class="memory-card-drafts accepted-memory-cards" data-testid="accepted-memory-cards-panel" *ngIf="acceptedMemoryCards().length">
+          <p class="eyebrow">Accepted Memory Cards</p>
+          <ul>
+            <li *ngFor="let card of acceptedMemoryCards(); let first = first; let last = last; trackBy: trackAcceptedMemoryCard">
+              <ng-container *ngIf="editingAcceptedMemoryCardId() === card.id; else acceptedMemoryCardView">
+                <span class="eyebrow">{{ card.label }}</span>
+                <input
+                  type="text"
+                  aria-label="Memory card title"
+                  data-testid="accepted-memory-card-title"
+                  [ngModel]="acceptedMemoryCardEditDraft().title"
+                  (ngModelChange)="updateAcceptedMemoryCardEditDraft('title', $event)"
+                >
+                <textarea
+                  rows="2"
+                  aria-label="Memory card detail"
+                  data-testid="accepted-memory-card-detail"
+                  [ngModel]="acceptedMemoryCardEditDraft().detail"
+                  (ngModelChange)="updateAcceptedMemoryCardEditDraft('detail', $event)"
+                ></textarea>
+                <input
+                  type="text"
+                  aria-label="Memory card trigger"
+                  data-testid="accepted-memory-card-trigger"
+                  [ngModel]="acceptedMemoryCardEditDraft().triggerLabel"
+                  (ngModelChange)="updateAcceptedMemoryCardEditDraft('triggerLabel', $event)"
+                >
+                <button type="button" class="ghost compact memory-card-pin" data-testid="save-accepted-memory-card" (click)="saveAcceptedMemoryCardEdit()">
+                  Save
+                </button>
+                <button type="button" class="ghost compact memory-card-pin" data-testid="cancel-accepted-memory-card" (click)="cancelAcceptedMemoryCardEdit()">
+                  Cancel
+                </button>
+              </ng-container>
+              <ng-template #acceptedMemoryCardView>
+                <span class="eyebrow">{{ card.label }}</span>
+                <strong>{{ card.title }}</strong>
+                <span class="muted">{{ card.detail }}</span>
+                <span class="muted continuity-source">{{ card.triggerLabel }}</span>
+                <button type="button" class="ghost compact memory-card-pin" data-testid="move-accepted-memory-card-up" (click)="moveAcceptedMemoryCard(card.id, -1)" [disabled]="first">
+                  Up
+                </button>
+                <button type="button" class="ghost compact memory-card-pin" data-testid="move-accepted-memory-card-down" (click)="moveAcceptedMemoryCard(card.id, 1)" [disabled]="last">
+                  Down
+                </button>
+                <button type="button" class="ghost compact memory-card-pin" data-testid="edit-accepted-memory-card" (click)="editAcceptedMemoryCard(card)">
+                  Edit
+                </button>
+                <button type="button" class="ghost compact memory-card-pin" data-testid="delete-accepted-memory-card" (click)="deleteAcceptedMemoryCard(card.id)">
+                  Delete
+                </button>
+              </ng-template>
+            </li>
+          </ul>
+        </div>
         <div class="prompt-list" *ngIf="suggestedNextPrompts().length">
           <button
             type="button"

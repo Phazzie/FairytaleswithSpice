@@ -2900,3 +2900,36 @@ Validation:
 - Final Sonar-cleanup rerun: `npm run recovery:preflight -- quality-report-proving-grounds`: passed and rewrote `tmp/recovery/quality-report-proving-grounds-evidence.md`.
 - Function count stayed `11/12`.
 - `npm run build` passed with existing Node non-LTS, Baseline data, Angular bundle, and CSS budget warnings.
+
+## 2026-06-21 10:38 EDT - Memory Cards And CSS Lazy-Loading Slice
+
+Actions:
+
+- Replayed the Story Lab memory-card commits onto fresh `origin/main` as patches, excluding stale `OVERNIGHT_HANDOFF.md`, `STORY_LAB_APP_AUDIT.md`, and `STORY_LAB_IDEA_BOARD.md`.
+- Added Story Lab memory lifetimes, continuity preview items, pinned draft cards, accepted memory cards, edit/delete/reorder flows, and accepted-memory continuation previewing.
+- Added accepted-memory summary counts to local/cloud library list metadata without exposing full card text in list rows.
+- Kept prior account/storage honesty by preserving non-durable cloud storage UI states and adding accepted-card fixture data through the shared test fixture helper.
+- Expanded the slice to include CSS budget recovery, Proving Grounds lazy loading, and split Story Lab component styles because memory-card CSS pushed `app.css` over the known hard-failure area.
+- Updated `scripts/recovery/slice-preflight.sh` so the `css-lazy-loading` slice runs the route-splitting and component-style-budget tests.
+
+Self-review:
+
+- Good: Patch replay avoided checking out whole app files from the old mega-branch, preserving merged review fixes from later PRs.
+- Problem found: the old memory-card patches repeatedly tried to reintroduce `.at(-1)` in app load paths; conflict resolution kept the ES2020-safe indexed reads.
+- Problem found: PR #10 could not stand alone after replay because `app.css` reached 18,847 bytes; combining the PR #11 CSS/lazy-loading cleanup was necessary to keep the UI slice buildable.
+- Process correction: when a UI slice touches `app.css`, check CSS byte size before deciding final PR scope; do not wait for the production build to discover an avoidable budget failure.
+
+Validation:
+
+- `npm run test:story-quality`: passed.
+- `npm run test:story-lab-real-engine`: passed.
+- `npm run test:story-generator-route-splitting`: passed.
+- `npm run test:story-generator-component-style-budget`: passed.
+- `npm run test:story-lab-account-routes`: passed.
+- `npm run test:story-lab-storage-port`: passed.
+- `npm run test:story-lab-profile-contracts`: passed.
+- `npm run test:story-lab-state`: passed.
+- `npm run recovery:preflight -- story-memory-cards`: passed and wrote `tmp/recovery/story-memory-cards-evidence.md`.
+- `npm run recovery:preflight -- css-lazy-loading --quick`: passed and wrote `tmp/recovery/css-lazy-loading-evidence.md`.
+- Function count stayed `11/12`.
+- `npm run build` passed inside memory-card preflight; the initial browser bundle dropped to 484.71 kB and Proving Grounds moved into a lazy chunk.

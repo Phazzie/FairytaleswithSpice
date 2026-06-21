@@ -108,12 +108,15 @@ export interface CharacterProfile {
   spiceCompatibilities: SpicyLevel[];
 }
 
+export type StoryMemoryLifetime = 'scene' | 'chapter' | 'series';
+
 export interface PlotThread {
   id: string;
   label: string;
   status: 'active' | 'escalating' | 'resolved' | 'dormant';
   description: string;
   foreshadowedDevices: string[];
+  lifetime?: StoryMemoryLifetime;
 }
 
 export interface LoreArtifact {
@@ -122,6 +125,7 @@ export interface LoreArtifact {
   significance: string;
   introducedInChapter?: number;
   resolvedInChapter?: number;
+  lifetime?: StoryMemoryLifetime;
 }
 
 export interface StoryBeat {
@@ -234,6 +238,15 @@ export interface StoryIterationPayload {
   telemetry: GenerationTelemetry;
 }
 
+export interface StoryMemoryCard {
+  id: string;
+  label: string;
+  title: string;
+  detail: string;
+  triggerLabel: string;
+  acceptedAt: string;
+}
+
 export interface SavedStoryProject {
   id: string;
   storyId: string;
@@ -245,6 +258,8 @@ export interface SavedStoryProject {
   chapters: GeneratedChapter[];
   telemetry?: GenerationTelemetry;
   continuityExtraction?: ContinuityExtractionReceipt;
+  pinnedMemoryCardDraftIds?: string[];
+  acceptedMemoryCards?: StoryMemoryCard[];
   createdAt: string;
   updatedAt: string;
 }
@@ -289,6 +304,7 @@ export interface CloudStoryProjectListItem {
   title: string;
   synopsis: string;
   chapterCount: number;
+  acceptedMemoryCardCount: number;
   createdAt: string;
   updatedAt: string;
 }

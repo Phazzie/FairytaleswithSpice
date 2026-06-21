@@ -232,6 +232,7 @@ async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
   );
   assert(listBody.data.projects.length === 1, 'owner should see saved project');
   assert(listBody.data.projects[0].title === project.title, 'list item should carry project title');
+  assert(listBody.data.projects[0].acceptedMemoryCardCount === 1, 'list item should carry accepted memory count without full card text');
 
   const loadResponse = new FakeResponse();
   await handler(createRequest('GET', 'project', undefined, project.id), loadResponse);
@@ -243,6 +244,7 @@ async function testProjectSaveListLoadDeleteUsesAuthenticatedOwner() {
     'non-durable project load should not claim cloud Postgres storage'
   );
   assert(loadBody.data.project.id === project.id, 'project load should return saved project');
+  assert(loadBody.data.project.acceptedMemoryCards[0].title === 'Avery', 'project load should preserve accepted memory cards');
 
   const deleteResponse = new FakeResponse();
   await handler(createRequest('DELETE', 'project', undefined, project.id), deleteResponse);
@@ -521,7 +523,17 @@ function createProject(): SavedStoryProject {
     themeLabel: 'Private oath',
     themeDescription: 'A vow only the owner can see.',
     logline: privateStoryText,
-    chapterSummary: 'A private chapel oath begins.'
+    chapterSummary: 'A private chapel oath begins.',
+    acceptedMemoryCards: [
+      {
+        id: 'memory-card-character-avery',
+        label: 'Character card',
+        title: 'Avery',
+        detail: 'Avery is the only one who knows the private chapel oath.',
+        triggerLabel: 'Trigger: Avery',
+        acceptedAt: now
+      }
+    ]
   });
 }
 

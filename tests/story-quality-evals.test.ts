@@ -216,6 +216,70 @@ async function main(): Promise<void> {
       && item.reason.includes('Matched words from the continuation brief')),
     'guidance preview should explain why the Blood Oath thread was activated.'
   );
+  const memoryComparisonState = {
+    ...genesisPayload.state,
+    characters: [],
+    threads: [
+      {
+        id: 'thread-weather-tax',
+        label: 'Weather Tax',
+        status: 'active' as const,
+        description: 'The court taxes every storm that crosses the reef.',
+        foreshadowedDevices: []
+      },
+      {
+        id: 'thread-kitchen-claim',
+        label: 'Kitchen Claim',
+        status: 'active' as const,
+        description: 'The servants know who stole the silver ladle.',
+        foreshadowedDevices: []
+      },
+      {
+        id: 'thread-silent-harbor',
+        label: 'Silent Harbor',
+        status: 'active' as const,
+        description: 'The harbor stopped answering ships at midnight.',
+        foreshadowedDevices: []
+      },
+      {
+        id: 'thread-moonlit-oath',
+        label: 'Moonlit Oath',
+        status: 'active' as const,
+        description: 'Mara promised the duke a ledger that would cost her the archive.',
+        foreshadowedDevices: []
+      }
+    ],
+    artifacts: [],
+    continuityWarnings: []
+  };
+  const neutralMemoryPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Raise the pressure in the next room.',
+    storyState: memoryComparisonState
+  });
+  assert(
+    !neutralMemoryPreview.contextSourceMap.some(item => item.kind === 'thread' && item.label === 'Moonlit Oath'),
+    'neutral continuation brief should not activate the lower-priority Moonlit Oath thread.'
+  );
+  const acceptedMemoryPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: [
+      'Raise the pressure in the next room.',
+      '',
+      'Accepted Memory Cards:',
+      '- Promise card: Moonlit Oath. Mara will burn the moonlit ledger before she lets the duke own the vow. Trigger: Moonlit oath, ledger.'
+    ].join('\n'),
+    storyState: memoryComparisonState
+  });
+  assert(
+    acceptedMemoryPreview.hiddenGuidance.includes('Open promise: Moonlit Oath'),
+    'accepted memory card text should change the selected continuity anchor.'
+  );
+  assert(
+    acceptedMemoryPreview.contextSourceMap.some(item =>
+      item.kind === 'thread'
+      && item.label === 'Moonlit Oath'
+      && item.reason.includes('accepted memory card text')),
+    'guidance preview should explain when accepted memory card text activated an anchor.'
+  );
   const artifactActivationPreview = previewStoryLabContinuationGuidance({
     continuationBrief: 'Use the glass key now; make it unlock the forbidden tide door.',
     storyState: {
