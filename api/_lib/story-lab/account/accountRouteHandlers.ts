@@ -362,7 +362,7 @@ function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
     return null;
   }
 
-  const candidate = readBodyRecord(body, 'profile');
+  const candidate = readWrappedOrBareBodyRecord(body, 'profile');
   if (!isObjectRecord(candidate)) {
     return null;
   }
@@ -397,7 +397,7 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
     return null;
   }
 
-  const candidate = readBodyRecord(body, 'project');
+  const candidate = readWrappedOrBareBodyRecord(body, 'project');
   if (!isObjectRecord(candidate)) {
     return null;
   }
@@ -440,7 +440,7 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function readBodyRecord(body: Record<string, unknown>, key: string): unknown {
+function readWrappedOrBareBodyRecord(body: Record<string, unknown>, key: string): unknown {
   return Object.prototype.hasOwnProperty.call(body, key) ? body[key] : body;
 }
 

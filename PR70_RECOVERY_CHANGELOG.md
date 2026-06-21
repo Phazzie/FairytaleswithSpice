@@ -2943,12 +2943,14 @@ Actions:
 - Replaced account route project-id path parsing with `RegExp.exec()`.
 - Reworked profile/project body parsing to use explicit record helpers instead of broad final return casts.
 - Added regression coverage that malformed `profile` or `project` wrapper bodies are rejected instead of falling back to outer fields.
+- Follow-up review pass: asserted the `INVALID_REQUEST` error code for malformed wrapper regressions, renamed the wrapped-or-bare body helper to make direct body compatibility explicit, and replaced per-character dollar-quote substring matching with an in-place tag parser.
 
 Self-review:
 
 - Good: This cleanup stayed inside the auth/database seam and did not add provider dependencies, routes, secrets, or real database migration behavior.
 - Problem found: a generic review issue asked for a Neon API change that contradicts the locked package type surface; future review triage should verify provider API claims against the installed package before opening defect issues.
 - Problem found: `npm run install:all` modifies tracked `node_modules` in this repository; install artifacts must be restored before source diffs are reviewed or committed.
+- Problem found: the first wrapper regression tests asserted only HTTP status; review was right that route tests should assert the typed API error contract too.
 
 Validation:
 

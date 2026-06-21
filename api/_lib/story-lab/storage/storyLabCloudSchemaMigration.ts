@@ -228,8 +228,46 @@ function hasSqlBody(statement: string): boolean {
 }
 
 function readDollarQuoteTag(schemaSql: string, index: number): string | null {
-  const match = /^\$(?:[A-Za-z_]\w*)?\$/.exec(schemaSql.slice(index));
-  return match?.[0] ?? null;
+  if (schemaSql[index] !== '$') {
+    return null;
+  }
+
+  const closingIndex = findDollarQuoteTagEnd(schemaSql, index + 1);
+  return closingIndex === null ? null : schemaSql.slice(index, closingIndex + 1);
+}
+
+function findDollarQuoteTagEnd(schemaSql: string, index: number): number | null {
+  const firstTagChar = schemaSql[index] ?? '';
+  if (firstTagChar === '$') {
+    return index;
+  }
+
+  if (!isDollarQuoteTagStart(firstTagChar)) {
+    return null;
+  }
+
+  let cursor = index + 1;
+  while (cursor < schemaSql.length && isDollarQuoteTagPart(schemaSql[cursor] ?? '')) {
+    cursor += 1;
+  }
+
+  return schemaSql[cursor] === '$' ? cursor : null;
+}
+
+function isDollarQuoteTagStart(char: string): boolean {
+  return char === '_' || isAsciiLetter(char);
+}
+
+function isDollarQuoteTagPart(char: string): boolean {
+  return char === '_' || isAsciiLetter(char) || isAsciiDigit(char);
+}
+
+function isAsciiLetter(char: string): boolean {
+  return (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z');
+}
+
+function isAsciiDigit(char: string): boolean {
+  return char >= '0' && char <= '9';
 }
 
 function stripBlockComments(statement: string): string {
