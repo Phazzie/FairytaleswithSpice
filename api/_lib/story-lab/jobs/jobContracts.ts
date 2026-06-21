@@ -24,6 +24,12 @@ export const NON_DURABLE_STORY_LAB_JOB_DURABILITY: StoryLabJobDurability = {
   warning: 'Story Lab jobs are stored in process memory in this scaffold. They are not durable across serverless cold starts, deploys, or crashes.'
 };
 
+export const POSTGRES_STORY_LAB_JOB_DURABILITY: StoryLabJobDurability = {
+  mode: 'postgres',
+  durable: true,
+  warning: 'Story Lab jobs are stored in Postgres, but durable runner behavior still depends on route and workflow integration.'
+};
+
 export function createOpaqueStoryLabJobId(randomId = randomUUID()): string {
   const uuid = randomId.startsWith('job_') ? randomId.slice('job_'.length) : randomId;
   if (!UUID_PATTERN.test(uuid)) {
