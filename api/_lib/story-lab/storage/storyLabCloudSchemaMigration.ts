@@ -51,8 +51,9 @@ export function splitStoryLabCloudSchemaStatements(schemaSql: string): string[] 
     dollarQuoteTag: null
   };
 
-  for (let index = 0; index < schemaSql.length; index += 1) {
-    index = consumeSchemaSqlCharacter(schemaSql, index, state, statements);
+  let index = 0;
+  while (index < schemaSql.length) {
+    index = consumeSchemaSqlCharacter(schemaSql, index, state, statements) + 1;
   }
 
   pushStatement(statements, state.current);

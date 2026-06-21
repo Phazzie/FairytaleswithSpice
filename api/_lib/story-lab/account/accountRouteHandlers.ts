@@ -444,7 +444,7 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readWrappedOrBareBodyRecord(body: Record<string, unknown>, key: string): unknown {
-  return Object.prototype.hasOwnProperty.call(body, key) ? body[key] : body;
+  return Object.keys(body).includes(key) ? body[key] : body;
 }
 
 function isNonBlankString(value: unknown): value is string {

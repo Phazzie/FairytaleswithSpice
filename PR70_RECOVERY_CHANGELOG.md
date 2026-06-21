@@ -2945,6 +2945,7 @@ Actions:
 - Added regression coverage that malformed `profile` or `project` wrapper bodies are rejected instead of falling back to outer fields.
 - Follow-up review pass: asserted the `INVALID_REQUEST` error code for malformed wrapper regressions, renamed the wrapped-or-bare body helper to make direct body compatibility explicit, and replaced per-character dollar-quote substring matching with an in-place tag parser.
 - Gemini follow-up: restored optional wire compatibility for profile timestamps and project synopsis/timestamps while still rejecting malformed provided values, with regression coverage for missing optional fields and numeric malformed values.
+- Sonar follow-up: removed the schema splitter loop-counter assignment and replaced the route parser own-property check with an ES2020-safe key check.
 
 Self-review:
 
