@@ -1048,6 +1048,12 @@ describe('App', () => {
     expect(queueText).toContain('0 of 1 chapter');
   });
 
+  it('formats unknown batch statuses defensively', () => {
+    expect(component.formatBatchStatus('in_progress')).toBe('In Progress');
+    expect(component.formatBatchStatus('paused' as any)).toBe('paused');
+    expect(component.formatBatchStatus(undefined)).toBe('Unknown');
+  });
+
   it('clears finished batches from the visible batch queue', () => {
     const payload: StoryIterationPayload = {
       summary: createSummary(),

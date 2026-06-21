@@ -180,6 +180,17 @@ type GenerationProgressState = {
   elapsedSeconds: number;
 };
 
+const BATCH_STATUS_LABELS: Record<BatchProgressState['status'], string> = {
+  queued: 'Queued',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  failed: 'Failed'
+};
+
+function isBatchProgressStatus(status: unknown): status is BatchProgressState['status'] {
+  return typeof status === 'string' && Object.prototype.hasOwnProperty.call(BATCH_STATUS_LABELS, status);
+}
+
 type ActiveStoryLabJobState = {
   jobId: string;
   kind: 'genesis' | 'continuation';
@@ -2670,17 +2681,11 @@ ${chapters}
     return Array.isArray(project.acceptedMemoryCards) ? project.acceptedMemoryCards.length : 0;
   }
 
-  formatBatchStatus(status: BatchProgressState['status']): string {
-    switch (status) {
-      case 'queued':
-        return 'Queued';
-      case 'in_progress':
-        return 'In Progress';
-      case 'completed':
-        return 'Completed';
-      case 'failed':
-        return 'Failed';
+  formatBatchStatus(status: BatchProgressState['status'] | string | null | undefined): string {
+    if (isBatchProgressStatus(status)) {
+      return BATCH_STATUS_LABELS[status];
     }
+    return typeof status === 'string' && status.trim() ? status : 'Unknown';
   }
 
   formatBatchChapterProgress(batch: BatchProgressState): string {
