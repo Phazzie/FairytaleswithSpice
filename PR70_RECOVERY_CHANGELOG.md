@@ -2710,3 +2710,30 @@ Actions:
 Validation:
 
 - `npm run recovery:preflight -- cloud-library-ui --quick`: passed.
+
+## 2026-06-21 07:28 EDT - Durable Job Owner Scaffolding Extraction
+
+Actions:
+
+- Extracted the durable job owner scaffolding slice onto `recovery/story-lab-durable-job-owner`.
+- Added cloud schema/readiness coverage for future `story_lab_jobs` and `story_lab_job_events` tables and indexes.
+- Added a Story Lab job store port, non-durable adapter compatibility, Postgres job store scaffold, and guarded job-store config.
+- Routed Story Lab job create/read/event operations through configured job storage and authenticated owner context where durable storage is configured.
+- Guarded job reads and updates by owner so cross-owner access fails closed.
+- Added job-status UI/recovery copy for non-durable in-memory jobs so the app does not imply crash-safe progress.
+
+Decision:
+
+- Included the `44f3e9b` and `13a95f4` UI honesty commits in this slice because they enforce the same durable-job honesty invariant.
+- Kept stale `OVERNIGHT_HANDOFF.md`, `STORY_LAB_APP_AUDIT.md`, and unrelated idea-board edits out of the extraction.
+- This slice still does not claim a live Workflow runner, executed migrations, database provisioning, process-loss recovery, or live durable job proof.
+
+Validation:
+
+- `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+- `npm run test:story-lab-job-store-config`: passed.
+- `npm run test:story-lab-job-store-port`: passed.
+- `npm run test:story-lab-job-routes`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
+- `npm run build`: passed with existing Angular bundle and CSS budget warnings.
