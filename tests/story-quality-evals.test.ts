@@ -4,6 +4,7 @@
 import {
   buildStoryLabPayloadFromGeneratedStory,
   continueStoryLab,
+  previewStoryLabContinuationGuidance,
   toClassicGenerationInput
 } from '../api/_lib/story-lab/storyLabEngine';
 import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
@@ -130,6 +131,189 @@ async function main(): Promise<void> {
   assert(continuity.receipt.source === 'heuristic', 'continuity extraction should label heuristic fallback.');
   assert(continuity.receipt.warning?.includes('heuristic'), 'heuristic fallback should be visible.');
 
+  const guidancePreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Pay off the witness shell and make Lord Brine escalate.',
+    storyState: genesisPayload.state
+  });
+  assert(guidancePreview.providerBrief.includes('Pay off the witness shell'), 'guidance preview should preserve the user continuation brief.');
+  assert(guidancePreview.hiddenGuidance.includes('Continuity Courtroom:'), 'guidance preview should expose hidden continuity anchors for future UI preview work.');
+  assert(guidancePreview.anchorHeadings.length === 3, 'guidance preview should report the three hidden anchor blocks.');
+  assert(guidancePreview.characterCount <= 900, 'guidance preview should expose the same compactness budget guarded by real-engine tests.');
+  const activationPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Bring the blood oath into the next room.',
+    storyState: {
+      ...genesisPayload.state,
+      threads: [
+        {
+          id: 'thread-weather-tax',
+          label: 'Weather Tax',
+          status: 'active',
+          description: 'The court taxes every storm that crosses the reef.',
+          foreshadowedDevices: []
+        },
+        {
+          id: 'thread-kitchen-claim',
+          label: 'Kitchen Claim',
+          status: 'active',
+          description: 'The servants know who stole the silver ladle.',
+          foreshadowedDevices: []
+        },
+        {
+          id: 'thread-silent-harbor',
+          label: 'Silent Harbor',
+          status: 'active',
+          description: 'The harbor stopped answering ships at midnight.',
+          foreshadowedDevices: []
+        },
+        {
+          id: 'thread-blood-oath',
+          label: 'Blood Oath',
+          status: 'active',
+          description: 'The old vow follows Mira into every negotiation.',
+          foreshadowedDevices: []
+        }
+      ],
+      artifacts: [],
+      continuityWarnings: []
+    }
+  });
+  assert(activationPreview.hiddenGuidance.includes('Open promise: Blood Oath'), 'continuation guidance should prioritize a brief-matched thread when the courtroom is compacted.');
+  assert(
+    activationPreview.contextSourceMap.some(item =>
+      item.kind === 'thread'
+      && item.label === 'Blood Oath'
+      && item.anchorLabel === 'Open promise'
+      && item.reason.includes('Matched words from the continuation brief')),
+    'guidance preview should explain why the Blood Oath thread was activated.'
+  );
+  const artifactActivationPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Use the glass key now; make it unlock the forbidden tide door.',
+    storyState: {
+      ...genesisPayload.state,
+      threads: [],
+      artifacts: [
+        {
+          id: 'artifact-silver-ladle',
+          name: 'Silver Ladle',
+          significance: 'The kitchen staff hid it after the court dinner.',
+          introducedInChapter: 1
+        },
+        {
+          id: 'artifact-storm-ledger',
+          name: 'Storm Ledger',
+          significance: 'The reef court taxes storms by moon phase.',
+          introducedInChapter: 1
+        },
+        {
+          id: 'artifact-glass-key',
+          name: 'Glass Key',
+          significance: 'A brittle key that opens the forbidden tide door only once.',
+          introducedInChapter: 1
+        }
+      ],
+      continuityWarnings: []
+    }
+  });
+  assert(artifactActivationPreview.hiddenGuidance.includes('World clue: Glass Key'), 'continuation guidance should prioritize a brief-matched artifact when the courtroom is compacted.');
+  assert(
+    artifactActivationPreview.contextSourceMap.some(item =>
+      item.kind === 'artifact'
+      && item.label === 'Glass Key'
+      && item.anchorLabel === 'World clue'
+      && item.reason.includes('Matched words from the continuation brief')),
+    'guidance preview should explain why the Glass Key artifact was activated.'
+  );
+  const relationshipActivationPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Let Coral Scribe betray Mira with the court ledger.',
+    storyState: {
+      ...genesisPayload.state,
+      characters: [
+        {
+          id: 'mira',
+          displayName: 'Mira',
+          archetype: 'protagonist',
+          summary: 'A siren diplomat carrying a forbidden oath.',
+          currentGoal: 'Keep the reef court from owning her lover.',
+          internalConflict: 'She wants help but fears being seen needing it.',
+          externalConflict: 'The court wants the oath made public.',
+          secrets: [],
+          relationships: [
+            {
+              characterId: 'lord-brine',
+              relationship: 'rival',
+              notes: 'Lord Brine can turn the vow into leverage.'
+            },
+            {
+              characterId: 'coral-scribe',
+              relationship: 'ally',
+              notes: 'Coral Scribe knows which ledger proves the betrayal.'
+            }
+          ],
+          spiceCompatibilities: [3]
+        },
+        {
+          id: 'lord-brine',
+          displayName: 'Lord Brine',
+          archetype: 'antagonist',
+          summary: 'A reef lord with a claim on the oath.',
+          currentGoal: 'Own the court record.',
+          internalConflict: 'He wants Mira to choose him and the court.',
+          externalConflict: 'Mira can make him look desperate.',
+          secrets: [],
+          relationships: [],
+          spiceCompatibilities: [3]
+        },
+        {
+          id: 'coral-scribe',
+          displayName: 'Coral Scribe',
+          archetype: 'supporting',
+          summary: 'A court recordkeeper who knows which ledger can hurt Mira.',
+          currentGoal: 'Survive whichever side wins.',
+          internalConflict: 'Loyalty costs more than silence.',
+          externalConflict: 'Both Mira and Lord Brine need the ledger.',
+          secrets: [],
+          relationships: [],
+          spiceCompatibilities: [3]
+        }
+      ],
+      threads: [],
+      artifacts: [],
+      continuityWarnings: []
+    }
+  });
+  assert(relationshipActivationPreview.hiddenGuidance.includes('Relationship pressure: Mira and Coral Scribe'), 'continuation guidance should prioritize a brief-matched relationship pair.');
+  assert(
+    relationshipActivationPreview.contextSourceMap.some(item =>
+      item.kind === 'relationship'
+      && item.label === 'Mira and Coral Scribe'
+      && item.anchorLabel === 'Relationship pressure'
+      && item.reason.includes('Matched words from the continuation brief')),
+    'guidance preview should explain why the Coral Scribe relationship was activated.'
+  );
+  const warningActivationPreview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Make Coral Scribe honor the ledger warning before the court leaves.',
+    storyState: {
+      ...genesisPayload.state,
+      characters: [],
+      threads: [],
+      artifacts: [],
+      continuityWarnings: [
+        'Do not move the storm tax before the reef bell rings.',
+        'Keep the kitchen staff out of the oath scene.',
+        'Coral Scribe must betray Mira before the ledger leaves court.'
+      ]
+    }
+  });
+  assert(warningActivationPreview.hiddenGuidance.includes('Continuity note: Coral Scribe must betray Mira before the ledger leaves court.'), 'continuation guidance should prioritize a brief-matched continuity warning when the courtroom is compacted.');
+  assert(
+    warningActivationPreview.contextSourceMap.some(item =>
+      item.kind === 'warning'
+      && item.label === 'Coral Scribe must betray Mira before the ledger leaves court.'
+      && item.anchorLabel === 'Continuity note'
+      && item.reason.includes('Matched words from the continuation brief')),
+    'guidance preview should explain why the Coral Scribe warning was activated.'
+  );
+
   let continuationInput: ClassicContinuationSeam['input'] | null = null;
   const continuationResponse = await withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, () => continueStoryLab({
       storyId: genesisPayload.summary.storyId,
@@ -186,6 +370,25 @@ async function main(): Promise<void> {
     `continuation should receive previous chapter context. Received: ${continuationInput?.existingContent ?? 'none'}`
   );
   assert(continuationInput?.userInput?.includes('Lord Brine'), 'continuation brief should reach the story service.');
+  const hiddenGuidance = continuationInput?.userInput ?? '';
+  assert(hiddenGuidance.includes('Continuity Courtroom:'), 'continuation guidance should include continuity anchors.');
+  assert(hiddenGuidance.includes('Chapter Ending Stress Test:'), 'continuation guidance should include ending pressure.');
+  assert(hiddenGuidance.includes('Cliche Alarm:'), 'continuation guidance should include stale-path avoidance.');
+  assert(!hiddenGuidance.includes('Scene Pressure Mixer:'), 'scene pressure should reuse an existing anchor instead of adding a fourth hidden block.');
+  assert(!hiddenGuidance.includes('Subtext Receipt:'), 'subtext receipt should stay inside an existing hidden block.');
+  assert(hiddenGuidance.includes('Scene pressure mix: Secret + Setting;'), 'continuation guidance should add a compact pressure mix inside the ending anchor.');
+  assert(!hiddenGuidance.includes('Scene pressure mix: Secret + Setting.'), 'scene pressure should include a concrete seeded variant, not just labels.');
+  assert(
+    hiddenGuidance.includes('Subtext receipt: prove Mira and Lord Brine by behavior before explanation.'),
+    'continuation guidance should force emotional change to show through behavior before explanation.'
+  );
+  assert(!hiddenGuidance.includes('Escalating thread:'), 'continuation guidance should not expose mechanical thread labels.');
+  assert(!hiddenGuidance.includes('Open thread:'), 'continuation guidance should not expose mechanical thread labels.');
+  assert(!hiddenGuidance.includes('Unresolved artifact:'), 'continuation guidance should not expose mechanical artifact labels.');
+  assert(!hiddenGuidance.includes('Warning to honor:'), 'continuation guidance should not expose mechanical warning labels.');
+  assert(!hiddenGuidance.includes('generic conflict'), 'continuation guidance should not ask the model to avoid generic conflict with generic wording.');
+  assert(!hiddenGuidance.includes('World clue: World Details'), 'continuation guidance should not use a generic world artifact name.');
+  assert(hiddenGuidance.includes('World clue: Witness Shells'), 'continuation guidance should name the concrete world clue.');
   assert(continuationResponse.data.batch.chapters[0].chapterNumber === 2, 'continuation should append the next chapter number.');
   assert(continuationResponse.data.continuityExtraction?.source === 'heuristic', 'test-injected service should keep heuristic continuity labeling.');
 

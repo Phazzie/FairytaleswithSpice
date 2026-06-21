@@ -2842,3 +2842,27 @@ Validation:
 - `bash -n scripts/recovery/slice-preflight.sh`: passed.
 - `npm run recovery:preflight -- durable-job-owner --dry-run`: passed and showed the simplified branch-diff command plus Node 20 API typecheck.
 - `npm run recovery:preflight -- durable-job-owner --quick`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+
+## 2026-06-21 08:31 EDT - Story Quality Guidance Slice
+
+Actions:
+
+- Extracted the Story Lab story-output quality slice from the unpublished stack without bringing in the later Proving Grounds report or memory-card work.
+- Added activation-aware continuation courtroom guidance for threads, artifacts, relationships, and warnings, with a preview source map that explains why anchors were selected.
+- Seeded protagonist-antagonist relationship edges so relationship pressure can reach continuation guidance.
+- Tightened chapter-ending, cliche-avoidance, scene-pressure, and subtext-receipt guidance while preserving the compact hidden-guidance budget.
+- Expanded mock generation and continuation bodies so fallback story output stays closer to requested word-count ranges.
+
+Self-review:
+
+- Good: The conflict resolution kept story-quality guidance separate from Proving Grounds and memory cards instead of checking out the mega-branch file wholesale.
+- Problem found: the first extraction pass missed selected hunks for relationship seeding and shorter secret-exposed wording; the focused tests caught both before commit.
+- Process correction: for future slices, compare selected commits against current diff by behavior as well as file paths, because patch replay can silently skip hunks once a file is conflicted.
+
+Validation:
+
+- `npm run test:story-lab-real-engine`: passed.
+- `npm run test:story-quality`: passed.
+- `npm run test:story`: passed.
+- `npm run recovery:preflight -- story-quality-guidance`: passed and wrote `tmp/recovery/story-quality-guidance-evidence.md`.
+- Function count stayed `11/12`.

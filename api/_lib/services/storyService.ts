@@ -45,6 +45,7 @@ interface GeneratedChaptersResult {
 }
 
 const EXTRA_BATCH_CHAPTER_TIMEOUT_MS = 9000;
+const MOCK_CONTINUATION_TARGET_BODY_WORDS = 450;
 
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
@@ -652,6 +653,10 @@ export class StoryService {
     tropeSelection?: TropeSelection,
     chapterOptions?: ChapterGenerationOptions
   ): Promise<GeneratedTextResult> {
+    const targetWordCount = chapterOptions
+      ? Math.max(200, Math.ceil(input.wordCount / Math.max(1, chapterOptions.totalChapters)))
+      : input.wordCount;
+
     if (!this.xaiClient.hasApiKey()) {
       if (this.isProductionRuntime()) {
         throw this.missingProviderError();
@@ -661,14 +666,11 @@ export class StoryService {
       // Fallback to mock generation if no API key
       return {
         content: chapterOptions
-          ? this.generateMockInitialChapter(input, chapterOptions.chapterNumber)
+          ? this.generateMockInitialChapter(input, chapterOptions.chapterNumber, targetWordCount)
           : this.generateMockStory(input, tropeSelection)
       };
     }
 
-    const targetWordCount = chapterOptions
-      ? Math.max(200, Math.ceil(input.wordCount / Math.max(1, chapterOptions.totalChapters)))
-      : input.wordCount;
     const systemPrompt = this.buildSystemPrompt(input, tropeSelection, chapterOptions);
     const userPrompt = chapterOptions
       ? this.buildChapterUserPrompt(input, chapterOptions)
@@ -1602,59 +1604,105 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
   private generateMockStory(input: StoryGenerationSeam['input'], _tropeSelection?: TropeSelection): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const spicyLabel = this.getSpicyLabel(input.spicyLevel);
+    const targetBodyWords = Math.max(200, Math.floor(input.wordCount * 0.9));
+    const paragraphs = [
+      `In the shadowed alleys of Victorian London, Lady Arabella Worthington found herself drawn to the mysterious stranger who haunted her dreams. His eyes, crimson as fresh-spilled wine, held secrets that both terrified and exhilarated her.`,
+      `"You shouldn't be here," he whispered, his voice like velvet over steel. But Arabella, with her corset straining against propriety and her heart pounding with forbidden desire, stepped closer.`,
+      `The ${creatureName.toLowerCase()} prince revealed himself slowly, each layer of deception peeling away like the petals of a night-blooming flower. His touch was electric, sending sparks through her veins that made her gasp with a pleasure bordering on pain.`,
+      `As the gas lamps flickered in the fog-shrouded streets, their bodies entwined in a dance as old as time itself. Arabella discovered that some hungers could never be satisfied, only temporarily sated.`,
+      `The ${spicyLabel.toLowerCase()} intensity of their encounter left her breathless, her skin flushed and marked by his passionate embrace. She knew she should run, should scream for help, but the pull was too strong.`,
+      `In that moment, Lady Arabella Worthington ceased to be a proper Victorian lady and became something far more dangerous - the willing consort of a creature of the night.`
+    ];
+    const expansionBeats = [
+      `By midnight, the first complication arrived: a sealed note from her father's solicitor, warning that the family estate had been promised to a rival suitor by dawn. Arabella folded the paper into her glove and understood that desire had become a legal problem as much as a spiritual one.`,
+      `The prince led her through a chapel whose saints had no faces, only silver mirrors polished by generations of terrified lovers. In every reflection she saw a different version of herself: obedient daughter, ruined bride, hungry accomplice, and queen of a country no mapmaker dared to draw.`,
+      `Their bargain gained shape between them. He would protect her name from the men who wanted to trade it like property; she would carry his secret through the morning world, where daylight made every supernatural promise look like madness or scandal.`,
+      `Arabella asked what he truly wanted, and the question changed the room. The prince smiled as if nobody had asked him that in a century. When he answered, his voice held more loneliness than seduction, and that frightened her more than the fangs.`,
+      `The rival suitor found them near the river, flanked by constables and carrying a priest's black book. He called Arabella compromised, cursed, and stolen. She surprised herself by laughing, because every word he chose was smaller than what had actually happened to her.`,
+      `The ${creatureName.toLowerCase()} did not attack. He offered terms with a courtier's restraint, each sentence wrapped in threat and etiquette. Arabella watched the men recoil from politeness sharpened into a weapon and realized power could enter a room without raising its voice.`,
+      `When the first bell of dawn sounded, the prince weakened. The color drained from his mouth, and for one terrible second Arabella saw what eternity cost him. She could leave then. She could step into respectable daylight and pretend the night had been an illness.`,
+      `Instead, she took his signet ring and pressed it into her palm until the crest left a mark. It was not a wedding vow, not yet, but it was evidence. By sunrise everyone would know Lady Arabella had chosen the scandal herself, and chosen it with a steady hand.`
+    ];
+
+    const renderBody = () => paragraphs.map(paragraph => `<p>${paragraph}</p>`).join('\n\n');
+    let beatIndex = 0;
+    while (this.countWords(renderBody()) < targetBodyWords) {
+      paragraphs.push(expansionBeats[beatIndex % expansionBeats.length]);
+      beatIndex += 1;
+    }
 
     return `<h3>The ${creatureName}'s Forbidden Passion</h3>
 
-<p>In the shadowed alleys of Victorian London, Lady Arabella Worthington found herself drawn to the mysterious stranger who haunted her dreams. His eyes, crimson as fresh-spilled wine, held secrets that both terrified and exhilarated her.</p>
-
-<p>"You shouldn't be here," he whispered, his voice like velvet over steel. But Arabella, with her corset straining against propriety and her heart pounding with forbidden desire, stepped closer.</p>
-
-<p>The ${creatureName.toLowerCase()} prince revealed himself slowly, each layer of deception peeling away like the petals of a night-blooming flower. His touch was electric, sending sparks through her veins that made her gasp with a pleasure bordering on pain.</p>
-
-<p>As the gas lamps flickered in the fog-shrouded streets, their bodies entwined in a dance as old as time itself. Arabella discovered that some hungers could never be satisfied, only temporarily sated.</p>
-
-<p>The ${spicyLabel.toLowerCase()} intensity of their encounter left her breathless, her skin flushed and marked by his passionate embrace. She knew she should run, should scream for help, but the pull was too strong.</p>
-
-<p>In that moment, Lady Arabella Worthington ceased to be a proper Victorian lady and became something far more dangerous - the willing consort of a creature of the night.</p>
+${renderBody()}
 
 <p><em>This is a mock story generated without AI. Add XAI_API_KEY to use real AI generation.</em></p>`;
   }
 
-  private generateMockInitialChapter(input: StoryGenerationSeam['input'], chapterNumber: number): string {
+  private generateMockInitialChapter(input: StoryGenerationSeam['input'], chapterNumber: number, targetWordCount: number): string {
     const creatureName = this.getCreatureDisplayName(input.creature);
     const baseTitle = chapterNumber === 1
       ? `The ${creatureName}'s Forbidden Passion`
       : `Secrets of the ${creatureName} - Part ${chapterNumber}`;
+    const targetBodyWords = Math.max(160, Math.floor(targetWordCount * 0.9));
+    const paragraphs = [
+      `[Narrator]: Moonlight dripped across the manor's stone balustrades as whispers of destiny curled around our lovers. The ${creatureName.toLowerCase()} aristocrat studied their prey with patient hunger, weighing desire against the oaths that bound their bloodline.`,
+      `[Narrator]: Each chapter in this mock sequence leans into danger, seduction, and supernatural stakes. Expect clandestine meetings beneath stained glass, confessions that scorch the night air, and the steady escalation of ${creatureName.toLowerCase()} power games.`,
+      `[Narrator]: This placeholder chapter lets the application exercise multi-chapter flows without live Grok calls. In production the AI will weave bespoke intrigue, but here we provide atmospheric beats and a tidy cliffhanger.`,
+      `[Narrator]: Just before dawn, a coded message slips beneath the chamber door promising either salvation or ruin. Our heroes must decide whether to follow it, setting up the next chapter's peril.`
+    ];
+    const expansionBeats = [
+      `[Narrator]: Chapter ${chapterNumber} also tracks a concrete emotional turn. One lover asks for trust, the other asks for proof, and neither request can be answered without giving the enemy a weakness to exploit.`,
+      `[Narrator]: A secondary bargain tightens the plot. Servants move through the halls with lowered eyes, carrying letters, keys, and warnings that make the romance feel watched from every doorway.`,
+      `[Narrator]: By the end of the scene, the ${creatureName.toLowerCase()} power dynamic has changed hands. What began as pursuit becomes negotiation, and what looked like surrender becomes a deliberate tactical choice.`,
+      `[Narrator]: The chapter closes with a visible consequence: a torn glove, a missing signet, a witness who should have been asleep. The next chapter has something specific to answer.`
+    ];
+
+    const renderBody = () => paragraphs.map(paragraph => `<p>${paragraph}</p>`).join('\n\n');
+    let beatIndex = 0;
+    while (this.countWords(renderBody()) < targetBodyWords) {
+      paragraphs.push(expansionBeats[beatIndex % expansionBeats.length]);
+      beatIndex += 1;
+    }
 
     return `<h3>Chapter ${chapterNumber}: ${baseTitle}</h3>
 
-<p>[Narrator]: Moonlight dripped across the manor's stone balustrades as whispers of destiny curled around our lovers. The ${creatureName.toLowerCase()} aristocrat studied their prey with patient hunger, weighing desire against the oaths that bound their bloodline.</p>
-
-<p>[Narrator]: Each chapter in this mock sequence leans into danger, seduction, and supernatural stakes. Expect clandestine meetings beneath stained glass, confessions that scorch the night air, and the steady escalation of ${creatureName.toLowerCase()} power games.</p>
-
-<p>[Narrator]: This placeholder chapter lets the application exercise multi-chapter flows without live Grok calls. In production the AI will weave bespoke intrigue, but here we provide atmospheric beats and a tidy cliffhanger.</p>
-
-<p>[Narrator]: Just before dawn, a coded message slips beneath the chamber door promising either salvation or ruin. Our heroes must decide whether to follow it, setting up the next chapter's peril.</p>`;
+${renderBody()}`;
   }
 
   private generateMockChapter(input: ChapterContinuationSeam['input'], chapterNumber?: number): string {
     const nextNumber = chapterNumber ?? input.currentChapterCount + 1;
+    const paragraphs = [
+      `The morning light pierced through heavy velvet curtains, but Arabella felt no warmth from its golden rays. Instead, a strange energy coursed through her veins, awakening senses she never knew existed.`,
+      `Every sound was amplified - the distant clip-clop of carriage horses, the rustle of leaves in the garden, even the steady beat of her own heart. And beneath it all, a hunger that gnawed at her very soul.`,
+      `Her reflection in the mirror showed a woman transformed. Her skin glowed with an otherworldly luminescence, her eyes held a predatory gleam. The creature had given her a gift... or was it a curse?`,
+      `As night fell once more, she waited impatiently for his return. The hours stretched like taffy, each minute an eternity of anticipation. When he finally appeared at her balcony, silent as a shadow, Arabella knew there was no turning back.`,
+      `Their second encounter was even more intense than the first. His hands explored her body with a possessiveness that made her arch and cry out. The passion burned hotter, threatening to consume them both.`,
+      `But in the aftermath, as they lay entwined in sweat-dampened sheets, Arabella began to question the true cost of her transformation. What price would she pay for eternal passion?`
+    ];
+    const expansionBeats = [
+      `The answer did not arrive as a grand prophecy. It came as a practical problem: a servant waiting outside the door with breakfast she could no longer stomach, a visiting aunt asking why the curtains stayed drawn, and a letter sealed in black wax on the breakfast tray.`,
+      `Arabella broke the seal with fingers that still remembered his touch. The note named three debts: the ring she had accepted, the rival she had humiliated, and the family name she had placed between herself and the creature who now owned half her future.`,
+      `She tried to rehearse a lie for the household, but every version sounded like a child covering a broken vase. The truth was worse and steadier. She had chosen this, and choice made a stronger cage than force ever could.`,
+      `When dusk returned, he found her in the library with ledgers spread across the floor. She had traced the estate's debts to a lender who used no human bank. The supernatural world had not seduced her away from danger; it had merely given danger better handwriting.`,
+      `He reached for the papers, and she stopped him with one hand on his wrist. The gesture startled them both. Last night she had been prey, guest, lover, and fool by turns. Tonight she needed to become someone whose questions could not be dismissed.`,
+      `The chapter turned when she named the cost out loud. If he wanted her beside him, he would answer like a partner, not a prince visiting a distraction. The silence after that sentence felt sharper than any kiss they had shared.`,
+      `Outside, the first carriage rolled through the fog. Someone had come early, and whoever waited below carried enough authority to make every servant in the house fall quiet. Arabella looked at him and understood the next choice would have witnesses.`,
+      `He offered her one escape. She refused it before he finished speaking, because escape had started to sound too much like being managed. Instead she took the black-wax letter, folded it into her bodice, and walked toward the stairs.`
+    ];
+
+    const renderBody = () => [
+      ...paragraphs.map(paragraph => `<p>${paragraph}</p>`),
+      '<p><em>This is a mock chapter generated without AI.</em></p>'
+    ].join('\n\n');
+    let beatIndex = 0;
+    while (this.countWords(renderBody()) < MOCK_CONTINUATION_TARGET_BODY_WORDS) {
+      paragraphs.push(expansionBeats[beatIndex % expansionBeats.length]);
+      beatIndex += 1;
+    }
 
     return `<h3>Chapter ${nextNumber}: The Deeper Shadows</h3>
 
-<p>The morning light pierced through heavy velvet curtains, but Arabella felt no warmth from its golden rays. Instead, a strange energy coursed through her veins, awakening senses she never knew existed.</p>
-
-<p>Every sound was amplified - the distant clip-clop of carriage horses, the rustle of leaves in the garden, even the steady beat of her own heart. And beneath it all, a hunger that gnawed at her very soul.</p>
-
-<p>Her reflection in the mirror showed a woman transformed. Her skin glowed with an otherworldly luminescence, her eyes held a predatory gleam. The creature had given her a gift... or was it a curse?</p>
-
-<p>As night fell once more, she waited impatiently for his return. The hours stretched like taffy, each minute an eternity of anticipation. When he finally appeared at her balcony, silent as a shadow, Arabella knew there was no turning back.</p>
-
-<p>Their second encounter was even more intense than the first. His hands explored her body with a possessiveness that made her arch and cry out. The passion burned hotter, threatening to consume them both.</p>
-
-<p>But in the aftermath, as they lay entwined in sweat-dampened sheets, Arabella began to question the true cost of her transformation. What price would she pay for eternal passion?</p>
-
-<p><em>This is a mock chapter generated without AI.</em></p>`;
+${renderBody()}`;
   }
 
   private getCreatureDisplayName(creature: string): string {

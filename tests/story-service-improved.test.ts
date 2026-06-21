@@ -242,33 +242,42 @@ const testSuite = {
   
   // Test 5: Different word counts
   testWordCounts: test('Different Word Count Targets', async () => {
-    const service = new StoryService();
-    const wordCounts: Array<700 | 900 | 1200> = [700, 900, 1200];
-    
-    for (const wordCount of wordCounts) {
-      console.log(`   Testing ${wordCount} words...`);
-      
-      const input: StoryGenerationSeam['input'] = {
-        creature: 'vampire',
-        themes: ['romance'],
-        userInput: 'Test story',
-        spicyLevel: 2,
-        wordCount
-      };
-      
-      const result = await service.generateStory(input);
-      
-      if (!result.success) {
-        throw new Error(`Failed to generate ${wordCount}-word story: ${result.error?.message}`);
+    await withMockGrok(async () => {
+      const service = new StoryService();
+      const wordCounts: Array<700 | 900 | 1200> = [700, 900, 1200];
+      const tolerance = 0.3;
+
+      for (const wordCount of wordCounts) {
+        console.log(`   Testing ${wordCount} words...`);
+
+        const input: StoryGenerationSeam['input'] = {
+          creature: 'vampire',
+          themes: ['romance'],
+          userInput: 'Test story',
+          spicyLevel: 2,
+          wordCount
+        };
+
+        const result = await service.generateStory(input);
+
+        if (!result.success) {
+          throw new Error(`Failed to generate ${wordCount}-word story: ${result.error?.message}`);
+        }
+
+        const actualWords = result.data!.actualWordCount;
+        const variance = Math.abs(actualWords - wordCount) / wordCount * 100;
+        const minWords = wordCount * (1 - tolerance);
+        const maxWords = wordCount * (1 + tolerance);
+
+        console.log(`   ✓ Target ${wordCount}, actual ${actualWords} (${variance.toFixed(1)}% variance)`);
+
+        if (actualWords < minWords || actualWords > maxWords) {
+          throw new Error(`Mock story word count ${actualWords} should be within 30% of ${wordCount}`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-      
-      const actualWords = result.data!.actualWordCount;
-      const variance = Math.abs(actualWords - wordCount) / wordCount * 100;
-      
-      console.log(`   ✓ Target ${wordCount}, actual ${actualWords} (${variance.toFixed(1)}% variance)`);
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+    });
   }),
   
   // Test 6: Invalid inputs
@@ -386,6 +395,12 @@ const testSuite = {
       expect(story.appendedToStory).toContain('Chapter 3');
       expect(story.failedChapters).toBeUndefined();
 
+      const minWords = input.wordCount * 0.7;
+      const maxWords = input.wordCount * 1.3;
+      if (story.totalWordCount < minWords || story.totalWordCount > maxWords) {
+        throw new Error(`Multi-chapter mock total ${story.totalWordCount} should be within 30% of ${input.wordCount}`);
+      }
+
       console.log(`   ✓ Generated chapters: ${story.chapters!.map(chapter => chapter.chapterNumber).join(', ')}`);
       console.log(`   ✓ Total word count: ${story.totalWordCount}`);
     });
@@ -419,6 +434,11 @@ const testSuite = {
       expect(continuation.appendedToStory).toContain('Chapter 3');
       expect(continuation.totalWordCount).toBeGreaterThan(0);
       expect(continuation.cliffhangerAnalysis).toBeDefined();
+      for (const chapter of continuation.chapters!) {
+        if (chapter.wordCount < 400 || chapter.wordCount > 600) {
+          throw new Error(`Mock continuation chapter ${chapter.chapterNumber} word count ${chapter.wordCount} should stay within the 400-600 prompt target`);
+        }
+      }
 
       console.log(`   ✓ Continued chapters: ${continuation.chapters!.map(chapter => chapter.chapterNumber).join(', ')}`);
       console.log(`   ✓ Appended story word count: ${continuation.totalWordCount}`);
