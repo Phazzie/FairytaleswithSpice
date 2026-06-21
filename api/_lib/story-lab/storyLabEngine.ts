@@ -166,6 +166,16 @@ function missingProviderResponse(): StoryLabErrorResponse {
   };
 }
 
+function storyLabErrorResponse(error: { code?: string; message: string }, fallbackCode: string): StoryLabErrorResponse {
+  return {
+    success: false,
+    error: {
+      code: error.code ?? fallbackCode,
+      message: error.message
+    }
+  };
+}
+
 function validateHeatContract(input: LabGenerationSeam['input']): StoryLabErrorResponse | null {
   if (!input.heatContract || input.heatContract.adultOnlyConfirmed !== true) {
     return {
@@ -236,14 +246,7 @@ export async function generateStoryLabGenesis(
   const result = await service.generateStory(toClassicGenerationInput(input));
 
   if (!result.success) {
-    return {
-      success: false,
-      error: {
-        code: result.error.code ?? 'GENERATION_FAILED',
-        message: result.error.message,
-        details: result.error.details
-      }
-    };
+    return storyLabErrorResponse(result.error, 'GENERATION_FAILED');
   }
 
   const partialError = getPartialGenerationError(
@@ -321,14 +324,7 @@ export async function continueStoryLab(
   });
 
   if (!result.success) {
-    return {
-      success: false,
-      error: {
-        code: result.error.code ?? 'CONTINUATION_FAILED',
-        message: result.error.message,
-        details: result.error.details
-      }
-    };
+    return storyLabErrorResponse(result.error, 'CONTINUATION_FAILED');
   }
 
   const partialError = getPartialGenerationError(
@@ -1118,7 +1114,7 @@ function toStoryLabChapters(
     : [{
         chapterId: `${storyId}-chapter-${firstChapterNumber}`,
         chapterNumber: firstChapterNumber,
-        title: 'Chapter 1',
+        title: `Chapter ${firstChapterNumber}`,
         content: fallbackHtml,
         rawContent: fallbackRawHtml,
         wordCount: countWords(fallbackHtml),
@@ -1136,7 +1132,7 @@ function toStoryLabChapters(
       chapterNumber,
       title: normalizeChapterTitle(chapter.title, chapterNumber),
       htmlContent,
-      rawContent: chapter.rawContent,
+      rawContent: chapter.rawContent || htmlContent,
       summary: summarizeHtml(htmlContent),
       wordCount: chapter.wordCount || countWords(htmlContent),
       hasCliffhanger: Boolean(chapter.cliffhangerEnding),

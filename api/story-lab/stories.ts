@@ -2,6 +2,7 @@
 
 import type { ApiResponse, StoryIterationPayload } from '../_lib/story-lab/contracts';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
+import { getStoryLabResponseStatus } from '../_lib/story-lab/routeStatus';
 import { generateStoryLabGenesis } from '../_lib/story-lab/storyLabEngine';
 import { parseStoryLabBlueprintFromBody } from '../_lib/story-lab/validation/blueprintParser';
 
@@ -38,5 +39,5 @@ export default async function handler(req: any, res: any) {
   }
 
   const payload: ApiResponse<StoryIterationPayload> = await generateStoryLabGenesis(parsed.blueprint);
-  res.status(200).json(payload);
+  res.status(getStoryLabResponseStatus(payload)).json(payload);
 }
