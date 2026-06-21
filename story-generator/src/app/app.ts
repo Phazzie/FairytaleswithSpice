@@ -18,6 +18,7 @@ import {
   HeatContract,
   HeatIntimacyBoundary,
   HeatTensionMode,
+  PlotThread,
   SavedStoryProject,
   SpicyLevel,
   StoryMemoryLifetime,
@@ -486,11 +487,7 @@ export class App implements OnDestroy {
     return [
       ...threadSelections.map(({ item: thread, matched }) => ({
         id: `thread-${thread.id}`,
-        label: thread.status === 'escalating'
-          ? 'Pressure rising'
-          : thread.status === 'dormant'
-            ? 'Quiet promise'
-            : 'Open promise',
+        label: this.formatContinuityThreadPreviewLabel(thread.status),
         title: thread.label,
         detail: thread.description,
         sourceReason: this.formatContinuityPreviewSourceReason(matched, 'Active story thread'),
@@ -580,7 +577,7 @@ export class App implements OnDestroy {
       return null;
     }
 
-    const alias = words[words.length - 1].toLowerCase();
+    const alias = words.pop()?.toLowerCase() ?? '';
     return alias === title.toLowerCase() ? null : alias;
   }
 
@@ -631,9 +628,10 @@ export class App implements OnDestroy {
       return null;
     }
 
-    const selected = relationshipItems.sort((first, second) =>
+    relationshipItems.sort((first, second) =>
       second.activationScore - first.activationScore || first.sourceIndex - second.sourceIndex
-    )[0];
+    );
+    const selected = relationshipItems[0];
     const { activationScore, sourceIndex: _sourceIndex, ...item } = selected;
 
     return {
@@ -666,6 +664,18 @@ export class App implements OnDestroy {
 
   private formatContinuityPreviewSourceReason(matched: boolean, fallback: string): string {
     return matched ? 'Matched custom brief' : fallback;
+  }
+
+  private formatContinuityThreadPreviewLabel(status: PlotThread['status']): string {
+    if (status === 'escalating') {
+      return 'Pressure rising';
+    }
+
+    if (status === 'dormant') {
+      return 'Quiet promise';
+    }
+
+    return 'Open promise';
   }
 
   private scorePreviewActivationMatch(

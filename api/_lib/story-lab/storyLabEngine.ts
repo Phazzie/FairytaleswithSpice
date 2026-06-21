@@ -719,15 +719,14 @@ function hasAcceptedMemoryCardActivation(continuationBrief: string | undefined, 
   return scoreActivationCandidates(activationCandidates, normalizeActivationText(acceptedMemoryText)) > 0;
 }
 
-function extractAcceptedMemoryCardSection(continuationBrief: string | undefined): string {
+function extractAcceptedMemoryCardSection(continuationBrief = ''): string {
   const acceptedHeading = 'Accepted Memory Cards:';
-  const source = continuationBrief ?? '';
-  const acceptedStart = source.indexOf(acceptedHeading);
+  const acceptedStart = continuationBrief.indexOf(acceptedHeading);
   if (acceptedStart === -1) {
     return '';
   }
 
-  const acceptedText = source.slice(acceptedStart + acceptedHeading.length);
+  const acceptedText = continuationBrief.slice(acceptedStart + acceptedHeading.length);
   const pinnedStart = acceptedText.indexOf('\nPinned Memory Cards:');
   return pinnedStart === -1 ? acceptedText : acceptedText.slice(0, pinnedStart);
 }
