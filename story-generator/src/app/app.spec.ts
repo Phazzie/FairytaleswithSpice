@@ -578,6 +578,32 @@ describe('App', () => {
     expect(fixture.nativeElement.textContent).toContain('Cloud Chapel');
   });
 
+  it('does not mark cloud library synced when account storage is non-durable', () => {
+    const cloudList: CloudStoryProjectList = {
+      ownerUserId: 'user-owner',
+      storageMode: 'non_durable_memory',
+      projects: [{
+        projectId: 'project-cloud',
+        storyId: 'story-cloud',
+        title: 'Cloud Chapel',
+        synopsis: 'A cloud route backed by non-durable memory.',
+        chapterCount: 2,
+        createdAt: '2026-06-08T08:37:00.000Z',
+        updatedAt: '2026-06-08T08:38:00.000Z'
+      }]
+    };
+    storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
+
+    component.refreshCloudLibrary();
+    fixture.detectChanges();
+
+    expect(component.cloudProjects().length).toBe(1);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toContain('non-durable account storage');
+    expect(fixture.nativeElement.textContent).toContain('Cloud unavailable');
+    expect(fixture.nativeElement.textContent).toContain('Cloud Chapel');
+  });
+
   it('saves the active workbench project to cloud without disabling local save', () => {
     const payload = seedWorkbenchForContinuation();
     const receipt: CloudStoryProjectSaveReceipt = {

@@ -974,6 +974,14 @@ ${chapters}
         }
 
         this.cloudProjects.set(response.data.projects);
+        if (response.data.storageMode === 'non_durable_memory') {
+          this.cloudLibrarySyncState.set({
+            mode: 'cloud_unavailable',
+            message: `Cloud library is using non-durable account storage. ${response.data.projects.length} project${response.data.projects.length === 1 ? '' : 's'} loaded for inspection.`
+          });
+          return;
+        }
+
         this.cloudLibrarySyncState.set({
           mode: 'cloud_synced',
           lastSyncedAt: new Date().toISOString(),
