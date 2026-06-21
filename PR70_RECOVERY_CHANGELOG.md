@@ -3200,3 +3200,24 @@ Validation:
 - `git diff --check`: passed.
 - `npm run build`: passed; Angular reported the existing Node 23 odd-version warning and stale `baseline-browser-mapping` warning.
 - `npx -p node@20 node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts`: did not execute assertions because ChromeHeadless failed to capture twice and Karma gave up.
+
+## 2026-06-21 16:18 EDT - Genesis Subscription Review Comment Follow-Up
+
+Actions:
+
+- Continued #152 review-thread cleanup after PR #158.
+- Addressed the remaining PR #105 genesis subscription cleanup by making failed job paths close all tracked job subscriptions, not only the event stream.
+- Addressed PR #159 review feedback by applying the same cleanup to continuation and recovered-job failures.
+- Added regression specs for genesis creation, continuation creation, recovered genesis, and recovered continuation failures that do not complete, proving their subscriptions are immediately unsubscribed.
+
+Self-review:
+
+- Good: The fix uses the existing generalized `jobCreationSubscription` and `closeJobSubscriptions()` path instead of adding duplicate job-type-specific subscription helpers.
+- Non-claim: This slice does not change the job route contract or durable queue behavior.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npm run recovery:preflight -- cloud-library-ui --quick`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`; function count stayed `11/12`.
+- `npm run build`: passed; Angular reported the existing Node 23 odd-version warning and stale `baseline-browser-mapping` warning.

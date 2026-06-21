@@ -1846,7 +1846,7 @@ ${chapters}
   private failGenesisJob(batchId: string, message: string) {
     this.clearActiveStoryLabJob();
     this.clearJobStatusPanel();
-    this.closeJobEventSubscription();
+    this.closeJobSubscriptions();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
     this.notificationService.error('Generation failed', message);
@@ -1861,7 +1861,7 @@ ${chapters}
   private failContinuationJob(batchId: string, message: string) {
     this.clearActiveStoryLabJob();
     this.clearJobStatusPanel();
-    this.closeJobEventSubscription();
+    this.closeJobSubscriptions();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
     this.notificationService.error('Continuation failed', message);
@@ -1872,7 +1872,7 @@ ${chapters}
   private failRecoveredStoryLabJob(kind: ActiveStoryLabJobState['kind'], batchId: string, message: string) {
     this.clearActiveStoryLabJob();
     this.clearJobStatusPanel();
-    this.closeJobEventSubscription();
+    this.closeJobSubscriptions();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
     this.notificationService.warning(

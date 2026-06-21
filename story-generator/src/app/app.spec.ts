@@ -1917,6 +1917,27 @@ describe('App', () => {
     expect(creation$.observed).toBeFalse();
   });
 
+  it('cancels an in-flight genesis job creation subscription when creation fails', () => {
+    const creation$ = new Subject<ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>>();
+    storyService.createStoryLabJob.and.returnValue(creation$.asObservable());
+    configureValidBlueprint('A witch queen bargains with a haunted mirror.');
+
+    component.startGenesis();
+
+    expect(creation$.observed).toBeTrue();
+
+    creation$.next({
+      success: false,
+      error: {
+        code: 'STORY_LAB_JOB_FAILED',
+        message: 'Story generation failed.'
+      }
+    });
+
+    expect(creation$.observed).toBeFalse();
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+  });
+
   it('cancels an in-flight recovered genesis job snapshot on destroy', () => {
     const restore$ = new Subject<ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>>();
     storeActiveJobMarker();
@@ -1927,6 +1948,28 @@ describe('App', () => {
     expect(restore$.observed).toBeTrue();
     recovered.ngOnDestroy();
     expect(restore$.observed).toBeFalse();
+  });
+
+  it('cancels an in-flight recovered genesis job snapshot when recovery fails', () => {
+    const restore$ = new Subject<ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>>();
+    storeActiveJobMarker();
+    storyService.getStoryLabJob.and.returnValue(restore$.asObservable());
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(restore$.observed).toBeTrue();
+
+    restore$.next({
+      success: false,
+      error: {
+        code: 'JOB_STORE_UNAVAILABLE',
+        message: 'Story Lab job storage is not configured.'
+      }
+    });
+
+    expect(restore$.observed).toBeFalse();
+    expect(recovered.generationProgress().active).toBeFalse();
+    expect(recovered.statusMessage()).toBe('Story Lab job storage is not configured.');
   });
 
   it('stores an active genesis job marker while job snapshots are running', () => {
@@ -2065,6 +2108,27 @@ describe('App', () => {
     expect(marker.batchId).toMatch(/^batch-/);
   });
 
+  it('cancels an in-flight continuation job creation subscription when creation fails', () => {
+    const creation$ = new Subject<ApiResponse<StoryLabJobCreationResponse<ContinuationJobResult>>>();
+    seedWorkbenchForContinuation();
+    storyService.createStoryLabJob.and.returnValue(creation$.asObservable());
+
+    component.continueSaga('Make the betrayal more dangerous.');
+
+    expect(creation$.observed).toBeTrue();
+
+    creation$.next({
+      success: false,
+      error: {
+        code: 'STORY_LAB_JOB_FAILED',
+        message: 'Continuation failed.'
+      }
+    });
+
+    expect(creation$.observed).toBeFalse();
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+  });
+
   it('persists accepted and pinned memory cards before continuation job recovery', () => {
     const genesisPayload = seedMaraMemoryCardWorkbench();
     const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
@@ -2138,6 +2202,31 @@ describe('App', () => {
     expect(restore$.observed).toBeTrue();
     recovered.ngOnDestroy();
     expect(restore$.observed).toBeFalse();
+  });
+
+  it('cancels an in-flight recovered continuation job snapshot when recovery fails', () => {
+    const genesisPayload = seedWorkbenchForContinuation();
+    const restore$ = new Subject<ApiResponse<StoryLabJobCreationResponse<ContinuationJobResult>>>();
+    component.saveActiveProject();
+    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
+    storyService.getStoryLabJob.calls.reset();
+    storyService.getStoryLabJob.and.returnValue(restore$.asObservable());
+
+    const recovered = TestBed.createComponent(App).componentInstance;
+
+    expect(restore$.observed).toBeTrue();
+
+    restore$.next({
+      success: false,
+      error: {
+        code: 'JOB_STORE_UNAVAILABLE',
+        message: 'Story Lab job storage is not configured.'
+      }
+    });
+
+    expect(restore$.observed).toBeFalse();
+    expect(recovered.generationProgress().active).toBeFalse();
+    expect(recovered.statusMessage()).toBe('Story Lab job storage is not configured.');
   });
 
   it('clears an unavailable recovered continuation job with recovery-specific status copy', () => {
