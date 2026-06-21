@@ -2887,7 +2887,7 @@ Self-review:
 
 - Good: The extraction stayed inside the PR #9 boundary and did not use the full remaining branch diff as a shortcut.
 - Problem found: the fresh worktree lacked both root and Angular workspace dependencies, so the first validation failed before reaching slice code.
-- Problem found: the first Sonar cleanup used `.at(-1)`, but the recovery preflight's API TypeScript target is ES2020; replaced it with an ES2020-safe final-item expression and reran preflight.
+- Problem found: the first Sonar cleanup used `.at(-1)`, but the recovery preflight's API TypeScript target is ES2020; a later `slice(-1)[0]` workaround still tripped Sonar, so the final version uses an ES2020-safe loop and reran preflight.
 - Process correction: install root and `story-generator` dependencies up front for UI/report slices, then restore tracked `node_modules` churn before committing.
 
 Validation:
@@ -2896,5 +2896,7 @@ Validation:
 - `npm run recovery:preflight -- quality-report-proving-grounds`: passed and wrote `tmp/recovery/quality-report-proving-grounds-evidence.md`.
 - Review-fix rerun: `npm run test:story-quality`: passed.
 - Review-fix rerun: `npm run recovery:preflight -- quality-report-proving-grounds`: passed and rewrote `tmp/recovery/quality-report-proving-grounds-evidence.md`.
+- Final Sonar-cleanup rerun: `npm run test:story-quality`: passed.
+- Final Sonar-cleanup rerun: `npm run recovery:preflight -- quality-report-proving-grounds`: passed and rewrote `tmp/recovery/quality-report-proving-grounds-evidence.md`.
 - Function count stayed `11/12`.
 - `npm run build` passed with existing Node non-LTS, Baseline data, Angular bundle, and CSS budget warnings.

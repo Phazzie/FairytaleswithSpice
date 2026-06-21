@@ -71,7 +71,11 @@ function scoreContinuity(storyText: string, configuration: StoryQualityHeuristic
 }
 
 function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): DimensionDraft {
-  const finalParagraph = (paragraphs.slice(-1)[0] ?? storyText).toLowerCase();
+  let finalParagraph = storyText;
+  for (const paragraph of paragraphs) {
+    finalParagraph = paragraph;
+  }
+  finalParagraph = finalParagraph.toLowerCase();
   const signals: string[] = [];
   if (/[?!]\s*$/.test(finalParagraph)) {
     signals.push('Ending closes on a question or exclamation.');
