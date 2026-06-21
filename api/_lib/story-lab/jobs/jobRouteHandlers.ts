@@ -19,6 +19,10 @@ import { parseStoryLabBlueprintFromBody } from '../validation/blueprintParser';
 import { assertOpaqueStoryLabJobId } from './jobContracts';
 import type { StoryLabJobStore } from './jobStorePort';
 import {
+  isStoryLabJobStoreError,
+  type StoryLabJobStoreError
+} from './postgresStoryLabJobStore';
+import {
   createStoryLabJobStoreConfig,
   type StoryLabJobStoreConfig
 } from './storyLabJobStoreConfig';
@@ -57,6 +61,10 @@ interface ResolvedJobStore {
   store: StoryLabJobStore;
   ownerUserId?: string;
 }
+
+type JobStoreOperationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false };
 
 export function createStoryLabJobsRouteHandler(
   dependencies: StoryLabJobRouteDependencies = {}
@@ -171,9 +179,14 @@ async function handleGetStoryLabJobWithContext(
     return;
   }
 
-  const job = await resolvedStore.store.getJob(jobId, {
+  const jobResult = await tryJobStoreOperation(res, () => resolvedStore.store.getJob(jobId, {
     ownerUserId: resolvedStore.ownerUserId
-  });
+  }));
+  if (!jobResult.ok) {
+    return;
+  }
+
+  const job = jobResult.value;
   if (!job) {
     sendJson(res, 404, jobNotFound());
     return;
@@ -212,9 +225,14 @@ async function handleStreamStoryLabJobEventsWithContext(
     return;
   }
 
-  const events = await resolvedStore.store.getEvents<JobResult>(jobId, {
+  const eventsResult = await tryJobStoreOperation(res, () => resolvedStore.store.getEvents<JobResult>(jobId, {
     ownerUserId: resolvedStore.ownerUserId
-  });
+  }));
+  if (!eventsResult.ok) {
+    return;
+  }
+
+  const events = eventsResult.value;
   if (!events) {
     sendJson(res, 404, jobNotFound());
     return;
@@ -268,7 +286,7 @@ async function createGenesisJob(
   }
   const { store, ownerUserId } = resolvedStore;
 
-  const job = await store.createJob<StoryIterationPayload>({
+  const jobResult = await tryJobStoreOperation(res, () => store.createJob<StoryIterationPayload>({
     kind: 'genesis',
     ownerUserId,
     currentStep: 'queued',
@@ -279,18 +297,38 @@ async function createGenesisJob(
       storyId: request.storyId,
       blueprint: parsed.blueprint
     }
-  });
-  await store.updateJob<StoryIterationPayload>(job.job.jobId, {
+  }));
+  if (!jobResult.ok) {
+    return;
+  }
+
+  const job = jobResult.value;
+  const startedResult = await tryJobStoreOperation(res, () => store.updateJob<StoryIterationPayload>(job.job.jobId, {
     ownerUserId,
     status: 'running',
     currentStep: 'generating_story',
     progressPercent: 25
-  });
+  }));
+  if (!startedResult.ok) {
+    return;
+  }
+  if (!startedResult.value) {
+    sendJson(res, 503, jobStorageFailed());
+    return;
+  }
 
   const result = await generateStoryLabGenesis(parsed.blueprint);
+  const finishedResult = await tryJobStoreOperation(res, () => finishJob(store, ownerUserId, job.job.jobId, result));
+  if (!finishedResult.ok) {
+    return;
+  }
+  if (!finishedResult.value) {
+    sendJson(res, 503, jobStorageFailed());
+    return;
+  }
   sendJson(res, 200, {
     success: true,
-    data: await finishJob(store, ownerUserId, job.job.jobId, result)
+    data: finishedResult.value
   });
 }
 
@@ -314,7 +352,7 @@ async function createContinuationJob(
   }
   const { store, ownerUserId } = resolvedStore;
 
-  const job = await store.createJob<ContinuationJobResult>({
+  const jobResult = await tryJobStoreOperation(res, () => store.createJob<ContinuationJobResult>({
     kind: 'continuation',
     ownerUserId,
     currentStep: 'queued',
@@ -325,18 +363,38 @@ async function createContinuationJob(
       storyId: request.storyId ?? normalized.storyId,
       continuation: normalized
     }
-  });
-  await store.updateJob<ContinuationJobResult>(job.job.jobId, {
+  }));
+  if (!jobResult.ok) {
+    return;
+  }
+
+  const job = jobResult.value;
+  const startedResult = await tryJobStoreOperation(res, () => store.updateJob<ContinuationJobResult>(job.job.jobId, {
     ownerUserId,
     status: 'running',
     currentStep: 'continuing_story',
     progressPercent: 25
-  });
+  }));
+  if (!startedResult.ok) {
+    return;
+  }
+  if (!startedResult.value) {
+    sendJson(res, 503, jobStorageFailed());
+    return;
+  }
 
   const result = await continueStoryLab(normalized);
+  const finishedResult = await tryJobStoreOperation(res, () => finishJob(store, ownerUserId, job.job.jobId, result));
+  if (!finishedResult.ok) {
+    return;
+  }
+  if (!finishedResult.value) {
+    sendJson(res, 503, jobStorageFailed());
+    return;
+  }
   sendJson(res, 200, {
     success: true,
-    data: await finishJob(store, ownerUserId, job.job.jobId, result)
+    data: finishedResult.value
   });
 }
 
@@ -345,24 +403,45 @@ async function finishJob<TPublicResult extends JobResult>(
   ownerUserId: string | undefined,
   jobId: string,
   result: ApiResponse<TPublicResult>
-): Promise<StoryLabJobCreationResponse<TPublicResult>> {
+): Promise<StoryLabJobCreationResponse<TPublicResult> | null> {
   if (result.success) {
-    return (await store.updateJob<TPublicResult>(jobId, {
+    return store.updateJob<TPublicResult>(jobId, {
       ownerUserId,
       status: 'completed',
       currentStep: 'completed',
       progressPercent: 100,
       result: result.data
-    }))!;
+    });
   }
 
-  return (await store.updateJob<TPublicResult>(jobId, {
+  return store.updateJob<TPublicResult>(jobId, {
     ownerUserId,
     status: 'failed',
     currentStep: 'failed',
     progressPercent: 100,
     error: toJobError(result.error)
-  }))!;
+  });
+}
+
+async function tryJobStoreOperation<T>(
+  res: ResponseLike,
+  operation: () => T | Promise<T>
+): Promise<JobStoreOperationResult<T>> {
+  try {
+    return {
+      ok: true,
+      value: await operation()
+    };
+  } catch (error) {
+    if (!isStoryLabJobStoreError(error)) {
+      throw error;
+    }
+
+    sendJson(res, jobStoreErrorStatus(error), jobStoreErrorResponse(error));
+    return {
+      ok: false
+    };
+  }
 }
 
 async function resolveJobStoreOrRespond(
@@ -582,6 +661,48 @@ function jobStoreUnavailable(config: StoryLabJobStoreConfig): ApiResponse<never>
       message
     }
   };
+}
+
+function jobStorageFailed(): ApiResponse<never> {
+  return {
+    success: false,
+    error: {
+      code: 'STORY_LAB_JOB_STORAGE_FAILED',
+      message: 'Story Lab job storage failed.'
+    }
+  };
+}
+
+function jobStoreErrorResponse(error: StoryLabJobStoreError): ApiResponse<never> {
+  return {
+    success: false,
+    error: {
+      code: error.code,
+      message: jobStorePublicMessage(error)
+    }
+  };
+}
+
+function jobStoreErrorStatus(error: StoryLabJobStoreError): number {
+  if (error.code === 'STORY_LAB_JOB_OWNER_REQUIRED') {
+    return 401;
+  }
+
+  return 503;
+}
+
+function jobStorePublicMessage(error: StoryLabJobStoreError): string {
+  switch (error.code) {
+    case 'STORY_LAB_JOB_STORAGE_UNCONFIGURED':
+      return 'Story Lab job storage is not configured.';
+    case 'STORY_LAB_JOB_STORAGE_DRIVER_MISSING':
+      return 'Story Lab job storage driver is not configured.';
+    case 'STORY_LAB_JOB_OWNER_REQUIRED':
+      return 'Story Lab job storage requires an authenticated owner.';
+    case 'STORY_LAB_JOB_STORAGE_FAILED':
+    default:
+      return 'Story Lab job storage failed.';
+  }
 }
 
 function toJobError(error: ApiResponse<never>['error']): StoryLabJobError {

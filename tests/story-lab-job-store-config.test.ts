@@ -22,6 +22,7 @@ class FakeJobExecutor implements StoryLabCloudQueryExecutor {
 
 async function main() {
   await testDefaultConfigKeepsNonDurableMemoryStore();
+  await testExplicitEnvDoesNotFallThroughToProcessEnv();
   await testPostgresConfigRequiresDatabaseAndExecutor();
   await testPostgresConfigBuildsDurableStoreWhenExplicitlyConfigured();
   await testUnknownJobStoreModeFailsClosed();
@@ -46,6 +47,55 @@ async function testDefaultConfigKeepsNonDurableMemoryStore() {
   assert(!config.databaseUrlConfigured, 'default config should not require DATABASE_URL');
   assert(!config.executorConfigured, 'default config should not initialize a database executor');
   assert(executorFactoryCalls === 0, 'default config should not call the executor factory');
+}
+
+async function testExplicitEnvDoesNotFallThroughToProcessEnv() {
+  const previousJobStore = process.env['STORY_LAB_JOB_STORE'];
+  const previousDatabaseUrl = process.env['DATABASE_URL'];
+  process.env['STORY_LAB_JOB_STORE'] = 'postgres';
+  process.env['DATABASE_URL'] = 'postgres://secret-process-env/jobs';
+  try {
+    let executorFactoryCalls = 0;
+    const defaultConfig = createStoryLabJobStoreConfig({
+      env: {},
+      createExecutor() {
+        executorFactoryCalls += 1;
+        throw new Error('explicit empty env should not read process env');
+      }
+    });
+
+    assert(defaultConfig.mode === 'non_durable_memory', 'explicit empty env should keep default non-durable mode');
+    assert(!defaultConfig.databaseUrlConfigured, 'explicit empty env should not report process DATABASE_URL');
+    assert(!defaultConfig.executorConfigured, 'explicit empty env should not create an executor');
+
+    const postgresConfig = createStoryLabJobStoreConfig({
+      env: {
+        STORY_LAB_JOB_STORE: 'postgres'
+      },
+      createExecutor() {
+        executorFactoryCalls += 1;
+        throw new Error('postgres config without env DATABASE_URL should not create an executor');
+      }
+    });
+
+    assert(postgresConfig.mode === 'postgres', 'explicit env postgres mode should still be honored');
+    assert(!postgresConfig.databaseUrlConfigured, 'explicit env without DATABASE_URL should not use process DATABASE_URL');
+    assert(!postgresConfig.executorConfigured, 'explicit env without DATABASE_URL should not create an executor');
+    assert(!postgresConfig.isConfigured(), 'explicit env without DATABASE_URL should fail closed');
+    assert(executorFactoryCalls === 0, 'explicit env overrides should avoid process-env executor setup');
+  } finally {
+    if (previousJobStore === undefined) {
+      delete process.env['STORY_LAB_JOB_STORE'];
+    } else {
+      process.env['STORY_LAB_JOB_STORE'] = previousJobStore;
+    }
+
+    if (previousDatabaseUrl === undefined) {
+      delete process.env['DATABASE_URL'];
+    } else {
+      process.env['DATABASE_URL'] = previousDatabaseUrl;
+    }
+  }
 }
 
 async function testPostgresConfigRequiresDatabaseAndExecutor() {

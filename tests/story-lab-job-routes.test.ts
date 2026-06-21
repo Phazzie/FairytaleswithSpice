@@ -11,6 +11,7 @@ import type {
 } from '../api/_lib/story-lab/contracts';
 import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 import { NonDurableStoryLabJobStore, nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
+import { StoryLabJobStoreError } from '../api/_lib/story-lab/jobs/postgresStoryLabJobStore';
 import type { CreateStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from '../api/_lib/story-lab/jobs/jobStorePort';
 import type { StoryLabJobStoreConfig } from '../api/_lib/story-lab/jobs/storyLabJobStoreConfig';
 
@@ -307,6 +308,54 @@ async function testDurableInjectedJobCreationReceivesOwnerContext(): Promise<voi
   assert(store.eventOwnerUserIds[0] === owner.userId, 'durable job events route should pass authenticated owner id');
 }
 
+async function testDurableInjectedJobCreateFailureUsesSanitizedEnvelope(): Promise<void> {
+  setMockRuntime();
+  const store = new CapturingDurableJobStore();
+  store.failCreate = true;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    createJobStoreConfig: () => createDurableJobStoreConfig(store)
+  });
+  const response = new FakeResponse();
+  const request = createGenesisJobRequest('Private moonlit vault with sk-secret query payload.');
+
+  await handler(createRequest('POST', request), response);
+
+  assertSanitizedJobStoreFailure(response, 'durable create storage failure should use a sanitized envelope');
+}
+
+async function testDurableInjectedJobUpdateFailureUsesSanitizedEnvelope(): Promise<void> {
+  setMockRuntime();
+  const store = new CapturingDurableJobStore();
+  store.failUpdateOnCall = 1;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    createJobStoreConfig: () => createDurableJobStoreConfig(store)
+  });
+  const response = new FakeResponse();
+  const request = createGenesisJobRequest('Private moonlit vault with sk-secret update payload.');
+
+  await handler(createRequest('POST', request), response);
+
+  assertSanitizedJobStoreFailure(response, 'durable running update storage failure should use a sanitized envelope');
+}
+
+async function testDurableInjectedJobFinishFailureUsesSanitizedEnvelope(): Promise<void> {
+  setMockRuntime();
+  const store = new CapturingDurableJobStore();
+  store.failUpdateOnCall = 2;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    createJobStoreConfig: () => createDurableJobStoreConfig(store)
+  });
+  const response = new FakeResponse();
+  const request = createGenesisJobRequest('Private moonlit vault with sk-secret finish payload.');
+
+  await handler(createRequest('POST', request), response);
+
+  assertSanitizedJobStoreFailure(response, 'durable finish storage failure should use a sanitized envelope');
+}
+
 async function testMalformedContinuationStoryIdReturnsInvalidRequest(): Promise<void> {
   nonDurableStoryLabJobStore.reset();
   setMockRuntime();
@@ -359,6 +408,9 @@ async function run(): Promise<void> {
   await testPostgresJobStoreWithoutRouteAuthFailsClosed();
   await testDurableInjectedJobStoreRequiresAuth();
   await testDurableInjectedJobCreationReceivesOwnerContext();
+  await testDurableInjectedJobCreateFailureUsesSanitizedEnvelope();
+  await testDurableInjectedJobUpdateFailureUsesSanitizedEnvelope();
+  await testDurableInjectedJobFinishFailureUsesSanitizedEnvelope();
   await testMalformedContinuationStoryIdReturnsInvalidRequest();
   testStoreEvictsOldestJobs();
   await testProductionMissingProviderCreatesFailedJob();
@@ -382,6 +434,9 @@ class CapturingDurableJobStore implements StoryLabJobStore {
   readonly updateOwnerUserIds: Array<string | undefined> = [];
   readonly readOwnerUserIds: Array<string | undefined> = [];
   readonly eventOwnerUserIds: Array<string | undefined> = [];
+  failCreate = false;
+  failUpdateOnCall: number | null = null;
+  private updateCalls = 0;
   private readonly inner = new NonDurableStoryLabJobStore();
 
   isConfigured(): boolean {
@@ -390,6 +445,9 @@ class CapturingDurableJobStore implements StoryLabJobStore {
 
   createJob<TPublicResult = unknown>(input: CreateStoryLabJobInput): StoryLabJobCreationResponse<TPublicResult> {
     this.createdOwnerUserIds.push(input.ownerUserId);
+    if (this.failCreate) {
+      throw privateJobStoreFailure();
+    }
     return this.withDurableReceipt(this.inner.createJob<TPublicResult>(input));
   }
 
@@ -398,6 +456,10 @@ class CapturingDurableJobStore implements StoryLabJobStore {
     input: UpdateStoryLabJobInput<TPublicResult>
   ): StoryLabJobCreationResponse<TPublicResult> | null {
     this.updateOwnerUserIds.push(input.ownerUserId);
+    this.updateCalls += 1;
+    if (this.failUpdateOnCall === this.updateCalls) {
+      throw privateJobStoreFailure();
+    }
     return this.withDurableReceipt(this.inner.updateJob<TPublicResult>(jobId, input));
   }
 
@@ -430,6 +492,24 @@ class CapturingDurableJobStore implements StoryLabJobStore {
       }
       : null;
   }
+}
+
+function assertSanitizedJobStoreFailure(response: FakeResponse, message: string): void {
+  assert(response.statusCode === 503, message);
+  const body = response.body as any;
+  assert(body.success === false, 'job store failure should use a failure envelope');
+  assert(body.error.code === 'STORY_LAB_JOB_STORAGE_FAILED', 'job store failure should expose the typed storage failure code');
+  assert(body.error.message === 'Story Lab job storage failed.', 'job store failure should use a generic public message');
+  assert(!body.error.message.includes(owner.email ?? ''), 'job store failure should not expose owner email');
+  assert(!body.error.message.includes('sk-secret'), 'job store failure should not expose private payload text');
+  assert(!('details' in body.error), 'job store failure should not expose diagnostic details');
+}
+
+function privateJobStoreFailure(): StoryLabJobStoreError {
+  return new StoryLabJobStoreError(
+    'STORY_LAB_JOB_STORAGE_FAILED',
+    `Raw database failure for ${owner.email} with sk-secret query params.`
+  );
 }
 
 function createDurableJobStoreConfig(store: StoryLabJobStore): StoryLabJobStoreConfig {

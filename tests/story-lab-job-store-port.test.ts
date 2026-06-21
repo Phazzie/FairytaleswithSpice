@@ -44,7 +44,9 @@ class FakeJobExecutor implements StoryLabCloudQueryExecutor {
 
 async function main() {
   await testNonDurableStoreImplementsJobStorePort();
+  await testNonDurableStoreRejectsCrossOwnerUpdates();
   await testPostgresStoreFailsClosedWithoutDatabaseConfig();
+  await testPostgresStoreHonorsExplicitEnvOverride();
   await testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots();
   await testPostgresStoreRetriesEventSequenceConflicts();
 
@@ -93,6 +95,29 @@ async function testNonDurableStoreImplementsJobStorePort() {
   assert(events?.length === 2, 'job store port should expose snapshot events');
 }
 
+async function testNonDurableStoreRejectsCrossOwnerUpdates() {
+  const store: StoryLabJobStore = new NonDurableStoryLabJobStore();
+  const created = await store.createJob({
+    kind: 'genesis',
+    ownerUserId: 'owner_a',
+    now: '2026-06-08T12:30:00.000Z'
+  });
+
+  const denied = await store.updateJob(created.job.jobId, {
+    ownerUserId: 'owner_b',
+    status: 'completed',
+    currentStep: 'completed',
+    progressPercent: 100,
+    now: '2026-06-08T12:31:00.000Z'
+  });
+  const ownerSnapshot = await store.getJob(created.job.jobId, { ownerUserId: 'owner_a' });
+  const otherEvents = await store.getEvents(created.job.jobId, { ownerUserId: 'owner_b' });
+
+  assert(denied === null, 'non-durable owner-scoped update should reject a different owner');
+  assert(ownerSnapshot?.job.status === 'queued', 'denied non-durable update should leave the original snapshot unchanged');
+  assert(otherEvents === null, 'different owner should not read non-durable job events');
+}
+
 async function testPostgresStoreFailsClosedWithoutDatabaseConfig() {
   const store = createPostgresStoryLabJobStore({
     env: {},
@@ -110,6 +135,32 @@ async function testPostgresStoreFailsClosedWithoutDatabaseConfig() {
     assert(isStoryLabJobStoreError(error), 'unconfigured job store should throw a typed store error');
     assert(error.code === 'STORY_LAB_JOB_STORAGE_UNCONFIGURED', 'missing database URL should use unconfigured code');
     assert(!error.message.includes('postgres://secret'), 'job store error should not leak database details');
+  }
+}
+
+async function testPostgresStoreHonorsExplicitEnvOverride() {
+  const previousDatabaseUrl = process.env['DATABASE_URL'];
+  process.env['DATABASE_URL'] = 'postgres://secret-process-env/jobs';
+  try {
+    const store = createPostgresStoryLabJobStore({
+      env: {},
+      executor: new FakeJobExecutor()
+    });
+
+    assert(!store.isConfigured(), 'explicit empty env should not fall through to process DATABASE_URL');
+    try {
+      await store.createJob({ kind: 'genesis', ownerUserId: 'user_job_owner' });
+      throw new Error('explicit empty env should keep Postgres storage unconfigured');
+    } catch (error) {
+      assert(isStoryLabJobStoreError(error), 'explicit empty env should fail with a typed store error');
+      assert(error.code === 'STORY_LAB_JOB_STORAGE_UNCONFIGURED', 'explicit empty env should use unconfigured error code');
+    }
+  } finally {
+    if (previousDatabaseUrl === undefined) {
+      delete process.env['DATABASE_URL'];
+    } else {
+      process.env['DATABASE_URL'] = previousDatabaseUrl;
+    }
   }
 }
 
@@ -219,6 +270,10 @@ async function testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots() {
     return sql.includes('select event_json') && sql.includes('from story_lab_job_events');
   });
   assert(loadEventsQuery?.params.includes('user_job_owner'), 'Postgres getEvents should filter by owner user id');
+
+  executor.enqueueRows([]);
+  const missingEvents = await store.getEvents<{ storyId: string }>(fixedJobId, { ownerUserId: 'other_user' });
+  assert(missingEvents === null, 'Postgres getEvents should return null when no owner-scoped event stream exists');
 
   const queryCountBeforeMissingOwnerUpdate = executor.queries.length;
   let missingOwnerError: unknown;

@@ -2753,3 +2753,22 @@ Validation:
 - `npm run test:story-lab-job-store-port`: passed.
 - `npm run test:story-lab-job-routes`: passed.
 - `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+
+## 2026-06-21 07:45 EDT - PR 124 Codex Review Follow-Up
+
+Actions:
+
+- Addressed Codex review feedback on durable job owner scaffolding.
+- Rejected cross-owner updates in the non-durable job store when owner context is supplied.
+- Made explicit job-store `env` options authoritative so tests and injected configs do not fall through to process environment variables.
+- Returned `null` for missing owner-scoped Postgres job event streams so routes keep unknown/cross-owner event requests as 404.
+- Translated typed job-store failures in create, running-update, status, event, and finish paths into sanitized API envelopes.
+- Added regression coverage for cross-owner mutation, env isolation, missing event streams, and sanitized create/update/finish store failures.
+
+Validation:
+
+- `npm run test:story-lab-job-store-port`: passed.
+- `npm run test:story-lab-job-store-config`: passed.
+- `npm run test:story-lab-job-routes`: passed.
+- `npm run recovery:preflight -- durable-job-owner`: passed and wrote `tmp/recovery/durable-job-owner-evidence.md`.
+- `npm run build`: passed with existing Node non-LTS, Baseline data, Angular bundle, and CSS budget warnings.

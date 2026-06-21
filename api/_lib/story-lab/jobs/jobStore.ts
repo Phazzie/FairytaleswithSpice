@@ -70,6 +70,9 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
     if (!stored) {
       return null;
     }
+    if (!canAccessStoredJob(stored, input)) {
+      return null;
+    }
 
     const now = input.now ?? new Date().toISOString();
     const job: StoryLabJob<TPublicResult> = {
@@ -98,7 +101,7 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
     input: ReadStoryLabJobInput = {}
   ): StoryLabJobCreationResponse<TPublicResult> | null {
     const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
-    if (stored && !canReadStoredJob(stored, input)) {
+    if (stored && !canAccessStoredJob(stored, input)) {
       return null;
     }
 
@@ -110,7 +113,7 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
     input: ReadStoryLabJobInput = {}
   ): StoryLabJobEvent<TPublicResult>[] | null {
     const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
-    if (stored && !canReadStoredJob(stored, input)) {
+    if (stored && !canAccessStoredJob(stored, input)) {
       return null;
     }
 
@@ -135,7 +138,7 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
 
 export const nonDurableStoryLabJobStore = new NonDurableStoryLabJobStore();
 
-function canReadStoredJob(stored: StoredStoryLabJob, input: ReadStoryLabJobInput): boolean {
+function canAccessStoredJob(stored: StoredStoryLabJob, input: ReadStoryLabJobInput): boolean {
   return input.ownerUserId === undefined || stored.ownerUserId === input.ownerUserId;
 }
 

@@ -245,6 +245,9 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
 
     try {
       const result = await this.executor().query<StoryLabJobEventRow>(LOAD_EVENTS_SQL, [jobId, ownerUserId]);
+      if (result.rows.length === 0) {
+        return null;
+      }
       return result.rows.map(row => eventFromRow<TPublicResult>(row)).filter((event): event is StoryLabJobEvent<TPublicResult> => Boolean(event));
     } catch (error) {
       throw storageError('get_events', error);
@@ -291,7 +294,15 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
   }
 
   private getDatabaseUrl(): string {
-    return this.options.databaseUrl ?? this.options.env?.['DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? '';
+    if (this.options.databaseUrl !== undefined) {
+      return this.options.databaseUrl;
+    }
+
+    if (this.options.env) {
+      return this.options.env['DATABASE_URL'] ?? '';
+    }
+
+    return process.env['DATABASE_URL'] ?? '';
   }
 
   private getNow(): string {
