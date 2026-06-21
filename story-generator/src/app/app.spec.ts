@@ -1108,8 +1108,16 @@ describe('App', () => {
             id: 'oath',
             label: 'Moonlit oath',
             status: 'escalating',
-            description: 'The bargain demands a public sacrifice.',
+            description: '',
             foreshadowedDevices: []
+          }
+        ],
+        artifacts: [
+          {
+            id: 'witness-shell',
+            name: 'Witness Shell',
+            significance: 'The shell repeats any vow spoken near the reef court.',
+            introducedInChapter: 1
           }
         ]
       })
@@ -1123,6 +1131,8 @@ describe('App', () => {
     expect(directorText).toContain('Chapter Ending');
     expect(directorText).toContain('Mara');
     expect(directorText).toContain('Moonlit oath');
+    expect(directorText).toContain('Summary of chapter one.');
+    expect(directorText).not.toContain('The shell repeats any vow spoken near the reef court.');
   });
 
   it('renders a read-only Continuity Preview from current story state', () => {
@@ -1645,6 +1655,7 @@ describe('App', () => {
     acceptButtons?.[0]?.click();
     acceptButtons?.[1]?.click();
     fixture.detectChanges();
+    component.customContinuationBrief.set('Bring the oath back before the next kiss.');
 
     const continueButton = renderedDirectorRoomPanel()?.querySelector('[data-testid="continue-with-director-notes"]') as HTMLButtonElement | null;
     continueButton?.click();
@@ -1656,8 +1667,10 @@ describe('App', () => {
     };
     expect(jobRequest.kind).toBe('continuation');
     expect(jobRequest.continuation.continuationBrief).toContain('Director Room notes');
+    expect(jobRequest.continuation.continuationBrief).toContain('Bring the oath back before the next kiss.');
     expect(jobRequest.continuation.continuationBrief).toContain('Desire Ledger');
     expect(jobRequest.continuation.continuationBrief).toContain('Continuity Keeper');
+    expect(component.customContinuationBrief()).toBe('');
   });
 
   it('renders a villain pressure dial after a story exists', () => {

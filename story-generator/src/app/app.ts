@@ -424,13 +424,6 @@ export class App implements OnDestroy {
       };
     });
   });
-  readonly selectedVillainPressureId = computed(() =>
-    this.selectedNarrativeDialOptionIds()['villain-pressure'] as VillainPressureId
-  );
-  readonly selectedVillainPressure = computed(() =>
-    this.villainPressureOptions.find(option => option.id === this.selectedVillainPressureId()) ?? this.villainPressureOptions[0]
-  );
-
   readonly timeline = computed<ChapterTimelineEntry[]>(() => {
     const session = this.workbench();
     return session.chapterHistory.map(chapter => ({
@@ -772,8 +765,15 @@ export class App implements OnDestroy {
     const primaryArtifact = continuity.unresolvedArtifacts[0];
     const protagonist = primaryCharacter?.displayName || blueprint.protagonistName?.trim() || 'the lead';
     const currentGoal = primaryCharacter?.currentGoal || `make the ${blueprint.creature} desire more costly`;
-    const continuityLabel = primaryThread?.label || primaryArtifact?.name || 'the current story thread';
-    const continuityDetail = primaryThread?.description || primaryArtifact?.significance || chapter.summary;
+    let continuityLabel = 'the current story thread';
+    let continuityDetail = chapter.summary;
+    if (primaryThread) {
+      continuityLabel = primaryThread.label;
+      continuityDetail = primaryThread.description || chapter.summary;
+    } else if (primaryArtifact) {
+      continuityLabel = primaryArtifact.name;
+      continuityDetail = primaryArtifact.significance || chapter.summary;
+    }
     const endingSuggestion = chapter.hasCliffhanger
       ? 'Pay off the current cliffhanger, then open a harder question before the chapter closes.'
       : 'End the next chapter on an impossible choice instead of a quiet fade-out.';
@@ -1302,6 +1302,7 @@ export class App implements OnDestroy {
     }
 
     this.continueSaga(this.withNarrativeDialBriefs(this.buildDirectorRoomContinuationBrief(acceptedNotes)));
+    this.customContinuationBrief.set('');
   }
 
   getSafeHtml(html: string): string {
