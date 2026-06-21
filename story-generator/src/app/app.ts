@@ -1940,7 +1940,7 @@ ${chapters}
       return;
     }
 
-    this.storyService.getStoryLabJob<StoryIterationPayload>(activeJob.jobId).subscribe({
+    const jobCreationSubscription = this.storyService.getStoryLabJob<StoryIterationPayload>(activeJob.jobId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
           const message = this.formatRecoveredRestoreFailureMessage(
@@ -1963,14 +1963,19 @@ ${chapters}
         }
       },
       error: error => {
+        this.jobCreationSubscription = null;
         this.errorLogging.logError(error, 'App.restoreActiveStoryLabJob');
         const message = this.formatRecoveredRestoreFailureMessage(
           activeJob.kind,
           this.formatHttpError(error, '')
         );
         this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
+      },
+      complete: () => {
+        this.jobCreationSubscription = null;
       }
     });
+    this.jobCreationSubscription = jobCreationSubscription.closed ? null : jobCreationSubscription;
   }
 
   private restoreActiveContinuationJob(activeJob: ActiveStoryLabJobState) {
@@ -1994,7 +1999,7 @@ ${chapters}
       return;
     }
 
-    this.storyService.getStoryLabJob<ContinuationJobResult>(activeJob.jobId).subscribe({
+    const jobCreationSubscription = this.storyService.getStoryLabJob<ContinuationJobResult>(activeJob.jobId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
           const message = this.formatRecoveredRestoreFailureMessage(
@@ -2017,14 +2022,19 @@ ${chapters}
         }
       },
       error: error => {
+        this.jobCreationSubscription = null;
         this.errorLogging.logError(error, 'App.restoreActiveContinuationJob');
         const message = this.formatRecoveredRestoreFailureMessage(
           activeJob.kind,
           this.formatHttpError(error, '')
         );
         this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
+      },
+      complete: () => {
+        this.jobCreationSubscription = null;
       }
     });
+    this.jobCreationSubscription = jobCreationSubscription.closed ? null : jobCreationSubscription;
   }
 
   private ensureRecoveredBatch(activeJob: ActiveStoryLabJobState) {
@@ -2047,47 +2057,55 @@ ${chapters}
   }
 
   private storeActiveStoryLabJob(activeJob: ActiveStoryLabJobState) {
-    if (typeof sessionStorage === 'undefined') {
+    const storage = this.getActiveJobStorage();
+    if (!storage) {
       return;
     }
 
     try {
-      sessionStorage.setItem(this.activeJobStorageKey, JSON.stringify(activeJob));
+      storage.setItem(this.activeJobStorageKey, JSON.stringify(activeJob));
     } catch {
       this.workspaceSaveStatus.set('Story job progress will last until this tab closes.');
     }
   }
 
   private readActiveStoryLabJob(): ActiveStoryLabJobState | null {
-    if (typeof sessionStorage === 'undefined') {
+    const storage = this.getActiveJobStorage();
+    if (!storage) {
       return null;
     }
 
     let rawJob: string | null = null;
     try {
-      rawJob = sessionStorage.getItem(this.activeJobStorageKey);
+      rawJob = storage.getItem(this.activeJobStorageKey);
       if (!rawJob) {
         return null;
       }
 
-      const parsed = JSON.parse(rawJob) as Partial<ActiveStoryLabJobState>;
+      const parsed = JSON.parse(rawJob) as unknown;
+      if (!parsed || typeof parsed !== 'object') {
+        this.clearActiveStoryLabJob();
+        return null;
+      }
+
+      const activeJob = parsed as Partial<ActiveStoryLabJobState>;
       if (
-        typeof parsed.jobId === 'string'
-        && (parsed.kind === 'genesis' || parsed.kind === 'continuation')
-        && typeof parsed.batchId === 'string'
-        && this.isChapterBatchSize(parsed.batchSize)
-        && typeof parsed.statusPath === 'string'
-        && typeof parsed.startedAt === 'string'
-        && (parsed.kind === 'genesis' || typeof parsed.storyId === 'string')
+        typeof activeJob.jobId === 'string'
+        && (activeJob.kind === 'genesis' || activeJob.kind === 'continuation')
+        && typeof activeJob.batchId === 'string'
+        && this.isChapterBatchSize(activeJob.batchSize)
+        && typeof activeJob.statusPath === 'string'
+        && typeof activeJob.startedAt === 'string'
+        && (activeJob.kind === 'genesis' || typeof activeJob.storyId === 'string')
       ) {
         return {
-          jobId: parsed.jobId,
-          kind: parsed.kind,
-          batchId: parsed.batchId,
-          batchSize: parsed.batchSize,
-          statusPath: parsed.statusPath,
-          startedAt: parsed.startedAt,
-          storyId: parsed.kind === 'continuation' ? parsed.storyId : undefined
+          jobId: activeJob.jobId,
+          kind: activeJob.kind,
+          batchId: activeJob.batchId,
+          batchSize: activeJob.batchSize,
+          statusPath: activeJob.statusPath,
+          startedAt: activeJob.startedAt,
+          storyId: activeJob.kind === 'continuation' ? activeJob.storyId : undefined
         };
       }
     } catch {
@@ -2100,14 +2118,23 @@ ${chapters}
   }
 
   private clearActiveStoryLabJob() {
-    if (typeof sessionStorage === 'undefined') {
+    const storage = this.getActiveJobStorage();
+    if (!storage) {
       return;
     }
 
     try {
-      sessionStorage.removeItem(this.activeJobStorageKey);
+      storage.removeItem(this.activeJobStorageKey);
     } catch {
       // Ignore storage cleanup failures; the job state is only a reload hint.
+    }
+  }
+
+  private getActiveJobStorage(): Storage | null {
+    try {
+      return globalThis.sessionStorage ?? null;
+    } catch {
+      return null;
     }
   }
 

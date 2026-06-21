@@ -3177,3 +3177,26 @@ Validation:
 - `npm run recovery:preflight -- cloud-library-ui --quick`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`; function count stayed `11/12`.
 - `git diff --check`: passed.
 - `npm run review:unresolved -- --prs 110`: still reports the one PR #110 thread that this slice fixes after merge.
+
+## 2026-06-21 16:12 EDT - Resume Review Comment Follow-Up
+
+Actions:
+
+- Continued #152 review-thread cleanup after PR #156.
+- Verified PR #108 and PR #107 are clean after their fixes landed on `main`.
+- Addressed four PR #106 resume-hardening threads by tracking recovered job snapshot subscriptions, clearing them on completion/error, guarding active-job storage through a safe accessor, and rejecting JSON `null` active-job markers without throwing.
+- Turned the remaining PR #106 long-running POST resume-marker contract gap into issue #157 because it requires changing the job creation route contract rather than a bounded UI cleanup.
+
+Self-review:
+
+- Good: The fix keeps the existing non-durable resume behavior honest and only hardens the current client-side recovery path.
+- Problem found: Browser-side resume cannot recover a reload during the initial long POST until job creation returns an early resumable marker; issue #157 tracks that contract change.
+- Non-claim: This slice does not implement durable queueing or early job-create responses.
+
+Validation:
+
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- `npm run recovery:preflight -- cloud-library-ui --quick`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`; function count stayed `11/12`.
+- `git diff --check`: passed.
+- `npm run build`: passed; Angular reported the existing Node 23 odd-version warning and stale `baseline-browser-mapping` warning.
+- `npx -p node@20 node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include=src/app/app.spec.ts`: did not execute assertions because ChromeHeadless failed to capture twice and Karma gave up.
