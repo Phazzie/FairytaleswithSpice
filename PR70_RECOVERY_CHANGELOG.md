@@ -3221,3 +3221,22 @@ Validation:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `npm run recovery:preflight -- cloud-library-ui --quick`: passed and wrote `tmp/recovery/cloud-library-ui-evidence.md`; function count stayed `11/12`.
 - `npm run build`: passed; Angular reported the existing Node 23 odd-version warning and stale `baseline-browser-mapping` warning.
+
+## 2026-06-21 16:28 EDT - Story Lab Jobs README Formatting Follow-Up
+
+Actions:
+
+- Continued #152 review-thread cleanup after PR #159.
+- Addressed the remaining PR #104 markdown spacing nit by adding a blank line between the `### Story Lab Jobs` heading and the HTTP code fence.
+- Verified the PR #104 route validation, non-durable job-store eviction, single-function route rewrite, and EventSource spec-style comments were already fixed on `main`.
+
+Self-review:
+
+- Good: This keeps the branch docs-only instead of reopening already-fixed route/store work.
+- Non-claim: This slice does not change job-route behavior or storage durability.
+
+Validation:
+
+- `git diff --check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- `npm run recovery:status`: passed; branch contains only `api/README.md` and changelog edits.
