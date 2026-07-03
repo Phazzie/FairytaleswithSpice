@@ -50,7 +50,8 @@ This plan uses a stricter definition than the older recovery docs.
 - [x] Merged review-audit follow-up PRs #174, #175, #176, #177, and #178 from fresh `origin/main` branches.
 - [x] Verified the current checked-out review-follow-up commit is contained in `origin/main`; no tracked implementation work is stranded locally.
 - [ ] Complete the local-work reconciliation gate.
-- [x] Complete the last-40-PR review-comment audit gate.
+- [x] Drive the last-40-PR review-thread audit to zero active/outdated unresolved threads.
+- [ ] Commit the final last-40-PR audit artifact or final report evidence.
 - [ ] Complete the 90% coverage tooling gate.
 - [ ] Complete the remaining remote completion-hardening slices or close them with evidence.
 - [ ] Produce the final completion report.
@@ -78,7 +79,7 @@ This plan uses a stricter definition than the older recovery docs.
 - A late CodeRabbit pass can still add threads after a PR is merged. PR #178 was clean at merge time, then later received two active trivial maintainability comments. PR #179 fixed and resolved those late comments, and future completion claims still need a post-bot, post-merge audit window.
 - As of 2026-07-03 12:54 EDT, the last-40 PR audit commands report `0` active unresolved, `0` outdated unresolved, and `0` include-outdated unresolved threads.
 - As of 2026-07-03 12:54 EDT, a wider `--state all --limit 200` audit still finds older historical backlog outside the last-40 recovery window: 168 active unresolved threads across 35 PRs, 56 outdated unresolved threads across 14 PRs, and 224 combined unresolved threads across 45 PRs.
-- As of 2026-07-03 12:54 EDT, the only open PRs are Dependabot PR #120 and PR #121. Both are old, `UNSTABLE`, and have failing Recovery CI/Vercel checks.
+- As of 2026-07-03 12:54 EDT, the only open PRs are Dependabot PR #120 and PR #121. Both are old and have failing Recovery CI/Vercel checks.
 - Dependabot PR #120 and PR #121 are not quick merge candidates. Both contain Angular 22 major-upgrade work that conflicts with the repo's current Angular 20/TypeScript 5.9 setup; close/recreate as separate root dependency and Angular-major-upgrade work.
 - The parent checkout still has four parked untracked artifacts that are intentionally local-only: `SPARK_TRIAL_TASKS.md`, `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts`. No tracked PR #179 work remains local-only after merge.
 

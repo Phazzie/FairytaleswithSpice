@@ -125,7 +125,7 @@ The active recovery work is completion hardening rather than new Story Lab featu
 Acceptance:
 
 - The last-40 recovery review-thread audit stays at zero unresolved active/outdated threads.
-- Older historical review-thread backlog from the wider 200-PR audit is either closed, linked, or intentionally scoped out.
+- Older historical review-thread backlog from the wider 200-PR audit is either closed, linked to follow-up issues, or scoped out with explicit PR/thread disposition links.
 - PR #120 and PR #121 are merged or closed with validation evidence.
 - The four parked local artifacts are kept, dropped, or PR'd through an explicit cleanup decision.
 - A current coverage command proves the agreed 90% gate; historical coverage notes do not count.
