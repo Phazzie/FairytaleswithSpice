@@ -27,6 +27,7 @@ async function main() {
   };
   const parseArgs = reviewAudit.parseArgs as (argv: string[]) => {
     format: string;
+    prs: number[];
     threadMode: string;
   };
   const isEntrypoint = reviewAudit.isEntrypoint as (moduleUrl: string, argvPath?: string) => boolean;
@@ -96,6 +97,27 @@ async function main() {
   assert.equal(parseArgs(['--json']).threadMode, 'active');
   assert.equal(parseArgs(['--include-outdated', '--json']).threadMode, 'include-outdated');
   assert.equal(parseArgs(['--outdated-only', '--json']).threadMode, 'outdated-only');
+  assert.deepEqual(parseArgs(['--prs', '#154,166']).prs, [154, 166]);
+  assert.throws(
+    () => parseArgs(['--prs', '154,abc']),
+    /Invalid --prs value: abc/,
+  );
+  assert.throws(
+    () => parseArgs(['--prs', '154,0']),
+    /Invalid --prs value: 0/,
+  );
+  assert.throws(
+    () => parseArgs(['--prs', '154,,166']),
+    /Invalid --prs value: empty entry/,
+  );
+  assert.throws(
+    () => parseArgs(['--prs', '154,']),
+    /Invalid --prs value: empty entry/,
+  );
+  assert.throws(
+    () => parseArgs(['--prs', ',,']),
+    /--prs requires at least one pull request number/,
+  );
   assert.throws(
     () => parseArgs(['--include-outdated', '--outdated-only']),
     /Choose only one outdated thread mode/,
