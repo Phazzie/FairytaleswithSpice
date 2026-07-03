@@ -10,8 +10,7 @@ import type {
 } from './contracts';
 import { XaiTextClient } from '../services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../config/xaiConfig';
-
-const MIN_AI_CONTINUITY_TIMEOUT_MS = 1000;
+import { STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS } from './continuityBudget';
 
 interface ContinuityExtractionInput {
   storyId: string;
@@ -42,7 +41,7 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
   const client = new XaiTextClient();
   const timeoutMs = input.timeoutMs ?? getXaiFastTimeoutMs();
 
-  if (!input.useAi || !client.hasApiKey() || timeoutMs < MIN_AI_CONTINUITY_TIMEOUT_MS) {
+  if (!input.useAi || !client.hasApiKey() || timeoutMs < STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS) {
     const warning = !input.useAi
       ? 'AI continuity extraction disabled for this run.'
       : !client.hasApiKey()

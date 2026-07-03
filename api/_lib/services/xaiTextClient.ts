@@ -81,9 +81,14 @@ export class XaiTextClient {
       const fastModel = getXaiFastModel();
       const preferredReasoningEffort = getXaiReasoningEffortForModel(preferredModel, request.modelPreference ?? 'primary');
       const fastReasoningEffort = getXaiReasoningEffortForModel(fastModel, 'fast');
-      const usesDifferentFastProfile = fastModel !== preferredModel || fastReasoningEffort !== preferredReasoningEffort;
+      const preferredModelKey = preferredModel.toLowerCase();
+      const fastModelKey = fastModel.toLowerCase();
+      const usesDifferentFastProfile = fastModelKey !== preferredModelKey || fastReasoningEffort !== preferredReasoningEffort;
+      const fallbackTimeoutMs = request.fallbackTimeoutMs ?? getXaiFastTimeoutMs();
+      const usesSameModelFastProfile = fastModelKey === preferredModelKey;
+      const hasBoundedSameModelFallback = !usesSameModelFastProfile || fallbackTimeoutMs < request.timeoutMs;
 
-      if (allowFallback && usesDifferentFastProfile && this.isRetryableProviderError(error)) {
+      if (allowFallback && usesDifferentFastProfile && hasBoundedSameModelFallback && this.isRetryableProviderError(error)) {
         logWarn('Primary xAI profile attempt did not finish in the live request window; retrying with fast profile.', request.context, {
           operation: request.operation,
           primaryModel: preferredModel,
@@ -98,7 +103,7 @@ export class XaiTextClient {
           const fallbackResponse = await this.callResponsesApi(
             request,
             fastModel,
-            request.fallbackTimeoutMs ?? getXaiFastTimeoutMs(),
+            fallbackTimeoutMs,
             'fast'
           );
 
