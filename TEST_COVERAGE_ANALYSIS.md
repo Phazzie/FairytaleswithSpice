@@ -1,5 +1,7 @@
 # Test Coverage Analysis and Improvements
 
+Status note, 2026-07-03: this file is historical analysis, not current coverage proof. Do not use the percentages below to claim the final 90% gate. Current repo facts are that Angular has `karma-coverage` with 85% global thresholds, root/API `tsx` tests are not instrumented by a coverage tool, and no current combined 90% coverage artifact has been generated.
+
 ## Summary
 
 Enhanced test suite from **49 tests** to **108 tests** (+59 tests, +120% coverage)

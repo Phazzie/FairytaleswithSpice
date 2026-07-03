@@ -74,7 +74,7 @@ export function getXaiFastTimeoutMs(): number {
   return getPositiveIntegerEnv(['XAI_STORY_FAST_TIMEOUT_MS', 'XAI_FAST_TIMEOUT_MS'], DEFAULT_XAI_FAST_TIMEOUT_MS);
 }
 
-function getPositiveIntegerEnv(names: string[], fallback: number): number {
+export function getPositiveIntegerEnv(names: string[], fallback: number): number {
   for (const name of names) {
     const rawValue = process.env[name]?.trim();
     if (!rawValue) {

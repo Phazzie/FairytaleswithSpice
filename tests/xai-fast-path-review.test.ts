@@ -294,6 +294,27 @@ async function assertXaiClientPayloads(): Promise<void> {
     assert.equal(capturedPosts.length, 1, 'unbounded same model fallback should not make a second provider call');
 
     capturedPosts.length = 0;
+    (axios as unknown as { post: typeof axios.post }).post = (async (_url: string, payload: unknown, config: unknown) => {
+      capturedPosts.push({
+        payload: payload as Record<string, unknown>,
+        config: config as CapturedPost['config']
+      });
+      throw 'primitive timeout';
+    }) as typeof axios.post;
+
+    const primitiveErrorClient = new XaiTextClient();
+    await assert.rejects(
+      () => primitiveErrorClient.generateText({
+        ...buildRequest(undefined, true),
+        timeoutMs: 40000,
+        fallbackTimeoutMs: 1000
+      }),
+      /xAI service temporarily unavailable/,
+      'primitive provider errors should be converted without crashing retry gating'
+    );
+    assert.equal(capturedPosts.length, 1, 'primitive provider errors should not make a fallback call');
+
+    capturedPosts.length = 0;
     process.env['XAI_STORY_MODEL'] = 'grok-4.20-multi-agent';
     process.env['XAI_FAST_MODEL'] = 'grok-4.3';
 

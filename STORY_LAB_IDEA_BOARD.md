@@ -1,6 +1,6 @@
 # Story Lab Idea Board
 
-Last updated: 2026-06-13
+Last updated: 2026-07-03
 
 ## Purpose
 
@@ -29,9 +29,9 @@ Acceptance evidence:
 - PR #114 review comments were answered.
 - The PR was merged into `main`.
 
-### Now: Split The Unpublished Story Lab Stack
+### Done: Split The Unpublished Story Lab Stack
 
-The local `feature/story-lab-auth-profile-contracts` branch contains a large stack of useful work that must be recovered as reviewable PRs rather than landed all at once.
+The local `feature/story-lab-auth-profile-contracts` branch was recovered as reviewable slices and merged through PR #151. The backup branch remains a preservation reference only.
 
 Acceptance:
 
@@ -44,9 +44,9 @@ Tracking:
 
 - `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md`
 
-### Now: Auth, Profiles, And Cloud Library Plan Baseline
+### Done: Auth, Profiles, And Cloud Library Plan Baseline
 
-The app has route-free storage and auth seams, but signed-in cloud library behavior is not live. The next plan baseline must keep provider, database, profile, route, and UI work split into reviewable PRs.
+The auth/profile/cloud-library plan baseline exists and the guarded scaffolding has landed. Signed-in live provider auth, executed durable database migration, durable cloud sync proof, and process-loss durable jobs are still tracked by the completion-hardening plans.
 
 Acceptance:
 
@@ -74,9 +74,9 @@ Acceptance evidence:
 - Auth/profile storage warnings are redacted and do not log tokens, emails, story text, SQL params, or raw provider payloads.
 - Focused auth/profile tests, TypeScript checks, function-count check, `npm run test:all`, and preflight passed before merge.
 
-### Now: Storage Plan Reconciliation
+### Done: Storage Plan Reconciliation
 
-The storage port plan should continue to distinguish the merged route-free Phase C scaffold from unfinished account/cloud sync work.
+The storage port plan distinguishes the merged route-free scaffold from unfinished account/cloud sync work.
 
 Acceptance:
 
@@ -107,9 +107,9 @@ Acceptance evidence:
 - The route remains one consolidated function target.
 - The route does not add live provider auth, signed-in Angular UI, executed database migration, database provisioning, or durable cloud sync proof.
 
-### Soon: Angular Cloud Library UI
+### Done: Angular Cloud Library UI Guardrails
 
-Expose local-vs-cloud library state honestly in the Angular app while preserving anonymous browser-local saves.
+The Angular app exposes local-vs-cloud library state honestly while preserving anonymous browser-local saves. This does not claim live signed-in durable cloud sync.
 
 Acceptance:
 
@@ -117,6 +117,22 @@ Acceptance:
 - Cloud controls do not call account routes while account/cloud sync is unavailable.
 - Non-durable account storage is not displayed as cloud-available.
 - Angular specs cover unavailable, refresh, save, load, delete, and error states.
+
+### Now: Final Merge Audit, Coverage, And Dependabot Cleanup
+
+The active recovery work is completion hardening rather than new Story Lab feature breadth.
+
+Acceptance:
+
+- Late review-thread comments are fixed, resolved, or linked to focused follow-up issues.
+- PR #120 and PR #121 are merged or closed with validation evidence.
+- The four parked local artifacts are kept, dropped, or PR'd through an explicit cleanup decision.
+- A current coverage command proves the agreed 90% gate; historical coverage notes do not count.
+
+Tracking:
+
+- `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`
+- `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`
 
 ## Research Notes
 
