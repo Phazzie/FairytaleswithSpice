@@ -1,6 +1,7 @@
 # Story Lab Final Merge And Audit ExecPlan
 
 Created: 2026-07-03 08:04 EDT
+Last updated: 2026-07-03 12:23 EDT
 
 This ExecPlan extends the current `origin/main` completion-hardening plan with the user's stronger final goal: all local work must be reconciled through pull requests, review comments must be handled, the last 40 PRs must be audited for unresolved review comments, and the repo must have a real 90% test-coverage gate before the work is called done.
 
@@ -46,6 +47,8 @@ This plan uses a stricter definition than the older recovery docs.
 - [x] Recreated this plan on fresh branch `recovery/story-lab-final-merge-audit-plan` from `origin/main` at `0a56f96`.
 - [x] Updated `AGENTS.md` to point future agents to this stricter final merge, coverage, and PR-review audit plan.
 - [x] PR and merge this plan update through PR #171.
+- [x] Merged review-audit follow-up PRs #174, #175, #176, #177, and #178 from fresh `origin/main` branches.
+- [x] Verified the current checked-out review-follow-up commit is contained in `origin/main`; no tracked implementation work is stranded locally.
 - [ ] Complete the local-work reconciliation gate.
 - [ ] Complete the last-40-PR review-comment audit gate.
 - [ ] Complete the 90% coverage tooling gate.
@@ -72,6 +75,10 @@ This plan uses a stricter definition than the older recovery docs.
 - Extra worktrees exist for `ai-review/story-lab-unsliced-reference-do-not-merge`, `recovery/story-lab-pr90-response-followups`, and `recovery/story-lab-memory-cards`. The two recovery worktrees are already merged into `origin/main`.
 - This plan now lives on branch `recovery/story-lab-final-merge-audit-plan`, which started from `origin/main` at `0a56f96`; before the plan diff, `git rev-list --left-right --count origin/main...HEAD` returned `0 0`.
 - On the plan branch, `scripts/recovery/check-vercel-function-count.sh` reports `11/12`.
+- A late CodeRabbit pass can still add threads after a PR is merged. PR #178 was clean at merge time, then later received two active trivial maintainability comments. Future completion claims need a post-bot, post-merge audit window.
+- As of 2026-07-03 12:23 EDT, the only open PRs are Dependabot PR #120 and PR #121. Both are old, `UNSTABLE`, and have failing Recovery CI/Vercel checks.
+- Dependabot PR #120 and PR #121 are not quick merge candidates. Both contain Angular 22 major-upgrade work that conflicts with the repo's current Angular 20/TypeScript 5.9 setup; close/recreate as separate root dependency and Angular-major-upgrade work.
+- As of 2026-07-03 12:23 EDT, `npm run recovery:status` reports the checked-out branch is ahead `0`, behind `1`, and `HEAD is already contained in origin/main`; only four parked untracked files remain local-only.
 
 ## Decision Log
 
@@ -100,9 +107,10 @@ This plan uses a stricter definition than the older recovery docs.
 
 Current outcome:
 
-- A stricter final plan has been created locally.
-- Subagents have been deployed for the four independent audit areas.
-- No implementation or merge work has been claimed complete.
+- The stricter final plan is merged to `main`.
+- The original last-40 review-comment cleanup drove PRs #174 through #178 and cleared the known current/outdated backlog, but two late PR #178 CodeRabbit nits appeared after merge and are being handled in the next cleanup branch.
+- Subagents have been deployed for the original four independent audit areas and for the two remaining Dependabot PRs.
+- The repo still lacks a current 90% coverage gate and still has four parked local-only artifacts.
 
 Self-critique so far:
 
@@ -168,6 +176,11 @@ Already deployed in this run:
 - `Sagan`: coverage and test tooling auditor for the 90% coverage path.
 - `Kant`: git/local-work auditor for local commits, untracked files, divergence, and PR sequence.
 - `Einstein`: product-scope mapper for remaining auth/cloud/durable-job/story-quality/route-budget work.
+
+Additional subagents deployed on 2026-07-03 after the Dependabot question:
+
+- `Halley`: PR #120 Dependabot investigator.
+- `Ohm`: PR #121 Dependabot investigator.
 
 Returned findings incorporated so far:
 

@@ -81,14 +81,18 @@ export class XaiTextClient {
       const fastModel = getXaiFastModel();
       const preferredReasoningEffort = getXaiReasoningEffortForModel(preferredModel, request.modelPreference ?? 'primary');
       const fastReasoningEffort = getXaiReasoningEffortForModel(fastModel, 'fast');
-      const preferredModelKey = preferredModel.toLowerCase();
-      const fastModelKey = fastModel.toLowerCase();
-      const usesDifferentFastProfile = fastModelKey !== preferredModelKey || fastReasoningEffort !== preferredReasoningEffort;
       const fallbackTimeoutMs = request.fallbackTimeoutMs ?? getXaiFastTimeoutMs();
-      const usesSameModelFastProfile = fastModelKey === preferredModelKey;
-      const hasBoundedSameModelFallback = !usesSameModelFastProfile || fallbackTimeoutMs < request.timeoutMs;
 
-      if (allowFallback && usesDifferentFastProfile && hasBoundedSameModelFallback && this.isRetryableProviderError(error)) {
+      if (this.shouldAttemptFastProfileFallback({
+        allowFallback,
+        error,
+        preferredModel,
+        fastModel,
+        preferredReasoningEffort,
+        fastReasoningEffort,
+        primaryTimeoutMs: request.timeoutMs,
+        fallbackTimeoutMs
+      })) {
         logWarn('Primary xAI profile attempt did not finish in the live request window; retrying with fast profile.', request.context, {
           operation: request.operation,
           primaryModel: preferredModel,
@@ -120,6 +124,33 @@ export class XaiTextClient {
       this.logProviderFailure(error, request, preferredModel);
       throw this.toUnavailableError(error);
     }
+  }
+
+  private shouldAttemptFastProfileFallback(input: {
+    allowFallback: boolean;
+    error: any;
+    preferredModel: string;
+    fastModel: string;
+    preferredReasoningEffort?: XaiReasoningEffort;
+    fastReasoningEffort?: XaiReasoningEffort;
+    primaryTimeoutMs: number;
+    fallbackTimeoutMs: number;
+  }): boolean {
+    const preferredModelKey = input.preferredModel.toLowerCase();
+    const fastModelKey = input.fastModel.toLowerCase();
+    const usesDifferentFastProfile =
+      fastModelKey !== preferredModelKey || input.fastReasoningEffort !== input.preferredReasoningEffort;
+    const usesSameModelFastProfile = fastModelKey === preferredModelKey;
+    const hasBoundedSameModelFallback = !usesSameModelFastProfile || input.fallbackTimeoutMs < input.primaryTimeoutMs;
+
+    return (
+      input.allowFallback &&
+      usesDifferentFastProfile &&
+      hasBoundedSameModelFallback &&
+      input.error &&
+      typeof input.error === 'object' &&
+      this.isRetryableProviderError(input.error)
+    );
   }
 
   private async callResponsesApi(
@@ -198,29 +229,37 @@ export class XaiTextClient {
   }
 
   private logProviderFailure(error: any, request: XaiTextRequest, model: string): void {
+    const providerError = this.getProviderError(error);
+
     logApiError('xAI Responses API', error, request.context, {
       operation: request.operation,
       model,
-      status: error.response?.status,
-      errorCode: error.code
+      status: providerError.response?.status,
+      errorCode: providerError.code
     });
   }
 
   private isRetryableProviderError(error: any): boolean {
-    const status = error.response?.status;
+    const providerError = this.getProviderError(error);
+    const status = providerError.response?.status;
     if (status === undefined) {
-      return error.code === 'ECONNABORTED'
-        || error.code === 'ETIMEDOUT'
-        || error.code === 'ECONNRESET'
-        || error.message?.toLowerCase().includes('timeout');
+      return providerError.code === 'ECONNABORTED'
+        || providerError.code === 'ETIMEDOUT'
+        || providerError.code === 'ECONNRESET'
+        || providerError.message?.toLowerCase().includes('timeout') === true;
     }
 
     return status === 408 || status === 429 || status >= 500;
   }
 
   private toUnavailableError(error: any): Error {
-    const status = error.response?.status ? ` (${error.response.status})` : '';
+    const providerError = this.getProviderError(error);
+    const status = providerError.response?.status ? ` (${providerError.response.status})` : '';
     return new Error(`xAI service temporarily unavailable${status}`);
+  }
+
+  private getProviderError(error: any): { response?: { status?: number }; code?: string; message?: string } {
+    return error && typeof error === 'object' ? error : {};
   }
 
   private extractText(payload: XaiResponsesPayload): string {

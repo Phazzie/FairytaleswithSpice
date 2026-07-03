@@ -1,6 +1,7 @@
 # Story Lab Completion Hardening ExecPlan
 
 Created: 2026-06-21 15:04 EDT
+Last updated: 2026-07-03 12:23 EDT
 
 This ExecPlan is the authoritative plan for finishing the Story Lab recovery after PR #151. It reconciles the merged unpublished-branch recovery slices, the still-open review-comment backlog, Dependabot triage, live auth/database integration, durable-job honesty, and the final completion audit.
 
@@ -27,7 +28,8 @@ The desired end state is:
 - [x] Created review-backlog issue #152 for current Story Lab recovery PRs: 21 PRs and 125 active unresolved review threads at the baseline audit.
 - [x] Created review-backlog issue #153 for legacy/superseded PRs: 35 PRs and 168 active unresolved review threads at the baseline audit.
 - [x] Added `npm run review:unresolved` to make review-thread audits repeatable from the repo.
-- [ ] Merge this completion-hardening plan slice.
+- [x] Merge this completion-hardening plan slice.
+- [x] Merge review-thread cleanup PRs #174, #175, #176, #177, and #178.
 - [ ] Triage #152 until every Story Lab recovery review thread is replied to and either resolved or explicitly tracked.
 - [ ] Triage #153 until every legacy review thread is replied to and either resolved, tracked, or closed as obsolete/superseded.
 - [ ] Resolve Dependabot issue #132 by merging or closing PR #120 and PR #121 with evidence.
@@ -43,7 +45,10 @@ The desired end state is:
 - The original unpublished-branch split plan is historically useful but no longer the live completion plan. PRs #114 through #151 have absorbed that stack; this file tracks what remains.
 - CodeRabbit review-tool behavior was controlled by organization-level UI configuration until `.coderabbit.yaml` landed in PR #150.
 - A late bot review comment can arrive after an API merge. PR #151 fixed a PR #149 comment that appeared after the first merge-time audit, so every future PR needs one more post-merge review-thread sweep.
+- The same late-bot pattern repeated on PR #178: it was clean at merge time, then CodeRabbit added two active trivial maintainability comments afterward.
 - Auth/profile/cloud-library and durable-job scaffolding are merged, but live provider auth, executed database migrations, signed-in browser proof, and process-loss job proof are still not done.
+- As of 2026-07-03 12:23 EDT, only Dependabot PRs #120 and #121 remain open, and both still have failing Recovery CI/Vercel checks.
+- PR #120 and PR #121 should be closed/recreated rather than patched in place: they are Angular 22 major-upgrade PRs with peer/runtime constraints beyond the current Angular 20 and TypeScript 5.9 baseline.
 
 ## Decision Log
 
@@ -60,8 +65,10 @@ The desired end state is:
 Current outcome:
 
 - The unpublished auth/profile/cloud-library/durable-owner stack has been split, reviewed, followed up, and merged through PR #151.
+- Later review-cleanup work has been merged through PR #178.
 - The repo has clear scaffolds for auth provider selection, profile/project stores, cloud schema/readiness, account routes, Angular cloud library UI, and owner-scoped job storage.
 - The repo does not yet have a production signed-in Story Lab flow, a live durable database migration, durable cloud sync proof, or crash-safe job proof.
+- The repo does not yet have a current 90% coverage gate.
 
 Self-critique so far:
 
