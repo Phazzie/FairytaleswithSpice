@@ -18,6 +18,7 @@ interface ContinuityExtractionInput {
   summary: StorySummary;
   blueprint?: StoryGenerationSeam['input'];
   useAi: boolean;
+  timeoutMs?: number;
 }
 
 interface ContinuityExtractionResult {
@@ -37,15 +38,22 @@ interface AiContinuityShape {
 export async function extractContinuity(input: ContinuityExtractionInput): Promise<ContinuityExtractionResult> {
   const now = new Date().toISOString();
   const client = new XaiTextClient();
+  const timeoutMs = input.timeoutMs ?? getXaiFastTimeoutMs();
 
-  if (!input.useAi || !client.hasApiKey()) {
+  if (!input.useAi || !client.hasApiKey() || timeoutMs <= 0) {
+    const warning = !client.hasApiKey()
+      ? 'Continuity is using local heuristic extraction because XAI_API_KEY is not configured.'
+      : !input.useAi
+        ? 'AI continuity extraction disabled for this run.'
+        : 'AI continuity extraction skipped because the request budget was nearly exhausted.';
+
     return {
       state: input.currentState,
       receipt: {
         source: 'heuristic',
         extractedAt: now,
         confidence: 0.55,
-        warning: client.hasApiKey() ? 'AI continuity extraction disabled for this run.' : 'Continuity is using local heuristic extraction because XAI_API_KEY is not configured.'
+        warning
       }
     };
   }
@@ -63,7 +71,7 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
       maxOutputTokens: 1200,
       temperature: 0.2,
       topP: 0.9,
-      timeoutMs: getXaiFastTimeoutMs(),
+      timeoutMs,
       modelPreference: 'fast',
       allowFallback: false
     });

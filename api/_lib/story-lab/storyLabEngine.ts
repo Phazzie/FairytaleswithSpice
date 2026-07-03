@@ -27,7 +27,7 @@ import { StoryService } from '../services/storyService';
 import { buildContinuationResponse, buildGenesisResponse } from './mockData';
 import { getTransientStorySnapshot, persistStoryIteration } from './stateStore';
 import { extractContinuity } from './continuityExtractor';
-import { getXaiReasoningEffort, getXaiStoryModel } from '../config/xaiConfig';
+import { getXaiFastTimeoutMs, getXaiReasoningEffort, getXaiStoryModel } from '../config/xaiConfig';
 
 type ClassicStoryOutput = ClassicGenerationSeam['output'];
 type ClassicContinuationOutput = ClassicContinuationSeam['output'];
@@ -68,6 +68,9 @@ const CONTINUITY_COURTROOM_MAX_SECTION_LENGTH = 420;
 const CHAPTER_ENDING_STRESS_TEST_MAX_SECTION_LENGTH = 320;
 const CLICHE_ALARM_MAX_SECTION_LENGTH = 300;
 const WORLD_ARTIFACT_MAX_NAME_WORDS = 4;
+const STORY_LAB_FUNCTION_BUDGET_MS = 60000;
+const STORY_LAB_CONTINUITY_FINALIZATION_RESERVE_MS = 5000;
+const STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS = 1000;
 type ChapterEndingPressureId = 'emotional_reveal' | 'danger_escalation' | 'secret_exposed';
 type ScenePressureLabel = 'Emotional' | 'Secret' | 'Deadline' | 'Social' | 'Setting';
 interface ChapterEndingPressure {
@@ -129,6 +132,17 @@ const DEFAULT_CLASSIC_THEME: ThemeType = 'forbidden_love';
 export function shouldUseMockStoryLab(): boolean {
   const forceMock = process.env['STORY_LAB_FORCE_MOCK'] ?? '';
   return !isProductionRuntime() && (MOCK_FLAG_VALUES.has(forceMock.toLowerCase()) || !process.env['XAI_API_KEY']);
+}
+
+export function getStoryLabContinuityTimeoutMs(requestStartedAtMs: number, nowMs = Date.now()): number {
+  const elapsedMs = Math.max(0, nowMs - requestStartedAtMs);
+  const remainingMs = STORY_LAB_FUNCTION_BUDGET_MS - elapsedMs - STORY_LAB_CONTINUITY_FINALIZATION_RESERVE_MS;
+
+  if (remainingMs < STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS) {
+    return 0;
+  }
+
+  return Math.min(getXaiFastTimeoutMs(), remainingMs);
 }
 
 export function previewStoryLabContinuationGuidance(input: {
@@ -241,6 +255,7 @@ export async function generateStoryLabGenesis(
   input: LabGenerationSeam['input'],
   options: StoryLabEngineOptions = {}
 ): Promise<ApiResponse<StoryIterationPayload>> {
+  const requestStartedAtMs = Date.now();
   const heatContractError = validateHeatContract(input);
   if (heatContractError) {
     return heatContractError;
@@ -273,7 +288,8 @@ export async function generateStoryLabGenesis(
   const payload = await enrichContinuity(
     buildStoryLabPayloadFromGeneratedStory(input, result.data, result.metadata),
     input,
-    !options.serviceFactory
+    !options.serviceFactory,
+    requestStartedAtMs
   );
   payload.persistence = persistStoryIteration(payload);
 
@@ -287,6 +303,7 @@ export async function continueStoryLab(
   input: LabContinuationSeam['input'],
   options: StoryLabEngineOptions = {}
 ): Promise<ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }>> {
+  const requestStartedAtMs = Date.now();
   if (shouldFailClosedForMissingProvider()) {
     return missingProviderResponse();
   }
@@ -351,7 +368,8 @@ export async function continueStoryLab(
   const payload = await enrichContinuity(
     buildStoryLabPayloadFromContinuation(input, result.data, storyState, existingSummary, previousChapters, result.metadata),
     undefined,
-    !options.serviceFactory
+    !options.serviceFactory,
+    requestStartedAtMs
   );
   payload.persistence = persistStoryIteration(payload, previousChapters);
 
@@ -1431,7 +1449,8 @@ function buildGrokTelemetry(metadata: ApiResponseMetadata | undefined, chapterCo
 async function enrichContinuity<T extends StoryIterationPayload>(
   payload: T,
   blueprint: LabGenerationSeam['input'] | undefined,
-  useAi: boolean
+  useAi: boolean,
+  requestStartedAtMs: number
 ): Promise<T> {
   const extraction = await extractContinuity({
     storyId: payload.summary.storyId,
@@ -1439,7 +1458,8 @@ async function enrichContinuity<T extends StoryIterationPayload>(
     chapters: payload.batch.chapters,
     summary: payload.summary,
     blueprint,
-    useAi
+    useAi,
+    timeoutMs: getStoryLabContinuityTimeoutMs(requestStartedAtMs)
   });
 
   return {

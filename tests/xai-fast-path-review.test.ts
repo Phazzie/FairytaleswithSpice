@@ -1,14 +1,14 @@
 #!/usr/bin/env tsx
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import axios from 'axios';
 import {
+  getXaiFastTimeoutMs,
   getXaiFastReasoningEffort,
   getXaiReasoningEffortForModel,
   supportsXaiReasoningParameter
 } from '../api/_lib/config/xaiConfig';
+import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
 import { StoryService } from '../api/_lib/services/storyService';
 import { XaiTextClient, type XaiTextRequest } from '../api/_lib/services/xaiTextClient';
 
@@ -34,21 +34,84 @@ function buildRequest(modelPreference: XaiTextRequest['modelPreference'], allowF
   };
 }
 
-function assertContinuityFastTimeoutUsesConfiguredBudget(): void {
-  const source = readFileSync(join(process.cwd(), 'api/_lib/story-lab/continuityExtractor.ts'), 'utf-8');
+async function assertContinuityFastTimeoutUsesConfiguredBudget(): Promise<void> {
+  const originalApiKey = process.env['XAI_API_KEY'];
+  const originalFastTimeout = process.env['XAI_STORY_FAST_TIMEOUT_MS'];
+  const originalGenerateText = XaiTextClient.prototype.generateText;
+  const capturedTimeouts: number[] = [];
 
-  assert(source.includes('timeoutMs: getXaiFastTimeoutMs()'), 'continuity extraction should use the configured fast timeout budget');
-  assert(!source.includes('Math.min(getXaiFastTimeoutMs(), 5000)'), 'continuity extraction should not cap the fast timeout to 5 seconds');
+  try {
+    process.env['XAI_API_KEY'] = 'test-xai-key';
+    process.env['XAI_STORY_FAST_TIMEOUT_MS'] = '2345';
+    XaiTextClient.prototype.generateText = async function (request) {
+      capturedTimeouts.push(request.timeoutMs);
+      return { text: '{}', model: 'grok-4.3', latencyMs: 0 };
+    };
+
+    const continuityInput = {
+      storyId: 'test-story',
+      currentState: {
+        storyId: 'test-story',
+        revision: 1,
+        characters: [],
+        threads: [],
+        artifacts: [],
+        continuityWarnings: [],
+        narrativeVoice: '',
+        lastUpdatedAt: ''
+      },
+      chapters: [],
+      summary: {
+        storyId: 'test-story',
+        title: 'Test Story',
+        synopsis: '',
+        tone: 'romance',
+        spicyLevel: 3,
+        createdAt: '',
+        updatedAt: ''
+      },
+      useAi: true
+    };
+
+    await extractContinuity(continuityInput);
+    await extractContinuity({
+      ...continuityInput,
+      timeoutMs: 1234
+    });
+
+    assert.equal(capturedTimeouts[0], getXaiFastTimeoutMs(), 'continuity extraction should use the configured fast timeout by default');
+    assert.equal(capturedTimeouts[1], 1234, 'continuity extraction should use the remaining request budget when provided');
+  } finally {
+    XaiTextClient.prototype.generateText = originalGenerateText;
+
+    if (originalApiKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalApiKey;
+    }
+
+    if (originalFastTimeout === undefined) {
+      delete process.env['XAI_STORY_FAST_TIMEOUT_MS'];
+    } else {
+      process.env['XAI_STORY_FAST_TIMEOUT_MS'] = originalFastTimeout;
+    }
+  }
 }
 
 function assertReasoningConfig(): void {
   const originalEffort = process.env['XAI_STORY_REASONING_EFFORT'];
   try {
     delete process.env['XAI_STORY_REASONING_EFFORT'];
+    assert.equal(supportsXaiReasoningParameter(undefined as never), false, 'missing model should not throw while checking reasoning support');
+    assert.equal(supportsXaiReasoningParameter(null as never), false, 'null model should not throw while checking reasoning support');
     assert.equal(supportsXaiReasoningParameter('grok-4.3'), true, 'grok-4.3 should accept reasoning.effort');
     assert.equal(getXaiFastReasoningEffort(), 'none', 'fast Grok requests should disable reasoning');
     assert.equal(getXaiReasoningEffortForModel('grok-4.3', 'fast'), 'none', 'grok-4.3 fast path should send none reasoning');
     assert.equal(getXaiReasoningEffortForModel('grok-4.3', 'primary'), 'medium', 'grok-4.3 primary path should keep the configured default reasoning');
+
+    process.env['XAI_STORY_REASONING_EFFORT'] = 'none';
+    assert.equal(getXaiReasoningEffortForModel('grok-4.3', 'primary'), 'none', 'grok-4.3 primary path should allow configured none reasoning');
+    assert.equal(getXaiReasoningEffortForModel('grok-4.20-multi-agent', 'primary'), 'medium', 'multi-agent primary path should reject none reasoning');
 
     process.env['XAI_STORY_REASONING_EFFORT'] = 'xhigh';
     assert.equal(getXaiReasoningEffortForModel('grok-4.3', 'primary'), 'high', 'grok-4.3 should not receive multi-agent-only xhigh effort');
@@ -106,6 +169,42 @@ async function assertXaiClientPayloads(): Promise<void> {
     const primaryResponse = await client.generateText(buildRequest('primary'));
     assert.equal(primaryResponse.reasoningEffort, 'medium', 'primary response metadata should report configured default reasoning');
     assert.equal((capturedPosts[1].payload['reasoning'] as { effort?: string }).effort, 'medium', 'primary payload should send the configured default reasoning');
+
+    capturedPosts.length = 0;
+    let failSameModelPrimaryAttempt = true;
+    (axios as unknown as { post: typeof axios.post }).post = (async (_url: string, payload: unknown, config: unknown) => {
+      capturedPosts.push({
+        payload: payload as Record<string, unknown>,
+        config: config as CapturedPost['config']
+      });
+
+      if (failSameModelPrimaryAttempt) {
+        failSameModelPrimaryAttempt = false;
+        const error = new Error('timeout') as Error & { code?: string };
+        error.code = 'ETIMEDOUT';
+        throw error;
+      }
+
+      return {
+        data: {
+          output_text: 'same model fallback result',
+          usage: {
+            input_tokens: 6,
+            output_tokens: 4,
+            total_tokens: 10
+          }
+        }
+      };
+    }) as typeof axios.post;
+
+    const sameModelFallbackClient = new XaiTextClient();
+    const sameModelFallbackResponse = await sameModelFallbackClient.generateText(buildRequest(undefined, true));
+    assert.equal(capturedPosts.length, 2, 'same model fallback should retry when the fast reasoning profile differs');
+    assert.equal((capturedPosts[0].payload['reasoning'] as { effort?: string }).effort, 'medium', 'same model primary attempt should use primary reasoning');
+    assert.equal((capturedPosts[1].payload['reasoning'] as { effort?: string }).effort, 'none', 'same model retry should use fast no-reasoning profile');
+    assert.equal(capturedPosts[1].config.timeout, 5678, 'same model retry should use fallback timeout budget');
+    assert.equal(sameModelFallbackResponse.reasoningEffort, 'none', 'same model fallback metadata should report fast none reasoning');
+    assert.equal(sameModelFallbackResponse.fallbackFromModel, 'grok-4.3', 'same model fallback metadata should record the primary model');
 
     capturedPosts.length = 0;
     process.env['XAI_STORY_MODEL'] = 'grok-4.20-multi-agent';
@@ -204,11 +303,33 @@ function assertAiMetadataMerge(): void {
   assert.equal(explicitFastReasoning?.fallbackFromModel, 'grok-4.20-multi-agent', 'fallback metadata should still be preserved');
 }
 
+async function assertStoryLabContinuityBudgetUsesRemainingRequestWindow(): Promise<void> {
+  const { getStoryLabContinuityTimeoutMs } = await import('../api/_lib/story-lab/storyLabEngine') as {
+    getStoryLabContinuityTimeoutMs?: (requestStartedAtMs: number, nowMs?: number) => number;
+  };
+  const originalFastTimeout = process.env['XAI_STORY_FAST_TIMEOUT_MS'];
+
+  try {
+    process.env['XAI_STORY_FAST_TIMEOUT_MS'] = '40000';
+    assert.equal(typeof getStoryLabContinuityTimeoutMs, 'function', 'Story Lab engine should expose its continuity timeout budget calculation');
+    assert.equal(getStoryLabContinuityTimeoutMs(0, 10000), 40000, 'early requests should keep the configured fast timeout');
+    assert.equal(getStoryLabContinuityTimeoutMs(0, 30000), 25000, 'late requests should cap continuity extraction to remaining function budget');
+    assert.equal(getStoryLabContinuityTimeoutMs(0, 59500), 0, 'nearly exhausted requests should skip AI continuity extraction');
+  } finally {
+    if (originalFastTimeout === undefined) {
+      delete process.env['XAI_STORY_FAST_TIMEOUT_MS'];
+    } else {
+      process.env['XAI_STORY_FAST_TIMEOUT_MS'] = originalFastTimeout;
+    }
+  }
+}
+
 async function main(): Promise<void> {
-  assertContinuityFastTimeoutUsesConfiguredBudget();
+  await assertContinuityFastTimeoutUsesConfiguredBudget();
   assertReasoningConfig();
   await assertXaiClientPayloads();
   assertAiMetadataMerge();
+  await assertStoryLabContinuityBudgetUsesRemainingRequestWindow();
 
   console.log('xAI fast path review regression tests passed');
 }
