@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-03 08:30 EDT
+Last updated: 2026-07-03 18:39 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -68,6 +68,60 @@ CodeRabbit configuration lives in `.coderabbit.yaml`. The repository intentional
 
 Add focused documentation when it clarifies public contracts, exported ports/adapters, security/privacy invariants, cross-process storage behavior, or non-obvious story-generation constraints. If a bot asks for broad docstring coverage, treat that as review-tooling drift: tune the tool or open a follow-up issue instead of adding low-value comments.
 
+## Subagent Operating Rules
+
+Use subagents as bounded execution help, not as a substitute for parent-agent judgment. The parent agent owns strategy, final integration, GitHub actions, and completion claims.
+
+Before dispatching subagents:
+
+1. Analyze the target locally first and write down the split.
+2. Confirm each subtask is independent, has a disjoint write scope, or is explicitly read-only.
+3. Keep at most six subagents active at once.
+4. Prefer Spark-style fast agents only for narrow tickets with complete context and easy-to-check outputs.
+5. Do not ask a subagent to "figure out the repo", "fix coverage", or "handle Dependabot" without a bounded target.
+
+Every subagent ticket must include:
+
+- **Parent analysis:** what is already known and what strategy has already been chosen.
+- **Role:** read-only explorer, bounded worker, reviewer, or drafting assistant.
+- **Owned files:** exact paths the agent may edit, or `Read-only`.
+- **Forbidden actions:** no PR merges, no branch deletion, no review-thread resolution, no broad refactors, and no reverting unrelated work.
+- **Commands:** exact checks to run, including whether failures are expected evidence.
+- **Stop condition:** when to stop instead of broadening scope.
+- **Output contract:** status, files changed, commands run, percent ready, blockers, concerns, and recommendation.
+- **Artifact requirement:** command log, patch summary, checklist, or draft text that the parent can inspect without rereading the whole workspace.
+
+Use this minimum ticket shape:
+
+```text
+Task name:
+Parent analysis:
+Goal:
+Role:
+Model / reason:
+Owned files:
+Read-only files:
+Forbidden actions:
+Exact steps:
+Commands to run:
+Expected pass/fail meaning:
+Stop condition:
+Output contract:
+Artifact requirement:
+```
+
+For coding subagents, use disjoint write ownership. Do not let two workers edit the same package file, lockfile, route, component, or changelog section in parallel. If the work needs shared files, either serialize those edits or keep the subagents read-only and integrate in the parent session.
+
+Dependency PRs need extra care. Do not split one dependency PR into multiple package-lock writers unless each lockfile is in a different package root. Root `package-lock.json` and `story-generator/package-lock.json` can be separate workers; two workers must not both edit the same lockfile. Major framework upgrades should be separate from patch/minor tooling updates.
+
+After subagents return:
+
+1. Review every result before integrating it.
+2. Run the relevant local checks yourself.
+3. Push and merge only from the parent session.
+4. Record timeouts or stale-workspace failures as failures, not partial success.
+5. Update `SUBAGENT_LOG.md` and the active changelog or execution plan in the same PR when subagent work materially affects repo decisions.
+
 ## Current Operating Direction
 
 The unpublished `feature/story-lab-auth-profile-contracts` stack has been split and merged through PR #151. The current recovery task is completion hardening: address or track review comments, resolve dependency follow-ups, prove live auth/database behavior before cloud claims, and keep durable-job claims gated on process-loss proof.
@@ -127,6 +181,7 @@ The companion inventory is `PR_USEFUL_MATERIAL_INVENTORY.md`.
 Keep these files current during the recovery:
 
 - `PR70_RECOVERY_CHANGELOG.md` - chronological work log and decisions.
+- `SUBAGENT_LOG.md` - subagent batches, tickets, results, integration decisions, and follow-ups.
 - `PR70_RECOVERY_LEDGER.md` - one row/section per PR disposition.
 - `NOT_TAKEN_FEATURE_LEDGER.md` - useful material intentionally not taken, especially story-generation ideas.
 - `LESSONS_LEARNED.md` - durable lessons and corrections discovered during the recovery.
