@@ -159,7 +159,7 @@ async function main(): Promise<void> {
     useAi: false
   });
   assert(continuity.receipt.source === 'heuristic', 'continuity extraction should label heuristic fallback.');
-  assert(continuity.receipt.warning?.includes('heuristic'), 'heuristic fallback should be visible.');
+  assert(continuity.receipt.warning?.includes('disabled'), 'disabled AI continuity fallback should be visible.');
 
   const guidancePreview = previewStoryLabContinuationGuidance({
     continuationBrief: 'Pay off the witness shell and make Lord Brine escalate.',

@@ -34,6 +34,50 @@ function buildRequest(modelPreference: XaiTextRequest['modelPreference'], allowF
   };
 }
 
+function buildContinuityInput(useAi = true) {
+  return {
+    storyId: 'test-story',
+    currentState: {
+      storyId: 'test-story',
+      revision: 1,
+      characters: [],
+      threads: [],
+      artifacts: [],
+      continuityWarnings: [],
+      narrativeVoice: '',
+      lastUpdatedAt: ''
+    },
+    chapters: [],
+    summary: {
+      storyId: 'test-story',
+      title: 'Test Story',
+      synopsis: '',
+      tone: 'romance',
+      spicyLevel: 3,
+      createdAt: '',
+      updatedAt: ''
+    },
+    useAi
+  };
+}
+
+async function captureConsoleWarn<T>(fn: () => Promise<T>): Promise<{ result: T; calls: unknown[][] }> {
+  const originalWarn = console.warn;
+  const calls: unknown[][] = [];
+  console.warn = (...args: unknown[]) => {
+    calls.push(args);
+  };
+
+  try {
+    return {
+      result: await fn(),
+      calls
+    };
+  } finally {
+    console.warn = originalWarn;
+  }
+}
+
 async function assertContinuityFastTimeoutUsesConfiguredBudget(): Promise<void> {
   const originalApiKey = process.env['XAI_API_KEY'];
   const originalFastTimeout = process.env['XAI_STORY_FAST_TIMEOUT_MS'];
@@ -48,39 +92,27 @@ async function assertContinuityFastTimeoutUsesConfiguredBudget(): Promise<void> 
       return { text: '{}', model: 'grok-4.3', latencyMs: 0 };
     };
 
-    const continuityInput = {
-      storyId: 'test-story',
-      currentState: {
-        storyId: 'test-story',
-        revision: 1,
-        characters: [],
-        threads: [],
-        artifacts: [],
-        continuityWarnings: [],
-        narrativeVoice: '',
-        lastUpdatedAt: ''
-      },
-      chapters: [],
-      summary: {
-        storyId: 'test-story',
-        title: 'Test Story',
-        synopsis: '',
-        tone: 'romance',
-        spicyLevel: 3,
-        createdAt: '',
-        updatedAt: ''
-      },
-      useAi: true
-    };
+    const continuityInput = buildContinuityInput(true);
 
     await extractContinuity(continuityInput);
     await extractContinuity({
       ...continuityInput,
       timeoutMs: 1234
     });
+    const lowBudgetResult = await extractContinuity({
+      ...continuityInput,
+      timeoutMs: 999
+    });
 
     assert.equal(capturedTimeouts[0], getXaiFastTimeoutMs(), 'continuity extraction should use the configured fast timeout by default');
     assert.equal(capturedTimeouts[1], 1234, 'continuity extraction should use the remaining request budget when provided');
+    assert.equal(capturedTimeouts.length, 2, 'subsecond remaining budget should skip the xAI continuity request');
+    assert.equal(lowBudgetResult.receipt.source, 'heuristic', 'subsecond remaining budget should fall back to heuristic continuity extraction');
+    assert.equal(
+      lowBudgetResult.receipt.warning,
+      'AI continuity extraction skipped because the request budget was nearly exhausted.',
+      'subsecond remaining budget should explain the budget skip'
+    );
   } finally {
     XaiTextClient.prototype.generateText = originalGenerateText;
 
@@ -94,6 +126,28 @@ async function assertContinuityFastTimeoutUsesConfiguredBudget(): Promise<void> 
       delete process.env['XAI_STORY_FAST_TIMEOUT_MS'];
     } else {
       process.env['XAI_STORY_FAST_TIMEOUT_MS'] = originalFastTimeout;
+    }
+  }
+}
+
+async function assertContinuityHeuristicWarningPriority(): Promise<void> {
+  const originalApiKey = process.env['XAI_API_KEY'];
+
+  try {
+    delete process.env['XAI_API_KEY'];
+    const result = await extractContinuity(buildContinuityInput(false));
+
+    assert.equal(result.receipt.source, 'heuristic', 'disabled AI continuity should use heuristic extraction');
+    assert.equal(
+      result.receipt.warning,
+      'AI continuity extraction disabled for this run.',
+      'explicitly disabled AI should take warning priority over a missing API key'
+    );
+  } finally {
+    if (originalApiKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalApiKey;
     }
   }
 }
@@ -198,13 +252,20 @@ async function assertXaiClientPayloads(): Promise<void> {
     }) as typeof axios.post;
 
     const sameModelFallbackClient = new XaiTextClient();
-    const sameModelFallbackResponse = await sameModelFallbackClient.generateText(buildRequest(undefined, true));
+    const sameModelFallback = await captureConsoleWarn(() =>
+      sameModelFallbackClient.generateText(buildRequest(undefined, true))
+    );
+    const sameModelFallbackResponse = sameModelFallback.result;
+    const sameModelFallbackWarnings = JSON.stringify(sameModelFallback.calls);
     assert.equal(capturedPosts.length, 2, 'same model fallback should retry when the fast reasoning profile differs');
     assert.equal((capturedPosts[0].payload['reasoning'] as { effort?: string }).effort, 'medium', 'same model primary attempt should use primary reasoning');
     assert.equal((capturedPosts[1].payload['reasoning'] as { effort?: string }).effort, 'none', 'same model retry should use fast no-reasoning profile');
     assert.equal(capturedPosts[1].config.timeout, 5678, 'same model retry should use fallback timeout budget');
     assert.equal(sameModelFallbackResponse.reasoningEffort, 'none', 'same model fallback metadata should report fast none reasoning');
     assert.equal(sameModelFallbackResponse.fallbackFromModel, 'grok-4.3', 'same model fallback metadata should record the primary model');
+    assert(sameModelFallbackWarnings.includes('fast profile'), 'same model fallback warning should describe a fast profile retry');
+    assert(sameModelFallbackWarnings.includes('primaryReasoningEffort'), 'same model fallback warning should include primary reasoning effort');
+    assert(sameModelFallbackWarnings.includes('fastReasoningEffort'), 'same model fallback warning should include fast reasoning effort');
 
     capturedPosts.length = 0;
     process.env['XAI_STORY_MODEL'] = 'grok-4.20-multi-agent';
@@ -308,24 +369,48 @@ async function assertStoryLabContinuityBudgetUsesRemainingRequestWindow(): Promi
     getStoryLabContinuityTimeoutMs?: (requestStartedAtMs: number, nowMs?: number) => number;
   };
   const originalFastTimeout = process.env['XAI_STORY_FAST_TIMEOUT_MS'];
+  const originalFunctionBudget = process.env['STORY_LAB_FUNCTION_BUDGET_MS'];
+  const originalFallbackFunctionBudget = process.env['FUNCTION_BUDGET_MS'];
 
   try {
     process.env['XAI_STORY_FAST_TIMEOUT_MS'] = '40000';
+    delete process.env['STORY_LAB_FUNCTION_BUDGET_MS'];
+    delete process.env['FUNCTION_BUDGET_MS'];
     assert.equal(typeof getStoryLabContinuityTimeoutMs, 'function', 'Story Lab engine should expose its continuity timeout budget calculation');
     assert.equal(getStoryLabContinuityTimeoutMs(0, 10000), 40000, 'early requests should keep the configured fast timeout');
     assert.equal(getStoryLabContinuityTimeoutMs(0, 30000), 25000, 'late requests should cap continuity extraction to remaining function budget');
     assert.equal(getStoryLabContinuityTimeoutMs(0, 59500), 0, 'nearly exhausted requests should skip AI continuity extraction');
+
+    process.env['STORY_LAB_FUNCTION_BUDGET_MS'] = '15000';
+    assert.equal(getStoryLabContinuityTimeoutMs(0, 9000), 1000, 'configured Story Lab budget should cap continuity extraction');
+
+    delete process.env['STORY_LAB_FUNCTION_BUDGET_MS'];
+    process.env['FUNCTION_BUDGET_MS'] = '20000';
+    assert.equal(getStoryLabContinuityTimeoutMs(0, 10000), 5000, 'generic function budget fallback should cap continuity extraction');
   } finally {
     if (originalFastTimeout === undefined) {
       delete process.env['XAI_STORY_FAST_TIMEOUT_MS'];
     } else {
       process.env['XAI_STORY_FAST_TIMEOUT_MS'] = originalFastTimeout;
     }
+
+    if (originalFunctionBudget === undefined) {
+      delete process.env['STORY_LAB_FUNCTION_BUDGET_MS'];
+    } else {
+      process.env['STORY_LAB_FUNCTION_BUDGET_MS'] = originalFunctionBudget;
+    }
+
+    if (originalFallbackFunctionBudget === undefined) {
+      delete process.env['FUNCTION_BUDGET_MS'];
+    } else {
+      process.env['FUNCTION_BUDGET_MS'] = originalFallbackFunctionBudget;
+    }
   }
 }
 
 async function main(): Promise<void> {
   await assertContinuityFastTimeoutUsesConfiguredBudget();
+  await assertContinuityHeuristicWarningPriority();
   assertReasoningConfig();
   await assertXaiClientPayloads();
   assertAiMetadataMerge();
