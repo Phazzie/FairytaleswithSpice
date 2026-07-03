@@ -22,7 +22,7 @@ Follow-ups:
 
 ## 2026-07-03 18:39 EDT - PR #120 Six-Agent Dependabot Split Trial
 
-Parent branch / PR: `recovery/subagent-guidance-log` / not opened yet
+Parent branch / PR: `recovery/subagent-guidance-log` / PR #183
 
 Goal: test the user's proposed pattern: parent agent analyzes one Dependabot PR first, then splits the already-chosen implementation strategy into up to six narrow Spark subagent tickets.
 

@@ -106,7 +106,8 @@ Exact steps:
 Commands to run:
 Expected pass/fail meaning:
 Stop condition:
-Output format:
+Output contract:
+Artifact requirement:
 ```
 
 For coding subagents, use disjoint write ownership. Do not let two workers edit the same package file, lockfile, route, component, or changelog section in parallel. If the work needs shared files, either serialize those edits or keep the subagents read-only and integrate in the parent session.
