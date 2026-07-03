@@ -397,16 +397,15 @@ Steps:
 mkdir -p tmp/recovery
 ```
 
-2. Generate the exact last-40 PR list by PR number, not by `gh pr list`'s default ordering:
+2. Generate the exact last-40 PR list by PR number, not by `gh pr list`'s default ordering. Do not use a contiguous numeric range: GitHub PR numbers share the issue number space, so some numbers are issues rather than PRs.
 
 ```bash
-latest_pr=$(env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh api 'repos/Phazzie/FairytaleswithSpice/pulls?state=all&sort=created&direction=desc&per_page=1' --jq '.[0].number')
-first_pr=$((latest_pr - 39))
-seq "$first_pr" "$latest_pr" > tmp/recovery/last-40-pr-numbers.txt
+env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh api 'repos/Phazzie/FairytaleswithSpice/pulls?state=all&sort=created&direction=desc&per_page=40' \
+  --jq '.[].number' > tmp/recovery/last-40-pr-numbers.txt
+test "$(wc -l < tmp/recovery/last-40-pr-numbers.txt | tr -d ' ')" = "40"
 pr_list=$(paste -sd, tmp/recovery/last-40-pr-numbers.txt)
-for pr in $(cat tmp/recovery/last-40-pr-numbers.txt); do
-  env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh pr view "$pr" --repo Phazzie/FairytaleswithSpice --json number,title,state,mergedAt,closedAt,updatedAt,url
-done | jq -s '.' > tmp/recovery/last-40-prs.json
+env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh api 'repos/Phazzie/FairytaleswithSpice/pulls?state=all&sort=created&direction=desc&per_page=40' \
+  --jq '[.[] | {number, title, state, mergedAt: .merged_at, closedAt: .closed_at, updatedAt: .updated_at, url: .html_url}]' > tmp/recovery/last-40-prs.json
 ```
 
 3. Audit active non-outdated review threads for those PRs using the remote script:

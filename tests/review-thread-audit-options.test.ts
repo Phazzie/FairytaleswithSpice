@@ -1,6 +1,9 @@
+// Created: 2026-07-03 08:38 EDT
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-process.argv = ['node', 'scripts/recovery/list-unresolved-review-threads.mjs', '--help'];
+process.argv = ['node', 'tests/review-thread-audit-options.test.ts'];
 
 void main();
 
@@ -26,6 +29,7 @@ async function main() {
     format: string;
     threadMode: string;
   };
+  const isEntrypoint = reviewAudit.isEntrypoint as (moduleUrl: string, argvPath?: string) => boolean;
   const selectUnresolvedThreads = reviewAudit.selectUnresolvedThreads as (
     threads: Array<{
       id: string;
@@ -96,6 +100,12 @@ async function main() {
     () => parseArgs(['--include-outdated', '--outdated-only']),
     /Choose only one outdated thread mode/,
   );
+
+  const scriptPath = 'scripts/recovery/list-unresolved-review-threads.mjs';
+  const scriptUrl = pathToFileURL(resolve(scriptPath)).href;
+  assert.equal(isEntrypoint(scriptUrl, scriptPath), true);
+  assert.equal(isEntrypoint(scriptUrl, resolve(scriptPath)), true);
+  assert.equal(isEntrypoint(scriptUrl, 'scripts/recovery/other-script.mjs'), false);
 
   assert.deepEqual(
     selectUnresolvedThreads(threads, 'active').map((thread) => thread.id),

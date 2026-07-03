@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_LIMIT = 200;
@@ -396,7 +397,15 @@ function main() {
   printMarkdown(rows);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+export function isEntrypoint(moduleUrl, argvPath = process.argv[1]) {
+  if (!argvPath) {
+    return false;
+  }
+
+  return fileURLToPath(moduleUrl) === resolve(argvPath);
+}
+
+if (isEntrypoint(import.meta.url)) {
   try {
     main();
   } catch (error) {
