@@ -401,11 +401,11 @@ mkdir -p tmp/recovery
 
 ```bash
 env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh api 'repos/Phazzie/FairytaleswithSpice/pulls?state=all&sort=created&direction=desc&per_page=40' \
-  --jq '.[].number' > tmp/recovery/last-40-pr-numbers.txt
+  > tmp/recovery/last-40-prs-raw.json
+jq -r '.[].number' tmp/recovery/last-40-prs-raw.json > tmp/recovery/last-40-pr-numbers.txt
 test "$(wc -l < tmp/recovery/last-40-pr-numbers.txt | tr -d ' ')" = "40"
 pr_list=$(paste -sd, tmp/recovery/last-40-pr-numbers.txt)
-env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh api 'repos/Phazzie/FairytaleswithSpice/pulls?state=all&sort=created&direction=desc&per_page=40' \
-  --jq '[.[] | {number, title, state, mergedAt: .merged_at, closedAt: .closed_at, updatedAt: .updated_at, url: .html_url}]' > tmp/recovery/last-40-prs.json
+jq '[.[] | {number, title, state, mergedAt: .merged_at, closedAt: .closed_at, updatedAt: .updated_at, url: .html_url}]' tmp/recovery/last-40-prs-raw.json > tmp/recovery/last-40-prs.json
 ```
 
 3. Audit active non-outdated review threads for those PRs using the remote script:
