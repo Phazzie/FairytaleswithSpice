@@ -27,7 +27,10 @@ import { StoryService } from '../services/storyService';
 import { buildContinuationResponse, buildGenesisResponse } from './mockData';
 import { getTransientStorySnapshot, persistStoryIteration } from './stateStore';
 import { extractContinuity } from './continuityExtractor';
-import { getXaiFastTimeoutMs, getXaiReasoningEffort, getXaiStoryModel } from '../config/xaiConfig';
+import { getXaiReasoningEffort, getXaiStoryModel } from '../config/xaiConfig';
+import { getStoryLabContinuityTimeoutMs } from './continuityBudget';
+
+export { getStoryLabContinuityTimeoutMs } from './continuityBudget';
 
 type ClassicStoryOutput = ClassicGenerationSeam['output'];
 type ClassicContinuationOutput = ClassicContinuationSeam['output'];
@@ -68,9 +71,6 @@ const CONTINUITY_COURTROOM_MAX_SECTION_LENGTH = 420;
 const CHAPTER_ENDING_STRESS_TEST_MAX_SECTION_LENGTH = 320;
 const CLICHE_ALARM_MAX_SECTION_LENGTH = 300;
 const WORLD_ARTIFACT_MAX_NAME_WORDS = 4;
-const DEFAULT_STORY_LAB_FUNCTION_BUDGET_MS = 60000;
-const STORY_LAB_CONTINUITY_FINALIZATION_RESERVE_MS = 5000;
-const STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS = 1000;
 type ChapterEndingPressureId = 'emotional_reveal' | 'danger_escalation' | 'secret_exposed';
 type ScenePressureLabel = 'Emotional' | 'Secret' | 'Deadline' | 'Social' | 'Setting';
 interface ChapterEndingPressure {
@@ -132,40 +132,6 @@ const DEFAULT_CLASSIC_THEME: ThemeType = 'forbidden_love';
 export function shouldUseMockStoryLab(): boolean {
   const forceMock = process.env['STORY_LAB_FORCE_MOCK'] ?? '';
   return !isProductionRuntime() && (MOCK_FLAG_VALUES.has(forceMock.toLowerCase()) || !process.env['XAI_API_KEY']);
-}
-
-export function getStoryLabContinuityTimeoutMs(requestStartedAtMs: number, nowMs = Date.now()): number {
-  const elapsedMs = Math.max(0, nowMs - requestStartedAtMs);
-  const remainingMs = getStoryLabFunctionBudgetMs() - elapsedMs - STORY_LAB_CONTINUITY_FINALIZATION_RESERVE_MS;
-
-  if (remainingMs < STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS) {
-    return 0;
-  }
-
-  return Math.min(getXaiFastTimeoutMs(), remainingMs);
-}
-
-function getStoryLabFunctionBudgetMs(): number {
-  return getPositiveIntegerEnv(
-    ['STORY_LAB_FUNCTION_BUDGET_MS', 'FUNCTION_BUDGET_MS'],
-    DEFAULT_STORY_LAB_FUNCTION_BUDGET_MS
-  );
-}
-
-function getPositiveIntegerEnv(names: string[], fallback: number): number {
-  for (const name of names) {
-    const rawValue = process.env[name]?.trim();
-    if (!rawValue) {
-      continue;
-    }
-
-    const parsed = Number(rawValue);
-    if (Number.isInteger(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-
-  return fallback;
 }
 
 export function previewStoryLabContinuationGuidance(input: {

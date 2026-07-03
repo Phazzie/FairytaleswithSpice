@@ -144,6 +144,7 @@ async function main(): Promise<void> {
   assert(getStoryLabResponseStatus(null as never) === 500, 'null response payload should map to 500');
   assert(getStoryLabResponseStatus({} as never) === 500, 'malformed response payload should map to 500');
   assert(getStoryLabResponseStatus({ success: true } as never) === 500, 'success response without data should map to 500');
+  assert(getStoryLabResponseStatus({ success: true, data: null } as never) === 500, 'success response with null data should map to 500');
   assert(
     getStoryLabResponseStatus({ success: false } as never) === 500,
     'missing error payload should map to 500'

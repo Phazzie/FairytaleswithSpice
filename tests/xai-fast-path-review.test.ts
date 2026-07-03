@@ -103,16 +103,22 @@ async function assertContinuityFastTimeoutUsesConfiguredBudget(): Promise<void> 
       ...continuityInput,
       timeoutMs: 999
     });
+    const boundaryBudgetResult = await extractContinuity({
+      ...continuityInput,
+      timeoutMs: 1000
+    });
 
     assert.equal(capturedTimeouts[0], getXaiFastTimeoutMs(), 'continuity extraction should use the configured fast timeout by default');
     assert.equal(capturedTimeouts[1], 1234, 'continuity extraction should use the remaining request budget when provided');
-    assert.equal(capturedTimeouts.length, 2, 'subsecond remaining budget should skip the xAI continuity request');
+    assert.equal(capturedTimeouts[2], 1000, 'exactly 1000ms remaining budget should still call xAI continuity extraction');
+    assert.equal(capturedTimeouts.length, 3, 'subsecond remaining budget should skip the xAI continuity request while the 1000ms boundary still calls xAI');
     assert.equal(lowBudgetResult.receipt.source, 'heuristic', 'subsecond remaining budget should fall back to heuristic continuity extraction');
     assert.equal(
       lowBudgetResult.receipt.warning,
       'AI continuity extraction skipped because the request budget was nearly exhausted.',
       'subsecond remaining budget should explain the budget skip'
     );
+    assert.equal(boundaryBudgetResult.receipt.source, 'ai', '1000ms remaining budget should still use AI continuity extraction');
   } finally {
     XaiTextClient.prototype.generateText = originalGenerateText;
 
@@ -252,20 +258,40 @@ async function assertXaiClientPayloads(): Promise<void> {
     }) as typeof axios.post;
 
     const sameModelFallbackClient = new XaiTextClient();
+    const boundedSameModelFallbackRequest = {
+      ...buildRequest(undefined, true),
+      fallbackTimeoutMs: 678
+    };
     const sameModelFallback = await captureConsoleWarn(() =>
-      sameModelFallbackClient.generateText(buildRequest(undefined, true))
+      sameModelFallbackClient.generateText(boundedSameModelFallbackRequest)
     );
     const sameModelFallbackResponse = sameModelFallback.result;
     const sameModelFallbackWarnings = JSON.stringify(sameModelFallback.calls);
     assert.equal(capturedPosts.length, 2, 'same model fallback should retry when the fast reasoning profile differs');
     assert.equal((capturedPosts[0].payload['reasoning'] as { effort?: string }).effort, 'medium', 'same model primary attempt should use primary reasoning');
     assert.equal((capturedPosts[1].payload['reasoning'] as { effort?: string }).effort, 'none', 'same model retry should use fast no-reasoning profile');
-    assert.equal(capturedPosts[1].config.timeout, 5678, 'same model retry should use fallback timeout budget');
+    assert.equal(capturedPosts[1].config.timeout, 678, 'same model retry should use a bounded fallback timeout budget');
     assert.equal(sameModelFallbackResponse.reasoningEffort, 'none', 'same model fallback metadata should report fast none reasoning');
     assert.equal(sameModelFallbackResponse.fallbackFromModel, 'grok-4.3', 'same model fallback metadata should record the primary model');
     assert(sameModelFallbackWarnings.includes('fast profile'), 'same model fallback warning should describe a fast profile retry');
     assert(sameModelFallbackWarnings.includes('primaryReasoningEffort'), 'same model fallback warning should include primary reasoning effort');
     assert(sameModelFallbackWarnings.includes('fastReasoningEffort'), 'same model fallback warning should include fast reasoning effort');
+
+    capturedPosts.length = 0;
+    failSameModelPrimaryAttempt = true;
+    process.env['XAI_STORY_MODEL'] = 'Grok-4.3';
+    process.env['XAI_FAST_MODEL'] = 'grok-4.3';
+    const unboundedSameModelFallbackClient = new XaiTextClient();
+    await assert.rejects(
+      () => unboundedSameModelFallbackClient.generateText({
+        ...buildRequest(undefined, true),
+        timeoutMs: 40000,
+        fallbackTimeoutMs: 40000
+      }),
+      /xAI service temporarily unavailable/,
+      'same model fallback should be skipped when the fallback timeout is not bounded'
+    );
+    assert.equal(capturedPosts.length, 1, 'unbounded same model fallback should not make a second provider call');
 
     capturedPosts.length = 0;
     process.env['XAI_STORY_MODEL'] = 'grok-4.20-multi-agent';
