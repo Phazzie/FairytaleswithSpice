@@ -241,6 +241,25 @@ assert(
   'Story Lab chapters should fall back to htmlContent when rawContent is missing'
 );
 
+const payloadWithEmptyRawChapterContent = buildStoryLabPayloadFromGeneratedStory(blueprint, {
+  ...classicStory,
+  storyId: 'story-test-empty-raw-content',
+  chapters: [{
+    ...classicStory.chapters[0],
+    rawContent: '',
+    content: '<p>Mira chose the visible chapter text.</p>'
+  }]
+}, {
+  requestId: 'req-test',
+  processingTime: 2000,
+  chaptersRequested: 1,
+  chaptersGenerated: 1
+});
+assert(
+  payloadWithEmptyRawChapterContent.batch.chapters[0].rawContent === '',
+  'Story Lab chapters should preserve an intentional empty rawContent string'
+);
+
 withEnv({ XAI_API_KEY: undefined, STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, () => {
   assert(shouldUseMockStoryLab(), 'missing provider key should use mock Story Lab fallback outside production');
 });
@@ -320,6 +339,45 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(response.error.code === 'UPSTREAM_DOWN', 'provider error code should be preserved');
     assert(response.error.message.includes('configured'), 'provider error message should be preserved');
     assert(!('details' in response.error), 'Story Lab generation errors should not expose provider details');
+  });
+
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    const response = await generateStoryLabGenesis(blueprint, {
+      serviceFactory: () => ({
+        generateStory: async () => ({
+          success: false,
+          error: undefined
+        }) as never,
+        continueChapter: async () => {
+          throw new Error('continueChapter should not be called by malformed genesis error test');
+        }
+      })
+    });
+
+    assert(!response.success, 'malformed provider error should still return an error response');
+    assert(response.error.code === 'GENERATION_FAILED', 'malformed provider error should use the fallback code');
+    assert(response.error.message === 'Story Lab request failed before completing.', 'malformed provider error should use a safe fallback message');
+  });
+
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    const response = await generateStoryLabGenesis(blueprint, {
+      serviceFactory: () => ({
+        generateStory: async () => ({
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST ',
+            message: ' Provider rejected the blueprint. '
+          }
+        }),
+        continueChapter: async () => {
+          throw new Error('continueChapter should not be called by trimmed genesis error test');
+        }
+      })
+    });
+
+    assert(!response.success, 'provider error with padded fields should return an error response');
+    assert(response.error.code === 'INVALID_REQUEST', 'provider error code should be trimmed');
+    assert(response.error.message === 'Provider rejected the blueprint.', 'provider error message should be trimmed');
   });
 
   await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {

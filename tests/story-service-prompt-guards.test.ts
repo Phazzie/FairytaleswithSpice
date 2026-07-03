@@ -63,7 +63,8 @@ assert(storyLabContext.includes('A'.repeat(320)), 'Story Lab logline should be p
 assert(!storyLabContext.includes('A'.repeat(321)), 'Story Lab logline should be capped');
 assert(!storyLabContext.includes('W'.repeat(321)), 'world details should be capped');
 assert(!storyLabContext.includes('N'.repeat(321)), 'narrative directives should be capped');
-assert(!storyLabContext.includes('X'.repeat(221)), 'no-go content should be capped');
+assert(storyLabContext.includes('X'.repeat(320)), 'no-go content should be preserved up to the context cap');
+assert(!storyLabContext.includes('X'.repeat(321)), 'no-go content should be capped at the context cap');
 assert(!storyLabContext.includes('undefined'), 'malformed prompt context should not render undefined');
 
 console.log('Story service prompt guard tests passed');
