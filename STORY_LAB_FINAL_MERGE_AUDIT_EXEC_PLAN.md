@@ -45,7 +45,7 @@ This plan uses a stricter definition than the older recovery docs.
 - [x] Incorporated the git/local-work auditor result.
 - [x] Recreated this plan on fresh branch `recovery/story-lab-final-merge-audit-plan` from `origin/main` at `0a56f96`.
 - [x] Updated `AGENTS.md` to point future agents to this stricter final merge, coverage, and PR-review audit plan.
-- [ ] PR and merge this plan update.
+- [x] PR and merge this plan update through PR #171.
 - [ ] Complete the local-work reconciliation gate.
 - [ ] Complete the last-40-PR review-comment audit gate.
 - [ ] Complete the 90% coverage tooling gate.
@@ -265,6 +265,17 @@ Inventory:
   - `STORY_QUALITY_EVALS_PLAN.md`
   - `tests/grok-smoke.test.ts`
 
+Captured untracked-file summaries from 2026-07-03, so a fresh `origin/main` checkout has enough evidence to classify their contents:
+
+| File | Lines | Summary |
+|---|---:|---|
+| `SPARK_TRIAL_TASKS.md` | 183 | Codex Spark trial checklist and prompts for Vercel function-count checks, Proving Grounds CSS budget cleanup, gated Grok smoke skeleton, story-quality eval planning, and PR #87 handoff updates. |
+| `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md` | 87 | Static review findings for account project payload validation, durable job events, SQL schema splitting, auth-provider config timing, non-durable UI copy, job event transactionality, idempotency, stuck running jobs, continuation payload validation, state-store lifecycle, and malformed request logging. |
+| `STORY_QUALITY_EVALS_PLAN.md` | 75 | Practical AI-assisted story-quality eval roadmap covering heuristic areas, advisory model-scored dimensions, first implementation path, risks, and cost controls. |
+| `tests/grok-smoke.test.ts` | 48 | Gated real Grok smoke script that skips unless `RUN_REAL_GROK_SMOKE=1` and `XAI_API_KEY` are present, then asserts story generation success, content, `storyId`, and positive `actualWordCount`. |
+
+Before deleting or moving any of these files, copy exact content into `PR70_RECOVERY_FINAL_REPORT.md`, land the file through a focused PR, or create a tracked evidence file. A name-only inventory is not enough to classify them later.
+
 Captured stat evidence from 2026-07-03, so a future agent is not forced to rely on private local commit objects:
 
 ```text
@@ -386,32 +397,36 @@ Steps:
 mkdir -p tmp/recovery
 ```
 
-2. Generate the last-40 PR list by number:
+2. Generate the exact last-40 PR list by PR number, not by `gh pr list`'s default ordering:
 
 ```bash
-env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh pr list --repo Phazzie/FairytaleswithSpice --state all --limit 40 --json number,title,state,mergedAt,closedAt,updatedAt,url > tmp/recovery/last-40-prs.json
+latest_pr=$(env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh api 'repos/Phazzie/FairytaleswithSpice/pulls?state=all&sort=created&direction=desc&per_page=1' --jq '.[0].number')
+first_pr=$((latest_pr - 39))
+seq "$first_pr" "$latest_pr" > tmp/recovery/last-40-pr-numbers.txt
+pr_list=$(paste -sd, tmp/recovery/last-40-pr-numbers.txt)
+for pr in $(cat tmp/recovery/last-40-pr-numbers.txt); do
+  env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh pr view "$pr" --repo Phazzie/FairytaleswithSpice --json number,title,state,mergedAt,closedAt,updatedAt,url
+done | jq -s '.' > tmp/recovery/last-40-prs.json
 ```
 
 3. Audit active non-outdated review threads for those PRs using the remote script:
 
 ```bash
-env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --state all --limit 40 --json > tmp/recovery/last-40-pr-review-threads.json
-env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --state all --limit 40 > tmp/recovery/last-40-pr-review-threads.md
+env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --prs "$pr_list" --json > tmp/recovery/last-40-pr-review-threads.json
+env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --prs "$pr_list" > tmp/recovery/last-40-pr-review-threads.md
 ```
 
-4. Audit outdated-but-unresolved threads separately. The current `review:unresolved` script filters out `thread.isOutdated`, so it must not be the only final proof. Either add a focused `--include-outdated` or `--outdated-only` mode to `scripts/recovery/list-unresolved-review-threads.mjs`, or generate an equivalent GraphQL artifact that records unresolved outdated threads.
-
-Expected artifact names after the script or GraphQL path exists:
+4. Audit outdated-but-unresolved threads separately. The default `review:unresolved` mode intentionally reports only active non-outdated threads, so it must not be the only final proof. Use the dedicated outdated modes for the manual queue:
 
 ```bash
-env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --state all --limit 40 --include-outdated --json > tmp/recovery/last-40-pr-review-threads-with-outdated.json
-env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --state all --limit 40 --outdated-only --json > tmp/recovery/last-40-pr-review-threads-outdated.json
+env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --prs "$pr_list" --include-outdated --json > tmp/recovery/last-40-pr-review-threads-with-outdated.json
+env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --prs "$pr_list" --outdated-only --json > tmp/recovery/last-40-pr-review-threads-outdated.json
 ```
 
 5. Create `tmp/recovery/last-40-pr-review-audit.md` with one row per PR:
 
 ```text
-| PR | Title | State | Review threads active | Action | Evidence |
+| PR | Title | State | Matching unresolved threads | Action | Evidence |
 |---|---|---|---|---|---|
 ```
 
@@ -491,6 +506,14 @@ Expected command:
 
 ```bash
 cd story-generator && npm test -- --watch=false --browsers=ChromeHeadless --coverage
+```
+
+Expected root package script:
+
+```json
+{
+  "test:coverage:angular": "cd story-generator && npm test -- --watch=false --browsers=ChromeHeadless --coverage"
+}
 ```
 
 Raise `story-generator/karma.conf.js` global thresholds from 85 to 90 only after this command is stable and the report supports the threshold.
@@ -605,7 +628,8 @@ STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE
 
 Acceptance:
 
-- All final commands either pass or have a documented, nonblocking reason accepted by the plan.
+- Hard local gates must pass: `npm run test:coverage`, `npm run test:all`, `npm run build`, `scripts/recovery/check-vercel-function-count.sh`, `npm run recovery:status`, required slice preflights, and the final review-thread audit.
+- Only credentialed or external live checks may be skipped with a documented nonblocking reason, and skipped proof must keep product wording as a non-claim.
 - The final report can answer what is done, what remains, what was intentionally not done, and why the done claim is honest.
 - The working branch is merged into `main`.
 - `origin/main` contains the final report with coverage and review-audit evidence.

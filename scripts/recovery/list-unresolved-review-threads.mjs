@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_LIMIT = 200;
 const VALUE_OPTION_NAMES = new Set(['--limit', '--state', '--repo', '--prs']);
+const THREAD_MODES = new Set(['active', 'include-outdated', 'outdated-only']);
 const GH_CANDIDATE_PATHS = [
   '/usr/bin/gh',
   '/usr/local/bin/gh',
@@ -12,11 +14,12 @@ const GH_CANDIDATE_PATHS = [
 
 let ghBinary = '';
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     limit: DEFAULT_LIMIT,
     state: 'all',
     format: 'markdown',
+    threadMode: 'active',
     prs: [],
     repo: '',
   };
@@ -36,6 +39,16 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--include-outdated') {
+      setThreadMode(options, 'include-outdated');
+      continue;
+    }
+
+    if (arg === '--outdated-only') {
+      setThreadMode(options, 'outdated-only');
+      continue;
+    }
+
     if (arg === '--help' || arg === '-h') {
       options.help = true;
       continue;
@@ -47,6 +60,14 @@ function parseArgs(argv) {
 
   validateOptions(options);
   return options;
+}
+
+function setThreadMode(options, threadMode) {
+  if (options.threadMode !== 'active' && options.threadMode !== threadMode) {
+    throw new Error('Choose only one outdated thread mode: --include-outdated or --outdated-only');
+  }
+
+  options.threadMode = threadMode;
 }
 
 function parseValueOption(arg, pendingArgs) {
@@ -95,6 +116,10 @@ function validateOptions(options) {
   if (!['all', 'open', 'closed', 'merged'].includes(options.state)) {
     throw new Error('--state must be one of: all, open, closed, merged');
   }
+
+  if (!THREAD_MODES.has(options.threadMode)) {
+    throw new Error('--threadMode must be one of: active, include-outdated, outdated-only');
+  }
 }
 
 function parsePrList(value) {
@@ -109,13 +134,15 @@ function parsePrList(value) {
 function printHelp() {
   console.log(`Usage: npm run review:unresolved -- [options]
 
-Lists active, unresolved, non-outdated GitHub review threads across pull requests.
+Lists unresolved GitHub review threads across pull requests.
 
 Options:
   --prs 149,150,151       Audit only selected pull request numbers.
   --limit 200             Number of PRs to scan when --prs is omitted.
   --state all             PR state for gh pr list: all, open, closed, merged.
   --repo owner/name       Repository override. Defaults to gh's current repo.
+  --include-outdated      Include outdated unresolved review threads.
+  --outdated-only         List only outdated unresolved review threads.
   --json                  Emit machine-readable JSON.
   --markdown              Emit a markdown table. This is the default.
 `);
@@ -272,11 +299,51 @@ function summarizeThread(thread) {
   const firstLine = body.split(/\r?\n/).find((line) => line.trim().length > 0) || '';
   return {
     id: thread.id,
+    isOutdated: Boolean(thread.isOutdated),
     path: thread.path || '',
     line: thread.line || null,
     author: firstComment.author?.login || '',
     url: firstComment.url || '',
     firstLine: firstLine.slice(0, 160),
+  };
+}
+
+export function selectUnresolvedThreads(threads, threadMode = 'active') {
+  if (!THREAD_MODES.has(threadMode)) {
+    throw new Error(`Unknown thread mode: ${threadMode}`);
+  }
+
+  return threads
+    .filter((thread) => !thread.isResolved)
+    .filter((thread) => {
+      if (threadMode === 'include-outdated') {
+        return true;
+      }
+
+      if (threadMode === 'outdated-only') {
+        return thread.isOutdated;
+      }
+
+      return !thread.isOutdated;
+    })
+    .map(summarizeThread);
+}
+
+export function buildPullRequestRow(pullRequest, threadMode) {
+  const unresolvedThreads = selectUnresolvedThreads(pullRequest.reviewThreads.nodes, threadMode);
+
+  if (unresolvedThreads.length === 0) {
+    return null;
+  }
+
+  return {
+    number: pullRequest.number,
+    state: pullRequest.state,
+    matchingThreads: unresolvedThreads.length,
+    threadMode,
+    title: pullRequest.title,
+    url: pullRequest.url,
+    threads: unresolvedThreads,
   };
 }
 
@@ -286,15 +353,15 @@ function escapeCell(value) {
 
 function printMarkdown(rows) {
   if (rows.length === 0) {
-    console.log('No active unresolved review threads found.');
+    console.log('No matching unresolved review threads found.');
     return;
   }
 
-  console.log('| PR | State | Active threads | Title | URL |');
+  console.log('| PR | State | Matching threads | Title | URL |');
   console.log('|---|---:|---:|---|---|');
   for (const row of rows) {
     console.log(
-      `| #${row.number} | ${escapeCell(row.state)} | ${row.activeThreads} | ${escapeCell(row.title)} | ${escapeCell(row.url)} |`,
+      `| #${row.number} | ${escapeCell(row.state)} | ${row.matchingThreads} | ${escapeCell(row.title)} | ${escapeCell(row.url)} |`,
     );
   }
 }
@@ -312,22 +379,13 @@ function main() {
 
   for (const entry of pullRequests) {
     const pullRequest = fetchPullRequest(owner, name, entry.number);
-    const unresolvedThreads = pullRequest.reviewThreads.nodes
-      .filter((thread) => !thread.isResolved && !thread.isOutdated)
-      .map(summarizeThread);
+    const row = buildPullRequestRow(pullRequest, options.threadMode);
 
-    if (unresolvedThreads.length === 0) {
+    if (!row) {
       continue;
     }
 
-    rows.push({
-      number: pullRequest.number,
-      state: pullRequest.state,
-      activeThreads: unresolvedThreads.length,
-      title: pullRequest.title,
-      url: pullRequest.url,
-      threads: unresolvedThreads,
-    });
+    rows.push(row);
   }
 
   if (options.format === 'json') {
@@ -338,9 +396,11 @@ function main() {
   printMarkdown(rows);
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(error.message);
-  process.exit(1);
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
 }

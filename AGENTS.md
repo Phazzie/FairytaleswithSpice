@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-06-21 15:04 EDT
+Last updated: 2026-07-03 08:30 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -52,6 +52,12 @@ After opening or merging a PR, audit active unresolved review threads:
 
 ```bash
 npm run review:unresolved -- --prs <pr-number>
+```
+
+For last-40 or backlog sweeps, include outdated unresolved threads as a separate queue:
+
+```bash
+npm run review:unresolved -- --state all --limit 40 --outdated-only
 ```
 
 Review comments must not be ignored. Reply on the original thread with one of: the fixing PR/commit and resolve it; a linked follow-up issue/PR if it remains valid but is out of scope; or an obsolete/superseded reason before resolving. For broader recovery sweeps, use issues #152 and #153 as the tracking backlogs.
