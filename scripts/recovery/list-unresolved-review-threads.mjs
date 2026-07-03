@@ -124,12 +124,31 @@ function validateOptions(options) {
 }
 
 function parsePrList(value) {
-  return value
+  const entries = value
     .split(',')
-    .map((entry) => entry.trim().replace(/^#/, ''))
-    .filter(Boolean)
-    .map(Number)
-    .filter((entry) => Number.isInteger(entry) && entry > 0);
+    .map((entry) => entry.trim());
+
+  if (entries.every((entry) => entry === '')) {
+    throw new Error('--prs requires at least one pull request number');
+  }
+
+  return entries.map((entry) => {
+    if (!entry) {
+      throw new Error('Invalid --prs value: empty entry');
+    }
+
+    const numberText = entry.replace(/^#/, '');
+    if (!/^\d+$/.test(numberText)) {
+      throw new Error(`Invalid --prs value: ${entry}`);
+    }
+
+    const number = Number(numberText);
+    if (number <= 0) {
+      throw new Error(`Invalid --prs value: ${entry}`);
+    }
+
+    return number;
+  });
 }
 
 function printHelp() {
