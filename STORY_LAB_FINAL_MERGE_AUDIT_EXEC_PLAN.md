@@ -118,10 +118,10 @@ Self-critique so far:
 Repository root:
 
 ```bash
-cd <repo-root>
+cd "$(git rev-parse --show-toplevel)"
 ```
 
-Use the actual checkout root for `<repo-root>`. Do not hard-code a user-specific home directory in reusable commands.
+Run this from any path inside the checkout. Do not hard-code a user-specific home directory in reusable commands.
 
 Current local evidence gathered on 2026-07-03:
 
@@ -265,9 +265,54 @@ Inventory:
   - `STORY_QUALITY_EVALS_PLAN.md`
   - `tests/grok-smoke.test.ts`
 
+Captured stat evidence from 2026-07-03, so a future agent is not forced to rely on private local commit objects:
+
+```text
+087456a Add Story Lab audit and overnight mode docs
+ AGENTS.md               |  72 ++++++++++++------
+ OVERNIGHT_HANDOFF.md    |  96 ++++++++++++++++++++++++
+ OVERNIGHT_MODE.md       | 187 ++++++++++++++++++++++++++++++++++++++++++++++
+ STORY_LAB_APP_AUDIT.md  | 187 ++++++++++++++++++++++++++++++++++++++++++++++
+ STORY_LAB_IDEA_BOARD.md | 194 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 713 insertions(+), 23 deletions(-)
+
+d40a7e3 Reconcile Story Lab storage plan status
+ OVERNIGHT_HANDOFF.md                | 49 +++++++++++++++++++++++++++++++++++++
+ STORY_LAB_STORAGE_PORT_EXEC_PLAN.md | 36 +++++++++++++++++++++------
+ 2 files changed, 77 insertions(+), 8 deletions(-)
+
+36a7ea3 Triage overnight source files
+ OVERNIGHT_HANDOFF.md    | 51 ++++++++++++++++++++++++++++++++++++++++++++-----
+ STORY_LAB_APP_AUDIT.md  |  7 +++----
+ STORY_LAB_IDEA_BOARD.md | 51 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 100 insertions(+), 9 deletions(-)
+
+d85d5b8 Add Story Lab research mining notes
+ OVERNIGHT_HANDOFF.md    | 43 +++++++++++++++++++++++++++++++++++++++++++
+ STORY_LAB_IDEA_BOARD.md | 47 +++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 90 insertions(+)
+
+75b4099 Plan Story Lab auth profile cloud library
+ AGENTS.md                                         |   2 +
+ OVERNIGHT_HANDOFF.md                              |  46 +++
+ STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md | 323 ++++++++++++++++++++++
+ STORY_LAB_IDEA_BOARD.md                           |   4 +
+ 4 files changed, 375 insertions(+)
+```
+
 Steps:
 
-1. Compare each local-only commit against `origin/main`:
+1. Preserve local-only commit evidence before any branch cleanup, if the local objects are available:
+
+```bash
+mkdir -p tmp/recovery
+git format-patch --stdout 4834914effd8bfd564ff15a9b487a05e63481d70..75b4099745557d2abc7ea3d38fa32a8119eef94c > tmp/recovery/stranded-local-main.patch
+git show --stat --oneline 087456a d40a7e3 36a7ea3 d85d5b8 75b4099 > tmp/recovery/stranded-local-main-stats.txt
+```
+
+If those objects are missing in a fresh clone, use the captured stat evidence above and the four parked untracked files as the minimum inventory. Do not require future agents to inspect private-only SHAs before they can classify the work.
+
+2. Compare each available local-only commit against `origin/main`:
 
 ```bash
 git show --stat 087456a
@@ -277,7 +322,7 @@ git show --stat d85d5b8
 git show --stat 75b4099
 ```
 
-2. For each changed file, decide one disposition:
+3. For each changed file, decide one disposition:
 
 - `Already merged remotely`: no action.
 - `Rewrite against current main`: create a small PR.
@@ -288,14 +333,16 @@ Specific local-doc rule:
 
 - Do not land old `STORY_LAB_APP_AUDIT.md` or `OVERNIGHT_HANDOFF.md` as-is. `origin/main:STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` explicitly says they must be rewritten against landed `main` first.
 
-3. Run this command on the plan branch after applying any retained local docs:
+4. Run this command on the plan branch after applying any retained local docs:
 
 ```bash
 git diff --check
 npm run recovery:status
 ```
 
-4. Open one local-work reconciliation PR only if retained docs are still useful.
+5. Copy the final disposition summary into `PR70_RECOVERY_FINAL_REPORT.md`. The ignored scratch patch under `tmp/recovery` is allowed as local evidence, but the tracked final report must contain enough file-level disposition detail for review.
+
+6. Open one local-work reconciliation PR only if retained docs are still useful.
 
 Acceptance:
 
@@ -333,27 +380,42 @@ Current blocker queue:
 
 Steps:
 
-1. Generate the last-40 PR list by number:
+1. Create the scratch artifact directory:
+
+```bash
+mkdir -p tmp/recovery
+```
+
+2. Generate the last-40 PR list by number:
 
 ```bash
 env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 gh pr list --repo Phazzie/FairytaleswithSpice --state all --limit 40 --json number,title,state,mergedAt,closedAt,updatedAt,url > tmp/recovery/last-40-prs.json
 ```
 
-2. Audit review threads for those PRs using the remote script:
+3. Audit active non-outdated review threads for those PRs using the remote script:
 
 ```bash
 env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --state all --limit 40 --json > tmp/recovery/last-40-pr-review-threads.json
 env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --state all --limit 40 > tmp/recovery/last-40-pr-review-threads.md
 ```
 
-3. Create `tmp/recovery/last-40-pr-review-audit.md` with one row per PR:
+4. Audit outdated-but-unresolved threads separately. The current `review:unresolved` script filters out `thread.isOutdated`, so it must not be the only final proof. Either add a focused `--include-outdated` or `--outdated-only` mode to `scripts/recovery/list-unresolved-review-threads.mjs`, or generate an equivalent GraphQL artifact that records unresolved outdated threads.
+
+Expected artifact names after the script or GraphQL path exists:
+
+```bash
+env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --state all --limit 40 --include-outdated --json > tmp/recovery/last-40-pr-review-threads-with-outdated.json
+env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --state all --limit 40 --outdated-only --json > tmp/recovery/last-40-pr-review-threads-outdated.json
+```
+
+5. Create `tmp/recovery/last-40-pr-review-audit.md` with one row per PR:
 
 ```text
 | PR | Title | State | Review threads active | Action | Evidence |
 |---|---|---|---|---|---|
 ```
 
-4. For every active unresolved thread:
+6. For every active unresolved or outdated-unresolved thread:
 
 - inspect the current `origin/main` code;
 - fix it in a focused PR if valid and in scope;
@@ -361,16 +423,18 @@ env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phaz
 - reply on the original thread with fixed/obsolete/out-of-scope evidence;
 - resolve only after the reply exists.
 
-5. Repeat the audit until the last-40 artifact shows no unhandled actionable comments.
+7. Repeat the audit until the last-40 artifact shows no unhandled actionable comments.
+
+8. Copy the final audit table and counts into `PR70_RECOVERY_FINAL_REPORT.md`. The `tmp/recovery` files are ignored scratch receipts; completion requires tracked evidence in the final report.
 
 Acceptance:
 
-- `tmp/recovery/last-40-pr-review-audit.md` exists and covers exactly 40 PRs.
+- `tmp/recovery/last-40-pr-review-audit.md` exists locally and covers exactly 40 PRs.
 - PR #166 and PR #161 have zero current unresolved review threads.
 - The outdated unresolved queue has zero untriaged entries.
 - All actionable comments in the last 40 PRs are fixed or linked to issues.
 - Final proof shows `0 current unresolved` and `0 untriaged outdated unresolved`.
-- `PR70_RECOVERY_FINAL_REPORT.md` links the audit artifact and summarizes counts.
+- `PR70_RECOVERY_FINAL_REPORT.md` embeds or links tracked audit evidence and summarizes counts.
 
 Subagents:
 
@@ -384,7 +448,7 @@ Purpose: turn the user's coverage requirement into a command that can pass or fa
 
 Coverage definition:
 
-- Include active first-party TypeScript under `api/_lib`, deployable `api/story*` handlers, `api/export*` handlers if still active, runtime-critical `scripts/recovery` files, and `story-generator/src/app`.
+- Include active first-party TypeScript under `api/_lib`, deployable `api/story*` handlers, `api/export*` handlers if still active, runtime-critical Node files under `scripts/recovery` (`*.ts` and `*.mjs`; shell scripts stay command-tested outside coverage), and `story-generator/src/app`.
 - Exclude `tests`, `node_modules`, generated `dist`, coverage output, temporary files, historical docs, old DigitalOcean files, and deprecated duplicate paths that are not compiled or deployed.
 - Require at least 90% statements, lines, functions, and branches for two separately enforced gates first: root/API and Angular. A combined report can be added later, but separate passing gates satisfy the first honest 90% requirement.
 
@@ -415,7 +479,7 @@ Expected package scripts:
 ```json
 {
   "test:root:self": "node scripts/recovery/run-root-self-tests.mjs",
-  "test:coverage:root": "c8 --all --extension .ts --include 'api/**/*.ts' --exclude '**/*.spec.ts' --exclude '**/*.test.ts' --exclude '**/*.d.ts' --reporter text-summary --reporter lcov --reporter json-summary --check-coverage --statements 90 --branches 90 --functions 90 --lines 90 node scripts/recovery/run-root-self-tests.mjs"
+  "test:coverage:root": "c8 --all --extension .ts --extension .mjs --include 'api/**/*.ts' --include 'scripts/recovery/**/*.ts' --include 'scripts/recovery/**/*.mjs' --exclude '**/*.spec.ts' --exclude '**/*.test.ts' --exclude '**/*.d.ts' --reporter text-summary --reporter lcov --reporter json-summary --check-coverage --statements 90 --branches 90 --functions 90 --lines 90 node scripts/recovery/run-root-self-tests.mjs"
 }
 ```
 
@@ -502,7 +566,7 @@ Steps:
 - local-work disposition;
 - PR links for every slice;
 - last-40-PR review audit counts;
-- coverage reports and commands;
+- coverage report summaries and commands, copied from ignored generated reports into the tracked final report;
 - dependency/security audit state;
 - Vercel function count;
 - live auth/cloud proof or explicit non-claim;
@@ -544,7 +608,7 @@ Acceptance:
 - All final commands either pass or have a documented, nonblocking reason accepted by the plan.
 - The final report can answer what is done, what remains, what was intentionally not done, and why the done claim is honest.
 - The working branch is merged into `main`.
-- `origin/main` contains the final report and coverage/review-audit evidence.
+- `origin/main` contains the final report with coverage and review-audit evidence.
 
 Subagents:
 
@@ -613,15 +677,22 @@ Self-critique prompts:
 
 ## Artifacts and Notes
 
-Expected artifacts:
+Expected tracked artifacts:
 
 - `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`
+- `PR70_RECOVERY_FINAL_REPORT.md`
+
+Expected scratch artifacts, copied or summarized into the tracked final report before completion:
+
 - `tmp/recovery/last-40-prs.json`
 - `tmp/recovery/last-40-pr-review-threads.json`
 - `tmp/recovery/last-40-pr-review-threads.md`
+- `tmp/recovery/last-40-pr-review-threads-with-outdated.json`
+- `tmp/recovery/last-40-pr-review-threads-outdated.json`
 - `tmp/recovery/last-40-pr-review-audit.md`
+- `tmp/recovery/stranded-local-main.patch`
+- `tmp/recovery/stranded-local-main-stats.txt`
 - coverage reports under root/API and `story-generator/coverage`
-- `PR70_RECOVERY_FINAL_REPORT.md`
 
 Issues and PRs to verify from `origin/main`:
 
