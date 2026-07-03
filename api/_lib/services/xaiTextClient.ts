@@ -84,10 +84,12 @@ export class XaiTextClient {
       const usesDifferentFastProfile = fastModel !== preferredModel || fastReasoningEffort !== preferredReasoningEffort;
 
       if (allowFallback && usesDifferentFastProfile && this.isRetryableProviderError(error)) {
-        logWarn('Primary xAI model attempt did not finish in the live request window; retrying with fast Grok model.', request.context, {
+        logWarn('Primary xAI profile attempt did not finish in the live request window; retrying with fast profile.', request.context, {
           operation: request.operation,
           primaryModel: preferredModel,
           fallbackModel: fastModel,
+          primaryReasoningEffort: preferredReasoningEffort,
+          fastReasoningEffort,
           status: error.response?.status,
           errorCode: error.code
         });

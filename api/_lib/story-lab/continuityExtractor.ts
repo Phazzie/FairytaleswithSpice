@@ -11,6 +11,8 @@ import type {
 import { XaiTextClient } from '../services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../config/xaiConfig';
 
+const MIN_AI_CONTINUITY_TIMEOUT_MS = 1000;
+
 interface ContinuityExtractionInput {
   storyId: string;
   currentState: StoryStateSnapshot;
@@ -40,11 +42,11 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
   const client = new XaiTextClient();
   const timeoutMs = input.timeoutMs ?? getXaiFastTimeoutMs();
 
-  if (!input.useAi || !client.hasApiKey() || timeoutMs <= 0) {
-    const warning = !client.hasApiKey()
-      ? 'Continuity is using local heuristic extraction because XAI_API_KEY is not configured.'
-      : !input.useAi
-        ? 'AI continuity extraction disabled for this run.'
+  if (!input.useAi || !client.hasApiKey() || timeoutMs < MIN_AI_CONTINUITY_TIMEOUT_MS) {
+    const warning = !input.useAi
+      ? 'AI continuity extraction disabled for this run.'
+      : !client.hasApiKey()
+        ? 'Continuity is using local heuristic extraction because XAI_API_KEY is not configured.'
         : 'AI continuity extraction skipped because the request budget was nearly exhausted.';
 
     return {

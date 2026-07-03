@@ -19,7 +19,7 @@ export function getStoryLabResponseStatus(payload: ApiResponse<unknown> | unknow
 
   const response = payload as Partial<ApiResponse<unknown>>;
   if (response.success === true) {
-    return 200;
+    return response.data === undefined ? 500 : 200;
   }
 
   if (response.success !== false || !response.error || typeof response.error !== 'object') {
