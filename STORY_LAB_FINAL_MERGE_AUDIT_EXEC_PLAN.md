@@ -1,7 +1,7 @@
 # Story Lab Final Merge And Audit ExecPlan
 
 Created: 2026-07-03 08:04 EDT
-Last updated: 2026-07-03 12:23 EDT
+Last updated: 2026-07-03 12:54 EDT
 
 This ExecPlan extends the current `origin/main` completion-hardening plan with the user's stronger final goal: all local work must be reconciled through pull requests, review comments must be handled, the last 40 PRs must be audited for unresolved review comments, and the repo must have a real 90% test-coverage gate before the work is called done.
 
@@ -50,7 +50,7 @@ This plan uses a stricter definition than the older recovery docs.
 - [x] Merged review-audit follow-up PRs #174, #175, #176, #177, and #178 from fresh `origin/main` branches.
 - [x] Verified the current checked-out review-follow-up commit is contained in `origin/main`; no tracked implementation work is stranded locally.
 - [ ] Complete the local-work reconciliation gate.
-- [ ] Complete the last-40-PR review-comment audit gate.
+- [x] Complete the last-40-PR review-comment audit gate.
 - [ ] Complete the 90% coverage tooling gate.
 - [ ] Complete the remaining remote completion-hardening slices or close them with evidence.
 - [ ] Produce the final completion report.
@@ -62,7 +62,7 @@ This plan uses a stricter definition than the older recovery docs.
 - `origin/main` no longer has `OVERNIGHT_HANDOFF.md`; local `main` still does. Do not assume local docs should be reintroduced unchanged.
 - The current root scripts on local `main` are stale. `origin/main:package.json` includes `recovery:status`, `recovery:preflight`, and `review:unresolved`.
 - Current local tooling has Karma coverage dependencies, but there is no verified repo-wide 90% coverage gate in the local top-level scripts.
-- The last-40-PR review-thread audit has already found real blockers: 40 PRs checked, 157 review threads total, 35 unresolved threads remain. PR #166 and PR #161 have 12 current unresolved threads between them. Older PRs #156, #155, #154, #116, #114, #112, #109, #105, #104, and #103 have outdated unresolved threads that need manual recheck and resolution or issue links.
+- The initial last-40-PR review-thread audit found real blockers: 40 PRs checked, 157 review threads total, and 35 unresolved threads. PRs #174 through #179 cleared that recovery-window backlog.
 - `gh` can hang when `GH_PAGER` is set. The successful review-thread audit used `env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 ...`.
 - Angular already has `karma-coverage`, but `story-generator/karma.conf.js` currently enforces 85% global thresholds, not 90%.
 - Root/API tests are self-running `tsx` scripts and are not currently run under a coverage tool. There is no root `c8`, `nyc`, Jest, Vitest, or equivalent coverage dependency in the stale local checkout.
@@ -75,10 +75,12 @@ This plan uses a stricter definition than the older recovery docs.
 - Extra worktrees exist for `ai-review/story-lab-unsliced-reference-do-not-merge`, `recovery/story-lab-pr90-response-followups`, and `recovery/story-lab-memory-cards`. The two recovery worktrees are already merged into `origin/main`.
 - This plan now lives on branch `recovery/story-lab-final-merge-audit-plan`, which started from `origin/main` at `0a56f96`; before the plan diff, `git rev-list --left-right --count origin/main...HEAD` returned `0 0`.
 - On the plan branch, `scripts/recovery/check-vercel-function-count.sh` reports `11/12`.
-- A late CodeRabbit pass can still add threads after a PR is merged. PR #178 was clean at merge time, then later received two active trivial maintainability comments. Future completion claims need a post-bot, post-merge audit window.
-- As of 2026-07-03 12:23 EDT, the only open PRs are Dependabot PR #120 and PR #121. Both are old, `UNSTABLE`, and have failing Recovery CI/Vercel checks.
+- A late CodeRabbit pass can still add threads after a PR is merged. PR #178 was clean at merge time, then later received two active trivial maintainability comments. PR #179 fixed and resolved those late comments, and future completion claims still need a post-bot, post-merge audit window.
+- As of 2026-07-03 12:54 EDT, the last-40 PR audit commands report `0` active unresolved, `0` outdated unresolved, and `0` include-outdated unresolved threads.
+- As of 2026-07-03 12:54 EDT, a wider `--state all --limit 200` audit still finds older historical backlog outside the last-40 recovery window: 168 active unresolved threads across 35 PRs, 56 outdated unresolved threads across 14 PRs, and 224 combined unresolved threads across 45 PRs.
+- As of 2026-07-03 12:54 EDT, the only open PRs are Dependabot PR #120 and PR #121. Both are old, `UNKNOWN`/failing, and have failing Recovery CI/Vercel checks.
 - Dependabot PR #120 and PR #121 are not quick merge candidates. Both contain Angular 22 major-upgrade work that conflicts with the repo's current Angular 20/TypeScript 5.9 setup; close/recreate as separate root dependency and Angular-major-upgrade work.
-- As of 2026-07-03 12:23 EDT, `npm run recovery:status` reports the checked-out branch is ahead `0`, behind `1`, and `HEAD is already contained in origin/main`; only four parked untracked files remain local-only.
+- The parent checkout still has four parked untracked artifacts that are intentionally local-only: `SPARK_TRIAL_TASKS.md`, `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts`. No tracked PR #179 work remains local-only after merge.
 
 ## Decision Log
 
@@ -108,7 +110,8 @@ This plan uses a stricter definition than the older recovery docs.
 Current outcome:
 
 - The stricter final plan is merged to `main`.
-- The original last-40 review-comment cleanup drove PRs #174 through #178 and cleared the known current/outdated backlog, but two late PR #178 CodeRabbit nits appeared after merge and are being handled in the next cleanup branch.
+- The original last-40 review-comment cleanup drove PRs #174 through #178, and PR #179 handled the late PR #178 CodeRabbit nits. A fresh last-40 audit now reports zero active or outdated unresolved review threads.
+- A wider 200-PR audit still shows older historical unresolved review-thread backlog outside the last-40 recovery gate.
 - Subagents have been deployed for the original four independent audit areas and for the two remaining Dependabot PRs.
 - The repo still lacks a current 90% coverage gate and still has four parked local-only artifacts.
 
