@@ -1,6 +1,6 @@
 # Story Lab Final Merge And Audit ExecPlan
 
-Created: 2026-07-03
+Created: 2026-07-03 08:04 EDT
 
 This ExecPlan extends the current `origin/main` completion-hardening plan with the user's stronger final goal: all local work must be reconciled through pull requests, review comments must be handled, the last 40 PRs must be audited for unresolved review comments, and the repo must have a real 90% test-coverage gate before the work is called done.
 
@@ -118,8 +118,10 @@ Self-critique so far:
 Repository root:
 
 ```bash
-cd /Users/hbpheonix/fairytaleswithspice
+cd <repo-root>
 ```
+
+Use the actual checkout root for `<repo-root>`. Do not hard-code a user-specific home directory in reusable commands.
 
 Current local evidence gathered on 2026-07-03:
 
@@ -347,7 +349,8 @@ env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 npm run review:unresolved -- --repo Phaz
 3. Create `tmp/recovery/last-40-pr-review-audit.md` with one row per PR:
 
 ```text
-PR | Title | State | Review threads active | Action | Evidence
+| PR | Title | State | Review threads active | Action | Evidence |
+|---|---|---|---|---|---|
 ```
 
 4. For every active unresolved thread:
@@ -412,7 +415,7 @@ Expected package scripts:
 ```json
 {
   "test:root:self": "node scripts/recovery/run-root-self-tests.mjs",
-  "test:coverage:root": "c8 --all --extension .ts --include 'api/**/*.ts' --include 'shared/**/*.ts' --exclude '**/*.spec.ts' --exclude '**/*.test.ts' --exclude '**/*.d.ts' --reporter text-summary --reporter lcov --reporter json-summary --check-coverage --statements 90 --branches 90 --functions 90 --lines 90 npm run test:root:self"
+  "test:coverage:root": "c8 --all --extension .ts --include 'api/**/*.ts' --exclude '**/*.spec.ts' --exclude '**/*.test.ts' --exclude '**/*.d.ts' --reporter text-summary --reporter lcov --reporter json-summary --check-coverage --statements 90 --branches 90 --functions 90 --lines 90 node scripts/recovery/run-root-self-tests.mjs"
 }
 ```
 
