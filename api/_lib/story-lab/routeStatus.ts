@@ -12,16 +12,27 @@ const SERVICE_UNAVAILABLE_CODES = new Set([
   'AI_UNAVAILABLE'
 ]);
 
-export function getStoryLabResponseStatus(payload: ApiResponse<unknown>): number {
-  if (payload.success) {
+export function getStoryLabResponseStatus(payload: ApiResponse<unknown> | unknown): number {
+  if (!payload || typeof payload !== 'object') {
+    return 500;
+  }
+
+  const response = payload as Partial<ApiResponse<unknown>>;
+  if (response.success === true) {
     return 200;
   }
 
-  if (CLIENT_ERROR_CODES.has(payload.error.code)) {
+  if (response.success !== false || !response.error || typeof response.error !== 'object') {
+    return 500;
+  }
+
+  const code = typeof response.error.code === 'string' ? response.error.code : '';
+
+  if (CLIENT_ERROR_CODES.has(code)) {
     return 400;
   }
 
-  if (SERVICE_UNAVAILABLE_CODES.has(payload.error.code)) {
+  if (SERVICE_UNAVAILABLE_CODES.has(code)) {
     return 503;
   }
 

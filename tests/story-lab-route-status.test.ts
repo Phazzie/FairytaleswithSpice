@@ -1,8 +1,9 @@
 #!/usr/bin/env tsx
 // Created: 2026-06-21 20:57 UTC
 
-import genesisHandler from '../api/story-lab/stories';
-import continuationHandler from '../api/story-lab/stories/[storyId]/continue';
+import genesisHandler, { createStoryLabGenesisHandler } from '../api/story-lab/stories';
+import continuationHandler, { createStoryLabContinuationHandler } from '../api/story-lab/stories/[storyId]/continue';
+import { getStoryLabResponseStatus } from '../api/_lib/story-lab/routeStatus';
 
 interface FakeRequest {
   method: string;
@@ -39,6 +40,20 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function captureConsoleError(fn: () => Promise<void>): Promise<unknown[][]> {
+  const originalError = console.error;
+  const calls: unknown[][] = [];
+  console.error = (...args: unknown[]) => {
+    calls.push(args);
+  };
+
+  return fn()
+    .then(() => calls)
+    .finally(() => {
+      console.error = originalError;
+    });
 }
 
 async function withEnv(updates: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
@@ -126,6 +141,13 @@ function createContinuationBody() {
 }
 
 async function main(): Promise<void> {
+  assert(getStoryLabResponseStatus(null as never) === 500, 'null response payload should map to 500');
+  assert(getStoryLabResponseStatus({} as never) === 500, 'malformed response payload should map to 500');
+  assert(
+    getStoryLabResponseStatus({ success: false } as never) === 500,
+    'missing error payload should map to 500'
+  );
+
   await withEnv({ NODE_ENV: 'production', VERCEL_ENV: undefined, XAI_API_KEY: undefined, STORY_LAB_FORCE_MOCK: undefined }, async () => {
     const response = new FakeResponse();
     await genesisHandler(createRequest('POST', createBlueprint()), response);
@@ -153,6 +175,42 @@ async function main(): Promise<void> {
     }), response);
 
     assert(response.statusCode === 400, `content-policy genesis failure should return 400, got ${response.statusCode}`);
+  });
+
+  await withEnv({ NODE_ENV: undefined, VERCEL_ENV: undefined, XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
+    const response = new FakeResponse();
+    const handler = createStoryLabGenesisHandler(async () => {
+      throw new Error('secret genesis payload');
+    });
+
+    const errorLogs = await captureConsoleError(async () => {
+      await handler(createRequest('POST', createBlueprint()), response);
+    });
+
+    assert(response.statusCode === 500, `unexpected genesis throw should return 500, got ${response.statusCode}`);
+    assert((response.body as { success?: boolean }).success === false, 'unexpected genesis throw should return an error payload');
+    assert(errorLogs.length === 1, 'unexpected genesis throw should emit one redacted error log');
+    assert(JSON.stringify(errorLogs).includes('generateGenesis'), 'genesis error log should include operation name');
+    assert(JSON.stringify(errorLogs).includes('Error'), 'genesis error log should include error type');
+    assert(!JSON.stringify(errorLogs).includes('secret genesis payload'), 'genesis error log should not include raw error message');
+  });
+
+  await withEnv({ NODE_ENV: undefined, VERCEL_ENV: undefined, XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
+    const response = new FakeResponse();
+    const handler = createStoryLabContinuationHandler(async () => {
+      throw new Error('secret continuation payload');
+    });
+
+    const errorLogs = await captureConsoleError(async () => {
+      await handler(createRequest('POST', createContinuationBody()), response);
+    });
+
+    assert(response.statusCode === 500, `unexpected continuation throw should return 500, got ${response.statusCode}`);
+    assert((response.body as { success?: boolean }).success === false, 'unexpected continuation throw should return an error payload');
+    assert(errorLogs.length === 1, 'unexpected continuation throw should emit one redacted error log');
+    assert(JSON.stringify(errorLogs).includes('continueStory'), 'continuation error log should include operation name');
+    assert(JSON.stringify(errorLogs).includes('Error'), 'continuation error log should include error type');
+    assert(!JSON.stringify(errorLogs).includes('secret continuation payload'), 'continuation error log should not include raw error message');
   });
 
   console.log('Story Lab route status tests passed');

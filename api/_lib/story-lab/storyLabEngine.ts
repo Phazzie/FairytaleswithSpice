@@ -166,12 +166,24 @@ function missingProviderResponse(): StoryLabErrorResponse {
   };
 }
 
-function storyLabErrorResponse(error: { code?: string; message: string }, fallbackCode: string): StoryLabErrorResponse {
+function storyLabErrorResponse(error: unknown, fallbackCode: string): StoryLabErrorResponse {
+  const record = error && typeof error === 'object'
+    ? error as { code?: unknown; message?: unknown }
+    : {};
+  const trimmedCode = typeof record.code === 'string' ? record.code.trim() : '';
+  const trimmedMessage = typeof record.message === 'string' ? record.message.trim() : '';
+  const code = trimmedCode
+    ? trimmedCode
+    : fallbackCode;
+  const message = trimmedMessage
+    ? trimmedMessage
+    : 'Story Lab request failed before completing.';
+
   return {
     success: false,
     error: {
-      code: error.code ?? fallbackCode,
-      message: error.message
+      code,
+      message
     }
   };
 }
@@ -1132,7 +1144,7 @@ function toStoryLabChapters(
       chapterNumber,
       title: normalizeChapterTitle(chapter.title, chapterNumber),
       htmlContent,
-      rawContent: chapter.rawContent || htmlContent,
+      rawContent: chapter.rawContent ?? htmlContent,
       summary: summarizeHtml(htmlContent),
       wordCount: chapter.wordCount || countWords(htmlContent),
       hasCliffhanger: Boolean(chapter.cliffhangerEnding),
