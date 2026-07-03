@@ -79,7 +79,11 @@ export class XaiTextClient {
       return await this.callResponsesApi(request, preferredModel, request.timeoutMs, request.modelPreference ?? 'primary');
     } catch (error: any) {
       const fastModel = getXaiFastModel();
-      if (allowFallback && fastModel !== preferredModel && this.isRetryableProviderError(error)) {
+      const preferredReasoningEffort = getXaiReasoningEffortForModel(preferredModel, request.modelPreference ?? 'primary');
+      const fastReasoningEffort = getXaiReasoningEffortForModel(fastModel, 'fast');
+      const usesDifferentFastProfile = fastModel !== preferredModel || fastReasoningEffort !== preferredReasoningEffort;
+
+      if (allowFallback && usesDifferentFastProfile && this.isRetryableProviderError(error)) {
         logWarn('Primary xAI model attempt did not finish in the live request window; retrying with fast Grok model.', request.context, {
           operation: request.operation,
           primaryModel: preferredModel,

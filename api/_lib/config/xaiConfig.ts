@@ -31,7 +31,11 @@ export function isHighAgentEffort(effort: XaiReasoningEffort = getXaiReasoningEf
   return effort === 'high' || effort === 'xhigh';
 }
 
-export function supportsXaiReasoningParameter(model: string): boolean {
+export function supportsXaiReasoningParameter(model: string | null | undefined): boolean {
+  if (!model) {
+    return false;
+  }
+
   const normalizedModel = model.toLowerCase();
   return normalizedModel.includes('grok-4.3') || normalizedModel.includes('multi-agent');
 }
@@ -53,6 +57,10 @@ export function getXaiReasoningEffortForModel(model: string, modelPreference: 'p
   const configuredEffort = getXaiReasoningEffort();
   if (normalizedModel.includes('grok-4.3') && configuredEffort === 'xhigh') {
     return 'high';
+  }
+
+  if (normalizedModel.includes('multi-agent') && configuredEffort === 'none') {
+    return DEFAULT_XAI_REASONING_EFFORT;
   }
 
   return configuredEffort;
