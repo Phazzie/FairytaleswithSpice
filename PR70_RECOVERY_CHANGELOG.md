@@ -3280,3 +3280,23 @@ Validation:
 - `git diff --check`: passed.
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
 - `npm run recovery:status`: passed; branch contains only `api/README.md` and changelog edits.
+
+## 2026-07-03 18:39 EDT - Subagent Guidance And PR #120 Split Trial
+
+Actions:
+
+- Added `AGENTS.md` guidance for bounded subagent tickets, disjoint write scopes, parent-owned strategy, and required result contracts.
+- Added `SUBAGENT_LOG.md` as the dedicated place to record subagent batches, outputs, parent verification, integration decisions, and follow-ups.
+- Ran a six-agent Spark trial for Dependabot PR #120 after parent analysis found it mixed root `tsx`/`esbuild` work with an Angular 20 to Angular 22 major upgrade.
+- Recorded the trial result: five agents returned, one timed out, and no dependency/config changes were integrated without parent revalidation.
+
+Self-review:
+
+- Good: The guidance makes subagent work auditable instead of relying on chat memory.
+- Correction: Previous subagent activity was documented in plans/memory, but not in a dedicated repo log.
+- Finding: Spark is useful for narrow package diffs, config drafts, validation matrices, and wording drafts, but tickets still need stronger workspace/source-of-truth constraints and deterministic artifacts.
+- Non-claim: Subagent output is not accepted until parent review and local validation finish.
+
+Validation:
+
+- `git diff --check`: passed.
