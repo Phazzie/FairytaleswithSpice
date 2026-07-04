@@ -21,7 +21,7 @@ In plain terms: the user-facing Story Lab is mostly real and usable for creating
 | Product concept and user promise | 75% | Mostly done | The core idea, demo stance, user loop, and non-claims are documented; durable platform pieces are still future work. |
 | Angular UI surface | 88% | Strong | The route, controls, continuation, progress, library, and local export UI exist; polish remains around disabled states, Proving Grounds intent, and small-screen layout. |
 | API, generation, and job routes | 83% | Strong scaffold | Direct generation, continuation, jobs, events, privacy gates, fail-closed AI, and route budget are covered; streaming privacy and durable job storage remain incomplete. |
-| Auth, storage, and durability | 69% | Partial | Auth/store contracts and owner checks exist, but live provider auth, provisioned database proof, migrations, and cloud sync proof are not done. |
+| Auth, storage, and durability | 72% | Partial | Auth/store contracts, owner checks, and Neon dependency support exist, but live provider auth, provisioned database proof, migrations, and cloud sync proof are not done. |
 | Tests, coverage, and CI | 43% | Weakest area | Many tests and preflight checks exist, but there is no enforced root/API coverage gate and Angular is still at 85%, not 90%. |
 | Docs and process | 75% | Improved | Guardrails, changelog, lessons, subagent log, current handoff guidance, and active-plan routing exist; stale-doc cleanup still matters where old docs create active confusion. |
 
@@ -65,14 +65,14 @@ In plain terms: the user-facing Story Lab is mostly real and usable for creating
 - [x] **Owner checks.** Storage and account routes enforce owner-scoped access in contract tests.
 - [~] **Project store adapters.** In-memory and Postgres modes exist, but durable execution is not proven against a real database.
 - [~] **Profile store adapters.** Profile defaults and normalization exist, but live profile save/load proof is still missing.
-- [~] **Account routes.** Route contracts and guarded responses exist, but full end-to-end signed-in execution is not proven.
-- [~] **Cloud database readiness.** Config, schema, readiness, and migration helpers exist; provisioning/executed migrations are not proven here.
+- [~] **Account routes.** Route contracts and guarded responses exist, but full end-to-end signed-in execution against real provider auth and a provisioned database is not proven.
+- [~] **Cloud database readiness.** Config, schema, readiness, migration helpers, and Neon dependency support exist; provisioning/executed migrations are not proven here.
 - [ ] **Live durable cloud sync.** Provider-backed sign-in plus durable save/load/list/delete against a provisioned database is still not done.
 
 ## Tests, Coverage, And CI Checklist
 
 - [x] **Known test command surface.** Root scripts expose many focused Story Lab and recovery tests.
-- [~] **Canonical `test:all` map.** `test:all` covers a lot, but some old or special-purpose test files are not clearly wired.
+- [~] **Canonical `test:all` map.** `test:all` covers a lot, but some old, special-purpose, privacy/security, and job-contract test files are not clearly wired.
 - [~] **Angular coverage.** Karma coverage is configured at 85%; it is not yet the requested 90% and the script path should force coverage output.
 - [ ] **Root/API coverage.** There is no `c8`/`nyc`/Vitest/Jest-style coverage gate for root/API TypeScript tests yet.
 - [ ] **Coverage artifacts.** There is no current generated coverage artifact proving repo-wide numbers.

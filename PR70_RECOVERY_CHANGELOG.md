@@ -15,6 +15,7 @@ Actions:
 - Updated `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` to mark the job-route scaffold as merged while preserving the non-durable job warning.
 - Updated `SUBAGENT_LOG.md` with agent scopes, the failed attempt, replacement UI audit, integration status, and follow-ups.
 - Updated `LESSONS_LEARNED.md` with the narrow-band Spark audit lesson.
+- Addressed PR #186 review comments by adding Created headers, fixing typos/wording, updating route-count evidence to `11/12`, adding concrete PR #104 job-route merge evidence, correcting stale Neon-dependency wording, and naming unwired privacy/security/job-contract tests in the coverage audit.
 
 Self-review:
 
@@ -29,6 +30,7 @@ Validation:
 - `git diff --check`: passed after whitespace cleanup.
 - `npm run test:recovery-finish-check`: passed.
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- PR #186 review-fix rerun: `git diff --check`, `npm run test:recovery-finish-check`, and `scripts/recovery/check-vercel-function-count.sh` passed.
 
 ## 2026-07-04 00:00 EDT - Repository Discipline Guardrails
 
