@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-04 07:16 EDT
+Last updated: 2026-07-04 14:33 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -87,6 +87,7 @@ Do not leave status only in chat. Update the narrowest durable document that mat
 | `PR70_RECOVERY_FINAL_REPORT.md` | Overall recovery status changes near finalization, especially what is merged, deferred, or still risky. |
 | `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` | Completion-hardening work changes auth/database proof, dependency follow-ups, review backlog status, or done/not-done claims. |
 | `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` | Final audit evidence changes: last-40 PR audit, wider PR debt, unresolved review comments, coverage proof, or "all work merged" claims. |
+| `STORY_LAB_FUTURE_WORK_CHECKLIST.md` | Granular future-work tickets, subagent-ready scopes, execution ordering, admin cleanup status, or next-work prioritization changes. |
 | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` | Auth, profile, cloud library APIs/UI, signed-in save/load/list/delete behavior, or provider-backed claims change. |
 | `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` | Storage ports, in-memory/Postgres adapters, schema, durability wording, owner-scoped behavior, or cloud-vs-local status changes. |
 | `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` | Job routes, job store, SSE events, progress/reload behavior, Workflow claims, or non-durable job wording changes. |
@@ -177,6 +178,8 @@ The idea/backlog board is `STORY_LAB_IDEA_BOARD.md`. Keep it honest: `Done` mean
 The active Story Lab auth/profile/cloud-library plan is `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`. Use it before adding provider-backed auth, private user profiles, cloud project library APIs, account route rewrites, or signed-in save/load/list/delete behavior.
 
 The whole-concept status checklist is `STORY_LAB_CONCEPT_CHECKLIST.md`. Use it for plain-language percentages, done/not-done status, and next-work prioritization before giving a broad Story Lab status update.
+
+The granular future-work checklist is `STORY_LAB_FUTURE_WORK_CHECKLIST.md`. Use it before dispatching subagents for unfinished Story Lab work; each unfinished item is broken into owned scope, stop condition, output, and validation.
 
 ## Historical Recovery Context
 

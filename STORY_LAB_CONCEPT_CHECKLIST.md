@@ -5,6 +5,8 @@ Last updated: 2026-07-04 07:16 EDT
 
 This is the plain-status checklist for the whole Story Lab concept. It includes what is already merged, what is partially built, and what is still not done. The percentages are evidence estimates from the six-check audit artifacts in `STORY_LAB_CHECKLIST_FINDINGS/` plus this PR's doc-fix pass.
 
+For subagent-sized future work, use `STORY_LAB_FUTURE_WORK_CHECKLIST.md`.
+
 ## Plain Status
 
 - Overall Story Lab maturity: **72%**
