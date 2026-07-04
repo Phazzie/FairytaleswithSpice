@@ -20,6 +20,42 @@ Parent verification:
 Follow-ups:
 ```
 
+## 2026-07-03 21:09 EDT - PR #121 Angular 22 Six-Agent Investigation
+
+Parent branch / PR: `recovery/pr121-angular-investigation` / PR #121
+
+Goal: use six Spark subagents to inspect PR #121 from conventional and unconventional angles, write findings into the worktree, and give the parent agent enough evidence to decide whether PR #121 should be repaired in place or replaced.
+
+Parent analysis before dispatch:
+
+- PR #121 is open and unstable.
+- PR #121 changes only `story-generator/package.json` and `story-generator/package-lock.json`.
+- The dependency diff is not a small patch; it moves much of the Angular app from Angular 20 to Angular 22.
+- Parent suspected the failure was a migration/toolchain issue, not a simple stale Dependabot branch.
+- Subagents were assigned independent read/write report files under `PR121_AGENT_FINDINGS/`; no package files were delegated.
+
+| Agent | Model | Role | Scope | Status | Result | Integrated? |
+|---|---|---|---|---|---|---|
+| Plato | `gpt-5.3-codex-spark` | compatibility analyst | Node, TypeScript, Angular, SSR, Vite, Zone, RxJS compatibility matrix | Done | Found hard blockers: Node 20 and TypeScript 5.9 do not satisfy Angular 22 package requirements; CLI remains Angular 20 | Integrated into synthesis |
+| Zeno | `gpt-5.3-codex-spark` | code/config scanner | Angular config, SSR files, routes, API paths, browser-only API usage | Done | Flagged Story Lab API routing, SSR/browser API guard, and Vercel fallback risks | Integrated into synthesis |
+| Mendel | `gpt-5.3-codex-spark` | CI forensics | GitHub checks, Vercel failure, workflow logs | Done | Proved CI fails during `npm ci` because Angular 22 build packages require TypeScript 6 | Integrated into synthesis |
+| Goodall | `gpt-5.3-codex-spark` | test/coverage mapper | Existing Angular/root tests and missing upgrade validation | Done | Estimated current Angular 22 validation readiness at 61%; identified SSR, hydration, fallback, lazy-route, and browser/API gaps | Integrated into synthesis |
+| Volta | `gpt-5.3-codex-spark` | security/runtime reviewer | Angular security/runtime release implications, sanitizer/SSR/streaming risk | Done | Flagged large lockfile churn and sanitizer/SSR/rendering behavior changes as migration risks | Integrated into synthesis |
+| Descartes | `gpt-5.3-codex-spark` | contrarian reviewer | Repair-in-place vs close/recreate strategy | Done | Rated repair-in-place 3/10 and clean Angular 22 branch 8/10 | Integrated into synthesis |
+
+Parent verification:
+
+- Parent read all six agent reports.
+- Parent removed stray untracked `.local` scratch copies left by an agent.
+- Parent did not edit dependency/package files.
+- Parent synthesized the reports into `PR121_AGENT_FINDINGS/SYNTHESIS.md`.
+
+Follow-ups:
+
+- Close PR #121 as superseded or keep it open only long enough to post the replacement-path explanation.
+- Create a clean Angular 22 migration branch instead of repairing the Dependabot PR in place.
+- Before delegating implementation, parent should choose the Node target and write narrow tickets with disjoint file ownership.
+
 ## 2026-07-03 20:28 EDT - PR #120 Root-Only Replacement Slice
 
 Parent branch / PR: `recovery/dependabot-root-tsx` / PR #184

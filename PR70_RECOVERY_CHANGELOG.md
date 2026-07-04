@@ -4,6 +4,37 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-03 21:09 EDT - PR121 Angular 22 Investigation Fleet
+
+Problem:
+
+- PR #121 is still open and failing.
+- The user asked for a fleet of Spark subagents to inspect different conventional and unconventional aspects of the PR, with written findings that the parent agent could synthesize.
+- The main decision was whether PR #121 should be repaired in place or replaced by a clean migration branch.
+
+Actions:
+
+- Created/used the investigation branch `recovery/pr121-angular-investigation` from current `origin/main`.
+- Dispatched six Spark agents with unique write targets under `PR121_AGENT_FINDINGS/`.
+- Assigned conventional checks for compatibility, code/config risk, CI/Vercel failure, test/coverage impact, and security/runtime implications.
+- Assigned one contrarian strategy check to challenge whether repairing PR #121 in place made sense.
+- Removed stray untracked `.local` scratch package copies left by an agent.
+- Added `PR121_AGENT_FINDINGS/SYNTHESIS.md` to summarize the parent decision.
+
+Findings:
+
+- Investigation completion is 100%: all six agents returned written reports.
+- PR #121 merge readiness as-is is about 5% because CI fails during `story-generator` dependency install before build/test.
+- Confidence that PR #121 should not merge as-is is about 95%.
+- Angular 22 migration plan readiness is about 85%; the blockers and validation shape are clear, but implementation has not started.
+- The direct CI blocker is TypeScript: Angular 22 build/compiler packages require TypeScript `>=6.0 <6.1`, while PR #121 keeps TypeScript 5.9.
+- The broader blocker is environment alignment: repo CI/Docker/recovery paths are still on Node 20, while Angular 22 expects newer Node.
+
+Decision:
+
+- Do not repair PR #121 in place.
+- Close or supersede PR #121 and create a clean Angular 22 migration branch with Node, TypeScript, Angular CLI/build/runtime packages, lockfile, and validation gates handled together.
+
 ## 2026-06-21 16:45 EDT - PR99 Grok Fast-Path Review Follow-Up
 
 Problem:
