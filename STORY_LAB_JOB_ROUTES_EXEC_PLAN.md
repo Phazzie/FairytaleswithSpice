@@ -38,7 +38,7 @@ This branch deliberately keeps the current direct generation routes working. It 
 - [x] Add route/store tests for opaque ids, SSE snapshots, missing-provider failures, and invalid job ids.
 - [x] Update function-count allow-list and active docs.
 - [x] Run focused validation and record evidence.
-- [ ] Commit, push, open PR, address review, and merge only if checks pass.
+- [x] Commit, push, open PR, address review, and merge only if checks pass.
 
 ## Surprises & Discoveries
 
@@ -83,12 +83,12 @@ An expert reviewer hostile to this plan would object:
 
 ## Outcomes & Retrospective
 
-Fill before final handoff:
+Outcome:
 
-- Outcome: Added the backend Story Lab job-route scaffold and Angular job client seam. The scaffold creates opaque `job_<uuid>` ids, stores process-local snapshots, replays SSE events, and labels durability as `non_durable_memory`.
-- Validation evidence: `git diff --check`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh`, and `scripts/recovery/preflight.sh --quick --skip-status` passed during implementation.
-- PR and merge evidence: pending.
-- Remaining risks: The visible UI still uses the old direct generation/streaming path; durable Workflow/queue/database/auth ownership remains future work; the function budget is now `10/12`.
+- Added and merged the backend Story Lab job-route scaffold and Angular job client seam. The scaffold creates opaque `job_<uuid>` ids, stores process-local snapshots, replays SSE events, and labels durability as `non_durable_memory`.
+- Validation evidence during implementation: `git diff --check`, `npx tsx tests/story-lab-job-contracts.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`, `scripts/recovery/check-vercel-function-count.sh`, and `scripts/recovery/preflight.sh --quick --skip-status`.
+- PR and merge evidence: merged before the 2026-07-04 whole-concept checklist audit; current `main` contains the job route family and job UI/client wiring.
+- Remaining risks: durable Workflow/queue/database/auth ownership remains future work; job progress must keep `non_durable_memory` wording until process-loss durable behavior is proven.
 
 ## Context and Orientation
 

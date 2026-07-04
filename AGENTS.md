@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-04 00:00 EDT
+Last updated: 2026-07-04 07:16 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -95,7 +95,7 @@ Do not leave status only in chat. Update the narrowest durable document that mat
 | `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md` | Story generation semantics, real-engine bridging, prompt contracts, continuation behavior, or model request shape changes. |
 | `GROK_MULTIAGENT_STORY_LAB_POLISH_EXEC_PLAN.md` | Grok model behavior, AI continuity extraction, durable local story memory, story-quality evals, or provider fallback behavior changes. |
 | `MVP_TO_SHIPPING_EXEC_PLAN.md`, `STORY_LAB_DEMO_SHIPPING_EXEC_PLAN.md`, and readiness reports | Public/demo shipping status, deployed smoke evidence, live-provider proof, dependency/security hardening, or MVP readiness changes. |
-| `OVERNIGHT_HANDOFF.md` | A long autonomous run pauses, completes a coherent slice, parks local-only work, or leaves blocked commands for the next session. |
+| `OVERNIGHT_MODE.md` | A long autonomous run pauses, completes a coherent workstream, parks local-only work, or leaves blocked commands for the next session. Do not reintroduce old `OVERNIGHT_HANDOFF.md` without rewriting it from current `main`. |
 | `STORY_LAB_IDEA_BOARD.md` | Research-mined ideas, Weird Lab candidates, story-quality experiments, or backlog statuses change. Use `Local-only` unless merged. |
 | `README.md` or deployment docs | User-facing setup, install, environment, deploy, or smoke-test instructions change. Do not revive historical DigitalOcean guidance as active. |
 | `package.json` scripts | A repeatable command is added, renamed, or expected by agents/CI/docs. |
@@ -176,9 +176,11 @@ The idea/backlog board is `STORY_LAB_IDEA_BOARD.md`. Keep it honest: `Done` mean
 
 The active Story Lab auth/profile/cloud-library plan is `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`. Use it before adding provider-backed auth, private user profiles, cloud project library APIs, account route rewrites, or signed-in save/load/list/delete behavior.
 
-## Current Recovery Direction
+The whole-concept status checklist is `STORY_LAB_CONCEPT_CHECKLIST.md`. Use it for plain-language percentages, done/not-done status, and next-work prioritization before giving a broad Story Lab status update.
 
-The active direction is documented in `PR70_RECOVERY_PLAN.md`.
+## Historical Recovery Context
+
+`PR70_RECOVERY_PLAN.md` and `plan.md` are historical recovery context, not the active source of truth for current Story Lab completion work. Use them only when explicitly mining old PR-recovery history.
 
 The next Story Lab real-engine execution plan is `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md`. Use it before changing Story Lab generation semantics.
 
@@ -206,9 +208,7 @@ The active Story Lab route-budget plan is `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md`.
 
 The active Story Lab job-route scaffold plan is `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md`. Use it before changing the non-durable Story Lab job routes, job store, job event stream, or Angular job client seam.
 
-The previous parallel-agent execution plan is `plan.md`. Treat it as superseded for the immediate Story Lab real-engine work; do not use it as permission to broaden this branch.
-
-Follow that plan before doing broad PR reconciliation work. The intended recovery path is:
+For broad PR-recovery archaeology only, the old recovery path was:
 
 1. Create a new recovery branch from current `main`.
 2. Merge PR #70 as the story-lab baseline.
@@ -380,7 +380,7 @@ Some tests are historically stale or environment-dependent. If a check cannot ru
 
 ## Working Rules For Agents
 
-1. Start with `PR70_RECOVERY_PLAN.md` before broad PR work.
+1. Start with the current operating direction and the execution plan matching the files being changed; use `PR70_RECOVERY_PLAN.md` only for historical broad PR-recovery archaeology.
 2. Keep `PR70_RECOVERY_CHANGELOG.md` current as work proceeds.
 3. Keep `LESSONS_LEARNED.md` current when a recurring failure mode or correction is discovered.
 4. Do not close a PR until accepted and not-taken material is recorded.
