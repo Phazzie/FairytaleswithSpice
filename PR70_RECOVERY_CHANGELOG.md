@@ -4,6 +4,37 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-04 00:00 EDT - Repository Discipline Guardrails
+
+Problem:
+
+- Local `main` drifted far behind `origin/main` while also carrying old local commits and dirty files.
+- The repo already had lessons about local-only work, docs branches, stale dependency branches, and repeated validation checklists, but those lessons were not being forced into the end-of-run workflow.
+- The user asked for concrete discipline fixes, doc-update rules, and tooling to avoid repeating the same local-only/status drift.
+
+Actions:
+
+- Added a documentation update map to `AGENTS.md` that names which status, plan, changelog, ledger, and handoff files must be updated for each kind of work.
+- Added a local `main` hygiene rule to `AGENTS.md`.
+- Added `npm run recovery:finish` as the required end-of-session finish check.
+- Added `scripts/recovery/finish-check.mjs` to print stop signs for dirty trees, stale local `main`, unpushed commits, and likely doc updates.
+- Added `tests/recovery-finish-check.test.mjs` and `npm run test:recovery-finish-check`.
+- Added a `LESSONS_LEARNED.md` entry for local `main` drift and end-of-run finish checks.
+- Addressed SonarCloud reliability annotations by simplifying parser/runtime helpers and converting the finish-check test to Node's `node:test` runner.
+- Addressed review feedback by making git state failures loud, using branch-diff paths for doc reminders, warning on stale upstream branches, and checking local `main` even from feature branches.
+- Synced local `main` back to `origin/main` after preserving the old local state:
+  - backup branch: `backup/local-main-before-sync-2026-07-04`;
+  - existing backup branch: `backup/local-main-docs-stack-2026-06-13`;
+  - dirty-state stash: `stash@{0}` (`park local main dirty state before syncing main 2026-07-04`).
+
+Validation:
+
+- `npm run test:recovery-finish-check`: passed.
+- `node --check scripts/recovery/finish-check.mjs`: passed.
+- `git diff --check`: passed.
+- `npm run recovery:finish`: passed and correctly reported the current branch's uncommitted guardrail files as stop signs before publication.
+- After syncing local `main`, `npm run recovery:finish` reported `Local main vs origin/main: ahead 0, behind 0`.
+
 ## 2026-06-21 16:45 EDT - PR99 Grok Fast-Path Review Follow-Up
 
 Problem:
