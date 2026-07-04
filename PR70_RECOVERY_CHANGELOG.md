@@ -14,6 +14,7 @@ Actions:
 - Updated `AGENTS.md` so current sessions use the completion-hardening/final-audit/checklist stack, treat `PR70_RECOVERY_PLAN.md` and `plan.md` as historical recovery context, and use `OVERNIGHT_MODE.md` instead of reviving stale `OVERNIGHT_HANDOFF.md`.
 - Updated `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` to mark the job-route scaffold as merged while preserving the non-durable job warning.
 - Updated `SUBAGENT_LOG.md` with agent scopes, the failed attempt, replacement UI audit, integration status, and follow-ups.
+- Updated `LESSONS_LEARNED.md` with the narrow-band Spark audit lesson.
 
 Self-review:
 
