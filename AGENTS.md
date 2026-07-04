@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-03 18:39 EDT
+Last updated: 2026-07-04 00:00 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -18,6 +18,8 @@ Before planning, editing, or claiming readiness:
 ## Publication Discipline
 
 Treat "merged to `main`" as the only meaning of `Done`. Work that exists only on a local branch, backup branch, or open PR must be labeled `Local-only`, `PR-ready`, `In review`, or `Parked`.
+
+Local `main` is a maintained surface, not a scratch branch. At the start and end of repo work, `main` should be clean and match `origin/main` unless a named backup branch and changelog entry explain the divergence. If local `main` is ahead, behind, or dirty, stop feature work and either park the changes on a named branch or update `main` from `origin/main` before choosing the next slice.
 
 Before starting or resuming a Story Lab slice, run:
 
@@ -48,6 +50,14 @@ Default loop for unpublished Story Lab work:
 
 If a branch contains more than one planned slice, stop and split before adding more code. If a branch's upstream is gone, first check whether it was merged into `origin/main`; do not keep working on stale branch tips.
 
+Before ending a repo-work session, run:
+
+```bash
+npm run recovery:finish
+```
+
+Use its stop signs and doc checklist as the final publication gate. If it reports dirty files, a stale local `main`, unpushed commits, or missing doc updates, either fix them or explicitly report why they remain. For PR-ready claims, use `npm run recovery:finish -- --strict` and treat failures as blockers.
+
 After opening or merging a PR, audit active unresolved review threads:
 
 ```bash
@@ -61,6 +71,36 @@ npm run review:unresolved -- --state all --limit 40 --outdated-only
 ```
 
 Review comments must not be ignored. Reply on the original thread with one of: the fixing PR/commit and resolve it; a linked follow-up issue/PR if it remains valid but is out of scope; or an obsolete/superseded reason before resolving. For broader recovery sweeps, use issues #152 and #153 as the tracking backlogs.
+
+## Documentation Update Map
+
+Do not leave status only in chat. Update the narrowest durable document that matches the change:
+
+| Document | Update when |
+|---|---|
+| `AGENTS.md` | Agent operating rules, required commands, active-plan routing, stack assumptions, subagent policy, or this documentation map changes. Always update the timestamp. |
+| `PR70_RECOVERY_CHANGELOG.md` | Any recovery slice changes behavior, docs, dependency strategy, validation evidence, PR status, review follow-up, local-only parking, or process/tooling. This is the default running log. |
+| `SUBAGENT_LOG.md` | A subagent batch affects repo decisions, code, docs, dependency handling, validation strategy, or review cleanup. Include ticket scope, result, integration status, and follow-ups. |
+| `LESSONS_LEARNED.md` | A recurring failure mode, process correction, durable technical lesson, tooling rule, or verification lesson should shape future agents. |
+| `PR70_RECOVERY_LEDGER.md` | A PR is merged, closed, superseded, split, replaced, or mined for useful material. |
+| `NOT_TAKEN_FEATURE_LEDGER.md` | Useful source-PR material is intentionally not ported, especially story-generation, prompt, audio, or UX ideas. |
+| `PR70_RECOVERY_FINAL_REPORT.md` | Overall recovery status changes near finalization, especially what is merged, deferred, or still risky. |
+| `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` | Completion-hardening work changes auth/database proof, dependency follow-ups, review backlog status, or done/not-done claims. |
+| `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` | Final audit evidence changes: last-40 PR audit, wider PR debt, unresolved review comments, coverage proof, or "all work merged" claims. |
+| `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` | Auth, profile, cloud library APIs/UI, signed-in save/load/list/delete behavior, or provider-backed claims change. |
+| `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` | Storage ports, in-memory/Postgres adapters, schema, durability wording, owner-scoped behavior, or cloud-vs-local status changes. |
+| `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` | Job routes, job store, SSE events, progress/reload behavior, Workflow claims, or non-durable job wording changes. |
+| `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md` | Vercel-facing route files are added, retired, consolidated, renamed, or documented. |
+| `STORY_LAB_PRIVACY_STREAMING_GATES_EXEC_PLAN.md` | CORS, account-boundary headers, export sanitization, retention/deletion policy, opaque job ids, or streaming privacy changes. |
+| `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md` | Story generation semantics, real-engine bridging, prompt contracts, continuation behavior, or model request shape changes. |
+| `GROK_MULTIAGENT_STORY_LAB_POLISH_EXEC_PLAN.md` | Grok model behavior, AI continuity extraction, durable local story memory, story-quality evals, or provider fallback behavior changes. |
+| `MVP_TO_SHIPPING_EXEC_PLAN.md`, `STORY_LAB_DEMO_SHIPPING_EXEC_PLAN.md`, and readiness reports | Public/demo shipping status, deployed smoke evidence, live-provider proof, dependency/security hardening, or MVP readiness changes. |
+| `OVERNIGHT_HANDOFF.md` | A long autonomous run pauses, completes a coherent slice, parks local-only work, or leaves blocked commands for the next session. |
+| `STORY_LAB_IDEA_BOARD.md` | Research-mined ideas, Weird Lab candidates, story-quality experiments, or backlog statuses change. Use `Local-only` unless merged. |
+| `README.md` or deployment docs | User-facing setup, install, environment, deploy, or smoke-test instructions change. Do not revive historical DigitalOcean guidance as active. |
+| `package.json` scripts | A repeatable command is added, renamed, or expected by agents/CI/docs. |
+
+Documentation cleanup should be scoped. Do not start broad archive/rewrite work in the middle of recovery unless it directly reduces active confusion.
 
 ## Review Tooling Policy
 
