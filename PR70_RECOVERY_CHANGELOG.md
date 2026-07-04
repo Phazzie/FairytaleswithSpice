@@ -3281,6 +3281,36 @@ Validation:
 - `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
 - `npm run recovery:status`: passed; branch contains only `api/README.md` and changelog edits.
 
+## 2026-07-03 20:28 EDT - PR #120 Root-Only Replacement Slice
+
+Actions:
+
+- Created `recovery/dependabot-root-tsx` from current `origin/main`.
+- Split the safe root dependency work out of Dependabot PR #120 instead of merging the mixed root plus Angular major-upgrade PR.
+- Updated root `tsx` from `^4.20.6` to `^4.23.0`; root `package-lock.json` now resolves `tsx@4.23.0` and `esbuild@0.28.1`.
+- Kept `story-generator/package.json` and `story-generator/package-lock.json` out of scope.
+- Used three read-only Spark sidecars for validation planning, PR/supersede wording, and lockfile-risk review; parent made and verified the package change.
+- Updated `SUBAGENT_LOG.md` with the subagent batch and parent verification.
+
+Self-review:
+
+- Correction: this pass followed the user's intended pattern better than the first PR #120 trial: parent strategy first, one mergeable target, subagents as narrow helpers.
+- Non-claim: PR #120 is not closed yet; it should be superseded only after the replacement PR lands.
+- Note: local Angular validation used Node `23.8.0`, which produced Angular engine warnings because Angular 20 expects Node `^20.19.0 || ^22.12.0 || >=24.0.0`; the commands still completed.
+
+Validation:
+
+- `npm ci`: passed.
+- `npm ls tsx esbuild`: passed; resolved `tsx@4.23.0` and `esbuild@0.28.1`.
+- `npm run test:story`: passed.
+- `npm run test:tropes`: passed.
+- `npm run test:story-lab-real-engine`: passed.
+- `npm run test:story-lab-account-routes`: passed.
+- `bash scripts/recovery/preflight.sh --quick --skip-build`: passed.
+- `npm run build`: passed.
+- `npm run build:verify`: passed.
+- `git diff --check`: passed after validation-only install artifacts were removed.
+
 ## 2026-07-03 18:39 EDT - Subagent Guidance And PR #120 Split Trial
 
 Actions:
