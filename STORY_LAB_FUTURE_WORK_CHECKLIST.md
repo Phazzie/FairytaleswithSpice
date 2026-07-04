@@ -3,7 +3,7 @@
 Created: 2026-07-04 14:33 EDT
 Last updated: 2026-07-04 14:33 EDT
 
-This checklist breaks the unfinished Story Lab work into small tickets that a Codex subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must choose the next workstream, keep write scopes disjoint, verify results, open/merge PRs, and keep docs current.
+This checklist breaks the unfinished Story Lab work into small tickets that a subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must choose the next workstream, keep write scopes disjoint, verify results, open/merge PRs, and keep docs current.
 
 ## Current Snapshot
 
@@ -209,6 +209,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 - [ ] **4.2 POST-to-job streaming replacement design**
   - Role: Explorer.
   - Owned files: Read-only.
+  - Read-only files: `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, `api/story-lab/jobs.ts`, `api/_lib/story-lab/job-store.ts`.
   - Goal: propose how private payloads move to POST body/job state while EventSource uses opaque job ids only.
   - Stop condition: do not implement.
   - Output: contract sketch and migration sequence.
@@ -314,6 +315,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 - [ ] **7.3 Completion hostile review**
   - Role: Explorer.
   - Owned files: Read-only.
+  - Read-only files: `STORY_LAB_CONCEPT_CHECKLIST.md`, `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, `PR70_RECOVERY_FINAL_REPORT.md`.
   - Goal: try to disprove the final completion claim requirement by requirement.
   - Stop condition: no edits.
   - Output: blockers, weak evidence, and recommended fixes.

@@ -14,6 +14,7 @@ Actions:
 - Linked the future-work checklist from `STORY_LAB_CONCEPT_CHECKLIST.md` and `AGENTS.md`.
 - Updated the `AGENTS.md` timestamp and documentation map.
 - Updated `LESSONS_LEARNED.md` with the archive-boundary and subagent-ticket-shape lessons.
+- Addressed PR #187 review comments by using generic subagent wording and adding missing read-only file bounds for Explorer tickets.
 
 Self-review:
 
