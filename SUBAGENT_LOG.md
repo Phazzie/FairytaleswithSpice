@@ -20,6 +20,38 @@ Parent verification:
 Follow-ups:
 ```
 
+## 2026-07-03 20:28 EDT - PR #120 Root-Only Replacement Slice
+
+Parent branch / PR: `recovery/dependabot-root-tsx` / PR #184
+
+Goal: finish the safe root dependency piece from PR #120 as its own replacement slice, without pulling in the `story-generator` Angular 22 upgrade.
+
+Parent analysis before dispatch:
+
+- PR #120 is failing and over-bundled because it mixes root `tsx`/`esbuild` resolution with `story-generator` Angular 20 to Angular 22 changes.
+- The selected implementation target is root-only: update root `tsx` and its `esbuild` transitive dependency from current `origin/main`.
+- Parent owns the package edit, validation, PR actions, and any future PR #120 closure.
+- Subagents are read-only sidecars for validation selection, wording, and lockfile-risk review.
+
+| Agent | Model | Role | Scope | Status | Result | Integrated? |
+|---|---|---|---|---|---|---|
+| Ptolemy | `gpt-5.3-codex-spark` | explorer | Read-only validation checklist | Done | Recommended focused root/API `tsx` checks plus build/preflight guardrails; warned that broad smoke checks are not required for this slice | Partially integrated; parent ran the focused checks and adjusted setup failures |
+| Schrodinger | `gpt-5.3-codex-spark` | drafting assistant | Read-only PR and supersede wording | Done | Drafted replacement PR body and future PR #120 supersede comment | Partially integrated; parent will fill real validation and PR links |
+| Confucius | `gpt-5.3-codex-spark` | reviewer | Read-only lockfile-risk review | Done | Confirmed acceptable invariants for a two-file root package diff and flagged any `story-generator` change as a blocker | Integrated as parent checklist |
+
+Parent verification:
+
+- Parent updated root `tsx` from `^4.20.6` to `^4.23.0`; lockfile resolves `tsx@4.23.0` and `esbuild@0.28.1`.
+- Diff scope stayed limited to root `package.json` and `package-lock.json`; no `story-generator` dependency files were changed.
+- `npm ci` passed for root validation; it dirtied tracked `node_modules`, which parent restored before commit.
+- Focused `tsx` tests, quick preflight, full build, and `build:verify` were run by parent before PR.
+
+Follow-ups:
+
+- Open the replacement PR, wait for CI/reviews, address comments, and merge if clean.
+- Close or supersede PR #120 only after the replacement PR merges.
+- Plan the Angular/story-generator dependency work separately; do not mix it into this root slice.
+
 ## 2026-07-03 18:39 EDT - PR #120 Six-Agent Dependabot Split Trial
 
 Parent branch / PR: `recovery/subagent-guidance-log` / PR #183
