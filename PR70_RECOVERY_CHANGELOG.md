@@ -19,7 +19,7 @@ Actions:
 Self-review:
 
 - Correction: broad status should start from one whole-concept checklist, not parked dependency PRs or old local-main archaeology.
-- Finding: Story Lab is about 70% complete overall, with the public create/continue UI stronger than the durability and coverage proof.
+- Finding: Story Lab is about 72% complete overall after this docs pass, with the public create/continue UI stronger than the durability and coverage proof.
 - Finding: Spark was useful for parallel evidence gathering when each ticket had one band and one artifact; the failed UI attempt shows broad repo-history sweeps still exhaust context.
 - Non-claim: This pass does not implement coverage tooling, live auth/database proof, durable job process-loss proof, or UI polish.
 

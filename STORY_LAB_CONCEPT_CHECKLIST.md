@@ -1,17 +1,18 @@
 # Story Lab Whole-Concept Checklist
 
+Created: 2026-07-04 07:16 EDT
 Last updated: 2026-07-04 07:16 EDT
 
-This is the plain-status checklist for the whole Story Lab concept. It includes what is already merged, what is partially built, and what is still not done. The percentages are evidence estimates from the six-check audit artifacts in `STORY_LAB_CHECKLIST_FINDINGS/`.
+This is the plain-status checklist for the whole Story Lab concept. It includes what is already merged, what is partially built, and what is still not done. The percentages are evidence estimates from the six-check audit artifacts in `STORY_LAB_CHECKLIST_FINDINGS/` plus this PR's doc-fix pass.
 
 ## Plain Status
 
-- Overall Story Lab maturity: **70%**
+- Overall Story Lab maturity: **72%**
 - Public create/continue demo path: **85%**
 - Production durability/account path: **55%**
-- Final audit, tests, coverage, and docs confidence: **60%**
+- Final audit, tests, coverage, and docs confidence: **65%**
 
-In plain terms: the user-facing story lab is mostly real and usable for creating, continuing, saving locally, copying, downloading, and showing progress. The biggest unfinished work is making accounts/cloud saves/job progress truly durable, proving coverage honestly, and reducing stale-doc confusion.
+In plain terms: the user-facing Story Lab is mostly real and usable for creating, continuing, saving locally, copying, downloading, and showing progress. The biggest unfinished work is making accounts/cloud saves/job progress truly durable, proving coverage honestly, and reducing stale-doc confusion.
 
 ## Source Audit Bands
 
@@ -22,7 +23,7 @@ In plain terms: the user-facing story lab is mostly real and usable for creating
 | API, generation, and job routes | 83% | Strong scaffold | Direct generation, continuation, jobs, events, privacy gates, fail-closed AI, and route budget are covered; streaming privacy and durable job storage remain incomplete. |
 | Auth, storage, and durability | 69% | Partial | Auth/store contracts and owner checks exist, but live provider auth, provisioned database proof, migrations, and cloud sync proof are not done. |
 | Tests, coverage, and CI | 43% | Weakest area | Many tests and preflight checks exist, but there is no enforced root/API coverage gate and Angular is still at 85%, not 90%. |
-| Docs and process | 62% | Partial | Guardrails, changelog, lessons, and subagent log exist; active-source-map cleanup and final status consolidation still matter. |
+| Docs and process | 75% | Improved | Guardrails, changelog, lessons, subagent log, current handoff guidance, and active-plan routing exist; stale-doc cleanup still matters where old docs create active confusion. |
 
 ## Product Checklist
 
@@ -88,7 +89,7 @@ In plain terms: the user-facing story lab is mostly real and usable for creating
 - [~] **Handoff source.** `OVERNIGHT_MODE.md` is the current autonomous guide; old `OVERNIGHT_HANDOFF.md` should not be reintroduced unless rewritten from current `main`.
 - [~] **Stale docs control.** There are still many historical docs; future cleanup should mark or retire only files that cause active confusion.
 
-## What Still Needs Done
+## What Still Needs to Be Done
 
 - [ ] **Add root/API coverage tooling.** This is the biggest proof gap because API/state/storage/auth/job logic is where many production risks live.
 - [ ] **Decide the coverage path before chasing 90%.** First produce honest root/API and Angular coverage reports, then decide if 80 -> 85 -> 90 is the right ramp or if 90 is realistic immediately.

@@ -1,5 +1,8 @@
 # Story Lab API, Generation, and Jobs (Checks 17-24)
 
+Created: 2026-07-04 07:16 EDT
+Last updated: 2026-07-04 07:16 EDT
+
 ## Reviewed files
 
 - API routes: `api/story-lab/jobs.ts`, `api/story-lab/stories.ts`, `api/story-lab/stories/[storyId]/continue.ts`, `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, `api/story/generate.ts`, `api/story/continue.ts`
@@ -16,7 +19,7 @@
 | 21 | Job storage/auth mode behavior | Partial | `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts` defaults to `non_durable_memory`; `postgres` mode is explicit and gated; `jobRouteHandlers` requires auth owner context for durable mode; tests cover unsupported mode fail-closed and owner-required failures. | Demonstrates safe fail-closed storage behavior, but durable execution is still optional and not the default path. | Add Vercel-aware durable store bootstrapping and migration/runbook once workflow queue and migration tooling are ready. |
 | 22 | Engine fallback and provider policy | Done | `api/_lib/story-lab/storyLabEngine.ts` applies production fail-closed (`AI_UNAVAILABLE`) when `XAI_API_KEY` is missing, uses mock mode in non-production with `STORY_LAB_FORCE_MOCK`, and converts provider failures to structured API errors; `tests/story-lab-real-engine.test.ts` and `tests/story-lab-route-status.test.ts` cover both mocked and missing-provider behavior. | Prevents silent fallback to fake responses in production while still keeping developer/testing ergonomics. | Ensure operational runbooks explicitly call out the non-durable/no-queue behavior when falling back under this path. |
 | 23 | Privacy gates (CORS/export/log redaction) | Done | `api/_lib/http/corsPolicy.ts` enforces origin deny-closed (`403`) for disallowed origins; `api/_lib/services/exportSanitizer.ts` strips dangerous tags/attrs and escapes metadata; `api/_lib/services/exportService.ts` uses sanitizer helpers; `shared/sensitiveTextRedaction.ts` + `api/_lib/utils/logger.ts` sanitize sensitive fields; tests in `tests/cors-policy.test.ts`, `tests/export-sanitizer.test.ts`, `tests/log-redaction.test.ts` confirm behavior. | Private secrets/path data are blocked at route headers, output artifacts, and logs, reducing leak surface outside auth decisions. | Add audit coverage for remaining legacy loggers that may still accept raw objects before they are fully covered by redaction entry points. |
-| 24 | Route budget and deployable API count | Done | `scripts/recovery/check-vercel-function-count.sh` expects/validates one jobs route and currently reports `10/12`; current route list includes `api/story-lab/jobs.ts` plus required story and export functions. | Confirms backend additions stayed within the Vercel function budget and did not accidentally reintroduce route spikes. | Keep the guard as a hard check before merging any further route additions and document any future route consolidations in plan files. |
+| 24 | Route budget and deployable API count | Done | `scripts/recovery/check-vercel-function-count.sh` expects/validates one jobs route and currently reports `11/12`; current route list includes `api/story-lab/jobs.ts` plus required story, account, evaluation, image, and export functions. | Confirms backend additions stayed within the Vercel function budget and did not accidentally reintroduce route spikes. | Keep the guard as a hard check before merging any further route additions and document any future route consolidations in plan files. |
 
 ## Band-level estimate (Checks 17-24)
 
@@ -26,4 +29,4 @@
 
 1. Legacy Story Lab streaming still accepts blueprint fields in query strings (`api/story-lab/stream/genesis.ts`, `api/story/stream.ts`), so privacy hardening is incomplete until streaming is fully job-id based.
 2. Job persistence is non-durable by default (`non_durable_memory`) and not yet backed by a queue/workflow; restart/cold-start loss remains a production behavior gap.
-3. Durable postgreSQL job mode is implemented in interface/guarding code but not operationally complete for production workflows (requires storage/auth provisioning + route-level migration).
+3. Durable PostgreSQL job mode is implemented in interface/guarding code but not operationally complete for production workflows (requires storage/auth provisioning + route-level migration).

@@ -47,7 +47,7 @@ Parent verification:
 
 - Parent read all returned artifacts and did not accept the failed UI attempt as success.
 - Parent replaced the failed UI ticket with a narrower UI-only audit.
-- Parent synthesized the band percentages into one overall 70% checklist and updated the operating docs that caused active confusion.
+- Parent synthesized the band percentages into one overall 72% checklist and updated the operating docs that caused active confusion.
 
 Follow-ups:
 

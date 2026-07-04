@@ -1,5 +1,8 @@
 # Story Lab UI Surface Audit (Checklist #02)
 
+Created: 2026-07-04 07:16 EDT
+Last updated: 2026-07-04 07:16 EDT
+
 | Check | Status | Evidence | Why it matters | Remaining work |
 |---|---|---|---|---|
 | 09. Is there a visible Story Lab entry route/page? | Done | `story-generator/src/app/app.routes.ts` route `path: ''` maps to `App` with title `Fairytales with Spice - Story Lab` (L6-L10); landing heading is rendered in `story-generator/src/app/app.html` (`<h1 data-testid="story-lab-heading">Fairytales with Spice</h1>` L7-L9). | Confirms there is a direct Story Lab UI entry path users can reach. | Consider adding explicit “404”/empty-state recovery text if route resolves with legacy URLs. |
