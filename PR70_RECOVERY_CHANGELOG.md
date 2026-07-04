@@ -13,6 +13,7 @@ Actions:
 - Added `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, breaking unfinished Story Lab work into subagent-sized tickets with owned scope, stop conditions, outputs, and validation commands.
 - Linked the future-work checklist from `STORY_LAB_CONCEPT_CHECKLIST.md` and `AGENTS.md`.
 - Updated the `AGENTS.md` timestamp and documentation map.
+- Updated `LESSONS_LEARNED.md` with the archive-boundary and subagent-ticket-shape lessons.
 
 Self-review:
 
@@ -22,7 +23,7 @@ Self-review:
 
 Validation:
 
-- Placeholder and old-dependency-PR identifier scan over `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, `AGENTS.md`, `STORY_LAB_CONCEPT_CHECKLIST.md`, and `PR70_RECOVERY_CHANGELOG.md` returned no matches.
+- Placeholder and old-dependency-PR identifier scan over `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, `AGENTS.md`, `STORY_LAB_CONCEPT_CHECKLIST.md`, `LESSONS_LEARNED.md`, and `PR70_RECOVERY_CHANGELOG.md` returned no matches.
 - `git diff --check` passed.
 - `npm run test:recovery-finish-check` passed.
 - `scripts/recovery/check-vercel-function-count.sh` passed at `11/12`.
