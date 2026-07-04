@@ -22,7 +22,7 @@ Follow-ups:
 
 ## 2026-07-03 20:28 EDT - PR #120 Root-Only Replacement Slice
 
-Parent branch / PR: `recovery/dependabot-root-tsx` / not opened yet
+Parent branch / PR: `recovery/dependabot-root-tsx` / PR #184
 
 Goal: finish the safe root dependency piece from PR #120 as its own replacement slice, without pulling in the `story-generator` Angular 22 upgrade.
 
