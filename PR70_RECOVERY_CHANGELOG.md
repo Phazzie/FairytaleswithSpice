@@ -4,6 +4,31 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-04 14:33 EDT - Granular Future-Work Checklist And Archive Cleanup
+
+Actions:
+
+- Archived the old Angular dependency investigation at `origin/archive/angular22-dependency-investigation-2026-07-04`; no PR was opened from it.
+- Removed the dirty temp investigation worktree after the archive branch was pushed.
+- Added `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, breaking unfinished Story Lab work into subagent-sized tickets with owned scope, stop conditions, outputs, and validation commands.
+- Linked the future-work checklist from `STORY_LAB_CONCEPT_CHECKLIST.md` and `AGENTS.md`.
+- Updated the `AGENTS.md` timestamp and documentation map.
+- Updated `LESSONS_LEARNED.md` with the archive-boundary and subagent-ticket-shape lessons.
+- Addressed PR #187 review comments by using generic subagent wording and adding missing read-only file bounds for Explorer tickets.
+
+Self-review:
+
+- Correction: the archived dependency investigation is evidence only and must not be treated as active future work.
+- Finding: the next productive work is not a blind 90% coverage chase; it is first making the test map honest, then adding coverage proof, then durable auth/database/job proof.
+- Non-claim: this pass does not implement coverage tooling, auth/database integration, durable jobs, streaming changes, or UI polish.
+
+Validation:
+
+- Placeholder and old-dependency-PR identifier scan over `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, `AGENTS.md`, `STORY_LAB_CONCEPT_CHECKLIST.md`, `LESSONS_LEARNED.md`, and `PR70_RECOVERY_CHANGELOG.md` returned no matches.
+- `git diff --check` passed.
+- `npm run test:recovery-finish-check` passed.
+- `scripts/recovery/check-vercel-function-count.sh` passed at `11/12`.
+
 ## 2026-07-04 07:16 EDT - Whole Story Lab Concept Checklist
 
 Actions:
