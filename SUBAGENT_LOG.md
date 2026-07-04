@@ -20,6 +20,42 @@ Parent verification:
 Follow-ups:
 ```
 
+## 2026-07-04 07:16 EDT - Whole Story Lab Concept Checklist Audit
+
+Parent branch / PR: `recovery/story-lab-concept-checklist` / pending
+
+Goal: answer the user's broad Story Lab status question with one durable checklist that includes done, partial, not-done, percentages, docs status, and subagent process results.
+
+Parent analysis before dispatch:
+
+- Parked dependency-major-upgrade work is not active product work and should not drive this status.
+- The needed output is a whole-concept checklist, not another narrow implementation branch.
+- The parent split the work into six independent read-only audit bands and required each Spark agent to write one artifact under `STORY_LAB_CHECKLIST_FINDINGS/`.
+- The parent kept strategy, final synthesis, docs edits, validation, and GitHub actions in the parent session.
+
+| Agent | Model | Role | Scope | Status | Result | Integrated? |
+|---|---|---|---|---|---|---|
+| Herschel | `gpt-5.3-codex-spark` | explorer | Product concept checks 01-08 | Done | Found core create/continue loop and non-claims mostly done; local-first storage and durable platform work remain | Integrated into `STORY_LAB_CONCEPT_CHECKLIST.md` |
+| James | `gpt-5.3-codex-spark` | explorer | UI checks 09-16 | Failed | Hit context exhaustion before returning a usable artifact | Recorded as a failed attempt, not counted as success |
+| Lovelace | `gpt-5.3-codex-spark` | explorer | API/generation/job checks 17-24 | Done | Estimated backend band at 83%; flagged query-string streaming and non-durable job storage | Integrated into `STORY_LAB_CONCEPT_CHECKLIST.md` |
+| Feynman | `gpt-5.3-codex-spark` | explorer | Auth/storage/durability checks 25-32 | Done | Estimated durability band at 72% after review correction; flagged missing live provider/database proof | Integrated into `STORY_LAB_CONCEPT_CHECKLIST.md` |
+| Leibniz | `gpt-5.3-codex-spark` | explorer | Tests/coverage/CI checks 33-39 | Done | Estimated verification band at 43%; confirmed no root/API coverage gate and Angular 85% threshold | Integrated into `STORY_LAB_CONCEPT_CHECKLIST.md` |
+| Ramanujan | `gpt-5.3-codex-spark` | explorer | Docs/process/status checks 40-45 | Done | Estimated docs/process band at 62%; flagged source-map and stale-doc confusion | Integrated into `AGENTS.md`, `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md`, and the checklist |
+| Banach | `gpt-5.3-codex-spark` | explorer | Replacement narrow UI checks 09-16 | Done | Estimated UI band at 88%; flagged Proving Grounds intent, disabled states, and small-screen risks | Integrated into `STORY_LAB_CONCEPT_CHECKLIST.md` |
+
+Parent verification:
+
+- Parent read all returned artifacts and did not accept the failed UI attempt as success.
+- Parent replaced the failed UI ticket with a narrower UI-only audit.
+- Parent synthesized the band percentages into one overall 72% checklist and updated the operating docs that caused active confusion.
+
+Follow-ups:
+
+- Add root/API coverage tooling before any repo-wide 90% claim.
+- Prove live auth/database/cloud sync before any durable account-library claim.
+- Prove process-loss job durability before calling Story Lab jobs durable.
+- Keep future Spark tickets one band, one artifact, and no broad repo-history sweep.
+
 ## 2026-07-03 20:28 EDT - PR #120 Root-Only Replacement Slice
 
 Parent branch / PR: `recovery/dependabot-root-tsx` / PR #184

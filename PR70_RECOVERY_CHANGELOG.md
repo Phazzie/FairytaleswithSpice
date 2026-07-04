@@ -4,6 +4,34 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-04 07:16 EDT - Whole Story Lab Concept Checklist
+
+Actions:
+
+- Created `STORY_LAB_CONCEPT_CHECKLIST.md` as the single plain-language Story Lab status checklist with done/partial/not-done items and percentage estimates.
+- Ran a six-band Spark audit covering product concept, UI, backend/jobs, auth/storage/durability, tests/coverage/CI, and docs/process; replaced one failed overbroad UI audit with a narrower UI-only audit.
+- Preserved the supporting audit artifacts under `STORY_LAB_CHECKLIST_FINDINGS/`.
+- Updated `AGENTS.md` so current sessions use the completion-hardening/final-audit/checklist stack, treat `PR70_RECOVERY_PLAN.md` and `plan.md` as historical recovery context, and use `OVERNIGHT_MODE.md` instead of reviving stale `OVERNIGHT_HANDOFF.md`.
+- Updated `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` to mark the job-route scaffold as merged while preserving the non-durable job warning.
+- Updated `SUBAGENT_LOG.md` with agent scopes, the failed attempt, replacement UI audit, integration status, and follow-ups.
+- Updated `LESSONS_LEARNED.md` with the narrow-band Spark audit lesson.
+- Addressed PR #186 review comments by adding Created headers, fixing typos/wording, updating route-count evidence to `11/12`, adding concrete PR #104 job-route merge evidence, correcting stale Neon-dependency wording, and naming unwired privacy/security/job-contract tests in the coverage audit.
+
+Self-review:
+
+- Correction: broad status should start from one whole-concept checklist, not parked dependency PRs or old local-main archaeology.
+- Finding: Story Lab is about 72% complete overall after this docs pass, with the public create/continue UI stronger than the durability and coverage proof.
+- Finding: Spark was useful for parallel evidence gathering when each ticket had one band and one artifact; the failed UI attempt shows broad repo-history sweeps still exhaust context.
+- Non-claim: This pass does not implement coverage tooling, live auth/database proof, durable job process-loss proof, or UI polish.
+
+Validation:
+
+- Initial `git diff --check`: failed on whitespace in two subagent artifacts; fixed before publication.
+- `git diff --check`: passed after whitespace cleanup.
+- `npm run test:recovery-finish-check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- PR #186 review-fix rerun: `git diff --check`, `npm run test:recovery-finish-check`, and `scripts/recovery/check-vercel-function-count.sh` passed.
+
 ## 2026-07-04 00:00 EDT - Repository Discipline Guardrails
 
 Problem:
@@ -92,6 +120,7 @@ Actions:
 Validation:
 
 - `git diff --check`: passed.
+
 - `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit"`: passed.
 - `npx -p node@20 -c "node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit"`: passed.
 - `npx -p node@20 -c "node ./node_modules/@angular/cli/bin/ng test --watch=false --browsers=ChromeHeadless --include='src/app/app.spec.ts'"`: passed with `43 SUCCESS`.
