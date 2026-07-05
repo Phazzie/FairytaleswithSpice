@@ -4,6 +4,24 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-05 00:43 EDT - Communication And Checklist Discipline
+
+Actions:
+
+- Updated `AGENTS.md` with the user's communication preference: fewer, larger progress updates instead of many small command-by-command updates.
+- Added an explicit rule that when the user asks for a checklist, status report, or concrete artifact, agents should show the requested artifact directly instead of replacing it with a short summary.
+
+Self-review:
+
+- Correction: the prior response summarized the future-work checklist instead of showing the full checklist the user asked for.
+- Non-claim: this pass only changes operating guidance; it does not change Story Lab implementation status.
+
+Validation:
+
+- `git diff --check` passed.
+- `npm run test:recovery-finish-check` passed.
+- `scripts/recovery/check-vercel-function-count.sh` passed at `11/12`.
+
 ## 2026-07-04 14:33 EDT - Granular Future-Work Checklist And Archive Cleanup
 
 Actions:
