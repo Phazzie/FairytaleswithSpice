@@ -4,6 +4,49 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-05 01:54 EDT - Exploration Ticket Packet And Context Turnover
+
+Actions:
+
+- Added `STORY_LAB_EXPLORATION_TICKETS.md` with the standard exploration report format, context-turnover packet, wave plan, and 13 dispatch-ready exploration tickets.
+- Updated `AGENTS.md` with context-turnover guidance for long/high-friction sessions, subagent batches, PR events, branch switches, and crowded threads.
+- Added `STORY_LAB_EXPLORATION_TICKETS.md` to the `AGENTS.md` documentation update map and current operating direction.
+- Linked `STORY_LAB_FUTURE_WORK_CHECKLIST.md` to the exploration-ticket packet so future checklist revisions start from explore-to-worker tickets instead of ad hoc scouting.
+- Updated `LESSONS_LEARNED.md` with lessons on over-conservative planning, action-unlocking exploration, and compact context turnover.
+- Addressed PR review feedback by correcting the job-store path to `api/_lib/story-lab/jobs/jobStore.ts` in the exploration packet and future-work checklist.
+
+Self-review:
+
+- Correction: exploration tickets are read-only by design, but each ticket now must report worker tickets unlocked, files touched, shared-file conflicts, validation commands, and a fast-path recommendation.
+- Non-claim: this pass writes the exploration tickets and operating guidance; it does not dispatch subagents or revise the future-work checklist into worker chunks yet.
+
+Validation:
+
+- Placeholder and parked-dependency-identifier scan over `AGENTS.md`, `LESSONS_LEARNED.md`, `STORY_LAB_EXPLORATION_TICKETS.md`, `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, and `PR70_RECOVERY_CHANGELOG.md` returned no matches.
+- Bad job-store path scan returned no matches.
+- `git diff --check` passed.
+- `npm run test:recovery-finish-check` passed.
+- `scripts/recovery/check-vercel-function-count.sh` passed at `11/12`.
+
+## 2026-07-05 01:05 EDT - Aggressive Subagent Planning Bias
+
+Actions:
+
+- Updated `AGENTS.md` to say subagent planning should not default to read-only exploration.
+- Added guidance to bias toward larger, useful worker chunks once the parent agent has chosen the strategy.
+- Added `Files touched` as a required subagent-ticket field so future checklist items name expected create/modify/test/docs paths and shared-file conflicts.
+
+Self-review:
+
+- Correction: the current future-work checklist is too conservative and has too many read-only scout tickets for the user's intended pace.
+- Non-claim: this pass updates operating guidance only; the future-work checklist still needs a revision pass before it is ready for aggressive subagent execution.
+
+Validation:
+
+- `git diff --check` passed.
+- `npm run test:recovery-finish-check` passed.
+- Follow-up continued on the same branch in the 2026-07-05 01:54 EDT entry.
+
 ## 2026-07-05 00:43 EDT - Communication And Checklist Discipline
 
 Actions:
