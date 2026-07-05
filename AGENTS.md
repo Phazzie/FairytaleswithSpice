@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-05 00:43 EDT
+Last updated: 2026-07-05 01:05 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -119,6 +119,10 @@ Add focused documentation when it clarifies public contracts, exported ports/ada
 
 Use subagents as bounded execution help, not as a substitute for parent-agent judgment. The parent agent owns strategy, final integration, GitHub actions, and completion claims.
 
+Do not make subagent planning overly conservative by defaulting most tickets to read-only exploration. Maintain precision and accuracy, but bias toward larger, useful worker chunks once the parent agent has chosen the strategy. Over-conservative plans are unsafe because they create process drag, reduce attention, and leave real work undone.
+
+Use `Explorer` tickets only when the next move is genuinely unknown, risky, credential-dependent, or decision-heavy. Use `Worker` tickets when the parent has enough information to bound files, tests, stop conditions, and expected output. Prefer one well-scoped worker that produces a reviewable change over separate scout-and-worker tickets when the risk is local and reversible.
+
 Before dispatching subagents:
 
 1. Analyze the target locally first and write down the split.
@@ -132,6 +136,7 @@ Every subagent ticket must include:
 - **Parent analysis:** what is already known and what strategy has already been chosen.
 - **Role:** read-only explorer, bounded worker, reviewer, or drafting assistant.
 - **Owned files:** exact paths the agent may edit, or `Read-only`.
+- **Files touched:** exact create/modify/test/docs paths expected for the task, plus any shared files that must be serialized instead of edited in parallel.
 - **Forbidden actions:** no PR merges, no branch deletion, no review-thread resolution, no broad refactors, and no reverting unrelated work.
 - **Commands:** exact checks to run, including whether failures are expected evidence.
 - **Stop condition:** when to stop instead of broadening scope.
@@ -147,6 +152,7 @@ Goal:
 Role:
 Model / reason:
 Owned files:
+Files touched:
 Read-only files:
 Forbidden actions:
 Exact steps:

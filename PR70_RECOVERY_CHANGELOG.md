@@ -4,6 +4,25 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-05 01:05 EDT - Aggressive Subagent Planning Bias
+
+Actions:
+
+- Updated `AGENTS.md` to say subagent planning should not default to read-only exploration.
+- Added guidance to bias toward larger, useful worker chunks once the parent agent has chosen the strategy.
+- Added `Files touched` as a required subagent-ticket field so future checklist items name expected create/modify/test/docs paths and shared-file conflicts.
+
+Self-review:
+
+- Correction: the current future-work checklist is too conservative and has too many read-only scout tickets for the user's intended pace.
+- Non-claim: this pass updates operating guidance only; the future-work checklist still needs a revision pass before it is ready for aggressive subagent execution.
+
+Validation:
+
+- `git diff --check` passed.
+- `npm run test:recovery-finish-check` passed.
+- Branch is intentionally not merged in this turn because the user asked to stop after the exploration plan/list.
+
 ## 2026-07-05 00:43 EDT - Communication And Checklist Discipline
 
 Actions:
