@@ -211,7 +211,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 - [ ] **4.2 POST-to-job streaming replacement design**
   - Role: Explorer.
   - Owned files: Read-only.
-  - Read-only files: `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, `api/story-lab/jobs.ts`, `api/_lib/story-lab/job-store.ts`.
+  - Read-only files: `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, `api/story-lab/jobs.ts`, `api/_lib/story-lab/jobs/jobStore.ts`.
   - Goal: propose how private payloads move to POST body/job state while EventSource uses opaque job ids only.
   - Stop condition: do not implement.
   - Output: contract sketch and migration sequence.

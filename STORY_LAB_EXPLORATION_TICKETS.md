@@ -544,7 +544,7 @@ Read-only inputs:
 - `api/story-lab/stream/genesis.ts`
 - `api/story/stream.ts`
 - `api/story-lab/jobs.ts`
-- `api/_lib/story-lab/job-store.ts`
+- `api/_lib/story-lab/jobs/jobStore.ts`
 - `story-generator/src/app/story.service.ts`
 - streaming tests
 

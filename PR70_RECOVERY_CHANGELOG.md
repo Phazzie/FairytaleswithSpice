@@ -13,6 +13,7 @@ Actions:
 - Added `STORY_LAB_EXPLORATION_TICKETS.md` to the `AGENTS.md` documentation update map and current operating direction.
 - Linked `STORY_LAB_FUTURE_WORK_CHECKLIST.md` to the exploration-ticket packet so future checklist revisions start from explore-to-worker tickets instead of ad hoc scouting.
 - Updated `LESSONS_LEARNED.md` with lessons on over-conservative planning, action-unlocking exploration, and compact context turnover.
+- Addressed PR review feedback by correcting the job-store path to `api/_lib/story-lab/jobs/jobStore.ts` in the exploration packet and future-work checklist.
 
 Self-review:
 
@@ -22,6 +23,7 @@ Self-review:
 Validation:
 
 - Placeholder and parked-dependency-identifier scan over `AGENTS.md`, `LESSONS_LEARNED.md`, `STORY_LAB_EXPLORATION_TICKETS.md`, `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, and `PR70_RECOVERY_CHANGELOG.md` returned no matches.
+- Bad job-store path scan returned no matches.
 - `git diff --check` passed.
 - `npm run test:recovery-finish-check` passed.
 - `scripts/recovery/check-vercel-function-count.sh` passed at `11/12`.
