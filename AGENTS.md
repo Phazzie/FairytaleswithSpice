@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-05 01:05 EDT
+Last updated: 2026-07-05 01:54 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -9,6 +9,14 @@ This file is read automatically by AI coding agents. It is the repo-level operat
 Prefer fewer, larger progress updates over many small command-by-command updates. Group related status into meaningful checkpoints: current truth, what changed, what is blocked, what is next, and what is already pushed or merged.
 
 When the user asks for a checklist, status report, or other concrete artifact, show the requested artifact or full checklist directly. Concrete artifacts include checklists, status tables, PR lists, subagent tickets, command-output summaries the user asked to see, named doc contents, and explicit done/not-done matrices. Do not replace them with a short summary unless the user explicitly asks for a summary.
+
+## Context Turnover Preference
+
+Compress context sooner during long or high-friction sessions, but preserve the state needed to resume without rediscovery. Create a compact turnover packet after PR open/merge events, before and after subagent batches, before risky branch switches, when the user steps away, or when the thread is getting crowded.
+
+Turnover packets must include: objective, branch/commit/upstream state, working-tree state, open PR/review-thread state, changed docs/files, commands run and results, decisions made, subagent tickets/results, local-only or unmerged work, known unknowns, parked topics not to revive, next exact action, and recommended stop point.
+
+Prefer durable turnover in `SUBAGENT_LOG.md`, `PR70_RECOVERY_CHANGELOG.md`, PR bodies, or a named handoff doc over relying on chat-only memory.
 
 ## Required Start Order
 
@@ -94,6 +102,7 @@ Do not leave status only in chat. Update the narrowest durable document that mat
 | `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` | Completion-hardening work changes auth/database proof, dependency follow-ups, review backlog status, or done/not-done claims. |
 | `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` | Final audit evidence changes: last-40 PR audit, wider PR debt, unresolved review comments, coverage proof, or "all work merged" claims. |
 | `STORY_LAB_FUTURE_WORK_CHECKLIST.md` | Granular future-work tickets, subagent-ready scopes, execution ordering, admin cleanup status, or next-work prioritization changes. |
+| `STORY_LAB_EXPLORATION_TICKETS.md` | Exploration ticket scope, standard exploration report fields, context-turnover packet shape, exploration wave planning, or explore-to-worker conversion strategy changes. |
 | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` | Auth, profile, cloud library APIs/UI, signed-in save/load/list/delete behavior, or provider-backed claims change. |
 | `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` | Storage ports, in-memory/Postgres adapters, schema, durability wording, owner-scoped behavior, or cloud-vs-local status changes. |
 | `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` | Job routes, job store, SSE events, progress/reload behavior, Workflow claims, or non-durable job wording changes. |
@@ -122,6 +131,8 @@ Use subagents as bounded execution help, not as a substitute for parent-agent ju
 Do not make subagent planning overly conservative by defaulting most tickets to read-only exploration. Maintain precision and accuracy, but bias toward larger, useful worker chunks once the parent agent has chosen the strategy. Over-conservative plans are unsafe because they create process drag, reduce attention, and leave real work undone.
 
 Use `Explorer` tickets only when the next move is genuinely unknown, risky, credential-dependent, or decision-heavy. Use `Worker` tickets when the parent has enough information to bound files, tests, stop conditions, and expected output. Prefer one well-scoped worker that produces a reviewable change over separate scout-and-worker tickets when the risk is local and reversible.
+
+For exploration batches, use `STORY_LAB_EXPLORATION_TICKETS.md`. Exploration tickets are read-only by design, but they must return worker-ready decisions, files touched, validation commands, and shared-file conflicts. Do not let exploration become another status report.
 
 Before dispatching subagents:
 
@@ -192,6 +203,8 @@ The active Story Lab auth/profile/cloud-library plan is `STORY_LAB_AUTH_PROFILE_
 The whole-concept status checklist is `STORY_LAB_CONCEPT_CHECKLIST.md`. Use it for plain-language percentages, done/not-done status, and next-work prioritization before giving a broad Story Lab status update.
 
 The granular future-work checklist is `STORY_LAB_FUTURE_WORK_CHECKLIST.md`. Use it before dispatching subagents for unfinished Story Lab work; each unfinished item is broken into owned scope, stop condition, output, and validation.
+
+The exploration-ticket packet is `STORY_LAB_EXPLORATION_TICKETS.md`. Use it before running the next exploration batch; it defines the standard exploration report, context-turnover packet, and the exploration tickets that should convert the future-work checklist into larger worker chunks.
 
 ## Historical Recovery Context
 

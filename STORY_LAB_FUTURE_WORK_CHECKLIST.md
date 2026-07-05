@@ -5,6 +5,8 @@ Last updated: 2026-07-04 14:33 EDT
 
 This checklist breaks the unfinished Story Lab work into small tickets that a subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must choose the next workstream, keep write scopes disjoint, verify results, open/merge PRs, and keep docs current.
 
+Before running a broad exploration batch, use `STORY_LAB_EXPLORATION_TICKETS.md`. That file defines the standard exploration report, context-turnover packet, and the explore-to-worker tickets needed to revise this checklist into larger worker chunks with `Files touched` fields.
+
 ## Current Snapshot
 
 - [x] **Repo hygiene:** `main` is current with `origin/main`.
