@@ -1,7 +1,7 @@
 # Story Lab Exploration Findings
 
 Created: 2026-07-05 02:25 EDT
-Last updated: 2026-07-05 02:25 EDT
+Last updated: 2026-07-05 02:27 EDT
 
 This is the durable synthesis of the EXP-01 through EXP-13 subagent exploration batch. It converts the read-only exploration pass into implementation-ready worker batches and a context turnover packet.
 
@@ -152,7 +152,7 @@ Current branch and commit: `recovery/story-lab-exploration-findings` from `95c10
 
 Upstream state: `main` was current with `origin/main` before this branch; no open PRs at synthesis time.
 
-Working tree state: docs-only synthesis changes in progress on this branch.
+Working tree state: docs-only synthesis committed on this branch; no tracked or untracked changes after commit/push verification.
 
 Open PRs and review-thread state: open PR list is empty. Review-thread audit was not rerun in this synthesis branch because no PR exists yet.
 
@@ -166,12 +166,12 @@ Decisions made: do not rerun the whole exploration batch by default; move to wor
 
 Subagent tickets dispatched and results: EXP-01 through EXP-13 all returned; statuses and findings are summarized above.
 
-Unmerged or local-only work: this branch contains docs-only synthesis until committed, pushed, and merged.
+Unmerged or local-only work: docs-only synthesis is pushed on `recovery/story-lab-exploration-findings`; it remains unmerged until the PR lands.
 
 Known unknowns: live credentialed auth/database proof, process-loss durable job proof, final coverage baselines, Proving Grounds exposure stance, old streaming GET compatibility stance.
 
 Parked topics not to revive: archived dependency investigation branches and the unsliced AI-review reference worktree are not active implementation lines.
 
-Next exact action: validate docs, commit, push, open PR, merge if checks and review-thread audit are clean.
+Next exact action: open PR, wait for required checks, audit unresolved review threads, and merge if clean.
 
 Recommended stop point: after this docs synthesis is merged to `main`, start the first implementation wave from this file.

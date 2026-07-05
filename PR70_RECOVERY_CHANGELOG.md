@@ -22,7 +22,12 @@ Self-review:
 
 Validation:
 
-- Pending for this branch: docs diff checks, recovery finish check, function-count check, commit, push, PR, and merge.
+- `git diff --check`: passed.
+- `npm run test:recovery-finish-check`: passed.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- Commit hook reran `npm run test:recovery-finish-check`: passed.
+- `git push -u origin recovery/story-lab-exploration-findings`: succeeded.
+- PR and merge are still pending for this branch.
 
 ## 2026-07-05 01:54 EDT - Exploration Ticket Packet And Context Turnover
 
