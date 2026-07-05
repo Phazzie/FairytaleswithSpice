@@ -22,7 +22,7 @@ Validation:
 
 - `git diff --check`: passed.
 - `npm run test:recovery-finish-check`: passed.
-- Reference scan found no `/Users/hbpheonix` path and no `story-lab-account-smoke.ts` reference.
+- Reference scan over the touched docs found no machine-specific worktree path and no `story-lab-account-smoke.ts` reference.
 - PR, merge, and thread resolution are still pending for this follow-up branch.
 
 ## 2026-07-05 02:25 EDT - Exploration Findings Synthesis
