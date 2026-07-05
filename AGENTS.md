@@ -8,7 +8,7 @@ This file is read automatically by AI coding agents. It is the repo-level operat
 
 Prefer fewer, larger progress updates over many small command-by-command updates. Group related status into meaningful checkpoints: current truth, what changed, what is blocked, what is next, and what is already pushed or merged.
 
-When the user asks for a checklist, status report, or other concrete artifact, show the requested artifact or full checklist directly. Do not replace it with a short summary unless the user explicitly asks for a summary.
+When the user asks for a checklist, status report, or other concrete artifact, show the requested artifact or full checklist directly. Concrete artifacts include checklists, status tables, PR lists, subagent tickets, command-output summaries the user asked to see, named doc contents, and explicit done/not-done matrices. Do not replace them with a short summary unless the user explicitly asks for a summary.
 
 ## Required Start Order
 

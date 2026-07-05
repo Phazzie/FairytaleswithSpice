@@ -10,6 +10,7 @@ Actions:
 
 - Updated `AGENTS.md` with the user's communication preference: fewer, larger progress updates instead of many small command-by-command updates.
 - Added an explicit rule that when the user asks for a checklist, status report, or concrete artifact, agents should show the requested artifact directly instead of replacing it with a short summary.
+- Addressed PR review feedback by defining concrete artifacts as checklists, status tables, PR lists, subagent tickets, requested command-output summaries, named doc contents, and done/not-done matrices.
 
 Self-review:
 
