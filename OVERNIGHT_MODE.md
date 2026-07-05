@@ -1,6 +1,6 @@
 # Overnight Mode
 
-Last updated: 2026-06-13
+Last updated: 2026-07-05
 
 ## Purpose
 
@@ -31,7 +31,10 @@ Run or inspect these before making changes:
 5. `npm run test:all` when the change risk justifies the time
 6. Read or skim:
    - `AGENTS.md`
-   - `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md`
+   - `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`
+   - `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`
+   - `STORY_LAB_FUTURE_WORK_CHECKLIST.md`
+   - `STORY_LAB_EXPLORATION_FINDINGS.md` when present
    - `STORY_LAB_IDEA_BOARD.md`
    - the execution plan matching the files being changed
 
@@ -44,7 +47,7 @@ Use this order when the user has not given a newer explicit task:
 1. User's newest explicit request.
 2. Open PR review comments or failing CI.
 3. Failing local checks from the start-of-run checklist.
-4. The next unchecked publishing step in `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md`.
+4. The next unchecked gate in `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, or `STORY_LAB_FUTURE_WORK_CHECKLIST.md`.
 5. The next unchecked gate in the active execution plan.
 6. Source-backed research ideas from `STORY_LAB_IDEA_BOARD.md`.
 7. One bounded Weird Lab experiment from `STORY_LAB_IDEA_BOARD.md`.

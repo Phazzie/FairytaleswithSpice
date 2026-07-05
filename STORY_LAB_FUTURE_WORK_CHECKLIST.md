@@ -1,16 +1,18 @@
 # Story Lab Future Work Checklist
 
 Created: 2026-07-04 14:33 EDT
-Last updated: 2026-07-04 14:33 EDT
+Last updated: 2026-07-05 02:25 EDT
 
 This checklist breaks the unfinished Story Lab work into small tickets that a subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must choose the next workstream, keep write scopes disjoint, verify results, open/merge PRs, and keep docs current.
 
 Before running a broad exploration batch, use `STORY_LAB_EXPLORATION_TICKETS.md`. That file defines the standard exploration report, context-turnover packet, and the explore-to-worker tickets needed to revise this checklist into larger worker chunks with `Files touched` fields.
 
+The 2026-07-05 exploration batch has already run. Use `STORY_LAB_EXPLORATION_FINDINGS.md` before rerunning any Explorer ticket; most scout work is now worker-ready and should not be repeated unless live repo state has changed.
+
 ## Current Snapshot
 
 - [x] **Repo hygiene:** `main` is current with `origin/main`.
-- [x] **Open PRs:** zero open PRs after PR #186 merged.
+- [x] **Open PRs:** zero open PRs, verified with `gh pr list --state open --json number,title --limit 20` on 2026-07-05 02:25 EDT.
 - [x] **Old dependency investigation:** archived at `origin/archive/angular22-dependency-investigation-2026-07-04`; it is evidence only, not an active workstream or PR.
 - [x] **Whole-concept status:** `STORY_LAB_CONCEPT_CHECKLIST.md` is merged.
 - [x] **Public Story Lab loop:** create, continue, local save, copy, download, and progress UI exist.
@@ -18,6 +20,37 @@ Before running a broad exploration batch, use `STORY_LAB_EXPLORATION_TICKETS.md`
 - [ ] **Coverage proof:** root/API coverage tooling and repo-wide coverage evidence do not exist.
 - [ ] **Durable jobs:** job state is still explicitly `non_durable_memory`.
 - [ ] **Final completion report:** not ready until durability, coverage, and final audits are proven.
+- [x] **Exploration batch:** EXP-01 through EXP-13 completed and synthesized in `STORY_LAB_EXPLORATION_FINDINGS.md`.
+
+## Post-Exploration Execution Batches
+
+Do not rerun the full EXP batch by default. The next productive move is worker dispatch from the synthesis.
+
+### First Implementation Wave
+
+These six tasks can run in parallel if each worker keeps the listed write scope:
+
+| Worker | Why now | Write scope |
+|---|---|---|
+| Test-surface truth pass | Several runnable privacy/security/job tests are outside `test:all`; fix the command map before coverage. | `package.json`, `tests/README.md`, optional `tests/run-all.mjs` |
+| Angular coverage command | Angular already has `karma-coverage`; make invocation explicit without raising thresholds yet. | `story-generator/package.json`, `story-generator/karma.conf.js`, `story-generator/angular.json` |
+| Auth/cloud proof runbook | Signed-in durability is scaffolded but not live-proven; document the exact safe proof path. | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`, `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` |
+| Durable-job schema/readiness proof | Job schema and readiness checks exist; lock that boundary before route/process-loss work. | `api/_lib/story-lab/storage/storyLabCloudSchema.sql`, readiness tests/docs only |
+| Main app action-state polish | Existing UI guards work, but visible disabled/action-state tests are thin. | `story-generator/src/app/app.html`, `story-generator/src/app/app.css`, `story-generator/src/app/app.spec.ts` |
+| Proving Grounds interaction coverage | The route exists; interaction/button-state coverage is minimal and isolated. | `story-generator/src/app/proving-grounds/*` |
+
+### Second Implementation Wave
+
+Run after root `package.json` is free and the first wave has evidence:
+
+| Worker | Why second | Write scope |
+|---|---|---|
+| Root/API coverage bootstrap | Needs root dependency/script edits and should not collide with the test-surface pass. | `package.json`, `package-lock.json`, `scripts/recovery/run-root-self-tests.mjs` |
+| Account signed-in smoke | Needs package/script edits and possibly credential-safe skip behavior. | `scripts/recovery/story-lab-account-smoke.ts`, `package.json` |
+| Durable job store/config hardening | Deeper job persistence work after schema/readiness is locked. | `api/_lib/story-lab/jobs/*Store*`, `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts`, focused tests |
+| Streaming privacy backend patch | Private payloads are in URLs; backend transport needs body/job-based replacement. | `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, parser/job route tests |
+| Streaming privacy UI migration | Must follow or pair with backend transport; removes private payloads from browser-visible URLs. | `story-generator/src/app/story.service.ts`, streaming specs |
+| Final source-of-truth cleanup | Keep only live docs as current and route historical docs as historical. | `AGENTS.md`, `OVERNIGHT_MODE.md`, active Story Lab plan docs |
 
 ## How To Use This Checklist
 

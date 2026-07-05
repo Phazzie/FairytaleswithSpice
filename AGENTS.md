@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-05 01:54 EDT
+Last updated: 2026-07-05 02:25 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -23,7 +23,7 @@ Prefer durable turnover in `SUBAGENT_LOG.md`, `PR70_RECOVERY_CHANGELOG.md`, PR b
 Before planning, editing, or claiming readiness:
 
 1. Run `git status --short --branch` and treat the live worktree as authoritative.
-2. Read `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` when recovering the local Story Lab stack.
+2. Read the current active Story Lab control docs first: `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, and `STORY_LAB_EXPLORATION_FINDINGS.md` when it exists. Treat `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` as historical publication evidence unless a task explicitly asks to recover that old stack.
 3. For long-running autonomous work, read `OVERNIGHT_MODE.md` before selecting the next task.
 4. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas, story-quality experiments, and Weird Lab candidates.
 5. Read the execution plan that matches the files or behavior being changed.
@@ -103,6 +103,7 @@ Do not leave status only in chat. Update the narrowest durable document that mat
 | `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` | Final audit evidence changes: last-40 PR audit, wider PR debt, unresolved review comments, coverage proof, or "all work merged" claims. |
 | `STORY_LAB_FUTURE_WORK_CHECKLIST.md` | Granular future-work tickets, subagent-ready scopes, execution ordering, admin cleanup status, or next-work prioritization changes. |
 | `STORY_LAB_EXPLORATION_TICKETS.md` | Exploration ticket scope, standard exploration report fields, context-turnover packet shape, exploration wave planning, or explore-to-worker conversion strategy changes. |
+| `STORY_LAB_EXPLORATION_FINDINGS.md` | Exploration batches complete, findings need durable synthesis, first worker wave changes, context-turnover packets are produced, or exploratory tickets are converted to implementation batches. |
 | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` | Auth, profile, cloud library APIs/UI, signed-in save/load/list/delete behavior, or provider-backed claims change. |
 | `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` | Storage ports, in-memory/Postgres adapters, schema, durability wording, owner-scoped behavior, or cloud-vs-local status changes. |
 | `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` | Job routes, job store, SSE events, progress/reload behavior, Workflow claims, or non-durable job wording changes. |
@@ -205,6 +206,8 @@ The whole-concept status checklist is `STORY_LAB_CONCEPT_CHECKLIST.md`. Use it f
 The granular future-work checklist is `STORY_LAB_FUTURE_WORK_CHECKLIST.md`. Use it before dispatching subagents for unfinished Story Lab work; each unfinished item is broken into owned scope, stop condition, output, and validation.
 
 The exploration-ticket packet is `STORY_LAB_EXPLORATION_TICKETS.md`. Use it before running the next exploration batch; it defines the standard exploration report, context-turnover packet, and the exploration tickets that should convert the future-work checklist into larger worker chunks.
+
+The latest completed exploration synthesis is `STORY_LAB_EXPLORATION_FINDINGS.md`. Use it before rerunning any EXP ticket. If the finding is still current, dispatch workers from that synthesis instead of repeating read-only exploration.
 
 ## Historical Recovery Context
 

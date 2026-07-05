@@ -20,6 +20,47 @@ Parent verification:
 Follow-ups:
 ```
 
+## 2026-07-05 02:25 EDT - Story Lab Exploration Findings Batch
+
+Parent branch / PR: `recovery/story-lab-exploration-findings` / pending
+
+Goal: complete the EXP-01 through EXP-13 exploration tickets, convert the results into worker-ready implementation batches, and leave a compact context turnover packet.
+
+Parent analysis before dispatch:
+
+- The user wanted all exploration completed before another implementation run.
+- The maximum useful concurrency was six agents at once.
+- The parent kept strategy, live GitHub truth, stale-doc correction, final synthesis, and publication actions in the parent session.
+- Exploration output was accepted only when it named worker tickets, files touched, shared-file conflicts, and validation commands.
+
+| Agent | Model | Role | Scope | Status | Result | Integrated? |
+|---|---|---|---|---|---|---|
+| Darwin | `gpt-5.3-codex-spark` | explorer | EXP-01 communication guardrails | Partial | Found artifact substitution, WHY/WHAT inversion, and parked-topic revival as main failure modes | Integrated into synthesis; follow-up guidance still needed |
+| Socrates | `gpt-5.3-codex-spark` | explorer | EXP-02 checklist aggression | Done | Reclassified many future-work items from Explorer to Worker and proposed aggressive waves | Integrated into first/second wave synthesis |
+| Bacon | `gpt-5.3-codex-spark` | explorer | EXP-03 files-touched mapping | Done | Named shared-file conflicts and package/UI/job-route bottlenecks | Integrated into wave conflict rules |
+| Copernicus | `gpt-5.3-codex-spark` | explorer | EXP-04 PR/merge speed | Done | Proposed fast PR lane based on core CI and unresolved-thread checks | Integrated as process guidance |
+| Franklin | `gpt-5.3-codex-spark` | explorer | EXP-05 context turnover | Done | Confirmed turnover packet fields and triggers | Integrated into this findings handoff |
+| Harvey | `gpt-5.3-codex-spark` | explorer | EXP-06 tests/coverage | Partial | Found no root/API coverage gate, Angular 85% threshold, and omitted runnable tests | Integrated into test/coverage worker plan |
+| Singer | `gpt-5.3-codex-spark` | explorer | EXP-07 auth/cloud durability | Partial | Found scaffolded fail-closed auth/storage but no live signed-in proof | Integrated into auth/cloud worker plan |
+| Pasteur | `gpt-5.3-codex-spark` | explorer | EXP-08 durable jobs | Partial | Found coherent durable-job scaffold but no process-loss proof | Integrated into durable-job worker plan |
+| Erdos | `gpt-5.3-codex-spark` | explorer | EXP-09 streaming privacy | Done | Found private payloads still travel through streaming URLs | Integrated into streaming privacy worker plan |
+| Jason | `gpt-5.3-codex-spark` | explorer | EXP-10 UI opportunities | Done | Found main app and Proving Grounds worker-ready UI/test slices | Integrated into UI worker plan |
+| Noether | `gpt-5.3-codex-spark` | explorer | EXP-11 docs source-of-truth | Done | Found stale doc routing, but included a stale open-PR claim that parent rejected after live verification | Partially integrated with correction |
+| Arendt | `gpt-5.3-codex-spark` | explorer | EXP-12 parallelization boundaries | Done | Proposed disjoint implementation waves and shared-file limits | Integrated into first/second wave synthesis |
+| Bernoulli | `gpt-5.3-codex-spark` | explorer | EXP-13 process red-team | Done | Critiqued the batch as too process-heavy and recommended consolidation before future scouting | Integrated into do-not-rerun guidance |
+
+Parent verification:
+
+- Parent verified live open PR state with `gh pr list --state open --json number,title --limit 20`; result was `[]`.
+- Parent rejected the stale EXP-11 wording that treated old dependency PRs as open.
+- Parent verified current branch base and parked worktree state before writing the synthesis.
+
+Follow-ups:
+
+- Commit, push, open, and merge this docs-only synthesis branch.
+- Start the next implementation run from `STORY_LAB_EXPLORATION_FINDINGS.md`.
+- Do not rerun EXP-01 through EXP-13 unless live repo state changes enough to invalidate the synthesis.
+
 ## 2026-07-04 07:16 EDT - Whole Story Lab Concept Checklist Audit
 
 Parent branch / PR: `recovery/story-lab-concept-checklist` / pending
