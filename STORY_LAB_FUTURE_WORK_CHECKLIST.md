@@ -1,7 +1,7 @@
 # Story Lab Future Work Checklist
 
 Created: 2026-07-04 14:33 EDT
-Last updated: 2026-07-05 02:25 EDT
+Last updated: 2026-07-05 02:33 EDT
 
 This checklist breaks the unfinished Story Lab work into small tickets that a subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must choose the next workstream, keep write scopes disjoint, verify results, open/merge PRs, and keep docs current.
 
@@ -45,8 +45,8 @@ Run after root `package.json` is free and the first wave has evidence:
 
 | Worker | Why second | Write scope |
 |---|---|---|
-| Root/API coverage bootstrap | Needs root dependency/script edits and should not collide with the test-surface pass. | `package.json`, `package-lock.json`, `scripts/recovery/run-root-self-tests.mjs` |
-| Account signed-in smoke | Needs package/script edits and possibly credential-safe skip behavior. | `scripts/recovery/story-lab-account-smoke.ts`, `package.json` |
+| Root/API coverage bootstrap | Needs root dependency/script edits and should not collide with the test-surface pass. | `package.json`, `package-lock.json`, new `scripts/recovery/run-root-self-tests.mjs` |
+| Account signed-in smoke | Needs package/script edits and possibly credential-safe skip behavior. | new `scripts/recovery/story-lab-account-smoke.mjs`, `package.json` |
 | Durable job store/config hardening | Deeper job persistence work after schema/readiness is locked. | `api/_lib/story-lab/jobs/*Store*`, `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts`, focused tests |
 | Streaming privacy backend patch | Private payloads are in URLs; backend transport needs body/job-based replacement. | `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, parser/job route tests |
 | Streaming privacy UI migration | Must follow or pair with backend transport; removes private payloads from browser-visible URLs. | `story-generator/src/app/story.service.ts`, streaming specs |
@@ -108,7 +108,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Goal: add a repeatable script such as `test:story-lab-privacy-contracts` and decide whether it belongs in `test:all`.
   - Stop condition: if any listed test is not self-running under `tsx`, report the exact failure and stop.
   - Output: package-script diff plus command evidence.
-  - Validation: `npm run test:story-lab-privacy-contracts`; if added to the full gate, `npm run test:all`.
+  - Validation: after the worker creates the script, `npm run test:story-lab-privacy-contracts`; if added to the full gate, `npm run test:all`.
 
 - [ ] **1.3 Root/API coverage tool decision**
   - Role: Explorer.
