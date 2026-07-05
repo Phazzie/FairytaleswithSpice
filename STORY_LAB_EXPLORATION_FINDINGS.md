@@ -1,7 +1,7 @@
 # Story Lab Exploration Findings
 
 Created: 2026-07-05 02:25 EDT
-Last updated: 2026-07-05 02:27 EDT
+Last updated: 2026-07-05 02:33 EDT
 
 This is the durable synthesis of the EXP-01 through EXP-13 subagent exploration batch. It converts the read-only exploration pass into implementation-ready worker batches and a context turnover packet.
 
@@ -13,7 +13,7 @@ Use this file before rerunning any EXP ticket. If these facts are still current,
 - Base commit: `95c10d3 Add aggressive subagent exploration planning (#189)`.
 - Open PRs: none, verified with `gh pr list --state open --json number,title --limit 20`.
 - Main state before branch: `main...origin/main`, clean.
-- Remaining non-main worktree: `/Users/hbpheonix/fairytaleswithspice-ai-review-unsliced` on `ai-review/story-lab-unsliced-reference-do-not-merge`; treat as parked reference work, not the active line.
+- Remaining non-main worktree: a local parked reference worktree on `ai-review/story-lab-unsliced-reference-do-not-merge`; treat it as evidence only, not the active line.
 
 ## Exploration Status
 
@@ -116,7 +116,7 @@ These six workers can run together if they keep write scopes disjoint:
 
 | Worker | Goal | Write scope | Validation |
 |---|---|---|---|
-| W1 Test-surface truth pass | Add missing privacy/security/job-contract test command and document command map. | `package.json`, `tests/README.md`, optional `tests/run-all.mjs` | `npm run test:story-lab-privacy-contracts`; `npm run test:all` if included |
+| W1 Test-surface truth pass | Add missing privacy/security/job-contract test command and document command map. | `package.json`, `tests/README.md`, optional `tests/run-all.mjs` | After W1 creates it: `npm run test:story-lab-privacy-contracts`; `npm run test:all` if included |
 | W2 Angular coverage command | Add explicit Angular coverage script without raising thresholds yet. | `story-generator/package.json`, `story-generator/karma.conf.js`, `story-generator/angular.json` | `cd story-generator && npm run test:coverage -- --watch=false --browsers=ChromeHeadless` |
 | W3 Cloud durability runbook | Document schema/readiness/live-proof steps without claiming proof. | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`, `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` | `git diff --check`; secret-name-only review |
 | W4 Durable-job schema/readiness | Lock job-related schema/readiness proof before route work. | `api/_lib/story-lab/storage/storyLabCloudSchema.sql`, readiness tests/docs only | `npx tsx tests/story-lab-cloud-schema-migration.test.ts`; `npx tsx tests/story-lab-cloud-db-readiness.test.ts` |
@@ -129,8 +129,8 @@ Parent should integrate and push each worker result from one controlling session
 
 Run after the first wave lands or after the parent confirms the shared files are free:
 
-- Root/API coverage bootstrap: `package.json`, `package-lock.json`, `scripts/recovery/run-root-self-tests.mjs`.
-- Account signed-in smoke: `scripts/recovery/story-lab-account-smoke.ts`, `package.json`.
+- Root/API coverage bootstrap: `package.json`, `package-lock.json`, new `scripts/recovery/run-root-self-tests.mjs`.
+- Account signed-in smoke: new `scripts/recovery/story-lab-account-smoke.mjs`, `package.json`.
 - Durable job store/config hardening: `api/_lib/story-lab/jobs/*Store*`, `api/_lib/story-lab/jobs/storyLabJobStoreConfig.ts`, focused job tests.
 - Streaming privacy backend patch: `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, parser/job route tests.
 - Streaming privacy UI migration: `story-generator/src/app/story.service.ts`, streaming specs.

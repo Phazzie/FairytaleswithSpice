@@ -4,6 +4,27 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-05 02:33 EDT - Exploration Findings Review Follow-Up
+
+Actions:
+
+- Addressed post-merge review feedback from PR #190 by removing a machine-specific absolute path from `STORY_LAB_EXPLORATION_FINDINGS.md`.
+- Clarified that proposed second-wave scripts are new files to be created, not existing files.
+- Standardized the proposed account smoke script name to `scripts/recovery/story-lab-account-smoke.mjs`.
+- Clarified that `npm run test:story-lab-privacy-contracts` is a command W1 must create before it can be run.
+
+Self-review:
+
+- Correction: docs should not leak local absolute paths or imply future script files already exist.
+- Non-claim: this pass is docs-only and does not create the proposed smoke or coverage scripts.
+
+Validation:
+
+- `git diff --check`: passed.
+- `npm run test:recovery-finish-check`: passed.
+- Reference scan found no `/Users/hbpheonix` path and no `story-lab-account-smoke.ts` reference.
+- PR, merge, and thread resolution are still pending for this follow-up branch.
+
 ## 2026-07-05 02:25 EDT - Exploration Findings Synthesis
 
 Actions:
