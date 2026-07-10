@@ -57,7 +57,9 @@ async function testApplyRunsTrackedSchemaStatementsInOrder() {
 }
 
 function hasSchemaStatement(executor: FakeSchemaExecutor, snippet: string): boolean {
-  return executor.queries.some(query => query.sql.toLowerCase().includes(snippet.toLowerCase()));
+  const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim();
+  const normalizedSnippet = normalize(snippet);
+  return executor.queries.some(query => normalize(query.sql).includes(normalizedSnippet));
 }
 
 function testSqlSplitterKeepsSemicolonsInsideStrings() {

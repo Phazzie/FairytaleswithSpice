@@ -13,12 +13,12 @@ Actions:
 - Added `test:story-lab-privacy-contracts` and wired it into root `test:all`.
 - Removed stale `tests/audio-service.test.mjs` references from the test runner docs because that file is not present.
 - Clarified that root/API tests are runtime contract tests and do not currently provide line/branch coverage percentages.
-- Added an explicit Angular `test:coverage` script without changing the existing 85% Karma thresholds.
+- Added an explicit Angular `test:coverage` script using a named no-sandbox Karma launcher without changing the existing 85% Karma thresholds.
 - Added credential-safe signed-in cloud durability proof steps while preserving non-claims until real evidence exists.
 - Strengthened durable-job schema/readiness tests for job tables, job/event indexes, and event-to-job foreign-key shape.
 - Added focused Angular specs/test hooks for story action labels, cloud-save disabled state, and Proving Grounds interaction states.
 - Updated `STORY_LAB_FUTURE_WORK_CHECKLIST.md` and `SUBAGENT_LOG.md` for this first implementation wave.
-- Addressed Sourcery review typos in the durability proof docs before merge.
+- Addressed Sourcery, Gemini, and Copilot review comments before merge.
 
 Self-review:
 
@@ -35,7 +35,7 @@ Validation:
 - `npm run test:all`: passed.
 - `cd story-generator && npx -p node@20 node ./node_modules/typescript/bin/tsc -p tsconfig.spec.json --noEmit`: passed.
 - `cd story-generator && npm run build`: passed with the existing Node 23 odd-version warning and stale `baseline-browser-mapping` warning.
-- `cd story-generator && npm run test -- --watch=false --browsers=ChromeHeadless --include='src/app/app.spec.ts' --include='src/app/proving-grounds/proving-grounds.spec.ts'`: failed because ChromeHeadless did not capture after retries; bundle compilation reached Karma before browser timeout.
+- `cd story-generator && npm run test -- --watch=false --browsers=ChromeHeadlessNoSandbox --include='src/app/app.spec.ts' --include='src/app/proving-grounds/proving-grounds.spec.ts'`: failed because ChromeHeadless did not capture after retries; bundle compilation reached Karma before browser timeout.
 - `git diff --check`: passed.
 - `npm run test:recovery-finish-check`: passed.
 

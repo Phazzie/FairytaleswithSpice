@@ -8,7 +8,7 @@
     "build:prod": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "test:coverage": "ng test --watch=false --browsers=ChromeHeadless --code-coverage",
+    "test:coverage": "ng test --watch=false --browsers=ChromeHeadlessNoSandbox --code-coverage",
     "serve:ssr:story-generator": "node dist/story-generator/server/server.mjs",
     "start:prod": "node dist/story-generator/server/server.mjs"
   },

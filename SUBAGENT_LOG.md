@@ -36,7 +36,7 @@ Parent analysis before dispatch:
 | Agent | Model | Role | Scope | Status | Result | Integrated? |
 |---|---|---|---|---|---|---|
 | Kepler | `gpt-5.3-codex-spark` | worker | Test-surface truth pass | Done with concerns | Added `test:story-lab-privacy-contracts`, wired it into `test:all`, and cleaned the missing audio-test runner reference | Integrated with parent README cleanup for stale coverage claims |
-| Carver | `gpt-5.3-codex-spark` | worker | Angular coverage command | Done with concerns | Added `story-generator` `test:coverage` without changing Karma thresholds; worker could not run Angular because `ng` was missing in its env | Integrated; parent repaired install and validated build/compile, but browser capture still failed |
+| Carver | `gpt-5.3-codex-spark` | worker | Angular coverage command | Done with concerns | Added `story-generator` `test:coverage` without changing Karma thresholds; worker could not run Angular because `ng` was missing in its env | Integrated; parent repaired install, added a named no-sandbox launcher after review, and validated build/compile, but browser capture still failed |
 | Maxwell | `gpt-5.3-codex-spark` | worker | Auth/cloud proof runbook | Done | Added credential-safe signed-in durability proof sequence and explicit cloud non-claims | Integrated |
 | Heisenberg | `gpt-5.3-codex-spark` | worker | Durable-job schema/readiness proof | Done with concerns | Strengthened schema/readiness assertions for job tables, indexes, and event-to-job foreign-key shape | Integrated |
 | Kierkegaard | `gpt-5.3-codex-spark` | worker | Main app action-state polish | Done with concerns | Added story/cloud action hooks, ARIA labels, and focused app specs | Integrated; parent validation limited by Chrome capture |

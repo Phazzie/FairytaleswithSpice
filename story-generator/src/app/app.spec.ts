@@ -589,7 +589,7 @@ describe('App', () => {
     expect(saveButton?.getAttribute('aria-label')).toBe('Save story locally');
   });
 
-  it('disables cloud save when no story is connected to cloud', () => {
+  it('disables cloud save before an active story exists', () => {
     fixture.detectChanges();
 
     const cloudPanel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;

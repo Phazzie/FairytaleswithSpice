@@ -80,9 +80,7 @@ function createTestResult(
 }
 
 function createBasicResult(id: string): ProvingGroundsTestResult {
-  const result = createTestResult(id);
-  delete result.aiEvaluation;
-  return result;
+  return createTestResult(id, { aiEvaluation: undefined });
 }
 
 function getGenerateButton(fixture: ComponentFixture<ProvingGroundsComponent>): HTMLButtonElement {

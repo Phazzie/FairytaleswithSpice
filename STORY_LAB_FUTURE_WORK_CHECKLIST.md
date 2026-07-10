@@ -34,7 +34,7 @@ These six tasks were run in parallel on `recovery/story-lab-first-worker-wave` w
 | Worker | Status | Result | Write scope |
 |---|---|---|---|
 | Test-surface truth pass | Done | Added `test:story-lab-privacy-contracts`, wired it into `test:all`, removed stale audio-test README/runner claims, and clarified root/API coverage is not instrumented yet. | `package.json`, `tests/README.md`, `tests/run-all.mjs` |
-| Angular coverage command | Done with browser caveat | Added explicit `test:coverage` command without changing the existing 85% Karma thresholds. Local ChromeHeadless execution still times out during browser capture. | `story-generator/package.json` |
+| Angular coverage command | Done with browser caveat | Added explicit `test:coverage` command with a named no-sandbox Karma launcher without changing the existing 85% Karma thresholds. Local ChromeHeadless execution still times out during browser capture. | `story-generator/package.json`, `story-generator/karma.conf.js` |
 | Auth/cloud proof runbook | Done | Added credential-safe signed-in durability proof steps and kept cloud/durable non-claims explicit. | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`, `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` |
 | Durable-job schema/readiness proof | Done | Strengthened schema/readiness assertions for job tables, indexes, and event-to-job foreign-key shape. | `tests/story-lab-cloud-schema-migration.test.ts`, `tests/story-lab-cloud-db-readiness.test.ts`, `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` |
 | Main app action-state polish | Done with browser caveat | Added action test hooks/ARIA labels and specs for story action visibility plus disabled cloud save. | `story-generator/src/app/app.html`, `story-generator/src/app/app.spec.ts` |
