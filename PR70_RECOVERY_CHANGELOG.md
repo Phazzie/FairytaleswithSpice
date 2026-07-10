@@ -18,6 +18,7 @@ Actions:
 - Strengthened durable-job schema/readiness tests for job tables, job/event indexes, and event-to-job foreign-key shape.
 - Added focused Angular specs/test hooks for story action labels, cloud-save disabled state, and Proving Grounds interaction states.
 - Updated `STORY_LAB_FUTURE_WORK_CHECKLIST.md` and `SUBAGENT_LOG.md` for this first implementation wave.
+- Addressed Sourcery review typos in the durability proof docs before merge.
 
 Self-review:
 

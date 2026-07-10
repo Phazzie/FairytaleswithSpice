@@ -23,8 +23,8 @@ This plan is intentionally route-free. At the time Phase C was written, the Verc
 ## Live Signed-In Durability Proof Boundary
 
 - This storage-port plan is scaffold-and-route-free only; it is not itself a cloud durability proof.
-- Use the `Live Signed-In Durability Proof (Credential-Safe)` section in `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` for the credential-safe, signed-in prove sequence.
-- Durable proof for this plane still depends on that active auth/cloud work and should be recorded as separate evidence before changing PR language to cloud-stable claims.
+- Use the `Live Signed-In Durability Proof (Credential-Safe)` section in `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` for the credential-safe, signed-in proof sequence.
+- Durable proof for this plan still depends on that active auth/cloud work and should be recorded as separate evidence before changing PR language to cloud-stable claims.
 
 ## Progress
 

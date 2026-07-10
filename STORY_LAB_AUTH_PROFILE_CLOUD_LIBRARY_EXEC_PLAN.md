@@ -61,7 +61,7 @@ Not live yet:
 - Goal: prove live signed-in save/list/load/delete behavior against durable storage before any cloud claims; this code remains scaffolded/fail-closed until a real signed-in run with durable DB credentials is completed.
 - Required env names only (set in the signed-in runtime; never paste values in docs):
   - `STORY_LAB_AUTH_PROVIDER=clerk`
-  - `DATABASE_URL=<postgreshost>`
+  - `DATABASE_URL=<postgres_host>`
 - Proof sequence:
   1. Configure `STORY_LAB_AUTH_PROVIDER` + `DATABASE_URL` and confirm route config is loaded with a non-deny auth/provider path.
   2. Provision the durable database and apply `storyLabCloudSchema.sql` against the same `DATABASE_URL`.
