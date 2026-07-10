@@ -55,6 +55,15 @@ module.exports = function (config) {
           '--disable-web-security',
           '--disable-dev-shm-usage'
         ]
+      },
+      ChromeHeadlessNoSandbox: {
+        base: 'ChromeHeadless',
+        flags: [
+          '--no-sandbox',
+          '--disable-gpu',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage'
+        ]
       }
     },
     restartOnFileChange: true

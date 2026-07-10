@@ -47,6 +47,15 @@ This branch deliberately keeps the current direct generation routes working. It 
 - `generateStoryLabGenesis()` and `continueStoryLab()` already fail closed in production when `XAI_API_KEY` is missing by returning `AI_UNAVAILABLE`. The job scaffold should preserve that behavior by creating a failed job, not by falling back to mock prose in production.
 - The full Phase D plan mentions UI reload survival and progress UI. That requires a separate frontend integration slice because this branch must first stabilize the job API contract and non-durable limitations.
 
+### W4 Schema/Readiness Proof
+
+Current schema/readiness proof covers durable-job storage shape for future work:
+- `story_lab_jobs` and `story_lab_job_events` tables are present in schema migration + tested as executed statements.
+- Required indexes for owner/idempotency and event sequence/replay (`story_lab_jobs_owner_updated_idx`, `story_lab_jobs_owner_idempotency_idx`, `story_lab_job_events_job_sequence_idx`, `story_lab_job_events_owner_job_idx`) are asserted in readiness checks.
+- Foreign-key link from `story_lab_job_events(job_id, owner_user_id)` to `story_lab_jobs(job_id, owner_user_id)` is included in the SQL contract.
+
+Process-loss proof is not yet done; route/store durability is still non-durable process-local and is blocked by separate execution proof work.
+
 ## Decision Log
 
 - Decision: Use the existing `jobContracts.ts` instead of creating a second competing `contracts.ts`.

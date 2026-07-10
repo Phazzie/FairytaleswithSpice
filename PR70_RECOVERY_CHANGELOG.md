@@ -4,6 +4,41 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-10 12:39 EDT - Story Lab First Worker Wave
+
+Actions:
+
+- Created `recovery/story-lab-first-worker-wave` from clean current `main`.
+- Dispatched six narrow Spark worker tickets from `STORY_LAB_EXPLORATION_FINDINGS.md` with disjoint write scopes.
+- Added `test:story-lab-privacy-contracts` and wired it into root `test:all`.
+- Removed stale `tests/audio-service.test.mjs` references from the test runner docs because that file is not present.
+- Clarified that root/API tests are runtime contract tests and do not currently provide line/branch coverage percentages.
+- Added an explicit Angular `test:coverage` script using a named no-sandbox Karma launcher without changing the existing 85% Karma thresholds.
+- Added credential-safe signed-in cloud durability proof steps while preserving non-claims until real evidence exists.
+- Strengthened durable-job schema/readiness tests for job tables, job/event indexes, and event-to-job foreign-key shape.
+- Added focused Angular specs/test hooks for story action labels, cloud-save disabled state, and Proving Grounds interaction states.
+- Updated `STORY_LAB_FUTURE_WORK_CHECKLIST.md` and `SUBAGENT_LOG.md` for this first implementation wave.
+- Addressed Sourcery, Gemini, and Copilot review comments before merge.
+
+Self-review:
+
+- Good: This converted the exploration synthesis into real code/docs/test movement instead of another read-only pass.
+- Correction: Parent integration caught and fixed a Proving Grounds TypeScript strictness issue that the worker missed.
+- Non-claim: This does not prove live signed-in cloud durability, add root/API coverage instrumentation, or make job execution durable across process loss.
+- Non-claim: Angular browser specs and coverage did not pass locally because ChromeHeadless could not capture in this environment, even with `CHROME_BIN` set.
+
+Validation:
+
+- `npm run test:story-lab-privacy-contracts`: passed.
+- `npm run test:story-lab-cloud-schema-migration`: passed.
+- `npm run test:story-lab-cloud-db-readiness`: passed.
+- `npm run test:all`: passed.
+- `cd story-generator && npx -p node@20 node ./node_modules/typescript/bin/tsc -p tsconfig.spec.json --noEmit`: passed.
+- `cd story-generator && npm run build`: passed with the existing Node 23 odd-version warning and stale `baseline-browser-mapping` warning.
+- `cd story-generator && npm run test -- --watch=false --browsers=ChromeHeadlessNoSandbox --include='src/app/app.spec.ts' --include='src/app/proving-grounds/proving-grounds.spec.ts'`: failed because ChromeHeadless did not capture after retries; bundle compilation reached Karma before browser timeout.
+- `git diff --check`: passed.
+- `npm run test:recovery-finish-check`: passed.
+
 ## 2026-07-05 02:33 EDT - Exploration Findings Review Follow-Up
 
 Actions:

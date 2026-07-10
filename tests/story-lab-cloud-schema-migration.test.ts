@@ -43,10 +43,23 @@ async function testApplyRunsTrackedSchemaStatementsInOrder() {
   assert(result.appliedAt === '2026-06-08T11:05:00.000Z', 'schema application should use injected clock');
   assert(result.statementCount === executor.queries.length, 'result should report executed statement count');
   assert(executor.queries.length >= 6, 'tracked schema should execute all table, index, and comment statements');
+  assert(hasSchemaStatement(executor, 'create table if not exists story_lab_jobs'), 'schema should create story_lab_jobs table');
+  assert(hasSchemaStatement(executor, 'create table if not exists story_lab_job_events'), 'schema should create story_lab_job_events table');
+  assert(hasSchemaStatement(executor, 'story_lab_jobs_owner_updated_idx'), 'schema should add story_lab_jobs_owner_updated_idx');
+  assert(hasSchemaStatement(executor, 'story_lab_jobs_owner_idempotency_idx'), 'schema should add story_lab_jobs_owner_idempotency_idx');
+  assert(hasSchemaStatement(executor, 'story_lab_job_events_job_sequence_idx'), 'schema should add story_lab_job_events_job_sequence_idx');
+  assert(hasSchemaStatement(executor, 'story_lab_job_events_owner_job_idx'), 'schema should add story_lab_job_events_owner_job_idx');
+  assert(hasSchemaStatement(executor, 'references story_lab_jobs'), 'schema should define event->job foreign key');
   assert(executor.queries[0]?.sql.includes('create table if not exists story_lab_profiles'), 'profile table should be applied first');
   assert(executor.queries[1]?.sql.includes('create table if not exists story_projects'), 'project table should be applied second');
   assert(executor.queries.every(query => query.params.length === 0), 'schema statements should not use runtime params');
   assert(executor.queries.every(query => !query.sql.trim().endsWith(';')), 'schema statements should be sent without trailing semicolons');
+}
+
+function hasSchemaStatement(executor: FakeSchemaExecutor, snippet: string): boolean {
+  const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim();
+  const normalizedSnippet = normalize(snippet);
+  return executor.queries.some(query => normalize(query.sql).includes(normalizedSnippet));
 }
 
 function testSqlSplitterKeepsSemicolonsInsideStrings() {

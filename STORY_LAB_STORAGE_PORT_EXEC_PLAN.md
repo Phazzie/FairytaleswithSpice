@@ -20,6 +20,12 @@ The user-visible outcome is not account sync yet. The observable technical outco
 
 This plan is intentionally route-free. At the time Phase C was written, the Vercel function-count guard was `12/12`; route-budget work later reduced the count. Phase C still must not add `api/story-lab/storage*` routes or claim cloud sync.
 
+## Live Signed-In Durability Proof Boundary
+
+- This storage-port plan is scaffold-and-route-free only; it is not itself a cloud durability proof.
+- Use the `Live Signed-In Durability Proof (Credential-Safe)` section in `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` for the credential-safe, signed-in proof sequence.
+- Durable proof for this plan still depends on that active auth/cloud work and should be recorded as separate evidence before changing PR language to cloud-stable claims.
+
 ## Progress
 
 - [x] Started from merged `main` after PR #100 was merged.

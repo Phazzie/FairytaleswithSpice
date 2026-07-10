@@ -82,85 +82,6 @@ node tests/story-service.test.mjs
 
 ---
 
-### 2. **Audio Service Tests** (`audio-service.test.mjs`)
-
-**Tests**: 11 test categories, 60+ individual assertions
-
-#### What's Tested:
-
-1. **Basic Audio Conversion**
-   - Result structure validation
-   - Audio ID generation
-   - URL generation (data URL or HTTP)
-   - Duration calculation
-   - File size tracking
-   - Progress tracking
-
-2. **Multi-Voice Processing**
-   - Speaker tag detection
-   - Multiple character voices
-   - Processing time expectations
-
-3. **Voice Metadata Extraction**
-   - `[Character, voice: description]:` format
-   - Metadata parsing
-   - Voice characteristic application
-
-4. **All Voice Types**
-   - Female voice
-   - Male voice
-   - Neutral voice
-   - Voice type preservation
-
-5. **All Audio Formats**
-   - MP3 format
-   - WAV format
-   - AAC format
-   - MIME type validation
-   - Format preservation
-
-6. **All Speed Settings**
-   - 0.5x speed
-   - 0.75x speed
-   - 1.0x speed (normal)
-   - 1.25x speed
-   - 1.5x speed
-   - Speed preservation
-
-7. **Long Content Handling**
-   - Large text processing
-   - Duration scaling
-   - File size scaling
-   - Performance metrics
-
-8. **HTML Cleaning**
-   - Tag removal
-   - Text extraction
-   - Special character handling
-
-9. **Input Validation**
-   - Empty storyId handling
-   - Empty content handling
-   - Invalid format fallback
-
-10. **Emotion System**
-    - Emotion info retrieval
-    - 90+ emotions available
-    - Voice settings generation
-    - Emotion combination testing
-
-11. **Logging Integration**
-    - Log capture working
-    - Request IDs present
-    - Audio-specific logs
-
-#### How to Run:
-```bash
-node tests/audio-service.test.mjs
-```
-
----
-
 ## Running All Tests
 
 ### Option 1: Test Runner Script
@@ -179,9 +100,6 @@ npm test
 ```bash
 # Story tests only
 node tests/story-service.test.mjs
-
-# Audio tests only
-node tests/audio-service.test.mjs
 ```
 
 ---
@@ -307,11 +225,10 @@ jobs:
 
 ## Test Metrics
 
-### Current Coverage:
-- **Story Service**: 95%+ code coverage
-- **Audio Service**: 90%+ code coverage
-- **Core Functions**: 100% coverage
-- **Edge Cases**: 80%+ coverage
+### Current Test Surface:
+- **Story Service**: direct service behavior and prompt-generation contracts
+- **Story Lab**: state, route status, auth/config, storage ports, cloud schema/readiness, profile/account routes, job contracts, and privacy/security contract checks
+- **Coverage status**: root/API tests are runtime contract tests and are not currently instrumented for line/branch coverage percentages
 
 ### Performance Benchmarks:
 - Story Generation: < 5s (with real API)
@@ -357,12 +274,18 @@ npm test
 # Story tests only
 node tests/story-service.test.mjs
 
-# Audio tests only
-node tests/audio-service.test.mjs
+# Story-Lab privacy/security/job contract surface
+npm run test:story-lab-privacy-contracts
 
 # With debugging
 NODE_ENV=development node tests/story-service.test.mjs
 ```
+
+### Story Lab Privacy/Security Command Map
+
+- `npm run test:story-lab-privacy-contracts`: executes `tests/cors-policy.test.ts`, `tests/export-sanitizer.test.ts`, `tests/log-redaction.test.ts`, `tests/story-lab-stream-parse.test.ts`, `tests/story-service-streaming-security.test.ts`, `tests/story-lab-job-contracts.test.ts` in this order.
+- Included in `test:all`: yes.
+- This command set is not coverage/instrumentation; it is a focused runtime contract suite for omitted tests.
 
 ### Expected Results:
 - ✅ **All tests pass** in mock mode
@@ -372,6 +295,6 @@ NODE_ENV=development node tests/story-service.test.mjs
 
 ---
 
-**Status**: ✅ Production-Ready Test Suite
+**Status**: Active contract test suite; root/API coverage percentages are not instrumented yet
 
-Last Updated: October 10, 2025
+Last Updated: July 10, 2026
