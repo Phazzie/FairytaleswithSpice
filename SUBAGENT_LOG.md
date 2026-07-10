@@ -20,6 +20,47 @@ Parent verification:
 Follow-ups:
 ```
 
+## 2026-07-10 12:39 EDT - Story Lab First Worker Wave
+
+Parent branch / PR: `recovery/story-lab-first-worker-wave` / pending
+
+Goal: execute the first implementation wave from `STORY_LAB_EXPLORATION_FINDINGS.md` using six bounded Spark workers, then have the parent integrate, validate, and publish the branch.
+
+Parent analysis before dispatch:
+
+- Current `main` was clean/current and open PRs were empty at branch start.
+- The first wave was selected because its six tickets had mostly disjoint write scopes and turned exploration findings into mergeable code/docs/test movement.
+- Parent owned the branch, integration, dependency repair, validation, docs updates, PR actions, and all claims about what is or is not proven.
+- Workers were told they were not alone in the codebase and could only edit their owned files.
+
+| Agent | Model | Role | Scope | Status | Result | Integrated? |
+|---|---|---|---|---|---|---|
+| Kepler | `gpt-5.3-codex-spark` | worker | Test-surface truth pass | Done with concerns | Added `test:story-lab-privacy-contracts`, wired it into `test:all`, and cleaned the missing audio-test runner reference | Integrated with parent README cleanup for stale coverage claims |
+| Carver | `gpt-5.3-codex-spark` | worker | Angular coverage command | Done with concerns | Added `story-generator` `test:coverage` without changing Karma thresholds; worker could not run Angular because `ng` was missing in its env | Integrated; parent repaired install and validated build/compile, but browser capture still failed |
+| Maxwell | `gpt-5.3-codex-spark` | worker | Auth/cloud proof runbook | Done | Added credential-safe signed-in durability proof sequence and explicit cloud non-claims | Integrated |
+| Heisenberg | `gpt-5.3-codex-spark` | worker | Durable-job schema/readiness proof | Done with concerns | Strengthened schema/readiness assertions for job tables, indexes, and event-to-job foreign-key shape | Integrated |
+| Kierkegaard | `gpt-5.3-codex-spark` | worker | Main app action-state polish | Done with concerns | Added story/cloud action hooks, ARIA labels, and focused app specs | Integrated; parent validation limited by Chrome capture |
+| Hypatia | `gpt-5.3-codex-spark` | worker | Proving Grounds interaction coverage | Done with concerns | Added focused specs for disabled states, comparison limits, evaluated state, and deletion behavior | Integrated after parent fixed strict DOM typing |
+
+Parent verification:
+
+- Parent inspected worker diffs and fixed integration issues instead of accepting worker output blindly.
+- Parent ran `npm install --no-audit --no-fund` at root to restore missing `@neondatabase/serverless` for local validation.
+- Parent ran clean `npm ci --no-audit --no-fund` in `story-generator` after Angular compiler files were incomplete.
+- `npm run test:story-lab-privacy-contracts`: passed.
+- `npm run test:story-lab-cloud-schema-migration`: passed.
+- `npm run test:story-lab-cloud-db-readiness`: passed.
+- `npm run test:all`: passed.
+- `cd story-generator && npx -p node@20 node ./node_modules/typescript/bin/tsc -p tsconfig.spec.json --noEmit`: passed.
+- `cd story-generator && npm run build`: passed with existing Node 23 and stale browser-mapping warnings.
+- Focused Angular browser specs did not pass locally because ChromeHeadless failed to capture after retries, including with `CHROME_BIN` pointed at the installed Chrome.
+
+Follow-ups:
+
+- Publish and merge this first worker-wave PR if CI/review are clean.
+- Run the second implementation wave after this branch lands; do not mix root/API coverage bootstrap with unrelated package edits.
+- Treat Angular browser coverage as unproven until a local/CI Chrome capture succeeds.
+
 ## 2026-07-05 02:25 EDT - Story Lab Exploration Findings Batch
 
 Parent branch / PR: `recovery/story-lab-exploration-findings` / pending

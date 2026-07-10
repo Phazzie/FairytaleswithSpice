@@ -1,7 +1,7 @@
 # Story Lab Future Work Checklist
 
 Created: 2026-07-04 14:33 EDT
-Last updated: 2026-07-05 02:33 EDT
+Last updated: 2026-07-10 12:39 EDT
 
 This checklist breaks the unfinished Story Lab work into small tickets that a subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must choose the next workstream, keep write scopes disjoint, verify results, open/merge PRs, and keep docs current.
 
@@ -21,6 +21,7 @@ The 2026-07-05 exploration batch has already run. Use `STORY_LAB_EXPLORATION_FIN
 - [ ] **Durable jobs:** job state is still explicitly `non_durable_memory`.
 - [ ] **Final completion report:** not ready until durability, coverage, and final audits are proven.
 - [x] **Exploration batch:** EXP-01 through EXP-13 completed and synthesized in `STORY_LAB_EXPLORATION_FINDINGS.md`.
+- [x] **First implementation wave:** completed on `recovery/story-lab-first-worker-wave`; this improves test command truth, Angular coverage invocation, durability proof docs, durable-job schema/readiness proof, and focused UI/spec coverage. It does not complete live cloud proof, root/API coverage instrumentation, or durable process-loss job proof.
 
 ## Post-Exploration Execution Batches
 
@@ -28,16 +29,16 @@ Do not rerun the full EXP batch by default. The next productive move is worker d
 
 ### First Implementation Wave
 
-These six tasks can run in parallel if each worker keeps the listed write scope:
+These six tasks were run in parallel on `recovery/story-lab-first-worker-wave` with parent integration and verification:
 
-| Worker | Why now | Write scope |
-|---|---|---|
-| Test-surface truth pass | Several runnable privacy/security/job tests are outside `test:all`; fix the command map before coverage. | `package.json`, `tests/README.md`, optional `tests/run-all.mjs` |
-| Angular coverage command | Angular already has `karma-coverage`; make invocation explicit without raising thresholds yet. | `story-generator/package.json`, `story-generator/karma.conf.js`, `story-generator/angular.json` |
-| Auth/cloud proof runbook | Signed-in durability is scaffolded but not live-proven; document the exact safe proof path. | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`, `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` |
-| Durable-job schema/readiness proof | Job schema and readiness checks exist; lock that boundary before route/process-loss work. | `api/_lib/story-lab/storage/storyLabCloudSchema.sql`, readiness tests/docs only |
-| Main app action-state polish | Existing UI guards work, but visible disabled/action-state tests are thin. | `story-generator/src/app/app.html`, `story-generator/src/app/app.css`, `story-generator/src/app/app.spec.ts` |
-| Proving Grounds interaction coverage | The route exists; interaction/button-state coverage is minimal and isolated. | `story-generator/src/app/proving-grounds/*` |
+| Worker | Status | Result | Write scope |
+|---|---|---|---|
+| Test-surface truth pass | Done | Added `test:story-lab-privacy-contracts`, wired it into `test:all`, removed stale audio-test README/runner claims, and clarified root/API coverage is not instrumented yet. | `package.json`, `tests/README.md`, `tests/run-all.mjs` |
+| Angular coverage command | Done with browser caveat | Added explicit `test:coverage` command without changing the existing 85% Karma thresholds. Local ChromeHeadless execution still times out during browser capture. | `story-generator/package.json` |
+| Auth/cloud proof runbook | Done | Added credential-safe signed-in durability proof steps and kept cloud/durable non-claims explicit. | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`, `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` |
+| Durable-job schema/readiness proof | Done | Strengthened schema/readiness assertions for job tables, indexes, and event-to-job foreign-key shape. | `tests/story-lab-cloud-schema-migration.test.ts`, `tests/story-lab-cloud-db-readiness.test.ts`, `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` |
+| Main app action-state polish | Done with browser caveat | Added action test hooks/ARIA labels and specs for story action visibility plus disabled cloud save. | `story-generator/src/app/app.html`, `story-generator/src/app/app.spec.ts` |
+| Proving Grounds interaction coverage | Done with browser caveat | Added focused specs for export/generate disabled states, comparison selection limits, evaluated-state button, and delete-current behavior. | `story-generator/src/app/proving-grounds/proving-grounds.spec.ts` |
 
 ### Second Implementation Wave
 

@@ -65,6 +65,10 @@ async function testReadyDatabaseReportsReady() {
   assert(result.ready, 'database with required tables and indexes should be ready');
   assert(result.checkedAt === '2026-06-08T11:10:00.000Z', 'readiness should use injected clock');
   assert(result.missing.length === 0, 'ready database should not report missing items');
+  assert(
+    result.missing.filter(item => item.startsWith('story_lab_')).length === 0,
+    'ready database should not report story_lab* table/index gaps'
+  );
   assert(executor.queries[0]?.sql.includes('to_regclass'), 'readiness should check required tables');
   assert(executor.queries[0]?.sql.includes('::text'), 'readiness should cast regclass values to text for drivers');
   assert(executor.queries[1]?.sql.includes('pg_indexes'), 'readiness should check required indexes');
@@ -96,6 +100,10 @@ async function testMissingTableOrIndexReportsNotReady() {
   assert(result.missing.includes('story_lab_job_events'), 'missing job events table should be reported');
   assert(result.missing.includes('story_lab_jobs_owner_idempotency_idx'), 'missing owner idempotency index should be reported');
   assert(result.missing.includes('story_lab_job_events_owner_job_idx'), 'missing owner job events index should be reported');
+  assert(
+    !result.missing.includes('story_lab_job_events_job_sequence_idx'),
+    'present job event sequence index should not be reported missing'
+  );
 }
 
 async function testDatabaseErrorsFailClosedWithoutLeakingProviderDetails() {

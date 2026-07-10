@@ -56,6 +56,29 @@ Not live yet:
 - Treat user profile fields as preferences, not authorization metadata.
 - Use `AuthUser.userId` and owner columns for authorization.
 
+## Live Signed-In Durability Proof (Credential-Safe)
+
+- Goal: prove live signed-in save/list/load/delete behavior against durable storage before any cloud claims; this code remains scaffolded/fail-closed until a real signed-in run with durable DB credentials is completed.
+- Required env names only (set in the signed-in runtime; never paste values in docs):
+  - `STORY_LAB_AUTH_PROVIDER=clerk`
+  - `DATABASE_URL=<postgreshost>`
+- Proof sequence:
+  1. Configure `STORY_LAB_AUTH_PROVIDER` + `DATABASE_URL` and confirm route config is loaded with a non-deny auth/provider path.
+  2. Provision the durable database and apply `storyLabCloudSchema.sql` against the same `DATABASE_URL`.
+  3. Run cloud database readiness check and verify required tables/indexes are present.
+  4. Sign in as **user A** and call:
+     - `/api/story-lab/account/profile` (GET) to confirm signed-in profile status loads;
+     - `/api/story-lab/account/projects` (GET) to confirm owner-scoped project collection access.
+  5. Create/save at least one project as user A through `/api/story-lab/account/projects` (POST); confirm project save receipt is returned and not storage-fallback.
+  6. Call `/api/story-lab/account/projects/{projectId}` (GET) to load the saved project and verify body includes `storageMode: "cloud_postgres"`.
+  7. Call `/api/story-lab/account/projects` (GET) again and `/api/story-lab/account/projects/{projectId}` (DELETE) to verify list/delete endpoints return `storageMode: "cloud_postgres"` and expected delete outcome.
+  8. Repeat with signed-in **user B** (different identity): list should not return user A project; load/delete on user A project id must fail with access-denied semantics.
+  9. Record evidence bundle (timestamped request/response evidence, endpoint outcomes, and storageMode verification) before updating PR language to claim live cloud proof.
+- Non-claims for this plan until evidence is collected:
+  - no signed-in cloud durability claims;
+  - no ownership breach assumptions;
+  - no cross-user project access assumptions.
+
 ## Phase Checklist
 
 ### Phase 0: Publication Recovery

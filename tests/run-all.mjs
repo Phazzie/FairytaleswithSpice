@@ -61,8 +61,7 @@ async function runAllTests() {
   log('█'.repeat(80) + '\n', 'cyan');
   
   const testSuites = [
-    { file: 'story-service.test.mjs', name: 'Story Generation Service Tests' },
-    { file: 'audio-service.test.mjs', name: 'Audio Conversion Service Tests' }
+    { file: 'story-service.test.mjs', name: 'Story Generation Service Tests' }
   ];
   
   const results = [];

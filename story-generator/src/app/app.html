@@ -410,10 +410,34 @@
             {{ activeHeatContract().intimacyBoundary.split('_').join(' ') | titlecase }}
           </p>
         </div>
-        <div class="story-actions">
-          <button type="button" class="ghost compact" data-testid="copy-story" (click)="copyStory()">Copy</button>
-          <button type="button" class="ghost compact" data-testid="download-story" (click)="downloadStory()">Download</button>
-          <button type="button" class="ghost compact" (click)="saveActiveProject()">Save</button>
+        <div class="story-actions" data-testid="story-header-actions">
+          <button
+            type="button"
+            class="ghost compact"
+            data-testid="copy-story"
+            aria-label="Copy story"
+            (click)="copyStory()"
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            class="ghost compact"
+            data-testid="download-story"
+            aria-label="Download story"
+            (click)="downloadStory()"
+          >
+            Download
+          </button>
+          <button
+            type="button"
+            class="ghost compact"
+            data-testid="save-story"
+            aria-label="Save story locally"
+            (click)="saveActiveProject()"
+          >
+            Save
+          </button>
         </div>
       </header>
 
@@ -599,14 +623,27 @@
         <p class="muted" data-testid="cloud-account-state">
           <strong>Account </strong>{{ cloudAccountStatusLabel() }}
         </p>
-        <div class="story-actions">
+        <div class="story-actions" data-testid="cloud-library-actions">
           <button type="button" class="ghost compact" data-testid="cloud-account-action" (click)="showCloudAccountSetupStatus()" [disabled]="isCloudLibraryBusy()">
             {{ cloudAccountActionLabel() }}
           </button>
-          <button type="button" class="ghost compact" (click)="refreshCloudLibrary()" [disabled]="isCloudLibraryBusy()">
+          <button
+            type="button"
+            class="ghost compact"
+            data-testid="cloud-check"
+            (click)="refreshCloudLibrary()"
+            [disabled]="isCloudLibraryBusy()"
+          >
             {{ isCloudLibraryBusy() ? 'Checking' : 'Check cloud' }}
           </button>
-          <button type="button" class="ghost compact" (click)="saveActiveProjectToCloud()" [disabled]="!workbench().story || isCloudLibraryBusy() || !canUseCloudLibrary()">
+          <button
+            type="button"
+            class="ghost compact"
+            data-testid="cloud-save"
+            aria-label="Save story to cloud"
+            (click)="saveActiveProjectToCloud()"
+            [disabled]="!workbench().story || isCloudLibraryBusy() || !canUseCloudLibrary()"
+          >
             Save to cloud
           </button>
         </div>

@@ -562,6 +562,44 @@ describe('App', () => {
     expect(component.activeSpiceOption().label).toBe('Inferno');
   });
 
+  it('does not render story actions before a story exists', () => {
+    fixture.detectChanges();
+
+    const storyPanel = fixture.nativeElement.querySelector('[data-testid="story-panel"]') as HTMLElement | null;
+    const storyActions = fixture.nativeElement.querySelector('[data-testid="story-header-actions"]') as HTMLElement | null;
+
+    expect(storyPanel).toBeNull();
+    expect(storyActions).toBeNull();
+  });
+
+  it('shows story actions when a story is active and adds action labels', () => {
+    seedWorkbenchForContinuation();
+    fixture.detectChanges();
+
+    const storyPanel = fixture.nativeElement.querySelector('[data-testid="story-panel"]') as HTMLElement | null;
+    const storyActions = fixture.nativeElement.querySelector('[data-testid="story-header-actions"]') as HTMLElement | null;
+    const copyButton = storyActions?.querySelector('[data-testid="copy-story"]') as HTMLButtonElement | null;
+    const downloadButton = storyActions?.querySelector('[data-testid="download-story"]') as HTMLButtonElement | null;
+    const saveButton = storyActions?.querySelector('[data-testid="save-story"]') as HTMLButtonElement | null;
+
+    expect(storyPanel).not.toBeNull();
+    expect(storyActions).not.toBeNull();
+    expect(copyButton?.getAttribute('aria-label')).toBe('Copy story');
+    expect(downloadButton?.getAttribute('aria-label')).toBe('Download story');
+    expect(saveButton?.getAttribute('aria-label')).toBe('Save story locally');
+  });
+
+  it('disables cloud save when no story is connected to cloud', () => {
+    fixture.detectChanges();
+
+    const cloudPanel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const cloudActions = cloudPanel?.querySelector('[data-testid="cloud-library-actions"]') as HTMLElement | null;
+    const cloudSaveButton = cloudActions?.querySelector('[data-testid="cloud-save"]') as HTMLButtonElement | null;
+
+    expect(cloudSaveButton?.disabled).toBeTrue();
+    expect(cloudSaveButton?.getAttribute('aria-label')).toBe('Save story to cloud');
+  });
+
   it('renders cloud library as unavailable without replacing local browser saves', () => {
     fixture.detectChanges();
 
