@@ -3567,7 +3567,7 @@ Actions:
 - Verified current open PR truth: Dependabot #194 is the only open PR; it is mergeable by GitHub but failing Recovery CI and Vercel.
 - Updated the active future-work checklist with an immediate scope map that names each remaining lane, why it matters, what it entails, safe write areas, exclusions, and parallelization notes.
 - Updated completion-hardening and final-audit plans so future sessions do not keep treating PR #120/#121 or the July 5 zero-open-PR state as current.
-- Recorded the local Angular browser-runner caveat: Angular coverage invocation exists, but ChromeHeadless/headless browser startup currently times out on this Mac, so Angular coverage evidence needs CI, a supported browser runner, or a fail-fast health guard.
+- Recorded the local Angular browser-runner caveat: Angular coverage invocation exists, but ChromeHeadless/headless browser startup currently times out in certain local development environments, so Angular coverage evidence needs CI, a supported browser runner, or a fail-fast health guard.
 - Pushed branch `recovery/story-lab-admin-scope-refresh` and opened PR #195.
 
 Self-review:

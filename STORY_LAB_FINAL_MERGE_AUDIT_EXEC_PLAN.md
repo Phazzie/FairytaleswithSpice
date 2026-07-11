@@ -1,7 +1,7 @@
 # Story Lab Final Merge And Audit ExecPlan
 
 Created: 2026-07-03 08:04 EDT
-Last updated: 2026-07-03 12:54 EDT
+Last updated: 2026-07-11 00:27 EDT
 
 This ExecPlan extends the current `origin/main` completion-hardening plan with the user's stronger final goal: all local work must be reconciled through pull requests, review comments must be handled, the last 40 PRs must be audited for unresolved review comments, and the repo must have a real 90% test-coverage gate before the work is called done.
 
@@ -491,7 +491,7 @@ Current coverage baseline from the audit:
 - Root tests are custom self-running `tsx` scripts. `npm test` maps to `npm run test:all`, and `test:all` does not instrument coverage.
 - The first worker wave added `test:story-lab-privacy-contracts` and wired it into `test:all`; root/API tests still do not instrument coverage.
 - Angular has `karma-coverage`, outputs HTML/text-summary/LCOV/Clover, and has a current global threshold of 85%. The first worker wave added an explicit Angular `test:coverage` script and a no-sandbox Karma launcher.
-- Local Angular browser coverage is not currently reliable on this Mac because ChromeHeadless/headless browser startup times out before Karma captures the browser.
+- Local Angular browser coverage is not currently reliable in certain local development environments because ChromeHeadless/headless browser startup times out before Karma captures the browser.
 - Recovery CI runs preflight and root tests, but not coverage.
 - No current coverage artifacts were found under root `coverage`, `.nyc_output`, `story-generator/coverage`, or `story-generator/.nyc_output`.
 - README/test-doc coverage claims are stale and do not prove current coverage.
