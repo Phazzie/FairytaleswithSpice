@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 // Created: 2026-07-11 00:00 EDT
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { accessSync, constants } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const FAILING_OUTCOMES = new Set(['ACTION_REQUIRED', 'CANCELLED', 'ERROR', 'FAILURE', 'FAILED', 'TIMED_OUT']);
 const PENDING_OUTCOMES = new Set(['EXPECTED', 'IN_PROGRESS', 'PENDING', 'QUEUED', 'REQUESTED', 'WAITING']);
+const GH_EXECUTABLE_CANDIDATES = [
+  process.env.GH_BIN,
+  '/opt/homebrew/bin/gh',
+  '/usr/local/bin/gh',
+  '/usr/bin/gh',
+].filter(Boolean);
 
 function normalizeValue(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -61,9 +68,47 @@ export function formatOpenPrSummary(prs) {
   });
 }
 
+export function formatOpenPrCommandResult(result) {
+  if (result?.warning) {
+    return ['unavailable'];
+  }
+  return formatOpenPrSummary(result?.prs);
+}
+
+export function exitCodeForOpenPrResult(result) {
+  return result?.warning ? 1 : 0;
+}
+
+function isExecutableFile(candidate) {
+  try {
+    accessSync(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function selectGhExecutable(candidates, exists = isExecutableFile) {
+  for (const candidate of candidates) {
+    if (isAbsolute(candidate) && exists(candidate)) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
 function readOpenPrs() {
+  const ghExecutable = selectGhExecutable(GH_EXECUTABLE_CANDIDATES);
+  if (!ghExecutable) {
+    return {
+      prs: [],
+      warning: 'GitHub CLI unavailable; set GH_BIN to an absolute gh path or install gh in /opt/homebrew/bin, /usr/local/bin, or /usr/bin before PR/status claims.',
+    };
+  }
+
+  // ghExecutable is selected from fixed absolute candidates above. Do not call bare "gh" here.
   const result = spawnSync(
-    'gh',
+    ghExecutable,
     [
       'pr',
       'list',
@@ -105,20 +150,17 @@ function readOpenPrs() {
   }
 }
 
-export function isEntrypoint(moduleUrl, argvPath = process.argv[1]) {
-  return Boolean(argvPath) && fileURLToPath(moduleUrl) === resolve(argvPath);
-}
-
 function main() {
-  const { prs, warning } = readOpenPrs();
-  for (const line of formatOpenPrSummary(prs)) {
+  const result = readOpenPrs();
+  for (const line of formatOpenPrCommandResult(result)) {
     console.log(line);
   }
-  if (warning) {
-    console.log(`WARNING: ${warning}`);
+  if (result.warning) {
+    console.error(`WARNING: ${result.warning}`);
   }
+  process.exitCode = exitCodeForOpenPrResult(result);
 }
 
-if (isEntrypoint(import.meta.url)) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main();
 }

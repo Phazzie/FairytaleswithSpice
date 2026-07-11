@@ -17,6 +17,7 @@ Actions:
 - Rewrote local Codex skills outside the repo:
   - `/Users/hbpheonix/.codex/skills/fairytales-story-lab-slice/SKILL.md` now routes current Story Lab work to the current checklists/plans and treats the old unpublished split plan as historical.
   - `/Users/hbpheonix/.codex/skills/fairytales-pr-recovery/SKILL.md` now marks PR #70 recovery as historical archaeology rather than the default path for current completion work.
+- Addressed PR #196 review/check feedback by making the open-PR helper return a nonzero exit for unavailable PR state, printing `unavailable` instead of `none` when `gh` cannot provide PR data, selecting `gh` only from absolute executable candidates, and simplifying/case-normalizing the Story Lab exploration doc detection.
 
 Self-review:
 
@@ -33,6 +34,11 @@ Validation:
   - `npm run test:recovery-open-pr-summary`: passed.
   - `npm run test:recovery-finish-check`: passed.
   - `node --check scripts/recovery/open-pr-summary.mjs && node --check scripts/recovery/finish-check.mjs`: passed.
+- Review-fix checks:
+  - `npm run test:recovery-open-pr-summary`: passed with warning/absolute-path cases.
+  - `npm run test:recovery-finish-check`: passed with lowercase exploration-doc detection.
+  - `node --check scripts/recovery/open-pr-summary.mjs && node --check scripts/recovery/finish-check.mjs`: passed.
+  - `npm run recovery:open-prs`: passed and showed #196 plus #194 with their current failing checks.
 
 ## 2026-07-11 00:27 EDT - Story Lab Scope Refresh And PR #194 Truth Update
 

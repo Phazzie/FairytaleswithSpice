@@ -64,12 +64,14 @@ export function buildDocChecklist(paths) {
   const touchesStoryLabSurface = hasPathLower(
     (lowerPath) =>
       lowerPath.includes('story-lab') ||
-      lowerPath.startsWith('api/story-lab/') ||
       lowerPath.startsWith('story-generator/src/app/') ||
-      lowerPath.startsWith('tests/story-lab') ||
       lowerPath.startsWith('story_lab_'),
   );
-  const touchesExploration = hasPath((path) => path === 'STORY_LAB_EXPLORATION_TICKETS.md' || path === 'STORY_LAB_EXPLORATION_FINDINGS.md');
+  const touchesExploration = hasPathLower(
+    (lowerPath) =>
+      lowerPath === 'story_lab_exploration_tickets.md' ||
+      lowerPath === 'story_lab_exploration_findings.md',
+  );
 
   addChecklistItem(items, seen, 'PR70_RECOVERY_CHANGELOG.md', 'record the slice, decision, validation, and local-vs-pushed status before ending the run');
 

@@ -2,7 +2,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { formatOpenPrSummary, summarizeCheckRollup } from '../scripts/recovery/open-pr-summary.mjs';
+import {
+  exitCodeForOpenPrResult,
+  formatOpenPrCommandResult,
+  formatOpenPrSummary,
+  selectGhExecutable,
+  summarizeCheckRollup,
+} from '../scripts/recovery/open-pr-summary.mjs';
 
 test('summarizes failing open PR checks by check name', () => {
   const summary = summarizeCheckRollup([
@@ -47,4 +53,29 @@ test('formats open PRs with useful branch and check state', () => {
 
 test('formats empty open PR list plainly', () => {
   assert.deepEqual(formatOpenPrSummary([]), ['none']);
+});
+
+test('formats unavailable open PR state distinctly from no open PRs', () => {
+  const result = {
+    prs: [],
+    warning: 'GitHub CLI unavailable',
+  };
+
+  assert.deepEqual(formatOpenPrCommandResult(result), ['unavailable']);
+  assert.equal(exitCodeForOpenPrResult(result), 1);
+});
+
+test('selects gh only from absolute executable candidates', () => {
+  const executablePaths = new Set(['/usr/local/bin/gh']);
+  const selected = selectGhExecutable(['gh', '/tmp/gh', '/usr/local/bin/gh'], (candidate) =>
+    executablePaths.has(candidate),
+  );
+
+  assert.equal(selected, '/usr/local/bin/gh');
+});
+
+test('does not select gh from relative candidates', () => {
+  const selected = selectGhExecutable(['gh'], () => true);
+
+  assert.equal(selected, '');
 });

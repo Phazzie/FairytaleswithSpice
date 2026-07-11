@@ -57,7 +57,7 @@ test('maps branch-diff paths to execution-plan reminders', () => {
 test('maps Story Lab surface changes to current status docs', () => {
   const checklist = buildDocChecklist([
     'story-generator/src/app/app.ts',
-    'STORY_LAB_EXPLORATION_FINDINGS.md',
+    'story_lab_exploration_findings.md',
   ]);
   const checklistFiles = checklist.map((entry) => entry.file);
 
