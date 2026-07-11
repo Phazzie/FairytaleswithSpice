@@ -117,9 +117,9 @@ Worker-ready next steps:
 - Use `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for dispatch, but follow the post-exploration wave plan instead of rerunning completed scouts.
 - Treat `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` as historical unless explicitly needed.
 
-## First Implementation Wave
+## First Implementation Wave - Historical
 
-These six workers can run together if they keep write scopes disjoint:
+These six workers were the first implementation wave and are already completed on `main` through PR #193. Do not dispatch this table again; use the second implementation wave below and `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for current worker selection.
 
 | Worker | Goal | Write scope | Validation |
 |---|---|---|---|

@@ -117,8 +117,8 @@ Current outcome:
 - The stricter final plan is merged to `main`.
 - The original last-40 review-comment cleanup drove PRs #174 through #178, and PR #179 handled the late PR #178 CodeRabbit nits. A fresh last-40 audit now reports zero active or outdated unresolved review threads.
 - A wider 200-PR audit still shows older historical unresolved review-thread backlog outside the last-40 recovery gate.
-- Subagents have been deployed for the original four independent audit areas and for the two remaining Dependabot PRs.
-- The repo still lacks a current 90% coverage gate and still has four parked local-only artifacts.
+- Subagents were deployed for the original four independent audit areas and the historical #120/#121 dependency investigation. As of the 2026-07-11 refresh, the active dependency queue after this publication PR lands is #194.
+- The repo still lacks a current 90% coverage gate. The 2026-07-11 refresh found no tracked or untracked local artifacts in the current checkout.
 
 Self-critique so far:
 
@@ -535,6 +535,7 @@ Raise `story-generator/karma.conf.js` global thresholds from 85 to 90 only after
 
 ```json
 {
+  "test:coverage:angular": "cd story-generator && npm run test:coverage",
   "test:coverage": "npm run test:coverage:root && npm run test:coverage:angular"
 }
 ```
