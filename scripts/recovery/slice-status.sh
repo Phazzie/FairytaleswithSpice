@@ -73,5 +73,11 @@ if ! "${SCRIPT_DIR}/check-vercel-function-count.sh"; then
   warn "Vercel function-count check failed; fix route budget before route work or PR merge."
 fi
 
-printf '\nRecommended next check:\n'
-printf '  npm run recovery:preflight -- <slice-name> --dry-run\n'
+printf '\nOpen PRs:\n'
+if ! node "${SCRIPT_DIR}/open-pr-summary.mjs"; then
+  warn "Open-PR summary failed; run gh pr list --state open manually before PR/status claims."
+fi
+
+printf '\nRecommended next checks:\n'
+printf '  Read STORY_LAB_FUTURE_WORK_CHECKLIST.md before selecting unfinished Story Lab work.\n'
+printf '  Run npm run recovery:finish -- --strict before PR-ready or final status claims.\n'

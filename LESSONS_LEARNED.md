@@ -56,6 +56,12 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 
 ## New Lessons During This Recovery
 
+### 2026-07-11
+
+- Stale agent skills are a real source of workflow drift. Repo docs can be current while local skills still route future sessions to historical plans, so process refreshes should inspect both `AGENTS.md` and the local skill files that trigger on the same work.
+- Status scripts should surface live PR truth when stale PR state has caused confusion. A small tested helper inside `recovery:status` is better than relying on agents to remember to run a separate `gh pr list` before broad status claims.
+- Do not create a new broad skill when an existing skill is stale. Rewrite or narrow the trigger first; add new skills only when the reusable pattern is genuinely broader than the project-specific workflow.
+
 ### 2026-05-26
 
 - Agent instructions must be corrected before long-running recovery work. Otherwise future agents will follow stale deployment assumptions and undo the user's Vercel direction.
