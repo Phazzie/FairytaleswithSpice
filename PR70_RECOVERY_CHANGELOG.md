@@ -4,6 +4,36 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-11 04:21 EDT - Story Lab Tooling And Skill Routing Refresh
+
+Actions:
+
+- Rechecked the active repo hooks and recovery scripts after the user asked whether skills, hooks, or scripts needed to be created, deleted, or altered.
+- Left the existing `pre-commit` and `pre-push` hooks in place because they already run whitespace/recovery guardrails.
+- Added `scripts/recovery/open-pr-summary.mjs` and `npm run recovery:open-prs` so `npm run recovery:status` now shows current open PRs and failing/pending/passing check summaries instead of relying on remembered PR state.
+- Updated `scripts/recovery/slice-status.sh` to call the open-PR summary and to recommend current Story Lab checklist/finish gates instead of the old generic slice preflight as the default next action.
+- Updated `scripts/recovery/finish-check.mjs` so Story Lab surface changes remind future agents to update `STORY_LAB_CONCEPT_CHECKLIST.md`, `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, and exploration docs when relevant.
+- Added `tests/recovery-open-pr-summary.test.mjs`, expanded `tests/recovery-finish-check.test.mjs`, and wired `test:recovery-open-pr-summary` into `test:all`.
+- Rewrote local Codex skills outside the repo:
+  - `/Users/hbpheonix/.codex/skills/fairytales-story-lab-slice/SKILL.md` now routes current Story Lab work to the current checklists/plans and treats the old unpublished split plan as historical.
+  - `/Users/hbpheonix/.codex/skills/fairytales-pr-recovery/SKILL.md` now marks PR #70 recovery as historical archaeology rather than the default path for current completion work.
+
+Self-review:
+
+- Good: The status script now surfaces live open-PR truth, which directly targets the stale-PR/status drift that caused repeated confusion.
+- Correction: The right fix was not a new broad skill. The stale existing skills needed tighter routing, and the live status command needed one small tested helper.
+- Non-claim: This pass does not resolve Dependabot #194, add coverage instrumentation, prove cloud durability, or change product behavior.
+
+Validation:
+
+- Red checks before implementation:
+  - `node --test tests/recovery-open-pr-summary.test.mjs`: failed because `scripts/recovery/open-pr-summary.mjs` did not exist yet.
+  - `npm run test:recovery-finish-check`: failed because Story Lab status/checklist reminders were not present yet.
+- Green checks after implementation:
+  - `npm run test:recovery-open-pr-summary`: passed.
+  - `npm run test:recovery-finish-check`: passed.
+  - `node --check scripts/recovery/open-pr-summary.mjs && node --check scripts/recovery/finish-check.mjs`: passed.
+
 ## 2026-07-11 00:27 EDT - Story Lab Scope Refresh And PR #194 Truth Update
 
 Actions:

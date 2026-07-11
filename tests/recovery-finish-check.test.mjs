@@ -54,6 +54,19 @@ test('maps branch-diff paths to execution-plan reminders', () => {
   assert(checklistFiles.includes('package.json'));
 });
 
+test('maps Story Lab surface changes to current status docs', () => {
+  const checklist = buildDocChecklist([
+    'story-generator/src/app/app.ts',
+    'STORY_LAB_EXPLORATION_FINDINGS.md',
+  ]);
+  const checklistFiles = checklist.map((entry) => entry.file);
+
+  assert(checklistFiles.includes('STORY_LAB_CONCEPT_CHECKLIST.md'));
+  assert(checklistFiles.includes('STORY_LAB_FUTURE_WORK_CHECKLIST.md'));
+  assert(checklistFiles.includes('STORY_LAB_EXPLORATION_TICKETS.md'));
+  assert(checklistFiles.includes('STORY_LAB_EXPLORATION_FINDINGS.md'));
+});
+
 test('detects whether the finish check is the entrypoint', () => {
   const scriptPath = 'scripts/recovery/finish-check.mjs';
   const scriptUrl = pathToFileURL(resolve(scriptPath)).href;

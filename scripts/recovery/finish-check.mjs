@@ -60,6 +60,16 @@ export function buildDocChecklist(paths) {
   const items = [];
   const seen = new Set();
   const hasPath = (predicate) => paths.some(predicate);
+  const hasPathLower = (predicate) => paths.some((path) => predicate(path.toLowerCase(), path));
+  const touchesStoryLabSurface = hasPathLower(
+    (lowerPath) =>
+      lowerPath.includes('story-lab') ||
+      lowerPath.startsWith('api/story-lab/') ||
+      lowerPath.startsWith('story-generator/src/app/') ||
+      lowerPath.startsWith('tests/story-lab') ||
+      lowerPath.startsWith('story_lab_'),
+  );
+  const touchesExploration = hasPath((path) => path === 'STORY_LAB_EXPLORATION_TICKETS.md' || path === 'STORY_LAB_EXPLORATION_FINDINGS.md');
 
   addChecklistItem(items, seen, 'PR70_RECOVERY_CHANGELOG.md', 'record the slice, decision, validation, and local-vs-pushed status before ending the run');
 
@@ -69,6 +79,16 @@ export function buildDocChecklist(paths) {
 
   if (hasPath((path) => path === 'SUBAGENT_LOG.md' || path.includes('SUBAGENT') || path.includes('AGENT_FINDINGS'))) {
     addChecklistItem(items, seen, 'SUBAGENT_LOG.md', 'subagent batches need tickets, results, integration status, and follow-ups');
+  }
+
+  if (touchesStoryLabSurface) {
+    addChecklistItem(items, seen, 'STORY_LAB_CONCEPT_CHECKLIST.md', 'plain-language Story Lab percentages and done/not-done status may need updating');
+    addChecklistItem(items, seen, 'STORY_LAB_FUTURE_WORK_CHECKLIST.md', 'unfinished tickets, worker scopes, or next-work ordering may need updating');
+  }
+
+  if (touchesExploration) {
+    addChecklistItem(items, seen, 'STORY_LAB_EXPLORATION_TICKETS.md', 'exploration ticket scope or worker-conversion guidance may need updating');
+    addChecklistItem(items, seen, 'STORY_LAB_EXPLORATION_FINDINGS.md', 'exploration synthesis, findings, or no-rerun guidance may need updating');
   }
 
   if (hasPath((path) => path === 'package.json' || path.startsWith('scripts/') || path.startsWith('tests/') || path.startsWith('.github/') || path === 'AGENTS.md')) {
