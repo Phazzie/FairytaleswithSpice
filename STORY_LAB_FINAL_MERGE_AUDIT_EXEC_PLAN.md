@@ -49,6 +49,8 @@ This plan uses a stricter definition than the older recovery docs.
 - [x] PR and merge this plan update through PR #171.
 - [x] Merged review-audit follow-up PRs #174, #175, #176, #177, and #178 from fresh `origin/main` branches.
 - [x] Verified the current checked-out review-follow-up commit is contained in `origin/main`; no tracked implementation work is stranded locally.
+- [x] Refreshed live repo state on 2026-07-11: current checkout is clean `main`, ahead `0`, behind `0`, route count `11/12`, and no untracked files.
+- [x] Refreshed live open-PR state on 2026-07-11: the only open PR is Dependabot #194, which is mergeable by GitHub but failing Recovery CI and Vercel.
 - [ ] Complete the local-work reconciliation gate.
 - [x] Drive the last-40-PR review-thread audit to zero active/outdated unresolved threads.
 - [ ] Commit the final last-40-PR audit artifact or final report evidence.
@@ -79,8 +81,9 @@ This plan uses a stricter definition than the older recovery docs.
 - A late CodeRabbit pass can still add threads after a PR is merged. PR #178 was clean at merge time, then later received two active trivial maintainability comments. PR #179 fixed and resolved those late comments, and future completion claims still need a post-bot, post-merge audit window.
 - As of 2026-07-03 12:54 EDT, the last-40 PR audit commands report `0` active unresolved, `0` outdated unresolved, and `0` include-outdated unresolved threads.
 - As of 2026-07-03 12:54 EDT, a wider `--state all --limit 200` audit still finds older historical backlog outside the last-40 recovery window: 168 active unresolved threads across 35 PRs, 56 outdated unresolved threads across 14 PRs, and 224 combined unresolved threads across 45 PRs.
-- As of 2026-07-03 12:54 EDT, the only open PRs are Dependabot PR #120 and PR #121. Both are old and have failing Recovery CI/Vercel checks.
-- Dependabot PR #120 and PR #121 are not quick merge candidates. Both contain Angular 22 major-upgrade work that conflicts with the repo's current Angular 20/TypeScript 5.9 setup; close/recreate as separate root dependency and Angular-major-upgrade work.
+- As of 2026-07-03 12:54 EDT, the only open PRs were Dependabot PR #120 and PR #121. Both were old and had failing Recovery CI/Vercel checks.
+- As of 2026-07-11 00:27 EDT, the only open PR is Dependabot #194. It is the current dependency queue, is mergeable by GitHub, and is failing Recovery CI plus Vercel.
+- Mixed Angular-major dependency PRs are not quick merge candidates. Split root dependency work from Angular-major-upgrade work, and do not combine dependency resolution with coverage tooling.
 - The parent checkout still has four parked untracked artifacts that are intentionally local-only: `SPARK_TRIAL_TASKS.md`, `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts`. No tracked PR #179 work remains local-only after merge.
 
 ## Decision Log
@@ -486,8 +489,9 @@ Coverage definition:
 Current coverage baseline from the audit:
 
 - Root tests are custom self-running `tsx` scripts. `npm test` maps to `npm run test:all`, and `test:all` does not instrument coverage.
-- Several root tests are not wired into `test:all`; some specs are Jest-style while Jest is not installed.
-- Angular has `karma-coverage`, outputs HTML/text-summary/LCOV/Clover, and has a current global threshold of 85%.
+- The first worker wave added `test:story-lab-privacy-contracts` and wired it into `test:all`; root/API tests still do not instrument coverage.
+- Angular has `karma-coverage`, outputs HTML/text-summary/LCOV/Clover, and has a current global threshold of 85%. The first worker wave added an explicit Angular `test:coverage` script and a no-sandbox Karma launcher.
+- Local Angular browser coverage is not currently reliable on this Mac because ChromeHeadless/headless browser startup times out before Karma captures the browser.
 - Recovery CI runs preflight and root tests, but not coverage.
 - No current coverage artifacts were found under root `coverage`, `.nyc_output`, `story-generator/coverage`, or `story-generator/.nyc_output`.
 - README/test-doc coverage claims are stale and do not prove current coverage.
@@ -518,21 +522,13 @@ The `test:root:self` script must either run every non-smoke self-running root te
 
 3. Add Angular coverage in a focused PR. Use Angular/Karma's coverage path and threshold support.
 
-Expected command:
+Current command:
 
 ```bash
-cd story-generator && npm test -- --watch=false --browsers=ChromeHeadless --coverage
+cd story-generator && npm run test:coverage -- --watch=false --browsers=ChromeHeadless
 ```
 
-Expected root package script:
-
-```json
-{
-  "test:coverage:angular": "cd story-generator && npm test -- --watch=false --browsers=ChromeHeadless --coverage"
-}
-```
-
-Raise `story-generator/karma.conf.js` global thresholds from 85 to 90 only after this command is stable and the report supports the threshold.
+Raise `story-generator/karma.conf.js` global thresholds from 85 to 90 only after this command is stable on CI or a supported browser runner and the report supports the threshold.
 
 4. Add a top-level coverage gate only after both pieces are stable:
 
@@ -572,7 +568,7 @@ Required slices:
 
 1. Story Lab recovery review-comment triage for issue #152.
 2. Legacy review-comment triage for issue #153.
-3. Dependabot and preview triage for issue #132 and PRs #120/#121.
+3. Dependabot and preview triage for the current queue, now PR #194 as of 2026-07-11. Treat #194 as a split/close-recreate candidate because it mixes root lockfile and Angular 22 changes while Recovery CI and Vercel fail.
 4. Auth and database live integration.
 5. Durable job correctness.
 6. Migration and index safety.
@@ -738,7 +734,7 @@ Issues and PRs to verify from `origin/main`:
 
 - #152 review backlog for current Story Lab recovery PRs.
 - #153 review backlog for legacy/superseded PRs.
-- #132 Dependabot PR #120/#121 triage.
+- #132 historical Dependabot #120/#121 triage; current dependency PR to verify is #194.
 - #138 story-quality heuristic follow-up.
 - #125, #126, #127, #130, #131, #135 durable job, migration, and tooling follow-ups.
 

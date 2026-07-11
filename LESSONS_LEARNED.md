@@ -148,3 +148,4 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 - Over-conservative planning can become unsafe when it slows execution enough that attention drops. Keep precision and validation, but bias toward larger worker chunks after the parent chooses strategy.
 - Exploration is valuable only when it unlocks action. Every exploration ticket should report the worker tickets it enables, expected files touched, shared-file conflicts, validation commands, and remaining unknowns.
 - Long sessions need compact context turnover before the thread gets crowded. Preserve branch, PR, working-tree, decisions, commands, unknowns, parked topics, and next exact action in durable docs instead of relying on chat memory.
+- Open-PR truth should be refreshed before package or coverage work. A checklist can be correct on one day and stale the next; record the live `gh pr` result and split dependency PRs before workers touch package files.

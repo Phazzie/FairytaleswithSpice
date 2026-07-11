@@ -3558,3 +3558,27 @@ Self-review:
 Validation:
 
 - `git diff --check`: passed.
+
+## 2026-07-11 00:27 EDT - Story Lab Scope Refresh And PR #194 Truth Update
+
+Actions:
+
+- Refreshed live repo state before new work: `main` is clean, current with `origin/main`, ahead `0`, behind `0`, with no tracked or untracked changes.
+- Verified current open PR truth: Dependabot #194 is the only open PR; it is mergeable by GitHub but failing Recovery CI and Vercel.
+- Updated the active future-work checklist with an immediate scope map that names each remaining lane, why it matters, what it entails, safe write areas, exclusions, and parallelization notes.
+- Updated completion-hardening and final-audit plans so future sessions do not keep treating PR #120/#121 or the July 5 zero-open-PR state as current.
+- Recorded the local Angular browser-runner caveat: Angular coverage invocation exists, but ChromeHeadless/headless browser startup currently times out on this Mac, so Angular coverage evidence needs CI, a supported browser runner, or a fail-fast health guard.
+- Pushed branch `recovery/story-lab-admin-scope-refresh` and opened PR #195.
+
+Self-review:
+
+- Good: This branch keeps the update docs-only and avoids the separate UI branch/session.
+- Correction: Dependabot #194 must be treated as its own package-file scope before root/API coverage work, because both can touch package or lock files.
+- Non-claim: This slice does not fix #194, add root/API coverage, prove cloud durability, or prove durable jobs.
+
+Validation:
+
+- `npm run recovery:status`: passed before edits; route count stayed `11/12`.
+- `git diff --check`: passed.
+- Commit hook `npm run test:recovery-finish-check`: passed.
+- `npm run recovery:status`: passed after commit; branch was one commit ahead before push and had no tracked or untracked changes.

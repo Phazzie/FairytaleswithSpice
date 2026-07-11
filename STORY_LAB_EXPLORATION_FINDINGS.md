@@ -1,7 +1,7 @@
 # Story Lab Exploration Findings
 
 Created: 2026-07-05 02:25 EDT
-Last updated: 2026-07-05 02:33 EDT
+Last updated: 2026-07-11 00:27 EDT
 
 This is the durable synthesis of the EXP-01 through EXP-13 subagent exploration batch. It converts the read-only exploration pass into implementation-ready worker batches and a context turnover packet.
 
@@ -11,9 +11,16 @@ Use this file before rerunning any EXP ticket. If these facts are still current,
 
 - Branch at synthesis time: `recovery/story-lab-exploration-findings`.
 - Base commit: `95c10d3 Add aggressive subagent exploration planning (#189)`.
-- Open PRs: none, verified with `gh pr list --state open --json number,title --limit 20`.
+- Open PRs at synthesis time: none, verified with `gh pr list --state open --json number,title --limit 20`.
 - Main state before branch: `main...origin/main`, clean.
 - Remaining non-main worktree: a local parked reference worktree on `ai-review/story-lab-unsliced-reference-do-not-merge`; treat it as evidence only, not the active line.
+
+2026-07-11 refresh:
+
+- Current branch before the admin refresh was `main`, clean and current with `origin/main`; `npm run recovery:status` reported ahead `0`, behind `0`, tracked changes `0`, and untracked files `0`.
+- Current open PR list is no longer empty. Dependabot #194 is open, mergeable by GitHub, and failing Recovery CI plus Vercel. It touches root `package-lock.json`, `story-generator/package.json`, and `story-generator/package-lock.json`.
+- Treat #194 as its own dependency scope before starting root/API coverage, because both can want root package or lockfile edits.
+- Local Angular browser coverage remains blocked on this Mac by ChromeHeadless/headless browser startup. Angular coverage evidence should come from CI, a supported browser environment, or a fail-fast runner-health guard before it is used in completion claims.
 
 ## Exploration Status
 
