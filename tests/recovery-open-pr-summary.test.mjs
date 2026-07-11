@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildGhSpawnOptions,
   exitCodeForOpenPrResult,
   formatOpenPrCommandResult,
   formatOpenPrSummary,
@@ -33,6 +34,27 @@ test('summarizes failing open PR checks by check name', () => {
   assert.equal(summary, 'failing: Validate Vercel recovery build, Vercel');
 });
 
+test('summarizes pending open PR checks by check name', () => {
+  const summary = summarizeCheckRollup([
+    { __typename: 'CheckRun', conclusion: 'SUCCESS', name: 'CI' },
+    { __typename: 'CheckRun', status: 'IN_PROGRESS', name: 'Build' },
+    { __typename: 'StatusContext', state: 'PENDING', context: 'Vercel' },
+  ]);
+
+  assert.equal(summary, 'pending: Build, Vercel');
+});
+
+test('truncates failing check names beyond three with count suffix', () => {
+  const summary = summarizeCheckRollup([
+    { __typename: 'CheckRun', conclusion: 'FAILURE', name: 'A' },
+    { __typename: 'CheckRun', conclusion: 'FAILURE', name: 'B' },
+    { __typename: 'StatusContext', state: 'ERROR', context: 'C' },
+    { __typename: 'CheckRun', conclusion: 'FAILURE', name: 'D' },
+  ]);
+
+  assert.equal(summary, 'failing: A, B, C, +1 more');
+});
+
 test('formats open PRs with useful branch and check state', () => {
   const lines = formatOpenPrSummary([
     {
@@ -53,6 +75,20 @@ test('formats open PRs with useful branch and check state', () => {
 
 test('formats empty open PR list plainly', () => {
   assert.deepEqual(formatOpenPrSummary([]), ['none']);
+});
+
+test('marks draft PRs in summary', () => {
+  const lines = formatOpenPrSummary([
+    {
+      number: 200,
+      title: 'WIP feature',
+      headRefName: 'feature/story-lab',
+      isDraft: true,
+      statusCheckRollup: [],
+    },
+  ]);
+
+  assert.deepEqual(lines, ['- #200 draft: WIP feature [feature/story-lab; no checks reported]']);
 });
 
 test('formats unavailable open PR state distinctly from no open PRs', () => {
@@ -78,4 +114,12 @@ test('does not select gh from relative candidates', () => {
   const selected = selectGhExecutable(['gh'], () => true);
 
   assert.equal(selected, '');
+});
+
+test('uses a finite timeout for gh process calls', () => {
+  const options = buildGhSpawnOptions();
+
+  assert.deepEqual(options.stdio, ['ignore', 'pipe', 'pipe']);
+  assert.equal(options.encoding, 'utf8');
+  assert.equal(options.timeout, 30000);
 });

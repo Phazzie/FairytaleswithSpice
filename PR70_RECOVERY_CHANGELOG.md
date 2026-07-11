@@ -15,9 +15,10 @@ Actions:
 - Updated `scripts/recovery/finish-check.mjs` so Story Lab surface changes remind future agents to update `STORY_LAB_CONCEPT_CHECKLIST.md`, `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, and exploration docs when relevant.
 - Added `tests/recovery-open-pr-summary.test.mjs`, expanded `tests/recovery-finish-check.test.mjs`, and wired `test:recovery-open-pr-summary` into `test:all`.
 - Rewrote local Codex skills outside the repo:
-  - `/Users/hbpheonix/.codex/skills/fairytales-story-lab-slice/SKILL.md` now routes current Story Lab work to the current checklists/plans and treats the old unpublished split plan as historical.
-  - `/Users/hbpheonix/.codex/skills/fairytales-pr-recovery/SKILL.md` now marks PR #70 recovery as historical archaeology rather than the default path for current completion work.
+  - `~/.codex/skills/fairytales-story-lab-slice/SKILL.md` now routes current Story Lab work to the current checklists/plans and treats the old unpublished split plan as historical.
+  - `~/.codex/skills/fairytales-pr-recovery/SKILL.md` now marks PR #70 recovery as historical archaeology rather than the default path for current completion work.
 - Addressed PR #196 review/check feedback by making the open-PR helper return a nonzero exit for unavailable PR state, printing `unavailable` instead of `none` when `gh` cannot provide PR data, selecting `gh` only from absolute executable candidates, and simplifying/case-normalizing the Story Lab exploration doc detection.
+- Addressed follow-up CodeRabbit feedback by redacting the local username in skill-path documentation, adding a finite `gh` timeout, and covering pending/truncated/draft PR summaries in the open-PR tests.
 
 Self-review:
 
@@ -39,6 +40,12 @@ Validation:
   - `npm run test:recovery-finish-check`: passed with lowercase exploration-doc detection.
   - `node --check scripts/recovery/open-pr-summary.mjs && node --check scripts/recovery/finish-check.mjs`: passed.
   - `npm run recovery:open-prs`: passed and showed #196 plus #194 with their current failing checks.
+- Follow-up review-fix checks:
+  - `npm run test:recovery-open-pr-summary`: passed with 10 tests.
+  - `npm run test:recovery-finish-check`: passed.
+  - `node --check scripts/recovery/open-pr-summary.mjs && node --check scripts/recovery/finish-check.mjs`: passed.
+  - `git diff --check`: passed.
+  - `npm run recovery:open-prs`: passed and showed #196 checks passing plus #194 still failing Recovery CI/Vercel.
 
 ## 2026-07-11 00:27 EDT - Story Lab Scope Refresh And PR #194 Truth Update
 

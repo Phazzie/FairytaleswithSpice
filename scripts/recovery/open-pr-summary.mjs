@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const FAILING_OUTCOMES = new Set(['ACTION_REQUIRED', 'CANCELLED', 'ERROR', 'FAILURE', 'FAILED', 'TIMED_OUT']);
 const PENDING_OUTCOMES = new Set(['EXPECTED', 'IN_PROGRESS', 'PENDING', 'QUEUED', 'REQUESTED', 'WAITING']);
+const GH_COMMAND_TIMEOUT_MS = 30000;
 const GH_EXECUTABLE_CANDIDATES = [
   process.env.GH_BIN,
   '/opt/homebrew/bin/gh',
@@ -97,6 +98,14 @@ export function selectGhExecutable(candidates, exists = isExecutableFile) {
   return '';
 }
 
+export function buildGhSpawnOptions() {
+  return {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: GH_COMMAND_TIMEOUT_MS,
+  };
+}
+
 function readOpenPrs() {
   const ghExecutable = selectGhExecutable(GH_EXECUTABLE_CANDIDATES);
   if (!ghExecutable) {
@@ -119,10 +128,7 @@ function readOpenPrs() {
       '--json',
       'number,title,headRefName,isDraft,statusCheckRollup',
     ],
-    {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
+    buildGhSpawnOptions(),
   );
 
   if (result.error) {
