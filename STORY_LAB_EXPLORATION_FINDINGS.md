@@ -124,7 +124,7 @@ These six workers can run together if they keep write scopes disjoint:
 | Worker | Goal | Write scope | Validation |
 |---|---|---|---|
 | W1 Test-surface truth pass | Add missing privacy/security/job-contract test command and document command map. | `package.json`, `tests/README.md`, optional `tests/run-all.mjs` | After W1 creates it: `npm run test:story-lab-privacy-contracts`; `npm run test:all` if included |
-| W2 Angular coverage command | Add explicit Angular coverage script without raising thresholds yet. | `story-generator/package.json`, `story-generator/karma.conf.js`, `story-generator/angular.json` | `cd story-generator && npm run test:coverage -- --watch=false --browsers=ChromeHeadless` |
+| W2 Angular coverage command | Add explicit Angular coverage script without raising thresholds yet. | `story-generator/package.json`, `story-generator/karma.conf.js`, `story-generator/angular.json` | `cd story-generator && npm run test:coverage` |
 | W3 Cloud durability runbook | Document schema/readiness/live-proof steps without claiming proof. | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`, `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` | `git diff --check`; secret-name-only review |
 | W4 Durable-job schema/readiness | Lock job-related schema/readiness proof before route work. | `api/_lib/story-lab/storage/storyLabCloudSchema.sql`, readiness tests/docs only | `npx tsx tests/story-lab-cloud-schema-migration.test.ts`; `npx tsx tests/story-lab-cloud-db-readiness.test.ts` |
 | W5 Main app action-state polish | Add visible action-state/DOM assertions for story and cloud controls. | `story-generator/src/app/app.html`, `story-generator/src/app/app.css`, `story-generator/src/app/app.spec.ts` | focused `app.spec.ts` run |
@@ -151,7 +151,9 @@ Run after the first wave lands or after the parent confirms the shared files are
 - Which coverage threshold should be enforced after real root/API and Angular coverage artifacts exist.
 - When credentials/database access are available for live signed-in proof.
 
-## Context Turnover Packet
+## Historical Context Turnover Packet
+
+This packet records the 2026-07-05 exploration synthesis handoff. It is preserved for evidence only; use the 2026-07-11 refresh above plus `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for the current next action.
 
 Objective: complete the EXP-01 through EXP-13 exploration batch, synthesize findings, and leave a clean restart point.
 
@@ -161,7 +163,7 @@ Upstream state: `main` was current with `origin/main` before this branch; no ope
 
 Working tree state: docs-only synthesis committed on this branch; no tracked or untracked changes after commit/push verification.
 
-Open PRs and review-thread state: open PR list is empty. Review-thread audit was not rerun in this synthesis branch because no PR exists yet.
+Open PRs and review-thread state at synthesis time: open PR list was empty. Review-thread audit was not rerun in this synthesis branch because no PR existed yet. 2026-07-11 refresh: the active queue after this publication PR lands is Dependabot #194.
 
 What changed this run: all exploration reports were collected; stale open-PR wording was rejected after live GitHub verification; this findings doc, the subagent log, the future-work checklist, and operating docs were updated.
 
@@ -173,7 +175,7 @@ Decisions made: do not rerun the whole exploration batch by default; move to wor
 
 Subagent tickets dispatched and results: EXP-01 through EXP-13 all returned; statuses and findings are summarized above.
 
-Unmerged or local-only work: docs-only synthesis is pushed on `recovery/story-lab-exploration-findings`; it remains unmerged until the PR lands.
+Unmerged or local-only work at synthesis time: docs-only synthesis was pushed on `recovery/story-lab-exploration-findings` until PR #190 landed. 2026-07-11 refresh: the synthesis is already on `main`.
 
 Known unknowns: live credentialed auth/database proof, process-loss durable job proof, final coverage baselines, Proving Grounds exposure stance, old streaming GET compatibility stance.
 

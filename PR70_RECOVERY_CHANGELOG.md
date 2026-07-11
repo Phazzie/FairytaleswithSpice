@@ -3569,6 +3569,7 @@ Actions:
 - Updated completion-hardening and final-audit plans so future sessions do not keep treating PR #120/#121 or the July 5 zero-open-PR state as current.
 - Recorded the local Angular browser-runner caveat: Angular coverage invocation exists, but ChromeHeadless/headless browser startup currently times out in certain local development environments, so Angular coverage evidence needs CI, a supported browser runner, or a fail-fast health guard.
 - Pushed branch `recovery/story-lab-admin-scope-refresh` and opened PR #195.
+- Addressed PR #195 review feedback by updating plan timestamps, replacing machine-specific browser-runner wording, recording `gh pr list` open-PR evidence, syncing the final-audit blocker queue, marking the old exploration turnover packet as historical, preserving the `ChromeHeadlessNoSandbox` coverage command, and putting the canonical test-map step before coverage work.
 
 Self-review:
 
@@ -3582,3 +3583,4 @@ Validation:
 - `git diff --check`: passed.
 - Commit hook `npm run test:recovery-finish-check`: passed.
 - `npm run recovery:status`: passed after commit; branch was one commit ahead before push and had no tracked or untracked changes.
+- PR #195 checks passed before review follow-up; review follow-up is being revalidated in the same PR.

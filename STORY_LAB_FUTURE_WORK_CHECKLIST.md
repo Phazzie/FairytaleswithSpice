@@ -12,7 +12,7 @@ The 2026-07-05 exploration batch has already run. Use `STORY_LAB_EXPLORATION_FIN
 ## Current Snapshot
 
 - [x] **Repo hygiene:** `main` is current with `origin/main`.
-- [ ] **Open PRs:** one open PR, Dependabot #194, verified with `gh pr view 194 --json number,title,files,statusCheckRollup,url` on 2026-07-11 00:27 EDT. It is mergeable by GitHub but failing Recovery CI and Vercel.
+- [ ] **Open PRs:** `gh pr list --state open --json number,title,url,headRefName,baseRefName` returned #194 and this publication PR #195 on 2026-07-11 00:37 EDT. After #195 lands, the remaining active work queue is Dependabot #194, which is mergeable by GitHub but failing Recovery CI and Vercel.
 - [x] **Old dependency investigation:** archived at `origin/archive/angular22-dependency-investigation-2026-07-04`; it is evidence only, not an active workstream or PR.
 - [x] **Whole-concept status:** `STORY_LAB_CONCEPT_CHECKLIST.md` is merged.
 - [x] **Public Story Lab loop:** create, continue, local save, copy, download, and progress UI exist.
@@ -152,7 +152,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Status: completed in the first implementation wave; `test:coverage` exists and uses the no-sandbox Karma launcher. Local ChromeHeadless still times out in certain local development environments, so CI or a supported browser environment is required for coverage evidence.
   - Stop condition: do not change Angular versions or unrelated config.
   - Output: script name, threshold behavior, artifact path.
-  - Validation: `cd story-generator && npm run test:coverage -- --watch=false --browsers=ChromeHeadless` or final script equivalent.
+  - Validation: `cd story-generator && npm run test:coverage` or final script equivalent. Do not override the script's `ChromeHeadlessNoSandbox` launcher unless the runner-health scope intentionally changes it.
 
 - [ ] **1.6 Coverage threshold policy**
   - Role: Explorer.
@@ -406,13 +406,14 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 
 1. Workstream 0: keep source-of-truth docs current before dispatching workers.
 2. Workstream 8.1: triage Dependabot #194 so package-file work does not collide with coverage work.
-3. Workstream 1.3, 1.4, and 1.6: add root/API coverage proof and choose a realistic threshold.
-4. Angular runner health: add fail-fast local browser evidence or use CI/supported runner before claiming Angular coverage.
-5. Workstream 2.1 through 2.5: prove signed-in durable cloud library behavior.
-6. Workstream 3.1 through 3.5: prove durable jobs only after database/auth proof is ready.
-7. Workstream 4: remove private payloads from streaming URLs.
-8. Workstream 5: UI polish and Proving Grounds stance, coordinated with the separate UI branch/session.
-9. Workstream 7: final audit/report only after the proof gates above are done.
+3. Workstream 1.1: refresh the canonical test map before coverage tooling, unless a current test-map artifact is already committed.
+4. Workstream 1.3, 1.4, and 1.6: add root/API coverage proof and choose a realistic threshold.
+5. Angular runner health: add fail-fast local browser evidence or use CI/supported runner before claiming Angular coverage.
+6. Workstream 2.1 through 2.5: prove signed-in durable cloud library behavior.
+7. Workstream 3.1 through 3.5: prove durable jobs only after database/auth proof is ready.
+8. Workstream 4: remove private payloads from streaming URLs.
+9. Workstream 5: UI polish and Proving Grounds stance, coordinated with the separate UI branch/session.
+10. Workstream 7: final audit/report only after the proof gates above are done.
 
 ## What Not To Do
 

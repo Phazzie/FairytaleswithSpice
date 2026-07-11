@@ -82,9 +82,10 @@ This plan uses a stricter definition than the older recovery docs.
 - As of 2026-07-03 12:54 EDT, the last-40 PR audit commands report `0` active unresolved, `0` outdated unresolved, and `0` include-outdated unresolved threads.
 - As of 2026-07-03 12:54 EDT, a wider `--state all --limit 200` audit still finds older historical backlog outside the last-40 recovery window: 168 active unresolved threads across 35 PRs, 56 outdated unresolved threads across 14 PRs, and 224 combined unresolved threads across 45 PRs.
 - As of 2026-07-03 12:54 EDT, the only open PRs were Dependabot PR #120 and PR #121. Both were old and had failing Recovery CI/Vercel checks.
-- As of 2026-07-11 00:27 EDT, the only open PR is Dependabot #194. It is the current dependency queue, is mergeable by GitHub, and is failing Recovery CI plus Vercel.
+- As of 2026-07-11 00:37 EDT, `gh pr list --state open --json number,title,url,headRefName,baseRefName` returned Dependabot #194 and this publication PR #195. After #195 lands, #194 is the remaining dependency queue; it is mergeable by GitHub and is failing Recovery CI plus Vercel.
 - Mixed Angular-major dependency PRs are not quick merge candidates. Split root dependency work from Angular-major-upgrade work, and do not combine dependency resolution with coverage tooling.
-- The parent checkout still has four parked untracked artifacts that are intentionally local-only: `SPARK_TRIAL_TASKS.md`, `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts`. No tracked PR #179 work remains local-only after merge.
+- At the 2026-07-03 audit, the parent checkout still had four parked untracked artifacts that were intentionally local-only: `SPARK_TRIAL_TASKS.md`, `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts`.
+- 2026-07-11 refresh: current `main` and this scope-refresh branch have no tracked or untracked local artifacts, so the stale local-artifact queue should not be treated as current work.
 
 ## Decision Log
 
@@ -406,7 +407,7 @@ Current blocker queue:
 |---|---|---|
 | Current unresolved | #166, #161 | Fix or explicitly track every active unresolved route/error/no-go prompt/Grok fast-path comment before review backlog can be called clean. |
 | Outdated unresolved manual queue | #156, #155, #154, #116, #114, #112, #109, #105, #104, #103 | Recheck against current `main`; resolve with fixing PR/commit link, obsolete reason, or linked issue. |
-| Open Dependabot PRs | #120, #121 | Merge or close through the Dependabot/preview gate. |
+| Open dependency PRs | #194 after this publication PR lands | Triage as split/close-recreate before package-file or coverage workers touch `package.json` or lockfiles. |
 | Closed unmerged PR | #117 | Record as closed Dependabot/no review-thread follow-up; no implementation action unless dependency state says otherwise. |
 
 Steps:
@@ -525,7 +526,7 @@ The `test:root:self` script must either run every non-smoke self-running root te
 Current command:
 
 ```bash
-cd story-generator && npm run test:coverage -- --watch=false --browsers=ChromeHeadless
+cd story-generator && npm run test:coverage
 ```
 
 Raise `story-generator/karma.conf.js` global thresholds from 85 to 90 only after this command is stable on CI or a supported browser runner and the report supports the threshold.
