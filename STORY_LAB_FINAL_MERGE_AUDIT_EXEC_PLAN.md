@@ -1,7 +1,7 @@
 # Story Lab Final Merge And Audit ExecPlan
 
 Created: 2026-07-03 08:04 EDT
-Last updated: 2026-07-03 12:54 EDT
+Last updated: 2026-07-11 00:27 EDT
 
 This ExecPlan extends the current `origin/main` completion-hardening plan with the user's stronger final goal: all local work must be reconciled through pull requests, review comments must be handled, the last 40 PRs must be audited for unresolved review comments, and the repo must have a real 90% test-coverage gate before the work is called done.
 
@@ -49,6 +49,8 @@ This plan uses a stricter definition than the older recovery docs.
 - [x] PR and merge this plan update through PR #171.
 - [x] Merged review-audit follow-up PRs #174, #175, #176, #177, and #178 from fresh `origin/main` branches.
 - [x] Verified the current checked-out review-follow-up commit is contained in `origin/main`; no tracked implementation work is stranded locally.
+- [x] Refreshed live repo state on 2026-07-11: current checkout is clean `main`, ahead `0`, behind `0`, route count `11/12`, and no untracked files.
+- [x] Refreshed live open-PR state on 2026-07-11: the only open PR is Dependabot #194, which is mergeable by GitHub but failing Recovery CI and Vercel.
 - [ ] Complete the local-work reconciliation gate.
 - [x] Drive the last-40-PR review-thread audit to zero active/outdated unresolved threads.
 - [ ] Commit the final last-40-PR audit artifact or final report evidence.
@@ -79,9 +81,11 @@ This plan uses a stricter definition than the older recovery docs.
 - A late CodeRabbit pass can still add threads after a PR is merged. PR #178 was clean at merge time, then later received two active trivial maintainability comments. PR #179 fixed and resolved those late comments, and future completion claims still need a post-bot, post-merge audit window.
 - As of 2026-07-03 12:54 EDT, the last-40 PR audit commands report `0` active unresolved, `0` outdated unresolved, and `0` include-outdated unresolved threads.
 - As of 2026-07-03 12:54 EDT, a wider `--state all --limit 200` audit still finds older historical backlog outside the last-40 recovery window: 168 active unresolved threads across 35 PRs, 56 outdated unresolved threads across 14 PRs, and 224 combined unresolved threads across 45 PRs.
-- As of 2026-07-03 12:54 EDT, the only open PRs are Dependabot PR #120 and PR #121. Both are old and have failing Recovery CI/Vercel checks.
-- Dependabot PR #120 and PR #121 are not quick merge candidates. Both contain Angular 22 major-upgrade work that conflicts with the repo's current Angular 20/TypeScript 5.9 setup; close/recreate as separate root dependency and Angular-major-upgrade work.
-- The parent checkout still has four parked untracked artifacts that are intentionally local-only: `SPARK_TRIAL_TASKS.md`, `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts`. No tracked PR #179 work remains local-only after merge.
+- As of 2026-07-03 12:54 EDT, the only open PRs were Dependabot PR #120 and PR #121. Both were old and had failing Recovery CI/Vercel checks.
+- As of 2026-07-11 00:37 EDT, `gh pr list --state open --json number,title,url,headRefName,baseRefName` returned Dependabot #194 and this publication PR #195. After #195 lands, #194 is the remaining dependency queue; it is mergeable by GitHub and is failing Recovery CI plus Vercel.
+- Mixed Angular-major dependency PRs are not quick merge candidates. Split root dependency work from Angular-major-upgrade work, and do not combine dependency resolution with coverage tooling.
+- At the 2026-07-03 audit, the parent checkout still had four parked untracked artifacts that were intentionally local-only: `SPARK_TRIAL_TASKS.md`, `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts`.
+- 2026-07-11 refresh: current `main` and this scope-refresh branch have no tracked or untracked local artifacts, so the stale local-artifact queue should not be treated as current work.
 
 ## Decision Log
 
@@ -113,8 +117,8 @@ Current outcome:
 - The stricter final plan is merged to `main`.
 - The original last-40 review-comment cleanup drove PRs #174 through #178, and PR #179 handled the late PR #178 CodeRabbit nits. A fresh last-40 audit now reports zero active or outdated unresolved review threads.
 - A wider 200-PR audit still shows older historical unresolved review-thread backlog outside the last-40 recovery gate.
-- Subagents have been deployed for the original four independent audit areas and for the two remaining Dependabot PRs.
-- The repo still lacks a current 90% coverage gate and still has four parked local-only artifacts.
+- Subagents were deployed for the original four independent audit areas and the historical #120/#121 dependency investigation. As of the 2026-07-11 refresh, the active dependency queue after this publication PR lands is #194.
+- The repo still lacks a current 90% coverage gate. The 2026-07-11 refresh found no tracked or untracked local artifacts in the current checkout.
 
 Self-critique so far:
 
@@ -403,7 +407,7 @@ Current blocker queue:
 |---|---|---|
 | Current unresolved | #166, #161 | Fix or explicitly track every active unresolved route/error/no-go prompt/Grok fast-path comment before review backlog can be called clean. |
 | Outdated unresolved manual queue | #156, #155, #154, #116, #114, #112, #109, #105, #104, #103 | Recheck against current `main`; resolve with fixing PR/commit link, obsolete reason, or linked issue. |
-| Open Dependabot PRs | #120, #121 | Merge or close through the Dependabot/preview gate. |
+| Open dependency PRs | #194 after this publication PR lands | Triage as split/close-recreate before package-file or coverage workers touch `package.json` or lockfiles. |
 | Closed unmerged PR | #117 | Record as closed Dependabot/no review-thread follow-up; no implementation action unless dependency state says otherwise. |
 
 Steps:
@@ -486,8 +490,9 @@ Coverage definition:
 Current coverage baseline from the audit:
 
 - Root tests are custom self-running `tsx` scripts. `npm test` maps to `npm run test:all`, and `test:all` does not instrument coverage.
-- Several root tests are not wired into `test:all`; some specs are Jest-style while Jest is not installed.
-- Angular has `karma-coverage`, outputs HTML/text-summary/LCOV/Clover, and has a current global threshold of 85%.
+- The first worker wave added `test:story-lab-privacy-contracts` and wired it into `test:all`; root/API tests still do not instrument coverage.
+- Angular has `karma-coverage`, outputs HTML/text-summary/LCOV/Clover, and has a current global threshold of 85%. The first worker wave added an explicit Angular `test:coverage` script and a no-sandbox Karma launcher.
+- Local Angular browser coverage is not currently reliable in certain local development environments because ChromeHeadless/headless browser startup times out before Karma captures the browser.
 - Recovery CI runs preflight and root tests, but not coverage.
 - No current coverage artifacts were found under root `coverage`, `.nyc_output`, `story-generator/coverage`, or `story-generator/.nyc_output`.
 - README/test-doc coverage claims are stale and do not prove current coverage.
@@ -518,26 +523,19 @@ The `test:root:self` script must either run every non-smoke self-running root te
 
 3. Add Angular coverage in a focused PR. Use Angular/Karma's coverage path and threshold support.
 
-Expected command:
+Current command:
 
 ```bash
-cd story-generator && npm test -- --watch=false --browsers=ChromeHeadless --coverage
+cd story-generator && npm run test:coverage
 ```
 
-Expected root package script:
-
-```json
-{
-  "test:coverage:angular": "cd story-generator && npm test -- --watch=false --browsers=ChromeHeadless --coverage"
-}
-```
-
-Raise `story-generator/karma.conf.js` global thresholds from 85 to 90 only after this command is stable and the report supports the threshold.
+Raise `story-generator/karma.conf.js` global thresholds from 85 to 90 only after this command is stable on CI or a supported browser runner and the report supports the threshold.
 
 4. Add a top-level coverage gate only after both pieces are stable:
 
 ```json
 {
+  "test:coverage:angular": "cd story-generator && npm run test:coverage",
   "test:coverage": "npm run test:coverage:root && npm run test:coverage:angular"
 }
 ```
@@ -572,7 +570,7 @@ Required slices:
 
 1. Story Lab recovery review-comment triage for issue #152.
 2. Legacy review-comment triage for issue #153.
-3. Dependabot and preview triage for issue #132 and PRs #120/#121.
+3. Dependabot and preview triage for the current queue, now PR #194 as of 2026-07-11. Treat #194 as a split/close-recreate candidate because it mixes root lockfile and Angular 22 changes while Recovery CI and Vercel fail.
 4. Auth and database live integration.
 5. Durable job correctness.
 6. Migration and index safety.
@@ -738,7 +736,7 @@ Issues and PRs to verify from `origin/main`:
 
 - #152 review backlog for current Story Lab recovery PRs.
 - #153 review backlog for legacy/superseded PRs.
-- #132 Dependabot PR #120/#121 triage.
+- #132 historical Dependabot #120/#121 triage; current dependency PR to verify is #194.
 - #138 story-quality heuristic follow-up.
 - #125, #126, #127, #130, #131, #135 durable job, migration, and tooling follow-ups.
 

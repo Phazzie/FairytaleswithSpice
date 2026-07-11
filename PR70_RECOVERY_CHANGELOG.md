@@ -4,6 +4,33 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-11 00:27 EDT - Story Lab Scope Refresh And PR #194 Truth Update
+
+Actions:
+
+- Refreshed live repo state before new work: `main` is clean, current with `origin/main`, ahead `0`, behind `0`, with no tracked or untracked changes.
+- Verified current open PR truth: Dependabot #194 is the only open PR; it is mergeable by GitHub but failing Recovery CI and Vercel.
+- Updated the active future-work checklist with an immediate scope map that names each remaining lane, why it matters, what it entails, safe write areas, exclusions, and parallelization notes.
+- Updated completion-hardening and final-audit plans so future sessions do not keep treating PR #120/#121 or the July 5 zero-open-PR state as current.
+- Recorded the local Angular browser-runner caveat: Angular coverage invocation exists, but ChromeHeadless/headless browser startup currently times out in certain local development environments, so Angular coverage evidence needs CI, a supported browser runner, or a fail-fast health guard.
+- Pushed branch `recovery/story-lab-admin-scope-refresh` and opened PR #195.
+- Addressed PR #195 review feedback by updating plan timestamps, replacing machine-specific browser-runner wording, recording `gh pr list` open-PR evidence, syncing the final-audit blocker queue, marking the old exploration turnover packet as historical, preserving the `ChromeHeadlessNoSandbox` coverage command, and putting the canonical test-map step before coverage work.
+- Addressed follow-up PR #195 review feedback by syncing the final-audit outcome summary, marking the first implementation wave as historical, preserving the root `test:coverage:angular` wrapper, and keeping this newest changelog entry at the top.
+
+Self-review:
+
+- Good: This branch keeps the update docs-only and avoids the separate UI branch/session.
+- Correction: Dependabot #194 must be treated as its own package-file scope before root/API coverage work, because both can touch package or lock files.
+- Non-claim: This slice does not fix #194, add root/API coverage, prove cloud durability, or prove durable jobs.
+
+Validation:
+
+- `npm run recovery:status`: passed before edits; route count stayed `11/12`.
+- `git diff --check`: passed.
+- Commit hook `npm run test:recovery-finish-check`: passed.
+- `npm run recovery:status`: passed after commit; branch was one commit ahead before push and had no tracked or untracked changes.
+- PR #195 checks passed before review follow-up; review follow-up is being revalidated in the same PR.
+
 ## 2026-07-10 12:39 EDT - Story Lab First Worker Wave
 
 Actions:

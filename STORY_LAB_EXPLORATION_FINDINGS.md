@@ -1,7 +1,7 @@
 # Story Lab Exploration Findings
 
 Created: 2026-07-05 02:25 EDT
-Last updated: 2026-07-05 02:33 EDT
+Last updated: 2026-07-11 00:27 EDT
 
 This is the durable synthesis of the EXP-01 through EXP-13 subagent exploration batch. It converts the read-only exploration pass into implementation-ready worker batches and a context turnover packet.
 
@@ -11,9 +11,16 @@ Use this file before rerunning any EXP ticket. If these facts are still current,
 
 - Branch at synthesis time: `recovery/story-lab-exploration-findings`.
 - Base commit: `95c10d3 Add aggressive subagent exploration planning (#189)`.
-- Open PRs: none, verified with `gh pr list --state open --json number,title --limit 20`.
+- Open PRs at synthesis time: none, verified with `gh pr list --state open --json number,title --limit 20`.
 - Main state before branch: `main...origin/main`, clean.
 - Remaining non-main worktree: a local parked reference worktree on `ai-review/story-lab-unsliced-reference-do-not-merge`; treat it as evidence only, not the active line.
+
+2026-07-11 refresh:
+
+- Current branch before the admin refresh was `main`, clean and current with `origin/main`; `npm run recovery:status` reported ahead `0`, behind `0`, tracked changes `0`, and untracked files `0`.
+- Current open PR list is no longer empty. Dependabot #194 is open, mergeable by GitHub, and failing Recovery CI plus Vercel. It touches root `package-lock.json`, `story-generator/package.json`, and `story-generator/package-lock.json`.
+- Treat #194 as its own dependency scope before starting root/API coverage, because both can want root package or lockfile edits.
+- Local Angular browser coverage remains blocked in certain local development environments by ChromeHeadless/headless browser startup. Angular coverage evidence should come from CI, a supported browser environment, or a fail-fast runner-health guard before it is used in completion claims.
 
 ## Exploration Status
 
@@ -110,14 +117,14 @@ Worker-ready next steps:
 - Use `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for dispatch, but follow the post-exploration wave plan instead of rerunning completed scouts.
 - Treat `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` as historical unless explicitly needed.
 
-## First Implementation Wave
+## First Implementation Wave - Historical
 
-These six workers can run together if they keep write scopes disjoint:
+These six workers were the first implementation wave and are already completed on `main` through PR #193. Do not dispatch this table again; use the second implementation wave below and `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for current worker selection.
 
 | Worker | Goal | Write scope | Validation |
 |---|---|---|---|
 | W1 Test-surface truth pass | Add missing privacy/security/job-contract test command and document command map. | `package.json`, `tests/README.md`, optional `tests/run-all.mjs` | After W1 creates it: `npm run test:story-lab-privacy-contracts`; `npm run test:all` if included |
-| W2 Angular coverage command | Add explicit Angular coverage script without raising thresholds yet. | `story-generator/package.json`, `story-generator/karma.conf.js`, `story-generator/angular.json` | `cd story-generator && npm run test:coverage -- --watch=false --browsers=ChromeHeadless` |
+| W2 Angular coverage command | Add explicit Angular coverage script without raising thresholds yet. | `story-generator/package.json`, `story-generator/karma.conf.js`, `story-generator/angular.json` | `cd story-generator && npm run test:coverage` |
 | W3 Cloud durability runbook | Document schema/readiness/live-proof steps without claiming proof. | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`, `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` | `git diff --check`; secret-name-only review |
 | W4 Durable-job schema/readiness | Lock job-related schema/readiness proof before route work. | `api/_lib/story-lab/storage/storyLabCloudSchema.sql`, readiness tests/docs only | `npx tsx tests/story-lab-cloud-schema-migration.test.ts`; `npx tsx tests/story-lab-cloud-db-readiness.test.ts` |
 | W5 Main app action-state polish | Add visible action-state/DOM assertions for story and cloud controls. | `story-generator/src/app/app.html`, `story-generator/src/app/app.css`, `story-generator/src/app/app.spec.ts` | focused `app.spec.ts` run |
@@ -144,7 +151,9 @@ Run after the first wave lands or after the parent confirms the shared files are
 - Which coverage threshold should be enforced after real root/API and Angular coverage artifacts exist.
 - When credentials/database access are available for live signed-in proof.
 
-## Context Turnover Packet
+## Historical Context Turnover Packet
+
+This packet records the 2026-07-05 exploration synthesis handoff. It is preserved for evidence only; use the 2026-07-11 refresh above plus `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for the current next action.
 
 Objective: complete the EXP-01 through EXP-13 exploration batch, synthesize findings, and leave a clean restart point.
 
@@ -154,7 +163,7 @@ Upstream state: `main` was current with `origin/main` before this branch; no ope
 
 Working tree state: docs-only synthesis committed on this branch; no tracked or untracked changes after commit/push verification.
 
-Open PRs and review-thread state: open PR list is empty. Review-thread audit was not rerun in this synthesis branch because no PR exists yet.
+Open PRs and review-thread state at synthesis time: open PR list was empty. Review-thread audit was not rerun in this synthesis branch because no PR existed yet. 2026-07-11 refresh: the active queue after this publication PR lands is Dependabot #194.
 
 What changed this run: all exploration reports were collected; stale open-PR wording was rejected after live GitHub verification; this findings doc, the subagent log, the future-work checklist, and operating docs were updated.
 
@@ -166,7 +175,7 @@ Decisions made: do not rerun the whole exploration batch by default; move to wor
 
 Subagent tickets dispatched and results: EXP-01 through EXP-13 all returned; statuses and findings are summarized above.
 
-Unmerged or local-only work: docs-only synthesis is pushed on `recovery/story-lab-exploration-findings`; it remains unmerged until the PR lands.
+Unmerged or local-only work at synthesis time: docs-only synthesis was pushed on `recovery/story-lab-exploration-findings` until PR #190 landed. 2026-07-11 refresh: the synthesis is already on `main`.
 
 Known unknowns: live credentialed auth/database proof, process-loss durable job proof, final coverage baselines, Proving Grounds exposure stance, old streaming GET compatibility stance.
 

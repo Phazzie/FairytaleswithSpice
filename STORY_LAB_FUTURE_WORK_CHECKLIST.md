@@ -1,7 +1,7 @@
 # Story Lab Future Work Checklist
 
 Created: 2026-07-04 14:33 EDT
-Last updated: 2026-07-10 12:39 EDT
+Last updated: 2026-07-11 00:27 EDT
 
 This checklist breaks the unfinished Story Lab work into small tickets that a subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must choose the next workstream, keep write scopes disjoint, verify results, open/merge PRs, and keep docs current.
 
@@ -12,16 +12,32 @@ The 2026-07-05 exploration batch has already run. Use `STORY_LAB_EXPLORATION_FIN
 ## Current Snapshot
 
 - [x] **Repo hygiene:** `main` is current with `origin/main`.
-- [x] **Open PRs:** zero open PRs, verified with `gh pr list --state open --json number,title --limit 20` on 2026-07-05 02:25 EDT.
+- [ ] **Open PRs:** `gh pr list --state open --json number,title,url,headRefName,baseRefName` returned #194 and this publication PR #195 on 2026-07-11 00:37 EDT. After #195 lands, the remaining active work queue is Dependabot #194, which is mergeable by GitHub but failing Recovery CI and Vercel.
 - [x] **Old dependency investigation:** archived at `origin/archive/angular22-dependency-investigation-2026-07-04`; it is evidence only, not an active workstream or PR.
 - [x] **Whole-concept status:** `STORY_LAB_CONCEPT_CHECKLIST.md` is merged.
 - [x] **Public Story Lab loop:** create, continue, local save, copy, download, and progress UI exist.
 - [ ] **Production durability:** signed-in cloud save/load/list/delete is not proven live.
-- [ ] **Coverage proof:** root/API coverage tooling and repo-wide coverage evidence do not exist.
+- [ ] **Coverage proof:** root/API coverage tooling and repo-wide coverage evidence do not exist. Angular coverage invocation exists, but certain local development environments currently cannot run ChromeHeadless reliably.
 - [ ] **Durable jobs:** job state is still explicitly `non_durable_memory`.
 - [ ] **Final completion report:** not ready until durability, coverage, and final audits are proven.
 - [x] **Exploration batch:** EXP-01 through EXP-13 completed and synthesized in `STORY_LAB_EXPLORATION_FINDINGS.md`.
 - [x] **First implementation wave:** completed on `recovery/story-lab-first-worker-wave`; this improves test command truth, Angular coverage invocation, durability proof docs, durable-job schema/readiness proof, and focused UI/spec coverage. It does not complete live cloud proof, root/API coverage instrumentation, or durable process-loss job proof.
+
+## Immediate Scope Map
+
+Use this section as the parent-agent split before dispatching Spark workers. Percentages here mean **scope readiness**, not completion.
+
+| Scope | Scope readiness | Why it matters | What it entails | Owned files / safe write area | Not in scope | Parallel notes |
+|---|---:|---|---|---|---|---|
+| Admin/status refresh | 100% | Keeps us from working from stale docs. | Update current PR truth, browser-runner caveat, next scope order, and changelog evidence. | Active docs only: `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, `STORY_LAB_EXPLORATION_FINDINGS.md`, `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, `PR70_RECOVERY_CHANGELOG.md`, `LESSONS_LEARNED.md` if a durable lesson is added. | No code, no lockfiles, no UI branch files. | Parent-owned; do before worker dispatch. |
+| Dependabot #194 triage | 80% | It is the only open PR and it is failing required checks. | Split root `form-data` lockfile change from Angular 22 major-upgrade changes; decide close/recreate vs focused replacement PR. | Read-only first; likely replacement worker owns either root `package-lock.json` or `story-generator/package.json` plus `story-generator/package-lock.json`, never both in parallel unless explicitly split by package root. | Do not merge Angular 22 while Recovery CI/Vercel fail; do not combine with coverage tooling. | Can run beside read-only audits, but not beside root coverage if both touch `package.json` or root lockfile. |
+| Root/API coverage bootstrap | 85% | This is the biggest proof gap for account, storage, job, privacy, and route logic. | Choose coverage tool, add `test:coverage:root`, run Story Lab root/API tests under coverage, record first real baseline. | `package.json`, `package-lock.json`, optional coverage config, possible `scripts/recovery/run-root-self-tests.mjs`. | Do not raise to 90% until the baseline exists; do not touch Angular packages. | Serialize with Dependabot/root package work. |
+| Angular coverage runner health | 75% | Angular has coverage tooling, but some local development environments cannot prove it right now. | Add a fail-fast health check or require CI/supported-machine proof before treating local Karma output as evidence. | Optional script under `scripts/recovery/*headless*` or docs only; avoid Angular UI files. | Do not debug UI behavior here; do not upgrade Angular. | Can run beside root/API coverage if it avoids `package.json`; otherwise serialize package scripts. |
+| Live auth and cloud library proof | 70% scoped, 0% live-proven | Cloud save/load/list/delete is not production-real until signed-in provider plus database proof exists. | Audit env names, create credential-safe account smoke, provision/migrate DB, prove signed-in save/list/load/delete and owner denial. | `scripts/recovery/*account*smoke*.mjs`, auth/storage exec plans, evidence docs. | Do not print secrets; do not claim durability without live proof. | Can run beside coverage if no package-script collision; credentialed proof waits on env/database access. |
+| Durable jobs | 75% scoped, 0% process-loss-proven | Job routes still honestly report `non_durable_memory`; durability requires recovery after process loss. | Harden Postgres job store/config, wire durable mode safely, add process-loss proof. | `api/_lib/story-lab/jobs/*`, `api/story-lab/jobs.ts`, focused job tests, optional smoke script. | No Angular UI; no "durable" wording unless process-loss proof passes. | Can run beside streaming backend only if route/test files do not overlap. |
+| Streaming privacy | 80% | Story text and blueprint data should not travel through browser-visible URLs. | Move private payloads to POST body/job state; keep EventSource URLs opaque; update backend and UI service tests. | Backend: `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, parser/security tests. UI service migration: `story-generator/src/app/story.service.ts` and focused specs. | No visual UI redesign. Preserve compatibility only if parent explicitly decides it is required. | Backend and UI can be split, but coordinate contract order. |
+| UI polish branch coordination | 60% scoped here | Another session is working on UI; this repo session should not collide. | Keep UI branch out of this branch; only update docs about UI scope if needed. | Read-only for `story-generator/src/app/*` unless user explicitly moves UI back here. | No app HTML/CSS/component edits in this branch. | UI work should stay in the separate `-art` branch/session. |
+| Final audit/report | 65% | Completion claims need fresh proof, not old chat memory. | Open PR audit, unresolved review-thread audit, coverage artifacts, durability proof evidence, final report. | `PR70_RECOVERY_FINAL_REPORT.md`, final audit plan, active checklist docs. | Do not run until coverage/durability gates have evidence or explicit deferrals. | Last step after the proof scopes above. |
 
 ## Post-Exploration Execution Batches
 
@@ -102,11 +118,12 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Output: `TEST_COMMAND_COVERAGE_MAP.md` draft or table for parent integration.
   - Validation: `node -e "console.log(require('./package.json').scripts['test:all'])"` and `find tests -maxdepth 1 -type f | sort`.
 
-- [ ] **1.2 Wire omitted privacy/security/job-contract tests into a focused command**
+- [x] **1.2 Wire omitted privacy/security/job-contract tests into a focused command**
   - Role: Worker.
   - Owned files: `package.json`, possibly `tests/run-all.mjs` if the repo already uses it for command grouping.
   - Tests to include: `tests/cors-policy.test.ts`, `tests/export-sanitizer.test.ts`, `tests/log-redaction.test.ts`, `tests/story-lab-stream-parse.test.ts`, `tests/story-service-streaming-security.test.ts`, `tests/story-lab-job-contracts.test.ts`.
   - Goal: add a repeatable script such as `test:story-lab-privacy-contracts` and decide whether it belongs in `test:all`.
+  - Status: completed in the first implementation wave; the focused command exists and is wired into `test:all`.
   - Stop condition: if any listed test is not self-running under `tsx`, report the exact failure and stop.
   - Output: package-script diff plus command evidence.
   - Validation: after the worker creates the script, `npm run test:story-lab-privacy-contracts`; if added to the full gate, `npm run test:all`.
@@ -128,13 +145,14 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Output: package diff, coverage output location, and first measured baseline.
   - Validation: `npm run test:coverage:root` or the final script name chosen in 1.3.
 
-- [ ] **1.5 Make Angular coverage invocation explicit**
+- [x] **1.5 Make Angular coverage invocation explicit**
   - Role: Worker.
   - Owned files: `story-generator/package.json`, `story-generator/karma.conf.js` only.
   - Goal: add an explicit Angular coverage script without raising thresholds yet.
+  - Status: completed in the first implementation wave; `test:coverage` exists and uses the no-sandbox Karma launcher. Local ChromeHeadless still times out in certain local development environments, so CI or a supported browser environment is required for coverage evidence.
   - Stop condition: do not change Angular versions or unrelated config.
   - Output: script name, threshold behavior, artifact path.
-  - Validation: `cd story-generator && npm run test:coverage -- --watch=false --browsers=ChromeHeadless` or final script equivalent.
+  - Validation: `cd story-generator && npm run test:coverage` or final script equivalent. Do not override the script's `ChromeHeadlessNoSandbox` launcher unless the runner-health scope intentionally changes it.
 
 - [ ] **1.6 Coverage threshold policy**
   - Role: Explorer.
@@ -357,15 +375,45 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Output: blockers, weak evidence, and recommended fixes.
   - Validation: parent resolves or explicitly defers every finding before final claim.
 
+## Workstream 8: Dependency PRs
+
+- [ ] **8.1 Dependabot #194 triage**
+  - Role: Explorer first, then parent-owned disposition.
+  - Owned files: Read-only for triage.
+  - Read-only files: `package-lock.json`, `story-generator/package.json`, `story-generator/package-lock.json`, PR #194 checks and Vercel status.
+  - Goal: decide whether #194 should be closed/recreated, split into root-only plus Angular-major PRs, or fixed in place.
+  - Stop condition: do not install packages or edit lockfiles during triage.
+  - Output: disposition note with exact failing checks, dependency groups, and proposed replacement PR scopes.
+  - Validation: `gh pr view 194 --json number,title,files,statusCheckRollup,url`.
+
+- [ ] **8.2 Root dependency replacement, if selected**
+  - Role: Worker.
+  - Owned files: root `package-lock.json` only unless `package.json` needs a direct dependency update.
+  - Goal: take safe non-Angular lockfile updates such as root `form-data` without dragging in Angular 22.
+  - Stop condition: if npm wants to rewrite `story-generator/package-lock.json`, stop and report.
+  - Output: focused root dependency PR.
+  - Validation: `npm ci`, `npm audit --omit=dev`, focused root Story Lab tests selected by parent.
+
+- [ ] **8.3 Angular major-upgrade plan, if still wanted**
+  - Role: Separate plan, not a quick Dependabot merge.
+  - Owned files: `story-generator/package.json`, `story-generator/package-lock.json`, Angular config/spec files only after a written upgrade plan exists.
+  - Goal: evaluate Angular 22 upgrade cost, required Node/browser support, CI/Vercel failures, and migration steps.
+  - Stop condition: do not start while another session owns UI work unless the user explicitly coordinates branches.
+  - Output: upgrade plan or close/recreate note.
+  - Validation: Recovery CI, Vercel preview, Angular build/test commands on a supported runner.
+
 ## Recommended Execution Order
 
-1. Workstream 1.1 and 1.2: get the test map honest before adding coverage.
-2. Workstream 1.3 through 1.6: add coverage proof and choose a realistic threshold.
-3. Workstream 2.1 through 2.5: prove signed-in durable cloud library behavior.
-4. Workstream 3.1 through 3.5: prove durable jobs only after database/auth proof is ready.
-5. Workstream 4: remove private payloads from streaming URLs.
-6. Workstream 5: UI polish and Proving Grounds stance.
-7. Workstream 7: final audit/report only after the proof gates above are done.
+1. Workstream 0: keep source-of-truth docs current before dispatching workers.
+2. Workstream 8.1: triage Dependabot #194 so package-file work does not collide with coverage work.
+3. Workstream 1.1: refresh the canonical test map before coverage tooling, unless a current test-map artifact is already committed.
+4. Workstream 1.3, 1.4, and 1.6: add root/API coverage proof and choose a realistic threshold.
+5. Angular runner health: add fail-fast local browser evidence or use CI/supported runner before claiming Angular coverage.
+6. Workstream 2.1 through 2.5: prove signed-in durable cloud library behavior.
+7. Workstream 3.1 through 3.5: prove durable jobs only after database/auth proof is ready.
+8. Workstream 4: remove private payloads from streaming URLs.
+9. Workstream 5: UI polish and Proving Grounds stance, coordinated with the separate UI branch/session.
+10. Workstream 7: final audit/report only after the proof gates above are done.
 
 ## What Not To Do
 

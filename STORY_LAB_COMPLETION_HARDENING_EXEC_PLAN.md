@@ -1,7 +1,7 @@
 # Story Lab Completion Hardening ExecPlan
 
 Created: 2026-06-21 15:04 EDT
-Last updated: 2026-07-03 12:54 EDT
+Last updated: 2026-07-11 00:27 EDT
 
 This ExecPlan is the authoritative plan for finishing the Story Lab recovery after PR #151. It reconciles the merged unpublished-branch recovery slices, the still-open review-comment backlog, Dependabot triage, live auth/database integration, durable-job honesty, and the final completion audit.
 
@@ -15,7 +15,7 @@ The desired end state is:
 
 - all recovery work that is merged to `main` is accurately documented as merged, scaffolded, non-durable, or live;
 - every unresolved PR review thread is either addressed with code, resolved with evidence that `main` already fixed it, or converted into a focused tracked issue;
-- Dependabot PRs #120 and #121 are merged or closed with validation evidence;
+- the current Dependabot queue is merged, closed, or replaced with narrower PRs using validation evidence;
 - signed-in Story Lab account flows work against the configured auth provider and durable database before any cloud-sync claim is made;
 - durable jobs are not claimed until job progress survives process loss and owner-scoped database writes are proven;
 - the final report contains command evidence, PR links, review-comment disposition, and self-critique.
@@ -23,7 +23,8 @@ The desired end state is:
 ## Progress
 
 - [x] Verified `origin/main` includes PR #151 on 2026-06-21.
-- [x] Confirmed open product/recovery PRs are clear; only Dependabot PRs #120 and #121 remain open.
+- [x] Confirmed open product/recovery PRs are clear; at the 2026-06-21 baseline only Dependabot PRs #120 and #121 remained open.
+- [x] Refreshed live dependency/PR truth on 2026-07-11: current `main` is clean/current and the only open PR is Dependabot #194, not the old #120/#121 queue.
 - [x] Confirmed recent recovery PRs #147, #148, #149, #150, and #151 have zero active unresolved review threads after the late PR #149 comment was fixed by PR #151.
 - [x] Created review-backlog issue #152 for current Story Lab recovery PRs: 21 PRs and 125 active unresolved review threads at the baseline audit.
 - [x] Created review-backlog issue #153 for legacy/superseded PRs: 35 PRs and 168 active unresolved review threads at the baseline audit.
@@ -32,7 +33,7 @@ The desired end state is:
 - [x] Merge review-thread cleanup PRs #174, #175, #176, #177, #178, and #179.
 - [ ] Triage #152 until every Story Lab recovery review thread is replied to and either resolved or explicitly tracked.
 - [ ] Triage #153 until every legacy review thread is replied to and either resolved, tracked, or closed as obsolete/superseded.
-- [ ] Resolve Dependabot issue #132 by merging or closing PR #120 and PR #121 with evidence.
+- [ ] Resolve current Dependabot follow-up by triaging PR #194 with evidence, then closing/recreating or splitting it as needed.
 - [ ] Complete the auth/database live integration gate.
 - [ ] Complete the durable job correctness gate.
 - [ ] Complete the preflight/tooling drift gate.
@@ -48,8 +49,9 @@ The desired end state is:
 - The same late-bot pattern repeated on PR #178: it was clean at merge time, then CodeRabbit added two active trivial maintainability comments afterward. PR #179 fixed and resolved those comments.
 - Auth/profile/cloud-library and durable-job scaffolding are merged, but live provider auth, executed database migrations, signed-in browser proof, and process-loss job proof are still not done.
 - As of 2026-07-03 12:54 EDT, the last-40 PR audit reports zero active or outdated unresolved review threads, but a wider `--state all --limit 200` audit still finds older historical backlog: 168 active unresolved threads across 35 PRs and 56 outdated unresolved threads across 14 PRs.
-- As of 2026-07-03 12:54 EDT, only Dependabot PRs #120 and #121 remain open, and both still have failing Recovery CI/Vercel checks.
-- PR #120 and PR #121 should be closed/recreated rather than patched in place: they are Angular 22 major-upgrade PRs with peer/runtime constraints beyond the current Angular 20 and TypeScript 5.9 baseline.
+- As of 2026-07-03 12:54 EDT, only Dependabot PRs #120 and #121 remained open, and both still had failing Recovery CI/Vercel checks.
+- As of 2026-07-11 00:27 EDT, #120/#121 are no longer the active queue. The current open PR is Dependabot #194, which mixes root lockfile work with Angular 22 package/lockfile changes and is failing Recovery CI/Vercel.
+- The current dependency stance remains split-first: close/recreate or replace mixed Angular-major PRs rather than patching them in place beside unrelated coverage or product work.
 
 ## Decision Log
 
@@ -104,7 +106,7 @@ Relevant issues:
 - #153: unresolved legacy PR review threads.
 - #138: quality heuristics refactor.
 - #135: idempotency-key retries in Postgres job creation.
-- #132: Dependabot PR #120 and #121 Vercel preview triage.
+- #132: historical Dependabot #120/#121 Vercel preview triage; current dependency follow-up is #194.
 - #131: job store config memoization.
 - #130: recovery preflight network-dependent Node 20 wrappers.
 - #129: stable UI-slice validation hooks.
@@ -199,12 +201,13 @@ Acceptance:
 
 Scope:
 
-- Resolve #132 by validating PR #120 and PR #121.
+- Resolve the current Dependabot queue. As of 2026-07-11, this is PR #194.
+- Treat PR #194 as a split/close-recreate candidate because it mixes a root lockfile update with Angular 22 package/lockfile changes and is failing Recovery CI plus Vercel.
 - Keep dependency changes separate from auth/database and durable-job work.
 
 Sub-checklist:
 
-- [ ] Inspect dependency deltas in #120 and #121.
+- [ ] Inspect dependency deltas in #194.
 - [ ] Run `npm install` only where lockfile refresh is needed.
 - [ ] Run focused root and Angular validations.
 - [ ] Confirm Vercel preview behavior or document blocker.
@@ -220,8 +223,8 @@ scripts/recovery/check-vercel-function-count.sh
 
 Acceptance:
 
-- PR #120 and PR #121 are merged or closed.
-- #132 is closed with evidence.
+- PR #194 is merged, closed, or replaced by narrower PRs with evidence.
+- Dependabot tracking is updated with the chosen disposition.
 
 ### Slice 5: Auth And Database Live Integration
 
@@ -412,7 +415,7 @@ Completion requires:
 
 - all planned slices merged or intentionally closed with reasons;
 - #152 and #153 updated with final comment-disposition counts;
-- PR #120 and PR #121 merged or closed;
+- the current dependency PR queue merged, closed, or replaced with evidence;
 - auth/database claims backed by live signed-in proof;
 - durable-job claims backed by process-loss proof;
 - final command evidence recorded in `PR70_RECOVERY_FINAL_REPORT.md`;
