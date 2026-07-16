@@ -38,6 +38,8 @@ Validation:
 - Optional roadmap link/source review: passed; the roadmap is linked from active routing docs and limited platform assumptions cite primary Vercel, xAI, and W3C sources refreshed on 2026-07-16.
 - `npm run recovery:finish -- --strict`: passed with no stop signs before the roadmap push; the only reminder was the expected unpushed roadmap commit.
 - PR #197 initial checks: Recovery CI, Vercel, SonarCloud, Sourcery, CodeRabbit status, and Vercel Preview Comments passed before review fixes; the four active line comments were inspected through the repository review-thread audit and addressed in the same PR.
+- PR #197 review-fix checks: both Recovery CI runs, Vercel, SonarCloud, Sourcery, CodeRabbit status, and Vercel Preview Comments passed; `npm run review:unresolved -- --prs 197 --json` returned `[]` after replies and resolutions.
+- Final pre-merge `npm run recovery:finish -- --strict`: passed with no stop signs or publication reminders on commit `fa899fa`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: whitespace/conflict and route-budget checks passed; Angular type checking could not start because the clean linked worktree has no `story-generator/node_modules/.bin/tsc`. No product code changed, so dependencies were not installed solely for this docs/process slice.
 
 ## 2026-07-11 04:21 EDT - Story Lab Tooling And Skill Routing Refresh
