@@ -19,6 +19,7 @@ Actions:
 - Refreshed limited platform assumptions from primary Vercel, xAI, and W3C sources, and linked the new roadmap from `AGENTS.md`, `OVERNIGHT_MODE.md`, the final audit plan, future-work checklist, and idea board.
 - Pushed `recovery/story-lab-subagent-scope-testing` and opened PR #197 with exact scope, validation, non-claims, and the required-to-optional handoff.
 - Addressed PR #197 review feedback by making `AGENTS.md` the explicit canonical lifecycle definition, adding a one-PR application checklist, annotating all twenty optional programs with schema/route/provider/approval boundaries, making roadmap interfaces self-contained, aligning `serial_cliffhanger` terminology, removing the machine-specific roadmap path, and clarifying that `.agents/` is local-only and uncommitted.
+- Addressed the final PR #197 follow-up review by routing the idea board's active dependency work to PR #194 instead of historical PRs #120/#121, and by clarifying that optional historical review cleanup begins only beyond the required issue #153 baseline and recorded dispositions.
 - Updated the active Story Lab slice skill outside the repo so later sessions enforce the same discovery, scope-review, test-quality, and completion-boundary rules. Left the untracked repo-local `.agents/` mirror unchanged because its ownership is not established.
 
 Self-review:
@@ -39,6 +40,7 @@ Validation:
 - `npm run recovery:finish -- --strict`: passed with no stop signs before the roadmap push; the only reminder was the expected unpushed roadmap commit.
 - PR #197 initial checks: Recovery CI, Vercel, SonarCloud, Sourcery, CodeRabbit status, and Vercel Preview Comments passed before review fixes; the four active line comments were inspected through the repository review-thread audit and addressed in the same PR.
 - PR #197 review-fix checks: both Recovery CI runs, Vercel, SonarCloud, Sourcery, CodeRabbit status, and Vercel Preview Comments passed; `npm run review:unresolved -- --prs 197 --json` returned `[]` after replies and resolutions.
+- PR #197 late-review audit at 2026-07-16 03:59 EDT found two new Codex threads after the evidence commit; both were accepted and fixed in the active-priority and final-audit wording before merge.
 - Final pre-merge `npm run recovery:finish -- --strict`: passed with no stop signs or publication reminders on commit `fa899fa`.
 - `scripts/recovery/preflight.sh --quick --skip-status`: whitespace/conflict and route-budget checks passed; Angular type checking could not start because the clean linked worktree has no `story-generator/node_modules/.bin/tsc`. No product code changed, so dependencies were not installed solely for this docs/process slice.
 

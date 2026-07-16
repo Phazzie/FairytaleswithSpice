@@ -126,7 +126,7 @@ Acceptance:
 
 - The last-40 recovery review-thread audit stays at zero unresolved active/outdated threads.
 - Older historical review-thread backlog from the wider 200-PR audit is either closed, linked to follow-up issues, or scoped out with explicit PR/thread disposition links.
-- PR #120 and PR #121 are merged or closed with validation evidence.
+- Active Dependabot PR #194 is merged, closed, or replaced by narrower PRs with validation evidence. PR #120 and PR #121 are historical queue items, not the current dependency target.
 - The four parked local artifacts are kept, dropped, or PR'd through an explicit cleanup decision.
 - A current risk-to-test matrix and meaningful acceptance/failure-path proof replace the old numeric coverage target; coverage remains a blind-spot diagnostic.
 
