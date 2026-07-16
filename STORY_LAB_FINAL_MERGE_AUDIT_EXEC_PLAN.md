@@ -1,13 +1,13 @@
 # Story Lab Final Merge And Audit ExecPlan
 
 Created: 2026-07-03 08:04 EDT
-Last updated: 2026-07-11 00:27 EDT
+Last updated: 2026-07-16 03:14 EDT
 
-This ExecPlan extends the current `origin/main` completion-hardening plan with the user's stronger final goal: all local work must be reconciled through pull requests, review comments must be handled, the last 40 PRs must be audited for unresolved review comments, and the repo must have a real 90% test-coverage gate before the work is called done.
+This ExecPlan extends the current `origin/main` completion-hardening plan with the user's stronger final goal: all local work must be reconciled through pull requests, review comments must be handled, the last 40 PRs must be audited for unresolved review comments, and critical Story Lab behavior must have meaningful risk-based test proof before the work is called done.
 
 ## Purpose / Big Picture
 
-The goal is to finish the Story Lab recovery in a way that can survive a fresh audit. "Done" means the remaining local and remote Story Lab work is merged into `main` through reviewable PRs, review comments are addressed or explicitly tracked, production claims are backed by evidence, and a coverage gate proves at least 90% coverage for active first-party code.
+The goal is to finish the Story Lab recovery in a way that can survive a fresh audit. "Done" means the remaining local and remote Story Lab work is merged into `main` through reviewable PRs, review comments are addressed or explicitly tracked, production claims are backed by evidence, and tests prove the important acceptance behavior, invariants, failure paths, and real external boundaries. Coverage measurements help locate blind spots but are not completion evidence by themselves.
 
 The desired end state is:
 
@@ -17,20 +17,44 @@ The desired end state is:
 - review comments on the last 40 PRs are audited with repeatable GitHub evidence;
 - unresolved review comments are either fixed, resolved as obsolete with a reply, or linked to a focused follow-up issue before being resolved;
 - Story Lab auth/cloud/durable-job claims remain honest until live auth, durable storage, and process-loss proof exist;
-- root and Angular coverage tooling produces a repeatable 90% gate;
+- root and Angular test tooling produces repeatable behavioral proof and honest coverage diagnostics for blind-spot discovery;
 - final validation and self-critique are recorded in `PR70_RECOVERY_FINAL_REPORT.md`.
 
 ## Updated Definition Of Done
 
-This plan uses a stricter definition than the older recovery docs.
+This plan uses a stricter, claim-based definition than the older recovery docs. A checked box is not enough: every required row needs current evidence in the final report. If an intended MVP claim cannot be proved, it must be removed from product wording or explicitly deferred with the user's approval; silently relabeling missing work as optional is not allowed.
 
-1. `origin/main` is the source of truth. Local `main` may be used only as an evidence source until its five local commits are reconciled.
-2. Every retained local commit, untracked file, and remote follow-up slice is either merged through a PR, intentionally discarded with a written reason, or parked in a linked issue.
-3. The last 40 PRs by GitHub PR number have a review-thread audit artifact that lists PR number, title, state, unresolved-thread count, action taken, and final disposition.
-4. All actionable review comments discovered in that last-40 audit are addressed before completion. Valid but out-of-scope comments require a linked issue and a reply on the original thread.
-5. The repo has a repeatable 90% coverage gate for active first-party source. Historical README claims do not count. The coverage report must come from current commands.
-6. Final validation includes tests, build, route budget, review audit, coverage gate, and explicit cloud/durable-job non-claims or proof.
-7. `Done` means merged to `main`, not local-only, backup branch only, or PR open.
+| Required gate | Definition of done | Required evidence |
+|---|---|---|
+| Source and publication truth | `origin/main` contains every retained change. Local commits, untracked files, backup branches, and open PRs are classified as merged, intentionally discarded with reason, or linked follow-up work. | Clean/current `main`, branch/commit inventory, merged PR links, `npm run recovery:finish -- --strict`. |
+| Critical user journey | The supported create, continue, local save/restore, copy, download, account, and cloud-library journeys behave as documented on the deployable app. Error and loading states do not imply success. | Focused unit/contract tests, Angular/browser evidence, build, and deployed smoke where deployment behavior matters. |
+| Live auth and cloud persistence | A real signed-in account can save, list, load, update, and delete a project against the provisioned database. A second owner cannot read, overwrite, list, or delete it. Refresh/new-session checks prove persistence. | Credential-safe env audit, applied migration/readiness output, account smoke, browser or route evidence, cross-owner denial, deletion proof, redacted logs. |
+| Security and privacy boundaries | Auth failures fail closed; owner isolation, CORS, redaction, invalid input, private payload transport, and storage-conflict behavior are tested. No secret or story text appears in logs or evidence. | Negative contract/integration tests, semantic counterfactual evidence for critical guards, privacy preflight, evidence review. |
+| Job/durability honesty | Any behavior called durable survives process loss and reload with owner-scoped persisted state. Otherwise the app and docs consistently say process-local or `non_durable_memory`, and durable jobs are explicitly deferred rather than half-claimed. | Process-loss/restart proof for a durability claim, or verified non-claim wording plus a linked optional follow-up. |
+| Test quality | A current risk-to-test matrix covers critical acceptance behavior, invariants, failure paths, retries, persistence, restart, and external boundaries. Each important test names the plausible defect it should catch. Coverage diagnostics identify blind spots but no percentage substitutes for this proof. | Passing focused and aggregate commands, matrix in final report, diagnostic artifacts when useful, counterfactual results for high-risk tests. |
+| Build, deployment, and route budget | Required builds and preflights pass; deployable route count stays within budget; required live smoke passes in the target environment or the related production claim remains blocked. | `npm run build`, `npm run test:all`, relevant preflights, route-count output, deployment/check results. |
+| Review closure | The last-40-PR audit has zero untriaged current/outdated unresolved threads. Valid wider historical debt is linked and explicitly outside the completion window. Every new completion PR has its own late-thread audit. | GitHub audit artifact, thread replies/dispositions, issue links, `npm run review:unresolved` output. |
+| Documentation and evidence | User-facing wording, setup/migration instructions, active plans, checklists, changelog, lessons, and final report match actual behavior and state what is not proved. | Reviewed docs diff and `PR70_RECOVERY_FINAL_REPORT.md` evidence index. |
+| Final hostile review | A Completion Prosecutor tries to disprove every row above. The parent adjudicates every material finding and reruns affected checks before the completion claim. | Critique, parent dispositions, fixes/non-claims, final command receipts. |
+
+`Done` means every required row is satisfied and the closing evidence is merged to `origin/main`. It never means local-only, PR-ready, in review, “tests mostly pass,” or “coverage looks high.”
+
+## Optional Work After Done
+
+These are valuable follow-ups, but they do not block the definition above unless the user explicitly promotes one into the supported MVP promise. Keep them in `STORY_LAB_FUTURE_WORK_CHECKLIST.md` or `STORY_LAB_IDEA_BOARD.md` with an owner, value statement, prerequisites, and proof idea.
+
+- raise or tune coverage thresholds after stable baselines show that a threshold protects useful tests;
+- broader-than-last-40 historical review-thread cleanup;
+- Angular major-version upgrades and noncritical dependency modernization;
+- audio generation, narration, speaker tooling, and voice evolution;
+- new Proving Grounds reports, scoring views, or research dashboards;
+- additional Story Lab visual polish, skins, animations, and accessibility enhancements beyond blocking defects;
+- experimental story-quality systems, Weird Lab ideas, additional providers, or model comparisons;
+- performance/cost optimization beyond the measured shipping budget;
+- durable background Workflow/queue infrastructure if the shipped product intentionally keeps jobs process-local and says so clearly;
+- extra export formats, collaboration/sharing, email, payments, CMS, analytics, and admin tooling.
+
+Optional work must not weaken required tests, spend the final Vercel route slot casually, reintroduce deferred DigitalOcean/audio scope as active, or share a branch with completion-gate work. Promote an optional item to required only by updating this definition and the active checklist before implementation.
 
 ## Progress
 
@@ -54,7 +78,7 @@ This plan uses a stricter definition than the older recovery docs.
 - [ ] Complete the local-work reconciliation gate.
 - [x] Drive the last-40-PR review-thread audit to zero active/outdated unresolved threads.
 - [ ] Commit the final last-40-PR audit artifact or final report evidence.
-- [ ] Complete the 90% coverage tooling gate.
+- [ ] Complete the risk-based test-quality and coverage-diagnostics gate.
 - [ ] Complete the remaining remote completion-hardening slices or close them with evidence.
 - [ ] Produce the final completion report.
 
@@ -64,12 +88,12 @@ This plan uses a stricter definition than the older recovery docs.
 - `origin/main` has `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`; this local checkout does not. This plan must therefore be rebased or recreated from `origin/main` before PR.
 - `origin/main` no longer has `OVERNIGHT_HANDOFF.md`; local `main` still does. Do not assume local docs should be reintroduced unchanged.
 - The current root scripts on local `main` are stale. `origin/main:package.json` includes `recovery:status`, `recovery:preflight`, and `review:unresolved`.
-- Current local tooling has Karma coverage dependencies, but there is no verified repo-wide 90% coverage gate in the local top-level scripts.
+- Current local tooling has Karma coverage dependencies, but root/API code lacks current instrumentation and a canonical risk-to-test map.
 - The initial last-40-PR review-thread audit found real blockers: 40 PRs checked, 157 review threads total, and 35 unresolved threads. PRs #174 through #179 cleared that recovery-window backlog.
 - `gh` can hang when `GH_PAGER` is set. The successful review-thread audit used `env -u GH_PAGER GH_NO_UPDATE_NOTIFIER=1 ...`.
-- Angular already has `karma-coverage`, but `story-generator/karma.conf.js` currently enforces 85% global thresholds, not 90%.
+- Angular already has `karma-coverage` with 85% global thresholds; the important unresolved question is whether critical UI behavior and failure states are actually exercised on a reliable runner.
 - Root/API tests are self-running `tsx` scripts and are not currently run under a coverage tool. There is no root `c8`, `nyc`, Jest, Vitest, or equivalent coverage dependency in the stale local checkout.
-- Some root specs are unwired or Jest-style while Jest is not installed. The root coverage gate must first define which tests are self-running and either wire or convert the rest.
+- Some root specs are unwired or Jest-style while Jest is not installed. The test-quality gate must first define which tests are self-running, wire or convert the valuable ones, and retire or document misleading dead tests.
 - The product-scope subagent was reading this stale local checkout, so its implementation roadmap is useful as risk inventory but is superseded where `origin/main` already merged auth/profile/cloud-library, account route, Angular UI, and durable-job owner scaffolding.
 - The git/local-work auditor confirmed live `origin/main` is `0a56f96ad723d5a96508bfc4cc9b0cb74631297f`, local `HEAD` is `75b4099745557d2abc7ea3d38fa32a8119eef94c`, and the merge base is `4834914effd8bfd564ff15a9b487a05e63481d70`.
 - The same audit confirmed a direct PR from local `main` would be unsafe because it would delete many files that already landed on `origin/main`.
@@ -96,19 +120,19 @@ This plan uses a stricter definition than the older recovery docs.
 - Decision: Never open a PR from the current checked-out local `main`.
   Rationale: It is 94 commits behind and would delete current remote account/profile/cloud/job/test scaffolds.
 - Decision: This file is an umbrella completion plan, not a replacement for `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`.
-  Rationale: The remote plan already tracks review backlog issues, Dependabot, auth/database, durable jobs, tooling, and story-quality follow-up. This plan adds the user's stricter local-merge, 90% coverage, last-40-PR audit, and liberal subagent-deployment requirements.
+  Rationale: The remote plan already tracks review backlog issues, Dependabot, auth/database, durable jobs, tooling, and story-quality follow-up. This plan adds the user's stricter local-merge, test-quality, last-40-PR audit, and disciplined subagent-deployment requirements.
 - Decision: Define coverage over active first-party source only.
   Rationale: Docs, tests, generated build output, historical stale paths, `node_modules`, and old deployment artifacts would distort the metric.
-- Decision: Coverage completion requires current generated reports, not historical README coverage claims.
-  Rationale: The repo contains older claims of 95% coverage that are not current proof.
+- Decision: Coverage reports are current diagnostics, not a proxy for test quality or a completion claim.
+  Rationale: The repo contains older percentage claims that do not prove critical behavior, failure paths, owner isolation, migrations, restarts, or live provider boundaries.
 - Decision: Review-thread cleanup must be source-backed through GitHub API/CLI artifacts.
   Rationale: Chat summaries and memory are not enough for the last-40-PR audit.
 - Decision: The last-40-PR review audit is no longer merely a future discovery task; it has a known backlog baseline.
   Rationale: The PR-audit subagent found 35 unresolved threads across the last 40 PRs, including 12 current unresolved threads on PRs #166 and #161.
-- Decision: Coverage should be enforced as separate root/API and Angular gates first, then optionally merged into a combined report.
-  Rationale: Root/API tests and Angular tests use different runners; separate gates are the fastest honest route to enforceable 90% thresholds.
-- Decision: Live Grok and live browser smoke tests stay outside coverage enforcement.
-  Rationale: Coverage should be deterministic and offline; live smoke proves provider/deployment behavior, not unit coverage.
+- Decision: Root/API and Angular test evidence should remain separately inspectable because they use different runners and prove different risks.
+  Rationale: A combined percentage would obscure whether server-side ownership/persistence logic and browser-visible state transitions are independently tested.
+- Decision: Live Grok, database, auth, and browser smoke tests stay outside deterministic unit coverage but inside the proof matrix when the product claim depends on them.
+  Rationale: Live smoke proves provider, deployment, migration, session, and durability behavior that offline instrumentation cannot prove.
 
 ## Outcomes & Retrospective
 
@@ -118,16 +142,16 @@ Current outcome:
 - The original last-40 review-comment cleanup drove PRs #174 through #178, and PR #179 handled the late PR #178 CodeRabbit nits. A fresh last-40 audit now reports zero active or outdated unresolved review threads.
 - A wider 200-PR audit still shows older historical unresolved review-thread backlog outside the last-40 recovery gate.
 - Subagents were deployed for the original four independent audit areas and the historical #120/#121 dependency investigation. As of the 2026-07-11 refresh, the active dependency queue after this publication PR lands is #194.
-- The repo still lacks a current 90% coverage gate. The 2026-07-11 refresh found no tracked or untracked local artifacts in the current checkout.
+- The repo still lacks a current root/API coverage diagnostic and canonical risk-to-test map. The 2026-07-11 refresh found no tracked or untracked local artifacts in the current checkout.
 
 Self-critique so far:
 
 - The previous recovery succeeded in merging many slices, but the local checkout drift makes it easy for a future agent to re-plan from stale files and duplicate landed work.
-- The older plans were strong on slice discipline but did not require a last-40-PR audit or a real 90% coverage gate.
-- Coverage has been discussed in docs, but the repo needs executable coverage tooling and thresholds.
+- The older plans were strong on slice discipline but did not require a last-40-PR audit or explicit risk-to-test proof.
+- Coverage has been discussed in docs, but the repo needs executable diagnostics plus tests selected for the defects they prevent.
 - The final audit must treat `non_durable_memory` wording as a correctness requirement, not just documentation polish.
 - The current plan-writing pass already surfaced a process flaw: stale local docs can make future agents replan already-merged work. The first real execution gate must be branch hygiene, not product implementation.
-- The coverage requirement is larger than a threshold tweak. Raising Angular from 85% to 90% without root/API instrumentation would be a false compliance move.
+- Raising a threshold without improving the behavior and failure paths under test would be a false compliance move.
 
 ## Context and Orientation
 
@@ -181,7 +205,7 @@ The user explicitly requested creative and liberal subagent deployment. Use suba
 Already deployed in this run:
 
 - `Huygens`: PR review-thread auditor for the last-40 / unresolved-thread audit.
-- `Sagan`: coverage and test tooling auditor for the 90% coverage path.
+- `Sagan`: historical coverage and test-tooling auditor.
 - `Kant`: git/local-work auditor for local commits, untracked files, divergence, and PR sequence.
 - `Einstein`: product-scope mapper for remaining auth/cloud/durable-job/story-quality/route-budget work.
 
@@ -193,7 +217,7 @@ Additional subagents deployed on 2026-07-03 after the Dependabot question:
 Returned findings incorporated so far:
 
 - `Huygens`: last-40 PR audit baseline is 40 PRs, 157 review threads, 35 unresolved threads. Current unresolved blockers are PR #166 and PR #161. Outdated unresolved manual queue is PRs #156, #155, #154, #116, #114, #112, #109, #105, #104, and #103.
-- `Sagan`: Angular coverage exists but is set to 85%; root/API coverage does not exist. Add root/API coverage with `c8`, convert or wire self-running root tests, raise Angular coverage to 90 only after stable proof, and keep live smoke out of coverage gates.
+- `Sagan`: Angular coverage exists but root/API coverage does not. Add diagnostic instrumentation, convert or wire valuable self-running root tests, and keep live smoke as separate boundary proof rather than pretending coverage can replace it.
 - `Einstein`: local-checkout roadmap is stale relative to `origin/main`, but the enduring risks are wildcard API CORS before credentialed account routes, route budget, process-local job state, unproven auth/database/Workflow provisioning, live-provider proof, and story-quality eval hardening.
 - `Kant`: local `main` is unsafe to PR; future work must start from `origin/main`. Old local/backup/feature branches are preservation refs only. Local docs must be manually rewritten against current `origin/main`, not cherry-picked.
 
@@ -202,19 +226,21 @@ Future subagent roles and deployment points:
 | Point | Subagent | Role | Output Required |
 |---|---|---|---|
 | Before local-work PR | Continuity Prosecutor | Compare local docs commits and untracked files against `origin/main` so stale docs are not reintroduced. | Keep/drop/rewrite table with file paths and reasons. |
-| Before coverage implementation | Coverage Cartographer | Map active first-party source files to existing tests and identify low-coverage modules. | Coverage target list and exclusions. |
-| During coverage tooling PR | Test Harness Mechanic | Add or review coverage commands and thresholds in disjoint files only. | Changed files, command evidence, threshold behavior. |
+| Before test implementation | Scope Prosecutor | Attack the parent-written strategy, proof units, file leases, test obligations, and stop conditions before workers start. | Findings plus parent dispositions and revised locked scope. |
+| Before test-quality implementation | Risk-to-Test Cartographer | Map critical behaviors and plausible defects to existing tests; use coverage only to reveal blind spots. | Risk-to-test matrix, missing proof, and worker-ready scopes. |
+| During test-tooling PR | Test Harness Mechanic | Add or review test commands and coverage diagnostics in disjoint files only. | Changed files, command evidence, defect each test is intended to catch. |
 | During last-40 audit | PR Thread Clerk | Inspect PR review threads and prepare disposition rows. | PR table with unresolved threads, reply needed, issue needed, or resolved. |
 | During last-40 audit | Obsolescence Judge | Re-check legacy comments against current `main` to prevent reviving dead DigitalOcean/audio paths. | Valid/obsolete/out-of-scope decisions. |
 | Before live auth/cloud PR | Auth Boundary Adversary | Attack auth assumptions, token verification, owner isolation, and logging redaction. | Findings with exact file refs and required tests. |
 | Before durable jobs PR | Process-Loss Saboteur | Design and review proof that job progress survives process death. | Process-loss test plan and failure modes. |
 | Before UI PRs | User Confusion Simulator | Drive local/cloud/account UI states as a confused user. | Confusing states, misleading labels, screenshot paths if available. |
-| Before final report | Receipts Agent | Collect final command outputs, PR links, coverage artifacts, deployment proof, and unresolved-thread counts. | Evidence index for `PR70_RECOVERY_FINAL_REPORT.md`. |
+| Before final report | Receipts Agent | Collect final command outputs, PR links, test/coverage artifacts, deployment proof, and unresolved-thread counts. | Evidence index for `PR70_RECOVERY_FINAL_REPORT.md`. |
 | Before merge-to-main claim | Final Hostile Reviewer | Try to disprove the completion claim requirement by requirement. | Blockers, weak evidence, and required fixes. |
 
 Subagent safety rules:
 
 - Explorers do not edit files.
+- Parent discovery and scope prosecution happen before implementation workers; broad explorer fanout is not the default.
 - Workers get disjoint file ownership.
 - No worker merges PRs, rewrites history, deletes local work, or resolves GitHub review threads without parent approval.
 - Parent agent integrates results and runs the final commands.
@@ -477,88 +503,60 @@ Subagents:
 - Obsolescence Judge checks stale comments against current `origin/main`.
 - Receipts Agent verifies the final counts and links.
 
-### Gate 3: 90% Coverage Tooling
+### Gate 3: Risk-Based Test Quality And Coverage Diagnostics
 
-Purpose: turn the user's coverage requirement into a command that can pass or fail.
+Purpose: prove the important behavior and failure modes, while using coverage reports to find blind spots rather than to manufacture a score.
 
-Coverage definition:
+Proof definition:
 
-- Include active first-party TypeScript under `api/_lib`, deployable `api/story*` handlers, `api/export*` handlers if still active, runtime-critical Node files under `scripts/recovery` (`*.ts` and `*.mjs`; shell scripts stay command-tested outside coverage), and `story-generator/src/app`.
-- Exclude `tests`, `node_modules`, generated `dist`, coverage output, temporary files, historical docs, old DigitalOcean files, and deprecated duplicate paths that are not compiled or deployed.
-- Require at least 90% statements, lines, functions, and branches for two separately enforced gates first: root/API and Angular. A combined report can be added later, but separate passing gates satisfy the first honest 90% requirement.
+- Map critical behavior across active first-party TypeScript under `api/_lib`, deployable handlers, runtime-critical recovery scripts, and `story-generator/src/app` to the tests that exercise it.
+- Prioritize auth and owner isolation, privacy/redaction, invalid input, database conflicts and migrations, retries, provider failure, persistence/restart behavior, signed-in save/list/load/delete, and process-loss recovery.
+- Require live database, auth, browser, deployed, or provider proof when a deterministic fake cannot establish the product claim.
+- Keep coverage output for root/API and Angular separately inspectable. Exclude tests, dependencies, generated output, historical/deprecated paths, and temporary files, and document why each exclusion is defensible.
+- Do not add trivial assertions, implementation-mirroring tests, broad snapshots, or over-mocked tests merely to raise a percentage.
 
-Current coverage baseline from the audit:
+Current baseline from the audit:
 
-- Root tests are custom self-running `tsx` scripts. `npm test` maps to `npm run test:all`, and `test:all` does not instrument coverage.
-- The first worker wave added `test:story-lab-privacy-contracts` and wired it into `test:all`; root/API tests still do not instrument coverage.
+- Root tests are custom self-running `tsx` scripts. `npm test` maps to `npm run test:all`, and some valuable or stale test files may not be wired into it.
+- The first worker wave added `test:story-lab-privacy-contracts` and wired it into `test:all`; root/API tests still lack instrumentation that could expose unexecuted branches.
 - Angular has `karma-coverage`, outputs HTML/text-summary/LCOV/Clover, and has a current global threshold of 85%. The first worker wave added an explicit Angular `test:coverage` script and a no-sandbox Karma launcher.
-- Local Angular browser coverage is not currently reliable in certain local development environments because ChromeHeadless/headless browser startup times out before Karma captures the browser.
-- Recovery CI runs preflight and root tests, but not coverage.
-- No current coverage artifacts were found under root `coverage`, `.nyc_output`, `story-generator/coverage`, or `story-generator/.nyc_output`.
-- README/test-doc coverage claims are stale and do not prove current coverage.
+- Local Angular browser coverage is not reliable in certain local development environments because ChromeHeadless/headless browser startup times out before Karma captures the browser.
+- Recovery CI runs preflight and root tests, but not coverage diagnostics.
+- Historical README/test-doc percentages are stale and do not prove current behavior.
 
 Steps:
 
-1. Inspect current coverage support:
+1. Parent-led discovery creates a risk-to-test matrix. Each critical row names the claim, plausible defect, current test, test level, whether it uses a fake, required real-boundary proof, and remaining gap.
 
-```bash
-cat package.json
-cat story-generator/package.json
-cat story-generator/angular.json
-find . -maxdepth 4 -type f \( -name '*coverage*' -o -name 'karma.conf.*' -o -name '.nycrc*' \) -not -path './node_modules/*' -not -path './story-generator/node_modules/*'
-```
+2. Send the proposed matrix and worker split to a read-only Scope Prosecutor. Record parent dispositions, revise, and mark the strategy `Scope locked` before worker dispatch.
 
-2. Add root/API coverage tooling in a focused PR. Prefer `c8` for `tsx` tests unless a repo constraint makes another tool cleaner.
+3. Wire valuable existing root/API tests and explicitly retire or document stale/unrunnable files. The root command must either run every in-scope deterministic test or list exclusions with reasons.
 
-Expected package scripts:
+4. Add root/API coverage diagnostics in a focused PR if they help expose blind spots. Prefer `c8` for `tsx` tests unless a repo constraint makes another tool cleaner. Do not introduce a new threshold until the report is stable and the threshold protects an already-valuable suite rather than driving test selection.
 
-```json
-{
-  "test:root:self": "node scripts/recovery/run-root-self-tests.mjs",
-  "test:coverage:root": "c8 --all --extension .ts --extension .mjs --include 'api/**/*.ts' --include 'scripts/recovery/**/*.ts' --include 'scripts/recovery/**/*.mjs' --exclude '**/*.spec.ts' --exclude '**/*.test.ts' --exclude '**/*.d.ts' --reporter text-summary --reporter lcov --reporter json-summary --check-coverage --statements 90 --branches 90 --functions 90 --lines 90 node scripts/recovery/run-root-self-tests.mjs"
-}
-```
+5. Run Angular specs and coverage on CI or a supported browser runner. Treat the existing threshold as a regression alarm, not evidence that the most important UI states are covered.
 
-The `test:root:self` script must either run every non-smoke self-running root test or explicitly list excluded files with reasons.
+6. For high-risk owner, privacy, failure, or durability checks, run a temporary semantic counterfactual when practical: weaken the guard or invert the result and confirm the intended test fails. Revert immediately and record the result without committing the mutation.
 
-3. Add Angular coverage in a focused PR. Use Angular/Karma's coverage path and threshold support.
-
-Current command:
-
-```bash
-cd story-generator && npm run test:coverage
-```
-
-Raise `story-generator/karma.conf.js` global thresholds from 85 to 90 only after this command is stable on CI or a supported browser runner and the report supports the threshold.
-
-4. Add a top-level coverage gate only after both pieces are stable:
-
-```json
-{
-  "test:coverage:angular": "cd story-generator && npm run test:coverage",
-  "test:coverage": "npm run test:coverage:root && npm run test:coverage:angular"
-}
-```
-
-5. If ChromeHeadless is unstable locally, keep the implementation PR honest:
-
-- root/API coverage can pass locally;
-- Angular coverage must pass in CI or in a documented browser-capable environment;
-- do not claim 90% until a current report proves it.
+7. Add live proof for claims that mocks cannot establish. Credential absence may defer the live step, but then the product wording and final report must retain the corresponding non-claim.
 
 Acceptance:
 
-- Current root/API and Angular coverage reports each prove at least 90% coverage for the defined active first-party scope.
-- `story-generator/karma.conf.js` no longer remains at 85% once the Angular gate is claimed complete.
-- Coverage artifacts are linked in `PR70_RECOVERY_FINAL_REPORT.md`.
-- Coverage exclusions are documented and defensible.
-- The gate fails below 90%.
+- The final report contains a current risk-to-test matrix for critical Story Lab behavior.
+- Each high-risk row has meaningful automated proof or an explicit blocker/non-claim; no row is considered satisfied by a percentage alone.
+- Root/API deterministic tests are wired into a repeatable command, with exclusions documented.
+- Angular evidence comes from a runner that actually captures and completes the browser suite.
+- Coverage artifacts, when produced, are linked as diagnostics with defensible exclusions.
+- High-risk auth/ownership/privacy/durability tests include semantic counterfactual evidence where practical.
+- Signed-in cloud and durable-job claims include real-boundary and restart/process-loss proof respectively, or remain explicitly unproven.
 
 Subagents:
 
-- Coverage Cartographer maps untested active source.
-- Test Harness Mechanic implements or reviews the root/API coverage command.
-- UI Spec Auditor reviews Angular coverage and browser-run reliability.
+- Scope Prosecutor attacks the parent-written matrix, proof units, file leases, and acceptance criteria before work begins.
+- Risk-to-Test Cartographer reviews the locked matrix for critical blind spots without changing files.
+- Test Harness Mechanic implements the bounded deterministic test/diagnostic changes.
+- Completion Prosecutor tries to reintroduce plausible defects conceptually and challenges whether the tests would catch them.
+- UI Spec Auditor reviews Angular behavior coverage and browser-run reliability.
 
 ### Gate 4: Remote Completion-Hardening Slices
 
@@ -603,10 +601,10 @@ Steps:
 - local-work disposition;
 - PR links for every slice;
 - last-40-PR review audit counts;
-- coverage report summaries and commands, copied from ignored generated reports into the tracked final report;
+- risk-to-test matrix plus test and coverage-diagnostic command summaries, copied from ignored generated reports into the tracked final report when applicable;
 - dependency/security audit state;
 - Vercel function count;
-- live auth/cloud proof or explicit non-claim;
+- live signed-in auth/cloud save/list/load/update/delete and cross-owner denial proof;
 - durable-job proof or explicit `non_durable_memory` non-claim;
 - subagent findings and which ones changed the plan;
 - hostile self-review.
@@ -617,10 +615,10 @@ Steps:
 git status --short --branch
 npm run recovery:status
 npm run review:unresolved -- --repo Phazzie/FairytaleswithSpice --state all --limit 40
-npm run test:coverage
 npm run test:all
 npm run build
 scripts/recovery/check-vercel-function-count.sh
+# Run configured root/API and Angular coverage diagnostics separately when available.
 ```
 
 3. Run required slice preflights:
@@ -642,11 +640,11 @@ STORY_LAB_SMOKE_URL=https://fairytaleswith-spice.vercel.app STORY_LAB_SMOKE_LIVE
 
 Acceptance:
 
-- Hard local gates must pass: `npm run test:coverage`, `npm run test:all`, `npm run build`, `scripts/recovery/check-vercel-function-count.sh`, `npm run recovery:status`, required slice preflights, and the final review-thread audit.
-- Only credentialed or external live checks may be skipped with a documented nonblocking reason, and skipped proof must keep product wording as a non-claim.
+- Hard local gates must pass: the deterministic commands named by the risk-to-test matrix, `npm run test:all`, `npm run build`, `scripts/recovery/check-vercel-function-count.sh`, `npm run recovery:status`, required slice preflights, and the final review-thread audit. Configured coverage diagnostics must complete on their supported runners but no arbitrary percentage substitutes for missing behavioral proof.
+- Missing credentials or external access may defer a live command, but live auth/cloud persistence is a required completion gate and remains a blocker until proved. Only checks for explicitly optional or non-claimed behavior may be skipped with a documented nonblocking reason.
 - The final report can answer what is done, what remains, what was intentionally not done, and why the done claim is honest.
 - The working branch is merged into `main`.
-- `origin/main` contains the final report with coverage and review-audit evidence.
+- `origin/main` contains the final report with risk-to-test, diagnostic, live-boundary, and review-audit evidence.
 
 Subagents:
 
@@ -662,7 +660,7 @@ Use this execution order:
 3. Open and merge the plan PR.
 4. Run Gate 1 local-work reconciliation.
 5. Run Gate 2 last-40-PR review audit.
-6. Run Gate 3 coverage-tooling PRs until `npm run test:coverage` proves 90%.
+6. Run Gate 3 test-quality PRs until the risk-to-test matrix, deterministic suites, coverage diagnostics, counterfactual checks, and required live-boundary proof satisfy the gate.
 7. Run Gate 4 remote completion-hardening slices in the order listed.
 8. Run Gate 5 final report and merge closure.
 9. Only then evaluate whether the user objective is complete.
@@ -675,7 +673,7 @@ Completion requires current evidence for every item below:
 - `origin/main` contains all retained local work.
 - Last-40-PR audit artifact covers exactly 40 PRs.
 - All actionable review comments found in the last-40 audit are addressed or linked to issues.
-- `npm run test:coverage` passes with 90% thresholds.
+- Required deterministic test commands pass; coverage diagnostics are current where configured and reveal no unexplained critical blind spot.
 - `npm run test:all` passes.
 - `npm run build` passes.
 - `scripts/recovery/check-vercel-function-count.sh` passes.
@@ -692,7 +690,7 @@ Run these audits on a cadence, not just at the end:
 - After every three PRs: run a mini completion audit against this plan's `Progress` section and update it.
 - After any auth/storage/job change: run redaction/logging tests and owner-isolation tests.
 - After any UI state change: run or document Angular spec, browser smoke, and local/cloud/non-durable wording checks.
-- After any test-tooling change: run coverage gate and intentionally verify the gate fails if the threshold is set above current coverage.
+- After any test-tooling change: run the affected suite and confirm a temporary plausible defect or semantic counterfactual makes the intended high-risk test fail when practical.
 - Before final report: dispatch Final Hostile Reviewer and fix or document every finding.
 
 Self-critique prompts:
@@ -701,7 +699,7 @@ Self-critique prompts:
 - Did we call scaffolded behavior "done" or "durable"?
 - Did any PR contain more than one review boundary?
 - Did we reply to original review threads, or only fix code silently?
-- Did we prove coverage with current reports?
+- Did we prove important behavior and failure paths, or merely produce reassuring coverage numbers?
 - Did we leave any untracked or local-only file unclassified?
 
 ## Idempotence and Recovery
@@ -709,7 +707,7 @@ Self-critique prompts:
 - This plan can be restarted from `origin/main`.
 - If the current checkout remains stale, create a fresh branch or worktree from `origin/main` before edits.
 - Review audits are idempotent: rerun `npm run review:unresolved` and work only remaining active threads.
-- Coverage implementation is idempotent: rerun `npm run test:coverage` and inspect current reports.
+- Test diagnostics are idempotent: rerun the configured root/API and Angular commands and inspect current reports without changing thresholds to manufacture a pass.
 - Cloud schema scripts must refuse missing `DATABASE_URL` and be safe to rerun.
 - Do not delete backup branches, stale worktrees, or parked untracked files until `PR70_RECOVERY_FINAL_REPORT.md` records their disposition.
 

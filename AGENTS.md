@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-05 02:25 EDT
+Last updated: 2026-07-16 03:14 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -125,30 +125,60 @@ CodeRabbit configuration lives in `.coderabbit.yaml`. The repository intentional
 
 Add focused documentation when it clarifies public contracts, exported ports/adapters, security/privacy invariants, cross-process storage behavior, or non-obvious story-generation constraints. If a bot asks for broad docstring coverage, treat that as review-tooling drift: tune the tool or open a follow-up issue instead of adding low-value comments.
 
+## Test Quality Policy
+
+Optimize for defects prevented and important behavior proved, not an arbitrary coverage percentage. Coverage reports are diagnostic maps for finding untested code; they are not completion evidence by themselves and must not be raised by adding trivial assertions, getter tests, brittle snapshots, or tests that only repeat the implementation.
+
+Every implementation slice must identify its test obligations during scoping, not after coding. For each important behavior, name the defect or false claim the test is meant to kill. Prefer the smallest mix that proves the real risk:
+
+- acceptance tests for the user-visible or API outcome;
+- contract and invariant tests across UI/API/service/provider seams;
+- negative tests for authorization, cross-owner access, privacy, redaction, invalid input, retries, no-op writes, and fail-closed behavior;
+- persistence and restart tests for anything described as saved, cloud-backed, or durable;
+- focused unit tests for branching domain logic;
+- integration tests for database, route, migration, and adapter boundaries;
+- browser or deployed smoke proof for critical signed-in flows;
+- live-provider proof only when credentials are available and the claim depends on the real provider.
+
+Mocks and fakes are useful for deterministic logic and failure injection, but they do not replace proof at the boundary they imitate. A mocked database test cannot prove a migration or real owner isolation; a mocked auth token cannot prove provider configuration; a component spec cannot prove a deployed signed-in flow.
+
+For high-risk security and durability behavior, run a semantic counterfactual when practical: deliberately weaken or invert the owner check, error handling, persistence result, or restart assumption and confirm the relevant test fails. Revert the deliberate defect immediately. Record the mutation and result in the PR or changelog; do not commit the mutation.
+
+Before calling a slice complete, the parent agent must review whether the tests would still pass with the most plausible bug reintroduced. Missing high-value proof is a blocker or an explicit non-claim, even when line coverage is high.
+
 ## Subagent Operating Rules
 
 Use subagents as bounded execution help, not as a substitute for parent-agent judgment. The parent agent owns strategy, final integration, GitHub actions, and completion claims.
 
+When the user asks to use subagents, the default sequence is parent discovery, scope prosecution, scope lock, worker execution, completion prosecution, and parent validation. Do not begin by fanning out explorer agents. The parent must inspect the current repo, control docs, relevant code, tests, dependencies, and live state first, then write the proposed split.
+
 Do not make subagent planning overly conservative by defaulting most tickets to read-only exploration. Maintain precision and accuracy, but bias toward larger, useful worker chunks once the parent agent has chosen the strategy. Over-conservative plans are unsafe because they create process drag, reduce attention, and leave real work undone.
 
-Use `Explorer` tickets only when the next move is genuinely unknown, risky, credential-dependent, or decision-heavy. Use `Worker` tickets when the parent has enough information to bound files, tests, stop conditions, and expected output. Prefer one well-scoped worker that produces a reviewable change over separate scout-and-worker tickets when the risk is local and reversible.
+Use `Explorer` tickets only when parent-led discovery still leaves one named unknown that is genuinely risky, credential-dependent, or decision-heavy. An explorer ticket must investigate that unknown only; it must not be a generic repo survey. Use `Worker` tickets when the parent has enough information to bound files, tests, stop conditions, and expected output. Prefer one well-scoped worker that produces a reviewable change over separate scout-and-worker tickets when the risk is local and reversible.
 
 For exploration batches, use `STORY_LAB_EXPLORATION_TICKETS.md`. Exploration tickets are read-only by design, but they must return worker-ready decisions, files touched, validation commands, and shared-file conflicts. Do not let exploration become another status report.
 
-Before dispatching subagents:
+Before dispatching implementation subagents:
 
-1. Analyze the target locally first and write down the split.
-2. Confirm each subtask is independent, has a disjoint write scope, or is explicitly read-only.
-3. Keep at most six subagents active at once.
-4. Prefer Spark-style fast agents only for narrow tickets with complete context and easy-to-check outputs.
-5. Do not ask a subagent to "figure out the repo", "fix coverage", or "handle Dependabot" without a bounded target.
+1. Analyze the target locally first and write down the chosen strategy, dependency order, proposed proof units, exact file leases, shared-file conflicts, test obligations, and stop conditions.
+2. Size each proof unit with the Goldilocks check: it produces one valuable outcome, failures localize to one risk area, the diff is reviewable, and the unit can be reverted without unwinding unrelated behavior. Split scopes that cross independent risks; combine scopes that would otherwise produce partial behavior with no useful proof.
+3. Dispatch one highly critical read-only `Scope Prosecutor` to attack the proposed scope artifact. It must look for hidden dependencies, overlapping writes, missing tests, unprovable acceptance criteria, oversized or undersized tickets, unsafe parallelism, vague stop conditions, and claims that exceed available credentials or infrastructure.
+4. The parent must adjudicate every material critique as `Accept`, `Partial`, or `Reject`, with a reason; revise the scope when warranted; then mark the strategy `Scope locked`. If revisions materially change boundaries, allow one narrow re-review. Do not create an endless planning loop.
+5. Confirm each implementation task is independent, has a disjoint write scope, or is explicitly serialized. Treat shared package files, lockfiles, routes, components, changelog sections, and generated artifacts as file leases owned by one worker at a time.
+6. Keep at most six subagents active at once.
+7. Prefer Spark-style fast agents only for narrow tickets with complete context and easy-to-check outputs.
+8. Do not ask a subagent to "figure out the repo", "fix coverage", "add tests", or "handle Dependabot" without a bounded outcome and proof contract.
 
 Every subagent ticket must include:
 
 - **Parent analysis:** what is already known and what strategy has already been chosen.
+- **Strategy status:** `Proposed`, `Scope prosecuted`, or `Scope locked`; workers require `Scope locked`.
+- **Proof unit:** the one valuable outcome this ticket must make true.
 - **Role:** read-only explorer, bounded worker, reviewer, or drafting assistant.
 - **Owned files:** exact paths the agent may edit, or `Read-only`.
 - **Files touched:** exact create/modify/test/docs paths expected for the task, plus any shared files that must be serialized instead of edited in parallel.
+- **Dependencies and conflicts:** predecessor tickets, shared-file leases, and tasks that cannot run concurrently.
+- **Test obligations:** behaviors, invariants, failure paths, and the plausible defect each required test should catch.
 - **Forbidden actions:** no PR merges, no branch deletion, no review-thread resolution, no broad refactors, and no reverting unrelated work.
 - **Commands:** exact checks to run, including whether failures are expected evidence.
 - **Stop condition:** when to stop instead of broadening scope.
@@ -160,12 +190,16 @@ Use this minimum ticket shape:
 ```text
 Task name:
 Parent analysis:
+Strategy status:
 Goal:
+Proof unit:
 Role:
 Model / reason:
 Owned files:
 Files touched:
 Read-only files:
+Dependencies and conflicts:
+Test obligations / defects killed:
 Forbidden actions:
 Exact steps:
 Commands to run:
@@ -182,10 +216,11 @@ Dependency PRs need extra care. Do not split one dependency PR into multiple pac
 After subagents return:
 
 1. Review every result before integrating it.
-2. Run the relevant local checks yourself.
-3. Push and merge only from the parent session.
-4. Record timeouts or stale-workspace failures as failures, not partial success.
-5. Update `SUBAGENT_LOG.md` and the active changelog or execution plan in the same PR when subagent work materially affects repo decisions.
+2. Run a read-only `Completion Prosecutor` against the locked scope, diff, tests, and worker evidence. This is separate from the pre-work Scope Prosecutor and must try to disprove completion, test usefulness, and non-claims.
+3. Adjudicate the completion critique, revise when warranted, and run the relevant local checks yourself.
+4. Push and merge only from the parent session.
+5. Record timeouts or stale-workspace failures as failures, not partial success.
+6. Update `SUBAGENT_LOG.md` and the active changelog or execution plan in the same PR when subagent work materially affects repo decisions.
 
 ## Current Operating Direction
 
@@ -193,7 +228,7 @@ The unpublished `feature/story-lab-auth-profile-contracts` stack has been split 
 
 The active Story Lab completion-hardening plan is `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`. Use it before claiming the recovery is done, integrating live auth/database behavior, claiming durable jobs, closing the review-comment backlog, or merging dependency follow-ups.
 
-The stricter final merge, coverage, and PR-review audit plan is `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`. Use it before claiming all local work is merged, the last 40 PRs have been audited, review comments are handled, 90% coverage is proven, or the overall Story Lab recovery goal is complete.
+The stricter final merge, test-quality, and PR-review audit plan is `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`. Use it before claiming all local work is merged, the last 40 PRs have been audited, review comments are handled, critical behavior has meaningful test proof, or the overall Story Lab recovery goal is complete.
 
 The autonomous operating guide is `OVERNIGHT_MODE.md`. Use it before long-running task selection, research mining, or Weird Lab work.
 

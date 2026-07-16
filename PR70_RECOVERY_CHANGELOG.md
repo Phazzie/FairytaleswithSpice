@@ -4,6 +4,33 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-16 03:14 EDT - Subagent Scope, Test Quality, And Completion Boundary Hardening
+
+Actions:
+
+- Found the primary `main` checkout current with `origin/main` but blocked by an unexplained untracked `.agents/` mirror; left it untouched and created clean worktree branch `recovery/story-lab-subagent-scope-testing` from `origin/main`.
+- Replaced explorer-first subagent guidance with parent-led discovery, Goldilocks proof-unit sizing, exact file leases, a mandatory read-only Scope Prosecutor, explicit parent dispositions, scope lock, worker execution, a separate Completion Prosecutor, and parent validation.
+- Added a test-quality policy that selects tests by important behavior and plausible defects rather than an arbitrary coverage percentage. Added guidance for acceptance, invariant, negative, persistence/restart, integration, browser, live-boundary, and temporary semantic-counterfactual proof.
+- Replaced the active 90% completion target with a risk-to-test matrix and coverage diagnostics that reveal blind spots without rewarding shallow tests.
+- Added a claim-based Definition of Done covering source/publication truth, critical user journeys, live auth/cloud persistence and cross-owner denial, security/privacy, job honesty, test quality, build/deployment, review closure, documentation, and final hostile review.
+- Added an explicit optional-after-Done boundary for numeric threshold tuning, wider historical cleanup, major upgrades, audio, nonblocking polish, research/Weird Lab work, extra providers, performance beyond shipping budgets, optional Workflow infrastructure, and new product surfaces.
+- Updated the active Story Lab slice skill outside the repo so later sessions enforce the same discovery, scope-review, test-quality, and completion-boundary rules. Left the untracked repo-local `.agents/` mirror unchanged because its ownership is not established.
+
+Self-review:
+
+- Good: The new process has separate gates for deciding the work and disproving the result, while preserving parent ownership of strategy and completion claims.
+- Correction: The previous active plan could motivate agents to manufacture tests for a number. Coverage remains useful, but only as a diagnostic behind a behavior-first risk map.
+- Non-claim: This docs/process slice does not implement live auth/database behavior, resolve Dependabot #194, add coverage instrumentation, or prove durable jobs.
+
+Validation:
+
+- `npm run recovery:status`: passed before edits on a clean branch at `origin/main`; route count was `11/12`; Dependabot #194 remained the only open PR and was failing Recovery CI plus Vercel.
+- `git diff --check`: passed.
+- `npm run test:recovery-finish-check`: passed, 4 tests.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- Story Lab slice skill validation: passed with the skill-creator `quick_validate.py` in an isolated temporary environment; `agents/openai.yaml` also parsed successfully.
+- `scripts/recovery/preflight.sh --quick --skip-status`: whitespace/conflict and route-budget checks passed; Angular type checking could not start because the clean linked worktree has no `story-generator/node_modules/.bin/tsc`. No product code changed, so dependencies were not installed solely for this docs/process slice.
+
 ## 2026-07-11 04:21 EDT - Story Lab Tooling And Skill Routing Refresh
 
 Actions:

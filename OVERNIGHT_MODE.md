@@ -1,6 +1,6 @@
 # Overnight Mode
 
-Last updated: 2026-07-05
+Last updated: 2026-07-16
 
 ## Purpose
 
@@ -39,6 +39,22 @@ Run or inspect these before making changes:
    - the execution plan matching the files being changed
 
 If checks are already failing before edits, record the baseline failure in the active changelog or execution plan and prioritize repair before feature work.
+
+## Autonomous Subagent Gate
+
+Before an autonomous worker batch, the parent agent must complete discovery itself and leave a durable locked scope in the active checklist, execution plan, or turnover packet. Do not spend the first wave on broad explorer agents when current code and control docs can answer the questions locally.
+
+The locked scope must include:
+
+- the chosen strategy and one coherent proof unit per worker;
+- dependency order and exact file leases, including shared files that must be serialized;
+- acceptance behavior, failure paths, and the plausible defect each required test should catch;
+- commands, expected pass/fail meaning, stop conditions, non-claims, and external prerequisites;
+- one read-only Scope Prosecutor's critique plus the parent's `Accept`, `Partial`, or `Reject` disposition for each material finding.
+
+Workers may start only after the parent marks the strategy `Scope locked`. If the critique forces a major boundary change, allow one focused re-review and then lock or stop. After implementation, use a separate Completion Prosecutor to attack the diff and test evidence before the parent validates, publishes, and claims completion.
+
+Credentialed auth, database provisioning/migration, paid-provider use, and production configuration remain stop signs unless the required access and authority are already present. Autonomous work may prepare credential-safe commands, deterministic tests, migrations, and runbooks without exposing secrets or claiming live proof.
 
 ## Task Selection Order
 
@@ -135,7 +151,8 @@ Commit after coherent, reviewable slices. Do not commit every tiny edit just to 
 Before committing:
 
 - run `git diff --check`;
-- run the focused tests for files touched;
+- run the focused tests for files touched and confirm they exercise the intended acceptance behavior and important failure paths;
+- for high-risk auth, ownership, privacy, persistence, or durability changes, use a temporary semantic counterfactual when practical and confirm the relevant test fails;
 - run the function-count check when route files or `vercel.json` change;
 - update docs if the work changes plan state;
 - inspect `git diff --stat` so unrelated untracked or user files are not accidentally included.
