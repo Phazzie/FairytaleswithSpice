@@ -1,7 +1,7 @@
 # Story Lab Whole-Concept Checklist
 
 Created: 2026-07-04 07:16 EDT
-Last updated: 2026-07-04 07:16 EDT
+Last updated: 2026-07-16 03:14 EDT
 
 This is the plain-status checklist for the whole Story Lab concept. It includes what is already merged, what is partially built, and what is still not done. The percentages are evidence estimates from the six-check audit artifacts in `STORY_LAB_CHECKLIST_FINDINGS/` plus this PR's doc-fix pass.
 
@@ -24,7 +24,7 @@ In plain terms: the user-facing Story Lab is mostly real and usable for creating
 | Angular UI surface | 88% | Strong | The route, controls, continuation, progress, library, and local export UI exist; polish remains around disabled states, Proving Grounds intent, and small-screen layout. |
 | API, generation, and job routes | 83% | Strong scaffold | Direct generation, continuation, jobs, events, privacy gates, fail-closed AI, and route budget are covered; streaming privacy and durable job storage remain incomplete. |
 | Auth, storage, and durability | 72% | Partial | Auth/store contracts, owner checks, and Neon dependency support exist, but live provider auth, provisioned database proof, migrations, and cloud sync proof are not done. |
-| Tests, coverage, and CI | 43% | Weakest area | Many tests and preflight checks exist, but there is no enforced root/API coverage gate and Angular is still at 85%, not 90%. |
+| Tests, coverage, and CI | 43% | Weakest area | Many tests and preflight checks exist, but there is no canonical risk-to-test map or root/API coverage diagnostic, and critical live auth/database and process-loss boundaries remain unproven. |
 | Docs and process | 75% | Improved | Guardrails, changelog, lessons, subagent log, current handoff guidance, and active-plan routing exist; stale-doc cleanup still matters where old docs create active confusion. |
 
 ## Product Checklist
@@ -75,8 +75,8 @@ In plain terms: the user-facing Story Lab is mostly real and usable for creating
 
 - [x] **Known test command surface.** Root scripts expose many focused Story Lab and recovery tests.
 - [~] **Canonical `test:all` map.** `test:all` covers a lot, but some old, special-purpose, privacy/security, and job-contract test files are not clearly wired.
-- [~] **Angular coverage.** Karma coverage is configured at 85%; it is not yet the requested 90% and the script path should force coverage output.
-- [ ] **Root/API coverage.** There is no `c8`/`nyc`/Vitest/Jest-style coverage gate for root/API TypeScript tests yet.
+- [~] **Angular test diagnostics.** Karma coverage is configured at 85%, but the browser runner is not reliable in every local environment and the percentage does not prove critical state/error behavior by itself.
+- [ ] **Root/API test diagnostics.** There is no `c8`/`nyc`/Vitest/Jest-style diagnostic for root/API TypeScript tests yet, and the risk-to-test map is incomplete.
 - [ ] **Coverage artifacts.** There is no current generated coverage artifact proving repo-wide numbers.
 - [~] **CI/preflight.** Recovery CI and preflight are useful, but coverage is not part of CI yet.
 - [~] **Live smoke.** Live provider/browser smoke checks exist but are credential/environment gated, so they are not universal CI gates.
@@ -94,7 +94,7 @@ In plain terms: the user-facing Story Lab is mostly real and usable for creating
 ## What Still Needs to Be Done
 
 - [ ] **Add root/API coverage tooling.** This is the biggest proof gap because API/state/storage/auth/job logic is where many production risks live.
-- [ ] **Decide the coverage path before chasing 90%.** First produce honest root/API and Angular coverage reports, then decide if 80 -> 85 -> 90 is the right ramp or if 90 is realistic immediately.
+- [ ] **Build the risk-to-test map before tuning percentages.** First identify critical behaviors and plausible defects, wire meaningful proof, then use honest root/API and Angular coverage reports to find blind spots or choose regression thresholds.
 - [ ] **Prove live auth and durable database behavior.** Wire provider auth, provision the database, run migrations, and prove signed-in save/load/list/delete in browser.
 - [ ] **Prove job durability.** Jobs should not be called durable until progress survives process loss and owner-scoped durable writes are tested.
 - [ ] **Move private streaming payloads out of query strings.** Prefer job ids/body-backed flow so story text does not leak through URLs.

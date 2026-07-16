@@ -1,7 +1,7 @@
 # Story Lab Completion Hardening ExecPlan
 
 Created: 2026-06-21 15:04 EDT
-Last updated: 2026-07-11 00:27 EDT
+Last updated: 2026-07-16 03:14 EDT
 
 This ExecPlan is the authoritative plan for finishing the Story Lab recovery after PR #151. It reconciles the merged unpublished-branch recovery slices, the still-open review-comment backlog, Dependabot triage, live auth/database integration, durable-job honesty, and the final completion audit.
 
@@ -71,7 +71,7 @@ Current outcome:
 - Later review-cleanup work has been merged through PR #179.
 - The repo has clear scaffolds for auth provider selection, profile/project stores, cloud schema/readiness, account routes, Angular cloud library UI, and owner-scoped job storage.
 - The repo does not yet have a production signed-in Story Lab flow, a live durable database migration, durable cloud sync proof, or crash-safe job proof.
-- The repo does not yet have a current 90% coverage gate.
+- The repo does not yet have root/API coverage diagnostics or a canonical risk-to-test matrix; a percentage alone is not the completion target.
 
 Self-critique so far:
 

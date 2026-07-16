@@ -1,13 +1,39 @@
 # Story Lab Future Work Checklist
 
 Created: 2026-07-04 14:33 EDT
-Last updated: 2026-07-11 00:27 EDT
+Last updated: 2026-07-16 03:14 EDT
 
-This checklist breaks the unfinished Story Lab work into small tickets that a subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must choose the next workstream, keep write scopes disjoint, verify results, open/merge PRs, and keep docs current.
+This checklist breaks unfinished Story Lab work into coherent proof units that a subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must explore first, choose the strategy, keep write scopes disjoint, verify test quality and results, open/merge PRs, and keep docs current.
 
 Before running a broad exploration batch, use `STORY_LAB_EXPLORATION_TICKETS.md`. That file defines the standard exploration report, context-turnover packet, and the explore-to-worker tickets needed to revise this checklist into larger worker chunks with `Files touched` fields.
 
-The 2026-07-05 exploration batch has already run. Use `STORY_LAB_EXPLORATION_FINDINGS.md` before rerunning any Explorer ticket; most scout work is now worker-ready and should not be repeated unless live repo state has changed.
+The 2026-07-05 exploration batch has already run. Use `STORY_LAB_EXPLORATION_FINDINGS.md` before rerunning any Explorer ticket; most scout work is now worker-ready and should not be repeated unless parent-led discovery identifies one specific stale or unresolved unknown.
+
+## Subagent Deployment Gate
+
+When the user asks for subagents, do not start with a generic exploration wave. The parent agent first inspects the live repo and writes a proposed batch with strategy, proof units, dependency order, exact file leases, test obligations, commands, non-claims, and stop conditions.
+
+Before any worker starts:
+
+1. Run the Goldilocks check on every proof unit: one useful outcome, one localized risk area, a reviewable diff, and an independent rollback boundary.
+2. Send the proposed scope to one highly critical read-only Scope Prosecutor.
+3. Record each material critique and the parent's `Accept`, `Partial`, or `Reject` disposition.
+4. Revise once when warranted, then mark the batch `Scope locked`.
+5. Dispatch workers only from the locked scope. Serialize shared files and package/lockfile changes.
+6. After workers return, use a separate Completion Prosecutor to attack the diff, tests, evidence, and claims before parent validation.
+
+Coverage percentage is not the target. Each proof unit must state the behavior, invariant, failure path, or real boundary it proves and the plausible defect its tests should catch. Coverage artifacts may expose blind spots, but shallow tests added only to raise a number do not satisfy this checklist.
+
+## Completion Boundary
+
+The authoritative required gates and evidence are in `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` under `Updated Definition Of Done`. In this checklist:
+
+- **Required before Done:** live signed-in cloud save/list/load/update/delete; cross-owner denial; security/privacy closure; the risk-to-test matrix and meaningful critical-path tests; build/deployment/route checks; last-40 and current-PR review closure; final hostile review; final report merged to `origin/main`.
+- **Conditional before Done:** durable-job implementation and process-loss proof only if the shipped product claims durable jobs. Otherwise verified process-local/`non_durable_memory` wording and a linked optional follow-up satisfy the honesty gate.
+- **Administrative disposition required:** Dependabot #194 and any other open PR must be merged, replaced, closed with reason, or linked as optional follow-up; an unrelated major upgrade does not automatically block product completion.
+- **Optional after Done:** execute the ambitious portfolio in `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md`, including story intelligence, versioning/branches, editorial tools, Proving Grounds experiments, private publishing/media, collaboration, reusable worlds, durable creative workflows, safe model rollouts, and bounded Weird Lab work. Numeric threshold tuning, wider historical cleanup, Angular major upgrades, and nonblocking polish remain optional maintenance lanes.
+
+Optional items must stay off completion branches. To promote one, update the Definition of Done and this boundary before implementation so scope cannot expand silently.
 
 ## Current Snapshot
 
@@ -17,9 +43,9 @@ The 2026-07-05 exploration batch has already run. Use `STORY_LAB_EXPLORATION_FIN
 - [x] **Whole-concept status:** `STORY_LAB_CONCEPT_CHECKLIST.md` is merged.
 - [x] **Public Story Lab loop:** create, continue, local save, copy, download, and progress UI exist.
 - [ ] **Production durability:** signed-in cloud save/load/list/delete is not proven live.
-- [ ] **Coverage proof:** root/API coverage tooling and repo-wide coverage evidence do not exist. Angular coverage invocation exists, but certain local development environments currently cannot run ChromeHeadless reliably.
-- [ ] **Durable jobs:** job state is still explicitly `non_durable_memory`.
-- [ ] **Final completion report:** not ready until durability, coverage, and final audits are proven.
+- [ ] **Test-quality proof:** root/API coverage instrumentation does not exist, several test surfaces still need a canonical map, and critical live auth/database and process-loss boundaries remain unproven. Angular coverage invocation exists, but certain local development environments currently cannot run ChromeHeadless reliably.
+- [ ] **Job durability disposition:** job state is still explicitly `non_durable_memory`; either prove process-loss durability or keep that honest wording and move durable infrastructure to the optional queue.
+- [ ] **Final completion report:** not ready until live auth/cloud proof, job-durability disposition, risk-based test proof, and final audits are complete.
 - [x] **Exploration batch:** EXP-01 through EXP-13 completed and synthesized in `STORY_LAB_EXPLORATION_FINDINGS.md`.
 - [x] **First implementation wave:** completed on `recovery/story-lab-first-worker-wave`; this improves test command truth, Angular coverage invocation, durability proof docs, durable-job schema/readiness proof, and focused UI/spec coverage. It does not complete live cloud proof, root/API coverage instrumentation, or durable process-loss job proof.
 
@@ -31,13 +57,13 @@ Use this section as the parent-agent split before dispatching Spark workers. Per
 |---|---:|---|---|---|---|---|
 | Admin/status refresh | 100% | Keeps us from working from stale docs. | Update current PR truth, browser-runner caveat, next scope order, and changelog evidence. | Active docs only: `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, `STORY_LAB_EXPLORATION_FINDINGS.md`, `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, `PR70_RECOVERY_CHANGELOG.md`, `LESSONS_LEARNED.md` if a durable lesson is added. | No code, no lockfiles, no UI branch files. | Parent-owned; do before worker dispatch. |
 | Dependabot #194 triage | 80% | It is the only open PR and it is failing required checks. | Split root `form-data` lockfile change from Angular 22 major-upgrade changes; decide close/recreate vs focused replacement PR. | Read-only first; likely replacement worker owns either root `package-lock.json` or `story-generator/package.json` plus `story-generator/package-lock.json`, never both in parallel unless explicitly split by package root. | Do not merge Angular 22 while Recovery CI/Vercel fail; do not combine with coverage tooling. | Can run beside read-only audits, but not beside root coverage if both touch `package.json` or root lockfile. |
-| Root/API coverage bootstrap | 85% | This is the biggest proof gap for account, storage, job, privacy, and route logic. | Choose coverage tool, add `test:coverage:root`, run Story Lab root/API tests under coverage, record first real baseline. | `package.json`, `package-lock.json`, optional coverage config, possible `scripts/recovery/run-root-self-tests.mjs`. | Do not raise to 90% until the baseline exists; do not touch Angular packages. | Serialize with Dependabot/root package work. |
+| Root/API test-map and coverage diagnostics | 85% | Account, storage, job, privacy, and route logic need meaningful behavioral proof and a map of blind spots. | Map risks to tests, wire omitted root/API tests, add coverage diagnostics if useful, and record missing high-value behavior or failure paths. | `package.json`, `package-lock.json`, optional coverage config, possible `scripts/recovery/run-root-self-tests.mjs`. | Do not add shallow tests or raise thresholds merely to improve a number; do not touch Angular packages. | Serialize with Dependabot/root package work. |
 | Angular coverage runner health | 75% | Angular has coverage tooling, but some local development environments cannot prove it right now. | Add a fail-fast health check or require CI/supported-machine proof before treating local Karma output as evidence. | Optional script under `scripts/recovery/*headless*` or docs only; avoid Angular UI files. | Do not debug UI behavior here; do not upgrade Angular. | Can run beside root/API coverage if it avoids `package.json`; otherwise serialize package scripts. |
 | Live auth and cloud library proof | 70% scoped, 0% live-proven | Cloud save/load/list/delete is not production-real until signed-in provider plus database proof exists. | Audit env names, create credential-safe account smoke, provision/migrate DB, prove signed-in save/list/load/delete and owner denial. | `scripts/recovery/*account*smoke*.mjs`, auth/storage exec plans, evidence docs. | Do not print secrets; do not claim durability without live proof. | Can run beside coverage if no package-script collision; credentialed proof waits on env/database access. |
 | Durable jobs | 75% scoped, 0% process-loss-proven | Job routes still honestly report `non_durable_memory`; durability requires recovery after process loss. | Harden Postgres job store/config, wire durable mode safely, add process-loss proof. | `api/_lib/story-lab/jobs/*`, `api/story-lab/jobs.ts`, focused job tests, optional smoke script. | No Angular UI; no "durable" wording unless process-loss proof passes. | Can run beside streaming backend only if route/test files do not overlap. |
 | Streaming privacy | 80% | Story text and blueprint data should not travel through browser-visible URLs. | Move private payloads to POST body/job state; keep EventSource URLs opaque; update backend and UI service tests. | Backend: `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, parser/security tests. UI service migration: `story-generator/src/app/story.service.ts` and focused specs. | No visual UI redesign. Preserve compatibility only if parent explicitly decides it is required. | Backend and UI can be split, but coordinate contract order. |
 | UI polish branch coordination | 60% scoped here | Another session is working on UI; this repo session should not collide. | Keep UI branch out of this branch; only update docs about UI scope if needed. | Read-only for `story-generator/src/app/*` unless user explicitly moves UI back here. | No app HTML/CSS/component edits in this branch. | UI work should stay in the separate `-art` branch/session. |
-| Final audit/report | 65% | Completion claims need fresh proof, not old chat memory. | Open PR audit, unresolved review-thread audit, coverage artifacts, durability proof evidence, final report. | `PR70_RECOVERY_FINAL_REPORT.md`, final audit plan, active checklist docs. | Do not run until coverage/durability gates have evidence or explicit deferrals. | Last step after the proof scopes above. |
+| Final audit/report | 65% | Completion claims need fresh proof, not old chat memory. | Open PR audit, unresolved review-thread audit, test-quality evidence, durability proof evidence, final report. | `PR70_RECOVERY_FINAL_REPORT.md`, final audit plan, active checklist docs. | Do not run until critical test/durability gates have evidence or explicit non-claims. | Last step after the proof scopes above. |
 
 ## Post-Exploration Execution Batches
 
@@ -79,7 +105,7 @@ Each ticket is intentionally narrow:
 - **Output:** The durable artifact the parent can review.
 - **Validation:** Commands the parent or worker must run before claiming completion.
 
-Do not dispatch two workers that write the same file. Do not dispatch implementation until the parent has selected the workstream and resolved ordering.
+Do not dispatch two workers that write the same file. Do not dispatch implementation until the parent has completed discovery, resolved ordering, adjudicated the Scope Prosecutor critique, and marked the strategy `Scope locked`.
 
 ## Workstream 0: Admin And Source-Of-Truth Cleanup
 
@@ -90,7 +116,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Validation: archive branch exists on origin; temp worktree removed.
 
 - [ ] **0.2 Stale worktree audit**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files/commands: `git worktree list`, `git status --short --branch` in each worktree.
   - Goal: classify each remaining non-main worktree as `active`, `archive`, `safe to remove`, or `needs user decision`.
@@ -99,7 +125,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Validation: parent reruns `git worktree list`.
 
 - [ ] **0.3 Active-doc source map audit**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `AGENTS.md`, `STORY_LAB_CONCEPT_CHECKLIST.md`, `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`.
   - Goal: find places where active docs point at historical docs as if they are current.
@@ -110,7 +136,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 ## Workstream 1: Test Map And Coverage Proof
 
 - [ ] **1.1 Canonical test map inventory**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `package.json`, `tests/`, `story-generator/package.json`, `story-generator/src/app/*.spec.ts`.
   - Goal: list every runnable test file and whether it is included in `npm run test:all`, Angular test scripts, CI, smoke scripts, or nowhere.
@@ -129,7 +155,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Validation: after the worker creates the script, `npm run test:story-lab-privacy-contracts`; if added to the full gate, `npm run test:all`.
 
 - [ ] **1.3 Root/API coverage tool decision**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `package.json`, `package-lock.json`, `tests/`, `api/`, `shared/`.
   - Goal: recommend `c8`, `nyc`, or another coverage tool for root `tsx` tests, with exclusions and first-pass thresholds.
@@ -154,18 +180,18 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Output: script name, threshold behavior, artifact path.
   - Validation: `cd story-generator && npm run test:coverage` or final script equivalent. Do not override the script's `ChromeHeadlessNoSandbox` launcher unless the runner-health scope intentionally changes it.
 
-- [ ] **1.6 Coverage threshold policy**
-  - Role: Explorer.
+- [ ] **1.6 Risk-based test-quality audit**
+  - Role: Parent-led audit; use a read-only reviewer only after the parent maps the risks.
   - Owned files: Read-only.
-  - Goal: after 1.4 and 1.5 generate real baselines, recommend whether the next gate should be 80%, 85%, 90%, or separate thresholds by surface.
-  - Stop condition: do not change thresholds.
-  - Output: table of measured baselines and recommended gate.
-  - Validation: cite current coverage artifacts, not historical claims.
+  - Goal: after 1.4 and 1.5 produce honest baselines, map critical behaviors and plausible defects to existing tests, then identify missing acceptance, invariant, failure-path, integration, restart, browser, or live-boundary proof.
+  - Stop condition: do not change thresholds or propose tests whose only value is raising a percentage.
+  - Output: risk-to-test matrix with current proof, missing proof, defect each proposed test should kill, and recommended worker scopes.
+  - Validation: cite current test commands and artifacts; for high-risk owner/privacy/durability checks, name a semantic counterfactual that should make the test fail.
 
 ## Workstream 2: Live Auth, Account, And Cloud Library
 
 - [ ] **2.1 Auth provider environment audit**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `api/_lib/story-lab/auth/*`, Vercel/env docs, `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`.
   - Goal: identify required provider variables, local-test variables, and production variables for real signed-in proof.
@@ -190,7 +216,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Validation: `git diff --check`; command examples reviewed for secret redaction.
 
 - [ ] **2.4 Signed-in browser proof plan**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `story-generator/src/app/app.ts`, `story-generator/src/app/app.html`, `story-generator/src/app/story.service.ts`, account route tests.
   - Goal: define the exact browser path to prove sign in, save, refresh, load, list, delete, sign out.
@@ -209,7 +235,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 ## Workstream 3: Durable Jobs
 
 - [ ] **3.1 Current job durability boundary audit**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `api/_lib/story-lab/jobs/*`, `api/story-lab/jobs.ts`, `tests/story-lab-job-*.test.ts`, `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md`.
   - Goal: map exactly where `non_durable_memory` is returned and what would need to change for durable mode.
@@ -252,7 +278,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 ## Workstream 4: Streaming Privacy
 
 - [ ] **4.1 Query-string payload inventory**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, `story-generator/src/app/story.service.ts`, streaming tests.
   - Goal: identify every path where story text or blueprint fields can appear in a URL.
@@ -261,7 +287,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Validation: `rg -n "query|URLSearchParams|EventSource|stream" api story-generator/src/app tests`.
 
 - [ ] **4.2 POST-to-job streaming replacement design**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `api/story-lab/stream/genesis.ts`, `api/story/stream.ts`, `api/story-lab/jobs.ts`, `api/_lib/story-lab/jobs/jobStore.ts`.
   - Goal: propose how private payloads move to POST body/job state while EventSource uses opaque job ids only.
@@ -288,7 +314,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 ## Workstream 5: UI Polish And Product Clarity
 
 - [ ] **5.1 Empty-state action audit**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `story-generator/src/app/app.html`, `story-generator/src/app/app.ts`, `story-generator/src/app/app.spec.ts`.
   - Goal: list buttons/actions that are handler-guarded but not visibly disabled or explained.
@@ -305,7 +331,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Validation: Angular app spec command selected by parent; `git diff --check`.
 
 - [ ] **5.3 Proving Grounds visibility decision**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `story-generator/src/app/app.routes.ts`, `story-generator/src/app/app.html`, `story-generator/src/app/proving-grounds/*`, docs mentioning Proving Grounds.
   - Goal: decide whether Proving Grounds is debug-only, admin-only, internal-only, or user-facing.
@@ -324,7 +350,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 ## Workstream 6: Story Quality And Product Confidence
 
 - [ ] **6.1 Story-quality test inventory**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `tests/story-quality-evals.test.ts`, `GROK_MULTIAGENT_STORY_LAB_POLISH_EXEC_PLAN.md`, `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md`, prompt/service files.
   - Goal: list current story-quality checks and identify what they actually protect.
@@ -351,7 +377,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 ## Workstream 7: Final Audit And Completion Report
 
 - [ ] **7.1 Fresh open-PR and review-thread audit**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Goal: produce final counts for open PRs, last-40 unresolved threads, and wider historical backlog.
   - Stop condition: do not resolve threads.
@@ -367,7 +393,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
   - Validation: `git diff --check`, `npm run recovery:finish -- --strict`.
 
 - [ ] **7.3 Completion hostile review**
-  - Role: Explorer.
+  - Role: Parent-led discovery; dispatch a read-only explorer only for one named unresolved unknown.
   - Owned files: Read-only.
   - Read-only files: `STORY_LAB_CONCEPT_CHECKLIST.md`, `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, `PR70_RECOVERY_FINAL_REPORT.md`.
   - Goal: try to disprove the final completion claim requirement by requirement.
@@ -378,7 +404,7 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 ## Workstream 8: Dependency PRs
 
 - [ ] **8.1 Dependabot #194 triage**
-  - Role: Explorer first, then parent-owned disposition.
+  - Role: Parent-led dependency audit, then parent-owned disposition; use a read-only explorer only for one unresolved package-specific question.
   - Owned files: Read-only for triage.
   - Read-only files: `package-lock.json`, `story-generator/package.json`, `story-generator/package-lock.json`, PR #194 checks and Vercel status.
   - Goal: decide whether #194 should be closed/recreated, split into root-only plus Angular-major PRs, or fixed in place.
@@ -407,8 +433,8 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 1. Workstream 0: keep source-of-truth docs current before dispatching workers.
 2. Workstream 8.1: triage Dependabot #194 so package-file work does not collide with coverage work.
 3. Workstream 1.1: refresh the canonical test map before coverage tooling, unless a current test-map artifact is already committed.
-4. Workstream 1.3, 1.4, and 1.6: add root/API coverage proof and choose a realistic threshold.
-5. Angular runner health: add fail-fast local browser evidence or use CI/supported runner before claiming Angular coverage.
+4. Workstream 1.3, 1.4, and 1.6: map critical risks to tests, wire missing root/API proof, and use coverage diagnostics to find blind spots.
+5. Angular runner health: add fail-fast local browser evidence or use CI/supported runner before relying on Angular coverage diagnostics.
 6. Workstream 2.1 through 2.5: prove signed-in durable cloud library behavior.
 7. Workstream 3.1 through 3.5: prove durable jobs only after database/auth proof is ready.
 8. Workstream 4: remove private payloads from streaming URLs.
@@ -417,8 +443,8 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 
 ## What Not To Do
 
-- [ ] Do not call the repo 90% covered until current commands generate current coverage artifacts.
+- [ ] Do not treat a coverage percentage as proof that important behavior is tested; require risk-to-test evidence and meaningful failure-path checks.
 - [ ] Do not call cloud library durable until a signed-in browser flow proves durable save/load/list/delete.
 - [ ] Do not call jobs durable while responses still depend on `non_durable_memory`.
 - [ ] Do not reopen old dependency investigation branches as active work. Use archive branches as evidence only.
-- [ ] Do not dispatch broad "figure out the repo" subagents. Use one ticket, one owned scope, one artifact.
+- [ ] Do not dispatch broad "figure out the repo" subagents. Parent discovery comes first; workers require a prosecuted and locked scope with one proof unit, one file lease, and one inspectable artifact.
