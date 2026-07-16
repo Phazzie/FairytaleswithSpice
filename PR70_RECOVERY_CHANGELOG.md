@@ -17,6 +17,7 @@ Actions:
 - Added `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md`, a self-contained six-horizon ExecPlan with twenty product programs: versioned story intelligence, Continuity Court, character desire/debt, Director's Room 2.0, story branching, ending experiments, Proving Grounds evidence, simulated reader lenses, recipes, private export, visual assets, serial packs, narration, review links, editorial approvals, offline conflict handling, shared worlds, resumable workflows, quality/cost telemetry, and safe model rollouts.
 - Added an expanded Weird Lab portfolio plus recommended post-Done waves, program promotion rules, proof requirements, likely code surfaces, route-budget constraints, dependency boundaries, and shared interfaces so optional work can begin without rediscovery after required completion.
 - Refreshed limited platform assumptions from primary Vercel, xAI, and W3C sources, and linked the new roadmap from `AGENTS.md`, `OVERNIGHT_MODE.md`, the final audit plan, future-work checklist, and idea board.
+- Pushed `recovery/story-lab-subagent-scope-testing` and opened PR #197 with exact scope, validation, non-claims, and the required-to-optional handoff.
 - Updated the active Story Lab slice skill outside the repo so later sessions enforce the same discovery, scope-review, test-quality, and completion-boundary rules. Left the untracked repo-local `.agents/` mirror unchanged because its ownership is not established.
 
 Self-review:
@@ -34,6 +35,7 @@ Validation:
 - Story Lab slice skill validation: passed with the skill-creator `quick_validate.py` in an isolated temporary environment; `agents/openai.yaml` also parsed successfully.
 - Optional roadmap ExecPlan structure check: passed all 12 required sections from `.agent/PLANS.md` and the ExecPlan skill reference.
 - Optional roadmap link/source review: passed; the roadmap is linked from active routing docs and limited platform assumptions cite primary Vercel, xAI, and W3C sources refreshed on 2026-07-16.
+- `npm run recovery:finish -- --strict`: passed with no stop signs before the roadmap push; the only reminder was the expected unpushed roadmap commit.
 - `scripts/recovery/preflight.sh --quick --skip-status`: whitespace/conflict and route-budget checks passed; Angular type checking could not start because the clean linked worktree has no `story-generator/node_modules/.bin/tsc`. No product code changed, so dependencies were not installed solely for this docs/process slice.
 
 ## 2026-07-11 04:21 EDT - Story Lab Tooling And Skill Routing Refresh
