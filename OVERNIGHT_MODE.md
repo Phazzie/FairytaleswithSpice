@@ -69,6 +69,8 @@ Use this order when the user has not given a newer explicit task:
 7. One bounded Weird Lab experiment from `STORY_LAB_IDEA_BOARD.md`.
 8. Documentation cleanup that improves future autonomous runs.
 
+Required completion gates always outrank optional product programs. Write optional work ahead of time, but do not implement it on a completion branch or let it delay live auth/cloud, security, test-quality, review, publication, or final-report proof. After the required Definition of Done is merged, use `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md` and its portfolio selection gate to choose the next ambitious wave.
+
 ## Lane Weights
 
 When nothing is urgent and several tasks are valid, use this rough mix:

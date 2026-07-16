@@ -1,6 +1,6 @@
 # Story Lab Idea Board
 
-Last updated: 2026-07-03
+Last updated: 2026-07-16
 
 ## Purpose
 
@@ -118,7 +118,7 @@ Acceptance:
 - Non-durable account storage is not displayed as cloud-available.
 - Angular specs cover unavailable, refresh, save, load, delete, and error states.
 
-### Now: Coverage, Historical Review Backlog, And Dependabot Cleanup
+### Now: Test Quality, Live Cloud Proof, Historical Review Backlog, And Dependabot Cleanup
 
 The active recovery work is completion hardening rather than new Story Lab feature breadth.
 
@@ -128,12 +128,13 @@ Acceptance:
 - Older historical review-thread backlog from the wider 200-PR audit is either closed, linked to follow-up issues, or scoped out with explicit PR/thread disposition links.
 - PR #120 and PR #121 are merged or closed with validation evidence.
 - The four parked local artifacts are kept, dropped, or PR'd through an explicit cleanup decision.
-- A current coverage command proves the agreed 90% gate; historical coverage notes do not count.
+- A current risk-to-test matrix and meaningful acceptance/failure-path proof replace the old numeric coverage target; coverage remains a blind-spot diagnostic.
 
 Tracking:
 
 - `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`
 - `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`
+- `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md` for the ambitious portfolio that begins only after required Done.
 
 ## Research Notes
 
@@ -143,6 +144,13 @@ Source-backed notes from 2026-06-08, kept as planning context only:
 - Vercel's Postgres guidance says new projects should use Marketplace Postgres integrations rather than legacy Vercel Postgres. Source: https://vercel.com/docs/postgres, accessed 2026-06-08.
 - Vercel's Workflow material positions Workflow SDK as the path for long-running durable work with step isolation, retries, persistence, and observability. Sources: https://vercel.com/workflows and https://vercel.com/blog/a-new-programming-model-for-durable-execution, accessed 2026-06-08.
 - Clerk backend docs describe bearer session tokens for cross-origin requests and the `__session` cookie for same-origin requests. Any Clerk adapter must verify tokens through an explicit verifier and fail closed without one. Sources: https://clerk.com/docs/request-authentication/backend and https://clerk.com/docs/backend-requests/manual-jwt, accessed 2026-06-08.
+
+Post-Done roadmap sources refreshed on 2026-07-16:
+
+- Vercel Private Blob supports authenticated private artifacts; Story Lab still needs owner checks, deletion, cache, retention, and cost proof. Source: https://vercel.com/docs/vercel-blob/private-storage.
+- Vercel Workflow is a candidate for resumable creative jobs, but Story Lab must run a provider spike and process-loss proof before adopting durable wording. Source: https://vercel.com/blog/introducing-workflow.
+- xAI Structured Outputs can constrain extraction/report response shapes; semantic story validation remains an application responsibility. Source: https://docs.x.ai/developers/model-capabilities/text/structured-outputs.
+- EPUB 3.3 is the standards target for a later Export Studio. Source: https://www.w3.org/publishing/epub3/.
 
 ## Parked Local Artifacts
 
@@ -164,3 +172,4 @@ These remain candidates until implemented and merged:
 - Cliche alarm: name the obvious stale path so a continuation can dodge it.
 - Scene pressure mixer: combine emotional, deadline, secret, and setting pressures into one continuation brief.
 - Memory-card trigger shelf: let users pin durable story facts before continuation.
+- The expanded, dependency-ordered Weird Lab portfolio now lives in `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md`; promote experiments back here with `Local-only`, `Rejected`, or `Done` evidence as they run.

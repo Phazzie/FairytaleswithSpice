@@ -41,7 +41,7 @@ This plan uses a stricter, claim-based definition than the older recovery docs. 
 
 ## Optional Work After Done
 
-These are valuable follow-ups, but they do not block the definition above unless the user explicitly promotes one into the supported MVP promise. Keep them in `STORY_LAB_FUTURE_WORK_CHECKLIST.md` or `STORY_LAB_IDEA_BOARD.md` with an owner, value statement, prerequisites, and proof idea.
+These are valuable follow-ups, but they do not block the definition above unless the user explicitly promotes one into the supported MVP promise. `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md` is the executable portfolio with program order, prerequisites, proof, and stop conditions; keep selection status in `STORY_LAB_FUTURE_WORK_CHECKLIST.md` or `STORY_LAB_IDEA_BOARD.md`.
 
 - raise or tune coverage thresholds after stable baselines show that a threshold protects useful tests;
 - broader-than-last-40 historical review-thread cleanup;

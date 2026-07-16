@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-16 03:14 EDT
+Last updated: 2026-07-16 03:41 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -102,6 +102,7 @@ Do not leave status only in chat. Update the narrowest durable document that mat
 | `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` | Completion-hardening work changes auth/database proof, dependency follow-ups, review backlog status, or done/not-done claims. |
 | `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` | Final audit evidence changes: last-40 PR audit, wider PR debt, unresolved review comments, coverage proof, or "all work merged" claims. |
 | `STORY_LAB_FUTURE_WORK_CHECKLIST.md` | Granular future-work tickets, subagent-ready scopes, execution ordering, admin cleanup status, or next-work prioritization changes. |
+| `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md` | Optional post-Done programs, portfolio order, program promotion, ambitious future product scope, or optional-wave evidence changes. |
 | `STORY_LAB_EXPLORATION_TICKETS.md` | Exploration ticket scope, standard exploration report fields, context-turnover packet shape, exploration wave planning, or explore-to-worker conversion strategy changes. |
 | `STORY_LAB_EXPLORATION_FINDINGS.md` | Exploration batches complete, findings need durable synthesis, first worker wave changes, context-turnover packets are produced, or exploratory tickets are converted to implementation batches. |
 | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` | Auth, profile, cloud library APIs/UI, signed-in save/load/list/delete behavior, or provider-backed claims change. |
@@ -233,6 +234,8 @@ The stricter final merge, test-quality, and PR-review audit plan is `STORY_LAB_F
 The autonomous operating guide is `OVERNIGHT_MODE.md`. Use it before long-running task selection, research mining, or Weird Lab work.
 
 The idea/backlog board is `STORY_LAB_IDEA_BOARD.md`. Keep it honest: `Done` means merged to `main`; use `Local-only` for unpublished branch material.
+
+The ambitious optional roadmap is `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md`. It does not block the required Definition of Done. Use it after required completion to select, prosecute, and execute larger Story Lab product programs; update the required boundary first if the user explicitly promotes an optional program.
 
 The active Story Lab auth/profile/cloud-library plan is `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`. Use it before adding provider-backed auth, private user profiles, cloud project library APIs, account route rewrites, or signed-in save/load/list/delete behavior.
 
