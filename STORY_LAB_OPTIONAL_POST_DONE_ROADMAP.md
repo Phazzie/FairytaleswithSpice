@@ -1,7 +1,7 @@
 # Story Lab Optional Post-Done Roadmap
 
 Created: 2026-07-16 03:41 EDT
-Last updated: 2026-07-16 03:41 EDT
+Last updated: 2026-07-16 03:52 EDT
 
 ## Purpose / Big Picture
 
@@ -74,7 +74,7 @@ At every stopping point, replace these expectations with what actually shipped, 
 
 ## Context and Orientation
 
-Repository root: `/Users/hbpheonix/fairytaleswithspice`.
+Repository root: the current Fairytales with Spice Git checkout (`<repo-root>` in command examples).
 
 Current relevant foundations:
 
@@ -101,6 +101,35 @@ Terms used in this plan:
 - A **craft note** is a targeted suggestion backed by evidence from a specific revision. It is never silently applied.
 - An **artifact** is a generated file such as EPUB, PDF, cover art, audio, or a serial-publishing bundle.
 - A **proof unit** is one reviewable outcome with localized failure, bounded files, meaningful tests, and independent rollback.
+
+This roadmap uses the canonical subagent lifecycle and role definitions in `AGENTS.md`; summaries here add program context but do not redefine those roles.
+
+### Hard-Boundary Map
+
+`Existing route` means extend the named consolidated entrypoint rather than adding a Vercel function. Every program still runs the route-count guard. `Approval` means explicit user/provider authority is required before provisioning, billing, external messaging, or storing new classes of private data.
+
+| Program | Schema/data migration | Route boundary | Provider/dependency boundary | Approval before external change |
+|---|---|---|---|---|
+| 1. Versioned Story Bible | Yes: revisions and intelligence snapshots | Existing account/story actions | Existing xAI enrichment is optional | Database migration only |
+| 2. Continuity Court | Yes: findings and dispositions | Existing evaluate/account actions | Existing xAI structured output plus deterministic checks | Database migration only |
+| 3. Desire And Debt Engine | Yes: revisioned ledgers | Existing account/evaluate actions | No new provider required | Database migration only |
+| 4. Director's Room 2.0 | Yes: notes and dispositions | Existing evaluate/account actions | Existing xAI | Database migration only |
+| 5. Story Time Machine | Yes: revisions, branches, heads | Existing account action | No new provider required | Migration and conflict policy |
+| 6. Chapter Ending Lab | Optional: saved bets/selection | Existing evaluate/story action | Existing xAI | Paid-call budget policy |
+| 7. Proving Grounds Ledger | Yes: experiments and preferences | Existing evaluate action | Existing xAI; optional analytics later | Private-output retention policy |
+| 8. Reader Room Simulator | Optional: reactions/dispositions | Existing evaluate action | Existing xAI | Paid-call and labeling policy |
+| 9. Story DNA Recipes | Yes: versioned recipes | Existing account action | No new provider required | Database migration only |
+| 10. Private Export Studio | Yes: artifact records | Existing export/jobs actions | Private Blob plus EPUB/PDF tooling | Blob provisioning, billing, retention |
+| 11. Cover And Visual Kit | Yes: visual artifacts/briefs | Existing jobs/export actions | Private Blob; image provider only in later stage | Image provider, billing, safety/rights |
+| 12. Serial Publishing Pack | Yes: package metadata/artifacts | Existing export/jobs actions | Existing xAI and Private Blob | Blob/billing; no external publishing yet |
+| 13. Narration Studio | Yes: narration/audio artifacts | Existing jobs/export actions | Private Blob and later audio provider | Provider, billing, voice rights/consent |
+| 14. Review Links And Comments | Yes: invitations, roles, threads | Existing account action | Auth/email choice may expand later | Sharing, email, retention policy |
+| 15. Editorial Checkpoints | Yes: checkpoints/approvals | Existing jobs/account actions | Durable workflow candidate | Workflow provisioning and billing |
+| 16. Offline/Cross-Device | Yes: revision/conflict metadata | Existing account action | Offline/sync library only after contract lock | Storage/conflict policy |
+| 17. Shared Worlds | Yes: canon packs/memberships | Existing account action | No new provider for private packs | Team/public-sharing policy |
+| 18. Resumable Workflow | Yes: durable run/step state | Existing jobs action | Durable workflow package/platform | Workflow provisioning and billing |
+| 19. Quality/Cost Cockpit | Yes: redacted telemetry/events | Existing evaluate/jobs actions | Observability provider is optional | Telemetry retention/privacy/billing |
+| 20. Safe Strategy Rollouts | Optional: manifests/assignments | Existing config/evaluate paths | Feature-flag/config provider optional | Provider provisioning and experiment policy |
 
 ## Portfolio Selection Gate
 
@@ -578,10 +607,50 @@ export interface StoryIntelligenceSnapshot {
   relationships: RelationshipState[];
 }
 
+export interface EvidenceSpan {
+  revisionId: string;
+  chapterId: string;
+  blockId: string;
+  startOffset: number;
+  endOffset: number;
+  excerptHash: string;
+}
+
+export interface StoryFact {
+  id: string;
+  statement: string;
+  status: 'model_suggested' | 'user_accepted' | 'user_corrected' | 'user_pinned' | 'superseded';
+  confidence?: number;
+  evidence: EvidenceSpan[];
+}
+
+export interface CharacterIntent {
+  characterId: string;
+  desire: string;
+  fear?: string;
+  hiddenTruth?: string;
+  cost?: string;
+  evidence: EvidenceSpan[];
+}
+
+export interface StoryPromise {
+  id: string;
+  setup: string;
+  state: 'open' | 'complicated' | 'paid_off' | 'intentionally_abandoned';
+  evidence: EvidenceSpan[];
+}
+
+export interface RelationshipState {
+  leftCharacterId: string;
+  rightCharacterId: string;
+  state: string;
+  evidence: EvidenceSpan[];
+}
+
 export interface CraftNote {
   id: string;
   revisionId: string;
-  lens: 'continuity' | 'tension' | 'character' | 'prose' | 'heat_contract' | 'serial_pull';
+  lens: 'continuity' | 'tension' | 'character' | 'prose' | 'heat_contract' | 'serial_cliffhanger';
   evidence: EvidenceSpan[];
   recommendation: string;
   status: 'proposed' | 'accepted' | 'rejected' | 'deferred' | 'applied';

@@ -8,7 +8,7 @@ This is the chronological work log for the PR #70 recovery. It should capture co
 
 Actions:
 
-- Found the primary `main` checkout current with `origin/main` but blocked by an unexplained untracked `.agents/` mirror; left it untouched and created clean worktree branch `recovery/story-lab-subagent-scope-testing` from `origin/main`.
+- Found the primary `main` checkout current with `origin/main` but blocked by an unexplained local-only untracked `.agents/` mirror that is not committed to the repository; left it untouched and created clean worktree branch `recovery/story-lab-subagent-scope-testing` from `origin/main`.
 - Replaced explorer-first subagent guidance with parent-led discovery, Goldilocks proof-unit sizing, exact file leases, a mandatory read-only Scope Prosecutor, explicit parent dispositions, scope lock, worker execution, a separate Completion Prosecutor, and parent validation.
 - Added a test-quality policy that selects tests by important behavior and plausible defects rather than an arbitrary coverage percentage. Added guidance for acceptance, invariant, negative, persistence/restart, integration, browser, live-boundary, and temporary semantic-counterfactual proof.
 - Replaced the active 90% completion target with a risk-to-test matrix and coverage diagnostics that reveal blind spots without rewarding shallow tests.
@@ -18,6 +18,7 @@ Actions:
 - Added an expanded Weird Lab portfolio plus recommended post-Done waves, program promotion rules, proof requirements, likely code surfaces, route-budget constraints, dependency boundaries, and shared interfaces so optional work can begin without rediscovery after required completion.
 - Refreshed limited platform assumptions from primary Vercel, xAI, and W3C sources, and linked the new roadmap from `AGENTS.md`, `OVERNIGHT_MODE.md`, the final audit plan, future-work checklist, and idea board.
 - Pushed `recovery/story-lab-subagent-scope-testing` and opened PR #197 with exact scope, validation, non-claims, and the required-to-optional handoff.
+- Addressed PR #197 review feedback by making `AGENTS.md` the explicit canonical lifecycle definition, adding a one-PR application checklist, annotating all twenty optional programs with schema/route/provider/approval boundaries, making roadmap interfaces self-contained, aligning `serial_cliffhanger` terminology, removing the machine-specific roadmap path, and clarifying that `.agents/` is local-only and uncommitted.
 - Updated the active Story Lab slice skill outside the repo so later sessions enforce the same discovery, scope-review, test-quality, and completion-boundary rules. Left the untracked repo-local `.agents/` mirror unchanged because its ownership is not established.
 
 Self-review:
@@ -36,6 +37,7 @@ Validation:
 - Optional roadmap ExecPlan structure check: passed all 12 required sections from `.agent/PLANS.md` and the ExecPlan skill reference.
 - Optional roadmap link/source review: passed; the roadmap is linked from active routing docs and limited platform assumptions cite primary Vercel, xAI, and W3C sources refreshed on 2026-07-16.
 - `npm run recovery:finish -- --strict`: passed with no stop signs before the roadmap push; the only reminder was the expected unpushed roadmap commit.
+- PR #197 initial checks: Recovery CI, Vercel, SonarCloud, Sourcery, CodeRabbit status, and Vercel Preview Comments passed before review fixes; the four active line comments were inspected through the repository review-thread audit and addressed in the same PR.
 - `scripts/recovery/preflight.sh --quick --skip-status`: whitespace/conflict and route-budget checks passed; Angular type checking could not start because the clean linked worktree has no `story-generator/node_modules/.bin/tsc`. No product code changed, so dependencies were not installed solely for this docs/process slice.
 
 ## 2026-07-11 04:21 EDT - Story Lab Tooling And Skill Routing Refresh

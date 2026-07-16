@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-16 03:41 EDT
+Last updated: 2026-07-16 03:52 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -149,6 +149,8 @@ Before calling a slice complete, the parent agent must review whether the tests 
 
 ## Subagent Operating Rules
 
+This section is the canonical definition of the Story Lab subagent lifecycle, roles, ticket fields, and review gates. Execution plans and checklists may summarize it for local context, but they must link back here instead of redefining conflicting meanings.
+
 Use subagents as bounded execution help, not as a substitute for parent-agent judgment. The parent agent owns strategy, final integration, GitHub actions, and completion claims.
 
 When the user asks to use subagents, the default sequence is parent discovery, scope prosecution, scope lock, worker execution, completion prosecution, and parent validation. Do not begin by fanning out explorer agents. The parent must inspect the current repo, control docs, relevant code, tests, dependencies, and live state first, then write the proposed split.
@@ -222,6 +224,17 @@ After subagents return:
 4. Push and merge only from the parent session.
 5. Record timeouts or stale-workspace failures as failures, not partial success.
 6. Update `SUBAGENT_LOG.md` and the active changelog or execution plan in the same PR when subagent work materially affects repo decisions.
+
+For one normal implementation PR, apply the policy in this order:
+
+1. Parent discovery: inspect live state, code, tests, dependencies, and the matching plan.
+2. Proposed scope: write the proof unit, exact file lease, dependencies, test defects, commands, stop condition, and non-claims.
+3. Scope prosecution: obtain one critical read-only review and record parent dispositions.
+4. Scope lock: revise once when warranted and explicitly mark the worker ticket `Scope locked`.
+5. Implementation: write the behavior and meaningful tests without broadening the lease.
+6. Completion prosecution: attack the diff, tests, evidence, and claims separately from the scope review.
+7. Parent validation: adjudicate findings, run focused and aggregate checks, and inspect the final diff.
+8. Publication: push, open the PR, address checks and original review threads, merge, audit late threads, and update durable records.
 
 ## Current Operating Direction
 
