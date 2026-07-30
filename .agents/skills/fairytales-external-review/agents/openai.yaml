@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fairytales External Review"
+  short_description: "Bind Story Lab reviews to exact source and evidence"
+  default_prompt: "Use $fairytales-external-review to select the correct Gemini/Jules cadence, bind review to the exact committed Story Lab source and test evidence, validate the receipts, and report parent dispositions without overstating reviewer authority."

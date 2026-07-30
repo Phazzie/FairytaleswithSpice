@@ -4,6 +4,43 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-30 05:43 EDT - Two-Plan Completion And Exact-Source Review Contract
+
+Actions:
+
+- Reconstructed the live planning baseline at `c52d8b7`, equal to `origin/main`, with an existing user-owned `AGENTS.md` change and untracked `.agents/` tree. Preserved the Recommendation Risk Calibration hunk in the working tree but excluded it from this publication package.
+- Added `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` as Plan 1: five coherent PRs composed from deliberately smaller subagent microtickets, covering review bootstrap/canary, current dependency replacement, early Living Book direction acceptance, and final responsive/accessibility acceptance.
+- Added `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` as Plan 2: it refuses to start until the exact Plan 1 merge SHA is recorded, runs a disposable non-merge Queue Gate 0, then uses ten coherent PRs for test truth, Queue foundation, limits/cost, Clerk, Neon, atomic outbox/jobs, automatic reconciliation, browser recovery, late stream-route retirement, exact preview, production, rollback, and reporting.
+- Preserved anonymous request-inline create/continue behavior; selected adaptive authenticated polling for signed-in durable jobs; kept the safe POST compatibility routes pending a separate 30-day zero-use window; consolidated Cron dispatch into the existing jobs function; and kept the route-count guard authoritative.
+- Verified the current registry candidate `@vercel/queue@0.4.0` and documented the current `QueueClient().handleNodeCallback`, accepted-null-message, retry/redelivery, visibility, and Gate-0 proof obligations without installing it.
+- Added `docs/EXTERNAL_REVIEW_POLICY.md` as the single Gemini/Antigravity and Jules contract. It forbids prompt-over-stdin, shell interpolation, reused context, generic `pro`/`--effort`, permission bypass, self-certification, raw-output publication, and reviewer-owned mutations.
+- Used the user's explicit request for a repo skill to promote exactly `.agents/skills/fairytales-external-review/` and `.agents/skills/fairytales-story-lab-slice/` into this package. `fairytales-pr-recovery` and every `pocketfm-*` skill remain unrelated, unstaged, and local-only.
+- Updated `AGENTS.md`, `OVERNIGHT_MODE.md`, the future-work checklist, whole-concept checklist, optional roadmap, and the older completion/audit plans so there is one unambiguous current sequence. Older plans now preserve history/evidence instead of competing for authority.
+- Incorporated critical subagent findings: a non-merge Queue gate before code, no separate Cron function, no early deletion of safe compatibility POST routes, separate 60-second anonymous and 240-second durable provider budgets, rotating Clerk request authentication, exact retention/deletion rules, and user-owned dirty-work preservation.
+
+Self-review:
+
+- Good: Worker tickets are smaller than the publication boundary, but integration remains five understandable Plan 1 PRs and ten Plan 2 PRs.
+- Good: The external status is named for disposition completeness rather than “review passed,” and candidate controller code cannot grade itself.
+- Correction: The copied Antigravity stdin pattern was unsafe in this installation; a live check reviewed stale unrelated context. The policy now requires an argument-array spawn, closed stdin, fresh exact-SHA clone, structured bindings, and current model discovery.
+- Correction: The first Plan 2 draft would have spent a function on a Cron dispatcher and deleted two safe compatibility routes too early. The final plan reuses the jobs function and requires a zero-use window.
+- Correction: A committed packet cannot contain its own final commit SHA. The final policy separates a committed packet body from a private post-commit attempt envelope.
+- Correction: Completion prosecution blocked the first publication candidate. The final package removes automatic required-status claims without a trusted producer, makes canary failure block Plan 1, moves persistent quotas after Clerk/Neon, isolates Queue Gate 0 from product production, restores final worktree/last-40 review gates, fixes worktree command context, and defines a severity/disposition matrix.
+- Non-claim: This docs/skill slice does not implement the controller, Queue, Clerk, Neon, Living Book, jobs, CI status, GitHub rules, deployment, or production proof. Exact-head Gemini/Jules plan-freeze receipts wait until the source is committed and pushed under the new contract.
+
+Validation:
+
+- `git diff --check`: passed.
+- ExecPlan structure check: both plans contain all required living-plan sections.
+- Local Markdown-link check: passed for both plans, the external-review policy, and the new skill.
+- Skill-creator `quick_validate.py`: passed for `$fairytales-external-review` and `$fairytales-story-lab-slice` using an isolated PyYAML target.
+- Both `agents/openai.yaml` files parsed successfully.
+- Fresh-agent forward test of `$fairytales-external-review`: passed; it selected Gemini plus Jules for dependency/lockfile risk, rejected piped `agy`, kept receipts advisory, and required independent tests.
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `11/12`.
+- `npm run recovery:status`: confirmed the expected dirty, no-upstream planning branch at the same SHA as `origin/main`; route check passed.
+- A separate bounded `gh pr list` refresh succeeded: PR #194 is the only open PR and still has failing Recovery CI and Vercel checks.
+- Product tests were not run because this slice changes only planning, policy, routing docs, and repo-local skills.
+
 ## 2026-07-16 03:14 EDT - Subagent Scope, Test Quality, And Completion Boundary Hardening
 
 Actions:

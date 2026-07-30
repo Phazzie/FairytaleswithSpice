@@ -20,6 +20,44 @@ Parent verification:
 Follow-ups:
 ```
 
+## 2026-07-30 05:43 EDT - Two-Plan And External-Review Hardening
+
+Parent branch / PR: `recovery/story-lab-boundary-pushing-guidance` / local-only, no upstream
+
+Goal: prosecute the new two-plan Story Lab sequence, identify later-regret risks, preserve dirty sibling work, derive the safe Gemini/Jules contract from Whispers evidence, and forward-test the repo-local skills.
+
+Parent analysis before dispatch:
+
+- `HEAD` matched `origin/main` at `c52d8b7`, but the checkout contained a user-owned `AGENTS.md` change and untracked `.agents/` tree.
+- The requested plan split was everything through accepted Living Book UI, then production completion.
+- Subagent tickets needed to be smaller than normal without turning each microticket into a separate PR.
+- External review needed exact-source binding and anti-self-certification rather than copied shell prose.
+
+| Agent | Model | Role | Scope | Status | Result | Integrated? |
+|---|---|---|---|---|---|---|
+| Hooke | inherited Codex | Scope Prosecutor | Audit routing docs, plan precedence, dirty work, and smallest safe two-plan package | Done | Found the conflicting authoritative docs, three dirty candidate worktrees, user-owned repo changes, and required routing updates | Yes; both plans begin from preserved live truth and old plans are historical evidence |
+| Banach | inherited Codex | External-review auditor | Derive minimum Gemini/Jules controller, cadence, receipt, disposition, bootstrap, and canary contract | Done | Found no current controller; defined closed-stdin exact-SHA Gemini review, strict Jules state, parent dispositions, and anti-self-certification | Yes; canonical policy, Plan 1 bootstrap/canary, `AGENTS.md`, and skill |
+| Linnaeus | inherited Codex | Worktree/release auditor | Attack Plan 2 against current Queue, Clerk, route, job, and worktree reality | Done | Required non-merge Queue Gate 0, current `@vercel/queue` API, consolidated Cron, late stream retirement, safe POST retention, split deadlines, retention, and key rotation | Yes; accepted mechanically supported findings, retained polling/anonymous-inline product decisions |
+| `skill_forward_external` | inherited Codex | Fresh skill tester | Apply `$fairytales-external-review` to an Angular dependency final candidate | Done | Correctly required Gemini plus Jules, rejected piped `agy`, preserved independent tests, and flagged untracked/advisory status | Yes; forward test passed without edits or live review |
+| `skill_forward_slice` | inherited Codex | Fresh skill tester | Route a premature durable-Queue request through `$fairytales-story-lab-slice` | Done | Correctly stopped on unmerged Plan 1/SHA placeholder, kept Gate 0 non-merge, grouped microtickets into coherent PRs, and kept review advisory pre-canary | Yes; forward test passed without edits |
+| `planning_completion_prosecutor` | inherited Codex | Completion Prosecutor | Attack the complete planning/policy/skill package before its first commit | Done, initial FAIL | Found seven P1 blockers: publication ownership, undefined status trust, quota ordering, Gate-0 target, lost final audit gates, advisory completion contradiction, and wrong worktree command context; also found ambiguous dispositions | Yes; all findings accepted and corrected before staging |
+| `whispers_adapter_inventory` | inherited Codex | Read-only interface specialist | Locate exact reusable Jules/Gemini programmatic patterns for P1-01 | Done | Found reusable guarded Jules code in `scripts/jules-lookahead.mjs`, digest feedback in `jules-feature-trials.mjs`, and corrected Antigravity design only in legacy `PROGRAMMATIC_USAGE.md` | Yes; P1-01 will selectively port controls, never project-specific packets or controllers wholesale |
+
+Parent verification:
+
+- Parent checked every finding against the live files and independently verified route count `11/12`.
+- `npm view @vercel/queue version dist-tags --json` reported `0.4.0` as `latest`; the package README confirmed instance-based `handleNodeCallback`, accepted nullable message IDs, retry/redelivery, and visibility controls.
+- Parent rejected wholesale adoption of the auditor's durable guest/SSE variant. The final plan preserves anonymous request-inline use and chooses authenticated adaptive polling for signed-in durable jobs.
+- Parent reran the package design after the Completion Prosecutor's FAIL and corrected every blocking finding before commit.
+- Parent preserved the existing Recommendation Risk Calibration text and unrelated untracked `.agents/` skills.
+- Both repo skills passed `quick_validate.py`, their interface YAML parsed, and both fresh-agent scenarios produced the intended routing.
+
+Follow-ups:
+
+- Commit and push this planning/policy package before running exact-head Gemini/Jules plan-freeze review.
+- Do not implement or require the review status until P1-01 merges and P1-02 passes the post-merge canary.
+- Start product execution at P1-01 only from a clean current branch; do not modify or clean the three candidate worktrees.
+
 ## 2026-07-10 12:39 EDT - Story Lab First Worker Wave
 
 Parent branch / PR: `recovery/story-lab-first-worker-wave` / pending

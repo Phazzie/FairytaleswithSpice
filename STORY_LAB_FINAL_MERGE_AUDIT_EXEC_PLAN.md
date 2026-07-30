@@ -1,7 +1,9 @@
 # Story Lab Final Merge And Audit ExecPlan
 
 Created: 2026-07-03 08:04 EDT
-Last updated: 2026-07-16 03:14 EDT
+Last updated: 2026-07-30 05:27 EDT
+
+> **Routing update (2026-07-30):** Keep this document as the source for completed audit evidence and the stricter claim-based Definition of Done. Execute remaining work through `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` and then `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md`; Plan 2 owns current final closure, production evidence, rollback, and reporting.
 
 This ExecPlan extends the current `origin/main` completion-hardening plan with the user's stronger final goal: all local work must be reconciled through pull requests, review comments must be handled, the last 40 PRs must be audited for unresolved review comments, and critical Story Lab behavior must have meaningful risk-based test proof before the work is called done.
 
