@@ -4,6 +4,105 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-07-31 01:57 EDT - Draft PR #198 CodeRabbit Contract Repair
+
+State at entry:
+
+- Draft PR #198 pointed to `890ea71029365b8dac1bdf81f2f775a0ef2bdeb1`
+  and had fourteen unresolved, non-outdated CodeRabbit threads.
+- The primary checkout still contained the user-owned Recommendation Risk
+  Calibration hunk and five unrelated untracked skill directories. Their
+  pre-work diff and status hashes were recorded, and all review fixes were
+  isolated in a clean helper worktree at the exact PR head.
+- Recovery CI had not executed because GitHub reported an account billing lock.
+  That is an infrastructure blocker, not a passing or failing repository test.
+- The old Gemini receipt and both invalid Jules attempts bind the superseded
+  Revision 1 head. Any tracked correction makes them stale.
+
+Thread traceability:
+
+| Thread | Parent disposition | Integrated correction / proof obligation |
+|---|---|---|
+| `PRRT_kwDOPyrwIM6VEnFV` | `FIXED` | External-review skill and checklist read both plans, run recovery status/finish, and fail closed for unresolved Plan 2 activation. |
+| `PRRT_kwDOPyrwIM6VEnFa` | `FIXED` | Story Lab slice skill discovers repository identity through Git instead of a workstation path. |
+| `PRRT_kwDOPyrwIM6VEnFc` | `FIXED` | Both active plans are mandatory before route selection; Plan 2's exact-SHA gate is an entry condition. |
+| `PRRT_kwDOPyrwIM6VEnFn` | `FIXED` | Every repo-work session runs recovery finish; strict mode is required for PR-ready, merge-ready, or final claims. |
+| `PRRT_kwDOPyrwIM6VEnFs` | `FIXED` | An open current-slice PR is a waiting state; the next feature waits for addressed checks/comments and merge. |
+| `PRRT_kwDOPyrwIM6VEnFv` | `FIXED` | `AGENTS.md` Required Start Order now runs `npm run recovery:status`. |
+| `PRRT_kwDOPyrwIM6VEnFz` | `FIXED` | Canonical `story-lab-review-limits/v1` freezes packet, envelope, prompt, stream, process, HTTP, poll, and wall-clock limits; packet Revision 2 mirrors them. |
+| `PRRT_kwDOPyrwIM6VEnF3` | `FIXED` | Current operational docs remove username-specific paths and use portable binary/worktree discovery. |
+| `PRRT_kwDOPyrwIM6VEnF7` | `FIXED` | Reviewer JSON has no impossible stream self-hashes; a future controller owns private post-capture artifact hashes. |
+| `PRRT_kwDOPyrwIM6VEnF_` | `FIXED` | This package is explicitly not PR-ready; no tracked changelog entry falsely claims to prove its own final commit. |
+| `PRRT_kwDOPyrwIM6VEnGF` | `FIXED` | Both superseded ExecPlans carry prominent historical/read-only guards over unchecked and active-looking sections. |
+| `PRRT_kwDOPyrwIM6VEnGH` | `FIXED` | Reworded the checklist to “the Living Book required for Plan 1 acceptance.” |
+| `PRRT_kwDOPyrwIM6VEnGJ` | `FIXED` | P1-06 records the known accepted P1-05 merge commit; Plan 2 rejects placeholder/malformed/non-commit/non-ancestor/unactivated state. |
+| `PRRT_kwDOPyrwIM6VEnGM` | `FIXED` | Plan 2 retires only the two named streaming routes and retains the two named POST compatibility routes. |
+
+Actions and decisions:
+
+- Used one read-only Scope Prosecutor plus separate review-contract and
+  plan/release specialists. The initial scope failed on missing traceability,
+  stream self-hashes, circular SHA recording, resource limits, and proof
+  wording. The revised scope passed after those issues and bounded Jules'
+  pre-approval and overall lifecycle.
+- Changed Plan 1 from five PRs to six. P1-06 is a docs-only activation/closeout
+  after P1-05; it records the already-known accepted Living Book merge commit,
+  proves it in fetched `origin/main` and a clean detached worktree, and merges
+  before Queue Gate 0 or P2-01.
+- Kept `PLAN_1_MERGE_SHA` as the accepted P1-05 GitHub merge commit. Plan 2
+  branches from then-current `origin/main`, which also contains P1-06; it does
+  not discard the activation merge by branching from the older recorded SHA.
+- Chose policy version `story-lab-external-review/2026-07-31`, packet Revision
+  2, and limits profile `story-lab-review-limits/v1`. These are future-controller
+  acceptance requirements, not implementation or enforcement claims.
+- Rejected the idea that every unrelated open PR globally blocks all work. The
+  merge-before-next-feature rule applies to the current slice PR. Dependabot
+  #194 remains explicitly owned by P1-03 and is not modified or closed here.
+- The final Completion Prosecutor rejected the first integrated candidate on
+  four concrete contract gaps: the Plan 2 gate read an open-branch marker
+  instead of fetched `origin/main`; dependency-free Node had no permitted
+  Keychain path; old-head CI was mislabeled as corrected-head proof; and one
+  disposition label was outside the canonical schema. The parent accepted and
+  corrected all four before staging.
+- Its first corrected-candidate rerun found two more executable-boundary gaps:
+  the plan refetched and branched from a moving `origin/main` after proving a
+  frozen base, and dependency-free Node cannot take a kernel `flock`. The final
+  contract branches from the same proven SHA without a second fetch and uses
+  dependency-free filesystem primitives.
+- The next narrow rerun found one final crash window between lock creation,
+  reviewer spawn, and durable PGID recording. The corrected design stages and
+  fsyncs complete records, claims the fixed path with a no-replace hard link,
+  publishes `SPAWN_MAY_HAVE_OCCURRED` before spawn, records `RUNNING`
+  afterward, and refuses recovery from ambiguous state without authoritative
+  process-absence proof.
+- Plan 2 now freezes one fetched `origin/main` commit, reads the sole activation
+  marker from that Git object, proves the same content in a clean detached
+  worktree, verifies accepted P1-05 ancestry, and branches from that same base.
+- The future parent-owned Jules adapter now has one executable credential
+  boundary: a bounded no-shell `/usr/bin/security` broker with memory-only
+  capture. The skill and reviewer remain credential-free.
+
+Validation and readiness:
+
+- Initial helper-worktree `npm run recovery:status` completed at `890ea71` with
+  no tracked or untracked changes and route count `11/12`; its embedded
+  open-PR subprocess timed out, so live PR truth was separately verified through
+  the authenticated GitHub surfaces.
+- Both revised skills passed fresh minimal-context routing tests, and a separate
+  thread-ledger auditor confirmed all fourteen CodeRabbit dispositions after
+  the packet/log evidence was reconciled.
+- The read-only Completion Prosecutor passed on its final rerun after all seven
+  P1/P2 contract findings from three corrective rounds were integrated.
+- Final diff, plan, link, skill, schema, recovery, route, forward-test, and
+  completion-prosecution evidence is rerun before this commit. Corrected-head
+  CI and external-review receipts can exist only after the immutable commit;
+  they belong in GitHub and private attempt evidence and must not be backfilled
+  into this tracked changelog.
+- `npm run recovery:finish -- --strict` is not recorded as a final-head pass.
+  PR #198 remains draft and **not PR-ready** while Recovery CI is billing-locked,
+  corrected-head review receipts are absent, or this package lacks a later
+  untracked/private or GitHub proof of its immutable head.
+
 ## 2026-07-30 05:43 EDT - Two-Plan Completion And Exact-Source Review Contract
 
 Actions:

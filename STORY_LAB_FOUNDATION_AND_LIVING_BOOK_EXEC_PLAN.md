@@ -1,8 +1,14 @@
 # Story Lab Foundation and Living Book ExecPlan
 
-Last updated: 2026-07-30 05:43 EDT
+Last updated: 2026-07-31 01:57 EDT
 
-This is Plan 1 of the current two-plan Story Lab completion sequence. It is a living ExecPlan and must be maintained under `.agent/PLANS.md`. It owns the work from the current merged recovery baseline through an explicitly accepted Living Book interface. `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` starts only from Plan 1's exact merge SHA.
+This is Plan 1 of the current two-plan Story Lab completion sequence. It is a
+living, task-specific ExecPlan stored at the repository root and governed by the
+repository standard in `.agent/PLANS.md`. It owns the work from the current
+merged recovery baseline through an explicitly accepted Living Book interface
+and a docs-only activation/closeout PR. That closeout records and verifies the
+accepted Living Book merge SHA before
+`STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` may start.
 
 This plan supersedes the unfinished execution order in `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, and `STORY_LAB_FUTURE_WORK_CHECKLIST.md`. Those documents remain evidence of completed recovery work, earlier findings, and Definition-of-Done history.
 
@@ -20,9 +26,15 @@ Plan 1 does **not** claim production accounts, cloud durability, durable backgro
 ## Context and orientation
 
 - Current Git state and `origin/main` outrank this prose when they disagree. Record and resolve the disagreement before editing.
-- The larger worktree at `/Users/hbpheonix/fairytaleswithspice-ui-redesign-exploration` is the preferred source to mine for Living Book architecture.
-- `/Users/hbpheonix/fairytaleswithspice-moonlit-living-book-ui` is visual reference only.
-- `/Users/hbpheonix/fairytaleswithspice-process-guardrails` is a dependency/test candidate to audit, not a source to copy wholesale.
+- Discover candidate worktrees with `git worktree list --porcelain`; never infer
+  their location from the current checkout path.
+- The worktree historically named `fairytaleswithspice-ui-redesign-exploration`
+  is the preferred source to mine for Living Book architecture after its branch,
+  HEAD, and dirty state are reverified.
+- The worktree historically named
+  `fairytaleswithspice-moonlit-living-book-ui` is visual reference only.
+- The worktree historically named `fairytaleswithspice-process-guardrails` is a
+  dependency/test candidate to audit, not a source to copy wholesale.
 - Never merge or cherry-pick one of those dirty worktrees as a unit. Inventory it, select named files or hunks, and port them onto a fresh branch from current `origin/main`.
 - Preserve `story-generator/src/app/app.ts` as the orchestration and business-state owner unless a focused contract test proves a deliberate change.
 - Do not add cloud or durable-job behavior in this plan.
@@ -32,14 +44,15 @@ Plan 1 does **not** claim production accounts, cloud durability, durable backgro
 ## Progress
 
 - [x] (2026-07-30) Reconstructed current repo, branch, route-budget, plan, and dirty-worktree truth.
-- [x] (2026-07-30) Chose a two-plan sequence and a five-PR Plan 1 train.
+- [x] (2026-07-30) Chose a two-plan sequence and a six-PR Plan 1 train.
 - [x] (2026-07-30) Defined exact-source Gemini/Jules review boundaries and the bootstrap anti-self-certification rule.
+- [x] (2026-07-31) Adjudicated all fourteen initial CodeRabbit threads on planning PR #198 and corrected the review-resource, receipt-hash, portability, recovery, route, and inter-plan activation contracts.
 - [ ] PR P1-01: build and bootstrap the external-review controller.
 - [ ] PR P1-02: run the harmless canary, enable the mechanical local gate only if it passes, and record that GitHub enforcement remains a separate approval.
 - [ ] PR P1-03: replace the stale dependency PR from a current audit.
 - [ ] PR P1-04: establish the Living Book shell and obtain early user acceptance.
 - [ ] PR P1-05: finish the Living Book and obtain final user acceptance.
-- [ ] Record Plan 1's final merge SHA as Plan 2's immutable starting point.
+- [ ] PR P1-06: record and verify the accepted P1-05 merge SHA, activate Plan 2, and merge the docs-only closeout before any Plan 2 feature work.
 
 ## Surprises and discoveries
 
@@ -48,13 +61,31 @@ Plan 1 does **not** claim production accounts, cloud durability, durable backgro
 - There are three dirty sibling worktrees with useful but overlapping work. Their existence is an asset only if they are mined selectively; treating any one as authoritative would overwrite later fixes.
 - The initial external-review controller cannot honestly emit a passing required check for the PR that creates it. Bootstrap and canary must be separate.
 - A committed review packet cannot contain the SHA of the commit that contains it. The committed packet body and private post-commit attempt envelope must be separate artifacts.
+- A reviewer-produced JSON object cannot contain a hash of the stdout bytes that
+  contain that same object. Raw-artifact hashes therefore belong in a separate,
+  controller-owned private attempt result created after capture.
+- P1-05 cannot record its own future GitHub merge commit. A separate P1-06
+  activation/closeout PR must record the already-known accepted-UI merge SHA,
+  prove it is an ancestor of current `origin/main`, and merge before Plan 2.
 - Small subagent tickets improve isolation, but making every ticket its own PR would increase integration and review debt. The unit of worker ownership is intentionally smaller than the unit of publication.
 
 ## Decision log
 
-- Decision: publish Plan 1 as five coherent PRs, with much smaller worker tickets inside each PR.
-  Rationale: this preserves aggressive parallel execution while keeping review, rollback, and acceptance boundaries understandable.
-  Date: 2026-07-30.
+- Decision: publish Plan 1 as six coherent PRs, with much smaller worker tickets
+  inside each PR. P1-06 is a docs-only activation/closeout PR after the accepted
+  P1-05 merge.
+  Rationale: this preserves aggressive parallel execution while keeping review,
+  rollback, and acceptance boundaries understandable, and it avoids asking a
+  commit to contain its own future merge SHA.
+  Date: 2026-07-31.
+
+- Decision: `PLAN_1_MERGE_SHA` means the full GitHub merge commit for the
+  accepted P1-05 Living Book candidate. P1-06 records and verifies that commit;
+  Plan 2 still branches from then-current `origin/main`, where the recorded
+  P1-05 commit must be an ancestor.
+  Rationale: the accepted UI needs an immutable provenance anchor without
+  discarding the later P1-06 control-doc merge.
+  Date: 2026-07-31.
 
 - Decision: use local Scope Prosecutor and Completion Prosecutor reviews on every coherent PR; use Gemini once at the final candidate head; add Jules only for mechanically high-risk boundaries.
   Rationale: repeated reviews of every microticket create noise and stale receipts without improving final-head assurance.
@@ -73,8 +104,10 @@ Plan 1 does **not** claim production accounts, cloud durability, durable backgro
   Date: 2026-07-30.
 
 - Decision: the larger UI exploration is the source candidate, the smaller Moonlit worktree is reference only, and neither is merged wholesale.
-  Rationale: the larger exploration has the more complete component model; selective porting keeps current `main` fixes.
-  Date: 2026-07-30.
+  Rationale: the larger exploration has the more complete component model;
+  selective porting keeps current `main` fixes. Discover both through Git
+  worktree metadata instead of a machine-specific directory.
+  Date: 2026-07-31.
 
 - Decision: require early direction approval after the shell, hierarchy, and responsive frames, before finishing secondary panels.
   Rationale: late-only acceptance is the most expensive point to discover that the product feels wrong.
@@ -97,7 +130,10 @@ The Plan 1 and Plan 2 freezes themselves receive both Gemini and Jules review. E
 
 ## Interfaces and dependencies
 
-- Review automation is a dependency-free Node controller with process and HTTP adapters. It may use Git, the installed `agy` binary, Jules `v1alpha`, and GitHub checks, but candidate code cannot grade itself.
+- Review automation is a dependency-free Node controller with process and HTTP
+  adapters. It may use Git, the installed `agy` binary, Jules `v1alpha`, GitHub
+  checks, and the fixed no-shell `/usr/bin/security` broker defined by
+  `docs/EXTERNAL_REVIEW_POLICY.md`; candidate code cannot grade itself.
 - The Living Book is an Angular presentation architecture over existing `app.ts` orchestration, Story Lab service calls, story state, browser-local library behavior, Director Room, and debug-only Proving Grounds.
 - Presentational components exchange typed inputs/outputs and never own provider calls, auth, storage, or cross-component orchestration.
 - The current component-style, bundle, Vercel route, anonymous behavior, and fail-closed provider contracts remain constraints.
@@ -107,7 +143,10 @@ The Plan 1 and Plan 2 freezes themselves receive both Gemini and Jules review. E
 
 ### P1-01 — External-review bootstrap
 
-Outcome: a dependency-free local controller can build exact-source packets, validate Gemini and Jules receipts, track parent dispositions, and refuse to certify its own PR. It is not yet a required GitHub check.
+Outcome: a dependency-free local controller can build exact-source packets,
+retrieve the Jules credential only through the bounded fixed system broker,
+validate Gemini and Jules receipts, track parent dispositions, and refuse to
+certify its own PR. It is not yet a required GitHub check.
 
 Prospective implementation surfaces:
 
@@ -126,15 +165,17 @@ Microtickets, deliberately smaller than the publication unit:
 | P1-01A | Inventory current `agy`, Jules, Git, and GitHub interfaces without mutation. | Evidence note only | Exact versions/models/endpoints recorded; no credentials printed. |
 | P1-01B | Define versioned committed-packet, private attempt-envelope, receipt, finding, and disposition schemas. | controller core + focused tests | Valid fixtures pass; self-referential head fields, unknown fields/states, and missing bindings fail. |
 | P1-01C | Implement SHA/digest and exact-head binding helpers. | controller core + focused tests | Wrong head, changed packet, and changed policy fail. |
-| P1-01D | Implement private attempt state and lock lifecycle. | controller core + focused tests | Duplicate attempt, stale lock, timeout, and output overflow are deterministic. |
+| P1-01D | Implement private attempt state plus dependency-free atomic phased lock publication and explicit quarantine recovery. | controller core + focused tests | A complete fsynced `PRE_SPAWN` claim is no-replace linked; `SPAWN_MAY_HAVE_OCCURRED` is durable before spawn; `RUNNING` records the child group; injected crashes before publication, between publication/phase changes, between spawn/PGID durability, during timeout, and after reap prove no torn lock, overlapping attempt, or unsafe recovery; ambiguous state remains `REVIEW_RECOVERY_REQUIRED`. |
 | P1-01E | Implement the Gemini process adapter with argument arrays and closed stdin. | controller CLI + fake `agy` tests | Stale context, prose, invalid JSON, mutation, timeout, and exit-zero auth text fail. |
-| P1-01F | Implement the Jules REST state machine and ambiguous-POST reconciliation. | controller CLI + fake HTTP tests | Blind retry is impossible; wrong plan digest and unsafe plans fail. |
-| P1-01G | Implement finding normalization and disposition completeness. | controller core + tests | P0/P1 block; P2 requires an allowed disposition. |
-| P1-01H | Implement self-test and bootstrap refusal commands. | controller CLI + tests | Candidate controller cannot post success for itself. |
-| P1-01I | Add package commands and concise repo guidance. | `package.json`, `AGENTS.md`, skill | Commands resolve; skill validation passes. |
-| P1-01J | Independently prosecute completion and inspect live reviewer results. | no worker writes | Parent records findings and a single bootstrap waiver. |
+| P1-01F | Implement the fixed `/usr/bin/security` Keychain broker with an argument-array spawn, closed stdin, bounded memory-only output, validation, and buffer cleanup. | controller core + fake broker tests | Missing/non-executable broker, wrong arguments, shell use, timeout, overflow, multiline/NUL/empty output, stderr, signal, and nonzero exit fail without logging or persisting a credential. |
+| P1-01G | Implement the Jules REST state machine and ambiguous-POST reconciliation over the parent-only credential boundary. | controller CLI + fake HTTP/broker tests | The skill/reviewer cannot access credentials; blind retry is impossible; wrong plan digest and unsafe plans fail. |
+| P1-01H | Implement finding normalization and disposition completeness. | controller core + tests | P0/P1 block; P2 requires an allowed disposition. |
+| P1-01I | Implement self-test and bootstrap refusal commands. | controller CLI + tests | Candidate controller cannot post success for itself. |
+| P1-01J | Add package commands and concise repo guidance. | `package.json`, `AGENTS.md`, skill | Commands resolve; skill validation passes. |
+| P1-01K | Independently prosecute completion and inspect live reviewer results. | no worker writes | Parent records findings and a single bootstrap waiver. |
 
-Integration order is B, C, D, E/F in parallel, G, H, I, J. Only the parent edits `package.json`, `AGENTS.md`, shared policy prose, and changelogs.
+Integration order is B, C, D, E/F in parallel, G, H, I, J, K. Only the parent
+edits `package.json`, `AGENTS.md`, shared policy prose, and changelogs.
 
 Minimum validation:
 
@@ -239,6 +280,25 @@ Microtickets:
 | P1-05I | Run final exact-head Gemini and Jules reviews and disposition every finding. | Receipts bind the unchanged candidate head. |
 | P1-05J | Obtain explicit user acceptance and merge. | Accepted screenshots point to the exact merged candidate SHA. |
 
+### P1-06 — Plan 2 activation and Plan 1 closeout
+
+Outcome: a docs-only PR records the already-known P1-05 Living Book merge
+commit, binds the user's acceptance evidence to it, proves that commit is in
+current `origin/main`, and opens the Plan 2 gate without branching new work from
+an old candidate.
+
+Microtickets:
+
+| Ticket | Owned result | Proof |
+|---|---|---|
+| P1-06A | Fetch current `origin/main` and capture the full P1-05 GitHub merge commit plus the exact user-acceptance reference. | The SHA is forty lowercase hexadecimal characters, resolves to a commit, and is not copied from memory or a feature branch. |
+| P1-06B | Verify the P1-05 merge commit in a clean detached proof worktree. | `git merge-base --is-ancestor` succeeds; detached `HEAD` equals the recorded SHA; `git status --porcelain` is empty. |
+| P1-06C | Replace `PLAN_1_MERGE_SHA: TO_BE_RECORDED`, check the Plan 1 completion evidence, and update the narrow control docs. | Plan 2's parser accepts the exact value and rejects empty, malformed, placeholder, non-commit, and non-ancestor values. |
+| P1-06D | Prosecute, validate, externally review, and merge the docs-only activation. | Recovery strict finish, both exact-head plan-freeze advisories, parent dispositions, checks, and original comments are complete. |
+
+While P1-06 is open, it is a waiting state. Work may address only its checks,
+comments, recovery, or merge; Queue Gate 0 and P2-01 must not start.
+
 ## Concrete steps
 
 At the start of every PR:
@@ -247,6 +307,7 @@ At the start of every PR:
     git status --short --branch
     npm run recovery:status
     scripts/recovery/check-vercel-function-count.sh
+    git worktree list --porcelain
 
 Create a fresh branch/worktree from current `origin/main`. Record the base SHA. Do not alter or clean the three candidate worktrees.
 
@@ -284,12 +345,14 @@ The browser evidence must exercise creation, generation success/error, reading, 
 
 Plan 1 is complete only when:
 
-- P1-01 through P1-05 are merged to `main`;
+- P1-01 through P1-06 are merged to `main`;
 - the review controller has passed its post-merge local canary; external conclusions remain advisory, but exact-source binding and disposition checks are mechanical;
 - dependency repairs are current and the stale PR is dispositioned;
 - the user has approved the final Living Book exact candidate;
 - `main` is clean and matches `origin/main`;
-- the exact merge SHA is written into Plan 2;
+- P1-06 has written the full accepted P1-05 merge commit into Plan 2 and proved
+  it is an ancestor of then-current `origin/main` from a clean detached
+  worktree;
 - no production auth, cloud, durability, or deployment claim has been made.
 
 ## Idempotence, recovery, and rollback
@@ -301,6 +364,8 @@ Plan 1 is complete only when:
 - Lockfiles have one owner and are regenerated from manifests; never merge two lockfile versions.
 - UI ports are hunk-selected and committed by bounded outcome. Revert the owning PR rather than copying back an entire worktree.
 - If user acceptance rejects the shell, revert or revise P1-04 before starting P1-05.
+- If P1-06 cannot verify the recorded P1-05 merge commit from fetched
+  `origin/main`, leave `PLAN_1_MERGE_SHA` unresolved and keep Plan 2 closed.
 - If any tracked commit follows an external review, discard the old receipt and review the new head.
 
 ## Artifacts and notes

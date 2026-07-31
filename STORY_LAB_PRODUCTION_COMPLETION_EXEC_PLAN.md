@@ -1,12 +1,27 @@
 # Story Lab Production Completion ExecPlan
 
-Last updated: 2026-07-30 05:43 EDT
+Last updated: 2026-07-31 01:57 EDT
 
-This is Plan 2 of the current two-plan Story Lab completion sequence. It is a living ExecPlan governed by `.agent/PLANS.md`. It begins only after `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` is complete and its exact merge SHA is recorded below.
+This is Plan 2 of the current two-plan Story Lab completion sequence. It is a
+living ExecPlan governed by `.agent/PLANS.md`. It begins only after P1-01
+through P1-06 in `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` are merged
+and P1-06 has recorded the exact accepted P1-05 merge commit below.
 
     PLAN_1_MERGE_SHA: TO_BE_RECORDED
 
-Do not replace the placeholder from memory or a local feature branch. Record the SHA merged into `origin/main`, fetch it, and prove a fresh worktree starts at that exact commit.
+The Plan 2 entry gate is **closed** while the value committed on fetched
+`origin/main` is empty, malformed, `TO_BE_RECORDED`, unresolved as a commit, not
+an ancestor of that exact `origin/main`, or not yet merged through P1-06. A
+working-tree or open-branch replacement never satisfies this gate. Every Plan 2
+entrypoint must reject those states before Queue Gate 0, a branch, or
+implementation work.
+
+Do not replace the placeholder from memory or a local feature branch. P1-06
+records the full GitHub merge commit for the accepted P1-05 Living Book
+candidate, fetches it from `origin/main`, and proves a clean detached worktree
+starts at that exact commit. Plan 2 then branches from current `origin/main`,
+which includes the later P1-06 activation merge; it does not branch from the
+older recorded P1-05 commit.
 
 This plan owns production completion after the accepted Living Book: a non-merge Queue feasibility gate, then ten coherent PRs covering test-truth repair, provider budgets, Clerk authentication, Neon persistence, recoverable jobs, Vercel Queue and Cron integration, browser recovery, legacy-route retirement, staged production release, and the final evidence report.
 
@@ -20,13 +35,19 @@ When this plan is complete:
 - job delivery can repeat without committing duplicate results;
 - stalled publication can recover automatically without relying on a browser tab;
 - private tokens, story bodies, provider payloads, and raw IP addresses do not appear in browser URLs, browser persistence, public logs, queue messages, or public review artifacts;
-- the old stream and generation routes are removed only after their replacements pass exact-preview failure testing;
+- exactly the two old streaming routes, `api/story-lab/stream/genesis.ts` and
+  `api/story/stream.ts`, are removed only after their replacements pass
+  exact-preview failure testing;
+- `api/story/generate.ts` and `api/story/continue.ts` remain as deprecated,
+  measured POST compatibility routes during this plan;
 - production is enabled in stages with an exercised rollback; and
 - the final report distinguishes deterministic tests, provider previews, real-browser proof, production proof, and remaining non-claims.
 
 ## Context and orientation
 
-- Plan 1 is merged, accepted by the user, and recorded above.
+- Before any Plan 2 work, verify that P1-01 through P1-06 are merged, the user
+  accepted the P1-05 candidate, and P1-06 recorded and proved its exact merge
+  commit above.
 - Start every PR from current `origin/main`, never from a Plan 1 candidate worktree.
 - Re-run all platform/version/plan assumptions at the PR that consumes them. Queue and Cron behavior is temporally unstable.
 - Keep the accepted Living Book visual structure unless a production-state defect requires a narrow change.
@@ -109,6 +130,9 @@ Official assumptions to re-check at execution:
 
 - [x] (2026-07-30) Split production completion from the foundation/Living Book acceptance plan.
 - [x] (2026-07-30) Chose the default identity, quota, deadline, retention, polling, queue, and release contracts.
+- [x] (2026-07-31) Corrected the inter-plan activation lifecycle: P1-06 records
+  the accepted P1-05 merge commit, and Plan 2 starts only after that docs-only
+  activation is merged.
 - [ ] Record and verify `PLAN_1_MERGE_SHA`.
 - [ ] Queue Gate 0: prove the actual Queue/Cron project contract on a disposable preview branch without merging it.
 - [ ] P2-01: repair test/CI/privacy baseline truth and freeze durable-job contracts.
@@ -129,12 +153,22 @@ Official assumptions to re-check at execution:
 - Vercel Cron does not retry failed invocations and can overlap or duplicate them. Hobby plans currently support only daily schedules; the intended minute-scale production sweeper requires current plan verification.
 - A queue publish after a database commit can be lost; a publish before commit can race uncommitted state. A transactional outbox plus automatic sweeper is required.
 - A browser can close after sending a POST but before receiving its job ID. An opaque pre-submit marker and owner-scoped recovery endpoint are necessary to avoid duplicate paid work.
+- The accepted P1-05 PR cannot contain its own future GitHub merge commit.
+  Activation therefore requires the separate docs-only P1-06 transaction before
+  Queue Gate 0.
 
 ## Decision log
 
 - Decision: prove raw Vercel Queue and Cron behavior in an isolated disposable Vercel project before designing database jobs around it.
   Rationale: a provider abstraction cannot compensate for a platform trigger, concurrency, plan, or deployment model that does not meet the product contract.
   Date: 2026-07-30.
+
+- Decision: define `PLAN_1_MERGE_SHA` as the full GitHub merge commit for the
+  user-accepted P1-05 Living Book candidate and record it in P1-06.
+  Rationale: P1-05 cannot contain its own future merge commit. P1-06 can verify
+  the known commit while preserving current `origin/main` as the branch point
+  for every Plan 2 PR.
+  Date: 2026-07-31.
 
 - Decision: make Queue Gate 0 a disposable, non-merge preview gate before the ten-PR train.
   Rationale: feasibility probes and temporary trigger code should not become production history before the platform contract is known.
@@ -213,7 +247,7 @@ Microtickets:
 
 | Ticket | Owned result | Proof |
 |---|---|---|
-| G0-A | Verify Plan 1 merge SHA, route count, Node/runtime, Vercel plan, region, and current queue package/API. | Exact command outputs and versions recorded. |
+| G0-A | Verify the merged P1-06 activation, recorded P1-05 merge SHA, route count, Node/runtime, Vercel plan, region, and current queue package/API. | Placeholder/malformed/non-commit/non-ancestor cases fail; exact command outputs and versions are recorded. |
 | G0-B | Freeze public, protected, private-trigger, and cron route contracts. | One request/response/auth table with explicit non-public routes. |
 | G0-C | Build a disposable preview-only `handleNodeCallback` consumer that receives IDs-only probes. | The platform invokes it; direct public HTTP cannot; no story data enters the message. |
 | G0-D | Prove accepted publish including `messageId: null`, retry/redelivery, 300-second maximum duration/visibility, and deployment partition behavior. | Attempt IDs show repeat delivery and the intended deployment boundary. |
@@ -358,7 +392,9 @@ Microtickets:
 
 ### P2-09 — Legacy retirement and exact preview
 
-Outcome: obsolete generation/stream surfaces are deleted after replacement proof, and the exact candidate survives realistic failure injection in preview.
+Outcome: the two obsolete streaming surfaces are deleted after replacement
+proof, the retained POST compatibility routes remain available and measured,
+and the exact candidate survives realistic failure injection in preview.
 
 Candidate retirements, verified before deletion:
 
@@ -401,11 +437,51 @@ Microtickets:
 
 ## Concrete steps
 
-For each PR:
+Before Queue Gate 0 or any Plan 2 branch, fetch once, freeze that exact
+`origin/main` commit as the Plan 2 base, and read the activation marker from
+that commit rather than from the working tree. These commands are illustrative
+and must exit zero:
 
     git fetch origin --prune
-    git worktree add <new-safe-path> -b recovery/story-lab-<bounded-slice> origin/main
+    plan_2_file="STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md"
+    plan_2_base_sha="$(git rev-parse --verify 'origin/main^{commit}')"
+    plan_1_merge_sha="$(git show "${plan_2_base_sha}:${plan_2_file}" | awk '/^[[:space:]]*PLAN_1_MERGE_SHA:/ { count += 1; sub(/^[[:space:]]*PLAN_1_MERGE_SHA:[[:space:]]*/, ""); value = $0 } END { if (count != 1) exit 1; print value }')"
+    test -n "$plan_1_merge_sha"
+    test "$plan_1_merge_sha" != "TO_BE_RECORDED"
+    case "$plan_1_merge_sha" in (*[!0-9a-f]*|"") exit 1;; esac
+    test "${#plan_1_merge_sha}" -eq 40
+    git cat-file -e "${plan_1_merge_sha}^{commit}"
+    test "$(git rev-parse --verify "${plan_1_merge_sha}^{commit}")" = "$plan_1_merge_sha"
+    git merge-base --is-ancestor "$plan_1_merge_sha" "$plan_2_base_sha"
+
+Create a fresh detached proof worktree at the frozen `origin/main` commit. Prove
+that the fetched activation content, not an open P1-06 branch, contains the same
+marker; prove that checkout exact and clean; then remove only that dedicated
+proof worktree. If any step fails, leave Plan 2 closed:
+
+    plan_2_proof_parent="$(mktemp -d "${TMPDIR:-/tmp}/story-lab-plan2-proof.XXXXXX")"
+    plan_2_proof_worktree="${plan_2_proof_parent}/origin-main"
+    git worktree add --detach "$plan_2_proof_worktree" "$plan_2_base_sha"
+    test "$(git -C "$plan_2_proof_worktree" rev-parse HEAD)" = "$plan_2_base_sha"
+    test -z "$(git -C "$plan_2_proof_worktree" status --porcelain)"
+    proof_marker="$(awk '/^[[:space:]]*PLAN_1_MERGE_SHA:/ { count += 1; sub(/^[[:space:]]*PLAN_1_MERGE_SHA:[[:space:]]*/, ""); value = $0 } END { if (count != 1) exit 1; print value }' "${plan_2_proof_worktree}/${plan_2_file}")"
+    test "$proof_marker" = "$plan_1_merge_sha"
+    git -C "$plan_2_proof_worktree" merge-base --is-ancestor "$plan_1_merge_sha" HEAD
+    git worktree remove "$plan_2_proof_worktree"
+    rmdir "$plan_2_proof_parent"
+
+Create Queue Gate 0 or the next Plan 2 PR from the same
+`plan_2_base_sha`. If `origin/main` changes before branch creation, restart this
+proof rather than mixing a marker from one base with code from another. Repeat
+the complete fetch/freeze/proof sequence for every later Plan 2 PR after the
+previous PR merges.
+
+Immediately after the proof, without a second fetch:
+
+    test "$(git rev-parse --verify 'origin/main^{commit}')" = "$plan_2_base_sha"
+    git worktree add <new-safe-path> -b recovery/story-lab-<bounded-slice> "$plan_2_base_sha"
     cd <new-safe-path>
+    test "$(git rev-parse HEAD)" = "$plan_2_base_sha"
     git status --short --branch
     npm run recovery:status
     scripts/recovery/check-vercel-function-count.sh
@@ -445,6 +521,9 @@ Additional proof is cumulative but never interchangeable:
 
 Plan 2 is complete only when:
 
+- the P1-06 activation PR is merged, the recorded P1-05 merge SHA passes the
+  exact commit/ancestor/detached-worktree proof, and current work branches from
+  then-current `origin/main`;
 - P2-01 through P2-10 are merged to `main`;
 - all active required checks and original review threads are resolved with evidence;
 - every local commit, branch, worktree, and untracked artifact is classified as merged, intentionally parked with owner/reason, historical reference, or explicitly dispositioned;

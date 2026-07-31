@@ -1,6 +1,6 @@
 ---
 name: fairytales-story-lab-slice
-description: Use when working in /Users/hbpheonix/fairytaleswithspice on the current two-plan Story Lab completion sequence, selecting a bounded implementation or review slice, dispatching Story Lab subagents, preparing validation evidence, opening or merging a Story Lab PR, or preventing local-only/stale-plan drift.
+description: Use when working in the FairytaleswithSpice repository on the current two-plan Story Lab completion sequence, selecting a bounded implementation or review slice, dispatching Story Lab subagents, preparing validation evidence, opening or merging a Story Lab PR, or preventing local-only/stale-plan drift.
 ---
 
 # Fairytales Story Lab Slice
@@ -13,19 +13,26 @@ Pressure test: if the user asks what is next, what is left, whether to dispatch 
 
 ## Start
 
-1. Confirm the repo is `/Users/hbpheonix/fairytaleswithspice`.
+1. Discover the repository root with `git rev-parse --show-toplevel`. Confirm
+   the Fairytales control files and, when a remote exists, the normalized
+   `Phazzie/FairytaleswithSpice` identity. Do not require a workstation path.
 2. Run `git status --short --branch`.
-3. Run `npm run recovery:status`.
-4. Read `AGENTS.md`.
-5. Read the active control docs that match the question:
+3. Run `npm run recovery:status` and treat every unexplained stop sign as a
+   blocker.
+4. Read `AGENTS.md` and `.agent/PLANS.md`.
+5. Read both current execution plans before selecting a route:
+   - `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md`;
+   - `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md`.
+6. Reject Plan 2 while `PLAN_1_MERGE_SHA` is empty, malformed,
+   `TO_BE_RECORDED`, unresolved, non-ancestor, or not activated by merged
+   P1-06.
+7. Read the additional control docs that match the question:
    - broad status: `STORY_LAB_CONCEPT_CHECKLIST.md`;
-   - foundation through accepted Living Book: `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md`;
-   - production work after accepted UI: `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md`;
    - next work/subagents: the active plan's PR train and microtickets, then `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for supporting detail;
    - historical recovery/audit evidence: `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` and `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`.
-6. Read the execution plan for the files or behavior being changed.
-7. Treat `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` as historical unless the user explicitly asks to recover that old unpublished stack.
-8. If Gemini/Antigravity or Jules review is required or claimed, use `$fairytales-external-review` and read `docs/EXTERNAL_REVIEW_POLICY.md`.
+8. Read the execution plan for the files or behavior being changed.
+9. Treat `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` as historical unless the user explicitly asks to recover that old unpublished stack.
+10. If Gemini/Antigravity or Jules review is required or claimed, use `$fairytales-external-review` and read `docs/EXTERNAL_REVIEW_POLICY.md`.
 
 ## Slice Sizing
 
@@ -59,10 +66,11 @@ The parent alone edits shared contracts, lockfiles, `package.json`, `AGENTS.md`,
 5. Run focused validation for the changed surface.
 6. Run local Scope and Completion prosecution and independently adjudicate their findings.
 7. Use the external-review cadence in `docs/EXTERNAL_REVIEW_POLICY.md` at the final committed candidate head. Before the controller canary passes, label it advisory and parent-inspected.
-8. Run `npm run recovery:finish -- --strict` before PR-ready or final-status claims.
-9. Open/update the PR with exact scope, validation evidence, non-claims, review dispositions, and remaining work.
-10. Audit unresolved review threads after opening or merging.
-11. Stop after the PR is open or merged. Do not start the next PR outcome on the same branch.
+8. Push and open/update the PR with exact scope, validation evidence, non-claims, review dispositions, and remaining work.
+9. Audit unresolved review threads after opening and after every review update.
+10. While the current slice PR is open, work only on its checks, comments, recovery, or merge.
+11. Do not begin another feature slice until the current slice is pushed, its checks and comments are addressed, and it is merged to `main`. An open PR is a waiting state, not Done.
+12. Before every repo-work session ends, run `npm run recovery:finish`. Use `npm run recovery:finish -- --strict` instead for PR-ready, merge-ready, or final-completion claims.
 
 ## Stop Signs
 
@@ -74,7 +82,8 @@ Stop and report instead of coding when:
 - the branch already contains multiple independent checklist items;
 - validation would require nonexistent commands;
 - the work touches dependency updates and coverage tooling at the same time;
-- Plan 2 is requested before the exact merged Plan 1 SHA is recorded;
+- Plan 2 is requested before P1-06 has recorded, verified, and activated the
+  exact accepted P1-05 merge SHA;
 - a required external-review receipt is stale, malformed, or attached to a different head;
 - the controller canary has not passed but a task asks to treat its status as mechanically required;
 - the user asks for status/checklist rather than implementation.

@@ -1,6 +1,6 @@
 # Overnight Mode
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 ## Purpose
 
@@ -25,19 +25,24 @@ Stopping is appropriate when:
 Run or inspect these before making changes:
 
 1. `git status --short --branch`
-2. `gh pr list --state open --json number,title,headRefName,baseRefName,url,reviewDecision`
-3. `scripts/recovery/check-vercel-function-count.sh`
-4. `scripts/recovery/preflight.sh --quick --skip-status`
-5. `npm run test:all` when the change risk justifies the time
-6. Read or skim:
+2. `npm run recovery:status`
+3. `gh pr list --state open --json number,title,headRefName,baseRefName,url,reviewDecision`
+4. `scripts/recovery/check-vercel-function-count.sh`
+5. `scripts/recovery/preflight.sh --quick --skip-status`
+6. `npm run test:all` when the change risk justifies the time
+7. Read or skim:
    - `AGENTS.md`
    - `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md`
-   - `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` only after Plan 1's exact merge SHA is recorded
+   - `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md`
    - `docs/EXTERNAL_REVIEW_POLICY.md` before external review
    - `STORY_LAB_FUTURE_WORK_CHECKLIST.md`
    - `STORY_LAB_EXPLORATION_FINDINGS.md` when present
    - `STORY_LAB_IDEA_BOARD.md`
    - the execution plan matching the files being changed
+
+Read both active plans even while Plan 2 is closed. Do not execute Plan 2 while
+`PLAN_1_MERGE_SHA` is empty, malformed, `TO_BE_RECORDED`, or not yet verified by
+the merged Plan 1 activation/closeout PR.
 
 If checks are already failing before edits, record the baseline failure in the active changelog or execution plan and prioritize repair before feature work.
 
@@ -199,5 +204,9 @@ Before the session ends, update the active execution plan or recovery changelog 
 - known failures or skipped checks;
 - whether anything was committed or left uncommitted;
 - the next best task.
+
+Run `npm run recovery:finish` before every repo-work session ends. Use
+`npm run recovery:finish -- --strict` instead when claiming PR-ready,
+merge-ready, or final-completion status.
 
 If work continues after the handoff, keep that record fresh after each coherent slice.

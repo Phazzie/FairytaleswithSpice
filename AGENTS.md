@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-30 05:43 EDT
+Last updated: 2026-07-31 01:57 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -23,14 +23,15 @@ Prefer durable turnover in `SUBAGENT_LOG.md`, `PR70_RECOVERY_CHANGELOG.md`, PR b
 Before planning, editing, or claiming readiness:
 
 1. Run `git status --short --branch` and treat the live worktree as authoritative.
-2. Read the current two-plan sequence first: `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` for everything through accepted Living Book UI, then `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` for production completion after that exact merge SHA. Do not begin Plan 2 while its `PLAN_1_MERGE_SHA` placeholder is unresolved.
-3. For long-running autonomous work, read `OVERNIGHT_MODE.md` before selecting the next task.
-4. Use `STORY_LAB_CONCEPT_CHECKLIST.md` and `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for supporting status and ticket detail, but resolve sequencing conflicts in favor of the two current plans.
-5. Treat `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, and completed UI plans as historical recovery/audit/design evidence where they conflict with the current sequence.
-6. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas, story-quality experiments, and Weird Lab candidates.
-7. Read the execution plan that matches the files or behavior being changed.
-8. Read `docs/EXTERNAL_REVIEW_POLICY.md` before invoking or claiming Gemini/Antigravity or Jules review.
-9. Run `scripts/recovery/check-vercel-function-count.sh` before adding, retiring, consolidating, or documenting deployable Vercel route files.
+2. Run `npm run recovery:status` before every Story Lab slice. Treat a missing or gone upstream, dirty tree, unrelated untracked files, branch drift, open-PR mismatch, or route-budget failure as a stop sign until it is understood.
+3. Read both current plans before selecting a route: `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` for everything through accepted Living Book UI, then `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` for production completion. Do not begin Plan 2 while its `PLAN_1_MERGE_SHA` placeholder is unresolved or its activation proof is incomplete.
+4. For long-running autonomous work, read `OVERNIGHT_MODE.md` before selecting the next task.
+5. Use `STORY_LAB_CONCEPT_CHECKLIST.md` and `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for supporting status and ticket detail, but resolve sequencing conflicts in favor of the two current plans.
+6. Treat `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, and completed UI plans as historical recovery/audit/design evidence where they conflict with the current sequence.
+7. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas, story-quality experiments, and Weird Lab candidates.
+8. Read the execution plan that matches the files or behavior being changed.
+9. Read `docs/EXTERNAL_REVIEW_POLICY.md` before invoking or claiming Gemini/Antigravity or Jules review.
+10. Run `scripts/recovery/check-vercel-function-count.sh` before adding, retiring, consolidating, or documenting deployable Vercel route files.
 
 ## Publication Discipline
 
@@ -63,7 +64,7 @@ Default loop for unpublished Story Lab work:
 3. Extract only the commits/hunks named by the matching plan.
 4. Run focused validation with `npm run recovery:preflight -- <slice-name>`.
 5. Open the PR with scope, validation commands, non-claims, and next-slice notes.
-6. Stop after the PR is opened or merged; do not begin the next feature on the same branch.
+6. Treat an open current-slice PR as a waiting state. Work only on its checks, comments, recovery, or merge; do not begin the next feature until it is merged to `main`.
 
 If a branch contains more than one planned slice, stop and split before adding more code. If a branch's upstream is gone, first check whether it was merged into `origin/main`; do not keep working on stale branch tips.
 
@@ -73,7 +74,7 @@ Before ending a repo-work session, run:
 npm run recovery:finish
 ```
 
-Use its stop signs and doc checklist as the final publication gate. If it reports dirty files, a stale local `main`, unpushed commits, or missing doc updates, either fix them or explicitly report why they remain. For PR-ready claims, use `npm run recovery:finish -- --strict` and treat failures as blockers.
+Use its stop signs and doc checklist as the final publication gate. If it reports dirty files, a stale local `main`, unpushed commits, or missing doc updates, either fix them or explicitly report why they remain. For PR-ready, merge-ready, or final-completion claims, use `npm run recovery:finish -- --strict` and treat failures as blockers.
 
 After opening or merging a PR, audit active unresolved review threads:
 

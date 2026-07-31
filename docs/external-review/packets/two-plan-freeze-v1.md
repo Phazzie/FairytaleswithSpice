@@ -1,27 +1,36 @@
 # Story Lab two-plan freeze review packet
 
 Schema version: `story-lab-review-packet/v1`
-Policy version: `2026-07-30`
+Policy version: `story-lab-external-review/2026-07-31`
 Packet ID: `story-lab-two-plan-freeze`
-Revision: `1`
+Revision: `2`
 Repository: `Phazzie/FairytaleswithSpice`
 Change type: ExecPlan, operating-policy, and repo-skill freeze
+
+Revision 1 receipts bind the superseded commit
+`890ea71029365b8dac1bdf81f2f775a0ef2bdeb1` and are stale for Revision 2. They
+cannot be reused for this packet.
 
 ## Intent
 
 Replace conflicting Story Lab completion guidance with one decision-complete two-plan sequence:
 
 1. foundation and explicitly accepted Living Book UI; then
-2. production completion starting from Plan 1's exact merged SHA.
+2. production completion after P1-06 records and proves the accepted P1-05
+   merge commit, starting implementation from then-current `origin/main`.
 
 Create a safe programmatic Gemini/Antigravity and Jules review contract that can later become mechanically enforced without trusting stale context, reviewer prose, or candidate code that grades itself.
 
 ## Acceptance criteria
 
 - Current execution routes unambiguously through the two new plans.
-- Plan 1 has five coherent PRs composed from smaller disjoint worker tickets.
+- Plan 1 has six coherent PRs composed from smaller disjoint worker tickets;
+  P1-06 is the docs-only activation/closeout after the accepted P1-05 merge.
 - Plan 2 has a non-merge Queue Gate 0 followed by ten coherent PRs.
-- Plan 2 cannot start until the exact Plan 1 merge SHA is recorded.
+- Plan 2 cannot start until P1-06 records and verifies the exact accepted P1-05
+  merge commit, merges to current `origin/main`, and a clean detached checkout
+  of that fetched `origin/main` contains the non-placeholder marker and proves
+  the recorded commit is its ancestor.
 - Living Book has early and final user-acceptance holds.
 - Anonymous create, continue, and browser-local save remain explicit Plan 1 invariants.
 - Production auth, cloud, Queue, durability, and deployment remain Plan 2 work.
@@ -30,6 +39,14 @@ Create a safe programmatic Gemini/Antigravity and Jules review contract that can
 - Jules remains read-only, reconciles ambiguous launch responses, and requires exact plan-digest approval.
 - The initial controller cannot certify itself; the mechanical local gate waits for a post-merge negative canary.
 - Required GitHub enforcement remains disabled unless a separate trusted-producer design is explicitly approved.
+- `story-lab-review-limits/v1` defines exact byte, process, HTTP, poll, and
+  wall-clock limits; the packet and policy values are identical.
+- Antigravity binary resolution is portable and fail-closed.
+- Reviewer-returned JSON contains no self-referential stream hashes; a future
+  controller owns private post-capture artifact hashes.
+- Reviewer skills have no credential access. A future parent-owned Jules
+  adapter may retrieve the configured Keychain item only through the bounded,
+  no-shell `/usr/bin/security` broker defined by policy.
 - Queue Gate 0 uses an isolated disposable Vercel project and never the product production target.
 - Persistent identity/quota enforcement follows Clerk and Neon rather than preceding them.
 - Final closure restores last-40 current/outdated review-thread proof and classification of all local work.
@@ -66,6 +83,44 @@ Create a safe programmatic Gemini/Antigravity and Jules review contract that can
 - Publishing the pre-existing Recommendation Risk Calibration hunk in `AGENTS.md`; it remains user-owned and unstaged.
 - Closing or modifying PR #194.
 
+## Normative resource limits
+
+This packet mirrors canonical profile `story-lab-review-limits/v1` from
+`docs/EXTERNAL_REVIEW_POLICY.md`. Byte counts use exact UTF-8 or raw-stream
+bytes.
+
+| Resource or phase | Exact limit |
+|---|---:|
+| Committed packet body | `131072` bytes |
+| Private attempt envelope | `16384` bytes |
+| Complete reviewer prompt/request | `196608` bytes |
+| Each `agy --help` or `agy models` discovery command | `30000` ms |
+| Each discovery stdout or stderr stream | `65536` bytes |
+| Gemini review stdout | `262144` bytes |
+| Gemini review stderr | `131072` bytes |
+| Gemini `--print-timeout` | `180000` ms (`180s`) |
+| Gemini controller deadline before termination | `210000` ms |
+| Gemini `SIGTERM` grace | `5000` ms |
+| Gemini `SIGKILL` and reap grace | `5000` ms |
+| Gemini hard wall-clock maximum | `220000` ms |
+| Keychain broker deadline | `30000` ms |
+| Keychain broker stdout | `16384` bytes |
+| Keychain broker stderr | `65536` bytes |
+| Each Jules HTTP response body | `1048576` bytes |
+| Each Jules HTTP request | `30000` ms |
+| Jules poll interval | `10000` ms |
+| Jules pre-approval create/reconcile/plan phase | `1200000` ms and at most `120` polls |
+| Jules post-approval terminal phase | `1200000` ms and at most `120` polls |
+| Jules overall session hard deadline | `2400000` ms |
+
+The complete prompt contains controller framing, this committed packet, and the
+private envelope; it does not embed the full diff. Packet, envelope, or prompt
+overflow is rejected before reviewer contact. Discovery or response overflow,
+lock contention, process timeout, Jules request/phase/overall timeout, or poll
+overflow yields an invalid attempt and no reviewer receipt. The private failure
+record must name the exceeded limit and observed byte count or elapsed time.
+Ambiguous Jules state is reconciled authoritatively and never blind-retried.
+
 ## Required diff
 
 The attempt envelope supplies immutable base and head SHAs. Review:
@@ -98,10 +153,12 @@ The attempt envelope supplies immutable base and head SHAs. Review:
 | `E5` | skill-creator quick validation for `.agents/skills/fairytales-story-lab-slice` | PASS. | `0` |
 | `E6` | parse both `agents/openai.yaml` files | PASS: both YAML files parse. | `0` |
 | `E7` | `scripts/recovery/check-vercel-function-count.sh` | PASS: 11 of 12 Vercel function slots are in use; this change adds no route. | `0` |
-| `E8` | `npm run recovery:status` | PASS: command completed; it reported the expected dirty planning worktree and lack of an upstream for the local branch. | `0` |
-| `E9` | `gh pr list --state open --limit 100` plus check inspection | PASS: PR #194 is the only open PR; its Recovery CI and Vercel checks are failing and this change does not alter or close it. | `0` |
+| `E8` | `npm run recovery:status` | PASS: command completed in the helper worktree, reported the expected fourteen tracked planning/review modifications and no untracked files, and passed the route guard at 11/12. Its embedded GitHub lookup timed out, so it was not used as PR-state evidence. | `0` |
+| `E9` | bounded `gh pr list`, `gh pr view 198`, and check inspection at original head `890ea71029365b8dac1bdf81f2f775a0ef2bdeb1` | BASELINE with external blocker, not corrected-head proof: open PRs are draft #198 and Dependabot #194. At the original head, #198 was mergeable; SonarCloud, Vercel, and CodeRabbit status passed, while both Recovery CI jobs had zero steps and a GitHub annotation stating that the account was locked due to a billing issue. Corrected-head CI belongs in post-commit GitHub evidence and must be refreshed without editing this packet. | `0` |
 | `E10` | fresh-agent forward test for each repo skill | PASS: two independent read-only agents followed the external-review and Story Lab slice routing contracts without a corrective prompt. | N/A: agent evidence |
 | `E11` | `npm run test:recovery-finish-check` | PASS: 4 tests passed. | `0` |
+| `E12` | packet/policy limits, closed receipt-schema examples, semantic guard, and packet-size checks | PASS: all 21 canonical limit rows match exactly, both provider examples parse with distinct closed reviewer shapes and no stream self-hashes, prohibited machine-specific paths and stale route wording are absent from additions, and the packet is below its 131072-byte cap. | `0` |
+| `E13` | read-only Completion Prosecutor over the integrated candidate | PASS after three corrective rounds: all seven P1/P2 findings were fixed, and the final rerun found no actionable P0/P1/P2 blocker. | N/A: agent evidence |
 
 Product tests are not required for this docs/policy/skill-only change. The review must flag any file that actually changes runtime or package behavior and therefore invalidates that non-claim.
 
@@ -133,7 +190,7 @@ leading prose, trailing prose, or unknown fields. This is the Gemini form:
     "packetPath": "docs/external-review/packets/two-plan-freeze-v1.md",
     "packetBlobSha": "40 lowercase hexadecimal characters",
     "packetDigest": "64 lowercase hexadecimal characters",
-    "policyVersion": "2026-07-30"
+    "policyVersion": "story-lab-external-review/2026-07-31"
   },
   "verdict": "ADVISORY_CLEAR",
   "findings": [],
@@ -200,6 +257,17 @@ positive integer or `null`; `section` is either a non-empty packet section name 
 `null`; exactly one of `line` and `section` is non-null; and `detail` is non-empty.
 `ADVISORY_CLEAR` requires an empty findings array. `ADVISORY_FINDINGS` requires a
 non-empty findings array.
+
+Neither the Gemini nor Jules reviewer-returned object contains stdout, stderr,
+HTTP-response, or transcript hash fields. Unknown hash fields invalidate the
+closed reviewer schema. After complete capture, a future controller writes
+provider-specific byte lengths and SHA-256 hashes to private
+`attempt-result.json`: Gemini requires complete `stdout` and `stderr`; Jules
+requires a deterministic manifest covering every create, reconciliation, plan,
+approval, poll, terminal-session, and terminal-result response. That
+controller-owned record is separate from the reviewer receipt and is not
+returned to either reviewer. Overflowed or incomplete artifacts cannot produce
+a valid attempt result.
 
 Findings must cite current evidence, state impact, and recommend a bounded
 correction. Reviewer conclusions are advisory; tests and parent dispositions
