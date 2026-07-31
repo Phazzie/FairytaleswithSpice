@@ -20,6 +20,106 @@ Parent verification:
 Follow-ups:
 ```
 
+## 2026-07-31 01:57 EDT - PR #198 CodeRabbit Scope And Contract Prosecution
+
+Parent branch / PR: `review/pr198-coderabbit` helper worktree, publishing to
+`recovery/story-lab-boundary-pushing-guidance` / draft PR #198
+
+Goal: address all fourteen unresolved CodeRabbit threads without absorbing the
+primary checkout's user-owned `AGENTS.md` hunk or unrelated untracked skills,
+then restore one consistent two-plan and external-review contract.
+
+Parent analysis before dispatch:
+
+- Thread-aware GitHub GraphQL inspection found fourteen unresolved,
+  non-outdated CodeRabbit threads; a green CodeRabbit status did not mean those
+  threads were closed.
+- The parent read `AGENTS.md`, `.agent/PLANS.md`, both active ExecPlans, the
+  external-review policy and packet, both skills, and all target contexts before
+  freezing scope.
+- The initial proposal grouped workflow, review-contract, and plan/history
+  fixes, but it had not yet solved stream self-hashing, Plan 1 merge-SHA
+  self-reference, or deterministic reviewer limits.
+
+| Agent | Model | Role | Scope | Status | Result | Integrated? |
+|---|---|---|---|---|---|---|
+| Hegel (`planning_completion_prosecutor`) | inherited Codex | Read-only Scope Prosecutor | Attack all fourteen threads, hidden dependencies, proof claims, file scope, and stop conditions | Initial FAIL; narrow re-review PASS after one final condition | Required a fourteen-row ledger, separate reviewer/attempt-result hash ownership, P1-06 activation, honest non-PR-ready strict evidence, exact resource constants, and bounded pre-approval/overall Jules lifecycle | Yes; parent accepted every blocker and locked the revised scope |
+| Ptolemy (`whispers_adapter_inventory`) | inherited Codex | Read-only review-contract specialist | Compare Fairytales policy with corrected Whispers Gemini/Jules operational guidance | Done | Produced portable `agy` resolution, exact resource limits, non-self-referential artifact hashing, parent-only Keychain adapter boundary, and packet/policy version coupling | Yes; project-specific Whispers state was rejected, reusable safeguards were integrated |
+| Linnaeus (`worktree_release_auditor`) | inherited Codex | Read-only plan/release consistency reviewer | Attack Plan 1/Plan 2 activation, routes, recovery commands, historical authority, and release evidence | Conditional reject until lifecycle fixes | Confirmed P1-06 is required, only two stream routes retire, both plans must always be read, normal/strict finish meanings must match, and historical plans need read-only guards | Yes, except the proposed global P1-00 block for unrelated PR #194; the parent kept #194 owned by P1-03 |
+| Cicero (`forward_external_review_v2`) | inherited Codex | Fresh external-review skill tester | Route a minimal-context plan-freeze review request against the integrated candidate | Done, PASS | Read both plans, kept Plan 2 closed, required a clean immutable review target, preserved advisory/no-enforcement language, and refused stale receipts | Yes; no corrective prompt was required |
+| Nietzsche (`forward_story_lab_slice_v2`) | inherited Codex | Fresh Story Lab slice tester | Route a minimal-context premature Queue implementation request | Done, PASS | Refused Queue Gate 0/P2 work, treated draft PR #198 as the only current slice, selected Plan 1/P1-01 only after merge, and preserved finish/strict-finish meanings | Yes; no corrective prompt was required |
+| `coderabbit_disposition_audit` | Codex high | Read-only thread-ledger auditor | Verify each of the fourteen recorded dispositions against the integrated diff and cross-check packet/log evidence | Initial FAIL; corrected rerun PASS | Confirmed every thread was materially addressed; the initial packet/log forward-test contradiction was corrected and the final ledger uses only canonical dispositions | Yes; parent independently retained the corrected evidence/non-claims |
+| Hegel (`planning_completion_prosecutor`) | inherited Codex | Read-only Completion Prosecutor | Attack the complete integrated package, executable gates, failure windows, schemas, and evidence before staging | Three corrective rounds; final PASS | Found and forced correction of seven P1/P2 defects: P1-06 source proof, Keychain executability, old-head evidence, disposition schema, frozen-base branching, Node lock primitive, and crash-atomic lock recovery | Yes; every finding was corrected and the final rerun found no actionable P0/P1/P2 |
+
+Parent verification:
+
+- Parent mapped every thread ID to the canonical `FIXED` disposition in
+  `PR70_RECOVERY_CHANGELOG.md`; the readiness thread retains an explicit
+  non-claim as its evidence.
+- Parent chose one canonical limits profile and required exact packet/policy
+  consistency rather than copying multiple independent state machines.
+- Parent kept reviewer-returned JSON free of transcript hashes and placed exact
+  raw-artifact hashes in future controller-owned private attempt results.
+- Parent defined P1-06 as the docs-only transaction that records the known
+  P1-05 merge commit, proves ancestor/exact-worktree state, and merges before
+  Plan 2.
+- Both fresh-agent forward tests completed and produced the intended fail-closed
+  routing without a corrective prompt.
+- A separate fourteen-thread disposition audit passed after the packet and log
+  were reconciled.
+- The final Completion Prosecutor passed only after seven executable contract
+  defects across three corrective rounds were integrated and rechecked.
+- No subagent edited files, used credentials, invoked reviewers, changed GitHub,
+  or touched the primary dirty checkout.
+
+Follow-ups:
+
+- Finish the full parent validation matrix, commit and push from the helper
+  worktree, then refresh exact-head checks and external-review availability.
+- Commit and push only from the helper worktree, then re-audit all fourteen
+  threads and checks. Do not reply to or resolve GitHub threads without explicit
+  authorization.
+- Keep PR #198 draft/not PR-ready while Recovery CI is billing-locked or required
+  corrected-head review evidence is absent.
+
+## 2026-07-30 05:43 EDT - Two-Plan And External-Review Hardening
+
+Parent branch / PR: `recovery/story-lab-boundary-pushing-guidance` / local-only, no upstream
+
+Goal: prosecute the new two-plan Story Lab sequence, identify later-regret risks, preserve dirty sibling work, derive the safe Gemini/Jules contract from Whispers evidence, and forward-test the repo-local skills.
+
+Parent analysis before dispatch:
+
+- `HEAD` matched `origin/main` at `c52d8b7`, but the checkout contained a user-owned `AGENTS.md` change and untracked `.agents/` tree.
+- The requested plan split was everything through accepted Living Book UI, then production completion.
+- Subagent tickets needed to be smaller than normal without turning each microticket into a separate PR.
+- External review needed exact-source binding and anti-self-certification rather than copied shell prose.
+
+| Agent | Model | Role | Scope | Status | Result | Integrated? |
+|---|---|---|---|---|---|---|
+| Hooke | inherited Codex | Scope Prosecutor | Audit routing docs, plan precedence, dirty work, and smallest safe two-plan package | Done | Found the conflicting authoritative docs, three dirty candidate worktrees, user-owned repo changes, and required routing updates | Yes; both plans begin from preserved live truth and old plans are historical evidence |
+| Banach | inherited Codex | External-review auditor | Derive minimum Gemini/Jules controller, cadence, receipt, disposition, bootstrap, and canary contract | Done | Found no current controller; defined closed-stdin exact-SHA Gemini review, strict Jules state, parent dispositions, and anti-self-certification | Yes; canonical policy, Plan 1 bootstrap/canary, `AGENTS.md`, and skill |
+| Linnaeus | inherited Codex | Worktree/release auditor | Attack Plan 2 against current Queue, Clerk, route, job, and worktree reality | Done | Required non-merge Queue Gate 0, current `@vercel/queue` API, consolidated Cron, late stream retirement, safe POST retention, split deadlines, retention, and key rotation | Yes; accepted mechanically supported findings, retained polling/anonymous-inline product decisions |
+| `skill_forward_external` | inherited Codex | Fresh skill tester | Apply `$fairytales-external-review` to an Angular dependency final candidate | Done | Correctly required Gemini plus Jules, rejected piped `agy`, preserved independent tests, and flagged untracked/advisory status | Yes; forward test passed without edits or live review |
+| `skill_forward_slice` | inherited Codex | Fresh skill tester | Route a premature durable-Queue request through `$fairytales-story-lab-slice` | Done | Correctly stopped on unmerged Plan 1/SHA placeholder, kept Gate 0 non-merge, grouped microtickets into coherent PRs, and kept review advisory pre-canary | Yes; forward test passed without edits |
+| `planning_completion_prosecutor` | inherited Codex | Completion Prosecutor | Attack the complete planning/policy/skill package before its first commit | Done, initial FAIL | Found seven P1 blockers: publication ownership, undefined status trust, quota ordering, Gate-0 target, lost final audit gates, advisory completion contradiction, and wrong worktree command context; also found ambiguous dispositions | Yes; all findings accepted and corrected before staging |
+| `whispers_adapter_inventory` | inherited Codex | Read-only interface specialist | Locate exact reusable Jules/Gemini programmatic patterns for P1-01 | Done | Found reusable guarded Jules code in `scripts/jules-lookahead.mjs`, digest feedback in `jules-feature-trials.mjs`, and corrected Antigravity design only in legacy `PROGRAMMATIC_USAGE.md` | Yes; P1-01 will selectively port controls, never project-specific packets or controllers wholesale |
+
+Parent verification:
+
+- Parent checked every finding against the live files and independently verified route count `11/12`.
+- `npm view @vercel/queue version dist-tags --json` reported `0.4.0` as `latest`; the package README confirmed instance-based `handleNodeCallback`, accepted nullable message IDs, retry/redelivery, and visibility controls.
+- Parent rejected wholesale adoption of the auditor's durable guest/SSE variant. The final plan preserves anonymous request-inline use and chooses authenticated adaptive polling for signed-in durable jobs.
+- Parent reran the package design after the Completion Prosecutor's FAIL and corrected every blocking finding before commit.
+- Parent preserved the existing Recommendation Risk Calibration text and unrelated untracked `.agents/` skills.
+- Both repo skills passed `quick_validate.py`, their interface YAML parsed, and both fresh-agent scenarios produced the intended routing.
+
+Follow-ups:
+
+- Commit and push this planning/policy package before running exact-head Gemini/Jules plan-freeze review.
+- Do not implement or require the review status until P1-01 merges and P1-02 passes the post-merge canary.
+- Start product execution at P1-01 only from a clean current branch; do not modify or clean the three candidate worktrees.
+
 ## 2026-07-10 12:39 EDT - Story Lab First Worker Wave
 
 Parent branch / PR: `recovery/story-lab-first-worker-wave` / pending

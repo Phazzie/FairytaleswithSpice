@@ -1,9 +1,16 @@
 # Story Lab Future Work Checklist
 
 Created: 2026-07-04 14:33 EDT
-Last updated: 2026-07-16 03:14 EDT
+Last updated: 2026-07-31 01:57 EDT
 
-This checklist breaks unfinished Story Lab work into coherent proof units that a subagent can execute or audit. It is not a promise that all tickets should run at once. The parent agent must explore first, choose the strategy, keep write scopes disjoint, verify test quality and results, open/merge PRs, and keep docs current.
+This checklist preserves granular findings and ticket details. It no longer controls execution order. Current work follows:
+
+1. `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` — review bootstrap/canary, current dependency replacement, and the Living Book required for Plan 1 acceptance.
+2. `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` — production test truth, limits, Clerk, Neon, recoverable jobs, Queue/Cron, cutover, deployment, rollback, and final report.
+
+Select the current plan's next coherent PR, then use its deliberately smaller microtickets for subagent ownership. Do not dispatch the historical “second implementation wave” automatically.
+
+This checklist breaks unfinished Story Lab work into proof-unit evidence that a subagent can execute or audit after the active plan selects it. The parent agent must choose the strategy, keep write scopes disjoint, verify test quality and results, open/merge PRs, and keep docs current.
 
 Before running a broad exploration batch, use `STORY_LAB_EXPLORATION_TICKETS.md`. That file defines the standard exploration report, context-turnover packet, and the explore-to-worker tickets needed to revise this checklist into larger worker chunks with `Files touched` fields.
 
@@ -26,16 +33,22 @@ Coverage percentage is not the target. Each proof unit must state the behavior, 
 
 ## Completion Boundary
 
-The authoritative required gates and evidence are in `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` under `Updated Definition Of Done`. In this checklist:
+The required sequence and evidence are now in the two current plans. `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` remains historical Definition-of-Done evidence. In this checklist:
 
-- **Required before Done:** live signed-in cloud save/list/load/update/delete; cross-owner denial; security/privacy closure; the risk-to-test matrix and meaningful critical-path tests; build/deployment/route checks; last-40 and current-PR review closure; final hostile review; final report merged to `origin/main`.
-- **Conditional before Done:** durable-job implementation and process-loss proof only if the shipped product claims durable jobs. Otherwise verified process-local/`non_durable_memory` wording and a linked optional follow-up satisfy the honesty gate.
-- **Administrative disposition required:** Dependabot #194 and any other open PR must be merged, replaced, closed with reason, or linked as optional follow-up; an unrelated major upgrade does not automatically block product completion.
-- **Optional after Done:** execute the ambitious portfolio in `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md`, including story intelligence, versioning/branches, editorial tools, Proving Grounds experiments, private publishing/media, collaboration, reusable worlds, durable creative workflows, safe model rollouts, and bounded Weird Lab work. Numeric threshold tuning, wider historical cleanup, Angular major upgrades, and nonblocking polish remain optional maintenance lanes.
+- **Required in Plan 1:** bootstrap and canary the exact-source review loop, replace the stale dependency candidate from a current audit, selectively port the chosen larger UI exploration, obtain early shell acceptance, obtain final responsive/accessibility Living Book acceptance, and merge P1-06 to record and prove the accepted P1-05 merge commit before Plan 2.
+- **Required in Plan 2:** prove live signed-in cloud ownership, privacy, quotas/cost deadlines, recoverable at-least-once job processing with at-most-one committed result, automatic outbox recovery, exact-preview failure behavior, route retirement, production release, rollback, review closure, and the final report.
+- **Administrative disposition required:** PR #194 and any other open PR must be merged, replaced, closed with reason, or linked to a specifically owned follow-up. The dirty process-guardrails dependency worktree must be audited before regenerating either lockfile.
+- **Optional after Plan 2:** execute the portfolio in `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md`. Living Book is not in that optional set; it is required Plan 1 scope. Angular 22, wider historical cleanup, and unpromoted product programs remain optional.
 
 Optional items must stay off completion branches. To promote one, update the Definition of Done and this boundary before implementation so scope cannot expand silently.
 
-## Current Snapshot
+## Historical Snapshot (refresh before use)
+
+The dated facts below describe the prior checklist state and are not current routing or live GitHub proof. The active plans require a fresh repository, worktree, PR, dependency, and CI audit.
+
+Every unchecked item below is a historical snapshot, not an active ticket.
+Older wording that calls durable Queue work optional is superseded: Plan 2 owns
+the required durable Queue path, while post-Plan-2 work alone is optional.
 
 - [x] **Repo hygiene:** `main` is current with `origin/main`.
 - [ ] **Open PRs:** `gh pr list --state open --json number,title,url,headRefName,baseRefName` returned #194 and this publication PR #195 on 2026-07-11 00:37 EDT. After #195 lands, the remaining active work queue is Dependabot #194, which is mergeable by GitHub but failing Recovery CI and Vercel.
@@ -49,7 +62,9 @@ Optional items must stay off completion branches. To promote one, update the Def
 - [x] **Exploration batch:** EXP-01 through EXP-13 completed and synthesized in `STORY_LAB_EXPLORATION_FINDINGS.md`.
 - [x] **First implementation wave:** completed on `recovery/story-lab-first-worker-wave`; this improves test command truth, Angular coverage invocation, durability proof docs, durable-job schema/readiness proof, and focused UI/spec coverage. It does not complete live cloud proof, root/API coverage instrumentation, or durable process-loss job proof.
 
-## Immediate Scope Map
+## Historical Scope Map
+
+Do not dispatch from this table without mapping the item into the current plan's PR and microticket structure. In particular, the former “UI polish branch coordination” assumption is obsolete: the Living Book is a required, held-acceptance Plan 1 program, not a small parallel polish lane.
 
 Use this section as the parent-agent split before dispatching Spark workers. Percentages here mean **scope readiness**, not completion.
 
@@ -65,7 +80,7 @@ Use this section as the parent-agent split before dispatching Spark workers. Per
 | UI polish branch coordination | 60% scoped here | Another session is working on UI; this repo session should not collide. | Keep UI branch out of this branch; only update docs about UI scope if needed. | Read-only for `story-generator/src/app/*` unless user explicitly moves UI back here. | No app HTML/CSS/component edits in this branch. | UI work should stay in the separate `-art` branch/session. |
 | Final audit/report | 65% | Completion claims need fresh proof, not old chat memory. | Open PR audit, unresolved review-thread audit, test-quality evidence, durability proof evidence, final report. | `PR70_RECOVERY_FINAL_REPORT.md`, final audit plan, active checklist docs. | Do not run until critical test/durability gates have evidence or explicit non-claims. | Last step after the proof scopes above. |
 
-## Post-Exploration Execution Batches
+## Historical Post-Exploration Execution Batches
 
 Do not rerun the full EXP batch by default. The next productive move is worker dispatch from the synthesis.
 
@@ -82,7 +97,9 @@ These six tasks were run in parallel on `recovery/story-lab-first-worker-wave` w
 | Main app action-state polish | Done with browser caveat | Added action test hooks/ARIA labels and specs for story action visibility plus disabled cloud save. | `story-generator/src/app/app.html`, `story-generator/src/app/app.spec.ts` |
 | Proving Grounds interaction coverage | Done with browser caveat | Added focused specs for export/generate disabled states, comparison selection limits, evaluated-state button, and delete-current behavior. | `story-generator/src/app/proving-grounds/proving-grounds.spec.ts` |
 
-### Second Implementation Wave
+### Former Second Implementation Wave
+
+This wave is not automatically next. Its useful items have been redistributed across Plan 1 dependency work and the Plan 2 test/auth/jobs/transport train. Re-audit the candidate worktrees and current `origin/main` before using any file or lockfile prescription below.
 
 Run after root `package.json` is free and the first wave has evidence:
 
@@ -430,16 +447,20 @@ Do not dispatch two workers that write the same file. Do not dispatch implementa
 
 ## Recommended Execution Order
 
-1. Workstream 0: keep source-of-truth docs current before dispatching workers.
-2. Workstream 8.1: triage Dependabot #194 so package-file work does not collide with coverage work.
-3. Workstream 1.1: refresh the canonical test map before coverage tooling, unless a current test-map artifact is already committed.
-4. Workstream 1.3, 1.4, and 1.6: map critical risks to tests, wire missing root/API proof, and use coverage diagnostics to find blind spots.
-5. Angular runner health: add fail-fast local browser evidence or use CI/supported runner before relying on Angular coverage diagnostics.
-6. Workstream 2.1 through 2.5: prove signed-in durable cloud library behavior.
-7. Workstream 3.1 through 3.5: prove durable jobs only after database/auth proof is ready.
-8. Workstream 4: remove private payloads from streaming URLs.
-9. Workstream 5: UI polish and Proving Grounds stance, coordinated with the separate UI branch/session.
-10. Workstream 7: final audit/report only after the proof gates above are done.
+1. Execute P1-01 through P1-05 and obtain final Living Book acceptance in `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md`.
+2. Execute and merge P1-06 to record and prove the accepted P1-05 merge commit and activate Plan 2.
+3. Execute P2-01 through P2-10 in `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md`.
+4. Use the historical workstreams below only when the active PR links one as supporting evidence.
+
+Specific reconciliations:
+
+- P1-03 owns the dependency repair and must mine the dirty process-guardrails candidate before generating lockfiles. Angular 22 remains separate.
+- P1-04/P1-05 replace the old UI-polish lane with a required Living Book program and two explicit user acceptance boundaries.
+- P2-01 absorbs the test-map/coverage truth work.
+- P2-04/P2-05 absorb live auth and cloud-library proof.
+- P2-06/P2-07 absorb durable jobs and automatic recovery.
+- P2-08/P2-09 replace the old streaming-privacy order with authenticated polling and retirement after parity.
+- P2-10 owns final audit and reporting.
 
 ## What Not To Do
 

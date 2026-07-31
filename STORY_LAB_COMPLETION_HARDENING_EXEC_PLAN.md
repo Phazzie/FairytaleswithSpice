@@ -1,9 +1,24 @@
 # Story Lab Completion Hardening ExecPlan
 
 Created: 2026-06-21 15:04 EDT
-Last updated: 2026-07-16 03:14 EDT
+Last updated: 2026-07-31 01:57 EDT
 
-This ExecPlan is the authoritative plan for finishing the Story Lab recovery after PR #151. It reconciles the merged unpublished-branch recovery slices, the still-open review-comment backlog, Dependabot triage, live auth/database integration, durable-job honesty, and the final completion audit.
+> **Routing update (2026-07-31):** This plan preserves completed recovery
+> history and findings, but it no longer controls unfinished execution. Current
+> work follows `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` through
+> accepted Living Book UI and the merged P1-06 activation/closeout, then
+> `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` from then-current
+> `origin/main`. Where sequencing or scope conflicts, those two plans supersede
+> this document.
+
+> **Status: HISTORICAL / READ-ONLY.** Every unchecked item, `Progress` entry,
+> recovery slice, gate, and active-sounding instruction below is a snapshot of
+> earlier planning, not an executable queue. Do not check, dispatch, or complete
+> it from this document. The two current ExecPlans govern all unfinished work,
+> including required durable Queue work that older text may describe as
+> optional.
+
+This ExecPlan was the authoritative plan for finishing the Story Lab recovery after PR #151. It reconciles the merged unpublished-branch recovery slices, the still-open review-comment backlog, Dependabot triage, live auth/database integration, durable-job honesty, and the final completion audit.
 
 This plan does not reopen audio, DigitalOcean, or broad legacy product work. Vercel remains the deployment target.
 

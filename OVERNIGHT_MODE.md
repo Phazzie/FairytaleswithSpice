@@ -1,6 +1,6 @@
 # Overnight Mode
 
-Last updated: 2026-07-16
+Last updated: 2026-07-31
 
 ## Purpose
 
@@ -25,18 +25,24 @@ Stopping is appropriate when:
 Run or inspect these before making changes:
 
 1. `git status --short --branch`
-2. `gh pr list --state open --json number,title,headRefName,baseRefName,url,reviewDecision`
-3. `scripts/recovery/check-vercel-function-count.sh`
-4. `scripts/recovery/preflight.sh --quick --skip-status`
-5. `npm run test:all` when the change risk justifies the time
-6. Read or skim:
+2. `npm run recovery:status`
+3. `gh pr list --state open --json number,title,headRefName,baseRefName,url,reviewDecision`
+4. `scripts/recovery/check-vercel-function-count.sh`
+5. `scripts/recovery/preflight.sh --quick --skip-status`
+6. `npm run test:all` when the change risk justifies the time
+7. Read or skim:
    - `AGENTS.md`
-   - `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`
-   - `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`
+   - `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md`
+   - `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md`
+   - `docs/EXTERNAL_REVIEW_POLICY.md` before external review
    - `STORY_LAB_FUTURE_WORK_CHECKLIST.md`
    - `STORY_LAB_EXPLORATION_FINDINGS.md` when present
    - `STORY_LAB_IDEA_BOARD.md`
    - the execution plan matching the files being changed
+
+Read both active plans even while Plan 2 is closed. Do not execute Plan 2 while
+`PLAN_1_MERGE_SHA` is empty, malformed, `TO_BE_RECORDED`, or not yet verified by
+the merged Plan 1 activation/closeout PR.
 
 If checks are already failing before edits, record the baseline failure in the active changelog or execution plan and prioritize repair before feature work.
 
@@ -46,13 +52,13 @@ Before an autonomous worker batch, the parent agent must complete discovery itse
 
 The locked scope must include:
 
-- the chosen strategy and one coherent proof unit per worker;
+- the chosen strategy, one coherent PR outcome, and deliberately smaller proof-unit microtickets per worker;
 - dependency order and exact file leases, including shared files that must be serialized;
 - acceptance behavior, failure paths, and the plausible defect each required test should catch;
 - commands, expected pass/fail meaning, stop conditions, non-claims, and external prerequisites;
 - one read-only Scope Prosecutor's critique plus the parent's `Accept`, `Partial`, or `Reject` disposition for each material finding.
 
-Workers may start only after the parent marks the strategy `Scope locked`. If the critique forces a major boundary change, allow one focused re-review and then lock or stop. After implementation, use a separate Completion Prosecutor to attack the diff and test evidence before the parent validates, publishes, and claims completion.
+Workers may start only after the parent marks the strategy `Scope locked`. Small worker tickets do not become separate PRs automatically; integrate them into the active plan's coherent PR boundary. If the critique forces a major boundary change, allow one focused re-review and then lock or stop. After implementation, use a separate Completion Prosecutor to attack the diff and test evidence before the parent validates, performs the exact-head review cadence in `docs/EXTERNAL_REVIEW_POLICY.md`, publishes, and claims completion.
 
 Credentialed auth, database provisioning/migration, paid-provider use, and production configuration remain stop signs unless the required access and authority are already present. Autonomous work may prepare credential-safe commands, deterministic tests, migrations, and runbooks without exposing secrets or claiming live proof.
 
@@ -63,13 +69,13 @@ Use this order when the user has not given a newer explicit task:
 1. User's newest explicit request.
 2. Open PR review comments or failing CI.
 3. Failing local checks from the start-of-run checklist.
-4. The next unchecked gate in `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, or `STORY_LAB_FUTURE_WORK_CHECKLIST.md`.
-5. The next unchecked gate in the active execution plan.
+4. The next unchecked coherent PR in `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md`.
+5. After Plan 1 is merged and its exact SHA is recorded, the next unchecked coherent PR in `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md`.
 6. Source-backed research ideas from `STORY_LAB_IDEA_BOARD.md`.
 7. One bounded Weird Lab experiment from `STORY_LAB_IDEA_BOARD.md`.
 8. Documentation cleanup that improves future autonomous runs.
 
-Required completion gates always outrank optional product programs. Write optional work ahead of time, but do not implement it on a completion branch or let it delay live auth/cloud, security, test-quality, review, publication, or final-report proof. After the required Definition of Done is merged, use `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md` and its portfolio selection gate to choose the next ambitious wave.
+Required completion gates always outrank optional product programs. Living Book is required Plan 1 work, not optional polish. Write other optional work ahead of time, but do not implement it on a completion branch or let it delay Plan 1 acceptance or Plan 2 live auth/cloud, security, test-quality, review, publication, or final-report proof. After Plan 2 is merged and production closure is recorded, use `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md` and its portfolio selection gate to choose the next ambitious wave.
 
 ## Lane Weights
 
@@ -198,5 +204,9 @@ Before the session ends, update the active execution plan or recovery changelog 
 - known failures or skipped checks;
 - whether anything was committed or left uncommitted;
 - the next best task.
+
+Run `npm run recovery:finish` before every repo-work session ends. Use
+`npm run recovery:finish -- --strict` instead when claiming PR-ready,
+merge-ready, or final-completion status.
 
 If work continues after the handoff, keep that record fresh after each coherent slice.

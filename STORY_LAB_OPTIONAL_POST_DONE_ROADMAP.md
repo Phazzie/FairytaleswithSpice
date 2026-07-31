@@ -1,15 +1,17 @@
 # Story Lab Optional Post-Done Roadmap
 
 Created: 2026-07-16 03:41 EDT
-Last updated: 2026-07-16 03:52 EDT
+Last updated: 2026-07-30 05:27 EDT
 
 ## Purpose / Big Picture
 
-This ExecPlan defines the ambitious work that begins only after the required Story Lab Definition of Done in `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` is satisfied and merged to `origin/main`. It turns scattered deferred ideas into an executable product roadmap rather than a parking lot.
+This ExecPlan defines the ambitious work that begins only after `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` is satisfied and merged to `origin/main`. It turns scattered deferred ideas into an executable product roadmap rather than a parking lot.
+
+Living Book has been promoted out of this optional roadmap. The shell, creation-first empty state, reader-first active state, responsive/accessibility proof, and explicit user acceptance are required in `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md`.
 
 The intended outcome is larger than "polish the current generator." Story Lab should grow into a creator operating system that can remember a fictional world, diagnose story pressure, compare alternate directions, coordinate editorial passes, publish private artifacts, produce serial and narrated editions, and eventually support trusted collaborators. The app should become more valuable as a project grows instead of losing context and forcing the writer to start over.
 
-Nothing in this file blocks the required Definition of Done unless the user explicitly promotes it. Optional does not mean vague or unserious. Each program below has prerequisites, observable behavior, likely code surfaces, test obligations, stop conditions, and a promotion rule.
+Nothing in this file blocks Plan 1 or Plan 2 unless the user explicitly promotes it into those plans. Optional does not mean vague or unserious. Each program below has prerequisites, observable behavior, likely code surfaces, test obligations, stop conditions, and a promotion rule.
 
 ## Progress
 
@@ -17,7 +19,7 @@ Nothing in this file blocks the required Definition of Done unless the user expl
 - [x] Verified the current route budget is `11/12`; optional API work must consolidate behind existing routes or first recover route capacity.
 - [x] Verified current code already contains Director's Room notes, continuity extraction, memory cards, Proving Grounds, owner-scoped account/storage seams, job contracts, and export sanitization that later programs can extend.
 - [x] Refreshed a small set of current platform assumptions from primary sources on 2026-07-16.
-- [ ] Finish and merge the required Definition of Done before promoting an optional program.
+- [ ] Finish and merge Plan 1 and Plan 2 before promoting an optional program.
 - [ ] Run the portfolio selection gate and select the first optional wave.
 - [ ] Create a separate scope file for the selected wave, run Scope Prosecutor review, revise, and lock it.
 - [ ] Implement, validate, review, and merge one proof unit at a time.
@@ -133,7 +135,7 @@ This roadmap uses the canonical subagent lifecycle and role definitions in `AGEN
 
 ## Portfolio Selection Gate
 
-After required Done, score candidate programs from 0 to 5 on user value, leverage for later programs, evidence that the problem is real, readiness of dependencies, and reversibility. Subtract 0 to 5 for privacy/security risk, provider/cost uncertainty, and route/shared-file pressure. Do not let the score make the decision automatically; use it to expose why an exciting idea is early or late.
+After Plan 2 production closure, score candidate programs from 0 to 5 on user value, leverage for later programs, evidence that the problem is real, readiness of dependencies, and reversibility. Subtract 0 to 5 for privacy/security risk, provider/cost uncertainty, and route/shared-file pressure. Do not let the score make the decision automatically; use it to expose why an exciting idea is early or late.
 
 Promote a program only when:
 

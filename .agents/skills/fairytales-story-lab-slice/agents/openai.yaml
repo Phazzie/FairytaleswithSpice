@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fairytales Story Lab Slice"
+  short_description: "Execute one two-plan Story Lab PR from tiny proof units."
+  default_prompt: "Use $fairytales-story-lab-slice to route this task through Plan 1 or Plan 2, split the coherent PR into tiny disjoint proof units, apply the exact-head review contract, validate, publish, and stop after that PR boundary."

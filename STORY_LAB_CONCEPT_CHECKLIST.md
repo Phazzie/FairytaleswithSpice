@@ -1,11 +1,11 @@
 # Story Lab Whole-Concept Checklist
 
 Created: 2026-07-04 07:16 EDT
-Last updated: 2026-07-16 03:14 EDT
+Last updated: 2026-07-30 05:27 EDT
 
-This is the plain-status checklist for the whole Story Lab concept. It includes what is already merged, what is partially built, and what is still not done. The percentages are evidence estimates from the six-check audit artifacts in `STORY_LAB_CHECKLIST_FINDINGS/` plus this PR's doc-fix pass.
+This is the plain-status checklist for the whole Story Lab concept. It includes what is already merged, what is partially built, and what is still not done. The percentages below are the 2026-07-16 audit estimates; refresh them from live `origin/main` before quoting them as current.
 
-For subagent-sized future work, use `STORY_LAB_FUTURE_WORK_CHECKLIST.md`.
+For current execution, use `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` and then `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md`. Use `STORY_LAB_FUTURE_WORK_CHECKLIST.md` only for supporting ticket history.
 
 ## Plain Status
 
@@ -14,14 +14,14 @@ For subagent-sized future work, use `STORY_LAB_FUTURE_WORK_CHECKLIST.md`.
 - Production durability/account path: **55%**
 - Final audit, tests, coverage, and docs confidence: **65%**
 
-In plain terms: the user-facing Story Lab is mostly real and usable for creating, continuing, saving locally, copying, downloading, and showing progress. The biggest unfinished work is making accounts/cloud saves/job progress truly durable, proving coverage honestly, and reducing stale-doc confusion.
+In plain terms: the legacy user-facing Story Lab is mostly real and usable for creating, continuing, saving locally, copying, downloading, and showing progress. The required Living Book redesign is planned but not yet accepted. Production auth, cloud saves, recoverable jobs, and final proof remain Plan 2 work.
 
 ## Source Audit Bands
 
 | Area | Percent | Status | What it means |
 |---|---:|---|---|
 | Product concept and user promise | 75% | Mostly done | The core idea, demo stance, user loop, and non-claims are documented; durable platform pieces are still future work. |
-| Angular UI surface | 88% | Strong | The route, controls, continuation, progress, library, and local export UI exist; polish remains around disabled states, Proving Grounds intent, and small-screen layout. |
+| Angular UI surface | 88% legacy-shell estimate | Direction not accepted | The route, controls, continuation, progress, library, and local export UI exist. The required Living Book hierarchy, responsive frames, and final user acceptance remain Plan 1 work; this is not merely small polish. |
 | API, generation, and job routes | 83% | Strong scaffold | Direct generation, continuation, jobs, events, privacy gates, fail-closed AI, and route budget are covered; streaming privacy and durable job storage remain incomplete. |
 | Auth, storage, and durability | 72% | Partial | Auth/store contracts, owner checks, and Neon dependency support exist, but live provider auth, provisioned database proof, migrations, and cloud sync proof are not done. |
 | Tests, coverage, and CI | 43% | Weakest area | Many tests and preflight checks exist, but there is no canonical risk-to-test map or root/API coverage diagnostic, and critical live auth/database and process-loss boundaries remain unproven. |
@@ -40,6 +40,7 @@ In plain terms: the user-facing Story Lab is mostly real and usable for creating
 
 ## UI Checklist
 
+- [ ] **Accept the Living Book experience.** Implement the creation-first/reader-first shell from selectively ported candidate work, prove responsive/accessibility behavior, and obtain early plus final user acceptance under Plan 1.
 - [x] **Visible Story Lab entry page.** The Angular route renders the Story Lab page as the first screen.
 - [x] **Story creation controls.** Idea, creature, theme, spice, heat contract, tone, chapter count, word count, and detail controls are visible.
 - [x] **Controls affect generation state.** The UI handlers wire those controls into the story blueprint.
@@ -98,7 +99,7 @@ In plain terms: the user-facing Story Lab is mostly real and usable for creating
 - [ ] **Prove live auth and durable database behavior.** Wire provider auth, provision the database, run migrations, and prove signed-in save/load/list/delete in browser.
 - [ ] **Prove job durability.** Jobs should not be called durable until progress survives process loss and owner-scoped durable writes are tested.
 - [ ] **Move private streaming payloads out of query strings.** Prefer job ids/body-backed flow so story text does not leak through URLs.
-- [ ] **Tighten UI polish.** Disable/label empty-state actions, clarify Proving Grounds intent, and run a focused responsive/accessibility pass.
+- [ ] **Complete required Living Book Plan 1.** Selectively port the chosen UI architecture, preserve behavior, hold for early direction approval, finish component integration, and obtain final responsive/accessibility acceptance.
 - [ ] **Run final review-comment and PR audit again before claiming completion.** The last-40 recovery audit was clean in the prior audit, but final completion still needs a fresh command.
 - [ ] **Keep docs current in the same PR as status changes.** The checklist, changelog, subagent log, and relevant execution plan should move together.
 

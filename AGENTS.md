@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-16 03:52 EDT
+Last updated: 2026-07-31 01:57 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -23,11 +23,15 @@ Prefer durable turnover in `SUBAGENT_LOG.md`, `PR70_RECOVERY_CHANGELOG.md`, PR b
 Before planning, editing, or claiming readiness:
 
 1. Run `git status --short --branch` and treat the live worktree as authoritative.
-2. Read the current active Story Lab control docs first: `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, `STORY_LAB_FUTURE_WORK_CHECKLIST.md`, and `STORY_LAB_EXPLORATION_FINDINGS.md` when it exists. Treat `STORY_LAB_UNPUBLISHED_BRANCH_SPLIT_PLAN.md` as historical publication evidence unless a task explicitly asks to recover that old stack.
-3. For long-running autonomous work, read `OVERNIGHT_MODE.md` before selecting the next task.
-4. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas, story-quality experiments, and Weird Lab candidates.
-5. Read the execution plan that matches the files or behavior being changed.
-6. Run `scripts/recovery/check-vercel-function-count.sh` before adding, retiring, consolidating, or documenting deployable Vercel route files.
+2. Run `npm run recovery:status` before every Story Lab slice. Treat a missing or gone upstream, dirty tree, unrelated untracked files, branch drift, open-PR mismatch, or route-budget failure as a stop sign until it is understood.
+3. Read both current plans before selecting a route: `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` for everything through accepted Living Book UI, then `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` for production completion. Do not begin Plan 2 while its `PLAN_1_MERGE_SHA` placeholder is unresolved or its activation proof is incomplete.
+4. For long-running autonomous work, read `OVERNIGHT_MODE.md` before selecting the next task.
+5. Use `STORY_LAB_CONCEPT_CHECKLIST.md` and `STORY_LAB_FUTURE_WORK_CHECKLIST.md` for supporting status and ticket detail, but resolve sequencing conflicts in favor of the two current plans.
+6. Treat `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`, and completed UI plans as historical recovery/audit/design evidence where they conflict with the current sequence.
+7. Use `STORY_LAB_IDEA_BOARD.md` for research-mined ideas, story-quality experiments, and Weird Lab candidates.
+8. Read the execution plan that matches the files or behavior being changed.
+9. Read `docs/EXTERNAL_REVIEW_POLICY.md` before invoking or claiming Gemini/Antigravity or Jules review.
+10. Run `scripts/recovery/check-vercel-function-count.sh` before adding, retiring, consolidating, or documenting deployable Vercel route files.
 
 ## Publication Discipline
 
@@ -60,7 +64,7 @@ Default loop for unpublished Story Lab work:
 3. Extract only the commits/hunks named by the matching plan.
 4. Run focused validation with `npm run recovery:preflight -- <slice-name>`.
 5. Open the PR with scope, validation commands, non-claims, and next-slice notes.
-6. Stop after the PR is opened or merged; do not begin the next feature on the same branch.
+6. Treat an open current-slice PR as a waiting state. Work only on its checks, comments, recovery, or merge; do not begin the next feature until it is merged to `main`.
 
 If a branch contains more than one planned slice, stop and split before adding more code. If a branch's upstream is gone, first check whether it was merged into `origin/main`; do not keep working on stale branch tips.
 
@@ -70,7 +74,7 @@ Before ending a repo-work session, run:
 npm run recovery:finish
 ```
 
-Use its stop signs and doc checklist as the final publication gate. If it reports dirty files, a stale local `main`, unpushed commits, or missing doc updates, either fix them or explicitly report why they remain. For PR-ready claims, use `npm run recovery:finish -- --strict` and treat failures as blockers.
+Use its stop signs and doc checklist as the final publication gate. If it reports dirty files, a stale local `main`, unpushed commits, or missing doc updates, either fix them or explicitly report why they remain. For PR-ready, merge-ready, or final-completion claims, use `npm run recovery:finish -- --strict` and treat failures as blockers.
 
 After opening or merging a PR, audit active unresolved review threads:
 
@@ -99,8 +103,11 @@ Do not leave status only in chat. Update the narrowest durable document that mat
 | `PR70_RECOVERY_LEDGER.md` | A PR is merged, closed, superseded, split, replaced, or mined for useful material. |
 | `NOT_TAKEN_FEATURE_LEDGER.md` | Useful source-PR material is intentionally not ported, especially story-generation, prompt, audio, or UX ideas. |
 | `PR70_RECOVERY_FINAL_REPORT.md` | Overall recovery status changes near finalization, especially what is merged, deferred, or still risky. |
-| `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` | Completion-hardening work changes auth/database proof, dependency follow-ups, review backlog status, or done/not-done claims. |
-| `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` | Final audit evidence changes: last-40 PR audit, wider PR debt, unresolved review comments, coverage proof, or "all work merged" claims. |
+| `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` | Plan 1 scope, review bootstrap/canary, dependency replacement, Living Book microtickets, acceptance evidence, or exact Plan 1 completion changes. |
+| `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` | Plan 2 contract, exact Plan 1 starting SHA, production PR train, Queue Gate 0, auth/cloud/jobs/cutover/release evidence, or completion claims change. |
+| `docs/EXTERNAL_REVIEW_POLICY.md` | Gemini/Antigravity or Jules cadence, packet/receipt schema, invocation safety, dispositions, bootstrap, canary, status, or private evidence rules change. |
+| `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` | Historical completion-hardening evidence is corrected or newly mined. Route unfinished execution to the current two-plan sequence. |
+| `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` | Historical audit/Definition-of-Done evidence is corrected or newly mined. Route current closure through Plan 2. |
 | `STORY_LAB_FUTURE_WORK_CHECKLIST.md` | Granular future-work tickets, subagent-ready scopes, execution ordering, admin cleanup status, or next-work prioritization changes. |
 | `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md` | Optional post-Done programs, portfolio order, program promotion, ambitious future product scope, or optional-wave evidence changes. |
 | `STORY_LAB_EXPLORATION_TICKETS.md` | Exploration ticket scope, standard exploration report fields, context-turnover packet shape, exploration wave planning, or explore-to-worker conversion strategy changes. |
@@ -125,6 +132,12 @@ Documentation cleanup should be scoped. Do not start broad archive/rewrite work 
 CodeRabbit configuration lives in `.coderabbit.yaml`. The repository intentionally disables the blanket docstring-coverage pre-merge check. Do not mass-add JSDoc/docstrings to satisfy a generic percentage threshold.
 
 Add focused documentation when it clarifies public contracts, exported ports/adapters, security/privacy invariants, cross-process storage behavior, or non-obvious story-generation constraints. If a bot asks for broad docstring coverage, treat that as review-tooling drift: tune the tool or open a follow-up issue instead of adding low-value comments.
+
+Gemini/Antigravity and Jules review follows `docs/EXTERNAL_REVIEW_POLICY.md` and the `$fairytales-external-review` skill. For every coherent Story Lab PR, use local Scope and Completion prosecution, independent tests, one Gemini review at the final committed head, and parent dispositions. Add Jules for the high-risk boundaries listed in that policy. Microtickets do not each receive external review, and any tracked commit after review invalidates the receipt.
+
+Never pipe a packet into `agy`, reuse an old Antigravity conversation, use generic `--model pro --effort high`, or bypass permissions. Discover the installed interface, pass the complete bounded packet as an argument array with stdin closed, use a sandboxed disposable exact-SHA clone, and validate structured bindings. External results are advisory evidence, not a substitute for tests or user acceptance.
+
+The first review-controller PR cannot certify itself. Until merged controller code passes the documented harmless canary, external review remains advisory and parent-inspected. A passing canary proves the local gate; it does not authorize a required GitHub status. Do not configure or claim a required `story-lab/external-review-disposition` status without a separately approved trusted-producer design covering default-branch code, identity/signing, permissions, triggers, candidate isolation, enablement, and rollback. The parent alone adjudicates findings, posts comments/status, publishes, merges, deploys, migrates, provisions, and changes repository rules.
 
 ## Test Quality Policy
 
@@ -238,17 +251,19 @@ For one normal implementation PR, apply the policy in this order:
 
 ## Current Operating Direction
 
-The unpublished `feature/story-lab-auth-profile-contracts` stack has been split and merged through PR #151. The current recovery task is completion hardening: address or track review comments, resolve dependency follow-ups, prove live auth/database behavior before cloud claims, and keep durable-job claims gated on process-loss proof.
+The current work follows a two-plan sequence. Tiny subagent tickets are ownership/proof units inside a small coherent PR train; they are not automatically separate PRs. The parent owns strategy, shared-file integration, acceptance, external-review dispositions, and publication.
 
-The active Story Lab completion-hardening plan is `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`. Use it before claiming the recovery is done, integrating live auth/database behavior, claiming durable jobs, closing the review-comment backlog, or merging dependency follow-ups.
+Plan 1 is `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md`. It owns the external-review bootstrap/canary, current dependency replacement, selective mining of the preserved UI worktrees, an early Living Book direction hold, final responsive/accessibility proof, and explicit user acceptance. It makes no production auth, cloud, durability, or deployment claim.
 
-The stricter final merge, test-quality, and PR-review audit plan is `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md`. Use it before claiming all local work is merged, the last 40 PRs have been audited, review comments are handled, critical behavior has meaningful test proof, or the overall Story Lab recovery goal is complete.
+Plan 2 is `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md`. It starts only from Plan 1's recorded exact merge SHA and owns test truth, abuse/provider budgets, Clerk, Neon, atomic jobs/outbox, Vercel Queue/Cron proof, browser recovery, legacy-route retirement, exact-preview testing, staged production release, rollback, and the final report.
+
+`STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` and `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` preserve completed recovery history and audit evidence. They no longer control unfinished execution order.
 
 The autonomous operating guide is `OVERNIGHT_MODE.md`. Use it before long-running task selection, research mining, or Weird Lab work.
 
 The idea/backlog board is `STORY_LAB_IDEA_BOARD.md`. Keep it honest: `Done` means merged to `main`; use `Local-only` for unpublished branch material.
 
-The ambitious optional roadmap is `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md`. It does not block the required Definition of Done. Use it after required completion to select, prosecute, and execute larger Story Lab product programs; update the required boundary first if the user explicitly promotes an optional program.
+The ambitious optional roadmap is `STORY_LAB_OPTIONAL_POST_DONE_ROADMAP.md`. It starts after Plan 2. Living Book has been promoted into required Plan 1 work and is no longer optional visual polish.
 
 The active Story Lab auth/profile/cloud-library plan is `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`. Use it before adding provider-backed auth, private user profiles, cloud project library APIs, account route rewrites, or signed-in save/load/list/delete behavior.
 
@@ -270,9 +285,9 @@ The current demo-shipping execution plan is `STORY_LAB_DEMO_SHIPPING_EXEC_PLAN.m
 
 The active MVP-to-shipping execution plan is `MVP_TO_SHIPPING_EXEC_PLAN.md`. Use it before public UI readiness, browser-smoke, MVP-report, dependency/security-hardening, or shipping-readiness work.
 
-The active next polish plan is `GROK_MULTIAGENT_STORY_LAB_POLISH_EXEC_PLAN.md`. Use it before changing Grok model behavior, Story Lab front-end design, durable local story memory, AI continuity extraction, or story-quality evals.
+`GROK_MULTIAGENT_STORY_LAB_POLISH_EXEC_PLAN.md` is historical implementation/design evidence where it conflicts with the current two-plan sequence. Mine its Grok, continuity, and evaluation decisions only through the active plan that owns the change.
 
-The active Charmed MVP execution plan is `STORY_LAB_CHARMED_MVP_EXEC_PLAN.md`. Use it before changing visual skins, user-facing Story Lab controls, spice-level behavior, production mock fallback policy, progress UI, continuation direction, or local share/export behavior.
+`STORY_LAB_CHARMED_MVP_EXEC_PLAN.md` is historical product/design evidence where it conflicts with the accepted Living Book scope. Preserve its useful behavior constraints, but route current UI work through Plan 1 and production behavior through Plan 2.
 
 The active Story Lab platform evolution plan is `STORY_LAB_PLATFORM_EVOLUTION_EXEC_PLAN.md`. Use it before changing Heat Contract behavior, dedicated creature style banks, Story Lab provider smoke, cloud accounts/sync, durable storage, job/workflow progress, audio, server export, or Director's Room-style creative tooling.
 
@@ -417,7 +432,7 @@ Current Vercel-facing route families include:
 | `/api/story-lab/jobs/:jobId` | Read a non-durable Story Lab job snapshot |
 | `/api/story-lab/jobs/:jobId/events` | Replay non-durable Story Lab job snapshots as SSE |
 
-SSE must remain SSE. Do not convert `/api/story/stream` to WebSocket or polling unless explicitly requested.
+Until the Plan 2 cutover, existing SSE routes must remain SSE; do not silently change their transport in an unrelated slice. `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` is the explicit authorization to move signed-in durable-job recovery to authenticated adaptive polling and retire the two obsolete streaming routes only after parity and exact-preview proof.
 
 Image-generation service code may exist under `api/_lib` or the local development server, but there is no active Vercel `/api/image/generate` route after the route-budget consolidation.
 
