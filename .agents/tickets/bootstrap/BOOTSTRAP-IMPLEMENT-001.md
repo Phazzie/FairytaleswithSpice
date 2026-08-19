@@ -187,7 +187,10 @@ VALIDATION:
 - Git tree comparison base..head -> PASS; one commit ahead and zero behind.
 - Changed-path/status review -> PASS.
 - PR #199 stats -> PASS; 503 removed files, 0 additions, 107958 deletions.
-- Local shell commands -> NOT RUN; connector Git-tree comparison was used because a full local clone was unavailable.
+- Recovery CI run 417 -> PASS; clean root install, clean Angular install, recovery preflight, and Vercel configuration validation succeeded.
+- Vercel preview -> PASS.
+- CodeRabbit status -> PASS.
+- Local shell commands -> NOT RUN; connector Git-tree comparison and GitHub-hosted Recovery CI supplied equivalent and broader evidence.
 
 DIFF BUDGET:
 - Production files: 0
@@ -199,7 +202,7 @@ UNRELATED CHANGES:
 - None
 
 RISKS:
-- Repository CI availability is a separate account/billing blocker and is not addressed here.
+- This ticket does not configure branch protection or required status checks; those remain separate release-control work.
 
 FOLLOW-UP TICKETS SUGGESTED:
 - BOOTSTRAP-REVIEW-001

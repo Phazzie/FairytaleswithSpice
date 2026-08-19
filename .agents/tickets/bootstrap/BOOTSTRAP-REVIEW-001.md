@@ -46,6 +46,7 @@ The reviewer returns `APPROVE` only when every changed path is a removal beneath
 - Verify statuses are removal-only.
 - Verify no manifest, lockfile, source, test, CI, deployment, migration, documentation, or ignore file changed.
 - Verify the root dependency tree is absent from the head.
+- Review the GitHub-hosted validation result.
 - Return a scope verdict.
 
 ## 7. Explicitly out of scope
@@ -53,7 +54,7 @@ The reviewer returns `APPROVE` only when every changed path is a removal beneath
 - No repository edits.
 - No improvement suggestions implemented in the reviewed branch.
 - No dependency audit or upgrade.
-- No CI repair.
+- No CI redesign.
 - No merge or PR closure.
 - No review of unrelated repository architecture.
 
@@ -84,6 +85,10 @@ The two manifests, two lockfiles, `.gitignore`, source, tests, CI, deployment co
 
 The proposed head tree has no root `node_modules` entry.
 
+### AC5 — Hosted validation succeeds
+
+The repository's Recovery CI and deployment preview succeed on the exact reviewed head SHA.
+
 ## 11. Required review commands for a local runner
 
 ```bash
@@ -109,6 +114,7 @@ Return `REQUEST_CHANGES` when:
 - any path outside `node_modules/` changes,
 - any status is not removal-only,
 - the head retains the root dependency tree,
+- the exact-head Recovery CI or preview fails for a change-related reason,
 - evidence is incomplete or contradicts the implementation report.
 
 Do not fix the finding inside the review.
@@ -135,12 +141,16 @@ ACCEPTANCE CRITERIA:
 - AC2: PASS — every changed file has status removed; PR #199 reports zero additions.
 - AC3: PASS — no protected manifest, lockfile, source, test, CI, deployment, migration, documentation, or ignore path changed.
 - AC4: PASS — the head Git tree was created from the base tree with the root node_modules entry removed.
+- AC5: PASS — Recovery CI run 417, Vercel preview, and CodeRabbit status succeeded on the exact reviewed head.
 
 VALIDATION:
 - Independent compare c52d8b7da1441e5308d253299de49742e2298a48..58f9db72a39a4ebac8b3246fcd33508cbbac4a9e -> PASS
 - PR #199 file stats -> PASS; 503 removed files, 0 additions, 107958 deletions
 - Protected-path review -> PASS
-- Local shell commands -> NOT RUN; connector Git-tree comparison was used because a full local clone was unavailable
+- Recovery CI run 417 -> PASS
+- Vercel preview -> PASS
+- CodeRabbit status -> PASS
+- Local shell commands -> NOT RUN; connector Git-tree comparison and GitHub-hosted Recovery CI supplied equivalent and broader evidence
 
 DIFF BUDGET:
 - Production files: 0
@@ -152,7 +162,7 @@ UNRELATED CHANGES:
 - None
 
 RISKS:
-- GitHub Actions execution is not proven by this review and remains a separate release-control issue.
+- Branch protection and required-check configuration remain separate release-control work.
 
 FOLLOW-UP TICKETS SUGGESTED:
 - None
@@ -169,6 +179,7 @@ Were dependency manifests or lockfiles altered? NO
 Does the proposed head retain a root node_modules tree? NO
 Was .gitignore unnecessarily changed? NO
 Did the implementation broaden into CI, dependencies, application code, tests, deployment, or documentation? NO
+Did exact-head Recovery CI and preview validation pass? YES
 
 VERDICT: APPROVE
 ```

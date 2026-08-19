@@ -5,7 +5,7 @@ repository: Phazzie/FairytaleswithSpice
 base_branch: main
 control_standard: .agents/SUBAGENT_TICKET_STANDARD.md
 ticket_template: .agents/TICKET_TEMPLATE.md
-last_updated: "2026-08-19T08:46:00-04:00"
+last_updated: "2026-08-19T08:52:00-04:00"
 
 allowed_statuses:
   - DRAFT
@@ -102,6 +102,12 @@ tasks:
         result: PASS
       - command: Verify manifests, lockfiles, source, CI, deployment configuration, and .gitignore are absent from the diff.
         result: PASS
+      - command: Recovery CI run 417 — clean installs, recovery preflight, and Vercel configuration validation.
+        result: PASS
+      - command: Vercel preview status.
+        result: PASS
+      - command: CodeRabbit status.
+        result: PASS
     follow_ups:
       - BOOTSTRAP-REVIEW-001
 
@@ -136,6 +142,8 @@ tasks:
       - command: Independent base-to-head changed-path review.
         result: PASS
       - command: PR 199 file-stat review.
+        result: PASS
+      - command: Recovery CI run 417.
         result: PASS
     verdict: APPROVE
     follow_ups: []
