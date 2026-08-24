@@ -4,6 +4,34 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-24 19:00 UTC - PDF Stream Length, PDF Excerpt Cut Boundary, EPUB Namespace, And Level-Filtered Log Reads
+
+Actions:
+
+- Measured the PDF content stream's `/Length` from the stream itself with `Buffer.byteLength`. It was `content.length + 100` — the UTF-16 code-unit count of the whole story, which is neither what the stream holds nor a byte count. A reader uses `/Length` to find where the stream ends, so the declared span ran past `endstream`: on the existing test fixture it claimed 519 bytes for a 164-byte stream.
+- Cut the PDF excerpt from the source text, by code point, before escaping. It was cut out of the *escaped* text, so the cut landed inside whatever escaping had inserted: a `\(` pair lost its parenthesis and left a dangling backslash that escapes the following character, and a surrogate pair lost its second half, so the astral-plane character it encoded was written out as U+FFFD.
+- Bound the Dublin Core namespace on the EPUB package element. The metadata block is written as `<dc:title>`, `<dc:creator>` and `<dc:language>`, but the `dc:` prefix was never declared, which makes the package document ill-formed XML — a conforming reader rejects it before reading any metadata.
+- Fixed `logger.getRecentLogs(count, level)` to filter by level across the whole buffer and trim afterwards. It trimmed to the last `count` entries first, so asking for the last 50 errors returned only the errors that happened to fall among the last 50 entries of any level — on a busy request, usually none of them, which is exactly the case the level filter exists for.
+- Made `ExportService.generateExportContent` public. The document is the product — `saveAndExport` reports only its byte size and a mock storage URL — so there was no supported way to assert on what an export contains.
+- Added `tests/logger-recent-logs.test.ts` with its own `test:logger-recent-logs` script and a `test:all` chain entry, and three cases to `tests/export-service.test.ts` covering stream length, cut boundaries, and prefix binding.
+
+Self-review:
+
+- Good: Each fix was checked against a targeted revert of that one fix and fails there — `/Length` reports declared 148 against 119 actual, the excerpt assertion prints the stream ending in a dangling backslash, the EPUB assertion names the unbound `dc:` prefix, and the logger assertion reports `got []`.
+- Good: The EPUB test asserts the general rule rather than the one string: it collects every prefix used in a tag name and requires an `xmlns:` binding for each, so a future prefix added without a declaration fails too.
+- Correction: The first `truncateByCodePoint` was `Array.from(value).slice(0, limit).join('')`, which walks the entire story to keep 100 code points. Copilot review caught it; the loop form stops at the limit and was checked to produce identical output for empty, ASCII, astral-plane and boundary-straddling inputs at limits 0 through 1000.
+- Non-claim: The PDF remains the mock described in its own comment. Its `xref` offsets and `startxref` are still fabricated constants, so this slice makes the content stream self-consistent — it does not make the file a valid PDF, and a real generator (pdfkit or similar) is still the open work.
+- Non-claim: The EPUB package document is likewise still a fragment. It now binds the prefix it uses, but it has no `unique-identifier`/`dc:identifier` pair and no container or chapter files, so it is not a loadable EPUB.
+- Non-claim: `getRecentLogs` has no callers in the repository. The fix corrects a debugging accessor's stated contract; nothing in a request path changes behavior because of it.
+
+Validation:
+
+- `npm run test:all`: passed, including the new `test:logger-recent-logs` entry.
+- API typecheck over `api/**/*.ts` with the `preflight.sh` compiler flags: passed with no diagnostics.
+- PR #204 checks: Validate Vercel recovery build passed, SonarCloud quality gate passed with no new code-scanning alerts, Vercel preview deployed. Sourcery was rate-limited on the account's weekly diff budget and CodeRabbit skipped automatic review because the repository has fewer than 10 stars.
+- Review follow-up: Copilot's O(n) truncation comment was fixed and pushed; Codex's P1 asking for this changelog entry is what this section answers.
+- Note: `node_modules` is tracked in this repository. Installing dependencies to run the suite modified those tracked files; they were restored so the slice diff stays source-only.
+
 ## 2026-08-24 18:00 UTC - Export Filename Mismatch, Byte-Counted File Size, And A Misreported Health Origin
 
 Actions:
