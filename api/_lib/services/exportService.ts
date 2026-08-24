@@ -10,12 +10,25 @@ import {
 const PDF_EXCERPT_CODE_POINTS = 100;
 
 /**
- * Take the first `limit` code points of `value`. `Array.from` iterates code
- * points rather than UTF-16 code units, so an astral-plane character is either
- * kept whole or dropped whole.
+ * Take the first `limit` code points of `value`. Iterating a string yields
+ * whole code points rather than UTF-16 code units, so an astral-plane
+ * character is either kept whole or dropped whole. The loop stops at the
+ * limit, so a book-length story costs no more than a paragraph does.
  */
 function truncateByCodePoint(value: string, limit: number): string {
-  return Array.from(value).slice(0, limit).join('');
+  let truncated = '';
+  let taken = 0;
+
+  for (const character of value) {
+    if (taken >= limit) {
+      break;
+    }
+
+    truncated += character;
+    taken += 1;
+  }
+
+  return truncated;
 }
 
 interface ExportMetadata {
