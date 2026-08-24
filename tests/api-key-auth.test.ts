@@ -127,6 +127,45 @@ async function main(): Promise<void> {
   });
   assert(blankKey.error?.code === 'MISSING_API_KEY', 'a whitespace-only key should count as missing');
 
+  // The returned userId is attached to log entries and handed back to callers.
+  // It used to be `user_` plus the key's first eight characters, which printed
+  // a live credential's prefix beside every authenticated request.
+  process.env['API_KEYS'] = 'sk-live-supersecret-value,sk-live-second-value';
+
+  const identified = await authenticateRequest({
+    method: 'POST',
+    headers: { 'x-api-key': 'sk-live-supersecret-value' },
+    body: {}
+  });
+  assert(identified.authenticated, 'a configured key should authenticate');
+  assert(identified.userId, 'an authenticated request should carry a user id');
+  for (let length = 4; length <= 'sk-live-supersecret-value'.length; length += 1) {
+    assert(
+      !identified.userId!.includes('sk-live-supersecret-value'.slice(0, length)),
+      `the user id should carry no part of the key (leaked ${length} characters: ${identified.userId})`
+    );
+  }
+
+  const identifiedAgain = await authenticateRequest({
+    method: 'POST',
+    headers: { 'x-api-key': 'sk-live-supersecret-value' },
+    body: {}
+  });
+  assert(
+    identifiedAgain.userId === identified.userId,
+    'the same key should always map to the same user id'
+  );
+
+  const otherKey = await authenticateRequest({
+    method: 'POST',
+    headers: { 'x-api-key': 'sk-live-second-value' },
+    body: {}
+  });
+  assert(
+    otherKey.userId !== identified.userId,
+    'two different keys should map to two different user ids'
+  );
+
   process.env['API_KEYS'] = '';
   const unconfigured = await authenticateRequest({
     method: 'POST',

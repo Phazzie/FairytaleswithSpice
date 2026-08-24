@@ -2,6 +2,7 @@ import type {
   StoryQualityDimensionScore,
   StoryQualityHeuristicReport
 } from '../contracts';
+import { splitStoryIntoTextBlocks } from '../../utils/storyTextBlocks';
 
 export interface StoryQualityHeuristicInput {
   storyContent: string;
@@ -28,7 +29,7 @@ export function buildStoryQualityHeuristicReport(input: StoryQualityHeuristicInp
   // single word. Recovering the block structure first makes every dimension
   // read the prose the way the reader sees it, and leaves plain-text callers
   // (blank-line separated, one tag per line) scoring exactly as before.
-  const paragraphs = splitIntoTextBlocks(input.storyContent);
+  const paragraphs = splitStoryIntoTextBlocks(input.storyContent);
   const plainStory = paragraphs.join('\n\n');
   const storyText = collapseWhitespace(plainStory);
   const lowerStory = storyText.toLowerCase();
@@ -236,43 +237,6 @@ function containsAny(value: string, needles: readonly string[]): boolean {
 
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
-}
-
-const BLOCK_LEVEL_TAG_NAMES = 'p|div|section|article|blockquote|li|ul|ol|h[1-6]|figure|figcaption|table|tr';
-const BLOCK_BOUNDARY_PATTERN = new RegExp(
-  String.raw`<\s*br\s*/?\s*>|<\s*/?\s*(?:${BLOCK_LEVEL_TAG_NAMES})(?:\s[^>]*)?\s*/?\s*>`,
-  'gi'
-);
-
-/**
- * Split story content into the blocks a reader sees as paragraphs.
- *
- * Block-level tags and `<br>` become blank-line boundaries, remaining inline
- * tags are dropped, and the basic entities the generator emits are decoded so
- * that a quoted line still reads as dialogue. Plain text passes through with
- * only its blank-line boundaries honoured, which is what the earlier
- * blank-line split did on its own.
- */
-function splitIntoTextBlocks(storyContent: string): string[] {
-  return storyContent
-    .replace(BLOCK_BOUNDARY_PATTERN, '\n\n')
-    .split(/\n\s*\n/)
-    .map(block => decodeBasicEntities(stripInlineTags(block)).trim())
-    .filter(Boolean);
-}
-
-function stripInlineTags(value: string): string {
-  return value.replace(/<[^>]*>/g, '');
-}
-
-function decodeBasicEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/gi, '&');
 }
 
 function extractDialogueSpeakers(dialogueLines: string[]): string[] {

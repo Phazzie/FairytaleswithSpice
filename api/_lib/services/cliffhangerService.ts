@@ -2,6 +2,7 @@
 // Recreated from PR #31's cliffhanger analysis ideas for the Vercel api/_lib tree.
 
 import { CliffhangerAnalysis, CliffhangerType } from '../types/contracts';
+import { splitStoryIntoTextBlocks } from '../utils/storyTextBlocks';
 
 const CLIFFHANGER_PATTERNS: Record<CliffhangerType, string[]> = {
   romantic_tension: [
@@ -70,8 +71,19 @@ const CLIFFHANGER_PATTERNS: Record<CliffhangerType, string[]> = {
 
 export class CliffhangerService {
   analyze(content: string, previousCliffhangers: CliffhangerType[] = []): CliffhangerAnalysis {
-    const lowerContent = this.stripHtml(content).toLowerCase();
-    const lastParagraph = this.getLastParagraph(content);
+    // The whole point of this scan is that the ending counts for more than the
+    // middle, so the paragraphs have to be the ones a reader sees. Splitting on
+    // `</p>` alone recognised no other boundary: a chapter whose paragraphs are
+    // separated by `<br>`, `<div>`, or a heading collapsed into one block, and
+    // "the final paragraph" became the entire chapter. Every pattern hit
+    // anywhere in the story then scored as an ending hit, `cliffhangerText`
+    // returned the whole chapter instead of the hook, and the trailing `?`
+    // check read the story's very last character. Dropping the tags without
+    // putting a boundary in their place also ran the neighbouring words
+    // together, so `door.</p><p>Blood` was scanned as `door.Blood`.
+    const paragraphs = splitStoryIntoTextBlocks(content);
+    const lowerContent = paragraphs.join('\n\n').toLowerCase();
+    const lastParagraph = paragraphs[paragraphs.length - 1] ?? '';
     const lowerLastParagraph = lastParagraph.toLowerCase();
 
     let detectedType: CliffhangerType | null = null;
@@ -104,19 +116,6 @@ export class CliffhangerService {
       suggestedContinuations: this.generateContinuationSuggestions(cliffhangerType),
       varietyScore: previousCliffhangers.includes(cliffhangerType) ? 3 : 8
     };
-  }
-
-  private getLastParagraph(content: string): string {
-    const paragraphs = content
-      .split(/<\/p>|\n{2,}/)
-      .map(paragraph => this.stripHtml(paragraph).trim())
-      .filter(Boolean);
-
-    return paragraphs[paragraphs.length - 1] ?? this.stripHtml(content).slice(-240).trim();
-  }
-
-  private stripHtml(content: string): string {
-    return content.replace(/<[^>]*>/g, '').trim();
   }
 
   private generateContinuationSuggestions(cliffhangerType: CliffhangerType): string[] {

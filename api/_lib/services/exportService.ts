@@ -8,6 +8,9 @@ import {
 } from './exportSanitizer';
 
 const PDF_EXCERPT_CODE_POINTS = 100;
+// Leaves room for the `_<13-digit timestamp>.<format>` suffix inside the
+// 255-byte name limit that ext4, APFS, and S3-style object keys all enforce.
+const EXPORT_FILENAME_STEM_MAX_LENGTH = 80;
 
 /**
  * Take the first `limit` code points of `value`. Iterating a string yields
@@ -380,8 +383,33 @@ ${xrefOffset}
   }
 
   private generateFilename(input: SaveExportSeam['input']): string {
-    const sanitizedTitle = input.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    return `${sanitizedTitle}_${Date.now()}.${input.format}`;
+    return `${this.buildFilenameStem(input.title)}_${Date.now()}.${input.format}`;
+  }
+
+  /**
+   * Turn a story title into the readable, portable stem of its filename.
+   *
+   * Replacing each unsupported character with its own underscore produced names
+   * no one can use: a title written in any non-Latin script kept none of its
+   * characters, so every such export downloaded as a row of underscores and a
+   * timestamp, indistinguishable from every other one; punctuation left runs of
+   * underscores through otherwise Latin titles; and nothing bounded the length,
+   * so a long title produced a name past the 255-byte limit that filesystems
+   * and object stores enforce. Collapsing each run to a single separator,
+   * trimming the ends, capping the stem, and naming the fallback keeps the name
+   * both meaningful and safe to write — and, since the stem is interpolated
+   * into the storage URL, keeps that URL free of characters that would need
+   * escaping.
+   */
+  private buildFilenameStem(title: string): string {
+    const stem = title
+      .replace(/[^a-z0-9]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .toLowerCase()
+      .slice(0, EXPORT_FILENAME_STEM_MAX_LENGTH)
+      .replace(/_+$/, '');
+
+    return stem || 'story';
   }
 
   private generateExportId(): string {
