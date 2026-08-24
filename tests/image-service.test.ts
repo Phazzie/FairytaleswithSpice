@@ -1,0 +1,134 @@
+#!/usr/bin/env tsx
+// Created: 2026-08-24 23:40 UTC
+
+import { ImageService } from '../api/_lib/services/imageService';
+import { ImageGenerationSeam } from '../api/_lib/types/contracts';
+
+// The service reads `XAI_API_KEY` in its constructor and falls back to a mock
+// image URL when it is absent, so clearing it before the first `new
+// ImageService()` is what keeps these tests off the network.
+delete process.env['XAI_API_KEY'];
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+const paragraphStory = '<p>He shut the door.</p><p>Blood pooled at her feet &amp; the &quot;hunter&quot; smiled.</p>';
+
+function createInput(overrides: Partial<ImageGenerationSeam['input']> = {}): ImageGenerationSeam['input'] {
+  return {
+    storyId: 'story_image_regression',
+    content: paragraphStory,
+    creature: 'vampire',
+    themes: ['betrayal'],
+    style: 'dark',
+    ...overrides
+  };
+}
+
+// The story arrives as the generator's HTML. Deleting the tags without putting
+// a boundary in their place welded the words on either side of a paragraph
+// break — `door.</p><p>Blood` was described to the image model as
+// `door.Blood` — and left the generator's entities in the prose as literal
+// `&amp;` and `&quot;` text.
+async function testSceneDescriptionReadsAsProse(): Promise<void> {
+  const result = await new ImageService().generateImage(createInput());
+
+  assert(result.success, 'mock image generation should succeed');
+  const prompt = (result.data as ImageGenerationSeam['output']).prompt;
+
+  assert(!prompt.includes('door.Blood'), `paragraph break should not weld two words together (got: ${prompt})`);
+  assert(prompt.includes('door.'), `the first paragraph should survive into the prompt (got: ${prompt})`);
+  assert(!/&(amp|quot|lt|gt|#39|nbsp);/i.test(prompt), `entities should be decoded, not sent literally (got: ${prompt})`);
+  assert(prompt.includes('"hunter"'), `&quot; should read as a quotation mark (got: ${prompt})`);
+  assert(!/<[^>]*>/.test(prompt), `no markup should reach the image model (got: ${prompt})`);
+}
+
+// A malformed `themes` reached `input.themes.map(...)` and threw, and the
+// `generateImage` catch block reports every throw as `IMAGE_GENERATION_FAILED`
+// — so a caller who sent the wrong shape was told the image service had
+// failed, with the raw `input.themes.map is not a function` as the message.
+async function testMalformedThemesAreRejectedAsCallerError(): Promise<void> {
+  const malformedThemes: unknown[] = ['betrayal', [], [''], [42], 'betrayal, revenge', undefined, null];
+
+  for (const themes of malformedThemes) {
+    const input = createInput({ themes: themes as ImageGenerationSeam['input']['themes'] });
+    const result = await new ImageService().generateImage(input);
+
+    assert(!result.success, `themes=${JSON.stringify(themes)} should be rejected`);
+    assert(
+      result.error?.code === 'INVALID_INPUT',
+      `themes=${JSON.stringify(themes)} is a caller error, not a service failure (got ${result.error?.code})`
+    );
+    assert(
+      !(result.error?.message ?? '').includes('is not a function'),
+      `themes=${JSON.stringify(themes)} should not leak an internal TypeError (got ${result.error?.message})`
+    );
+  }
+
+  const missingCreature = await new ImageService().generateImage(
+    createInput({ creature: '' as ImageGenerationSeam['input']['creature'] })
+  );
+  assert(missingCreature.error?.code === 'INVALID_INPUT', 'an empty creature is a caller error');
+}
+
+// An unsupported ratio fell back to 16:9 for the provider request and for the
+// reported dimensions, while the response echoed the ratio that was asked for.
+// The caller was handed a payload whose `aspectRatio` contradicted its own
+// `width` and `height`.
+async function testAspectRatioNeverContradictsTheDimensions(): Promise<void> {
+  const unsupported = await new ImageService().generateImage(
+    createInput({ aspectRatio: '21:9' as ImageGenerationSeam['input']['aspectRatio'] })
+  );
+
+  assert(!unsupported.success, 'an unsupported aspect ratio should be rejected');
+  assert(
+    unsupported.error?.code === 'INVALID_INPUT',
+    `an unsupported aspect ratio is a caller error (got ${unsupported.error?.code})`
+  );
+
+  const expectedDimensions: Record<string, { width: number; height: number }> = {
+    '1:1': { width: 1024, height: 1024 },
+    '16:9': { width: 1792, height: 1024 },
+    '9:16': { width: 1024, height: 1792 },
+    '4:3': { width: 1536, height: 1152 }
+  };
+
+  for (const [aspectRatio, dimensions] of Object.entries(expectedDimensions)) {
+    const result = await new ImageService().generateImage(
+      createInput({ aspectRatio: aspectRatio as ImageGenerationSeam['input']['aspectRatio'] })
+    );
+
+    assert(result.success, `${aspectRatio} should be supported`);
+    const output = result.data as ImageGenerationSeam['output'];
+    assert(output.aspectRatio === aspectRatio, `${aspectRatio} should be echoed back (got ${output.aspectRatio})`);
+    assert(
+      output.width === dimensions.width && output.height === dimensions.height,
+      `${aspectRatio} should report ${dimensions.width}x${dimensions.height} (got ${output.width}x${output.height})`
+    );
+    assert(
+      output.imageUrl.includes(`${dimensions.width}/${dimensions.height}`),
+      `the mock image should be built at the reported size (got ${output.imageUrl})`
+    );
+  }
+
+  const defaulted = await new ImageService().generateImage(createInput());
+  const defaultedOutput = defaulted.data as ImageGenerationSeam['output'];
+  assert(defaultedOutput.aspectRatio === '16:9', 'an omitted ratio should default to 16:9');
+  assert(defaultedOutput.width === 1792 && defaultedOutput.height === 1024, 'the default ratio should report 1792x1024');
+}
+
+async function main(): Promise<void> {
+  await testSceneDescriptionReadsAsProse();
+  await testMalformedThemesAreRejectedAsCallerError();
+  await testAspectRatioNeverContradictsTheDimensions();
+
+  console.log('Image service tests passed');
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

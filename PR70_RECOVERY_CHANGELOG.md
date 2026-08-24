@@ -4,6 +4,30 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-24 23:45 UTC - Markup In The Image Prompt, A TypeError Reported As A Service Failure, And An Aspect Ratio That Contradicts Its Own Dimensions
+
+Actions:
+
+- Pointed `imageService`'s scene extraction at the shared block splitter. `extractSceneFromStory` deleted tags in place with `content.replace(/<[^>]*>/g, '')`, which is the same defect class the story service, cliffhanger scan, and quality heuristics have each been moved off: closing the gap a tag held open welds the words on either side of it, so the opening of a story reached the image model as `He shut the door.Blood pooled at her feet`. The in-place strip also left the generator's entities in the prose, so the model was asked for a scene containing the literal text `&amp;` and `&quot;hunter&quot;`. `stripStoryHtmlToText` renders the blocks a reader sees and decodes those entities, and is now what this fourth caller uses.
+- Rejected a malformed `themes` as `INVALID_INPUT`. `validateImageInput` checked `storyId`, `content`, and `style` and stopped there, but `enhancePromptWithStyle` calls `input.themes.map(...)`. A request that sent a bare string — the shape a client naturally reaches for when a field is documented as a list of themes — threw a `TypeError` that `generateImage`'s catch block reports as `IMAGE_GENERATION_FAILED`, so the caller was told the image service had failed, and the user-facing `message` was `input.themes.map is not a function`. The request is malformed and only the caller can fix it, which is the same reasoning `api/_lib/http/jsonRequestBody.ts` records for the story routes. `creature` is validated alongside it, and an empty `themes` array is rejected too: it is truthy, so it passed the Express route's own pre-check and produced the prompt fragment `Visual elements: .`
+- Made the reported aspect ratio the one that was actually served. `mapAspectRatioToSize` and `getAspectRatioDimensions` each carried their own table and their own `|| '16:9'`-shaped fallback, while the response echoed `input.aspectRatio` unchanged — so `aspectRatio: '21:9'` came back as a successful `21:9` image measuring `1792x1024`, generated from a `1792x1024` request to the provider. The contract types this field as a closed set of four ratios, so a value outside it is now `INVALID_INPUT` rather than a silent substitution, and both lookups plus the validation list are derived from one `ASPECT_RATIO_SPECS` table that cannot drift.
+- Added `tests/image-service.test.ts` and wired it into `test:all`. The service had no test file; these three defects are all reachable through the public `generateImage`, so the suite drives them from there rather than reaching into the private helpers, and asserts the mock image URL is built at the same dimensions the response reports.
+
+Self-review:
+
+- Good: Each fix was checked against a targeted revert with the new tests in place, and each fails there — `paragraph break should not weld two words together (got: … door.Blood pooled …)`, `themes="betrayal" is a caller error, not a service failure (got IMAGE_GENERATION_FAILED)`, and `an unsupported aspect ratio is a caller error (got IMAGE_GENERATION_FAILED)`.
+- Good: The tests clear `XAI_API_KEY` before the first `new ImageService()`, so they exercise the mock path and never reach the network; the service reads that variable in its constructor.
+- Non-claim: The aspect-ratio change is a behavior change for a caller that was sending an unsupported ratio. Such a caller previously received a 16:9 image labelled with whatever it asked for and now receives `INVALID_INPUT`. The Angular client sends no `aspectRatio` at all, and the field is optional, so the default path is untouched.
+- Non-claim: This slice does not touch how the image is generated. `fileSize` is still reported as `0`, the response is still built without waiting to see the bytes, and `callGrokImageAI` still reads `response.data.data[0].url` without checking that the provider returned an entry.
+- Non-claim: The Express route at `/api/image/generate` still pre-checks the same fields for presence before the service sees them. It is unchanged; the service no longer depends on it, which is what matters for the Vercel path where no such route exists.
+
+Validation:
+
+- `npm run test:all`: passed, including the new `test:image-service`.
+- Targeted counterfactual per fix, with the new tests in place: the in-place tag strip restored, the `themes` guards removed, and the aspect-ratio guard removed. All three failed with the messages quoted above, then were restored.
+- `tsc --noEmit` over the `api` tree with the preflight script's flags: no new diagnostics. The four pre-existing ones (`jobRouteHandlers.ts` possibly-undefined `error`, the absent `@neondatabase/serverless` types, and `blueprintParser.ts`'s `HeatContract | undefined`) are unchanged and untouched by this slice.
+- Note: as at 22:20 UTC, `node_modules` is tracked here and its devDependencies were absent, so `npm install` was needed before `tsx` would run. The tracked files and the `name` field `npm` rewrote in `package-lock.json` were restored afterwards, so the slice diff stays source-only.
+
 ## 2026-08-24 22:20 UTC - Unterminated SSE Frames, Markup-Blind Word Counts, And Malformed Bodies Reported As 500
 
 Actions:
