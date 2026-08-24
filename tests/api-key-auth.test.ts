@@ -89,6 +89,26 @@ async function main(): Promise<void> {
   assert(!embeddedBearer.authenticated, 'the Bearer prefix should only be stripped from the start of the value');
   assert(embeddedBearer.error?.code === 'INVALID_API_KEY', 'a wrong key should be reported as invalid');
 
+  const canonicalCaseApiKeyHeader = await authenticateRequest({
+    method: 'POST',
+    headers: { 'X-API-Key': 'key-one' },
+    body: {}
+  });
+  assert(
+    canonicalCaseApiKeyHeader.authenticated,
+    'the X-API-Key header named in the documentation should authenticate whatever its casing'
+  );
+
+  const canonicalCaseAuthorizationHeader = await authenticateRequest({
+    method: 'POST',
+    headers: { Authorization: 'Bearer key-three' },
+    body: {}
+  });
+  assert(
+    canonicalCaseAuthorizationHeader.authenticated,
+    'a canonically cased Authorization header should authenticate'
+  );
+
   const wrongKey = await authenticateRequest({
     method: 'POST',
     headers: { 'x-api-key': 'key-onex' },

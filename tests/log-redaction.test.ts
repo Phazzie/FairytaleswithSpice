@@ -70,6 +70,22 @@ assert(
   'non-circular shared references should never be reported as circular'
 );
 
+const prose = redactSensitiveLogData({
+  note: 'forbearer and overbearing chapters stayed intact'
+}) as Record<string, string>;
+assert(
+  prose.note === 'forbearer and overbearing chapters stayed intact',
+  'a word that merely contains "bearer" is not a credential and must survive redaction'
+);
+
+const scheme = redactSensitiveLogData({
+  note: 'sent Bearer abc123def456 upstream'
+}) as Record<string, string>;
+assert(
+  !scheme.note.includes('abc123def456'),
+  'a real Bearer credential should still be redacted'
+);
+
 const cyclic: Record<string, unknown> = { model: 'grok-4' };
 cyclic['self'] = cyclic;
 const redactedCycle = redactSensitiveLogData(cyclic) as Record<string, any>;
