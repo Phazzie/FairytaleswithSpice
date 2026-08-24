@@ -100,7 +100,9 @@ function readHeader(headers: any, name: string): string | undefined {
 
 /**
  * Strip an `Authorization: Bearer <key>` prefix. The scheme is case-insensitive
- * per RFC 7235 and only counts at the start of the value.
+ * per RFC 7235 and only counts at the start of the value. A Bearer scheme with
+ * no credentials after it counts as no key at all, so the caller reports it as
+ * missing rather than as an invalid key named "Bearer".
  */
 function stripBearerPrefix(value: string | undefined): string | undefined {
   if (!value) {
@@ -108,11 +110,14 @@ function stripBearerPrefix(value: string | undefined): string | undefined {
   }
 
   const scheme = 'bearer';
-  const separator = value.charAt(scheme.length);
-  const hasSchemePrefix =
-    value.slice(0, scheme.length).toLowerCase() === scheme && separator !== '' && separator.trim() === '';
+  if (value.slice(0, scheme.length).toLowerCase() !== scheme) {
+    return value;
+  }
 
-  if (!hasSchemePrefix) {
+  const separator = value.charAt(scheme.length);
+  if (separator !== '' && separator.trim() !== '') {
+    // Something like `bearerkey`: the value only starts with the scheme name,
+    // so it is a key in its own right.
     return value;
   }
 

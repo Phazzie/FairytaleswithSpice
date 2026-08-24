@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// Created: 2026-08-24 UTC
+// Created: 2026-08-24 13:58 UTC
 
 import { authenticateRequest } from '../api/_lib/middleware/security';
 
@@ -53,6 +53,26 @@ async function main(): Promise<void> {
     body: {}
   });
   assert(!bearerLookalike.authenticated, 'a key merely starting with "bearer" should not have a prefix stripped');
+
+  const bearerWithoutCredentials = await authenticateRequest({
+    method: 'POST',
+    headers: { authorization: 'Bearer' },
+    body: {}
+  });
+  assert(
+    bearerWithoutCredentials.error?.code === 'MISSING_API_KEY',
+    'a Bearer scheme with no credentials should count as missing, not as a key named "Bearer"'
+  );
+
+  const bearerWithBlankCredentials = await authenticateRequest({
+    method: 'POST',
+    headers: { authorization: 'Bearer   ' },
+    body: {}
+  });
+  assert(
+    bearerWithBlankCredentials.error?.code === 'MISSING_API_KEY',
+    'a Bearer scheme followed only by whitespace should count as missing'
+  );
 
   const repeatedHeader = await authenticateRequest({
     method: 'POST',
