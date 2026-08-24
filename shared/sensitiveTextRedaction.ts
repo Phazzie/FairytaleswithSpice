@@ -24,7 +24,7 @@ function redactBearerTokens(value: string): string {
 
     // `bearer` only introduces a credential when it starts a word. Without this
     // guard an ordinary word that merely contains the substring (`forbearer`,
-    // `overbearing`) is rewritten to the scheme's casing and the following word
+    // `torchbearer`) is rewritten to the scheme's casing and the following word
     // is swallowed as if it were a token.
     if (!hasBearerBoundaryBefore(value, found)) {
       redacted += value.slice(found, found + marker.length);

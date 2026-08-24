@@ -71,10 +71,10 @@ assert(
 );
 
 const prose = redactSensitiveLogData({
-  note: 'forbearer and overbearing chapters stayed intact'
+  note: 'the forbearer and the torchbearer stayed intact'
 }) as Record<string, string>;
 assert(
-  prose.note === 'forbearer and overbearing chapters stayed intact',
+  prose.note === 'the forbearer and the torchbearer stayed intact',
   'a word that merely contains "bearer" is not a credential and must survive redaction'
 );
 
