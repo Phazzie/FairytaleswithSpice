@@ -27,7 +27,8 @@ interface HealthPayload {
     grok?: 'configured' | 'mock' | string;
   };
   cors?: {
-    allowedOrigin?: string;
+    // Null when no origin is configured for the deployment.
+    allowedOrigin?: string | null;
   };
 }
 

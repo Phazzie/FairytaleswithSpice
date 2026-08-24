@@ -4,6 +4,30 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-24 18:00 UTC - Export Filename Mismatch, Byte-Counted File Size, And A Misreported Health Origin
+
+Actions:
+
+- Generated the export filename once in `ExportService.saveAndExport` and shared it between `saveToStorage` and the response. It was previously derived twice, and the mock upload's 300ms delay sits between the two calls, so the `Date.now()` stamps never matched: every export handed the client a `downloadUrl` whose basename disagreed with the `filename` it was told to save under.
+- Changed `fileSize` to `Buffer.byteLength(exportContent, 'utf8')`. The contract in `api/_lib/types/contracts.ts` documents the field as bytes, but it reported `content.length` — UTF-16 code units — so every accented character and emoji in a story undercounted the real size.
+- Made `api/health.ts` report the origin the CORS policy actually resolved (`cors.allowedOrigin`) instead of re-deriving it from `FRONTEND_URL`. `parseAllowedOrigins` also honours `STORY_LAB_ALLOWED_ORIGINS` and `ALLOWED_ORIGINS`, so any deployment configured through those two was shown an origin it does not allow — visible in the frontend debug panel, which reads this field.
+- Added `tests/export-service.test.ts` with its own `test:export-service` script and a `test:all` chain entry, plus a health-payload regression test alongside the existing health CORS test in `tests/story-lab-account-routes.test.ts`.
+
+Self-review:
+
+- Good: All three defects are observable from outside the functions — a URL that does not match its filename, a size that disagrees with the byte count, and a health field that contradicts the policy in the same response's headers — so each regression test asserts on behavior rather than on internals.
+- Good: Each test was run against the pre-fix code and fails there: the filename assertion reports two stamps 301ms apart, the size assertion reports 83 against 89 real bytes, and the health assertion reports `http://localhost:4200` while the response allows `https://spice.example`.
+- Correction: The first draft of the byte-size test compared an `html` export, whose body embeds a fresh `generatedAt` timestamp; re-generating the content for the expected value could produce a different string. The test uses a `txt` export with `includeMetadata: false`, which is deterministic.
+- Non-claim: `saveToStorage` is still the mock that returns a `storage.example.com` URL after a fixed delay. This slice makes its filename consistent with the response; it does not upload anything.
+- Non-claim: The `allowedOrigin` field is now `string | null`, null being the case where no origin is configured at all. The debug panel types the field but does not render it, so nothing in the UI changes.
+
+Validation:
+
+- `npm run test:all`: passed, including the new `test:export-service` entry.
+- API typecheck over `api/**/*.ts` with the `preflight.sh` compiler flags: passed with no diagnostics.
+- `tsc -p story-generator/tsconfig.app.json --noEmit` and `tsc -p story-generator/tsconfig.spec.json --noEmit`: both passed.
+- Pre-fix probes: `downloadUrl` ended `..._1787593772892.txt` while `filename` was `..._1787593773193.txt`; a 71-code-unit export reported 71 against 76 real UTF-8 bytes.
+
 ## 2026-08-24 15:05 UTC - Header Casing, Bearer Redaction Boundary, And Unwired Blueprint Parser Test
 
 Actions:
