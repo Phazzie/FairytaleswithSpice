@@ -56,4 +56,23 @@ assert(telemetrySerialized.includes('579'), 'token-count telemetry values should
 assert(telemetrySerialized.includes('skateboarding'), 'normal words beginning with sk should not be redacted');
 assert(!telemetrySerialized.includes('xai-secret-key-123'), 'actual API key fields should still be redacted');
 
+const sharedContext = { model: 'grok-4', attempt: 2 };
+const sharedReferences = redactSensitiveLogData({
+  first: sharedContext,
+  second: sharedContext,
+  batch: [sharedContext, sharedContext]
+}) as Record<string, any>;
+
+assert(sharedReferences.second?.model === 'grok-4', 'a repeated object reference should be redacted, not dropped as circular');
+assert(sharedReferences.batch?.[1]?.attempt === 2, 'repeated array entries should keep their values');
+assert(
+  !JSON.stringify(sharedReferences).includes('[Circular]'),
+  'non-circular shared references should never be reported as circular'
+);
+
+const cyclic: Record<string, unknown> = { model: 'grok-4' };
+cyclic['self'] = cyclic;
+const redactedCycle = redactSensitiveLogData(cyclic) as Record<string, any>;
+assert(redactedCycle.self === '[Circular]', 'true cycles should still be broken');
+
 console.log('Log redaction tests passed');

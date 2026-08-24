@@ -63,6 +63,26 @@ assert(entityPlainText.includes('&lt;encoded&gt;'), 'plain export should not dou
 assert(entityPlainText.includes('"quote"'), 'plain export should decode direct quote entities');
 assert(entityPlainText.includes('&quot;encoded quote&quot;'), 'plain export should not double-decode amp-escaped quote entities');
 
+const commentedStoryHtml =
+  '<p>Elena waited.</p><!-- editor note: cut this line <script>stealPrivateStory()</script> --><p>Dawn broke.</p>';
+const sanitizedComments = sanitizeStoryHtmlForExport(commentedStoryHtml);
+assert(sanitizedComments === '<p>Elena waited.</p><p>Dawn broke.</p>', 'HTML export should drop comments entirely');
+
+const strippedComments = stripStoryHtmlForExport(commentedStoryHtml);
+assert(strippedComments.includes('Elena waited.'), 'plain export should keep prose around a comment');
+assert(strippedComments.includes('Dawn broke.'), 'plain export should keep prose after a comment');
+assert(!strippedComments.includes('editor note'), 'plain export should not leak comment text');
+assert(!strippedComments.includes('-->'), 'plain export should not leak comment delimiters');
+assert(
+  !strippedComments.includes('stealPrivateStory'),
+  'plain export should not leak script bodies hidden inside comments'
+);
+
+assert(
+  sanitizeStoryHtmlForExport('<p>Kept.</p><!-- unterminated note <p>dropped</p>') === '<p>Kept.</p>',
+  'an unterminated comment should swallow the rest of the document rather than leaking it'
+);
+
 assert(
   escapeHtml('<title>"Angel"</title>') === '&lt;title&gt;&quot;Angel&quot;&lt;/title&gt;',
   'escapeHtml should escape markup and quotes'
