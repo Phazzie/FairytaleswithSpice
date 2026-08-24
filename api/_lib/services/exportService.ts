@@ -45,7 +45,7 @@ export class ExportService {
       const filename = this.generateFilename(input);
 
       // Save to storage (mock implementation)
-      const fileUrl = await this.saveToStorage(exportContent, filename);
+      const fileUrl = await this.saveToStorage(filename);
 
       // Create response
       const output: SaveExportSeam['output'] = {
@@ -271,9 +271,9 @@ startxref
     return `PK                  docProps/PK                  word/PK                  [Content_Types].xmlPK                  _rels/PK                  word/_rels/document.xml.relsPK                  word/document.xml${escapeHtml(content)}`;
   }
 
-  private async saveToStorage(content: string, filename: string): Promise<string> {
+  private async saveToStorage(filename: string): Promise<string> {
     // Mock storage implementation - in real implementation, upload to S3, Cloudinary, etc.
-    void content;
+    // (which is where the export content will be needed; this mock only names it.)
 
     // Simulate upload delay
     await new Promise(resolve => setTimeout(resolve, 300));
