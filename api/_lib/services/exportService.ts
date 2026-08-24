@@ -38,17 +38,25 @@ export class ExportService {
       // Generate export content based on format
       const exportContent = await this.generateExportContent(input);
 
+      // The filename is timestamped, so it has to be generated once and shared:
+      // deriving it separately for the storage URL and for the response would
+      // stamp two different times and hand the client a download URL whose name
+      // does not match the filename it was told to save.
+      const filename = this.generateFilename(input);
+
       // Save to storage (mock implementation)
-      const fileUrl = await this.saveToStorage(exportContent, input);
+      const fileUrl = await this.saveToStorage(exportContent, filename);
 
       // Create response
       const output: SaveExportSeam['output'] = {
         exportId: this.generateExportId(),
         storyId: input.storyId,
         downloadUrl: fileUrl,
-        filename: this.generateFilename(input),
+        filename,
         format: input.format,
-        fileSize: exportContent.length,
+        // The contract measures fileSize in bytes; `.length` counts UTF-16 code
+        // units, which undercounts every non-ASCII character a story contains.
+        fileSize: Buffer.byteLength(exportContent, 'utf8'),
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
         exportedAt: new Date()
       };
@@ -263,9 +271,9 @@ startxref
     return `PK                  docProps/PK                  word/PK                  [Content_Types].xmlPK                  _rels/PK                  word/_rels/document.xml.relsPK                  word/document.xml${escapeHtml(content)}`;
   }
 
-  private async saveToStorage(content: string, input: SaveExportSeam['input']): Promise<string> {
+  private async saveToStorage(content: string, filename: string): Promise<string> {
     // Mock storage implementation - in real implementation, upload to S3, Cloudinary, etc.
-    const filename = this.generateFilename(input);
+    void content;
 
     // Simulate upload delay
     await new Promise(resolve => setTimeout(resolve, 300));

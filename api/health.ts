@@ -10,7 +10,7 @@ type HealthPayload = {
     grok: 'configured' | 'mock';
   };
   cors: {
-    allowedOrigin: string;
+    allowedOrigin: string | null;
   };
 };
 
@@ -44,7 +44,11 @@ export default async function handler(req: any, res: any) {
         grok: !!process.env['XAI_API_KEY'] ? 'configured' : 'mock'
       },
       cors: {
-        allowedOrigin: process.env['FRONTEND_URL'] || 'http://localhost:4200'
+        // Report what the CORS policy actually resolved for this request rather
+        // than re-deriving it from FRONTEND_URL alone: the policy also reads
+        // STORY_LAB_ALLOWED_ORIGINS and ALLOWED_ORIGINS, so a deployment
+        // configured through either of those was told the wrong origin here.
+        allowedOrigin: cors.allowedOrigin
       }
     };
     

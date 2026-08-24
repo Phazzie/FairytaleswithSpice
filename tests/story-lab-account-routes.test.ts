@@ -74,6 +74,7 @@ const privateStoryText = 'The private chapel oath belongs only to Avery.';
 async function main() {
   testVercelConfigDoesNotSetWildcardApiCors();
   await testHealthEndpointUsesRouteLevelCors();
+  await testHealthReportsTheOriginTheCorsPolicyResolved();
   await testDefaultAccountRouteFailsClosedWithoutAuthProvider();
   await testOptionsCorsPreflightUsesCredentialedPolicy();
   await testDisallowedCorsOriginFailsClosed();
@@ -538,6 +539,51 @@ async function testHealthEndpointUsesRouteLevelCors() {
   assert(response.statusCode === 200, 'health OPTIONS should be handled by route-level CORS');
   assert(response.headers['Access-Control-Allow-Origin'] === 'http://localhost:4200', 'health CORS should allow known local origin');
   assert(response.headers['Access-Control-Allow-Origin'] !== '*', 'health CORS should not rely on wildcard API headers');
+}
+
+// The health payload used to re-derive its reported origin from FRONTEND_URL
+// alone, so a deployment that configures CORS through STORY_LAB_ALLOWED_ORIGINS
+// or ALLOWED_ORIGINS — both of which the policy honours — was shown an origin
+// it does not actually allow.
+async function testHealthReportsTheOriginTheCorsPolicyResolved() {
+  const originalAllowedOrigins = process.env['ALLOWED_ORIGINS'];
+  const originalStoryLabOrigins = process.env['STORY_LAB_ALLOWED_ORIGINS'];
+  const originalFrontendUrl = process.env['FRONTEND_URL'];
+  const configuredOrigin = 'https://spice.example';
+
+  delete process.env['STORY_LAB_ALLOWED_ORIGINS'];
+  delete process.env['FRONTEND_URL'];
+  process.env['ALLOWED_ORIGINS'] = configuredOrigin;
+
+  try {
+    const response = new FakeResponse();
+    await healthHandler({ method: 'GET', headers: { origin: configuredOrigin } }, response);
+
+    assert(response.statusCode === 200, 'health GET from an allowed origin should succeed');
+    assert(
+      response.headers['Access-Control-Allow-Origin'] === configuredOrigin,
+      'health CORS headers should allow the configured origin'
+    );
+
+    const body = response.body as { data?: { cors?: { allowedOrigin?: string | null } } };
+    assert(
+      body.data?.cors?.allowedOrigin === configuredOrigin,
+      `health payload should report the resolved origin, got ${String(body.data?.cors?.allowedOrigin)}`
+    );
+  } finally {
+    restoreEnv('ALLOWED_ORIGINS', originalAllowedOrigins);
+    restoreEnv('STORY_LAB_ALLOWED_ORIGINS', originalStoryLabOrigins);
+    restoreEnv('FRONTEND_URL', originalFrontendUrl);
+  }
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
 }
 
 function createHandlerFor(
