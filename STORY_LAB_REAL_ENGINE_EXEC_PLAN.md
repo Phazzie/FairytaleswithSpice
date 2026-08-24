@@ -134,3 +134,32 @@ Still too much if you try to solve continuation perfectly. You do not have durab
 - Mocks remain useful for local/no-key development but must not mask production provider failures.
 - Provider abstraction for OpenAI vs Grok is intentionally deferred until Story Lab is connected to the real engine.
 - Visual charm restoration is product work and should follow this engine unification rather than mix into it.
+
+## Continuation Context Corrections
+
+Recorded 2026-08-24 22:35 UTC. The continuation request built by `storyService`
+carries three pieces of prose taken from the story so far. All three were being
+read out of the raw markup, where deleting a tag welds the last word of one
+paragraph to the first of the next (`door.</p><p>Blood` → `door.Blood`), so what
+reached the model was not what a reader sees:
+
+- `extractLastChapterSummary` split the welded text on blank lines, found one
+  paragraph for the whole story, and returned its opening 150 words as the
+  summary of what just happened. The continuation was told the previous chapter
+  ended where it began.
+- `generateNextChapterHint` had no whitespace after the full stops for its
+  `/(?<=[.!?])\s+/` sentence split, so the "closing sentence" it supplies was the
+  entire chapter, cut 200 characters in from the opening.
+- `createContextExcerpt` and `extractCharacterNames` read the same welded text.
+
+All of them now go through `api/_lib/utils/storyTextBlocks.ts`, the splitter the
+cliffhanger scan and the quality heuristics already share. Prompt shape, request
+shape, and the model contract are unchanged — only the text placed into them.
+
+Validation: `tests/story-service-improved.test.ts` covers the summary reaching
+the last paragraphs and the hint being the closing sentence, and both were
+verified to fail against the pre-fix implementation. `npm run test:all` passes.
+
+Non-claim: this corrects the context supplied to continuation. It is not
+evidence about continuation quality, which needs the live provider and remains
+the open work Phase 2 describes.

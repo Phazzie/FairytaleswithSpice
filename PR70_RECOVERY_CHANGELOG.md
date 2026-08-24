@@ -4,6 +4,32 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-24 22:35 UTC - Codex Review Follow-Up To PR #207
+
+Codex's review landed thirteen seconds before PR #207 was merged, so its findings are answered here rather than on that branch. A merged PR is finished; this is a new slice on a branch restarted from `main`.
+
+Actions:
+
+- Drove `/api/story/stream` itself in `tests/story-route-contracts.test.ts` instead of only its serializer (Codex P1, correct). The test asserted `formatSseFrame` and never the route, so any of the three `res.write` call sites could have gone back to interpolating its own terminator with every assertion still passing. The route is now called with `StoryService.prototype.generateStoryStreaming` stubbed — the real one streams a mock story in 100 ms batches, which proves nothing about framing and would hold the suite for half a minute — and the connected, chunk, completion, and error frames are parsed off the response as a client would. Verified by bypassing the helper at one call site: the suite fails.
+- Made that failure legible while doing it. Welded frames make a `data:` payload hold several JSON objects, so the parse threw a `SyntaxError` about a character offset. It now says the frame did not carry exactly one payload and that the stream is not terminated correctly.
+- Recorded the continuation-context change in `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md` (Codex P1, correct). `extractLastChapterSummary`, `generateNextChapterHint`, `createContextExcerpt`, and `extractCharacterNames` all feed the continuation request, and the documentation map makes that plan the owner of continuation behaviour; PR #207 updated only this changelog.
+- Routed the mock streaming path through the corrected counter (Codex P2, correct). `simulateStreamingGeneration` still cuts batches on spaces, which is how it simulates a token stream, but it derived its totals from `split(' ').length`, which counts `<h3>Chapter` and `door.</p><p>Blood` as one word each. Measured: a 700-word mock reported 652 words where `countWords` sees 669, so the completion metadata in every local and demo run was low by seventeen. Both the totals and the per-chunk progress now come from `countWords`, and `wordsGenerated + estimatedWordsRemaining` accounts for the whole story at every chunk.
+- Corrected this changelog's counterfactual claim for the malformed-body fix (Codex P1, correct). Only `undefined` and `null` threw into the 500 path; a string and an array permit property access and `Object.keys`, so both already answered 400 before `readJsonObjectBody` existed. Confirmed by reproducing the pre-fix handler against all four shapes: `undefined` and `null` give 500, string and array give 400. The 22:20 UTC entry's "all three failed" is true as written — the counterfactual run failed on the `undefined` case — but the four shapes were presented together in a way that reads as four regressions. The test now separates the two regression shapes from the two that are normalization coverage, and says so.
+
+Self-review:
+
+- Correction: PR #207 was merged while Codex's review was in flight. The other three bots had reported and the checks were green, so the merge looked complete, but Codex reviews on this repository arrive several minutes after the push and one had answered #206 the same way. Wait for it, or accept that its findings become a follow-up slice.
+- Good: Each of Codex's four findings was checked before being accepted. All four held up, including the one that contradicted this changelog.
+- Non-claim: The mock streaming counter is corrected in the mock path only. Nothing here changes the live provider path, which already reported `countWords`.
+- Non-claim: The route-level SSE test proves the frames the route writes are dispatchable, with the generator stubbed. It is not deployed-endpoint proof.
+
+Validation:
+
+- `npm run test:all`: passed, with the new mock-streaming case and the route-level SSE case.
+- Targeted counterfactuals: one `res.write` call site reverted to interpolating `\\n\\n` directly — the suite fails with `an SSE frame did not carry exactly one JSON payload…`; the pre-fix handler shape reproduced against all four body shapes to check Codex's claim before accepting it.
+- `tsc --noEmit --strict` over the changed files: passed with no diagnostics.
+- Not taken: Codex's P1 asking for the three fixes to be split into separate review slices. The three were independent by design and each was independently revertible, which is what made the per-fix counterfactuals possible, but they were one assignment and shipped as one reviewable slice with one section per defect. The same finding was raised on #206 and left to a human then; it is left to a human now rather than re-litigated by the agent that wrote the slice.
+
 ## 2026-08-24 22:20 UTC - Unterminated SSE Frames, Markup-Blind Word Counts, And Malformed Bodies Reported As 500
 
 Actions:

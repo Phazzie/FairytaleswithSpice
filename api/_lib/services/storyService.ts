@@ -623,31 +623,38 @@ export class StoryService {
     tropeSelection?: TropeSelection
   ): Promise<void> {
     const mockStory = this.generateMockStory(input, tropeSelection);
-    const words = mockStory.split(' ');
-    const totalWords = words.length;
+    // The batches are cut on spaces because that is how the mock simulates a
+    // token stream, but the counts reported to the client come from the same
+    // reader-visible counter the live path uses. Splitting on spaces counts the
+    // markup: `<p>` sits against the word after it and `</p>` against the word
+    // before, so a 700-word mock reported 652 words where a reader counts 669,
+    // and the completion metadata every local and demo run sees was low by that
+    // much.
+    const spaceSeparatedChunks = mockStory.split(' ');
+    const totalWords = this.countWords(mockStory);
     let accumulatedContent = '';
-    
+
     const startTime = Date.now();
-    
+
     // Stream words in batches to simulate real generation
-    for (let i = 0; i < words.length; i += 3) {
-      const batch = words.slice(i, i + 3).join(' ') + ' ';
+    for (let i = 0; i < spaceSeparatedChunks.length; i += 3) {
+      const batch = spaceSeparatedChunks.slice(i, i + 3).join(' ') + ' ';
       accumulatedContent += batch;
-      
-      const wordsGenerated = i + 3;
-      
+
+      const wordsGenerated = Math.min(this.countWords(accumulatedContent), totalWords);
+
       onChunk({
         content: accumulatedContent,
         isComplete: false,
-        wordsGenerated: Math.min(wordsGenerated, totalWords),
+        wordsGenerated,
         estimatedWordsRemaining: Math.max(0, totalWords - wordsGenerated),
         generationSpeed: this.calculateGenerationSpeed(wordsGenerated, startTime)
       });
-      
+
       // Simulate generation delay
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
+
     // Send final complete chunk
     onChunk({
       content: accumulatedContent.trim(),
