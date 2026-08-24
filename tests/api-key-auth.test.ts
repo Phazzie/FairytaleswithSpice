@@ -9,6 +9,21 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+const LIVE_KEY = 'sk-live-supersecret-value';
+const SECOND_LIVE_KEY = 'sk-live-second-value';
+
+async function userIdFor(apiKey: string): Promise<string> {
+  const result = await authenticateRequest({
+    method: 'POST',
+    headers: { 'x-api-key': apiKey },
+    body: {}
+  });
+
+  assert(result.authenticated, 'a configured key should authenticate');
+  assert(result.userId, 'an authenticated request should carry a user id');
+  return result.userId;
+}
+
 async function main(): Promise<void> {
   process.env['API_KEYS'] = 'key-one, key-two ,key-three';
 
@@ -130,39 +145,22 @@ async function main(): Promise<void> {
   // The returned userId is attached to log entries and handed back to callers.
   // It used to be `user_` plus the key's first eight characters, which printed
   // a live credential's prefix beside every authenticated request.
-  process.env['API_KEYS'] = 'sk-live-supersecret-value,sk-live-second-value';
+  process.env['API_KEYS'] = `${LIVE_KEY},${SECOND_LIVE_KEY}`;
 
-  const identified = await authenticateRequest({
-    method: 'POST',
-    headers: { 'x-api-key': 'sk-live-supersecret-value' },
-    body: {}
-  });
-  assert(identified.authenticated, 'a configured key should authenticate');
-  assert(identified.userId, 'an authenticated request should carry a user id');
-  for (let length = 4; length <= 'sk-live-supersecret-value'.length; length += 1) {
+  const identifiedUserId = await userIdFor(LIVE_KEY);
+  for (let length = 4; length <= LIVE_KEY.length; length += 1) {
     assert(
-      !identified.userId!.includes('sk-live-supersecret-value'.slice(0, length)),
-      `the user id should carry no part of the key (leaked ${length} characters: ${identified.userId})`
+      !identifiedUserId.includes(LIVE_KEY.slice(0, length)),
+      `the user id should carry no part of the key (leaked ${length} characters: ${identifiedUserId})`
     );
   }
 
-  const identifiedAgain = await authenticateRequest({
-    method: 'POST',
-    headers: { 'x-api-key': 'sk-live-supersecret-value' },
-    body: {}
-  });
   assert(
-    identifiedAgain.userId === identified.userId,
+    (await userIdFor(LIVE_KEY)) === identifiedUserId,
     'the same key should always map to the same user id'
   );
-
-  const otherKey = await authenticateRequest({
-    method: 'POST',
-    headers: { 'x-api-key': 'sk-live-second-value' },
-    body: {}
-  });
   assert(
-    otherKey.userId !== identified.userId,
+    (await userIdFor(SECOND_LIVE_KEY)) !== identifiedUserId,
     'two different keys should map to two different user ids'
   );
 

@@ -30,16 +30,19 @@ assert(repeated.varietyScore === 3, 'repeated cliffhanger type should reduce var
 // paragraphs are the ones a reader sees. Only `</p>` and blank lines used to
 // count as boundaries, so a chapter separated by `<br>` or `<div>` collapsed
 // into a single block and "the final paragraph" became the whole chapter.
-for (const [markup, label] of [
-  ['She opened the door.<br><br>Blood pooled on the floor.<br><br>Who was there?', '<br>'],
-  ['<div>She opened the door.</div><div>Blood pooled on the floor.</div><div>Who was there?</div>', '<div>'],
-  ['<p>She opened the door.</p><p>Blood pooled on the floor.</p><p>Who was there?</p>', '<p>']
-] as const) {
-  const analysis = service.analyze(markup);
+const hook = 'Who was there?';
+const separatedChapters = [
+  { label: '<br>', markup: `She opened the door.<br><br>Blood pooled on the floor.<br><br>${hook}` },
+  { label: '<div>', markup: `<div>She opened the door.</div><div>Blood pooled on the floor.</div><div>${hook}</div>` },
+  { label: '<p>', markup: `<p>She opened the door.</p><p>Blood pooled on the floor.</p><p>${hook}</p>` }
+];
+
+for (const chapter of separatedChapters) {
+  const analysis = service.analyze(chapter.markup);
 
   assert(
-    analysis.cliffhangerText === 'Who was there?',
-    `a ${label}-separated chapter should report only its final paragraph as the hook ` +
+    analysis.cliffhangerText === hook,
+    `a ${chapter.label}-separated chapter should report only its final paragraph as the hook ` +
       `(got ${JSON.stringify(analysis.cliffhangerText)})`
   );
 }

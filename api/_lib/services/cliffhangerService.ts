@@ -83,7 +83,7 @@ export class CliffhangerService {
     // together, so `door.</p><p>Blood` was scanned as `door.Blood`.
     const paragraphs = splitStoryIntoTextBlocks(content);
     const lowerContent = paragraphs.join('\n\n').toLowerCase();
-    const lastParagraph = paragraphs[paragraphs.length - 1] ?? '';
+    const lastParagraph = paragraphs.length > 0 ? paragraphs[paragraphs.length - 1] : '';
     const lowerLastParagraph = lastParagraph.toLowerCase();
 
     let detectedType: CliffhangerType | null = null;

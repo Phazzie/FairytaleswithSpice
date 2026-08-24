@@ -210,7 +210,8 @@ async function testFilenamesStayReadableAndPortable(): Promise<void> {
     return (result.data as SaveExportSeam['output']).filename;
   };
 
-  for (const title of ['Полночь', '月の物語', '🐉🐉🐉', '   ']) {
+  const cyrillicTitle = 'Полночь';
+  for (const title of [cyrillicTitle, '月の物語', '🐉🐉🐉', '   ']) {
     const filename = await filenameFor(title);
     assert(
       /^story_\d+\.txt$/.test(filename),
@@ -233,7 +234,7 @@ async function testFilenamesStayReadableAndPortable(): Promise<void> {
   assert(long.startsWith('midnight_bargain'), `a long title should keep its readable head (got ${long})`);
   assert(/_\d+\.txt$/.test(long), `the timestamped suffix should survive the cap (got ${long})`);
 
-  for (const filename of [punctuated, long, await filenameFor('Полночь')]) {
+  for (const filename of [punctuated, long, await filenameFor(cyrillicTitle)]) {
     assert(
       encodeURIComponent(filename) === filename,
       `a filename is interpolated into the storage URL, so it should need no escaping (got ${filename})`
