@@ -11,8 +11,10 @@ import type {
 import { XaiTextClient } from '../services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../config/xaiConfig';
 import { STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS } from './continuityBudget';
+import { stripMarkdownJsonFence } from '../utils/modelJsonPayload';
+import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
 
-interface ContinuityExtractionInput {
+export interface ContinuityExtractionInput {
   storyId: string;
   currentState: StoryStateSnapshot;
   chapters: GeneratedChapter[];
@@ -111,11 +113,24 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
   }
 }
 
-function buildContinuityPrompt(input: ContinuityExtractionInput): string {
+/**
+ * Exported so the chapter rendering the model is actually shown can be asserted
+ * on directly, the way `readGeneratedImageUrl` is in the image service. The
+ * alternative is reaching it through `extractContinuity`, which needs a
+ * configured provider and would prove nothing about the prompt either way.
+ */
+export function buildContinuityPrompt(input: ContinuityExtractionInput): string {
   const chapterText = input.chapters
     .map(chapter => [
       `CHAPTER ${chapter.chapterNumber}: ${chapter.title}`,
-      htmlToText(chapter.htmlContent).slice(0, 2200)
+      // The chapter arrives as the generator's HTML. A local stripper deleted
+      // the tags and joined everything with single spaces, which left the
+      // paragraph structure out of the prompt and — because it decoded nothing
+      // — put `&amp;` and `&quot;` in front of the model as literal entity
+      // text, so the continuity facts were extracted from prose no reader ever
+      // saw. `stripStoryHtmlToText` is the rendering the cliffhanger, image,
+      // and story-quality scanners already read.
+      stripStoryHtmlToText(chapter.htmlContent).slice(0, 2200)
     ].join('\n'))
     .join('\n\n');
 
@@ -166,26 +181,6 @@ function parseContinuityJson(content: string): AiContinuityShape {
     suggestedNarrativeVoice: typeof data.suggestedNarrativeVoice === 'string' ? data.suggestedNarrativeVoice : undefined,
     confidence: typeof data.confidence === 'number' ? data.confidence : undefined
   };
-}
-
-function stripMarkdownJsonFence(content: string): string {
-  let text = content.trim();
-
-  if (!text.startsWith('```')) {
-    return text;
-  }
-
-  const firstLineBreakIndex = text.indexOf('\n');
-  if (firstLineBreakIndex === -1) {
-    return text.slice(3).trim();
-  }
-
-  text = text.slice(firstLineBreakIndex + 1).trim();
-  if (text.endsWith('```')) {
-    text = text.slice(0, -3).trim();
-  }
-
-  return text;
 }
 
 function mergeAiContinuity(
@@ -344,52 +339,3 @@ function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
 }
 
-function htmlToText(html: string): string {
-  let text = '';
-  let insideTag = false;
-  let previousWasSpace = false;
-
-  for (const character of html) {
-    if (character === '<') {
-      insideTag = true;
-      appendSpace();
-      continue;
-    }
-
-    if (character === '>') {
-      insideTag = false;
-      appendSpace();
-      continue;
-    }
-
-    if (insideTag) {
-      continue;
-    }
-
-    if (isWhitespaceCharacter(character)) {
-      appendSpace();
-      continue;
-    }
-
-    text += character;
-    previousWasSpace = false;
-  }
-
-  return text.trim();
-
-  function appendSpace() {
-    if (!previousWasSpace) {
-      text += ' ';
-      previousWasSpace = true;
-    }
-  }
-}
-
-function isWhitespaceCharacter(character: string): boolean {
-  return character === ' '
-    || character === '\n'
-    || character === '\r'
-    || character === '\t'
-    || character === '\f'
-    || character === '\v';
-}
