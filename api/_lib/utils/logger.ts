@@ -248,13 +248,16 @@ class Logger {
 
   /**
    * Get recent log entries (for debugging)
+   *
+   * The level filter is applied before the buffer is trimmed, so asking for
+   * the last 50 errors returns the last 50 errors. Trimming first and then
+   * filtering returned only the errors that happened to be among the last 50
+   * entries of any level — on a busy request that is usually none of them,
+   * which is exactly when the errors are worth reading.
    */
   public getRecentLogs(count: number = 50, level?: LogLevel): LogEntry[] {
-    let logs = this.logBuffer.slice(-count);
-    if (level) {
-      logs = logs.filter(log => log.level === level);
-    }
-    return logs;
+    const logs = level ? this.logBuffer.filter(log => log.level === level) : this.logBuffer;
+    return logs.slice(-count);
   }
 
   /**
