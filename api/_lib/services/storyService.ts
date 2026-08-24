@@ -17,6 +17,7 @@ import { TropeSelection, TropeSubversionService } from './tropeSubversionService
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
 import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
+import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../utils/storyTextBlocks';
 
 interface AiCallMetadata {
   model?: string;
@@ -1442,9 +1443,14 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
    * Extract summary of last chapter/section
    */
   private extractLastChapterSummary(content: string): string {
-    const stripped = this.stripHtml(content);
-    const paragraphs = stripped.split('\n\n').filter(p => p.trim().length > 0);
-    
+    // Stories arrive as generator HTML, where a paragraph is a `<p>` element
+    // rather than a run of text between blank lines. Splitting the stripped
+    // text on blank lines therefore found exactly one paragraph — the whole
+    // story — and "the last three paragraphs, truncated to 150 words" became
+    // "the story's opening 150 words". That summary is what the continuation
+    // prompt is told just happened, so a chapter continued from the beginning.
+    const paragraphs = splitStoryIntoTextBlocks(content);
+
     if (paragraphs.length === 0) return 'Story beginning';
     
     // Get last 2-3 paragraphs as summary
@@ -1816,8 +1822,19 @@ ${renderBody()}`;
     return 'The Deeper Shadows';
   }
 
+  /**
+   * Count the words a reader would count.
+   *
+   * The count is reported to the client as `actualWordCount` and drives the
+   * streaming progress percentage, so it has to match the rendered story rather
+   * than the markup. Stripping tags in place merged the words on either side of
+   * every paragraph break into one, which cost one word per boundary — a
+   * chapter of forty `<p>` elements with no whitespace between them reported
+   * thirty-nine fewer words than it has, and `<p>one</p><p>two</p>` reported a
+   * single word.
+   */
   private countWords(content: string): number {
-    return content.replace(/<[^>]*>/g, '').split(/\s+/).filter(word => word.length > 0).length;
+    return stripStoryHtmlToText(content).split(/\s+/).filter(word => word.length > 0).length;
   }
 
   private detectCliffhanger(content: string): boolean {
@@ -1946,8 +1963,21 @@ ${renderBody()}`;
     return formatted;
   }
 
+  /**
+   * Reduce story markup to the text a reader sees.
+   *
+   * Deleting the tags and nothing else closed the gap they held open, so the
+   * last word of one paragraph and the first word of the next were read as one
+   * token: `<p>She opened the door.</p><p>Blood pooled…</p>` became
+   * `door.Blood`. Every caller here is looking for something the reader can
+   * point at — a chapter title, a summary of what just happened, the sentence a
+   * continuation has to follow on from — and each of them was handed welded
+   * text instead. Sentence splitting suffered worst: with no space after the
+   * full stop there was nothing for `/(?<=[.!?])\s+/` to split on, so the whole
+   * chapter came back as its own final sentence.
+   */
   private stripHtml(content: string): string {
-    return content.replace(/<[^>]*>/g, '');
+    return stripStoryHtmlToText(content);
   }
 
   private stripSpeakerTagsForDisplay(content: string): string {

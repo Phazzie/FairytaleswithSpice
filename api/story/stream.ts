@@ -17,6 +17,23 @@ const VALID_REQUESTED_CHAPTER_COUNTS = new Set([1, 2, 3]);
 const VALID_STREAMING_WORD_COUNTS = new Set<number>(VALIDATION_RULES.wordCount.allowedValues);
 
 /**
+ * Serialize one Server-Sent Events frame.
+ *
+ * A frame is dispatched by the blank line that ends it, so the terminator has
+ * to be two real newlines. Written inside a template literal, `\\n\\n` is a
+ * backslash followed by `n` — printable text, not a line ending — so every
+ * update this route produced ran together into one event that no client ever
+ * dispatched: an `EventSource` held the whole generation open and fired
+ * `message` exactly never.
+ *
+ * `JSON.stringify` escapes newlines inside strings, so the payload cannot end
+ * the frame early no matter what the story content contains.
+ */
+export function formatSseFrame(payload: unknown): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+/**
  * GET/POST /api/story/stream
  * Implements StreamingStoryGenerationSeam contract
  * Supports GET with query params for EventSource compatibility
@@ -142,7 +159,7 @@ export default async function handler(req: any, res: any) {
         percentage: 0
       }
     };
-    res.write(`data: ${JSON.stringify(connectedUpdate)}\\n\\n`);
+    res.write(formatSseFrame(connectedUpdate));
 
     // Generate story with streaming per seam contract
     await storyService.generateStoryStreaming(input, (chunk) => {
@@ -162,7 +179,7 @@ export default async function handler(req: any, res: any) {
         }
       };
       
-      res.write(`data: ${JSON.stringify(progressUpdate)}\\n\\n`);
+      res.write(formatSseFrame(progressUpdate));
     });
 
     res.end();
@@ -188,7 +205,7 @@ export default async function handler(req: any, res: any) {
       }
     };
     
-    res.write(`data: ${JSON.stringify(errorUpdate)}\\n\\n`);
+    res.write(formatSseFrame(errorUpdate));
     res.end();
   }
 }

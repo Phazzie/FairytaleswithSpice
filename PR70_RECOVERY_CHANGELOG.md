@@ -4,6 +4,30 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-24 22:20 UTC - Unterminated SSE Frames, Markup-Blind Word Counts, And Malformed Bodies Reported As 500
+
+Actions:
+
+- Terminated `/api/story/stream`'s Server-Sent Events with real newlines. All three `res.write` calls spelled the terminator `\\n\\n` inside a template literal, which is a backslash followed by `n` — printable text, not a line ending. An SSE event is dispatched by the blank line that ends it, so nothing this route wrote was ever delivered: the connection stayed open, the payloads accumulated into one unterminated event, and an `EventSource` fired `message` exactly never. The sibling route `api/story-lab/stream/genesis.ts` has always used real newlines, which is why only this one was affected. The frame is now built by an exported `formatSseFrame`, so the terminator is written once and can be tested.
+- Pointed `storyService`'s text extraction at the shared block splitter. `stripHtml` and `countWords` deleted tags in place, which closes the gap the tag held open and welds the last word of one paragraph to the first of the next: `<p>She opened the door.</p><p>Blood pooled…</p>` was read as `door.Blood`. The consequences were spread across the service — `countWords` lost one word per paragraph boundary, and it is reported to the client as `actualWordCount` and drives the streaming progress percentage; `extractLastChapterSummary` split the welded text on blank lines, found one paragraph, and returned the story's opening 150 words as its summary of what just happened; and `generateNextChapterHint` had no whitespace after the full stops for `/(?<=[.!?])\s+/` to split on, so the "closing sentence" it hands the continuation prompt was the entire chapter. This is the third slice to hit this defect class, so the fix is the existing `storyTextBlocks` helper rather than a fourth local strip: `stripStoryHtmlToText` joins the reader-visible blocks and is now what both callers use.
+- Answered a missing or non-object request body with 400 on `/api/story/generate`, `/api/story/continue`, and `/api/export/save`. Each assigned `req.body` straight to a typed local and read a field off it, so an empty body — or one sent without `Content-Type: application/json`, which the runtime hands over as `undefined` or a string — threw into the handler's own catch block and came back as 500 `INTERNAL_ERROR`. That tells the caller the service failed and that a retry might help, when the request is malformed and only the caller can fix it. `api/_lib/http/jsonRequestBody.ts` holds the one guard the three routes share; `/api/story/stream` already validated this correctly and is unchanged.
+- Added `tests/story-route-contracts.test.ts` for the two route-level defects and four cases to `tests/story-service-improved.test.ts` for the text measurements. The SSE test parses the stream the way a client does — split on the blank line, collect `data:` lines — so it fails for the reason the client fails rather than on a string comparison, and it covers a chunk whose own content contains blank lines.
+
+Self-review:
+
+- Good: Each fix was checked against a targeted revert with the new tests in place, and each fails there — `an SSE frame must end with two real newlines so the client dispatches the event`, `Expected 2 words across a paragraph boundary, got 1`, and `/api/story/generate should answer a missing body with 400, got 500`.
+- Good: The body guard covers `undefined`, `null`, a string, and an array, which are the four shapes the runtime actually produces for a body it could not parse as a JSON object.
+- Non-claim: `formatSseFrame` fixes the framing only. The route still writes its `Content-Type` twice — once through `setHeader` and again in `writeHead` — and still has no heartbeat or client-disconnect handling; `genesis.ts` remains the route the Angular client actually uses.
+- Non-claim: Word counts now match what a reader counts in the rendered story. Nothing here changes generation, the word-count target, or the prompt that asks for it, so a story whose real length misses its target still misses it — it is now reported accurately instead of low.
+- Non-claim: The three routes still answer 200 with `success: false` when the service itself fails. Only the malformed-request path changed; mapping service failures onto status codes the way `getStoryLabResponseStatus` does for Story Lab routes is separate work and would change what the client sees on a generation failure.
+
+Validation:
+
+- `npm run test:all`: passed, including the new `test:story-route-contracts`.
+- Targeted counterfactual per fix, with the new tests in place: the SSE terminator restored to its literal spelling, `stripHtml`/`countWords`/`extractLastChapterSummary` restored to their pre-fix bodies, and the three routes restored to reading `req.body` unguarded. All three failed with the messages quoted above, then were restored.
+- `tsc --noEmit --strict` over the changed source and test files: passed with no diagnostics.
+- Note: `node_modules` is tracked in this repository and its devDependencies were absent, so `tsx` could not run until `npm install` wrote them. Those tracked files and the `name` field `npm` rewrote in `package-lock.json` were restored, so the slice diff stays source-only.
+
 ## 2026-08-24 21:15 UTC - API-Key Prefixes In User Ids, A Chapter-Wide Cliffhanger Scan, And Unusable Export Filenames
 
 Actions:

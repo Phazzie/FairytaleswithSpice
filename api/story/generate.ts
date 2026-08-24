@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
+import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { StoryService } from '../_lib/services/storyService';
 import { StoryGenerationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
@@ -35,15 +36,17 @@ export default async function handler(req: any, res: any) {
   try {
     console.log(`[${requestId}] POST /api/story/generate - Request received`);
     
-    const input: StoryGenerationSeam['input'] = req.body;
+    const input = readJsonObjectBody<StoryGenerationSeam['input']>(req.body);
 
-    // Validate required fields
-    if (!input.creature || !input.themes || typeof input.spicyLevel !== 'number' || !input.wordCount) {
+    // Validate required fields. A body that is missing entirely fails here, as
+    // one more malformed request, rather than throwing on `input.creature` into
+    // the catch block below and reporting the caller's mistake as a 500.
+    if (!input || !input.creature || !input.themes || typeof input.spicyLevel !== 'number' || !input.wordCount) {
       logWarn('Invalid input - missing required fields', {
         requestId,
         endpoint: '/api/story/generate',
         method: 'POST'
-      }, { receivedFields: Object.keys(input) });
+      }, { receivedFields: input ? Object.keys(input) : [] });
       
       return res.status(400).json({
         success: false,
