@@ -40,6 +40,20 @@ async function main(): Promise<void> {
   });
   assert(lowercaseBearer.authenticated, 'the Bearer scheme should be matched case-insensitively');
 
+  const tabSeparatedBearer = await authenticateRequest({
+    method: 'POST',
+    headers: { authorization: 'Bearer\tkey-one' },
+    body: {}
+  });
+  assert(tabSeparatedBearer.authenticated, 'any whitespace may separate the scheme from the credentials');
+
+  const bearerLookalike = await authenticateRequest({
+    method: 'POST',
+    headers: { 'x-api-key': 'bearerkey-one' },
+    body: {}
+  });
+  assert(!bearerLookalike.authenticated, 'a key merely starting with "bearer" should not have a prefix stripped');
+
   const repeatedHeader = await authenticateRequest({
     method: 'POST',
     headers: { 'x-api-key': ['key-one', 'key-two'] },

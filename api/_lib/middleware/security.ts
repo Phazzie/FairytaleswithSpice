@@ -107,8 +107,16 @@ function stripBearerPrefix(value: string | undefined): string | undefined {
     return undefined;
   }
 
-  const match = /^bearer\s+(.+)$/i.exec(value);
-  return (match ? match[1].trim() : value) || undefined;
+  const scheme = 'bearer';
+  const separator = value.charAt(scheme.length);
+  const hasSchemePrefix =
+    value.slice(0, scheme.length).toLowerCase() === scheme && separator !== '' && separator.trim() === '';
+
+  if (!hasSchemePrefix) {
+    return value;
+  }
+
+  return value.slice(scheme.length).trim() || undefined;
 }
 
 /**
