@@ -5,6 +5,8 @@
  * Usage: Add authenticateRequest() at the start of API handlers
  */
 
+import { timingSafeEqual } from 'node:crypto';
+
 export interface AuthenticatedRequest {
   userId?: string;
   apiKey?: string;
@@ -37,10 +39,10 @@ export interface AuthResult {
  */
 export async function authenticateRequest(req: AuthenticatedRequest): Promise<AuthResult> {
   // Extract API key from header
-  const apiKey = 
-    req.headers['x-api-key'] || 
-    req.headers['authorization']?.replace('Bearer ', '');
-  
+  const apiKey =
+    readHeader(req.headers, 'x-api-key') ||
+    stripBearerPrefix(readHeader(req.headers, 'authorization'));
+
   if (!apiKey) {
     return {
       authenticated: false,
@@ -51,9 +53,13 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
     };
   }
   
-  // Validate API key against environment variable
-  const validKeys = (process.env['API_KEYS'] || '').split(',').filter(k => k.trim());
-  
+  // Validate API key against environment variable.
+  // Entries are trimmed so `API_KEYS=key1, key2` accepts `key2`.
+  const validKeys = (process.env['API_KEYS'] || '')
+    .split(',')
+    .map(k => k.trim())
+    .filter(k => k.length > 0);
+
   if (validKeys.length === 0) {
     // No API keys configured - allow request in development mode
     console.warn('⚠️  No API keys configured. Set API_KEYS environment variable for production.');
@@ -63,7 +69,7 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
     };
   }
   
-  if (!validKeys.includes(apiKey)) {
+  if (!validKeys.some(validKey => matchesApiKey(validKey, apiKey))) {
     return {
       authenticated: false,
       error: {
@@ -72,7 +78,7 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
       }
     };
   }
-  
+
   // Map API key to user ID (in production, this would query a database)
   const userId = `user_${apiKey.substring(0, 8)}`;
   
@@ -83,8 +89,46 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
 }
 
 /**
+ * Read a single header value, tolerating the string[] form Node uses for
+ * repeated headers.
+ */
+function readHeader(headers: any, name: string): string | undefined {
+  const raw = headers?.[name] ?? headers?.[name.toLowerCase()];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Strip an `Authorization: Bearer <key>` prefix. The scheme is case-insensitive
+ * per RFC 7235 and only counts at the start of the value.
+ */
+function stripBearerPrefix(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const match = /^bearer\s+(.+)$/i.exec(value);
+  return (match ? match[1].trim() : value) || undefined;
+}
+
+/**
+ * Compare a candidate key against a configured key in constant time so that
+ * timing differences cannot be used to recover a valid key byte by byte.
+ */
+function matchesApiKey(validKey: string, candidate: string): boolean {
+  const validBuffer = Buffer.from(validKey, 'utf8');
+  const candidateBuffer = Buffer.from(candidate, 'utf8');
+
+  if (validBuffer.length !== candidateBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(validBuffer, candidateBuffer);
+}
+
+/**
  * Rate Limiting Middleware
- * 
+ *
  * Implements in-memory rate limiting to prevent abuse.
  * In production, use a distributed cache like Redis.
  */
@@ -158,5 +202,7 @@ export function cleanupRateLimits(): void {
   }
 }
 
-// Cleanup every 5 minutes
-setInterval(cleanupRateLimits, 5 * 60 * 1000);
+// Cleanup every 5 minutes. Unref'd so the timer never keeps a serverless
+// invocation, CLI run, or test process alive on its own.
+const rateLimitCleanupTimer = setInterval(cleanupRateLimits, 5 * 60 * 1000);
+rateLimitCleanupTimer.unref?.();

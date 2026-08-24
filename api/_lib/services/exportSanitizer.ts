@@ -231,6 +231,18 @@ function tokenizeHtml(value: string): string[] {
       tokens.push(value.slice(index, tagStart));
     }
 
+    // Comments are dropped whole: their body is markup, not story prose, so it
+    // must never be scanned for tags or emitted as visible text.
+    if (value.startsWith('<!--', tagStart)) {
+      const commentEnd = value.indexOf('-->', tagStart + 4);
+      if (commentEnd === -1) {
+        break;
+      }
+
+      index = commentEnd + 3;
+      continue;
+    }
+
     const tagEnd = value.indexOf('>', tagStart + 1);
     if (tagEnd === -1) {
       tokens.push(value.slice(tagStart));

@@ -73,10 +73,13 @@ const SENSITIVE_KEY_PATTERNS = [
 ];
 
 export function redactSensitiveLogData<T>(value: T): T {
-  return redactValue(value, new WeakSet()) as T;
+  return redactValue(value, new WeakSet(), '') as T;
 }
 
-function redactValue(value: unknown, seen: WeakSet<object>, keyHint = ''): unknown {
+// `ancestors` holds only the objects on the current recursion path, so a value
+// referenced twice from different branches is redacted twice rather than being
+// mislabelled as a cycle.
+function redactValue(value: unknown, ancestors: WeakSet<object>, keyHint = ''): unknown {
   if (value === null || value === undefined) {
     return value;
   }
@@ -97,20 +100,24 @@ function redactValue(value: unknown, seen: WeakSet<object>, keyHint = ''): unkno
     return value;
   }
 
-  if (seen.has(value)) {
+  if (ancestors.has(value)) {
     return '[Circular]';
   }
-  seen.add(value);
+  ancestors.add(value);
 
-  if (Array.isArray(value)) {
-    return value.map(item => redactValue(item, seen, keyHint));
-  }
+  try {
+    if (Array.isArray(value)) {
+      return value.map(item => redactValue(item, ancestors, keyHint));
+    }
 
-  const redacted: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    redacted[key] = redactValue(child, seen, key);
+    const redacted: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      redacted[key] = redactValue(child, ancestors, key);
+    }
+    return redacted;
+  } finally {
+    ancestors.delete(value);
   }
-  return redacted;
 }
 
 function redactSensitiveText(value: string): string {
