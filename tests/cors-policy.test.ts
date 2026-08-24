@@ -4,6 +4,7 @@
 import {
   applyCorsPolicy,
   buildCorsHeaders,
+  createCorsMiddleware,
   parseAllowedOrigins,
   type CorsRequestLike,
   type CorsResponseLike
@@ -148,5 +149,47 @@ const noOriginHeaders = buildCorsHeaders(request('POST'), {
 
 assert(noOriginHeaders['Access-Control-Allow-Origin'] === 'http://localhost:4200', 'missing env should default to local dev origin');
 assert(noOriginHeaders['Access-Control-Allow-Origin'] !== '*', 'default local CORS should not be wildcard');
+
+const middlewareEnv = {
+  STORY_LAB_ALLOWED_ORIGINS: '',
+  ALLOWED_ORIGINS: 'https://story.example.com,https://preview.example.com',
+  FRONTEND_URL: ''
+};
+const middleware = createCorsMiddleware({
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true,
+  env: middlewareEnv
+});
+
+const middlewareAllowedResponse = new FakeResponse();
+let middlewareContinued = false;
+middleware(request('POST', 'https://preview.example.com'), middlewareAllowedResponse, () => {
+  middlewareContinued = true;
+});
+
+assert(middlewareContinued, 'middleware should hand an allowed request to the next handler');
+assert(
+  middlewareAllowedResponse.headers['Access-Control-Allow-Origin'] === 'https://preview.example.com',
+  'middleware should answer with the single origin the request matched, not the whole configured list'
+);
+assert(middlewareAllowedResponse.headers['Vary'] === 'Origin', 'middleware responses should vary by origin');
+
+const middlewarePreflightResponse = new FakeResponse();
+let middlewarePreflightContinued = false;
+middleware(request('OPTIONS', 'https://story.example.com'), middlewarePreflightResponse, () => {
+  middlewarePreflightContinued = true;
+});
+
+assert(!middlewarePreflightContinued, 'middleware should answer preflight itself');
+assert(middlewarePreflightResponse.statusCode === 200, 'middleware preflight should return 200');
+
+const middlewareRejectedResponse = new FakeResponse();
+let middlewareRejectedContinued = false;
+middleware(request('POST', 'https://evil.example.com'), middlewareRejectedResponse, () => {
+  middlewareRejectedContinued = true;
+});
+
+assert(!middlewareRejectedContinued, 'middleware should not run the route for a disallowed origin');
+assert(middlewareRejectedResponse.statusCode === 403, 'middleware should reject a disallowed origin with 403');
 
 console.log('CORS policy tests passed');

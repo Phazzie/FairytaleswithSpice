@@ -12,7 +12,7 @@ import type { AuthPort, AuthUser } from '../auth/authPort';
 import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort } from '../auth/configuredAuthPort';
 import { applyCorsPolicy } from '../../http/corsPolicy';
-import { logWarn } from '../../utils/logger';
+import { logError, logWarn } from '../../utils/logger';
 import { continueStoryLab, generateStoryLabGenesis } from '../storyLabEngine';
 import { getTransientStorySnapshot } from '../stateStore';
 import { parseStoryLabBlueprintFromBody } from '../validation/blueprintParser';
@@ -50,11 +50,15 @@ interface ResponseLike {
 export interface StoryLabJobRouteDependencies {
   authPort?: AuthPort;
   createJobStoreConfig?: () => StoryLabJobStoreConfig;
+  generateGenesis?: typeof generateStoryLabGenesis;
+  continueStory?: typeof continueStoryLab;
 }
 
 interface StoryLabJobRouteContext {
   authPort: AuthPort;
   createJobStoreConfig: () => StoryLabJobStoreConfig;
+  generateGenesis: typeof generateStoryLabGenesis;
+  continueStory: typeof continueStoryLab;
 }
 
 interface ResolvedJobStore {
@@ -71,7 +75,9 @@ export function createStoryLabJobsRouteHandler(
 ): (req: RequestLike, res: ResponseLike) => Promise<void> {
   const context: StoryLabJobRouteContext = {
     authPort: dependencies.authPort ?? configuredAuthPort,
-    createJobStoreConfig: dependencies.createJobStoreConfig ?? (() => createStoryLabJobStoreConfig())
+    createJobStoreConfig: dependencies.createJobStoreConfig ?? (() => createStoryLabJobStoreConfig()),
+    generateGenesis: dependencies.generateGenesis ?? generateStoryLabGenesis,
+    continueStory: dependencies.continueStory ?? continueStoryLab
   };
 
   return async function storyLabJobsRouteHandler(req: RequestLike, res: ResponseLike): Promise<void> {
@@ -317,7 +323,11 @@ async function createGenesisJob(
     return;
   }
 
-  const result = await generateStoryLabGenesis(parsed.blueprint);
+  const result = await runJobWork(
+    () => context.generateGenesis(parsed.blueprint),
+    'genesis',
+    job.job.jobId
+  );
   const finishedResult = await tryJobStoreOperation(res, () => finishJob(store, ownerUserId, job.job.jobId, result));
   if (!finishedResult.ok) {
     return;
@@ -383,7 +393,11 @@ async function createContinuationJob(
     return;
   }
 
-  const result = await continueStoryLab(normalized);
+  const result = await runJobWork(
+    () => context.continueStory(normalized),
+    'continuation',
+    job.job.jobId
+  );
   const finishedResult = await tryJobStoreOperation(res, () => finishJob(store, ownerUserId, job.job.jobId, result));
   if (!finishedResult.ok) {
     return;
@@ -396,6 +410,41 @@ async function createContinuationJob(
     success: true,
     data: finishedResult.value
   });
+}
+
+/**
+ * Run the engine for a job that is already recorded as `running`.
+ *
+ * The engine reports its own failures as an unsuccessful envelope, but it can
+ * also throw — a provider socket that dies mid-call, a bug below it — and the
+ * throw used to travel straight past the route into its 500 handler. By then
+ * the job row said `running`, and nothing ever moved it off that: a durable job
+ * stayed running forever, so a client polling `/jobs/{id}` or reading its event
+ * stream waited on a job no one was working on any more. A throw is one more
+ * way for the work to fail, so it is recorded as a failure of the job like any
+ * other. The thrown detail goes to the log rather than into the job, which is
+ * read by the caller and should not carry whatever a provider error says.
+ */
+async function runJobWork<TPublicResult extends JobResult>(
+  work: () => Promise<ApiResponse<TPublicResult>>,
+  kind: 'genesis' | 'continuation',
+  jobId: string
+): Promise<ApiResponse<TPublicResult>> {
+  try {
+    return await work();
+  } catch (error) {
+    logError(`Story Lab ${kind} job work threw`, error, {
+      endpoint: '/api/story-lab/jobs'
+    }, { jobId, kind });
+
+    return {
+      success: false,
+      error: {
+        code: 'GENERATION_FAILED',
+        message: `Story Lab ${kind} generation failed unexpectedly.`
+      }
+    };
+  }
 }
 
 async function finishJob<TPublicResult extends JobResult>(
@@ -475,7 +524,9 @@ async function resolveJobStoreOrRespond(
 function createDefaultJobRouteContext(): StoryLabJobRouteContext {
   return {
     authPort: configuredAuthPort,
-    createJobStoreConfig: () => createStoryLabJobStoreConfig()
+    createJobStoreConfig: () => createStoryLabJobStoreConfig(),
+    generateGenesis: generateStoryLabGenesis,
+    continueStory: continueStoryLab
   };
 }
 

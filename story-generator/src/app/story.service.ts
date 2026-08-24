@@ -286,6 +286,19 @@ export class StoryService {
           const chunk = JSON.parse(event.data) as StreamingProgressChunk | ApiResponse<StoryIterationPayload>;
           if ('type' in chunk) {
             onProgress(chunk);
+
+            // An `error` chunk is the server's last word: the genesis route
+            // writes it and ends the response. Treated as ordinary progress,
+            // the stream was left open, and an `EventSource` reads a closed
+            // response as a dropped connection and reconnects — which re-runs
+            // the whole paid generation, again on every retry, with the
+            // subscriber still waiting on an observable that never settles.
+            // Ending the stream here reports the failure the server actually
+            // described instead of the generic connection error that followed.
+            if (chunk.type === 'error') {
+              eventSource.close();
+              observer.error(new Error(chunk.error?.message ?? 'Story streaming failed.'));
+            }
             return;
           }
 
