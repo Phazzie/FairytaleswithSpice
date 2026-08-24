@@ -11,9 +11,12 @@
  *
  * Block-level tags and `<br>` become blank-line boundaries, remaining inline
  * tags are dropped, and the basic entities the generator emits are decoded so
- * that a quoted line still reads as dialogue. Plain text passes through with
- * only its blank-line boundaries honoured, which is what a plain blank-line
- * split did on its own.
+ * that a quoted line still reads as dialogue. Plain text keeps its blank-line
+ * boundaries, which is what a plain blank-line split did on its own — but it is
+ * not passed through untouched: anything shaped like a tag is stripped from it
+ * too, so prose that legitimately contains `<` and `>` loses the span between
+ * them. Every caller here scans generator HTML, where that is the point; a
+ * caller scanning arbitrary prose would want the entities encoded first.
  */
 export function splitStoryIntoTextBlocks(storyContent: string): string[] {
   return storyContent

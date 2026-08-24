@@ -8,9 +8,11 @@ import {
 } from './exportSanitizer';
 
 const PDF_EXCERPT_CODE_POINTS = 100;
-// Leaves room for the `_<13-digit timestamp>.<format>` suffix inside the
-// 255-byte name limit that ext4, APFS, and S3-style object keys all enforce.
+// Leaves room for the `_<timestamp>_<token>.<format>` suffix inside the
+// 255-byte filename limit that ext4 and APFS enforce.
 const EXPORT_FILENAME_STEM_MAX_LENGTH = 80;
+// Distinguishes two exports that collide on both stem and millisecond.
+const EXPORT_FILENAME_TOKEN_LENGTH = 8;
 
 /**
  * Take the first `limit` code points of `value`. Iterating a string yields
@@ -382,8 +384,20 @@ ${xrefOffset}
     return content.split(/\s+/).filter(word => word.length > 0).length;
   }
 
+  /**
+   * Name the export file.
+   *
+   * The name has to be unique per export, because it is what the storage URL
+   * addresses: a real object store would let a second export overwrite the
+   * first. A timestamp alone does not give that. Two exports raced within one
+   * millisecond already collided whenever their titles matched, and the stem
+   * fallback widened the window — every title with no portable characters, in
+   * any script, now shares the stem `story`. A random token per export closes
+   * it without giving up the readable, sortable name.
+   */
   private generateFilename(input: SaveExportSeam['input']): string {
-    return `${this.buildFilenameStem(input.title)}_${Date.now()}.${input.format}`;
+    const token = randomUUID().replace(/-/g, '').slice(0, EXPORT_FILENAME_TOKEN_LENGTH);
+    return `${this.buildFilenameStem(input.title)}_${Date.now()}_${token}.${input.format}`;
   }
 
   /**
@@ -394,12 +408,11 @@ ${xrefOffset}
    * characters, so every such export downloaded as a row of underscores and a
    * timestamp, indistinguishable from every other one; punctuation left runs of
    * underscores through otherwise Latin titles; and nothing bounded the length,
-   * so a long title produced a name past the 255-byte limit that filesystems
-   * and object stores enforce. Collapsing each run to a single separator,
-   * trimming the ends, capping the stem, and naming the fallback keeps the name
-   * both meaningful and safe to write — and, since the stem is interpolated
-   * into the storage URL, keeps that URL free of characters that would need
-   * escaping.
+   * so a long title produced a name past the 255-byte limit filesystems such as
+   * ext4 and APFS enforce. Collapsing each run to a single separator, trimming
+   * the ends, capping the stem, and naming the fallback keeps the name both
+   * meaningful and safe to write — and, since the stem is interpolated into the
+   * storage URL, keeps that URL free of characters that would need escaping.
    */
   private buildFilenameStem(title: string): string {
     const stem = title

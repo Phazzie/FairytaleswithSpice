@@ -211,13 +211,22 @@ async function testFilenamesStayReadableAndPortable(): Promise<void> {
   };
 
   const cyrillicTitle = 'Полночь';
+  const fallbackNames = new Set<string>();
   for (const title of [cyrillicTitle, '月の物語', '🐉🐉🐉', '   ']) {
     const filename = await filenameFor(title);
     assert(
-      /^story_\d+\.txt$/.test(filename),
+      /^story_\d+_[0-9a-f]{8}\.txt$/.test(filename),
       `a title with no portable characters should fall back to a named stem (got ${filename})`
     );
+    fallbackNames.add(filename);
   }
+
+  // Every one of those titles now shares the stem `story`, so the rest of the
+  // name is all that keeps two exports from addressing the same storage URL.
+  assert(
+    fallbackNames.size === 4,
+    `exports sharing a fallback stem should still get distinct names (got ${fallbackNames.size} of 4)`
+  );
 
   const punctuated = await filenameFor("The Vampire's Kiss --- Part II!");
   assert(
@@ -232,7 +241,10 @@ async function testFilenamesStayReadableAndPortable(): Promise<void> {
     `a long title should not push the filename past the 255-byte limit (got ${long.length} bytes)`
   );
   assert(long.startsWith('midnight_bargain'), `a long title should keep its readable head (got ${long})`);
-  assert(/_\d+\.txt$/.test(long), `the timestamped suffix should survive the cap (got ${long})`);
+  assert(
+    /_\d+_[0-9a-f]{8}\.txt$/.test(long),
+    `the timestamped, tokenized suffix should survive the cap (got ${long})`
+  );
 
   for (const filename of [punctuated, long, await filenameFor(cyrillicTitle)]) {
     assert(
