@@ -21,6 +21,18 @@ export interface CorsPolicyOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+/**
+ * A connect/Express middleware. `next` takes the optional error argument that
+ * signature carries, so an `express.RequestHandler` can be passed straight to
+ * one of these and one of these straight to `app.use`, with no adapter in
+ * between; the policy itself never calls `next` with an error.
+ */
+export type CorsMiddleware = (
+  req: CorsRequestLike,
+  res: CorsResponseLike,
+  next: (error?: unknown) => void
+) => void;
+
 export interface CorsPolicyResult {
   handled: boolean;
   rejected: boolean;
@@ -124,9 +136,7 @@ export function applyCorsPolicy(
  * serverless routes use answers each request with the single origin it
  * actually matched.
  */
-export function createCorsMiddleware(
-  options: CorsPolicyOptions
-): (req: CorsRequestLike, res: CorsResponseLike, next: () => void) => void {
+export function createCorsMiddleware(options: CorsPolicyOptions): CorsMiddleware {
   return (req, res, next) => {
     if (applyCorsPolicy(req, res, options).handled) {
       return;

@@ -35,14 +35,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // `FRONTEND_URL` are comma-separated lists, and the response names the one
 // origin the request actually matched. Page responses are left alone — they are
 // same-origin, and an allow-list is not the SSR handler's business.
-const corsMiddleware = createCorsMiddleware({
+app.use('/api', createCorsMiddleware({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true
-});
-
-app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-  corsMiddleware(req, res, next);
-});
+}));
 
 // ==================== API ROUTES ====================
 
