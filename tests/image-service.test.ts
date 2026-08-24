@@ -43,7 +43,11 @@ async function testSceneDescriptionReadsAsProse(): Promise<void> {
   assert(prompt.includes('door.'), `the first paragraph should survive into the prompt (got: ${prompt})`);
   assert(!/&(amp|quot|lt|gt|#39|nbsp);/i.test(prompt), `entities should be decoded, not sent literally (got: ${prompt})`);
   assert(prompt.includes('"hunter"'), `&quot; should read as a quotation mark (got: ${prompt})`);
-  assert(!/<[^>]*>/.test(prompt), `no markup should reach the image model (got: ${prompt})`);
+  // `[^<>]` rather than `[^>]` for the reason `storyTextBlocks` records: with
+  // `[^>]*`, every `<` in a run of them starts a scan to the end of the string
+  // before failing for want of a `>`, which is quadratic in the run's length.
+  // Excluding `<` decides each position once, and `<p>` still matches.
+  assert(!/<[^<>]*>/.test(prompt), `no markup should reach the image model (got: ${prompt})`);
 }
 
 // A malformed `themes` reached `input.themes.map(...)` and threw, and the
