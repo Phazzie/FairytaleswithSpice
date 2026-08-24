@@ -175,6 +175,9 @@ async function main(): Promise<void> {
   // falls back to the defaults the route has always applied.
   for (const body of [
     { storyContent: '<p>A vampire waited at the door, and her blood froze.</p>' },
+    // `?.` read a null configuration as an absent one, and a serializer that
+    // writes absent optionals as `null` means exactly that by it.
+    { storyContent: '<p>A vampire waited at the door, and her blood froze.</p>', configuration: null },
     {
       storyContent: '<p>A vampire waited at the door, and her blood froze.</p>',
       configuration: { creature: 'vampire', themes: ['forbidden_love'], spicyLevel: 4, wordCount: 900 }

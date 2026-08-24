@@ -109,8 +109,12 @@ function normalizeEvaluationRequest(
     return { message: 'storyContent is required and must be a non-empty string.' };
   }
 
-  const configuration = input.configuration;
-  if (configuration !== undefined && (typeof configuration !== 'object' || configuration === null || Array.isArray(configuration))) {
+  // A `null` configuration reads as an absent one, which is what `?.` did
+  // before and what a serializer that writes absent optionals as `null` means
+  // by it. An array is not that: it carries none of the fields and would
+  // silently evaluate against every default.
+  const configuration = input.configuration ?? undefined;
+  if (configuration !== undefined && (typeof configuration !== 'object' || Array.isArray(configuration))) {
     return { message: 'configuration must be an object when provided.' };
   }
 
