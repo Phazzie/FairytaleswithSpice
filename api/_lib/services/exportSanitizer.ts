@@ -95,14 +95,18 @@ export function sanitizeStoryHtmlForExport(html: string): string {
 }
 
 /**
- * Match one HTML character reference: named (`&amp;`), decimal (`&#38;`), or
- * hexadecimal (`&#x26;`).
+ * Match either one complete HTML character reference — named (`&amp;`),
+ * decimal (`&#38;`), or hexadecimal (`&#x26;`) — or one character that has to
+ * be escaped on its own.
  *
- * Each alternative is decided by the character after the `&`, and each ends at
- * a `;` that its character class cannot cross, so a run that never reaches a
- * `;` fails once per `&` rather than being re-split between the branches.
+ * The reference alternatives come first, so an `&` that begins one is taken
+ * whole instead of being matched as the bare ampersand the trailing class would
+ * otherwise claim. Each reference alternative is decided by the character after
+ * the `&` and ends at a `;` its character class cannot cross, so a run that
+ * never reaches a `;` fails once per `&` rather than being re-split between the
+ * branches.
  */
-const CHARACTER_REFERENCE_PATTERN = /&(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#[xX][0-9a-fA-F]+);/g;
+const STORY_TEXT_PATTERN = /&(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#[xX][0-9a-fA-F]+);|[&<>"']/g;
 
 /**
  * Escape story text without escaping the character references already in it.
@@ -122,18 +126,11 @@ const CHARACTER_REFERENCE_PATTERN = /&(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#[xX][0-9a
  * reference — a bare `&`, an unterminated `&amp` — is escaped as before.
  */
 function escapeStoryText(value: string): string {
-  let escaped = '';
-  let index = 0;
-
-  CHARACTER_REFERENCE_PATTERN.lastIndex = 0;
-  let match = CHARACTER_REFERENCE_PATTERN.exec(value);
-  while (match) {
-    escaped += escapeHtml(value.slice(index, match.index)) + match[0];
-    index = match.index + match[0].length;
-    match = CHARACTER_REFERENCE_PATTERN.exec(value);
-  }
-
-  return escaped + escapeHtml(value.slice(index));
+  // A match is either a whole reference or a single character, so its length
+  // says which. `replace` drives the shared pattern's `lastIndex` itself, so
+  // no state survives the call — which an `exec` loop would have to reset by
+  // hand on every entry and every early return.
+  return value.replace(STORY_TEXT_PATTERN, token => (token.length > 1 ? token : escapeHtml(token)));
 }
 
 export function stripStoryHtmlForExport(html: string): string {
