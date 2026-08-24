@@ -36,6 +36,22 @@ function truncateByCodePoint(value: string, limit: number): string {
   return truncated;
 }
 
+/**
+ * Drop any separators the length cap left at the end of a filename stem.
+ *
+ * The join above leaves single separators, so the cut can strand at most one —
+ * the loop is the cheap way to say that without the reader having to prove it.
+ */
+function trimTrailingSeparators(stem: string): string {
+  let end = stem.length;
+
+  while (end > 0 && stem[end - 1] === '_') {
+    end -= 1;
+  }
+
+  return stem.slice(0, end);
+}
+
 interface ExportMetadata {
   generatedAt: string;
   wordCount: number;
@@ -415,12 +431,15 @@ ${xrefOffset}
    * storage URL, keeps that URL free of characters that would need escaping.
    */
   private buildFilenameStem(title: string): string {
-    const stem = title
-      .replace(/[^a-z0-9]+/gi, '_')
-      .replace(/^_+|_+$/g, '')
-      .toLowerCase()
-      .slice(0, EXPORT_FILENAME_STEM_MAX_LENGTH)
-      .replace(/_+$/, '');
+    // Splitting on the unsupported runs and joining the parts back collapses
+    // each run and drops the leading and trailing ones in a single linear pass:
+    // a separator at either end leaves an empty part, which the filter removes.
+    // Trimming them with `/^_+|_+$/` instead is quadratic — an anchored `_+`
+    // is retried from every position of a long underscore run before it fails.
+    const parts = title.split(/[^a-z0-9]+/i).filter(Boolean);
+    const stem = trimTrailingSeparators(
+      parts.join('_').toLowerCase().slice(0, EXPORT_FILENAME_STEM_MAX_LENGTH)
+    );
 
     return stem || 'story';
   }

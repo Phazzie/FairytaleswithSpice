@@ -56,6 +56,13 @@ This file consolidates lessons that should shape the PR #70 recovery and future 
 
 ## New Lessons During This Recovery
 
+### 2026-08-24
+
+- Run a hosted analyzer's own rules locally when its findings are unreachable. SonarCloud failed PR #206 on `B Maintainability Rating on New Code` while its API answered only through an egress proxy that denies `CONNECT sonarcloud.io:443`, and it left no inline comment. Guessing at plausible smells cost a commit and did not clear the gate. SonarCloud's JS/TS rules are SonarJS, which ships as `eslint-plugin-sonarjs`: installed outside the repository and pointed at copies of the changed files, it named the finding in one run. Install it outside the tree — `node_modules` is tracked here, so installing into the repo dirties the slice diff.
+- Lint the pre-change files from `origin/main` as well, to separate findings that are new to the slice from ones the gate has already accepted. In #206 that comparison showed the flagged block-splitter regex was pre-existing on `main` and counted only because moving it to a new file made it new code — without the comparison the obvious reading is that the new code introduced it.
+- A moved file is new code to a quality gate. Extracting a shared helper re-submits every line it carries to the new-code rating, so a clean extraction can fail a gate that the original passed.
+- Prove a regex rewrite is behaviour-preserving before trusting it, and measure the claim that motivated it. For #206 the old and new patterns were compared on seventeen representative inputs, including the near-miss cases that must not match, and timed on adversarial input: 2052 ms against 0.32 ms over 40,000 characters. That evidence is what separates a real super-linear fix from lint appeasement.
+
 ### 2026-07-11
 
 - Stale agent skills are a real source of workflow drift. Repo docs can be current while local skills still route future sessions to historical plans, so process refreshes should inspect both `AGENTS.md` and the local skill files that trigger on the same work.
