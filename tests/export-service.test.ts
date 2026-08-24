@@ -48,46 +48,40 @@ async function testDownloadUrlMatchesReportedFilename(): Promise<void> {
 // `fileSize` is documented in the contract as bytes. It was reported as
 // `content.length`, which counts UTF-16 code units and so undercounts every
 // accented character and emoji a story contains.
+//
+// These three bodies are all four UTF-16 code units long, so the buggy measure
+// reports one identical size for all of them. Their UTF-8 lengths differ: `é`
+// costs one byte more than `e`, and the two units of `🐉` cost four bytes where
+// the two ASCII letters they replace cost two. Comparing the sizes against each
+// other pins the unit of measure without reaching into the service to rebuild
+// the exported text.
 async function testFileSizeIsMeasuredInBytes(): Promise<void> {
-  const exportService = new ExportService();
-  const input = createInput();
+  const asciiSize = await exportedSizeOf('<p>Cafe</p>');
+  const accentedSize = await exportedSizeOf('<p>Café</p>');
+  const emojiSize = await exportedSizeOf('<p>Ca🐉</p>');
 
-  const result = await exportService.saveAndExport(input);
-  assert(result.success, 'unicode export should succeed');
-  const output = result.data as SaveExportSeam['output'];
-
-  const exportContent: string = await (exportService as any).generateExportContent(input);
-  const expectedBytes = Buffer.byteLength(exportContent, 'utf8');
-
+  assert(asciiSize > 0, 'an export should report a non-zero size');
   assert(
-    expectedBytes > exportContent.length,
-    'test fixture should contain multi-byte characters so the two measures differ'
+    accentedSize === asciiSize + 1,
+    `an accented character should add its extra UTF-8 byte (ascii=${asciiSize}, accented=${accentedSize})`
   );
   assert(
-    output.fileSize === expectedBytes,
-    `fileSize should be the UTF-8 byte length (expected ${expectedBytes}, got ${output.fileSize})`
+    emojiSize === asciiSize + 2,
+    `an astral-plane character should add its extra UTF-8 bytes (ascii=${asciiSize}, emoji=${emojiSize})`
   );
 }
 
-async function testAsciiExportStillReportsItsOwnSize(): Promise<void> {
+async function exportedSizeOf(content: string): Promise<number> {
   const exportService = new ExportService();
-  const input = createInput({ content: '<p>Plain ascii prose.</p>' });
+  const result = await exportService.saveAndExport(createInput({ content }));
 
-  const result = await exportService.saveAndExport(input);
-  assert(result.success, 'ascii export should succeed');
-  const output = result.data as SaveExportSeam['output'];
-
-  const exportContent: string = await (exportService as any).generateExportContent(input);
-  assert(
-    output.fileSize === exportContent.length,
-    'an all-ascii export should report the same size under either measure'
-  );
+  assert(result.success, `export of ${content} should succeed`);
+  return (result.data as SaveExportSeam['output']).fileSize;
 }
 
 async function main(): Promise<void> {
   await testDownloadUrlMatchesReportedFilename();
   await testFileSizeIsMeasuredInBytes();
-  await testAsciiExportStillReportsItsOwnSize();
 
   console.log('Export service tests passed');
 }
