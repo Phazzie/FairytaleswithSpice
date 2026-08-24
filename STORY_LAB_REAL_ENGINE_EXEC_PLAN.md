@@ -150,11 +150,16 @@ reached the model was not what a reader sees:
 - `generateNextChapterHint` had no whitespace after the full stops for its
   `/(?<=[.!?])\s+/` sentence split, so the "closing sentence" it supplies was the
   entire chapter, cut 200 characters in from the opening.
-- `createContextExcerpt` and `extractCharacterNames` read the same welded text.
+- `createContextExcerpt` read the same welded text for the trailing excerpt it
+  supplies.
 
-All of them now go through `api/_lib/utils/storyTextBlocks.ts`, the splitter the
+All three now go through `api/_lib/utils/storyTextBlocks.ts`, the splitter the
 cliffhanger scan and the quality heuristics already share. Prompt shape, request
 shape, and the model contract are unchanged — only the text placed into them.
+
+`extractCharacterNames` is deliberately not in that list. It matches `[Speaker]:`
+tags against the raw markup and never stripped tags at all, so the welding defect
+did not reach it and nothing here changes it.
 
 Validation: `tests/story-service-improved.test.ts` covers the summary reaching
 the last paragraphs and the hint being the closing sentence, and both were

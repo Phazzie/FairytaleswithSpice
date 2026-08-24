@@ -78,8 +78,16 @@ function assert(condition: unknown, message: string): asserts condition {
  */
 function parseSseEvents(stream: string): unknown[] {
   const events: unknown[] = [];
+  const frames = stream.split('\n\n');
+  // Whatever follows the last terminator is not an event. A client holds it in
+  // its buffer waiting for the blank line that never came, so a completion or a
+  // terminal error written without one is never delivered — and handing that
+  // tail back here would let the route look correct while the client got
+  // nothing. When the stream is properly terminated this discards an empty
+  // string instead.
+  frames.pop();
 
-  for (const frame of stream.split('\n\n')) {
+  for (const frame of frames) {
     const dataLines = frame
       .split('\n')
       .filter(line => line.startsWith('data:'))
