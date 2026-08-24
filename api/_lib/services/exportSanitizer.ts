@@ -88,10 +88,52 @@ export function sanitizeStoryHtmlForExport(html: string): string {
         return sanitizeStoryTag(token);
       }
 
-      return escapeHtml(token);
+      return escapeStoryText(token);
     })
     .join('')
     .trim();
+}
+
+/**
+ * Match one HTML character reference: named (`&amp;`), decimal (`&#38;`), or
+ * hexadecimal (`&#x26;`).
+ *
+ * Each alternative is decided by the character after the `&`, and each ends at
+ * a `;` that its character class cannot cross, so a run that never reaches a
+ * `;` fails once per `&` rather than being re-split between the branches.
+ */
+const CHARACTER_REFERENCE_PATTERN = /&(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#[xX][0-9a-fA-F]+);/g;
+
+/**
+ * Escape story text without escaping the character references already in it.
+ *
+ * The story reaches this module as the generator's HTML, where `&` and `"` are
+ * written as `&amp;` and `&quot;`. Escaping every `&` re-escaped those into
+ * `&amp;amp;` and `&amp;quot;`, so the exported HTML rendered the entity text
+ * itself — a reader saw `feet &amp; the &quot;hunter&quot; smiled` on the page.
+ * The plain-text export decodes the same references instead of doubling them,
+ * so the two exports of one story disagreed about their own punctuation.
+ *
+ * Passing a reference through is safe for the reason the plain-text path can
+ * decode it: a character reference in text content is text. `&#x3C;` renders as
+ * a literal `<` that the parser never reads as the start of a tag, and this
+ * sanitizer has already dropped every attribute, which is the one context where
+ * a reference could mean anything else. Everything that is not a complete
+ * reference — a bare `&`, an unterminated `&amp` — is escaped as before.
+ */
+function escapeStoryText(value: string): string {
+  let escaped = '';
+  let index = 0;
+
+  CHARACTER_REFERENCE_PATTERN.lastIndex = 0;
+  let match = CHARACTER_REFERENCE_PATTERN.exec(value);
+  while (match) {
+    escaped += escapeHtml(value.slice(index, match.index)) + match[0];
+    index = match.index + match[0].length;
+    match = CHARACTER_REFERENCE_PATTERN.exec(value);
+  }
+
+  return escaped + escapeHtml(value.slice(index));
 }
 
 export function stripStoryHtmlForExport(html: string): string {

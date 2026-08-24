@@ -57,7 +57,13 @@ export function createStoryLabContinuationHandler(continueStory: ContinueStoryLa
       return;
     }
 
-    const storyId = input.storyId?.trim() ?? '';
+    // `storyId` arrives from the request body, so its type is whatever the
+    // caller sent. Calling `.trim()` on it directly threw a `TypeError` for
+    // every non-string — `{"storyId": 123}` was answered with an unhandled
+    // rejection rather than the 400 the field check below exists to give,
+    // because nothing here catches it. The job route's own normalizer already
+    // reads the field this way; this is the same check.
+    const storyId = typeof input.storyId === 'string' ? input.storyId.trim() : '';
     const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
 
     const hasChapters = Array.isArray(input.previouslyGeneratedChapters);

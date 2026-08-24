@@ -43,6 +43,30 @@ const SUPPORTED_STYLES: ImageGenerationSeam['input']['style'][] = [
   'romantic'
 ];
 
+/**
+ * Read the image URL out of a provider response, or refuse the response.
+ *
+ * `response.data.data[0].url` was read straight through. The provider can
+ * answer with an entry that carries no `url` — a `b64_json` payload, or an
+ * entry a content filter emptied — and reading a missing property yields
+ * `undefined` rather than throwing, so the service reported `success: true`
+ * with `imageUrl: undefined` beside a real `imageId` and `width`/`height`. The
+ * contract types that field as a string, so every caller treats the response as
+ * an image it can display; the failure surfaced as a broken `<img>` instead of
+ * the error the request actually produced. Refusing here puts it back inside
+ * `callGrokImageAI`'s catch, which answers `IMAGE_GENERATION_FAILED`.
+ */
+export function readGeneratedImageUrl(responseData: unknown): string {
+  const entries = (responseData as { data?: unknown })?.data;
+  const url = Array.isArray(entries) ? (entries[0] as { url?: unknown })?.url : undefined;
+
+  if (typeof url !== 'string' || url.trim().length === 0) {
+    throw new Error('Image provider returned no image URL');
+  }
+
+  return url.trim();
+}
+
 export class ImageService {
   private grokApiKey: string | undefined;
   private grokApiUrl: string;
@@ -140,7 +164,7 @@ export class ImageService {
         timeout: 60000 // 60 second timeout for image generation
       });
 
-      return response.data.data[0].url;
+      return readGeneratedImageUrl(response.data);
 
     } catch (error: any) {
       console.error('Grok Image API error:', error.response?.data || error.message);

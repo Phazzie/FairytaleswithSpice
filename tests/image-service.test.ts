@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-24 23:40 UTC
 
-import { ImageService } from '../api/_lib/services/imageService';
+import { ImageService, readGeneratedImageUrl } from '../api/_lib/services/imageService';
 import { ImageGenerationSeam } from '../api/_lib/types/contracts';
 
 // The service reads `XAI_API_KEY` in its constructor and falls back to a mock
@@ -124,10 +124,49 @@ async function testAspectRatioNeverContradictsTheDimensions(): Promise<void> {
   assert(defaultedOutput.width === 1792 && defaultedOutput.height === 1024, 'the default ratio should report 1792x1024');
 }
 
+// `response.data.data[0].url` was read straight through, and reading a missing
+// property yields `undefined` rather than throwing — so a provider entry that
+// carried no URL was reported as `success: true` with `imageUrl: undefined`
+// beside a real `imageId` and dimensions, and callers rendered a broken image
+// instead of seeing the failure.
+function testProviderResponsesWithoutAUrlAreRefused(): void {
+  const responsesWithoutAUrl: unknown[] = [
+    undefined,
+    null,
+    {},
+    { data: null },
+    { data: [] },
+    { data: {} },
+    { data: [{}] },
+    { data: [{ b64_json: 'aGVsbG8=' }] },
+    { data: [{ url: '' }] },
+    { data: [{ url: '   ' }] },
+    { data: [{ url: 42 }] }
+  ];
+
+  for (const responseData of responsesWithoutAUrl) {
+    let threw = false;
+    try {
+      readGeneratedImageUrl(responseData);
+    } catch {
+      threw = true;
+    }
+
+    assert(threw, `a response of ${JSON.stringify(responseData)} should be refused, not returned as a URL`);
+  }
+
+  assert(
+    readGeneratedImageUrl({ data: [{ url: ' https://images.example/story.png ' }] })
+      === 'https://images.example/story.png',
+    'a well-formed response should yield its URL'
+  );
+}
+
 async function main(): Promise<void> {
   await testSceneDescriptionReadsAsProse();
   await testMalformedThemesAreRejectedAsCallerError();
   await testAspectRatioNeverContradictsTheDimensions();
+  testProviderResponsesWithoutAUrlAreRefused();
 
   console.log('Image service tests passed');
 }

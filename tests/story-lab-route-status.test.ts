@@ -215,6 +215,27 @@ async function main(): Promise<void> {
     assert(!JSON.stringify(errorLogs).includes('secret continuation payload'), 'continuation error log should not include raw error message');
   });
 
+  // `storyId` was read as `input.storyId?.trim()`, which throws for every
+  // non-string a caller can put in a JSON body. Nothing in the route catches
+  // it, so the request that the field check exists to answer with 400 became
+  // an unhandled rejection instead.
+  for (const storyId of [123, true, {}, ['story-route-status'], null]) {
+    const response = new FakeResponse();
+    await continuationHandler(
+      createRequest('POST', { ...createContinuationBody(), storyId }),
+      response
+    );
+
+    assert(
+      response.statusCode === 400,
+      `storyId=${JSON.stringify(storyId)} should be answered with 400, got ${response.statusCode}`
+    );
+    assert(
+      (response.body as { error?: { code?: string } })?.error?.code === 'INVALID_REQUEST',
+      `storyId=${JSON.stringify(storyId)} is a caller error, not a service failure`
+    );
+  }
+
   console.log('Story Lab route status tests passed');
 }
 

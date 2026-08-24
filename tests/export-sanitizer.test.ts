@@ -63,6 +63,43 @@ assert(entityPlainText.includes('&lt;encoded&gt;'), 'plain export should not dou
 assert(entityPlainText.includes('"quote"'), 'plain export should decode direct quote entities');
 assert(entityPlainText.includes('&quot;encoded quote&quot;'), 'plain export should not double-decode amp-escaped quote entities');
 
+// The story arrives as the generator's HTML, where `&` and `"` are already
+// written as `&amp;` and `&quot;`. Escaping every `&` re-escaped those, so the
+// HTML export rendered the entity text itself while the plain-text export of
+// the same story showed the punctuation it stands for.
+const entityStoryHtml = '<p>Blood pooled at her feet &amp; the &quot;hunter&quot; smiled.</p>';
+const entitySanitizedHtml = sanitizeStoryHtmlForExport(entityStoryHtml);
+assert(
+  entitySanitizedHtml === entityStoryHtml,
+  `HTML export should pass the generator's own entities through unchanged (got ${entitySanitizedHtml})`
+);
+assert(
+  !entitySanitizedHtml.includes('&amp;amp;') && !entitySanitizedHtml.includes('&amp;quot;'),
+  'HTML export should not double-escape character references'
+);
+assert(
+  sanitizeStoryHtmlForExport('<p>Rain &amp; ash &#38; smoke &#x26; salt.</p>')
+    === '<p>Rain &amp; ash &#38; smoke &#x26; salt.</p>',
+  'decimal and hexadecimal references should survive alongside named ones'
+);
+// Only a complete reference is a reference. A bare ampersand, and an `&amp`
+// with no semicolon, are still text and still have to be escaped.
+assert(
+  sanitizeStoryHtmlForExport('<p>Angel &amp demon & wolf &#zz; here</p>')
+    === '<p>Angel &amp;amp demon &amp; wolf &amp;#zz; here</p>',
+  'incomplete references should still be escaped'
+);
+// A reference in text content decodes to a character, never to markup, so
+// passing one through cannot reopen the injection the escaping guards against.
+const referenceInjection = sanitizeStoryHtmlForExport(
+  '<p>&#x3C;script&#x3E;stealPrivateStory()&#x3C;/script&#x3E;</p>'
+);
+assert(!referenceInjection.includes('<script'), 'a referenced tag must not become a real tag');
+assert(
+  referenceInjection.includes('&#x3C;script&#x3E;'),
+  `a referenced tag should stay the text it was (got ${referenceInjection})`
+);
+
 const commentedStoryHtml =
   '<p>Elena waited.</p><!-- editor note: cut this line <script>stealPrivateStory()</script> --><p>Dawn broke.</p>';
 const sanitizedComments = sanitizeStoryHtmlForExport(commentedStoryHtml);
