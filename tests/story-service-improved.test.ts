@@ -686,7 +686,7 @@ async function runAllTests() {
   const startTime = Date.now();
 
   // Run main test suite
-  for (const [testName, testFn] of Object.entries(testSuite)) {
+  for (const testFn of Object.values(testSuite)) {
     await testFn();
   }
 
@@ -695,7 +695,7 @@ async function runAllTests() {
   console.log('🔢 TOKEN CALCULATION TESTS');
   console.log('-'.repeat(80));
 
-  for (const [testName, testFn] of Object.entries(tokenCalculationTests)) {
+  for (const testFn of Object.values(tokenCalculationTests)) {
     await testFn();
   }
 
@@ -704,7 +704,7 @@ async function runAllTests() {
   console.log('📏 STORY TEXT MEASUREMENT TESTS');
   console.log('-'.repeat(80));
 
-  for (const [testName, testFn] of Object.entries(storyTextTests)) {
+  for (const testFn of Object.values(storyTextTests)) {
     await testFn();
   }
 
