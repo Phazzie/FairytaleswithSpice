@@ -7,6 +7,30 @@ import {
   stripStoryHtmlForExport
 } from './exportSanitizer';
 
+const PDF_EXCERPT_CODE_POINTS = 100;
+
+/**
+ * Take the first `limit` code points of `value`. Iterating a string yields
+ * whole code points rather than UTF-16 code units, so an astral-plane
+ * character is either kept whole or dropped whole. The loop stops at the
+ * limit, so a book-length story costs no more than a paragraph does.
+ */
+function truncateByCodePoint(value: string, limit: number): string {
+  let truncated = '';
+  let taken = 0;
+
+  for (const character of value) {
+    if (taken >= limit) {
+      break;
+    }
+
+    truncated += character;
+    taken += 1;
+  }
+
+  return truncated;
+}
+
 interface ExportMetadata {
   generatedAt: string;
   wordCount: number;
@@ -87,7 +111,14 @@ export class ExportService {
     }
   }
 
-  private async generateExportContent(input: SaveExportSeam['input']): Promise<string> {
+  /**
+   * Render the export document for an input without running the mock upload.
+   *
+   * Public because the document itself is the product: `saveAndExport` reports
+   * only its size and a storage URL, so this is the supported way to assert on
+   * what an export actually contains.
+   */
+  async generateExportContent(input: SaveExportSeam['input']): Promise<string> {
     const sanitizedHtml = sanitizeStoryHtmlForExport(input.content);
     const plainText = stripStoryHtmlForExport(input.content);
     const metadata = this.generateMetadata(plainText);
@@ -111,7 +142,23 @@ export class ExportService {
   private generatePDFContent(content: string, input: SaveExportSeam['input']): string {
     // Mock PDF generation - in real implementation, use pdfkit or puppeteer
     const title = escapePdfText(input.title);
-    const excerpt = escapePdfText(content).substring(0, 100);
+    // The excerpt is cut from the source text and escaped afterwards. Cutting
+    // the escaped text instead splits whatever escaping added at the boundary:
+    // a `\(` pair loses its parenthesis and leaves a dangling backslash that
+    // escapes the following character, and a surrogate pair loses its second
+    // half, so the emoji it encoded is written out as U+FFFD.
+    const excerpt = escapePdfText(truncateByCodePoint(content, PDF_EXCERPT_CODE_POINTS));
+    // `/Length` tells a reader how many bytes of stream follow the `stream`
+    // keyword, so it has to be measured from the stream itself. It used to be
+    // derived from the whole story text, which is neither what the stream
+    // holds nor a byte count, and left readers scanning past `endstream`.
+    const contentStream = `BT
+/F1 12 Tf
+72 720 Td
+(${title}) Tj
+0 -24 Td
+(${excerpt}...) Tj
+ET`;
 
     return `%PDF-1.4
 1 0 obj
@@ -145,16 +192,10 @@ endobj
 
 4 0 obj
 <<
-/Length ${content.length + 100}
+/Length ${Buffer.byteLength(contentStream, 'utf8')}
 >>
 stream
-BT
-/F1 12 Tf
-72 720 Td
-(${title}) Tj
-0 -24 Td
-(${excerpt}...) Tj
-ET
+${contentStream}
 endstream
 endobj
 
@@ -250,8 +291,12 @@ startxref
     // Mock EPUB generation - in real implementation, use epub-gen or similar
     const title = escapeHtml(input.title);
 
+    // The metadata block is written with the `dc:` prefix, so the Dublin Core
+    // namespace it stands for has to be bound on the root element. Without the
+    // binding the prefix is undeclared and the package document is not
+    // well-formed XML, which every conforming reader rejects outright.
     return `<?xml version="1.0" encoding="UTF-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
     <metadata>
         <dc:title>${title}</dc:title>
         <dc:creator>Fairytales with Spice</dc:creator>
