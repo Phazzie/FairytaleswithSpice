@@ -157,8 +157,14 @@ function findApiKeyPrefix(value: string, index: number): string | undefined {
   return API_KEY_PREFIXES.find(prefix => startsWithIgnoreCase(value, prefix, index));
 }
 
+// Deliberately narrower than `isBearerTokenChar`: the only thing this guard
+// needs to reject is `bearer` sitting inside a longer *word*, so the boundary
+// is letters and digits alone. Reusing the token grammar here would treat the
+// delimiters that really do precede credentials -- `=` in
+// `Authorization=Bearer x`, and `/` or `+` in encoded payloads -- as word
+// characters and leave those credentials in the clear.
 function hasBearerBoundaryBefore(value: string, index: number): boolean {
-  return index === 0 || !isBearerTokenChar(value[index - 1] ?? '');
+  return index === 0 || !isAsciiLetterOrDigit(value[index - 1] ?? '');
 }
 
 function hasApiTokenBoundaryBefore(value: string, index: number): boolean {

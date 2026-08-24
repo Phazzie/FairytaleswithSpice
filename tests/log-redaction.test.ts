@@ -86,6 +86,19 @@ assert(
   'a real Bearer credential should still be redacted'
 );
 
+// The word-boundary guard must not treat the delimiters that actually precede
+// a credential as word characters. `=`, `/` and `+` are all valid bearer-token
+// characters, so keying the guard off the token grammar would leak these.
+for (const delimiter of ['=', ':', '/', '+', '"', ',', '(']) {
+  const delimited = redactSensitiveLogData({
+    note: `Authorization${delimiter}Bearer abc123def456 upstream`
+  }) as Record<string, string>;
+  assert(
+    !delimited.note.includes('abc123def456'),
+    `a Bearer credential introduced by "${delimiter}" should be redacted`
+  );
+}
+
 const cyclic: Record<string, unknown> = { model: 'grok-4' };
 cyclic['self'] = cyclic;
 const redactedCycle = redactSensitiveLogData(cyclic) as Record<string, any>;

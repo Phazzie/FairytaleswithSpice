@@ -4,6 +4,32 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-24 15:05 UTC - Header Casing, Bearer Redaction Boundary, And Unwired Blueprint Parser Test
+
+Actions:
+
+- Made `readHeader` in `api/_lib/middleware/security.ts` genuinely case-insensitive through a new `findHeaderValue`. The previous `headers?.[name] ?? headers?.[name.toLowerCase()]` fallback was dead code because both call sites already pass lowercase names, so a header bag keyed `X-API-Key` or `Authorization` — the exact casing the `MISSING_API_KEY` message instructs clients to send — resolved to `undefined` and was reported as a missing key.
+- Added a leading word-boundary guard to `redactBearerTokens` in `shared/sensitiveTextRedaction.ts`. The scanner previously treated any occurrence of the substring `bearer` as the auth scheme, so `forbearer patterns are fine` was rewritten to `forBearer [REDACTED] are fine`: the word took the scheme's casing and the following word was swallowed as a credential.
+- Keyed that guard off letters and digits rather than `isBearerTokenChar` after PR review caught that the token grammar counts `=`, `/` and `+` as word characters, which would have left `Authorization=Bearer <token>` unredacted — a leak the pre-slice code did not have.
+- Wired `tests/story-lab-blueprint-parser.test.ts` into a `test:story-lab-blueprint-parser` script and the `test:all` chain. It had no script and no chain entry, so the Story Lab request-validation boundary had no CI coverage despite passing as written.
+- Added negative redaction tests for the delimiter forms and word forms, and canonical-case header assertions to `tests/api-key-auth.test.ts`.
+- Opened PR #202 and addressed both review rounds in the same PR: a Copilot nit about a comment example that did not contain the substring it claimed, and a Codex P1 on the delimiter regression above.
+
+Self-review:
+
+- Good: Each fix carries a negative test naming the defect it kills — a canonically cased header being rejected, an ordinary word being corrupted, and a delimiter-introduced credential leaking.
+- Correction: The first version of the bearer boundary reused `isBearerTokenChar` for symmetry with the API-key path. That symmetry was wrong: the API-key check guards a token grammar, while this one guards a *word*, and the two need different character classes. Reviewer feedback caught the resulting leak before merge.
+- Non-claim: This slice does not wire `authenticateRequest` or `checkRateLimit` into any route. Both remain called only from tests, so the auth middleware is still not enforced on live endpoints; that gap is untouched here and needs its own decision.
+- Non-claim: Three other test files (`frontend-streaming`, `verify-ai-fixes`, `story-service.test.mjs`) remain unwired. `frontend-streaming` fails module resolution and `verify-ai-fixes` prints notes instead of asserting, so both are repairs rather than wiring.
+
+Validation:
+
+- `npm run test:all`: passed, including the newly wired blueprint parser test.
+- API typecheck over `api/**/*.ts` with the `preflight.sh` compiler flags: passed with no diagnostics.
+- Direct behavior probes before and after each fix: canonical `X-API-Key` and `Authorization` moved from `MISSING_API_KEY` to authenticated; `forbearer`/`torchbearer` stopped being corrupted; `Authorization` followed by `=`, `:`, `/`, `+`, `"`, `,` or `(` all redact the credential.
+- PR #202 checks: Validate Vercel recovery build, SonarCloud (quality gate passed, 0 new issues), Vercel preview, and Vercel Preview Comments passed. Sourcery was rate-limited and CodeRabbit skipped automatic review because the repository has fewer than 10 stars. Copilot returned an approval recommendation.
+- Note: `node_modules` is tracked in this repository. Installing dependencies to run the suite modified those tracked files; they were restored so the slice diff stays source-only.
+
 ## 2026-07-16 03:14 EDT - Subagent Scope, Test Quality, And Completion Boundary Hardening
 
 Actions:
