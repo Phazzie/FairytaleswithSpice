@@ -578,6 +578,104 @@ const tokenCalculationTests = {
   })
 };
 
+// ==================== STORY TEXT MEASUREMENT TESTS ====================
+
+// Generator HTML puts each paragraph in its own `<p>` element and is under no
+// obligation to leave whitespace between them. Everything below reads the story
+// the way the reader sees it, which stripping tags in place does not: it welds
+// the last word of one paragraph to the first word of the next.
+const HTML_CHAPTER = [
+  '<h3>Chapter 1: The Door</h3>',
+  '<p>She opened the door.</p>',
+  '<p>Blood pooled on the floor.</p>',
+  '<p>Who was there?</p>'
+].join('');
+
+const storyTextTests = {
+  testWordCountAcrossParagraphBoundaries: test('Word Count Reads Paragraph Boundaries', () => {
+    const service = new StoryService();
+    const countWords = (content: string) => (service as any).countWords(content);
+
+    // "one" and "two" are two words to a reader, and were one before the fix.
+    const twoWords = countWords('<p>one</p><p>two</p>');
+    if (twoWords !== 2) {
+      throw new Error(`Expected 2 words across a paragraph boundary, got ${twoWords}`);
+    }
+
+    // 4 heading words + 4 + 5 + 3 in the paragraphs.
+    const chapterWords = countWords(HTML_CHAPTER);
+    if (chapterWords !== 16) {
+      throw new Error(`Expected 16 words in the sample chapter, got ${chapterWords}`);
+    }
+
+    // Every boundary used to cost one word, so the count grew with the markup.
+    const manyParagraphs = Array.from({ length: 40 }, (_, index) => `<p>word${index}</p>`).join('');
+    const manyParagraphWords = countWords(manyParagraphs);
+    if (manyParagraphWords !== 40) {
+      throw new Error(`Expected 40 words in 40 paragraphs, got ${manyParagraphWords}`);
+    }
+
+    console.log(`   ✓ <p>one</p><p>two</p> counts as ${twoWords} words`);
+    console.log(`   ✓ Sample chapter counts as ${chapterWords} words`);
+    console.log(`   ✓ 40 single-word paragraphs count as ${manyParagraphWords} words`);
+  }),
+
+  testStripHtmlKeepsWordsApart: test('Stripped Story Text Keeps Words Apart', () => {
+    const service = new StoryService();
+    const stripped: string = (service as any).stripHtml(HTML_CHAPTER);
+
+    for (const welded of ['DoorShe', 'door.Blood', 'floor.Who']) {
+      if (stripped.includes(welded)) {
+        throw new Error(`Stripped text welded two paragraphs together: found "${welded}"`);
+      }
+    }
+
+    if (!stripped.includes('Blood pooled on the floor.')) {
+      throw new Error('Stripped text should preserve the prose of each paragraph');
+    }
+
+    console.log(`   ✓ Stripped text: ${JSON.stringify(stripped)}`);
+  }),
+
+  testLastChapterSummaryReadsTheEnding: test('Last Chapter Summary Reads The Ending', () => {
+    const service = new StoryService();
+    // Six paragraphs, so "the last three" is a strictly smaller set than "all".
+    const story = [
+      '<p>Paragraph one opens the chapter.</p>',
+      '<p>Paragraph two builds the tension.</p>',
+      '<p>Paragraph three turns the screw.</p>',
+      '<p>Paragraph four raises the stakes.</p>',
+      '<p>Paragraph five names the price.</p>',
+      '<p>Paragraph six leaves the door open.</p>'
+    ].join('');
+
+    const summary: string = (service as any).extractLastChapterSummary(story);
+
+    if (!summary.includes('Paragraph six')) {
+      throw new Error(`Summary of the last chapter should reach its final paragraph: ${summary}`);
+    }
+    if (summary.includes('Paragraph one')) {
+      throw new Error(`Summary of the last three paragraphs should not start at the beginning: ${summary}`);
+    }
+
+    console.log(`   ✓ Summary: ${JSON.stringify(summary)}`);
+  }),
+
+  testNextChapterHintIsTheClosingSentence: test('Next Chapter Hint Is The Closing Sentence', () => {
+    const service = new StoryService();
+    const hint: string = (service as any).generateNextChapterHint(HTML_CHAPTER);
+
+    // With no whitespace after the full stops, the sentence split had nothing to
+    // split on and the "hint" was the whole chapter, cut 200 characters in from
+    // its opening.
+    if (hint !== 'Who was there?') {
+      throw new Error(`Expected the closing sentence as the hint, got: ${JSON.stringify(hint)}`);
+    }
+
+    console.log(`   ✓ Hint: ${JSON.stringify(hint)}`);
+  })
+};
+
 // ==================== RUN TESTS ====================
 
 async function runAllTests() {
@@ -588,7 +686,7 @@ async function runAllTests() {
   const startTime = Date.now();
 
   // Run main test suite
-  for (const [testName, testFn] of Object.entries(testSuite)) {
+  for (const testFn of Object.values(testSuite)) {
     await testFn();
   }
 
@@ -597,7 +695,16 @@ async function runAllTests() {
   console.log('🔢 TOKEN CALCULATION TESTS');
   console.log('-'.repeat(80));
 
-  for (const [testName, testFn] of Object.entries(tokenCalculationTests)) {
+  for (const testFn of Object.values(tokenCalculationTests)) {
+    await testFn();
+  }
+
+  // Run story text measurement tests
+  console.log('\n' + '-'.repeat(80));
+  console.log('📏 STORY TEXT MEASUREMENT TESTS');
+  console.log('-'.repeat(80));
+
+  for (const testFn of Object.values(storyTextTests)) {
     await testFn();
   }
 

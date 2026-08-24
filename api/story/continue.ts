@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
+import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { StoryService } from '../_lib/services/storyService';
 import { ChapterContinuationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
@@ -28,15 +29,17 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const input: ChapterContinuationSeam['input'] = req.body;
+    const input = readJsonObjectBody<ChapterContinuationSeam['input']>(req.body);
 
-    // Validate required fields
-    if (!input.storyId || !input.existingContent || typeof input.currentChapterCount !== 'number') {
+    // Validate required fields. A body that is missing entirely fails here, as
+    // one more malformed request, rather than throwing on `input.storyId` into
+    // the catch block below and reporting the caller's mistake as a 500.
+    if (!input || !input.storyId || !input.existingContent || typeof input.currentChapterCount !== 'number') {
       logWarn('Invalid input - missing required fields', {
         requestId,
         endpoint: '/api/story/continue',
         method: 'POST'
-      }, { receivedFields: Object.keys(input) });
+      }, { receivedFields: input ? Object.keys(input) : [] });
       
       return res.status(400).json({
         success: false,

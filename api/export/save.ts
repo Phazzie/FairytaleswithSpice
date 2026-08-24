@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
+import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { ExportService } from '../_lib/services/exportService';
 import { SaveExportSeam } from '../_lib/types/contracts';
 import { FILE_SIZE } from '../_lib/constants';
@@ -35,10 +36,12 @@ export default async function handler(req: any, res: any) {
   try {
     console.log(`[${requestId}] POST /api/export/save - Request received`);
     
-    const input: SaveExportSeam['input'] = req.body;
+    const input = readJsonObjectBody<SaveExportSeam['input']>(req.body);
 
-    // Validate required fields
-    if (!input.storyId || !input.content || !input.title || !input.format) {
+    // Validate required fields. A body that is missing entirely fails here, as
+    // one more malformed request, rather than throwing on `input.storyId` into
+    // the catch block below and reporting the caller's mistake as a 500.
+    if (!input || !input.storyId || !input.content || !input.title || !input.format) {
       return res.status(400).json({
         success: false,
         error: {

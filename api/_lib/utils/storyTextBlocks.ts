@@ -26,6 +26,20 @@ export function splitStoryIntoTextBlocks(storyContent: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Render story markup as the text a reader sees.
+ *
+ * Dropping tags on their own is not the same thing: `</p><p>` sits between two
+ * words that a reader sees in different paragraphs, so deleting it welds them
+ * into one token — `door.Blood` — which then miscounts as a single word, hides
+ * the sentence boundary from anything that splits on `[.!?]\s`, and is what
+ * gets pasted into the next continuation prompt. Going through the block
+ * splitter puts a paragraph break where the markup put one.
+ */
+export function stripStoryHtmlToText(storyContent: string): string {
+  return splitStoryIntoTextBlocks(storyContent).join('\n\n');
+}
+
 const BLOCK_LEVEL_TAG_NAMES = 'br|p|div|section|article|blockquote|li|ul|ol|h[1-6]|figure|figcaption|table|tr';
 /**
  * Match an opening or closing block-level tag, with or without attributes.
