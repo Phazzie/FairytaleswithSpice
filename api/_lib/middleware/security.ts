@@ -91,11 +91,40 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
 /**
  * Read a single header value, tolerating the string[] form Node uses for
  * repeated headers.
+ *
+ * HTTP header names are case-insensitive (RFC 7230 §3.2), and callers reach
+ * this function with header bags that have not always been through Node's
+ * lowercasing `IncomingMessage.headers` — a hand-built object, a fetch-style
+ * adapter, or a test fixture may carry the canonical `X-API-Key` /
+ * `Authorization` casing that the documentation and the MISSING_API_KEY
+ * message tell clients to send. Match on the lowercased key so every casing
+ * resolves to the same header.
  */
 function readHeader(headers: any, name: string): string | undefined {
-  const raw = headers?.[name] ?? headers?.[name.toLowerCase()];
+  const raw = findHeaderValue(headers, name);
   const value = Array.isArray(raw) ? raw[0] : raw;
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function findHeaderValue(headers: any, name: string): unknown {
+  if (!headers || typeof headers !== 'object') {
+    return undefined;
+  }
+
+  // Node lowercases incoming header names, so the direct hit is the common path.
+  const target = name.toLowerCase();
+  const direct = headers[target];
+  if (direct !== undefined) {
+    return direct;
+  }
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === target) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 /**

@@ -22,6 +22,16 @@ function redactBearerTokens(value: string): string {
 
     redacted += value.slice(index, found);
 
+    // `bearer` only introduces a credential when it starts a word. Without this
+    // guard an ordinary word that merely contains the substring (`forbearer`,
+    // `torchbearer`) is rewritten to the scheme's casing and the following word
+    // is swallowed as if it were a token.
+    if (!hasBearerBoundaryBefore(value, found)) {
+      redacted += value.slice(found, found + marker.length);
+      index = found + marker.length;
+      continue;
+    }
+
     let cursor = found + marker.length;
     const whitespaceStart = cursor;
     while (cursor < value.length && isWhitespace(value[cursor] ?? '')) {
@@ -145,6 +155,16 @@ function startsWithIgnoreCase(value: string, search: string, index: number): boo
 
 function findApiKeyPrefix(value: string, index: number): string | undefined {
   return API_KEY_PREFIXES.find(prefix => startsWithIgnoreCase(value, prefix, index));
+}
+
+// Deliberately narrower than `isBearerTokenChar`: the only thing this guard
+// needs to reject is `bearer` sitting inside a longer *word*, so the boundary
+// is letters and digits alone. Reusing the token grammar here would treat the
+// delimiters that really do precede credentials -- `=` in
+// `Authorization=Bearer x`, and `/` or `+` in encoded payloads -- as word
+// characters and leave those credentials in the clear.
+function hasBearerBoundaryBefore(value: string, index: number): boolean {
+  return index === 0 || !isAsciiLetterOrDigit(value[index - 1] ?? '');
 }
 
 function hasApiTokenBoundaryBefore(value: string, index: number): boolean {
