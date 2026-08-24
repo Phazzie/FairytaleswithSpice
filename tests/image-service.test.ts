@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-24 23:40 UTC
 
+import axios from 'axios';
 import { ImageService, readGeneratedImageUrl } from '../api/_lib/services/imageService';
 import { ImageGenerationSeam } from '../api/_lib/types/contracts';
 
@@ -162,11 +163,60 @@ function testProviderResponsesWithoutAUrlAreRefused(): void {
   );
 }
 
+/**
+ * Prove the same thing through the service, not just through the helper.
+ *
+ * A test that only calls `readGeneratedImageUrl` still passes if
+ * `callGrokImageAI` goes back to reading `response.data.data[0].url`, which is
+ * the wiring the fix is actually about. Driving `generateImage` with a stubbed
+ * provider fails in that case, because the service would again answer
+ * `success: true` with an undefined `imageUrl`.
+ *
+ * The service reads `XAI_API_KEY` in its constructor and takes the mock path
+ * without one, so the key is set for the duration and `axios.post` is replaced
+ * to keep the call off the network.
+ */
+async function testTheServiceRefusesAProviderResponseWithoutAUrl(): Promise<void> {
+  const originalPost = axios.post;
+  const originalKey = process.env['XAI_API_KEY'];
+  process.env['XAI_API_KEY'] = 'test-key';
+
+  try {
+    (axios as { post: unknown }).post = async () => ({ data: { data: [{ b64_json: 'aGVsbG8=' }] } });
+    const missingUrl = await new ImageService().generateImage(createInput());
+
+    assert(!missingUrl.success, 'a provider response with no URL should not be reported as a success');
+    assert(
+      missingUrl.error?.code === 'IMAGE_GENERATION_FAILED',
+      `a provider response with no URL should fail the request (got ${missingUrl.error?.code})`
+    );
+
+    (axios as { post: unknown }).post = async () => ({
+      data: { data: [{ url: 'https://images.example/story.png' }] }
+    });
+    const withUrl = await new ImageService().generateImage(createInput());
+
+    assert(withUrl.success, 'a provider response carrying a URL should still succeed');
+    assert(
+      (withUrl.data as ImageGenerationSeam['output']).imageUrl === 'https://images.example/story.png',
+      'the provider URL should reach the caller unchanged'
+    );
+  } finally {
+    (axios as { post: unknown }).post = originalPost;
+    if (originalKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalKey;
+    }
+  }
+}
+
 async function main(): Promise<void> {
   await testSceneDescriptionReadsAsProse();
   await testMalformedThemesAreRejectedAsCallerError();
   await testAspectRatioNeverContradictsTheDimensions();
   testProviderResponsesWithoutAUrlAreRefused();
+  await testTheServiceRefusesAProviderResponseWithoutAUrl();
 
   console.log('Image service tests passed');
 }

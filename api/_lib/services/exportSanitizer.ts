@@ -95,42 +95,58 @@ export function sanitizeStoryHtmlForExport(html: string): string {
 }
 
 /**
- * Match either one complete HTML character reference — named (`&amp;`),
- * decimal (`&#38;`), or hexadecimal (`&#x26;`) — or one character that has to
- * be escaped on its own.
+ * The character references the HTML export leaves alone.
  *
- * The reference alternatives come first, so an `&` that begins one is taken
- * whole instead of being matched as the bare ampersand the trailing class would
- * otherwise claim. Each reference alternative is decided by the character after
- * the `&` and ends at a `;` its character class cannot cross, so a run that
- * never reaches a `;` fails once per `&` rather than being re-split between the
- * branches.
+ * Derived from the table the plain-text export decodes, in the same lowercase
+ * and fully-uppercase forms `replaceEntity` recognises, so the two exports of
+ * one story agree character for character: every reference this set preserves
+ * is one the plain-text path turns into the character it stands for, and every
+ * reference outside it stays literal in both.
  */
-const STORY_TEXT_PATTERN = /&(?:[a-zA-Z][a-zA-Z0-9]*|#[0-9]+|#[xX][0-9a-fA-F]+);|[&<>"']/g;
+const PRESERVED_CHARACTER_REFERENCES = new Set(
+  BASIC_HTML_ENTITY_REPLACEMENTS.flatMap(([entity]) => [entity, entity.toUpperCase()])
+);
 
 /**
- * Escape story text without escaping the character references already in it.
+ * Match either something shaped like a character reference or one character
+ * that has to be escaped on its own.
+ *
+ * The reference shape comes first, so an `&` that begins one is offered whole
+ * rather than being taken as the bare ampersand the trailing class would
+ * otherwise claim; whether it is actually preserved is decided against
+ * `PRESERVED_CHARACTER_REFERENCES`, not by this pattern. The name characters
+ * cannot cross the `;` that ends the reference, so a run that never reaches one
+ * fails once per `&` rather than being rescanned from inside itself.
+ */
+const STORY_TEXT_PATTERN = /&[#0-9a-zA-Z]+;|[&<>"']/g;
+
+/**
+ * Escape story text without re-escaping the references already in it.
  *
  * The story reaches this module as the generator's HTML, where `&` and `"` are
  * written as `&amp;` and `&quot;`. Escaping every `&` re-escaped those into
  * `&amp;amp;` and `&amp;quot;`, so the exported HTML rendered the entity text
- * itself — a reader saw `feet &amp; the &quot;hunter&quot; smiled` on the page.
- * The plain-text export decodes the same references instead of doubling them,
- * so the two exports of one story disagreed about their own punctuation.
+ * itself — a reader saw `feet &amp; the &quot;hunter&quot; smiled` on the page
+ * — while the plain-text export of the same story decoded them and showed the
+ * punctuation.
  *
- * Passing a reference through is safe for the reason the plain-text path can
- * decode it: a character reference in text content is text. `&#x3C;` renders as
- * a literal `<` that the parser never reads as the start of a tag, and this
- * sanitizer has already dropped every attribute, which is the one context where
- * a reference could mean anything else. Everything that is not a complete
- * reference — a bare `&`, an unterminated `&amp` — is escaped as before.
+ * Only the references the plain-text path decodes are preserved, and that
+ * restriction is what makes preserving any of them safe. An entity-shaped
+ * literal that is not a reference cannot be passed through: HTML parses a
+ * named reference by its longest valid prefix, with no `;` required, so
+ * `&copycat;` in the text would reach a reader as `©cat;` rather than as the
+ * `&copycat;` the story says. Anything outside the set — that literal, a
+ * numeric reference, a bare `&`, an unterminated `&amp` — is escaped exactly as
+ * it was before, which is always safe and always what the plain-text export
+ * shows.
  */
 function escapeStoryText(value: string): string {
-  // A match is either a whole reference or a single character, so its length
-  // says which. `replace` drives the shared pattern's `lastIndex` itself, so
-  // no state survives the call — which an `exec` loop would have to reset by
-  // hand on every entry and every early return.
-  return value.replace(STORY_TEXT_PATTERN, token => (token.length > 1 ? token : escapeHtml(token)));
+  // `replace` drives the shared pattern's `lastIndex` itself, so no state
+  // survives the call — which an `exec` loop would have to reset by hand on
+  // every entry and every early return.
+  return value.replace(STORY_TEXT_PATTERN, token =>
+    PRESERVED_CHARACTER_REFERENCES.has(token) ? token : escapeHtml(token)
+  );
 }
 
 export function stripStoryHtmlForExport(html: string): string {
