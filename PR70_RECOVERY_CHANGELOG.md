@@ -4,6 +4,30 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-24 20:05 UTC - HTML-Blind Quality Heuristics, Undercounted Trope Pools, And Fabricated PDF Xref Offsets
+
+Actions:
+
+- Split story content into text blocks before scoring it in `storyQualityHeuristics`. The evaluation route is called with the story exactly as the generator renders it — `<p>` elements on one line, `[Speaker]:` tags inside those elements, no blank lines anywhere — but the scan split paragraphs on blank lines and looked for speaker tags at the start of a line. Against that markup every paragraph-shaped and dialogue-shaped signal reported the opposite of what the story holds: the whole story counted as one paragraph, so `cliffhanger_quality` scanned the entire text as if it were the ending and `audio_readiness` marked every story as one overlong block; no `[Speaker]:` tag ever started a line, so no story was credited with dialogue or speaker variety; and `<p>Hello</p>` counted as a single word. Block-level tags and `<br>` now become block boundaries, inline tags are dropped, and basic entities are decoded, so each dimension reads the prose the reader sees. Plain-text callers are unaffected: their blank-line boundaries are honoured exactly as before.
+- Counted distinct tropes, not pool entries, when deciding whether a preferred-intensity pool can satisfy `selectTropesForSubversion`. The pool is weighted by repetition — every common trope is pushed three times — so one trope at the requested intensity looked like three candidates. A caller asking for two `subtle` werewolf tropes got one: the loop drains every copy of the only id it holds and never falls back to the wider pool that could supply the second.
+- Built the mock PDF's cross-reference table from the document being written. The object offsets and `startxref` were fixed constants, so they addressed whatever bytes a real title and excerpt pushed into their place; no entry pointed at an object header and `startxref` did not point at the table. Each entry is now measured with `Buffer.byteLength` as the objects are assembled, and the records keep the fixed 20-byte width the format requires. This answers the open item the 19:00 UTC slice recorded as a non-claim.
+- Added a regression case to each of the three existing suites: HTML-shaped input in `tests/story-quality-evals.test.ts`, a preferred-intensity property over every creature and intensity in `tests/trope-subversion.test.ts`, and an xref-resolves-its-objects case over three title lengths in `tests/export-service.test.ts`.
+
+Self-review:
+
+- Good: Each fix was checked against a targeted revert of the source change with the new tests in place, and each fails there — `werewolf/subtle ... (got 1)`, `Paragraphs: 1` on a four-paragraph HTML story, and `startxref ... should point at the cross-reference table`.
+- Good: The trope and xref tests assert properties rather than fixtures — every creature and intensity combination, and every entry in the table against the object it addresses — so a later database entry or added PDF object is covered without editing the test.
+- Non-claim: The PDF remains the mock its own comment describes. The table is now internally consistent, which is not the same as a valid PDF; a real generator (pdfkit or similar) is still the open work, and the EPUB fragment still has no `unique-identifier`/`dc:identifier` pair, container, or chapter files.
+- Non-claim: The heuristic scan still reads only what the request carries. Nothing here changes the AI evaluation path, the scoring formulas, or the dimension list — only the text those formulas are applied to.
+
+Validation:
+
+- `npm run test:all`: passed.
+- Targeted counterfactual: `git stash push -- api/` with the new tests in place; all three suites failed with the messages quoted above; restored immediately and not committed.
+- `tsc --noEmit --strict` over the three changed source files: passed with no diagnostics.
+- `git diff --check`: passed.
+- Note: `node_modules` is tracked in this repository. Installing dependencies to run the suite modified those tracked files; they were restored so the slice diff stays source-only.
+
 ## 2026-08-24 19:00 UTC - PDF Stream Length, PDF Excerpt Cut Boundary, EPUB Namespace, And Level-Filtered Log Reads
 
 Actions:

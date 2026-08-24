@@ -37,4 +37,37 @@ for (const creature of Object.keys(TROPE_DATABASE) as Array<keyof typeof TROPE_D
   assert(restored.selectedTropeIds.length === selection.selectedTropeIds.length, `${creature}: restored ids should match`);
 }
 
+// The selection pool is weighted by repetition, so its length counts copies
+// rather than distinct tropes. A preferred intensity that leaves a single trope
+// in the pool still leaves three copies of it, which looked like enough to
+// satisfy a request for two — and the caller was handed one trope instead of
+// falling back to the wider pool that could supply the second.
+for (const creature of Object.keys(TROPE_DATABASE) as Array<keyof typeof TROPE_DATABASE>) {
+  const creatureTropes = TROPE_DATABASE[creature];
+  const allTropes = [...creatureTropes.common, ...creatureTropes.subversive];
+
+  for (const intensity of ['subtle', 'moderate', 'dramatic'] as const) {
+    const requestedCount = 2;
+    if (allTropes.length < requestedCount) {
+      continue;
+    }
+
+    const selection = service.selectTropesForSubversion({
+      creature,
+      preferredIntensity: intensity,
+      tropeCount: requestedCount
+    });
+
+    assert(
+      selection.selectedTropes.length === requestedCount,
+      `${creature}/${intensity}: a preferred intensity should never return fewer tropes than requested ` +
+        `(got ${selection.selectedTropes.length})`
+    );
+    assert(
+      new Set(selection.selectedTropeIds).size === requestedCount,
+      `${creature}/${intensity}: selected tropes should stay distinct`
+    );
+  }
+}
+
 console.log('Trope subversion service tests passed');

@@ -160,24 +160,17 @@ export class ExportService {
 (${excerpt}...) Tj
 ET`;
 
-    return `%PDF-1.4
-1 0 obj
-<<
+    const objects = [
+      `<<
 /Type /Catalog
 /Pages 2 0 R
->>
-endobj
-
-2 0 obj
-<<
+>>`,
+      `<<
 /Type /Pages
 /Kids [3 0 R]
 /Count 1
->>
-endobj
-
-3 0 obj
-<<
+>>`,
+      `<<
 /Type /Page
 /Parent 2 0 R
 /MediaBox [0 0 612 792]
@@ -187,42 +180,65 @@ endobj
 /F1 5 0 R
 >>
 >>
->>
-endobj
-
-4 0 obj
-<<
+>>`,
+      `<<
 /Length ${Buffer.byteLength(contentStream, 'utf8')}
 >>
 stream
 ${contentStream}
-endstream
-endobj
-
-5 0 obj
-<<
+endstream`,
+      `<<
 /Type /Font
 /Subtype /Type1
 /BaseFont /Helvetica
->>
-endobj
+>>`
+    ];
 
-xref
-0 6
-0000000000 65535 f
-0000000009 00000 n
-0000000058 00000 n
-0000000115 00000 n
-0000000274 00000 n
-0000000354 00000 n
+    return this.assemblePdfDocument(objects);
+  }
+
+  /**
+   * Write the objects out with a cross-reference table that points at them.
+   *
+   * A reader resolves an object by seeking to the byte offset the xref table
+   * gives for it, and finds the table itself through `startxref`. Those offsets
+   * therefore have to be measured from the document being written: they used to
+   * be fixed constants copied from some earlier draft, so they addressed the
+   * middle of whatever a real title and excerpt happened to push into their
+   * place, and every object lookup landed on bytes that are not an object
+   * header. Each entry is measured here as the document is assembled, so the
+   * table stays correct however long the story's title and excerpt are.
+   */
+  private assemblePdfDocument(objects: string[]): string {
+    let document = '%PDF-1.4\n';
+    const offsets: number[] = [];
+
+    objects.forEach((body, index) => {
+      offsets.push(Buffer.byteLength(document, 'utf8'));
+      document += `${index + 1} 0 obj\n${body}\nendobj\n\n`;
+    });
+
+    const xrefOffset = Buffer.byteLength(document, 'utf8');
+    const entries = [
+      // The head of the free-object list: object 0 is always free, and its
+      // generation number is the 65535 the spec reserves for it.
+      '0000000000 65535 f ',
+      ...offsets.map(offset => `${String(offset).padStart(10, '0')} 00000 n `)
+    ];
+
+    document += `xref
+0 ${objects.length + 1}
+${entries.join('\n')}
 trailer
 <<
-/Size 6
+/Size ${objects.length + 1}
 /Root 1 0 R
 >>
 startxref
-454
+${xrefOffset}
 %%EOF`;
+
+    return document;
   }
 
   private generateHTMLContent(content: string, metadata: ExportMetadata, input: SaveExportSeam['input']): string {

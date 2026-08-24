@@ -103,7 +103,69 @@ const classicStory: ClassicGenerationSeam['output'] = {
   nextChapterHint: 'Reveal which oath the shell recorded.'
 };
 
+// The evaluation route is called with the story exactly as the generator
+// renders it: `<p>` elements on one line, `[Speaker]:` tags inside those
+// elements, no blank lines anywhere. Scored against the raw markup, the whole
+// story counted as a single paragraph and no line ever started with a speaker
+// tag, so the paragraph-shaped and dialogue-shaped dimensions all reported the
+// opposite of what the story contains.
+function testHtmlStoriesAreScoredOnTheirProse(): void {
+  const htmlStory = '<section><h3>The Witness Shell</h3>'
+    + '<p>[Narrator]: Salt stung her wrist as the witness shell glowed under the reef arch.</p>'
+    + '<p>[Mira]: &quot;If the shell repeats my vow, Lord Brine owns the court by sunrise.&quot;</p>'
+    + '<p>[Lord Brine]: &quot;Then choose which secret survives the tide.&quot;</p>'
+    + '<p>Mira touched the blood oath hidden under her sleeve. Whose name would the shell give up?</p>'
+    + '</section>';
+
+  const report = buildStoryQualityHeuristicReport({
+    storyContent: htmlStory,
+    configuration: {
+      creature: 'siren',
+      themes: ['blood_oaths'],
+      spicyLevel: 3,
+      wordCount: 900
+    }
+  });
+
+  const dimension = (id: string) => {
+    const found = report.dimensions.find(entry => entry.id === id);
+    assert(found, `report should include the ${id} dimension`);
+    return found;
+  };
+
+  const proseQuality = dimension('prose_quality');
+  assert(
+    proseQuality.signals.some(signal => /^Paragraphs: [2-9]/.test(signal)),
+    `an HTML story should be counted as several paragraphs (signals=${JSON.stringify(proseQuality.signals)})`
+  );
+  assert(
+    !proseQuality.signals.includes('Words: 1'),
+    'markup should not be counted as a single word'
+  );
+
+  const audioReadiness = dimension('audio_readiness');
+  assert(
+    audioReadiness.signals.some(signal => signal.startsWith('Speaker variety: Narrator, Mira, Lord Brine')),
+    `speaker tags inside <p> elements should still be read as dialogue (signals=${JSON.stringify(audioReadiness.signals)})`
+  );
+  assert(
+    audioReadiness.signals.includes('No overlong paragraphs detected.'),
+    'a story of short paragraphs should not be penalised as one overlong block'
+  );
+
+  // The cliffhanger dimension is documented as reading the ending. Its hook
+  // words appear only in the last paragraph here, and the ending's question
+  // mark is the last character of the prose — not of the markup.
+  const cliffhanger = dimension('cliffhanger_quality');
+  assert(
+    cliffhanger.signals.includes('Ending closes on a question or exclamation.'),
+    `the ending should be read past its closing tags (signals=${JSON.stringify(cliffhanger.signals)})`
+  );
+}
+
 async function main(): Promise<void> {
+  testHtmlStoriesAreScoredOnTheirProse();
+
   const heuristicReport = buildStoryQualityHeuristicReport({
     storyContent: [
       '[Mira]: "If the shell repeats my vow, Lord Brine owns the court by sunrise."',
