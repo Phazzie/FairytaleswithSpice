@@ -196,7 +196,66 @@ async function testPdfCrossReferenceTablePointsAtItsObjects(): Promise<void> {
   }
 }
 
+// Every unsupported character used to become its own underscore, so a title in
+// any non-Latin script kept nothing of itself and downloaded as a row of
+// underscores; punctuation left runs of them through Latin titles; and nothing
+// bounded the length, so a long title produced a name past the 255-byte limit
+// filesystems and object stores enforce.
+async function testFilenamesStayReadableAndPortable(): Promise<void> {
+  const exportService = new ExportService();
+
+  const filenameFor = async (title: string): Promise<string> => {
+    const result = await exportService.saveAndExport(createInput({ title }));
+    assert(result.success, `export of "${title}" should succeed`);
+    return (result.data as SaveExportSeam['output']).filename;
+  };
+
+  const cyrillicTitle = 'Полночь';
+  const fallbackNames = new Set<string>();
+  for (const title of [cyrillicTitle, '月の物語', '🐉🐉🐉', '   ']) {
+    const filename = await filenameFor(title);
+    assert(
+      /^story_\d+_[0-9a-f]{8}\.txt$/.test(filename),
+      `a title with no portable characters should fall back to a named stem (got ${filename})`
+    );
+    fallbackNames.add(filename);
+  }
+
+  // Every one of those titles now shares the stem `story`, so the rest of the
+  // name is all that keeps two exports from addressing the same storage URL.
+  assert(
+    fallbackNames.size === 4,
+    `exports sharing a fallback stem should still get distinct names (got ${fallbackNames.size} of 4)`
+  );
+
+  const punctuated = await filenameFor("The Vampire's Kiss --- Part II!");
+  assert(
+    punctuated.startsWith('the_vampire_s_kiss_part_ii_'),
+    `runs of unsupported characters should collapse to one separator (got ${punctuated})`
+  );
+  assert(!/_{2,}/.test(punctuated), `no run of separators should survive (got ${punctuated})`);
+
+  const long = await filenameFor('Midnight Bargain '.repeat(40));
+  assert(
+    Buffer.byteLength(long, 'utf8') <= 255,
+    `a long title should not push the filename past the 255-byte limit (got ${long.length} bytes)`
+  );
+  assert(long.startsWith('midnight_bargain'), `a long title should keep its readable head (got ${long})`);
+  assert(
+    /_\d+_[0-9a-f]{8}\.txt$/.test(long),
+    `the timestamped, tokenized suffix should survive the cap (got ${long})`
+  );
+
+  for (const filename of [punctuated, long, await filenameFor(cyrillicTitle)]) {
+    assert(
+      encodeURIComponent(filename) === filename,
+      `a filename is interpolated into the storage URL, so it should need no escaping (got ${filename})`
+    );
+  }
+}
+
 async function main(): Promise<void> {
+  await testFilenamesStayReadableAndPortable();
   await testDownloadUrlMatchesReportedFilename();
   await testPdfCrossReferenceTablePointsAtItsObjects();
   await testFileSizeIsMeasuredInBytes();

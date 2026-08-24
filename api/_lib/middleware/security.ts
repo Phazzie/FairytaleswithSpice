@@ -5,7 +5,7 @@
  * Usage: Add authenticateRequest() at the start of API handlers
  */
 
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 export interface AuthenticatedRequest {
   userId?: string;
@@ -80,12 +80,26 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
   }
 
   // Map API key to user ID (in production, this would query a database)
-  const userId = `user_${apiKey.substring(0, 8)}`;
-  
   return {
     authenticated: true,
-    userId
+    userId: deriveUserId(apiKey)
   };
+}
+
+/**
+ * Derive a caller identifier from an API key.
+ *
+ * The identifier is attached to log entries and returned to callers, so it must
+ * not carry key material: it used to be the key's first eight characters, which
+ * handed anyone with log access a live credential's prefix and made the
+ * constant-time comparison below pointless — there is no need to recover a key
+ * byte by byte from response timings when a third of it is printed next to
+ * every request. A SHA-256 prefix keeps the property the identifier is actually
+ * used for — the same key always maps to the same id, different keys to
+ * different ids — without being reversible to the key.
+ */
+function deriveUserId(apiKey: string): string {
+  return `user_${createHash('sha256').update(apiKey, 'utf8').digest('hex').slice(0, 16)}`;
 }
 
 /**

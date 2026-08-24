@@ -4,6 +4,40 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-24 21:15 UTC - API-Key Prefixes In User Ids, A Chapter-Wide Cliffhanger Scan, And Unusable Export Filenames
+
+Actions:
+
+- Derived the authenticated `userId` from a SHA-256 prefix of the API key instead of the key's first eight characters. That id is attached to log entries and returned to callers, so every authenticated request printed a live credential's prefix beside it — which also made the `timingSafeEqual` comparison directly above it pointless: there is no need to recover a key byte by byte from response timings when a third of a short key is written to the logs. The new id keeps the property it is used for — same key, same id; different keys, different ids — without being reversible.
+- Split story content into reader-visible blocks before the cliffhanger scan reads it. The scan weighs the final paragraph above the rest of the chapter, but `getLastParagraph` recognised only `</p>` and blank lines as boundaries. A chapter separated by `<br>`, `<div>`, or a heading collapsed into one block, so "the final paragraph" was the whole chapter: every pattern hit anywhere scored as an ending hit, `cliffhangerText` returned the chapter instead of the hook, and the trailing `/[?!]$/` test read the story's last character. Dropping tags without a boundary in their place also ran neighbouring words together, scanning `door.</p><p>Blood` as `door.Blood`.
+- Moved the block splitter the 20:05 UTC slice added to `storyQualityHeuristics` into `api/_lib/utils/storyTextBlocks.ts` and pointed both scans at it, so the two read the same paragraphs. The splitter itself is unchanged.
+- Made export filenames readable, bounded, and unique. Each unsupported character became its own underscore, so a title in any non-Latin script kept none of itself and downloaded as a row of underscores indistinguishable from the next; punctuation left runs of underscores through Latin titles; and nothing bounded the length, so a 400-character title produced a 418-byte name. Runs now collapse to one separator, the ends are trimmed, the stem is capped at 80 characters, and the fallback is named `story`.
+- Added a random per-export token to the filename after review. The fallback stem widened an existing collision window: two exports racing within one millisecond already collided when their titles matched, and every title with no portable characters now shares the stem `story`, so in a real object store one export could overwrite the other.
+- Added a regression case to each of the three existing suites: `tests/api-key-auth.test.ts` walks every prefix of the key and asserts none of them appears in the id, `tests/cliffhanger-service.test.ts` covers `<br>`, `<div>`, and `<p>` boundaries plus the glued-word case, and `tests/export-service.test.ts` covers non-Latin, empty, punctuated, and overlong titles plus name uniqueness across a shared fallback stem.
+
+Self-review:
+
+- Good: Each fix was checked against a targeted restore of that one source file from `origin/main` with the new tests in place, and each fails there — `leaked 4 characters: user_sk-live-`, `got "She opened the door.Blood pooled on the floor.Who was there?"`, and `got ________1787605072342.txt`.
+- Correction: The first counterfactual run restored from `HEAD` after the fix had already been committed, so it restored the fixed file and reported all three tests as vacuous. Re-running against `origin/main` gave the real result. Compare against the pre-fix ref, not `HEAD`.
+- Non-claim: The hashed id is not an authorization boundary and no store keys off it. It identifies a caller in logs; mapping a key to a real account is still the database lookup the comment describes.
+- Non-claim: The filename token makes a collision improbable, not impossible, and `saveToStorage` remains the mock its own comment describes — nothing here writes to an object store or checks for an existing key.
+- Non-claim: The cliffhanger scan's patterns, weights, and variety score are untouched. Only the text they are applied to changed.
+
+Validation:
+
+- `npm run test:all`: passed.
+- Targeted counterfactual: `git checkout origin/main -- <one source file>` with the new tests in place, per fix; all three failed with the messages quoted above, then were restored.
+- `tsc --noEmit --strict` over the changed source files: passed with no diagnostics.
+- PR #206 checks: Validate Vercel recovery build passed and the Vercel preview deployed. SonarCloud's quality gate failed on `B Maintainability Rating on New Code` where the gate requires A. Its analysis API is unreachable from this environment — the egress proxy answers 403 to `CONNECT sonarcloud.io:443` — and it left no inline comment, so the finding could not be read from the check. A first attempt guessed at small readability points and did not clear the gate.
+- Root-caused the gate failure by running the same analyzer locally instead of guessing again. SonarCloud's JS/TS rules are SonarJS, which ships as `eslint-plugin-sonarjs`; installed outside the repository and pointed at copies of the changed files, it named the finding directly: `sonarjs/super-linear-regex` (S5852) on three regexes.
+  - `buildFilenameStem` trimmed separators with `/^_+|_+$/` and `/_+$/`. An anchored `_+` is retried from every position of a long underscore run before it fails, which is quadratic. Splitting on the unsupported runs and joining the parts collapses each run and drops the outer ones in one linear pass.
+  - `BLOCK_BOUNDARY_PATTERN` paired `\s*` with `/?` and then `\s*` again, and let `[^>]*` cover the same whitespace as the `\s*` after it. On a `<` followed by a long run of spaces that never matches, every way of splitting the run between the two groups is tried in turn.
+  - `stripInlineTags` used `<[^>]*>`, so every `<` in a run of them starts a scan to the end of the story before failing for want of a `>`.
+- Confirmed the rewrite is behaviour-preserving before trusting it: the old and new patterns produce identical blocks on seventeen representative inputs, including attributes, uppercase tags, `<br/>` and `<br />`, stray closing tags, nested inline markup, and the `<paragraph>`/`<pre>` cases that must *not* match a block tag. On 40,000 characters of adversarial input the old patterns took 2052 ms and 1076 ms; the new ones take 0.32 ms and 0.40 ms. The quadratic behaviour was real, not theoretical — this is a fix, not lint appeasement.
+- Lesson for the next agent: when a hosted analyzer fails a gate and its findings are unreachable, run the analyzer's own rules locally rather than guessing from the rating. `eslint-plugin-sonarjs` reproduces SonarCloud's JS/TS findings, and linting the pre-change files from `origin/main` separates findings that are new to a slice from ones the gate has already accepted. That comparison is what showed the block-splitter regex was pre-existing on `main` and only counted here because moving it into a new file made it new code.
+- Review follow-up: Copilot recommended approval with two documentation-accuracy points — the 255-byte limit was attributed to object stores, where S3 keys in fact allow far more, and the block-splitter comment claimed plain text passes through when tag-shaped spans are stripped from it too. Both comments were corrected. Codex raised two P1s and a P2: this changelog entry answers the first, the filename token answers the P2, and the slice-splitting P1 is answered on its thread.
+- Note: `node_modules` is tracked in this repository. Installing dependencies to run the suite modified those tracked files; they were restored so the slice diff stays source-only.
+
 ## 2026-08-24 20:05 UTC - HTML-Blind Quality Heuristics, Undercounted Trope Pools, And Fabricated PDF Xref Offsets
 
 Actions:

@@ -8,6 +8,11 @@ import {
 } from './exportSanitizer';
 
 const PDF_EXCERPT_CODE_POINTS = 100;
+// Leaves room for the `_<timestamp>_<token>.<format>` suffix inside the
+// 255-byte filename limit that ext4 and APFS enforce.
+const EXPORT_FILENAME_STEM_MAX_LENGTH = 80;
+// Distinguishes two exports that collide on both stem and millisecond.
+const EXPORT_FILENAME_TOKEN_LENGTH = 8;
 
 /**
  * Take the first `limit` code points of `value`. Iterating a string yields
@@ -29,6 +34,22 @@ function truncateByCodePoint(value: string, limit: number): string {
   }
 
   return truncated;
+}
+
+/**
+ * Drop any separators the length cap left at the end of a filename stem.
+ *
+ * The join above leaves single separators, so the cut can strand at most one —
+ * the loop is the cheap way to say that without the reader having to prove it.
+ */
+function trimTrailingSeparators(stem: string): string {
+  let end = stem.length;
+
+  while (end > 0 && stem[end - 1] === '_') {
+    end -= 1;
+  }
+
+  return stem.slice(0, end);
 }
 
 interface ExportMetadata {
@@ -379,9 +400,48 @@ ${xrefOffset}
     return content.split(/\s+/).filter(word => word.length > 0).length;
   }
 
+  /**
+   * Name the export file.
+   *
+   * The name has to be unique per export, because it is what the storage URL
+   * addresses: a real object store would let a second export overwrite the
+   * first. A timestamp alone does not give that. Two exports raced within one
+   * millisecond already collided whenever their titles matched, and the stem
+   * fallback widened the window — every title with no portable characters, in
+   * any script, now shares the stem `story`. A random token per export closes
+   * it without giving up the readable, sortable name.
+   */
   private generateFilename(input: SaveExportSeam['input']): string {
-    const sanitizedTitle = input.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    return `${sanitizedTitle}_${Date.now()}.${input.format}`;
+    const token = randomUUID().replace(/-/g, '').slice(0, EXPORT_FILENAME_TOKEN_LENGTH);
+    return `${this.buildFilenameStem(input.title)}_${Date.now()}_${token}.${input.format}`;
+  }
+
+  /**
+   * Turn a story title into the readable, portable stem of its filename.
+   *
+   * Replacing each unsupported character with its own underscore produced names
+   * no one can use: a title written in any non-Latin script kept none of its
+   * characters, so every such export downloaded as a row of underscores and a
+   * timestamp, indistinguishable from every other one; punctuation left runs of
+   * underscores through otherwise Latin titles; and nothing bounded the length,
+   * so a long title produced a name past the 255-byte limit filesystems such as
+   * ext4 and APFS enforce. Collapsing each run to a single separator, trimming
+   * the ends, capping the stem, and naming the fallback keeps the name both
+   * meaningful and safe to write — and, since the stem is interpolated into the
+   * storage URL, keeps that URL free of characters that would need escaping.
+   */
+  private buildFilenameStem(title: string): string {
+    // Splitting on the unsupported runs and joining the parts back collapses
+    // each run and drops the leading and trailing ones in a single linear pass:
+    // a separator at either end leaves an empty part, which the filter removes.
+    // Trimming them with `/^_+|_+$/` instead is quadratic — an anchored `_+`
+    // is retried from every position of a long underscore run before it fails.
+    const parts = title.split(/[^a-z0-9]+/i).filter(Boolean);
+    const stem = trimTrailingSeparators(
+      parts.join('_').toLowerCase().slice(0, EXPORT_FILENAME_STEM_MAX_LENGTH)
+    );
+
+    return stem || 'story';
   }
 
   private generateExportId(): string {
