@@ -400,6 +400,34 @@ async function testProductionMissingProviderCreatesFailedJob(): Promise<void> {
   assert(body.data.job.result === undefined, 'failed job should not include a story result');
 }
 
+async function testThrownEngineFailureFinishesTheJob(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  const handler = createStoryLabJobsRouteHandler({
+    generateGenesis: async () => {
+      throw new Error(`Provider socket closed for ${owner.email} with sk-secret credentials.`);
+    }
+  });
+  const response = new FakeResponse();
+
+  await handler(createRequest('POST', createGenesisJobRequest()), response);
+
+  assert(response.statusCode === 200, 'a thrown engine failure should still return a job envelope');
+  const body = response.body as any;
+  assert(body.success === true, 'thrown engine failure should be represented by a successful job envelope');
+  assert(body.data.job.status === 'failed', 'a thrown engine failure should move the job off running');
+  assert(body.data.job.error.code === 'GENERATION_FAILED', 'thrown engine failure should record a generation failure');
+  assert(!body.data.job.error.message.includes('sk-secret'), 'thrown engine failure should not expose provider detail');
+  assert(!body.data.job.error.message.includes(owner.email ?? ''), 'thrown engine failure should not expose owner email');
+  assert(body.data.job.result === undefined, 'a failed job should not include a story result');
+
+  const statusResponse = new FakeResponse();
+  await handler(createRequest('GET', undefined, body.data.job.jobId), statusResponse);
+  const statusBody = statusResponse.body as any;
+  assert(statusBody.data.job.status === 'failed', 'the stored job should read as failed, not running');
+}
+
 async function run(): Promise<void> {
   await testGenesisJobCompletesInMockMode();
   await testEventsReplaySnapshotsAndClose();
@@ -415,6 +443,7 @@ async function run(): Promise<void> {
   await testMalformedContinuationStoryIdReturnsInvalidRequest();
   testStoreEvictsOldestJobs();
   await testProductionMissingProviderCreatesFailedJob();
+  await testThrownEngineFailureFinishesTheJob();
 
   console.log('Story Lab job route tests passed');
 }

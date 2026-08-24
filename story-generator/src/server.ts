@@ -6,6 +6,7 @@ import {
 } from '@angular/ssr/node';
 import express, { Request, Response, NextFunction } from 'express';
 import { join } from 'node:path';
+import { createCorsMiddleware } from '../../api/_lib/http/corsPolicy';
 import { StoryService } from '../../api/_lib/services/storyService';
 import { ExportService } from '../../api/_lib/services/exportService';
 import { ImageService } from '../../api/_lib/services/imageService';
@@ -29,22 +30,18 @@ const angularApp = new AngularNodeAppEngine();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// CORS
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const origin = process.env['ALLOWED_ORIGINS'] || process.env['FRONTEND_URL'] || 'http://localhost:4200';
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
+// CORS for the API surface, through the same origin allow-list the serverless
+// routes use: `STORY_LAB_ALLOWED_ORIGINS`, `ALLOWED_ORIGINS`, and
+// `FRONTEND_URL` are comma-separated lists, and the response names the one
+// origin the request actually matched. Page responses are left alone — they are
+// same-origin, and an allow-list is not the SSR handler's business.
+const corsMiddleware = createCorsMiddleware({
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  credentials: true
+});
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-  next();
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  corsMiddleware(req, res, next);
 });
 
 // ==================== API ROUTES ====================

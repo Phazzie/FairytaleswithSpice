@@ -364,6 +364,11 @@ export class StreamingStoryComponent implements OnDestroy {
   private handleStreamError(error: any): void {
     this.isStreaming = false;
     this.errorMessage = error.message || 'An unexpected error occurred during generation';
+    // Dropping the handle without unsubscribing leaves the stream running: the
+    // teardown that closes the `EventSource` only runs on unsubscribe, so an
+    // error reported through a progress chunk left the browser reconnecting to
+    // a generation nobody is watching any more.
+    this.streamSubscription?.unsubscribe();
     this.streamSubscription = undefined;
   }
 

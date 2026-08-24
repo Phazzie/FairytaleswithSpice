@@ -14,7 +14,8 @@ import {
   CloudStoryProjectSaveReceipt,
   SavedStoryProject,
   StorySummary,
-  StoryStateSnapshot
+  StoryStateSnapshot,
+  StreamingProgressChunk
 } from './contracts';
 
 function createGenesisInput(): StoryGenerationSeam['input'] {
@@ -429,6 +430,33 @@ describe('StoryService', () => {
         deleted: true
       }
     });
+  });
+
+  it('ends the genesis stream when the server reports an error chunk', () => {
+    const progressChunks: StreamingProgressChunk[] = [];
+    let reportedError: Error | undefined;
+
+    service.streamStoryGeneration(createGenesisInput(), chunk => progressChunks.push(chunk)).subscribe({
+      next: () => fail('Expected the error chunk to end the stream'),
+      error: (error: Error) => {
+        reportedError = error;
+      }
+    });
+
+    expect(MockEventSource.instances.length).toBe(1);
+    const source = MockEventSource.instances[0];
+
+    source.emit({
+      type: 'error',
+      percentage: 100,
+      error: { code: 'GENERATION_FAILED', message: 'Grok was unavailable.' }
+    } satisfies StreamingProgressChunk);
+
+    expect(progressChunks.length).toBe(1);
+    expect(reportedError?.message).toBe('Grok was unavailable.');
+    // Left open, the browser reads the server's end of the response as a
+    // dropped connection and reconnects, re-running the whole generation.
+    expect(source.close).toHaveBeenCalled();
   });
 
   it('streams Story Lab job events by opaque job id', () => {

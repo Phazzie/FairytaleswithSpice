@@ -109,6 +109,33 @@ export function applyCorsPolicy(
   return { handled: false, rejected: false, allowedOrigin, headers };
 }
 
+/**
+ * Wrap the policy as connect/Express middleware.
+ *
+ * The Node server wrote its own CORS headers, and echoed whatever
+ * `ALLOWED_ORIGINS` held into `Access-Control-Allow-Origin` verbatim. That env
+ * var is documented as a comma-separated list and is parsed as one everywhere
+ * else, so any deployment naming two origins sent
+ * `Access-Control-Allow-Origin: https://a.example, https://b.example` — not a
+ * value any browser accepts, which blocks every cross-origin call to the
+ * deployment, including from the origins it was trying to allow. The header
+ * also never varied on `Origin`, so a shared cache could hand one origin's
+ * response to another. Routing the server through the same policy the
+ * serverless routes use answers each request with the single origin it
+ * actually matched.
+ */
+export function createCorsMiddleware(
+  options: CorsPolicyOptions
+): (req: CorsRequestLike, res: CorsResponseLike, next: () => void) => void {
+  return (req, res, next) => {
+    if (applyCorsPolicy(req, res, options).handled) {
+      return;
+    }
+
+    next();
+  };
+}
+
 function resolveAllowedOrigin(req: CorsRequestLike, options: CorsPolicyOptions): string | null {
   const requestOrigin = normalizeOrigin(getRequestOrigin(req) ?? '');
   const allowedOrigins = parseAllowedOrigins(options.env);
@@ -121,7 +148,9 @@ function resolveAllowedOrigin(req: CorsRequestLike, options: CorsPolicyOptions):
 }
 
 function getRequestOrigin(req: CorsRequestLike): string | undefined {
-  const rawOrigin = req.headers?.origin ?? req.headers?.Origin;
+  // Indexed access: the Angular app type-checks this module through the Node
+  // server, and its config forbids property access on an index signature.
+  const rawOrigin = req.headers?.['origin'] ?? req.headers?.['Origin'];
   return Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
 }
 
