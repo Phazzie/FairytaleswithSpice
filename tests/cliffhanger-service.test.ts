@@ -34,7 +34,17 @@ const hook = 'Who was there?';
 const separatedChapters = [
   { label: '<br>', markup: `She opened the door.<br><br>Blood pooled on the floor.<br><br>${hook}` },
   { label: '<div>', markup: `<div>She opened the door.</div><div>Blood pooled on the floor.</div><div>${hook}</div>` },
-  { label: '<p>', markup: `<p>She opened the door.</p><p>Blood pooled on the floor.</p><p>${hook}</p>` }
+  { label: '<p>', markup: `<p>She opened the door.</p><p>Blood pooled on the floor.</p><p>${hook}</p>` },
+  // A boundary tag carrying attributes is still a boundary. Matching the bare
+  // form only would drop the tag as inline markup, gluing the words on either
+  // side of it back into one block — the whole defect this scan was fixed for.
+  { label: 'attributed <br>', markup: `She opened the door.<br class="scene-break">Blood pooled on the floor.<br class="scene-break">${hook}` },
+  { label: 'self-closing <br />', markup: `She opened the door.<br />Blood pooled on the floor.<br />${hook}` },
+  { label: 'uppercase <BR>', markup: `She opened the door.<BR CLASS="scene-break">Blood pooled on the floor.<BR CLASS="scene-break">${hook}` },
+  { label: 'attributed <p>', markup: `<p class="lede">She opened the door.</p><p data-n="2">Blood pooled on the floor.</p><p>${hook}</p>` },
+  // The tag name has to end where the boundary list says it does: `<pre>` is
+  // not `<p>`, and `<paragraph>` is not either.
+  { label: 'near-miss tag names', markup: `<p>She opened the door.</p><p>A <pre>literal</pre> and a <paragraph>tag</paragraph>.</p><p>${hook}</p>` }
 ];
 
 for (const chapter of separatedChapters) {
