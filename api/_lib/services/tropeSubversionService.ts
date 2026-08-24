@@ -174,11 +174,17 @@ export class TropeSubversionService {
   ): Trope[] {
     const selected: Trope[] = [];
     const usedIds = new Set<string>();
-    const poolCopy = preferredIntensity
+    const preferredPool = preferredIntensity
       ? pool.filter(trope => trope.intensity === preferredIntensity)
       : [...pool];
     const fallbackPool = [...pool];
-    const activePool = poolCopy.length >= count ? poolCopy : fallbackPool;
+    // The pool is weighted by repetition — every common trope is pushed three
+    // times — so its length says nothing about how many distinct tropes it can
+    // yield. Counting entries instead of distinct ids kept a preferred-intensity
+    // pool that held one trope three times, and the caller asking for two
+    // tropes then got one: the loop drains every copy of the only id it has and
+    // never reaches the wider pool that could have completed the selection.
+    const activePool = countDistinctTropes(preferredPool) >= count ? preferredPool : fallbackPool;
 
     while (selected.length < count && activePool.length > 0) {
       const randomIndex = randomInt(activePool.length);
@@ -223,4 +229,8 @@ ${tropeLines}
 ${tropeLines}
 - Do not reverse or contradict these established inversions.`;
   }
+}
+
+function countDistinctTropes(tropes: readonly Trope[]): number {
+  return new Set(tropes.map(trope => trope.id)).size;
 }

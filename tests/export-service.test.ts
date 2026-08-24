@@ -150,8 +150,55 @@ async function testEpubBindsEveryNamespacePrefixItUses(): Promise<void> {
   }
 }
 
+// A reader resolves an object by seeking to the byte offset the xref table
+// gives for it, and finds the table through `startxref`. Both used to be fixed
+// constants, so they addressed whatever bytes a real title and excerpt pushed
+// into their place and no object lookup landed on an object header.
+async function testPdfCrossReferenceTablePointsAtItsObjects(): Promise<void> {
+  const exportService = new ExportService();
+
+  for (const title of ['A', 'Midnight Bargain', 'Élodie and the 🐉 of the Château (Part Two)']) {
+    const document = await exportService.generateExportContent(
+      createInput({ format: 'pdf', title, content: unicodeStory.repeat(4) })
+    );
+    const bytes = Buffer.from(document, 'utf8');
+
+    const startxref = /startxref\n(\d+)\n%%EOF$/.exec(document);
+    assert(startxref, `the PDF for "${title}" should end with a startxref offset`);
+    assert(
+      bytes.subarray(Number(startxref[1])).toString('utf8').startsWith('xref\n'),
+      `startxref for "${title}" should point at the cross-reference table`
+    );
+
+    const table = /\nxref\n0 (\d+)\n([\s\S]*?)\ntrailer\n/.exec(document);
+    assert(table, `the PDF for "${title}" should contain a cross-reference table`);
+    const entries = table[2].split('\n');
+    assert(
+      entries.length === Number(table[1]),
+      `the table for "${title}" should hold one entry per object it declares ` +
+        `(declared=${table[1]}, entries=${entries.length})`
+    );
+    assert(
+      entries.every(entry => Buffer.byteLength(`${entry}\n`, 'utf8') === 20),
+      `every entry for "${title}" should keep the fixed 20-byte record width`
+    );
+    assert(entries[0] === '0000000000 65535 f ', `object 0 for "${title}" should head the free list`);
+
+    entries.slice(1).forEach((entry, index) => {
+      const objectNumber = index + 1;
+      const offset = Number(/^(\d{10}) \d{5} n $/.exec(entry)?.[1]);
+      assert(Number.isFinite(offset), `entry ${objectNumber} for "${title}" should be a well-formed xref record`);
+      assert(
+        bytes.subarray(offset).toString('utf8').startsWith(`${objectNumber} 0 obj\n`),
+        `entry ${objectNumber} for "${title}" should point at that object's header`
+      );
+    });
+  }
+}
+
 async function main(): Promise<void> {
   await testDownloadUrlMatchesReportedFilename();
+  await testPdfCrossReferenceTablePointsAtItsObjects();
   await testFileSizeIsMeasuredInBytes();
   await testPdfStreamLengthDescribesTheStream();
   await testPdfExcerptIsCutOnCharacterBoundaries();
