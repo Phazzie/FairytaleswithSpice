@@ -5,6 +5,43 @@
 import axios from 'axios';
 import { randomUUID } from 'node:crypto';
 import { ImageGenerationSeam, ApiResponse } from '../types/contracts.js';
+import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
+
+type SupportedAspectRatio = NonNullable<ImageGenerationSeam['input']['aspectRatio']>;
+
+interface AspectRatioSpec {
+  size: string;
+  width: number;
+  height: number;
+}
+
+const DEFAULT_ASPECT_RATIO: SupportedAspectRatio = '16:9';
+
+/**
+ * The requested ratio decides three things at once: the size asked of the
+ * provider, and the `width`/`height` the response reports. They were three
+ * separate lookups, each with its own `|| '1792x1024'`-style fallback, so an
+ * unsupported ratio was silently served as 16:9 while the response still
+ * echoed the ratio the caller asked for — a payload that says `21:9` above
+ * `1792x1024`. One table means a ratio is either supported everywhere or
+ * rejected, and `SUPPORTED_ASPECT_RATIOS` cannot drift from what the lookups
+ * actually handle.
+ */
+const ASPECT_RATIO_SPECS: Record<SupportedAspectRatio, AspectRatioSpec> = {
+  '1:1': { size: '1024x1024', width: 1024, height: 1024 },
+  '16:9': { size: '1792x1024', width: 1792, height: 1024 },
+  '9:16': { size: '1024x1792', width: 1024, height: 1792 },
+  '4:3': { size: '1536x1152', width: 1536, height: 1152 }
+};
+
+const SUPPORTED_ASPECT_RATIOS = Object.keys(ASPECT_RATIO_SPECS) as SupportedAspectRatio[];
+const SUPPORTED_STYLES: ImageGenerationSeam['input']['style'][] = [
+  'artistic',
+  'photorealistic',
+  'fantasy',
+  'dark',
+  'romantic'
+];
 
 export class ImageService {
   private grokApiKey: string | undefined;
@@ -39,15 +76,17 @@ export class ImageService {
       const imageUrl = await this.callGrokImageAI(input);
 
       // Create response
+      const aspectRatio = input.aspectRatio ?? DEFAULT_ASPECT_RATIO;
+      const dimensions = ASPECT_RATIO_SPECS[aspectRatio];
       const output: ImageGenerationSeam['output'] = {
         imageId: this.generateImageId(),
         storyId: input.storyId,
         imageUrl: imageUrl,
         prompt: this.buildImagePrompt(input),
         style: input.style,
-        aspectRatio: input.aspectRatio || '16:9',
-        width: this.getAspectRatioDimensions(input.aspectRatio || '16:9').width,
-        height: this.getAspectRatioDimensions(input.aspectRatio || '16:9').height,
+        aspectRatio,
+        width: dimensions.width,
+        height: dimensions.height,
         fileSize: 0, // Will be populated when we know the actual file
         generatedAt: new Date()
       };
@@ -128,12 +167,22 @@ export class ImageService {
     return `${basePrompt}. ${creatureContext}. Visual elements: ${themeElements}. ${styleModifier}. High quality, detailed, atmospheric lighting.`;
   }
 
+  /**
+   * Describe the opening of a story for the image model.
+   *
+   * The story arrives as the generator's HTML. Deleting the tags on their own
+   * welds the words they separated — `door.</p><p>Blood` becomes `door.Blood`
+   * — and leaves `&amp;` and `&quot;` sitting in the prose as literal entity
+   * text, so the scene handed to the image model is neither what a reader sees
+   * nor valid English. `stripStoryHtmlToText` puts a paragraph break where the
+   * markup put one and decodes the entities the generator emits, which is the
+   * same rendering the cliffhanger and continuity scanners read.
+   */
   private extractSceneFromStory(content: string, creature: string): string {
-    // Simple extraction - look for the first paragraph with descriptive content
-    const cleanContent = content.replace(/<[^>]*>/g, ''); // Remove HTML tags
+    const cleanContent = stripStoryHtmlToText(content);
     const sentences = cleanContent.split('.').slice(0, 3); // First few sentences
     const sceneDescription = sentences.join('.').substring(0, 200);
-    
+
     return `A scene featuring a ${creature}: ${sceneDescription}`;
   }
 
@@ -194,32 +243,40 @@ export class ImageService {
   }
 
   private mapAspectRatioToSize(aspectRatio: string): string {
-    const sizeMap = {
-      '1:1': '1024x1024',
-      '16:9': '1792x1024',
-      '9:16': '1024x1792',
-      '4:3': '1536x1152'
-    };
-    return sizeMap[aspectRatio as keyof typeof sizeMap] || '1792x1024';
+    return this.resolveAspectRatioSpec(aspectRatio).size;
   }
 
   private getAspectRatioDimensions(aspectRatio: string): { width: number; height: number } {
-    const dimensionsMap = {
-      '1:1': { width: 1024, height: 1024 },
-      '16:9': { width: 1792, height: 1024 },
-      '9:16': { width: 1024, height: 1792 },
-      '4:3': { width: 1536, height: 1152 }
-    };
-    return dimensionsMap[aspectRatio as keyof typeof dimensionsMap] || { width: 1792, height: 1024 };
+    const { width, height } = this.resolveAspectRatioSpec(aspectRatio);
+    return { width, height };
+  }
+
+  // Validation rejects an unsupported ratio before any of these are reached,
+  // so the fallback is only here for the default when none was requested.
+  private resolveAspectRatioSpec(aspectRatio: string): AspectRatioSpec {
+    return ASPECT_RATIO_SPECS[aspectRatio as SupportedAspectRatio] ?? ASPECT_RATIO_SPECS[DEFAULT_ASPECT_RATIO];
   }
 
   private generateMockImageUrl(input: ImageGenerationSeam['input']): string {
     // Generate a realistic mock image URL for development
-    const dimensions = this.getAspectRatioDimensions(input.aspectRatio || '16:9');
+    const dimensions = this.getAspectRatioDimensions(input.aspectRatio || DEFAULT_ASPECT_RATIO);
     const mockId = randomUUID();
     return `https://picsum.photos/${dimensions.width}/${dimensions.height}?random=${mockId}`;
   }
 
+  /**
+   * Reject a request the service cannot honour before it reaches the prompt
+   * builder.
+   *
+   * `themes` and `creature` used to go unchecked, and the prompt builder calls
+   * `input.themes.map(...)`. A request that sent a bare string — or omitted
+   * the field on a path that does not pre-check it — threw a `TypeError`
+   * inside `generateImage`, which its catch block reports as
+   * `IMAGE_GENERATION_FAILED`: the caller was told the image service had
+   * failed, with `input.themes.map is not a function` as the user-facing
+   * message. It is the request that is malformed and only the caller can fix
+   * it, so the answer is `INVALID_INPUT` naming the field.
+   */
   private validateImageInput(input: ImageGenerationSeam['input']): { code: string; message: string } | null {
     if (!input.storyId) {
       return { code: 'INVALID_INPUT', message: 'Story ID is required' };
@@ -227,8 +284,28 @@ export class ImageService {
     if (!input.content || input.content.length < 10) {
       return { code: 'INVALID_INPUT', message: 'Story content is required and must be substantial' };
     }
-    if (!input.style || !['artistic', 'photorealistic', 'fantasy', 'dark', 'romantic'].includes(input.style)) {
+    if (typeof input.creature !== 'string' || input.creature.trim().length === 0) {
+      return { code: 'INVALID_INPUT', message: 'Creature is required' };
+    }
+    if (!Array.isArray(input.themes) || input.themes.length === 0) {
+      return { code: 'INVALID_INPUT', message: 'Themes are required and must be a non-empty array' };
+    }
+    if (!input.themes.every(theme => typeof theme === 'string' && theme.trim().length > 0)) {
+      return { code: 'INVALID_INPUT', message: 'Every theme must be a non-empty string' };
+    }
+    if (!input.style || !SUPPORTED_STYLES.includes(input.style)) {
       return { code: 'UNSUPPORTED_STYLE', message: 'Invalid image style provided' };
+    }
+    // An unsupported ratio used to fall back to 16:9 in the provider request
+    // and in the dimensions, while the response echoed the ratio that was
+    // asked for — so the caller was handed an image that contradicted the
+    // `aspectRatio` beside it. The contract types this field as a closed set;
+    // a value outside it is a caller error, not a silent substitution.
+    if (input.aspectRatio !== undefined && !SUPPORTED_ASPECT_RATIOS.includes(input.aspectRatio)) {
+      return {
+        code: 'INVALID_INPUT',
+        message: `Unsupported aspect ratio. Supported ratios: ${SUPPORTED_ASPECT_RATIOS.join(', ')}`
+      };
     }
     return null;
   }
