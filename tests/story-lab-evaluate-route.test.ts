@@ -78,6 +78,11 @@ async function post(body: unknown): Promise<FakeResponse> {
   return response;
 }
 
+// One story stands in for "a body whose only problem is the field under test",
+// so each row below reads as the single field it is actually about.
+const STORY = 'A vampire waited at the door, and her blood froze.';
+const STORY_HTML = `<p>${STORY}</p>`;
+
 function errorCodeOf(response: FakeResponse): string | undefined {
   return (response.body as { error?: { code?: string } })?.error?.code;
 }
@@ -143,19 +148,19 @@ async function main(): Promise<void> {
   // reporting its own failure for a mistake only the caller can fix.
   const malformedBodies: Array<{ label: string; body: unknown }> = [
     { label: 'no body', body: undefined },
-    { label: 'array body', body: [{ storyContent: 'A vampire waited at the door.' }] },
-    { label: 'string body', body: '{"storyContent":"A vampire waited."}' },
+    { label: 'array body', body: [{ storyContent: STORY }] },
+    { label: 'string body', body: JSON.stringify({ storyContent: STORY }) },
     { label: 'missing storyContent', body: {} },
     { label: 'blank storyContent', body: { storyContent: '   ' } },
     { label: 'numeric storyContent', body: { storyContent: 42 } },
-    { label: 'array storyContent', body: { storyContent: ['A vampire waited.'] } },
-    { label: 'array configuration', body: { storyContent: 'A vampire waited.', configuration: [] } },
-    { label: 'numeric creature', body: { storyContent: 'A vampire waited.', configuration: { creature: 7 } } },
-    { label: 'numeric themes', body: { storyContent: 'A vampire waited.', configuration: { themes: 7 } } },
-    { label: 'string themes', body: { storyContent: 'A vampire waited.', configuration: { themes: 'romance' } } },
-    { label: 'non-string theme entry', body: { storyContent: 'A vampire waited.', configuration: { themes: ['romance', 3] } } },
-    { label: 'string spicyLevel', body: { storyContent: 'A vampire waited.', configuration: { spicyLevel: 'very' } } },
-    { label: 'string wordCount', body: { storyContent: 'A vampire waited.', configuration: { wordCount: 'lots' } } }
+    { label: 'array storyContent', body: { storyContent: [STORY] } },
+    { label: 'array configuration', body: { storyContent: STORY, configuration: [] } },
+    { label: 'numeric creature', body: { storyContent: STORY, configuration: { creature: 7 } } },
+    { label: 'numeric themes', body: { storyContent: STORY, configuration: { themes: 7 } } },
+    { label: 'string themes', body: { storyContent: STORY, configuration: { themes: 'romance' } } },
+    { label: 'non-string theme entry', body: { storyContent: STORY, configuration: { themes: ['romance', 3] } } },
+    { label: 'string spicyLevel', body: { storyContent: STORY, configuration: { spicyLevel: 'very' } } },
+    { label: 'string wordCount', body: { storyContent: STORY, configuration: { wordCount: 'lots' } } }
   ];
 
   for (const sample of malformedBodies) {
@@ -174,12 +179,12 @@ async function main(): Promise<void> {
   // A well-formed request still evaluates, and an omitted configuration still
   // falls back to the defaults the route has always applied.
   for (const body of [
-    { storyContent: '<p>A vampire waited at the door, and her blood froze.</p>' },
+    { storyContent: STORY_HTML },
     // `?.` read a null configuration as an absent one, and a serializer that
     // writes absent optionals as `null` means exactly that by it.
-    { storyContent: '<p>A vampire waited at the door, and her blood froze.</p>', configuration: null },
+    { storyContent: STORY_HTML, configuration: null },
     {
-      storyContent: '<p>A vampire waited at the door, and her blood froze.</p>',
+      storyContent: STORY_HTML,
       configuration: { creature: 'vampire', themes: ['forbidden_love'], spicyLevel: 4, wordCount: 900 }
     }
   ]) {

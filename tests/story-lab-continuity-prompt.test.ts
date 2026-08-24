@@ -9,13 +9,15 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+const STORY_ID = 'story-continuity-prompt';
+
 function createInput(htmlContent: string): ContinuityExtractionInput {
   const now = new Date().toISOString();
 
   return {
-    storyId: 'story-continuity-prompt',
+    storyId: STORY_ID,
     currentState: {
-      storyId: 'story-continuity-prompt',
+      storyId: STORY_ID,
       revision: 1,
       characters: [],
       threads: [],
@@ -35,7 +37,7 @@ function createInput(htmlContent: string): ContinuityExtractionInput {
       hasCliffhanger: true
     }],
     summary: {
-      storyId: 'story-continuity-prompt',
+      storyId: STORY_ID,
       chaptersGenerated: 1,
       totalWordCount: 12,
       openThreads: [],

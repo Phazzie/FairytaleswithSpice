@@ -95,6 +95,29 @@ function parseEvaluation(content: string): EvaluationCriteria {
  * mistake and is better told so than quietly evaluated against
  * `Spice Level: very/5`.
  */
+function optionalFieldError(
+  field: string,
+  value: unknown,
+  isValid: (value: unknown) => boolean,
+  requirement: string
+): string | null {
+  return value === undefined || isValid(value)
+    ? null
+    : `configuration.${field} must be ${requirement} when provided.`;
+}
+
+function isString(value: unknown): boolean {
+  return typeof value === 'string';
+}
+
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every(isString);
+}
+
+function isFiniteNumber(value: unknown): boolean {
+  return Number.isFinite(value);
+}
+
 function normalizeEvaluationRequest(
   body: unknown
 ): { request: NormalizedEvaluationRequest } | { message: string } {
@@ -119,23 +142,16 @@ function normalizeEvaluationRequest(
   }
 
   const creature = configuration?.creature;
-  if (creature !== undefined && typeof creature !== 'string') {
-    return { message: 'configuration.creature must be a string when provided.' };
-  }
-
   const themes = configuration?.themes;
-  if (themes !== undefined && (!Array.isArray(themes) || !themes.every(theme => typeof theme === 'string'))) {
-    return { message: 'configuration.themes must be an array of strings when provided.' };
-  }
-
   const spicyLevel = configuration?.spicyLevel;
-  if (spicyLevel !== undefined && !Number.isFinite(spicyLevel)) {
-    return { message: 'configuration.spicyLevel must be a number when provided.' };
-  }
-
   const wordCount = configuration?.wordCount;
-  if (wordCount !== undefined && !Number.isFinite(wordCount)) {
-    return { message: 'configuration.wordCount must be a number when provided.' };
+  const fieldError =
+    optionalFieldError('creature', creature, isString, 'a string') ??
+    optionalFieldError('themes', themes, isStringArray, 'an array of strings') ??
+    optionalFieldError('spicyLevel', spicyLevel, isFiniteNumber, 'a number') ??
+    optionalFieldError('wordCount', wordCount, isFiniteNumber, 'a number');
+  if (fieldError) {
+    return { message: fieldError };
   }
 
   return {
