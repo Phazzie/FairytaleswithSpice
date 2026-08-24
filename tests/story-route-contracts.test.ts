@@ -184,6 +184,14 @@ async function collectStreamRouteOutput(
  * received nothing.
  */
 async function verifyStreamRouteEmitsDispatchableEvents(): Promise<void> {
+  // The generator emits blank lines between paragraphs, exactly as the mock
+  // story does. `JSON.stringify` escapes them, so the serialized payload
+  // contains the two characters `\` and `n` where the content has a newline —
+  // which is why the stream cannot be scanned for that sequence to decide
+  // whether a terminator is real. The frames are read with the parser instead,
+  // and this content proves a payload carrying blank lines still dispatches as
+  // one event.
+  const chunkContent = '<p>She opened the door.</p>\n\n<p>Blood pooled on the floor.</p>';
   const stream = await collectStreamRouteOutput(async (_input, onChunk) => {
     onChunk({
       content: '<p>She opened the door.</p>',
@@ -193,7 +201,7 @@ async function verifyStreamRouteEmitsDispatchableEvents(): Promise<void> {
       generationSpeed: 12
     });
     onChunk({
-      content: '<p>She opened the door.</p><p>Blood pooled on the floor.</p>',
+      content: chunkContent,
       isComplete: true,
       wordsGenerated: 9,
       estimatedWordsRemaining: 0,
@@ -211,8 +219,14 @@ async function verifyStreamRouteEmitsDispatchableEvents(): Promise<void> {
   assert(events[1]?.type === 'chunk', 'the route should dispatch the progress chunk');
   assert(events[2]?.type === 'complete', 'the route should dispatch the completion');
   assert(
-    !stream.includes(String.raw`\n\n`),
-    'the route must not write a literal backslash-n in place of a frame terminator'
+    events[2]?.content === chunkContent,
+    'a completion whose content carries blank lines should survive the round trip intact'
+  );
+  // The terminator itself, read where it lives rather than by scanning the
+  // whole stream: the last frame the route writes has to end the event.
+  assert(
+    stream.endsWith('\n\n'),
+    'the route must end its last frame with two real newlines'
   );
 
   // The error path writes its own frame from the catch block and is the one a
