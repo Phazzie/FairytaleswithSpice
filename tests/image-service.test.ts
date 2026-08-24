@@ -1,7 +1,8 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-24 23:40 UTC
 
-import { ImageService } from '../api/_lib/services/imageService';
+import axios from 'axios';
+import { ImageService, readGeneratedImageUrl } from '../api/_lib/services/imageService';
 import { ImageGenerationSeam } from '../api/_lib/types/contracts';
 
 // The service reads `XAI_API_KEY` in its constructor and falls back to a mock
@@ -124,10 +125,98 @@ async function testAspectRatioNeverContradictsTheDimensions(): Promise<void> {
   assert(defaultedOutput.width === 1792 && defaultedOutput.height === 1024, 'the default ratio should report 1792x1024');
 }
 
+// `response.data.data[0].url` was read straight through, and reading a missing
+// property yields `undefined` rather than throwing — so a provider entry that
+// carried no URL was reported as `success: true` with `imageUrl: undefined`
+// beside a real `imageId` and dimensions, and callers rendered a broken image
+// instead of seeing the failure.
+function testProviderResponsesWithoutAUrlAreRefused(): void {
+  const responsesWithoutAUrl: unknown[] = [
+    undefined,
+    null,
+    {},
+    { data: null },
+    { data: [] },
+    { data: {} },
+    { data: [{}] },
+    { data: [{ b64_json: 'aGVsbG8=' }] },
+    { data: [{ url: '' }] },
+    { data: [{ url: '   ' }] },
+    { data: [{ url: 42 }] }
+  ];
+
+  for (const responseData of responsesWithoutAUrl) {
+    let threw = false;
+    try {
+      readGeneratedImageUrl(responseData);
+    } catch {
+      threw = true;
+    }
+
+    assert(threw, `a response of ${JSON.stringify(responseData)} should be refused, not returned as a URL`);
+  }
+
+  assert(
+    readGeneratedImageUrl({ data: [{ url: ' https://images.example/story.png ' }] })
+      === 'https://images.example/story.png',
+    'a well-formed response should yield its URL'
+  );
+}
+
+/**
+ * Prove the same thing through the service, not just through the helper.
+ *
+ * A test that only calls `readGeneratedImageUrl` still passes if
+ * `callGrokImageAI` goes back to reading `response.data.data[0].url`, which is
+ * the wiring the fix is actually about. Driving `generateImage` with a stubbed
+ * provider fails in that case, because the service would again answer
+ * `success: true` with an undefined `imageUrl`.
+ *
+ * The service reads `XAI_API_KEY` in its constructor and takes the mock path
+ * without one, so the key is set for the duration and `axios.post` is replaced
+ * to keep the call off the network.
+ */
+async function testTheServiceRefusesAProviderResponseWithoutAUrl(): Promise<void> {
+  const originalPost = axios.post;
+  const originalKey = process.env['XAI_API_KEY'];
+  process.env['XAI_API_KEY'] = 'test-key';
+
+  try {
+    (axios as { post: unknown }).post = async () => ({ data: { data: [{ b64_json: 'aGVsbG8=' }] } });
+    const missingUrl = await new ImageService().generateImage(createInput());
+
+    assert(!missingUrl.success, 'a provider response with no URL should not be reported as a success');
+    assert(
+      missingUrl.error?.code === 'IMAGE_GENERATION_FAILED',
+      `a provider response with no URL should fail the request (got ${missingUrl.error?.code})`
+    );
+
+    (axios as { post: unknown }).post = async () => ({
+      data: { data: [{ url: 'https://images.example/story.png' }] }
+    });
+    const withUrl = await new ImageService().generateImage(createInput());
+
+    assert(withUrl.success, 'a provider response carrying a URL should still succeed');
+    assert(
+      (withUrl.data as ImageGenerationSeam['output']).imageUrl === 'https://images.example/story.png',
+      'the provider URL should reach the caller unchanged'
+    );
+  } finally {
+    (axios as { post: unknown }).post = originalPost;
+    if (originalKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalKey;
+    }
+  }
+}
+
 async function main(): Promise<void> {
   await testSceneDescriptionReadsAsProse();
   await testMalformedThemesAreRejectedAsCallerError();
   await testAspectRatioNeverContradictsTheDimensions();
+  testProviderResponsesWithoutAUrlAreRefused();
+  await testTheServiceRefusesAProviderResponseWithoutAUrl();
 
   console.log('Image service tests passed');
 }

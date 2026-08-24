@@ -4,6 +4,28 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-24 23:00 UTC - A Continuation Route That Threw On A Non-String Id, An HTML Export That Doubled Its Own Entities, And An Image Response Nobody Checked
+
+Actions:
+
+- Read `storyId` with a `typeof` guard in `api/story-lab/stories/[storyId]/continue.ts`. The route did `input.storyId?.trim()` on a field that arrives straight from the request body, and optional chaining guards `null`/`undefined`, not the wrong type — so `{"storyId": 123}`, or a boolean, object, or array, threw `TypeError: input.storyId?.trim is not a function`. Nothing in the route catches it, so the request became an unhandled rejection instead of the 400 the field check two lines below exists to produce. The job route's own `normalizeContinuationInput` already reads the field this way; the route now matches it.
+- Stopped `sanitizeStoryHtmlForExport` re-escaping the references the generator wrote. The story arrives as generator HTML, where `&` and `"` are already `&amp;` and `&quot;`; escaping every `&` turned those into `&amp;amp;` and `&amp;quot;`, so the exported page rendered the entity text itself — a reader saw `feet &amp; the &quot;hunter&quot; smiled` — while the plain-text export of the same story decoded them and showed the punctuation. The HTML export now preserves exactly the references `BASIC_HTML_ENTITY_REPLACEMENTS` decodes, and escapes everything else as before.
+- Refused an image-provider response that carries no URL. `callGrokImageAI` read `response.data.data[0].url` unchecked, and reading a missing property yields `undefined` rather than throwing, so an entry with a `b64_json` payload — or one a content filter emptied — was returned as `success: true` with `imageUrl: undefined` beside a real `imageId` and dimensions. The contract types that field as a string, so callers rendered a broken image instead of seeing the failure. `readGeneratedImageUrl` validates the shape and throws, which the existing catch reports as `IMAGE_GENERATION_FAILED`.
+
+Self-review:
+
+- Good: Each fix was checked against a targeted revert with its new test in place. Restoring `input.storyId?.trim()` fails `tests/story-lab-route-status.test.ts` with the `TypeError` escaping the route; restoring the blanket escape fails the entity assertion in `tests/export-sanitizer.test.ts` with `&amp;amp;` in the output; restoring `response.data.data[0].url` fails the new service-level case in `tests/image-service.test.ts`, which drives `generateImage` with a stubbed `axios.post` rather than only calling the helper.
+- Correction: The first version of the export fix preserved any complete reference, including numeric ones and arbitrary names. Codex review caught two consequences and both were real. HTML parses a named reference by its longest valid prefix with no `;` required, so a story containing `&copycat;` would have reached a reader as `©cat;`; and preserving references the plain-text decoder does not know — `&#38;`, `&apos;` — recreated the very cross-format disagreement the fix was for. Narrowing preservation to the decoded set answers both, and the tests now assert that the HTML and plain-text exports of one story render the same text.
+- Non-claim: This does not make the two exports agree on references neither path handles. `&#38;` now stays literal in both, which is consistent but is not the character the story meant; widening that means teaching `decodeBasicEntities` numeric references, which is a larger change than this slice.
+- Non-claim: The image fix covers the response shape only. A provider that returns a URL which later 404s is still reported as a success, because nothing here fetches it.
+- Note: Codex also asked for these three fixes to be split into separate slices. They are not split. The review-boundary rule in `AGENTS.md` lists the independent risk areas a slice must split across — account/auth/profile/storage, route or function-budget changes, Angular UI, durable job claims, story-quality generation, Proving Grounds, CSS — and none of the three crosses one: each is a local input- or output-validation fix behind an existing seam, with its own test, and the function count is unchanged at 11/12. The preceding entry in this log covers three defects in one slice on the same reading.
+
+Validation:
+
+- `scripts/recovery/preflight.sh --skip-status`, the command CI runs: passed — Angular app and spec type checks, the Vercel API type check, `npm run test:all`, the Node 20 Angular production build, and build-output verification.
+- Targeted counterfactual per fix, as quoted under Self-review. Each mutation was reverted immediately and none is committed.
+- Note: `node_modules` is tracked in this repository and its devDependencies were absent again, so `npm install` was needed before `tsx` would run. Those tracked files and the `name` casing `npm` rewrote into `package-lock.json` were restored, so the slice diff stays source-only.
+
 ## 2026-08-24 22:36 UTC - A Streaming Error That Reconnects Forever, Jobs Stuck Running After A Throw, And A Comma-Joined Allow-Origin
 
 Actions:

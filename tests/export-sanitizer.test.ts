@@ -63,6 +63,66 @@ assert(entityPlainText.includes('&lt;encoded&gt;'), 'plain export should not dou
 assert(entityPlainText.includes('"quote"'), 'plain export should decode direct quote entities');
 assert(entityPlainText.includes('&quot;encoded quote&quot;'), 'plain export should not double-decode amp-escaped quote entities');
 
+// The story arrives as the generator's HTML, where `&` and `"` are already
+// written as `&amp;` and `&quot;`. Escaping every `&` re-escaped those, so the
+// HTML export rendered the entity text itself while the plain-text export of
+// the same story showed the punctuation it stands for.
+const entityStoryHtml = '<p>Blood pooled at her feet &amp; the &quot;hunter&quot; smiled.</p>';
+const entitySanitizedHtml = sanitizeStoryHtmlForExport(entityStoryHtml);
+assert(
+  entitySanitizedHtml === entityStoryHtml,
+  `HTML export should pass the generator's own entities through unchanged (got ${entitySanitizedHtml})`
+);
+assert(
+  !entitySanitizedHtml.includes('&amp;amp;') && !entitySanitizedHtml.includes('&amp;quot;'),
+  'HTML export should not double-escape character references'
+);
+// Only a complete reference is a reference. A bare ampersand, and an `&amp`
+// with no semicolon, are still text and still have to be escaped.
+assert(
+  sanitizeStoryHtmlForExport('<p>Angel &amp demon & wolf &#zz; here</p>')
+    === '<p>Angel &amp;amp demon &amp; wolf &amp;#zz; here</p>',
+  'incomplete references should still be escaped'
+);
+
+// HTML parses a named reference by its longest valid prefix, with no `;`
+// required, so passing an entity-shaped literal through corrupts the story:
+// `&copycat;` would reach a reader as `©cat;`. Only the references the
+// plain-text export decodes are preserved, which is what makes preserving any
+// of them safe — everything else is escaped and stays the text it was.
+const unpreservedReferences = '<p>&copycat; and &#38; and &apos; and &Amp; stay literal</p>';
+const unpreservedSanitized = sanitizeStoryHtmlForExport(unpreservedReferences);
+assert(
+  unpreservedSanitized
+    === '<p>&amp;copycat; and &amp;#38; and &amp;apos; and &amp;Amp; stay literal</p>',
+  `an entity-shaped literal that is not a decoded reference must be escaped (got ${unpreservedSanitized})`
+);
+
+// A reference that survives must mean the same thing in every export, so the
+// HTML export preserves exactly the set the plain-text export decodes.
+const crossFormatSource = '<p>feet &amp; the &quot;hunter&quot;, &lt;him&gt; &#39;there&#39; &copycat; &#38;</p>';
+const crossFormatHtml = sanitizeStoryHtmlForExport(crossFormatSource);
+const crossFormatPlain = stripStoryHtmlForExport(crossFormatSource);
+assert(
+  decodeForComparison(crossFormatHtml) === `<p>${crossFormatPlain}</p>`,
+  `HTML and plain-text exports must render the same story text\n  html : ${decodeForComparison(crossFormatHtml)}\n  plain: <p>${crossFormatPlain}</p>`
+);
+
+/**
+ * Resolve an export's HTML to the text a reader sees, so the two formats can
+ * be compared as rendered output rather than as markup. Escaped `&amp;` is
+ * resolved last, exactly as a parser resolves each reference once.
+ */
+function decodeForComparison(html: string): string {
+  return html
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
 const commentedStoryHtml =
   '<p>Elena waited.</p><!-- editor note: cut this line <script>stealPrivateStory()</script> --><p>Dawn broke.</p>';
 const sanitizedComments = sanitizeStoryHtmlForExport(commentedStoryHtml);
