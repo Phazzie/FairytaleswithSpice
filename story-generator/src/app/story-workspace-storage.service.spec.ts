@@ -134,6 +134,41 @@ describe('StoryWorkspaceStorageService', () => {
     expect(projects[0].id).toBe('story-13');
   });
 
+  it('keeps ordering and trimming by date when a stored timestamp is unreadable', () => {
+    // Twelve stored projects, newest first, with one entry whose `updatedAt`
+    // survives `isSavedStoryProject` (a non-empty string) but not `Date.parse`.
+    // Comparing through it used to yield NaN, which sorts as "equal" and left
+    // the list in whatever order it was built in — so the trim below took the
+    // newest project instead of the oldest.
+    const stored = Array.from({ length: 12 }, (unused, index) => createProject({
+      id: `story-${index}`,
+      storyId: `story-${index}`,
+      title: `Story ${index}`,
+      updatedAt: new Date(2026, 0, 20 - index).toISOString()
+    }));
+    stored[6].updatedAt = 'sometime last week';
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+
+    expect(service.listProjects().map(project => project.id)).toEqual([
+      'story-0', 'story-1', 'story-2', 'story-3', 'story-4', 'story-5',
+      'story-7', 'story-8', 'story-9', 'story-10', 'story-11', 'story-6'
+    ]);
+
+    service.saveProject(createProject({
+      id: 'story-fresh',
+      storyId: 'story-fresh',
+      title: 'Fresh'
+    }));
+
+    const projects = service.listProjects();
+    expect(projects[0].id).toBe('story-fresh');
+    // The unreadable entry is the one that falls off the end, and every real
+    // project the store had room for is still there.
+    expect(projects.some(project => project.id === 'story-6')).toBeFalse();
+    expect(projects.some(project => project.id === 'story-0')).toBeTrue();
+    expect(projects.some(project => project.id === 'story-11')).toBeTrue();
+  });
+
   it('surfaces localStorage write failures', () => {
     const setItemSpy = spyOn(Storage.prototype, 'setItem').and.throwError('quota');
 

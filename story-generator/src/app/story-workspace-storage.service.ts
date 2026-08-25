@@ -15,10 +15,7 @@ export class StoryWorkspaceStorageService {
   private readonly maxProjects = 12;
 
   listProjects(): SavedStoryProject[] {
-    const projects = this.readProjects();
-    return [...projects].sort((first, second) =>
-      Date.parse(second.updatedAt) - Date.parse(first.updatedAt)
-    );
+    return [...this.readProjects()].sort(byNewestUpdateFirst);
   }
 
   saveProject(project: SavedStoryProject): StorageResult<SavedStoryProject> {
@@ -40,7 +37,7 @@ export class StoryWorkspaceStorageService {
     };
     const remainingProjects = this.readProjects().filter(item => item.id !== normalizedProject.id);
     const nextProjects = [normalizedProject, ...remainingProjects]
-      .sort((first, second) => Date.parse(second.updatedAt) - Date.parse(first.updatedAt))
+      .sort(byNewestUpdateFirst)
       .slice(0, this.maxProjects);
 
     const writeResult = this.writeProjects(nextProjects);
@@ -122,6 +119,45 @@ export class StoryWorkspaceStorageService {
       return false;
     }
   }
+}
+
+/**
+ * Order saved projects newest-first by `updatedAt`.
+ *
+ * `Date.parse` answers `NaN` for a timestamp it cannot read, and the entries
+ * this compares come back out of `localStorage`, where `isSavedStoryProject`
+ * asks only that `updatedAt` be a non-empty string — a half-written write, a
+ * hand-edited value, or an entry left by an older shape of this record all
+ * satisfy that. Subtracting through a `NaN` gives `NaN`, and a comparator that
+ * answers `NaN` is read as *equal*: `Array.prototype.sort` coerces it to `+0`
+ * and, being stable, then leaves the pair exactly where it found it. One
+ * unreadable entry therefore compares equal to every other, which is enough to
+ * pin the whole list in the order it happened to be built in — the sort quietly
+ * stops sorting rather than failing.
+ *
+ * That order is close to the reverse of the intended one. `readProjects`
+ * returns the stored list, which `saveProject` writes newest-first, so
+ * `listProjects` hands the library oldest-first, and `saveProject` — which
+ * truncates to `maxProjects` on the very next line — drops the *newest* stored
+ * project and keeps the oldest. The corrupt entry survives every trim, so the
+ * damage repeats on each save until the newest twelve stories are gone.
+ *
+ * Treating an unreadable timestamp as older than any real one keeps the
+ * comparator a real ordering: the valid entries sort among themselves again,
+ * and the corrupt entry lands at the end of the list, first in line to be
+ * trimmed, instead of deciding where everything else goes.
+ */
+function byNewestUpdateFirst(first: SavedStoryProject, second: SavedStoryProject): number {
+  return toSortableTimestamp(second.updatedAt) - toSortableTimestamp(first.updatedAt);
+}
+
+/**
+ * A finite floor rather than `-Infinity`, so two unreadable timestamps compare
+ * equal instead of subtracting to `NaN` and reintroducing the same problem.
+ */
+function toSortableTimestamp(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? Number.MIN_SAFE_INTEGER : parsed;
 }
 
 function isSavedStoryProject(value: unknown): value is SavedStoryProject {
