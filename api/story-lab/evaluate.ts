@@ -3,6 +3,8 @@ import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { XaiTextClient } from '../_lib/services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
 import { buildStoryQualityHeuristicReport } from '../_lib/story-lab/evaluation/storyQualityHeuristics';
+import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
+import { stripMarkdownJsonFence } from '../_lib/utils/modelJsonPayload';
 
 interface NormalizedEvaluationRequest {
   storyContent: string;
@@ -60,12 +62,7 @@ Return only valid JSON with keys score, strengths, weaknesses, suggestions, and 
 }
 
 function parseEvaluation(content: string): EvaluationCriteria {
-  const jsonText = content
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-  const evaluation = JSON.parse(jsonText) as Partial<EvaluationCriteria>;
+  const evaluation = JSON.parse(stripMarkdownJsonFence(content)) as Partial<EvaluationCriteria>;
 
   return {
     score: typeof evaluation.score === 'number' ? evaluation.score : 75,
@@ -75,6 +72,98 @@ function parseEvaluation(content: string): EvaluationCriteria {
     overallFeedback: typeof evaluation.overallFeedback === 'string'
       ? evaluation.overallFeedback
       : 'Evaluation completed.'
+  };
+}
+
+/**
+ * Turn a request body into the shape the evaluator and the heuristic scan read,
+ * or say which field the caller has to fix.
+ *
+ * Every field was taken on trust. `storyContent` was read as
+ * `input.storyContent?.trim()`, which throws for every non-string a JSON body
+ * can carry; `themes` was defaulted with `?? []`, which passes a number
+ * straight through to the `for (const theme of ...)` in the continuity scan;
+ * and `creature` reached `configuration.creature.toLowerCase()` the same way.
+ * None of those three throws is inside the route's try block — it wraps the
+ * provider call, not the body — so a malformed request became an unhandled
+ * rejection the runtime reports as 500, telling the caller the evaluator had
+ * failed and that retrying might help. The request is what is malformed and
+ * only the caller can fix it, so each field is checked and named.
+ *
+ * `spicyLevel` and `wordCount` only reach a prompt string, but a caller that
+ * sends `"very"` for a level the contract types as a number has made the same
+ * mistake and is better told so than quietly evaluated against
+ * `Spice Level: very/5`.
+ */
+function optionalFieldError(
+  field: string,
+  value: unknown,
+  isValid: (value: unknown) => boolean,
+  requirement: string
+): string | null {
+  return value === undefined || isValid(value)
+    ? null
+    : `configuration.${field} must be ${requirement} when provided.`;
+}
+
+function isString(value: unknown): boolean {
+  return typeof value === 'string';
+}
+
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every(isString);
+}
+
+function isFiniteNumber(value: unknown): boolean {
+  return Number.isFinite(value);
+}
+
+function normalizeEvaluationRequest(
+  body: unknown
+): { request: NormalizedEvaluationRequest } | { message: string } {
+  const input = readJsonObjectBody<Partial<EvaluationRequest> & {
+    configuration?: Partial<EvaluationRequest['configuration']>;
+  }>(body);
+  if (!input) {
+    return { message: 'A JSON object body is required.' };
+  }
+
+  if (typeof input.storyContent !== 'string' || !input.storyContent.trim()) {
+    return { message: 'storyContent is required and must be a non-empty string.' };
+  }
+
+  // A `null` configuration reads as an absent one, which is what `?.` did
+  // before and what a serializer that writes absent optionals as `null` means
+  // by it. An array is not that: it carries none of the fields and would
+  // silently evaluate against every default.
+  const configuration = input.configuration ?? undefined;
+  if (configuration !== undefined && (typeof configuration !== 'object' || Array.isArray(configuration))) {
+    return { message: 'configuration must be an object when provided.' };
+  }
+
+  const creature = configuration?.creature;
+  const themes = configuration?.themes;
+  const spicyLevel = configuration?.spicyLevel;
+  const wordCount = configuration?.wordCount;
+  const fieldError =
+    optionalFieldError('creature', creature, isString, 'a string') ??
+    optionalFieldError('themes', themes, isStringArray, 'an array of strings') ??
+    optionalFieldError('spicyLevel', spicyLevel, isFiniteNumber, 'a number') ??
+    optionalFieldError('wordCount', wordCount, isFiniteNumber, 'a number');
+  if (fieldError) {
+    return { message: fieldError };
+  }
+
+  return {
+    request: {
+      storyContent: input.storyContent,
+      configuration: {
+        creature: creature ?? 'unknown',
+        themes: themes ?? [],
+        spicyLevel: spicyLevel ?? 3,
+        wordCount: wordCount ?? 900
+      }
+    }
   };
 }
 
@@ -98,29 +187,19 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const input = req.body as (Partial<EvaluationRequest> & {
-    configuration?: Partial<EvaluationRequest['configuration']>;
-  }) | undefined;
-  if (!input || typeof input !== 'object' || !input.storyContent?.trim()) {
+  const normalized = normalizeEvaluationRequest(req.body);
+  if ('message' in normalized) {
     res.status(400).json({
       success: false,
       error: {
         code: 'INVALID_EVALUATION_REQUEST',
-        message: 'storyContent is required.'
+        message: normalized.message
       }
     });
     return;
   }
 
-  const request: NormalizedEvaluationRequest = {
-    storyContent: input.storyContent,
-    configuration: {
-      creature: input.configuration?.creature ?? 'unknown',
-      themes: input.configuration?.themes ?? [],
-      spicyLevel: input.configuration?.spicyLevel ?? 3,
-      wordCount: input.configuration?.wordCount ?? 900
-    }
-  };
+  const request = normalized.request;
 
   const xaiClient = new XaiTextClient();
   if (!xaiClient.hasApiKey()) {
