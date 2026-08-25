@@ -24,6 +24,50 @@ function logUnexpectedStoryLabRouteError(operation: string, error: unknown): voi
   console.error('Story Lab route failed unexpectedly', { operation, errorType });
 }
 
+/**
+ * The story this URL addresses.
+ *
+ * This route is `/api/story-lab/stories/:storyId/continue` on both deployments
+ * — the directory it lives in is named `[storyId]`, and `registerApiRoutes`
+ * mounts the same pattern on Express — and the segment was read by neither.
+ * `storyId` came only from the request body, which made the path parameter
+ * decorative and left two things wrong with it.
+ *
+ * A caller that follows the URL contract, naming the story in the path and not
+ * repeating it in the body, was answered `400 INVALID_REQUEST` saying `storyId`
+ * is required, from a URL that names the story it is required to name. And when
+ * the body did carry one, it won: `POST /stories/A/continue` with
+ * `{"storyId": "B"}` continued story B — reading B's transient snapshot and
+ * appending to B — while every log line, proxy rule, and reader of the request
+ * saw a request against A.
+ *
+ * The value arrives as a query parameter on both deployments: Vercel puts a
+ * dynamic segment in `req.query`, and the Express route table bridges
+ * `req.params` into the same place, which is the point of that mapping. Both
+ * decode the segment on the way, so nothing is decoded again here.
+ */
+function readRouteStoryId(req: any): string {
+  const raw = req?.query?.storyId;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * The story id the body carries: its trimmed text, `''` when the field is
+ * absent, and `null` when it is present but is not a string a story id could
+ * be. `null` is distinct from absent because a body that names the field has
+ * made a claim about which story this is, and a claim the route cannot read is
+ * a caller error rather than something to fall back from.
+ */
+function readBodyStoryId(value: unknown): string | null {
+  if (value === undefined) {
+    return '';
+  }
+
+  return typeof value === 'string' ? value.trim() : null;
+}
+
 export function createStoryLabContinuationHandler(continueStory: ContinueStoryLab = continueStoryLab) {
   return async function handler(req: any, res: any) {
     const cors = applyCorsPolicy(req, res, {
@@ -63,7 +107,36 @@ export function createStoryLabContinuationHandler(continueStory: ContinueStoryLa
     // rejection rather than the 400 the field check below exists to give,
     // because nothing here catches it. The job route's own normalizer already
     // reads the field this way; this is the same check.
-    const storyId = typeof input.storyId === 'string' ? input.storyId.trim() : '';
+    const routeStoryId = readRouteStoryId(req);
+    const bodyStoryId = readBodyStoryId(input.storyId);
+
+    if (bodyStoryId === null) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'storyId must be a string when the request body carries one.'
+        }
+      });
+      return;
+    }
+
+    // Two ids that disagree are refused rather than resolved. Either one could
+    // be the mistake, and quietly picking one continues a story the caller did
+    // not ask for — which is the failure this route had when the body always
+    // won.
+    if (routeStoryId && bodyStoryId && routeStoryId !== bodyStoryId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'storyId in the request body must match the story id in the request path.'
+        }
+      });
+      return;
+    }
+
+    const storyId = routeStoryId || bodyStoryId;
     const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
 
     const hasChapters = Array.isArray(input.previouslyGeneratedChapters);

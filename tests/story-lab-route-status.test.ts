@@ -9,6 +9,12 @@ interface FakeRequest {
   method: string;
   body?: unknown;
   headers: Record<string, string>;
+  /**
+   * Where the story id in `/api/story-lab/stories/:storyId/continue` arrives:
+   * Vercel puts a `[storyId]` segment here, and the Express route table bridges
+   * `req.params` into the same place.
+   */
+  query?: Record<string, string | string[] | undefined>;
 }
 
 class FakeResponse {
@@ -81,11 +87,16 @@ async function withEnv(updates: Record<string, string | undefined>, fn: () => Pr
   }
 }
 
-function createRequest(method: string, body?: unknown): FakeRequest {
+function createRequest(
+  method: string,
+  body?: unknown,
+  query?: Record<string, string | string[] | undefined>
+): FakeRequest {
   return {
     method,
     body,
-    headers: {}
+    headers: {},
+    ...(query ? { query } : {})
   };
 }
 
@@ -234,6 +245,138 @@ async function main(): Promise<void> {
       (response.body as { error?: { code?: string } })?.error?.code === 'INVALID_REQUEST',
       `storyId=${JSON.stringify(storyId)} is a caller error, not a service failure`
     );
+  }
+
+  // The blueprint parser collects every invalid field rather than returning at
+  // the first one, and `INVALID_BLUEPRINT` is declared as carrying that list.
+  // This route sent the joined prose alone, so a caller that wanted to mark the
+  // fields a reader has to fix had to parse the message back apart.
+  {
+    const response = new FakeResponse();
+    const { creature, ...blueprintWithoutCreature } = createBlueprint();
+    await genesisHandler(
+      createRequest('POST', { ...blueprintWithoutCreature, spicyLevel: 9 }),
+      response
+    );
+
+    const payload = response.body as {
+      error?: { code?: string; details?: { invalidFields?: string[] } };
+    };
+
+    assert(response.statusCode === 400, `an invalid blueprint should return 400, got ${response.statusCode}`);
+    assert(
+      payload.error?.code === 'INVALID_BLUEPRINT',
+      `an invalid blueprint should be reported as INVALID_BLUEPRINT, got ${JSON.stringify(payload.error)}`
+    );
+    assert(
+      Array.isArray(payload.error?.details?.invalidFields)
+        && payload.error.details.invalidFields.includes('creature')
+        && payload.error.details.invalidFields.includes('spicyLevel'),
+      `every invalid field should be named, got ${JSON.stringify(payload.error?.details)}`
+    );
+  }
+
+  // ==================== the story id in the URL ====================
+  //
+  // This route is `/api/story-lab/stories/:storyId/continue` on both
+  // deployments, and read the segment on neither: `storyId` came only from the
+  // body. A caller that named the story in the path and not again in the body
+  // was told `storyId` is required, and a body id that disagreed with the path
+  // silently won — so `POST /stories/A/continue` with `{"storyId": "B"}`
+  // continued story B while every log line and proxy rule saw a request
+  // against A.
+  {
+    const continuationBody = createContinuationBody();
+    const pathStoryId = continuationBody.storyId;
+
+    function createRecordingHandler(): {
+      handler: ReturnType<typeof createStoryLabContinuationHandler>;
+      seen: { storyId?: string };
+    } {
+      const seen: { storyId?: string } = {};
+      const handler = createStoryLabContinuationHandler(async input => {
+        seen.storyId = input.storyId;
+        return { success: true, data: { continued: true } as never };
+      });
+
+      return { handler, seen };
+    }
+
+    // The path names the story and the body does not repeat it.
+    {
+      const { handler, seen } = createRecordingHandler();
+      const response = new FakeResponse();
+      const { storyId: _omitted, ...bodyWithoutStoryId } = continuationBody;
+      await handler(createRequest('POST', bodyWithoutStoryId, { storyId: pathStoryId }), response);
+
+      assert(
+        response.statusCode === 200,
+        `a story id in the path should be enough, got ${response.statusCode} ${JSON.stringify(response.body)}`
+      );
+      assert(
+        seen.storyId === pathStoryId,
+        `the continuation should run against the story the path names, got ${seen.storyId}`
+      );
+    }
+
+    // Both name the same story, which is what the Angular app sends.
+    {
+      const { handler, seen } = createRecordingHandler();
+      const response = new FakeResponse();
+      await handler(createRequest('POST', continuationBody, { storyId: pathStoryId }), response);
+
+      assert(response.statusCode === 200, `agreeing ids should be served, got ${response.statusCode}`);
+      assert(seen.storyId === pathStoryId, `the agreed id should be used, got ${seen.storyId}`);
+    }
+
+    // They disagree. Either one could be the mistake, so neither is guessed at.
+    {
+      const { handler, seen } = createRecordingHandler();
+      const response = new FakeResponse();
+      await handler(
+        createRequest('POST', { ...continuationBody, storyId: 'story-someone-elses' }, { storyId: pathStoryId }),
+        response
+      );
+
+      assert(
+        response.statusCode === 400,
+        `a body id that contradicts the path should be refused, got ${response.statusCode}`
+      );
+      assert(
+        (response.body as { error?: { code?: string } })?.error?.code === 'INVALID_REQUEST',
+        'contradicting story ids are a caller error'
+      );
+      assert(seen.storyId === undefined, 'a refused request should not reach the engine');
+    }
+
+    // A body id that is not a string is still a claim about which story this
+    // is, and one the route cannot read — not something to fall back from
+    // because the path happens to carry an id.
+    {
+      const { handler, seen } = createRecordingHandler();
+      const response = new FakeResponse();
+      await handler(
+        createRequest('POST', { ...continuationBody, storyId: 123 }, { storyId: pathStoryId }),
+        response
+      );
+
+      assert(
+        response.statusCode === 400,
+        `a non-string body storyId should be refused even when the path carries one, got ${response.statusCode}`
+      );
+      assert(seen.storyId === undefined, 'a refused request should not reach the engine');
+    }
+
+    // No path segment at all — a direct call to the serverless handler — still
+    // reads the body, which is how every existing caller works.
+    {
+      const { handler, seen } = createRecordingHandler();
+      const response = new FakeResponse();
+      await handler(createRequest('POST', continuationBody), response);
+
+      assert(response.statusCode === 200, `a body-only request should still be served, got ${response.statusCode}`);
+      assert(seen.storyId === pathStoryId, `the body id should still be used, got ${seen.storyId}`);
+    }
   }
 
   console.log('Story Lab route status tests passed');

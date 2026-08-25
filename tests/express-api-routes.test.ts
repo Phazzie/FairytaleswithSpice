@@ -149,6 +149,17 @@ assert.deepEqual(
 );
 assert.deepEqual(queryFor('/api/story-lab/stories'), {}, 'a route with no rewrite adds nothing');
 
+// Not a `vercel.json` rewrite: `api/story-lab/stories/[storyId]/continue.ts` is
+// a dynamic route directory, and Vercel puts the segment in `req.query` on its
+// own. The handler reads it from there on both deployments, so Express has to
+// put it in the same place — without this the story id in the URL is invisible
+// to the route that is named after it.
+assert.deepEqual(
+  queryFor('/api/story-lab/stories/story_abc/continue'),
+  { storyId: 'story_abc' },
+  'the continuation route should see the story id its path names'
+);
+
 // ==================== the request the handler is actually given ====================
 
 function fakeRequest(overrides: Record<string, unknown> = {}): any {
