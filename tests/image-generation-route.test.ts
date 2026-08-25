@@ -121,6 +121,21 @@ async function testServiceRefusalsReachTheCallerAsClientErrors(): Promise<void> 
   assert.equal(missingThemes.body.error.code, 'INVALID_INPUT');
 }
 
+// `registerApiRoutes` mounts every path with `registrar.all(...)`, the way a
+// Vercel function receives every method for its own path — so the method guard
+// is the handler's job, and without it a PUT or DELETE carrying a valid body
+// would run a paid image generation. Asserted here because the route table
+// gives the handler no protection of its own.
+async function testOnlyPostIsServed(): Promise<void> {
+  for (const method of ['GET', 'PUT', 'PATCH', 'DELETE']) {
+    const { res, recorded } = fakeResponse();
+    await imageGenerateHandler({ method, headers: {}, body: validRequest }, res);
+
+    assert.equal(recorded.statusCode, 405, `${method} should be refused, got ${recorded.statusCode}`);
+    assert.equal(recorded.body.error.code, 'METHOD_NOT_ALLOWED', `${method} should not reach the image service`);
+  }
+}
+
 async function testAWellFormedRequestIsStillServed(): Promise<void> {
   const generated = await post(validRequest);
 
@@ -140,6 +155,7 @@ async function main(): Promise<void> {
   await testUnparseableBodiesAreRefusedAsInvalidInput();
   await testNonTextFieldsAreRefusedBeforeTheRenderer();
   await testServiceRefusalsReachTheCallerAsClientErrors();
+  await testOnlyPostIsServed();
   await testAWellFormedRequestIsStillServed();
 
   console.log('Image generation route tests passed');

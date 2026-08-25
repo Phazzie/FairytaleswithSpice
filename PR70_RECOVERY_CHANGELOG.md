@@ -103,6 +103,24 @@ failing, then reverted immediately. None of the mutations is committed.
 | image route back to `const input = req.body` with no `readJsonObjectBody` | `test:image-generation-route` fails: 500 where 400 is expected |
 | evaluate byte cap disabled | `test:story-lab-evaluate-route` fails: `a story past the cap is a caller error, got 200` |
 
+### Review follow-up
+
+Codex flagged (P2) that the `api/_lib/http/imageGenerationRoute.ts` this branch
+originally added had no `req.method` guard: `registerApiRoutes` mounts every path
+with `registrar.all(...)`, so a `PUT`/`PATCH`/`DELETE` carrying a valid body
+would have run a paid image generation instead of answering 405. The finding was
+correct against that commit. It is moot on the current head — that module was
+deleted when `main` came in, and #227's `api/image/generate.ts` has the guard —
+but the exposure is a property of the route table rather than of any one
+handler, so `tests/image-generation-route.test.ts` now asserts 405
+`METHOD_NOT_ALLOWED` for `GET`, `PUT`, `PATCH`, and `DELETE`. Counterfactual:
+disabling the guard fails that test with `GET should be refused, got 200`.
+
+SonarCloud's Quality Gate passed with 2 new issues. Their details could not be
+read from this session — `sonarcloud.io` is blocked by the environment's network
+egress proxy — and the gate is green, so they are recorded here as unreviewed
+rather than claimed as addressed.
+
 ### Not claimed
 
 - Nothing here changes the Vercel deployment's routing, its function count, or
