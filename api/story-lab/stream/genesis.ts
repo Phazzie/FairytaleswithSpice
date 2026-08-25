@@ -57,12 +57,37 @@ export default async function handler(req: any, res: any) {
     }
   };
 
-  req.socket.on('close', () => {
+  /**
+   * A reader who closes the tab — or an `EventSource` the Angular service
+   * unsubscribes — ends this request while the generation is still in flight.
+   * Clearing the timer list was the whole of the response to that, and the list
+   * is empty for the entire time the generation runs, so the close did nothing:
+   * everything after the `await` went on as if the reader were still there. The
+   * route scheduled one fresh timer per chapter plus a completion timer on a
+   * socket nobody is reading, held the serverless invocation open until the last
+   * of them fired, and wrote every frame into a destroyed stream. The flag is
+   * what makes a disconnect stick past the point where it was noticed.
+   */
+  let clientDisconnected = false;
+
+  req.socket?.on?.('close', () => {
+    clientDisconnected = true;
     cleanup();
   });
 
   const sendChunk = (chunk: StreamingProgressChunk | GenesisResponse) => {
+    if (clientDisconnected) {
+      return;
+    }
+
     res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  };
+
+  const endStream = () => {
+    cleanup();
+    if (!clientDisconnected) {
+      res.end();
+    }
   };
 
   sendChunk({
@@ -83,8 +108,11 @@ export default async function handler(req: any, res: any) {
         message: error instanceof Error ? error.message : 'Failed to generate response.'
       }
     });
-    cleanup();
-    res.end();
+    endStream();
+    return;
+  }
+
+  if (clientDisconnected) {
     return;
   }
 
@@ -94,8 +122,7 @@ export default async function handler(req: any, res: any) {
       percentage: 100,
       error: genesis.error
     });
-    cleanup();
-    res.end();
+    endStream();
     return;
   }
 
@@ -127,8 +154,7 @@ export default async function handler(req: any, res: any) {
     });
 
     sendChunk(genesis);
-    cleanup();
-    res.end();
+    endStream();
   }, (totalChapters + 1) * 500);
 
   timeouts.push(completionTimeout);

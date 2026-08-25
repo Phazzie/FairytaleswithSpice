@@ -151,17 +151,84 @@ function resolveAllowedOrigin(req: CorsRequestLike, options: CorsPolicyOptions):
   const allowedOrigins = parseAllowedOrigins(options.env);
 
   if (requestOrigin) {
-    return allowedOrigins.includes(requestOrigin) ? requestOrigin : null;
+    if (allowedOrigins.includes(requestOrigin)) {
+      return requestOrigin;
+    }
+
+    return requestOrigin === getRequestTargetOrigin(req) ? requestOrigin : null;
   }
 
   return allowedOrigins[0] ?? null;
 }
 
+/**
+ * The origin this request was actually sent to, so a same-origin request is
+ * never rejected as cross-origin.
+ *
+ * A browser attaches `Origin` to every request whose method is not GET or HEAD,
+ * same-origin ones included, and the allow-list defaults to
+ * `http://localhost:4200` when none of the origin env vars is set. Matching the
+ * header against the list alone therefore answered 403 ORIGIN_NOT_ALLOWED to
+ * every `POST` the app's own page made — story generation, continuation,
+ * export, job creation, profile writes — on any deployment that had not thought
+ * to name its own public URL in `ALLOWED_ORIGINS`. The frontend and the API are
+ * served from one origin on both the Vercel and the Node/Docker deployments, so
+ * that is the whole app, failing on a list whose purpose is to keep *other*
+ * origins out.
+ *
+ * The forwarded headers come first because a proxied deployment terminates TLS
+ * ahead of this process, so `Host` alone would rebuild the origin with the
+ * wrong scheme. Only the first entry of each is read: a chain of proxies
+ * appends, and the client-facing hop is the one the browser saw.
+ *
+ * This does not widen what a *browser* can reach. `Origin` and the request
+ * target both come from the URL the page fetched, so they agree only when the
+ * page is already on this origin; a cross-origin page cannot make them agree,
+ * because `X-Forwarded-Host` is not a CORS-safelisted request header and a
+ * proxy overwrites it in any case. A non-browser client that sets both headers
+ * by hand was never constrained by CORS to begin with — it is not a browser
+ * enforcing the response.
+ */
+function getRequestTargetOrigin(req: CorsRequestLike): string | null {
+  const host = firstForwardedValue(readRequestHeader(req, 'x-forwarded-host'))
+    ?? readRequestHeader(req, 'host');
+  if (!host) {
+    return null;
+  }
+
+  const protocol = firstForwardedValue(readRequestHeader(req, 'x-forwarded-proto')) ?? 'https';
+  return normalizeOrigin(`${protocol}://${host}`);
+}
+
+function firstForwardedValue(value: string | undefined): string | undefined {
+  const first = value?.split(',')[0]?.trim();
+  return first ? first : undefined;
+}
+
 function getRequestOrigin(req: CorsRequestLike): string | undefined {
+  return readRequestHeader(req, 'origin');
+}
+
+/**
+ * Read one request header, tolerating the `string[]` form a repeated header
+ * arrives in and the casing a hand-built header bag may carry. Node lowercases
+ * incoming header names, so the direct hit is the common path.
+ */
+function readRequestHeader(req: CorsRequestLike, name: string): string | undefined {
+  const headers = req.headers;
+  if (!headers) {
+    return undefined;
+  }
+
   // Indexed access: the Angular app type-checks this module through the Node
   // server, and its config forbids property access on an index signature.
-  const rawOrigin = req.headers?.['origin'] ?? req.headers?.['Origin'];
-  return Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
+  const direct = headers[name];
+  const raw = direct !== undefined
+    ? direct
+    : Object.entries(headers).find(([key]) => key.toLowerCase() === name)?.[1];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function normalizeOrigin(value: string): string | null {

@@ -87,11 +87,35 @@ export function createStoryLabJobsRouteHandler(
 
 export const handleStoryLabJobsRoute = createStoryLabJobsRouteHandler();
 
+/**
+ * Every method this one route serves. The handlers below each declare only
+ * their own, which is right for them — they are exported and mounted
+ * individually too — but wrong for the preflight, which is asked about the
+ * route rather than about a handler.
+ */
+const STORY_LAB_JOBS_ROUTE_METHODS = ['GET', 'POST', 'OPTIONS'];
+
 async function handleStoryLabJobsRouteWithContext(
   context: StoryLabJobRouteContext,
   req: RequestLike,
   res: ResponseLike
 ): Promise<void> {
+  // A preflight names the method it is asking about in
+  // `Access-Control-Request-Method`, not in its own, so an `OPTIONS` fell past
+  // the `POST` branch and was answered by the GET handler — which advertises
+  // `Access-Control-Allow-Methods: GET, OPTIONS`. A browser reads that as "POST
+  // is not allowed here" and never sends the request, so creating a Story Lab
+  // job from the page failed before it left the browser on any deployment where
+  // the API is not same-origin. Answering the preflight here is what lets it
+  // describe the route instead of one of its handlers.
+  if ((req.method ?? '').toUpperCase() === 'OPTIONS') {
+    applyCorsPolicy(req, res, {
+      methods: STORY_LAB_JOBS_ROUTE_METHODS,
+      credentials: true
+    });
+    return;
+  }
+
   if ((req.method ?? '').toUpperCase() === 'POST') {
     await handleCreateStoryLabJobWithContext(context, req, res);
     return;

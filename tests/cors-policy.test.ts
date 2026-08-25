@@ -192,4 +192,101 @@ middleware(request('POST', 'https://evil.example.com'), middlewareRejectedRespon
 assert(!middlewareRejectedContinued, 'middleware should not run the route for a disallowed origin');
 assert(middlewareRejectedResponse.statusCode === 403, 'middleware should reject a disallowed origin with 403');
 
+// A browser sends `Origin` on every non-GET request, its own included, so a
+// deployment that never named its public URL in the env answered 403 to every
+// POST the app's own page made.
+function sameOriginRequest(
+  method: string,
+  origin: string,
+  headers: Record<string, string> = {}
+): CorsRequestLike {
+  return {
+    method,
+    headers: { origin, ...headers }
+  };
+}
+
+const sameOriginResponse = new FakeResponse();
+const sameOriginResult = applyCorsPolicy(
+  sameOriginRequest('POST', 'https://spice.example.app', {
+    host: 'spice.example.app',
+    'x-forwarded-proto': 'https'
+  }),
+  sameOriginResponse,
+  { methods: ['POST', 'OPTIONS'], credentials: true, env: {} }
+);
+
+assert(!sameOriginResult.rejected, 'a same-origin POST must not be rejected as cross-origin');
+assert(!sameOriginResult.handled, 'a same-origin POST should reach the route');
+assert(
+  sameOriginResponse.headers['Access-Control-Allow-Origin'] === 'https://spice.example.app',
+  'a same-origin request should be answered with its own origin'
+);
+
+const forwardedHostResponse = new FakeResponse();
+const forwardedHostResult = applyCorsPolicy(
+  sameOriginRequest('POST', 'https://spice.example.app', {
+    host: 'internal-lambda.local:3000',
+    'x-forwarded-host': 'spice.example.app, internal-proxy.local',
+    'x-forwarded-proto': 'https,http'
+  }),
+  forwardedHostResponse,
+  { methods: ['POST', 'OPTIONS'], credentials: true, env: {} }
+);
+
+assert(
+  !forwardedHostResult.rejected,
+  'the client-facing forwarded host is the origin the browser saw, so it decides same-origin'
+);
+
+const forwardedProtocolMismatch = new FakeResponse();
+const forwardedProtocolResult = applyCorsPolicy(
+  sameOriginRequest('POST', 'http://spice.example.app', {
+    host: 'spice.example.app',
+    'x-forwarded-proto': 'https'
+  }),
+  forwardedProtocolMismatch,
+  { methods: ['POST', 'OPTIONS'], credentials: true, env: {} }
+);
+
+assert(
+  forwardedProtocolResult.rejected,
+  'a scheme the request was not served over is a different origin and stays rejected'
+);
+
+const crossOriginWithHostResponse = new FakeResponse();
+const crossOriginWithHostResult = applyCorsPolicy(
+  sameOriginRequest('POST', 'https://evil.example.com', {
+    host: 'spice.example.app',
+    'x-forwarded-proto': 'https'
+  }),
+  crossOriginWithHostResponse,
+  { methods: ['POST', 'OPTIONS'], credentials: true, env: {} }
+);
+
+assert(crossOriginWithHostResult.rejected, 'an unlisted cross-origin POST is still rejected');
+assert(
+  !('Access-Control-Allow-Origin' in crossOriginWithHostResponse.headers),
+  'an unlisted cross-origin request should not receive allow-origin'
+);
+
+const canonicalCasingResponse = new FakeResponse();
+const canonicalCasingResult = applyCorsPolicy(
+  {
+    method: 'POST',
+    headers: {
+      Origin: 'https://spice.example.app',
+      Host: 'spice.example.app',
+      'X-Forwarded-Proto': 'https'
+    }
+  },
+  canonicalCasingResponse,
+  { methods: ['POST', 'OPTIONS'], credentials: true, env: {} }
+);
+
+assert(
+  !canonicalCasingResult.rejected,
+  'header names are case-insensitive, so a canonical-cased bag resolves the same way'
+);
+
 console.log('CORS policy tests passed');
