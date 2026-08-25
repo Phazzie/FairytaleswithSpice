@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
+import { applyRequestId } from '../_lib/http/requestId';
 import { ExportService } from '../_lib/services/exportService';
 import { SaveExportSeam } from '../_lib/types/contracts';
 import { FILE_SIZE } from '../_lib/constants';
@@ -41,13 +41,12 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 export default async function handler(req: any, res: any) {
-  // Generate or extract request ID for tracking
-  const requestId = req.headers['x-request-id'] || 
-                    `req_${randomUUID()}`;
-  
-  // Set request ID in response header for client tracking
-  res.setHeader('X-Request-ID', requestId);
-  
+  // The caller's correlation id when it sent a usable one, a generated id
+  // otherwise, echoed either way. See `applyRequestId` for why the header is not
+  // taken as-is.
+  const requestId = applyRequestId(req, res);
+
+
   const cors = applyCorsPolicy(req, res, {
     methods: ['POST', 'OPTIONS'],
     credentials: true

@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
+import { applyRequestId } from '../_lib/http/requestId';
 import { StoryService } from '../_lib/services/storyService';
 import { ChapterContinuationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
@@ -13,8 +13,12 @@ import {
 } from '../_lib/utils/loggableRequestParameters';
 
 export default async function handler(req: any, res: any) {
-  const requestId = `req_${randomUUID()}`;
-  
+  // This route generated an id, logged every line under it, and never sent it,
+  // so the caller of the request could not name the id its failure was recorded
+  // under — and a caller that did send `X-Request-ID` had it ignored, splitting
+  // the two sides of one request across two ids.
+  const requestId = applyRequestId(req, res);
+
   const cors = applyCorsPolicy(req, res, {
     methods: ['POST', 'OPTIONS'],
     credentials: true

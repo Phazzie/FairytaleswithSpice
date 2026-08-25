@@ -4,6 +4,118 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-25 13:05 UTC - Three Malformed-Request Paths Reported As Server Failures
+
+Three unrelated routes answered a caller's mistake as the service's own failure,
+or made the record of that failure impossible to correlate. All three are small,
+independent, and were found by reading the routes against the helpers the
+repository already has.
+
+### 1. `/api/image/generate` reported malformed requests as 500
+
+Two defects, one per layer.
+
+- **The route.** It was the last route written inline in
+  `story-generator/src/server.ts`, and the only route in the repository that did
+  not read its body through `readJsonObjectBody`: `const input = req.body;`
+  followed by `if (!input.storyId || …)`. Express 5's body parser leaves
+  `req.body` as `undefined` for a request with no body, or one sent without
+  `Content-Type: application/json` — it no longer initialises it to `{}` the way
+  Express 4 did. Reading `input.storyId` off that threw a `TypeError` into the
+  route's own catch, which answers `500 INTERNAL_ERROR`. The presence check it
+  did have was also a weaker duplicate of `ImageService.validateImageInput`,
+  which checks the same fields plus their types, the style, and the aspect
+  ratio, and names which one is wrong.
+- **The service.** `validateImageInput` read `!input.content || input.content.length < 10`.
+  `length` is `undefined` for a number, and `undefined < 10` is `false`, so a
+  JSON body carrying a number under `content` passed validation and reached
+  `stripStoryHtmlToText`, which threw — reported as `IMAGE_GENERATION_FAILED`.
+  The export route already reads `content` and `title` as strings for exactly
+  this reason.
+
+The handler now lives at `api/_lib/http/imageGenerationRoute.ts` and is
+registered through `registerApiRoutes`. It adds no Vercel function — everything
+under `api/_lib` is pruned by `check-vercel-function-count.sh` and excluded by
+Vercel — and `AGENTS.md` already records that image-generation code belongs
+under `api/_lib` or on the Node server. Moving it is what lets it be driven by a
+test without standing up the Angular SSR server.
+
+### 2. `X-Request-ID` was three different behaviours
+
+- `/api/story/continue` generated an id, logged every line under it, and never
+  sent it. The caller of the route most likely to be reported as slow or failing
+  could not name the id its failure was logged under, and a caller that *did*
+  send `X-Request-ID` had it silently ignored, so the two sides of one request
+  were recorded under different ids.
+- `/api/story/generate` and `/api/export/save` used `req.headers['x-request-id']`
+  as-is, in `res.setHeader` and in the `[${requestId}]` prefix of every console
+  line. Node hands a repeated header over as `string[]` on some runtimes, which
+  made the prefix read `a,b` and had `setHeader` emit the header twice; nothing
+  bounded the length or the character set either.
+
+`applyRequestId` (`api/_lib/http/requestId.ts`) is now the one reading: the
+caller's id when it is a usable token (hex, base64url, and the separators
+tracing formats use, within 128 characters), a generated `req_<uuid>` otherwise,
+and always echoed so the caller knows which id to quote. A value that does not
+match is replaced rather than sanitised into shape — a mutated echo would have
+the caller quoting an id that appears in no log.
+
+### 3. `/api/story-lab/evaluate` accepted an unbounded story
+
+`storyContent` had no upper bound at all. It is pasted whole into
+`buildEvaluationPrompt` and sent to xAI as a paid request that no
+`maxOutputTokens` bounds on the way *in*, and `buildStoryQualityHeuristicReport`
+runs seven scans over it first. The Express body limit is 10MB, so one request
+could spend the deployment's provider budget and hold a function for its whole
+timeout, for a story roughly twenty times longer than the batches this app
+generates. The cap is the 500KB `/api/export/save` already enforces on the same
+story text, measured in bytes for the same reason: `String.length` counts UTF-16
+code units and would admit roughly three times the limit it names for a story in
+a non-Latin script.
+
+### Validation
+
+- `npm run test:all` — passes, 47 suites including the two new ones
+  (`test:request-id`, `test:image-generation-route`).
+- `npx tsc -p story-generator/tsconfig.app.json --noEmit` and `tsconfig.spec.json` — 0 errors.
+- Vercel API function typecheck — 0 errors.
+- `scripts/recovery/check-vercel-function-count.sh` — 10/12, unchanged.
+- `npm run build` — Angular browser and SSR bundles both build.
+- Booted the built server (`node dist/story-generator/server/server.mjs`) and
+  confirmed against it:
+
+  | request | before | after |
+  | --- | --- | --- |
+  | `POST /api/image/generate` with no body | 500 `INTERNAL_ERROR` | 400 `INVALID_INPUT` |
+  | `POST /api/image/generate` with `content: 1234567890123` | 500 `IMAGE_GENERATION_FAILED` | 400 `INVALID_INPUT` |
+  | `POST /api/image/generate`, well-formed | 200 | 200, unchanged |
+  | `POST /api/story/continue` | no `X-Request-ID` on the response | `X-Request-ID: req_…` |
+  | `POST /api/story/continue` with `X-Request-ID: my-trace-42` | ignored | logged and echoed as `my-trace-42` |
+  | `POST /api/export/save` with the header sent twice | echoed as `first-id, second-id` | replaced with a generated id |
+  | `POST /api/story/generate` with a 142-character id | echoed verbatim | replaced with a generated id |
+  | `POST /api/story-lab/evaluate` with 600KB `storyContent` | forwarded to the provider | 400 `CONTENT_TOO_LARGE` |
+  | `POST /api/story-lab/evaluate`, normal story | 200 | 200, unchanged |
+
+### Semantic counterfactuals
+
+Per the test policy, each fix was inverted and the relevant test confirmed
+failing, then reverted immediately. None of the mutations is committed.
+
+| mutation | result |
+| --- | --- |
+| `validateImageInput` back to `!input.content \|\| input.content.length < 10` | `test:image-generation-route` fails: `IMAGE_GENERATION_FAILED` where `INVALID_INPUT` is expected |
+| image route back to `const input = req?.body` with the old presence check | `test:image-generation-route` fails: 500 where 400 is expected |
+| evaluate byte cap disabled | `test:story-lab-evaluate-route` fails: `a story past the cap is a caller error, got 200` |
+
+### Not claimed
+
+- Nothing here changes the Vercel deployment's routing, its function count, or
+  the story-generation behaviour of any route.
+- `/api/image/generate` still has no serverless counterpart and is served on the
+  Node deployment only, as `AGENTS.md` records.
+- The request-id reading is a correlation and log-hygiene fix. It is not an
+  authentication or rate-limiting boundary and does not claim to be one.
+
 ## 2026-08-25 11:05 UTC - Two Live SSE Routes Writing To A Reader Who Had Already Left, And A Stream A Proxy Was Free To Buffer
 
 Actions:

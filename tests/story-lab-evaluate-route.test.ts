@@ -236,6 +236,45 @@ async function main(): Promise<void> {
     );
   }
 
+  // ==================== CONTENT SIZE ====================
+  // `storyContent` had no upper bound. It is pasted whole into the evaluation
+  // prompt and sent to xAI as a paid request, and the seven heuristic scans run
+  // over it first, so a single 10MB body — what the Express limit allows — spent
+  // provider budget and held a function for its whole timeout on a story twenty
+  // times longer than anything this app generates.
+  const MAX_CONTENT_BYTES = 500 * 1024;
+
+  const atTheCap = await post({ storyContent: 'a'.repeat(MAX_CONTENT_BYTES) });
+  assert(
+    atTheCap.statusCode === 200,
+    `a story exactly at the cap should still be evaluated, got ${atTheCap.statusCode}`
+  );
+
+  const pastTheCap = await post({ storyContent: 'a'.repeat(MAX_CONTENT_BYTES + 1) });
+  assert(
+    pastTheCap.statusCode === 400,
+    `a story past the cap is a caller error, got ${pastTheCap.statusCode}`
+  );
+  assert(
+    errorCodeOf(pastTheCap) === 'CONTENT_TOO_LARGE',
+    `a story past the cap should report CONTENT_TOO_LARGE, got ${errorCodeOf(pastTheCap)}`
+  );
+
+  // The cap is a size in kilobytes, so it is measured in bytes. `String.length`
+  // counts UTF-16 code units, which undercounts every non-ASCII character: this
+  // story is a third of the cap in code units and just past it in bytes, and a
+  // code-unit cap would admit roughly three times the limit it names.
+  const multibyteStory = '\u3042'.repeat(Math.floor(MAX_CONTENT_BYTES / 3) + 1);
+  assert(
+    multibyteStory.length < MAX_CONTENT_BYTES && Buffer.byteLength(multibyteStory, 'utf8') > MAX_CONTENT_BYTES,
+    'the multibyte sample should be under the cap in code units and over it in bytes'
+  );
+  const multibyteResponse = await post({ storyContent: multibyteStory });
+  assert(
+    errorCodeOf(multibyteResponse) === 'CONTENT_TOO_LARGE',
+    `a multibyte story past the byte cap should be refused, got ${errorCodeOf(multibyteResponse)}`
+  );
+
   // A well-formed request still evaluates, and an omitted configuration still
   // falls back to the defaults the route has always applied.
   for (const body of [

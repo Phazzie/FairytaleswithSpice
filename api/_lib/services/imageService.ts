@@ -324,10 +324,19 @@ export class ImageService {
    * it, so the answer is `INVALID_INPUT` naming the field.
    */
   private validateImageInput(input: ImageGenerationSeam['input']): { code: string; message: string } | null {
-    if (!input.storyId) {
-      return { code: 'INVALID_INPUT', message: 'Story ID is required' };
+    // `storyId` and `content` have to be text, not merely present. A JSON body
+    // can carry a number or an object under either name, and both are truthy —
+    // so a presence check let them through, and `content.length` is `undefined`
+    // for a number, which is not `< 10`. `extractSceneFromStory` then called
+    // string methods on it and threw a `TypeError` inside `generateImage`, whose
+    // catch answers `IMAGE_GENERATION_FAILED`: the caller was told the image
+    // service had failed and that retrying might help, when it is the request
+    // that is malformed and only the caller can fix it. The export route already
+    // reads `content` and `title` this way for the same reason.
+    if (typeof input.storyId !== 'string' || input.storyId.trim().length === 0) {
+      return { code: 'INVALID_INPUT', message: 'Story ID is required and must be a string' };
     }
-    if (!input.content || input.content.length < 10) {
+    if (typeof input.content !== 'string' || input.content.length < 10) {
       return { code: 'INVALID_INPUT', message: 'Story content is required and must be substantial' };
     }
     if (typeof input.creature !== 'string' || input.creature.trim().length === 0) {

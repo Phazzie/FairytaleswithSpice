@@ -38,6 +38,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under the Angular app's strict configuration, which reaches them through the
   Node server.
 
+### 🐛 Malformed-Request Handling (August 25, 2026)
+
+#### `/api/image/generate` answers 400 rather than 500
+- The route was the last one written inline in `story-generator/src/server.ts`,
+  and the only one that never got the shared `readJsonObjectBody` reading. It
+  did `const input = req.body; if (!input.storyId || …)`, and Express 5 leaves
+  `req.body` as `undefined` for a request with no body or one sent without
+  `Content-Type: application/json`, so the read threw into the route's own catch
+  and the caller was told the image service had failed.
+- `ImageService.validateImageInput` now requires `storyId` and `content` to be
+  strings. `content.length` is `undefined` for a number — not `< 10` — so a JSON
+  body carrying a number passed validation and threw inside the renderer,
+  reported as `IMAGE_GENERATION_FAILED`.
+- The handler moved to `api/_lib/http/imageGenerationRoute.ts` and is registered
+  through `registerApiRoutes`. It still has no Vercel function (`api/_lib` is
+  excluded), and it is now covered by tests that do not need the SSR server.
+
+#### `X-Request-ID` is one reading across the routes that use it
+- `/api/story/continue` generated a correlation id, logged every line under it,
+  and never sent it, so the caller could not name the id its failure was
+  recorded under — and a caller that did send `X-Request-ID` had it ignored.
+- `/api/story/generate` and `/api/export/save` used the caller's header value
+  as-is in the response header and in every `[${requestId}]` log prefix. A
+  repeated header read as `a,b`, and nothing bounded the length or characters.
+- `applyRequestId` (`api/_lib/http/requestId.ts`) accepts a caller id that is a
+  usable token, generates one otherwise, and always echoes the id actually used.
+
+#### `/api/story-lab/evaluate` caps the story it will evaluate
+- `storyContent` had no upper bound. It is pasted whole into the evaluation
+  prompt and sent to xAI as a paid request, and the heuristic scans run over it
+  first, so one 10MB body could spend provider budget and hold a function for
+  its whole timeout. The cap is the 500KB `/api/export/save` already enforces on
+  the same text, measured in bytes for the same reason.
+
 ### 🔧 Technical Improvements (December 20-22, 2025)
 
 #### Grok Model Updates

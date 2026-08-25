@@ -5,6 +5,8 @@ import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
 import { buildStoryQualityHeuristicReport } from '../_lib/story-lab/evaluation/storyQualityHeuristics';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { stripMarkdownJsonFence } from '../_lib/utils/modelJsonPayload';
+import { FILE_SIZE } from '../_lib/constants';
+import { ERROR_CODES } from '../_lib/errorCodes';
 
 interface NormalizedEvaluationRequest {
   storyContent: string;
@@ -159,18 +161,59 @@ function isFiniteNumber(value: unknown): boolean {
   return Number.isFinite(value);
 }
 
+/**
+ * The largest story this route will evaluate.
+ *
+ * `storyContent` was read with no upper bound at all. Everything downstream is
+ * sized by it: it is pasted whole into `buildEvaluationPrompt` and sent to xAI
+ * as a paid request that no `maxOutputTokens` bounds on the way *in*, and
+ * `buildStoryQualityHeuristicReport` runs seven scans over it first. The Express
+ * body limit is 10MB and Vercel's is larger still, so a single request could
+ * spend the deployment's provider budget and hold a function for its whole
+ * timeout — for a story roughly twenty times longer than the 1,500-word batches
+ * this app generates.
+ *
+ * The cap is the one `/api/export/save` already enforces on the same story text,
+ * measured the same way. `String.length` counts UTF-16 code units, which
+ * undercounts every non-ASCII character, so the measurement is in bytes: a story
+ * in a non-Latin script is up to three bytes per unit, and a code-unit cap would
+ * admit roughly three times the limit it names.
+ */
+const MAX_EVALUATION_CONTENT_BYTES = FILE_SIZE.MAX_CONTENT_LENGTH_KB * FILE_SIZE.BYTES_PER_KB;
+
+interface EvaluationRequestError {
+  message: string;
+  code: string;
+}
+
+/**
+ * The code every malformed-request answer carried before the size cap gave one
+ * of them a code of its own. Named here so the two callers cannot drift.
+ */
+function invalidRequest(message: string): EvaluationRequestError {
+  return { code: 'INVALID_EVALUATION_REQUEST', message };
+}
+
 function normalizeEvaluationRequest(
   body: unknown
-): { request: NormalizedEvaluationRequest } | { message: string } {
+): { request: NormalizedEvaluationRequest } | EvaluationRequestError {
   const input = readJsonObjectBody<Partial<EvaluationRequest> & {
     configuration?: Partial<EvaluationRequest['configuration']>;
   }>(body);
   if (!input) {
-    return { message: 'A JSON object body is required.' };
+    return invalidRequest('A JSON object body is required.');
   }
 
   if (typeof input.storyContent !== 'string' || !input.storyContent.trim()) {
-    return { message: 'storyContent is required and must be a non-empty string.' };
+    return invalidRequest('storyContent is required and must be a non-empty string.');
+  }
+
+  const storyContentBytes = Buffer.byteLength(input.storyContent, 'utf8');
+  if (storyContentBytes > MAX_EVALUATION_CONTENT_BYTES) {
+    return {
+      code: ERROR_CODES.CONTENT_TOO_LARGE,
+      message: `storyContent exceeds the maximum size of ${FILE_SIZE.MAX_CONTENT_LENGTH_KB}KB.`
+    };
   }
 
   // A `null` configuration reads as an absent one, which is what `?.` did
@@ -179,7 +222,7 @@ function normalizeEvaluationRequest(
   // silently evaluate against every default.
   const configuration = input.configuration ?? undefined;
   if (configuration !== undefined && (typeof configuration !== 'object' || Array.isArray(configuration))) {
-    return { message: 'configuration must be an object when provided.' };
+    return invalidRequest('configuration must be an object when provided.');
   }
 
   const creature = configuration?.creature;
@@ -192,7 +235,7 @@ function normalizeEvaluationRequest(
     optionalFieldError('spicyLevel', spicyLevel, isFiniteNumber, 'a number') ??
     optionalFieldError('wordCount', wordCount, isFiniteNumber, 'a number');
   if (fieldError) {
-    return { message: fieldError };
+    return invalidRequest(fieldError);
   }
 
   return {
@@ -230,10 +273,12 @@ export default async function handler(req: any, res: any) {
 
   const normalized = normalizeEvaluationRequest(req.body);
   if ('message' in normalized) {
+    // `CONTENT_TOO_LARGE` stays a 400 rather than a 413, the same reading
+    // `getApiResponseStatus` and the export route already use for that code.
     res.status(400).json({
       success: false,
       error: {
-        code: 'INVALID_EVALUATION_REQUEST',
+        code: normalized.code,
         message: normalized.message
       }
     });
