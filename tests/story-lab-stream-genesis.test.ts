@@ -43,6 +43,15 @@ class FakeResponse {
   chunks: string[] = [];
   ended = false;
   body: unknown = null;
+  // The lifecycle flag Node sets when the socket underneath the response is
+  // gone. The route reads it to decide whether a frame can still land.
+  destroyed = false;
+  // Node answers a write to a destroyed response by throwing
+  // `ERR_STREAM_DESTROYED`. Counted rather than thrown: the writes this proves
+  // wrong happen inside the route's own `setTimeout` callbacks, where nothing
+  // catches, so re-enacting the throw would take the test process down instead
+  // of reporting which write was wrong.
+  writesAfterClose = 0;
 
   setHeader(name: string, value: string): void {
     this.headers[name] = value;
@@ -64,15 +73,30 @@ class FakeResponse {
   }
 
   write(chunk: string): void {
+    if (this.destroyed) {
+      this.writesAfterClose += 1;
+      return;
+    }
+
     this.chunks.push(chunk);
   }
 
   end(): void {
+    if (this.destroyed) {
+      this.writesAfterClose += 1;
+      return;
+    }
+
     this.ended = true;
   }
 }
 
-function createRequest(socket: FakeSocket) {
+/**
+ * `socket` is optional because the route treats it as optional: it wires its
+ * disconnect listener through `req.socket?.on?.`, so a runtime that hands the
+ * handler no socket is a case the route already claims to serve.
+ */
+function createRequest(socket?: FakeSocket) {
   return {
     method: 'GET',
     socket,
@@ -148,12 +172,60 @@ async function testAConnectedReaderStillReceivesTheWholeStream(): Promise<void> 
     response.headers['Content-Type'] === 'text/event-stream',
     'a streaming genesis should use the SSE content type'
   );
+  // Without this, an nginx in front of the app buffers the whole response and
+  // the reader gets every frame at once when the generation ends — a stream
+  // that is not one.
+  assert(
+    response.headers['X-Accel-Buffering'] === 'no',
+    'a streaming genesis should tell a proxy not to buffer its frames'
+  );
+  assert(
+    response.headers['Cache-Control'] === 'no-cache, no-transform',
+    'a streaming genesis should keep its frames uncached and untransformed'
+  );
 
   const output = response.chunks.join('');
   assert(output.includes('"type":"connected"'), 'the stream should open with a connected frame');
   assert(output.includes('"type":"chapter_progress"'), 'the stream should carry chapter progress');
   assert(output.includes('"type":"batch_complete"'), 'the stream should report the batch completing');
   assert(response.ended, 'a stream a reader stayed on should be ended by the route');
+}
+
+/**
+ * The disconnect flag is not the only thing that knows the reader has gone, and
+ * on the runtime this case models it is not one of them: with no socket to
+ * listen on, `clientDisconnected` stays `false` for the whole generation. Every
+ * chapter timer and the completion timer then wrote into a response Node had
+ * already destroyed, and each of those writes answers with
+ * `ERR_STREAM_DESTROYED` — thrown from inside a `setTimeout` callback that the
+ * route does not wrap, so it is an uncaught exception rather than a handled
+ * one. Reading the response's own lifecycle flag is what keeps the frames from
+ * being attempted at all.
+ */
+async function testAClosedResponseWithoutASocketIsNeverWrittenTo(): Promise<void> {
+  setMockRuntime();
+
+  const response = new FakeResponse();
+  const finished = genesisHandler(createRequest(), response);
+
+  assert(
+    response.chunks.length === 1,
+    'the connected frame should be written before the generation is awaited'
+  );
+
+  response.destroyed = true;
+
+  await finished;
+  await delay(PAST_EVERY_SCHEDULED_FRAME_MS);
+
+  assert(
+    response.writesAfterClose === 0,
+    `a destroyed response should be written to no further times, got ${response.writesAfterClose}`
+  );
+  assert(
+    response.chunks.length === 1,
+    'no frame should reach a reader who is already gone'
+  );
 }
 
 async function testInvalidBlueprintNeverOpensAStream(): Promise<void> {
@@ -172,6 +244,7 @@ async function testInvalidBlueprintNeverOpensAStream(): Promise<void> {
 
 async function run(): Promise<void> {
   await testDisconnectStopsTheStream();
+  await testAClosedResponseWithoutASocketIsNeverWrittenTo();
   await testAConnectedReaderStillReceivesTheWholeStream();
   await testInvalidBlueprintNeverOpensAStream();
 
