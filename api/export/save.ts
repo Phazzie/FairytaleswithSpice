@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { ExportService } from '../_lib/services/exportService';
@@ -107,7 +108,7 @@ export default async function handler(req: any, res: any) {
     const result = await exportService.saveAndExport(input);
     
     console.log(`[${requestId}] Export ${result.success ? 'succeeded' : 'failed'}`);
-    res.status(200).json(result);
+    res.status(getApiResponseStatus(result)).json(result);
 
   } catch {
     console.error(`[${requestId}] Export serverless function failed`);

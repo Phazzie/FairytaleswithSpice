@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { StoryService } from '../_lib/services/storyService';
@@ -73,7 +74,7 @@ export default async function handler(req: any, res: any) {
     const storyService = new StoryService();
     const result = await storyService.continueChapter(input);
     
-    res.status(200).json(result);
+    res.status(getApiResponseStatus(result)).json(result);
 
   } catch (error: any) {
     logError('Chapter continuation endpoint error', error, {

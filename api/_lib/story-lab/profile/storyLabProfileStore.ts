@@ -129,33 +129,33 @@ export function normalizeStoryLabProfilePreferences(
 ): StoryLabProfilePreferences {
   const defaults = createDefaultStoryLabProfilePreferences();
   const overrides: Record<string, unknown> = isRecord(preferences) ? preferences : {};
-  const heatOverrides: Record<string, unknown> = isRecord(overrides.defaultHeatContract)
-    ? overrides.defaultHeatContract
+  const heatOverrides: Record<string, unknown> = isRecord(overrides['defaultHeatContract'])
+    ? overrides['defaultHeatContract']
     : {};
 
   return {
     defaultHeatContract: {
-      adultOnlyConfirmed: readBoolean(heatOverrides.adultOnlyConfirmed, defaults.defaultHeatContract.adultOnlyConfirmed),
+      adultOnlyConfirmed: readBoolean(heatOverrides['adultOnlyConfirmed'], defaults.defaultHeatContract.adultOnlyConfirmed),
       tensionMode: readAllowedString<HeatContract['tensionMode']>(
-        heatOverrides.tensionMode,
+        heatOverrides['tensionMode'],
         VALID_TENSION_MODES,
         defaults.defaultHeatContract.tensionMode
       ),
       intimacyBoundary: readAllowedString<HeatContract['intimacyBoundary']>(
-        heatOverrides.intimacyBoundary,
+        heatOverrides['intimacyBoundary'],
         VALID_INTIMACY_BOUNDARIES,
         defaults.defaultHeatContract.intimacyBoundary
       ),
-      noGoContent: readOptionalString(heatOverrides.noGoContent, defaults.defaultHeatContract.noGoContent)
+      noGoContent: readOptionalString(heatOverrides['noGoContent'], defaults.defaultHeatContract.noGoContent)
     },
     favoriteCreatures: readAllowedStringArray<CreatureArchetype>(
-      overrides.favoriteCreatures,
+      overrides['favoriteCreatures'],
       VALID_CREATURES,
       defaults.favoriteCreatures
     ),
-    favoriteTones: readAllowedStringArray<NarrativeTone>(overrides.favoriteTones, VALID_TONES, defaults.favoriteTones),
-    contentBoundaries: readOptionalString(overrides.contentBoundaries, defaults.contentBoundaries),
-    librarySort: readAllowedString<StoryLabLibrarySort>(overrides.librarySort, VALID_LIBRARY_SORTS, defaults.librarySort)
+    favoriteTones: readAllowedStringArray<NarrativeTone>(overrides['favoriteTones'], VALID_TONES, defaults.favoriteTones),
+    contentBoundaries: readOptionalString(overrides['contentBoundaries'], defaults.contentBoundaries),
+    librarySort: readAllowedString<StoryLabLibrarySort>(overrides['librarySort'], VALID_LIBRARY_SORTS, defaults.librarySort)
   };
 }
 

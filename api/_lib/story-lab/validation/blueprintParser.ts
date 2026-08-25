@@ -57,54 +57,66 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
   const invalidFields: string[] = [];
   const messages: string[] = [];
 
-  const rawCreature = getString(source.creature);
+  const rawCreature = getString(source['creature']);
   const creature = parseOneOf(VALID_CREATURES, rawCreature);
   if (!creature) {
     invalidFields.push('creature');
     messages.push(`creature must be one of: ${VALID_CREATURES.join(', ')}.`);
   }
 
-  const rawTone = getString(source.tone) ?? 'dark_romance';
+  const rawTone = getString(source['tone']) ?? 'dark_romance';
   const tone = parseOneOf(VALID_TONES, rawTone);
   if (!tone) {
     invalidFields.push('tone');
     messages.push('tone is not supported.');
   }
 
-  const spicyLevel = parseOneOf(VALID_SPICY_LEVELS, parseNumber(source.spicyLevel));
+  const spicyLevel = parseOneOf(VALID_SPICY_LEVELS, parseNumber(source['spicyLevel']));
   if (!spicyLevel) {
     invalidFields.push('spicyLevel');
     messages.push('spicyLevel must be between 1 and 5.');
   }
 
-  const desiredWordBudget = parseOneOf(VALID_WORD_BUDGETS, parseNumber(source.desiredWordBudget));
+  const desiredWordBudget = parseOneOf(VALID_WORD_BUDGETS, parseNumber(source['desiredWordBudget']));
   if (!desiredWordBudget) {
     invalidFields.push('desiredWordBudget');
     messages.push('desiredWordBudget must be 600, 900, 1200, or 1500.');
   }
 
-  const chapterBatchSize = parseOneOf(VALID_BATCH_SIZES, parseNumber(source.chapterBatchSize));
+  const chapterBatchSize = parseOneOf(VALID_BATCH_SIZES, parseNumber(source['chapterBatchSize']));
   if (!chapterBatchSize) {
     invalidFields.push('chapterBatchSize');
     messages.push('chapterBatchSize must be 1, 2, or 3.');
   }
 
-  const logline = getString(source.logline)?.trim() ?? '';
+  const logline = getString(source['logline'])?.trim() ?? '';
   if (!logline) {
     invalidFields.push('logline');
     messages.push('logline is required.');
   }
 
-  const themes = parseThemes(source.themes, mode);
+  const themes = parseThemes(source['themes'], mode);
   if (themes.error) {
     invalidFields.push('themes');
     messages.push(themes.error);
   }
 
-  const heatContract = parseHeatContract(source.heatContract, mode);
+  // The blueprint contract types `heatContract` as required, and the engine
+  // refuses every genesis without one before it generates anything — an absent
+  // contract came back as `CONTENT_POLICY_VIOLATION` from the other side of the
+  // route rather than as the named invalid field this parser exists to report.
+  // Meanwhile the parser handed back a blueprint whose declared type said the
+  // field was there and whose value was `undefined`, which the serverless
+  // build's looser configuration did not catch and the Angular app's strict one
+  // does. Naming it here answers the same 400 with the field that has to be
+  // fixed, and makes the parsed blueprint match the type it is returned as.
+  const heatContract = parseHeatContract(source['heatContract'], mode);
   if (heatContract.error) {
     invalidFields.push('heatContract');
     messages.push(heatContract.error);
+  } else if (!heatContract.value) {
+    invalidFields.push('heatContract');
+    messages.push('heatContract is required and must include adult confirmation, tension mode, and intimacy boundary.');
   }
 
   if (invalidFields.length > 0) {
@@ -120,11 +132,11 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
       desiredWordBudget: desiredWordBudget!,
       chapterBatchSize: chapterBatchSize!,
       themes: themes.value,
-      heatContract: heatContract.value,
-      narrativeDirectives: optionalString(source.narrativeDirectives),
-      protagonistName: optionalString(source.protagonistName),
-      antagonistName: optionalString(source.antagonistName),
-      worldDetails: optionalString(source.worldDetails)
+      heatContract: heatContract.value!,
+      narrativeDirectives: optionalString(source['narrativeDirectives']),
+      protagonistName: optionalString(source['protagonistName']),
+      antagonistName: optionalString(source['antagonistName']),
+      worldDetails: optionalString(source['worldDetails'])
     }
   };
 }
@@ -225,9 +237,9 @@ function isThemeSeed(value: unknown): value is ThemeSeed {
   }
 
   const candidate = value as Record<string, unknown>;
-  return typeof candidate.id === 'string'
-    && typeof candidate.label === 'string'
-    && typeof candidate.description === 'string';
+  return typeof candidate['id'] === 'string'
+    && typeof candidate['label'] === 'string'
+    && typeof candidate['description'] === 'string';
 }
 
 function isHeatContract(value: unknown): value is HeatContract {
@@ -236,8 +248,8 @@ function isHeatContract(value: unknown): value is HeatContract {
   }
 
   const candidate = value as Record<string, unknown>;
-  return typeof candidate.adultOnlyConfirmed === 'boolean'
-    && parseOneOf(['slow_burn', 'dangerous_proximity', 'playful_banter', 'devotional_longing'] as const, candidate.tensionMode) !== undefined
-    && parseOneOf(['fade_to_black', 'closed_door', 'literary_on_page'] as const, candidate.intimacyBoundary) !== undefined
-    && (candidate.noGoContent === undefined || typeof candidate.noGoContent === 'string');
+  return typeof candidate['adultOnlyConfirmed'] === 'boolean'
+    && parseOneOf(['slow_burn', 'dangerous_proximity', 'playful_banter', 'devotional_longing'] as const, candidate['tensionMode']) !== undefined
+    && parseOneOf(['fade_to_black', 'closed_door', 'literary_on_page'] as const, candidate['intimacyBoundary']) !== undefined
+    && (candidate['noGoContent'] === undefined || typeof candidate['noGoContent'] === 'string');
 }
