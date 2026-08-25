@@ -11,6 +11,7 @@ import {
   StoryGenerationSeam,
   WordBudget
 } from './contracts';
+import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 
 export type BlueprintValidationField =
   | 'creature'
@@ -50,11 +51,14 @@ const VALID_HEAT_BOUNDARIES = new Set<HeatIntimacyBoundary>(['fade_to_black', 'c
   providedIn: 'root'
 })
 export class FormValidationService {
-  readonly maxThemes = 5;
-  readonly maxLoglineLength = 420;
-  readonly maxWorldDetailsLength = 600;
-  readonly maxNarrativeDirectivesLength = 1200;
-  readonly maxNoGoContentLength = 320;
+  // Read from the shared limits rather than restated here: the API enforces the
+  // same numbers on the blueprint it is sent, and a form that accepts more than
+  // the route will take turns a caught mistake into a rejected generation.
+  readonly maxThemes = STORY_BLUEPRINT_LIMITS.maxThemes;
+  readonly maxLoglineLength = STORY_BLUEPRINT_LIMITS.maxLoglineLength;
+  readonly maxWorldDetailsLength = STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength;
+  readonly maxNarrativeDirectivesLength = STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength;
+  readonly maxNoGoContentLength = STORY_BLUEPRINT_LIMITS.maxNoGoContentLength;
 
   validateBlueprint(input: StoryGenerationSeam['input']): BlueprintValidationErrors {
     const errors: BlueprintValidationErrors = {};

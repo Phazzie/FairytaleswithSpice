@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins (August 25, 2026)
+
+#### A running Story Lab job is no longer reported as a failed one
+- `/api/story-lab/jobs/:jobId/events` replays the events a job has recorded and
+  then ends the response, so the browser drops the connection and reopens it
+  after every replay of a job that has not finished. `EventSource` fires `error`
+  on that drop, and `StoryService.streamStoryLabJobEvents` read it as a failure:
+  it errored the subscription and closed the very connection that was about to
+  reconnect, so the app told the reader "Story generation updates stopped" and
+  abandoned a batch the server was still generating.
+- The reader now distinguishes the two things an `EventSource` `error` can mean
+  by `readyState` (`shared/eventStreamRetry.ts`): a pending reconnect is left
+  alone, and only an error the browser will not retry ends the stream. The
+  genesis stream deliberately keeps failing on the first error — reconnecting
+  there restarts a paid generation from the beginning.
+
+#### The API enforces the blueprint size limits, not just the form
+- The logline, world details, narrative directives, theme count, and the Heat
+  Contract's no-go list were capped only in the Angular `FormValidationService`.
+  `/api/story-lab/stories` takes the same blueprint as a POST body and
+  `/api/story-lab/stream/genesis` takes it as a query string, and every one of
+  those fields goes straight into the Grok prompt the route pays for, so a
+  caller that skipped the form could send unbounded prose into a paid
+  generation.
+- `parseStoryLabBlueprint` now refuses a blueprint past any of those caps,
+  naming the field and the limit like every other invalid field it reports. The
+  numbers live in `shared/storyBlueprintLimits.ts`, which the form reads too, so
+  the two readings cannot drift apart.
+
+#### "Download story" works outside Chrome, and the blob outlives the click
+- The download built an anchor, set `download` on it, and clicked it without
+  ever putting it in the page. A synthetic click only follows a `download` on an
+  attached anchor — Firefox dispatched nothing at all, so the button did nothing
+  and said nothing.
+- The object URL was revoked on the next task, racing the transfer the click
+  starts: a browser that had not begun reading the blob was handed a URL that no
+  longer resolved. `shared/htmlDocumentDownload.ts` attaches the anchor, clicks
+  it, takes it back out (even if the click throws), and revokes the URL well
+  after the browser has had a chance to start.
+
 ### 🐛 Deployment Parity Fixes (August 25, 2026)
 
 #### Story Lab API reachable on the Node/Docker deployment

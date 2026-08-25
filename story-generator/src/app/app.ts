@@ -6,6 +6,10 @@ import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subscription, map } from 'rxjs';
 import { splitStoryIntoTextBlocks } from '../../../api/_lib/utils/storyTextBlocks';
+import {
+  createBrowserHtmlDownloadHost,
+  downloadHtmlDocument
+} from '../../../shared/htmlDocumentDownload';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import {
   BatchProgressState,
@@ -1396,13 +1400,7 @@ h1,h2{line-height:1.15}hr{border:0;border-top:1px solid #d8c5aa;margin:28px 0}
 ${chapters}
 </body>
 </html>`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${safeTitle}.html`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    downloadHtmlDocument(html, `${safeTitle}.html`, createBrowserHtmlDownloadHost(document, URL));
     this.statusMessage.set('Story download created.');
   }
 

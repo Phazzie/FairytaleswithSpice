@@ -20,6 +20,7 @@ import {
   StreamingProgressChunk
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
+import { readEventStreamErrorAction } from '../../../shared/eventStreamRetry';
 
 /**
  * StoryService orchestrates all interactions with the backend story API.
@@ -223,6 +224,23 @@ export class StoryService {
       };
 
       eventSource.onerror = error => {
+        // The job event route answers with the events recorded so far and ends
+        // the response, so a running job's stream closes — normally — after
+        // every replay, and the browser fires `error` on its way to reopening
+        // it. Ending the subscription there told the reader that generation
+        // updates had stopped, and closed the `EventSource` that was about to
+        // reconnect and deliver the rest, for a job the server was still
+        // working on quite happily. Only an error the browser will not retry is
+        // the end of this stream.
+        if (readEventStreamErrorAction(eventSource.readyState) === 'retry') {
+          this.errorLogging.logInfo(
+            'Story Lab job event stream reconnecting',
+            'StoryService.streamStoryLabJobEvents',
+            { jobId }
+          );
+          return;
+        }
+
         this.errorLogging.logError(error, 'StoryService.streamStoryLabJobEvents.connection', 'error', {
           jobId
         });
@@ -314,6 +332,11 @@ export class StoryService {
       };
 
       eventSource.onerror = error => {
+        // Deliberately not the retry-aware reading the job event stream uses:
+        // this route holds one connection open for the whole generation, so
+        // letting the browser reopen it runs the paid generation again from the
+        // beginning — the reason the `error` chunk above closes the stream by
+        // hand rather than leaving the response to end on its own.
         this.errorLogging.logError(error, 'StoryService.streamStoryGeneration.connection', 'critical');
         observer.error(error);
         eventSource.close();
