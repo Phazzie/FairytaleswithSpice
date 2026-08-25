@@ -4,7 +4,12 @@ import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { StoryService } from '../_lib/services/storyService';
 import { ChapterContinuationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
-import { toLoggableNumber, toLoggableStoryId } from '../_lib/utils/loggableRequestParameters';
+import {
+  CHAPTER_CONTINUATION_REQUEST_FIELDS,
+  toLoggableFieldNames,
+  toLoggableNumber,
+  toLoggableStoryId
+} from '../_lib/utils/loggableRequestParameters';
 
 export default async function handler(req: any, res: any) {
   const requestId = `req_${randomUUID()}`;
@@ -40,7 +45,10 @@ export default async function handler(req: any, res: any) {
         requestId,
         endpoint: '/api/story/continue',
         method: 'POST'
-      }, { receivedFields: input ? Object.keys(input) : [] });
+        // The field *names* are caller text as much as the values are: a JSON
+        // object's keys are whatever the body was written with. Reduced to the
+        // contract's own names plus a count of the rest.
+      }, toLoggableFieldNames(input, CHAPTER_CONTINUATION_REQUEST_FIELDS));
       
       return res.status(400).json({
         success: false,

@@ -11,7 +11,13 @@ import { randomUUID } from 'node:crypto';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { StoryGenerationSeam, StreamingStoryGenerationSeam, VALIDATION_RULES } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
-import { toLoggableCreature, toLoggableNumber, toLoggableThemes } from '../_lib/utils/loggableRequestParameters';
+import {
+  STORY_GENERATION_REQUEST_FIELDS,
+  toLoggableCreature,
+  toLoggableFieldNames,
+  toLoggableNumber,
+  toLoggableThemes
+} from '../_lib/utils/loggableRequestParameters';
 
 const storyService = new StoryService();
 const VALID_REQUESTED_CHAPTER_COUNTS = new Set([1, 2, 3]);
@@ -131,7 +137,10 @@ export default async function handler(req: any, res: any) {
       !Number.isInteger(input.wordCount) ||
       !VALID_STREAMING_WORD_COUNTS.has(input.wordCount)
     ) {
-      logWarn('Invalid streaming input', { requestId, endpoint: '/api/story/stream' }, { receivedFields: input ? Object.keys(input) : [] });
+      // The field *names* are caller text as much as the values are: a POST
+      // body's keys are whatever it was written with. Reduced to the contract's
+      // own names plus a count of the rest.
+      logWarn('Invalid streaming input', { requestId, endpoint: '/api/story/stream' }, toLoggableFieldNames(input, STORY_GENERATION_REQUEST_FIELDS));
       return res.status(400).json({
         success: false,
         error: { 
