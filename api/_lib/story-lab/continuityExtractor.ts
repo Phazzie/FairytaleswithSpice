@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   CharacterProfile,
   ContinuityExtractionReceipt,
@@ -29,7 +30,7 @@ interface ContinuityExtractionResult {
   receipt: ContinuityExtractionReceipt;
 }
 
-interface AiContinuityShape {
+export interface AiContinuityShape {
   characters?: Partial<CharacterProfile>[];
   threads?: Partial<PlotThread>[];
   artifacts?: Partial<LoreArtifact>[];
@@ -183,7 +184,15 @@ function parseContinuityJson(content: string): AiContinuityShape {
   };
 }
 
-function mergeAiContinuity(
+/**
+ * Fold one model answer into the continuity state.
+ *
+ * Exported for the same reason `buildContinuityPrompt` is: this is where the
+ * answer becomes the state the next continuation is built from, and reaching it
+ * through `extractContinuity` needs a configured provider that would prove
+ * nothing about the merge either way.
+ */
+export function mergeAiContinuity(
   currentState: StoryStateSnapshot,
   aiShape: AiContinuityShape,
   now: string
@@ -319,12 +328,51 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+/**
+ * Derive the id a character, thread, or artifact is merged under when the model
+ * did not supply one.
+ *
+ * The id is the merge key: `mergeCharacters` and its siblings keep one entry per
+ * id, so two different names sharing an id are not two entries but one, the
+ * second overwriting the first. `[^a-z0-9]+` deleted every character outside
+ * ASCII, so a cast named in any other script produced no slug body at all and
+ * every one of them collapsed onto the bare prefix — `Мира`, `美咲`, and `Ελένη`
+ * all merged into `character-`, and the continuity state the next continuation
+ * prompt is built from carried a single character wearing whichever name the
+ * model happened to mention last. Threads and artifacts merged the same way.
+ *
+ * Matching Unicode letters and numbers keeps those names distinct and legible in
+ * the id. A name written entirely in punctuation or emoji still leaves nothing
+ * to slug, so its id falls back to a digest of the name — unreadable, but
+ * distinct, which is the property the merge actually depends on. The cap is
+ * applied over code points so it cannot cut an astral character in half.
+ */
 function slugId(prefix: string, value: unknown): string | undefined {
   if (!isNonEmptyString(value)) {
     return undefined;
   }
 
-  return `${prefix}-${value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48)}`;
+  const name = value.trim();
+  // Splitting on the unsupported runs and joining the parts back collapses each
+  // run and drops the leading and trailing ones in a single linear pass, the way
+  // the export filename stem is built. Trimming them with `/^-+|-+$/` instead is
+  // quadratic on a long run of separators.
+  const parts = name.toLowerCase().split(SLUG_SEPARATOR_PATTERN).filter(Boolean);
+  // The cap counts code points, so an astral character is kept whole or dropped
+  // whole, and it can strand at most the one separator the join left behind.
+  const slug = Array.from(parts.join('-'))
+    .slice(0, SLUG_ID_MAX_LENGTH)
+    .join('')
+    .replace(/-$/, '');
+
+  return `${prefix}-${slug || digestName(name)}`;
+}
+
+const SLUG_ID_MAX_LENGTH = 48;
+const SLUG_SEPARATOR_PATTERN = /[^\p{L}\p{N}]+/u;
+
+function digestName(name: string): string {
+  return createHash('sha256').update(name, 'utf8').digest('hex').slice(0, 12);
 }
 
 function clampConfidence(value: unknown): number {
