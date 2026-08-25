@@ -477,11 +477,228 @@ async function verifyRepeatedQueryParametersReachTheValidator(): Promise<void> {
   );
 }
 
+/**
+ * The request line this route writes must not repeat what the caller typed.
+ *
+ * The generation parameters are logged so an operator can see what was asked
+ * for, and `themes` is documented as a closed set — but `validateStoryInput`
+ * only bounds how many themes there are, and this route builds the array by
+ * splitting a query string, so an API client can put anything in it. Asserting
+ * on the helper alone is not enough: the route is the thing that decides what
+ * reaches the buffer, and it could go back to passing `input.themes` straight
+ * through with every helper-level assertion still passing.
+ */
+async function verifyStreamDoesNotLogCallerText(): Promise<void> {
+  logger.clearLogs();
+
+  const privateProse = 'Dana is in treatment at the clinic on Rosewood';
+  const creatureProse = 'a shapeshifter who lives at 14 Elm Row';
+  // `forbidden_love` is on `VALIDATION_RULES.themes.allowedValues`; the fixture
+  // theme these tests otherwise send, `romance`, is not — the routes accept it
+  // because validation counts themes without checking them against the list, so
+  // it is logged as unrecognized like any other unknown value.
+  const { response, consoleOutput } = await captureConsole(() => callStreamRouteWithQuery({
+    ...VALID_STREAM_QUERY,
+    creature: creatureProse,
+    themes: `forbidden_love,${privateProse}`
+  }));
+
+  assert(response.headersSent, 'an unrecognized theme should still open the stream');
+
+  const started = logger
+    .getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === '/api/story/stream');
+
+  assert(started, 'the stream route should log the request it started');
+  // Without this the console assertions below would pass on an empty capture,
+  // proving nothing about the sink.
+  assert(
+    consoleOutput.includes('/api/story/stream'),
+    `the console capture should hold the request line (got ${consoleOutput.slice(0, 200)}…)`
+  );
+
+  // The buffer and the console are two sinks for the same entry, and a reader
+  // of either one is equally able to read what the caller typed.
+  for (const [sink, written] of [
+    ['buffer', JSON.stringify(started.context)],
+    ['console', consoleOutput]
+  ] as const) {
+    assert(
+      !written.includes('Dana') && !written.includes('Rosewood'),
+      `caller text sent as a theme must not reach the ${sink} (got ${written})`
+    );
+    assert(
+      !written.includes('Elm Row'),
+      `caller text sent as a creature must not reach the ${sink} (got ${written})`
+    );
+  }
+
+  const logged = JSON.stringify(started.context);
+  assert(
+    logged.includes('forbidden_love'),
+    `an allow-listed theme should still be logged (got ${logged})`
+  );
+  assert(
+    started.context?.requestParameters?.['unrecognizedThemeCount'] === 1,
+    `the rejected theme should be counted (got ${JSON.stringify(started.context?.requestParameters)})`
+  );
+  assert(
+    started.context?.requestParameters?.['creature'] === '[UNRECOGNIZED]',
+    `an unknown creature should be marked, not repeated (got ${JSON.stringify(started.context?.requestParameters)})`
+  );
+
+  logger.clearLogs();
+}
+
+/**
+ * `storyId` is caller text too, and a length cap was not a filter for it: most
+ * prose is shorter than any cap worth having, so a sentence sent as an id went
+ * into the log whole. The shape check is what rejects it, and this drives the
+ * real continuation route to prove the route uses it.
+ */
+async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
+  logger.clearLogs();
+
+  // Underscore-separated and carrying a real UUID, so it passes every rule this
+  // check went through before the minted form: it is shorter than any cap,
+  // every character in it is one an id may contain, and the id-shaped tail is
+  // genuine. Only pinning the whole form rejects it.
+  const storyIdProse = 'Dana_at_the_clinic_on_Rosewood_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';
+  const { consoleOutput } = await captureConsole(async () => {
+    const res = new FakeResponse();
+    await continueHandler({
+      method: 'POST',
+      headers: {},
+      body: {
+        storyId: storyIdProse,
+        existingContent: '<p>She opened the door.</p>',
+        currentChapterCount: 1
+      }
+    }, res);
+    return res;
+  });
+
+  const started = logger
+    .getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === '/api/story/continue');
+
+  assert(started, 'the continuation route should log the request it started');
+  assert(
+    consoleOutput.includes('/api/story/continue'),
+    `the console capture should hold the request line (got ${consoleOutput.slice(0, 200)}…)`
+  );
+
+  for (const [sink, written] of [
+    ['buffer', JSON.stringify(started.context)],
+    ['console', consoleOutput]
+  ] as const) {
+    assert(
+      !written.includes('Dana') && !written.includes('Rosewood'),
+      `prose sent as a story id must not reach the ${sink} (got ${written})`
+    );
+  }
+
+  assert(
+    started.context?.requestParameters?.['storyId'] === '[UNRECOGNIZED]',
+    `a story id that is not shaped like one should be reported (got ${JSON.stringify(started.context?.requestParameters)})`
+  );
+
+  // `maintainTone` is the scalar the route does not guard. `currentChapterCount`
+  // it does — `typeof input.currentChapterCount !== 'number'` is answered with a
+  // 400 before anything is logged — but nothing checks `maintainTone`, and the
+  // *service* logs it on the way past. A prose value therefore reaches the
+  // request line the service writes, one call below this route.
+  logger.clearLogs();
+  const scalarProse = 'Dana asked me not to tell anyone about Rosewood';
+  const { consoleOutput: scalarConsole } = await captureConsole(async () => {
+    const res = new FakeResponse();
+    await continueHandler({
+      method: 'POST',
+      headers: {},
+      body: {
+        storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+        existingContent: '<p>She opened the door.</p>',
+        currentChapterCount: 1,
+        maintainTone: scalarProse
+      }
+    }, res);
+    return res;
+  });
+
+  const serviceEntry = logger
+    .getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === 'continueChapter');
+
+  assert(serviceEntry, 'the continuation service should log the request it received');
+  for (const [sink, written] of [
+    ['buffer', JSON.stringify(serviceEntry.context)],
+    ['console', scalarConsole]
+  ] as const) {
+    assert(
+      !written.includes('Dana') && !written.includes('Rosewood'),
+      `prose sent as a flag must not reach the ${sink} (got ${written})`
+    );
+  }
+  assert(
+    serviceEntry.context?.requestParameters?.['maintainTone'] === '[UNRECOGNIZED]',
+    `a flag that is not a boolean should be reported (got ${JSON.stringify(serviceEntry.context?.requestParameters)})`
+  );
+
+  // The ordinary case still logs the id, which is what makes it worth keeping.
+  logger.clearLogs();
+  const realStoryId = 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';
+  await captureConsole(async () => {
+    const res = new FakeResponse();
+    await continueHandler({
+      method: 'POST',
+      headers: {},
+      body: { storyId: realStoryId, existingContent: '<p>She opened the door.</p>', currentChapterCount: 1 }
+    }, res);
+    return res;
+  });
+
+  const realEntry = logger
+    .getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === '/api/story/continue');
+  assert(
+    realEntry?.context?.requestParameters?.['storyId'] === realStoryId,
+    `a real story id should still be logged (got ${JSON.stringify(realEntry?.context?.requestParameters)})`
+  );
+
+  logger.clearLogs();
+}
+
+/**
+ * Run something with the console captured, so an assertion can read what the
+ * logger actually printed rather than only what it buffered.
+ */
+async function captureConsole<T>(run: () => Promise<T>): Promise<{ response: T; consoleOutput: string }> {
+  const original = { log: console.log, warn: console.warn, error: console.error };
+  let consoleOutput = '';
+  const record = (...args: unknown[]) => {
+    consoleOutput += args.map(argument => String(argument)).join(' ');
+  };
+
+  console.log = record;
+  console.warn = record;
+  console.error = record;
+
+  try {
+    return { response: await run(), consoleOutput };
+  } finally {
+    console.log = original.log;
+    console.warn = original.warn;
+    console.error = original.error;
+  }
+}
+
 async function main(): Promise<void> {
   verifySseFraming();
   await verifyStreamRouteEmitsDispatchableEvents();
   await verifyStreamOpensWithTheHeadersItSet();
   await verifyStreamFailureRecordsTheRequestMethod();
+  await verifyStreamDoesNotLogCallerText();
+  await verifyContinueDoesNotLogProseStoryIds();
   await verifyRepeatedQueryParametersReachTheValidator();
   await verifyMalformedBodiesAreClientErrors();
 

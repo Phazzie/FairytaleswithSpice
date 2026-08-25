@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { StoryGenerationSeam, StreamingStoryGenerationSeam, VALIDATION_RULES } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
+import { toLoggableCreature, toLoggableNumber, toLoggableThemes } from '../_lib/utils/loggableRequestParameters';
 
 const storyService = new StoryService();
 const VALID_REQUESTED_CHAPTER_COUNTS = new Set([1, 2, 3]);
@@ -160,12 +161,14 @@ export default async function handler(req: any, res: any) {
       requestId,
       endpoint: '/api/story/stream',
       method: req.method,
-      userInput: {
-        creature: input.creature,
-        themes: input.themes,
-        spicyLevel: input.spicyLevel,
-        wordCount: input.wordCount,
-        requestedChapterCount: input.requestedChapterCount
+      requestParameters: {
+        creature: toLoggableCreature(input.creature),
+        // This route builds `themes` by splitting a query string, so every
+        // entry is caller text until it is matched against the allow-list.
+        ...toLoggableThemes(input.themes),
+        spicyLevel: toLoggableNumber(input.spicyLevel),
+        wordCount: toLoggableNumber(input.wordCount),
+        requestedChapterCount: toLoggableNumber(input.requestedChapterCount)
       }
     });
 
