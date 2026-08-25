@@ -6,6 +6,7 @@ import {
   parseStoryLabBlueprintFromQuery
 } from '../api/_lib/story-lab/validation/blueprintParser';
 import type { CreatureType } from '../api/_lib/types/contracts';
+import { STORY_BLUEPRINT_LIMITS } from '../shared/storyBlueprintLimits';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -84,5 +85,85 @@ const invalidBody = parseStoryLabBlueprintFromBody({
 });
 assert(invalidBody.error?.invalidFields.includes('logline'), 'blank logline should be reported as invalid');
 assert(invalidBody.error?.invalidFields.includes('chapterBatchSize'), 'invalid chapterBatchSize should be reported as invalid');
+
+// ---------------------------------------------------------------------------
+// Size limits. Every free-text field below is interpolated into the Grok prompt
+// the route pays for, and the caps existed only in the browser's form: a caller
+// that posted the blueprint itself, or a stale tab, could send unbounded prose
+// into a paid generation. The limits come from `shared/storyBlueprintLimits`,
+// which the Angular form reads too, so the two readings cannot drift apart.
+// ---------------------------------------------------------------------------
+
+function longText(length: number): string {
+  return 'a'.repeat(length);
+}
+
+const atTheLimit = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  logline: longText(STORY_BLUEPRINT_LIMITS.maxLoglineLength),
+  worldDetails: longText(STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength),
+  narrativeDirectives: longText(STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength),
+  heatContract: {
+    ...bodyForCreature('dragon').heatContract,
+    noGoContent: longText(STORY_BLUEPRINT_LIMITS.maxNoGoContentLength)
+  }
+});
+assert(!atTheLimit.error, 'a blueprint exactly at every limit should parse');
+
+const overTheLimit = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  logline: longText(STORY_BLUEPRINT_LIMITS.maxLoglineLength + 1),
+  worldDetails: longText(STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength + 1),
+  narrativeDirectives: longText(STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength + 1)
+});
+assert(overTheLimit.error?.invalidFields.includes('logline'), 'an over-long logline should be reported as invalid');
+assert(overTheLimit.error?.invalidFields.includes('worldDetails'), 'over-long world details should be reported as invalid');
+assert(
+  overTheLimit.error?.invalidFields.includes('narrativeDirectives'),
+  'over-long narrative directives should be reported as invalid'
+);
+assert(
+  overTheLimit.error?.message.includes(String(STORY_BLUEPRINT_LIMITS.maxLoglineLength)),
+  'the refusal should name the limit the caller has to write under'
+);
+
+const tooManyThemes = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  themes: Array.from({ length: STORY_BLUEPRINT_LIMITS.maxThemes + 1 }, (_unused, index) => ({
+    id: `theme_${index}`,
+    label: `Theme ${index}`,
+    description: 'One more thread than the generator will weave.'
+  }))
+});
+assert(tooManyThemes.error?.invalidFields.includes('themes'), 'more themes than the cap should be reported as invalid');
+
+const overLongNoGoContent = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  heatContract: {
+    ...bodyForCreature('dragon').heatContract,
+    noGoContent: longText(STORY_BLUEPRINT_LIMITS.maxNoGoContentLength + 1)
+  }
+});
+assert(
+  overLongNoGoContent.error?.invalidFields.includes('heatContract'),
+  'over-long Heat Contract no-go content should be reported as invalid'
+);
+
+// The stream route reads the same blueprint out of a query string, so the caps
+// have to hold on that path too — it is the one a caller reaches with nothing
+// but a URL.
+const overTheLimitQuery = parseStoryLabBlueprintFromQuery({
+  ...bodyForCreature('dragon'),
+  spicyLevel: '3',
+  desiredWordBudget: '900',
+  chapterBatchSize: '2',
+  logline: longText(STORY_BLUEPRINT_LIMITS.maxLoglineLength + 1),
+  themes: JSON.stringify(bodyForCreature('dragon').themes),
+  heatContract: JSON.stringify(bodyForCreature('dragon').heatContract)
+});
+assert(
+  overTheLimitQuery.error?.invalidFields.includes('logline'),
+  'an over-long logline should be refused on the stream query path as well'
+);
 
 console.log('Story Lab shared blueprint parser tests passed');

@@ -10,6 +10,7 @@ import type {
   ThemeSeed,
   WordBudget
 } from '../contracts';
+import { STORY_BLUEPRINT_LIMITS } from '../../../../shared/storyBlueprintLimits';
 
 type QueryValue = string | string[] | number | boolean | object | undefined;
 type QuerySource = Record<string, QueryValue>;
@@ -93,12 +94,34 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
   if (!logline) {
     invalidFields.push('logline');
     messages.push('logline is required.');
+  } else if (logline.length > STORY_BLUEPRINT_LIMITS.maxLoglineLength) {
+    invalidFields.push('logline');
+    messages.push(`logline must be ${STORY_BLUEPRINT_LIMITS.maxLoglineLength} characters or fewer.`);
   }
 
   const themes = parseThemes(source['themes'], mode);
   if (themes.error) {
     invalidFields.push('themes');
     messages.push(themes.error);
+  } else if (themes.value.length > STORY_BLUEPRINT_LIMITS.maxThemes) {
+    invalidFields.push('themes');
+    messages.push(`themes must include no more than ${STORY_BLUEPRINT_LIMITS.maxThemes} theme seeds.`);
+  }
+
+  // The optional free-text fields are read here rather than at the point they
+  // are returned, because a value past its cap has to be reported as an invalid
+  // field alongside every other one — the parser answers with the whole list of
+  // what has to be fixed, not with the first thing it noticed.
+  const narrativeDirectives = optionalString(source['narrativeDirectives']);
+  if (isLongerThan(narrativeDirectives, STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength)) {
+    invalidFields.push('narrativeDirectives');
+    messages.push(`narrativeDirectives must be ${STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength} characters or fewer.`);
+  }
+
+  const worldDetails = optionalString(source['worldDetails']);
+  if (isLongerThan(worldDetails, STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength)) {
+    invalidFields.push('worldDetails');
+    messages.push(`worldDetails must be ${STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength} characters or fewer.`);
   }
 
   // The blueprint contract types `heatContract` as required, and the engine
@@ -117,6 +140,9 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
   } else if (!heatContract.value) {
     invalidFields.push('heatContract');
     messages.push('heatContract is required and must include adult confirmation, tension mode, and intimacy boundary.');
+  } else if (isLongerThan(heatContract.value.noGoContent, STORY_BLUEPRINT_LIMITS.maxNoGoContentLength)) {
+    invalidFields.push('heatContract');
+    messages.push(`heatContract.noGoContent must be ${STORY_BLUEPRINT_LIMITS.maxNoGoContentLength} characters or fewer.`);
   }
 
   if (invalidFields.length > 0) {
@@ -133,12 +159,21 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
       chapterBatchSize: chapterBatchSize!,
       themes: themes.value,
       heatContract: heatContract.value!,
-      narrativeDirectives: optionalString(source['narrativeDirectives']),
+      narrativeDirectives,
       protagonistName: optionalString(source['protagonistName']),
       antagonistName: optionalString(source['antagonistName']),
-      worldDetails: optionalString(source['worldDetails'])
+      worldDetails
     }
   };
+}
+
+/**
+ * Whether an optional free-text field is past its cap. An absent field is not:
+ * every one of these is optional, so "not provided" and "too long" are
+ * different answers.
+ */
+function isLongerThan(value: string | undefined, limit: number): boolean {
+  return value !== undefined && value.length > limit;
 }
 
 function buildError(invalidFields: string[], messages: string[]): StoryLabBlueprintParseResult {

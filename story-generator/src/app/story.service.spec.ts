@@ -17,6 +17,7 @@ import {
   StoryStateSnapshot,
   StreamingProgressChunk
 } from './contracts';
+import { EVENT_SOURCE_CLOSED, EVENT_SOURCE_CONNECTING } from '../../../shared/eventStreamRetry';
 
 function createGenesisInput(): StoryGenerationSeam['input'] {
   return {
@@ -136,6 +137,8 @@ class MockEventSource {
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   readonly close = jasmine.createSpy('close');
+  /** `CLOSED` unless a test says the browser is reopening the connection. */
+  readyState = EVENT_SOURCE_CLOSED;
 
   constructor(readonly url: string) {
     MockEventSource.instances.push(this);
@@ -146,6 +149,16 @@ class MockEventSource {
   }
 
   fail(): void {
+    this.readyState = EVENT_SOURCE_CLOSED;
+    this.onerror?.(new Event('error'));
+  }
+
+  /**
+   * The end of a connection the browser will reopen — which is every response
+   * the job event route sends for a job that has not finished yet.
+   */
+  dropAndReconnect(): void {
+    this.readyState = EVENT_SOURCE_CONNECTING;
     this.onerror?.(new Event('error'));
   }
 }
@@ -485,6 +498,96 @@ describe('StoryService', () => {
 
     expect(received).toEqual([event]);
     expect(completed).toBeTrue();
+    expect(source.close).toHaveBeenCalled();
+  });
+
+  it('keeps a job event subscription alive while the browser reconnects', () => {
+    const jobId = 'job_00000000-0000-4000-8000-000000000001';
+    const running = createJobResponse<StoryIterationPayload>(jobId);
+    running.job.status = 'running';
+    running.job.currentStep = 'drafting';
+    running.job.progressPercent = 40;
+
+    const received: StoryLabJobEvent<StoryIterationPayload>[] = [];
+    let failure: unknown;
+    let completed = false;
+
+    service.streamStoryLabJobEvents<StoryIterationPayload>(jobId, nextEvent => received.push(nextEvent)).subscribe({
+      error: error => {
+        failure = error;
+      },
+      complete: () => {
+        completed = true;
+      }
+    });
+
+    const source = MockEventSource.instances[0];
+    source.emit({
+      eventId: 'event-1',
+      type: 'snapshot',
+      emittedAt: running.job.updatedAt,
+      job: running.job
+    } satisfies StoryLabJobEvent<StoryIterationPayload>);
+
+    // The route replays what the job has recorded and ends the response, so the
+    // browser drops the connection and reopens it. That is not the job failing.
+    source.dropAndReconnect();
+
+    expect(failure).toBeUndefined();
+    expect(completed).toBeFalse();
+    expect(source.close).not.toHaveBeenCalled();
+    expect(received.length).toBe(1);
+
+    // The reopened connection replays the terminal snapshot, which is what ends
+    // the subscription.
+    const finished = createJobResponse<StoryIterationPayload>(jobId);
+    source.emit({
+      eventId: 'event-2',
+      type: 'snapshot',
+      emittedAt: finished.job.updatedAt,
+      job: finished.job
+    } satisfies StoryLabJobEvent<StoryIterationPayload>);
+
+    expect(completed).toBeTrue();
+    expect(source.close).toHaveBeenCalled();
+  });
+
+  it('fails a job event subscription when the browser gives up on the stream', () => {
+    const jobId = 'job_00000000-0000-4000-8000-000000000002';
+    let failure: unknown;
+
+    service.streamStoryLabJobEvents<StoryIterationPayload>(jobId, () => undefined).subscribe({
+      error: error => {
+        failure = error;
+      }
+    });
+
+    const source = MockEventSource.instances[0];
+    expect(source.readyState).toBe(EVENT_SOURCE_CLOSED);
+
+    source.fail();
+
+    expect(failure).toBeDefined();
+    expect(source.close).toHaveBeenCalled();
+  });
+
+  it('closes the genesis stream on the first connection error', () => {
+    const input = createGenesisInput();
+    let failure: unknown;
+
+    service.streamStoryGeneration(input, () => undefined).subscribe({
+      error: error => {
+        failure = error;
+      }
+    });
+
+    const source = MockEventSource.instances[0];
+    // Reconnecting here would restart the paid generation from the beginning,
+    // so this stream fails even when the browser would have retried.
+    source.readyState = EVENT_SOURCE_CONNECTING;
+    source.onerror?.(new Event('error'));
+
+    expect(failure).toBeDefined();
     expect(source.close).toHaveBeenCalled();
   });
 
