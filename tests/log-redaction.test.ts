@@ -217,11 +217,16 @@ assert(
   'an ordinary request should log its themes with no unrecognized count beside them'
 );
 
-const storyIdProse = `story_${privateProse.repeat(4)}`;
-const loggableStoryId = toLoggableIdentifier(storyIdProse);
+// An identifier is filtered by its shape, not its length. A length cap alone
+// let anything shorter than the cap through, and most prose is shorter than the
+// cap — the sentence above is 55 characters.
 assert(
-  loggableStoryId !== undefined && loggableStoryId.length <= 65,
-  `an over-long identifier should be cut (got ${loggableStoryId?.length} characters)`
+  toLoggableIdentifier(privateProse) === '[UNRECOGNIZED]',
+  `prose sent as a story id should be reported, not repeated (got ${toLoggableIdentifier(privateProse)})`
+);
+assert(
+  toLoggableIdentifier(`story_${privateProse.repeat(4)}`) === '[UNRECOGNIZED]',
+  'a long run of prose should be reported too'
 );
 assert(
   toLoggableIdentifier('story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') ===
@@ -229,8 +234,12 @@ assert(
   'a real story id should be logged exactly as it is'
 );
 assert(
+  toLoggableIdentifier('a'.repeat(65)) === '[UNRECOGNIZED]',
+  'the length bound should still hold for a long run of allowed characters'
+);
+assert(
   toLoggableIdentifier('   ') === undefined && toLoggableIdentifier(undefined) === undefined,
-  'a missing identifier should be omitted rather than logged as an empty string'
+  'a missing identifier should be omitted rather than reported as unrecognized'
 );
 
 console.log('Log redaction tests passed');

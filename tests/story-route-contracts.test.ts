@@ -551,6 +551,79 @@ async function verifyStreamDoesNotLogCallerText(): Promise<void> {
 }
 
 /**
+ * `storyId` is caller text too, and a length cap was not a filter for it: most
+ * prose is shorter than any cap worth having, so a sentence sent as an id went
+ * into the log whole. The shape check is what rejects it, and this drives the
+ * real continuation route to prove the route uses it.
+ */
+async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
+  logger.clearLogs();
+
+  const storyIdProse = 'Dana is in treatment at the clinic on Rosewood';
+  const { consoleOutput } = await captureConsole(async () => {
+    const res = new FakeResponse();
+    await continueHandler({
+      method: 'POST',
+      headers: {},
+      body: {
+        storyId: storyIdProse,
+        existingContent: '<p>She opened the door.</p>',
+        currentChapterCount: 1
+      }
+    }, res);
+    return res;
+  });
+
+  const started = logger
+    .getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === '/api/story/continue');
+
+  assert(started, 'the continuation route should log the request it started');
+  assert(
+    consoleOutput.includes('/api/story/continue'),
+    `the console capture should hold the request line (got ${consoleOutput.slice(0, 200)}…)`
+  );
+
+  for (const [sink, written] of [
+    ['buffer', JSON.stringify(started.context)],
+    ['console', consoleOutput]
+  ] as const) {
+    assert(
+      !written.includes('Dana') && !written.includes('Rosewood'),
+      `prose sent as a story id must not reach the ${sink} (got ${written})`
+    );
+  }
+
+  assert(
+    started.context?.requestParameters?.['storyId'] === '[UNRECOGNIZED]',
+    `a story id that is not shaped like one should be reported (got ${JSON.stringify(started.context?.requestParameters)})`
+  );
+
+  // The ordinary case still logs the id, which is what makes it worth keeping.
+  logger.clearLogs();
+  const realStoryId = 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';
+  await captureConsole(async () => {
+    const res = new FakeResponse();
+    await continueHandler({
+      method: 'POST',
+      headers: {},
+      body: { storyId: realStoryId, existingContent: '<p>She opened the door.</p>', currentChapterCount: 1 }
+    }, res);
+    return res;
+  });
+
+  const realEntry = logger
+    .getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === '/api/story/continue');
+  assert(
+    realEntry?.context?.requestParameters?.['storyId'] === realStoryId,
+    `a real story id should still be logged (got ${JSON.stringify(realEntry?.context?.requestParameters)})`
+  );
+
+  logger.clearLogs();
+}
+
+/**
  * Run something with the console captured, so an assertion can read what the
  * logger actually printed rather than only what it buffered.
  */
@@ -580,6 +653,7 @@ async function main(): Promise<void> {
   await verifyStreamOpensWithTheHeadersItSet();
   await verifyStreamFailureRecordsTheRequestMethod();
   await verifyStreamDoesNotLogCallerText();
+  await verifyContinueDoesNotLogProseStoryIds();
   await verifyRepeatedQueryParametersReachTheValidator();
   await verifyMalformedBodiesAreClientErrors();
 

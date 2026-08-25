@@ -39,12 +39,17 @@ export function toLoggableCreature(creature: unknown): string {
 }
 
 /**
- * The longest an identifier is allowed to be before the log keeps only its
- * head. Every id this repository mints — `story_<uuid>`, `req_<uuid>`,
- * `img-<uuid>` — is well under it, so a real id is never touched; the cap is
- * here for a caller that sends something else under the name of one.
+ * The shape of an identifier this repository would have minted.
+ *
+ * A length cap alone is not a filter: `Dana is in treatment at the clinic on
+ * Rosewood` is forty-five characters and would have gone into the log intact.
+ * What separates an id from a sentence is its alphabet, not its length — every
+ * id here is `story_<uuid>`, `req_<uuid>`, or `img-<uuid>`, so letters, digits,
+ * `_`, and `-` describe all of them and admit no spaces or punctuation for
+ * prose to hide in. The length bound stays as a second limit so that a long run
+ * of allowed characters cannot be used as one either.
  */
-const MAX_LOGGABLE_IDENTIFIER_LENGTH = 64;
+const LOGGABLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 export interface LoggableThemes {
   themes: string[];
@@ -91,13 +96,19 @@ export function toLoggableThemes(themes: unknown): LoggableThemes {
 }
 
 /**
- * Keep an identifier loggable without letting it become a paragraph.
+ * Log an identifier only when it is shaped like one.
  *
- * A story id is the one field that correlates a log line with the request it
- * belongs to, so it is worth keeping — but it arrives from the caller like any
- * other field, and nothing constrains its shape. An id fits well inside the
- * cap; prose sent in its place does not, and is cut to a length that is
- * useless as a hiding place while still identifying the request.
+ * A story id is the field that correlates a log line with the request it
+ * belongs to, so it is worth keeping — but it arrives from the caller like
+ * every other field, and nothing on the way here constrains it. Truncating was
+ * not enough: prose shorter than the cap passed through whole, which is most
+ * prose. Matching the shape instead means a value either looks like an id this
+ * repository would have minted, and is logged, or does not, and is reported as
+ * unrecognised without its text.
+ *
+ * Missing is not the same as unrecognised: an absent id is omitted, so the
+ * marker means "the caller sent something that was not an id" rather than
+ * "there was no id".
  */
 export function toLoggableIdentifier(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -106,7 +117,5 @@ export function toLoggableIdentifier(value: unknown): string | undefined {
 
   const trimmed = value.trim();
 
-  return trimmed.length > MAX_LOGGABLE_IDENTIFIER_LENGTH
-    ? `${trimmed.slice(0, MAX_LOGGABLE_IDENTIFIER_LENGTH)}…`
-    : trimmed;
+  return LOGGABLE_IDENTIFIER_PATTERN.test(trimmed) ? trimmed : UNRECOGNIZED_PARAMETER;
 }
