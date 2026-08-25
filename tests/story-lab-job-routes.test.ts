@@ -200,6 +200,31 @@ async function testEventsReplaySnapshotsAndClose(): Promise<void> {
   assert(eventsResponse.ended, 'events response should close after replaying current snapshots');
 }
 
+async function testPreflightAdvertisesEveryMethodTheRouteServes(): Promise<void> {
+  setMockRuntime();
+
+  const preflight = new FakeResponse();
+  await jobHandler(
+    {
+      ...createRequest('OPTIONS'),
+      headers: { origin: 'https://spice.example.app', host: 'spice.example.app' }
+    },
+    preflight
+  );
+
+  assert(preflight.statusCode === 200, 'a preflight should be answered with 200');
+  const allowedMethods = (preflight.headers['Access-Control-Allow-Methods'] ?? '')
+    .split(',')
+    .map(method => method.trim());
+  // The browser reads this list to decide whether to send the request it is
+  // asking about. Creating a job is a POST, so a list without it stops the page
+  // before the request leaves the browser.
+  assert(allowedMethods.includes('POST'), 'the jobs preflight must advertise POST');
+  assert(allowedMethods.includes('GET'), 'the jobs preflight must advertise GET');
+  assert(allowedMethods.includes('OPTIONS'), 'the jobs preflight must advertise OPTIONS');
+  assert(preflight.body === null, 'a preflight should not carry a route payload');
+}
+
 async function testInvalidAndUnknownJobIds(): Promise<void> {
   nonDurableStoryLabJobStore.reset();
   setMockRuntime();
@@ -431,6 +456,7 @@ async function testThrownEngineFailureFinishesTheJob(): Promise<void> {
 async function run(): Promise<void> {
   await testGenesisJobCompletesInMockMode();
   await testEventsReplaySnapshotsAndClose();
+  await testPreflightAdvertisesEveryMethodTheRouteServes();
   await testInvalidAndUnknownJobIds();
   await testReservedJobKindsAreRejected();
   await testUnsupportedConfiguredJobStoreFailsClosed();
