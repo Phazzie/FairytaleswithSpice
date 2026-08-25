@@ -96,4 +96,38 @@ assert(
   `a near-miss tag name is not a boundary (got ${JSON.stringify(nearMiss.cliffhangerText)})`
 );
 
+// A hook is what the chapter *stops* on. The question-mark fallback used to ask
+// whether a `?` appeared anywhere in the closing paragraph, so a paragraph that
+// raises a question and then answers it scored as a detected `mystery` hook of
+// strength 2 — while `cliffhangerDetected`, one line below it, was reading the
+// paragraph's last character. Both halves now read the ending.
+const answeredQuestion = service.analyze('<p>The lamps guttered.</p><p>Did she stay? She stayed, and the night was warm.</p>');
+
+assert(
+  !answeredQuestion.cliffhangerDetected,
+  'a closing paragraph that answers its own question is not a cliffhanger ' +
+    `(got ${JSON.stringify(answeredQuestion)})`
+);
+assert(
+  answeredQuestion.cliffhangerStrength === 0,
+  `an undetected cliffhanger has no strength (got ${answeredQuestion.cliffhangerStrength})`
+);
+assert(
+  answeredQuestion.cliffhangerText === '',
+  `an undetected cliffhanger reports no hook text (got ${JSON.stringify(answeredQuestion.cliffhangerText)})`
+);
+
+// The same paragraph, left on the question, is still the mystery hook it was.
+const openQuestion = service.analyze('<p>The lamps guttered.</p><p>The night was warm, and she stayed. But had she chosen well?</p>');
+
+assert(openQuestion.cliffhangerDetected, 'a closing question is still a cliffhanger');
+assert(openQuestion.cliffhangerType === 'mystery', 'a closing question still classifies as mystery');
+
+// An exclamation still ends on a hook, and still falls through to the default
+// type rather than being reclassified as a mystery by the question fallback.
+const exclamation = service.analyze('<p>The lamps guttered.</p><p>She ran!</p>');
+
+assert(exclamation.cliffhangerDetected, 'a closing exclamation is a cliffhanger');
+assert(exclamation.cliffhangerType === 'plot_twist', 'a closing exclamation is not a question');
+
 console.log('Cliffhanger service tests passed');

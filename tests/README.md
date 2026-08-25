@@ -21,85 +21,40 @@ These tests interact directly with service classes, bypassing HTTP endpoints. Th
 
 ## Test Suites
 
-### 1. **Story Service Tests** (`story-service.test.mjs`)
+### 1. **Story Service Tests** (`story-service-improved.test.ts`)
 
-**Tests**: 8 test categories, 50+ individual assertions
+Direct service behaviour: generation result shape, word-count tolerance, chapter
+continuation, input validation, speaker tags, and logging integration.
 
-#### What's Tested:
-
-1. **Basic Story Generation**
-   - Result structure validation
-   - Required fields present
-   - Word count accuracy (±20% tolerance)
-   - HTML formatting
-   - Metadata tracking
-
-2. **All Creature Types**
-   - Vampire stories
-   - Werewolf stories
-   - Fairy stories
-   - Creature type preservation
-
-3. **All Spicy Levels (1-5)**
-   - Each spice level generates correctly
-   - Level preservation in output
-   - Content appropriateness
-
-4. **Word Count Variations**
-   - 700-word stories
-   - 900-word stories
-   - 1200-word stories
-   - Accuracy within tolerance
-
-5. **Chapter Continuation**
-   - Initial story generation
-   - Chapter 2 generation
-   - Chapter number tracking
-   - Content continuity
-
-6. **Input Validation**
-   - Invalid creature rejection
-   - Invalid spicy level rejection
-   - Empty themes rejection
-   - Proper error codes
-
-7. **Speaker Tags (Multi-Voice)**
-   - Speaker tag detection
-   - Unique speaker counting
-   - rawContent field presence
-   - Multi-voice readiness
-
-8. **Logging Integration**
-   - Log capture working
-   - Request IDs present
-   - Performance logs present
-   - Info logs present
-
-#### How to Run:
 ```bash
-node tests/story-service.test.mjs
+npm run test:story
+```
+
+Its siblings cover the prompt surface the same service builds:
+
+```bash
+npm run test:story-service-prompt-guards
+npm run test:xai-fast-path-review
+npm run test:verify-ai-fixes
 ```
 
 ---
 
 ## Running All Tests
 
-### Option 1: Test Runner Script
-```bash
-node tests/run-all.mjs
-```
+Every suite is an `npm run test:*` script, and `npm test` runs all of them in
+order. There is no separate runner script: the list in `package.json` is the
+list, so a suite that is not named there does not run.
 
-Runs all test suites sequentially with summary.
-
-### Option 2: NPM Script (Recommended)
+### Option 1: NPM Script (Recommended)
 ```bash
 npm test
 ```
 
-### Option 3: Individual Tests
+### Option 2: Individual Tests
 ```bash
 # Story tests only
-node tests/story-service.test.mjs
+npm run test:story
 ```
 
 ---
@@ -197,29 +152,29 @@ jobs:
 
 ### Common Issues:
 
-1. **Import Errors**
-   ```
-   Error: Cannot find module
-   ```
-   **Fix**: Ensure you're using `.mjs` extension and ES6 imports
-
-2. **Timeout Errors**
+1. **Timeout Errors**
    ```
    Request timeout after 45000ms
    ```
    **Fix**: Check API keys, increase timeout, or verify network
 
-3. **Module Resolution**
+2. **Module Resolution**
    ```
    ERR_MODULE_NOT_FOUND
    ```
-   **Fix**: Use relative paths `../api/lib/services/...`
+   **Fix**: Import the TypeScript source by its extensionless relative path
+   (`../api/_lib/services/storyService`) and run the suite through `tsx`, as the
+   `npm run test:*` scripts do. A plain `node` run of a `.mjs` test resolves
+   `../api/_lib/services/storyService.js` literally, and no such file exists —
+   the sources are `.ts` and are never compiled to disk.
 
-4. **TypeScript Errors**
+3. **A new test never runs**
    ```
-   SyntaxError: Unexpected identifier
+   (no output, no failure)
    ```
-   **Fix**: Tests use `.mjs` (JavaScript), not `.ts` (TypeScript)
+   **Fix**: Add it to `package.json` as its own `test:*` script *and* append it
+   to `test:all`. Nothing globs the `tests/` directory, so a file that is not
+   named in `test:all` is never executed by `npm test` or by CI.
 
 ---
 
@@ -272,13 +227,13 @@ When adding new features:
 npm test
 
 # Story tests only
-node tests/story-service.test.mjs
+npm run test:story
 
 # Story-Lab privacy/security/job contract surface
 npm run test:story-lab-privacy-contracts
 
 # With debugging
-NODE_ENV=development node tests/story-service.test.mjs
+NODE_ENV=development npm run test:story
 ```
 
 ### Story Lab Privacy/Security Command Map

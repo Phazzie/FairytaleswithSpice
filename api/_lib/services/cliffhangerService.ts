@@ -69,6 +69,12 @@ const CLIFFHANGER_PATTERNS: Record<CliffhangerType, string[]> = {
   ]
 };
 
+/**
+ * The punctuation a chapter stops on when it stops on a hook. Anchored, because
+ * a `?` or `!` in the middle of the closing paragraph is ordinary prose.
+ */
+const CLIFFHANGER_PUNCTUATION_PATTERN = /[?!]$/;
+
 export class CliffhangerService {
   analyze(content: string, previousCliffhangers: CliffhangerType[] = []): CliffhangerAnalysis {
     // The whole point of this scan is that the ending counts for more than the
@@ -84,6 +90,7 @@ export class CliffhangerService {
     const paragraphs = splitStoryIntoTextBlocks(content);
     const lowerContent = paragraphs.join('\n\n').toLowerCase();
     const lastParagraph = paragraphs.length > 0 ? paragraphs[paragraphs.length - 1] : '';
+    const trimmedLastParagraph = lastParagraph.trim();
     const lowerLastParagraph = lastParagraph.toLowerCase();
 
     let detectedType: CliffhangerType | null = null;
@@ -100,13 +107,25 @@ export class CliffhangerService {
       }
     }
 
-    if (detectedType === null && lowerLastParagraph.includes('?')) {
+    // The fallback and the detection line below are one judgement — "the chapter
+    // stops on an unanswered beat" — and they have to read the same thing to be
+    // that. This half asked whether a `?` appeared anywhere in the final
+    // paragraph, so a chapter whose last paragraph merely contains a question
+    // and then answers it — `Did she stay? She stayed, and the night was warm.`
+    // — was reported as a detected `mystery` hook of strength 2 while nothing
+    // about it ends on a question. (An example carrying one of the patterns
+    // above would not show this: those are matched before the fallback is
+    // reached.) The strength then feeds the variety score and the continuation
+    // suggestions, so the next batch was prompted to resolve a cliffhanger the
+    // chapter never raised. Anchoring the fallback to the end of the paragraph,
+    // which is where a hook lands, makes both halves agree.
+    if (detectedType === null && trimmedLastParagraph.endsWith('?')) {
       detectedType = 'mystery';
       strength = 2;
     }
 
     const cliffhangerType = detectedType ?? 'plot_twist';
-    const cliffhangerDetected = detectedType !== null || /[?!]$/.test(lastParagraph.trim());
+    const cliffhangerDetected = detectedType !== null || CLIFFHANGER_PUNCTUATION_PATTERN.test(trimmedLastParagraph);
 
     return {
       cliffhangerDetected,
