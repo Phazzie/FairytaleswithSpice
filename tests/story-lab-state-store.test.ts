@@ -16,6 +16,17 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 /**
+ * Name the stories by position rather than spelling the same id out at each of
+ * the places that has to agree about which one it is.
+ */
+function storyIdAt(index: number): string {
+  return `story-${index}`;
+}
+
+const OLDEST_STORY_ID = storyIdAt(0);
+const SECOND_OLDEST_STORY_ID = storyIdAt(1);
+
+/**
  * The smallest payload the store actually reads: the story id it keys on, the
  * revision the receipt echoes, and one chapter to stand in for the story HTML
  * a real snapshot holds. Everything else on the contract is carried through
@@ -46,18 +57,18 @@ function testTheStoreIsBounded(): void {
 
   const overflow = MAX_TRANSIENT_STORY_SNAPSHOTS + 25;
   for (let index = 0; index < overflow; index += 1) {
-    persistStoryIteration(buildPayload(`story-${index}`));
+    persistStoryIteration(buildPayload(storyIdAt(index)));
   }
 
-  const newest = getTransientStorySnapshot(`story-${overflow - 1}`);
+  const newest = getTransientStorySnapshot(storyIdAt(overflow - 1));
   assert(newest !== null, 'the most recently persisted story should still be readable');
 
-  const evicted = getTransientStorySnapshot('story-0');
+  const evicted = getTransientStorySnapshot(OLDEST_STORY_ID);
   assert(evicted === null, 'the oldest stories should have been evicted once the bound was passed');
 
   let retained = 0;
   for (let index = 0; index < overflow; index += 1) {
-    if (getTransientStorySnapshot(`story-${index}`) !== null) {
+    if (getTransientStorySnapshot(storyIdAt(index)) !== null) {
       retained += 1;
     }
   }
@@ -75,21 +86,23 @@ function testReadingAStoryKeepsIt(): void {
   resetTransientStorySnapshots();
 
   for (let index = 0; index < MAX_TRANSIENT_STORY_SNAPSHOTS; index += 1) {
-    persistStoryIteration(buildPayload(`story-${index}`));
+    persistStoryIteration(buildPayload(storyIdAt(index)));
   }
 
-  // `story-0` is the oldest by insertion, so it is next to be evicted until it
-  // is read.
-  assert(getTransientStorySnapshot('story-0') !== null, 'story-0 should be present before the overflow');
+  // The oldest story by insertion is next to be evicted until it is read.
+  assert(
+    getTransientStorySnapshot(OLDEST_STORY_ID) !== null,
+    'the oldest story should be present before the overflow'
+  );
 
   persistStoryIteration(buildPayload('story-new'));
 
   assert(
-    getTransientStorySnapshot('story-0') !== null,
+    getTransientStorySnapshot(OLDEST_STORY_ID) !== null,
     'a story that was just read should outlive one that was not'
   );
   assert(
-    getTransientStorySnapshot('story-1') === null,
+    getTransientStorySnapshot(SECOND_OLDEST_STORY_ID) === null,
     'the least recently used story should be the one evicted'
   );
 }
