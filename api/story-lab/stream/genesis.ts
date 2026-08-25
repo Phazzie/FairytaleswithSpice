@@ -6,6 +6,7 @@ import type {
   StreamingProgressChunk
 } from '../../_lib/story-lab/contracts';
 import { applyCorsPolicy } from '../../_lib/http/corsPolicy';
+import { endSseStream, writeSseFrame } from '../../_lib/http/sseStream';
 import { generateStoryLabGenesis } from '../../_lib/story-lab/storyLabEngine';
 import {
   parseStoryLabBlueprintFromQuery,
@@ -44,7 +45,17 @@ export default async function handler(req: any, res: any) {
     ...cors.headers,
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive'
+    Connection: 'keep-alive',
+    // The one header that makes the staggering below observable. nginx buffers
+    // a proxied response by default and will hold every frame until the
+    // response closes, which for this route means the reader sees nothing for
+    // the whole generation and then the finished story all at once — the exact
+    // outcome streaming exists to avoid, on the Docker/DigitalOcean deployment
+    // that puts a proxy in front of the app. `no-transform` above tells an
+    // intermediary not to recompress the body; this tells nginx not to hold it.
+    // The route this repository's other SSE implementation sent it from was
+    // retired, and this one had never sent it.
+    'X-Accel-Buffering': 'no'
   });
 
   const timeouts: NodeJS.Timeout[] = [];
@@ -75,18 +86,29 @@ export default async function handler(req: any, res: any) {
     cleanup();
   });
 
+  /**
+   * The flag says the reader left; the stream itself says whether a write can
+   * still land, and only the second of those is always available. The listener
+   * above is optional-chained because `req.socket` is not guaranteed — and on a
+   * runtime that does not supply it, the flag stays `false` for a reader who is
+   * already gone. Every per-chapter timer then writes into a destroyed
+   * response, and because those writes happen inside a `setTimeout` callback
+   * with no `try` around it, the `ERR_STREAM_DESTROYED` they answer with is an
+   * uncaught exception rather than a handled one. Framing through the shared
+   * helpers reads `res.destroyed` and skips the write instead.
+   */
   const sendChunk = (chunk: StreamingProgressChunk | GenesisResponse) => {
     if (clientDisconnected) {
       return;
     }
 
-    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    writeSseFrame(res, chunk);
   };
 
   const endStream = () => {
     cleanup();
     if (!clientDisconnected) {
-      res.end();
+      endSseStream(res);
     }
   };
 

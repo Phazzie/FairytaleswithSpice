@@ -12,6 +12,7 @@ import type { AuthPort, AuthUser } from '../auth/authPort';
 import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort } from '../auth/configuredAuthPort';
 import { applyCorsPolicy } from '../../http/corsPolicy';
+import { endSseStream, writeSseFrame, type SseResponseLike } from '../../http/sseStream';
 import { logError, logWarn } from '../../utils/logger';
 import { continueStoryLab, generateStoryLabGenesis } from '../storyLabEngine';
 import { getTransientStorySnapshot } from '../stateStore';
@@ -38,13 +39,17 @@ interface RequestLike {
   headers?: Record<string, string | string[] | undefined>;
 }
 
-interface ResponseLike {
+/**
+ * Extends the SSE response shape rather than restating it: the events handler
+ * below streams, so it needs the same `write`/`end` pair and the same optional
+ * lifecycle flags the shared helpers read to decide whether a frame can still
+ * land.
+ */
+interface ResponseLike extends SseResponseLike {
   setHeader(name: string, value: string): void;
   status(code: number): ResponseLike;
   json(body: unknown): void;
   writeHead?(statusCode: number, headers: Record<string, string>): void;
-  write?(chunk: string): void;
-  end(): void;
 }
 
 export interface StoryLabJobRouteDependencies {
@@ -283,10 +288,20 @@ async function handleStreamStoryLabJobEventsWithContext(
     res.status(200);
   }
 
+  // Framed by the shared serializer rather than by an interpolation of its
+  // own. The terminator has to be two real newlines, and the last route in this
+  // repository to spell it for itself got `\\n\\n` — printable text inside a
+  // template literal, not a line ending — so no client dispatched a single one
+  // of its events. Reading the stream state here matters as much: the store
+  // lookups above are awaited, so a reader who closes the tab in the meantime
+  // leaves a destroyed response that answers every replayed frame with
+  // `ERR_STREAM_DESTROYED`, thrown out of an async handler with nothing left to
+  // catch it. `res.write?.()` guarded against the method being absent, which is
+  // not the thing that goes wrong here.
   for (const event of events) {
-    res.write?.(`data: ${JSON.stringify(event)}\n\n`);
+    writeSseFrame(res, event);
   }
-  res.end();
+  endSseStream(res);
 }
 
 async function createGenesisJob(

@@ -4,6 +4,32 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-25 11:05 UTC - Two Live SSE Routes Writing To A Reader Who Had Already Left, And A Stream A Proxy Was Free To Buffer
+
+Actions:
+
+- Re-added `api/_lib/http/sseStream.ts`, trimmed to `formatSseFrame`, `isSseStreamOpen`, `writeSseFrame`, and `endSseStream`. PR #223 retired the previous copy along with the duplicate `/api/story/stream` implementations it had been extracted for, correctly — nothing live was using it. Two live routes still frame Server-Sent Events, though, and both were framing by hand and writing unconditionally: `/api/story-lab/stream/genesis`, which #223 also wired into the app behind the debug nav, and the Story Lab job event stream in `api/_lib/story-lab/jobs/jobRouteHandlers.ts`. The module is back because it now has two real callers rather than the zero it had when it was removed.
+- Stopped `/api/story-lab/stream/genesis` writing into a destroyed response. Its disconnect handling was a `clientDisconnected` flag set from `req.socket?.on?.('close')` — optional-chained because the socket is not guaranteed, and on a runtime that does not supply one the flag stays `false` for a reader who is already gone. Each of the route's per-chapter timers and its completion timer then wrote into a response Node had already destroyed, and those writes happen inside `setTimeout` callbacks the route does not wrap, so the `ERR_STREAM_DESTROYED` each one answers with is an uncaught exception rather than a handled one. The flag stays — it also stops the scheduling — and the response's own lifecycle flag is now the check that is always available.
+- Stopped the Story Lab job event stream doing the same. It reaches its replay only after two awaited job-store lookups, so the response can be destroyed before the first frame is written; `res.write?.()` guards against the method being absent, not against the stream being closed. Its `ResponseLike` now extends `SseResponseLike` rather than restating a narrower version of it.
+- Gave the genesis route `X-Accel-Buffering: no`. It is the only header that makes the route's staggered frames observable through a proxy: nginx buffers a proxied response by default and holds every frame until the response closes, so a reader behind one sees nothing for the whole generation and then the finished story at once — the outcome streaming exists to avoid, on the Docker/DigitalOcean deployment that puts a proxy in front of the app. The retired `/api/story/stream` sent it; this route never had.
+- Extended `tests/story-lab-stream-genesis.test.ts` and `tests/story-lab-job-routes.test.ts`, both already registered in `test:all`.
+
+Self-review:
+
+- Good: each defect was reproduced against the old code by reverting one file at a time and re-running, so no assertion could be passing for another's reason: `a destroyed response should be written to no further times, got 5` and `a reader leaving before the replay should not fail the request, got Cannot call write after a stream was destroyed`.
+- Correction: this slice first also fixed the same lifecycle fault in `api/story/stream.ts`, opened as PR #224 against a `main` that still had it. #223 merged in the meantime and deleted that route outright, which is the better fix; the work was rebased onto the new `main`, that fix dropped as moot, and the proxy-buffering header added in its place so the slice still carries three.
+- Non-claim: this does not improve disconnect *detection*. The genesis route's socket listener is unchanged and still the only thing that stops the route scheduling further work; what is added is a check on the response itself for the case where the listener never fires.
+- Non-claim: the job event route still replays the snapshots the store holds and closes. It does not follow a running job, and nothing here changes that.
+- Non-claim: `X-Accel-Buffering` is an nginx directive. A different intermediary that buffers is unaffected by it, which is what `Cache-Control: no-transform` is already there to address.
+- Note: the changes travel together — one shared helper and its two live callers — and cross none of the independent risk areas `AGENTS.md` names for splitting a slice. No deployable route file was added or retired (`scripts/recovery/check-vercel-function-count.sh` still reports 10/12), no Angular UI, no account/auth/profile/storage boundary, no story-quality generation behaviour.
+
+Validation:
+
+- `npm run test:all`: passed, exit 0, including the extended `tests/story-lab-stream-genesis.test.ts` and `tests/story-lab-job-routes.test.ts`.
+- `scripts/recovery/check-vercel-function-count.sh`: 10/12, unchanged — `api/_lib` is not a deployable route directory.
+- `tsc --noEmit` over the changed files: no new diagnostics. The four it reports in `jobRouteHandlers.ts` and `blueprintParser.ts` are pre-existing and in untouched code.
+- Note: `node_modules` is tracked in this repository and its devDependencies were absent again, so `npm install` was needed before `tsx` would run — and `npm run test:all` reports exit 0 even when every script inside it fails with `tsx: not found`, so a green exit code is not on its own evidence that the suite ran. Those tracked files were left out of the slice diff, which stays source-, test-, and doc-only.
+
 ## 2026-08-25 06:05 UTC - Caller Text Arriving Through Field Names, A Size Cap Measured In The Wrong Unit, And A Job Store That Evicted The Job It Was Running
 
 Actions:

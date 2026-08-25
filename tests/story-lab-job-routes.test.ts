@@ -52,11 +52,29 @@ class FakeResponse {
     };
   }
 
+  // The lifecycle flag Node sets when the socket underneath the response is
+  // gone, and the throw it answers a write with once it is. The events route
+  // awaits its store lookups, so a reader can leave before a single frame has
+  // been written.
+  destroyed = false;
+
   write(chunk: string): void {
+    if (this.destroyed) {
+      throw Object.assign(new Error('Cannot call write after a stream was destroyed'), {
+        code: 'ERR_STREAM_DESTROYED'
+      });
+    }
+
     this.chunks.push(chunk);
   }
 
   end(): void {
+    if (this.destroyed) {
+      throw Object.assign(new Error('Cannot call end after a stream was destroyed'), {
+        code: 'ERR_STREAM_DESTROYED'
+      });
+    }
+
     this.ended = true;
   }
 }
@@ -198,6 +216,63 @@ async function testEventsReplaySnapshotsAndClose(): Promise<void> {
   assert(output.includes('"status":"running"'), 'events stream should replay running snapshot');
   assert(output.includes('"status":"completed"'), 'events stream should replay completed snapshot');
   assert(eventsResponse.ended, 'events response should close after replaying current snapshots');
+
+  // Each snapshot has to be its own event. A frame is dispatched by the blank
+  // line that ends it, so a replay whose frames run together is delivered to
+  // the client as nothing at all — the route framed its own events by hand,
+  // where that terminator is one mis-escaped backslash away from being
+  // printable text rather than two newlines.
+  const frames = output.split('\n\n');
+  assert(frames.pop() === '', 'the last frame of the replay must be terminated');
+  assert(frames.length >= 3, `each job snapshot should be its own event, got ${frames.length}`);
+  assert(
+    frames.every(frame => frame.startsWith('data: ')),
+    'every replayed frame should be a `data:` line'
+  );
+  assert(
+    frames.every(frame => {
+      try {
+        JSON.parse(frame.slice('data: '.length));
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+    'every replayed frame should carry exactly one JSON payload'
+  );
+}
+
+/**
+ * A reader who closes the tab while the route is still reading the job store.
+ *
+ * The replay is reached only after two awaited store lookups, so the response
+ * can be destroyed before the first frame is written. The route wrote anyway —
+ * `res.write?.()` guards against the method being absent, not against the
+ * stream being closed — and each write answers with `ERR_STREAM_DESTROYED`,
+ * thrown out of an async handler with nothing left to catch it.
+ */
+async function testEventsReplayStopsAtAClosedResponse(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  const response = await postGenesisJob();
+  const jobId = (response.body as any).data.job.jobId as string;
+  const eventsResponse = new FakeResponse();
+  eventsResponse.destroyed = true;
+
+  let thrown: unknown = null;
+  try {
+    await jobHandler(createRequest('GET', undefined, jobId, true), eventsResponse);
+  } catch (error) {
+    thrown = error;
+  }
+
+  assert(
+    thrown === null,
+    `a reader leaving before the replay should not fail the request, got ${(thrown as Error)?.message}`
+  );
+  assert(eventsResponse.chunks.length === 0, 'no frame should be written into a destroyed response');
+  assert(!eventsResponse.ended, 'a destroyed response should not be ended again');
 }
 
 async function testPreflightAdvertisesEveryMethodTheRouteServes(): Promise<void> {
@@ -456,6 +531,7 @@ async function testThrownEngineFailureFinishesTheJob(): Promise<void> {
 async function run(): Promise<void> {
   await testGenesisJobCompletesInMockMode();
   await testEventsReplaySnapshotsAndClose();
+  await testEventsReplayStopsAtAClosedResponse();
   await testPreflightAdvertisesEveryMethodTheRouteServes();
   await testInvalidAndUnknownJobIds();
   await testReservedJobKindsAreRejected();
