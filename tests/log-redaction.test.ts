@@ -4,7 +4,7 @@
 import { redactSensitiveLogData } from '../api/_lib/utils/logger';
 import {
   toLoggableBoolean,
-  toLoggableIdentifier,
+  toLoggableStoryId,
   toLoggableNumber,
   toLoggableThemes
 } from '../api/_lib/utils/loggableRequestParameters';
@@ -226,42 +226,67 @@ assert(
 // let anything shorter than the cap through, and most prose is shorter than the
 // cap — the sentence above is 55 characters.
 assert(
-  toLoggableIdentifier(privateProse) === '[UNRECOGNIZED]',
-  `prose sent as a story id should be reported, not repeated (got ${toLoggableIdentifier(privateProse)})`
+  toLoggableStoryId(privateProse) === '[UNRECOGNIZED]',
+  `prose sent as a story id should be reported, not repeated (got ${toLoggableStoryId(privateProse)})`
 );
 assert(
-  toLoggableIdentifier(`story_${privateProse.repeat(4)}`) === '[UNRECOGNIZED]',
+  toLoggableStoryId(`story_${privateProse.repeat(4)}`) === '[UNRECOGNIZED]',
   'a long run of prose should be reported too'
 );
 // Prose written with the separators an id uses passes an alphabet check but is
 // still prose, which is why the rule is the minted shape rather than a class of
 // permitted characters.
 assert(
-  toLoggableIdentifier('Dana_is_in_treatment_at_Rosewood') === '[UNRECOGNIZED]',
+  toLoggableStoryId('Dana_is_in_treatment_at_Rosewood') === '[UNRECOGNIZED]',
   'underscore-separated prose should be reported, not repeated'
 );
 assert(
-  toLoggableIdentifier('story-notes-about-Dana-and-Rosewood') === '[UNRECOGNIZED]',
+  toLoggableStoryId('story-notes-about-Dana-and-Rosewood') === '[UNRECOGNIZED]',
   'hyphen-separated prose should be reported too'
 );
+// Caller text riding in front of a real UUID: the id-shaped part is genuine, so
+// only pinning the whole minted form rejects it.
 assert(
-  toLoggableIdentifier('story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') ===
+  toLoggableStoryId('Dana_at_Rosewood_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') === '[UNRECOGNIZED]',
+  'prose in front of a real uuid should be reported, not repeated'
+);
+assert(
+  toLoggableStoryId('story_Dana_at_Rosewood_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') === '[UNRECOGNIZED]',
+  'prose between the story prefix and the uuid should be reported too'
+);
+assert(
+  toLoggableStoryId('story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f_Dana_at_Rosewood') === '[UNRECOGNIZED]',
+  'prose after the uuid should be reported too'
+);
+// The mock Story Lab path mints the hyphenated form.
+assert(
+  toLoggableStoryId('story-9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') ===
+    'story-9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+  'the hyphenated minted form should be logged as it is'
+);
+// A different family of id is not a story id, whatever else it is.
+assert(
+  toLoggableStoryId('req_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') === '[UNRECOGNIZED]',
+  'a request id is not a story id'
+);
+assert(
+  toLoggableStoryId('story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') ===
     'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
   'a real story id should be logged exactly as it is'
 );
 // The stream route mints `story_stream_<uuid>`, so the prefix is not always one
 // segment.
 assert(
-  toLoggableIdentifier('story_stream_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') ===
+  toLoggableStoryId('story_stream_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') ===
     'story_stream_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
   'a streaming story id should be logged as it is'
 );
 assert(
-  toLoggableIdentifier('a'.repeat(65)) === '[UNRECOGNIZED]',
+  toLoggableStoryId('a'.repeat(65)) === '[UNRECOGNIZED]',
   'a long run of allowed characters with no uuid in it should be reported'
 );
 assert(
-  toLoggableIdentifier('   ') === undefined && toLoggableIdentifier(undefined) === undefined,
+  toLoggableStoryId('   ') === undefined && toLoggableStoryId(undefined) === undefined,
   'a missing identifier should be omitted rather than reported as unrecognized'
 );
 

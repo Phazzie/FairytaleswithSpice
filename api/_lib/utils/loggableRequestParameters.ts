@@ -50,15 +50,21 @@ export function toLoggableCreature(creature: unknown): string {
  *   admits it whole — the separators prose is written with when spaces are
  *   unavailable are the same ones an id uses.
  *
- * What every id here actually has is a UUID: `story_<uuid>` from
- * `generateStoryId`, `story_stream_<uuid>` from the stream route, `req_<uuid>`,
- * `img-<uuid>`. A UUID is thirty-two hex digits in a fixed grouping, which no
- * sentence produces by accident, so the pattern is an id-shaped prefix followed
- * by one. That is a property of the value rather than of its punctuation, and
- * it is the reason this rule holds where the other two did not.
+ * - A UUID with a free prefix is not a filter either, for the third time in the
+ *   same shape: `Dana_at_Rosewood_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f` carries
+ *   a real UUID and thirty-two characters of caller text in front of it. What
+ *   the prefix is has to be decided, not merely bounded.
+ *
+ * So the rule is the whole minted form, not a description of one. A story id is
+ * written in exactly three places — `story_<uuid>` in `StoryService`,
+ * `story_stream_<uuid>` in the stream route, and `story-<uuid>` in the Story Lab
+ * mock data — and this helper is only ever asked about story ids, so those three
+ * are the alternatives. Nothing precedes the `story` and nothing follows the
+ * UUID, which leaves no room for text to travel alongside the part that looks
+ * legitimate.
  */
-const LOGGABLE_IDENTIFIER_PATTERN =
-  /^[A-Za-z0-9_-]{0,32}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LOGGABLE_STORY_ID_PATTERN =
+  /^story(?:_|-|_stream_)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface LoggableThemes {
   themes: string[];
@@ -136,12 +142,12 @@ export function toLoggableBoolean(value: unknown): boolean | string | undefined 
 }
 
 /**
- * Log an identifier only when it is shaped like one.
+ * Log a story id only when it is one.
  *
  * A story id is the field that correlates a log line with the request it
  * belongs to, so it is worth keeping — but it arrives from the caller like
  * every other field, and nothing on the way here constrains it. Matching the
- * minted shape means a value either is an id this repository would have
+ * minted forms means a value either is a story id this repository would have
  * produced, and is logged, or is not, and is reported as unrecognised without
  * its text.
  *
@@ -149,12 +155,12 @@ export function toLoggableBoolean(value: unknown): boolean | string | undefined 
  * marker means "the caller sent something that was not an id" rather than
  * "there was no id".
  */
-export function toLoggableIdentifier(value: unknown): string | undefined {
+export function toLoggableStoryId(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.trim().length === 0) {
     return undefined;
   }
 
   const trimmed = value.trim();
 
-  return LOGGABLE_IDENTIFIER_PATTERN.test(trimmed) ? trimmed : UNRECOGNIZED_PARAMETER;
+  return LOGGABLE_STORY_ID_PATTERN.test(trimmed) ? trimmed : UNRECOGNIZED_PARAMETER;
 }

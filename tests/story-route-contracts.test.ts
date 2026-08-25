@@ -559,10 +559,11 @@ async function verifyStreamDoesNotLogCallerText(): Promise<void> {
 async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
   logger.clearLogs();
 
-  // Underscore-separated, so it passes both of the rules this check went
-  // through before landing on the minted shape: it is shorter than any cap, and
-  // every character in it is one an id may contain.
-  const storyIdProse = 'Dana_is_in_treatment_at_the_clinic_on_Rosewood';
+  // Underscore-separated and carrying a real UUID, so it passes every rule this
+  // check went through before the minted form: it is shorter than any cap,
+  // every character in it is one an id may contain, and the id-shaped tail is
+  // genuine. Only pinning the whole form rejects it.
+  const storyIdProse = 'Dana_at_the_clinic_on_Rosewood_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';
   const { consoleOutput } = await captureConsole(async () => {
     const res = new FakeResponse();
     await continueHandler({
