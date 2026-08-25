@@ -245,7 +245,27 @@ function extractDialogueSpeakers(dialogueLines: string[]): string[] {
     .filter((speaker): speaker is string => Boolean(speaker))));
 }
 
-const NAMED_CHARACTER_PATTERN = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g;
+/**
+ * A whole run of consecutive capitalized words, not a name-shaped pair.
+ *
+ * The boundary has to be decided before the words are combined. Matching at
+ * most two of them and testing the pair swallowed the name in "Then Mira
+ * pressed the blood oath": the pair `Then Mira` is rejected for starting the
+ * sentence, and because a global matcher resumes after the whole match, `Mira`
+ * is never offered on its own. Reading the run lets the sentence opener be
+ * dropped and the rest of the run kept.
+ */
+const NAMED_CHARACTER_RUN_PATTERN = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g;
+/** A name is at most a given name and a surname, as it always was. */
+const MAX_NAME_WORDS = 2;
+/**
+ * The longest first token of a concrete anchor that cannot be carrying meaning.
+ * No English word of one or two letters is a modifier that makes a noun
+ * specific — they are articles, prepositions, pronouns, and conjunctions — so
+ * `a door`, `my key`, `in court`, and `by car` are all rejected by length
+ * rather than by having to be named one at a time.
+ */
+const SHORTEST_MEANINGFUL_MODIFIER = 2;
 /**
  * Punctuation that ends the sentence before a capitalized word, so the capital
  * is explained by the position rather than by the word being a name. The colon
@@ -273,21 +293,28 @@ const PRE_NAME_PUNCTUATION = new Set(['"', "'", '“', '”', '‘', '’', '(',
  *
  * A capitalized word counts as a name only where nothing but the word itself
  * explains the capital — at least one appearance away from a sentence
- * boundary, a line start, or a `[Speaker]:` tag. A name a story only ever
- * writes sentence-initially is missed, which is the safe direction for an
+ * boundary, a line start, or a `[Speaker]:` tag. A sentence opener only
+ * disqualifies itself, not the words after it: "Then Mira pressed the blood
+ * oath" drops `Then` and keeps `Mira`. A name a story only ever writes
+ * sentence-initially is still missed, which is the safe direction for an
  * advisory signal: reporting a cast that is not there is what made the score
  * meaningless.
  */
 function extractNamedCharacters(storyContent: string): string[] {
   const names = new Set<string>();
 
-  for (const match of storyContent.matchAll(NAMED_CHARACTER_PATTERN)) {
-    const name = match[0];
-    if (name === 'Narrator' || names.has(name) || startsSentence(storyContent, match.index ?? 0)) {
-      continue;
+  for (const match of storyContent.matchAll(NAMED_CHARACTER_RUN_PATTERN)) {
+    const words = match[0].split(/\s+/);
+    // Only the run's first word can be sitting on the boundary; the rest are
+    // capitalized mid-sentence whatever precedes the run.
+    if (startsSentence(storyContent, match.index ?? 0)) {
+      words.shift();
     }
 
-    names.add(name);
+    const name = words.slice(0, MAX_NAME_WORDS).join(' ');
+    if (name && name !== 'Narrator') {
+      names.add(name);
+    }
   }
 
   return Array.from(names);
@@ -381,14 +408,16 @@ function extractConcreteAnchors(storyContent: string): string[] {
     'ticket',
     'vow'
   ]);
+  // The one- and two-character words are not listed here: every English word
+  // that short is a function word — article, preposition, pronoun, or
+  // conjunction — and none of them makes the noun after it specific. They are
+  // rejected wholesale by the length check below, which is what `a`, `an`, and
+  // `my` used to be doing here and what also covers `in court` and `by car`.
   const weakFirstTokens = new Set([
-    'a',
-    'an',
     'and',
     'every',
     'her',
     'his',
-    'my',
     'now',
     'our',
     'that',
@@ -417,13 +446,14 @@ function extractConcreteAnchors(storyContent: string): string[] {
     .toLowerCase()
     .replace(/[^a-z'\s-]/g, ' ')
     .replace(/\s+/g, ' ');
-  // Every token, not just the ones longer than two characters. The short words
-  // this used to drop are exactly the ones `weakFirstTokens` exists to catch —
-  // `a`, `an`, `my` — so the guard could never fire for them, and dropping a
-  // token also welded its two non-adjacent neighbours into a phrase that was
-  // never in the prose: "She opened a door" became the anchor `opened door`,
-  // and a generic reference was scored as a concrete one. Keeping the tokens
-  // lets the guard read the determiner that is actually there.
+  // Every token, so that two words are paired only when they really are
+  // adjacent. Dropping the short ones before pairing welded two non-adjacent
+  // neighbours into a phrase that was never in the prose — "She opened a door"
+  // became the anchor `opened door`, scoring a generic reference as a concrete
+  // one — and it also made the `a`/`an`/`my` entries of `weakFirstTokens`
+  // unreachable, since the words they name were already gone. The short words
+  // are still rejected, but as the first half of a pair rather than as tokens,
+  // which is the distinction the old filter got wrong.
   const tokens = normalized.split(' ').filter(Boolean);
 
   for (let index = 0; index < tokens.length - 1; index += 1) {
@@ -431,6 +461,7 @@ function extractConcreteAnchors(storyContent: string): string[] {
     const noun = tokens[index + 1].replace(/s$/, '');
     const firstToken = tokens[index];
     if (
+      firstToken.length <= SHORTEST_MEANINGFUL_MODIFIER ||
       weakFirstTokens.has(firstToken) ||
       weakVerbPrefixes.has(firstToken) ||
       !objectNouns.has(noun) ||

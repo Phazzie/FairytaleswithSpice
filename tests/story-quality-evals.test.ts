@@ -239,10 +239,50 @@ function testNamedProseStillScores(): void {
   );
 }
 
+/**
+ * Both boundary rules have to reject only what they are aimed at.
+ *
+ * The Codex review on PR #213 caught each one overreaching. A sentence opener
+ * used to swallow the name behind it: `\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b`
+ * matches "Then Mira" as one pair, rejecting the pair for starting the
+ * sentence dropped "Mira" with it, and a global matcher resumes past the whole
+ * match — so "Then Mira pressed the blood oath" produced no character signals
+ * at all. And keeping every token for pairing made short prepositions eligible
+ * as the first half of an anchor, so "In court, she waited" scored `in court`
+ * as concrete specificity that the old tokenization never awarded.
+ */
+function testBoundaryRulesRejectOnlyTheBoundary(): void {
+  const scan = (storyContent: string) => buildStoryQualityHeuristicReport({
+    storyContent,
+    configuration: { creature: 'siren', themes: [], spicyLevel: 3, wordCount: 900 }
+  });
+
+  const opener = scan('The tide turned at last. Then Mira pressed the blood oath.');
+  const openerCharacters = opener.dimensions.find(dimension => dimension.id === 'character_consistency');
+  assert(
+    openerCharacters?.signals.includes('Named character count: 1'),
+    `a sentence opener should disqualify itself, not the name after it (signals=${JSON.stringify(openerCharacters?.signals)})`
+  );
+  assert(
+    openerCharacters?.signals.some(signal => signal.startsWith('Agency actions:')),
+    'a name recovered from behind a sentence opener should still carry its agency actions'
+  );
+
+  const prepositions = scan('In court, she waited. By car, they crossed the city.');
+  const prepositionAnchors = prepositions.dimensions
+    .find(dimension => dimension.id === 'prose_quality')
+    ?.signals.find(signal => signal.startsWith('Specific anchors:'));
+  assert(
+    !prepositionAnchors,
+    `a preposition is not a modifier that makes a noun specific (got ${prepositionAnchors})`
+  );
+}
+
 async function main(): Promise<void> {
   testHtmlStoriesAreScoredOnTheirProse();
   testAnonymousProseScoresAsAnonymous();
   testNamedProseStillScores();
+  testBoundaryRulesRejectOnlyTheBoundary();
 
   const heuristicReport = buildStoryQualityHeuristicReport({
     storyContent: [
