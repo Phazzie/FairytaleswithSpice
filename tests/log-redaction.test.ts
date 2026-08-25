@@ -145,4 +145,48 @@ cyclic['self'] = cyclic;
 const redactedCycle = redactSensitiveLogData(cyclic) as Record<string, any>;
 assert(redactedCycle.self === '[Circular]', 'true cycles should still be broken');
 
+// The two halves of what a request line is made of. `userInput` is free text a
+// reader wrote and has to be replaced wholesale; `requestParameters` is the
+// already-derived configuration a request was served with, and it has to
+// survive — the story routes used to send the second under the key of the
+// first, so the redactor blanked it and the log recorded that a generation had
+// started and nothing about what was asked for.
+const requestLine = redactSensitiveLogData({
+  requestId: 'req_abc',
+  endpoint: '/api/story/generate',
+  userInput: 'Write me a vampire who runs a bakery.',
+  requestParameters: {
+    creature: 'vampire',
+    themes: ['forbidden_love', 'betrayal'],
+    spicyLevel: 3,
+    wordCount: 900,
+    existingContentLength: 1420
+  }
+}) as Record<string, any>;
+
+assert(requestLine.userInput === '[REDACTED]', 'free-text user input should still be redacted');
+assert(
+  requestLine.requestParameters?.creature === 'vampire' &&
+    requestLine.requestParameters?.spicyLevel === 3 &&
+    requestLine.requestParameters?.wordCount === 900 &&
+    requestLine.requestParameters?.existingContentLength === 1420,
+  `derived request parameters should survive redaction (got ${JSON.stringify(requestLine.requestParameters)})`
+);
+assert(
+  Array.isArray(requestLine.requestParameters?.themes) &&
+    requestLine.requestParameters.themes.join(',') === 'forbidden_love,betrayal',
+  `theme ids should survive redaction (got ${JSON.stringify(requestLine.requestParameters?.themes)})`
+);
+
+// A sensitive key nested inside the parameters is still judged on its own name,
+// so the new field is not a hole in the redactor.
+const parametersWithSecret = redactSensitiveLogData({
+  requestParameters: { creature: 'siren', apiKey: 'xai-secret-key-123' }
+}) as Record<string, any>;
+assert(
+  parametersWithSecret.requestParameters.apiKey === '[REDACTED]' &&
+    parametersWithSecret.requestParameters.creature === 'siren',
+  'sensitive keys nested under request parameters should still be redacted'
+);
+
 console.log('Log redaction tests passed');

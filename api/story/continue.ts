@@ -54,7 +54,7 @@ export default async function handler(req: any, res: any) {
       requestId,
       endpoint: '/api/story/continue',
       method: 'POST',
-      userInput: {
+      requestParameters: {
         storyId: input.storyId,
         currentChapterCount: input.currentChapterCount,
         existingContentLength: input.existingContent.length

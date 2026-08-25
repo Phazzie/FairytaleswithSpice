@@ -119,7 +119,7 @@ export class StoryService {
       requestId,
       endpoint: 'generateStory',
       method: 'POST',
-      userInput: {
+      requestParameters: {
         creature: sanitizedInput.creature,
         themes: sanitizedInput.themes,
         spicyLevel: sanitizedInput.spicyLevel,
@@ -351,7 +351,7 @@ export class StoryService {
       requestId,
       endpoint: 'continueChapter',
       method: 'POST',
-      userInput: {
+      requestParameters: {
         currentChapterCount: sanitizedInput.currentChapterCount,
         existingContentLength: sanitizedInput.existingContent?.length || 0,
         maintainTone: sanitizedInput.maintainTone,

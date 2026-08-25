@@ -160,7 +160,7 @@ export default async function handler(req: any, res: any) {
       requestId,
       endpoint: '/api/story/stream',
       method: req.method,
-      userInput: {
+      requestParameters: {
         creature: input.creature,
         themes: input.themes,
         spicyLevel: input.spicyLevel,

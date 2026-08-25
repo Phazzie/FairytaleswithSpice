@@ -95,10 +95,50 @@ function testUnfilteredReadIsBoundedAndDetached(): void {
   assert(logger.getRecentLogs(4).length === 4, 'mutating the returned array should not empty the buffer');
 }
 
+// `slice(-count)` means "the last `count`" only for a positive count. `-0` is
+// `0`, so asking for none used to hand back the whole buffer — the case a
+// caller reaches by paging with a remainder that ran out — and a negative count
+// dropped the newest entries instead of returning none.
+function testNonPositiveCountsReturnNothing(): void {
+  recordLogs(Array.from({ length: 10 }, (_, index) => ({ level: 'info' as const, message: `entry ${index}` })));
+
+  for (const count of [0, -3, Number.NaN]) {
+    const entries = logger.getRecentLogs(count);
+    assert(
+      entries.length === 0,
+      `getRecentLogs(${count}) should return nothing (got ${entries.length} entries)`
+    );
+  }
+
+  assert(
+    logger.getRecentLogs(0, 'info').length === 0,
+    'a zero count should return nothing for a filtered read too'
+  );
+  assert(
+    logger.getRecentLogs(2).length === 2,
+    'a positive count should be unaffected by the clamp'
+  );
+}
+
+// A fractional count is not a number of entries; it is rounded down rather than
+// handed to `slice`, which would truncate it in the same direction but says so
+// nowhere.
+function testFractionalCountsRoundDown(): void {
+  recordLogs(Array.from({ length: 10 }, (_, index) => ({ level: 'info' as const, message: `entry ${index}` })));
+
+  const entries = logger.getRecentLogs(2.7);
+  assert(
+    messagesOf(entries).join('|') === 'entry 8|entry 9',
+    `a fractional count should round down to whole entries (got ${JSON.stringify(messagesOf(entries))})`
+  );
+}
+
 function main(): void {
   testLevelFilterSearchesTheWholeBuffer();
   testCountKeepsTheNewestMatches();
   testUnfilteredReadIsBoundedAndDetached();
+  testNonPositiveCountsReturnNothing();
+  testFractionalCountsRoundDown();
 
   logger.clearLogs();
   console.log('Logger recent-log tests passed');

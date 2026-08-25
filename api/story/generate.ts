@@ -61,7 +61,7 @@ export default async function handler(req: any, res: any) {
       requestId,
       endpoint: '/api/story/generate',
       method: 'POST',
-      userInput: {
+      requestParameters: {
         creature: input.creature,
         themes: input.themes,
         spicyLevel: input.spicyLevel,

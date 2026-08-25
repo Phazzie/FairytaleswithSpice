@@ -24,7 +24,27 @@ export interface LogContext {
   userId?: string;
   endpoint?: string;
   method?: string;
+  /**
+   * Free text a reader wrote. The key matches `SENSITIVE_KEY_PATTERNS` below,
+   * so whatever is put here is replaced wholesale before it reaches a log sink
+   * or the buffer — which is the point of the field, and the reason structured
+   * request parameters do not belong in it.
+   */
   userInput?: any;
+  /**
+   * The non-sensitive, already-derived parameters a request was served with —
+   * the creature, the theme ids, the spice level, the word budget, a content
+   * *length*. Never the prose itself.
+   *
+   * These used to travel under `userInput`, and the redactor blanks a sensitive
+   * key without looking inside it, so every one of them was replaced by
+   * `[REDACTED]` before it was written: the request line for a story
+   * generation recorded that a generation had started and nothing whatsoever
+   * about what was asked for. Under its own key each value is judged on its own
+   * name, and the strings still pass through token redaction, so the parameters
+   * survive and free text still does not.
+   */
+  requestParameters?: Record<string, unknown>;
   promptTokens?: number;
   completionTokens?: number;
   responseTime?: number;
@@ -254,10 +274,20 @@ class Logger {
    * filtering returned only the errors that happened to be among the last 50
    * entries of any level — on a busy request that is usually none of them,
    * which is exactly when the errors are worth reading.
+   *
+   * The count is read as "at most this many, newest first", which is what
+   * `slice(-count)` means for a positive count and the opposite of what it does
+   * for anything else. `slice(-0)` is `slice(0)`, so a caller paging with a
+   * computed remainder that reached zero — the case that should return nothing
+   * — was handed the entire buffer, up to a thousand entries, and a negative
+   * count dropped the newest `count` entries instead of returning none.
+   * Clamping keeps the argument meaning one thing at every value it can take.
    */
   public getRecentLogs(count: number = 50, level?: LogLevel): LogEntry[] {
     const logs = level ? this.logBuffer.filter(log => log.level === level) : this.logBuffer;
-    return logs.slice(-count);
+    const limit = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+
+    return limit === 0 ? [] : logs.slice(-limit);
   }
 
   /**
