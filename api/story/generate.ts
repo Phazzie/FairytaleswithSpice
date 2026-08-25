@@ -4,7 +4,7 @@ import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { StoryService } from '../_lib/services/storyService';
 import { StoryGenerationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
-import { toLoggableCreature, toLoggableThemes } from '../_lib/utils/loggableRequestParameters';
+import { toLoggableCreature, toLoggableNumber, toLoggableThemes } from '../_lib/utils/loggableRequestParameters';
 
 export default async function handler(req: any, res: any) {
   // Generate or extract request ID for tracking
@@ -65,8 +65,8 @@ export default async function handler(req: any, res: any) {
       requestParameters: {
         creature: toLoggableCreature(input.creature),
         ...toLoggableThemes(input.themes),
-        spicyLevel: input.spicyLevel,
-        wordCount: input.wordCount
+        spicyLevel: toLoggableNumber(input.spicyLevel),
+        wordCount: toLoggableNumber(input.wordCount)
       }
     });
 

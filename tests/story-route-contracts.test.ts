@@ -599,6 +599,47 @@ async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
     `a story id that is not shaped like one should be reported (got ${JSON.stringify(started.context?.requestParameters)})`
   );
 
+  // `maintainTone` is the scalar the route does not guard. `currentChapterCount`
+  // it does — `typeof input.currentChapterCount !== 'number'` is answered with a
+  // 400 before anything is logged — but nothing checks `maintainTone`, and the
+  // *service* logs it on the way past. A prose value therefore reaches the
+  // request line the service writes, one call below this route.
+  logger.clearLogs();
+  const scalarProse = 'Dana asked me not to tell anyone about Rosewood';
+  const { consoleOutput: scalarConsole } = await captureConsole(async () => {
+    const res = new FakeResponse();
+    await continueHandler({
+      method: 'POST',
+      headers: {},
+      body: {
+        storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+        existingContent: '<p>She opened the door.</p>',
+        currentChapterCount: 1,
+        maintainTone: scalarProse
+      }
+    }, res);
+    return res;
+  });
+
+  const serviceEntry = logger
+    .getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === 'continueChapter');
+
+  assert(serviceEntry, 'the continuation service should log the request it received');
+  for (const [sink, written] of [
+    ['buffer', JSON.stringify(serviceEntry.context)],
+    ['console', scalarConsole]
+  ] as const) {
+    assert(
+      !written.includes('Dana') && !written.includes('Rosewood'),
+      `prose sent as a flag must not reach the ${sink} (got ${written})`
+    );
+  }
+  assert(
+    serviceEntry.context?.requestParameters?.['maintainTone'] === '[UNRECOGNIZED]',
+    `a flag that is not a boolean should be reported (got ${JSON.stringify(serviceEntry.context?.requestParameters)})`
+  );
+
   // The ordinary case still logs the id, which is what makes it worth keeping.
   logger.clearLogs();
   const realStoryId = 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';

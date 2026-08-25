@@ -2,7 +2,12 @@
 // Created: 2026-06-05 00:56 EDT
 
 import { redactSensitiveLogData } from '../api/_lib/utils/logger';
-import { toLoggableIdentifier, toLoggableThemes } from '../api/_lib/utils/loggableRequestParameters';
+import {
+  toLoggableBoolean,
+  toLoggableIdentifier,
+  toLoggableNumber,
+  toLoggableThemes
+} from '../api/_lib/utils/loggableRequestParameters';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -240,6 +245,36 @@ assert(
 assert(
   toLoggableIdentifier('   ') === undefined && toLoggableIdentifier(undefined) === undefined,
   'a missing identifier should be omitted rather than reported as unrecognized'
+);
+
+// The scalars are typed as numbers and a flag by the contract, but a raw POST
+// carries whatever JSON the caller wrote and the checks before these log calls
+// test presence rather than type.
+assert(
+  toLoggableNumber(3) === 3 && toLoggableNumber(0) === 0,
+  'a real number should be logged as it is, zero included'
+);
+assert(
+  toLoggableNumber(privateProse) === '[UNRECOGNIZED]' &&
+    toLoggableNumber(Number.NaN) === '[UNRECOGNIZED]' &&
+    toLoggableNumber({ nested: privateProse }) === '[UNRECOGNIZED]',
+  'anything that is not a finite number should be reported, not repeated'
+);
+assert(
+  toLoggableNumber(undefined) === undefined && toLoggableNumber(null) === undefined,
+  'a missing number should be omitted rather than reported as unrecognized'
+);
+assert(
+  toLoggableBoolean(false) === false && toLoggableBoolean(true) === true,
+  'a real flag should be logged as it is, false included'
+);
+assert(
+  toLoggableBoolean(privateProse) === '[UNRECOGNIZED]',
+  'prose sent as a flag should be reported, not repeated'
+);
+assert(
+  toLoggableBoolean(undefined) === undefined,
+  'a missing flag should be omitted'
 );
 
 console.log('Log redaction tests passed');

@@ -18,7 +18,12 @@ import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogCon
 import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
 import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../utils/storyTextBlocks';
-import { toLoggableCreature, toLoggableThemes } from '../utils/loggableRequestParameters';
+import {
+  toLoggableBoolean,
+  toLoggableCreature,
+  toLoggableNumber,
+  toLoggableThemes
+} from '../utils/loggableRequestParameters';
 
 interface AiCallMetadata {
   model?: string;
@@ -126,9 +131,9 @@ export class StoryService {
         // number of themes but not their contents, so the array can hold
         // whatever the caller sent.
         ...toLoggableThemes(sanitizedInput.themes),
-        spicyLevel: sanitizedInput.spicyLevel,
-        wordCount: sanitizedInput.wordCount,
-        requestedChapterCount: input.requestedChapterCount ?? requestedChapterCount
+        spicyLevel: toLoggableNumber(sanitizedInput.spicyLevel),
+        wordCount: toLoggableNumber(sanitizedInput.wordCount),
+        requestedChapterCount: toLoggableNumber(input.requestedChapterCount ?? requestedChapterCount)
       }
     };
 
@@ -356,10 +361,10 @@ export class StoryService {
       endpoint: 'continueChapter',
       method: 'POST',
       requestParameters: {
-        currentChapterCount: sanitizedInput.currentChapterCount,
+        currentChapterCount: toLoggableNumber(sanitizedInput.currentChapterCount),
         existingContentLength: sanitizedInput.existingContent?.length || 0,
-        maintainTone: sanitizedInput.maintainTone,
-        requestedChapterCount: input.requestedChapterCount ?? requestedChapterCount
+        maintainTone: toLoggableBoolean(sanitizedInput.maintainTone),
+        requestedChapterCount: toLoggableNumber(input.requestedChapterCount ?? requestedChapterCount)
       }
     };
 

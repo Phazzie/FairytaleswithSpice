@@ -96,6 +96,37 @@ export function toLoggableThemes(themes: unknown): LoggableThemes {
 }
 
 /**
+ * Log a number only when it is one.
+ *
+ * `spicyLevel`, `wordCount`, `currentChapterCount`, and `requestedChapterCount`
+ * are typed as numbers by the contract and are numbers in every request the app
+ * itself makes — but a raw POST carries whatever JSON the caller wrote, and the
+ * checks that run before these log calls test presence rather than type. The
+ * stream route is the exception, having already parsed and range-checked its
+ * two; running them through here as well costs nothing and means the guarantee
+ * belongs to the log call rather than to the order of the checks above it.
+ *
+ * An absent value is omitted, so the marker means the caller sent a non-number
+ * rather than nothing.
+ */
+export function toLoggableNumber(value: unknown): number | string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  return typeof value === 'number' && Number.isFinite(value) ? value : UNRECOGNIZED_PARAMETER;
+}
+
+/** The same, for a flag. `maintainTone` is the one this repository logs. */
+export function toLoggableBoolean(value: unknown): boolean | string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  return typeof value === 'boolean' ? value : UNRECOGNIZED_PARAMETER;
+}
+
+/**
  * Log an identifier only when it is shaped like one.
  *
  * A story id is the field that correlates a log line with the request it
