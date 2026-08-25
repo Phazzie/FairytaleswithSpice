@@ -99,6 +99,47 @@ for (const delimiter of ['=', ':', '/', '+', '"', ',', '(']) {
   );
 }
 
+// A URL is usually written into a sentence, and the mark that closes the
+// sentence has no whitespace before it — so the run that redacted the URL took
+// the punctuation with it and left the log line unreadable at exactly the
+// moment someone is reading it.
+const punctuated: Array<{ note: string; expected: string; why: string }> = [
+  {
+    note: 'See https://host.example/a, then call me.',
+    expected: 'See [REDACTED], then call me.',
+    why: 'a comma after a URL belongs to the sentence'
+  },
+  {
+    note: 'Visit (https://host.example/a) now.',
+    expected: 'Visit ([REDACTED]) now.',
+    why: 'a parenthesis enclosing a URL is not part of it'
+  },
+  {
+    note: 'Fetched https://host.example/a.',
+    expected: 'Fetched [REDACTED].',
+    why: 'a full stop after a URL belongs to the sentence'
+  },
+  {
+    // The other direction: a path that really does end in a bracket keeps it,
+    // because the URL holds the opener that matches it.
+    note: 'Fetched https://host.example/wiki/Title_(disambiguation) twice.',
+    expected: 'Fetched [REDACTED] twice.',
+    why: 'a balanced bracket inside a path is part of the URL'
+  }
+];
+
+for (const testCase of punctuated) {
+  const redactedNote = (redactSensitiveLogData({ note: testCase.note }) as Record<string, string>).note;
+  assert(
+    redactedNote === testCase.expected,
+    `${testCase.why} (got ${JSON.stringify(redactedNote)})`
+  );
+  assert(
+    !redactedNote.includes('host.example'),
+    `the URL itself must still be redacted (got ${JSON.stringify(redactedNote)})`
+  );
+}
+
 const cyclic: Record<string, unknown> = { model: 'grok-4' };
 cyclic['self'] = cyclic;
 const redactedCycle = redactSensitiveLogData(cyclic) as Record<string, any>;

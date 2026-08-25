@@ -240,6 +240,42 @@ function testNamedProseStillScores(): void {
 }
 
 /**
+ * A `[Speaker]:` tag names a character outright, so the cast count must include
+ * the speakers the same scan already reports.
+ *
+ * The tag starts the line it is on, which is the one position the boundary rule
+ * throws a capital away — so a scene whose signals read `Speaker: Elena` next
+ * to `Named character count: 1` was reporting a cast of one for a cast of
+ * three, and no action Elena took anywhere in the chapter could be credited to
+ * her. `Narrator` stays out of the count for the reason it always has: it names
+ * the telling, not a member of the cast.
+ */
+function testDialogueSpeakersCountAsCast(): void {
+  const scan = (storyContent: string) => buildStoryQualityHeuristicReport({
+    storyContent,
+    configuration: { creature: 'siren', themes: [], spicyLevel: 3, wordCount: 900 }
+  })
+    .dimensions
+    .find(dimension => dimension.id === 'character_consistency');
+
+  const spoken = scan('<p>[Elena]: "Run."</p><p>Then Kael chose the door.</p>');
+  assert(
+    spoken?.signals.includes('Speaker: Elena'),
+    `the speaker tag should still be reported (signals=${JSON.stringify(spoken?.signals)})`
+  );
+  assert(
+    spoken?.signals.includes('Named character count: 2'),
+    `a speaker is a named character (signals=${JSON.stringify(spoken?.signals)})`
+  );
+
+  const narrated = scan('<p>[Narrator]: The tide turned at last.</p><p>Then Mira pressed the blood oath.</p>');
+  assert(
+    narrated?.signals.includes('Named character count: 1'),
+    `Narrator names the telling, not the cast (signals=${JSON.stringify(narrated?.signals)})`
+  );
+}
+
+/**
  * Both boundary rules have to reject only what they are aimed at.
  *
  * The Codex review on PR #213 caught each one overreaching. A sentence opener
@@ -294,6 +330,7 @@ async function main(): Promise<void> {
   testHtmlStoriesAreScoredOnTheirProse();
   testAnonymousProseScoresAsAnonymous();
   testNamedProseStillScores();
+  testDialogueSpeakersCountAsCast();
   testBoundaryRulesRejectOnlyTheBoundary();
 
   const heuristicReport = buildStoryQualityHeuristicReport({

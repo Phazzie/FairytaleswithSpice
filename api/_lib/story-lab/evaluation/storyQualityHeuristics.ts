@@ -141,7 +141,7 @@ function scoreEmotionalVariety(storyText: string): DimensionDraft {
 
 function scoreCharacterConsistency(storyContent: string, dialogueLines: string[]): DimensionDraft {
   const speakers = extractDialogueSpeakers(dialogueLines);
-  const namedCharacters = extractNamedCharacters(storyContent);
+  const namedCharacters = extractNamedCharacters(storyContent, speakers);
   const agencyActions = extractAgencyActions(storyContent, namedCharacters);
   let rationale = 'Few character identity signals were detected.';
   if (agencyActions.length) {
@@ -307,9 +307,25 @@ const PRE_NAME_PUNCTUATION = new Set(['"', "'", '“', '”', '‘', '’', '(',
  * sentence-initially is still missed, which is the safe direction for an
  * advisory signal: reporting a cast that is not there is what made the score
  * meaningless.
+ *
+ * The one place a name needs no such inference is a `[Speaker]:` tag, which
+ * the generator writes to say who is talking — a character name by
+ * construction, whatever position it sits in. The scan proved the point and
+ * then threw it away: a line beginning `[Elena]:` starts the block, so the
+ * boundary rule dropped `Elena`, and the dimension reported `Named character
+ * count: 1` for a scene whose own signals already listed `Speaker: Elena`
+ * beside two other names. The agency scan reads this list too, so no action
+ * Elena took anywhere in the chapter could be credited to her either. Seeding
+ * the set with the speakers the same scan already extracted fixes both, and
+ * `Narrator` is excluded here for the reason it is excluded below: it names
+ * the telling, not a member of the cast.
  */
-function extractNamedCharacters(storyContent: string): string[] {
-  const names = new Set<string>();
+function extractNamedCharacters(storyContent: string, dialogueSpeakers: readonly string[] = []): string[] {
+  const names = new Set<string>(
+    dialogueSpeakers
+      .map(speaker => speaker.trim().split(/\s+/).slice(0, MAX_NAME_WORDS).join(' '))
+      .filter(speaker => speaker && speaker !== 'Narrator')
+  );
 
   for (const match of storyContent.matchAll(NAMED_CHARACTER_RUN_PATTERN)) {
     const words = match[0].split(/\s+/);

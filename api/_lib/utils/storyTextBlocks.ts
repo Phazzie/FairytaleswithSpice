@@ -40,7 +40,49 @@ export function stripStoryHtmlToText(storyContent: string): string {
   return splitStoryIntoTextBlocks(storyContent).join('\n\n');
 }
 
-const BLOCK_LEVEL_TAG_NAMES = 'br|p|div|section|article|blockquote|li|ul|ol|h[1-6]|figure|figcaption|table|tr';
+/**
+ * The tags that put a boundary between the text on either side of them.
+ *
+ * Every tag a reader sees a break at has to be here, because whatever is left
+ * over is deleted in place: `<td>One</td><td>Two</td>` had a boundary for the
+ * row but none for the cells, so the two cells came back as the single token
+ * `OneTwo` — the `door.Blood` welding this module exists to prevent, just one
+ * level further in. The list is the block-level and table-cell elements the
+ * generator's markup can contain, so a boundary is never left to the tag that
+ * happens to enclose it.
+ */
+const BLOCK_LEVEL_TAG_NAMES = [
+  'br',
+  'p',
+  'div',
+  'section',
+  'article',
+  'aside',
+  'header',
+  'footer',
+  'main',
+  'nav',
+  'blockquote',
+  'pre',
+  'hr',
+  'li',
+  'ul',
+  'ol',
+  'dl',
+  'dt',
+  'dd',
+  'h[1-6]',
+  'figure',
+  'figcaption',
+  'table',
+  'thead',
+  'tbody',
+  'tfoot',
+  'caption',
+  'tr',
+  'td',
+  'th'
+].join('|');
 /**
  * Match an opening or closing block-level tag, with or without attributes.
  *
