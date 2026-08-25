@@ -300,15 +300,23 @@ class RecordingResponse {
   }
 }
 
+// The path carries markup a browser would not send but a client writing its own
+// request line can: `req.originalUrl` is whatever arrived. The 404 message used
+// to quote it back, which put caller-controlled bytes in the response body.
+const injectedPath = '/api/x"><script>alert(1)</script>?debug=1';
 const notFound = new RecordingResponse();
-apiNotFoundHandler({ method: 'post', originalUrl: '/api/story-lab/storyz?debug=1' }, notFound);
+apiNotFoundHandler({ method: 'post', originalUrl: injectedPath }, notFound);
 assert.equal(notFound.statusCode, 404, 'an unregistered API path is a 404, not the SSR index page');
 assert.equal(notFound.body.success, false);
 assert.equal(notFound.body.error.code, 'API_ROUTE_NOT_FOUND');
-assert.match(
-  notFound.body.error.message,
-  /POST \/api\/story-lab\/storyz/,
-  'the message should name the method and path, without the query string'
+assert.ok(
+  !JSON.stringify(notFound.body).includes('<script>'),
+  'the 404 envelope should reflect nothing from the request'
+);
+assert.equal(
+  notFound.headers['X-Content-Type-Options'],
+  'nosniff',
+  'the declared JSON type has to bind, so a body here can never be read as a document'
 );
 
 const bodyParserCases = [
@@ -384,6 +392,7 @@ const bare: any = {
 apiErrorHandler(leaky, fakeRequest(), bare, error => assert.fail(`unexpected next: ${String(error)}`));
 assert.equal(bare.statusCode, 500);
 assert.equal(bare.headers['Content-Type'], 'application/json');
+assert.equal(bare.headers['X-Content-Type-Options'], 'nosniff');
 assert.equal(JSON.parse(bare.ended).error.code, 'INTERNAL_ERROR');
 
 // The rejection is delivered on a microtask, so the assertion waits for one.

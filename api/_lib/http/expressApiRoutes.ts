@@ -135,13 +135,24 @@ export function registerApiRoutes(registrar: ApiRouteRegistrar): void {
  *
  * Mount it directly after `registerApiRoutes`, before the static and SSR
  * handlers, since falling through to them is the thing being prevented.
+ *
+ * The message names nothing from the request. It used to quote the method and
+ * path back — friendlier to read in a log, and a reflected-XSS sink: the path
+ * arrives from the caller and left again inside the response body. A browser
+ * percent-encodes the URL it sends, so `%3Cscript%3E` is what
+ * `req.originalUrl` holds and what came back; a client writing the request line
+ * itself is under no such constraint, and a raw `<script>` reached the body
+ * verbatim. It is served as `application/json`, which is why this was narrow
+ * rather than live — but "narrow" depends on a `Content-Type` being respected,
+ * and the caller already knows which URL it asked for, so the echo was buying
+ * nothing worth defending.
  */
-export function apiNotFoundHandler(req: any, res: any): void {
+export function apiNotFoundHandler(_req: any, res: any): void {
   sendApiEnvelope(res, 404, {
     success: false,
     error: {
       code: 'API_ROUTE_NOT_FOUND',
-      message: `No API route matches ${readRequestMethod(req)} ${readRequestPath(req)}.`
+      message: 'No API route matches this path.'
     }
   });
 }
@@ -245,6 +256,15 @@ function readErrorStatus(error: any): number | undefined {
 }
 
 function sendApiEnvelope(res: any, status: number, body: unknown): void {
+  // Defence in depth for the whole envelope path, not for the echo that was
+  // removed above: `application/json` only keeps a body from being read as
+  // markup while something honours it, and a browser that content-sniffs does
+  // not. `nosniff` is what makes the declared type binding, so a response here
+  // cannot be turned into a document by any later change to what these
+  // envelopes carry. Express's own `json escape` setting is the other half and
+  // is off by default, so `<` in a JSON string is written through literally.
+  res.setHeader?.('X-Content-Type-Options', 'nosniff');
+
   if (typeof res?.status === 'function' && typeof res.status(status)?.json === 'function') {
     res.status(status).json(body);
     return;
@@ -255,16 +275,6 @@ function sendApiEnvelope(res: any, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader?.('Content-Type', 'application/json');
   res.end?.(JSON.stringify(body));
-}
-
-function readRequestMethod(req: any): string {
-  const method = req?.method;
-  return typeof method === 'string' && method ? method.toUpperCase() : 'GET';
-}
-
-function readRequestPath(req: any): string {
-  const path = req?.originalUrl ?? req?.url;
-  return typeof path === 'string' && path ? path.split('?')[0] : '/api';
 }
 
 /**
