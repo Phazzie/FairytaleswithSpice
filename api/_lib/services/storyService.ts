@@ -58,6 +58,9 @@ const STORY_LAB_THEME_LABEL_MAX_LENGTH = 80;
 const STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH = 280;
 const STORY_LAB_CONTEXT_VALUE_MAX_LENGTH = 320;
 const STORY_LAB_NO_GO_CONTENT_MAX_LENGTH = STORY_LAB_CONTEXT_VALUE_MAX_LENGTH;
+// How much of the closing passage the continuation prompt is shown as "what
+// just happened", in words.
+const SUMMARY_WORD_LIMIT = 150;
 
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
@@ -1471,12 +1474,19 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     
     // Get last 2-3 paragraphs as summary
     const lastParagraphs = paragraphs.slice(-3).join(' ');
-    
+
     // Truncate to ~150 words
     const words = lastParagraphs.split(/\s+/);
-    const summary = words.slice(0, 150).join(' ');
-    
-    return summary.length < lastParagraphs.length ? summary + '...' : summary;
+    const summary = words.slice(0, SUMMARY_WORD_LIMIT).join(' ');
+
+    // Whether the cut happened is a question about the words, not about the
+    // lengths of two strings. Joining on single spaces is itself shortening —
+    // any line break or double space inside the paragraphs comes back as one
+    // character — so comparing lengths reported a truncation for a summary that
+    // holds the whole passage. The marker is what tells the continuation prompt
+    // that the chapter it is being handed stops mid-thought, and the model is
+    // then prompted to resume from a sentence that had in fact already ended.
+    return words.length > SUMMARY_WORD_LIMIT ? summary + '...' : summary;
   }
 
   /**
@@ -2006,14 +2016,24 @@ ${renderBody()}`;
       .replace(/\n\s*\n/g, '\n\n') // Normalize multiple newlines
       .trim();
 
-    // Smart paragraph creation based on content structure
-    const lines = displayContent.split('\n').filter(line => line.trim());
+    // Smart paragraph creation based on content structure.
+    //
+    // The blank lines have to survive the split. Filtering them out here left
+    // the branch below — the one that reads a blank line as the paragraph break
+    // it is — unreachable, so the only breaks this method could ever make were
+    // the ones the dialogue and narrative-shift heuristics guessed at. A model
+    // that separated its paragraphs the ordinary way, with a blank line and no
+    // opening quote or `Suddenly` to give itself away, had every one of them
+    // welded into a single `<p>`: the reader was shown the chapter as one
+    // unbroken block, and the paragraph structure the generator had actually
+    // written was thrown away before anything downstream could read it.
+    const lines = displayContent.split('\n');
     const paragraphs = [];
     let currentParagraph = '';
 
     for (const line of lines) {
       const trimmedLine = line.trim();
-      
+
       // Empty line indicates paragraph break
       if (!trimmedLine) {
         if (currentParagraph) {

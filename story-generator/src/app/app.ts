@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subscription, map } from 'rxjs';
+import { splitStoryIntoTextBlocks } from '../../../api/_lib/utils/storyTextBlocks';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import {
   BatchProgressState,
@@ -2526,26 +2527,25 @@ ${chapters}
     return `${session.story.title}\n\n${session.story.synopsis}\n\n${chapters}`;
   }
 
+  /**
+   * Render a chapter's markup as the text a reader sees, for the clipboard.
+   *
+   * Deleting the tags and collapsing every whitespace run is not that. A
+   * chapter is a sequence of `<p>` elements, so the collapse turned the whole
+   * story into a single unbroken line — the reader who copied it to paste
+   * somewhere else got a wall of text with no paragraphs anywhere in it — and
+   * nothing decoded the character references the generator writes, so `&amp;`
+   * and `&quot;` were pasted as that literal entity text rather than as the
+   * punctuation they stand for.
+   *
+   * `splitStoryIntoTextBlocks` is the rendering the cliffhanger, image,
+   * continuity, and story-quality scanners already read: a block-level tag puts
+   * a paragraph break where the markup put one, and the basic entities are
+   * decoded. Joining the blocks with a blank line gives the plain-text shape a
+   * story has everywhere else it leaves this app.
+   */
   private stripHtml(html: string): string {
-    let text = '';
-    let insideTag = false;
-
-    for (const char of html) {
-      if (char === '<') {
-        insideTag = true;
-        text += ' ';
-        continue;
-      }
-      if (char === '>') {
-        insideTag = false;
-        continue;
-      }
-      if (!insideTag) {
-        text += char;
-      }
-    }
-
-    return this.normalizeInlineWhitespace(text);
+    return splitStoryIntoTextBlocks(html).join('\n\n');
   }
 
   private safeFileName(value: string): string {
