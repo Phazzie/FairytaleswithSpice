@@ -2598,6 +2598,29 @@ describe('App', () => {
     expect(component.statusMessage()).toBe('Story copied to your clipboard.');
   });
 
+  it('copies story text as paragraphs with decoded character references', async () => {
+    const writeText = jasmine.createSpy('writeText').and.resolveTo();
+    spyOnProperty(navigator, 'clipboard', 'get').and.returnValue({ writeText } as unknown as Clipboard);
+    component.workbench.set({
+      story: createSummary({ title: 'Copied Pact' }),
+      state: createState(),
+      chapterHistory: [createChapter({
+        title: 'First Ember',
+        htmlContent: '<p>She opened the door.</p><p>Blood &amp; ash pooled on the &quot;floor&quot;.</p>'
+      })],
+      activeBatchSize: 1
+    });
+
+    await component.copyStory();
+
+    const copied = writeText.calls.mostRecent().args[0] as string;
+    // Collapsing the markup to a single line welded the paragraphs together and
+    // left the generator's character references sitting in the prose as text.
+    expect(copied).toContain('She opened the door.\n\nBlood & ash pooled on the "floor".');
+    expect(copied).not.toContain('&amp;');
+    expect(copied).not.toContain('door. Blood');
+  });
+
   it('downloads generated story HTML locally', fakeAsync(() => {
     const originalCreateElement = document.createElement.bind(document);
     const anchor = originalCreateElement('a') as HTMLAnchorElement;

@@ -713,6 +713,66 @@ const storyTextTests = {
     }
 
     console.log(`   ✓ Hint: ${JSON.stringify(hint)}`);
+  }),
+
+  testLastChapterSummaryOnlyMarksRealTruncation: test('Last Chapter Summary Only Marks Real Truncation', () => {
+    const service = new StoryService();
+    const summarize = (content: string) => (service as any).extractLastChapterSummary(content) as string;
+
+    // A short closing passage that the 150-word cut cannot reach, written the
+    // way generator HTML actually arrives: the paragraphs carry line breaks and
+    // indentation inside them. Joining the words on single spaces shortens the
+    // string without dropping any of them, which is what the length comparison
+    // read as a truncation.
+    const untruncated = summarize('<p>\n  She opened the door.\n</p>\n<p>\n  Blood pooled on the floor.\n</p>');
+    if (untruncated.endsWith('...')) {
+      throw new Error(`A summary that holds the whole passage must not be marked truncated: ${JSON.stringify(untruncated)}`);
+    }
+    if (!untruncated.includes('Blood pooled on the floor.')) {
+      throw new Error(`The summary should still carry the closing paragraph: ${JSON.stringify(untruncated)}`);
+    }
+
+    // Past 150 words the marker is the point: the continuation prompt has to
+    // know the passage it was handed stops early.
+    const longParagraph = `<p>${Array.from({ length: 200 }, (_, index) => `word${index}`).join(' ')}</p>`;
+    const truncated = summarize(longParagraph);
+    if (!truncated.endsWith('...')) {
+      throw new Error('A summary cut at the word limit must be marked truncated');
+    }
+    // The marker is appended to the last word rather than written as a word of
+    // its own, so the cut passage is still exactly 150 tokens long.
+    if (truncated.split(/\s+/).length !== 150) {
+      throw new Error(`Expected the summary cut to 150 words, got ${truncated.split(/\s+/).length} tokens`);
+    }
+
+    console.log(`   ✓ Untruncated summary: ${JSON.stringify(untruncated)}`);
+    console.log(`   ✓ Truncated summary ends with the marker`);
+  }),
+
+  testDisplayContentKeepsBlankLineParagraphs: test('Display Content Keeps Blank-Line Paragraphs', () => {
+    const service = new StoryService();
+    // Plain paragraphs separated the ordinary way: a blank line, with no
+    // opening quote and no `Suddenly` for the shift heuristic to catch. Every
+    // one of them used to be welded into a single `<p>`.
+    const raw = [
+      '[Narrator]: She opened the door.',
+      '',
+      '[Narrator]: Blood pooled on the floor.',
+      '',
+      '[Narrator]: Nobody had been there for years.'
+    ].join('\n');
+
+    const display: string = (service as any).stripSpeakerTagsForDisplay(raw);
+    const paragraphCount = display.split('<p>').length - 1;
+
+    if (paragraphCount !== 3) {
+      throw new Error(`Expected 3 paragraphs from 3 blank-line-separated lines, got ${paragraphCount}: ${JSON.stringify(display)}`);
+    }
+    if (display.includes('door. Blood')) {
+      throw new Error(`Two paragraphs were welded into one: ${JSON.stringify(display)}`);
+    }
+
+    console.log(`   ✓ Display content: ${JSON.stringify(display)}`);
   })
 };
 
