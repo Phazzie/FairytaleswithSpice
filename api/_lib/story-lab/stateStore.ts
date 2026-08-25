@@ -16,20 +16,27 @@ export interface StoredStorySnapshot {
 }
 
 /**
- * How many story snapshots the process keeps in memory at once.
+ * How many story snapshots this process keeps in memory at once.
  *
  * Every snapshot holds a story's whole chapter set as generated HTML, and one
- * is written on every genesis and every continuation. The map was unbounded, so
- * on the long-lived Node/Docker deployment — where the process outlives a single
- * request, unlike a serverless invocation — it grew by one full story per
- * generation and nothing ever removed an entry: a day of traffic is a day of
- * story HTML held live, and the only thing that reclaimed it was a restart. The
- * sibling `NonDurableStoryLabJobStore` bounds itself for exactly this reason;
- * this store now does the same.
+ * is written on every genesis and every continuation. The map was unbounded and
+ * nothing ever removed an entry, so it grew by one full story per generation
+ * for as long as the process lived. A Vercel invocation is not the short-lived
+ * thing that makes that safe: an instance is kept warm and reused across
+ * requests, so every story generated on one accumulates in the same map until
+ * the platform recycles it — and the local Node run used for development and
+ * smoke tests holds them for the whole session. The sibling
+ * `NonDurableStoryLabJobStore` bounds itself for exactly this reason; this
+ * store now does the same.
  *
- * The bound is a count rather than a byte budget because a snapshot's size is
- * bounded in turn: `desiredWordBudget` caps at 1500 words per chapter, so the
- * cap is a predictable ceiling on what the store can hold.
+ * The bound is on the number of stories, not on bytes, and it does not claim a
+ * ceiling on the memory held. A story's snapshot carries every chapter written
+ * so far and continuations keep appending, so one serial grows without limit
+ * however few of them are retained. Capping the chapter set is not available
+ * here: a continuation reads this snapshot to know what came before, so a
+ * truncated one would silently break the story it is meant to continue. What
+ * this bound removes is the unbounded *count* — the failure that needed no
+ * unusual usage at all, just traffic.
  */
 export const MAX_TRANSIENT_STORY_SNAPSHOTS = 200;
 

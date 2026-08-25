@@ -18,6 +18,7 @@ import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogCon
 import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
 import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../utils/storyTextBlocks';
+import { toLoggableThemes } from '../utils/loggableRequestParameters';
 
 interface AiCallMetadata {
   model?: string;
@@ -121,7 +122,10 @@ export class StoryService {
       method: 'POST',
       requestParameters: {
         creature: sanitizedInput.creature,
-        themes: sanitizedInput.themes,
+        // Only the ids on the documented allow-list: validation bounds the
+        // number of themes but not their contents, so the array can hold
+        // whatever the caller sent.
+        ...toLoggableThemes(sanitizedInput.themes),
         spicyLevel: sanitizedInput.spicyLevel,
         wordCount: sanitizedInput.wordCount,
         requestedChapterCount: input.requestedChapterCount ?? requestedChapterCount

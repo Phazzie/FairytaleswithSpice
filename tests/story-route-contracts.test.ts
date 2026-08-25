@@ -477,11 +477,61 @@ async function verifyRepeatedQueryParametersReachTheValidator(): Promise<void> {
   );
 }
 
+/**
+ * The request line this route writes must not repeat what the caller typed.
+ *
+ * The generation parameters are logged so an operator can see what was asked
+ * for, and `themes` is documented as a closed set — but `validateStoryInput`
+ * only bounds how many themes there are, and this route builds the array by
+ * splitting a query string, so an API client can put anything in it. Asserting
+ * on the helper alone is not enough: the route is the thing that decides what
+ * reaches the buffer, and it could go back to passing `input.themes` straight
+ * through with every helper-level assertion still passing.
+ */
+async function verifyStreamDoesNotLogCallerText(): Promise<void> {
+  logger.clearLogs();
+
+  const privateProse = 'Dana is in treatment at the clinic on Rosewood';
+  // `forbidden_love` is on `VALIDATION_RULES.themes.allowedValues`; the fixture
+  // theme these tests otherwise send, `romance`, is not — the routes accept it
+  // because validation counts themes without checking them against the list, so
+  // it is logged as unrecognized like any other unknown value.
+  const response = await callStreamRouteWithQuery({
+    ...VALID_STREAM_QUERY,
+    themes: `forbidden_love,${privateProse}`
+  });
+
+  assert(response.headersSent, 'an unrecognized theme should still open the stream');
+
+  const started = logger
+    .getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === '/api/story/stream');
+
+  assert(started, 'the stream route should log the request it started');
+
+  const logged = JSON.stringify(started.context);
+  assert(
+    !logged.includes('Dana') && !logged.includes('Rosewood'),
+    `caller text sent as a theme must not reach the log (got ${logged})`
+  );
+  assert(
+    logged.includes('forbidden_love'),
+    `an allow-listed theme should still be logged (got ${logged})`
+  );
+  assert(
+    started.context?.requestParameters?.['unrecognizedThemeCount'] === 1,
+    `the rejected theme should be counted (got ${JSON.stringify(started.context?.requestParameters)})`
+  );
+
+  logger.clearLogs();
+}
+
 async function main(): Promise<void> {
   verifySseFraming();
   await verifyStreamRouteEmitsDispatchableEvents();
   await verifyStreamOpensWithTheHeadersItSet();
   await verifyStreamFailureRecordsTheRequestMethod();
+  await verifyStreamDoesNotLogCallerText();
   await verifyRepeatedQueryParametersReachTheValidator();
   await verifyMalformedBodiesAreClientErrors();
 

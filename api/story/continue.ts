@@ -4,6 +4,7 @@ import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { StoryService } from '../_lib/services/storyService';
 import { ChapterContinuationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
+import { toLoggableIdentifier } from '../_lib/utils/loggableRequestParameters';
 
 export default async function handler(req: any, res: any) {
   const requestId = `req_${randomUUID()}`;
@@ -55,7 +56,7 @@ export default async function handler(req: any, res: any) {
       endpoint: '/api/story/continue',
       method: 'POST',
       requestParameters: {
-        storyId: input.storyId,
+        storyId: toLoggableIdentifier(input.storyId),
         currentChapterCount: input.currentChapterCount,
         existingContentLength: input.existingContent.length
       }

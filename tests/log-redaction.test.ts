@@ -2,6 +2,7 @@
 // Created: 2026-06-05 00:56 EDT
 
 import { redactSensitiveLogData } from '../api/_lib/utils/logger';
+import { toLoggableIdentifier, toLoggableThemes } from '../api/_lib/utils/loggableRequestParameters';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -187,6 +188,49 @@ assert(
   parametersWithSecret.requestParameters.apiKey === '[REDACTED]' &&
     parametersWithSecret.requestParameters.creature === 'siren',
   'sensitive keys nested under request parameters should still be redacted'
+);
+
+// `themes` and `storyId` are the two parameters whose contents the caller
+// chooses. `validateStoryInput` bounds the number of themes but never checks
+// them against the allow-list they are documented as, and the streaming route
+// builds the array by splitting a query string — so an API client can put prose
+// in either one. While these fields travelled under `userInput` the redactor
+// blanked them along with everything else; under a key that is deliberately
+// kept, they have to be reduced before they are handed over.
+const privateProse = 'my neighbour Dana is having an affair with her therapist';
+const loggableThemes = toLoggableThemes(['forbidden_love', privateProse, 42]);
+
+assert(
+  loggableThemes.themes.join(',') === 'forbidden_love',
+  `only allow-listed theme ids should survive (got ${JSON.stringify(loggableThemes.themes)})`
+);
+assert(
+  loggableThemes.unrecognizedThemeCount === 2,
+  `everything else should be reported as a count (got ${loggableThemes.unrecognizedThemeCount})`
+);
+assert(
+  !JSON.stringify(redactSensitiveLogData({ requestParameters: loggableThemes })).includes('Dana'),
+  'caller prose sent as a theme must not reach the log'
+);
+assert(
+  toLoggableThemes(['betrayal', 'revenge']).unrecognizedThemeCount === undefined,
+  'an ordinary request should log its themes with no unrecognized count beside them'
+);
+
+const storyIdProse = `story_${privateProse.repeat(4)}`;
+const loggableStoryId = toLoggableIdentifier(storyIdProse);
+assert(
+  loggableStoryId !== undefined && loggableStoryId.length <= 65,
+  `an over-long identifier should be cut (got ${loggableStoryId?.length} characters)`
+);
+assert(
+  toLoggableIdentifier('story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') ===
+    'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+  'a real story id should be logged exactly as it is'
+);
+assert(
+  toLoggableIdentifier('   ') === undefined && toLoggableIdentifier(undefined) === undefined,
+  'a missing identifier should be omitted rather than logged as an empty string'
 );
 
 console.log('Log redaction tests passed');
