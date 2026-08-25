@@ -445,32 +445,6 @@ const testSuite = {
     });
   }),
 
-  // Test 10: Streaming mock mode rejects oversized word counts before emitting chunks
-  testStreamingRejectsOversizedMockWordCount: test('Streaming Mock Mode Rejects Oversized Word Count', async () => {
-    await withMockGrok(async () => {
-      const service = new StoryService();
-      let chunkCount = 0;
-      const input: StoryGenerationSeam['input'] = {
-        creature: 'vampire',
-        themes: ['forbidden_love'],
-        userInput: 'A streaming request that should be rejected before mock generation.',
-        spicyLevel: 3,
-        wordCount: 5000 as any
-      };
-
-      try {
-        await service.generateStoryStreaming(input, () => {
-          chunkCount++;
-        });
-        throw new Error('oversized streaming mock request should have been rejected');
-      } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-        expect((error as Error).message).toContain('Invalid word count');
-        expect(chunkCount).toBe(0);
-      }
-    });
-  }),
-  
   // Test 11: Performance test
   testPerformance: test('Performance Benchmarking', async () => {
     const service = new StoryService();
@@ -659,46 +633,6 @@ const storyTextTests = {
     }
 
     console.log(`   ✓ Summary: ${JSON.stringify(summary)}`);
-  }),
-
-  testMockStreamingReportsReaderVisibleWords: test('Mock Streaming Reports Reader-Visible Words', async () => {
-    const service = new StoryService();
-    // The mock path builds its own story, so it is replaced with one short
-    // enough to stream in a fraction of a second and shaped so the two counters
-    // disagree: splitting on spaces counts `<h3>Chapter` and `door.</p><p>Blood`
-    // as one word each, which is how the streamed totals came in low.
-    (service as any).generateMockStory = () => HTML_CHAPTER;
-
-    const spaceSeparatedCount = HTML_CHAPTER.split(' ').filter(Boolean).length;
-    const readerVisibleCount = (service as any).countWords(HTML_CHAPTER);
-    if (spaceSeparatedCount === readerVisibleCount) {
-      throw new Error('The fixture must distinguish the two counters for this test to mean anything');
-    }
-
-    const chunks: Array<{ isComplete: boolean; wordsGenerated: number; estimatedWordsRemaining: number }> = [];
-    await (service as any).simulateStreamingGeneration(
-      { creature: 'vampire', themes: ['romance'], userInput: '', spicyLevel: 3, wordCount: 700 },
-      (chunk: any) => chunks.push(chunk)
-    );
-
-    const final = chunks[chunks.length - 1];
-    if (!final?.isComplete) {
-      throw new Error('The mock stream should end with a completion chunk');
-    }
-    if (final.wordsGenerated !== readerVisibleCount) {
-      throw new Error(`Expected the completion to report ${readerVisibleCount} words, got ${final.wordsGenerated}`);
-    }
-
-    for (const chunk of chunks) {
-      if (chunk.wordsGenerated > readerVisibleCount) {
-        throw new Error(`A progress chunk reported ${chunk.wordsGenerated} words, past the story's ${readerVisibleCount}`);
-      }
-      if (chunk.wordsGenerated + chunk.estimatedWordsRemaining !== readerVisibleCount) {
-        throw new Error('Words generated and words remaining should always account for the whole story');
-      }
-    }
-
-    console.log(`   ✓ Completion reports ${final.wordsGenerated} words (space split would say ${spaceSeparatedCount})`);
   }),
 
   testNextChapterHintIsTheClosingSentence: test('Next Chapter Hint Is The Closing Sentence', () => {

@@ -3,8 +3,9 @@
 This directory contains Vercel serverless functions for the Story Lab recovery branch.
 Audio endpoints are intentionally deferred for this recovery; story-generation ideas mined from
 audio PRs are tracked in `NOT_TAKEN_FEATURE_LEDGER.md`.
-The active route budget is now 10 deployable functions out of the 12-function guard after adding
-the non-durable Story Lab job-route scaffold. Status and events URLs rewrite into the single
+The active route budget is now 10 deployable functions out of the 12-function guard after retiring
+the unreachable legacy `/api/story/stream` route (see "Retired route files" below) and after
+adding the non-durable Story Lab job-route scaffold. Status and events URLs rewrite into the single
 `api/story-lab/jobs.ts` function so the process-local scaffold does not split state across
 separate deployed functions.
 
@@ -15,8 +16,7 @@ api/
 ├── health.ts              # Health check endpoint (GET /api/health)
 ├── story/
 │   ├── generate.ts        # Story generation (POST /api/story/generate)
-│   ├── continue.ts        # Story continuation (POST /api/story/continue)
-│   └── stream.ts          # Story streaming (POST /api/story/stream)
+│   └── continue.ts        # Story continuation (POST /api/story/continue)
 ├── story-lab/
 │   ├── jobs.ts           # Story Lab job scaffold
 │   │                         # POST /api/story-lab/jobs
@@ -145,7 +145,6 @@ The API is automatically deployed to Vercel when changes are pushed to the main 
 
 - `/api/story/generate` → `/api/story/generate.ts`
 - `/api/story/continue` → `/api/story/continue.ts`
-- `/api/story/stream` → `/api/story/stream.ts`
 - `/api/story-lab/stories` → `/api/story-lab/stories.ts`
 - `/api/story-lab/stories/:storyId/continue` → `/api/story-lab/stories/[storyId]/continue.ts`
 - `/api/story-lab/jobs` → `/api/story-lab/jobs.ts`
@@ -158,6 +157,12 @@ The API is automatically deployed to Vercel when changes are pushed to the main 
 
 Retired route files:
 
+- `/api/story/stream` (old-contract SSE handler, duplicated independently on the Node/Docker
+  deployment in `story-generator/src/story-stream-route.ts`; the Node copy only ever registered
+  `POST`, which `EventSource` cannot issue, so it was unreachable from any browser, and no
+  frontend code called either copy — see `git log` on this file for the resulting bug-fix churn
+  on code nobody could exercise. Real-time generation progress is served by
+  `/api/story-lab/stream/genesis` and `/api/story-lab/jobs.ts` instead.)
 - `/api/story/stream-demo`
 - `/api/story-lab/health`
 - `/api/image/generate`

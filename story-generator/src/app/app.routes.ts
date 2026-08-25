@@ -14,6 +14,11 @@ export const routes: Routes = [
     title: 'Fairytales with Spice - Proving Grounds'
   },
   {
+    path: 'live-stream-preview',
+    loadComponent: () => import('./streaming-story/streaming-story.component').then((module) => module.StreamingStoryComponent),
+    title: 'Fairytales with Spice - Live Stream Preview'
+  },
+  {
     path: '**',
     redirectTo: ''
   }

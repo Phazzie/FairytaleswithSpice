@@ -14,6 +14,7 @@
     </div>
     <nav class="hero-actions" aria-label="Story Lab actions">
       <a class="header-link" routerLink="/proving-grounds" *ngIf="showDebugPanel()">Proving Grounds</a>
+      <a class="header-link" routerLink="/live-stream-preview" *ngIf="showDebugPanel()">Live Stream Preview</a>
       <button type="button" class="ghost compact" (click)="saveActiveProject()" [disabled]="!workbench().story">
         Save
       </button>

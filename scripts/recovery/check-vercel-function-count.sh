@@ -15,7 +15,6 @@ EXPECTED_FUNCTIONS=(
   "api/story-lab/stream/genesis.ts"
   "api/story/continue.ts"
   "api/story/generate.ts"
-  "api/story/stream.ts"
 )
 
 DISCOVERED_FUNCTIONS=()
