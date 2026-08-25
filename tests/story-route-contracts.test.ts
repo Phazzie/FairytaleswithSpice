@@ -559,7 +559,10 @@ async function verifyStreamDoesNotLogCallerText(): Promise<void> {
 async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
   logger.clearLogs();
 
-  const storyIdProse = 'Dana is in treatment at the clinic on Rosewood';
+  // Underscore-separated, so it passes both of the rules this check went
+  // through before landing on the minted shape: it is shorter than any cap, and
+  // every character in it is one an id may contain.
+  const storyIdProse = 'Dana_is_in_treatment_at_the_clinic_on_Rosewood';
   const { consoleOutput } = await captureConsole(async () => {
     const res = new FakeResponse();
     await continueHandler({
