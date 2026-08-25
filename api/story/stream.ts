@@ -175,12 +175,19 @@ export default async function handler(req: any, res: any) {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
     res.setHeader('X-Request-ID', requestId);
-    res.writeHead(200, {
-      ...cors.headers,
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive'
-    });
+    // Only the status. `writeHead`'s header argument takes precedence over
+    // everything `setHeader` has already put on the response, so repeating a
+    // subset of these headers here overwrote them: `Cache-Control` went out as
+    // `no-cache`, dropping the `no-transform` set two lines above — the one
+    // directive that stops an intermediary from compressing or re-chunking the
+    // body, which is the same buffering `X-Accel-Buffering: no` is here to
+    // prevent. A proxy that buffers an SSE stream holds every update until the
+    // generation finishes, which is the whole thing this route exists to avoid.
+    // The CORS headers were already written by `applyCorsPolicy`, and the
+    // content type and connection headers are set immediately above, so there
+    // is nothing left for the argument to carry. This is what the sibling
+    // `/api/story-lab/stream/genesis` route and the job stream already do.
+    res.writeHead(200);
 
     const streamId = `stream_${randomUUID()}`;
 
@@ -223,10 +230,16 @@ export default async function handler(req: any, res: any) {
     res.end();
 
   } catch (error: any) {
+    // The method the request actually used. It was hard-coded to `POST`, and
+    // GET is the path an `EventSource` takes — the reason this route accepts a
+    // query at all — so every browser-side streaming failure was recorded as a
+    // POST. That is the one field that tells whoever reads the log whether the
+    // input came from a JSON body or from the query, which is where the two
+    // paths differ and where a malformed request would have come from.
     logError('Streaming story generation failed', error, {
       requestId,
       endpoint: '/api/story/stream',
-      method: 'POST',
+      method: req.method,
       statusCode: 500
     });
     

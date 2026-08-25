@@ -11,9 +11,12 @@
 // 2. `/api/story/generate`, `/api/story/continue`, and `/api/export/save`
 //    answer a missing or non-object body with 400 INVALID_INPUT rather than
 //    crashing into their catch block and reporting 500 INTERNAL_ERROR.
+// 3. `/api/story/stream` opens the stream with the cache headers it set, and
+//    records a failure against the method the request actually used.
 
 import { StoryService } from '../api/_lib/services/storyService';
 import { VALIDATION_RULES } from '../api/_lib/types/contracts';
+import { logger } from '../api/_lib/utils/logger';
 import exportHandler from '../api/export/save';
 import continueHandler from '../api/story/continue';
 import generateHandler from '../api/story/generate';
@@ -314,9 +317,12 @@ async function verifyMalformedBodiesAreClientErrors(): Promise<void> {
  * The generator is stubbed out for the same reason as above: this is about what
  * the route makes of the query, not about generation.
  */
-async function callStreamRouteWithQuery(query: Record<string, unknown>): Promise<FakeResponse> {
+async function callStreamRouteWithQuery(
+  query: Record<string, unknown>,
+  generate?: (input: any, onChunk: (chunk: any) => void) => Promise<void>
+): Promise<FakeResponse> {
   const original = StoryService.prototype.generateStoryStreaming;
-  StoryService.prototype.generateStoryStreaming = (async (_input: any, onChunk: any) => {
+  StoryService.prototype.generateStoryStreaming = (generate ?? (async (_input: any, onChunk: any) => {
     onChunk({
       content: 'She opened the door.',
       isComplete: true,
@@ -324,7 +330,7 @@ async function callStreamRouteWithQuery(query: Record<string, unknown>): Promise
       estimatedWordsRemaining: 0,
       generationSpeed: 4
     });
-  }) as typeof original;
+  })) as typeof original;
 
   try {
     const res = new FakeResponse();
@@ -335,13 +341,82 @@ async function callStreamRouteWithQuery(query: Record<string, unknown>): Promise
   }
 }
 
+const VALID_STREAM_QUERY = {
+  creature: 'vampire',
+  themes: 'romance',
+  spicyLevel: '3',
+  wordCount: String(VALIDATION_RULES.wordCount.allowedValues[1])
+};
+
+/**
+ * The headers a client and the proxies between it and this route actually
+ * receive.
+ *
+ * `FakeResponse.writeHead` merges its argument over what `setHeader` already
+ * wrote, exactly as Node's `ServerResponse` does, which is what made the defect
+ * invisible from inside the route: the handler set `no-cache, no-transform` and
+ * then passed `no-cache` to `writeHead`, so the directive that stops an
+ * intermediary from buffering the stream was dropped on the way out.
+ */
+async function verifyStreamOpensWithTheHeadersItSet(): Promise<void> {
+  const response = await callStreamRouteWithQuery(VALID_STREAM_QUERY);
+
+  assert(response.headersSent, 'a valid streaming request should open the stream');
+  assert(
+    response.headers['Content-Type'] === 'text/event-stream',
+    `the stream should be served as text/event-stream, got ${response.headers['Content-Type']}`
+  );
+
+  const cacheControl = response.headers['Cache-Control'] ?? '';
+  assert(
+    cacheControl.includes('no-cache'),
+    `the stream must not be cached, got Cache-Control: ${cacheControl}`
+  );
+  assert(
+    cacheControl.includes('no-transform'),
+    `the stream must forbid transformation so a proxy cannot buffer it, got Cache-Control: ${cacheControl}`
+  );
+  assert(
+    response.headers['X-Accel-Buffering'] === 'no',
+    'the stream must ask nginx not to buffer it'
+  );
+}
+
+/**
+ * A GET failure is recorded as a GET.
+ *
+ * The catch block named `POST` unconditionally, and GET is the path an
+ * `EventSource` takes — so every browser-side streaming failure was filed under
+ * the method it did not use, which is the field that says whether the input
+ * arrived as a JSON body or as a query.
+ */
+async function verifyStreamFailureRecordsTheRequestMethod(): Promise<void> {
+  logger.clearLogs();
+
+  const response = await callStreamRouteWithQuery(VALID_STREAM_QUERY, async () => {
+    throw new Error('provider unavailable');
+  });
+
+  assert(
+    response.headersSent,
+    'the failure should happen after the stream is open, which is the case this covers'
+  );
+
+  const failure = logger
+    .getRecentLogs(50, 'error')
+    .find(entry => entry.context?.endpoint === '/api/story/stream');
+
+  assert(failure, 'a streaming failure should be logged against the stream endpoint');
+  assert(
+    failure.context?.method === 'GET',
+    `a failed GET stream should be logged as a GET, got ${failure.context?.method}`
+  );
+
+  logger.clearLogs();
+}
+
 async function verifyRepeatedQueryParametersReachTheValidator(): Promise<void> {
-  const validQuery = {
-    creature: 'vampire',
-    themes: 'romance',
-    spicyLevel: '3',
-    wordCount: String(VALIDATION_RULES.wordCount.allowedValues[1])
-  };
+  const validQuery = VALID_STREAM_QUERY;
 
   // `?themes=romance&themes=dark` used to throw out of `themes.split(',')`,
   // and the catch block answered with an SSE frame written before `writeHead`
@@ -405,6 +480,8 @@ async function verifyRepeatedQueryParametersReachTheValidator(): Promise<void> {
 async function main(): Promise<void> {
   verifySseFraming();
   await verifyStreamRouteEmitsDispatchableEvents();
+  await verifyStreamOpensWithTheHeadersItSet();
+  await verifyStreamFailureRecordsTheRequestMethod();
   await verifyRepeatedQueryParametersReachTheValidator();
   await verifyMalformedBodiesAreClientErrors();
 
