@@ -6,6 +6,39 @@ import { SaveExportSeam } from '../_lib/types/contracts';
 import { FILE_SIZE } from '../_lib/constants';
 import { ERROR_CODES } from '../_lib/errorCodes';
 
+/**
+ * Read an export request, or say the body cannot be served.
+ *
+ * A body that is missing entirely fails here, as one more malformed request,
+ * rather than throwing on `input.storyId` into the handler's catch block and
+ * reporting the caller's mistake as a 500.
+ *
+ * `content` and `title` have to be text, not merely present. Every branch of
+ * the export renderer calls `String` methods on them, and a JSON body can carry
+ * a number or an object under either name — both truthy, so a presence check
+ * let them through. The renderer then threw a `TypeError` inside
+ * `saveAndExport`, whose catch answers `EXPORT_FAILED`: the caller was told the
+ * export had failed and that retrying might help, when it is the request that is
+ * malformed and only the caller can fix it. It is also what makes the byte
+ * measurement below safe, since `Buffer.byteLength` of a number throws.
+ */
+function readExportRequest(body: unknown): SaveExportSeam['input'] | null {
+  const input = readJsonObjectBody<SaveExportSeam['input']>(body);
+  if (!input || !input.storyId || !input.format) {
+    return null;
+  }
+
+  if (!isNonEmptyString(input.content) || !isNonEmptyString(input.title)) {
+    return null;
+  }
+
+  return input;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
 export default async function handler(req: any, res: any) {
   // Generate or extract request ID for tracking
   const requestId = req.headers['x-request-id'] || 
@@ -36,24 +69,9 @@ export default async function handler(req: any, res: any) {
   try {
     console.log(`[${requestId}] POST /api/export/save - Request received`);
     
-    const input = readJsonObjectBody<SaveExportSeam['input']>(req.body);
+    const input = readExportRequest(req.body);
 
-    // Validate required fields. A body that is missing entirely fails here, as
-    // one more malformed request, rather than throwing on `input.storyId` into
-    // the catch block below and reporting the caller's mistake as a 500.
-    // `content` and `title` are read as text below and by every branch of the
-    // export renderer, which calls `String` methods on them. A JSON body can
-    // carry a number or an object under either name, and both are truthy, so a
-    // presence check let them through: the renderer threw a `TypeError` inside
-    // `saveAndExport`, whose catch reports `EXPORT_FAILED` — the caller was
-    // told the export had failed rather than that its request was malformed.
-    if (
-      !input ||
-      !input.storyId ||
-      typeof input.content !== 'string' || !input.content ||
-      typeof input.title !== 'string' || !input.title ||
-      !input.format
-    ) {
+    if (!input) {
       return res.status(400).json({
         success: false,
         error: {
