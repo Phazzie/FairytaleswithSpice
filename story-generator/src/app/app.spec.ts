@@ -17,6 +17,7 @@ import {
   CloudStoryProjectLoadResult,
   CloudStoryProjectSaveReceipt,
   GeneratedChapter,
+  ImageGenerationSeam,
   SavedStoryProject
 } from './contracts';
 
@@ -306,7 +307,8 @@ describe('App', () => {
       'listCloudStoryProjects',
       'saveCloudStoryProject',
       'loadCloudStoryProject',
-      'deleteCloudStoryProject'
+      'deleteCloudStoryProject',
+      'generateImage'
     ]);
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
       'logInfo',
@@ -581,12 +583,67 @@ describe('App', () => {
     const copyButton = storyActions?.querySelector('[data-testid="copy-story"]') as HTMLButtonElement | null;
     const downloadButton = storyActions?.querySelector('[data-testid="download-story"]') as HTMLButtonElement | null;
     const saveButton = storyActions?.querySelector('[data-testid="save-story"]') as HTMLButtonElement | null;
+    const generateImageButton = storyActions?.querySelector('[data-testid="generate-image"]') as HTMLButtonElement | null;
 
     expect(storyPanel).not.toBeNull();
     expect(storyActions).not.toBeNull();
     expect(copyButton?.getAttribute('aria-label')).toBe('Copy story');
     expect(downloadButton?.getAttribute('aria-label')).toBe('Download story');
     expect(saveButton?.getAttribute('aria-label')).toBe('Save story locally');
+    expect(generateImageButton?.getAttribute('aria-label')).toBe('Generate a scene image for this chapter');
+    expect(generateImageButton?.disabled).toBeFalse();
+  });
+
+  it('generates and displays a scene image for the selected chapter', () => {
+    const payload = seedWorkbenchForContinuation();
+    const chapter = payload.batch.chapters[0];
+    const image: ImageGenerationSeam['output'] = {
+      imageId: 'img-1',
+      storyId: payload.summary.storyId,
+      imageUrl: 'https://images.example/scene.png',
+      prompt: 'A gothic vampire scene',
+      style: 'dark',
+      aspectRatio: '16:9',
+      width: 1792,
+      height: 1024,
+      fileSize: 0,
+      generatedAt: new Date()
+    };
+    storyService.generateImage.and.returnValue(of({ success: true, data: image }));
+    fixture.detectChanges();
+
+    const generateImageButton = fixture.nativeElement.querySelector('[data-testid="generate-image"]') as HTMLButtonElement;
+    generateImageButton.click();
+    fixture.detectChanges();
+
+    expect(storyService.generateImage).toHaveBeenCalledWith(jasmine.objectContaining({
+      storyId: payload.summary.storyId,
+      content: chapter.htmlContent,
+      creature: component.blueprint().creature,
+      style: 'artistic'
+    }));
+    expect(component.isGeneratingImage()).toBeFalse();
+
+    const preview = fixture.nativeElement.querySelector('[data-testid="chapter-image-preview"]') as HTMLImageElement | null;
+    expect(preview?.src).toBe(image.imageUrl);
+  });
+
+  it('shows an error instead of an image when generation fails', () => {
+    seedWorkbenchForContinuation();
+    storyService.generateImage.and.returnValue(of({
+      success: false,
+      error: { code: 'IMAGE_GENERATION_FAILED', message: 'AI image service temporarily unavailable', retryable: true, reason: 'service_error' }
+    }));
+    fixture.detectChanges();
+
+    const generateImageButton = fixture.nativeElement.querySelector('[data-testid="generate-image"]') as HTMLButtonElement;
+    generateImageButton.click();
+    fixture.detectChanges();
+
+    const errorText = fixture.nativeElement.querySelector('[data-testid="chapter-image-error"]') as HTMLElement | null;
+    const preview = fixture.nativeElement.querySelector('[data-testid="chapter-image-preview"]') as HTMLImageElement | null;
+    expect(errorText?.textContent?.trim()).toBe('AI image service temporarily unavailable');
+    expect(preview).toBeNull();
   });
 
   it('disables cloud save before an active story exists', () => {

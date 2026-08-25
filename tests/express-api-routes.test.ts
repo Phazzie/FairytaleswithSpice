@@ -22,9 +22,6 @@ const EXPECTED_ROUTE_PATHS = [
   '/api/story/generate',
   '/api/story/continue',
   '/api/export/save',
-  // No serverless counterpart, and served on this deployment only — which is
-  // why it was the last route written inline in `server.ts`, and the one route
-  // that never got the shared body reading.
   '/api/image/generate',
   '/api/story-lab/stories',
   '/api/story-lab/stories/:storyId/continue',
@@ -77,6 +74,7 @@ assert.equal(registeredHandlers.size, EXPECTED_ROUTE_PATHS.length);
  * the deployment answers with the SSR index page.
  */
 const CLIENT_REQUEST_PATHS = [
+  '/api/image/generate',
   '/api/story-lab/stories',
   '/api/story-lab/stories/story_abc/continue',
   '/api/story-lab/jobs',
@@ -87,7 +85,6 @@ const CLIENT_REQUEST_PATHS = [
   '/api/story-lab/account/projects/project-1',
   '/api/story-lab/stream/genesis',
   '/api/story-lab/evaluate',
-  '/api/image/generate',
   '/api/health'
 ];
 

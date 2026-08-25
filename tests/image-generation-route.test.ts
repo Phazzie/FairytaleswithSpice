@@ -4,23 +4,23 @@
 // Proves a malformed image request is answered as the caller's mistake rather
 // than as a server failure.
 //
-// `/api/image/generate` was the one route written inline in the Node server, and
-// the one route that never got the shared body reading. It did
-// `const input = req.body; if (!input.storyId || …)`, and Express 5 leaves
-// `req.body` as `undefined` for a request with no body or one sent without
-// `Content-Type: application/json` — it no longer initialises it to `{}` the way
-// Express 4 did. Reading `input.storyId` off that threw a `TypeError` into the
-// route's own catch, which answered `500 INTERNAL_ERROR`: the caller was told
-// the image service had failed and that retrying might help.
+// `ImageService.validateImageInput` checked `content` with
+// `!input.content || input.content.length < 10`. `length` is `undefined` for a
+// number, and `undefined < 10` is `false`, so a JSON body carrying a number
+// under `content` passed validation — and passed the route's own presence
+// check, which is a truthiness test too — and reached `stripStoryHtmlToText`,
+// which threw. The caller was answered `IMAGE_GENERATION_FAILED`: the image
+// service reporting its own failure for a mistake only the caller can fix.
+// `/api/export/save` already reads `content` and `title` as strings for exactly
+// this reason. `storyId` gets the same check.
 //
-// The service had the same shape of hole one level down. `content` was checked
-// with `!input.content || input.content.length < 10`, and `length` is `undefined`
-// for a number — not `< 10` — so a JSON body carrying a number under `content`
-// passed validation and threw inside the renderer, answering
-// `IMAGE_GENERATION_FAILED`.
+// The body-shape cases below are #227's guard, kept under test at the route
+// level so the two readings cannot drift apart again: it is the pairing of a
+// truthiness check at the route with a truthiness check in the service that let
+// a non-string through both.
 
 import assert from 'node:assert/strict';
-import { handleImageGenerationRoute } from '../api/_lib/http/imageGenerationRoute';
+import imageGenerateHandler from '../api/image/generate';
 import { ImageService } from '../api/_lib/services/imageService';
 
 // The service reads `XAI_API_KEY` in its constructor and falls back to a mock
@@ -54,7 +54,7 @@ function fakeResponse(): { res: any; recorded: RecordedResponse } {
 
 async function post(body: unknown): Promise<RecordedResponse> {
   const { res, recorded } = fakeResponse();
-  await handleImageGenerationRoute({ method: 'POST', headers: {}, body }, res);
+  await imageGenerateHandler({ method: 'POST', headers: {}, body }, res);
   return recorded;
 }
 

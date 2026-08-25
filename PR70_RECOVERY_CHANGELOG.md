@@ -11,34 +11,28 @@ or made the record of that failure impossible to correlate. All three are small,
 independent, and were found by reading the routes against the helpers the
 repository already has.
 
-### 1. `/api/image/generate` reported malformed requests as 500
+### 1. Image generation reported a non-string `content` as a provider failure
 
-Two defects, one per layer.
+`ImageService.validateImageInput` read `!input.content || input.content.length < 10`.
+`length` is `undefined` for a number, and `undefined < 10` is `false`, so a JSON
+body carrying a number under `content` passed validation and reached
+`stripStoryHtmlToText`, which threw — reported as `IMAGE_GENERATION_FAILED`. The
+route's own guard is a truthiness check too, so it did not catch it either: it
+is the pairing of two truthiness checks that let a non-string through both. The
+export route already reads `content` and `title` as strings for exactly this
+reason; `storyId` gets the same check here.
 
-- **The route.** It was the last route written inline in
-  `story-generator/src/server.ts`, and the only route in the repository that did
-  not read its body through `readJsonObjectBody`: `const input = req.body;`
-  followed by `if (!input.storyId || …)`. Express 5's body parser leaves
-  `req.body` as `undefined` for a request with no body, or one sent without
-  `Content-Type: application/json` — it no longer initialises it to `{}` the way
-  Express 4 did. Reading `input.storyId` off that threw a `TypeError` into the
-  route's own catch, which answers `500 INTERNAL_ERROR`. The presence check it
-  did have was also a weaker duplicate of `ImageService.validateImageInput`,
-  which checks the same fields plus their types, the style, and the aspect
-  ratio, and names which one is wrong.
-- **The service.** `validateImageInput` read `!input.content || input.content.length < 10`.
-  `length` is `undefined` for a number, and `undefined < 10` is `false`, so a
-  JSON body carrying a number under `content` passed validation and reached
-  `stripStoryHtmlToText`, which threw — reported as `IMAGE_GENERATION_FAILED`.
-  The export route already reads `content` and `title` as strings for exactly
-  this reason.
-
-The handler now lives at `api/_lib/http/imageGenerationRoute.ts` and is
-registered through `registerApiRoutes`. It adds no Vercel function — everything
-under `api/_lib` is pruned by `check-vercel-function-count.sh` and excluded by
-Vercel — and `AGENTS.md` already records that image-generation code belongs
-under `api/_lib` or on the Node server. Moving it is what lets it be driven by a
-test without standing up the Angular SSR server.
+**Overlap with #227, which merged into `main` while this branch was open.** This
+slice originally also moved `/api/image/generate` out of `server.ts` and gave it
+`readJsonObjectBody`, because it was then the last inline route and the only one
+without the shared body reading. #227 did that independently and better — it
+made the route a real Vercel function at `api/image/generate.ts` and wired it to
+the frontend. On merging `main` in, the duplicate module
+(`api/_lib/http/imageGenerationRoute.ts`) was deleted and the route-table entry
+resolved to #227's handler. What remains from this slice is the service-level
+type check, which #227 did not address, plus route-level regression tests for
+the body-shape cases so the route guard and the service guard cannot drift apart
+again.
 
 ### 2. `X-Request-ID` was three different behaviours
 
@@ -76,7 +70,8 @@ a non-Latin script.
 ### Validation
 
 - `npm run test:all` — passes, 47 suites including the two new ones
-  (`test:request-id`, `test:image-generation-route`).
+  (`test:request-id`, `test:image-generation-route`), re-run after merging
+  `origin/main` (#227).
 - `npx tsc -p story-generator/tsconfig.app.json --noEmit` and `tsconfig.spec.json` — 0 errors.
 - Vercel API function typecheck — 0 errors.
 - `scripts/recovery/check-vercel-function-count.sh` — 10/12, unchanged.
@@ -86,9 +81,10 @@ a non-Latin script.
 
   | request | before | after |
   | --- | --- | --- |
-  | `POST /api/image/generate` with no body | 500 `INTERNAL_ERROR` | 400 `INVALID_INPUT` |
+  | `POST /api/image/generate` with no body | 500 `INTERNAL_ERROR` (fixed by #227) | 400 `INVALID_INPUT` |
   | `POST /api/image/generate` with `content: 1234567890123` | 500 `IMAGE_GENERATION_FAILED` | 400 `INVALID_INPUT` |
   | `POST /api/image/generate`, well-formed | 200 | 200, unchanged |
+  | `POST /api/image/generate` with `X-Request-ID` sent by the caller | echoed verbatim | validated, then logged and echoed |
   | `POST /api/story/continue` | no `X-Request-ID` on the response | `X-Request-ID: req_…` |
   | `POST /api/story/continue` with `X-Request-ID: my-trace-42` | ignored | logged and echoed as `my-trace-42` |
   | `POST /api/export/save` with the header sent twice | echoed as `first-id, second-id` | replaced with a generated id |
@@ -104,15 +100,16 @@ failing, then reverted immediately. None of the mutations is committed.
 | mutation | result |
 | --- | --- |
 | `validateImageInput` back to `!input.content \|\| input.content.length < 10` | `test:image-generation-route` fails: `IMAGE_GENERATION_FAILED` where `INVALID_INPUT` is expected |
-| image route back to `const input = req?.body` with the old presence check | `test:image-generation-route` fails: 500 where 400 is expected |
+| image route back to `const input = req.body` with no `readJsonObjectBody` | `test:image-generation-route` fails: 500 where 400 is expected |
 | evaluate byte cap disabled | `test:story-lab-evaluate-route` fails: `a story past the cap is a caller error, got 200` |
 
 ### Not claimed
 
 - Nothing here changes the Vercel deployment's routing, its function count, or
   the story-generation behaviour of any route.
-- `/api/image/generate` still has no serverless counterpart and is served on the
-  Node deployment only, as `AGENTS.md` records.
+- `/api/image/generate` is #227's Vercel function; this slice changes only its
+  correlation id and the service validation behind it. Its routing, its function
+  count, and the frontend wiring #227 added are untouched.
 - The request-id reading is a correlation and log-hygiene fix. It is not an
   authentication or rate-limiting boundary and does not claim to be one.
 

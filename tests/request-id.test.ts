@@ -18,6 +18,7 @@ import {
   readRequestId
 } from '../api/_lib/http/requestId';
 import exportHandler from '../api/export/save';
+import imageGenerateHandler from '../api/image/generate';
 import continueHandler from '../api/story/continue';
 import generateHandler from '../api/story/generate';
 
@@ -140,7 +141,8 @@ async function testEveryRouteAnswersWithItsCorrelationId(): Promise<void> {
   const routes: Array<[string, (req: any, res: any) => unknown]> = [
     ['/api/story/generate', generateHandler],
     ['/api/story/continue', continueHandler],
-    ['/api/export/save', exportHandler]
+    ['/api/export/save', exportHandler],
+    ['/api/image/generate', imageGenerateHandler]
   ];
 
   for (const [path, route] of routes) {

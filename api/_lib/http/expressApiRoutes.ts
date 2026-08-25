@@ -2,6 +2,7 @@
 
 import healthHandler from '../../health';
 import exportSaveHandler from '../../export/save';
+import imageGenerateHandler from '../../image/generate';
 import storyContinueHandler from '../../story/continue';
 import storyGenerateHandler from '../../story/generate';
 import storyLabEvaluateHandler from '../../story-lab/evaluate';
@@ -10,7 +11,6 @@ import { createStoryLabGenesisHandler } from '../../story-lab/stories';
 import { createStoryLabContinuationHandler } from '../../story-lab/stories/[storyId]/continue';
 import { handleStoryLabAccountRoute } from '../story-lab/account/accountRouteHandlers';
 import { handleStoryLabJobsRoute } from '../story-lab/jobs/jobRouteHandlers';
-import { handleImageGenerationRoute } from './imageGenerationRoute';
 
 /**
  * Mount every serverless route on a connect/Express router.
@@ -80,11 +80,7 @@ export const API_ROUTES: readonly ApiRouteDefinition[] = [
   { path: '/api/story/generate', handler: storyGenerateHandler },
   { path: '/api/story/continue', handler: storyContinueHandler },
   { path: '/api/export/save', handler: exportSaveHandler },
-  // No serverless counterpart — the route budget consolidation removed it, so
-  // this path exists on the Node deployment only. It is registered here rather
-  // than written inline in `server.ts` so it gets the same body reading, status
-  // mapping, and test coverage as every other route.
-  { path: '/api/image/generate', handler: handleImageGenerationRoute },
+  { path: '/api/image/generate', handler: imageGenerateHandler },
   { path: '/api/story-lab/stories', handler: storyLabGenesisHandler },
   { path: '/api/story-lab/stories/:storyId/continue', handler: storyLabContinuationHandler },
   { path: '/api/story-lab/stream/genesis', handler: storyLabStreamGenesisHandler },
