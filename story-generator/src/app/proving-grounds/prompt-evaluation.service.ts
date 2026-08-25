@@ -44,7 +44,8 @@ export class PromptEvaluationService {
         'Vary dialogue patterns between characters for distinct voices',
         'Strengthen the final scene to increase stakes and reader investment'
       ],
-      overallFeedback: 'Solid story with good fundamentals. The pacing works well and sensory details are effective. Main area for improvement is making character voices more distinct and memorable.'
+      overallFeedback: 'Solid story with good fundamentals. The pacing works well and sensory details are effective. Main area for improvement is making character voices more distinct and memorable.',
+      isMockEvaluation: true
     };
   }
 }
