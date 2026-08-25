@@ -492,14 +492,16 @@ async function verifyStreamDoesNotLogCallerText(): Promise<void> {
   logger.clearLogs();
 
   const privateProse = 'Dana is in treatment at the clinic on Rosewood';
+  const creatureProse = 'a shapeshifter who lives at 14 Elm Row';
   // `forbidden_love` is on `VALIDATION_RULES.themes.allowedValues`; the fixture
   // theme these tests otherwise send, `romance`, is not — the routes accept it
   // because validation counts themes without checking them against the list, so
   // it is logged as unrecognized like any other unknown value.
-  const response = await callStreamRouteWithQuery({
+  const { response, consoleOutput } = await captureConsole(() => callStreamRouteWithQuery({
     ...VALID_STREAM_QUERY,
+    creature: creatureProse,
     themes: `forbidden_love,${privateProse}`
-  });
+  }));
 
   assert(response.headersSent, 'an unrecognized theme should still open the stream');
 
@@ -508,12 +510,30 @@ async function verifyStreamDoesNotLogCallerText(): Promise<void> {
     .find(entry => entry.context?.endpoint === '/api/story/stream');
 
   assert(started, 'the stream route should log the request it started');
+  // Without this the console assertions below would pass on an empty capture,
+  // proving nothing about the sink.
+  assert(
+    consoleOutput.includes('/api/story/stream'),
+    `the console capture should hold the request line (got ${consoleOutput.slice(0, 200)}…)`
+  );
+
+  // The buffer and the console are two sinks for the same entry, and a reader
+  // of either one is equally able to read what the caller typed.
+  for (const [sink, written] of [
+    ['buffer', JSON.stringify(started.context)],
+    ['console', consoleOutput]
+  ] as const) {
+    assert(
+      !written.includes('Dana') && !written.includes('Rosewood'),
+      `caller text sent as a theme must not reach the ${sink} (got ${written})`
+    );
+    assert(
+      !written.includes('Elm Row'),
+      `caller text sent as a creature must not reach the ${sink} (got ${written})`
+    );
+  }
 
   const logged = JSON.stringify(started.context);
-  assert(
-    !logged.includes('Dana') && !logged.includes('Rosewood'),
-    `caller text sent as a theme must not reach the log (got ${logged})`
-  );
   assert(
     logged.includes('forbidden_love'),
     `an allow-listed theme should still be logged (got ${logged})`
@@ -522,8 +542,36 @@ async function verifyStreamDoesNotLogCallerText(): Promise<void> {
     started.context?.requestParameters?.['unrecognizedThemeCount'] === 1,
     `the rejected theme should be counted (got ${JSON.stringify(started.context?.requestParameters)})`
   );
+  assert(
+    started.context?.requestParameters?.['creature'] === '[UNRECOGNIZED]',
+    `an unknown creature should be marked, not repeated (got ${JSON.stringify(started.context?.requestParameters)})`
+  );
 
   logger.clearLogs();
+}
+
+/**
+ * Run something with the console captured, so an assertion can read what the
+ * logger actually printed rather than only what it buffered.
+ */
+async function captureConsole<T>(run: () => Promise<T>): Promise<{ response: T; consoleOutput: string }> {
+  const original = { log: console.log, warn: console.warn, error: console.error };
+  let consoleOutput = '';
+  const record = (...args: unknown[]) => {
+    consoleOutput += args.map(argument => String(argument)).join(' ');
+  };
+
+  console.log = record;
+  console.warn = record;
+  console.error = record;
+
+  try {
+    return { response: await run(), consoleOutput };
+  } finally {
+    console.log = original.log;
+    console.warn = original.warn;
+    console.error = original.error;
+  }
 }
 
 async function main(): Promise<void> {

@@ -275,9 +275,11 @@ class Logger {
    * entries of any level — on a busy request that is usually none of them,
    * which is exactly when the errors are worth reading.
    *
-   * The count is read as "at most this many, newest first", which is what
-   * `slice(-count)` means for a positive count and the opposite of what it does
-   * for anything else. `slice(-0)` is `slice(0)`, so a caller paging with a
+   * The count is read as "at most this many, taken from the newest end" —
+   * entries still come back in the order they were written, oldest of the
+   * selection first. That is what `slice(-count)` means for a positive count,
+   * and the opposite of what it does for anything else. `slice(-0)` is
+   * `slice(0)`, so a caller paging with a
    * computed remainder that reached zero — the case that should return nothing
    * — was handed the entire buffer, up to a thousand entries, and a negative
    * count dropped the newest `count` entries instead of returning none.

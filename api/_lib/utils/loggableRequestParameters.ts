@@ -5,6 +5,40 @@ import { VALIDATION_RULES } from '../types/contracts';
 const ALLOWED_THEMES: readonly string[] = VALIDATION_RULES.themes.allowedValues;
 
 /**
+ * The creatures `CreatureType` names, listed so a value can be checked at run
+ * time. `validateStoryInput` has its own copy and rejects anything outside it —
+ * but it runs after the request line is written, and the route checks that
+ * reach the log first test only that the field is present, so `creature` is
+ * caller text at the moment it would be logged.
+ */
+const ALLOWED_CREATURES: readonly string[] = [
+  'vampire',
+  'werewolf',
+  'fairy',
+  'siren',
+  'djinn',
+  'witch',
+  'dragon',
+  'demon',
+  'angel',
+  'mermaid'
+];
+
+/** What is written in place of a value that is not on its allow-list. */
+export const UNRECOGNIZED_PARAMETER = '[UNRECOGNIZED]';
+
+/**
+ * Log a creature only when it is one, so an unknown value is reported as
+ * unknown rather than repeated. Unlike `themes` this is a single field with no
+ * count to fall back on, so the marker stands in for it.
+ */
+export function toLoggableCreature(creature: unknown): string {
+  return typeof creature === 'string' && ALLOWED_CREATURES.includes(creature)
+    ? creature
+    : UNRECOGNIZED_PARAMETER;
+}
+
+/**
  * The longest an identifier is allowed to be before the log keeps only its
  * head. Every id this repository mints — `story_<uuid>`, `req_<uuid>`,
  * `img-<uuid>` — is well under it, so a real id is never touched; the cap is
