@@ -6,9 +6,9 @@ import {
 } from '@angular/ssr/node';
 import express, { Request, Response, NextFunction } from 'express';
 import { join } from 'node:path';
+import { getApiResponseStatus } from '../../api/_lib/http/apiResponseStatus';
 import { createCorsMiddleware } from '../../api/_lib/http/corsPolicy';
-import { StoryService } from '../../api/_lib/services/storyService';
-import { ExportService } from '../../api/_lib/services/exportService';
+import { registerApiRoutes } from '../../api/_lib/http/expressApiRoutes';
 import { ImageService } from '../../api/_lib/services/imageService';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
@@ -34,115 +34,12 @@ app.use('/api', createCorsMiddleware({
 
 // ==================== API ROUTES ====================
 
-// Health check
-app.get('/api/health', (req: Request, res: Response) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env['NODE_ENV'] || 'development',
-    services: {
-      grok: !!process.env['XAI_API_KEY'] ? 'configured' : 'mock'
-    },
-    version: '2.1.0'
-  });
-});
-
-// Story generation
-app.post('/api/story/generate', async (req: Request, res: Response) => {
-  try {
-    const input = req.body;
-
-    if (!input.creature || !input.themes || typeof input.spicyLevel !== 'number' || !input.wordCount) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_INPUT',
-          message: 'Missing required fields: creature, themes, spicyLevel, wordCount'
-        }
-      });
-      return;
-    }
-
-    const storyService = new StoryService();
-    const result = await storyService.generateStory(input);
-
-    res.status(200).json(result);
-  } catch (error: any) {
-    console.error('Story generation error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Story generation failed'
-      }
-    });
-  }
-});
-
-// Chapter continuation
-app.post('/api/story/continue', async (req: Request, res: Response) => {
-  try {
-    const input = req.body;
-
-    if (!input.storyId || !input.existingContent || typeof input.currentChapterCount !== 'number') {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_INPUT',
-          message: 'Missing required fields: storyId, existingContent, currentChapterCount'
-        }
-      });
-      return;
-    }
-
-    const storyService = new StoryService();
-    const result = await storyService.continueChapter(input);
-
-    res.status(200).json(result);
-  } catch (error: any) {
-    console.error('Chapter continuation error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Chapter continuation failed'
-      }
-    });
-  }
-});
-
-// Export/Save
-app.post('/api/export/save', async (req: Request, res: Response) => {
-  try {
-    const input = req.body;
-
-    if (!input.storyId || !input.content || !input.title || !input.format) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_INPUT',
-          message: 'Missing required fields: storyId, content, title, format'
-        }
-      });
-      return;
-    }
-
-    const exportService = new ExportService();
-    const result = await exportService.saveAndExport(input);
-
-    res.status(200).json(result);
-  } catch (error: any) {
-    console.error('Export error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Export failed'
-      }
-    });
-  }
-});
+// The same handlers the serverless deployment runs, at the same paths — see
+// `registerApiRoutes`. Registering them here is what makes the Story Lab API
+// (`/api/story-lab/...`, which is every request the Angular app makes) reachable
+// on this deployment at all, and what stops the four legacy routes from being a
+// second, drifting implementation of routes that already exist.
+registerApiRoutes(app);
 
 // Image generation
 app.post('/api/image/generate', async (req: Request, res: Response) => {
@@ -163,7 +60,10 @@ app.post('/api/image/generate', async (req: Request, res: Response) => {
     const imageService = new ImageService();
     const result = await imageService.generateImage(input);
 
-    res.status(200).json(result);
+    // An unsuccessful envelope is not a `200`: an unsupported style or an
+    // image provider outage was served as OK with `success: false` inside it,
+    // which only a client that reads the body can tell from a generated image.
+    res.status(getApiResponseStatus(result)).json(result);
   } catch (error: any) {
     console.error('Image generation error:', error);
     res.status(500).json({

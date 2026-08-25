@@ -300,8 +300,8 @@ async function requireAccountUser(authPort: AuthPort, req: RequestLike, res: Res
 }
 
 function readAccountRouteTarget(req: RequestLike): AccountRouteTarget | null {
-  const resource = readQueryValue(req.query?.resource);
-  const projectId = readQueryValue(req.query?.projectId);
+  const resource = readQueryValue(req.query?.['resource']);
+  const projectId = readQueryValue(req.query?.['projectId']);
 
   if (resource === 'profile') {
     return { resource: 'profile' };
@@ -367,16 +367,16 @@ function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
     return null;
   }
 
-  const userId = candidate.userId;
-  const displayName = candidate.displayName;
-  const createdAt = readOptionalString(candidate.createdAt);
-  const updatedAt = readOptionalString(candidate.updatedAt);
+  const userId = candidate['userId'];
+  const displayName = candidate['displayName'];
+  const createdAt = readOptionalString(candidate['createdAt']);
+  const updatedAt = readOptionalString(candidate['updatedAt']);
   if (
     typeof userId !== 'string' ||
     !userId.trim() ||
     typeof displayName !== 'string' ||
     !displayName.trim() ||
-    !isObjectRecord(candidate.preferences) ||
+    !isObjectRecord(candidate['preferences']) ||
     createdAt === null ||
     updatedAt === null
   ) {
@@ -386,7 +386,7 @@ function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
   return {
     userId,
     displayName,
-    preferences: normalizeStoryLabProfilePreferences(candidate.preferences),
+    preferences: normalizeStoryLabProfilePreferences(candidate['preferences']),
     createdAt: createdAt ?? '',
     updatedAt: updatedAt ?? ''
   };
@@ -402,38 +402,38 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
     return null;
   }
 
-  const projectId = normalizeProjectId(candidate.id);
-  const synopsis = readOptionalString(candidate.synopsis);
-  const createdAt = readOptionalString(candidate.createdAt);
-  const updatedAt = readOptionalString(candidate.updatedAt);
+  const projectId = normalizeProjectId(candidate['id']);
+  const synopsis = readOptionalString(candidate['synopsis']);
+  const createdAt = readOptionalString(candidate['createdAt']);
+  const updatedAt = readOptionalString(candidate['updatedAt']);
   if (
     !projectId ||
-    !isNonBlankString(candidate.storyId) ||
-    !isNonBlankString(candidate.title) ||
+    !isNonBlankString(candidate['storyId']) ||
+    !isNonBlankString(candidate['title']) ||
     synopsis === null ||
     createdAt === null ||
     updatedAt === null ||
-    !isObjectRecord(candidate.summary) ||
-    !isObjectRecord(candidate.state) ||
-    !isObjectRecord(candidate.blueprint) ||
-    !Array.isArray(candidate.chapters)
+    !isObjectRecord(candidate['summary']) ||
+    !isObjectRecord(candidate['state']) ||
+    !isObjectRecord(candidate['blueprint']) ||
+    !Array.isArray(candidate['chapters'])
   ) {
     return null;
   }
 
   return {
     id: projectId,
-    storyId: candidate.storyId,
-    title: candidate.title,
+    storyId: candidate['storyId'],
+    title: candidate['title'],
     synopsis: synopsis ?? '',
-    blueprint: candidate.blueprint as unknown as SavedStoryProject['blueprint'],
-    summary: candidate.summary as unknown as SavedStoryProject['summary'],
-    state: candidate.state as unknown as SavedStoryProject['state'],
-    chapters: candidate.chapters as SavedStoryProject['chapters'],
-    telemetry: candidate.telemetry as SavedStoryProject['telemetry'],
-    continuityExtraction: candidate.continuityExtraction as SavedStoryProject['continuityExtraction'],
-    pinnedMemoryCardDraftIds: candidate.pinnedMemoryCardDraftIds as SavedStoryProject['pinnedMemoryCardDraftIds'],
-    acceptedMemoryCards: candidate.acceptedMemoryCards as SavedStoryProject['acceptedMemoryCards'],
+    blueprint: candidate['blueprint'] as unknown as SavedStoryProject['blueprint'],
+    summary: candidate['summary'] as unknown as SavedStoryProject['summary'],
+    state: candidate['state'] as unknown as SavedStoryProject['state'],
+    chapters: candidate['chapters'] as SavedStoryProject['chapters'],
+    telemetry: candidate['telemetry'] as SavedStoryProject['telemetry'],
+    continuityExtraction: candidate['continuityExtraction'] as SavedStoryProject['continuityExtraction'],
+    pinnedMemoryCardDraftIds: candidate['pinnedMemoryCardDraftIds'] as SavedStoryProject['pinnedMemoryCardDraftIds'],
+    acceptedMemoryCards: candidate['acceptedMemoryCards'] as SavedStoryProject['acceptedMemoryCards'],
     createdAt: createdAt ?? '',
     updatedAt: updatedAt ?? ''
   };

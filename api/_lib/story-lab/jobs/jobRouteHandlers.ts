@@ -651,7 +651,7 @@ function readValidJobIdOrRespond(req: RequestLike, res: ResponseLike): string | 
 }
 
 function isEventsRequest(req: RequestLike): boolean {
-  const eventsFlag = Array.isArray(req.query?.events) ? req.query?.events[0] : req.query?.events;
+  const eventsFlag = Array.isArray(req.query?.['events']) ? req.query?.['events'][0] : req.query?.['events'];
   if (eventsFlag === '1' || eventsFlag === 'true') {
     return true;
   }
@@ -660,7 +660,7 @@ function isEventsRequest(req: RequestLike): boolean {
 }
 
 function readJobId(req: RequestLike): string | null {
-  const queryJobId = Array.isArray(req.query?.jobId) ? req.query?.jobId[0] : req.query?.jobId;
+  const queryJobId = Array.isArray(req.query?.['jobId']) ? req.query?.['jobId'][0] : req.query?.['jobId'];
   if (queryJobId) {
     return queryJobId;
   }
@@ -798,7 +798,13 @@ function jobStorePublicMessage(error: StoryLabJobStoreError): string {
   }
 }
 
-function toJobError(error: ApiResponse<never>['error']): StoryLabJobError {
+/**
+ * `ApiResponse<never>['error']` is the union of both envelope arms, so it
+ * includes the success arm's absent error. Only the failure arm reaches here —
+ * `finishJob` calls this inside its `!result.success` branch — and saying so is
+ * what lets the fields be read without a null check the caller has already made.
+ */
+function toJobError(error: NonNullable<ApiResponse<never>['error']>): StoryLabJobError {
   return {
     code: error.code,
     message: error.message,

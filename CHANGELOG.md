@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Deployment Parity Fixes (August 25, 2026)
+
+#### Story Lab API reachable on the Node/Docker deployment
+- The Express server registered four hand-written legacy routes and none of the
+  `/api/story-lab/*` paths the Angular app actually calls, so every Story Lab
+  request fell through to the SSR handler and came back as the index page with
+  `200 OK`. All serverless handlers are now mounted through
+  `registerApiRoutes`, including the query rewrites `vercel.json` performs for
+  the job and account paths.
+
+#### Legacy routes no longer a second implementation
+- `/api/health`, `/api/story/generate`, `/api/story/continue`, and
+  `/api/export/save` now run the same handlers on both deployments. The Node
+  deployment had drifted: no 500KB export byte cap, no string checks on
+  `content`/`title`, no redacted structured logging, no `X-Request-ID`, and a
+  bare health payload where the serverless route answers an `ApiResponse`.
+
+#### Unsuccessful responses answer a real HTTP status
+- The legacy story, continuation, export, and image routes ended in
+  `res.status(200).json(result)` whatever the envelope said. `getApiResponseStatus`
+  maps the error code to a status, so a refusal, an invalid request, and a
+  provider outage are no longer all reported as `200 OK`.
+
+#### Supporting corrections
+- `parseStoryLabBlueprint` now names a missing `heatContract` as an invalid
+  field instead of returning a blueprint whose declared type said it was there.
+  The engine already refused those requests with `CONTENT_POLICY_VIOLATION`.
+- The Story Lab account, job, profile, and blueprint modules now type-check
+  under the Angular app's strict configuration, which reaches them through the
+  Node server.
+
 ### 🔧 Technical Improvements (December 20-22, 2025)
 
 #### Grok Model Updates
