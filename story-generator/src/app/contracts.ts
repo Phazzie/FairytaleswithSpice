@@ -27,6 +27,15 @@ export type ChapterBatchSize = 1 | 2 | 3;
 export type WordBudget = 600 | 900 | 1200 | 1500;
 export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_banter' | 'devotional_longing';
 export type HeatIntimacyBoundary = 'fade_to_black' | 'closed_door' | 'literary_on_page';
+export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
+
+export const IMAGE_STYLES = [
+  'artistic',
+  'photorealistic',
+  'fantasy',
+  'dark',
+  'romantic'
+] as const satisfies readonly ImageStyle[];
 
 export const CREATURE_ARCHETYPES = [
   'vampire',
@@ -422,6 +431,55 @@ export interface StoryContinuationSeam {
       message: string;
       maxChapters: number;
       attemptedChapterNumber: number;
+    };
+  };
+}
+
+export interface ImageGenerationSeam {
+  seamName: 'Story → Image Generation';
+  description: 'Generates a scene image from story content using Grok-2-Image.';
+
+  input: {
+    storyId: string;
+    content: string;
+    imagePrompt?: string;
+    creature: CreatureArchetype;
+    themes: string[];
+    style: ImageStyle;
+    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3';
+  };
+
+  output: {
+    imageId: string;
+    storyId: string;
+    imageUrl: string;
+    prompt: string;
+    style: ImageStyle;
+    aspectRatio: string;
+    width: number;
+    height: number;
+    fileSize: number;
+    generatedAt: Date;
+  };
+
+  errors: {
+    IMAGE_GENERATION_FAILED: {
+      code: 'IMAGE_GENERATION_FAILED';
+      message: string;
+      retryable: boolean;
+      reason: 'content_policy' | 'quota_exceeded' | 'service_error';
+    };
+    UNSUPPORTED_STYLE: {
+      code: 'UNSUPPORTED_STYLE';
+      message: string;
+      requestedStyle: ImageStyle;
+      supportedStyles: ImageStyle[];
+    };
+    IMAGE_QUOTA_EXCEEDED: {
+      code: 'IMAGE_QUOTA_EXCEEDED';
+      message: string;
+      quotaRemaining: number;
+      resetTime: Date;
     };
   };
 }

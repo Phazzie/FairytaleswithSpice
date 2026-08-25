@@ -3,9 +3,10 @@
 //
 // HTTP-contract regressions for the legacy story/export routes:
 //
-// 1. `/api/story/generate`, `/api/story/continue`, and `/api/export/save`
-//    answer a missing or non-object body with 400 INVALID_INPUT rather than
-//    crashing into their catch block and reporting 500 INTERNAL_ERROR.
+// 1. `/api/story/generate`, `/api/story/continue`, `/api/export/save`, and
+//    `/api/image/generate` answer a missing or non-object body with 400
+//    INVALID_INPUT rather than crashing into their catch block and reporting
+//    500 INTERNAL_ERROR.
 // 2. Caller-supplied text (a prose story id, an unrecognized field name) does
 //    not leak into request logs, on either the buffered sink or the console.
 // 3. The export size cap is measured in bytes, not UTF-16 code units.
@@ -13,6 +14,7 @@
 import { FILE_SIZE } from '../api/_lib/constants';
 import { logger } from '../api/_lib/utils/logger';
 import exportHandler from '../api/export/save';
+import imageGenerateHandler from '../api/image/generate';
 import continueHandler from '../api/story/continue';
 import generateHandler from '../api/story/generate';
 
@@ -115,6 +117,7 @@ async function verifyMalformedBodiesAreClientErrors(): Promise<void> {
     await expectMissingBodyRejected('/api/story/generate', generateHandler, body);
     await expectMissingBodyRejected('/api/story/continue', continueHandler, body);
     await expectMissingBodyRejected('/api/export/save', exportHandler, body);
+    await expectMissingBodyRejected('/api/image/generate', imageGenerateHandler, body);
   }
 }
 
@@ -246,12 +249,18 @@ async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
  * checks above do: reverting either call site fails this.
  */
 async function verifyRejectedBodiesDoNotLogCallerFieldNames(): Promise<void> {
+  // The third entry is a field name each route's own contract recognises, so
+  // the fixture body below carries one real field alongside the prose one —
+  // `userInput` is not part of `/api/image/generate`'s contract, so reusing it
+  // there would fail for the wrong reason (the route correctly not recognising
+  // a field it was never sent).
   const routes = [
-    ['/api/story/generate', generateHandler],
-    ['/api/story/continue', continueHandler]
+    ['/api/story/generate', generateHandler, 'userInput'],
+    ['/api/story/continue', continueHandler, 'userInput'],
+    ['/api/image/generate', imageGenerateHandler, 'style']
   ] as const;
 
-  for (const [endpoint, handler] of routes) {
+  for (const [endpoint, handler, knownField] of routes) {
     logger.clearLogs();
 
     // A body that fails the route's required-field check, carrying prose as a
@@ -263,7 +272,7 @@ async function verifyRejectedBodiesDoNotLogCallerFieldNames(): Promise<void> {
         headers: {},
         body: {
           'Dana is in treatment at the clinic on Rosewood': 1,
-          userInput: 'ignored'
+          [knownField]: 'ignored'
         }
       }, res);
       assert(res.statusCode === 400, `${endpoint} should refuse the malformed body, got ${res.statusCode}`);
@@ -288,7 +297,7 @@ async function verifyRejectedBodiesDoNotLogCallerFieldNames(): Promise<void> {
 
     const receivedFields = rejected.metadata?.['receivedFields'];
     assert(
-      Array.isArray(receivedFields) && receivedFields.includes('userInput'),
+      Array.isArray(receivedFields) && receivedFields.includes(knownField),
       `${endpoint} should still name the contract fields the caller sent (got ${JSON.stringify(rejected.metadata)})`
     );
     assert(

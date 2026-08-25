@@ -2,6 +2,7 @@
 
 import healthHandler from '../../health';
 import exportSaveHandler from '../../export/save';
+import imageGenerateHandler from '../../image/generate';
 import storyContinueHandler from '../../story/continue';
 import storyGenerateHandler from '../../story/generate';
 import storyLabEvaluateHandler from '../../story-lab/evaluate';
@@ -79,6 +80,7 @@ export const API_ROUTES: readonly ApiRouteDefinition[] = [
   { path: '/api/story/generate', handler: storyGenerateHandler },
   { path: '/api/story/continue', handler: storyContinueHandler },
   { path: '/api/export/save', handler: exportSaveHandler },
+  { path: '/api/image/generate', handler: imageGenerateHandler },
   { path: '/api/story-lab/stories', handler: storyLabGenesisHandler },
   { path: '/api/story-lab/stories/:storyId/continue', handler: storyLabContinuationHandler },
   { path: '/api/story-lab/stream/genesis', handler: storyLabStreamGenesisHandler },

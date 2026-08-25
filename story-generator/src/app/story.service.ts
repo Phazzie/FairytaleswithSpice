@@ -8,6 +8,7 @@ import {
   CloudStoryProjectList,
   CloudStoryProjectLoadResult,
   CloudStoryProjectSaveReceipt,
+  ImageGenerationSeam,
   SavedStoryProject,
   StoryGenerationSeam,
   StoryIterationPayload,
@@ -323,6 +324,21 @@ export class StoryService {
         eventSource.close();
       };
     });
+  }
+
+  /**
+   * Generate a scene image for a story chapter.
+   */
+  generateImage(input: ImageGenerationSeam['input']): Observable<ApiResponse<ImageGenerationSeam['output']>> {
+    this.errorLogging.logInfo('Requesting story image', 'StoryService.generateImage', {
+      storyId: input.storyId,
+      creature: input.creature,
+      style: input.style
+    });
+
+    return this.http
+      .post<ApiResponse<ImageGenerationSeam['output']>>('/api/image/generate', input)
+      .pipe(catchError(error => this.handleHttpError(error, 'generateImage')));
   }
 
   private handleHttpError(error: HttpErrorResponse, context: string) {

@@ -6,10 +6,8 @@ import {
 } from '@angular/ssr/node';
 import express, { Request, Response, NextFunction } from 'express';
 import { join } from 'node:path';
-import { getApiResponseStatus } from '../../api/_lib/http/apiResponseStatus';
 import { createCorsMiddleware } from '../../api/_lib/http/corsPolicy';
 import { registerApiRoutes } from '../../api/_lib/http/expressApiRoutes';
-import { ImageService } from '../../api/_lib/services/imageService';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -40,41 +38,6 @@ app.use('/api', createCorsMiddleware({
 // on this deployment at all, and what stops the four legacy routes from being a
 // second, drifting implementation of routes that already exist.
 registerApiRoutes(app);
-
-// Image generation
-app.post('/api/image/generate', async (req: Request, res: Response) => {
-  try {
-    const input = req.body;
-
-    if (!input.storyId || !input.content || !input.creature || !input.themes || !input.style) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_INPUT',
-          message: 'Missing required fields: storyId, content, creature, themes, style'
-        }
-      });
-      return;
-    }
-
-    const imageService = new ImageService();
-    const result = await imageService.generateImage(input);
-
-    // An unsuccessful envelope is not a `200`: an unsupported style or an
-    // image provider outage was served as OK with `success: false` inside it,
-    // which only a client that reads the body can tell from a generated image.
-    res.status(getApiResponseStatus(result)).json(result);
-  } catch (error: any) {
-    console.error('Image generation error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Image generation failed'
-      }
-    });
-  }
-});
 
 // ==================== STATIC FILES & ANGULAR SSR ====================
 
