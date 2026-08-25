@@ -233,14 +233,32 @@ assert(
   toLoggableIdentifier(`story_${privateProse.repeat(4)}`) === '[UNRECOGNIZED]',
   'a long run of prose should be reported too'
 );
+// Prose written with the separators an id uses passes an alphabet check but is
+// still prose, which is why the rule is the minted shape rather than a class of
+// permitted characters.
+assert(
+  toLoggableIdentifier('Dana_is_in_treatment_at_Rosewood') === '[UNRECOGNIZED]',
+  'underscore-separated prose should be reported, not repeated'
+);
+assert(
+  toLoggableIdentifier('story-notes-about-Dana-and-Rosewood') === '[UNRECOGNIZED]',
+  'hyphen-separated prose should be reported too'
+);
 assert(
   toLoggableIdentifier('story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') ===
     'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
   'a real story id should be logged exactly as it is'
 );
+// The stream route mints `story_stream_<uuid>`, so the prefix is not always one
+// segment.
+assert(
+  toLoggableIdentifier('story_stream_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f') ===
+    'story_stream_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+  'a streaming story id should be logged as it is'
+);
 assert(
   toLoggableIdentifier('a'.repeat(65)) === '[UNRECOGNIZED]',
-  'the length bound should still hold for a long run of allowed characters'
+  'a long run of allowed characters with no uuid in it should be reported'
 );
 assert(
   toLoggableIdentifier('   ') === undefined && toLoggableIdentifier(undefined) === undefined,

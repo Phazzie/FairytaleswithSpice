@@ -41,15 +41,24 @@ export function toLoggableCreature(creature: unknown): string {
 /**
  * The shape of an identifier this repository would have minted.
  *
- * A length cap alone is not a filter: `Dana is in treatment at the clinic on
- * Rosewood` is forty-five characters and would have gone into the log intact.
- * What separates an id from a sentence is its alphabet, not its length — every
- * id here is `story_<uuid>`, `req_<uuid>`, or `img-<uuid>`, so letters, digits,
- * `_`, and `-` describe all of them and admit no spaces or punctuation for
- * prose to hide in. The length bound stays as a second limit so that a long run
- * of allowed characters cannot be used as one either.
+ * Two weaker rules were tried first and both let prose through:
+ *
+ * - A length cap is not a filter. `Dana is in treatment at the clinic on
+ *   Rosewood` is forty-five characters and fits inside any cap worth having.
+ * - An alphabet is not a filter either. `Dana_is_in_treatment_at_Rosewood` is
+ *   built entirely from letters and underscores, so a class of `[A-Za-z0-9_-]`
+ *   admits it whole — the separators prose is written with when spaces are
+ *   unavailable are the same ones an id uses.
+ *
+ * What every id here actually has is a UUID: `story_<uuid>` from
+ * `generateStoryId`, `story_stream_<uuid>` from the stream route, `req_<uuid>`,
+ * `img-<uuid>`. A UUID is thirty-two hex digits in a fixed grouping, which no
+ * sentence produces by accident, so the pattern is an id-shaped prefix followed
+ * by one. That is a property of the value rather than of its punctuation, and
+ * it is the reason this rule holds where the other two did not.
  */
-const LOGGABLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const LOGGABLE_IDENTIFIER_PATTERN =
+  /^[A-Za-z0-9_-]{0,32}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface LoggableThemes {
   themes: string[];
@@ -131,11 +140,10 @@ export function toLoggableBoolean(value: unknown): boolean | string | undefined 
  *
  * A story id is the field that correlates a log line with the request it
  * belongs to, so it is worth keeping — but it arrives from the caller like
- * every other field, and nothing on the way here constrains it. Truncating was
- * not enough: prose shorter than the cap passed through whole, which is most
- * prose. Matching the shape instead means a value either looks like an id this
- * repository would have minted, and is logged, or does not, and is reported as
- * unrecognised without its text.
+ * every other field, and nothing on the way here constrains it. Matching the
+ * minted shape means a value either is an id this repository would have
+ * produced, and is logged, or is not, and is reported as unrecognised without
+ * its text.
  *
  * Missing is not the same as unrecognised: an absent id is omitted, so the
  * marker means "the caller sent something that was not an id" rather than
