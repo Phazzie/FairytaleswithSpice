@@ -271,8 +271,16 @@ const SHORTEST_MEANINGFUL_MODIFIER = 2;
  * is explained by the position rather than by the word being a name. The colon
  * is here for the `[Speaker]:` tags the generator writes, which put a capital
  * after every one of them.
+ *
+ * The semicolon and the dashes are deliberately absent. English does not
+ * capitalize after them, so a capital that follows one is explained by nothing
+ * but the word — it is a name, and treating the mark as a boundary threw it
+ * away: "The lock broke; Mira pressed the blood oath" scored no character
+ * signals at all, while the same sentence with a comma scored two. The
+ * ellipsis stays, because it genuinely can end a sentence, and a missed name
+ * is the cheaper error here than a common noun counted as a character.
  */
-const SENTENCE_END_PUNCTUATION = new Set(['.', '!', '?', ':', ';', '…', '—', '–']);
+const SENTENCE_END_PUNCTUATION = new Set(['.', '!', '?', ':', '…']);
 /**
  * Characters that can sit between the punctuation and the capital without
  * moving the word off the sentence boundary — the opening quote of a line of

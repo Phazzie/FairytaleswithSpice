@@ -268,6 +268,18 @@ function testBoundaryRulesRejectOnlyTheBoundary(): void {
     'a name recovered from behind a sentence opener should still carry its agency actions'
   );
 
+  // A semicolon or a dash does not end a sentence, so English does not
+  // capitalize after one — a capital that follows is explained by nothing but
+  // the word, and treating the mark as a boundary threw the name away.
+  for (const mark of [';', ' —', ',']) {
+    const joined = scan(`The lock broke${mark} Mira pressed the blood oath.`);
+    const joinedCharacters = joined.dimensions.find(dimension => dimension.id === 'character_consistency');
+    assert(
+      joinedCharacters?.signals.includes('Named character count: 1'),
+      `"${mark.trim() || 'comma'}" does not end a sentence (signals=${JSON.stringify(joinedCharacters?.signals)})`
+    );
+  }
+
   const prepositions = scan('In court, she waited. By car, they crossed the city.');
   const prepositionAnchors = prepositions.dimensions
     .find(dimension => dimension.id === 'prose_quality')
