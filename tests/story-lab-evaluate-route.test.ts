@@ -111,7 +111,16 @@ async function main(): Promise<void> {
     { label: 'carriage returns', text: '```json\r\n{"score":80}\r\n```' },
     { label: 'four-backtick fence', text: '````json\n{"score":80}\n````' },
     // A model that opened a fence and never closed it still meant the body.
-    { label: 'unterminated fence', text: '```json\n{"score":80}' }
+    { label: 'unterminated fence', text: '```json\n{"score":80}' },
+    // The info string is whatever the model wrote before the JSON starts.
+    // Reading it as a word stopped at the punctuation and left `/json` on the
+    // front of the payload.
+    { label: 'media-type info string', text: '```application/json\n{"score":80}\n```' },
+    { label: 'spaced info string', text: '```json output\n{"score":80}\n```' },
+    // Throwing away the whole opening line loses a payload the model started on
+    // it and then never closed.
+    { label: 'unterminated fence starting inline', text: '```json {"score":80,\n"note":"ok"}' },
+    { label: 'inline start with closing fence line', text: '```json {"score":80,\n"note":"ok"}\n```' }
   ];
 
   for (const sample of fencedSamples) {
@@ -138,6 +147,22 @@ async function main(): Promise<void> {
   assert(
     stripMarkdownJsonFence('{"note":"use ``` to fence"}') === '{"note":"use ``` to fence"}',
     'a backtick run inside unfenced JSON is payload, not a fence'
+  );
+
+  // Markdown closes a block on a line that holds nothing but the run. Accepting
+  // the first run found anywhere truncated the payload of exactly the response
+  // this app asks for — a story evaluation whose suggestions talk about
+  // Markdown fences.
+  const suggestionsAboutFences = {
+    score: 80,
+    suggestions: ['Wrap the sample in ``` so it renders', 'Close it with ``` too']
+  };
+  const fencedSuggestions = stripMarkdownJsonFence(
+    `\`\`\`json\n${JSON.stringify(suggestionsAboutFences)}\n\`\`\``
+  );
+  assert(
+    fencedSuggestions === JSON.stringify(suggestionsAboutFences),
+    `a backtick run inside a JSON string is payload, not a closing fence (got ${JSON.stringify(fencedSuggestions)})`
   );
 
   // ==================== REQUEST VALIDATION ====================
