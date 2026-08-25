@@ -10,7 +10,6 @@ import { createCorsMiddleware } from '../../api/_lib/http/corsPolicy';
 import { StoryService } from '../../api/_lib/services/storyService';
 import { ExportService } from '../../api/_lib/services/exportService';
 import { ImageService } from '../../api/_lib/services/imageService';
-import { handleStoryStreamRequest } from './story-stream-route';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -79,14 +78,6 @@ app.post('/api/story/generate', async (req: Request, res: Response) => {
       }
     });
   }
-});
-
-// Story generation - STREAMING (SSE)
-// The handler answers its own failures; `next` is here so that a throw from
-// the answering itself reaches Express rather than becoming an unhandled
-// rejection that takes the process down.
-app.post('/api/story/stream', (req: Request, res: Response, next: NextFunction) => {
-  handleStoryStreamRequest(req, res).catch(next);
 });
 
 // Chapter continuation
