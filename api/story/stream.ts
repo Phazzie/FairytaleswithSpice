@@ -9,6 +9,7 @@
 import { StoryService } from '../_lib/services/storyService';
 import { randomUUID } from 'node:crypto';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
+import { formatSseFrame } from '../_lib/http/sseStream';
 import { StoryGenerationSeam, StreamingStoryGenerationSeam, VALIDATION_RULES } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 import {
@@ -24,21 +25,11 @@ const VALID_REQUESTED_CHAPTER_COUNTS = new Set([1, 2, 3]);
 const VALID_STREAMING_WORD_COUNTS = new Set<number>(VALIDATION_RULES.wordCount.allowedValues);
 
 /**
- * Serialize one Server-Sent Events frame.
- *
- * A frame is dispatched by the blank line that ends it, so the terminator has
- * to be two real newlines. Written inside a template literal, `\\n\\n` is a
- * backslash followed by `n` — printable text, not a line ending — so every
- * update this route produced ran together into one event that no client ever
- * dispatched: an `EventSource` held the whole generation open and fired
- * `message` exactly never.
- *
- * `JSON.stringify` escapes newlines inside strings, so the payload cannot end
- * the frame early no matter what the story content contains.
+ * The frame serializer now lives in `_lib/http/sseStream`, shared with the
+ * Node/Docker deployment's `/api/story/stream`, which framed its own events by
+ * hand. Re-exported because it is this route's tested surface.
  */
-export function formatSseFrame(payload: unknown): string {
-  return `data: ${JSON.stringify(payload)}\n\n`;
-}
+export { formatSseFrame };
 
 /**
  * Read one query parameter, tolerating the `string[]` form a repeated parameter
