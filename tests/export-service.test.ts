@@ -254,7 +254,51 @@ async function testFilenamesStayReadableAndPortable(): Promise<void> {
   }
 }
 
+/**
+ * Every tag the plain-text renderer does not recognise as a break is replaced
+ * with a single space, so a break the reader sees is silently downgraded to a
+ * word gap. The break list stopped at `h3`, so a heading below that level, a
+ * `<div>`-wrapped passage, a table row, and an `<hr>` scene divider all ran
+ * into the text after them — in the `.txt` and `.pdf` documents and in the
+ * `.docx` body, which are the only renderings built from this text.
+ */
+async function testPlainTextExportKeepsEveryBlockBreak(): Promise<void> {
+  const exportService = new ExportService();
+  const text = await exportService.generateExportContent(createInput({
+    content: [
+      '<h4>The Vault</h4>',
+      '<div>She opened the door.</div>',
+      '<hr>',
+      '<table><tr><td>Cell A</td><td>Cell B</td></tr></table>'
+    ].join('')
+  }));
+
+  for (const [left, right] of [
+    ['The Vault', 'She opened the door.'],
+    ['She opened the door.', 'Cell A'],
+    ['Cell A', 'Cell B']
+  ]) {
+    assert(
+      !new RegExp(`${escapeForAssertion(left)}[^\\n]*${escapeForAssertion(right)}`).test(text),
+      `"${left}" and "${right}" are separated by block markup, so they should not share a line (got ${JSON.stringify(text)})`
+    );
+  }
+
+  for (const fragment of ['The Vault', 'She opened the door.', 'Cell A', 'Cell B']) {
+    assert(text.includes(fragment), `"${fragment}" should survive into the export (got ${JSON.stringify(text)})`);
+  }
+
+  // Nested closings such as `</td></tr></table>` each ask for a break, and the
+  // plain-text normalizer is what keeps them from opening a run of blank lines.
+  assert(!/\n{3,}/.test(text), `no run of blank lines should open up (got ${JSON.stringify(text)})`);
+}
+
+function escapeForAssertion(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
 async function main(): Promise<void> {
+  await testPlainTextExportKeepsEveryBlockBreak();
   await testFilenamesStayReadableAndPortable();
   await testDownloadUrlMatchesReportedFilename();
   await testPdfCrossReferenceTablePointsAtItsObjects();

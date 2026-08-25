@@ -4,7 +4,7 @@
 
 import axios from 'axios';
 import { randomUUID } from 'node:crypto';
-import { ImageGenerationSeam, ApiResponse } from '../types/contracts.js';
+import { ImageGenerationSeam, ApiResponse, CreatureType } from '../types/contracts.js';
 import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
 
 type SupportedAspectRatio = NonNullable<ImageGenerationSeam['input']['aspectRatio']>;
@@ -210,13 +210,35 @@ export class ImageService {
     return `A scene featuring a ${creature}: ${sceneDescription}`;
   }
 
+  /**
+   * Describe the creature the reader chose, for the image model.
+   *
+   * `CreatureType` has named ten archetypes since the Story Lab blueprint was
+   * introduced, and this map covered the first three. The other seven fell to
+   * the `supernatural being` fallback, so the one setting that most decides what
+   * an image looks like was dropped from the prompt for a siren, djinn, witch,
+   * dragon, demon, angel, or mermaid — seven of the ten choices the form offers,
+   * every one of them illustrated as an unspecified creature. The sibling
+   * `mapThemeToVisualElement` covers all eighteen themes, which is what makes
+   * this a gap rather than a decision.
+   *
+   * The fallback stays for a creature that reaches here from somewhere other
+   * than the contract; it is no longer the answer for most of the contract.
+   */
   private getCreatureContext(creature: string): string {
-    const contexts = {
+    const contexts: Record<CreatureType, string> = {
       vampire: 'gothic vampire with pale skin, dark eyes, elegant period clothing',
       werewolf: 'powerful werewolf with fierce eyes, muscular build, wild hair',
-      fairy: 'ethereal fairy with delicate wings, magical aura, nature elements'
+      fairy: 'ethereal fairy with delicate wings, magical aura, nature elements',
+      siren: 'alluring siren with sea-dark hair, luminous eyes, spray and moonlit water',
+      djinn: 'imperious djinn wreathed in smoke and ember light, gold ornament, desert night',
+      witch: 'self-possessed witch with candlelight and herbs, worn grimoire, sigils in the air',
+      dragon: 'immense dragon with iridescent scales, slit-pupilled eyes, hoard-gold and heat haze',
+      demon: 'infernal demon with dark horns, ember-lit eyes, scorched shadow and ruin',
+      angel: 'severe angel with vast feathered wings, halo light, marble and gold',
+      mermaid: 'mermaid with an iridescent scaled tail, drifting hair, deep water and coral light'
     };
-    return contexts[creature as keyof typeof contexts] || 'supernatural being';
+    return contexts[creature as CreatureType] || 'supernatural being';
   }
 
   private mapThemeToVisualElement(theme: string): string {

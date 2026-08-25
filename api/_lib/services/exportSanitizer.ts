@@ -51,7 +51,67 @@ const DANGEROUS_BLOCK_TAGS = new Set([
   'textarea',
   'select'
 ]);
-const PLAIN_TEXT_BREAK_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'li', 'blockquote', 'section', 'article']);
+/**
+ * The tags whose closing puts a line break into the plain-text export.
+ *
+ * Anything not named here falls through to the single space every other tag is
+ * replaced with, so the break a reader sees is silently downgraded to a word
+ * gap. The list stopped at `h3`, so `<h4>The Vault</h4><div>She opened the
+ * door.</div>` exported as the one line `The Vault She opened the door.` — the
+ * heading run into the prose under it, in the `.txt` and `.pdf` documents and
+ * in the `.docx` body, which are the only renderings that go through here. The
+ * remaining heading levels, the generic containers, the list and definition
+ * wrappers, and the table row and cell elements are all block-level in the
+ * markup the generator emits, so every one of them is a break.
+ *
+ * This is the same list `splitStoryIntoTextBlocks` reads for the scanners, and
+ * it is complete for the same reason: a boundary left off it is not left to the
+ * enclosing tag, it is deleted. `normalizePlainText` caps consecutive newlines
+ * at two, so nested closings such as `</li></ul>` still end one paragraph
+ * rather than opening a run of blank lines.
+ */
+const PLAIN_TEXT_BREAK_TAGS = new Set([
+  'p',
+  'div',
+  'section',
+  'article',
+  'aside',
+  'header',
+  'footer',
+  'main',
+  'nav',
+  'blockquote',
+  'pre',
+  'li',
+  'ul',
+  'ol',
+  'dl',
+  'dt',
+  'dd',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'figure',
+  'figcaption',
+  'table',
+  'thead',
+  'tbody',
+  'tfoot',
+  'caption',
+  'tr',
+  'td',
+  'th'
+]);
+/**
+ * Block-level elements that have no closing tag to break on, so the break has to
+ * be taken when the tag itself is seen. `<br>` has always been read this way;
+ * `<hr>` separates two passages just as plainly and was being written out as a
+ * space between them.
+ */
+const PLAIN_TEXT_VOID_BREAK_TAGS = new Set(['br', 'hr']);
 const BASIC_HTML_ENTITY_REPLACEMENTS = [
   ['&nbsp;', ' '],
   ['&lt;', '<'],
@@ -160,7 +220,7 @@ export function stripStoryHtmlForExport(html: string): string {
         continue;
       }
 
-      if (parsed.tagName === 'br' && !parsed.isClosing) {
+      if (PLAIN_TEXT_VOID_BREAK_TAGS.has(parsed.tagName) && !parsed.isClosing) {
         text += '\n';
         continue;
       }

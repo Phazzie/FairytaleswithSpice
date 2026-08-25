@@ -3,7 +3,7 @@
 
 import axios from 'axios';
 import { ImageService, readGeneratedImageUrl } from '../api/_lib/services/imageService';
-import { ImageGenerationSeam } from '../api/_lib/types/contracts';
+import { CreatureType, ImageGenerationSeam } from '../api/_lib/types/contracts';
 
 // The service reads `XAI_API_KEY` in its constructor and falls back to a mock
 // image URL when it is absent, so clearing it before the first `new
@@ -211,7 +211,49 @@ async function testTheServiceRefusesAProviderResponseWithoutAUrl(): Promise<void
   }
 }
 
+/**
+ * The creature is the one blueprint setting that most decides what an image
+ * looks like. The context map covered three of the ten archetypes `CreatureType`
+ * names, so the other seven were illustrated as an unspecified `supernatural
+ * being` — the reader's choice dropped from the prompt for seven of the ten
+ * options the form offers.
+ */
+async function testEveryCreatureArchetypeReachesThePrompt(): Promise<void> {
+  const creatures: CreatureType[] = [
+    'vampire',
+    'werewolf',
+    'fairy',
+    'siren',
+    'djinn',
+    'witch',
+    'dragon',
+    'demon',
+    'angel',
+    'mermaid'
+  ];
+  const descriptions = new Set<string>();
+
+  for (const creature of creatures) {
+    const result = await new ImageService().generateImage(createInput({ creature }));
+    assert(result.success, `mock image generation should succeed for ${creature}`);
+
+    const prompt = (result.data as ImageGenerationSeam['output']).prompt;
+    assert(
+      !prompt.includes('supernatural being'),
+      `${creature} is a named archetype, so it should not fall back to the generic description (got: ${prompt})`
+    );
+
+    // The generic fallback is one shared string, so the descriptions being
+    // distinct is what proves each archetype is described as itself rather than
+    // that the fallback was merely renamed.
+    const description = prompt.split('. ')[1] ?? prompt;
+    assert(!descriptions.has(description), `${creature} should have its own description (got: ${description})`);
+    descriptions.add(description);
+  }
+}
+
 async function main(): Promise<void> {
+  await testEveryCreatureArchetypeReachesThePrompt();
   await testSceneDescriptionReadsAsProse();
   await testMalformedThemesAreRejectedAsCallerError();
   await testAspectRatioNeverContradictsTheDimensions();
