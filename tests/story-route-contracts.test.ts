@@ -14,6 +14,7 @@
 // 3. `/api/story/stream` opens the stream with the cache headers it set, and
 //    records a failure against the method the request actually used.
 
+import { FILE_SIZE } from '../api/_lib/constants';
 import { StoryService } from '../api/_lib/services/storyService';
 import { VALIDATION_RULES } from '../api/_lib/types/contracts';
 import { logger } from '../api/_lib/utils/logger';
@@ -669,6 +670,162 @@ async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
 }
 
 /**
+ * A JSON object's keys are written by whoever wrote the body, so `receivedFields:
+ * Object.keys(input)` was caller text reaching the log through the one door that
+ * had not been checked — and it is the malformed requests, the hand-written
+ * ones, that take this path.
+ *
+ * Both sinks are asserted on, with prose markers, exactly as the value-side
+ * checks above do: reverting either call site fails this.
+ */
+async function verifyRejectedBodiesDoNotLogCallerFieldNames(): Promise<void> {
+  const routes = [
+    ['/api/story/generate', generateHandler],
+    ['/api/story/continue', continueHandler]
+  ] as const;
+
+  for (const [endpoint, handler] of routes) {
+    logger.clearLogs();
+
+    // A body that fails the route's required-field check, carrying prose as a
+    // field name beside a real field the contract does name.
+    const { consoleOutput } = await captureConsole(async () => {
+      const res = new FakeResponse();
+      await handler({
+        method: 'POST',
+        headers: {},
+        body: {
+          'Dana is in treatment at the clinic on Rosewood': 1,
+          userInput: 'ignored'
+        }
+      }, res);
+      assert(res.statusCode === 400, `${endpoint} should refuse the malformed body, got ${res.statusCode}`);
+      return res;
+    });
+
+    const rejected = logger
+      .getRecentLogs(50, 'warn')
+      .find(entry => entry.context?.endpoint === endpoint);
+
+    assert(rejected, `${endpoint} should log the request it refused`);
+
+    for (const [sink, written] of [
+      ['buffer', JSON.stringify(rejected.metadata)],
+      ['console', consoleOutput]
+    ] as const) {
+      assert(
+        !written.includes('Dana') && !written.includes('Rosewood'),
+        `prose sent as a field name must not reach the ${sink} of ${endpoint} (got ${written})`
+      );
+    }
+
+    const receivedFields = rejected.metadata?.['receivedFields'];
+    assert(
+      Array.isArray(receivedFields) && receivedFields.includes('userInput'),
+      `${endpoint} should still name the contract fields the caller sent (got ${JSON.stringify(rejected.metadata)})`
+    );
+    assert(
+      rejected.metadata?.['unrecognizedFieldCount'] === 1,
+      `${endpoint} should count the fields it did not recognise (got ${JSON.stringify(rejected.metadata)})`
+    );
+  }
+
+  logger.clearLogs();
+}
+
+/**
+ * The export cap is a size in kilobytes, so it has to be measured in bytes.
+ * Read with `String.length` it counted UTF-16 code units, and a story in a
+ * non-Latin script is up to three bytes per unit — so a body well past the
+ * documented 500KB was accepted, and the `contentLength` a refusal reported was
+ * not a byte count either.
+ */
+async function verifyExportMeasuresItsSizeCapInBytes(): Promise<void> {
+  const maxBytes = FILE_SIZE.MAX_CONTENT_LENGTH_KB * FILE_SIZE.BYTES_PER_KB;
+  // Three bytes per character in UTF-8, one UTF-16 code unit each: just over
+  // the cap in bytes, and comfortably under it when counted as characters.
+  const overSizedContent = '雨'.repeat(Math.ceil(maxBytes / 3) + 1);
+
+  assert(
+    overSizedContent.length < maxBytes,
+    'the fixture has to be under the cap by the old measure for this to prove anything'
+  );
+
+  const res = new FakeResponse();
+  await exportHandler({
+    method: 'POST',
+    headers: {},
+    body: {
+      storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+      title: 'Rain',
+      format: 'txt',
+      content: overSizedContent
+    }
+  }, res);
+
+  const body = res.body as { error?: { code?: string; contentLength?: number; maxLength?: number } };
+
+  assert(res.statusCode === 400, `content past the byte cap should be refused, got ${res.statusCode}`);
+  assert(
+    body.error?.code === 'CONTENT_TOO_LARGE',
+    `content past the byte cap should be refused as too large, got ${JSON.stringify(body.error)}`
+  );
+  assert(
+    body.error?.contentLength === Buffer.byteLength(overSizedContent, 'utf8'),
+    `the refusal should report the size it measured, got ${JSON.stringify(body.error)}`
+  );
+  assert(
+    body.error?.maxLength === maxBytes,
+    `the refusal should report the cap in bytes, got ${JSON.stringify(body.error)}`
+  );
+
+  // A story that fits is still exported, which is what keeps the cap worth
+  // having rather than merely strict.
+  const accepted = new FakeResponse();
+  await exportHandler({
+    method: 'POST',
+    headers: {},
+    body: {
+      storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+      title: 'Rain',
+      format: 'txt',
+      content: '<p>雨が降っていた。</p>'
+    }
+  }, accepted);
+
+  assert(accepted.statusCode === 200, `an ordinary non-ASCII story should still export, got ${accepted.statusCode}`);
+
+  // `content` and `title` are read as text by every export branch. A number is
+  // truthy, so the presence check let it through and the renderer threw a
+  // `TypeError` that `saveAndExport` reports as EXPORT_FAILED — the caller was
+  // told the export had failed rather than that the request was malformed.
+  for (const malformed of [
+    { field: 'content', body: { content: 12345, title: 'Rain' } },
+    { field: 'title', body: { content: '<p>Rain.</p>', title: { text: 'Rain' } } }
+  ]) {
+    const rejected = new FakeResponse();
+    await exportHandler({
+      method: 'POST',
+      headers: {},
+      body: {
+        storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+        format: 'txt',
+        ...malformed.body
+      }
+    }, rejected);
+
+    assert(
+      rejected.statusCode === 400,
+      `a non-string ${malformed.field} is a client error, got ${rejected.statusCode}`
+    );
+    assert(
+      (rejected.body as { error?: { code?: string } }).error?.code === 'INVALID_INPUT',
+      `a non-string ${malformed.field} should be named as invalid input, got ${JSON.stringify(rejected.body)}`
+    );
+  }
+}
+
+/**
  * Run something with the console captured, so an assertion can read what the
  * logger actually printed rather than only what it buffered.
  */
@@ -701,6 +858,8 @@ async function main(): Promise<void> {
   await verifyContinueDoesNotLogProseStoryIds();
   await verifyRepeatedQueryParametersReachTheValidator();
   await verifyMalformedBodiesAreClientErrors();
+  await verifyRejectedBodiesDoNotLogCallerFieldNames();
+  await verifyExportMeasuresItsSizeCapInBytes();
 
   console.log('Story route contract tests passed');
 }

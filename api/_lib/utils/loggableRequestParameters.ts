@@ -72,6 +72,41 @@ export interface LoggableThemes {
 }
 
 /**
+ * The field names each malformed-request log line may repeat, taken from the
+ * seam contracts the routes serve.
+ *
+ * They are listed rather than derived because a contract is a TypeScript type
+ * and has no run-time form to read; keeping them here puts them beside the
+ * other allow-lists in this module rather than in three route files that would
+ * each drift on their own.
+ */
+export const STORY_GENERATION_REQUEST_FIELDS: readonly string[] = [
+  'creature',
+  'themes',
+  'userInput',
+  'spicyLevel',
+  'wordCount',
+  'requestedChapterCount',
+  'generationContext'
+];
+
+export const CHAPTER_CONTINUATION_REQUEST_FIELDS: readonly string[] = [
+  'storyId',
+  'currentChapterCount',
+  'existingContent',
+  'userInput',
+  'maintainTone',
+  'tropeMetadata',
+  'requestedChapterCount',
+  'generationContext'
+];
+
+export interface LoggableFieldNames {
+  receivedFields: string[];
+  unrecognizedFieldCount?: number;
+}
+
+/**
  * Reduce a caller's `themes` to the part of it a log may repeat.
  *
  * `themes` is documented as a closed set — `VALIDATION_RULES.themes.allowedValues`
@@ -108,6 +143,45 @@ export function toLoggableThemes(themes: unknown): LoggableThemes {
   return unrecognized > 0
     ? { themes: recognized, unrecognizedThemeCount: unrecognized }
     : { themes: recognized };
+}
+
+/**
+ * Reduce the field names of a caller's request body to the part a log may
+ * repeat.
+ *
+ * The three legacy story routes each answered a malformed body with
+ * `logWarn('Invalid input - missing required fields', …, { receivedFields:
+ * Object.keys(input) })`. A JSON object's keys are chosen by whoever wrote the
+ * body, so that is the caller's own text — the same text `toLoggableThemes` and
+ * `toLoggableStoryId` exist to keep out of the log, arriving through the one
+ * door nobody had checked. A request body of
+ * `{"Dana is in treatment at Rosewood": 1}` put that sentence in the console and
+ * in the log buffer verbatim, and it is the *malformed* requests — the ones a
+ * caller is most likely to have hand-written — that take this path.
+ *
+ * The token redaction every logged string still goes through does not help
+ * here: it removes credentials, addresses, and URLs, not prose.
+ *
+ * So the line gets the field names it recognises and a count of what it did
+ * not. That is the whole of the diagnostic value — which required fields the
+ * caller actually sent — without any of the text, and a body whose fields are
+ * all on the contract, which is every request the app itself makes, is logged
+ * exactly as it was.
+ */
+export function toLoggableFieldNames(body: unknown, knownFields: readonly string[]): LoggableFieldNames {
+  if (!body || typeof body !== 'object') {
+    return { receivedFields: [] };
+  }
+
+  const present = new Set(Object.keys(body));
+  // Emitted in the contract's order rather than the caller's, so two requests
+  // carrying the same fields produce the same line.
+  const receivedFields = knownFields.filter(field => present.has(field));
+  const unrecognized = present.size - receivedFields.length;
+
+  return unrecognized > 0
+    ? { receivedFields, unrecognizedFieldCount: unrecognized }
+    : { receivedFields };
 }
 
 /**

@@ -35,8 +35,6 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
   }
 
   createJob<TPublicResult = unknown>(input: CreateStoryLabJobInput): StoryLabJobCreationResponse<TPublicResult> {
-    this.evictOldestJobIfNeeded();
-
     const now = input.now ?? new Date().toISOString();
     const job: StoryLabJob<TPublicResult> = {
       jobId: createOpaqueStoryLabJobId(),
@@ -58,6 +56,7 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
       events: [createSnapshotEvent(job, now)]
     };
     this.jobs.set(job.jobId, stored);
+    this.evictLeastRecentlyUsedJobs();
 
     return clone(response);
   }
@@ -91,7 +90,7 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
 
     stored.response = clone(response);
     stored.events.push(createSnapshotEvent(job, now));
-    this.jobs.set(jobId, stored);
+    this.markJobAsRecentlyUsed(jobId, stored);
 
     return clone(response);
   }
@@ -100,10 +99,7 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
     jobId: string,
     input: ReadStoryLabJobInput = {}
   ): StoryLabJobCreationResponse<TPublicResult> | null {
-    const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
-    if (stored && !canAccessStoredJob(stored, input)) {
-      return null;
-    }
+    const stored = this.readStoredJob<TPublicResult>(jobId, input);
 
     return stored ? clone(stored.response) : null;
   }
@@ -112,10 +108,7 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
     jobId: string,
     input: ReadStoryLabJobInput = {}
   ): StoryLabJobEvent<TPublicResult>[] | null {
-    const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
-    if (stored && !canAccessStoredJob(stored, input)) {
-      return null;
-    }
+    const stored = this.readStoredJob<TPublicResult>(jobId, input);
 
     return stored ? clone(stored.events) : null;
   }
@@ -124,10 +117,61 @@ export class NonDurableStoryLabJobStore implements StoryLabJobStore {
     this.jobs.clear();
   }
 
-  private evictOldestJobIfNeeded(): void {
-    while (this.jobs.size >= this.maxJobs) {
+  /**
+   * Look a job up for a reader, and count the lookup as a use.
+   *
+   * A job the caller may not read is not a use of it: an unauthorized probe
+   * must not be able to keep someone else's job alive, or to reorder the
+   * eviction queue at all.
+   */
+  private readStoredJob<TPublicResult>(
+    jobId: string,
+    input: ReadStoryLabJobInput
+  ): StoredStoryLabJob<TPublicResult> | null {
+    const stored = this.jobs.get(jobId) as StoredStoryLabJob<TPublicResult> | undefined;
+    if (!stored || !canAccessStoredJob(stored, input)) {
+      return null;
+    }
+
+    this.markJobAsRecentlyUsed(jobId, stored);
+
+    return stored;
+  }
+
+  /**
+   * Move a job to the newest end of the eviction order.
+   *
+   * A `Map` orders by first insertion and re-setting an existing key does not
+   * move it, so eviction without this was by job *age*. The route creates a job,
+   * marks it `running`, and only then does the work — a generation that takes
+   * tens of seconds — so the job being worked on is always among the oldest in
+   * the map. On a warm instance at capacity it was therefore the first one
+   * dropped, ahead of jobs created after it and already finished: `updateJob`
+   * then found nothing and returned `null`, and the route answered 503
+   * `STORY_LAB_JOB_STORAGE_FAILED` for a generation that had actually
+   * succeeded, while a client polling `/jobs/{id}` or its event stream was
+   * answered 404 for a job still in flight.
+   *
+   * Deleting before setting is what makes the order least-recently-used, and a
+   * read counts as a use because polling a job is how a client waits for one.
+   * The sibling transient snapshot store orders itself the same way.
+   */
+  private markJobAsRecentlyUsed(jobId: string, stored: StoredStoryLabJob): void {
+    this.jobs.delete(jobId);
+    this.jobs.set(jobId, stored);
+  }
+
+  /**
+   * Trim the store back to its bound, oldest use first.
+   *
+   * Run after the insert rather than before it — the same `maxJobs` jobs are
+   * kept either way, but "hold at most `maxJobs`" is what the loop now says,
+   * rather than "make room for one below `maxJobs`, then add one".
+   */
+  private evictLeastRecentlyUsedJobs(): void {
+    while (this.jobs.size > this.maxJobs) {
       const oldestJobId = this.jobs.keys().next().value;
-      if (!oldestJobId) {
+      if (oldestJobId === undefined) {
         return;
       }
 

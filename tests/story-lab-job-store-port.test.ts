@@ -44,6 +44,8 @@ class FakeJobExecutor implements StoryLabCloudQueryExecutor {
 
 async function main() {
   await testNonDurableStoreImplementsJobStorePort();
+  await testNonDurableStoreEvictsByLastUseRatherThanAge();
+  await testNonDurableStoreDeniedReadsDoNotCountAsUse();
   await testNonDurableStoreRejectsCrossOwnerUpdates();
   await testPostgresStoreFailsClosedWithoutDatabaseConfig();
   await testPostgresStoreHonorsExplicitEnvOverride();
@@ -94,6 +96,76 @@ async function testNonDurableStoreImplementsJobStorePort() {
 
   assert(updated?.job.status === 'running', 'job store port should update snapshots');
   assert(events?.length === 2, 'job store port should expose snapshot events');
+}
+
+/**
+ * The route creates a job, marks it `running`, and only then does the work, so
+ * the job being worked on is always among the oldest in the map. Evicting by
+ * creation order therefore dropped exactly the job still in flight: its
+ * completing `updateJob` found nothing, and the route reported 503
+ * STORY_LAB_JOB_STORAGE_FAILED for a generation that had succeeded.
+ *
+ * Touching the running job — an update, or a client polling it — has to move it
+ * out of the way of the newer, already-finished jobs behind it.
+ */
+async function testNonDurableStoreEvictsByLastUseRatherThanAge() {
+  const store = new NonDurableStoryLabJobStore(2);
+  const running = store.createJob({ kind: 'genesis', now: '2026-06-08T12:30:00.000Z' });
+  const idle = store.createJob({ kind: 'genesis', now: '2026-06-08T12:30:01.000Z' });
+
+  // What the route does next for the job it is about to run.
+  store.updateJob(running.job.jobId, {
+    status: 'running',
+    currentStep: 'generating_story',
+    progressPercent: 25,
+    now: '2026-06-08T12:30:02.000Z'
+  });
+
+  // Traffic arrives while that generation is still in flight.
+  store.createJob({ kind: 'genesis', now: '2026-06-08T12:30:03.000Z' });
+
+  assert(store.getJob(idle.job.jobId) === null, 'the least recently used job should be the one evicted');
+
+  const finished = store.updateJob(running.job.jobId, {
+    status: 'completed',
+    currentStep: 'completed',
+    progressPercent: 100,
+    result: { ok: true },
+    now: '2026-06-08T12:30:30.000Z'
+  });
+
+  assert(finished !== null, 'a job that was still being run must not be evicted from under its own completion');
+  assert(finished?.job.status === 'completed', 'the completing update should record the finished job');
+
+  // A read is a use too: polling `/jobs/{id}` is how a client waits for one.
+  const polled = store.createJob({ kind: 'genesis', now: '2026-06-08T12:30:31.000Z' });
+  store.getJob(finished!.job.jobId);
+  store.createJob({ kind: 'genesis', now: '2026-06-08T12:30:32.000Z' });
+
+  assert(store.getJob(finished!.job.jobId) !== null, 'reading a job should keep it ahead of the eviction queue');
+  assert(store.getJob(polled.job.jobId) === null, 'the job nobody read should be the one evicted');
+}
+
+/**
+ * A read the owner check refuses is not a use. Otherwise anyone who can guess a
+ * job id could reorder another owner's eviction queue.
+ */
+async function testNonDurableStoreDeniedReadsDoNotCountAsUse() {
+  const store = new NonDurableStoryLabJobStore(2);
+  const owned = store.createJob({
+    kind: 'genesis',
+    ownerUserId: 'owner_a',
+    now: '2026-06-08T12:30:00.000Z'
+  });
+  store.createJob({ kind: 'genesis', now: '2026-06-08T12:30:01.000Z' });
+
+  store.getJob(owned.job.jobId, { ownerUserId: 'owner_b' });
+  store.createJob({ kind: 'genesis', now: '2026-06-08T12:30:02.000Z' });
+
+  assert(
+    store.getJob(owned.job.jobId, { ownerUserId: 'owner_a' }) === null,
+    'a refused read must not keep a job alive'
+  );
 }
 
 async function testNonDurableStoreRejectsCrossOwnerUpdates() {
