@@ -64,6 +64,31 @@ function readQueryParam(value: unknown): string | undefined {
 }
 
 /**
+ * Build the generation input an `EventSource` sent as query parameters.
+ *
+ * Nothing here rejects anything: the fields are read into the contract's shape
+ * and the handler's own validator — the one that owns the 400 INVALID_INPUT
+ * message — decides whether they are usable. That is the whole point of
+ * reading them without throwing.
+ */
+function readStreamInputFromQuery(query: any): StoryGenerationSeam['input'] {
+  const themes = readQueryParam(query?.themes);
+  const userInput = readQueryParam(query?.userInput);
+  const requestedChapterCount = readQueryParam(query?.requestedChapterCount);
+
+  return {
+    creature: readQueryParam(query?.creature) as any,
+    themes: themes ? themes.split(',') as any[] : [],
+    spicyLevel: Number.parseInt(readQueryParam(query?.spicyLevel) as string, 10) as any,
+    wordCount: Number.parseInt(readQueryParam(query?.wordCount) as string, 10) as any,
+    userInput: userInput || '',
+    requestedChapterCount: (requestedChapterCount
+      ? Number.parseInt(requestedChapterCount, 10)
+      : undefined) as any
+  };
+}
+
+/**
  * GET/POST /api/story/stream
  * Implements StreamingStoryGenerationSeam contract
  * Supports GET with query params for EventSource compatibility
@@ -90,31 +115,9 @@ export default async function handler(req: any, res: any) {
 
   try {
     // Support both POST body and GET query params for EventSource compatibility
-    let input: StoryGenerationSeam['input'];
-    
-    if (req.method === 'GET') {
-      // Parse from query params for EventSource
-      const creature = readQueryParam(req.query?.creature);
-      const themes = readQueryParam(req.query?.themes);
-      const spicyLevel = readQueryParam(req.query?.spicyLevel);
-      const wordCount = readQueryParam(req.query?.wordCount);
-      const userInput = readQueryParam(req.query?.userInput);
-      const requestedChapterCount = readQueryParam(req.query?.requestedChapterCount);
-      const parsedRequestedChapterCount = requestedChapterCount
-        ? Number.parseInt(requestedChapterCount, 10)
-        : undefined;
-      input = {
-        creature: creature as any,
-        themes: themes ? themes.split(',') as any[] : [],
-        spicyLevel: Number.parseInt(spicyLevel as string, 10) as any,
-        wordCount: Number.parseInt(wordCount as string, 10) as any,
-        userInput: userInput || '',
-        requestedChapterCount: parsedRequestedChapterCount as any
-      };
-    } else {
-      // POST body
-      input = req.body;
-    }
+    const input: StoryGenerationSeam['input'] = req.method === 'GET'
+      ? readStreamInputFromQuery(req.query)
+      : req.body;
 
     // Validate input
     if (
