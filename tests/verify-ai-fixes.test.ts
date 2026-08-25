@@ -122,7 +122,11 @@ console.log('-'.repeat(80));
 const configHasPrimaryTimeout = configContent.includes(`DEFAULT_XAI_PRIMARY_TIMEOUT_MS = ${DEFAULT_XAI_PRIMARY_TIMEOUT_MS}`);
 const configHasFastTimeout = configContent.includes(`DEFAULT_XAI_FAST_TIMEOUT_MS = ${DEFAULT_XAI_FAST_TIMEOUT_MS}`);
 const configHasFastModel = configContent.includes(`DEFAULT_XAI_FAST_MODEL = '${DEFAULT_XAI_FAST_MODEL}'`);
-const apiUsesPrimaryTimeoutHelper = apiContent.includes('timeoutMs: getXaiPrimaryTimeoutMs()');
+// Matches both a direct `timeoutMs: getXaiPrimaryTimeoutMs()` assignment and
+// the `chapterOptions?.preferFastModel ? ... : getXaiPrimaryTimeoutMs()`
+// ternary the live call sites use: the primary-path branch always reads
+// `: getXaiPrimaryTimeoutMs()` regardless of which form wraps it.
+const apiUsesPrimaryTimeoutHelper = apiContent.includes(': getXaiPrimaryTimeoutMs()');
 const apiUsesFastFallbackTimeoutHelper = apiContent.includes('fallbackTimeoutMs: getXaiFastTimeoutMs()');
 const apiBudgetsExtraGenesisChapters = apiContent.includes('preferFastModel: chapterNumber > 1');
 const apiBudgetsExtraContinuationChapters = apiContent.includes('preferFastModel: offset > 1');
