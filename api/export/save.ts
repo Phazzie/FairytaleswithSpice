@@ -41,7 +41,19 @@ export default async function handler(req: any, res: any) {
     // Validate required fields. A body that is missing entirely fails here, as
     // one more malformed request, rather than throwing on `input.storyId` into
     // the catch block below and reporting the caller's mistake as a 500.
-    if (!input || !input.storyId || !input.content || !input.title || !input.format) {
+    // `content` and `title` are read as text below and by every branch of the
+    // export renderer, which calls `String` methods on them. A JSON body can
+    // carry a number or an object under either name, and both are truthy, so a
+    // presence check let them through: the renderer threw a `TypeError` inside
+    // `saveAndExport`, whose catch reports `EXPORT_FAILED` — the caller was
+    // told the export had failed rather than that its request was malformed.
+    if (
+      !input ||
+      !input.storyId ||
+      typeof input.content !== 'string' || !input.content ||
+      typeof input.title !== 'string' || !input.title ||
+      !input.format
+    ) {
       return res.status(400).json({
         success: false,
         error: {
@@ -51,15 +63,23 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Validate content length (max 500KB)
-    const MAX_CONTENT_LENGTH = FILE_SIZE.MAX_CONTENT_LENGTH_KB * 1000;
-    if (input.content.length > MAX_CONTENT_LENGTH) {
+    // The cap is a size in kilobytes, so it has to be measured in bytes.
+    // `String.length` counts UTF-16 code units, which undercounts every
+    // non-ASCII character a story contains — the same confusion
+    // `ExportService` reports `fileSize` with `Buffer.byteLength` to avoid. A
+    // story written in any non-Latin script is up to three bytes per unit, so
+    // the 500KB limit admitted roughly 1.5MB of it; the `contentLength` the
+    // refusal reported was not a byte count either, and `1000` bytes to the
+    // kilobyte contradicted the `BYTES_PER_KB` this repository defines.
+    const MAX_CONTENT_LENGTH = FILE_SIZE.MAX_CONTENT_LENGTH_KB * FILE_SIZE.BYTES_PER_KB;
+    const contentLength = Buffer.byteLength(input.content, 'utf8');
+    if (contentLength > MAX_CONTENT_LENGTH) {
       return res.status(400).json({
         success: false,
         error: {
           code: ERROR_CODES.CONTENT_TOO_LARGE,
           message: `Content exceeds maximum size of ${FILE_SIZE.MAX_CONTENT_LENGTH_KB}KB`,
-          contentLength: input.content.length,
+          contentLength,
           maxLength: MAX_CONTENT_LENGTH
         }
       });
