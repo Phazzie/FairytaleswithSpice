@@ -10,6 +10,8 @@
 import assert from 'node:assert/strict';
 import {
   API_ROUTES,
+  apiErrorHandler,
+  apiNotFoundHandler,
   registerApiRoutes,
   runApiRoute,
   type ApiRouteDefinition
@@ -261,6 +263,128 @@ runApiRoute(
     asynchronousError = error;
   }
 );
+
+// ==================== what an unmatched or failing /api request answers ====================
+
+/**
+ * The two things a caller can tell apart: the status, and whether the body is
+ * the envelope the whole API answers with. Both used to be decided by handlers
+ * this module never registered — the SSR page for a path no route claimed, and
+ * Express's HTML default handler for anything that threw.
+ */
+class RecordingResponse {
+  statusCode = 0;
+  body: any = null;
+  headers: Record<string, string> = {};
+  headersSent = false;
+
+  status(code: number): this {
+    this.statusCode = code;
+    return this;
+  }
+
+  json(body: unknown): void {
+    this.body = body;
+    this.headersSent = true;
+  }
+
+  setHeader(name: string, value: string): void {
+    this.headers[name] = value;
+  }
+
+  end(chunk?: string): void {
+    if (chunk !== undefined) {
+      this.body = JSON.parse(chunk);
+    }
+    this.headersSent = true;
+  }
+}
+
+const notFound = new RecordingResponse();
+apiNotFoundHandler({ method: 'post', originalUrl: '/api/story-lab/storyz?debug=1' }, notFound);
+assert.equal(notFound.statusCode, 404, 'an unregistered API path is a 404, not the SSR index page');
+assert.equal(notFound.body.success, false);
+assert.equal(notFound.body.error.code, 'API_ROUTE_NOT_FOUND');
+assert.match(
+  notFound.body.error.message,
+  /POST \/api\/story-lab\/storyz/,
+  'the message should name the method and path, without the query string'
+);
+
+const bodyParserCases = [
+  {
+    label: 'a malformed JSON body',
+    error: Object.assign(new SyntaxError('Unexpected end of JSON input'), {
+      type: 'entity.parse.failed',
+      status: 400
+    }),
+    status: 400,
+    code: 'INVALID_INPUT'
+  },
+  {
+    label: 'a body past the parser limit',
+    error: Object.assign(new Error('request entity too large'), {
+      type: 'entity.too.large',
+      status: 413
+    }),
+    status: 413,
+    code: 'CONTENT_TOO_LARGE'
+  }
+];
+
+for (const testCase of bodyParserCases) {
+  const response = new RecordingResponse();
+  apiErrorHandler(testCase.error, fakeRequest(), response, error => {
+    assert.fail(`${testCase.label} should be answered here, not passed on: ${String(error)}`);
+  });
+
+  assert.equal(response.statusCode, testCase.status, `${testCase.label} should answer ${testCase.status}`);
+  assert.equal(response.body.error.code, testCase.code);
+}
+
+// Anything else is this service failing. The stack trace Express's default
+// handler prints into the body outside `NODE_ENV=production` is exactly what
+// must not reach the browser.
+const failed = new RecordingResponse();
+const leaky = new Error('connect ECONNREFUSED 10.0.0.4:5432');
+apiErrorHandler(leaky, fakeRequest(), failed, error => {
+  assert.fail(`a handler failure should be answered here: ${String(error)}`);
+});
+assert.equal(failed.statusCode, 500);
+assert.equal(failed.body.error.code, 'INTERNAL_ERROR');
+assert.ok(
+  !JSON.stringify(failed.body).includes('ECONNREFUSED'),
+  'the failure envelope should not carry the underlying error text'
+);
+
+// A route that already started writing — an SSE stream — cannot be given a
+// status and a body now, so the failure goes on to Express to close the socket.
+const streaming = new RecordingResponse();
+streaming.headersSent = true;
+let forwardedFromStream: unknown = null;
+apiErrorHandler(leaky, fakeRequest(), streaming, error => {
+  forwardedFromStream = error;
+});
+assert.equal(forwardedFromStream, leaky, 'a failure after headers were sent is passed on');
+assert.equal(streaming.statusCode, 0, 'and nothing is written over the stream that is already open');
+
+// A double with neither `status` nor `json` still answers JSON rather than
+// falling back to the HTML default.
+const bare: any = {
+  statusCode: 0,
+  headers: {} as Record<string, string>,
+  setHeader(name: string, value: string) {
+    this.headers[name] = value;
+  },
+  ended: null as string | null,
+  end(chunk?: string) {
+    this.ended = chunk ?? null;
+  }
+};
+apiErrorHandler(leaky, fakeRequest(), bare, error => assert.fail(`unexpected next: ${String(error)}`));
+assert.equal(bare.statusCode, 500);
+assert.equal(bare.headers['Content-Type'], 'application/json');
+assert.equal(JSON.parse(bare.ended).error.code, 'INTERNAL_ERROR');
 
 // The rejection is delivered on a microtask, so the assertion waits for one.
 async function assertRejectionWasForwarded(): Promise<void> {

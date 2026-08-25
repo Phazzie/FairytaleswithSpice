@@ -3,6 +3,7 @@
 
 import handler, { parseEvaluation } from '../api/story-lab/evaluate';
 import { stripMarkdownJsonFence } from '../api/_lib/utils/modelJsonPayload';
+import { STORY_EVALUATION_LIMITS } from '../shared/storyBlueprintLimits';
 
 interface FakeRequest {
   method: string;
@@ -220,7 +221,40 @@ async function main(): Promise<void> {
     { label: 'string themes', body: { storyContent: STORY, configuration: { themes: 'romance' } } },
     { label: 'non-string theme entry', body: { storyContent: STORY, configuration: { themes: ['romance', 3] } } },
     { label: 'string spicyLevel', body: { storyContent: STORY, configuration: { spicyLevel: 'very' } } },
-    { label: 'string wordCount', body: { storyContent: STORY, configuration: { wordCount: 'lots' } } }
+    { label: 'string wordCount', body: { storyContent: STORY, configuration: { wordCount: 'lots' } } },
+    // Every one of these reaches the Grok prompt verbatim. The blueprint routes
+    // have refused an oversized field since `STORY_BLUEPRINT_LIMITS` was
+    // introduced; this route forwarded any amount of prose to a paid model.
+    {
+      label: 'oversized storyContent',
+      body: { storyContent: 'a'.repeat(STORY_EVALUATION_LIMITS.maxStoryContentLength + 1) }
+    },
+    {
+      label: 'oversized creature',
+      body: {
+        storyContent: STORY,
+        configuration: { creature: 'v'.repeat(STORY_EVALUATION_LIMITS.maxConfigurationValueLength + 1) }
+      }
+    },
+    {
+      label: 'oversized theme entry',
+      body: {
+        storyContent: STORY,
+        configuration: { themes: ['t'.repeat(STORY_EVALUATION_LIMITS.maxConfigurationValueLength + 1)] }
+      }
+    },
+    {
+      label: 'too many themes',
+      body: {
+        storyContent: STORY,
+        configuration: {
+          themes: Array.from(
+            { length: STORY_EVALUATION_LIMITS.maxThemes + 1 },
+            (_unused, index) => `theme_${index}`
+          )
+        }
+      }
+    }
   ];
 
   for (const sample of malformedBodies) {
@@ -246,6 +280,18 @@ async function main(): Promise<void> {
     {
       storyContent: STORY_HTML,
       configuration: { creature: 'vampire', themes: ['forbidden_love'], spicyLevel: 4, wordCount: 900 }
+    },
+    // The caps bound the request; they must not refuse one that sits on them.
+    // A caller evaluates a whole accumulated saga, not a single batch.
+    {
+      storyContent: `<p>${'a'.repeat(STORY_EVALUATION_LIMITS.maxStoryContentLength - 7)}</p>`,
+      configuration: {
+        creature: 'v'.repeat(STORY_EVALUATION_LIMITS.maxConfigurationValueLength),
+        themes: Array.from(
+          { length: STORY_EVALUATION_LIMITS.maxThemes },
+          (_unused, index) => `theme_${index}`
+        )
+      }
     }
   ]) {
     const response = await post(body);
