@@ -438,6 +438,16 @@
           >
             Save
           </button>
+          <button
+            type="button"
+            class="ghost compact"
+            data-testid="generate-image"
+            aria-label="Generate a scene image for this chapter"
+            (click)="generateChapterImage()"
+            [disabled]="isGeneratingImage() || !selectedChapter()"
+          >
+            {{ isGeneratingImage() ? 'Generating…' : 'Generate Image' }}
+          </button>
         </div>
       </header>
 
@@ -454,6 +464,34 @@
           </span>
         </header>
         <div class="chapter-content" [innerHTML]="getSafeHtml(chapter.htmlContent)"></div>
+
+        <div class="chapter-image-panel" data-testid="chapter-image-panel">
+          <div class="chapter-image-controls">
+            <label for="image-style-select">Scene image style</label>
+            <select
+              id="image-style-select"
+              data-testid="image-style-select"
+              [ngModel]="selectedImageStyle()"
+              (ngModelChange)="selectedImageStyle.set($event)"
+            >
+              <option *ngFor="let style of imageStyles" [value]="style">{{ style | titlecase }}</option>
+            </select>
+          </div>
+
+          <p class="field-error" data-testid="chapter-image-error" *ngIf="imageGenerationError()">
+            {{ imageGenerationError() }}
+          </p>
+
+          <ng-container *ngIf="generatedChapterImage() as generated">
+            <img
+              *ngIf="generated.chapterId === chapter.chapterId"
+              class="chapter-image-preview"
+              data-testid="chapter-image-preview"
+              [src]="generated.image.imageUrl"
+              [alt]="'Generated illustration for ' + chapter.title"
+            />
+          </ng-container>
+        </div>
       </article>
 
       <section class="director-room-panel batch-queue-panel" data-testid="director-room-panel" *ngIf="directorRoomNotes().length">

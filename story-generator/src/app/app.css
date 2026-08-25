@@ -256,6 +256,26 @@
   letter-spacing: 0;
 }
 
+.chapter-image-panel {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.chapter-image-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.chapter-image-preview {
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  margin-top: 10px;
+}
+
 .section-heading h2,
 .story-header h2 {
   font-family: var(--serif);

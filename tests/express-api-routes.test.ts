@@ -22,6 +22,7 @@ const EXPECTED_ROUTE_PATHS = [
   '/api/story/generate',
   '/api/story/continue',
   '/api/export/save',
+  '/api/image/generate',
   '/api/story-lab/stories',
   '/api/story-lab/stories/:storyId/continue',
   '/api/story-lab/stream/genesis',
@@ -73,6 +74,7 @@ assert.equal(registeredHandlers.size, EXPECTED_ROUTE_PATHS.length);
  * the deployment answers with the SSR index page.
  */
 const CLIENT_REQUEST_PATHS = [
+  '/api/image/generate',
   '/api/story-lab/stories',
   '/api/story-lab/stories/story_abc/continue',
   '/api/story-lab/jobs',

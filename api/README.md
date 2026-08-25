@@ -3,11 +3,12 @@
 This directory contains Vercel serverless functions for the Story Lab recovery branch.
 Audio endpoints are intentionally deferred for this recovery; story-generation ideas mined from
 audio PRs are tracked in `NOT_TAKEN_FEATURE_LEDGER.md`.
-The active route budget is now 10 deployable functions out of the 12-function guard after retiring
-the unreachable legacy `/api/story/stream` route (see "Retired route files" below) and after
-adding the non-durable Story Lab job-route scaffold. Status and events URLs rewrite into the single
-`api/story-lab/jobs.ts` function so the process-local scaffold does not split state across
-separate deployed functions.
+The active route budget is now 11 deployable functions out of the 12-function guard after retiring
+the unreachable legacy `/api/story/stream` route (see "Retired route files" below), after adding
+the non-durable Story Lab job-route scaffold, and after adding `api/image/generate.ts` — previously
+served only by a hand-rolled Express route in `story-generator/src/server.ts` and completely absent
+from this deployment. Status and events URLs rewrite into the single `api/story-lab/jobs.ts`
+function so the process-local scaffold does not split state across separate deployed functions.
 
 ## 📁 API Structure
 
@@ -29,6 +30,8 @@ api/
 │   └── stream/genesis.ts  # Story Lab mock streaming (GET /api/story-lab/stream/genesis)
 ├── export/
 │   └── save.ts            # Save/export stories (POST /api/export/save)
+├── image/
+│   └── generate.ts        # Story-scene image generation (POST /api/image/generate)
 └── _lib/
     ├── services/          # Business logic services
     │   ├── storyService.ts    # Grok AI integration
@@ -153,6 +156,7 @@ The API is automatically deployed to Vercel when changes are pushed to the main 
 - `/api/story-lab/evaluate` → `/api/story-lab/evaluate.ts`
 - `/api/story-lab/stream/genesis` → `/api/story-lab/stream/genesis.ts`
 - `/api/export/save` → `/api/export/save.ts`
+- `/api/image/generate` → `/api/image/generate.ts`
 - `/api/health` → `/api/health.ts`
 
 Retired route files:
@@ -165,12 +169,16 @@ Retired route files:
   `/api/story-lab/stream/genesis` and `/api/story-lab/jobs.ts` instead.)
 - `/api/story/stream-demo`
 - `/api/story-lab/health`
-- `/api/image/generate`
+
+`/api/image/generate` was listed here as retired while `story-generator/src/server.ts` kept serving
+it ad hoc, only on the Node/Docker deployment — the docs had drifted from the code. It is restored
+as a real serverless function above, registered through `expressApiRoutes.ts` like every other route,
+rather than retired a second time.
 
 Do not restore retired routes without updating `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md` and
 `scripts/recovery/check-vercel-function-count.sh`.
 
-Current function-count guard should print `10/12`.
+Current function-count guard should print `11/12`.
 
 ### CORS Configuration
 

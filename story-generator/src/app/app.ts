@@ -19,6 +19,9 @@ import {
   HeatContract,
   HeatIntimacyBoundary,
   HeatTensionMode,
+  IMAGE_STYLES,
+  ImageGenerationSeam,
+  ImageStyle,
   PlotThread,
   SavedStoryProject,
   SpicyLevel,
@@ -393,6 +396,11 @@ export class App implements OnDestroy {
     triggerLabel: ''
   });
   readonly isGenerating = signal(false);
+  readonly imageStyles = IMAGE_STYLES;
+  readonly selectedImageStyle = signal<ImageStyle>('artistic');
+  readonly isGeneratingImage = signal(false);
+  readonly generatedChapterImage = signal<{ chapterId: string; image: ImageGenerationSeam['output'] } | null>(null);
+  readonly imageGenerationError = signal<string | null>(null);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
   readonly savedProjects = signal<SavedStoryProject[]>([]);
@@ -1396,6 +1404,49 @@ ${chapters}
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 0);
     this.statusMessage.set('Story download created.');
+  }
+
+  generateChapterImage() {
+    const chapter = this.selectedChapter();
+    const story = this.workbench().story;
+
+    if (!chapter || !story || this.isGeneratingImage()) {
+      return;
+    }
+
+    this.isGeneratingImage.set(true);
+    this.imageGenerationError.set(null);
+
+    const themes = this.blueprint().themes.map(theme => theme.id);
+
+    this.storyService
+      .generateImage({
+        storyId: story.storyId,
+        content: chapter.htmlContent,
+        creature: this.blueprint().creature,
+        themes,
+        style: this.selectedImageStyle()
+      })
+      .subscribe({
+        next: response => {
+          this.isGeneratingImage.set(false);
+
+          if (response.success) {
+            this.generatedChapterImage.set({ chapterId: chapter.chapterId, image: response.data });
+            this.notificationService.success('Image generated', 'Your chapter illustration is ready.');
+          } else {
+            const message = response.error?.message ?? 'Image generation failed.';
+            this.imageGenerationError.set(message);
+            this.notificationService.error('Image generation failed', message);
+          }
+        },
+        error: () => {
+          this.isGeneratingImage.set(false);
+          const message = 'Image generation failed. Please try again.';
+          this.imageGenerationError.set(message);
+          this.notificationService.error('Image generation failed', message);
+        }
+      });
   }
 
   saveActiveProject() {

@@ -101,6 +101,16 @@ export const CHAPTER_CONTINUATION_REQUEST_FIELDS: readonly string[] = [
   'generationContext'
 ];
 
+export const IMAGE_GENERATION_REQUEST_FIELDS: readonly string[] = [
+  'storyId',
+  'content',
+  'imagePrompt',
+  'creature',
+  'themes',
+  'style',
+  'aspectRatio'
+];
+
 export interface LoggableFieldNames {
   receivedFields: string[];
   unrecognizedFieldCount?: number;
