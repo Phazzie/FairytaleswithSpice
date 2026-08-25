@@ -61,11 +61,52 @@ Provide a detailed evaluation covering:
 Return only valid JSON with keys score, strengths, weaknesses, suggestions, and overallFeedback.`;
 }
 
-function parseEvaluation(content: string): EvaluationCriteria {
+const DEFAULT_EVALUATION_SCORE = 75;
+const MIN_EVALUATION_SCORE = 0;
+const MAX_EVALUATION_SCORE = 100;
+
+/**
+ * Read the model's overall score onto the scale the response promises.
+ *
+ * The prompt asks for 0-100 and the field was taken on the strength of
+ * `typeof === 'number'` alone, which is not the same thing. A model answering
+ * `8` — these criteria are written against a 1-10 scale about as often as a
+ * percentage — or overshooting to `120` was passed through literally, and the
+ * frontend renders the field as `{{ score }}/100` and colours it by threshold:
+ * a story the model called excellent out of ten was shown to the reader as
+ * `8/100` in the red band, and one it called `120` as better than perfect.
+ *
+ * The `heuristicReport` travelling in the same payload clamps every one of its
+ * dimensions to this range already, so without the clamp here the two halves of
+ * one response disagreed about what the scale is. Clamping cannot recover the
+ * scale the model meant, but it does keep the number inside the one the field
+ * is documented and rendered as.
+ *
+ * A non-finite value cannot come out of `JSON.parse` — JSON has no spelling for
+ * one — so the finite check is only here to keep `Math.min`/`Math.max` total;
+ * it is the range that a real response gets wrong. Falling back to the same
+ * default the missing field uses keeps a usable evaluation — the strengths and
+ * suggestions are the substance of it — rather than discarding the whole
+ * response over the one number.
+ */
+function readEvaluationScore(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_EVALUATION_SCORE;
+  }
+
+  return Math.max(MIN_EVALUATION_SCORE, Math.min(MAX_EVALUATION_SCORE, value));
+}
+
+/**
+ * Exported so the reading of a model response can be asserted on directly. The
+ * alternative is driving the route with a configured provider, which would
+ * prove nothing about the payload either way.
+ */
+export function parseEvaluation(content: string): EvaluationCriteria {
   const evaluation = JSON.parse(stripMarkdownJsonFence(content)) as Partial<EvaluationCriteria>;
 
   return {
-    score: typeof evaluation.score === 'number' ? evaluation.score : 75,
+    score: readEvaluationScore(evaluation.score),
     strengths: Array.isArray(evaluation.strengths) ? evaluation.strengths : [],
     weaknesses: Array.isArray(evaluation.weaknesses) ? evaluation.weaknesses : [],
     suggestions: Array.isArray(evaluation.suggestions) ? evaluation.suggestions : [],

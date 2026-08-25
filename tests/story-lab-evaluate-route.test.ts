@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-24 23:58 UTC
 
-import handler from '../api/story-lab/evaluate';
+import handler, { parseEvaluation } from '../api/story-lab/evaluate';
 import { stripMarkdownJsonFence } from '../api/_lib/utils/modelJsonPayload';
 
 interface FakeRequest {
@@ -163,6 +163,41 @@ async function main(): Promise<void> {
   assert(
     fencedSuggestions === JSON.stringify(suggestionsAboutFences),
     `a backtick run inside a JSON string is payload, not a closing fence (got ${JSON.stringify(fencedSuggestions)})`
+  );
+
+  // ==================== SCORE SCALE ====================
+  // The prompt asks for 0-100 and the field was accepted on `typeof ===
+  // 'number'` alone, which is not the same thing. The frontend renders it as
+  // `{{ score }}/100` and colours it by threshold, so a model answering on the
+  // 1-10 scale, or overshooting past 100, reached the reader as a percentage it
+  // never was.
+  const DEFAULT_SCORE = 75;
+  const scoreSamples: Array<{ label: string; payload: string; expected: number }> = [
+    { label: 'an in-range score', payload: '{"score":80}', expected: 80 },
+    { label: 'the lower bound', payload: '{"score":0}', expected: 0 },
+    { label: 'the upper bound', payload: '{"score":100}', expected: 100 },
+    { label: 'an overshooting score', payload: '{"score":120}', expected: 100 },
+    { label: 'a negative score', payload: '{"score":-5}', expected: 0 },
+    { label: 'a null score', payload: '{"score":null}', expected: DEFAULT_SCORE },
+    { label: 'a string score', payload: '{"score":"80"}', expected: DEFAULT_SCORE },
+    { label: 'a missing score', payload: '{"strengths":[]}', expected: DEFAULT_SCORE }
+  ];
+
+  for (const sample of scoreSamples) {
+    const { score } = parseEvaluation(sample.payload);
+
+    assert(
+      score === sample.expected,
+      `${sample.label} should read as ${sample.expected}, got ${JSON.stringify(score)}`
+    );
+  }
+
+  // The rest of the evaluation is the substance of it, so an unusable score
+  // must not cost the caller the strengths and suggestions beside it.
+  const rescued = parseEvaluation('{"score":9000,"strengths":["Strong hook"],"overallFeedback":"Solid."}');
+  assert(
+    rescued.strengths.length === 1 && rescued.overallFeedback === 'Solid.',
+    'clamping the score should leave the rest of the evaluation intact'
   );
 
   // ==================== REQUEST VALIDATION ====================
