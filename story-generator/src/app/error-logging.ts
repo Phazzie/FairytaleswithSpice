@@ -190,7 +190,28 @@ export class ErrorLoggingService {
     return undefined;
   }
 
-  private redactSensitiveLogData(value: any, sensitiveValues: string[] = [], seen = new WeakSet<object>(), keyHint = ''): any {
+  /**
+   * `ancestors` holds only the objects on the current recursion path, so a
+   * value reachable from two branches is walked twice rather than mislabelled
+   * as a cycle — the same reading `redactSensitiveLogData` in
+   * `api/_lib/utils/logger.ts` uses, and for the same reason.
+   *
+   * A set of everything already visited says `[Circular]` for a graph that has
+   * no cycle in it, and this service's busiest caller builds exactly such a
+   * graph: `StoryService.handleHttpError` logs
+   * `{ status, url, payload: error.error, originalError: error }`, where
+   * `payload` and `originalError.error` are one object. Walked with a
+   * visited-everything set, whichever of the two the key order reached second
+   * was replaced by the string `[Circular]`, so the response body the log entry
+   * exists to preserve was dropped from the error it belonged to.
+   *
+   * `collectSensitiveStrings` below shares the failure and makes it a privacy
+   * one rather than a legibility one: an object it marked visited under a
+   * harmless key was skipped when it reappeared under a sensitive one, so the
+   * strings inside it were never collected, and never redacted from the message
+   * and stack text they also appear in.
+   */
+  private redactSensitiveLogData(value: any, sensitiveValues: string[] = [], ancestors = new WeakSet<object>(), keyHint = ''): any {
     if (value === null || value === undefined) {
       return value;
     }
@@ -207,46 +228,45 @@ export class ErrorLoggingService {
       return value;
     }
 
-    if (value instanceof Error) {
-      if (seen.has(value)) {
-        return '[Circular]';
-      }
-      seen.add(value);
-
-      const redactedError: Record<string, unknown> = {
-        name: value.name,
-        message: this.redactSensitiveText(value.message, sensitiveValues)
-      };
-      if (value.stack) {
-        redactedError['stack'] = this.redactSensitiveText(value.stack, sensitiveValues);
-      }
-      if ('cause' in value && value.cause !== undefined) {
-        redactedError['cause'] = this.redactSensitiveLogData(value.cause, sensitiveValues, seen, 'cause');
-      }
-      return redactedError;
-    }
-
     if (value instanceof Date) {
       return value;
     }
 
-    if (seen.has(value)) {
+    if (ancestors.has(value)) {
       return '[Circular]';
     }
-    seen.add(value);
+    ancestors.add(value);
 
-    if (Array.isArray(value)) {
-      return value.map(item => this.redactSensitiveLogData(item, sensitiveValues, seen, keyHint));
-    }
+    try {
+      if (value instanceof Error) {
+        const redactedError: Record<string, unknown> = {
+          name: value.name,
+          message: this.redactSensitiveText(value.message, sensitiveValues)
+        };
+        if (value.stack) {
+          redactedError['stack'] = this.redactSensitiveText(value.stack, sensitiveValues);
+        }
+        if ('cause' in value && value.cause !== undefined) {
+          redactedError['cause'] = this.redactSensitiveLogData(value.cause, sensitiveValues, ancestors, 'cause');
+        }
+        return redactedError;
+      }
 
-    const redacted: Record<string, unknown> = {};
-    for (const [key, child] of Object.entries(value)) {
-      redacted[key] = this.redactSensitiveLogData(child, sensitiveValues, seen, key);
+      if (Array.isArray(value)) {
+        return value.map(item => this.redactSensitiveLogData(item, sensitiveValues, ancestors, keyHint));
+      }
+
+      const redacted: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(value)) {
+        redacted[key] = this.redactSensitiveLogData(child, sensitiveValues, ancestors, key);
+      }
+      return redacted;
+    } finally {
+      ancestors.delete(value);
     }
-    return redacted;
   }
 
-  private collectSensitiveStrings(value: any, seen = new WeakSet<object>(), keyHint = ''): string[] {
+  private collectSensitiveStrings(value: any, ancestors = new WeakSet<object>(), keyHint = ''): string[] {
     if (value === null || value === undefined) {
       return [];
     }
@@ -259,21 +279,29 @@ export class ErrorLoggingService {
       return [];
     }
 
-    if (seen.has(value)) {
+    if (ancestors.has(value)) {
       return [];
     }
-    seen.add(value);
+    ancestors.add(value);
 
+    try {
+      return this.collectSensitiveStringsFromObject(value, ancestors, keyHint);
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+
+  private collectSensitiveStringsFromObject(value: object, ancestors: WeakSet<object>, keyHint: string): string[] {
     const values: string[] = [];
     if (Array.isArray(value)) {
       for (const item of value) {
-        values.push(...this.collectSensitiveStrings(item, seen, keyHint));
+        values.push(...this.collectSensitiveStrings(item, ancestors, keyHint));
       }
       return values;
     }
 
     for (const [key, child] of Object.entries(value)) {
-      values.push(...this.collectSensitiveStrings(child, seen, key));
+      values.push(...this.collectSensitiveStrings(child, ancestors, key));
     }
     return values.filter(item => item.length > 0);
   }

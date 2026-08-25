@@ -122,6 +122,152 @@ export function registerApiRoutes(registrar: ApiRouteRegistrar): void {
 }
 
 /**
+ * Answer an `/api` path no route claimed.
+ *
+ * Without this, an unregistered API path falls past `express.static` into the
+ * Angular SSR handler, which renders the index page and answers `200 OK`,
+ * `text/html` — the exact failure this module exists to end, only narrowed from
+ * "every Story Lab route" to "any path that is not in the table above": a typo
+ * in a client URL, a route retired on one deployment and not the other, or a
+ * `vercel.json` rewrite whose Express twin was never added. `HttpClient` reports
+ * that page as a JSON parse error, so the one thing the response does not say is
+ * that the path does not exist.
+ *
+ * Mount it directly after `registerApiRoutes`, before the static and SSR
+ * handlers, since falling through to them is the thing being prevented.
+ */
+export function apiNotFoundHandler(req: any, res: any): void {
+  sendApiEnvelope(res, 404, {
+    success: false,
+    error: {
+      code: 'API_ROUTE_NOT_FOUND',
+      message: `No API route matches ${readRequestMethod(req)} ${readRequestPath(req)}.`
+    }
+  });
+}
+
+/**
+ * Turn a failure anywhere under `/api` into the envelope every caller of this
+ * API already reads.
+ *
+ * `runApiRoute` hands a thrown or rejected handler to `next`, and the body
+ * parsers mounted ahead of the routes reject a malformed or oversized payload
+ * the same way. With no error middleware registered, all of that reached
+ * Express's default handler, which answers `text/html` — carrying the full stack
+ * trace whenever `NODE_ENV` is not `production`, which is the default. So a
+ * server-side bug was served to the browser as a stack trace that `HttpClient`
+ * could only report as a parse error, and a client that sent a truncated JSON
+ * body was told nothing it could act on.
+ *
+ * The two body-parser failures are caller errors and are named as such; anything
+ * else is this service failing and is reported as `500` with no detail beyond
+ * the code, because the detail is what the stack trace was leaking.
+ *
+ * Express recognises an error handler by its four declared parameters, so `next`
+ * has to stay in the signature even though a response that is already streaming
+ * is the only case that uses it.
+ */
+export function apiErrorHandler(
+  error: any,
+  _req: any,
+  res: any,
+  next: (error?: unknown) => void
+): void {
+  // A route that already began writing — an SSE stream, say — cannot be given a
+  // status and a body now. Express's default handler is what closes that socket.
+  if (res?.headersSent) {
+    next(error);
+    return;
+  }
+
+  const bodyError = readBodyParserError(error);
+  if (bodyError) {
+    sendApiEnvelope(res, bodyError.status, {
+      success: false,
+      error: { code: bodyError.code, message: bodyError.message }
+    });
+    return;
+  }
+
+  sendApiEnvelope(res, 500, {
+    success: false,
+    error: {
+      code: 'INTERNAL_ERROR',
+      message: 'The API failed to handle this request.'
+    }
+  });
+}
+
+/**
+ * Recognise the two failures `express.json` and `express.urlencoded` raise for
+ * a request the caller can fix. Both carry a `type` naming the check that
+ * failed; the status they set is used as-is so a change in Express does not
+ * silently become a 500 here.
+ */
+function readBodyParserError(
+  error: any
+): { status: number; code: string; message: string } | null {
+  const type = error && typeof error === 'object' ? (error as { type?: unknown }).type : undefined;
+  const status = readErrorStatus(error);
+
+  if (type === 'entity.parse.failed') {
+    return {
+      status: status ?? 400,
+      code: 'INVALID_INPUT',
+      message: 'Request body is not valid JSON.'
+    };
+  }
+
+  if (type === 'entity.too.large') {
+    return {
+      status: status ?? 413,
+      code: 'CONTENT_TOO_LARGE',
+      message: 'Request body is larger than this API accepts.'
+    };
+  }
+
+  return null;
+}
+
+function readErrorStatus(error: any): number | undefined {
+  if (!error || typeof error !== 'object') {
+    return undefined;
+  }
+
+  const candidate = (error as { status?: unknown; statusCode?: unknown });
+  for (const value of [candidate.status, candidate.statusCode]) {
+    if (typeof value === 'number' && value >= 400 && value <= 599) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function sendApiEnvelope(res: any, status: number, body: unknown): void {
+  if (typeof res?.status === 'function' && typeof res.status(status)?.json === 'function') {
+    res.status(status).json(body);
+    return;
+  }
+
+  // A response double, or a bare `ServerResponse`, may carry neither helper.
+  // Saying so in JSON is still better than the HTML default.
+  res.statusCode = status;
+  res.setHeader?.('Content-Type', 'application/json');
+  res.end?.(JSON.stringify(body));
+}
+
+function readRequestMethod(req: any): string {
+  const method = req?.method;
+  return typeof method === 'string' && method ? method.toUpperCase() : 'GET';
+}
+
+function readRequestPath(req: any): string {
+  const path = req?.originalUrl ?? req?.url;
+  return typeof path === 'string' && path ? path.split('?')[0] : '/api';
+}
+
+/**
  * Exported for the same reason the route table is: this is where a rejected
  * handler stops being an unhandled rejection, and asserting on it through a
  * live server would prove nothing the fake registrar cannot.

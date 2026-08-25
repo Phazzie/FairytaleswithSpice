@@ -5,6 +5,7 @@ import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
 import { buildStoryQualityHeuristicReport } from '../_lib/story-lab/evaluation/storyQualityHeuristics';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { stripMarkdownJsonFence } from '../_lib/utils/modelJsonPayload';
+import { STORY_EVALUATION_LIMITS } from '../../shared/storyBlueprintLimits';
 
 interface NormalizedEvaluationRequest {
   storyContent: string;
@@ -159,6 +160,20 @@ function isFiniteNumber(value: unknown): boolean {
   return Number.isFinite(value);
 }
 
+/**
+ * Whether every entry of an already-validated string array is short enough to
+ * be a theme id rather than prose smuggled in under the field's name.
+ */
+function isShortStringArray(value: unknown): boolean {
+  return isStringArray(value)
+    && (value as string[]).length <= STORY_EVALUATION_LIMITS.maxThemes
+    && (value as string[]).every(entry => entry.length <= STORY_EVALUATION_LIMITS.maxConfigurationValueLength);
+}
+
+function isShortString(value: unknown): boolean {
+  return isString(value) && (value as string).length <= STORY_EVALUATION_LIMITS.maxConfigurationValueLength;
+}
+
 function normalizeEvaluationRequest(
   body: unknown
 ): { request: NormalizedEvaluationRequest } | { message: string } {
@@ -171,6 +186,17 @@ function normalizeEvaluationRequest(
 
   if (typeof input.storyContent !== 'string' || !input.storyContent.trim()) {
     return { message: 'storyContent is required and must be a non-empty string.' };
+  }
+
+  // The whole of this field is interpolated into the Grok prompt, so an
+  // unbounded one is an unbounded paid request: billed by the token, and given
+  // the function's entire time budget to send. The caller is the only party who
+  // can shorten it, so the answer is 400 rather than a truncation that silently
+  // evaluates a story the caller did not send.
+  if (input.storyContent.length > STORY_EVALUATION_LIMITS.maxStoryContentLength) {
+    return {
+      message: `storyContent must be ${STORY_EVALUATION_LIMITS.maxStoryContentLength} characters or fewer.`
+    };
   }
 
   // A `null` configuration reads as an absent one, which is what `?.` did
@@ -188,7 +214,19 @@ function normalizeEvaluationRequest(
   const wordCount = configuration?.wordCount;
   const fieldError =
     optionalFieldError('creature', creature, isString, 'a string') ??
+    optionalFieldError(
+      'creature',
+      creature,
+      isShortString,
+      `${STORY_EVALUATION_LIMITS.maxConfigurationValueLength} characters or fewer`
+    ) ??
     optionalFieldError('themes', themes, isStringArray, 'an array of strings') ??
+    optionalFieldError(
+      'themes',
+      themes,
+      isShortStringArray,
+      `no more than ${STORY_EVALUATION_LIMITS.maxThemes} entries of ${STORY_EVALUATION_LIMITS.maxConfigurationValueLength} characters or fewer`
+    ) ??
     optionalFieldError('spicyLevel', spicyLevel, isFiniteNumber, 'a number') ??
     optionalFieldError('wordCount', wordCount, isFiniteNumber, 'a number');
   if (fieldError) {

@@ -7,7 +7,11 @@ import {
 import express, { Request, Response, NextFunction } from 'express';
 import { join } from 'node:path';
 import { createCorsMiddleware } from '../../api/_lib/http/corsPolicy';
-import { registerApiRoutes } from '../../api/_lib/http/expressApiRoutes';
+import {
+  apiErrorHandler,
+  apiNotFoundHandler,
+  registerApiRoutes
+} from '../../api/_lib/http/expressApiRoutes';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -16,19 +20,24 @@ const angularApp = new AngularNodeAppEngine();
 
 // ==================== MIDDLEWARE ====================
 
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
 // CORS for the API surface, through the same origin allow-list the serverless
 // routes use: `STORY_LAB_ALLOWED_ORIGINS`, `ALLOWED_ORIGINS`, and
 // `FRONTEND_URL` are comma-separated lists, and the response names the one
 // origin the request actually matched. Page responses are left alone — they are
 // same-origin, and an allow-list is not the SSR handler's business.
+//
+// Ahead of the body parsers so that a request the parsers reject is still
+// answered with the CORS headers the browser needs in order to show the caller
+// the 400 — and so a preflight, which carries no body worth parsing, is answered
+// without one being read.
 app.use('/api', createCorsMiddleware({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true
 }));
+
+// Body parsing
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ==================== API ROUTES ====================
 
@@ -38,6 +47,14 @@ app.use('/api', createCorsMiddleware({
 // on this deployment at all, and what stops the four legacy routes from being a
 // second, drifting implementation of routes that already exist.
 registerApiRoutes(app);
+
+// Anything left under `/api` is a path no route claimed, and it has to be said
+// here: past this point lie `express.static` and the Angular SSR handler, and
+// the SSR handler answers every path it is given with the rendered index page
+// and a `200`. That is what made the missing Story Lab routes look like
+// successes on the wire, and it does the same for any path the table above
+// does not carry.
+app.use('/api', apiNotFoundHandler);
 
 // ==================== STATIC FILES & ANGULAR SSR ====================
 
@@ -63,6 +80,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     )
     .catch(next);
 });
+
+// ==================== API ERROR HANDLING ====================
+
+// Last, because Express matches error middleware in registration order and this
+// one has to be able to see a failure from anything above it — a body the
+// parsers rejected, and the handler errors `runApiRoute` deliberately forwards
+// here rather than letting them become unhandled rejections. Without it those
+// reached Express's default handler, which answers `text/html` and, outside
+// `NODE_ENV=production`, includes the stack trace.
+app.use('/api', apiErrorHandler);
 
 /**
  * Start the server if this module is the main entry point.
