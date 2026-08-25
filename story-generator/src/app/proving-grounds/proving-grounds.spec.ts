@@ -83,24 +83,26 @@ function createBasicResult(id: string): ProvingGroundsTestResult {
   return createTestResult(id, { aiEvaluation: undefined });
 }
 
+function getByTestId(fixture: ComponentFixture<ProvingGroundsComponent>, testId: string): HTMLButtonElement {
+  const button = fixture.nativeElement.querySelector(`[data-testid="${testId}"]`);
+  expect(button).withContext(`Element with data-testid="${testId}" should exist`).toBeTruthy();
+  return button as HTMLButtonElement;
+}
+
+function getAllByTestId(fixture: ComponentFixture<ProvingGroundsComponent>, testId: string): HTMLButtonElement[] {
+  return Array.from(fixture.nativeElement.querySelectorAll(`[data-testid="${testId}"]`)) as HTMLButtonElement[];
+}
+
 function getGenerateButton(fixture: ComponentFixture<ProvingGroundsComponent>): HTMLButtonElement {
-  const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
-  const generateButton = buttons.find(button => button.textContent?.trim().includes('Generate Story'));
-  expect(generateButton).withContext('Generate Story button should exist').toBeTruthy();
-  return generateButton as HTMLButtonElement;
+  return getByTestId(fixture, 'generate-story');
 }
 
 function getExportButton(fixture: ComponentFixture<ProvingGroundsComponent>): HTMLButtonElement {
-  const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[];
-  const exportButton = buttons.find(button => button.textContent?.trim().includes('Export Results'));
-  expect(exportButton).withContext('Export Results button should exist').toBeTruthy();
-  return exportButton as HTMLButtonElement;
+  return getByTestId(fixture, 'export-results');
 }
 
 function getCurrentEvaluateButton(fixture: ComponentFixture<ProvingGroundsComponent>): HTMLButtonElement {
-  const button = fixture.nativeElement.querySelector('.test-actions button');
-  expect(button).withContext('Current test evaluate button should exist').toBeTruthy();
-  return button as HTMLButtonElement;
+  return getByTestId(fixture, 'evaluate-story');
 }
 
 describe('ProvingGroundsComponent', () => {
@@ -183,9 +185,7 @@ describe('ProvingGroundsComponent', () => {
 
     fixture.detectChanges();
 
-    const selectButtons = Array.from(
-      fixture.nativeElement.querySelectorAll('.history-item-actions .btn.btn-sm')
-    ) as HTMLButtonElement[];
+    const selectButtons = getAllByTestId(fixture, 'select-comparison');
     const disabledSelectButton = selectButtons.find(button =>
       button.textContent?.trim() === 'Select'
     );
@@ -203,6 +203,37 @@ describe('ProvingGroundsComponent', () => {
     expect(evaluateButton.textContent).toContain('✅ Evaluated');
   });
 
+  it('shows a mock-evaluation warning and keeps the evaluate button enabled for a mock result', () => {
+    const mockResult = createTestResult('mock-evaluation', {
+      aiEvaluation: {
+        score: 75,
+        strengths: ['Strong opening hook that captures attention'],
+        weaknesses: ['Some dialogue feels generic or repetitive'],
+        suggestions: ['Vary dialogue patterns between characters for distinct voices'],
+        overallFeedback: 'Solid story with good fundamentals.',
+        isMockEvaluation: true
+      }
+    });
+    component.currentTest.set(mockResult);
+
+    fixture.detectChanges();
+
+    const badge = getByTestId(fixture, 'mock-evaluation-badge');
+    expect(badge.textContent).toContain('Offline mock evaluation');
+
+    const evaluateButton = getCurrentEvaluateButton(fixture);
+    expect(evaluateButton.disabled).toBeFalse();
+    expect(evaluateButton.textContent).toContain('Retry Evaluation');
+  });
+
+  it('does not show a mock-evaluation warning for a real AI evaluation', () => {
+    component.currentTest.set(createEvaluatedResult());
+
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="mock-evaluation-badge"]')).toBeNull();
+  });
+
   it('deletes the current history item when its delete action is clicked', () => {
     const firstResult = createBasicResult('delete-current');
     const secondResult = createBasicResult('delete-survivor');
@@ -212,8 +243,8 @@ describe('ProvingGroundsComponent', () => {
 
     fixture.detectChanges();
 
-    const deleteButtons = fixture.nativeElement.querySelectorAll('.history-item-actions .btn-danger');
-    (deleteButtons[0] as HTMLButtonElement).click();
+    const deleteButtons = getAllByTestId(fixture, 'delete-test');
+    deleteButtons[0].click();
 
     fixture.detectChanges();
 

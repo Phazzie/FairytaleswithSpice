@@ -7,6 +7,7 @@
       <button
         type="button"
         class="btn btn-secondary"
+        data-testid="toggle-comparison-mode"
         (click)="comparisonMode.set(!comparisonMode())"
         [class.active]="comparisonMode()">
         {{ comparisonMode() ? '📊 Exit Comparison' : '📊 Compare Tests' }}
@@ -14,6 +15,7 @@
       <button
         type="button"
         class="btn btn-secondary"
+        data-testid="export-results"
         (click)="exportTestResults()"
         [disabled]="testHistory().length === 0">
         💾 Export Results
@@ -128,6 +130,7 @@
           <button
             type="button"
             class="btn btn-secondary"
+            data-testid="view-prompts"
             (click)="viewPrompts()"
             title="View the filled prompt templates">
             👁️ View Prompts
@@ -136,6 +139,7 @@
           <button
             type="button"
             class="btn btn-primary btn-large"
+            data-testid="generate-story"
             (click)="generateStory()"
             [disabled]="isGenerating() || selectedThemes.length === 0">
             @if (isGenerating()) {
@@ -162,7 +166,7 @@
         @if (showGenerationLogic && currentGenerationLogic()) {
           <div id="generation-logic-panel" class="generation-logic-viewer">
             <div class="logic-actions">
-              <button type="button" class="btn btn-sm btn-secondary" (click)="regenerateLogic()">
+              <button type="button" class="btn btn-sm btn-secondary" data-testid="regenerate-logic" (click)="regenerateLogic()">
                 🎲 Regenerate Random
               </button>
             </div>
@@ -282,6 +286,9 @@
                   <div class="score-badge" [ngClass]="scoreToneClass(test.aiEvaluation.score)">
                     {{ test.aiEvaluation.score }}/100
                   </div>
+                  @if (test.aiEvaluation.isMockEvaluation) {
+                    <p class="mock-evaluation-notice" data-testid="mock-evaluation-badge">⚠️ Offline mock evaluation — not a real AI score.</p>
+                  }
                   @if (test.aiEvaluation.heuristicReport) {
                     <p class="feedback"><strong>Quality:</strong> {{ test.aiEvaluation.heuristicReport.overallScore }}/100</p>
                   }
@@ -311,12 +318,15 @@
               <button
                 type="button"
                 class="btn btn-primary"
+                data-testid="evaluate-story"
                 (click)="evaluateStory(currentTest()!)"
-                [disabled]="isEvaluating() || currentTest()!.aiEvaluation">
+                [disabled]="isEvaluating() || (currentTest()!.aiEvaluation && !currentTest()!.aiEvaluation!.isMockEvaluation)">
                 @if (isEvaluating()) {
                   <span class="spinner">⏳</span> Evaluating...
-                } @else if (currentTest()!.aiEvaluation) {
+                } @else if (currentTest()!.aiEvaluation && !currentTest()!.aiEvaluation!.isMockEvaluation) {
                   ✅ Evaluated
+                } @else if (currentTest()!.aiEvaluation?.isMockEvaluation) {
+                  🔁 Retry Evaluation (offline mock)
                 } @else {
                   🤖 Evaluate with AI
                 }
@@ -328,6 +338,13 @@
           @if (currentTest()!.aiEvaluation) {
             <div class="evaluation-panel">
               <h3>AI Evaluation Results</h3>
+
+              @if (currentTest()!.aiEvaluation!.isMockEvaluation) {
+                <p class="mock-evaluation-notice" data-testid="mock-evaluation-badge">
+                  ⚠️ Offline mock evaluation — the evaluation API was unavailable, so this score is a fixed
+                  placeholder, not real AI feedback. Do not use it for comparisons.
+                </p>
+              }
 
               <div class="score-display">
                 <div class="score-circle" [ngClass]="scoreToneClass(currentTest()!.aiEvaluation!.score)">
@@ -481,8 +498,9 @@
                   @if (test.aiEvaluation) {
                     <span
                       class="score-badge mini"
-                      [ngClass]="scoreToneClass(test.aiEvaluation.score)">
-                      {{ test.aiEvaluation.score }}
+                      [ngClass]="scoreToneClass(test.aiEvaluation.score)"
+                      [attr.title]="test.aiEvaluation.isMockEvaluation ? 'Offline mock evaluation, not a real AI score' : 'AI evaluation'">
+                      {{ test.aiEvaluation.score }}{{ test.aiEvaluation.isMockEvaluation ? ' (mock)' : '' }}
                     </span>
                     @if (test.aiEvaluation.heuristicReport) {
                       <span
@@ -504,6 +522,7 @@
                     <button
                       type="button"
                       class="btn btn-sm"
+                      data-testid="select-comparison"
                       (click)="toggleComparison(test)"
                       [disabled]="!isSelectedForComparison(test) && selectedComparisons().length >= 3">
                       {{ isSelectedForComparison(test) ? '✓ Selected' : 'Select' }}
@@ -512,6 +531,7 @@
                     <button
                       type="button"
                       class="btn btn-sm"
+                      data-testid="view-test"
                       (click)="currentTest.set(test)">
                       View
                     </button>
@@ -519,6 +539,7 @@
                       <button
                         type="button"
                         class="btn btn-sm"
+                        data-testid="evaluate-history-item"
                         (click)="evaluateStory(test)">
                         Evaluate
                       </button>
@@ -526,6 +547,7 @@
                     <button
                       type="button"
                       class="btn btn-sm btn-danger"
+                      data-testid="delete-test"
                       (click)="deleteTest(test.id)">
                       Delete
                     </button>

@@ -647,6 +647,14 @@ export interface EvaluationCriteria {
   suggestions: string[];
   overallFeedback: string;
   heuristicReport?: StoryQualityHeuristicReport;
+  /**
+   * Set when this evaluation never reached the server — the evaluate call
+   * failed or errored, and `PromptEvaluationService` fell back to its fixed
+   * placeholder scoring. Distinguishes that placeholder from both a real AI
+   * score and the server's own honest `heuristicReport` fallback, so the UI
+   * never shows a fabricated score as if it were real feedback.
+   */
+  isMockEvaluation?: boolean;
 }
 
 export interface EvaluationRequest {
