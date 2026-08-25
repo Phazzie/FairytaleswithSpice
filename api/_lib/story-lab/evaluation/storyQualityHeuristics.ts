@@ -141,8 +141,7 @@ function scoreEmotionalVariety(storyText: string): DimensionDraft {
 
 function scoreCharacterConsistency(storyContent: string, dialogueLines: string[]): DimensionDraft {
   const speakers = extractDialogueSpeakers(dialogueLines);
-  const namedCharacters = Array.from(new Set((storyContent.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g) ?? [])
-    .filter(name => !['Narrator'].includes(name))));
+  const namedCharacters = extractNamedCharacters(storyContent);
   const agencyActions = extractAgencyActions(storyContent, namedCharacters);
   let rationale = 'Few character identity signals were detected.';
   if (agencyActions.length) {
@@ -244,6 +243,74 @@ function extractDialogueSpeakers(dialogueLines: string[]): string[] {
     .map(line => /^\s*\[([^\]]+)\]:/.exec(line)?.[1]?.trim())
     .map(speaker => speaker?.split(',')[0]?.trim())
     .filter((speaker): speaker is string => Boolean(speaker))));
+}
+
+const NAMED_CHARACTER_PATTERN = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g;
+/**
+ * Punctuation that ends the sentence before a capitalized word, so the capital
+ * is explained by the position rather than by the word being a name. The colon
+ * is here for the `[Speaker]:` tags the generator writes, which put a capital
+ * after every one of them.
+ */
+const SENTENCE_END_PUNCTUATION = new Set(['.', '!', '?', ':', ';', '…', '—', '–']);
+/**
+ * Characters that can sit between the punctuation and the capital without
+ * moving the word off the sentence boundary — the opening quote of a line of
+ * dialogue, the bracket of a speaker tag, a list dash.
+ */
+const PRE_NAME_PUNCTUATION = new Set(['"', "'", '“', '”', '‘', '’', '(', '[', '*', '-']);
+
+/**
+ * Read the proper names a story uses, rather than every capitalized word.
+ *
+ * `\b[A-Z][a-z]+\b` matches the first word of every sentence, so a story with
+ * no named characters in it at all — "She opened a door. Rain fell hard. Blood
+ * pooled where the light could not reach." — was credited with four of them.
+ * The named-character bonus caps at two, so every story longer than two
+ * sentences collected it in full and the dimension could not tell a story with
+ * a cast from one without: the signal it printed, `Named character count`, was
+ * really a sentence count.
+ *
+ * A capitalized word counts as a name only where nothing but the word itself
+ * explains the capital — at least one appearance away from a sentence
+ * boundary, a line start, or a `[Speaker]:` tag. A name a story only ever
+ * writes sentence-initially is missed, which is the safe direction for an
+ * advisory signal: reporting a cast that is not there is what made the score
+ * meaningless.
+ */
+function extractNamedCharacters(storyContent: string): string[] {
+  const names = new Set<string>();
+
+  for (const match of storyContent.matchAll(NAMED_CHARACTER_PATTERN)) {
+    const name = match[0];
+    if (name === 'Narrator' || names.has(name) || startsSentence(storyContent, match.index ?? 0)) {
+      continue;
+    }
+
+    names.add(name);
+  }
+
+  return Array.from(names);
+}
+
+function startsSentence(storyContent: string, index: number): boolean {
+  let cursor = index - 1;
+
+  while (cursor >= 0) {
+    const character = storyContent[cursor];
+    // A line break is a boundary in its own right: paragraphs and dialogue
+    // lines do not always end in punctuation, and the word after one is still
+    // capitalized for its position.
+    if (character === '\n') {
+      return true;
+    }
+    if (!/\s/.test(character) && !PRE_NAME_PUNCTUATION.has(character)) {
+      break;
+    }
+    cursor -= 1;
+  }
+
+  return cursor < 0 || SENTENCE_END_PUNCTUATION.has(storyContent[cursor]);
 }
 
 function extractAgencyActions(storyContent: string, namedCharacters: readonly string[]): string[] {
@@ -350,7 +417,14 @@ function extractConcreteAnchors(storyContent: string): string[] {
     .toLowerCase()
     .replace(/[^a-z'\s-]/g, ' ')
     .replace(/\s+/g, ' ');
-  const tokens = normalized.split(' ').filter(token => token.length > 2);
+  // Every token, not just the ones longer than two characters. The short words
+  // this used to drop are exactly the ones `weakFirstTokens` exists to catch —
+  // `a`, `an`, `my` — so the guard could never fire for them, and dropping a
+  // token also welded its two non-adjacent neighbours into a phrase that was
+  // never in the prose: "She opened a door" became the anchor `opened door`,
+  // and a generic reference was scored as a concrete one. Keeping the tokens
+  // lets the guard read the determiner that is actually there.
+  const tokens = normalized.split(' ').filter(Boolean);
 
   for (let index = 0; index < tokens.length - 1; index += 1) {
     const phrase = `${tokens[index]} ${tokens[index + 1]}`;

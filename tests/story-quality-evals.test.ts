@@ -163,8 +163,86 @@ function testHtmlStoriesAreScoredOnTheirProse(): void {
   );
 }
 
+/**
+ * The two identity-shaped dimensions have to be able to say "no".
+ *
+ * Both used to answer yes to everything. `\b[A-Z][a-z]+\b` matches the first
+ * word of every sentence, so this story of four sentences and no cast reported
+ * four named characters and collected the whole named-character bonus, which
+ * caps at two. And `extractConcreteAnchors` dropped tokens shorter than three
+ * characters before pairing them, so the determiners its own weak-first-token
+ * list exists to reject — `a`, `an`, `my` — were gone before the guard ran, and
+ * the deleted token welded its two neighbours into a phrase the prose never
+ * contained: "She opened a door" was scored as the concrete anchor
+ * `opened door`.
+ */
+function testAnonymousProseScoresAsAnonymous(): void {
+  const report = buildStoryQualityHeuristicReport({
+    storyContent: [
+      'She opened a door and stepped through the cold hall.',
+      'Rain fell hard. Blood pooled where the light could not reach.',
+      'He carried my key past the arch and said nothing about the vow.'
+    ].join('\n\n'),
+    configuration: {
+      creature: 'vampire',
+      themes: [],
+      spicyLevel: 3,
+      wordCount: 900
+    }
+  });
+
+  const characterConsistency = report.dimensions.find(dimension => dimension.id === 'character_consistency');
+  assert(characterConsistency, 'report should include the character consistency dimension');
+  assert(
+    !characterConsistency.signals.some(signal => signal.startsWith('Named character count:')),
+    `sentence-initial words are not a cast (signals=${JSON.stringify(characterConsistency.signals)})`
+  );
+
+  const proseQuality = report.dimensions.find(dimension => dimension.id === 'prose_quality');
+  assert(proseQuality, 'report should include the prose quality dimension');
+  const anchorSignal = proseQuality.signals.find(signal => signal.startsWith('Specific anchors:'));
+  assert(
+    !anchorSignal,
+    `"a door", "my key", and "the arch" are generic references, not concrete anchors (got ${anchorSignal})`
+  );
+}
+
+/**
+ * The other direction: a story that does name its cast and does anchor its
+ * objects still gets credit for both, so the guards above cannot be satisfied
+ * by scoring nothing at all.
+ */
+function testNamedProseStillScores(): void {
+  const report = buildStoryQualityHeuristicReport({
+    storyContent: [
+      '[Narrator]: Salt stung her wrist while Mira watched the witness shell.',
+      'The price was named when Lord Brine pressed the blood oath into her palm.'
+    ].join('\n\n'),
+    configuration: {
+      creature: 'siren',
+      themes: [],
+      spicyLevel: 3,
+      wordCount: 900
+    }
+  });
+
+  const characterConsistency = report.dimensions.find(dimension => dimension.id === 'character_consistency');
+  assert(
+    characterConsistency?.signals.includes('Named character count: 2'),
+    `Mira and Lord Brine are a cast (signals=${JSON.stringify(characterConsistency?.signals)})`
+  );
+
+  const proseQuality = report.dimensions.find(dimension => dimension.id === 'prose_quality');
+  assert(
+    proseQuality?.signals.some(signal => signal.includes('Specific anchors: witness shell, blood oath')),
+    `named objects are still concrete anchors (signals=${JSON.stringify(proseQuality?.signals)})`
+  );
+}
+
 async function main(): Promise<void> {
   testHtmlStoriesAreScoredOnTheirProse();
+  testAnonymousProseScoresAsAnonymous();
+  testNamedProseStillScores();
 
   const heuristicReport = buildStoryQualityHeuristicReport({
     storyContent: [

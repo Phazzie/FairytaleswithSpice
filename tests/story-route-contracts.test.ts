@@ -32,6 +32,10 @@ class FakeResponse {
   body: unknown = null;
   ended = false;
   written = '';
+  // Node's own `ServerResponse` flips this in `writeHead`, and the stream route
+  // reads it to decide whether a failure can still be answered as JSON or has
+  // to be framed into the stream that is already open.
+  headersSent = false;
 
   setHeader(name: string, value: string): void {
     this.headers[name] = value;
@@ -50,6 +54,7 @@ class FakeResponse {
   writeHead(code: number, headers?: Record<string, string>): this {
     this.statusCode = code;
     Object.assign(this.headers, headers ?? {});
+    this.headersSent = true;
     return this;
   }
 
@@ -302,9 +307,105 @@ async function verifyMalformedBodiesAreClientErrors(): Promise<void> {
   }
 }
 
+/**
+ * Drive `/api/story/stream` as an `EventSource` would, with query parameters,
+ * and report what the client received.
+ *
+ * The generator is stubbed out for the same reason as above: this is about what
+ * the route makes of the query, not about generation.
+ */
+async function callStreamRouteWithQuery(query: Record<string, unknown>): Promise<FakeResponse> {
+  const original = StoryService.prototype.generateStoryStreaming;
+  StoryService.prototype.generateStoryStreaming = (async (_input: any, onChunk: any) => {
+    onChunk({
+      content: 'She opened the door.',
+      isComplete: true,
+      wordsGenerated: 4,
+      estimatedWordsRemaining: 0,
+      generationSpeed: 4
+    });
+  }) as typeof original;
+
+  try {
+    const res = new FakeResponse();
+    await streamHandler({ method: 'GET', headers: {}, query }, res);
+    return res;
+  } finally {
+    StoryService.prototype.generateStoryStreaming = original;
+  }
+}
+
+async function verifyRepeatedQueryParametersReachTheValidator(): Promise<void> {
+  const validQuery = {
+    creature: 'vampire',
+    themes: 'romance',
+    spicyLevel: '3',
+    wordCount: String(VALIDATION_RULES.wordCount.allowedValues[1])
+  };
+
+  // `?themes=romance&themes=dark` used to throw out of `themes.split(',')`,
+  // and the catch block answered with an SSE frame written before `writeHead`
+  // — a default 200 with no `text/event-stream` content type, which is neither
+  // a stream a client dispatches nor a JSON error one can read.
+  const repeatedThemes = await callStreamRouteWithQuery({
+    ...validQuery,
+    themes: ['romance', 'dark']
+  });
+
+  assert(
+    repeatedThemes.headersSent,
+    'a repeated themes parameter should open a stream, not fail before the headers'
+  );
+  const repeatedThemeEvents = parseSseEvents(repeatedThemes.written) as Array<{ type?: string }>;
+  assert(
+    repeatedThemeEvents.some(event => event.type === 'connected'),
+    `a repeated themes parameter should still connect (stream=${repeatedThemes.written.slice(0, 120)}…)`
+  );
+  assert(
+    !repeatedThemeEvents.some(event => event.type === 'error'),
+    'a repeated themes parameter should not fail the stream'
+  );
+
+  // `?creature=vampire&creature=witch` did not throw at all: an array is
+  // truthy, so it passed validation, the 200 and the `connected` frame went
+  // out, and the story service rejected the array mid-stream. Read as a single
+  // value it is an ordinary vampire request.
+  const repeatedCreature = await callStreamRouteWithQuery({
+    ...validQuery,
+    creature: ['vampire', 'witch']
+  });
+  const repeatedCreatureEvents = parseSseEvents(repeatedCreature.written) as Array<{ type?: string }>;
+
+  assert(
+    !repeatedCreatureEvents.some(event => event.type === 'error'),
+    'a repeated creature parameter should not fail the stream mid-flight'
+  );
+
+  // The point of not throwing during parsing is that the route's own validator
+  // gets to answer. A repeat that is genuinely invalid has to reach it.
+  const invalidRepeat = await callStreamRouteWithQuery({
+    ...validQuery,
+    creature: ['', 'witch']
+  });
+
+  assert(
+    invalidRepeat.statusCode === 400,
+    `an invalid repeated creature should be a client error, got ${invalidRepeat.statusCode}`
+  );
+  assert(
+    (invalidRepeat.body as any)?.error?.code === 'INVALID_INPUT',
+    'an invalid repeated creature should be reported as INVALID_INPUT'
+  );
+  assert(
+    invalidRepeat.written === '',
+    'a request rejected before generation should not have opened a stream'
+  );
+}
+
 async function main(): Promise<void> {
   verifySseFraming();
   await verifyStreamRouteEmitsDispatchableEvents();
+  await verifyRepeatedQueryParametersReachTheValidator();
   await verifyMalformedBodiesAreClientErrors();
 
   console.log('Story route contract tests passed');
