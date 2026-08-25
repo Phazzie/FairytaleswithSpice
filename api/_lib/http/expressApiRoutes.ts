@@ -59,12 +59,13 @@ const storyLabGenesisHandler = createStoryLabGenesisHandler();
 const storyLabContinuationHandler = createStoryLabContinuationHandler();
 
 /**
- * The query values Vercel's rewrites put on a request before the function sees
- * it. `vercel.json` turns `/api/story-lab/jobs/:jobId/events` into
+ * The query values a Vercel deployment puts on a request before the function
+ * sees it. `vercel.json` turns `/api/story-lab/jobs/:jobId/events` into
  * `/api/story-lab/jobs?jobId=:jobId&events=1`, and the account paths into
- * `?resource=…`; Express matches the path itself and puts the same values in
- * `req.params`, so they are bridged here rather than the handlers having to
- * learn a second shape.
+ * `?resource=…`; a dynamic route directory such as `[storyId]` does the same
+ * for its own segment with no rewrite at all. Express matches the path itself
+ * and puts the values in `req.params`, so they are bridged here rather than the
+ * handlers having to learn a second shape.
  */
 type RouteQuery = Record<string, string | undefined>;
 
@@ -82,7 +83,16 @@ export const API_ROUTES: readonly ApiRouteDefinition[] = [
   { path: '/api/export/save', handler: exportSaveHandler },
   { path: '/api/image/generate', handler: imageGenerateHandler },
   { path: '/api/story-lab/stories', handler: storyLabGenesisHandler },
-  { path: '/api/story-lab/stories/:storyId/continue', handler: storyLabContinuationHandler },
+  {
+    path: '/api/story-lab/stories/:storyId/continue',
+    handler: storyLabContinuationHandler,
+    // Vercel serves this route from `api/story-lab/stories/[storyId]/continue.ts`
+    // and puts the dynamic segment in `req.query` without a rewrite, so there is
+    // no `vercel.json` entry to mirror here — but the handler reads the segment
+    // from the same place on both deployments, and Express would otherwise leave
+    // it only in `req.params`.
+    query: params => ({ storyId: params['storyId'] })
+  },
   { path: '/api/story-lab/stream/genesis', handler: storyLabStreamGenesisHandler },
   { path: '/api/story-lab/evaluate', handler: storyLabEvaluateHandler },
   { path: '/api/story-lab/jobs', handler: handleStoryLabJobsRoute },

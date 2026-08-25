@@ -19,6 +19,7 @@ import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } 
 import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../utils/storyTextBlocks';
 import {
+  UNRECOGNIZED_PARAMETER,
   toLoggableBoolean,
   toLoggableCreature,
   toLoggableNumber,
@@ -1409,6 +1410,34 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     return tones.length > 0 ? tones.join(', ') : 'romantic with building tension';
   }
 
+  /**
+   * Reject a story request the service cannot serve, without repeating what the
+   * caller sent.
+   *
+   * Every branch below used to answer with `providedValue: input.<field>` — the
+   * raw value, verbatim. That object is both returned to the caller as the
+   * response `error` and passed to `logWarn` by `generateStory`, so it reaches
+   * the console, the log buffer the debug panel reads, and whatever sink the
+   * logger is wired to. Three of the fields carry caller text: `creature` and
+   * `themes` are typed as closed sets but arrive as whatever a raw POST or a
+   * query string held, and `userInput` is the reader's own prose.
+   *
+   * The `userInput` branch is the worst of the three, because the condition that
+   * fires it is the text being too long: the one rejection that exists to keep
+   * an oversized brief out of the request is the one that copied all of it into
+   * the log. `redactSensitiveLogData` cannot help — it blanks a *key* named like
+   * `userInput`, and this arrives under `providedValue` — and token redaction
+   * removes credentials and URLs, not prose.
+   *
+   * The request line these rejections sit beside already solved this: it reports
+   * `creature`, `themes`, and the numbers through `toLoggableCreature`,
+   * `toLoggableThemes`, and `toLoggableNumber`, which repeat a value only when
+   * it is on the contract's own allow-list. Reusing them here keeps the whole
+   * diagnostic — which field was wrong, and what was wrong with it — while the
+   * text stops travelling. Free text has no allow-list to be recognised against,
+   * so `userInput` is reported by its length, which is the only part of it the
+   * rule is about.
+   */
   private validateStoryInput(input: StoryGenerationSeam['input']): any {
     const supportedCreatures: readonly CreatureType[] = [
       'vampire',
@@ -1427,7 +1456,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
         code: 'INVALID_INPUT',
         message: 'Invalid creature type',
         field: 'creature',
-        providedValue: input.creature,
+        providedValue: toLoggableCreature(input.creature),
         expectedType: 'CreatureType'
       };
     }
@@ -1437,7 +1466,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
         code: 'INVALID_INPUT',
         message: `Too many themes (max ${VALIDATION_RULES.themes.maxCount})`,
         field: 'themes',
-        providedValue: input.themes,
+        providedValue: toLoggableThemes(input.themes),
         expectedType: 'ThemeType[]'
       };
     }
@@ -1451,7 +1480,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
         code: 'INVALID_INPUT',
         message: `Invalid spicy level (${VALIDATION_RULES.spicyLevel.min}-${VALIDATION_RULES.spicyLevel.max})`,
         field: 'spicyLevel',
-        providedValue: input.spicyLevel,
+        providedValue: toLoggableNumber(input.spicyLevel),
         expectedType: 'SpicyLevel'
       };
     }
@@ -1461,19 +1490,39 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
         code: 'INVALID_INPUT',
         message: 'Invalid word count',
         field: 'wordCount',
-        providedValue: input.wordCount,
+        providedValue: toLoggableNumber(input.wordCount),
         expectedType: 'WordCount'
       };
     }
 
-    if (input.userInput && input.userInput.length > VALIDATION_RULES.userInput.maxLength) {
-      return {
-        code: 'INVALID_INPUT',
-        message: `User input too long (max ${VALIDATION_RULES.userInput.maxLength} characters)`,
-        field: 'userInput',
-        providedValue: input.userInput,
-        expectedType: 'string'
-      };
+    if (input.userInput !== undefined && input.userInput !== null) {
+      // A non-string is checked for on its own rather than left to fail the
+      // length rule. `[]` has a `length` of 0, so a caller who sent an array
+      // under this name used to pass the rule and reach the prompt, where it is
+      // interpolated as text; and any other non-string was rejected only by
+      // accident, through a comparison against `undefined`.
+      if (typeof input.userInput !== 'string') {
+        return {
+          code: 'INVALID_INPUT',
+          message: 'User input must be a string',
+          field: 'userInput',
+          providedValue: UNRECOGNIZED_PARAMETER,
+          expectedType: 'string'
+        };
+      }
+
+      if (input.userInput.length > VALIDATION_RULES.userInput.maxLength) {
+        return {
+          code: 'INVALID_INPUT',
+          message: `User input too long (max ${VALIDATION_RULES.userInput.maxLength} characters)`,
+          field: 'userInput',
+          // The length, not the text: this branch fires *because* the text is
+          // long, so repeating it here is repeating the whole of an oversized
+          // brief into the response and the log.
+          providedValue: `${input.userInput.length} characters`,
+          expectedType: 'string'
+        };
+      }
     }
 
     if (!this.isValidRequestedChapterCount(input.requestedChapterCount)) {
@@ -1481,7 +1530,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
         code: 'INVALID_INPUT',
         message: 'requestedChapterCount must be 1, 2, or 3',
         field: 'requestedChapterCount',
-        providedValue: input.requestedChapterCount,
+        providedValue: toLoggableNumber(input.requestedChapterCount),
         expectedType: '1 | 2 | 3'
       };
     }

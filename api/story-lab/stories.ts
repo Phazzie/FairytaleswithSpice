@@ -44,11 +44,21 @@ export function createStoryLabGenesisHandler(generateGenesis: GenerateStoryLabGe
 
     const parsed = parseStoryLabBlueprintFromBody(req.body);
     if (parsed.error) {
+      // `invalidFields` is the whole reason the parser collects every failure
+      // rather than returning at the first one, and it is what the seam
+      // contract declares an `INVALID_BLUEPRINT` carries. This route dropped it
+      // and sent the joined prose alone, so a caller that wanted to mark the
+      // fields a reader has to fix had to parse the message back apart. The
+      // Story Lab job route, which validates the same blueprint through the
+      // same parser, has always sent it; this is that answer.
       res.status(400).json({
         success: false,
         error: {
           code: parsed.error.code,
-          message: parsed.error.message
+          message: parsed.error.message,
+          details: {
+            invalidFields: parsed.error.invalidFields
+          }
         }
       });
       return;

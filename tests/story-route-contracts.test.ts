@@ -310,6 +310,119 @@ async function verifyRejectedBodiesDoNotLogCallerFieldNames(): Promise<void> {
 }
 
 /**
+ * A rejected story request must not repeat what the caller sent.
+ *
+ * `validateStoryInput` answered every rule with `providedValue: input.<field>`,
+ * the raw value. That object is returned to the caller as the response `error`
+ * *and* handed to `logWarn`, so it reached the console, the buffer the debug
+ * panel reads, and any sink behind the logger — through `providedValue`, a key
+ * `redactSensitiveLogData` has no reason to blank.
+ *
+ * Three fields carry caller text. `creature` and `themes` are closed sets in the
+ * contract and caller text at run time, which is the whole reason
+ * `toLoggableCreature` and `toLoggableThemes` exist for the request line these
+ * rejections sit beside. `userInput` is the reader's prose, and its rule fires
+ * *because* the prose is long: the rejection that exists to keep an oversized
+ * brief out of the request was the one that copied all of it into the log.
+ */
+async function verifyRejectedStoryInputDoesNotRepeatCallerText(): Promise<void> {
+  const prose = 'Dana is in treatment at the clinic on Rosewood';
+  const validBody = {
+    creature: 'vampire',
+    themes: ['forbidden_love'],
+    spicyLevel: 3,
+    wordCount: 900,
+    requestedChapterCount: 1
+  };
+
+  const cases = [
+    {
+      name: 'userInput',
+      // Past the documented cap, so the length rule is what refuses it.
+      body: { ...validBody, userInput: `${prose}. `.repeat(60) },
+      expectedProvidedValue: (body: any) => `${body.userInput.length} characters`
+    },
+    {
+      name: 'creature',
+      body: { ...validBody, creature: prose },
+      expectedProvidedValue: () => '[UNRECOGNIZED]'
+    },
+    {
+      name: 'themes',
+      // Six entries: past `VALIDATION_RULES.themes.maxCount`, so the rule fires
+      // with an array of caller text in hand.
+      body: { ...validBody, themes: Array.from({ length: 6 }, (_item, index) => `${prose} ${index}`) },
+      expectedProvidedValue: () => ({ themes: [], unrecognizedThemeCount: 6 })
+    }
+  ];
+
+  for (const testCase of cases) {
+    logger.clearLogs();
+
+    const { response, consoleOutput } = await captureConsole(async () => {
+      const res = new FakeResponse();
+      await generateHandler({ method: 'POST', headers: {}, body: testCase.body }, res);
+      return res;
+    });
+
+    assert(
+      response.statusCode === 400,
+      `an invalid ${testCase.name} should be a caller error, got ${response.statusCode}`
+    );
+
+    const payload = response.body as { error?: { code?: string; providedValue?: unknown } };
+    assert(
+      payload.error?.code === 'INVALID_INPUT',
+      `an invalid ${testCase.name} should be reported as INVALID_INPUT, got ${JSON.stringify(payload.error)}`
+    );
+
+    const rejected = logger
+      .getRecentLogs(50, 'warn')
+      .find(entry => entry.context?.endpoint === 'generateStory');
+    assert(rejected, `the service should log the ${testCase.name} rejection it made`);
+
+    for (const [sink, written] of [
+      ['response', JSON.stringify(payload)],
+      ['buffer', JSON.stringify(rejected.metadata)],
+      ['console', consoleOutput]
+    ] as const) {
+      assert(
+        !written.includes('Dana') && !written.includes('Rosewood'),
+        `caller text sent as ${testCase.name} must not reach the ${sink} (got ${written.slice(0, 300)})`
+      );
+    }
+
+    // The diagnostic survives: a rejection still says which field was wrong and
+    // what was wrong with it, which is the reason to report anything at all.
+    assert(
+      JSON.stringify(payload.error?.providedValue) ===
+        JSON.stringify(testCase.expectedProvidedValue(testCase.body)),
+      `the ${testCase.name} rejection should still describe what was provided (got ${JSON.stringify(payload.error?.providedValue)})`
+    );
+  }
+
+  // An array under `userInput` has a `length` of 0, so it passed the length rule
+  // and reached the prompt, where it is interpolated as text.
+  logger.clearLogs();
+  const arrayInputResponse = new FakeResponse();
+  await captureConsole(async () => {
+    await generateHandler(
+      { method: 'POST', headers: {}, body: { ...validBody, userInput: [prose] } },
+      arrayInputResponse
+    );
+    return arrayInputResponse;
+  });
+
+  const arrayInputPayload = arrayInputResponse.body as { error?: { code?: string; field?: string } };
+  assert(
+    arrayInputResponse.statusCode === 400 && arrayInputPayload.error?.field === 'userInput',
+    `a non-string userInput should be refused as a caller error, got ${arrayInputResponse.statusCode} ${JSON.stringify(arrayInputPayload.error)}`
+  );
+
+  logger.clearLogs();
+}
+
+/**
  * The export cap is a size in kilobytes, so it has to be measured in bytes.
  * Read with `String.length` it counted UTF-16 code units, and a story in a
  * non-Latin script is up to three bytes per unit — so a body well past the
@@ -429,6 +542,7 @@ async function main(): Promise<void> {
   await verifyContinueDoesNotLogProseStoryIds();
   await verifyMalformedBodiesAreClientErrors();
   await verifyRejectedBodiesDoNotLogCallerFieldNames();
+  await verifyRejectedStoryInputDoesNotRepeatCallerText();
   await verifyExportMeasuresItsSizeCapInBytes();
 
   console.log('Story route contract tests passed');
