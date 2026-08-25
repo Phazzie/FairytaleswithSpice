@@ -123,13 +123,14 @@ function redactUrls(value: string): string {
   let index = 0;
 
   while (index < value.length) {
-    if (startsWithIgnoreCase(value, 'http://', index) || startsWithIgnoreCase(value, 'https://', index)) {
+    const scheme = findUrlScheme(value, index);
+    if (scheme) {
       let cursor = index;
       while (cursor < value.length && !isUrlDelimiter(value[cursor] ?? '')) {
         cursor += 1;
       }
       redacted += REDACTED_SENSITIVE_TEXT;
-      index = cursor;
+      index = trimTrailingUrlPunctuation(value, index + scheme.length, cursor);
       continue;
     }
 
@@ -228,6 +229,72 @@ function isBearerTokenChar(char: string): boolean {
 
 function isApiKeyTokenChar(char: string): boolean {
   return isAsciiLetterOrDigit(char) || char === '_' || char === '-';
+}
+
+const URL_SCHEMES = ['https://', 'http://'];
+/**
+ * Punctuation that ends the sentence a URL was written into rather than the
+ * URL itself. A run of it is handed back to the surrounding prose.
+ */
+const URL_TRAILING_PUNCTUATION = new Set(['.', ',', ';', ':', '!', '?']);
+/** The closing brackets that may be enclosing a URL rather than part of it. */
+const URL_CLOSING_BRACKETS = new Map([[')', '('], [']', '['], ['}', '{']]);
+
+function findUrlScheme(value: string, index: number): string | undefined {
+  return URL_SCHEMES.find(scheme => startsWithIgnoreCase(value, scheme, index));
+}
+
+/**
+ * Give the sentence back the punctuation a URL run swallowed.
+ *
+ * A URL ends at whitespace or a quote, which is where it ends in a log line
+ * too — but a URL is usually written *into* a sentence, and the mark that
+ * closes the sentence has none of those before it. So `See https://host/a, then
+ * call` redacted the comma along with the URL and came back as `See [REDACTED]
+ * then call`, and `Visit (https://host/a) now` lost the closing parenthesis and
+ * left the opening one dangling: exactly the reading a log is hardest to do
+ * when something has gone wrong enough to need reading.
+ *
+ * Trailing `.,;:!?` is always the prose's. A closing bracket is the prose's
+ * only when the URL holds no unclosed opener to match it, so a path that really
+ * ends in one — `/wiki/Title_(disambiguation)` — keeps it. Nothing is given
+ * back past `start`, the end of the scheme, so the URL itself is never
+ * partially preserved.
+ */
+function trimTrailingUrlPunctuation(value: string, start: number, end: number): number {
+  let cursor = end;
+
+  while (cursor > start) {
+    const char = value[cursor - 1] ?? '';
+    if (URL_TRAILING_PUNCTUATION.has(char)) {
+      cursor -= 1;
+      continue;
+    }
+
+    const opener = URL_CLOSING_BRACKETS.get(char);
+    if (opener && !hasUnclosedOpener(value.slice(start, cursor - 1), opener, char)) {
+      cursor -= 1;
+      continue;
+    }
+
+    break;
+  }
+
+  return cursor;
+}
+
+function hasUnclosedOpener(value: string, opener: string, closer: string): boolean {
+  let depth = 0;
+
+  for (const char of value) {
+    if (char === opener) {
+      depth += 1;
+    } else if (char === closer && depth > 0) {
+      depth -= 1;
+    }
+  }
+
+  return depth > 0;
 }
 
 function isUrlDelimiter(char: string): boolean {

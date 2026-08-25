@@ -42,9 +42,17 @@ const separatedChapters = [
   { label: 'self-closing <br />', markup: `She opened the door.<br />Blood pooled on the floor.<br />${hook}` },
   { label: 'uppercase <BR>', markup: `She opened the door.<BR CLASS="scene-break">Blood pooled on the floor.<BR CLASS="scene-break">${hook}` },
   { label: 'attributed <p>', markup: `<p class="lede">She opened the door.</p><p data-n="2">Blood pooled on the floor.</p><p>${hook}</p>` },
-  // The tag name has to end where the boundary list says it does: `<pre>` is
-  // not `<p>`, and `<paragraph>` is not either.
-  { label: 'near-miss tag names', markup: `<p>She opened the door.</p><p>A <pre>literal</pre> and a <paragraph>tag</paragraph>.</p><p>${hook}</p>` }
+  // The tag name has to end where the boundary list says it does: a tag whose
+  // name merely begins with a listed one is not a boundary, so `<press>` is
+  // neither `<p>` nor `<pre>`, `<tracker>` is not `<tr>`, and `<paragraph>` is
+  // not `<p>`.
+  { label: 'near-miss tag names', markup: `<p>She opened the door.</p><p>A <press>literal</press>, a <tracker>mark</tracker>, and a <paragraph>tag</paragraph>.</p><p>${hook}</p>` },
+  // A boundary the enclosing tag carries is not the boundary the reader sees.
+  // `<table>` and `<tr>` were boundaries while `<td>` was not, so a row's cells
+  // came back welded into one token and the whole table scanned as one block.
+  { label: '<td>', markup: `<table><tr><td>She opened the door.</td><td>Blood pooled on the floor.</td></tr><tr><td>${hook}</td></tr></table>` },
+  { label: '<li>', markup: `<ul><li>She opened the door.</li><li>Blood pooled on the floor.</li><li>${hook}</li></ul>` },
+  { label: '<dd>', markup: `<dl><dt>She opened the door.</dt><dd>Blood pooled on the floor.</dd><dd>${hook}</dd></dl>` }
 ];
 
 for (const chapter of separatedChapters) {
@@ -67,5 +75,25 @@ assert(
   `paragraph text should not be glued to its neighbour (got ${JSON.stringify(glued.cliffhangerText)})`
 );
 assert(glued.cliffhangerType === 'danger', 'shadow and footsteps should classify as danger');
+
+// The same welding, one level in: a row's cells are separate text to a reader,
+// so `<td>The shadow</td><td>Footsteps followed her home.</td>` must not scan
+// as the single token `The shadowFootsteps followed her home.`.
+const gluedCells = service.analyze('<table><tr><td>The shadow moved.</td><td>Footsteps followed her home.</td></tr></table>');
+
+assert(
+  gluedCells.cliffhangerText === 'Footsteps followed her home.',
+  `table cell text should not be glued to the next cell (got ${JSON.stringify(gluedCells.cliffhangerText)})`
+);
+
+// The other direction for the boundary list: a tag whose name merely begins
+// with a listed one is inline markup, so it must be dropped in place rather
+// than splitting the paragraph it sits inside.
+const nearMiss = service.analyze('<p>The shadow moved.</p><p>A <press>hidden</press> <tracker>door</tracker> waited. Who was there?</p>');
+
+assert(
+  nearMiss.cliffhangerText === 'A hidden door waited. Who was there?',
+  `a near-miss tag name is not a boundary (got ${JSON.stringify(nearMiss.cliffhangerText)})`
+);
 
 console.log('Cliffhanger service tests passed');
