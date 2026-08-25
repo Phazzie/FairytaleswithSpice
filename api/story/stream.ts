@@ -34,6 +34,61 @@ export function formatSseFrame(payload: unknown): string {
 }
 
 /**
+ * Read one query parameter, tolerating the `string[]` form a repeated parameter
+ * arrives in.
+ *
+ * `?themes=a&themes=b` and `?creature=vampire&creature=witch` are ordinary URLs
+ * — a client that builds its `EventSource` target by appending to a
+ * `URLSearchParams` produces them without meaning to — and every runtime this
+ * route serves hands a repeat over as an array. Read as a string, each one
+ * failed in its own way and neither reached the route's own validator:
+ *
+ * - `themes.split(',')` threw, and the catch block below answered the throw the
+ *   only way it knows, with an SSE error frame. It writes that frame before
+ *   `writeHead` has run, so the client received a default 200 with no
+ *   `text/event-stream` content type — a body no `EventSource` dispatches and
+ *   no JSON parser reads — in place of the 400 INVALID_INPUT the route
+ *   documents for a malformed `themes`.
+ * - `creature` did not throw at all: an array is truthy, so validation passed,
+ *   the 200 and the `connected` frame went out, and the story service rejected
+ *   the array mid-stream. The caller watched a healthy stream open and then
+ *   fail, and the log recorded a 500 for what is a malformed request.
+ *
+ * Taking the first value matches how this repository reads every other
+ * possibly-repeated field — request headers in `corsPolicy` and `security`, and
+ * query parameters in the Story Lab blueprint parser.
+ */
+function readQueryParam(value: unknown): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === 'string' ? raw : undefined;
+}
+
+/**
+ * Build the generation input an `EventSource` sent as query parameters.
+ *
+ * Nothing here rejects anything: the fields are read into the contract's shape
+ * and the handler's own validator — the one that owns the 400 INVALID_INPUT
+ * message — decides whether they are usable. That is the whole point of
+ * reading them without throwing.
+ */
+function readStreamInputFromQuery(query: any): StoryGenerationSeam['input'] {
+  const themes = readQueryParam(query?.themes);
+  const userInput = readQueryParam(query?.userInput);
+  const requestedChapterCount = readQueryParam(query?.requestedChapterCount);
+
+  return {
+    creature: readQueryParam(query?.creature) as any,
+    themes: themes ? themes.split(',') as any[] : [],
+    spicyLevel: Number.parseInt(readQueryParam(query?.spicyLevel) as string, 10) as any,
+    wordCount: Number.parseInt(readQueryParam(query?.wordCount) as string, 10) as any,
+    userInput: userInput || '',
+    requestedChapterCount: (requestedChapterCount
+      ? Number.parseInt(requestedChapterCount, 10)
+      : undefined) as any
+  };
+}
+
+/**
  * GET/POST /api/story/stream
  * Implements StreamingStoryGenerationSeam contract
  * Supports GET with query params for EventSource compatibility
@@ -60,26 +115,9 @@ export default async function handler(req: any, res: any) {
 
   try {
     // Support both POST body and GET query params for EventSource compatibility
-    let input: StoryGenerationSeam['input'];
-    
-    if (req.method === 'GET') {
-      // Parse from query params for EventSource
-      const { creature, themes, spicyLevel, wordCount, userInput, requestedChapterCount } = req.query;
-      const parsedRequestedChapterCount = requestedChapterCount
-        ? Number.parseInt(requestedChapterCount as string, 10)
-        : undefined;
-      input = {
-        creature: creature as any,
-        themes: themes ? (themes as string).split(',') as any[] : [],
-        spicyLevel: Number.parseInt(spicyLevel as string, 10) as any,
-        wordCount: Number.parseInt(wordCount as string, 10) as any,
-        userInput: userInput as string || '',
-        requestedChapterCount: parsedRequestedChapterCount as any
-      };
-    } else {
-      // POST body
-      input = req.body;
-    }
+    const input: StoryGenerationSeam['input'] = req.method === 'GET'
+      ? readStreamInputFromQuery(req.query)
+      : req.body;
 
     // Validate input
     if (
@@ -192,6 +230,22 @@ export default async function handler(req: any, res: any) {
       statusCode: 500
     });
     
+    // An SSE error frame is only readable once the stream has been opened. A
+    // failure before `writeHead` leaves the response with no status and no
+    // `text/event-stream` content type, so writing the frame anyway sends a
+    // default 200 carrying a body that neither an `EventSource` nor a JSON
+    // client can read — the failure reaches the caller as a success. Before the
+    // stream exists, the answer is an ordinary JSON error.
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'STREAM_FAILED',
+          message: 'Story streaming could not be started.'
+        }
+      });
+    }
+
     const errorUpdate: StreamingStoryGenerationSeam['progressUpdate'] = {
       streamId: 'error_stream',
       type: 'error',
@@ -204,7 +258,7 @@ export default async function handler(req: any, res: any) {
         percentage: 0
       }
     };
-    
+
     res.write(formatSseFrame(errorUpdate));
     res.end();
   }

@@ -163,8 +163,138 @@ function testHtmlStoriesAreScoredOnTheirProse(): void {
   );
 }
 
+/**
+ * The two identity-shaped dimensions have to be able to say "no".
+ *
+ * Both used to answer yes to everything. `\b[A-Z][a-z]+\b` matches the first
+ * word of every sentence, so this story of four sentences and no cast reported
+ * four named characters and collected the whole named-character bonus, which
+ * caps at two. And `extractConcreteAnchors` dropped tokens shorter than three
+ * characters before pairing them, so the determiners its own weak-first-token
+ * list exists to reject — `a`, `an`, `my` — were gone before the guard ran, and
+ * the deleted token welded its two neighbours into a phrase the prose never
+ * contained: "She opened a door" was scored as the concrete anchor
+ * `opened door`.
+ */
+function testAnonymousProseScoresAsAnonymous(): void {
+  const report = buildStoryQualityHeuristicReport({
+    storyContent: [
+      'She opened a door and stepped through the cold hall.',
+      'Rain fell hard. Blood pooled where the light could not reach.',
+      'He carried my key past the arch and said nothing about the vow.'
+    ].join('\n\n'),
+    configuration: {
+      creature: 'vampire',
+      themes: [],
+      spicyLevel: 3,
+      wordCount: 900
+    }
+  });
+
+  const characterConsistency = report.dimensions.find(dimension => dimension.id === 'character_consistency');
+  assert(characterConsistency, 'report should include the character consistency dimension');
+  assert(
+    !characterConsistency.signals.some(signal => signal.startsWith('Named character count:')),
+    `sentence-initial words are not a cast (signals=${JSON.stringify(characterConsistency.signals)})`
+  );
+
+  const proseQuality = report.dimensions.find(dimension => dimension.id === 'prose_quality');
+  assert(proseQuality, 'report should include the prose quality dimension');
+  const anchorSignal = proseQuality.signals.find(signal => signal.startsWith('Specific anchors:'));
+  assert(
+    !anchorSignal,
+    `"a door", "my key", and "the arch" are generic references, not concrete anchors (got ${anchorSignal})`
+  );
+}
+
+/**
+ * The other direction: a story that does name its cast and does anchor its
+ * objects still gets credit for both, so the guards above cannot be satisfied
+ * by scoring nothing at all.
+ */
+function testNamedProseStillScores(): void {
+  const report = buildStoryQualityHeuristicReport({
+    storyContent: [
+      '[Narrator]: Salt stung her wrist while Mira watched the witness shell.',
+      'The price was named when Lord Brine pressed the blood oath into her palm.'
+    ].join('\n\n'),
+    configuration: {
+      creature: 'siren',
+      themes: [],
+      spicyLevel: 3,
+      wordCount: 900
+    }
+  });
+
+  const characterConsistency = report.dimensions.find(dimension => dimension.id === 'character_consistency');
+  assert(
+    characterConsistency?.signals.includes('Named character count: 2'),
+    `Mira and Lord Brine are a cast (signals=${JSON.stringify(characterConsistency?.signals)})`
+  );
+
+  const proseQuality = report.dimensions.find(dimension => dimension.id === 'prose_quality');
+  assert(
+    proseQuality?.signals.some(signal => signal.includes('Specific anchors: witness shell, blood oath')),
+    `named objects are still concrete anchors (signals=${JSON.stringify(proseQuality?.signals)})`
+  );
+}
+
+/**
+ * Both boundary rules have to reject only what they are aimed at.
+ *
+ * The Codex review on PR #213 caught each one overreaching. A sentence opener
+ * used to swallow the name behind it: `\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b`
+ * matches "Then Mira" as one pair, rejecting the pair for starting the
+ * sentence dropped "Mira" with it, and a global matcher resumes past the whole
+ * match — so "Then Mira pressed the blood oath" produced no character signals
+ * at all. And keeping every token for pairing made short prepositions eligible
+ * as the first half of an anchor, so "In court, she waited" scored `in court`
+ * as concrete specificity that the old tokenization never awarded.
+ */
+function testBoundaryRulesRejectOnlyTheBoundary(): void {
+  const scan = (storyContent: string) => buildStoryQualityHeuristicReport({
+    storyContent,
+    configuration: { creature: 'siren', themes: [], spicyLevel: 3, wordCount: 900 }
+  });
+
+  const opener = scan('The tide turned at last. Then Mira pressed the blood oath.');
+  const openerCharacters = opener.dimensions.find(dimension => dimension.id === 'character_consistency');
+  assert(
+    openerCharacters?.signals.includes('Named character count: 1'),
+    `a sentence opener should disqualify itself, not the name after it (signals=${JSON.stringify(openerCharacters?.signals)})`
+  );
+  assert(
+    openerCharacters?.signals.some(signal => signal.startsWith('Agency actions:')),
+    'a name recovered from behind a sentence opener should still carry its agency actions'
+  );
+
+  // A semicolon or a dash does not end a sentence, so English does not
+  // capitalize after one — a capital that follows is explained by nothing but
+  // the word, and treating the mark as a boundary threw the name away.
+  for (const mark of [';', ' —', ',']) {
+    const joined = scan(`The lock broke${mark} Mira pressed the blood oath.`);
+    const joinedCharacters = joined.dimensions.find(dimension => dimension.id === 'character_consistency');
+    assert(
+      joinedCharacters?.signals.includes('Named character count: 1'),
+      `"${mark.trim() || 'comma'}" does not end a sentence (signals=${JSON.stringify(joinedCharacters?.signals)})`
+    );
+  }
+
+  const prepositions = scan('In court, she waited. By car, they crossed the city.');
+  const prepositionAnchors = prepositions.dimensions
+    .find(dimension => dimension.id === 'prose_quality')
+    ?.signals.find(signal => signal.startsWith('Specific anchors:'));
+  assert(
+    !prepositionAnchors,
+    `a preposition is not a modifier that makes a noun specific (got ${prepositionAnchors})`
+  );
+}
+
 async function main(): Promise<void> {
   testHtmlStoriesAreScoredOnTheirProse();
+  testAnonymousProseScoresAsAnonymous();
+  testNamedProseStillScores();
+  testBoundaryRulesRejectOnlyTheBoundary();
 
   const heuristicReport = buildStoryQualityHeuristicReport({
     storyContent: [

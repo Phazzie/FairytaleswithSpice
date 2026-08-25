@@ -141,8 +141,7 @@ function scoreEmotionalVariety(storyText: string): DimensionDraft {
 
 function scoreCharacterConsistency(storyContent: string, dialogueLines: string[]): DimensionDraft {
   const speakers = extractDialogueSpeakers(dialogueLines);
-  const namedCharacters = Array.from(new Set((storyContent.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g) ?? [])
-    .filter(name => !['Narrator'].includes(name))));
+  const namedCharacters = extractNamedCharacters(storyContent);
   const agencyActions = extractAgencyActions(storyContent, namedCharacters);
   let rationale = 'Few character identity signals were detected.';
   if (agencyActions.length) {
@@ -246,6 +245,109 @@ function extractDialogueSpeakers(dialogueLines: string[]): string[] {
     .filter((speaker): speaker is string => Boolean(speaker))));
 }
 
+/**
+ * A whole run of consecutive capitalized words, not a name-shaped pair.
+ *
+ * The boundary has to be decided before the words are combined. Matching at
+ * most two of them and testing the pair swallowed the name in "Then Mira
+ * pressed the blood oath": the pair `Then Mira` is rejected for starting the
+ * sentence, and because a global matcher resumes after the whole match, `Mira`
+ * is never offered on its own. Reading the run lets the sentence opener be
+ * dropped and the rest of the run kept.
+ */
+const NAMED_CHARACTER_RUN_PATTERN = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g;
+/** A name is at most a given name and a surname, as it always was. */
+const MAX_NAME_WORDS = 2;
+/**
+ * The longest first token of a concrete anchor that cannot be carrying meaning.
+ * No English word of one or two letters is a modifier that makes a noun
+ * specific — they are articles, prepositions, pronouns, and conjunctions — so
+ * `a door`, `my key`, `in court`, and `by car` are all rejected by length
+ * rather than by having to be named one at a time.
+ */
+const SHORTEST_MEANINGFUL_MODIFIER = 2;
+/**
+ * Punctuation that ends the sentence before a capitalized word, so the capital
+ * is explained by the position rather than by the word being a name. The colon
+ * is here for the `[Speaker]:` tags the generator writes, which put a capital
+ * after every one of them.
+ *
+ * The semicolon and the dashes are deliberately absent. English does not
+ * capitalize after them, so a capital that follows one is explained by nothing
+ * but the word — it is a name, and treating the mark as a boundary threw it
+ * away: "The lock broke; Mira pressed the blood oath" scored no character
+ * signals at all, while the same sentence with a comma scored two. The
+ * ellipsis stays, because it genuinely can end a sentence, and a missed name
+ * is the cheaper error here than a common noun counted as a character.
+ */
+const SENTENCE_END_PUNCTUATION = new Set(['.', '!', '?', ':', '…']);
+/**
+ * Characters that can sit between the punctuation and the capital without
+ * moving the word off the sentence boundary — the opening quote of a line of
+ * dialogue, the bracket of a speaker tag, a list dash.
+ */
+const PRE_NAME_PUNCTUATION = new Set(['"', "'", '“', '”', '‘', '’', '(', '[', '*', '-']);
+
+/**
+ * Read the proper names a story uses, rather than every capitalized word.
+ *
+ * `\b[A-Z][a-z]+\b` matches the first word of every sentence, so a story with
+ * no named characters in it at all — "She opened a door. Rain fell hard. Blood
+ * pooled where the light could not reach." — was credited with four of them.
+ * The named-character bonus caps at two, so every story longer than two
+ * sentences collected it in full and the dimension could not tell a story with
+ * a cast from one without: the signal it printed, `Named character count`, was
+ * really a sentence count.
+ *
+ * A capitalized word counts as a name only where nothing but the word itself
+ * explains the capital — at least one appearance away from a sentence
+ * boundary, a line start, or a `[Speaker]:` tag. A sentence opener only
+ * disqualifies itself, not the words after it: "Then Mira pressed the blood
+ * oath" drops `Then` and keeps `Mira`. A name a story only ever writes
+ * sentence-initially is still missed, which is the safe direction for an
+ * advisory signal: reporting a cast that is not there is what made the score
+ * meaningless.
+ */
+function extractNamedCharacters(storyContent: string): string[] {
+  const names = new Set<string>();
+
+  for (const match of storyContent.matchAll(NAMED_CHARACTER_RUN_PATTERN)) {
+    const words = match[0].split(/\s+/);
+    // Only the run's first word can be sitting on the boundary; the rest are
+    // capitalized mid-sentence whatever precedes the run.
+    if (startsSentence(storyContent, match.index ?? 0)) {
+      words.shift();
+    }
+
+    const name = words.slice(0, MAX_NAME_WORDS).join(' ');
+    if (name && name !== 'Narrator') {
+      names.add(name);
+    }
+  }
+
+  return Array.from(names);
+}
+
+function startsSentence(storyContent: string, index: number): boolean {
+  let cursor = index - 1;
+
+  while (cursor >= 0) {
+    const character = storyContent[cursor];
+    // A line break is a boundary in its own right: paragraphs and dialogue
+    // lines do not always end in punctuation, and the word after one is still
+    // capitalized for its position.
+    if (character === '\n') {
+      return true;
+    }
+    if (!/\s/.test(character) && !PRE_NAME_PUNCTUATION.has(character)) {
+      break;
+    }
+    cursor -= 1;
+  }
+
+  return cursor < 0 || SENTENCE_END_PUNCTUATION.has(storyContent[cursor]);
+}
+
 function extractAgencyActions(storyContent: string, namedCharacters: readonly string[]): string[] {
   const agencyLexicon: Array<{ label: string; terms: readonly string[] }> = [
     { label: 'pressed', terms: ['press', 'pressed', 'presses'] },
@@ -314,14 +416,16 @@ function extractConcreteAnchors(storyContent: string): string[] {
     'ticket',
     'vow'
   ]);
+  // The one- and two-character words are not listed here: every English word
+  // that short is a function word — article, preposition, pronoun, or
+  // conjunction — and none of them makes the noun after it specific. They are
+  // rejected wholesale by the length check below, which is what `a`, `an`, and
+  // `my` used to be doing here and what also covers `in court` and `by car`.
   const weakFirstTokens = new Set([
-    'a',
-    'an',
     'and',
     'every',
     'her',
     'his',
-    'my',
     'now',
     'our',
     'that',
@@ -350,13 +454,22 @@ function extractConcreteAnchors(storyContent: string): string[] {
     .toLowerCase()
     .replace(/[^a-z'\s-]/g, ' ')
     .replace(/\s+/g, ' ');
-  const tokens = normalized.split(' ').filter(token => token.length > 2);
+  // Every token, so that two words are paired only when they really are
+  // adjacent. Dropping the short ones before pairing welded two non-adjacent
+  // neighbours into a phrase that was never in the prose — "She opened a door"
+  // became the anchor `opened door`, scoring a generic reference as a concrete
+  // one — and it also made the `a`/`an`/`my` entries of `weakFirstTokens`
+  // unreachable, since the words they name were already gone. The short words
+  // are still rejected, but as the first half of a pair rather than as tokens,
+  // which is the distinction the old filter got wrong.
+  const tokens = normalized.split(' ').filter(Boolean);
 
   for (let index = 0; index < tokens.length - 1; index += 1) {
     const phrase = `${tokens[index]} ${tokens[index + 1]}`;
     const noun = tokens[index + 1].replace(/s$/, '');
     const firstToken = tokens[index];
     if (
+      firstToken.length <= SHORTEST_MEANINGFUL_MODIFIER ||
       weakFirstTokens.has(firstToken) ||
       weakVerbPrefixes.has(firstToken) ||
       !objectNouns.has(noun) ||
