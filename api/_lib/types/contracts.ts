@@ -46,15 +46,6 @@ export interface StoryGenerationContext {
   heatContract?: HeatContractIntent;
   themeSeeds?: GenerationThemeSeed[];
 }
-export type VoiceType = 'female' | 'male' | 'neutral';
-export type CharacterVoiceType = 
-  | 'vampire_male' | 'vampire_female' 
-  | 'werewolf_male' | 'werewolf_female'
-  | 'fairy_male' | 'fairy_female'
-  | 'human_male' | 'human_female'
-  | 'narrator';
-export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
-export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 
 /**
@@ -120,13 +111,6 @@ export interface ChapterFailure {
   chapterNumber: number;
   message: string;
   errorCode?: string;
-}
-
-export interface AudioProgress {
-  percentage: number; // 0-100
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  message: string;
-  estimatedTimeRemaining?: number; // in seconds
 }
 
 // ==================== SEAM 1: USER INPUT → STORY GENERATOR ====================
@@ -244,121 +228,6 @@ export interface ChapterContinuationSeam {
       message: string;
       maxChapters: number;
       currentChapters: number;
-    };
-  };
-}
-
-// ==================== SEAM 2.5: REAL-TIME STORY GENERATION ====================
-export interface StreamingStoryGenerationSeam {
-  seamName: "Real-Time Story Generation";
-  description: "Provides real-time updates during story generation for better UX";
-
-  input: {
-    // Same as StoryGenerationSeam input
-    creature: CreatureType;
-    themes: ThemeType[];
-    userInput: string;
-    spicyLevel: SpicyLevel;
-    wordCount: WordCount;
-    requestedChapterCount?: 1 | 2 | 3;
-  };
-
-  progressUpdate: {
-    streamId: string;
-    storyId?: string; // Generated after stream starts
-    type: 'connected' | 'progress' | 'chunk' | 'complete' | 'error';
-    content?: string; // Accumulated content so far
-    isComplete: boolean;
-    metadata: {
-      wordsGenerated: number;
-      totalWordsTarget: number;
-      estimatedWordsRemaining: number;
-      generationSpeed: number; // words per second
-      percentage: number; // 0-100
-      estimatedTimeRemaining?: number; // seconds
-    };
-  };
-
-  finalOutput: {
-    // Same as StoryGenerationSeam output
-    storyId: string;
-    title: string;
-    content: string;
-    rawContent?: string;
-    creature: CreatureType;
-    themes: ThemeType[];
-    spicyLevel: SpicyLevel;
-    actualWordCount: number;
-    estimatedReadTime: number;
-    hasCliffhanger: boolean;
-    generatedAt: Date;
-    tropeMetadata?: string;
-    chapters?: Chapter[];
-    totalWordCount?: number;
-    nextChapterHint?: string;
-    appendedToStory?: string;
-    failedChapters?: ChapterFailure[];
-  };
-
-  errors: {
-    STREAMING_CONNECTION_FAILED: {
-      code: "STREAMING_CONNECTION_FAILED";
-      message: string;
-      retryable: boolean;
-    };
-    STREAM_INTERRUPTED: {
-      code: "STREAM_INTERRUPTED";
-      message: string;
-      recoveryOptions: string[];
-      partialContent?: string;
-    };
-    // Inherits all errors from StoryGenerationSeam
-  };
-}
-
-// ==================== SEAM 3: STORY TEXT → AUDIO CONVERTER ====================
-export interface AudioConversionSeam {
-  seamName: "Story Text → Audio Converter";
-  description: "Converts story text to audio format with progress tracking";
-
-  input: {
-    storyId: string;
-    content: string; // Full story HTML content
-    voice?: VoiceType;
-    speed?: AudioSpeed;
-    format?: AudioFormat;
-  };
-
-  output: {
-    audioId: string;
-    storyId: string;
-    audioUrl: string; // Download URL for UI
-    duration: number; // in seconds
-    fileSize: number; // in bytes
-    format: AudioFormat;
-    voice: VoiceType;
-    speed: AudioSpeed;
-    progress: AudioProgress; // For real-time UI updates
-    completedAt: Date;
-  };
-
-  errors: {
-    CONVERSION_FAILED: {
-      code: "CONVERSION_FAILED";
-      message: string;
-      retryable: boolean;
-      stage: "text_processing" | "audio_generation" | "file_creation";
-    };
-    UNSUPPORTED_CONTENT: {
-      code: "UNSUPPORTED_CONTENT";
-      message: string;
-      unsupportedElements: string[];
-    };
-    AUDIO_QUOTA_EXCEEDED: {
-      code: "AUDIO_QUOTA_EXCEEDED";
-      message: string;
-      quotaRemaining: number;
-      resetTime: Date;
     };
   };
 }

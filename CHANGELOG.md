@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Backend Seam Contracts — 120 dead lines describing features that were never built (August 26, 2026)
+
+- `api/_lib/types/contracts.ts` is the canonical "seam contract" reference every
+  story/export/cliffhanger service imports from — the one file a reader goes to
+  in order to learn what the app's boundaries actually are. About a quarter of
+  its 534 lines described two seams nothing implements: `StreamingStoryGenerationSeam`,
+  a pre-SSE "real-time generation" contract superseded by the real streaming
+  route, and `AudioConversionSeam` (plus its supporting `VoiceType`,
+  `CharacterVoiceType`, `AudioSpeed`, `AudioFormat`, `AudioProgress` types), a
+  fully-specified audio-conversion contract with its own error codes even
+  though audio generation is explicitly deferred and out of scope. Neither had
+  a single import anywhere in the repo.
+- Removed both interfaces and their now-unused supporting types (534 → 403
+  lines). Pure deletion — verified with a repo-wide grep for every removed
+  symbol, `tsc --noEmit` over the API layer and the Angular app/specs, the full
+  `npm run test:all` backend suite, and the Angular test suite, all clean.
+  Recorded here so the removal reads as deliberate cleanup rather than an
+  accidental drop of a real seam.
+
 ### 🐛 Three Quick Wins — a words-per-second with no clock in it, an image prompt nothing measures, a continuation numbered NaN (August 26, 2026)
 
 #### A generation speed that was not a speed
