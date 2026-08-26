@@ -275,8 +275,33 @@ function extractDialogueSpeakers(dialogueLines: string[]): string[] {
  * sentence, and because a global matcher resumes after the whole match, `Mira`
  * is never offered on its own. Reading the run lets the sentence opener be
  * dropped and the rest of the run kept.
+ *
+ * Written on the Unicode properties rather than on `[A-Z][a-z]+`, for the
+ * reason `slugId` in the continuity extractor and the story-download filename
+ * stem are both written that way: a cast is not always spelled in ASCII.
+ * `\b[A-Z][a-z]+\b` saw no name at all in `Мира pressed the blood oath`, and
+ * cut `José` down to `Jos` — the accented letter is not `[a-z]`, so the run
+ * ended at it and the scan reported a character the story never names. Both
+ * results then travel: `extractAgencyActions` below is handed this list, so no
+ * action either character took anywhere in the chapter could be credited to
+ * them either, and the dimension's `Named character count` counted a cast it
+ * could not see.
+ *
+ * `\b` cannot be the boundary once the pattern reaches past ASCII. It is
+ * defined against `[A-Za-z0-9_]`, so there is no word boundary between a space
+ * and `М` — an anchored `\bМира\b` matches nothing anywhere. The lookarounds
+ * state the property `\b` was standing in for: the run begins and ends where
+ * the surrounding text is not part of a word, in any script.
+ *
+ * A combining mark is retained beside the lowercase letters, so a name typed in
+ * decomposed form (`José` as `Jose` plus a combining acute) is read as the one
+ * name it is rather than being cut at the mark. A script with no case at all —
+ * `美咲`, `مريم` — has no capital for this to key on and is not reachable this
+ * way; those names arrive through the `[Speaker]:` tags that seed the set
+ * below, which say who is talking by construction.
  */
-const NAMED_CHARACTER_RUN_PATTERN = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g;
+const NAMED_CHARACTER_RUN_PATTERN =
+  /(?<![\p{L}\p{N}\p{M}])\p{Lu}[\p{Ll}\p{M}]+(?:\s+\p{Lu}[\p{Ll}\p{M}]+)*(?![\p{L}\p{N}\p{M}])/gu;
 /** A name is at most a given name and a surname, as it always was. */
 const MAX_NAME_WORDS = 2;
 /**
@@ -312,9 +337,10 @@ const PRE_NAME_PUNCTUATION = new Set(['"', "'", '“', '”', '‘', '’', '(',
 /**
  * Read the proper names a story uses, rather than every capitalized word.
  *
- * `\b[A-Z][a-z]+\b` matches the first word of every sentence, so a story with
- * no named characters in it at all — "She opened a door. Rain fell hard. Blood
- * pooled where the light could not reach." — was credited with four of them.
+ * A capitalized-word pattern matches the first word of every sentence, so a
+ * story with no named characters in it at all — "She opened a door. Rain fell
+ * hard. Blood pooled where the light could not reach." — was credited with four
+ * of them.
  * The named-character bonus caps at two, so every story longer than two
  * sentences collected it in full and the dimension could not tell a story with
  * a cast from one without: the signal it printed, `Named character count`, was
@@ -398,19 +424,24 @@ function extractAgencyActions(storyContent: string, namedCharacters: readonly st
     { label: 'paid', terms: ['pay', 'paid', 'pays'] },
     { label: 'escaped', terms: ['escape', 'escaped', 'escapes'] }
   ];
-  const normalized = storyContent
-    .toLowerCase()
-    .replace(/[^a-z'\s-]/g, ' ')
-    .replace(/\s+/g, ' ');
+  const normalized = normalizeProseForScanning(storyContent);
   const lowerNames = namedCharacters
-    .map(name => name.toLowerCase().replace(/[^a-z'\s-]/g, ' ').replace(/\s+/g, ' ').trim())
+    .map(name => normalizeProseForScanning(name).trim())
     .filter(name => name.length > 2);
   const actions: string[] = [];
 
   for (const entry of agencyLexicon) {
     const termPattern = entry.terms.map(escapeRegExp).join('|');
     const hasNamedAction = lowerNames.some(name => {
-      const pattern = new RegExp(String.raw`\b${escapeRegExp(name)}\b(?:\s+[a-z']+){0,4}\s+(${termPattern})\b`);
+      // The name's own boundaries are stated as lookarounds rather than as
+      // `\b`, for the reason `NAMED_CHARACTER_RUN_PATTERN` is: `\b` is defined
+      // against `[A-Za-z0-9_]`, so `\bмира\b` has no boundary to sit on and
+      // matches nothing. The verbs are the lexicon's own ASCII words and keep
+      // the `\b` they were always written with.
+      const pattern = new RegExp(
+        String.raw`(?<![\p{L}\p{M}])${escapeRegExp(name)}(?![\p{L}\p{M}])(?:\s+[\p{L}\p{M}']+){0,4}\s+(${termPattern})\b`,
+        'u'
+      );
       return pattern.test(normalized);
     });
     if (hasNamedAction) {
@@ -419,6 +450,38 @@ function extractAgencyActions(storyContent: string, namedCharacters: readonly st
   }
 
   return actions;
+}
+
+/**
+ * Reduce prose to lowercase words separated by single spaces, for the two scans
+ * below that read it as a sequence of tokens.
+ *
+ * Every character that is not part of a word becomes a space rather than being
+ * deleted, because both callers depend on adjacency: the agency scan counts how
+ * many words sit between a name and a verb, and `extractConcreteAnchors` pairs
+ * each token with the one after it. Deleting a character would move two words
+ * that are not adjacent next to each other, which is the failure the anchor
+ * scan was already fixed for once.
+ *
+ * `[^a-z'\s-]` did exactly that deletion for every letter outside ASCII, and
+ * so reintroduced it: `she opened Мирина door` normalized to `she opened door`,
+ * whose token pairs include `opened door` — an anchor that is not in the prose,
+ * scored as a concrete reference for the same reason `a door` used to be. The
+ * agency scan lost the same words, so its "at most four words between the name
+ * and the verb" allowance silently counted a different span than the story
+ * holds, and a name written in any such script was erased from the text before
+ * it could be matched at all.
+ *
+ * The retained set is letters, marks, the apostrophe, and the hyphen — the
+ * marks beside the letters so a decomposed `José` stays one token rather than
+ * splitting at its accent. Digits are excluded as they always were: neither
+ * scan has anything to say about a number.
+ */
+function normalizeProseForScanning(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}'\s-]/gu, ' ')
+    .replace(/\s+/g, ' ');
 }
 
 function escapeRegExp(value: string): string {
@@ -487,10 +550,7 @@ function extractConcreteAnchors(storyContent: string): string[] {
     'wanted'
   ]);
   const anchors: string[] = [];
-  const normalized = storyContent
-    .toLowerCase()
-    .replace(/[^a-z'\s-]/g, ' ')
-    .replace(/\s+/g, ' ');
+  const normalized = normalizeProseForScanning(storyContent);
   // Every token, so that two words are paired only when they really are
   // adjacent. Dropping the short ones before pairing welded two non-adjacent
   // neighbours into a phrase that was never in the prose — "She opened a door"

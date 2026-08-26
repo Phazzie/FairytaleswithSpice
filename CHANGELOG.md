@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — a cast the scan cannot see, a promise the courtroom cannot match, a 429 that says nothing (August 26, 2026)
+
+#### The character-consistency scan could only read an ASCII cast
+
+- `NAMED_CHARACTER_RUN_PATTERN` was `\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b`, so
+  `The lock broke; Мира pressed the blood oath.` produced no character signals at
+  all, and `José` was cut down to `Jos` — the accented letter is not `[a-z]`, so
+  the run ended at it and the dimension named a character the story does not
+  have.
+- Both results travel further than the count. `extractAgencyActions` is handed
+  this list, so no action either character took anywhere in the chapter could be
+  credited to them; the signal the dimension prints, `Named character count`,
+  counted a cast it could not see.
+- `\b` cannot be the boundary once the pattern reaches past ASCII: it is defined
+  against `[A-Za-z0-9_]`, so there is no word boundary between a space and `М`
+  and an anchored `\bМира\b` matches nothing anywhere. The pattern now states
+  that property as lookarounds and matches on `\p{Lu}`/`\p{Ll}`/`\p{M}`, which is
+  the reading `slugId` and the story-download filename stem were already fixed
+  to. The name pattern the agency scan builds per character is boundaried the
+  same way. A script with no case at all has no capital to key on and still
+  arrives through the `[Speaker]:` tags that seed the set.
+- The shared normalizer feeding the agency and concrete-anchor scans kept only
+  `[a-z'\s-]`, which **deleted** every other letter rather than separating it.
+  `extractConcreteAnchors` pairs each token with the one after it, so
+  `she opened Мирина door` normalized to `she opened door` and scored the anchor
+  `opened door` — a generic reference counted as a concrete one, from a phrase
+  that is not in the story. That is the same welding `a door` → `opened door`
+  was already fixed for once.
+
+#### The continuity courtroom could not match a non-Latin promise against the brief
+
+- Both sides of the activation comparison go through `normalizeActivationText`,
+  so what it deletes is invisible to the score. `[^a-z0-9 ]+` deleted every
+  letter outside ASCII, which normalized a thread labelled `Клятва Миры` to the
+  empty string: `scoreActivationCandidates` filtered it out as a candidate and
+  scored it zero however plainly the reader's brief named it.
+- The courtroom then chose which threads, artifacts, and warnings to put in front
+  of the model by story order alone — the reader asks the next batch to pay off
+  one promise and is given the first `CONTINUITY_COURTROOM_MAX_THREADS` instead —
+  and `describeActivationReason` reported "Included by unresolved-story priority"
+  for every one of them.
+- A partly-Latin name failed less visibly: `José's pact` became `jos s pact`, so
+  the whole-candidate match could never fire and the word tokens the score falls
+  back to were `pact` and a `jos` that matches nothing a reader would type.
+- Matching on `[^\p{L}\p{N} ]+` keeps those words whole and leaves ASCII text
+  scoring exactly as before: the separator run each unsupported character used to
+  become is the separator run it becomes now.
+
+#### A 429 told the client nothing it could act on
+
+- `enforceApiAccessControl` answered `429 RATE_LIMITED` with `error.resetTime` in
+  the body and `X-RateLimit-Remaining`/`X-RateLimit-Reset` on the response, and
+  no `Retry-After`. Nothing outside this app reads the first three, and all of
+  them are absolute epoch milliseconds — turning one into a delay means trusting
+  the caller's clock against the server's. So an ordinary client knew only that
+  it had been refused, and the retry it would guess at is the one the limit
+  exists to prevent: on routes budgeted at ten requests per fifteen minutes, the
+  guess is wrong by minutes.
+- `Retry-After` is now set from the same reset instant, as whole seconds and
+  never below one — RFC 9110 defines the delta-seconds form as a non-negative
+  integer, and `0` reads as "retry immediately", which is exactly what a caller
+  at its limit must not do.
+- It was invisible to a browser either way. `Retry-After` is not on the CORS
+  response safelist (`Cache-Control`, `Content-Language`, `Content-Length`,
+  `Content-Type`, `Expires`, `Last-Modified`, `Pragma`, and nothing else), and
+  neither are the two `X-RateLimit-*` headers. Every deployment serving the app
+  and the API from different origins had a browser client that could see the 429
+  and not one of the three values that say what to do about it, so all three join
+  `X-Request-ID` in `Access-Control-Expose-Headers`.
+
 ### 🧹 The routes every real request goes through had none of the correlation id, access-control preamble, or redacted logging their unreachable twins did (August 26, 2026)
 
 #### `/api/story-lab/stories` and `/api/story-lab/stories/:storyId/continue` hand-rolled the preamble every other paid route shares

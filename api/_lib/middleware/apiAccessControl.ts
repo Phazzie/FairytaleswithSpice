@@ -73,6 +73,22 @@ export async function enforceApiAccessControl(
   res.setHeader('X-RateLimit-Reset', rateLimit.resetTime.toString());
 
   if (!rateLimit.allowed) {
+    // `Retry-After` is the only part of this answer a caller can act on without
+    // knowing the shape of the body. Every HTTP client, proxy, and retry helper
+    // reads it; nothing but this app reads `error.resetTime`, and the two
+    // `X-RateLimit-*` headers beside it are absolute epoch milliseconds, so a
+    // client has to trust its own clock against the server's to turn either one
+    // into a delay. So a 429 from here told an ordinary caller nothing at all
+    // about when to come back, and the retry it would guess at is the one this
+    // limit exists to prevent — on routes whose budget is ten requests per
+    // fifteen minutes, the guess is wrong by minutes.
+    //
+    // Whole seconds, and never below one: RFC 9110 defines the delta-seconds
+    // form as a non-negative integer, and a `0` reads as "retry immediately",
+    // which is exactly what a caller at its limit must not do. A window that
+    // has expired between the check above and this line is the only way to get
+    // there, and one second is the honest answer for it.
+    res.setHeader('Retry-After', String(retryAfterSeconds(rateLimit.resetTime)));
     res.status(429).json({
       success: false,
       error: {
@@ -85,6 +101,22 @@ export async function enforceApiAccessControl(
   }
 
   return { allowed: true, userId };
+}
+
+/**
+ * Turn the absolute reset instant `checkRateLimit` reports into the delay
+ * `Retry-After` carries.
+ *
+ * Exported so the conversion can be asserted on directly rather than through a
+ * header string on a driven route, which would have to reconstruct `Date.now()`
+ * to say what the right answer was.
+ */
+export function retryAfterSeconds(resetTime: number, now: number = Date.now()): number {
+  if (!Number.isFinite(resetTime)) {
+    return 1;
+  }
+
+  return Math.max(1, Math.ceil((resetTime - now) / 1000));
 }
 
 /**
