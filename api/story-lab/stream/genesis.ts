@@ -6,6 +6,7 @@ import type {
   StreamingProgressChunk
 } from '../../_lib/story-lab/contracts';
 import { applyCorsPolicy } from '../../_lib/http/corsPolicy';
+import { sendMethodNotAllowed } from '../../_lib/http/methodNotAllowed';
 import { endSseStream, writeSseFrame } from '../../_lib/http/sseStream';
 import { RATE_LIMITS } from '../../_lib/constants';
 import { enforceApiAccessControl, withEventStreamAuth } from '../../_lib/middleware/apiAccessControl';
@@ -17,9 +18,12 @@ import {
 
 type GenesisResponse = ApiEnvelope<StoryIterationPayload>;
 
+/** What this route serves, for CORS and for `Allow` alike. */
+const GENESIS_STREAM_METHODS = ['GET', 'OPTIONS'];
+
 export default async function handler(req: any, res: any) {
   const cors = applyCorsPolicy(req, res, {
-    methods: ['GET', 'OPTIONS'],
+    methods: GENESIS_STREAM_METHODS,
     credentials: true
   });
   if (cors.handled) {
@@ -27,10 +31,7 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method !== 'GET') {
-    res.status(405).json({
-      success: false,
-      error: { code: 'METHOD_NOT_ALLOWED', message: 'Only GET requests are supported for streaming.' }
-    });
+    sendMethodNotAllowed(res, GENESIS_STREAM_METHODS, 'Only GET requests are supported for streaming.');
     return;
   }
 

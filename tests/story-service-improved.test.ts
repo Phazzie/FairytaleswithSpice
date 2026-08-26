@@ -784,6 +784,50 @@ const storyTextTests = {
     }
 
     console.log(`   ✓ Detected themes: ${JSON.stringify(detected)}`);
+  }),
+
+  testSpicyLevelIsReadFromTheProseNotTheMarkup: test('Spicy Level Is Read From The Prose, Not The Markup', () => {
+    const service = new StoryService();
+    const readLevel = (content: string) => (service as any).extractSpicyLevelFromContent(content) as number;
+
+    // A hearth, wool gloves, and an anticlimactic duel. Under substring
+    // matching `hearth` was `heart`, `gloves` was `love`, and `anticlimax` was
+    // `climax` — so the mildest scene this app can generate was filed at the
+    // maximum spice level, and stored under it.
+    const mild = readLevel(
+      '<p>She warmed her hands at the hearth, her wool gloves steaming.</p>'
+      + '<p>The duel had been an anticlimax, and he left her untouched at the door.</p>'
+    );
+    if (mild !== 1) {
+      throw new Error(`Expected a chaste scene to read as level 1, got ${mild}`);
+    }
+
+    // The multi-word level-5 keyword written with the entity the generator
+    // emits for a non-breaking space. Scanned against the markup, the phrase is
+    // `intense&nbsp;passion` and matches nothing; rendered, it is the words a
+    // reader sees.
+    const entitySpaced = readLevel('<p>The night turned to intense&nbsp;passion.</p>');
+    if (entitySpaced !== 5) {
+      throw new Error(`Expected "intense&nbsp;passion" to read as level 5, got ${entitySpaced}`);
+    }
+
+    // The levels the scan does detect still detect, including the inflections
+    // the substring form used to pick up for free.
+    const levels: Array<[string, number]> = [
+      ['<p>Her ecstasy was total.</p>', 5],
+      ['<p>She was breathless, heated, and desired.</p>', 4],
+      ['<p>He kissed her, then caressed her cheek.</p>', 3],
+      ['<p>She spoke tenderly of the man she loved.</p>', 2],
+      ['<p>The ledger balanced and the carriage left at noon.</p>', 1]
+    ];
+    for (const [content, expected] of levels) {
+      const actual = readLevel(content);
+      if (actual !== expected) {
+        throw new Error(`Expected ${JSON.stringify(content)} to read as level ${expected}, got ${actual}`);
+      }
+    }
+
+    console.log('   ✓ Spice level reads the rendered prose with whole-word keywords');
   })
 };
 

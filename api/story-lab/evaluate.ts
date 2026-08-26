@@ -6,8 +6,12 @@ import { XaiTextClient } from '../_lib/services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
 import { buildStoryQualityHeuristicReport } from '../_lib/story-lab/evaluation/storyQualityHeuristics';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
+import { sendMethodNotAllowed } from '../_lib/http/methodNotAllowed';
 import { stripMarkdownJsonFence } from '../_lib/utils/modelJsonPayload';
 import { STORY_EVALUATION_LIMITS } from '../../shared/storyBlueprintLimits';
+
+/** What this route serves, for CORS and for `Allow` alike. */
+const EVALUATE_ROUTE_METHODS = ['POST', 'OPTIONS'];
 
 interface NormalizedEvaluationRequest {
   storyContent: string;
@@ -274,7 +278,7 @@ function normalizeEvaluationRequest(
 
 export default async function handler(req: any, res: any) {
   const cors = applyCorsPolicy(req, res, {
-    methods: ['POST', 'OPTIONS'],
+    methods: EVALUATE_ROUTE_METHODS,
     credentials: true
   });
   if (cors.handled) {
@@ -282,13 +286,7 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method !== 'POST') {
-    res.status(405).json({
-      success: false,
-      error: {
-        code: 'METHOD_NOT_ALLOWED',
-        message: 'Only POST requests are supported.'
-      }
-    });
+    sendMethodNotAllowed(res, EVALUATE_ROUTE_METHODS, 'Only POST requests are supported.');
     return;
   }
 

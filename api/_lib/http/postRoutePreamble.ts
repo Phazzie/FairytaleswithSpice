@@ -1,6 +1,7 @@
 // Created: 2026-08-26 UTC
 
 import { applyCorsPolicy } from './corsPolicy';
+import { sendMethodNotAllowed } from './methodNotAllowed';
 import { readRequestCorrelationId } from './requestCorrelationId';
 import {
   ApiRateLimitConfig,
@@ -35,6 +36,9 @@ export interface PostRouteStart {
   requestId: string;
 }
 
+/** What a paid POST route serves, for CORS and for `Allow` alike. */
+const POST_ROUTE_METHODS = ['POST', 'OPTIONS'];
+
 /**
  * Run the preamble. Answers `null` when the response has already been written —
  * a preflight, a method this route does not serve, an unauthenticated caller,
@@ -56,7 +60,7 @@ export async function beginPostRoute(
   res.setHeader('X-Request-ID', requestId);
 
   const cors = applyCorsPolicy(req, res, {
-    methods: ['POST', 'OPTIONS'],
+    methods: POST_ROUTE_METHODS,
     credentials: true
   });
   if (cors.handled) {
@@ -65,13 +69,9 @@ export async function beginPostRoute(
 
   if (req.method !== 'POST') {
     logWarn('Method not allowed', { requestId, endpoint: `/api/${endpoint}`, method: req.method });
-    res.status(405).json({
-      success: false,
-      error: {
-        code: 'METHOD_NOT_ALLOWED',
-        message: 'Only POST requests are allowed'
-      }
-    });
+    // The same list the CORS policy above was given, so the preflight answer
+    // and the `Allow` header cannot disagree about what this route serves.
+    sendMethodNotAllowed(res, POST_ROUTE_METHODS, 'Only POST requests are allowed');
     return null;
   }
 

@@ -15,6 +15,7 @@ import type {
   StoryLabUserProfile
 } from '../contracts';
 import { applyCorsPolicy } from '../../http/corsPolicy';
+import { sendMethodNotAllowed } from '../../http/methodNotAllowed';
 import {
   createDefaultStoryLabUserProfile,
   normalizeStoryLabProfilePreferences,
@@ -29,6 +30,19 @@ import {
   StoryProjectStoreError,
   StoredStoryProjectRecord
 } from '../storage/storyProjectStore';
+
+/**
+ * What each resource behind this route file serves.
+ *
+ * One CORS policy covers the whole file — a preflight is answered before the
+ * path is even read — but `Allow` is the *target resource*'s list, and these
+ * three resources do not serve the same methods. `OPTIONS` is on every one of
+ * them because `applyCorsPolicy` really does answer it for every path here.
+ */
+const ACCOUNT_ROUTE_CORS_METHODS = ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'];
+const PROFILE_ROUTE_METHODS = ['GET', 'PUT', 'OPTIONS'];
+const PROJECT_COLLECTION_ROUTE_METHODS = ['GET', 'POST', 'OPTIONS'];
+const PROJECT_ITEM_ROUTE_METHODS = ['GET', 'DELETE', 'OPTIONS'];
 
 type RequestValue = string | string[] | undefined;
 
@@ -96,7 +110,7 @@ async function handleStoryLabAccountRouteWithContext(
   res: ResponseLike
 ): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
-    methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
+    methods: ACCOUNT_ROUTE_CORS_METHODS,
     credentials: true
   });
   if (cors.handled) {
@@ -174,7 +188,7 @@ async function handleProfileRoute(
     return;
   }
 
-  sendJson(res, 405, methodNotAllowed('Profile routes support GET and PUT.'));
+  sendMethodNotAllowed(res, PROFILE_ROUTE_METHODS, 'Profile routes support GET and PUT.');
 }
 
 async function handleProjectsRoute(
@@ -219,7 +233,7 @@ async function handleProjectsRoute(
     return;
   }
 
-  sendJson(res, 405, methodNotAllowed('Project collection routes support GET and POST.'));
+  sendMethodNotAllowed(res, PROJECT_COLLECTION_ROUTE_METHODS, 'Project collection routes support GET and POST.');
 }
 
 async function handleProjectRoute(
@@ -270,7 +284,7 @@ async function handleProjectRoute(
     return;
   }
 
-  sendJson(res, 405, methodNotAllowed('Project item routes support GET and DELETE.'));
+  sendMethodNotAllowed(res, PROJECT_ITEM_ROUTE_METHODS, 'Project item routes support GET and DELETE.');
 }
 
 async function requireAccountUser(authPort: AuthPort, req: RequestLike, res: ResponseLike): Promise<AuthUser | null> {
@@ -610,16 +624,6 @@ function readQueryValue(value: string | string[] | undefined): string | undefine
 
 function normalizeMethod(method: string | undefined): string {
   return (method ?? '').toUpperCase();
-}
-
-function methodNotAllowed(message: string): ApiResponse<never> {
-  return {
-    success: false,
-    error: {
-      code: 'METHOD_NOT_ALLOWED',
-      message
-    }
-  };
 }
 
 function invalidRequest(message: string): ApiResponse<never> {

@@ -1,5 +1,9 @@
 import type { ApiResponse } from './_lib/types/contracts';
 import { applyCorsPolicy } from './_lib/http/corsPolicy';
+import { sendMethodNotAllowed } from './_lib/http/methodNotAllowed';
+
+/** What this route serves, for CORS and for `Allow` alike. */
+const HEALTH_ROUTE_METHODS = ['GET', 'OPTIONS'];
 
 type HealthPayload = {
   status: 'healthy';
@@ -16,7 +20,7 @@ type HealthPayload = {
 
 export default async function handler(req: any, res: any) {
   const cors = applyCorsPolicy(req, res, {
-    methods: ['GET', 'OPTIONS']
+    methods: HEALTH_ROUTE_METHODS
   });
   if (cors.handled) {
     return;
@@ -24,13 +28,7 @@ export default async function handler(req: any, res: any) {
 
   // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(405).json({
-      success: false,
-      error: {
-        code: 'METHOD_NOT_ALLOWED',
-        message: 'Method not allowed'
-      }
-    } satisfies ApiResponse<HealthPayload>);
+    return sendMethodNotAllowed(res, HEALTH_ROUTE_METHODS, 'Method not allowed');
   }
 
   try {
