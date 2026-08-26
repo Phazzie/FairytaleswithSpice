@@ -260,6 +260,44 @@ describe('ProvingGroundsComponent', () => {
     );
   });
 
+  // The restore read `localStorage` as `StoredProvingGroundsTestResult[]` and
+  // mapped over it, which asserts a shape rather than checking one. An entry
+  // without a readable `timestamp` becomes `new Date(undefined)` — an
+  // `Invalid Date` — and the history list renders it through
+  // `{{ test.timestamp | date:'short' }}`. Angular's `DatePipe` throws on a date
+  // it cannot convert, and it throws during change detection, so one bad entry
+  // does not degrade a row: it takes the whole page down on every load, with the
+  // delete button that would remove it on the page that will not render.
+  it('drops stored history entries it cannot render instead of failing to load', () => {
+    const good = createBasicResult('restored-good');
+    localStorage.setItem('provingGrounds_testHistory', JSON.stringify([
+      { ...good, timestamp: good.timestamp.toISOString() },
+      // No timestamp at all: the `Invalid Date` the date pipe throws on.
+      { ...good, id: 'restored-no-timestamp', timestamp: undefined },
+      // A timestamp that is a string but not a date.
+      { ...good, id: 'restored-bad-timestamp', timestamp: 'not a date' },
+      // Shaped like a record but missing what the template dereferences.
+      { id: 'restored-no-configuration', timestamp: good.timestamp.toISOString() },
+      'not an object at all'
+    ]));
+
+    const restored = TestBed.createComponent(ProvingGroundsComponent);
+    expect(() => restored.detectChanges()).not.toThrow();
+
+    expect(restored.componentInstance.testHistory().map(test => test.id)).toEqual(['restored-good']);
+    expect(restored.componentInstance.testHistory()[0].timestamp.getTime())
+      .toBe(good.timestamp.getTime());
+  });
+
+  it('ignores a stored history that is not a list', () => {
+    localStorage.setItem('provingGrounds_testHistory', JSON.stringify({ id: 'not-a-list' }));
+
+    const restored = TestBed.createComponent(ProvingGroundsComponent);
+    expect(() => restored.detectChanges()).not.toThrow();
+
+    expect(restored.componentInstance.testHistory()).toEqual([]);
+  });
+
   it('deletes the current history item when its delete action is clicked', () => {
     const firstResult = createBasicResult('delete-current');
     const secondResult = createBasicResult('delete-survivor');
