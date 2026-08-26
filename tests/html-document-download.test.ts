@@ -135,6 +135,19 @@ try {
 assert(clickError instanceof Error, 'a click that throws should reach the caller');
 assert(failing.events.includes('removeChild'), 'a failed click should still detach the anchor');
 
+// …and still releases the blob. A browser holds one alive for the life of the
+// tab until its URL is revoked, so a revoke that the throw skipped would strand
+// a whole story or a whole exported history in memory on every refused attempt.
+assert(
+  failing.events.includes('scheduleRevoke'),
+  'a failed click should still schedule the object URL revoke'
+);
+failing.revokes.forEach(revoke => revoke());
+assert(
+  failing.events.includes('revokeObjectUrl:blob:story-download'),
+  'the scheduled revoke should release the object URL of a failed download'
+);
+
 // The Proving Grounds history export is the other download this module serves,
 // and it is JSON rather than a document. It has to reach the reader the same
 // way — an attached anchor over an object URL — because the two things that

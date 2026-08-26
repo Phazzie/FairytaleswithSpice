@@ -107,13 +107,17 @@ export function downloadTextDocument<TAnchor extends DownloadAnchorLike>(
   try {
     link.click();
   } finally {
-    // In a `finally` so a click that throws — a browser that refuses the
-    // download, an extension that replaced the handler — does not leave a stray
-    // anchor in the page for every attempt.
+    // Both halves of the cleanup are in the `finally`, because a click that
+    // throws — a browser that refuses the download, an extension that replaced
+    // the handler — has to leave the page as it found it. Detaching the anchor
+    // is the visible half. Scheduling the revoke is the half that used to sit
+    // after the `try` and was therefore skipped by the throw: the browser holds
+    // a blob alive for the life of the tab until its URL is revoked, so every
+    // refused attempt stranded a whole story or a whole exported history in
+    // memory, on the path already least likely to be noticed.
     host.document.body.removeChild(link);
+    host.scheduleRevoke(() => host.revokeObjectUrl(url));
   }
-
-  host.scheduleRevoke(() => host.revokeObjectUrl(url));
 }
 
 export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(

@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `downloadTextDocument` is the same attach-click-detach over an object URL that
   the story download already uses, parameterized by MIME type; `downloadHtmlDocument`
   now delegates to it, so both buttons share one implementation and one test.
+- The revoke moved inside that cleanup. It sat after the `try`, so a click that
+  throws — a browser that refuses the download, an extension that replaced the
+  handler — skipped it, and a browser holds a blob alive for the life of the tab
+  until its URL is revoked. Every refused attempt stranded a whole story or a
+  whole exported history in memory, on the path least likely to be noticed.
 
 #### A failed chapter illustration says why it failed
 - `generateChapterImage` was the one subscription in the component whose error
