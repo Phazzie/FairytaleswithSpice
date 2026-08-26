@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins (August 26, 2026)
+
+#### A keyless deployment no longer passes its canned evaluation off as a Grok score
+- `/api/story-lab/evaluate` answers a fixed `score: 75` and a fixed set of
+  strengths, weaknesses, and suggestions — written about a story it never read —
+  whenever `XAI_API_KEY` is not configured, and it went out as a plain
+  `success: true`. Proving Grounds exists to compare prompt variants by these
+  scores, so on such a deployment a reader was comparing 75 against 75 and
+  reading the tie as a result.
+- The mock now carries `isMockEvaluation: true`, which the frontend already
+  understands: PR #233 gave the *client-side* fallback the same marker, and
+  `proving-grounds.html` renders the "⚠️ Offline mock evaluation" notice, tags
+  the score in the history and comparison views, and offers "🔁 Retry
+  Evaluation" instead of locking into a false "✅ Evaluated" wherever it is set.
+  Only the server-side fallback — the one every reader of a keyless deployment
+  actually reaches — was still unmarked. The `heuristicReport` beside it is a
+  real deterministic scan and travels with the successful path too, so it could
+  never have been what told the two apart.
+
+#### The HTML export stops welding the words on either side of a tag it drops
+- `sanitizeStoryHtmlForExport` replaces any tag outside its allow-list with
+  nothing at all, so a block-level one ran two pieces of story together:
+  `<h4>The Vault</h4><div>She opened the door.</div>` exported as
+  `The VaultShe opened the door.` and `<td>One</td><td>Two</td>` as `OneTwo`,
+  while the plain-text export of the same story put each on its own line. This
+  is the `door.</p><p>Blood` welding `splitStoryIntoTextBlocks` exists to
+  prevent, on the last export path that still had it.
+- A dropped block-level tag is now a `<br>` boundary. The boundary is held until
+  something follows it, so a leading or trailing one never reaches the document
+  and a run of them — `</td></tr></table><div>` — writes the single break a
+  reader sees; a dropped tag beside an allowed `</p>` adds nothing, and a `<br>`
+  the generator wrote is the story's own and is left alone. Inline tags are
+  still dropped without a break, which is also what a reader sees.
+
+#### The caller no longer decides what this service's logs are made of
+- `/api/story/generate`, `/api/image/generate`, and `/api/export/save` each read
+  `req.headers['x-request-id']` exactly as sent, wrote it back as the
+  `X-Request-ID` response header, and stamped it into every log line for the
+  request — including the structured `LogContext.requestId` that reaches the
+  thousand-entry log buffer. Nothing bounded its length or its shape, so a
+  kilobyte of header text was a kilobyte on every line the request wrote, kept
+  in the buffer, and repeatable at the rate the route can be called.
+- `readRequestCorrelationId` honours a supplied id when it is plausibly one —
+  which is the entire value of the header, since a caller tracing a request
+  across their logs and this service's needs it to survive — and mints
+  `req_<uuid>` otherwise. A bad id is replaced rather than refused: it names the
+  request, it is not part of what was asked for.
+
 ### 🐛 Three Quick Wins (August 25, 2026)
 
 #### A running Story Lab job is no longer reported as a failed one

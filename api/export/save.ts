@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
+import { readRequestCorrelationId } from '../_lib/http/requestCorrelationId';
 import { ExportService } from '../_lib/services/exportService';
 import { SaveExportSeam } from '../_lib/types/contracts';
 import { FILE_SIZE } from '../_lib/constants';
@@ -41,10 +41,10 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 export default async function handler(req: any, res: any) {
-  // Generate or extract request ID for tracking
-  const requestId = req.headers['x-request-id'] || 
-                    `req_${randomUUID()}`;
-  
+  // Accept the caller's correlation id when it is one, otherwise mint it: the
+  // value is echoed below and stamped into every log line this request writes.
+  const requestId = readRequestCorrelationId(req);
+
   // Set request ID in response header for client tracking
   res.setHeader('X-Request-ID', requestId);
   
