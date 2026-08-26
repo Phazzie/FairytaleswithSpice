@@ -2,7 +2,7 @@
 // Created: 2026-08-24 18:05 UTC
 
 import { ExportService } from '../api/_lib/services/exportService';
-import { readZipEntries } from '../api/_lib/services/zipArchive';
+import { readZipEntries, ZipEntry } from '../api/_lib/services/zipArchive';
 import { SaveExportSeam } from '../api/_lib/types/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -137,6 +137,20 @@ async function pdfTextOf(input: SaveExportSeam['input']): Promise<string> {
   return document.toString('utf8');
 }
 
+/**
+ * Confirm a document is actually a zip archive, then read its entries back by
+ * path — the check both the epub and docx tests below start from, since both
+ * formats used to be plain text made to merely *look* like a zip.
+ */
+function readAsRealZipContainer(document: Buffer, formatLabel: string): Map<string, ZipEntry> {
+  assert(
+    document.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])),
+    `a ${formatLabel} should start with a zip local file header signature`
+  );
+
+  return new Map(readZipEntries(document).map(entry => [entry.path, entry]));
+}
+
 // The EPUB used to be a bare, unzipped OPF XML fragment referencing a
 // `chapter1.xhtml` that was never produced — not a real `.epub` (a zip
 // container) at all. This confirms it now is one: `mimetype` first and
@@ -147,12 +161,9 @@ async function testEpubIsARealZipContainerWithItsChapter(): Promise<void> {
     createInput({ format: 'epub', title: 'Élodie & the Dragon' })
   );
 
-  assert(document.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])), 'an epub should start with a zip local file header signature');
+  const byPath = readAsRealZipContainer(document, 'epub');
 
-  const entries = readZipEntries(document);
-  const byPath = new Map(entries.map(entry => [entry.path, entry]));
-
-  assert(entries[0]?.path === 'mimetype', 'mimetype must be the first entry in an epub');
+  assert(byPath.keys().next().value === 'mimetype', 'mimetype must be the first entry in an epub');
   assert(
     byPath.get('mimetype')?.data.toString('ascii') === 'application/epub+zip',
     'the mimetype entry should hold the epub media type verbatim'
@@ -185,10 +196,7 @@ async function testDocxIsARealZipContainerWithItsDocument(): Promise<void> {
     createInput({ format: 'docx', title: 'Midnight Bargain' })
   );
 
-  assert(document.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])), 'a docx should start with a zip local file header signature');
-
-  const entries = readZipEntries(document);
-  const byPath = new Map(entries.map(entry => [entry.path, entry]));
+  const byPath = readAsRealZipContainer(document, 'docx');
 
   for (const requiredPart of ['[Content_Types].xml', '_rels/.rels', 'word/document.xml']) {
     assert(byPath.has(requiredPart), `a docx should contain ${requiredPart}`);

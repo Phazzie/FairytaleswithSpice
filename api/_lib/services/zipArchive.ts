@@ -59,6 +59,56 @@ export function crc32(data: Buffer): number {
 }
 
 /**
+ * Fills a fixed-size buffer field by field, so a header's layout reads as the
+ * sequence of fields the ZIP spec defines rather than as a list of byte
+ * offsets someone has to keep in sync by hand.
+ */
+class SequentialBufferWriter {
+  private readonly buffer: Buffer;
+  private offset = 0;
+
+  constructor(size: number) {
+    this.buffer = Buffer.alloc(size);
+  }
+
+  u16(value: number): this {
+    this.buffer.writeUInt16LE(value, this.offset);
+    this.offset += 2;
+    return this;
+  }
+
+  u32(value: number): this {
+    this.buffer.writeUInt32LE(value, this.offset);
+    this.offset += 4;
+    return this;
+  }
+
+  toBuffer(): Buffer {
+    return this.buffer;
+  }
+}
+
+/**
+ * The fields a local file header and a central directory record describe
+ * identically once past their signature and version fields: this entry was
+ * stored (never deflated), when (never — no timestamp is tracked), its CRC,
+ * its size (twice — STORE makes the compressed and uncompressed sizes equal),
+ * and how long its filename is. Shared so the two headers can't drift apart on
+ * a field neither of them actually varies.
+ */
+function writeStoreMethodFields(writer: SequentialBufferWriter, crc: number, size: number, nameLength: number): SequentialBufferWriter {
+  return writer
+    .u16(0) // general purpose bit flag
+    .u16(STORE_METHOD)
+    .u16(0) // last mod file time
+    .u16(0) // last mod file date
+    .u32(crc)
+    .u32(size) // compressed size == uncompressed size for STORE
+    .u32(size)
+    .u16(nameLength);
+}
+
+/**
  * Write a set of entries as a real, spec-compliant ZIP archive: a local file
  * header + data per entry, followed by the central directory and the end
  * record every reader locates the directory through.
@@ -77,39 +127,33 @@ export function buildZipArchive(entries: ZipEntry[]): Buffer {
     const crc = crc32(entry.data);
     const size = entry.data.length;
 
-    const localHeader = Buffer.alloc(LOCAL_FILE_HEADER_SIZE);
-    localHeader.writeUInt32LE(LOCAL_FILE_HEADER_SIGNATURE, 0);
-    localHeader.writeUInt16LE(VERSION_NEEDED_TO_EXTRACT, 4);
-    localHeader.writeUInt16LE(0, 6); // general purpose bit flag
-    localHeader.writeUInt16LE(STORE_METHOD, 8);
-    localHeader.writeUInt16LE(0, 10); // last mod file time
-    localHeader.writeUInt16LE(0, 12); // last mod file date
-    localHeader.writeUInt32LE(crc, 14);
-    localHeader.writeUInt32LE(size, 18); // compressed size == uncompressed size for STORE
-    localHeader.writeUInt32LE(size, 22);
-    localHeader.writeUInt16LE(nameBytes.length, 26);
-    localHeader.writeUInt16LE(0, 28); // extra field length
+    const localHeader = writeStoreMethodFields(
+      new SequentialBufferWriter(LOCAL_FILE_HEADER_SIZE).u32(LOCAL_FILE_HEADER_SIGNATURE).u16(VERSION_NEEDED_TO_EXTRACT),
+      crc,
+      size,
+      nameBytes.length
+    )
+      .u16(0) // extra field length
+      .toBuffer();
 
     localParts.push(localHeader, nameBytes, entry.data);
 
-    const centralHeader = Buffer.alloc(CENTRAL_DIRECTORY_HEADER_SIZE);
-    centralHeader.writeUInt32LE(CENTRAL_DIRECTORY_SIGNATURE, 0);
-    centralHeader.writeUInt16LE(VERSION_NEEDED_TO_EXTRACT, 4); // version made by
-    centralHeader.writeUInt16LE(VERSION_NEEDED_TO_EXTRACT, 6); // version needed to extract
-    centralHeader.writeUInt16LE(0, 8); // general purpose bit flag
-    centralHeader.writeUInt16LE(STORE_METHOD, 10);
-    centralHeader.writeUInt16LE(0, 12); // last mod file time
-    centralHeader.writeUInt16LE(0, 14); // last mod file date
-    centralHeader.writeUInt32LE(crc, 16);
-    centralHeader.writeUInt32LE(size, 20);
-    centralHeader.writeUInt32LE(size, 24);
-    centralHeader.writeUInt16LE(nameBytes.length, 28);
-    centralHeader.writeUInt16LE(0, 30); // extra field length
-    centralHeader.writeUInt16LE(0, 32); // file comment length
-    centralHeader.writeUInt16LE(0, 34); // disk number start
-    centralHeader.writeUInt16LE(0, 36); // internal file attributes
-    centralHeader.writeUInt32LE(0, 38); // external file attributes
-    centralHeader.writeUInt32LE(offset, 42); // relative offset of local header
+    const centralHeader = writeStoreMethodFields(
+      new SequentialBufferWriter(CENTRAL_DIRECTORY_HEADER_SIZE)
+        .u32(CENTRAL_DIRECTORY_SIGNATURE)
+        .u16(VERSION_NEEDED_TO_EXTRACT) // version made by
+        .u16(VERSION_NEEDED_TO_EXTRACT), // version needed to extract
+      crc,
+      size,
+      nameBytes.length
+    )
+      .u16(0) // extra field length
+      .u16(0) // file comment length
+      .u16(0) // disk number start
+      .u16(0) // internal file attributes
+      .u32(0) // external file attributes
+      .u32(offset) // relative offset of local header
+      .toBuffer();
 
     centralParts.push(centralHeader, nameBytes);
 
@@ -119,15 +163,16 @@ export function buildZipArchive(entries: ZipEntry[]): Buffer {
   const centralDirectory = Buffer.concat(centralParts);
   const centralDirectoryOffset = offset;
 
-  const endRecord = Buffer.alloc(END_OF_CENTRAL_DIRECTORY_SIZE);
-  endRecord.writeUInt32LE(END_OF_CENTRAL_DIRECTORY_SIGNATURE, 0);
-  endRecord.writeUInt16LE(0, 4); // number of this disk
-  endRecord.writeUInt16LE(0, 6); // disk where central directory starts
-  endRecord.writeUInt16LE(entries.length, 8); // central directory records on this disk
-  endRecord.writeUInt16LE(entries.length, 10); // total central directory records
-  endRecord.writeUInt32LE(centralDirectory.length, 12);
-  endRecord.writeUInt32LE(centralDirectoryOffset, 16);
-  endRecord.writeUInt16LE(0, 20); // comment length
+  const endRecord = new SequentialBufferWriter(END_OF_CENTRAL_DIRECTORY_SIZE)
+    .u32(END_OF_CENTRAL_DIRECTORY_SIGNATURE)
+    .u16(0) // number of this disk
+    .u16(0) // disk where central directory starts
+    .u16(entries.length) // central directory records on this disk
+    .u16(entries.length) // total central directory records
+    .u32(centralDirectory.length)
+    .u32(centralDirectoryOffset)
+    .u16(0) // comment length
+    .toBuffer();
 
   return Buffer.concat([...localParts, centralDirectory, endRecord]);
 }
