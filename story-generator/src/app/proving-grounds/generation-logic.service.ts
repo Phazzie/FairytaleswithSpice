@@ -34,6 +34,31 @@ export interface GenerationLogic {
 const PRIMARY_AUTHOR_COUNT = 2;
 const SECONDARY_AUTHOR_COUNT = 1;
 
+/**
+ * Which two banks each creature's blend voice is drawn from, as
+ * `getSecondaryAuthorStyles` in `api/_lib/config/authorStyles.ts` pairs them.
+ *
+ * A table rather than a switch, because the pairings are a table: four of the ten
+ * creatures share a pair with another one — `vampire` and `dragon` both borrow
+ * werewolf and fae, `werewolf` and `demon` both borrow vampire and fae — so a
+ * switch states two of its arms twice and a reader has to compare bodies to see
+ * that they agree. Here each creature is one line naming the banks by the same
+ * names `getAllAuthorStyles` answers to, and the repetition is visible instead of
+ * duplicated.
+ */
+const SECONDARY_AUTHOR_BANKS: Record<CreatureArchetype, readonly [CreatureArchetype, CreatureArchetype]> = {
+  vampire: ['werewolf', 'fairy'],
+  werewolf: ['vampire', 'fairy'],
+  fairy: ['vampire', 'werewolf'],
+  siren: ['mermaid', 'fairy'],
+  djinn: ['fairy', 'demon'],
+  witch: ['fairy', 'vampire'],
+  dragon: ['werewolf', 'fairy'],
+  demon: ['vampire', 'fairy'],
+  angel: ['fairy', 'witch'],
+  mermaid: ['fairy', 'werewolf']
+};
+
 @Injectable({
   providedIn: 'root'
 })
@@ -595,35 +620,14 @@ export class GenerationLogicService {
    * reconstruction: each creature borrows the two banks named there, in that
    * order, so the pool a voice is drawn from is the same pool on both sides.
    *
-   * The `default` stays for a creature that reaches here from outside
-   * `CreatureArchetype`; with every archetype named it is unreachable from the
-   * type, exactly as in `getAllAuthorStyles`.
+   * The lookup answers `[]` for a creature that reaches here from outside
+   * `CreatureArchetype`, which is what the `default` of `getAllAuthorStyles`
+   * does and is unreachable from the type for the same reason.
    */
   getSecondaryAuthorStyles(creature: CreatureArchetype): AuthorStyle[] {
-    switch (creature) {
-      case 'vampire':
-        return [...this.werewolfStyles, ...this.fairyStyles];
-      case 'werewolf':
-        return [...this.vampireStyles, ...this.fairyStyles];
-      case 'fairy':
-        return [...this.vampireStyles, ...this.werewolfStyles];
-      case 'siren':
-        return [...this.mermaidStyles, ...this.fairyStyles];
-      case 'djinn':
-        return [...this.fairyStyles, ...this.demonStyles];
-      case 'witch':
-        return [...this.fairyStyles, ...this.vampireStyles];
-      case 'dragon':
-        return [...this.werewolfStyles, ...this.fairyStyles];
-      case 'demon':
-        return [...this.vampireStyles, ...this.fairyStyles];
-      case 'angel':
-        return [...this.fairyStyles, ...this.witchStyles];
-      case 'mermaid':
-        return [...this.fairyStyles, ...this.werewolfStyles];
-      default:
-        return [];
-    }
+    const pairing = SECONDARY_AUTHOR_BANKS[creature];
+
+    return pairing ? pairing.flatMap(bank => this.getAllAuthorStyles(bank)) : [];
   }
 
   getAllBeatStructures(): BeatStructure[] {
