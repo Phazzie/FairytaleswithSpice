@@ -1,8 +1,6 @@
 import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
-import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
-import { readRequestCorrelationId } from '../_lib/http/requestCorrelationId';
-import { enforceApiAccessControl } from '../_lib/middleware/apiAccessControl';
+import { beginPostRoute } from '../_lib/http/postRoutePreamble';
 import { RATE_LIMITS } from '../_lib/constants';
 import { StoryService } from '../_lib/services/storyService';
 import { ChapterContinuationSeam } from '../_lib/types/contracts';
@@ -15,47 +13,15 @@ import {
 } from '../_lib/utils/loggableRequestParameters';
 
 export default async function handler(req: any, res: any) {
-  // Accept the caller's correlation id when it is one, otherwise mint it: the
-  // value is echoed below and stamped into every log line this request writes.
-  //
-  // This route was the one of the four legacy handlers that did neither. It
-  // minted `req_<uuid>` unconditionally and never wrote the header back, so a
-  // caller that sent `X-Request-ID` to trace a continuation across their own
-  // logs and this service's had it discarded, and the response carried no id to
-  // correlate against either — while `/api/story/generate`, `/api/image/generate`,
-  // and `/api/export/save`, which the same client calls in the same session, all
-  // honour and echo it. A continuation is the request most worth tracing: it is
-  // the slow one, the one that fails partway, and the one whose logs a reader
-  // reporting a stalled chapter would be looked up by.
-  const requestId = readRequestCorrelationId(req);
-
-  // Set request ID in response header for client tracking
-  res.setHeader('X-Request-ID', requestId);
-
-  const cors = applyCorsPolicy(req, res, {
-    methods: ['POST', 'OPTIONS'],
-    credentials: true
-  });
-  if (cors.handled) {
+  // Correlation id, `X-Request-ID`, CORS, method, and access control, in the
+  // one place all four paid POST routes state them. `null` means the response
+  // has already been written and there is nothing left for this handler to do.
+  const start = await beginPostRoute(req, res, 'story/continue', RATE_LIMITS.CHAPTER_CONTINUATION);
+  if (!start) {
     return;
   }
 
-  // Only allow POST requests
-  if (req.method !== 'POST') {
-    logWarn('Method not allowed', { requestId, endpoint: '/api/story/continue', method: req.method });
-    return res.status(405).json({ 
-      success: false,
-      error: {
-        code: 'METHOD_NOT_ALLOWED',
-        message: 'Only POST requests are allowed'
-      }
-    });
-  }
-
-  const access = await enforceApiAccessControl(req, res, 'story/continue', RATE_LIMITS.CHAPTER_CONTINUATION);
-  if (!access.allowed) {
-    return;
-  }
+  const requestId = start.requestId;
 
   try {
     const input = readJsonObjectBody<ChapterContinuationSeam['input']>(req.body);

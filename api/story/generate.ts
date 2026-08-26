@@ -1,8 +1,6 @@
 import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
-import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
-import { readRequestCorrelationId } from '../_lib/http/requestCorrelationId';
-import { enforceApiAccessControl } from '../_lib/middleware/apiAccessControl';
+import { beginPostRoute } from '../_lib/http/postRoutePreamble';
 import { RATE_LIMITS } from '../_lib/constants';
 import { StoryService } from '../_lib/services/storyService';
 import { StoryGenerationSeam } from '../_lib/types/contracts';
@@ -16,37 +14,15 @@ import {
 } from '../_lib/utils/loggableRequestParameters';
 
 export default async function handler(req: any, res: any) {
-  // Accept the caller's correlation id when it is one, otherwise mint it: the
-  // value is echoed below and stamped into every log line this request writes.
-  const requestId = readRequestCorrelationId(req);
-
-  // Set request ID in response header for client tracking
-  res.setHeader('X-Request-ID', requestId);
-  
-  const cors = applyCorsPolicy(req, res, {
-    methods: ['POST', 'OPTIONS'],
-    credentials: true
-  });
-  if (cors.handled) {
+  // Correlation id, `X-Request-ID`, CORS, method, and access control, in the
+  // one place all four paid POST routes state them. `null` means the response
+  // has already been written and there is nothing left for this handler to do.
+  const start = await beginPostRoute(req, res, 'story/generate', RATE_LIMITS.STORY_GENERATION);
+  if (!start) {
     return;
   }
 
-  // Only allow POST requests
-  if (req.method !== 'POST') {
-    logWarn('Method not allowed', { requestId, endpoint: '/api/story/generate', method: req.method });
-    return res.status(405).json({ 
-      success: false,
-      error: {
-        code: 'METHOD_NOT_ALLOWED',
-        message: 'Only POST requests are allowed'
-      }
-    });
-  }
-
-  const access = await enforceApiAccessControl(req, res, 'story/generate', RATE_LIMITS.STORY_GENERATION);
-  if (!access.allowed) {
-    return;
-  }
+  const requestId = start.requestId;
 
   try {
     console.log(`[${requestId}] POST /api/story/generate - Request received`);
