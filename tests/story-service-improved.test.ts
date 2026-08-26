@@ -9,7 +9,7 @@
  */
 
 import { StoryService } from '../api/_lib/services/storyService';
-import { StoryGenerationSeam, ChapterContinuationSeam } from '../api/_lib/types/contracts';
+import { StoryGenerationSeam, ChapterContinuationSeam, VALIDATION_RULES } from '../api/_lib/types/contracts';
 
 // ==================== TEST UTILITIES ====================
 
@@ -707,6 +707,83 @@ const storyTextTests = {
     }
 
     console.log(`   ✓ Display content: ${JSON.stringify(display)}`);
+  }),
+
+  testTitledPlainTextKeepsParagraphs: test('Titled Plain Text Keeps Its Paragraphs', () => {
+    const service = new StoryService();
+    // A plain-text answer that opens with a title line. Dropping every blank
+    // line to find the title also removed the paragraph separators, so the
+    // whole body came back inside one `<p>`.
+    const raw = [
+      'Salt Vows',
+      '',
+      'She opened the door.',
+      '',
+      'Blood pooled where the light could not reach.',
+      '',
+      'He did not look away.'
+    ].join('\n');
+
+    const formatted: string = (service as any).formatStoryContent(raw);
+    const paragraphCount = formatted.split('<p>').length - 1;
+
+    if (!formatted.startsWith('<h3>Salt Vows</h3>')) {
+      throw new Error(`Expected the first line to become the heading: ${JSON.stringify(formatted)}`);
+    }
+    if (paragraphCount !== 3) {
+      throw new Error(`Expected 3 paragraphs below the title, got ${paragraphCount}: ${JSON.stringify(formatted)}`);
+    }
+
+    // The untitled form always kept its paragraphs; it must still.
+    const untitled: string = (service as any).formatStoryContent('She opened the door.\n\nBlood pooled.');
+    if (untitled.split('<p>').length - 1 !== 2) {
+      throw new Error(`Untitled plain text lost a paragraph: ${JSON.stringify(untitled)}`);
+    }
+
+    console.log(`   ✓ Titled plain text: ${JSON.stringify(formatted)}`);
+  }),
+
+  testContinuedThemesAreContractThemes: test('Continued Themes Stay Inside The Theme Contract', () => {
+    const service = new StoryService();
+    const allowedThemes: readonly string[] = VALIDATION_RULES.themes.allowedValues;
+
+    // Nothing to detect: the answer used to be `['romance', 'fantasy']`, two
+    // ids that are not themes at all.
+    const none: string[] = (service as any).extractThemesFromContent('<p>A quiet afternoon by the reef.</p>');
+    if (none.length !== 0) {
+      throw new Error(`Expected no themes for neutral prose, got ${JSON.stringify(none)}`);
+    }
+
+    // The six themes that had no keywords and so could never be reported.
+    const unreachable = ['dominance', 'submission', 'temptation', 'sin', 'lust', 'deceit'];
+    const detected: string[] = (service as any).extractThemesFromContent(
+      '<p>He knelt in submission to her dominance.</p>'
+      + '<p>Temptation was a sin, and her lust was built on deceit.</p>'
+    );
+    for (const theme of unreachable) {
+      if (!detected.includes(theme)) {
+        throw new Error(`Theme "${theme}" was named in the prose but not detected: ${JSON.stringify(detected)}`);
+      }
+    }
+
+    for (const theme of detected) {
+      if (!allowedThemes.includes(theme)) {
+        throw new Error(`Detected theme "${theme}" is not in VALIDATION_RULES.themes.allowedValues`);
+      }
+    }
+
+    // Whole-word matching: `sin` must not be read out of `rising`, nor `lust`
+    // out of `lustre`.
+    const substrings: string[] = (service as any).extractThemesFromContent(
+      '<p>The lustre of the rising tide was using the last of the light.</p>'
+    );
+    for (const theme of ['sin', 'lust', 'manipulation']) {
+      if (substrings.includes(theme)) {
+        throw new Error(`Theme "${theme}" was matched inside a longer word: ${JSON.stringify(substrings)}`);
+      }
+    }
+
+    console.log(`   ✓ Detected themes: ${JSON.stringify(detected)}`);
   })
 };
 

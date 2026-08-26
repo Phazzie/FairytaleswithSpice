@@ -199,6 +199,52 @@ export const FAIRY_STYLES: AuthorStyle[] = [
   }
 ];
 
+export const SIREN_STYLES: AuthorStyle[] = [
+  {
+    author: 'Drowning-Song Gothic',
+    voiceSample: 'She sang one note and the helmsman turned the wheel toward the rocks, smiling the whole way, certain he had chosen it himself.',
+    trait: 'Siren song as consent stolen politely, and the guilt that follows it'
+  },
+  {
+    author: 'Salt-Debt Bargainer',
+    voiceSample: '"You called me across four hundred miles of black water," she said. "Debts like that are not settled in coin, sailor."',
+    trait: 'Siren bargains, owed favours, and payment demanded at the worst hour'
+  },
+  {
+    author: 'Storm-Voice Romance',
+    voiceSample: 'Her voice cracked the squall open like an egg, and for one impossible breath the sea held still to listen to her.',
+    trait: 'Weather-bending siren power set against unguarded tenderness'
+  },
+  {
+    author: 'Harbour-Watch Longing',
+    voiceSample: 'Every night he left a lamp burning on the pier, and every night she surfaced just past its light, unwilling to be saved and unwilling to leave.',
+    trait: 'Shoreline distance, a siren who will not come in, and a lover who will not go home'
+  }
+];
+
+export const DJINN_STYLES: AuthorStyle[] = [
+  {
+    author: 'Three-Wish Jurisprudence',
+    voiceSample: '"Say it precisely," the djinn warned, delighted. "I am bound to give you exactly what you asked for, and nothing has ever hurt a mortal more."',
+    trait: 'Wish law read aloud like a contract, granted with ruinous precision'
+  },
+  {
+    author: 'Lamp-Bound Devotion',
+    voiceSample: 'Four hundred years of masters, and she was the first to ask what he wanted before she asked for anything at all.',
+    trait: 'Servitude, ownership, and the terror of being wished free'
+  },
+  {
+    author: 'Smokeless-Fire Epic',
+    voiceSample: 'He unfolded out of the brazier in a column of smokeless fire, and the desert night went to glass beneath him.',
+    trait: 'Elemental djinn grandeur, desert magic, and courts older than scripture'
+  },
+  {
+    author: 'Brass-Seal Bargain',
+    voiceSample: '"One wish left," she said, turning the brass seal over in her palm. "Spend it on me and you stay a slave. Spend it on you and I stay alone."',
+    trait: 'Bargains where the only winning move costs the romance itself'
+  }
+];
+
 export const WITCH_STYLES: AuthorStyle[] = [
   {
     author: 'Coven Hearth Gothic',
@@ -314,12 +360,25 @@ export const MERMAID_STYLES: AuthorStyle[] = [
   }
 ];
 
+/**
+ * The voice bank each creature's prompt is built from.
+ *
+ * `siren` and `djinn` pointed at `FAIRY_STYLES`. Every other creature has had
+ * its own bank since the Story Lab blueprint named ten of them, so a reader who
+ * chose a siren or a djinn — two of the ten choices the form offers — had the
+ * one setting that most decides how the prose sounds replaced by the fae court
+ * bank: Holly Black and Sarah J. Maas directing a story about neither. The gap
+ * survived the style-bank test because `FAIRY_STYLES` ends on a Bargainer entry
+ * that happens to say "siren", "bargain", and "debts", so the creature-specific
+ * language assertion passed on borrowed words, and the "must not reuse another
+ * creature's bank" loop below it named only the five creatures added last.
+ */
 const AUTHOR_STYLE_MAP: Record<CreatureType, AuthorStyle[]> = {
   vampire: VAMPIRE_STYLES,
   werewolf: WEREWOLF_STYLES,
   fairy: FAIRY_STYLES,
-  siren: FAIRY_STYLES,
-  djinn: FAIRY_STYLES,
+  siren: SIREN_STYLES,
+  djinn: DJINN_STYLES,
   witch: WITCH_STYLES,
   dragon: DRAGON_STYLES,
   demon: DEMON_STYLES,
@@ -332,9 +391,11 @@ function getSecondaryAuthorStyles(creature: CreatureType): AuthorStyle[] {
     case 'werewolf':
       return [...VAMPIRE_STYLES, ...FAIRY_STYLES];
     case 'fairy':
-    case 'siren':
-    case 'djinn':
       return [...VAMPIRE_STYLES, ...WEREWOLF_STYLES];
+    case 'siren':
+      return [...MERMAID_STYLES, ...FAIRY_STYLES];
+    case 'djinn':
+      return [...FAIRY_STYLES, ...DEMON_STYLES];
     case 'witch':
       return [...FAIRY_STYLES, ...VAMPIRE_STYLES];
     case 'dragon':

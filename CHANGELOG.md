@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — two creatures written as a third, themes outside the contract, a welded chapter (August 26, 2026)
+
+#### A siren is no longer written by the fae court, and neither is a djinn
+
+- `AUTHOR_STYLE_MAP` gives every creature the voice bank its prompt is built
+  from. `siren` and `djinn` both pointed at `FAIRY_STYLES`, so two of the ten
+  choices the blueprint offers had the one setting that most decides how the
+  prose sounds replaced by another creature's: Holly Black and Sarah J. Maas
+  directing a story about neither, while the eight other creatures each had a
+  bank of their own.
+- `SIREN_STYLES` and `DJINN_STYLES` are four voices each, in the same invented-
+  house form the witch, dragon, demon, angel, and mermaid banks use — drowning
+  song and salt debt for the siren, wish law and lamp-bound servitude for the
+  djinn. `getSecondaryAuthorStyles` gives each its own pairing too, rather than
+  the fae court's.
+- The style-bank test passed straight through this. Its creature-language
+  assertion looks for "siren", "bargain", and "debts" in the bank's combined
+  text, and `FAIRY_STYLES` ends on a Bargainer entry that says all three, so
+  siren and djinn were credited with creature-specific language they had
+  borrowed; the stricter "must not reuse another creature's bank" loop beneath
+  it named only the five creatures added last. Both creatures are in that loop
+  now, and a new assertion checks that no two creatures share a bank object at
+  all, which is what the three hard-coded comparisons were approximating.
+
+#### `themesContinued` reports themes
+
+- The contract types the field as `ThemeType[]` — the closed set of eighteen ids
+  the theme picker offers and `VALIDATION_RULES.themes.allowedValues` lists —
+  and `extractThemesFromContent` was declared `any[]`, which is what let two
+  things through it.
+- When nothing matched, the answer was `['romance', 'fantasy']`. Neither is a
+  theme: no story can be generated with either, no picker can render either, and
+  a caller mapping the ids back to labels gets nothing for both. The honest
+  answer is the empty list, which is what a continuation that carried no
+  configured theme now returns.
+- Six of the eighteen themes had no keywords at all, so `dominance`,
+  `submission`, `temptation`, `sin`, `lust`, and `deceit` could never be
+  reported however plainly a chapter carried them — a scene naming all six came
+  back as `power_dynamics, desire`. `lust` was worse than merely absent: the word
+  sat in `desire`'s keyword list, so it was credited to a theme the reader may
+  not have chosen while its own theme stayed unreachable. The table is keyed by
+  `ThemeType` now, so a theme added to the contract without keywords here is a
+  compile error rather than a silent blind spot.
+- Keywords are matched as whole words. That is what makes the six new entries
+  safe to spell as their own names: `sin` as a substring is inside `rising`,
+  `using`, and `singing`, and `lust` is inside `lustre`. The inflections the
+  substring form picked up for free are listed instead, and `used` is gone from
+  `manipulation` — "she used the key" is not a story about being used.
+- The scan reads the rendered text rather than the markup, like the cliffhanger,
+  image, and story-quality scanners: the multi-word keywords (`secret love`,
+  `star-crossed`, `false promise`) are exactly the ones a welded
+  `door.</p><p>Blood` boundary hides.
+
+#### A plain-text chapter that opens with a title keeps its paragraphs
+
+- `formatStoryContent` wraps a provider answer that arrived as plain text. To
+  find the title it split on newlines and dropped every blank line — including
+  the ones two lines below, which are the paragraph separators the very next
+  step splits on. Rejoining what was left produced a body with no blank line
+  anywhere in it, so `split('\n\n')` returned the whole story as a single block
+  and every paragraph the model wrote was welded into one `<p>`.
+- It fired only for a story that opens with a title line; the same story without
+  one kept its paragraphs, because that branch never touched the lines. Only the
+  blank lines above the title are dropped now.
+
 ### 🐛 Three Quick Wins — the Proving Grounds bench, and a dropped image reason (August 26, 2026)
 
 #### Proving Grounds no longer spends a generation on a request the route always refuses
