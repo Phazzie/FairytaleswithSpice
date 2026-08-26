@@ -21,8 +21,6 @@ import {
 
 const EXPECTED_ROUTE_PATHS = [
   '/api/health',
-  '/api/story/generate',
-  '/api/story/continue',
   '/api/export/save',
   '/api/image/generate',
   '/api/story-lab/stories',

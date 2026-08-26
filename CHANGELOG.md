@@ -77,6 +77,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and not one of the three values that say what to do about it, so all three join
   `X-Request-ID` in `Access-Control-Expose-Headers`.
 
+### 🧹 The routes every real request goes through had none of the correlation id, access-control preamble, or redacted logging their unreachable twins did (August 26, 2026)
+
+#### `/api/story-lab/stories` and `/api/story-lab/stories/:storyId/continue` hand-rolled the preamble every other paid route shares
+
+- `StoryService.generateStory` in `story-generator/src/app/story.service.ts` builds every real
+  request against `/api/story-lab/...` — genesis through `/api/story-lab/stories`, continuation
+  through `/api/story-lab/stories/:storyId/continue`. Those two files still applied CORS, the
+  `405` for a non-POST method, and `enforceApiAccessControl` as three separate calls, the way
+  `/api/story/generate`, `/api/story/continue`, `/api/image/generate`, and `/api/export/save` did
+  before `beginPostRoute` collected that sequence into one call — see the "hundred and forty-four
+  identical tokens" note on `api/_lib/http/postRoutePreamble.ts`. The two Story Lab routes never
+  got the same treatment, so they carried no `X-Request-ID`, no correlation id in their log lines,
+  and no `logWarn` on any of their several 400 paths — a rejected genesis blueprint or a malformed
+  continuation body left nothing behind but a bare `console.error` on the unexpected-failure branch,
+  keyed by nothing that ties it back to the request that caused it.
+- Both routes now open with `beginPostRoute`, the same call the other four paid routes make, and
+  every 400 and the unexpected-error catch now go through `logWarn` / `logError` with `requestId`
+  and `endpoint` attached. The genesis success line logs `creature`, `tone`, `spicyLevel`,
+  `desiredWordBudget`, and `chapterBatchSize` verbatim — the blueprint parser has already checked
+  each one against a closed set by the time this line runs — and runs `themes` through
+  `toLoggableThemes`, since the parser only checks a theme's shape, not that its `id` is a
+  recognised value. `logline`, `narrativeDirectives`, `worldDetails`, both character names, and
+  `heatContract.noGoContent` are never logged, not even redacted; only `logline`'s length is kept.
+  The continuation route's four 400 paths each log a short static reason
+  (`missing_body`, `storyId_type_mismatch`, `storyId_conflict`, `incomplete_continuation_input`) and
+  its success line logs `storyId` through `toLoggableStoryId` and a chapter *count*, never
+  `continuationBrief` or chapter text.
+
+#### `/api/story/generate` and `/api/story/continue` are gone
+
+- Those two files carried exactly the infrastructure the paragraph above describes — and nothing
+  ever called them. `expressApiRoutes.ts`'s own doc comment already said the Angular app talks only
+  to `/api/story-lab/...`; grepping the client for `/api/story/generate` and `/api/story/continue`
+  confirms it turns up nothing. Both routes duplicated `StoryService.generateStory` and
+  `continueChapter` logic that `storyLabEngine.ts` already calls, through its own request/response
+  shapes, on the path real traffic takes. They cost two of the twelve-function Vercel budget for a
+  codepath nothing could reach, so they are deleted along with their entries in
+  `expressApiRoutes.ts`, `scripts/recovery/check-vercel-function-count.sh` (now `9/12`), and
+  `api/README.md`. See `api/README.md`'s "Retired route files" for the fuller account.
+
 ### 🐛 Three Quick Wins — a hook the scan cannot name, a variety score that can only say "varied", a saved history that takes the page down with it (August 26, 2026)
 
 #### The placeholder cliffhanger type still leaked through the exclamation half of the check

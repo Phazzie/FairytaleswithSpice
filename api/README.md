@@ -3,21 +3,19 @@
 This directory contains Vercel serverless functions for the Story Lab recovery branch.
 Audio endpoints are intentionally deferred for this recovery; story-generation ideas mined from
 audio PRs are tracked in `NOT_TAKEN_FEATURE_LEDGER.md`.
-The active route budget is now 11 deployable functions out of the 12-function guard after retiring
-the unreachable legacy `/api/story/stream` route (see "Retired route files" below), after adding
-the non-durable Story Lab job-route scaffold, and after adding `api/image/generate.ts` — previously
-served only by a hand-rolled Express route in `story-generator/src/server.ts` and completely absent
-from this deployment. Status and events URLs rewrite into the single `api/story-lab/jobs.ts`
-function so the process-local scaffold does not split state across separate deployed functions.
+The active route budget is now 9 deployable functions out of the 12-function guard after retiring
+the unreachable legacy `/api/story/stream` route and, more recently, `/api/story/generate` and
+`/api/story/continue` (see "Retired route files" below), after adding the non-durable Story Lab
+job-route scaffold, and after adding `api/image/generate.ts` — previously served only by a
+hand-rolled Express route in `story-generator/src/server.ts` and completely absent from this
+deployment. Status and events URLs rewrite into the single `api/story-lab/jobs.ts` function so the
+process-local scaffold does not split state across separate deployed functions.
 
 ## 📁 API Structure
 
 ```
 api/
 ├── health.ts              # Health check endpoint (GET /api/health)
-├── story/
-│   ├── generate.ts        # Story generation (POST /api/story/generate)
-│   └── continue.ts        # Story continuation (POST /api/story/continue)
 ├── story-lab/
 │   ├── jobs.ts           # Story Lab job scaffold
 │   │                         # POST /api/story-lab/jobs
@@ -66,20 +64,6 @@ GET /api/health
 ```
 
 Returns service status and configuration information.
-
-### Story Generation
-```http
-POST /api/story/generate
-Content-Type: application/json
-
-{
-  "creature": "vampire",
-  "themes": ["romance", "adventure"],
-  "spicyLevel": 3,
-  "wordCount": 900,
-  "userInput": "Optional custom ideas"
-}
-```
 
 ### Story Lab Genesis
 ```http
@@ -146,8 +130,6 @@ The API is automatically deployed to Vercel when changes are pushed to the main 
 
 ### URL Mapping
 
-- `/api/story/generate` → `/api/story/generate.ts`
-- `/api/story/continue` → `/api/story/continue.ts`
 - `/api/story-lab/stories` → `/api/story-lab/stories.ts`
 - `/api/story-lab/stories/:storyId/continue` → `/api/story-lab/stories/[storyId]/continue.ts`
 - `/api/story-lab/jobs` → `/api/story-lab/jobs.ts`
@@ -169,6 +151,17 @@ Retired route files:
   `/api/story-lab/stream/genesis` and `/api/story-lab/jobs.ts` instead.)
 - `/api/story/stream-demo`
 - `/api/story-lab/health`
+- `/api/story/generate`, `/api/story/continue` (classic, non-Story-Lab story generation and
+  continuation handlers. Dead since the app only ever called `/api/story-lab/...` — see
+  `expressApiRoutes.ts`'s own doc comment, which said as much before either file was removed — and
+  every request/response shape they served duplicated `StoryService.generateStory` /
+  `continueChapter` logic that `storyLabEngine.ts` already calls on the real path via
+  `toClassicGenerationInput`. They cost 2 of the 12-function budget for a codepath nothing could
+  reach. This investigation is what confirmed it: grepping the Angular app for
+  `/api/story/generate` and `/api/story/continue` turns up nothing. The correlation id, access
+  control, and redacted structured logging they carried — `beginPostRoute`, `logInfo` /
+  `logWarn` / `logError` — moved onto `/api/story-lab/stories` and
+  `/api/story-lab/stories/:storyId/continue`, which is what actually needed them.)
 
 `/api/image/generate` was listed here as retired while `story-generator/src/server.ts` kept serving
 it ad hoc, only on the Node/Docker deployment — the docs had drifted from the code. It is restored
@@ -178,7 +171,7 @@ rather than retired a second time.
 Do not restore retired routes without updating `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md` and
 `scripts/recovery/check-vercel-function-count.sh`.
 
-Current function-count guard should print `11/12`.
+Current function-count guard should print `9/12`.
 
 ### CORS Configuration
 
@@ -208,10 +201,10 @@ Or test individual functions:
 # Test health endpoint
 curl http://localhost:3000/api/health
 
-# Test story generation (requires request body)
-curl -X POST http://localhost:3000/api/story/generate \
+# Test Story Lab genesis (requires request body)
+curl -X POST http://localhost:3000/api/story-lab/stories \
   -H "Content-Type: application/json" \
-  -d '{"creature":"vampire","themes":["romance"],"spicyLevel":2,"wordCount":700}'
+  -d '{"creature":"vampire","tone":"dark_romance","logline":"A cursed bargain changes the court.","spicyLevel":2,"desiredWordBudget":900,"chapterBatchSize":1,"themes":[],"heatContract":{"adultOnlyConfirmed":true,"tensionMode":"slow_burn","intimacyBoundary":"closed_door"}}'
 ```
 
 ---
