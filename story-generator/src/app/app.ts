@@ -48,6 +48,7 @@ import { StoryService } from './story.service';
 import { StoryWorkspaceStorageService } from './story-workspace-storage.service';
 import { ErrorLoggingService } from './error-logging';
 import { DebugPanel } from './debug-panel/debug-panel';
+import { ErrorDisplayComponent } from './error-display/error-display';
 import { NotificationService } from './notification.service';
 import { NotificationsComponent } from './notifications.component';
 
@@ -235,7 +236,7 @@ type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: n
 @Component({
   selector: 'app-story-lab',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, NotificationsComponent, DebugPanel],
+  imports: [CommonModule, FormsModule, RouterLink, NotificationsComponent, DebugPanel, ErrorDisplayComponent],
   templateUrl: './app.html',
   styleUrls: ['./app.css', './app-reader-library.css']
 })

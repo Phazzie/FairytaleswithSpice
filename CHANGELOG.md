@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔌 Error Logging & Display: a built and tested panel that was never plugged in (August 26, 2026)
+
+- `ErrorDisplayComponent` (component, template, CSS, 4 passing unit tests) subscribed
+  to the real, actively-used `ErrorLoggingService` but was never mounted anywhere in
+  the app — not in `app.html`, not routed, not referenced outside its own directory.
+  100% dead code from a user's perspective.
+- There was also no Angular `ErrorHandler` override, so an uncaught exception never
+  reached `ErrorLoggingService` in the first place — the wire was missing on both
+  ends of the pipe.
+- Added `GlobalErrorHandler` (`src/app/global-error-handler.ts`), which forwards
+  uncaught errors to `ErrorLoggingService.logCritical` and still delegates to
+  Angular's default `ErrorHandler` so existing console output doesn't regress.
+  Provided via `{ provide: ErrorHandler, useClass: GlobalErrorHandler }` in
+  `app.config.ts`.
+- Mounted `<app-error-display>` next to the existing `<app-debug-panel>`, gated by
+  the same `?debug=1` signal — matching the panel's own self-description
+  (":bug: Debug Errors") and the existing convention for debug-only surfaces,
+  rather than shipping it to every reader.
+- Wrapped both debug-only panels in an `@defer (when showDebugPanel())` block so
+  neither component's code ships in the initial bundle for the vast majority of
+  readers who never pass `?debug=1` — a bonus fix over just wiring the panel in,
+  since mounting it eagerly pushed the initial bundle over its 500kB budget.
+
 ### 🐛 Three Quick Wins — a preflight nobody may cache, an export that fails without saying so, a cut between the halves of a character (August 26, 2026)
 
 #### Every cross-origin request paid for its own preflight
