@@ -66,6 +66,21 @@ function createSummary(overrides: Partial<StorySummary> = {}): StorySummary {
 }
 
 /**
+ * Seeds a workbench with one story and one chapter — the minimum the
+ * download and export actions need to have something to act on. Several of
+ * their tests differ only in the story's title/synopsis, which this takes as
+ * an override rather than each test rebuilding the whole session shape.
+ */
+function seedWorkbenchWithSingleChapter(component: App, storyOverrides: Partial<StorySummary> = {}): void {
+  component.workbench.set({
+    story: createSummary(storyOverrides),
+    state: createState(),
+    chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+    activeBatchSize: 1
+  });
+}
+
+/**
  * Both the story-download and story-export tests drive the same
  * attached-anchor-object-URL mechanic; sharing the spy setup keeps them from
  * drifting into two slightly different fakes of the same browser API.
@@ -2702,12 +2717,7 @@ describe('App', () => {
 
   it('downloads generated story HTML locally', fakeAsync(() => {
     const { anchor, clickSpy } = spyOnAttachedAnchorDownload('blob:story-download');
-    component.workbench.set({
-      story: createSummary({ title: 'Downloaded Pact', synopsis: 'A pact worth keeping.' }),
-      state: createState(),
-      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
-      activeBatchSize: 1
-    });
+    seedWorkbenchWithSingleChapter(component, { title: 'Downloaded Pact', synopsis: 'A pact worth keeping.' });
 
     component.downloadStory();
 
@@ -2722,12 +2732,7 @@ describe('App', () => {
   it('exports the story in the selected format through the backend', fakeAsync(() => {
     const { anchor, clickSpy } = spyOnAttachedAnchorDownload('blob:story-export');
 
-    component.workbench.set({
-      story: createSummary({ title: 'Exported Pact', synopsis: 'A pact worth exporting.' }),
-      state: createState(),
-      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
-      activeBatchSize: 1
-    });
+    seedWorkbenchWithSingleChapter(component, { title: 'Exported Pact', synopsis: 'A pact worth exporting.' });
     component.selectedExportFormat.set('epub');
 
     const exportOutput: SaveExportSeam['output'] = {
@@ -2760,12 +2765,7 @@ describe('App', () => {
 
   it('reports an error instead of downloading when export fails', () => {
     const notificationService = TestBed.inject(NotificationService);
-    component.workbench.set({
-      story: createSummary({ title: 'Failed Pact' }),
-      state: createState(),
-      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
-      activeBatchSize: 1
-    });
+    seedWorkbenchWithSingleChapter(component, { title: 'Failed Pact' });
     storyService.exportStory.and.returnValue(of({
       success: false,
       error: { code: 'FORMAT_NOT_SUPPORTED', message: 'Format not supported', requestedFormat: 'epub', supportedFormats: ['pdf'] }
