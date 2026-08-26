@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — the Proving Grounds bench, and a dropped image reason (August 26, 2026)
+
+#### Proving Grounds no longer spends a generation on a request the route always refuses
+- The page packs the selected template's system and user prompts — and the
+  generation-logic summary once the reader has asked to see it — into the
+  blueprint's `narrativeDirectives`, which `parseStoryLabBlueprintFromBody` caps
+  at `STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength` (1,200). The template
+  the page opens on, "Current Production", builds about 4,600 characters, so the
+  default configuration of the prompt bench could not generate at all, and the
+  shorter templates — which fit on their own — joined it once the generation
+  logic was attached to the run.
+- `describeNarrativeDirectivesOverflow` is asked before the request is sent, and
+  the page names the template, the length, the cap, and the three things the
+  reader can change. It measures `.trim().length` because the parser trims
+  before it measures — a check that counted the whitespace would refuse a
+  request the route would have taken. `tests/story-lab-blueprint-parser.test.ts`
+  takes both readings at the boundary so they cannot drift apart.
+- A generation that fails for any other reason now reports what the API said.
+  Since the routes answer real statuses, a refusal arrives through `HttpClient`'s
+  error path with the envelope on it, and the page was replacing that with
+  "Story generation failed. Check the debug panel or console for details."
+
+#### "Export Results" is a button that downloads something
+- The Proving Grounds history export built a `data:` URI and clicked an anchor it
+  had created but never attached — the pattern `downloadHtmlDocument` was
+  extracted to end. Firefox does not dispatch a synthetic click on a detached
+  anchor, so the button did nothing there at all, and a `data:` URI carries its
+  whole payload in the URL, which twenty-five generated stories with their
+  prompts and evaluations are not.
+- `downloadTextDocument` is the same attach-click-detach over an object URL that
+  the story download already uses, parameterized by MIME type; `downloadHtmlDocument`
+  now delegates to it, so both buttons share one implementation and one test.
+
+#### A failed chapter illustration says why it failed
+- `generateChapterImage` was the one subscription in the component whose error
+  handler ignored its argument, answering "Image generation failed. Please try
+  again." for every failure. An unsupported style, an exhausted image quota, and
+  a deployment with no image provider configured are all reasons that retrying
+  does not fix, and the route names each of them in the envelope that reaches
+  the error path.
+- It now reads through `formatHttpError` with that sentence as the fallback,
+  like every other subscription in the component.
+
 ### 🐛 Three Quick Wins (August 26, 2026)
 
 #### A keyless deployment no longer passes its canned evaluation off as a Grok score

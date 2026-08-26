@@ -33,6 +33,34 @@ export const STORY_BLUEPRINT_LIMITS = {
 export type StoryBlueprintLimits = typeof STORY_BLUEPRINT_LIMITS;
 
 /**
+ * Say whether an assembled `narrativeDirectives` value will clear the cap the
+ * blueprint routes enforce, and by how much it misses.
+ *
+ * A caller that assembles this field from parts rather than from a textarea has
+ * no field length in front of the reader to warn them with. Proving Grounds is
+ * that caller: it packs the selected prompt template's system and user prompts —
+ * and, once the reader has asked to see it, the generation-logic summary — into
+ * this one field, which is thousands of characters for the template the page
+ * opens on. The route answers `400 INVALID_INPUT` for every one of those, so the
+ * page's own default configuration could not generate, and the round trip it
+ * spent to find that out told the reader only that generation had failed.
+ *
+ * `.trim().length` is not incidental: the parser reads this field through a
+ * helper that trims before it measures, so a value whose surrounding whitespace
+ * is what pushes it over the cap is one the API accepts. Measuring it any other
+ * way here would refuse a request the route would have taken — the mirror of the
+ * failure this exists to prevent.
+ */
+export function describeNarrativeDirectivesOverflow(directives: string): string | null {
+  const limit = STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength;
+  const length = directives.trim().length;
+
+  return length <= limit
+    ? null
+    : `Narrative directives are ${length} characters and this API accepts ${limit}.`;
+}
+
+/**
  * The size limits an evaluation request has to satisfy.
  *
  * `/api/story-lab/evaluate` checked that `storyContent` was a non-empty string
