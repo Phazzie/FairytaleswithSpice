@@ -7,12 +7,7 @@ import {
   buildStoryDownloadFilename,
   buildStoryDownloadFilenameStem
 } from '../shared/storyDownloadFilename';
-
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
+import { assert } from './assert';
 
 function utf8Bytes(value: string): number {
   return Buffer.byteLength(value, 'utf8');

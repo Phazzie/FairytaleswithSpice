@@ -22,12 +22,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
+import { assert } from './assert';
 
 const repoRoot = process.cwd();
 const promptTemplatesSource = readFileSync(

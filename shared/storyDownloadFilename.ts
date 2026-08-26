@@ -59,9 +59,11 @@ export function buildStoryDownloadFilenameStem(title: string): string {
   // run and drops the leading and trailing ones in a single linear pass, the
   // way the export filename stem and the continuity slug are both built.
   const parts = title.toLowerCase().split(FILENAME_SEPARATOR_PATTERN).filter(Boolean);
-  const stem = trimTrailingSeparators(
-    capUtf8Bytes(parts.join('-'), STORY_DOWNLOAD_FILENAME_STEM_MAX_BYTES)
-  );
+  const capped = capUtf8Bytes(parts.join('-'), STORY_DOWNLOAD_FILENAME_STEM_MAX_BYTES);
+  // The join leaves single separators, so the cap can strand at most one — a
+  // single slice says that, where the loop `ExportService` needs for its own
+  // stem says only that some unknown number may be there.
+  const stem = capped.endsWith('-') ? capped.slice(0, -1) : capped;
 
   return stem || STORY_DOWNLOAD_FILENAME_FALLBACK_STEM;
 }
@@ -113,19 +115,4 @@ function utf8ByteLength(codePoint: number): number {
     return 3;
   }
   return 4;
-}
-
-/**
- * Drop the separator the cap can strand at the end. The join above leaves
- * single separators, so there is at most one — the loop is the cheap way to say
- * that without the reader having to prove it.
- */
-function trimTrailingSeparators(stem: string): string {
-  let end = stem.length;
-
-  while (end > 0 && stem[end - 1] === '-') {
-    end -= 1;
-  }
-
-  return stem.slice(0, end);
 }
