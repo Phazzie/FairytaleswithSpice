@@ -3,14 +3,21 @@
 import assert from 'node:assert/strict';
 import axios from 'axios';
 import {
+  FUNCTION_BUDGET_RESERVE_MS,
+  getFunctionBudgetMs,
   getXaiFastTimeoutMs,
   getXaiFastReasoningEffort,
+  getXaiPrimaryTimeoutMs,
   getXaiReasoningEffortForModel,
   supportsXaiReasoningParameter
 } from '../api/_lib/config/xaiConfig';
 import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
 import { StoryService } from '../api/_lib/services/storyService';
-import { XaiTextClient, type XaiTextRequest } from '../api/_lib/services/xaiTextClient';
+import {
+  MIN_XAI_FALLBACK_TIMEOUT_MS,
+  XaiTextClient,
+  type XaiTextRequest
+} from '../api/_lib/services/xaiTextClient';
 
 type CapturedPost = {
   payload: Record<string, unknown>;
@@ -564,6 +571,53 @@ async function assertFastProfileRetryFitsInsideTheInvocationBudget(): Promise<vo
   }
 }
 
+/**
+ * The shipped defaults have to leave room for the retry they allow.
+ *
+ * The runtime clamp above makes an overrun impossible whatever the numbers say,
+ * but it can only shorten a retry or refuse one — so a primary timeout raised
+ * past what the window can hold would quietly turn the fallback off rather than
+ * fail anywhere visible. Issue #167 asks for exactly this guard: that the two
+ * defaults cannot drift beyond the configured max duration unnoticed. Stated as
+ * the property rather than as the arithmetic, so it holds if any of the three
+ * numbers moves.
+ */
+function assertShippedTimeoutDefaultsLeaveRoomForTheRetry(): void {
+  const originalEnv = [
+    'XAI_STORY_PRIMARY_TIMEOUT_MS',
+    'XAI_PRIMARY_TIMEOUT_MS',
+    'XAI_STORY_FAST_TIMEOUT_MS',
+    'XAI_FAST_TIMEOUT_MS',
+    'STORY_LAB_FUNCTION_BUDGET_MS',
+    'FUNCTION_BUDGET_MS'
+  ].map(name => [name, process.env[name]] as const);
+
+  try {
+    for (const [name] of originalEnv) {
+      delete process.env[name];
+    }
+
+    const usableWindowMs = getFunctionBudgetMs() - FUNCTION_BUDGET_RESERVE_MS;
+
+    assert(
+      getXaiPrimaryTimeoutMs() + MIN_XAI_FALLBACK_TIMEOUT_MS <= usableWindowMs,
+      `the default primary timeout (${getXaiPrimaryTimeoutMs()}ms) should leave room for a usable retry inside the ${usableWindowMs}ms window`
+    );
+    assert(
+      getXaiFastTimeoutMs() <= usableWindowMs,
+      `the default fast timeout (${getXaiFastTimeoutMs()}ms) should fit inside the ${usableWindowMs}ms window on its own, since a fast-preference request spends it as its only attempt`
+    );
+  } finally {
+    for (const [name, value] of originalEnv) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  }
+}
+
 async function main(): Promise<void> {
   await assertContinuityFastTimeoutUsesConfiguredBudget();
   await assertContinuityHeuristicWarningPriority();
@@ -572,6 +626,7 @@ async function main(): Promise<void> {
   assertAiMetadataMerge();
   await assertStoryLabContinuityBudgetUsesRemainingRequestWindow();
   await assertFastProfileRetryFitsInsideTheInvocationBudget();
+  assertShippedTimeoutDefaultsLeaveRoomForTheRetry();
 
   console.log('xAI fast path review regression tests passed');
 }
