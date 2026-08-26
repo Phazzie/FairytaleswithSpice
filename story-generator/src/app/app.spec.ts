@@ -5,6 +5,8 @@ import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
+import { NotificationService } from './notification.service';
+import { OBJECT_URL_REVOKE_DELAY_MS } from '../../../shared/htmlDocumentDownload';
 import {
   ApiResponse,
   CloudStoryProjectDeleteReceipt,
@@ -18,6 +20,7 @@ import {
   CloudStoryProjectSaveReceipt,
   GeneratedChapter,
   ImageGenerationSeam,
+  SaveExportSeam,
   SavedStoryProject
 } from './contracts';
 
@@ -60,6 +63,39 @@ function createSummary(overrides: Partial<StorySummary> = {}): StorySummary {
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now
   };
+}
+
+/**
+ * Seeds a workbench with one story and one chapter — the minimum the
+ * download and export actions need to have something to act on. Several of
+ * their tests differ only in the story's title/synopsis, which this takes as
+ * an override rather than each test rebuilding the whole session shape.
+ */
+function seedWorkbenchWithSingleChapter(component: App, storyOverrides: Partial<StorySummary> = {}): void {
+  component.workbench.set({
+    story: createSummary(storyOverrides),
+    state: createState(),
+    chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+    activeBatchSize: 1
+  });
+}
+
+/**
+ * Both the story-download and story-export tests drive the same
+ * attached-anchor-object-URL mechanic; sharing the spy setup keeps them from
+ * drifting into two slightly different fakes of the same browser API.
+ */
+function spyOnAttachedAnchorDownload(objectUrl: string): { anchor: HTMLAnchorElement; clickSpy: jasmine.Spy } {
+  const originalCreateElement = document.createElement.bind(document);
+  const anchor = originalCreateElement('a') as HTMLAnchorElement;
+  const clickSpy = spyOn(anchor, 'click');
+  spyOn(document, 'createElement').and.callFake((tagName: string) => {
+    return tagName.toLowerCase() === 'a' ? anchor : originalCreateElement(tagName);
+  });
+  spyOn(URL, 'createObjectURL').and.returnValue(objectUrl);
+  spyOn(URL, 'revokeObjectURL');
+
+  return { anchor, clickSpy };
 }
 
 function createState(overrides: Partial<StoryStateSnapshot> = {}): StoryStateSnapshot {
@@ -308,7 +344,8 @@ describe('App', () => {
       'saveCloudStoryProject',
       'loadCloudStoryProject',
       'deleteCloudStoryProject',
-      'generateImage'
+      'generateImage',
+      'exportStory'
     ]);
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
       'logInfo',
@@ -2679,20 +2716,8 @@ describe('App', () => {
   });
 
   it('downloads generated story HTML locally', fakeAsync(() => {
-    const originalCreateElement = document.createElement.bind(document);
-    const anchor = originalCreateElement('a') as HTMLAnchorElement;
-    const clickSpy = spyOn(anchor, 'click');
-    spyOn(document, 'createElement').and.callFake((tagName: string) => {
-      return tagName.toLowerCase() === 'a' ? anchor : originalCreateElement(tagName);
-    });
-    spyOn(URL, 'createObjectURL').and.returnValue('blob:story-download');
-    spyOn(URL, 'revokeObjectURL');
-    component.workbench.set({
-      story: createSummary({ title: 'Downloaded Pact', synopsis: 'A pact worth keeping.' }),
-      state: createState(),
-      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
-      activeBatchSize: 1
-    });
+    const { anchor, clickSpy } = spyOnAttachedAnchorDownload('blob:story-download');
+    seedWorkbenchWithSingleChapter(component, { title: 'Downloaded Pact', synopsis: 'A pact worth keeping.' });
 
     component.downloadStory();
 
@@ -2703,4 +2728,54 @@ describe('App', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:story-download');
     expect(component.statusMessage()).toBe('Story download created.');
   }));
+
+  it('exports the story in the selected format through the backend', fakeAsync(() => {
+    const { anchor, clickSpy } = spyOnAttachedAnchorDownload('blob:story-export');
+
+    seedWorkbenchWithSingleChapter(component, { title: 'Exported Pact', synopsis: 'A pact worth exporting.' });
+    component.selectedExportFormat.set('epub');
+
+    const exportOutput: SaveExportSeam['output'] = {
+      exportId: 'export-1',
+      storyId: component.workbench().story!.storyId,
+      downloadUrl: 'data:application/epub+zip;base64,QUJD',
+      filename: 'exported-pact.epub',
+      format: 'epub',
+      fileSize: 3,
+      exportedAt: new Date()
+    };
+    storyService.exportStory.and.returnValue(of({ success: true, data: exportOutput }));
+
+    component.exportStory();
+
+    expect(storyService.exportStory).toHaveBeenCalledWith(jasmine.objectContaining({
+      storyId: component.workbench().story!.storyId,
+      title: 'Exported Pact',
+      format: 'epub',
+      creature: component.blueprint().creature
+    }));
+    expect(component.isExporting()).toBeFalse();
+    expect(anchor.download).toBe('exported-pact.epub');
+    expect(clickSpy).toHaveBeenCalled();
+    // The revoke is scheduled `OBJECT_URL_REVOKE_DELAY_MS` out, not on the next
+    // microtask — `tick()` with no argument only flushes 0ms and never reaches it.
+    tick(OBJECT_URL_REVOKE_DELAY_MS);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:story-export');
+  }));
+
+  it('reports an error instead of downloading when export fails', () => {
+    const notificationService = TestBed.inject(NotificationService);
+    seedWorkbenchWithSingleChapter(component, { title: 'Failed Pact' });
+    storyService.exportStory.and.returnValue(of({
+      success: false,
+      error: { code: 'FORMAT_NOT_SUPPORTED', message: 'Format not supported', requestedFormat: 'epub', supportedFormats: ['pdf'] }
+    }));
+
+    component.exportStory();
+
+    expect(component.isExporting()).toBeFalse();
+    const notifications = notificationService.notifications();
+    expect(notifications[0]?.type).toBe('error');
+    expect(notifications[0]?.message).toBe('Format not supported');
+  });
 });

@@ -429,6 +429,25 @@
           >
             Download
           </button>
+          <select
+            class="ghost compact"
+            data-testid="export-format"
+            aria-label="Export format"
+            [ngModel]="selectedExportFormat()"
+            (ngModelChange)="selectedExportFormat.set($event)"
+          >
+            <option *ngFor="let format of exportFormats" [value]="format">{{ format.toUpperCase() }}</option>
+          </select>
+          <button
+            type="button"
+            class="ghost compact"
+            data-testid="export-story"
+            aria-label="Export story"
+            (click)="exportStory()"
+            [disabled]="isExporting()"
+          >
+            {{ isExporting() ? 'Exporting…' : 'Export' }}
+          </button>
           <button
             type="button"
             class="ghost compact"

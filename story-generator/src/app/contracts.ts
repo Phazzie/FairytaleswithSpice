@@ -29,6 +29,13 @@ export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_ban
 export type HeatIntimacyBoundary = 'fade_to_black' | 'closed_door' | 'literary_on_page';
 export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
 
+// `ExportFormat` and `SaveExportSeam` are re-exported from the backend's own
+// contract rather than redeclared here: the export pipeline runs entirely in
+// `api/_lib`, so its seam has exactly one definition instead of two that could
+// drift the way the classic `/api/story/*` routes already had (see
+// `expressApiRoutes.ts`).
+export type { ExportFormat, SaveExportSeam } from '../../../api/_lib/types/contracts';
+
 export const IMAGE_STYLES = [
   'artistic',
   'photorealistic',

@@ -77,6 +77,39 @@ export interface HtmlDownloadHost<TAnchor extends DownloadAnchorLike = DownloadA
 export const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
 
 /**
+ * Hand any blob to the browser as a file the reader saves.
+ *
+ * A synthetic click only follows a `download` on an anchor that is in the
+ * document, so the anchor is attached, clicked, and detached again — Firefox
+ * never dispatches the navigation for a detached one. Both halves of the
+ * cleanup are in the `finally`, because a click that throws — a browser that
+ * refuses the download, an extension that replaced the handler — has to leave
+ * the page as it found it. Detaching the anchor is the visible half.
+ * Scheduling the revoke is the half a throw would otherwise skip: the browser
+ * holds a blob alive for the life of the tab until its URL is revoked, so a
+ * refused attempt would strand it in memory on the path already least likely
+ * to be noticed.
+ */
+export function downloadBlob<TAnchor extends DownloadAnchorLike>(
+  blob: Blob,
+  filename: string,
+  host: HtmlDownloadHost<TAnchor>
+): void {
+  const url = host.createObjectUrl(blob);
+  const link = host.document.createElement('a');
+  link.href = url;
+  link.download = filename;
+
+  host.document.body.appendChild(link);
+  try {
+    link.click();
+  } finally {
+    host.document.body.removeChild(link);
+    host.scheduleRevoke(() => host.revokeObjectUrl(url));
+  }
+}
+
+/**
  * Hand any generated text to the browser as a file the reader saves.
  *
  * The story download is not the only button that offers one. Proving Grounds
@@ -86,7 +119,7 @@ export const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
  * click on an anchor that is not in the document — plus one the story download
  * never had, because a `data:` URI carries the whole payload in the URL and a
  * history of twenty-five generated stories is not a URL-sized thing. Routing
- * both through this one function is what keeps the second button from
+ * both through `downloadBlob` is what keeps the second button from
  * rediscovering what the first one already learned.
  *
  * `mimeType` is the only thing that differs between them, so it is the only
@@ -98,26 +131,7 @@ export function downloadTextDocument<TAnchor extends DownloadAnchorLike>(
   mimeType: string,
   host: HtmlDownloadHost<TAnchor>
 ): void {
-  const url = host.createObjectUrl(new Blob([content], { type: mimeType }));
-  const link = host.document.createElement('a');
-  link.href = url;
-  link.download = filename;
-
-  host.document.body.appendChild(link);
-  try {
-    link.click();
-  } finally {
-    // Both halves of the cleanup are in the `finally`, because a click that
-    // throws — a browser that refuses the download, an extension that replaced
-    // the handler — has to leave the page as it found it. Detaching the anchor
-    // is the visible half. Scheduling the revoke is the half that used to sit
-    // after the `try` and was therefore skipped by the throw: the browser holds
-    // a blob alive for the life of the tab until its URL is revoked, so every
-    // refused attempt stranded a whole story or a whole exported history in
-    // memory, on the path already least likely to be noticed.
-    host.document.body.removeChild(link);
-    host.scheduleRevoke(() => host.revokeObjectUrl(url));
-  }
+  downloadBlob(new Blob([content], { type: mimeType }), filename, host);
 }
 
 export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(
@@ -126,6 +140,26 @@ export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(
   host: HtmlDownloadHost<TAnchor>
 ): void {
   downloadTextDocument(html, filename, 'text/html', host);
+}
+
+/**
+ * Decode a base64 `data:` URI into a `Blob`, so a file the backend returned
+ * inline can be handed to `downloadBlob` exactly like one built client-side.
+ */
+export function dataUriToBlob(dataUri: string): Blob {
+  const match = /^data:([^;]*);base64,(.*)$/s.exec(dataUri);
+  if (!match) {
+    throw new Error('Not a base64-encoded data: URI');
+  }
+
+  const [, mimeType, base64] = match;
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: mimeType || 'application/octet-stream' });
 }
 
 /**

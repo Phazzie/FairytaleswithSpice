@@ -2,6 +2,7 @@
 // Created: 2026-08-24 18:05 UTC
 
 import { ExportService } from '../api/_lib/services/exportService';
+import { readZipEntries, ZipEntry } from '../api/_lib/services/zipArchive';
 import { SaveExportSeam } from '../api/_lib/types/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -23,25 +24,31 @@ function createInput(overrides: Partial<SaveExportSeam['input']> = {}): SaveExpo
   };
 }
 
-// The filename carries a `Date.now()` stamp. It used to be generated twice —
-// once inside `saveToStorage` and again for the response — with the mock
-// upload's 300ms delay in between, so the two stamps never matched and the
-// client was handed a download URL that did not point at the filename it was
-// told to save under.
-async function testDownloadUrlMatchesReportedFilename(): Promise<void> {
+// There is no object storage behind this service: the exported bytes are
+// handed back directly as a `data:` URI. It used to be a mock upload that
+// returned a URL pointing at `storage.example.com` — a link that resolved
+// nowhere — so this now checks the URI actually carries the exported bytes,
+// not merely that it is shaped like one.
+async function testDownloadUrlCarriesTheExportedBytes(): Promise<void> {
   const exportService = new ExportService();
 
-  for (const format of ['txt', 'html', 'pdf'] as const) {
-    const result = await exportService.saveAndExport(createInput({ format }));
+  for (const format of ['txt', 'html', 'pdf', 'epub', 'docx'] as const) {
+    const input = createInput({ format });
+    const result = await exportService.saveAndExport(input);
+    const content = await exportService.generateExportContent(input);
 
     assert(result.success, `${format} export should succeed`);
     const output = result.data as SaveExportSeam['output'];
-    assert(
-      output.downloadUrl.endsWith(`/exports/${output.filename}`),
-      `${format} download URL should end with the reported filename ` +
-        `(url=${output.downloadUrl}, filename=${output.filename})`
-    );
     assert(output.filename.endsWith(`.${format}`), `${format} filename should keep the requested extension`);
+
+    const dataUriMatch = /^data:([^;]+);base64,(.+)$/.exec(output.downloadUrl);
+    assert(dataUriMatch, `${format} downloadUrl should be a data: URI (got ${output.downloadUrl.slice(0, 40)}...)`);
+    const decoded = Buffer.from(dataUriMatch[2], 'base64');
+    assert(
+      decoded.equals(content),
+      `${format} downloadUrl should decode to exactly the exported document's bytes`
+    );
+    assert(output.fileSize === content.length, `${format} fileSize should equal the exported document's byte length`);
   }
 }
 
@@ -84,9 +91,7 @@ async function exportedSizeOf(content: string): Promise<number> {
 // of the whole story, not the byte count of the short stream it actually
 // writes — so the declared span ran far past `endstream`.
 async function testPdfStreamLengthDescribesTheStream(): Promise<void> {
-  const document = await new ExportService().generateExportContent(
-    createInput({ format: 'pdf', content: unicodeStory })
-  );
+  const document = await pdfTextOf(createInput({ format: 'pdf', content: unicodeStory }));
 
   const declaredLength = Number(/\/Length (\d+)/.exec(document)?.[1]);
   const streamBody = extractPdfStreamBody(document);
@@ -107,9 +112,7 @@ async function testPdfStreamLengthDescribesTheStream(): Promise<void> {
 async function testPdfExcerptIsCutOnCharacterBoundaries(): Promise<void> {
   for (const boundary of ['(spice)', '🐉 tail']) {
     const content = `<p>${'x'.repeat(99)}${boundary}</p>`;
-    const document = await new ExportService().generateExportContent(
-      createInput({ format: 'pdf', content })
-    );
+    const document = await pdfTextOf(createInput({ format: 'pdf', content }));
     const streamBody = extractPdfStreamBody(document);
 
     assert(
@@ -129,25 +132,85 @@ function extractPdfStreamBody(document: string): string {
   return match[1];
 }
 
-// The EPUB package document writes its metadata with the `dc:` prefix. The
-// prefix was never bound to a namespace, so the document was not well-formed
-// XML and a conforming reader rejects it before reading any of the metadata.
-async function testEpubBindsEveryNamespacePrefixItUses(): Promise<void> {
+async function pdfTextOf(input: SaveExportSeam['input']): Promise<string> {
+  const document = await new ExportService().generateExportContent(input);
+  return document.toString('utf8');
+}
+
+/**
+ * Confirm a document is actually a zip archive, then read its entries back by
+ * path — the check both the epub and docx tests below start from, since both
+ * formats used to be plain text made to merely *look* like a zip.
+ */
+function readAsRealZipContainer(document: Buffer, formatLabel: string): Map<string, ZipEntry> {
+  assert(
+    document.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])),
+    `a ${formatLabel} should start with a zip local file header signature`
+  );
+
+  return new Map(readZipEntries(document).map(entry => [entry.path, entry]));
+}
+
+// The EPUB used to be a bare, unzipped OPF XML fragment referencing a
+// `chapter1.xhtml` that was never produced — not a real `.epub` (a zip
+// container) at all. This confirms it now is one: `mimetype` first and
+// stored, the OCF pointer resolving to the package document, and the chapter
+// the package document references actually existing and holding the story.
+async function testEpubIsARealZipContainerWithItsChapter(): Promise<void> {
   const document = await new ExportService().generateExportContent(
-    createInput({ format: 'epub' })
+    createInput({ format: 'epub', title: 'Élodie & the Dragon' })
   );
 
-  const usedPrefixes = new Set(
-    Array.from(document.matchAll(/<\/?([A-Za-z][\w.-]*):/g), match => match[1])
+  const byPath = readAsRealZipContainer(document, 'epub');
+
+  assert(byPath.keys().next().value === 'mimetype', 'mimetype must be the first entry in an epub');
+  assert(
+    byPath.get('mimetype')?.data.toString('ascii') === 'application/epub+zip',
+    'the mimetype entry should hold the epub media type verbatim'
   );
 
-  assert(usedPrefixes.has('dc'), 'the package document should still carry Dublin Core metadata');
+  const containerXml = byPath.get('META-INF/container.xml')?.data.toString('utf8');
+  assert(containerXml?.includes('OEBPS/content.opf'), 'container.xml should point at the package document');
+
+  const contentOpf = byPath.get('OEBPS/content.opf')?.data.toString('utf8');
+  assert(contentOpf, 'the package document should exist');
+  assert(contentOpf.includes('Élodie &amp; the Dragon'), 'the package document should carry the escaped title');
+  assert(contentOpf.includes('href="chapter1.xhtml"'), 'the package document should reference the chapter it ships');
+
+  const usedPrefixes = new Set(Array.from(contentOpf.matchAll(/<\/?([A-Za-z][\w.-]*):/g), match => match[1]));
   for (const prefix of usedPrefixes) {
-    assert(
-      document.includes(`xmlns:${prefix}="`),
-      `the \`${prefix}:\` prefix should be bound to a namespace on the package element`
-    );
+    assert(contentOpf.includes(`xmlns:${prefix}="`), `the \`${prefix}:\` prefix should be bound to a namespace`);
   }
+
+  const chapter = byPath.get('OEBPS/chapter1.xhtml')?.data.toString('utf8');
+  assert(chapter, 'the chapter the package document references should actually exist');
+  assert(chapter.includes('Élodie smiled'), 'the chapter should contain the real story content');
+}
+
+// The DOCX used to be literal text made to *look* like a zip's local-file-header
+// strings, concatenated with escaped plain text — not a valid archive. This
+// confirms the required OOXML package parts exist and the document body holds
+// the actual story.
+async function testDocxIsARealZipContainerWithItsDocument(): Promise<void> {
+  const document = await new ExportService().generateExportContent(
+    createInput({ format: 'docx', title: 'Midnight Bargain' })
+  );
+
+  const byPath = readAsRealZipContainer(document, 'docx');
+
+  for (const requiredPart of ['[Content_Types].xml', '_rels/.rels', 'word/document.xml']) {
+    assert(byPath.has(requiredPart), `a docx should contain ${requiredPart}`);
+  }
+
+  const contentTypes = byPath.get('[Content_Types].xml')!.data.toString('utf8');
+  assert(contentTypes.includes('/word/document.xml'), 'Content_Types should declare the document part');
+
+  const rels = byPath.get('_rels/.rels')!.data.toString('utf8');
+  assert(rels.includes('word/document.xml'), 'the package relationships should point at the document part');
+
+  const documentXml = byPath.get('word/document.xml')!.data.toString('utf8');
+  assert(documentXml.includes('Midnight Bargain'), 'the document body should include the title');
+  assert(documentXml.includes('Élodie smiled'), 'the document body should include the real story content');
 }
 
 // A reader resolves an object by seeking to the byte offset the xref table
@@ -158,10 +221,10 @@ async function testPdfCrossReferenceTablePointsAtItsObjects(): Promise<void> {
   const exportService = new ExportService();
 
   for (const title of ['A', 'Midnight Bargain', 'Élodie and the 🐉 of the Château (Part Two)']) {
-    const document = await exportService.generateExportContent(
+    const bytes = await exportService.generateExportContent(
       createInput({ format: 'pdf', title, content: unicodeStory.repeat(4) })
     );
-    const bytes = Buffer.from(document, 'utf8');
+    const document = bytes.toString('utf8');
 
     const startxref = /startxref\n(\d+)\n%%EOF$/.exec(document);
     assert(startxref, `the PDF for "${title}" should end with a startxref offset`);
@@ -264,7 +327,7 @@ async function testFilenamesStayReadableAndPortable(): Promise<void> {
  */
 async function testPlainTextExportKeepsEveryBlockBreak(): Promise<void> {
   const exportService = new ExportService();
-  const text = await exportService.generateExportContent(createInput({
+  const buffer = await exportService.generateExportContent(createInput({
     content: [
       '<h4>The Vault</h4>',
       '<div>She opened the door.</div>',
@@ -272,6 +335,7 @@ async function testPlainTextExportKeepsEveryBlockBreak(): Promise<void> {
       '<table><tr><td>Cell A</td><td>Cell B</td></tr></table>'
     ].join('')
   }));
+  const text = buffer.toString('utf8');
 
   for (const [left, right] of [
     ['The Vault', 'She opened the door.'],
@@ -293,6 +357,35 @@ async function testPlainTextExportKeepsEveryBlockBreak(): Promise<void> {
   assert(!/\n{3,}/.test(text), `no run of blank lines should open up (got ${JSON.stringify(text)})`);
 }
 
+// The metadata used to be hardcoded to `creature: 'vampire'` and
+// `themes: ['romance', 'dark']` for every export, regardless of what story was
+// actually exported. The caller now supplies the real values.
+async function testMetadataReflectsTheActualStory(): Promise<void> {
+  const exportService = new ExportService();
+
+  const withMetadata = await exportService.generateExportContent(createInput({
+    format: 'txt',
+    includeMetadata: true,
+    creature: 'werewolf',
+    themes: ['mystery', 'adventure']
+  }));
+  const text = withMetadata.toString('utf8');
+
+  assert(text.includes('Creature: werewolf'), `export should carry the passed creature (got ${JSON.stringify(text)})`);
+  assert(text.includes('Themes: mystery, adventure'), `export should carry the passed themes (got ${JSON.stringify(text)})`);
+  assert(!text.includes('vampire'), 'export should not fall back to the old hardcoded creature');
+  assert(!text.includes('romance, dark'), 'export should not fall back to the old hardcoded themes');
+
+  const withoutMetadataInput = await exportService.generateExportContent(createInput({
+    format: 'txt',
+    includeMetadata: true
+  }));
+  assert(
+    withoutMetadataInput.toString('utf8').includes('Creature: unknown'),
+    'an export with no creature supplied should say so honestly rather than guessing one'
+  );
+}
+
 function escapeForAssertion(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
@@ -300,12 +393,14 @@ function escapeForAssertion(value: string): string {
 async function main(): Promise<void> {
   await testPlainTextExportKeepsEveryBlockBreak();
   await testFilenamesStayReadableAndPortable();
-  await testDownloadUrlMatchesReportedFilename();
+  await testDownloadUrlCarriesTheExportedBytes();
   await testPdfCrossReferenceTablePointsAtItsObjects();
   await testFileSizeIsMeasuredInBytes();
   await testPdfStreamLengthDescribesTheStream();
   await testPdfExcerptIsCutOnCharacterBoundaries();
-  await testEpubBindsEveryNamespacePrefixItUses();
+  await testEpubIsARealZipContainerWithItsChapter();
+  await testDocxIsARealZipContainerWithItsDocument();
+  await testMetadataReflectsTheActualStory();
 
   console.log('Export service tests passed');
 }
