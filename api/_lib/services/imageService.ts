@@ -5,7 +5,7 @@
 import axios from 'axios';
 import { randomUUID } from 'node:crypto';
 import { ImageGenerationSeam, ApiResponse, CreatureType } from '../types/contracts.js';
-import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
+import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary } from '../utils/textExcerpt';
 import { IMAGE_GENERATION_LIMITS } from '../../../shared/storyBlueprintLimits';
 

@@ -2,7 +2,7 @@
 // Recreated from PR #31's cliffhanger analysis ideas for the Vercel api/_lib tree.
 
 import { CliffhangerAnalysis, CliffhangerType } from '../types/contracts';
-import { splitStoryIntoTextBlocks } from '../utils/storyTextBlocks';
+import { splitStoryIntoTextBlocks } from '../../../shared/storyTextBlocks';
 
 const CLIFFHANGER_PATTERNS: Record<CliffhangerType, string[]> = {
   romantic_tension: [

@@ -2,7 +2,7 @@ import type {
   StoryQualityDimensionScore,
   StoryQualityHeuristicReport
 } from '../contracts';
-import { splitStoryIntoTextBlocks } from '../../utils/storyTextBlocks';
+import { splitStoryIntoTextBlocks } from '../../../../shared/storyTextBlocks';
 
 export interface StoryQualityHeuristicInput {
   storyContent: string;

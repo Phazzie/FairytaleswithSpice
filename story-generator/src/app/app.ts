@@ -5,7 +5,6 @@ import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subscription, map } from 'rxjs';
-import { splitStoryIntoTextBlocks } from '../../../api/_lib/utils/storyTextBlocks';
 import {
   createBrowserHtmlDownloadHost,
   dataUriToBlob,
@@ -14,6 +13,8 @@ import {
 } from '../../../shared/htmlDocumentDownload';
 import { buildStoryDownloadFilename } from '../../../shared/storyDownloadFilename';
 import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
+import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
+import { buildStoryHtmlDocument } from './story-html-exporter';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import {
   BatchProgressState,
@@ -232,6 +233,51 @@ type JobStatusPanelState = {
 };
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
+
+type StoryLabJobKind = ActiveStoryLabJobState['kind'];
+
+/**
+ * The copy that told genesis and continuation apart in what used to be three
+ * pairs of near-identical methods (`handle{Genesis,Continuation}JobSnapshot`,
+ * `open{Genesis,Continuation}JobEventStream`, `fail{Genesis,Continuation}Job`).
+ * Collecting it here is what let those six methods become two, parameterized
+ * by `kind` — every other line between the genesis and continuation versions
+ * was already identical.
+ */
+const JOB_KIND_COPY: Record<
+  StoryLabJobKind,
+  {
+    incompletePayloadMessage: string;
+    completedStatusMessage: string;
+    completedNotificationTitle: string;
+    completedNotificationMessage: (chapterCount: number) => string;
+    defaultFailedMessage: string;
+    cancelledMessage: string;
+    streamErrorMessage: string;
+    failedNotificationTitle: string;
+  }
+> = {
+  genesis: {
+    incompletePayloadMessage: 'Story generation finished without a story payload. Please try again.',
+    completedStatusMessage: 'Your first chapter is ready. Choose where the story goes next.',
+    completedNotificationTitle: 'Genesis complete',
+    completedNotificationMessage: chapterCount => `Generated ${chapterCount} chapter${chapterCount === 1 ? '' : 's'}.`,
+    defaultFailedMessage: 'Story generation failed. Please try again in a moment.',
+    cancelledMessage: 'Story generation was cancelled before it finished.',
+    streamErrorMessage: 'Story generation updates stopped. Please try again in a moment.',
+    failedNotificationTitle: 'Generation failed'
+  },
+  continuation: {
+    incompletePayloadMessage: 'Continuation finished without a valid story payload. Please try again.',
+    completedStatusMessage: 'Continuation batch ready. Select a chapter to explore.',
+    completedNotificationTitle: 'Continuation ready',
+    completedNotificationMessage: chapterCount => `Added ${chapterCount} chapter${chapterCount === 1 ? '' : 's'} to the saga.`,
+    defaultFailedMessage: 'Continuation failed. Your existing chapters are still available.',
+    cancelledMessage: 'Continuation was cancelled before it finished.',
+    streamErrorMessage: 'Continuation updates stopped. Your existing chapters are still available.',
+    failedNotificationTitle: 'Continuation failed'
+  }
+};
 
 @Component({
   selector: 'app-story-lab',
@@ -1052,11 +1098,12 @@ export class App implements OnDestroy {
       next: response => {
         if (!response.success || !response.data) {
           const message = this.formatApiError(response.error, 'Unknown error while generating story.');
-          this.failGenesisJob(batchId, message);
+          this.failJob('genesis', batchId, message);
           return;
         }
 
-        const isTerminal = this.handleGenesisJobSnapshot(
+        const isTerminal = this.handleJobSnapshot(
+          'genesis',
           response.data.job,
           batchId,
           blueprint.chapterBatchSize,
@@ -1071,14 +1118,14 @@ export class App implements OnDestroy {
             statusPath: response.data.paths.statusPath,
             startedAt: response.data.job.createdAt
           });
-          this.openGenesisJobEventStream(response.data.job.jobId, batchId, blueprint.chapterBatchSize);
+          this.openJobEventStream('genesis', response.data.job.jobId, batchId, blueprint.chapterBatchSize);
         }
       },
       error: error => {
         this.jobCreationSubscription = null;
         this.errorLogging.logError(error, 'App.startGenesis');
         const message = this.formatHttpError(error, 'Story generation failed. Please try again in a moment.');
-        this.failGenesisJob(batchId, message);
+        this.failJob('genesis', batchId, message);
       },
       complete: () => {
         this.jobCreationSubscription = null;
@@ -1136,11 +1183,12 @@ export class App implements OnDestroy {
       next: response => {
         if (!response.success || !response.data) {
           const message = this.formatApiError(response.error, 'Continuation request failed.');
-          this.failContinuationJob(batchId, message);
+          this.failJob('continuation', batchId, message);
           return;
         }
 
-        const isTerminal = this.handleContinuationJobSnapshot(
+        const isTerminal = this.handleJobSnapshot(
+          'continuation',
           response.data.job,
           batchId,
           request.chapterBatchSize,
@@ -1156,14 +1204,14 @@ export class App implements OnDestroy {
             startedAt: response.data.job.createdAt,
             storyId: request.storyId
           });
-          this.openContinuationJobEventStream(response.data.job.jobId, batchId, request.chapterBatchSize);
+          this.openJobEventStream('continuation', response.data.job.jobId, batchId, request.chapterBatchSize);
         }
       },
       error: error => {
         this.jobCreationSubscription = null;
         this.errorLogging.logError(error, 'App.continueSaga');
         const message = this.formatHttpError(error, 'Continuation failed. Your existing chapters are still available.');
-        this.failContinuationJob(batchId, message);
+        this.failJob('continuation', batchId, message);
       },
       complete: () => {
         this.jobCreationSubscription = null;
@@ -1405,7 +1453,7 @@ export class App implements OnDestroy {
     }
 
     const { session, story } = exportable;
-    const html = this.buildStoryHtmlDocument(session);
+    const html = buildStoryHtmlDocument(session.story!, session.chapterHistory, html => this.getSafeHtml(html));
     downloadHtmlDocument(
       html,
       buildStoryDownloadFilename(story.title),
@@ -1431,34 +1479,6 @@ export class App implements OnDestroy {
     return { session, story: session.story };
   }
 
-  private buildStoryHtmlDocument(session: StoryWorkbenchSession): string {
-    const story = session.story!;
-    const chapters = session.chapterHistory
-      .map(chapter => {
-        const body = this.getSafeHtml(chapter.htmlContent);
-        return `<section><h2>Chapter ${chapter.chapterNumber}: ${this.escapeHtml(chapter.title)}</h2>${body}</section>`;
-      })
-      .join('\n');
-
-    return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>${this.escapeHtml(story.title)}</title>
-<style>
-body{font-family:Georgia,serif;line-height:1.65;max-width:760px;margin:40px auto;padding:0 20px;color:#251914;background:#fff8ee}
-h1,h2{line-height:1.15}hr{border:0;border-top:1px solid #d8c5aa;margin:28px 0}
-</style>
-</head>
-<body>
-<h1>${this.escapeHtml(story.title)}</h1>
-<p>${this.escapeHtml(story.synopsis)}</p>
-<hr>
-${chapters}
-</body>
-</html>`;
-  }
-
   exportStory() {
     if (this.isExporting()) {
       return;
@@ -1478,7 +1498,7 @@ ${chapters}
       .exportStory({
         storyId: story.storyId,
         title: story.title,
-        content: this.buildStoryHtmlDocument(session),
+        content: buildStoryHtmlDocument(session.story!, session.chapterHistory, html => this.getSafeHtml(html)),
         format,
         includeMetadata: true,
         creature: this.blueprint().creature,
@@ -1888,35 +1908,46 @@ ${chapters}
     }
   }
 
-  private handleGenesisJobSnapshot(
-    job: StoryLabJob<StoryIterationPayload>,
+  /**
+   * Handle one job snapshot for either a genesis or a continuation run.
+   *
+   * `T` is bounded by `StoryIterationPayload` rather than fixed to it:
+   * `ContinuationJobResult` is `StoryIterationPayload & { appendedChapterNumbers }`,
+   * so the genesis caller's `StoryLabJob<StoryIterationPayload>` and the
+   * continuation caller's `StoryLabJob<ContinuationJobResult>` both satisfy it
+   * without a cast, and `applyIteration`/`hasRenderableIterationPayload` below
+   * only ever read the fields the bound guarantees.
+   */
+  private handleJobSnapshot<T extends StoryIterationPayload>(
+    kind: StoryLabJobKind,
+    job: StoryLabJob<T>,
     batchId: string,
     batchSize: ChapterBatchSize,
     durabilityWarning?: string
   ): boolean {
+    const copy = JOB_KIND_COPY[kind];
     this.updateProgressFromJob(job);
     this.updateJobStatusFromJob(job, durabilityWarning);
 
     if (job.status === 'completed') {
-      // The same guard the continuation twin below uses, rather than a bare
-      // `!job.result`. `applyIteration` reads `payload.batch.chapters` and
+      // `hasRenderableIterationPayload` rather than a bare `!job.result`:
+      // `applyIteration` reads `payload.batch.chapters` and
       // `payload.summary.storyId` straight through, so a completed job carrying
       // a result that is merely *present* — a stored job row from an older
       // payload shape, a durable store that answered a partial record — threw a
       // `TypeError` inside the job event stream's `next` callback. That is not a
       // path with a handler on it: the batch stays "in progress" forever, the
-      // progress timer keeps running, and the reader is told nothing at all,
-      // where the continuation path answers the message below.
+      // progress timer keeps running, and the reader is told nothing at all.
       if (!this.hasRenderableIterationPayload(job.result)) {
-        this.failGenesisJob(batchId, 'Story generation finished without a story payload. Please try again.');
+        this.failJob(kind, batchId, copy.incompletePayloadMessage);
         return true;
       }
 
       this.applyIteration(job.result, batchSize, batchId);
-      this.statusMessage.set('Your first chapter is ready. Choose where the story goes next.');
+      this.statusMessage.set(copy.completedStatusMessage);
       this.notificationService.success(
-        'Genesis complete',
-        `Generated ${job.result.batch.chapters.length} chapter${job.result.batch.chapters.length === 1 ? '' : 's'}.`
+        copy.completedNotificationTitle,
+        copy.completedNotificationMessage(job.result.batch.chapters.length)
       );
       this.isGenerating.set(false);
       this.clearActiveStoryLabJob();
@@ -1927,99 +1958,37 @@ ${chapters}
     }
 
     if (job.status === 'failed') {
-      this.failGenesisJob(
-        batchId,
-        this.formatApiError(job.error, 'Story generation failed. Please try again in a moment.')
-      );
+      this.failJob(kind, batchId, this.formatApiError(job.error, copy.defaultFailedMessage));
       return true;
     }
 
     if (job.status === 'cancelled') {
-      this.failGenesisJob(batchId, 'Story generation was cancelled before it finished.');
+      this.failJob(kind, batchId, copy.cancelledMessage);
       return true;
     }
 
     return false;
   }
 
-  private openGenesisJobEventStream(jobId: string, batchId: string, batchSize: ChapterBatchSize) {
-    this.closeJobEventSubscription();
-    this.jobEventSubscription = this.storyService.streamStoryLabJobEvents<StoryIterationPayload>(
-      jobId,
-      () => undefined
-    ).subscribe({
-      next: event => {
-        this.handleGenesisJobSnapshot(event.job, batchId, batchSize);
-      },
-      error: error => {
-        this.errorLogging.logError(error, 'App.openGenesisJobEventStream');
-        const message = this.formatHttpError(error, 'Story generation updates stopped. Please try again in a moment.');
-        this.failGenesisJob(batchId, message);
-      },
-      complete: () => {
-        this.jobEventSubscription = null;
-      }
-    });
-  }
-
-  private handleContinuationJobSnapshot(
-    job: StoryLabJob<ContinuationJobResult>,
+  private openJobEventStream<T extends StoryIterationPayload>(
+    kind: StoryLabJobKind,
+    jobId: string,
     batchId: string,
-    batchSize: ChapterBatchSize,
-    durabilityWarning?: string
-  ): boolean {
-    this.updateProgressFromJob(job);
-    this.updateJobStatusFromJob(job, durabilityWarning);
-
-    if (job.status === 'completed') {
-      if (!this.hasRenderableIterationPayload(job.result)) {
-        this.failContinuationJob(batchId, 'Continuation finished without a valid story payload. Please try again.');
-        return true;
-      }
-
-      this.applyIteration(job.result, batchSize, batchId);
-      this.statusMessage.set('Continuation batch ready. Select a chapter to explore.');
-      this.notificationService.success(
-        'Continuation ready',
-        `Added ${job.result.batch.chapters.length} chapter${job.result.batch.chapters.length === 1 ? '' : 's'} to the saga.`
-      );
-      this.isGenerating.set(false);
-      this.clearActiveStoryLabJob();
-      this.clearJobStatusPanel();
-      this.closeJobEventSubscription();
-      this.stopProgress();
-      return true;
-    }
-
-    if (job.status === 'failed') {
-      this.failContinuationJob(
-        batchId,
-        this.formatApiError(job.error, 'Continuation failed. Your existing chapters are still available.')
-      );
-      return true;
-    }
-
-    if (job.status === 'cancelled') {
-      this.failContinuationJob(batchId, 'Continuation was cancelled before it finished.');
-      return true;
-    }
-
-    return false;
-  }
-
-  private openContinuationJobEventStream(jobId: string, batchId: string, batchSize: ChapterBatchSize) {
+    batchSize: ChapterBatchSize
+  ) {
     this.closeJobEventSubscription();
-    const jobEventSubscription = this.storyService.streamStoryLabJobEvents<ContinuationJobResult>(
+    const copy = JOB_KIND_COPY[kind];
+    const jobEventSubscription = this.storyService.streamStoryLabJobEvents<T>(
       jobId,
       () => undefined
     ).subscribe({
       next: event => {
-        this.handleContinuationJobSnapshot(event.job, batchId, batchSize);
+        this.handleJobSnapshot(kind, event.job, batchId, batchSize);
       },
       error: error => {
-        this.errorLogging.logError(error, 'App.openContinuationJobEventStream');
-        const message = this.formatHttpError(error, 'Continuation updates stopped. Your existing chapters are still available.');
-        this.failContinuationJob(batchId, message);
+        this.errorLogging.logError(error, `App.openJobEventStream(${kind})`);
+        const message = this.formatHttpError(error, copy.streamErrorMessage);
+        this.failJob(kind, batchId, message);
       },
       complete: () => {
         this.jobEventSubscription = null;
@@ -2041,13 +2010,13 @@ ${chapters}
     }));
   }
 
-  private failGenesisJob(batchId: string, message: string) {
+  private failJob(kind: StoryLabJobKind, batchId: string, message: string) {
     this.clearActiveStoryLabJob();
     this.clearJobStatusPanel();
     this.closeJobSubscriptions();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
-    this.notificationService.error('Generation failed', message);
+    this.notificationService.error(JOB_KIND_COPY[kind].failedNotificationTitle, message);
     this.isGenerating.set(false);
     this.stopProgress();
   }
@@ -2064,17 +2033,6 @@ ${chapters}
   private hasRenderableIterationPayload(payload: StoryIterationPayload | undefined): payload is StoryIterationPayload {
     return Array.isArray(payload?.batch?.chapters)
       && typeof payload?.summary?.storyId === 'string';
-  }
-
-  private failContinuationJob(batchId: string, message: string) {
-    this.clearActiveStoryLabJob();
-    this.clearJobStatusPanel();
-    this.closeJobSubscriptions();
-    this.statusMessage.set(message);
-    this.markBatchFailed(batchId, message);
-    this.notificationService.error('Continuation failed', message);
-    this.isGenerating.set(false);
-    this.stopProgress();
   }
 
   private failRecoveredStoryLabJob(kind: ActiveStoryLabJobState['kind'], batchId: string, message: string) {
@@ -2160,14 +2118,15 @@ ${chapters}
           return;
         }
 
-        const isTerminal = this.handleGenesisJobSnapshot(
+        const isTerminal = this.handleJobSnapshot(
+          'genesis',
           response.data.job,
           activeJob.batchId,
           activeJob.batchSize,
           response.data.durability.warning
         );
         if (!isTerminal) {
-          this.openGenesisJobEventStream(activeJob.jobId, activeJob.batchId, activeJob.batchSize);
+          this.openJobEventStream('genesis', activeJob.jobId, activeJob.batchId, activeJob.batchSize);
         }
       },
       error: error => {
@@ -2219,14 +2178,15 @@ ${chapters}
           return;
         }
 
-        const isTerminal = this.handleContinuationJobSnapshot(
+        const isTerminal = this.handleJobSnapshot(
+          'continuation',
           response.data.job,
           activeJob.batchId,
           activeJob.batchSize,
           response.data.durability.warning
         );
         if (!isTerminal) {
-          this.openContinuationJobEventStream(activeJob.jobId, activeJob.batchId, activeJob.batchSize);
+          this.openJobEventStream('continuation', activeJob.jobId, activeJob.batchId, activeJob.batchSize);
         }
       },
       error: error => {
@@ -2728,59 +2688,10 @@ ${chapters}
     }
 
     const chapters = session.chapterHistory
-      .map(chapter => `Chapter ${chapter.chapterNumber}: ${chapter.title}\n\n${this.stripHtml(chapter.htmlContent)}`)
+      .map(chapter => `Chapter ${chapter.chapterNumber}: ${chapter.title}\n\n${stripStoryHtmlToText(chapter.htmlContent)}`)
       .join('\n\n---\n\n');
 
     return `${session.story.title}\n\n${session.story.synopsis}\n\n${chapters}`;
-  }
-
-  /**
-   * Render a chapter's markup as the text a reader sees, for the clipboard.
-   *
-   * Deleting the tags and collapsing every whitespace run is not that. A
-   * chapter is a sequence of `<p>` elements, so the collapse turned the whole
-   * story into a single unbroken line — the reader who copied it to paste
-   * somewhere else got a wall of text with no paragraphs anywhere in it — and
-   * nothing decoded the character references the generator writes, so `&amp;`
-   * and `&quot;` were pasted as that literal entity text rather than as the
-   * punctuation they stand for.
-   *
-   * `splitStoryIntoTextBlocks` is the rendering the cliffhanger, image,
-   * continuity, and story-quality scanners already read: a block-level tag puts
-   * a paragraph break where the markup put one, and the basic entities are
-   * decoded. Joining the blocks with a blank line gives the plain-text shape a
-   * story has everywhere else it leaves this app.
-   */
-  private stripHtml(html: string): string {
-    return splitStoryIntoTextBlocks(html).join('\n\n');
-  }
-
-  private escapeHtml(value: string): string {
-    let escaped = '';
-
-    for (const char of value) {
-      switch (char) {
-        case '&':
-          escaped += '&amp;';
-          break;
-        case '<':
-          escaped += '&lt;';
-          break;
-        case '>':
-          escaped += '&gt;';
-          break;
-        case '"':
-          escaped += '&quot;';
-          break;
-        case '\'':
-          escaped += '&#39;';
-          break;
-        default:
-          escaped += char;
-      }
-    }
-
-    return escaped;
   }
 
   private normalizeInlineWhitespace(value: string): string {
