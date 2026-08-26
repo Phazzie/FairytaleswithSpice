@@ -9,7 +9,8 @@ import {
   SpicyLevel,
   Chapter,
   ChapterFailure,
-  CreatureType
+  CreatureType,
+  ThemeType
 } from '../types/contracts';
 import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService } from './cliffhangerService';
@@ -1792,34 +1793,80 @@ ${renderBody()}`;
     return this.cliffhangerService.analyze(content).cliffhangerDetected;
   }
 
-  private extractThemesFromContent(content: string): any[] {
-    const lowerContent = content.toLowerCase();
-    const detectedThemes: string[] = [];
-    
-    // Define theme keywords for detection
-    const themeKeywords = {
-      'forbidden_love': ['forbidden', 'secret love', 'star-crossed', 'illicit', 'taboo'],
-      'betrayal': ['betrayed', 'deceived', 'backstabbed', 'treachery', 'double-crossed'],
-      'revenge': ['revenge', 'vengeance', 'retribution', 'payback', 'avenge'],
-      'power_dynamics': ['power', 'control', 'dominance', 'authority', 'command'],
-      'obsession': ['obsessed', 'possessed', 'consumed', 'fixated', 'addicted'],
-      'dark_secrets': ['secret', 'hidden', 'mysterious', 'concealed', 'buried'],
-      'seduction': ['seduced', 'tempted', 'allured', 'enticed', 'charmed'],
-      'corruption': ['corrupted', 'tainted', 'fallen', 'darkness', 'evil'],
-      'jealousy': ['jealous', 'envious', 'possessive', 'resentful', 'covetous'],
-      'desire': ['desire', 'yearning', 'craving', 'longing', 'lust'],
-      'passion': ['passionate', 'intense', 'burning', 'fiery', 'ardent'],
-      'manipulation': ['manipulated', 'controlled', 'used', 'exploited', 'influenced']
+  /**
+   * Report which of the reader's themes the new chapters carried on.
+   *
+   * The result is returned to the caller as `themesContinued`, which the
+   * contract types as `ThemeType[]` — the same closed set of eighteen ids the
+   * form offers and `VALIDATION_RULES.themes.allowedValues` lists. Two things
+   * kept it from being one:
+   *
+   * - When nothing matched, the answer was `['romance', 'fantasy']`. Neither is
+   *   a theme: no chapter can be generated with either, no theme picker can
+   *   render either, and a caller mapping the ids back to labels gets nothing
+   *   for both. It is also not the honest answer — "no configured theme was
+   *   detected" is — and because a scan this coarse usually matches something,
+   *   the case it fired in was the one where the scan had found nothing to say.
+   * - Six of the eighteen themes had no keywords at all, so `dominance`,
+   *   `submission`, `temptation`, `sin`, `lust`, and `deceit` could never be
+   *   reported however plainly a chapter carried them: a scene naming all six
+   *   came back as `power_dynamics, desire`. `lust` was worse than absent — it
+   *   sat in `desire`'s keyword list, so the word was credited to a theme the
+   *   reader may not have chosen while its own theme stayed unreachable.
+   *
+   * Keying the table by `ThemeType` is what stops the second from returning: a
+   * theme added to the contract without keywords here is now a compile error
+   * rather than a silent blind spot. The declared return type does the same for
+   * the first.
+   *
+   * The scan reads the rendered text rather than the markup, like every other
+   * scanner here — the multi-word keywords (`secret love`, `star-crossed`,
+   * `false promise`) are the ones a welded `door.</p><p>Blood` boundary hides.
+   *
+   * Keywords are matched as whole words rather than as substrings, which is
+   * what makes the six new entries safe to state plainly: `sin` as a substring
+   * is in `rising`, `using`, and `singing`, and `lust` is in `lustre`, so under
+   * the old matching the only way to add those themes would have been to spell
+   * them as something other than their own names. The inflections the substring
+   * form used to pick up for free — `secrets` for `secret`, `powerful` for
+   * `power` — are listed instead. `used` is gone from `manipulation`: an
+   * ordinary "she used the key" is not a story about being used, and it was the
+   * loosest keyword in the table.
+   */
+  private extractThemesFromContent(content: string): ThemeType[] {
+    const lowerContent = this.stripHtml(content).toLowerCase();
+
+    // Ordered as `VALIDATION_RULES.themes.allowedValues` orders them, so the
+    // same chapter always reports the same list in the same order.
+    const themeKeywords: Record<ThemeType, readonly string[]> = {
+      betrayal: ['betrayed', 'betrayal', 'deceived', 'backstabbed', 'treachery', 'double-crossed'],
+      obsession: ['obsessed', 'obsession', 'possessed', 'consumed', 'fixated', 'addicted'],
+      power_dynamics: ['power', 'powers', 'powerful', 'control', 'authority', 'command', 'leverage'],
+      forbidden_love: ['forbidden', 'secret love', 'star-crossed', 'illicit', 'taboo'],
+      revenge: ['revenge', 'vengeance', 'retribution', 'payback', 'avenge', 'avenged'],
+      manipulation: ['manipulated', 'manipulation', 'controlled', 'exploited', 'influenced'],
+      seduction: ['seduced', 'seduction', 'allured', 'enticed', 'charmed', 'coaxed'],
+      dark_secrets: ['secret', 'secrets', 'hidden', 'mysterious', 'concealed', 'buried'],
+      corruption: ['corrupted', 'corruption', 'tainted', 'fallen', 'darkness', 'evil'],
+      dominance: ['dominance', 'dominant', 'dominated', 'dominion', 'mastery'],
+      submission: ['submission', 'submitted', 'submissive', 'yielded', 'knelt', 'obeyed'],
+      jealousy: ['jealous', 'jealousy', 'envious', 'possessive', 'resentful', 'covetous'],
+      temptation: ['tempted', 'temptation', 'tempting', 'lured', 'beckoned'],
+      sin: ['sin', 'sins', 'sinful', 'sinner', 'damnation', 'damned', 'penance'],
+      desire: ['desire', 'desires', 'yearning', 'craving', 'longing', 'wanting'],
+      passion: ['passionate', 'passion', 'intense', 'burning', 'fiery', 'ardent'],
+      lust: ['lust', 'lustful', 'lusted', 'carnal', 'ravenous'],
+      deceit: ['deceit', 'deceitful', 'lied', 'lying', 'false promise']
     };
-    
-    // Check for each theme
-    for (const [theme, keywords] of Object.entries(themeKeywords)) {
-      if (keywords.some(keyword => lowerContent.includes(keyword))) {
+
+    const detectedThemes: ThemeType[] = [];
+    for (const [theme, keywords] of Object.entries(themeKeywords) as Array<[ThemeType, readonly string[]]>) {
+      if (keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
         detectedThemes.push(theme);
       }
     }
-    
-    return detectedThemes.length > 0 ? detectedThemes : ['romance', 'fantasy'];
+
+    return detectedThemes;
   }
 
   private extractSpicyLevelFromContent(content: string): SpicyLevel {
@@ -1859,15 +1906,27 @@ ${renderBody()}`;
 
     // If no HTML formatting exists, apply smart formatting
     if (!content.includes('<h3>') && !content.includes('<p>')) {
-      // Extract title if present (first line typically)
-      const lines = content.split('\n').filter(line => line.trim());
-      const firstLine = lines[0]?.trim();
-      
+      // Extract title if present (first line typically).
+      //
+      // Only the blank lines *before* the title are dropped. Dropping all of
+      // them — `split('\n').filter(line => line.trim())` — took out the very
+      // separators the paragraph split below looks for, so rejoining the
+      // remainder produced a body with no blank line left anywhere in it and
+      // `split('\n\n')` returned the whole story as one block. Every paragraph
+      // the model wrote was then welded into a single `<p>`, and only for a
+      // story that opens with a title line: the same story without one kept its
+      // paragraphs, because that branch never touched the lines. This is the
+      // path a plain-text answer from the provider takes on its way to the
+      // reader, so what the reader saw was the chapter as one unbroken wall.
+      const lines = content.split('\n');
+      const titleIndex = lines.findIndex(line => line.trim());
+      const firstLine = titleIndex === -1 ? undefined : lines[titleIndex]?.trim();
+
       // Check if first line looks like a title (short, no punctuation except colon)
       const isTitle = firstLine && firstLine.length < 80 && !firstLine.endsWith('.') && !firstLine.startsWith('[');
-      
+
       if (isTitle) {
-        formatted = `<h3>${firstLine}</h3>\n\n` + lines.slice(1).join('\n');
+        formatted = `<h3>${firstLine}</h3>\n\n` + lines.slice(titleIndex + 1).join('\n');
       }
 
       // Split into paragraphs based on multiple newlines or speaker changes
@@ -2019,4 +2078,21 @@ ${renderBody()}`;
   private generateRequestId(): string {
     return `req_${randomUUID()}`;
   }
+}
+
+/**
+ * Whether `text` contains `keyword` as a whole word or whole phrase.
+ *
+ * Both sides are already lowercased by the caller. The `\b` at each end is what
+ * separates a theme keyword from the longer word it happens to sit inside, and
+ * a hyphenated keyword such as `star-crossed` is unaffected: `-` is a
+ * non-word character, so the boundaries fall at the ends of the phrase rather
+ * than around each half.
+ */
+function containsWholeWord(text: string, keyword: string): boolean {
+  return new RegExp(String.raw`\b${escapeRegExp(keyword)}\b`).test(text);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }

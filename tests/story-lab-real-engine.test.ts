@@ -8,7 +8,7 @@ import {
   shouldUseMockStoryLab,
   toClassicGenerationInput
 } from '../api/_lib/story-lab/storyLabEngine';
-import { getAuthorStylesForCreature } from '../api/_lib/config/authorStyles';
+import { getAuthorStylesForCreature, type AuthorStyle } from '../api/_lib/config/authorStyles';
 import type {
   StoryGenerationSeam as LabGenerationSeam,
   StoryStateSnapshot
@@ -149,7 +149,13 @@ for (const [creature, keywords] of Object.entries(creatureStyleKeywords) as [Cre
   assert(keywords.some(keyword => combinedText.includes(keyword)), `${creature} style bank should contain creature-specific language`);
 }
 
-for (const creature of ['witch', 'dragon', 'demon', 'angel', 'mermaid'] as CreatureType[]) {
+// Every creature the blueprint offers, other than the three whose banks the
+// others are measured against. `siren` and `djinn` used to be absent from this
+// list because both pointed at `FAIRY_STYLES`: a reader who chose either was
+// given the fae court's voices, and the keyword assertion above passed only
+// because `FAIRY_STYLES` ends on a Bargainer entry that says "siren",
+// "bargain", and "debts".
+for (const creature of ['siren', 'djinn', 'witch', 'dragon', 'demon', 'angel', 'mermaid'] as CreatureType[]) {
   const styles = getAuthorStylesForCreature(creature);
   const combinedText = styles
     .map(style => `${style.author} ${style.voiceSample} ${style.trait}`)
@@ -160,6 +166,17 @@ for (const creature of ['witch', 'dragon', 'demon', 'angel', 'mermaid'] as Creat
   assert(styles !== getAuthorStylesForCreature('vampire'), `${creature} should not reuse the vampire style bank object`);
   assert(styles !== getAuthorStylesForCreature('werewolf'), `${creature} should not reuse the werewolf style bank object`);
   assert(styles !== getAuthorStylesForCreature('fairy'), `${creature} should not reuse the fairy style bank object`);
+}
+
+// No two creatures share a bank at all: the reuse assertions above only ever
+// named three banks, so a new creature pointed at, say, `WITCH_STYLES` would
+// pass every one of them.
+const styleBanksByCreature = new Map<AuthorStyle[], CreatureType>();
+for (const creature of Object.keys(creatureStyleKeywords) as CreatureType[]) {
+  const styles = getAuthorStylesForCreature(creature);
+  const owner = styleBanksByCreature.get(styles);
+  assert(owner === undefined, `${creature} shares its style bank with ${owner}`);
+  styleBanksByCreature.set(styles, creature);
 }
 
 const classicStory: ClassicGenerationSeam['output'] = {
