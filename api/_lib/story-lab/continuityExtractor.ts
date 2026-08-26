@@ -346,18 +346,48 @@ function isNonEmptyString(value: unknown): value is string {
  * to slug, so its id falls back to a digest of the name — unreadable, but
  * distinct, which is the property the merge actually depends on. The cap is
  * applied over code points so it cannot cut an astral character in half.
+ *
+ * Letters and numbers are not the whole of a word, though.
+ * `shared/storyDownloadFilename.ts` cites this function as the reading it was
+ * modelled on and then names two things it has to do differently, and both of
+ * them are things this one was getting wrong:
+ *
+ * - **A combining mark is not a letter**, so every mark was read as a separator
+ *   and the word it belongs to was cut apart at each one. `मेरी कहानी` slugged to
+ *   `म-र-कह-न` and `เรื่องของฉัน` to `เร-องของฉ-น` — the vowels and tone marks
+ *   deleted, hyphens left where they had been. That is the same collapse the
+ *   ASCII-only pattern caused, one step in: not every such name becomes the bare
+ *   prefix, but names that differ only in their marks now share an id, and the
+ *   merge keeps one entry for both.
+ * - **The same name has two spellings.** `é` and `e` + U+0301 are different
+ *   strings, so a model that wrote `José` decomposed in one batch and
+ *   precomposed in the next produced two ids for one character — and the merge,
+ *   which exists to fold a re-mentioned character back into the entry it already
+ *   has, instead carried two half-populated copies of them into the prompt the
+ *   next continuation is built from. Normalizing is what makes the two spellings
+ *   one key; the digest fallback is normalized for the same reason.
+ *
+ * Retaining marks is right for a mark attached to a letter and wrong for one
+ * left on its own — an emoji's variation selector is a nonspacing mark, so `❤️`
+ * split into a part holding nothing but the selector. So a part counts only if
+ * it has a letter or number in it, and the finished slug is checked the same way
+ * because the cap can leave a tail of only the leading marks of a part it cut
+ * into. A name with nothing else in it still reaches the digest.
  */
 function slugId(prefix: string, value: unknown): string | undefined {
   if (!isNonEmptyString(value)) {
     return undefined;
   }
 
-  const name = value.trim();
+  const name = value.normalize('NFC').trim();
   // Splitting on the unsupported runs and joining the parts back collapses each
   // run and drops the leading and trailing ones in a single linear pass, the way
   // the export filename stem is built. Trimming them with `/^-+|-+$/` instead is
   // quadratic on a long run of separators.
-  const parts = name.toLowerCase().split(SLUG_SEPARATOR_PATTERN).filter(Boolean);
+  const parts = name
+    .toLowerCase()
+    .split(SLUG_SEPARATOR_PATTERN)
+    .filter(part => SLUG_PART_HAS_WORD_CHARACTER.test(part));
   // The cap counts code points, so an astral character is kept whole or dropped
   // whole, and it can strand at most the one separator the join left behind.
   const slug = Array.from(parts.join('-'))
@@ -365,11 +395,12 @@ function slugId(prefix: string, value: unknown): string | undefined {
     .join('')
     .replace(/-$/, '');
 
-  return `${prefix}-${slug || digestName(name)}`;
+  return `${prefix}-${SLUG_PART_HAS_WORD_CHARACTER.test(slug) ? slug : digestName(name)}`;
 }
 
 const SLUG_ID_MAX_LENGTH = 48;
-const SLUG_SEPARATOR_PATTERN = /[^\p{L}\p{N}]+/u;
+const SLUG_SEPARATOR_PATTERN = /[^\p{L}\p{N}\p{M}]+/u;
+const SLUG_PART_HAS_WORD_CHARACTER = /[\p{L}\p{N}]/u;
 
 function digestName(name: string): string {
   return createHash('sha256').update(name, 'utf8').digest('hex').slice(0, 12);

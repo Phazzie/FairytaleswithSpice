@@ -1881,7 +1881,16 @@ ${chapters}
     this.updateJobStatusFromJob(job, durabilityWarning);
 
     if (job.status === 'completed') {
-      if (!job.result) {
+      // The same guard the continuation twin below uses, rather than a bare
+      // `!job.result`. `applyIteration` reads `payload.batch.chapters` and
+      // `payload.summary.storyId` straight through, so a completed job carrying
+      // a result that is merely *present* — a stored job row from an older
+      // payload shape, a durable store that answered a partial record — threw a
+      // `TypeError` inside the job event stream's `next` callback. That is not a
+      // path with a handler on it: the batch stays "in progress" forever, the
+      // progress timer keeps running, and the reader is told nothing at all,
+      // where the continuation path answers the message below.
+      if (!this.hasRenderableIterationPayload(job.result)) {
         this.failGenesisJob(batchId, 'Story generation finished without a story payload. Please try again.');
         return true;
       }
@@ -2026,8 +2035,18 @@ ${chapters}
     this.stopProgress();
   }
 
+  /**
+   * Whether a finished job's result is a payload `applyIteration` can read.
+   *
+   * The check is the set of fields that method dereferences, not a spot check of
+   * one of them. `batch.chapters` was already here; `summary.storyId` was not,
+   * and it is read first — `applyIteration` compares it against the current
+   * story before it touches the chapter list, so a result with a chapter array
+   * and no summary got past this guard and threw one line further in.
+   */
   private hasRenderableIterationPayload(payload: StoryIterationPayload | undefined): payload is StoryIterationPayload {
-    return Array.isArray(payload?.batch?.chapters);
+    return Array.isArray(payload?.batch?.chapters)
+      && typeof payload?.summary?.storyId === 'string';
   }
 
   private failContinuationJob(batchId: string, message: string) {
