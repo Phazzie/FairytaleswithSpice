@@ -110,9 +110,15 @@ assert(preflightResponse.headers['Access-Control-Allow-Headers'] === 'Content-Ty
 // correlation id on the response and a cross-origin caller could not read it:
 // the one value this API offers for tracing a request was visible only to a
 // same-origin page, which is the caller that needs it least.
+//
+// `Retry-After` and the two `X-RateLimit-*` headers are on the same footing and
+// for higher stakes: `enforceApiAccessControl` sets all three, and a
+// cross-origin browser client could see the 429 without a single one of the
+// values that say when to come back.
+const EXPECTED_EXPOSED_HEADERS = 'Retry-After, X-RateLimit-Remaining, X-RateLimit-Reset, X-Request-ID';
 assert(
-  preflightResponse.headers['Access-Control-Expose-Headers'] === 'X-Request-ID',
-  `the correlation id should be readable cross-origin, got ${JSON.stringify(preflightResponse.headers['Access-Control-Expose-Headers'])}`
+  preflightResponse.headers['Access-Control-Expose-Headers'] === EXPECTED_EXPOSED_HEADERS,
+  `the correlation id and the rate-limit headers should be readable cross-origin, got ${JSON.stringify(preflightResponse.headers['Access-Control-Expose-Headers'])}`
 );
 
 const exposedOnPost = new FakeResponse();
@@ -122,7 +128,7 @@ applyCorsPolicy(request('POST', 'https://preview.example.com'), exposedOnPost, {
   env
 });
 assert(
-  exposedOnPost.headers['Access-Control-Expose-Headers'] === 'X-Request-ID',
+  exposedOnPost.headers['Access-Control-Expose-Headers'] === EXPECTED_EXPOSED_HEADERS,
   'the exposure applies to the real response, not only to the preflight'
 );
 

@@ -742,10 +742,36 @@ function getWarningActivationCandidates(warning: string): string[] {
   return [warning];
 }
 
+/**
+ * Reduce a continuation brief, or one thread label, artifact name, or continuity
+ * warning, to the lowercase words `scoreActivationCandidates` compares.
+ *
+ * Both sides of that comparison come through here, so what this deletes is
+ * invisible to it. `[^a-z0-9 ]+` deleted every letter outside ASCII, which made
+ * the whole activation scan unreachable for a story not written in Latin
+ * script: a thread labelled `Клятва Миры` normalized to the empty string,
+ * `normalizedCandidates.filter(Boolean)` dropped it, and its activation score
+ * was zero however plainly the reader's brief named it. The courtroom then
+ * chose which threads, artifacts, and warnings to put in front of the model by
+ * story order alone — the reader asks the next batch to pay off one promise and
+ * is given the first `CONTINUITY_COURTROOM_MAX_THREADS` instead — and
+ * `describeActivationReason` reported "Included by unresolved-story priority"
+ * for every one of them, which was at least honest about what had happened.
+ *
+ * A partly-Latin name failed in a way that is harder to see: `José's pact`
+ * became `jos s pact`, so the whole-candidate match against the brief could
+ * never fire, and the word tokens the score falls back to were `pact` and a
+ * `jos` that matches nothing a reader would type.
+ *
+ * Matching on the Unicode properties keeps those words whole. Every retained
+ * character is still a letter or a number, so the scoring below is unchanged
+ * for text that was already ASCII: the separator run each unsupported character
+ * used to become is exactly the separator run it becomes now.
+ */
 function normalizeActivationText(value: unknown): string {
   return collapseWhitespace(safeString(value))
     .toLowerCase()
-    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/[^\p{L}\p{N} ]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

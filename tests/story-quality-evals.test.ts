@@ -9,7 +9,10 @@ import {
 } from '../api/_lib/story-lab/storyLabEngine';
 import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
 import { buildStoryQualityHeuristicReport } from '../api/_lib/story-lab/evaluation/storyQualityHeuristics';
-import type { StoryGenerationSeam as LabGenerationSeam } from '../api/_lib/story-lab/contracts';
+import type {
+  StoryGenerationSeam as LabGenerationSeam,
+  StoryStateSnapshot
+} from '../api/_lib/story-lab/contracts';
 import type {
   ChapterContinuationSeam as ClassicContinuationSeam,
   StoryGenerationSeam as ClassicGenerationSeam
@@ -373,11 +376,136 @@ function testBoundaryRulesRejectOnlyTheBoundary(): void {
   );
 }
 
+/**
+ * A cast is not always spelled in ASCII.
+ *
+ * `\b[A-Z][a-z]+\b` saw no name at all in a Cyrillic sentence and cut `José`
+ * down to `Jos` — the accented letter is not `[a-z]`, so the run ended at it and
+ * the scan named a character the story does not have. Both results travel: the
+ * agency scan reads this list, so no action either character took anywhere in
+ * the chapter could be credited to them, and `Named character count` counted a
+ * cast it could not see.
+ *
+ * `\b` cannot be the boundary once the pattern reaches past ASCII, because it is
+ * defined against `[A-Za-z0-9_]` — there is no word boundary between a space and
+ * `М`, so an anchored `\bМира\b` matches nothing anywhere. The same is true of
+ * the name pattern the agency scan builds for each character.
+ */
+function testNonAsciiNamesAreReadAsNames(): void {
+  const scan = (storyContent: string) => buildStoryQualityHeuristicReport({
+    storyContent,
+    configuration: { creature: 'siren', themes: [], spicyLevel: 3, wordCount: 900 }
+  })
+    .dimensions
+    .find(dimension => dimension.id === 'character_consistency');
+
+  const cyrillic = scan('<p>The lock broke; Мира pressed the blood oath.</p>');
+  assert(
+    cyrillic?.signals.includes('Named character count: 1'),
+    `a Cyrillic name is a name (signals=${JSON.stringify(cyrillic?.signals)})`
+  );
+  assert(
+    cyrillic?.signals.some(signal => signal === 'Agency actions: pressed'),
+    `a Cyrillic name should carry its agency actions too (signals=${JSON.stringify(cyrillic?.signals)})`
+  );
+
+  // Precomposed and decomposed spellings of the same name, so the accent is
+  // read as part of the word either way rather than ending the run at it.
+  for (const jose of ['José', 'José']) {
+    const accented = scan(`<p>The lock broke; ${jose} pressed the blood oath.</p>`);
+    assert(
+      accented?.signals.some(signal => signal === 'Agency actions: pressed'),
+      `${JSON.stringify(jose)} should be matched whole, not truncated at its accent (signals=${JSON.stringify(accented?.signals)})`
+    );
+  }
+}
+
+/**
+ * A word the scan cannot read is still a word between two others.
+ *
+ * `extractConcreteAnchors` pairs each token with the one after it, so the
+ * normalizer feeding it must not delete a word — that is what welds two words
+ * the prose never put together, which is the failure `a door` → `opened door`
+ * was already fixed for once. Replacing every non-ASCII letter with a space did
+ * exactly that deletion, so `she opened Мирина door` produced the anchor
+ * `opened door`: a generic reference scored as a concrete one, from a phrase
+ * that is not in the story.
+ */
+function testNonAsciiWordsDoNotWeldTheirNeighbours(): void {
+  const anchors = buildStoryQualityHeuristicReport({
+    storyContent: '<p>She opened Мирина door.</p>',
+    configuration: { creature: 'siren', themes: [], spicyLevel: 3, wordCount: 900 }
+  })
+    .dimensions
+    .find(dimension => dimension.id === 'prose_quality')
+    ?.signals.find(signal => signal.startsWith('Specific anchors:'));
+
+  assert(
+    !anchors?.includes('opened door'),
+    `the deleted word used to weld its neighbours into an anchor the prose never held (got ${anchors})`
+  );
+}
+
+/**
+ * The continuity courtroom has to be able to match a brief against a story that
+ * is not written in Latin script.
+ *
+ * Both sides of the activation comparison go through `normalizeActivationText`,
+ * so what it deletes is invisible to the score. `[^a-z0-9 ]+` deleted every
+ * letter outside ASCII, which normalized a Cyrillic thread label to the empty
+ * string: it was filtered out as a candidate and scored zero however plainly the
+ * brief named it, so the courtroom chose what to put in front of the model by
+ * story order alone and reported "Included by unresolved-story priority" for
+ * everything it picked.
+ */
+function testActivationMatchingReadsNonLatinThreads(): void {
+  const filler = ['Weather Tax', 'Kitchen Claim', 'Silent Harbor'].map((label, index) => ({
+    id: `thread-filler-${index}`,
+    label,
+    status: 'active' as const,
+    description: `The court still owes an answer about the ${label.toLowerCase()}.`,
+    foreshadowedDevices: []
+  }));
+  const preview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Верни клятва Миры в следующую сцену.',
+    storyState: {
+      storyId: 'story-activation',
+      revision: 1,
+      lastUpdatedAt: new Date().toISOString(),
+      narrativeVoice: 'Close third, present tense.',
+      characters: [],
+      artifacts: [],
+      continuityWarnings: [],
+      threads: [
+        ...filler,
+        {
+          id: 'thread-oath',
+          label: 'Клятва Миры',
+          status: 'active',
+          description: 'Старая клятва идёт за Мирой.',
+          foreshadowedDevices: []
+        }
+      ]
+    } as StoryStateSnapshot
+  });
+
+  assert(
+    preview.contextSourceMap.some(item =>
+      item.kind === 'thread'
+      && item.label === 'Клятва Миры'
+      && item.reason.includes('Matched words from the continuation brief')),
+    `a brief-matched Cyrillic thread should outrank the fillers (map=${JSON.stringify(preview.contextSourceMap)})`
+  );
+}
+
 async function main(): Promise<void> {
   testHtmlStoriesAreScoredOnTheirProse();
   testOverlongParagraphsAreReportedNotJustPenalised();
   testAnonymousProseScoresAsAnonymous();
   testNamedProseStillScores();
+  testNonAsciiNamesAreReadAsNames();
+  testNonAsciiWordsDoNotWeldTheirNeighbours();
+  testActivationMatchingReadsNonLatinThreads();
   testDialogueSpeakersCountAsCast();
   testBoundaryRulesRejectOnlyTheBoundary();
 

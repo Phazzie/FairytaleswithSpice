@@ -20,6 +20,7 @@ import continuationHandler from '../api/story-lab/stories/[storyId]/continue';
 import streamGenesisHandler from '../api/story-lab/stream/genesis';
 import jobsHandler from '../api/story-lab/jobs';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
+import { retryAfterSeconds } from '../api/_lib/middleware/apiAccessControl';
 import { RATE_LIMITS } from '../api/_lib/constants';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -237,8 +238,37 @@ async function testRateLimitIsEnforced(): Promise<void> {
         errorCode(overLimitRes) === 'RATE_LIMITED',
         `${testCase.name} should report RATE_LIMITED, got ${errorCode(overLimitRes)}`
       );
+      // The one part of a 429 an ordinary client acts on. Without it a caller
+      // knows only that it was refused: `error.resetTime` and the two
+      // `X-RateLimit-*` headers are absolute epoch milliseconds, so turning
+      // either into a delay means trusting the caller's clock against the
+      // server's, and nothing outside this app reads them at all.
+      const retryAfter = overLimitRes.headers['Retry-After'];
+      assert(
+        typeof retryAfter === 'string' && /^[0-9]+$/.test(retryAfter) && Number(retryAfter) >= 1,
+        `${testCase.name} should answer 429 with a whole-second Retry-After of at least 1, got ${JSON.stringify(retryAfter)}`
+      );
+      assert(
+        Number(retryAfter) <= Math.ceil(testCase.limits.windowMs / 1000),
+        `${testCase.name} should not ask a caller to wait longer than its own window, got ${retryAfter}s for ${testCase.limits.windowMs}ms`
+      );
     }
   });
+}
+
+/**
+ * `Retry-After` carries a delay, not an instant, so the conversion is asserted
+ * on directly: a header string on a driven route cannot say what the right
+ * answer was without reconstructing the `Date.now()` that produced it.
+ */
+function testRetryAfterSeconds(): void {
+  assert(retryAfterSeconds(60_000, 0) === 60, 'a full minute of window should round to 60 seconds');
+  assert(retryAfterSeconds(1_500, 0) === 2, 'a partial second should round up, so the caller never returns early');
+  // RFC 9110 defines delta-seconds as a non-negative integer, and `0` reads as
+  // "retry immediately" — the one thing a caller at its limit must not do.
+  assert(retryAfterSeconds(0, 0) === 1, 'a window that has just expired should still ask for one second');
+  assert(retryAfterSeconds(-5_000, 0) === 1, 'a window that expired between the check and the header should not go negative');
+  assert(retryAfterSeconds(Number.NaN, 0) === 1, 'an unreadable reset instant should still produce a usable delay');
 }
 
 /**
@@ -334,6 +364,7 @@ async function main(): Promise<void> {
   await testWrongKeyIsRejected();
   await testValidKeyPassesThrough();
   await testRateLimitIsEnforced();
+  testRetryAfterSeconds();
   await testUnconfiguredDeploymentStillServesRequestsWithNoKey();
   await testUnconfiguredDeploymentStillRateLimitsTheSharedBucket();
   await testEventStreamRoutesAcceptTheQueryParameterKey();

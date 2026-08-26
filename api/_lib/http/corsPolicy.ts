@@ -53,12 +53,22 @@ const ORIGIN_ENV_KEYS = ['STORY_LAB_ALLOWED_ORIGINS', 'ALLOWED_ORIGINS', 'FRONTE
  * tracing a request was readable only by a same-origin page, which is exactly
  * the caller that needs it least.
  *
- * `X-RateLimit-Remaining` and `X-RateLimit-Reset` are invisible for the same
- * reason and are deliberately not added here — they arrived with the access
- * control in #244 and belong to whoever decides that contract, not to this
- * change.
+ * The rate-limit headers are here for the same reason, and `Retry-After` with
+ * them. It is not on the safelist either — that list is `Cache-Control`,
+ * `Content-Language`, `Content-Length`, `Content-Type`, `Expires`,
+ * `Last-Modified`, and `Pragma`, and nothing else — so `enforceApiAccessControl`
+ * setting it on a 429 reached a same-origin page and no other. Every deployment
+ * that serves the app from one origin and the API from another therefore had a
+ * browser client that could see the 429 and not a single one of the three
+ * values that say what to do about it, which is the state this whole set of
+ * headers exists to prevent.
  */
-const EXPOSED_HEADERS = ['X-Request-ID'];
+const EXPOSED_HEADERS = [
+  'Retry-After',
+  'X-RateLimit-Remaining',
+  'X-RateLimit-Reset',
+  'X-Request-ID'
+];
 
 const DEFAULT_HEADERS = [
   'Authorization',
