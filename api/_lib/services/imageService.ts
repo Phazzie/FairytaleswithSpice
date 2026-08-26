@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { ImageGenerationSeam, ApiResponse, CreatureType } from '../types/contracts.js';
 import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
 import { capAtWordBoundary } from '../utils/textExcerpt';
+import { IMAGE_GENERATION_LIMITS } from '../../../shared/storyBlueprintLimits';
 
 type SupportedAspectRatio = NonNullable<ImageGenerationSeam['input']['aspectRatio']>;
 
@@ -422,6 +423,29 @@ export class ImageService {
     }
     if (!input.style || !SUPPORTED_STYLES.includes(input.style)) {
       return { code: 'UNSUPPORTED_STYLE', message: 'Invalid image style provided' };
+    }
+    // `imagePrompt` is optional and, when it is sent, it *replaces* the scene
+    // description — so it is the text that reaches `grok-2-image` verbatim, and
+    // it was the one field on this route that nothing measured. See
+    // `IMAGE_GENERATION_LIMITS` for why the number is what it is. The type check
+    // comes first for the reason the `themes` one above does: the field is
+    // whatever JSON the caller wrote, and `buildImagePrompt` treats any truthy
+    // value as a prompt, so a number or an object reached the provider request
+    // as `[object Object]` rather than as the caller error it is.
+    // Read as `unknown` because the contract types it as a string and the wire
+    // does not: the checks below are about the values the type says cannot
+    // arrive, which is the only reason they are worth writing.
+    const imagePrompt: unknown = input.imagePrompt;
+    if (imagePrompt !== undefined && imagePrompt !== null) {
+      if (typeof imagePrompt !== 'string') {
+        return { code: 'INVALID_INPUT', message: 'imagePrompt must be a string when provided' };
+      }
+      if (imagePrompt.length > IMAGE_GENERATION_LIMITS.maxImagePromptLength) {
+        return {
+          code: 'INVALID_INPUT',
+          message: `imagePrompt must be ${IMAGE_GENERATION_LIMITS.maxImagePromptLength} characters or fewer`
+        };
+      }
     }
     // An unsupported ratio used to fall back to 16:9 in the provider request
     // and in the dimensions, while the response echoed the ratio that was

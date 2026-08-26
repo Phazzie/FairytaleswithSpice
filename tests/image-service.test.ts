@@ -10,6 +10,7 @@ import {
 } from '../api/_lib/services/imageService';
 import { CreatureType, ImageGenerationSeam } from '../api/_lib/types/contracts';
 import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
+import { IMAGE_GENERATION_LIMITS } from '../shared/storyBlueprintLimits';
 
 // The service reads `XAI_API_KEY` in its constructor and falls back to a mock
 // image URL when it is absent, so clearing it before the first `new
@@ -373,6 +374,52 @@ async function testEveryThemeTheAppOffersReachesThePrompt(): Promise<void> {
   }
 }
 
+// `imagePrompt` replaces the scene description when it is present, so it is the
+// text that reaches `grok-2-image` verbatim — and it was the one field on this
+// route that nothing measured, on a request billed by the token. The other
+// branch of the same method has been capped at 200 characters all along.
+async function testCustomImagePromptsAreBounded(): Promise<void> {
+  const withinCap = 'a'.repeat(IMAGE_GENERATION_LIMITS.maxImagePromptLength);
+  const accepted = await new ImageService().generateImage(createInput({ imagePrompt: withinCap }));
+  assert(accepted.success, 'a prompt at the cap should still be served');
+  assert(
+    (accepted.data as ImageGenerationSeam['output']).prompt.includes(withinCap),
+    'a prompt within the cap should reach the provider whole'
+  );
+
+  const overCap = 'a'.repeat(IMAGE_GENERATION_LIMITS.maxImagePromptLength + 1);
+  const refused = await new ImageService().generateImage(createInput({ imagePrompt: overCap }));
+  assert(!refused.success, 'a prompt past the cap should be refused');
+  assert(
+    refused.error?.code === 'INVALID_INPUT',
+    `an oversized imagePrompt is a caller error, not a service failure (got ${refused.error?.code})`
+  );
+  assert(
+    (refused.error?.message ?? '').includes('imagePrompt'),
+    `the refusal should name the field that overran (got ${refused.error?.message})`
+  );
+
+  // The contract types the field as a string and the wire does not.
+  // `buildImagePrompt` treats any truthy value as a prompt, so a number or an
+  // object reached the provider request as its `String()` form.
+  for (const imagePrompt of [42, { text: 'a vampire' }, ['a vampire']]) {
+    const result = await new ImageService().generateImage(
+      createInput({ imagePrompt: imagePrompt as unknown as string })
+    );
+
+    assert(!result.success, `imagePrompt=${JSON.stringify(imagePrompt)} should be rejected`);
+    assert(
+      result.error?.code === 'INVALID_INPUT',
+      `imagePrompt=${JSON.stringify(imagePrompt)} is a caller error (got ${result.error?.code})`
+    );
+  }
+
+  // Absent is not the same as invalid: the field is optional, and omitting it is
+  // how every request the app itself makes reaches the scene-description path.
+  const omitted = await new ImageService().generateImage(createInput());
+  assert(omitted.success, 'an omitted imagePrompt should still be served from the story');
+}
+
 async function main(): Promise<void> {
   await testEveryCreatureArchetypeReachesThePrompt();
   await testEveryThemeTheAppOffersReachesThePrompt();
@@ -382,6 +429,7 @@ async function main(): Promise<void> {
   testTheCapKeepsWholeCharactersAndWholeWords();
   await testMalformedThemesAreRejectedAsCallerError();
   await testAspectRatioNeverContradictsTheDimensions();
+  await testCustomImagePromptsAreBounded();
   testProviderResponsesWithoutAUrlAreRefused();
   await testTheServiceRefusesAProviderResponseWithoutAUrl();
 

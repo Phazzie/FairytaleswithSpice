@@ -895,6 +895,53 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(!providerBrief.includes('undefined'), 'partial continuity state should not inject undefined into hidden guidance');
   });
 
+  // `previouslyGeneratedChapters` arrives in the request body and the routes
+  // check only that it is an array. Both of the engine's readings of it are
+  // `Math.max` over `chapter.chapterNumber`, which answers `NaN` for a single
+  // entry that has no number on it — and `NaN` travelled the whole way through
+  // a paid generation without throwing: the model was asked to continue from
+  // chapter `NaN`, and every chapter it wrote came back numbered `NaN`, which
+  // serializes as `null` for the client to append a project by.
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    const unreadableNumbers: unknown[] = [undefined, null, 'two', Number.NaN, {}];
+
+    for (const chapterNumber of unreadableNumbers) {
+      let providerWasCalled = false;
+      const response = await continueStoryLab({
+        storyId: payload.summary.storyId,
+        chapterBatchSize: 1,
+        storyState: payload.state,
+        previouslyGeneratedChapters: [
+          { ...payload.batch.chapters[0], chapterNumber: chapterNumber as number }
+        ],
+        continuationBrief: 'Raise the danger.',
+        existingSummary: payload.summary
+      }, {
+        serviceFactory: () => ({
+          generateStory: async () => {
+            throw new Error('generateStory should not be called by the chapter-number guard test');
+          },
+          continueChapter: async () => {
+            providerWasCalled = true;
+            throw new Error('continueChapter should not be called for an unnumbered previous chapter');
+          }
+        })
+      });
+
+      const label = JSON.stringify(chapterNumber) ?? String(chapterNumber);
+      assert(!response.success, `chapterNumber=${label} should be refused`);
+      assert(
+        response.error.code === 'INVALID_REQUEST',
+        `chapterNumber=${label} is a caller error, not a service failure (got ${response.error.code})`
+      );
+      assert(
+        response.error.message.includes('chapterNumber'),
+        `the refusal should name the field that cannot be read (got ${response.error.message})`
+      );
+      assert(!providerWasCalled, `chapterNumber=${label} must be refused before the generation is billed`);
+    }
+  });
+
   console.log('Story Lab real-engine mapping tests passed');
 })().catch(error => {
   console.error(error);
