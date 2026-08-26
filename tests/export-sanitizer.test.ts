@@ -217,6 +217,79 @@ assert(
   'HTML and plain-text exports should find the same number of block boundaries'
 );
 
+// `normalizePlainText` tidied the end of the text with `String.prototype.trimEnd`
+// every time it wrote a newline, which counts a newline as trailing whitespace
+// and so deleted the breaks already written. The first two breaks in a run were
+// rewritten immediately afterwards, so only the third and later ones vanished —
+// and three in a row is what the app's own export sends, because
+// `buildStoryHtmlDocument` writes one tag per line and the literal newlines
+// between the tags are breaks too.
+const prettyPrintedBoundaries = [
+  {
+    label: 'a pretty-printed horizontal rule between two paragraphs',
+    html: '<p>She opened the door.</p>\n<hr>\n<p>Blood pooled.</p>',
+    expected: 'She opened the door.\n\nBlood pooled.'
+  },
+  {
+    label: 'a pretty-printed section boundary',
+    html: '<section><p>One.</p></section>\n\n<section><p>Two.</p></section>',
+    expected: 'One.\n\nTwo.'
+  },
+  {
+    label: 'a run of nested closings',
+    html: '<ul>\n<li>One.</li>\n</ul>\n<p>Two.</p>',
+    expected: 'One.\n\nTwo.'
+  }
+];
+
+for (const sample of prettyPrintedBoundaries) {
+  const plain = stripStoryHtmlForExport(sample.html);
+  assert(
+    plain === sample.expected,
+    `plain export should render ${sample.label} as ${JSON.stringify(sample.expected)}, got ${JSON.stringify(plain)}`
+  );
+}
+
+// The trailing spaces the trim existed to remove still have to go: a line must
+// not end on the space every dropped inline tag leaves behind.
+assert(
+  stripStoryHtmlForExport('<p>She waited <em>there</em> </p><p>Then left.</p>') === 'She waited there\nThen left.',
+  'plain export should still drop the spaces a line ends on'
+);
+
+// `buildStoryHtmlDocument` sends a whole HTML document, whose `<head>` names the
+// story a few tags above the `<h1>` that names it again. `<title>` was the one
+// head element whose text was not dropped, so every export opened on the title
+// welded to itself.
+const wholeDocument = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The Vampire's Bargain</title>
+<style>body{font-family:Georgia,serif}</style>
+</head>
+<body>
+<h1>The Vampire's Bargain</h1>
+<p>She traded a name for a night.</p>
+</body>
+</html>`;
+
+const documentPlainText = stripStoryHtmlForExport(wholeDocument);
+assert(
+  documentPlainText === "The Vampire's Bargain\n\nShe traded a name for a night.",
+  `plain export should carry the document's story once, got ${JSON.stringify(documentPlainText)}`
+);
+
+const documentHtml = sanitizeStoryHtmlForExport(wholeDocument);
+assert(
+  documentHtml.startsWith('<h1>'),
+  `HTML export should open on the story's own heading, got ${JSON.stringify(documentHtml.slice(0, 60))}`
+);
+assert(
+  !documentHtml.includes('font-family'),
+  'HTML export should not carry the document stylesheet'
+);
+
 assert(
   escapeHtml('<title>"Angel"</title>') === '&lt;title&gt;&quot;Angel&quot;&lt;/title&gt;',
   'escapeHtml should escape markup and quotes'

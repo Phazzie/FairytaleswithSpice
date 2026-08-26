@@ -37,8 +37,7 @@ const DANGEROUS_CONTAINER_TAGS = [
   'base'
 ];
 
-const DANGEROUS_TAGS = new Set(DANGEROUS_CONTAINER_TAGS);
-const DANGEROUS_BLOCK_TAGS = new Set([
+const DANGEROUS_BLOCK_TAGS = [
   'script',
   'style',
   'iframe',
@@ -50,7 +49,35 @@ const DANGEROUS_BLOCK_TAGS = new Set([
   'button',
   'textarea',
   'select'
-]);
+];
+
+/**
+ * Elements whose text describes the document rather than telling the story.
+ *
+ * Dropped with their contents for a different reason than the tags above —
+ * nothing here is dangerous — but by the same mechanism, because the question
+ * both lists answer is the same: is the text inside this element part of the
+ * story being exported?
+ *
+ * `<title>` is the case that reaches the exports. `buildStoryHtmlDocument`
+ * hands `/api/export/save` a whole HTML document, and its `<head>` names the
+ * story: `<title>The Vampire's Bargain</title>` sits a few tags above
+ * `<h1>The Vampire's Bargain</h1>`. `<meta>`, `<link>`, and `<base>` are
+ * already dropped and `<style>` takes its contents with it, so `<title>` was
+ * the one head element whose text survived — and, having no break of its own,
+ * it arrived welded to the heading below it. Every `.txt`, `.pdf`, `.epub`,
+ * and `.docx` export opened on the title run into itself, and the `.html`
+ * export opened on a stray unheaded copy above the real `<h1>`.
+ *
+ * The title is not lost by dropping it: every format writes it from
+ * `input.title`, which is what the field is for.
+ */
+const DOCUMENT_METADATA_CONTAINER_TAGS = ['title'];
+
+/** Every tag dropped rather than exported, whichever list it came from. */
+const DROPPED_TAGS = new Set([...DANGEROUS_CONTAINER_TAGS, ...DOCUMENT_METADATA_CONTAINER_TAGS]);
+/** Those of them that take their contents with them. */
+const DROPPED_BLOCK_TAGS = new Set([...DANGEROUS_BLOCK_TAGS, ...DOCUMENT_METADATA_CONTAINER_TAGS]);
 /**
  * The block-level tags a reader sees a break at.
  *
@@ -156,7 +183,7 @@ export function sanitizeStoryHtmlForExport(html: string): string {
   // single break a reader sees rather than one per tag.
   let blockBreakPending = false;
 
-  for (const token of tokenizeHtml(removeDangerousHtml(html))) {
+  for (const token of tokenizeHtml(removeNonStoryHtml(html))) {
     if (!token) {
       continue;
     }
@@ -279,7 +306,7 @@ function escapeStoryText(value: string): string {
 export function stripStoryHtmlForExport(html: string): string {
   let text = '';
 
-  for (const token of tokenizeHtml(removeDangerousHtml(html))) {
+  for (const token of tokenizeHtml(removeNonStoryHtml(html))) {
     if (token.startsWith('<') && token.endsWith('>')) {
       const parsed = parseHtmlTag(token);
       if (!parsed) {
@@ -318,7 +345,7 @@ export function escapePdfText(value: string): string {
   );
 }
 
-function removeDangerousHtml(html: string): string {
+function removeNonStoryHtml(html: string): string {
   let output = '';
   let skippedBlockTag: string | null = null;
   let skippedBlockDepth = 0;
@@ -351,8 +378,8 @@ function removeDangerousHtml(html: string): string {
       continue;
     }
 
-    if (DANGEROUS_TAGS.has(parsed.tagName)) {
-      if (!parsed.isClosing && DANGEROUS_BLOCK_TAGS.has(parsed.tagName) && !parsed.isSelfClosing) {
+    if (DROPPED_TAGS.has(parsed.tagName)) {
+      if (!parsed.isClosing && DROPPED_BLOCK_TAGS.has(parsed.tagName) && !parsed.isSelfClosing) {
         skippedBlockTag = parsed.tagName;
         skippedBlockDepth = 1;
       }
@@ -477,6 +504,37 @@ function parseHtmlTag(token: string): ParsedHtmlTag | null {
   };
 }
 
+/**
+ * Drop the spaces and tabs a line ends on, and nothing else.
+ *
+ * `normalizePlainText` tidies the end of the text every time it writes a
+ * newline, and used `String.prototype.trimEnd` to do it — which counts a
+ * newline as trailing whitespace and so deleted the breaks already written.
+ * That only showed once a third break arrived in a row, because the first two
+ * were rewritten immediately afterwards and the third is the one the two-break
+ * cap declines to rewrite: `One.\n` was trimmed back to `One.` and left that
+ * way, and the paragraphs either side of the boundary were welded into
+ * `One.Two.`.
+ *
+ * Three breaks in a row is not an edge case here — it is what the app's own
+ * export sends. `buildStoryHtmlDocument` writes one tag per line, so an
+ * ordinary `</p>\n<hr>\n<section>` contributes a break for the closing tag, a
+ * break for each literal newline between the tags, and a break for the `<hr>`.
+ * Every `.txt`, `.pdf`, `.epub`, and `.docx` export of a generated story
+ * therefore lost the paragraph break at each of those boundaries, which is the
+ * `door.</p><p>Blood` welding the block-boundary table above exists to prevent
+ * — reintroduced one layer below it.
+ */
+function trimTrailingInlineWhitespace(value: string): string {
+  let end = value.length;
+
+  while (end > 0 && isInlineWhitespace(value[end - 1])) {
+    end -= 1;
+  }
+
+  return value.slice(0, end);
+}
+
 function normalizePlainText(value: string): string {
   let normalized = '';
   let pendingSpace = false;
@@ -484,7 +542,7 @@ function normalizePlainText(value: string): string {
 
   for (const character of value) {
     if (character === '\n') {
-      normalized = normalized.trimEnd();
+      normalized = trimTrailingInlineWhitespace(normalized);
       if (newlineCount < 2) {
         normalized += '\n';
         newlineCount += 1;

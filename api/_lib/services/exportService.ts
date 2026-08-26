@@ -8,7 +8,27 @@ import {
 } from './exportSanitizer';
 import { buildZipArchive, ZipEntry } from './zipArchive';
 
-const PDF_EXCERPT_CODE_POINTS = 100;
+// US Letter, in the points a PDF's default user space is measured in.
+const PDF_PAGE_WIDTH = 612;
+const PDF_PAGE_HEIGHT = 792;
+const PDF_MARGIN = 72;
+const PDF_FONT_SIZE = 12;
+const PDF_LINE_HEIGHT = 16;
+/**
+ * How wide a character is assumed to be, as a fraction of the font size.
+ *
+ * Helvetica is proportional, so a line's real width depends on which glyphs are
+ * in it: `l` is 0.222em and `W` is 0.944em. Rather than ship a width table for
+ * one font, lines are broken on a per-character estimate chosen above
+ * Helvetica's average for lowercase prose (~0.5em), which errs toward a short
+ * line. A short line wraps early; a long one would run off the page edge, since
+ * nothing in a PDF clips a text-showing operator to the media box.
+ */
+const PDF_GLYPH_WIDTH_EM = 0.55;
+const PDF_MAX_LINE_CHARACTERS = Math.floor(
+  (PDF_PAGE_WIDTH - PDF_MARGIN * 2) / (PDF_FONT_SIZE * PDF_GLYPH_WIDTH_EM)
+);
+const PDF_LINES_PER_PAGE = Math.floor((PDF_PAGE_HEIGHT - PDF_MARGIN * 2) / PDF_LINE_HEIGHT);
 // Leaves room for the `_<timestamp>_<token>.<format>` suffix inside the
 // 255-byte filename limit that ext4 and APFS enforce.
 const EXPORT_FILENAME_STEM_MAX_LENGTH = 80;
@@ -24,25 +44,85 @@ const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
 };
 
 /**
- * Take the first `limit` code points of `value`. Iterating a string yields
- * whole code points rather than UTF-16 code units, so an astral-plane
- * character is either kept whole or dropped whole. The loop stops at the
- * limit, so a book-length story costs no more than a paragraph does.
+ * Cut `value` into runs of at most `limit` code points. Iterating a string
+ * yields whole code points rather than UTF-16 code units, so an astral-plane
+ * character always stays whole — a cut between the halves of a surrogate pair
+ * would encode as U+FFFD on both sides of it.
  */
-function truncateByCodePoint(value: string, limit: number): string {
-  let truncated = '';
+function chunkByCodePoint(value: string, limit: number): string[] {
+  const chunks: string[] = [];
+  let chunk = '';
   let taken = 0;
 
   for (const character of value) {
     if (taken >= limit) {
-      break;
+      chunks.push(chunk);
+      chunk = '';
+      taken = 0;
     }
 
-    truncated += character;
+    chunk += character;
     taken += 1;
   }
 
-  return truncated;
+  if (chunk) {
+    chunks.push(chunk);
+  }
+
+  return chunks;
+}
+
+/** The code points in `value`, which is what the line width is measured in. */
+function countCodePoints(value: string): number {
+  let count = 0;
+
+  for (const _character of value) {
+    count += 1;
+  }
+
+  return count;
+}
+
+/**
+ * Break one paragraph of the story into the lines a PDF page shows it as.
+ *
+ * Words are kept whole where they fit; a word longer than a whole line — a URL,
+ * a run of unbroken text — is cut at code-point boundaries rather than being
+ * allowed to run off the page. A paragraph with no words still yields one
+ * (empty) line, so the blank line between two paragraphs survives into the
+ * document.
+ */
+function wrapPdfParagraph(paragraph: string, maxCharacters: number): string[] {
+  const words = paragraph.split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return [''];
+  }
+
+  const lines: string[] = [];
+  let current = '';
+
+  for (const word of words) {
+    for (const piece of chunkByCodePoint(word, maxCharacters)) {
+      if (current.length === 0) {
+        current = piece;
+        continue;
+      }
+
+      if (countCodePoints(current) + 1 + countCodePoints(piece) <= maxCharacters) {
+        current += ` ${piece}`;
+        continue;
+      }
+
+      lines.push(current);
+      current = piece;
+    }
+  }
+
+  if (current.length > 0) {
+    lines.push(current);
+  }
+
+  return lines;
 }
 
 /**
@@ -165,25 +245,44 @@ export class ExportService {
     }
   }
 
+  /**
+   * Write the story out as a paginated PDF.
+   *
+   * It used to be one page holding the title and `truncateByCodePoint(content,
+   * 100)` followed by a literal `...`, so choosing PDF from the export picker
+   * produced a document with the first hundred characters of the story in it —
+   * about a sentence — while the four other formats shipped the whole thing.
+   * Nothing said so: the file downloaded under the story's own name, at the
+   * size a real PDF of a sentence is, and the trailing ellipsis reads as
+   * ordinary prose in a story that ends on a cliffhanger.
+   *
+   * The text is broken into lines and the lines into pages, and each page is a
+   * `/Page` of its own with its own content stream. `assemblePdfDocument`
+   * measures the cross-reference offsets from whatever objects it is handed, so
+   * the table stays correct however many pages a story runs to.
+   */
   private generatePDFContent(content: string, input: SaveExportSeam['input']): string {
-    const title = escapePdfText(input.title);
-    // The excerpt is cut from the source text and escaped afterwards. Cutting
-    // the escaped text instead splits whatever escaping added at the boundary:
-    // a `\(` pair loses its parenthesis and leaves a dangling backslash that
-    // escapes the following character, and a surrogate pair loses its second
-    // half, so the emoji it encoded is written out as U+FFFD.
-    const excerpt = escapePdfText(truncateByCodePoint(content, PDF_EXCERPT_CODE_POINTS));
-    // `/Length` tells a reader how many bytes of stream follow the `stream`
-    // keyword, so it has to be measured from the stream itself. It used to be
-    // derived from the whole story text, which is neither what the stream
-    // holds nor a byte count, and left readers scanning past `endstream`.
-    const contentStream = `BT
-/F1 12 Tf
-72 720 Td
-(${title}) Tj
-0 -24 Td
-(${excerpt}...) Tj
-ET`;
+    // The title heads the document, then a blank line, then the story — the
+    // same order the `.txt` export puts them in.
+    const lines = [input.title, '', ...content.split('\n')].flatMap(paragraph =>
+      wrapPdfParagraph(paragraph, PDF_MAX_LINE_CHARACTERS)
+    );
+
+    const pages: string[][] = [];
+    for (let index = 0; index < lines.length; index += PDF_LINES_PER_PAGE) {
+      pages.push(lines.slice(index, index + PDF_LINES_PER_PAGE));
+    }
+    // An empty story still gets a page, so the document is a valid PDF with a
+    // page tree rather than one whose `/Kids` array is empty.
+    if (pages.length === 0) {
+      pages.push(['']);
+    }
+
+    // Objects 1, 2 and 3 are the catalog, the page tree and the font; each page
+    // then contributes its `/Page` and the content stream that page points at,
+    // in that order, so both numbers follow from the page's index.
+    const FIRST_PAGE_OBJECT_NUMBER = 4;
+    const pageObjectNumber = (index: number) => FIRST_PAGE_OBJECT_NUMBER + index * 2;
 
     const objects = [
       `<<
@@ -192,26 +291,9 @@ ET`;
 >>`,
       `<<
 /Type /Pages
-/Kids [3 0 R]
-/Count 1
+/Kids [${pages.map((_page, index) => `${pageObjectNumber(index)} 0 R`).join(' ')}]
+/Count ${pages.length}
 >>`,
-      `<<
-/Type /Page
-/Parent 2 0 R
-/MediaBox [0 0 612 792]
-/Contents 4 0 R
-/Resources <<
-/Font <<
-/F1 5 0 R
->>
->>
->>`,
-      `<<
-/Length ${Buffer.byteLength(contentStream, 'utf8')}
->>
-stream
-${contentStream}
-endstream`,
       `<<
 /Type /Font
 /Subtype /Type1
@@ -219,7 +301,55 @@ endstream`,
 >>`
     ];
 
+    pages.forEach((pageLines, index) => {
+      const contentStream = this.buildPdfPageContentStream(pageLines);
+
+      objects.push(
+        `<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 ${PDF_PAGE_WIDTH} ${PDF_PAGE_HEIGHT}]
+/Contents ${pageObjectNumber(index) + 1} 0 R
+/Resources <<
+/Font <<
+/F1 3 0 R
+>>
+>>
+>>`,
+        // `/Length` tells a reader how many bytes of stream follow the `stream`
+        // keyword, so it has to be measured from the stream itself. It used to
+        // be derived from the whole story text, which is neither what the
+        // stream holds nor a byte count, and left readers scanning past
+        // `endstream`.
+        `<<
+/Length ${Buffer.byteLength(contentStream, 'utf8')}
+>>
+stream
+${contentStream}
+endstream`
+      );
+    });
+
     return this.assemblePdfDocument(objects);
+  }
+
+  /**
+   * The text operators for one page.
+   *
+   * Each line is escaped as it is written, from the source text rather than
+   * from text that has already been escaped: cutting escaped text splits
+   * whatever the escaping added at the boundary — a `\(` pair loses its
+   * parenthesis and leaves a dangling backslash that escapes the character
+   * after it.
+   */
+  private buildPdfPageContentStream(pageLines: string[]): string {
+    const firstBaseline = PDF_PAGE_HEIGHT - PDF_MARGIN;
+    const operators = pageLines.flatMap((line, index) => [
+      index === 0 ? `${PDF_MARGIN} ${firstBaseline} Td` : `0 -${PDF_LINE_HEIGHT} Td`,
+      `(${escapePdfText(line)}) Tj`
+    ]);
+
+    return [`BT`, `/F1 ${PDF_FONT_SIZE} Tf`, ...operators, `ET`].join('\n');
   }
 
   /**
