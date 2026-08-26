@@ -2,6 +2,8 @@ import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { readRequestCorrelationId } from '../_lib/http/requestCorrelationId';
+import { enforceApiAccessControl } from '../_lib/middleware/apiAccessControl';
+import { RATE_LIMITS } from '../_lib/constants';
 import { StoryService } from '../_lib/services/storyService';
 import { ChapterContinuationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
@@ -48,6 +50,11 @@ export default async function handler(req: any, res: any) {
         message: 'Only POST requests are allowed'
       }
     });
+  }
+
+  const access = await enforceApiAccessControl(req, res, 'story/continue', RATE_LIMITS.CHAPTER_CONTINUATION);
+  if (!access.allowed) {
+    return;
   }
 
   try {

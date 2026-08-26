@@ -2,6 +2,8 @@
 
 import type { ApiResponse, StoryContinuationSeam, StoryIterationPayload } from '../../../_lib/story-lab/contracts';
 import { applyCorsPolicy } from '../../../_lib/http/corsPolicy';
+import { RATE_LIMITS } from '../../../_lib/constants';
+import { enforceApiAccessControl } from '../../../_lib/middleware/apiAccessControl';
 import { getStoryLabResponseStatus } from '../../../_lib/story-lab/routeStatus';
 import { continueStoryLab } from '../../../_lib/story-lab/storyLabEngine';
 import { getTransientStorySnapshot } from '../../../_lib/story-lab/stateStore';
@@ -86,6 +88,16 @@ export function createStoryLabContinuationHandler(continueStory: ContinueStoryLa
           message: 'Only POST requests are supported.'
         }
       });
+      return;
+    }
+
+    const access = await enforceApiAccessControl(
+      req,
+      res,
+      'story-lab/stories/continue',
+      RATE_LIMITS.STORY_LAB_CONTINUATION
+    );
+    if (!access.allowed) {
       return;
     }
 

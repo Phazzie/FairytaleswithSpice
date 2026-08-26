@@ -141,8 +141,13 @@ async function testDisconnectStopsTheStream(): Promise<void> {
   const response = new FakeResponse();
   const finished = genesisHandler(createRequest(socket), response);
 
-  // The `connected` frame is written before the generation is awaited, so it is
-  // already out; everything after it belongs to a reader who has left.
+  // The route now checks API access control before opening the stream, which
+  // is a real `await` (an in-memory check, no I/O) ahead of the `connected`
+  // frame. Letting that settle still lands well before the frame the
+  // generation await would produce, so the invariant under test — the
+  // connected frame is out before the expensive work is awaited — holds.
+  await delay(0);
+
   const chunksAtDisconnect = response.chunks.length;
   assert(chunksAtDisconnect === 1, 'the connected frame should be written before the generation is awaited');
 
@@ -207,6 +212,11 @@ async function testAClosedResponseWithoutASocketIsNeverWrittenTo(): Promise<void
 
   const response = new FakeResponse();
   const finished = genesisHandler(createRequest(), response);
+
+  // See the equivalent wait in `testDisconnectStopsTheStream` above: the
+  // route's access-control check is a real `await` ahead of the `connected`
+  // frame now.
+  await delay(0);
 
   assert(
     response.chunks.length === 1,

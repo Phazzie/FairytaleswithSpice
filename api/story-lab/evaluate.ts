@@ -1,5 +1,7 @@
 import type { ApiResponse, EvaluationCriteria, EvaluationRequest } from '../_lib/story-lab/contracts';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
+import { RATE_LIMITS } from '../_lib/constants';
+import { enforceApiAccessControl } from '../_lib/middleware/apiAccessControl';
 import { XaiTextClient } from '../_lib/services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
 import { buildStoryQualityHeuristicReport } from '../_lib/story-lab/evaluation/storyQualityHeuristics';
@@ -287,6 +289,11 @@ export default async function handler(req: any, res: any) {
         message: 'Only POST requests are supported.'
       }
     });
+    return;
+  }
+
+  const access = await enforceApiAccessControl(req, res, 'story-lab/evaluate', RATE_LIMITS.STORY_LAB_EVALUATE);
+  if (!access.allowed) {
     return;
   }
 

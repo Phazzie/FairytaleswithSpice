@@ -2,6 +2,8 @@
 
 import type { ApiResponse, StoryIterationPayload } from '../_lib/story-lab/contracts';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
+import { RATE_LIMITS } from '../_lib/constants';
+import { enforceApiAccessControl } from '../_lib/middleware/apiAccessControl';
 import { getStoryLabResponseStatus } from '../_lib/story-lab/routeStatus';
 import { generateStoryLabGenesis } from '../_lib/story-lab/storyLabEngine';
 import { parseStoryLabBlueprintFromBody } from '../_lib/story-lab/validation/blueprintParser';
@@ -39,6 +41,11 @@ export function createStoryLabGenesisHandler(generateGenesis: GenerateStoryLabGe
           message: 'Only POST requests are supported.'
         }
       });
+      return;
+    }
+
+    const access = await enforceApiAccessControl(req, res, 'story-lab/stories', RATE_LIMITS.STORY_LAB_GENESIS);
+    if (!access.allowed) {
       return;
     }
 
