@@ -59,6 +59,31 @@ const telemetrySerialized = JSON.stringify(telemetry);
 
 assert(telemetrySerialized.includes('promptTokens'), 'token-count telemetry keys should be preserved');
 assert(telemetrySerialized.includes('579'), 'token-count telemetry values should be preserved');
+// The key surviving is not the value surviving: a redacted field keeps its name
+// and loses what is under it, so asserting on the name alone passed while
+// `promptTokens` — matched by the `/prompt/i` pattern and filled from the
+// provider's usage report on every paid call — was written as `[REDACTED]`.
+assert(
+  (telemetry as Record<string, unknown>)['promptTokens'] === 123,
+  `prompt token counts should survive redaction, got ${JSON.stringify((telemetry as Record<string, unknown>)['promptTokens'])}`
+);
+assert(
+  (telemetry as Record<string, unknown>)['completionTokens'] === 456,
+  'completion token counts should survive redaction'
+);
+// The prompt itself, and every other key the pattern is there for, still does not.
+const promptShapedKeys = redactSensitiveLogData({
+  prompt: 'system instructions a model was sent',
+  systemPrompt: 'you are a storyteller',
+  imagePrompt: 'a gothic vampire in candlelight',
+  promptText: 'the story so far'
+}) as Record<string, unknown>;
+for (const key of Object.keys(promptShapedKeys)) {
+  assert(
+    promptShapedKeys[key] === '[REDACTED]',
+    `${key} should still be redacted, got ${JSON.stringify(promptShapedKeys[key])}`
+  );
+}
 assert(telemetrySerialized.includes('skateboarding'), 'normal words beginning with sk should not be redacted');
 assert(!telemetrySerialized.includes('xai-secret-key-123'), 'actual API key fields should still be redacted');
 

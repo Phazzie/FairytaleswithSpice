@@ -144,8 +144,36 @@ function redactSensitiveText(value: string): string {
   return redactSensitiveTextTokens(value);
 }
 
+/**
+ * Keys a sensitive pattern matches that hold a *measurement* of the sensitive
+ * value rather than the value.
+ *
+ * `SENSITIVE_KEY_PATTERNS` blanks a key without looking at what is under it,
+ * which is right for the prose it exists to catch and wrong for a number
+ * describing that prose. `/prompt/i` matches `promptTokens` — a declared field
+ * of `LogContext`, filled from the provider's own usage report on every story
+ * and continuation call — so the input-token count of every paid request was
+ * written as `[REDACTED]` while `completionTokens` beside it went through
+ * untouched. The one number that says what a request cost to send was the one
+ * number the log did not keep, and the field looked present in the entry, so
+ * nothing about the output said the value had been dropped.
+ *
+ * The exemptions are spelled out one key at a time rather than derived from a
+ * suffix. A rule such as "any key ending in `Tokens`" reads well and would
+ * unblank `accessTokens` and `refreshTokens`, which are credentials and not
+ * counts; naming the keys keeps a later addition here a deliberate decision
+ * about one field.
+ */
+const MEASUREMENT_KEY_EXEMPTIONS = [
+  /^prompt[_-]?tokens$/i
+];
+
 function isSensitiveKey(key: string): boolean {
-  return key.length > 0 && SENSITIVE_KEY_PATTERNS.some(pattern => pattern.test(key));
+  if (key.length === 0 || MEASUREMENT_KEY_EXEMPTIONS.some(pattern => pattern.test(key))) {
+    return false;
+  }
+
+  return SENSITIVE_KEY_PATTERNS.some(pattern => pattern.test(key));
 }
 
 class Logger {

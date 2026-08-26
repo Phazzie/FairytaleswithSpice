@@ -161,6 +161,46 @@ async function main(): Promise<void> {
     'missing error payload should map to 500'
   );
 
+  // The Story Lab engine forwards the classic `StoryService`'s error code
+  // verbatim, and that service is what generates the story behind both of these
+  // routes. Its vocabulary was mapped by neither the Story Lab table nor
+  // anything else on the way out, so every one of these was served as 500 —
+  // "the service broke" — over a refusal the caller could act on, a rate limit
+  // that should be backed off, and an outage a probe should read as one.
+  const forwardedClassicStatuses: Array<[string, number]> = [
+    ['INVALID_INPUT', 400],
+    ['CONTENT_TOO_LARGE', 400],
+    ['MAX_CHAPTERS_REACHED', 400],
+    ['UNAUTHORIZED', 401],
+    ['RATE_LIMITED', 429],
+    ['QUOTA_EXCEEDED', 429],
+    ['AI_SERVICE_UNAVAILABLE', 503]
+  ];
+  for (const [code, expectedStatus] of forwardedClassicStatuses) {
+    const status = getStoryLabResponseStatus({ success: false, error: { code, message: 'x' } } as never);
+    assert(
+      status === expectedStatus,
+      `${code} should map to ${expectedStatus} on a Story Lab route, got ${status}`
+    );
+  }
+
+  // The three codes the Story Lab engine raises for itself keep the statuses
+  // they had, now read from the shared table rather than a second one.
+  for (const [code, expectedStatus] of [
+    ['CONTENT_POLICY_VIOLATION', 400],
+    ['INVALID_BLUEPRINT', 400],
+    ['INVALID_REQUEST', 400],
+    ['AI_UNAVAILABLE', 503],
+    ['GENERATION_FAILED', 500],
+    ['CONTINUATION_FAILED', 500]
+  ] as Array<[string, number]>) {
+    const status = getStoryLabResponseStatus({ success: false, error: { code, message: 'x' } } as never);
+    assert(
+      status === expectedStatus,
+      `${code} should map to ${expectedStatus} on a Story Lab route, got ${status}`
+    );
+  }
+
   await withEnv({ NODE_ENV: 'production', VERCEL_ENV: undefined, XAI_API_KEY: undefined, STORY_LAB_FORCE_MOCK: undefined }, async () => {
     const response = new FakeResponse();
     await genesisHandler(createRequest('POST', createBlueprint()), response);
