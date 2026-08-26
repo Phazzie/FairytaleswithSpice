@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { ImageGenerationSeam, ApiResponse, CreatureType } from '../types/contracts.js';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary } from '../utils/textExcerpt';
+import { logApiError, logError } from '../utils/logger';
+import { toLoggableStoryId } from '../utils/loggableRequestParameters';
 import { IMAGE_GENERATION_LIMITS } from '../../../shared/storyBlueprintLimits';
 
 type SupportedAspectRatio = NonNullable<ImageGenerationSeam['input']['aspectRatio']>;
@@ -190,7 +192,32 @@ export class ImageService {
       };
 
     } catch (error: any) {
-      console.error('Image generation error:', error);
+      // Through the logger rather than `console.error(..., error)`, which is
+      // what this was and what every other paid service on this surface stopped
+      // doing. `console.error` formats an object with `util.inspect`, so an
+      // error carrying an HTTP client's request config prints that config —
+      // including `config.headers.Authorization`, which on this path is
+      // `Bearer ${XAI_API_KEY}` — straight into the deployment log. The axios
+      // error is caught and replaced one method below today, so what reaches
+      // here is currently the plain `Error` that replaced it; that is a
+      // property of the call below rather than of this line, and it is the kind
+      // of property a later change silently removes. `logError` names the
+      // fields it keeps and runs them through `redactSensitiveLogData`, so the
+      // guarantee belongs to the log call instead of to whatever happens to be
+      // thrown at it.
+      //
+      // It is also what puts the failure in the shared recent-log buffer with
+      // the story it failed on identified. `StoryService` has logged its own
+      // failures this way since the logger was written; this service and the
+      // evaluate route were the two places still writing to the console.
+      //
+      // The story id goes through the same allow-list the route's own log lines
+      // put it through: it is caller text, and an id that is not id-shaped is
+      // reduced rather than printed.
+      logError('Image generation failed', error, {
+        endpoint: '/api/image/generate',
+        method: 'POST'
+      }, { storyId: toLoggableStoryId(input.storyId) });
       return {
         success: false,
         error: {
@@ -232,7 +259,18 @@ export class ImageService {
       return readGeneratedImageUrl(response.data);
 
     } catch (error: any) {
-      console.error('Grok Image API error:', error.response?.data || error.message);
+      // `logApiError` is the reading `XaiTextClient` gives the text half of the
+      // same provider: it keeps the status and the response body under
+      // `apiResponse`, where `redactSensitiveLogData` reduces the keys that
+      // must not be printed. Writing `error.response?.data` to the console
+      // instead put the provider's answer into the log unredacted and with
+      // nothing identifying the request it belonged to — this route's own
+      // handler logs a `requestId` on every other line it writes, and the one
+      // line describing why the image failed had none.
+      logApiError('Grok Image API', error, {
+        endpoint: '/api/image/generate',
+        method: 'POST'
+      });
       throw new Error('AI image service temporarily unavailable');
     }
   }
