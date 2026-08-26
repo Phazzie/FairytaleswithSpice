@@ -9,6 +9,7 @@ import {
   CloudStoryProjectLoadResult,
   CloudStoryProjectSaveReceipt,
   ImageGenerationSeam,
+  SaveExportSeam,
   SavedStoryProject,
   StoryGenerationSeam,
   StoryIterationPayload,
@@ -362,6 +363,17 @@ export class StoryService {
     return this.http
       .post<ApiResponse<ImageGenerationSeam['output']>>('/api/image/generate', input)
       .pipe(catchError(error => this.handleHttpError(error, 'generateImage')));
+  }
+
+  exportStory(input: SaveExportSeam['input']): Observable<ApiResponse<SaveExportSeam['output']>> {
+    this.errorLogging.logInfo('Requesting story export', 'StoryService.exportStory', {
+      storyId: input.storyId,
+      format: input.format
+    });
+
+    return this.http
+      .post<ApiResponse<SaveExportSeam['output']>>('/api/export/save', input)
+      .pipe(catchError(error => this.handleHttpError(error, 'exportStory')));
   }
 
   private handleHttpError(error: HttpErrorResponse, context: string) {

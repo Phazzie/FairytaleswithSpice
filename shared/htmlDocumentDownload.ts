@@ -76,12 +76,16 @@ export interface HtmlDownloadHost<TAnchor extends DownloadAnchorLike = DownloadA
  */
 export const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
 
-export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(
-  html: string,
+/**
+ * Hand any blob to the browser as a file the reader saves, via the same
+ * attached-anchor-click sequence `downloadHtmlDocument` uses for HTML.
+ */
+export function downloadBlob<TAnchor extends DownloadAnchorLike>(
+  blob: Blob,
   filename: string,
   host: HtmlDownloadHost<TAnchor>
 ): void {
-  const url = host.createObjectUrl(new Blob([html], { type: 'text/html' }));
+  const url = host.createObjectUrl(blob);
   const link = host.document.createElement('a');
   link.href = url;
   link.download = filename;
@@ -97,6 +101,34 @@ export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(
   }
 
   host.scheduleRevoke(() => host.revokeObjectUrl(url));
+}
+
+export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(
+  html: string,
+  filename: string,
+  host: HtmlDownloadHost<TAnchor>
+): void {
+  downloadBlob(new Blob([html], { type: 'text/html' }), filename, host);
+}
+
+/**
+ * Decode a base64 `data:` URI into a `Blob`, so a file the backend returned
+ * inline can be handed to `downloadBlob` exactly like one built client-side.
+ */
+export function dataUriToBlob(dataUri: string): Blob {
+  const match = /^data:([^;]*);base64,(.*)$/s.exec(dataUri);
+  if (!match) {
+    throw new Error('Not a base64-encoded data: URI');
+  }
+
+  const [, mimeType, base64] = match;
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: mimeType || 'application/octet-stream' });
 }
 
 /**

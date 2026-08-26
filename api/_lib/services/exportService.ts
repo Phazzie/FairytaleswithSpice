@@ -6,6 +6,7 @@ import {
   sanitizeStoryHtmlForExport,
   stripStoryHtmlForExport
 } from './exportSanitizer';
+import { buildZipArchive, ZipEntry } from './zipArchive';
 
 const PDF_EXCERPT_CODE_POINTS = 100;
 // Leaves room for the `_<timestamp>_<token>.<format>` suffix inside the
@@ -13,6 +14,14 @@ const PDF_EXCERPT_CODE_POINTS = 100;
 const EXPORT_FILENAME_STEM_MAX_LENGTH = 80;
 // Distinguishes two exports that collide on both stem and millisecond.
 const EXPORT_FILENAME_TOKEN_LENGTH = 8;
+
+const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
+  pdf: 'application/pdf',
+  html: 'text/html',
+  txt: 'text/plain',
+  epub: 'application/epub+zip',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+};
 
 /**
  * Take the first `limit` code points of `value`. Iterating a string yields
@@ -61,8 +70,6 @@ interface ExportMetadata {
 }
 
 export class ExportService {
-  private storageBaseUrl = process.env['STORAGE_BASE_URL'] || 'https://storage.example.com';
-
   async saveAndExport(input: SaveExportSeam['input']): Promise<ApiResponse<SaveExportSeam['output']>> {
     const startTime = Date.now();
 
@@ -80,7 +87,6 @@ export class ExportService {
         };
       }
 
-      // Generate export content based on format
       const exportContent = await this.generateExportContent(input);
 
       // The filename is timestamped, so it has to be generated once and shared:
@@ -89,20 +95,19 @@ export class ExportService {
       // does not match the filename it was told to save.
       const filename = this.generateFilename(input);
 
-      // Save to storage (mock implementation)
-      const fileUrl = await this.saveToStorage(filename);
+      // There is no object storage behind this service: the exported bytes are
+      // handed back directly as a `data:` URI rather than a link to somewhere
+      // they were uploaded. That URI resolves immediately, in the same
+      // response, with nothing left to expire.
+      const downloadUrl = this.buildDataUri(input.format, exportContent);
 
-      // Create response
       const output: SaveExportSeam['output'] = {
         exportId: this.generateExportId(),
         storyId: input.storyId,
-        downloadUrl: fileUrl,
+        downloadUrl,
         filename,
         format: input.format,
-        // The contract measures fileSize in bytes; `.length` counts UTF-16 code
-        // units, which undercounts every non-ASCII character a story contains.
-        fileSize: Buffer.byteLength(exportContent, 'utf8'),
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        fileSize: exportContent.length,
         exportedAt: new Date()
       };
 
@@ -133,35 +138,34 @@ export class ExportService {
   }
 
   /**
-   * Render the export document for an input without running the mock upload.
+   * Render the export document for an input without building its data URI.
    *
    * Public because the document itself is the product: `saveAndExport` reports
-   * only its size and a storage URL, so this is the supported way to assert on
-   * what an export actually contains.
+   * only its size and a self-contained download URI, so this is the supported
+   * way to assert on what an export actually contains.
    */
-  async generateExportContent(input: SaveExportSeam['input']): Promise<string> {
+  async generateExportContent(input: SaveExportSeam['input']): Promise<Buffer> {
     const sanitizedHtml = sanitizeStoryHtmlForExport(input.content);
     const plainText = stripStoryHtmlForExport(input.content);
-    const metadata = this.generateMetadata(plainText);
+    const metadata = this.generateMetadata(plainText, input);
 
     switch (input.format) {
       case 'pdf':
-        return this.generatePDFContent(plainText, input);
+        return Buffer.from(this.generatePDFContent(plainText, input), 'utf8');
       case 'html':
-        return this.generateHTMLContent(sanitizedHtml, metadata, input);
+        return Buffer.from(this.generateHTMLContent(sanitizedHtml, metadata, input), 'utf8');
       case 'txt':
-        return this.generateTextContent(plainText, metadata, input);
+        return Buffer.from(this.generateTextContent(plainText, metadata, input), 'utf8');
       case 'epub':
-        return this.generateEPUBContent(input);
+        return this.generateEPUBContent(plainText, input);
       case 'docx':
-        return this.generateDOCXContent(plainText);
+        return this.generateDOCXContent(plainText, input);
       default:
         throw new Error(`Unsupported format: ${input.format}`);
     }
   }
 
   private generatePDFContent(content: string, input: SaveExportSeam['input']): string {
-    // Mock PDF generation - in real implementation, use pdfkit or puppeteer
     const title = escapePdfText(input.title);
     // The excerpt is cut from the source text and escaped afterwards. Cutting
     // the escaped text instead splits whatever escaping added at the boundary:
@@ -324,44 +328,138 @@ ${xrefOffset}
     return text;
   }
 
-  private generateEPUBContent(input: SaveExportSeam['input']): string {
-    // Mock EPUB generation - in real implementation, use epub-gen or similar
+  /**
+   * Build a real EPUB 3 container: the mandatory `mimetype` entry (stored,
+   * uncompressed, first), the OCF `container.xml` pointer, a package document
+   * with the nav item EPUB 3 requires, the nav document itself, and the
+   * chapter it points at — actually containing the story, where the previous
+   * version referenced a `chapter1.xhtml` it never wrote.
+   */
+  private generateEPUBContent(plainText: string, input: SaveExportSeam['input']): Buffer {
     const title = escapeHtml(input.title);
+    // Derived from the story being exported rather than a fresh `randomUUID()`
+    // per call: the same story exported twice should produce the same book
+    // identifier, and a real UUID would make otherwise-identical output
+    // (including the copy this method itself hands back for verification)
+    // vary from one call to the next.
+    const bookId = `urn:x-fairytales-with-spice:${escapeHtml(input.storyId)}`;
+    const chapterXhtml = this.toXhtmlBody(plainText);
 
-    // The metadata block is written with the `dc:` prefix, so the Dublin Core
-    // namespace it stands for has to be bound on the root element. Without the
-    // binding the prefix is undeclared and the package document is not
-    // well-formed XML, which every conforming reader rejects outright.
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
-    <metadata>
-        <dc:title>${title}</dc:title>
-        <dc:creator>Fairytales with Spice</dc:creator>
-        <dc:language>en</dc:language>
-    </metadata>
-    <manifest>
-        <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
-    </manifest>
-    <spine>
-        <itemref idref="chapter1"/>
-    </spine>
+    const containerXml = `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`;
+
+    const contentOpf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="bookid">${bookId}</dc:identifier>
+    <dc:title>${title}</dc:title>
+    <dc:language>en</dc:language>
+    <dc:creator>Fairytales with Spice</dc:creator>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter1"/>
+  </spine>
 </package>`;
+
+    const navXhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>Navigation</title></head>
+<body>
+<nav epub:type="toc" id="toc">
+<ol><li><a href="chapter1.xhtml">${title}</a></li></ol>
+</nav>
+</body>
+</html>`;
+
+    const chapter1Xhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>${title}</title></head>
+<body>
+<h1>${title}</h1>
+${chapterXhtml}
+</body>
+</html>`;
+
+    const entries: ZipEntry[] = [
+      // Must be the first entry, stored uncompressed, for a conforming reader
+      // to identify the container by its first 38 bytes alone.
+      { path: 'mimetype', data: Buffer.from('application/epub+zip', 'ascii') },
+      { path: 'META-INF/container.xml', data: Buffer.from(containerXml, 'utf8') },
+      { path: 'OEBPS/content.opf', data: Buffer.from(contentOpf, 'utf8') },
+      { path: 'OEBPS/nav.xhtml', data: Buffer.from(navXhtml, 'utf8') },
+      { path: 'OEBPS/chapter1.xhtml', data: Buffer.from(chapter1Xhtml, 'utf8') }
+    ];
+
+    return buildZipArchive(entries);
   }
 
-  private generateDOCXContent(content: string): string {
-    // Mock DOCX generation - in real implementation, use docx or similar
-    return `PK                  docProps/PK                  word/PK                  [Content_Types].xmlPK                  _rels/PK                  word/_rels/document.xml.relsPK                  word/document.xml${escapeHtml(content)}`;
+  /**
+   * Build a real, minimal OOXML `.docx`: the package-level content-types and
+   * relationship parts every `.docx` reader requires, plus a `word/document.xml`
+   * holding the story as one paragraph per line. The previous version wrote
+   * literal text made to *look* like these zip entries' names, concatenated
+   * with escaped plain text — not a zip archive at all.
+   */
+  private generateDOCXContent(plainText: string, input: SaveExportSeam['input']): Buffer {
+    const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`;
+
+    const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`;
+
+    const paragraphs = [input.title, ...plainText.split('\n').map(line => line.trim())]
+      .filter(Boolean)
+      .map(line => `<w:p><w:r><w:t xml:space="preserve">${escapeHtml(line)}</w:t></w:r></w:p>`)
+      .join('\n    ');
+
+    const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    ${paragraphs}
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+    const entries: ZipEntry[] = [
+      { path: '[Content_Types].xml', data: Buffer.from(contentTypesXml, 'utf8') },
+      { path: '_rels/.rels', data: Buffer.from(relsXml, 'utf8') },
+      { path: 'word/document.xml', data: Buffer.from(documentXml, 'utf8') }
+    ];
+
+    return buildZipArchive(entries);
   }
 
-  private async saveToStorage(filename: string): Promise<string> {
-    // Mock storage implementation - in real implementation, upload to S3, Cloudinary, etc.
-    // (which is where the export content will be needed; this mock only names it.)
+  /**
+   * Turn the plain-text export into well-formed XHTML paragraphs: each
+   * non-blank line becomes its own escaped `<p>`, which is enough structure for
+   * a real XHTML document without re-parsing the sanitizer's HTML-oriented
+   * output (whose unclosed `<br>` void tags are not valid XHTML).
+   */
+  private toXhtmlBody(plainText: string): string {
+    return plainText
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => `<p>${escapeHtml(line)}</p>`)
+      .join('\n');
+  }
 
-    // Simulate upload delay
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    // Return mock URL
-    return `${this.storageBaseUrl}/exports/${filename}`;
+  private buildDataUri(format: ExportFormat, content: Buffer): string {
+    return `data:${EXPORT_MIME_TYPES[format]};base64,${content.toString('base64')}`;
   }
 
   private validateExportInput(input: SaveExportSeam['input']): any {
@@ -386,13 +484,13 @@ ${xrefOffset}
     return null;
   }
 
-  private generateMetadata(content: string): ExportMetadata {
+  private generateMetadata(content: string, input: SaveExportSeam['input']): ExportMetadata {
     return {
       generatedAt: new Date().toISOString(),
       wordCount: this.countWords(content),
       readTime: Math.ceil(this.countWords(content) / 200),
-      creature: 'vampire', // In real implementation, extract from story data
-      themes: ['romance', 'dark'] // In real implementation, extract from story data
+      creature: input.creature ?? 'unknown',
+      themes: input.themes ?? []
     };
   }
 

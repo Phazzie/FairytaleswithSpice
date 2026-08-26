@@ -8,6 +8,8 @@ import { Subscription, map } from 'rxjs';
 import { splitStoryIntoTextBlocks } from '../../../api/_lib/utils/storyTextBlocks';
 import {
   createBrowserHtmlDownloadHost,
+  dataUriToBlob,
+  downloadBlob,
   downloadHtmlDocument
 } from '../../../shared/htmlDocumentDownload';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
@@ -19,6 +21,7 @@ import {
   CloudStoryProjectListItem,
   ContinuityPanelViewModel,
   CreatureArchetype,
+  ExportFormat,
   GeneratedChapter,
   HeatContract,
   HeatIntimacyBoundary,
@@ -405,6 +408,9 @@ export class App implements OnDestroy {
   readonly isGeneratingImage = signal(false);
   readonly generatedChapterImage = signal<{ chapterId: string; image: ImageGenerationSeam['output'] } | null>(null);
   readonly imageGenerationError = signal<string | null>(null);
+  readonly exportFormats: ExportFormat[] = ['txt', 'pdf', 'epub', 'docx'];
+  readonly selectedExportFormat = signal<ExportFormat>('txt');
+  readonly isExporting = signal(false);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
   readonly savedProjects = signal<SavedStoryProject[]>([]);
@@ -1377,31 +1383,88 @@ export class App implements OnDestroy {
     }
 
     const safeTitle = this.safeFileName(session.story.title);
+    const html = this.buildStoryHtmlDocument(session);
+    downloadHtmlDocument(html, `${safeTitle}.html`, createBrowserHtmlDownloadHost(document, URL));
+    this.statusMessage.set('Story download created.');
+  }
+
+  private buildStoryHtmlDocument(session: StoryWorkbenchSession): string {
+    const story = session.story!;
     const chapters = session.chapterHistory
       .map(chapter => {
         const body = this.getSafeHtml(chapter.htmlContent);
         return `<section><h2>Chapter ${chapter.chapterNumber}: ${this.escapeHtml(chapter.title)}</h2>${body}</section>`;
       })
       .join('\n');
-    const html = `<!doctype html>
+
+    return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>${this.escapeHtml(session.story.title)}</title>
+<title>${this.escapeHtml(story.title)}</title>
 <style>
 body{font-family:Georgia,serif;line-height:1.65;max-width:760px;margin:40px auto;padding:0 20px;color:#251914;background:#fff8ee}
 h1,h2{line-height:1.15}hr{border:0;border-top:1px solid #d8c5aa;margin:28px 0}
 </style>
 </head>
 <body>
-<h1>${this.escapeHtml(session.story.title)}</h1>
-<p>${this.escapeHtml(session.story.synopsis)}</p>
+<h1>${this.escapeHtml(story.title)}</h1>
+<p>${this.escapeHtml(story.synopsis)}</p>
 <hr>
 ${chapters}
 </body>
 </html>`;
-    downloadHtmlDocument(html, `${safeTitle}.html`, createBrowserHtmlDownloadHost(document, URL));
-    this.statusMessage.set('Story download created.');
+  }
+
+  exportStory() {
+    const session = this.workbench();
+    if (!session.story || !session.chapterHistory.length) {
+      this.notificationService.warning('Nothing to export', 'Generate a story first.');
+      return;
+    }
+
+    if (this.isExporting()) {
+      return;
+    }
+
+    const story = session.story;
+    const format = this.selectedExportFormat();
+    const safeTitle = this.safeFileName(story.title);
+
+    this.isExporting.set(true);
+
+    this.storyService
+      .exportStory({
+        storyId: story.storyId,
+        title: story.title,
+        content: this.buildStoryHtmlDocument(session),
+        format,
+        includeMetadata: true,
+        creature: this.blueprint().creature,
+        themes: this.blueprint().themes.map(theme => theme.id)
+      })
+      .subscribe({
+        next: response => {
+          this.isExporting.set(false);
+
+          if (response.success) {
+            downloadBlob(
+              dataUriToBlob(response.data.downloadUrl),
+              response.data.filename,
+              createBrowserHtmlDownloadHost(document, URL)
+            );
+            this.notificationService.success('Export ready', `${format.toUpperCase()} export created.`);
+            this.statusMessage.set(`${format.toUpperCase()} export created.`);
+          } else {
+            const message = response.error?.message ?? 'Export failed.';
+            this.notificationService.error('Export failed', message);
+          }
+        },
+        error: () => {
+          this.isExporting.set(false);
+          this.notificationService.error('Export failed', 'Could not reach the export service.');
+        }
+      });
   }
 
   generateChapterImage() {

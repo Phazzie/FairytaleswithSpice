@@ -28,6 +28,7 @@ export type WordBudget = 600 | 900 | 1200 | 1500;
 export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_banter' | 'devotional_longing';
 export type HeatIntimacyBoundary = 'fade_to_black' | 'closed_door' | 'literary_on_page';
 export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
+export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 
 export const IMAGE_STYLES = [
   'artistic',
@@ -480,6 +481,49 @@ export interface ImageGenerationSeam {
       message: string;
       quotaRemaining: number;
       resetTime: Date;
+    };
+  };
+}
+
+export interface SaveExportSeam {
+  seamName: 'Story Data → Save/Export System';
+  description: 'Saves or exports story data in various formats';
+
+  input: {
+    storyId: string;
+    content: string; // Full story HTML content
+    title: string;
+    format: ExportFormat;
+    includeMetadata?: boolean;
+    includeChapters?: boolean;
+    creature?: string;
+    themes?: string[];
+  };
+
+  output: {
+    exportId: string;
+    storyId: string;
+    // A self-contained `data:` URI holding the exported file — no separate
+    // fetch is needed to retrieve it.
+    downloadUrl: string;
+    filename: string;
+    format: ExportFormat;
+    fileSize: number;
+    exportedAt: Date;
+  };
+
+  errors: {
+    EXPORT_FAILED: {
+      code: 'EXPORT_FAILED';
+      message: string;
+      retryable: boolean;
+      format: ExportFormat;
+    };
+    FORMAT_NOT_SUPPORTED: {
+      code: 'FORMAT_NOT_SUPPORTED';
+      message: string;
+      requestedFormat: ExportFormat;
+      supportedFormats: ExportFormat[];
     };
   };
 }

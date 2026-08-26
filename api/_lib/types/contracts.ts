@@ -349,16 +349,21 @@ export interface SaveExportSeam {
     format: ExportFormat;
     includeMetadata?: boolean;
     includeChapters?: boolean;
+    creature?: string; // The story's actual creature, for the exported metadata
+    themes?: string[]; // The story's actual themes, for the exported metadata
   };
 
   output: {
     exportId: string;
     storyId: string;
-    downloadUrl: string; // Direct download URL for UI
+    // A self-contained `data:` URI holding the exported file. There is no
+    // object storage behind this service, so the file itself — not a link to
+    // somewhere it was uploaded — is what the caller gets back; it resolves
+    // immediately and never expires.
+    downloadUrl: string;
     filename: string;
     format: ExportFormat;
     fileSize: number;
-    expiresAt: Date; // When download URL expires
     exportedAt: Date;
   };
 
@@ -374,11 +379,6 @@ export interface SaveExportSeam {
       message: string;
       requestedFormat: ExportFormat;
       supportedFormats: ExportFormat[];
-    };
-    STORAGE_QUOTA_EXCEEDED: {
-      code: "STORAGE_QUOTA_EXCEEDED";
-      message: string;
-      quotaRemaining: number;
     };
   };
 }
