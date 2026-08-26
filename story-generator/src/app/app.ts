@@ -12,6 +12,7 @@ import {
   downloadBlob,
   downloadHtmlDocument
 } from '../../../shared/htmlDocumentDownload';
+import { buildStoryDownloadFilename } from '../../../shared/storyDownloadFilename';
 import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import {
@@ -1403,9 +1404,12 @@ export class App implements OnDestroy {
     }
 
     const { session, story } = exportable;
-    const safeTitle = this.safeFileName(story.title);
     const html = this.buildStoryHtmlDocument(session);
-    downloadHtmlDocument(html, `${safeTitle}.html`, createBrowserHtmlDownloadHost(document, URL));
+    downloadHtmlDocument(
+      html,
+      buildStoryDownloadFilename(story.title),
+      createBrowserHtmlDownloadHost(document, URL)
+    );
     this.statusMessage.set('Story download created.');
   }
 
@@ -1466,7 +1470,6 @@ ${chapters}
 
     const { session, story } = exportable;
     const format = this.selectedExportFormat();
-    const safeTitle = this.safeFileName(story.title);
 
     this.isExporting.set(true);
 
@@ -2716,26 +2719,6 @@ ${chapters}
     return splitStoryIntoTextBlocks(html).join('\n\n');
   }
 
-  private safeFileName(value: string): string {
-    let safeName = '';
-    let needsSeparator = false;
-
-    for (const char of value.toLowerCase()) {
-      if (this.isAsciiLetterOrDigit(char)) {
-        if (needsSeparator && safeName.length > 0) {
-          safeName += '-';
-        }
-        safeName += char;
-        needsSeparator = false;
-        continue;
-      }
-
-      needsSeparator = safeName.length > 0;
-    }
-
-    return safeName || 'fairytales-story';
-  }
-
   private escapeHtml(value: string): string {
     let escaped = '';
 
@@ -2791,11 +2774,6 @@ ${chapters}
 
   private isWhitespace(char: string): boolean {
     return char === ' ' || char === '\n' || char === '\r' || char === '\t' || char === '\f' || char === '\v';
-  }
-
-  private isAsciiLetterOrDigit(char: string): boolean {
-    const code = char.codePointAt(0) ?? 0;
-    return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
   }
 
   private persistSession(session: StoryWorkbenchSession): string | undefined {

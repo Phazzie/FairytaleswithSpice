@@ -7,6 +7,7 @@ import {
 } from '../api/_lib/http/requestCorrelationId';
 import exportSaveHandler from '../api/export/save';
 import imageGenerateHandler from '../api/image/generate';
+import storyContinueHandler from '../api/story/continue';
 import storyGenerateHandler from '../api/story/generate';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -121,7 +122,13 @@ async function main(): Promise<void> {
   const routes: Array<{ path: string; handler: (req: any, res: any) => unknown }> = [
     { path: '/api/story/generate', handler: storyGenerateHandler },
     { path: '/api/image/generate', handler: imageGenerateHandler },
-    { path: '/api/export/save', handler: exportSaveHandler }
+    { path: '/api/export/save', handler: exportSaveHandler },
+    // `/api/story/continue` was the one legacy route that did neither: it minted
+    // `req_<uuid>` unconditionally and never wrote the header back, so a caller
+    // tracing a continuation had its id discarded and got no id in the response
+    // to correlate against — on the slowest of the four requests the same client
+    // makes in the same session.
+    { path: '/api/story/continue', handler: storyContinueHandler }
   ];
 
   for (const route of routes) {

@@ -104,6 +104,28 @@ assert(preflightResponse.statusCode === 200, 'allowed preflight should return 20
 assert(preflightResponse.ended, 'allowed preflight should end response');
 assert(preflightResponse.headers['Access-Control-Allow-Headers'] === 'Content-Type', 'configured headers should be used');
 
+// `Allow-Headers` is the request side — which headers a caller may send. It
+// says nothing about what a browser lets the page read back, and the default
+// there is a short safelist `X-Request-ID` is not on. So every route set the
+// correlation id on the response and a cross-origin caller could not read it:
+// the one value this API offers for tracing a request was visible only to a
+// same-origin page, which is the caller that needs it least.
+assert(
+  preflightResponse.headers['Access-Control-Expose-Headers'] === 'X-Request-ID',
+  `the correlation id should be readable cross-origin, got ${JSON.stringify(preflightResponse.headers['Access-Control-Expose-Headers'])}`
+);
+
+const exposedOnPost = new FakeResponse();
+applyCorsPolicy(request('POST', 'https://preview.example.com'), exposedOnPost, {
+  methods: ['POST', 'OPTIONS'],
+  credentials: true,
+  env
+});
+assert(
+  exposedOnPost.headers['Access-Control-Expose-Headers'] === 'X-Request-ID',
+  'the exposure applies to the real response, not only to the preflight'
+);
+
 const rejectedResponse = new FakeResponse();
 const rejectedResult = applyCorsPolicy(request('POST', 'https://evil.example.com'), rejectedResponse, {
   methods: ['POST', 'OPTIONS'],
