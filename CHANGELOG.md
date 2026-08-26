@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — seven creatures with no tropes, seven themes with no picture, an export refusal read as an outage (August 26, 2026)
+
+#### Trope subversion was silently off for seven of the ten creatures
+
+- `TropeSubversionService` is what keeps a generation off the stock version of
+  its own premise. It picks two or three tropes for the chosen creature, appends
+  the HIDDEN UNIQUENESS DIRECTIVES block telling the model to subvert them, and
+  serializes the selection into `tropeMetadata` so every later continuation is
+  told to honour the same inversions.
+- `TROPE_DATABASE` had banks for three creatures: vampire, werewolf, and fairy.
+  `CreatureType` has named ten archetypes since the Story Lab blueprint was
+  introduced, so `supportsCreature` answered `false` for siren, djinn, witch,
+  dragon, demon, angel, and mermaid, and `selectTropeSubversions` returned
+  `undefined` for all seven. No directives reached the genesis prompt and
+  `tropeMetadata` was `undefined`, so no continuation carried any either: for
+  seven of the ten choices the form offers, the feature was off end to end, and
+  the only visible sign was that those stories read like the first thing anyone
+  would write about a siren.
+- Each of the seven now has a bank in the shape of the original three — ten
+  common tropes and five subversive ones — because `createWeightedTropePool`
+  pushes each common entry three times, and the selector needs enough distinct
+  ids to fill a request of three without repeating the same handful across every
+  generation. A thinner bank would have quietly given its creature less variety
+  than the rest.
+- The trope test could not have caught this. Every loop in it iterates
+  `Object.keys(TROPE_DATABASE)`, so a creature the table never had is not a
+  failing case, it is a case that never runs — the table was being asked about
+  itself. The check now comes from `CREATURE_ARCHETYPES`, and the file also
+  asserts the per-bank depth, that no two tropes share an id (the id is the
+  selection and deserialization key, so a duplicate is one trope wearing two
+  names), and that every trope carries the subversion instruction that is the
+  only part of it the prompt actually sends.
+
+#### Seven of the twelve themes the picker offers reached the image model as "mysterious elements"
+
+- `mapThemeToVisualElement` was keyed on `ThemeType`, the eighteen classic
+  themes — and the only client this route has does not send those. `app.ts`
+  builds its picker from `availableThemes`, twelve Story Lab `ThemeSeed`s, and
+  passes `theme.id` straight through to `/api/image/generate`.
+- Five of the twelve happen to spell a classic theme. The other seven —
+  `court_intrigue`, `blood_oaths`, `slow_burn`, `enemies_to_lovers`,
+  `magical_bargain`, `secret_identity`, and `forced_proximity` — matched nothing
+  and fell to the shared `mysterious elements` fallback, so a reader who chose
+  "Enemies to Lovers" and "Forced Proximity" had both choices reach the model as
+  `Visual elements: mysterious elements, mysterious elements`, and every image
+  the app can produce from those seven looked like every other.
+- The seam types `themes` as `string[]` rather than as a closed set, so both
+  vocabularies are legitimate input here and both are answered now: the classic
+  entries stay for a caller that sends them, and the seed ids sit beside them,
+  worded from the same seed descriptions the story prompt is built from, so the
+  picture and the prose are asked for the same thing.
+- The image-service test now walks the picker's twelve ids the way its sibling
+  walks the ten creatures, asserting that none falls back and that no two share
+  a visual element — distinctness being what proves each theme is described as
+  itself rather than that the fallback was renamed.
+
+#### An export the service refused is no longer reported as an unreachable service
+
+- `/api/export/save` answers a real HTTP status for every refusal, so a rejected
+  export no longer arrives as a `success: false` body on a `200` — it arrives on
+  the error channel, with the same envelope inside it saying which of the
+  route's four refusals it was: a story past the 500KB cap, a body missing a
+  required field, a format the renderer does not support, or the service itself
+  failing.
+- The subscription discarded it. `error: () => { ... }` reported all four as
+  "Could not reach the export service.", which is the one thing none of them
+  is — the request reached the service and was answered — so a reader whose saga
+  had outgrown the cap was told to check their connection over something they
+  could fix by exporting fewer chapters or choosing another format. It was the
+  only subscription in the component not reading its error through
+  `formatHttpError`; the image, generation, continuation, cloud-library, and job
+  subscriptions all do.
+- The connection wording stays as the fallback, which is the one case it
+  actually describes: a transport failure carries no envelope. Both paths have a
+  spec.
+- Incidental: `downloads generated story HTML locally` was failing. It flushes
+  `tick()` and expects the object URL to have been revoked, but the revoke is
+  scheduled `OBJECT_URL_REVOKE_DELAY_MS` out — the bare call flushes 0ms and
+  never reaches it. The export spec directly below it already carried the
+  corrected form and a comment explaining exactly this; this one kept the old
+  call when the delay was introduced. The Angular suite is green again.
+
 ### 🐛 Three Quick Wins — two creatures written as a third, themes outside the contract, a welded chapter (August 26, 2026)
 
 #### A siren is no longer written by the fae court, and neither is a djinn

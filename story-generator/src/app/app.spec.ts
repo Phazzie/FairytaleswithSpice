@@ -2724,7 +2724,11 @@ describe('App', () => {
     expect(anchor.download).toBe('downloaded-pact.html');
     expect(clickSpy).toHaveBeenCalled();
     expect(URL.revokeObjectURL).not.toHaveBeenCalled();
-    tick();
+    // The same reading the export spec below records: the revoke is scheduled
+    // `OBJECT_URL_REVOKE_DELAY_MS` out, so a bare `tick()` flushes 0ms and
+    // never reaches it. This one kept the bare call when the delay was
+    // introduced, which is why it has been failing.
+    tick(OBJECT_URL_REVOKE_DELAY_MS);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:story-download');
     expect(component.statusMessage()).toBe('Story download created.');
   }));
@@ -2777,5 +2781,50 @@ describe('App', () => {
     const notifications = notificationService.notifications();
     expect(notifications[0]?.type).toBe('error');
     expect(notifications[0]?.message).toBe('Format not supported');
+  });
+
+  // `/api/export/save` answers a real status for every refusal, so a rejected
+  // export no longer arrives as the `success: false` body the spec above
+  // describes — it arrives on the error channel with the same envelope inside
+  // it. This subscription discarded that and reported all four of the route's
+  // refusals as "Could not reach the export service.", which is the one thing
+  // none of them is: the request reached the service and was answered.
+  it('reports the reason the export route gave rather than a connection failure', () => {
+    const notificationService = TestBed.inject(NotificationService);
+    seedWorkbenchWithSingleChapter(component, { title: 'Oversized Pact' });
+    storyService.exportStory.and.returnValue(throwError(() => ({
+      status: 400,
+      error: {
+        success: false,
+        error: {
+          code: 'CONTENT_TOO_LARGE',
+          message: 'Content exceeds maximum size of 500KB'
+        }
+      }
+    })));
+
+    component.exportStory();
+
+    expect(component.isExporting()).toBeFalse();
+    const notifications = notificationService.notifications();
+    expect(notifications[0]?.type).toBe('error');
+    expect(notifications[0]?.message).toBe('Content exceeds maximum size of 500KB');
+    expect(component.statusMessage()).toBe('Content exceeds maximum size of 500KB');
+  });
+
+  // A transport failure has no envelope, so the connection wording is still the
+  // right answer for the one case it actually describes.
+  it('falls back to the connection message when the export request never reached the service', () => {
+    const notificationService = TestBed.inject(NotificationService);
+    seedWorkbenchWithSingleChapter(component, { title: 'Offline Pact' });
+    storyService.exportStory.and.returnValue(throwError(() => ({
+      status: 0,
+      error: new ProgressEvent('error')
+    })));
+
+    component.exportStory();
+
+    expect(component.isExporting()).toBeFalse();
+    expect(notificationService.notifications()[0]?.message).toBe('Could not reach the export service.');
   });
 });
