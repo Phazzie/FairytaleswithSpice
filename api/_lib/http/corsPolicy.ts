@@ -70,6 +70,27 @@ const EXPOSED_HEADERS = [
   'X-Request-ID'
 ];
 
+/**
+ * How long a browser may reuse one preflight result, in seconds.
+ *
+ * Nothing here ever set `Access-Control-Max-Age`, and the absence is not a
+ * neutral default: with no value, a browser falls back to its own, which is five
+ * seconds in Chromium and in Safari. Every paid `POST` route in this repository
+ * is preflighted — the app sends `Content-Type: application/json`, which is not
+ * on the CORS safelist — so on any deployment where the page and the API are on
+ * different origins, a reader generating a story, continuing one, exporting it,
+ * and asking for a chapter image paid a second round trip for all four, and paid
+ * it again for anything more than five seconds later. The preflight answer is
+ * the same one every time: this route's method list, this route's header list,
+ * neither of which depends on the request.
+ *
+ * Ten minutes is the largest value every major browser honours in full —
+ * Chromium caps the header at 7200 seconds and Safari at 600 — so this is the
+ * ceiling rather than a guess, and it is short enough that a deployment changing
+ * its allowed methods or origins is not held to the old answer for long.
+ */
+export const CORS_PREFLIGHT_MAX_AGE_SECONDS = 600;
+
 const DEFAULT_HEADERS = [
   'Authorization',
   'Cache-Control',
@@ -109,7 +130,14 @@ export function buildCorsHeaders(
     Vary: 'Origin',
     'Access-Control-Allow-Methods': normalizeMethods(options.methods),
     'Access-Control-Allow-Headers': unique(options.headers ?? DEFAULT_HEADERS).join(', '),
-    'Access-Control-Expose-Headers': unique(EXPOSED_HEADERS).join(', ')
+    'Access-Control-Expose-Headers': unique(EXPOSED_HEADERS).join(', '),
+    // Set on every response rather than only on the preflight: a browser reads
+    // it on the preflight and ignores it everywhere else, and the routes here
+    // answer the preflight from three different places — `applyCorsPolicy`, the
+    // jobs route's own `OPTIONS` branch, and `createCorsMiddleware` — so a
+    // header added only to "the preflight response" is a header one of them
+    // would eventually be missing.
+    'Access-Control-Max-Age': String(CORS_PREFLIGHT_MAX_AGE_SECONDS)
   };
 
   if (allowedOrigin) {

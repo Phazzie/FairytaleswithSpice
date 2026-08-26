@@ -143,11 +143,37 @@ export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(
 }
 
 /**
+ * Match a base64 `data:` URI and split it into its media type and its payload.
+ *
+ * The media type is everything between `data:` and the `;base64` that ends the
+ * header, not everything up to the first `;`. RFC 2397 lets the media type carry
+ * parameters — `data:text/plain;charset=utf-8;base64,…` is an ordinary data URI,
+ * and the one this app's own exports would grow the moment a text format
+ * declared its encoding — and a pattern that stops at the first `;` does not
+ * match it at all, so the whole URI was refused rather than decoded. Capturing
+ * the parameters with the type also keeps them: they end up on the `Blob`, which
+ * is where a charset belongs.
+ *
+ * `[^,]*` cannot run past the comma that starts the payload, so the header is
+ * decided in one pass; the trailing `;base64` is backtracked out of the type by
+ * the literal that follows. Case-insensitive because a URI scheme and the
+ * `base64` token both are.
+ */
+const BASE64_DATA_URI_PATTERN = /^data:([^,]*);base64,(.*)$/is;
+
+/**
  * Decode a base64 `data:` URI into a `Blob`, so a file the backend returned
  * inline can be handed to `downloadBlob` exactly like one built client-side.
+ *
+ * Throws for anything it cannot decode — a URI that is not base64, or a payload
+ * `atob` refuses. Callers hand the result straight to a download, so a caller
+ * that has a way to tell the reader the file did not arrive has to catch this:
+ * a throw inside an RxJS `next` callback does not reach that subscription's
+ * `error` handler, it is reported as an unhandled error, and the reader is left
+ * with a button that did nothing at all.
  */
 export function dataUriToBlob(dataUri: string): Blob {
-  const match = /^data:([^;]*);base64,(.*)$/s.exec(dataUri);
+  const match = BASE64_DATA_URI_PATTERN.exec(dataUri);
   if (!match) {
     throw new Error('Not a base64-encoded data: URI');
   }

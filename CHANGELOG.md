@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — a preflight nobody may cache, an export that fails without saying so, a cut between the halves of a character (August 26, 2026)
+
+#### Every cross-origin request paid for its own preflight
+
+- `buildCorsHeaders` set the origin, methods, request headers, exposed headers,
+  and credentials, and never set `Access-Control-Max-Age`. The absence is not a
+  neutral default: a browser with no value falls back to its own, which is five
+  seconds in Chromium and in Safari.
+- Every paid `POST` route here is preflighted — the app sends
+  `Content-Type: application/json`, which is not on the CORS safelist — so on
+  any deployment serving the page and the API from different origins, a reader
+  generating a story, continuing it, exporting it, and asking for a chapter
+  image paid a second round trip for all four, and paid it again for anything
+  more than five seconds later.
+- The answer never varies with the request: it is this route's method list and
+  this route's accepted headers. It is now cached for ten minutes, the largest
+  window every major browser honours in full — Chromium caps the header at 7200
+  seconds and Safari at 600 — and short enough that a deployment changing its
+  allowed methods or origins is not held to the old answer for long.
+- Set on every response rather than only on the preflight, because the routes
+  answer preflights from three places (`applyCorsPolicy`, the jobs route's own
+  `OPTIONS` branch, `createCorsMiddleware`) and a browser ignores the header
+  everywhere it is not a preflight.
+
+#### The one export failure the app could not describe was the one where nothing was wrong with the export
+
+- `/api/export/save` hands the exported bytes back inline as a `data:` URI, and
+  `AppComponent.exportStory` decoded it with `dataUriToBlob` inside its `next`
+  callback. `dataUriToBlob` throws for a URI it cannot decode, and RxJS does not
+  route a throw from `next` to that subscription's `error` handler — it reports
+  it as an unhandled error and abandons the rest of the branch. So the two lines
+  that tell the reader the export is ready never ran either: the spinner
+  stopped, no file was saved, and nothing said why, on the one failure where the
+  route had already answered `success: true`.
+- The decode is now guarded and reports through the same notification and status
+  path every other export refusal uses.
+- `dataUriToBlob` was also refusing data URIs that are perfectly ordinary. Its
+  pattern read the media type as everything before the first `;`, but RFC 2397
+  lets the media type carry parameters — `data:text/plain;charset=utf-8;base64,…`
+  is a legal data URI, and the one this app's own exports would grow the moment a
+  text format declared its encoding. The type is now read as everything before
+  the `;base64` that ends the header, so the parameters survive onto the `Blob`,
+  where a charset belongs, and the header tokens are matched case-insensitively.
+
+#### Three prompt excerpts still cut in UTF-16 code units
+
+- `StoryService.createContextExcerpt` (`text.slice(-1200)`, the
+  `PREVIOUS CHAPTER EXCERPT` a continuation is written from),
+  `StoryService.generateNextChapterHint` (`candidate.slice(0, 197)`, the
+  `nextChapterHint` the reader is shown), and `buildContinuityPrompt`
+  (`.slice(0, 2200)` per chapter, the prose the continuity state is derived
+  from) all cut with a code-unit count.
+- A cut can land between the halves of a surrogate pair, and nothing throws:
+  `JSON.stringify` escapes a lone surrogate rather than refusing it, so the
+  prompt was simply built with a character the story never contained and the
+  story's own astral character was gone. That is the failure `chunkByCodePoint`
+  in the export service and `capUtf8Bytes` in the download filename stem both
+  iterate code points to avoid.
+- The other half is the word: an arbitrary offset ends — or, for the tail,
+  starts — mid-word, so the model is shown a fragment and asked to continue from
+  it. `ImageService`'s `capAtWordBoundary` already had both readings right, so
+  it moves to `api/_lib/utils/textExcerpt.ts` beside a `tailAtWordBoundary` that
+  mirrors it for the excerpt that has to end where the story ends, and all four
+  call sites share one reading.
+
 ### 🐛 Three Quick Wins — a cast the scan cannot see, a promise the courtroom cannot match, a 429 that says nothing (August 26, 2026)
 
 #### The character-consistency scan could only read an ASCII cast

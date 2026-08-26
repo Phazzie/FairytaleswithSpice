@@ -6,6 +6,7 @@ import axios from 'axios';
 import { randomUUID } from 'node:crypto';
 import { ImageGenerationSeam, ApiResponse, CreatureType } from '../types/contracts.js';
 import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
+import { capAtWordBoundary } from '../utils/textExcerpt';
 
 type SupportedAspectRatio = NonNullable<ImageGenerationSeam['input']['aspectRatio']>;
 
@@ -128,28 +129,6 @@ export function buildSceneDescriptionFromStory(content: string): string {
   const opening = sentences.slice(0, SCENE_SENTENCE_COUNT).join('').trim();
 
   return capAtWordBoundary(opening, IMAGE_SCENE_DESCRIPTION_MAX_LENGTH);
-}
-
-/**
- * Cut to at most `maxCodePoints` whole characters, then back up to the last
- * whitespace so the description does not end mid-word. A first word longer than
- * the whole cap has no whitespace to back up to and is kept as it is, which is
- * still a whole-character cut.
- */
-function capAtWordBoundary(value: string, maxCodePoints: number): string {
-  const characters = Array.from(value);
-  if (characters.length <= maxCodePoints) {
-    return value;
-  }
-
-  const capped = characters.slice(0, maxCodePoints).join('');
-  for (let index = capped.length - 1; index >= 0; index -= 1) {
-    if (/\s/.test(capped[index])) {
-      return capped.slice(0, index).trimEnd();
-    }
-  }
-
-  return capped;
 }
 
 export class ImageService {
