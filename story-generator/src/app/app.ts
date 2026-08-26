@@ -1376,16 +1376,33 @@ export class App implements OnDestroy {
   }
 
   downloadStory() {
-    const session = this.workbench();
-    if (!session.story || !session.chapterHistory.length) {
-      this.notificationService.warning('Nothing to download', 'Generate a story first.');
+    const exportable = this.requireExportableStory('download');
+    if (!exportable) {
       return;
     }
 
-    const safeTitle = this.safeFileName(session.story.title);
+    const { session, story } = exportable;
+    const safeTitle = this.safeFileName(story.title);
     const html = this.buildStoryHtmlDocument(session);
     downloadHtmlDocument(html, `${safeTitle}.html`, createBrowserHtmlDownloadHost(document, URL));
     this.statusMessage.set('Story download created.');
+  }
+
+  /**
+   * The story-download and story-export actions both need a generated story
+   * to act on and both refuse the same way when there isn't one; shared so
+   * that refusal can't drift between the two buttons that show it.
+   */
+  private requireExportableStory(
+    actionLabel: string
+  ): { session: StoryWorkbenchSession; story: NonNullable<StoryWorkbenchSession['story']> } | null {
+    const session = this.workbench();
+    if (!session.story || !session.chapterHistory.length) {
+      this.notificationService.warning(`Nothing to ${actionLabel}`, 'Generate a story first.');
+      return null;
+    }
+
+    return { session, story: session.story };
   }
 
   private buildStoryHtmlDocument(session: StoryWorkbenchSession): string {
@@ -1417,17 +1434,16 @@ ${chapters}
   }
 
   exportStory() {
-    const session = this.workbench();
-    if (!session.story || !session.chapterHistory.length) {
-      this.notificationService.warning('Nothing to export', 'Generate a story first.');
-      return;
-    }
-
     if (this.isExporting()) {
       return;
     }
 
-    const story = session.story;
+    const exportable = this.requireExportableStory('export');
+    if (!exportable) {
+      return;
+    }
+
+    const { session, story } = exportable;
     const format = this.selectedExportFormat();
     const safeTitle = this.safeFileName(story.title);
 

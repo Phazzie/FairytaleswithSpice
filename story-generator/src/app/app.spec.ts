@@ -65,6 +65,24 @@ function createSummary(overrides: Partial<StorySummary> = {}): StorySummary {
   };
 }
 
+/**
+ * Both the story-download and story-export tests drive the same
+ * attached-anchor-object-URL mechanic; sharing the spy setup keeps them from
+ * drifting into two slightly different fakes of the same browser API.
+ */
+function spyOnAttachedAnchorDownload(objectUrl: string): { anchor: HTMLAnchorElement; clickSpy: jasmine.Spy } {
+  const originalCreateElement = document.createElement.bind(document);
+  const anchor = originalCreateElement('a') as HTMLAnchorElement;
+  const clickSpy = spyOn(anchor, 'click');
+  spyOn(document, 'createElement').and.callFake((tagName: string) => {
+    return tagName.toLowerCase() === 'a' ? anchor : originalCreateElement(tagName);
+  });
+  spyOn(URL, 'createObjectURL').and.returnValue(objectUrl);
+  spyOn(URL, 'revokeObjectURL');
+
+  return { anchor, clickSpy };
+}
+
 function createState(overrides: Partial<StoryStateSnapshot> = {}): StoryStateSnapshot {
   const now = new Date().toISOString();
   return {
@@ -2683,14 +2701,7 @@ describe('App', () => {
   });
 
   it('downloads generated story HTML locally', fakeAsync(() => {
-    const originalCreateElement = document.createElement.bind(document);
-    const anchor = originalCreateElement('a') as HTMLAnchorElement;
-    const clickSpy = spyOn(anchor, 'click');
-    spyOn(document, 'createElement').and.callFake((tagName: string) => {
-      return tagName.toLowerCase() === 'a' ? anchor : originalCreateElement(tagName);
-    });
-    spyOn(URL, 'createObjectURL').and.returnValue('blob:story-download');
-    spyOn(URL, 'revokeObjectURL');
+    const { anchor, clickSpy } = spyOnAttachedAnchorDownload('blob:story-download');
     component.workbench.set({
       story: createSummary({ title: 'Downloaded Pact', synopsis: 'A pact worth keeping.' }),
       state: createState(),
@@ -2709,14 +2720,7 @@ describe('App', () => {
   }));
 
   it('exports the story in the selected format through the backend', fakeAsync(() => {
-    const originalCreateElement = document.createElement.bind(document);
-    const anchor = originalCreateElement('a') as HTMLAnchorElement;
-    const clickSpy = spyOn(anchor, 'click');
-    spyOn(document, 'createElement').and.callFake((tagName: string) => {
-      return tagName.toLowerCase() === 'a' ? anchor : originalCreateElement(tagName);
-    });
-    spyOn(URL, 'createObjectURL').and.returnValue('blob:story-export');
-    spyOn(URL, 'revokeObjectURL');
+    const { anchor, clickSpy } = spyOnAttachedAnchorDownload('blob:story-export');
 
     component.workbench.set({
       story: createSummary({ title: 'Exported Pact', synopsis: 'A pact worth exporting.' }),
