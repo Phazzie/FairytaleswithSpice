@@ -12,6 +12,28 @@ export const FILE_SIZE = {
   BYTES_PER_KB: 1024,
   BYTES_PER_MB: 1024 * 1024,
   MAX_CONTENT_LENGTH_KB: 500,    // 500KB maximum content length (~75,000 words)
+  /**
+   * The widest export title, in bytes.
+   *
+   * `/api/export/save` measured `content` against the cap above and left
+   * `title` unmeasured, though both are caller text and both are rendered into
+   * the same document. The title is the more expensive of the two to leave
+   * open: `generateTextContent` writes it and then `'='.repeat(title.length)`
+   * under it, so a `.txt` export doubles it; `generateEPUBContent` interpolates
+   * it into four separate XML parts, so an `.epub` carries four copies; and the
+   * finished document is returned as a base64 `data:` URI, which adds a third
+   * again. The Node deployment accepts a 10MB JSON body, so a one-byte story
+   * with a nine-megabyte title produced tens of megabytes of response from a
+   * rate-limited paid route.
+   *
+   * A kilobyte is several times the longest title this app's generator has ever
+   * produced — the download filename stem is capped at 200 bytes — so this
+   * refuses the abuse without coming near a real title. Measured in bytes, not
+   * code units, for the reason the content cap is: a title in a non-Latin
+   * script is up to four bytes per character, and it is the bytes that are
+   * written.
+   */
+  MAX_TITLE_LENGTH_BYTES: 1024,
   DATA_URL_WARNING_THRESHOLD_MB: 5  // Warn when data URL exceeds 5MB
 } as const;
 

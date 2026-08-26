@@ -547,6 +547,73 @@ async function verifyExportMeasuresItsSizeCapInBytes(): Promise<void> {
 }
 
 /**
+ * The route measured `content` and left `title` unmeasured, though both are
+ * caller text and both are rendered into the same document. The title is the
+ * more expensive of the two to leave open: the `.txt` renderer writes it once
+ * as a heading and again as the `=` rule under it, the `.epub` renderer writes
+ * it into four XML parts, and the finished document comes back as a base64
+ * `data:` URI. So a one-byte story with a large title turned a rate-limited
+ * paid route into an amplifier.
+ */
+async function verifyExportBoundsItsTitleAsWellAsItsContent(): Promise<void> {
+  const maxBytes = FILE_SIZE.MAX_TITLE_LENGTH_BYTES;
+  // Measured in bytes for the same reason the content cap is: three bytes per
+  // character in UTF-8, one UTF-16 code unit each, so this is past the cap by
+  // the measure that counts and under it by the one that does not.
+  const overSizedTitle = '雨'.repeat(Math.ceil(maxBytes / 3) + 1);
+
+  assert(
+    overSizedTitle.length < maxBytes,
+    'the fixture has to be under the cap by code-unit count for this to prove anything'
+  );
+
+  const rejected = new FakeResponse();
+  await exportHandler({
+    method: 'POST',
+    headers: {},
+    body: {
+      storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+      title: overSizedTitle,
+      format: 'txt',
+      content: '<p>Rain.</p>'
+    }
+  }, rejected);
+
+  const body = rejected.body as { error?: { code?: string; field?: string; contentLength?: number; maxLength?: number } };
+
+  assert(rejected.statusCode === 400, `a title past the byte cap should be refused, got ${rejected.statusCode}`);
+  assert(
+    body.error?.code === 'CONTENT_TOO_LARGE',
+    `a title past the byte cap should be refused as too large, got ${JSON.stringify(body.error)}`
+  );
+  assert(
+    body.error?.field === 'title',
+    `the refusal should name the field that overran, got ${JSON.stringify(body.error)}`
+  );
+  assert(
+    body.error?.contentLength === Buffer.byteLength(overSizedTitle, 'utf8')
+      && body.error?.maxLength === maxBytes,
+    `the refusal should report the size it measured and the cap, got ${JSON.stringify(body.error)}`
+  );
+
+  // A title at the cap is still exported, so this refuses the abuse rather than
+  // the ordinary case: no real story title comes near a kilobyte.
+  const accepted = new FakeResponse();
+  await exportHandler({
+    method: 'POST',
+    headers: {},
+    body: {
+      storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+      title: '雨'.repeat(Math.floor(maxBytes / 3)),
+      format: 'txt',
+      content: '<p>雨が降っていた。</p>'
+    }
+  }, accepted);
+
+  assert(accepted.statusCode === 200, `a title at the cap should still export, got ${accepted.statusCode}`);
+}
+
+/**
  * Run something with the console captured, so an assertion can read what the
  * logger actually printed rather than only what it buffered.
  */
@@ -659,6 +726,7 @@ async function main(): Promise<void> {
   await verifyRejectedStoryInputDoesNotRepeatCallerText();
   await verifyImageRequestLineNeitherRepeatsNorBlanksItsParameters();
   await verifyExportMeasuresItsSizeCapInBytes();
+  await verifyExportBoundsItsTitleAsWellAsItsContent();
 
   console.log('Story route contract tests passed');
 }

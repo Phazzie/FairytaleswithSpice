@@ -124,6 +124,26 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
     messages.push(`worldDetails must be ${STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength} characters or fewer.`);
   }
 
+  // The two free-text fields that were read straight into the returned
+  // blueprint without ever being measured, while the four above them were. The
+  // cap is the point of the shared limits object: `buildContinuityPrompt`
+  // stringifies both of these into the continuity model call exactly as they
+  // arrived, so a caller that skips the form — the query-string genesis stream
+  // takes the same blueprint — could put a megabyte of prose in a field named
+  // for one person and have it billed by the token, then stored in the story
+  // state the response carries back.
+  const protagonistName = optionalString(source['protagonistName']);
+  if (isLongerThan(protagonistName, STORY_BLUEPRINT_LIMITS.maxCharacterNameLength)) {
+    invalidFields.push('protagonistName');
+    messages.push(`protagonistName must be ${STORY_BLUEPRINT_LIMITS.maxCharacterNameLength} characters or fewer.`);
+  }
+
+  const antagonistName = optionalString(source['antagonistName']);
+  if (isLongerThan(antagonistName, STORY_BLUEPRINT_LIMITS.maxCharacterNameLength)) {
+    invalidFields.push('antagonistName');
+    messages.push(`antagonistName must be ${STORY_BLUEPRINT_LIMITS.maxCharacterNameLength} characters or fewer.`);
+  }
+
   // The blueprint contract types `heatContract` as required, and the engine
   // refuses every genesis without one before it generates anything — an absent
   // contract came back as `CONTENT_POLICY_VIOLATION` from the other side of the
@@ -160,8 +180,8 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
       themes: themes.value,
       heatContract: heatContract.value!,
       narrativeDirectives,
-      protagonistName: optionalString(source['protagonistName']),
-      antagonistName: optionalString(source['antagonistName']),
+      protagonistName,
+      antagonistName,
       worldDetails
     }
   };

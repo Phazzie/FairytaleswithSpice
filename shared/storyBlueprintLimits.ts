@@ -27,7 +27,26 @@ export const STORY_BLUEPRINT_LIMITS = {
   maxLoglineLength: 420,
   maxWorldDetailsLength: 600,
   maxNarrativeDirectivesLength: 1200,
-  maxNoGoContentLength: 320
+  maxNoGoContentLength: 320,
+  /**
+   * One character name, not a paragraph wearing the field's name.
+   *
+   * `protagonistName` and `antagonistName` were the two free-text blueprint
+   * fields this object did not cover, and the comment above describes them
+   * anyway: both are interpolated straight into a paid model call.
+   * `buildContinuityPrompt` puts each of them into the JSON payload the
+   * continuity extractor sends, verbatim and at whatever length arrived, and
+   * `deriveInitialContinuity` builds a character's `summary`, an
+   * `externalConflict`, and a relationship `note` out of them — text that then
+   * travels back to the caller as story state and is stored with the project.
+   * `buildStoryLabContext` in `StoryService` caps them at its own prompt
+   * boundary, which is why this never showed up as a genesis bill; the
+   * continuity call has no such guard, and the state does not either.
+   *
+   * The number is `STORY_EVALUATION_LIMITS.maxConfigurationValueLength`'s, and
+   * for the same reason it gives there: these fields name one person.
+   */
+  maxCharacterNameLength: 80
 } as const;
 
 export type StoryBlueprintLimits = typeof STORY_BLUEPRINT_LIMITS;

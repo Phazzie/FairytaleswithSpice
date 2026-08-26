@@ -17,6 +17,7 @@ import {
   ThemeSeed,
   WordBudget
 } from '../contracts';
+import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
 
 @Component({
   selector: 'app-streaming-story',
@@ -210,10 +211,18 @@ export class StreamingStoryComponent implements OnDestroy {
   // Created: 2025-10-29 08:27 UTC
   private readonly streamingBlueprint: StoryGenerationSeam['input'] = {
     creature: 'vampire',
-    themes: [
-      { id: 'forbidden_love', label: 'Forbidden Love', description: 'Star-crossed tension under moonlight.' },
-      { id: 'ancient_curses', label: 'Ancient Curses', description: 'Legacy magic complicates every choice.' }
-    ] as ThemeSeed[],
+    // Read from the shared seed list rather than written out here, which is the
+    // whole reason that list exists: `app.ts` and Proving Grounds already build
+    // their pickers from it, and this was the last place in the Angular tree
+    // still spelling theme seeds by hand. It had already drifted —
+    // `ancient_curses` is on neither vocabulary the API recognises, not the
+    // twelve Story Lab seeds and not the eighteen classic `ThemeType`s — so
+    // every stream this component opened sent the genesis route a theme id
+    // nothing downstream could read: `ImageService.mapThemeToVisualElement`
+    // answers it with the `mysterious elements` fallback and `toLoggableThemes`
+    // counts it under `unrecognizedThemeCount`, which is the marker that exists
+    // to say the caller sent something that is not a theme.
+    themes: STORY_LAB_THEME_SEEDS.slice(0, 2).map(seed => ({ ...seed })) as ThemeSeed[],
     logline: 'A vampire lord defies ancient vows for a mortal bond.',
     spicyLevel: 3,
     tone: 'dark_romance',
