@@ -9,11 +9,12 @@ import {
   SpicyLevel,
   Chapter,
   ChapterFailure,
+  CliffhangerType,
   CreatureType,
   ThemeType
 } from '../types/contracts';
 import { selectRandomAuthorStyles } from '../config/authorStyles';
-import { CliffhangerService } from './cliffhangerService';
+import { CliffhangerService, hasIdentifiedCliffhangerType } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
@@ -403,6 +404,26 @@ export class StoryService {
       let aggregatedRawHtml = sanitizedInput.existingContent || '';
       let workingChapterCount = sanitizedInput.currentChapterCount;
       let lastCliffhangerAnalysis = this.cliffhangerService.analyze('');
+      // The hook types this batch has already written, which is what
+      // `varietyScore` is measured against.
+      //
+      // `analyze` was called with one argument, so `previousCliffhangers`
+      // defaulted to `[]` on every chapter and the score it produces could only
+      // ever be 8 — "these hooks do not repeat" — including for a batch that
+      // ends all three of its chapters on the same one. That number is not
+      // internal: it travels back to the caller as
+      // `cliffhangerAnalysis.varietyScore` on the continuation response, so the
+      // one signal the response carries about repetition was a constant
+      // asserting there was none. The types are right here in the loop that
+      // generates them; the branch below is the only reason they were not being
+      // collected.
+      //
+      // Only a classified hook is fed forward. A chapter that merely stops on
+      // `!` reports the `plot_twist` placeholder, and pushing that would charge
+      // the *next* chapter with repeating a twist nothing identified — the
+      // failure `CliffhangerService` was just fixed for, rebuilt one chapter
+      // later from outside.
+      const previousCliffhangers: CliffhangerType[] = [];
       let aiMetadata: AiCallMetadata | undefined;
 
       for (let offset = 1; offset <= requestedChapterCount; offset++) {
@@ -424,8 +445,11 @@ export class StoryService {
           const displayContent = this.stripSpeakerTagsForDisplay(rawChapterContent);
           const { title, body } = this.extractChapterTitleAndBody(displayContent, chapterNumber);
           const chapterContent = body || displayContent;
-          const cliffhangerAnalysis = this.cliffhangerService.analyze(chapterContent);
+          const cliffhangerAnalysis = this.cliffhangerService.analyze(chapterContent, previousCliffhangers);
           lastCliffhangerAnalysis = cliffhangerAnalysis;
+          if (hasIdentifiedCliffhangerType(cliffhangerAnalysis)) {
+            previousCliffhangers.push(cliffhangerAnalysis.cliffhangerType);
+          }
 
           const chapter: Chapter = {
             chapterId: this.generateChapterId(),

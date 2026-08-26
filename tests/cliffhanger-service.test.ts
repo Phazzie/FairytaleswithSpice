@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { CliffhangerService } from '../api/_lib/services/cliffhangerService';
+import { CliffhangerService, hasIdentifiedCliffhangerType } from '../api/_lib/services/cliffhangerService';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -171,5 +171,51 @@ const exclamation = service.analyze('<p>The lamps guttered.</p><p>She ran!</p>')
 
 assert(exclamation.cliffhangerDetected, 'a closing exclamation is a cliffhanger');
 assert(exclamation.cliffhangerType === 'plot_twist', 'a closing exclamation is not a question');
+
+// ...and because that type is the placeholder rather than a finding, the two
+// per-type fields must not be built from it. `cliffhangerDetected` is the wider
+// condition — it is true for any chapter ending on `?` or `!` — so keying them
+// on it closed the `?` case only, where the fallback assigns `mystery` and a
+// real type follows. `!` has no fallback, so `She ran!` was handed three
+// instructions about a twist ("Reveal the first consequence of the twist") and
+// lost five points of variety to a preceding chapter that genuinely was one.
+assert(
+  exclamation.suggestedContinuations.length === 0,
+  'a hook the scan did not classify suggests no continuations for the placeholder type ' +
+    `(got ${JSON.stringify(exclamation.suggestedContinuations)})`
+);
+
+const exclamationAfterTwist = service.analyze('<p>The lamps guttered.</p><p>She ran!</p>', ['plot_twist']);
+
+assert(
+  exclamationAfterTwist.cliffhangerDetected,
+  'a closing exclamation is still a cliffhanger when a previous type is supplied'
+);
+assert(
+  exclamationAfterTwist.varietyScore === 8,
+  'an unclassified hook cannot repeat the previous one, whatever the placeholder type is ' +
+    `(got ${exclamationAfterTwist.varietyScore})`
+);
+
+// The predicate the continuation loop feeds `previousCliffhangers` from. It has
+// to separate a hook the scan classified from one it only found, because
+// pushing the placeholder forward rebuilds the same phantom penalty one chapter
+// later — from outside the service, where this test cannot see it.
+assert(
+  !hasIdentifiedCliffhangerType(exclamation),
+  'a closing exclamation matching no pattern carries no identified type'
+);
+assert(
+  !hasIdentifiedCliffhangerType(answeredQuestion),
+  'a chapter with no hook at all carries no identified type'
+);
+assert(
+  hasIdentifiedCliffhangerType(repeatedDanger),
+  'a pattern-matched danger hook carries an identified type'
+);
+assert(
+  hasIdentifiedCliffhangerType(openQuestion),
+  'a closing question resolved to mystery carries an identified type'
+);
 
 console.log('Cliffhanger service tests passed');

@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — a hook the scan cannot name, a variety score that can only say "varied", a saved history that takes the page down with it (August 26, 2026)
+
+#### The placeholder cliffhanger type still leaked through the exclamation half of the check
+
+- The previous entry closed this for a chapter with no hook at all, and keyed
+  both per-type fields on `cliffhangerDetected`. That is the wider of the two
+  conditions available: it is true for any chapter whose last paragraph ends on
+  `?` **or** `!`, because `CLIFFHANGER_PUNCTUATION_PATTERN` accepts both. The `?`
+  side was covered by accident — the fallback beside it assigns `mystery`, so a
+  real type follows — but `!` has no fallback.
+- So `She ran!`, a genuine hook matching none of the patterns, was reported with
+  `cliffhangerType: 'plot_twist'` (the placeholder), three continuation
+  instructions written for a twist, and a five-point variety penalty whenever the
+  chapter before it genuinely was a twist. That is the same defect the previous
+  entry describes, on the branch it did not reach.
+- Detecting **that** a chapter stops on a hook and detecting **which kind** are
+  two different findings, and only the second can key a per-type answer. Both
+  fields are now keyed on `detectedType`, so an unclassified hook still reports
+  its text and strength — it is a real hook — and simply names no type-specific
+  advice. `hasIdentifiedCliffhangerType` names the distinction for callers.
+
+#### `varietyScore` was a constant, and the constant said "no repetition"
+
+- `CliffhangerService.analyze` takes the hook types that came before and scores
+  **3 out of 8** when the new chapter repeats one. The continuation loop in
+  `StoryService.continueChapter` called it with one argument, so
+  `previousCliffhangers` defaulted to `[]` on every chapter of every batch.
+- The score could therefore only ever be `8` — "these hooks do not repeat" —
+  including for a three-chapter batch that ends all three chapters on the
+  identical beat. It is not an internal number: it travels back to the caller as
+  `cliffhangerAnalysis.varietyScore` on the continuation response, so the one
+  signal that response carries about a serial repeating itself was a constant
+  asserting there was none.
+- The types are produced by the very loop that needed them. They are now
+  collected as each chapter is scanned and fed to the next — and only where the
+  scan actually classified the hook, so the `plot_twist` placeholder above cannot
+  be pushed forward and charge the next chapter with repeating a twist nothing
+  identified.
+
+#### One unreadable entry in the Proving Grounds history took down the whole page
+
+- `loadTestHistory` read `localStorage` as `StoredProvingGroundsTestResult[]` and
+  mapped straight over it, which asserts a shape rather than checking one. What
+  comes back is whatever is under the key: a half-written save, a value left by
+  an older shape of the record, a hand-edited one.
+- An entry without a readable `timestamp` becomes `new Date(undefined)` — an
+  `Invalid Date` — and the history list renders it through
+  `{{ test.timestamp | date:'short' }}`. Angular's `DatePipe` **throws** on a
+  date it cannot convert (`NG02100: InvalidPipeArgument`), and it throws during
+  change detection, so one bad entry does not degrade a row: it takes down the
+  entire Proving Grounds page, on every load, permanently. The 🗑️ that would
+  delete the entry is on the page that will not render, so there is no way back
+  from inside the app. `configuration.promptTemplate.name` is the same story one
+  dereference deeper.
+- The sibling `StoryWorkspaceStorageService.readProjects` already filters its own
+  reads for exactly these reasons. This one now does the same: the parsed value
+  must be an array, entries are kept only if they carry the fields the template
+  dereferences, and the restore applies the same `MAX_TEST_HISTORY_ENTRIES` cap
+  the write does — so a stored list longer than the cap is trimmed when it is
+  read rather than on whatever generation happens to come next.
+
 ### 🐛 Three Quick Wins — a job stream throttled off fifteen seconds in, a score penalty that says nothing, continuation advice for a hook that is not there (August 26, 2026)
 
 #### The Story Lab job event stream was rate-limited as if it were the genesis stream

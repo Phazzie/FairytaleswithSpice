@@ -75,6 +75,25 @@ const CLIFFHANGER_PATTERNS: Record<CliffhangerType, string[]> = {
  */
 const CLIFFHANGER_PUNCTUATION_PATTERN = /[?!]$/;
 
+/**
+ * Whether an analysis identified *which kind* of hook a chapter ends on.
+ *
+ * `cliffhangerType` cannot answer this on its own. The contract types it as a
+ * member of the set rather than as an optional one, so a hook the scan found
+ * but did not classify — a chapter closing on `!` that matches none of the
+ * patterns — is spelled `plot_twist`, exactly like a chapter the scan really
+ * did read as a twist.
+ *
+ * `suggestedContinuations` is what separates them, because `analyze` writes it
+ * per type and emits it only where a type was identified. Naming that here is
+ * what lets a caller feed `previousCliffhangers` without feeding the
+ * placeholder back in and manufacturing the repetition penalty this service was
+ * fixed for.
+ */
+export function hasIdentifiedCliffhangerType(analysis: CliffhangerAnalysis): boolean {
+  return analysis.suggestedContinuations.length > 0;
+}
+
 export class CliffhangerService {
   analyze(content: string, previousCliffhangers: CliffhangerType[] = []): CliffhangerAnalysis {
     // The whole point of this scan is that the ending counts for more than the
@@ -127,33 +146,46 @@ export class CliffhangerService {
     const cliffhangerType = detectedType ?? 'plot_twist';
     const cliffhangerDetected = detectedType !== null || CLIFFHANGER_PUNCTUATION_PATTERN.test(trimmedLastParagraph);
 
-    // `cliffhangerType` is a placeholder when nothing was found — the contract
-    // types it as a `CliffhangerType` rather than as an optional one, so
-    // "no hook" still has to be spelled as some member of the set, and
-    // `plot_twist` is the one it falls to. Every other field already knows that
-    // and reports nothing: strength is floored at 0 and `cliffhangerText` is
-    // empty. These two did not, and they are the two the caller acts on.
+    // `cliffhangerType` is a placeholder whenever `detectedType` is null — the
+    // contract types it as a `CliffhangerType` rather than as an optional one,
+    // so "the scan did not classify this" still has to be spelled as some
+    // member of the set, and `plot_twist` is the one it falls to. Every other
+    // field already knows that and reports nothing: strength is floored at 0
+    // and `cliffhangerText` is empty. These two did not, and they are the two
+    // the caller acts on.
     //
     // `suggestedContinuations` handed back three instructions written for a
     // twist — "Reveal the first consequence of the twist", "Show characters
-    // adapting to the new reality" — for a chapter the scan had just said ends
-    // on no hook at all. `varietyScore` was worse than merely wrong: it asked
-    // whether the placeholder appeared in `previousCliffhangers`, so a chapter
-    // with no cliffhanger scored 3 out of 8 for repetition whenever the chapter
-    // before it genuinely was a `plot_twist` — a sameness penalty for a hook
-    // that does not exist, which is the opposite of what a variety score is
-    // for. The whole analysis travels back to the caller as
-    // `cliffhangerAnalysis` on the continuation response, so both were public
-    // answers about a hook the service had not found.
+    // adapting to the new reality" — for a chapter the scan had never called a
+    // twist. `varietyScore` was worse than merely wrong: it asked whether the
+    // placeholder appeared in `previousCliffhangers`, so a chapter scored 3 out
+    // of 8 for repetition whenever the chapter before it genuinely was a
+    // `plot_twist` — a sameness penalty for a hook that does not exist, which
+    // is the opposite of what a variety score is for. The whole analysis
+    // travels back to the caller as `cliffhangerAnalysis` on the continuation
+    // response, so both were public answers about a hook the service had not
+    // classified.
+    //
+    // Both are keyed on `detectedType` rather than on `cliffhangerDetected`,
+    // which is the wider of the two conditions and let the placeholder through
+    // for every chapter that merely *ends* on a hook. The `?` half of that was
+    // already closed, because the fallback below assigns `mystery` and a
+    // detected type follows; the `!` half was not, and `!` is the other mark
+    // `CLIFFHANGER_PUNCTUATION_PATTERN` accepts. So `She ran!` — a real hook,
+    // matching none of the patterns — was still reported as a plot twist with
+    // three twist instructions attached, and still lost five points of variety
+    // to a preceding chapter that actually was one. Detecting *that* a chapter
+    // stops on a hook and detecting *which kind* are two different findings,
+    // and only the second one can key a per-type answer.
     return {
       cliffhangerDetected,
       cliffhangerType,
       cliffhangerStrength: Math.min(10, Math.max(cliffhangerDetected ? 1 : 0, strength)),
       cliffhangerText: cliffhangerDetected ? lastParagraph : '',
-      suggestedContinuations: cliffhangerDetected
-        ? this.generateContinuationSuggestions(cliffhangerType)
-        : [],
-      varietyScore: cliffhangerDetected && previousCliffhangers.includes(cliffhangerType) ? 3 : 8
+      suggestedContinuations: detectedType === null
+        ? []
+        : this.generateContinuationSuggestions(detectedType),
+      varietyScore: detectedType !== null && previousCliffhangers.includes(detectedType) ? 3 : 8
     };
   }
 

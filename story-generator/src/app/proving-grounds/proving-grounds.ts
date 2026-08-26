@@ -34,6 +34,57 @@ import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
 type TestResult = ProvingGroundsTestResult;
 type StoredTestResult = StoredProvingGroundsTestResult;
 
+/**
+ * How many past runs the history keeps. Read by the restore as well as by the
+ * write, so a stored list that is longer than the cap — one left by an older
+ * build, or by a cap that has since come down — is trimmed when it is read
+ * rather than on whatever generation happens to come next.
+ */
+const MAX_TEST_HISTORY_ENTRIES = 25;
+
+/**
+ * Whether an entry read back out of `localStorage` is a test result this page
+ * can render.
+ *
+ * The restore took the parsed value as `StoredTestResult[]` and mapped over it,
+ * which asserts a shape rather than checking one. What comes back is whatever
+ * is under the key: a half-written save, a value left by an older shape of this
+ * record, or a hand-edited one. The sibling `StoryWorkspaceStorageService`
+ * filters its own reads for exactly these reasons; this one did not, and the
+ * failure here is worse than a mis-sorted list.
+ *
+ * `timestamp` is the sharp edge. An entry without one becomes
+ * `new Date(undefined)` — an `Invalid Date` — and the history list renders it
+ * through `{{ test.timestamp | date:'short' }}`. Angular's `DatePipe` throws on
+ * a date it cannot convert, and it throws during change detection, so one bad
+ * entry does not degrade a row: it takes down the whole Proving Grounds page,
+ * on every load, permanently. The "🗑️" that would delete the entry is on the
+ * page that will not render, so there is no way back from inside the app.
+ * `configuration.promptTemplate.name` is the same story one dereference deeper.
+ *
+ * So the fields the template actually reads are the ones checked, and anything
+ * that fails drops out of the list instead of into it. A partly-populated
+ * history is a recoverable state; a page that throws before it paints is not.
+ */
+function isStoredTestResult(value: unknown): value is StoredTestResult {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<StoredTestResult>;
+  const configuration = candidate.configuration as Partial<TestResult['configuration']> | undefined;
+
+  return typeof candidate.id === 'string'
+    && typeof candidate.timestamp === 'string'
+    && !Number.isNaN(Date.parse(candidate.timestamp))
+    && typeof candidate.generatedStory === 'string'
+    && Boolean(configuration)
+    && typeof configuration?.creature === 'string'
+    && Array.isArray(configuration?.themes)
+    && Boolean(configuration?.promptTemplate)
+    && typeof configuration?.promptTemplate?.name === 'string';
+}
+
 @Component({
   selector: 'app-proving-grounds',
   imports: [CommonModule, FormsModule, RouterLink],
@@ -450,7 +501,7 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   private addToHistory(testResult: TestResult): void {
-    this.testHistory.set([testResult, ...this.testHistory()].slice(0, 25));
+    this.testHistory.set([testResult, ...this.testHistory()].slice(0, MAX_TEST_HISTORY_ENTRIES));
     this.saveTestHistory();
   }
 
@@ -482,11 +533,17 @@ export class ProvingGroundsComponent implements OnInit {
         return;
       }
 
-      const parsed = JSON.parse(saved) as StoredTestResult[];
-      this.testHistory.set(parsed.map(test => ({
-        ...test,
-        timestamp: new Date(test.timestamp)
-      })));
+      const parsed = JSON.parse(saved) as unknown;
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+
+      this.testHistory.set(
+        parsed
+          .filter(isStoredTestResult)
+          .map(test => ({ ...test, timestamp: new Date(test.timestamp) }))
+          .slice(0, MAX_TEST_HISTORY_ENTRIES)
+      );
     } catch (error) {
       console.error('Failed to load test history:', error);
     }
