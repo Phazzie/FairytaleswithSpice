@@ -66,6 +66,43 @@ export function getXaiReasoningEffortForModel(model: string, modelPreference: 'p
   return configuredEffort;
 }
 
+/**
+ * How long the platform lets one API invocation run before it kills it.
+ *
+ * `vercel.json` gives every function under `api/` a `maxDuration` of 60
+ * seconds, and a function that reaches it is terminated: the caller gets the
+ * platform's own timeout page rather than any envelope this API can write. So
+ * this is the window every provider call has to finish inside, and it is read
+ * from the environment so a deployment that raises `maxDuration` can say so.
+ *
+ * Lived under `story-lab/continuityBudget.ts` when continuity extraction was
+ * the only thing measuring itself against it. It is not a Story Lab number —
+ * it is the platform's — and `XaiTextClient`'s retry has to respect the same
+ * one, so both read it here rather than each keeping a copy.
+ */
+export const DEFAULT_FUNCTION_BUDGET_MS = 60000;
+
+/**
+ * What is held back from the budget for everything that still has to happen
+ * after the last provider call: continuity finalization, building the payload,
+ * and writing the response.
+ */
+export const FUNCTION_BUDGET_RESERVE_MS = 5000;
+
+export function getFunctionBudgetMs(): number {
+  return getPositiveIntegerEnv(['STORY_LAB_FUNCTION_BUDGET_MS', 'FUNCTION_BUDGET_MS'], DEFAULT_FUNCTION_BUDGET_MS);
+}
+
+/**
+ * How much of the invocation's window is left for more provider work, never
+ * below zero.
+ */
+export function getRemainingRequestBudgetMs(startedAtMs: number, nowMs = Date.now()): number {
+  const elapsedMs = Math.max(0, nowMs - startedAtMs);
+
+  return Math.max(0, getFunctionBudgetMs() - elapsedMs - FUNCTION_BUDGET_RESERVE_MS);
+}
+
 export function getXaiPrimaryTimeoutMs(): number {
   return getPositiveIntegerEnv(['XAI_STORY_PRIMARY_TIMEOUT_MS', 'XAI_PRIMARY_TIMEOUT_MS'], DEFAULT_XAI_PRIMARY_TIMEOUT_MS);
 }
