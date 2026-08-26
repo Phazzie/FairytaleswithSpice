@@ -1476,9 +1476,22 @@ ${chapters}
             this.notificationService.error('Export failed', message);
           }
         },
-        error: () => {
+        // Read through `formatHttpError` like every other subscription in this
+        // component. `/api/export/save` answers a real status now, so a refusal
+        // no longer arrives as a `success: false` body on a `200` — it arrives
+        // here, and the envelope beside it says which of the route's four
+        // refusals it was: a story past the 500KB cap, a body missing
+        // `storyId`/`content`/`title`/`format`, a format the renderer does not
+        // support, or the service itself failing. Discarding it reported all
+        // four as "Could not reach the export service.", which is the one thing
+        // none of them is — the request reached the service and was answered.
+        // The reader was told to check their connection over a story they can
+        // fix by exporting fewer chapters or choosing another format.
+        error: error => {
           this.isExporting.set(false);
-          this.notificationService.error('Export failed', 'Could not reach the export service.');
+          const message = this.formatHttpError(error, 'Could not reach the export service.');
+          this.notificationService.error('Export failed', message);
+          this.statusMessage.set(message);
         }
       });
   }

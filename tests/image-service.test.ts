@@ -252,8 +252,63 @@ async function testEveryCreatureArchetypeReachesThePrompt(): Promise<void> {
   }
 }
 
+/**
+ * The theme ids `app.ts` actually sends.
+ *
+ * Not `ThemeType`. The image seam types `themes` as `string[]`, and the only
+ * client this route has builds its picker from `availableThemes` — twelve Story
+ * Lab `ThemeSeed`s — and passes `theme.id` straight through. Kept here as its
+ * own list, alongside the creature list above, so a theme added to the picker
+ * without a visual element is a failing case rather than a silent fallback.
+ */
+const STORY_LAB_THEME_SEED_IDS = [
+  'forbidden_love',
+  'dark_secrets',
+  'court_intrigue',
+  'blood_oaths',
+  'slow_burn',
+  'enemies_to_lovers',
+  'revenge',
+  'obsession',
+  'temptation',
+  'magical_bargain',
+  'secret_identity',
+  'forced_proximity'
+];
+
+/**
+ * Seven of those twelve — `court_intrigue`, `blood_oaths`, `slow_burn`,
+ * `enemies_to_lovers`, `magical_bargain`, `secret_identity`, and
+ * `forced_proximity` — matched nothing in a table keyed on the eighteen classic
+ * `ThemeType` values, so they reached the image model as the shared
+ * `mysterious elements` fallback. A reader who picked two of the seven had both
+ * of their choices described to the model with the same three words.
+ */
+async function testEveryThemeTheAppOffersReachesThePrompt(): Promise<void> {
+  const visualElements = new Set<string>();
+
+  for (const theme of STORY_LAB_THEME_SEED_IDS) {
+    const result = await new ImageService().generateImage(createInput({ themes: [theme] }));
+    assert(result.success, `mock image generation should succeed for ${theme}`);
+
+    const prompt = (result.data as ImageGenerationSeam['output']).prompt;
+    const visualElement = /Visual elements: (.*?)\. /.exec(prompt)?.[1];
+
+    assert(visualElement, `the prompt should name a visual element for ${theme} (got: ${prompt})`);
+    assert(
+      visualElement !== 'mysterious elements',
+      `${theme} is on the picker, so it should not fall back to the generic visual element (got: ${prompt})`
+    );
+    // The fallback is one shared string, so distinctness is what proves each
+    // theme is described as itself rather than that the fallback was renamed.
+    assert(!visualElements.has(visualElement), `${theme} should have its own visual element (got: ${visualElement})`);
+    visualElements.add(visualElement);
+  }
+}
+
 async function main(): Promise<void> {
   await testEveryCreatureArchetypeReachesThePrompt();
+  await testEveryThemeTheAppOffersReachesThePrompt();
   await testSceneDescriptionReadsAsProse();
   await testMalformedThemesAreRejectedAsCallerError();
   await testAspectRatioNeverContradictsTheDimensions();

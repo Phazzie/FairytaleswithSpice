@@ -241,8 +241,39 @@ export class ImageService {
     return contexts[creature as CreatureType] || 'supernatural being';
   }
 
+  /**
+   * Describe the themes the reader chose, for the image model.
+   *
+   * The table below was keyed on `ThemeType` — the eighteen classic themes —
+   * and the only client this route has does not send those. `app.ts` builds
+   * its picker from `availableThemes`, twelve Story Lab `ThemeSeed`s, and
+   * passes `theme.id` straight through to `/api/image/generate`. Five of the
+   * twelve happen to spell a classic theme; the other seven —
+   * `court_intrigue`, `blood_oaths`, `slow_burn`, `enemies_to_lovers`,
+   * `magical_bargain`, `secret_identity`, and `forced_proximity` — matched
+   * nothing and fell to the `mysterious elements` fallback. So a reader who
+   * chose "Enemies to Lovers" and "Forced Proximity" had both of them reach
+   * the image model as `Visual elements: mysterious elements, mysterious
+   * elements`, and every image the app can produce from those seven looked the
+   * same as every other.
+   *
+   * The seam types `themes` as `string[]` rather than as a closed set, so both
+   * vocabularies are legitimate input here and both are answered. The classic
+   * entries stay for a caller that sends them; the seed ids are added beside
+   * them, worded from the same seed descriptions the story prompt is built
+   * from, so the picture and the prose are asked for the same thing.
+   */
   private mapThemeToVisualElement(theme: string): string {
     const visualMap: Record<string, string> = {
+      // Story Lab theme seeds, as `app.ts` offers them.
+      court_intrigue: 'candlelit halls and watching courtiers',
+      blood_oaths: 'cut palms and binding sigils',
+      slow_burn: 'held distance and charged glances',
+      enemies_to_lovers: 'drawn weapons lowered mid-reach',
+      magical_bargain: 'outstretched hands and glowing terms',
+      secret_identity: 'half-shadowed faces and shed disguises',
+      forced_proximity: 'a narrow room and no way past each other',
+      // Classic `ThemeType` values, for a caller that sends those instead.
       betrayal: 'shadows and daggers',
       obsession: 'intense gazes and mirrors',
       power_dynamics: 'thrones and chains',
