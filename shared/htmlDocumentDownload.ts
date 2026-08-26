@@ -76,12 +76,29 @@ export interface HtmlDownloadHost<TAnchor extends DownloadAnchorLike = DownloadA
  */
 export const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
 
-export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(
-  html: string,
+/**
+ * Hand any generated text to the browser as a file the reader saves.
+ *
+ * The story download is not the only button that offers one. Proving Grounds
+ * exports its test history as JSON, and built that download the way the story
+ * download used to: a detached anchor, clicked, with the payload in a `data:`
+ * URI. It is the same silent failure — Firefox does not dispatch a synthetic
+ * click on an anchor that is not in the document — plus one the story download
+ * never had, because a `data:` URI carries the whole payload in the URL and a
+ * history of twenty-five generated stories is not a URL-sized thing. Routing
+ * both through this one function is what keeps the second button from
+ * rediscovering what the first one already learned.
+ *
+ * `mimeType` is the only thing that differs between them, so it is the only
+ * thing the caller supplies.
+ */
+export function downloadTextDocument<TAnchor extends DownloadAnchorLike>(
+  content: string,
   filename: string,
+  mimeType: string,
   host: HtmlDownloadHost<TAnchor>
 ): void {
-  const url = host.createObjectUrl(new Blob([html], { type: 'text/html' }));
+  const url = host.createObjectUrl(new Blob([content], { type: mimeType }));
   const link = host.document.createElement('a');
   link.href = url;
   link.download = filename;
@@ -90,13 +107,25 @@ export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(
   try {
     link.click();
   } finally {
-    // In a `finally` so a click that throws — a browser that refuses the
-    // download, an extension that replaced the handler — does not leave a stray
-    // anchor in the page for every attempt.
+    // Both halves of the cleanup are in the `finally`, because a click that
+    // throws — a browser that refuses the download, an extension that replaced
+    // the handler — has to leave the page as it found it. Detaching the anchor
+    // is the visible half. Scheduling the revoke is the half that used to sit
+    // after the `try` and was therefore skipped by the throw: the browser holds
+    // a blob alive for the life of the tab until its URL is revoked, so every
+    // refused attempt stranded a whole story or a whole exported history in
+    // memory, on the path already least likely to be noticed.
     host.document.body.removeChild(link);
+    host.scheduleRevoke(() => host.revokeObjectUrl(url));
   }
+}
 
-  host.scheduleRevoke(() => host.revokeObjectUrl(url));
+export function downloadHtmlDocument<TAnchor extends DownloadAnchorLike>(
+  html: string,
+  filename: string,
+  host: HtmlDownloadHost<TAnchor>
+): void {
+  downloadTextDocument(html, filename, 'text/html', host);
 }
 
 /**

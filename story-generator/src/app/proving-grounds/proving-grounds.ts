@@ -21,6 +21,11 @@ import { StoryService } from '../story.service';
 import { GenerationLogic, GenerationLogicService } from './generation-logic.service';
 import { PromptEvaluationService } from './prompt-evaluation.service';
 import { PromptTemplatesService } from './prompt-templates.service';
+import {
+  createBrowserHtmlDownloadHost,
+  downloadTextDocument
+} from '../../../../shared/htmlDocumentDownload';
+import { describeNarrativeDirectivesOverflow } from '../../../../shared/storyBlueprintLimits';
 
 type TestResult = ProvingGroundsTestResult;
 type StoredTestResult = StoredProvingGroundsTestResult;
@@ -197,10 +202,21 @@ export class ProvingGroundsComponent implements OnInit {
       return;
     }
 
+    const input = this.buildGenerationInput(prompts, themes);
+    // The prompts under test travel to the API inside `narrativeDirectives`,
+    // which the blueprint routes cap. Asking first is what keeps a test the
+    // route is certain to refuse from being reported as a generation failure —
+    // and names the two things the reader can actually change.
+    const overflow = describeNarrativeDirectivesOverflow(input.narrativeDirectives ?? '');
+    if (overflow) {
+      this.statusMessage = `The "${template.name}" template does not fit: ${overflow} `
+        + 'Choose a shorter template, trim the custom prompt, or leave the generation logic out of this run.';
+      return;
+    }
+
     this.isGenerating.set(true);
     this.statusMessage = 'Generating Story Lab sample...';
     const startTime = Date.now();
-    const input = this.buildGenerationInput(prompts, themes);
 
     this.storyService.beginStory(input).subscribe({
       next: result => {
@@ -218,7 +234,8 @@ export class ProvingGroundsComponent implements OnInit {
       },
       error: error => {
         console.error('Error generating story:', error);
-        this.statusMessage = 'Story generation failed. Check the debug panel or console for details.';
+        this.statusMessage = this.readApiErrorMessage(error)
+          ?? 'Story generation failed. Check the debug panel or console for details.';
         this.isGenerating.set(false);
       }
     });
@@ -282,12 +299,18 @@ export class ProvingGroundsComponent implements OnInit {
       return;
     }
 
-    const dataStr = JSON.stringify(this.testHistory(), null, 2);
-    const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', `proving-grounds-results-${Date.now()}.json`);
-    linkElement.click();
+    // Through the shared download rather than a `data:` URI on a detached
+    // anchor: Firefox does not dispatch a synthetic click on an anchor that is
+    // not in the document, so this button did nothing there at all, and the
+    // history it exports — up to twenty-five generated stories with their
+    // prompts and evaluations — is far past what a browser will carry in a URL.
+    downloadTextDocument(
+      JSON.stringify(this.testHistory(), null, 2),
+      `proving-grounds-results-${Date.now()}.json`,
+      'application/json',
+      createBrowserHtmlDownloadHost(document, URL)
+    );
+    this.statusMessage = 'Exported the test history as JSON.';
   }
 
   deleteTest(testId: string): void {
@@ -377,6 +400,24 @@ export class ProvingGroundsComponent implements OnInit {
     return chapters
       .map(chapter => `<section><h3>${chapter.title}</h3>${chapter.htmlContent}<p><strong>Summary:</strong> ${chapter.summary}</p></section>`)
       .join('\n');
+  }
+
+  /**
+   * The message the API sent, when it sent one.
+   *
+   * A failed generation is a real status now, so `HttpClient` reports it through
+   * the error path rather than as a `success: false` body on a `200` — and the
+   * envelope that says which field the route refused travels with it, in
+   * `HttpErrorResponse.error`. Reporting a fixed sentence instead threw that
+   * away: "Story generation failed" for a blueprint the route named the invalid
+   * field of, and the same sentence for a provider outage.
+   */
+  private readApiErrorMessage(error: unknown): string | null {
+    const body = (error as { error?: unknown } | null | undefined)?.error;
+    const envelope = (body as { error?: { message?: unknown } } | null | undefined)?.error;
+    const message = envelope?.message;
+
+    return typeof message === 'string' && message.trim().length > 0 ? message : null;
   }
 
   private generateId(): string {

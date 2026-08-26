@@ -1438,9 +1438,15 @@ ${chapters}
             this.notificationService.error('Image generation failed', message);
           }
         },
-        error: () => {
+        // Read through `formatHttpError` like every other subscription in this
+        // component. A failed image generation is a real status now, so it
+        // arrives here rather than as a `success: false` body on a `200`, and
+        // the reason the route gave — an unsupported style, an exhausted image
+        // quota, a missing provider key — travels in the envelope this used to
+        // discard. "Please try again" is the wrong advice for all three.
+        error: error => {
           this.isGeneratingImage.set(false);
-          const message = 'Image generation failed. Please try again.';
+          const message = this.formatHttpError(error, 'Image generation failed. Please try again.');
           this.imageGenerationError.set(message);
           this.notificationService.error('Image generation failed', message);
         }

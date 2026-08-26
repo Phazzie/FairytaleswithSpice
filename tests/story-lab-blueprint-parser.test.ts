@@ -6,7 +6,10 @@ import {
   parseStoryLabBlueprintFromQuery
 } from '../api/_lib/story-lab/validation/blueprintParser';
 import type { CreatureType } from '../api/_lib/types/contracts';
-import { STORY_BLUEPRINT_LIMITS } from '../shared/storyBlueprintLimits';
+import {
+  describeNarrativeDirectivesOverflow,
+  STORY_BLUEPRINT_LIMITS
+} from '../shared/storyBlueprintLimits';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -164,6 +167,49 @@ const overTheLimitQuery = parseStoryLabBlueprintFromQuery({
 assert(
   overTheLimitQuery.error?.invalidFields.includes('logline'),
   'an over-long logline should be refused on the stream query path as well'
+);
+
+// A caller that assembles `narrativeDirectives` from parts asks
+// `describeNarrativeDirectivesOverflow` before it spends a request. That answer
+// is worth nothing unless it matches the one this parser gives, so both
+// readings are taken here, at the boundary and on either side of it.
+const directivesBody = (narrativeDirectives: string) =>
+  parseStoryLabBlueprintFromBody({ ...bodyForCreature('dragon'), narrativeDirectives });
+
+const directivesAtTheLimit = longText(STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength);
+assert(
+  describeNarrativeDirectivesOverflow(directivesAtTheLimit) === null,
+  'directives exactly at the cap should be described as fitting'
+);
+assert(
+  !directivesBody(directivesAtTheLimit).error,
+  'directives exactly at the cap should be accepted by the parser'
+);
+
+const directivesOverTheLimit = longText(STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength + 1);
+const overflowMessage = describeNarrativeDirectivesOverflow(directivesOverTheLimit);
+assert(overflowMessage !== null, 'directives past the cap should be described as too long');
+assert(
+  overflowMessage.includes(String(STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength))
+    && overflowMessage.includes(String(directivesOverTheLimit.length)),
+  'the overflow message should name both the length and the cap'
+);
+assert(
+  directivesBody(directivesOverTheLimit).error?.invalidFields.includes('narrativeDirectives'),
+  'directives past the cap should be refused by the parser'
+);
+
+// The parser trims before it measures, so surrounding whitespace is not what
+// makes a value too long. A client-side check that counted it would refuse a
+// request this route would have taken.
+const paddedToTheLimit = `\n  ${directivesAtTheLimit}  \n`;
+assert(
+  describeNarrativeDirectivesOverflow(paddedToTheLimit) === null,
+  'whitespace around directives at the cap should not be described as overflow'
+);
+assert(
+  !directivesBody(paddedToTheLimit).error,
+  'whitespace around directives at the cap should not be refused by the parser'
 );
 
 console.log('Story Lab shared blueprint parser tests passed');
