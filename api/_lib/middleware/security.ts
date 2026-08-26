@@ -38,6 +38,28 @@ export interface AuthResult {
  * @returns Authentication result with user ID if successful
  */
 export async function authenticateRequest(req: AuthenticatedRequest): Promise<AuthResult> {
+  // Validate against configured API keys first. Checking for a caller-supplied
+  // key before this used to answer MISSING_API_KEY to every request that sent
+  // none — which is every request the app's own frontend has ever made, since
+  // it has never sent one — regardless of whether API_KEYS was configured at
+  // all. That made the documented "no keys configured → allow in development
+  // mode" fallback reachable only by a caller that happened to send some key
+  // anyway; the one request shape this module exists to let through when
+  // unconfigured was the one shape it never actually let through.
+  const validKeys = (process.env['API_KEYS'] || '')
+    .split(',')
+    .map(k => k.trim())
+    .filter(k => k.length > 0);
+
+  if (validKeys.length === 0) {
+    // No API keys configured - allow request in development mode
+    console.warn('⚠️  No API keys configured. Set API_KEYS environment variable for production.');
+    return {
+      authenticated: true,
+      userId: 'development_user'
+    };
+  }
+
   // Extract API key from header
   const apiKey =
     readHeader(req.headers, 'x-api-key') ||
@@ -52,23 +74,7 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
       }
     };
   }
-  
-  // Validate API key against environment variable.
-  // Entries are trimmed so `API_KEYS=key1, key2` accepts `key2`.
-  const validKeys = (process.env['API_KEYS'] || '')
-    .split(',')
-    .map(k => k.trim())
-    .filter(k => k.length > 0);
 
-  if (validKeys.length === 0) {
-    // No API keys configured - allow request in development mode
-    console.warn('⚠️  No API keys configured. Set API_KEYS environment variable for production.');
-    return {
-      authenticated: true,
-      userId: 'development_user'
-    };
-  }
-  
   if (!validKeys.some(validKey => matchesApiKey(validKey, apiKey))) {
     return {
       authenticated: false,
@@ -244,6 +250,21 @@ export function checkRateLimit(
     remaining: maxRequests - entry.count,
     resetTime: entry.resetTime
   };
+}
+
+/**
+ * Test-only: clear every rate limit bucket immediately, rather than waiting
+ * for a window to expire.
+ *
+ * `rateLimitStore` is one process-wide map. A test file that drives a route
+ * handler many times in one run to exercise behaviour that has nothing to do
+ * with rate limiting — a validation rule, a response shape, an owner check —
+ * shares that map with every other call the same file makes, and would
+ * otherwise trip the real budget partway through for a reason the test was
+ * never checking.
+ */
+export function resetRateLimitsForTests(): void {
+  rateLimitStore.clear();
 }
 
 /**

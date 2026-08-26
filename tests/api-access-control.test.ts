@@ -1,0 +1,347 @@
+#!/usr/bin/env tsx
+// Created: 2026-08-26 10:40 UTC
+//
+// `authenticateRequest` + `checkRateLimit` (`api/_lib/middleware/security.ts`)
+// were fully built and had their own isolated unit tests, but had zero
+// callers anywhere in the app — every route that spends real money on the
+// xAI/Grok API was reachable by anyone, unauthenticated and unthrottled.
+// `tests/api-key-auth.test.ts` still proves the primitives themselves are
+// correct; this file proves the *routes* actually enforce them, driving each
+// wired handler the way a real request would rather than calling the
+// primitives directly.
+
+import generateHandler from '../api/story/generate';
+import continueHandler from '../api/story/continue';
+import imageGenerateHandler from '../api/image/generate';
+import exportHandler from '../api/export/save';
+import evaluateHandler from '../api/story-lab/evaluate';
+import genesisHandler from '../api/story-lab/stories';
+import continuationHandler from '../api/story-lab/stories/[storyId]/continue';
+import streamGenesisHandler from '../api/story-lab/stream/genesis';
+import jobsHandler from '../api/story-lab/jobs';
+import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
+import { RATE_LIMITS } from '../api/_lib/constants';
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+class FakeResponse {
+  headers: Record<string, string> = {};
+  statusCode = 0;
+  body: unknown = null;
+  ended = false;
+  chunks: string[] = [];
+  destroyed = false;
+
+  setHeader(name: string, value: string): void {
+    this.headers[name] = value;
+  }
+
+  status(code: number): this {
+    this.statusCode = code;
+    return this;
+  }
+
+  json(body: unknown): void {
+    this.body = body;
+    this.ended = true;
+  }
+
+  writeHead(code: number, headers: Record<string, string> = {}): this {
+    this.statusCode = code;
+    Object.assign(this.headers, headers);
+    return this;
+  }
+
+  write(chunk: string): void {
+    this.chunks.push(chunk);
+  }
+
+  end(): void {
+    this.ended = true;
+  }
+}
+
+function errorCode(res: FakeResponse): unknown {
+  return (res.body as { error?: { code?: unknown } } | null)?.error?.code;
+}
+
+async function withApiKeys(keys: string[], fn: () => Promise<void>): Promise<void> {
+  const previous = process.env['API_KEYS'];
+  process.env['API_KEYS'] = keys.join(',');
+  resetRateLimitsForTests();
+  try {
+    await fn();
+  } finally {
+    if (previous === undefined) {
+      delete process.env['API_KEYS'];
+    } else {
+      process.env['API_KEYS'] = previous;
+    }
+    resetRateLimitsForTests();
+  }
+}
+
+interface HandlerCase {
+  name: string;
+  limits: { maxRequests: number; windowMs: number };
+  call: (headers: Record<string, string>) => Promise<FakeResponse>;
+}
+
+const POST_JSON_CASES: HandlerCase[] = [
+  {
+    name: '/api/story/generate',
+    limits: RATE_LIMITS.STORY_GENERATION,
+    call: async headers => {
+      const res = new FakeResponse();
+      await generateHandler({ method: 'POST', headers, body: {} }, res);
+      return res;
+    }
+  },
+  {
+    name: '/api/story/continue',
+    limits: RATE_LIMITS.CHAPTER_CONTINUATION,
+    call: async headers => {
+      const res = new FakeResponse();
+      await continueHandler({ method: 'POST', headers, body: {} }, res);
+      return res;
+    }
+  },
+  {
+    name: '/api/image/generate',
+    limits: RATE_LIMITS.IMAGE_GENERATION,
+    call: async headers => {
+      const res = new FakeResponse();
+      await imageGenerateHandler({ method: 'POST', headers, body: {} }, res);
+      return res;
+    }
+  },
+  {
+    name: '/api/export/save',
+    limits: RATE_LIMITS.EXPORT,
+    call: async headers => {
+      const res = new FakeResponse();
+      await exportHandler({ method: 'POST', headers, body: {} }, res);
+      return res;
+    }
+  },
+  {
+    name: '/api/story-lab/evaluate',
+    limits: RATE_LIMITS.STORY_LAB_EVALUATE,
+    call: async headers => {
+      const res = new FakeResponse();
+      await evaluateHandler({ method: 'POST', headers, body: {} }, res);
+      return res;
+    }
+  },
+  {
+    name: '/api/story-lab/stories',
+    limits: RATE_LIMITS.STORY_LAB_GENESIS,
+    call: async headers => {
+      const res = new FakeResponse();
+      await genesisHandler({ method: 'POST', headers, body: {} }, res);
+      return res;
+    }
+  },
+  {
+    name: '/api/story-lab/stories/:storyId/continue',
+    limits: RATE_LIMITS.STORY_LAB_CONTINUATION,
+    call: async headers => {
+      const res = new FakeResponse();
+      await continuationHandler({ method: 'POST', headers, body: {} }, res);
+      return res;
+    }
+  },
+  {
+    name: '/api/story-lab/jobs (create)',
+    limits: RATE_LIMITS.STORY_LAB_JOB_CREATE,
+    call: async headers => {
+      const res = new FakeResponse();
+      await jobsHandler({ method: 'POST', headers, body: {} }, res);
+      return res;
+    }
+  }
+];
+
+async function testMissingKeyIsRejected(): Promise<void> {
+  await withApiKeys(['sk-live-real-key'], async () => {
+    for (const testCase of POST_JSON_CASES) {
+      const res = await testCase.call({});
+      assert(
+        res.statusCode === 401,
+        `${testCase.name} should answer 401 for a request with no key, got ${res.statusCode}`
+      );
+      assert(
+        errorCode(res) === 'MISSING_API_KEY',
+        `${testCase.name} should report MISSING_API_KEY, got ${errorCode(res)}`
+      );
+    }
+  });
+}
+
+async function testWrongKeyIsRejected(): Promise<void> {
+  await withApiKeys(['sk-live-real-key'], async () => {
+    for (const testCase of POST_JSON_CASES) {
+      const res = await testCase.call({ 'x-api-key': 'sk-live-wrong-key' });
+      assert(
+        res.statusCode === 401,
+        `${testCase.name} should answer 401 for a wrong key, got ${res.statusCode}`
+      );
+      assert(
+        errorCode(res) === 'INVALID_API_KEY',
+        `${testCase.name} should report INVALID_API_KEY, got ${errorCode(res)}`
+      );
+    }
+  });
+}
+
+async function testValidKeyPassesThrough(): Promise<void> {
+  await withApiKeys(['sk-live-real-key'], async () => {
+    for (const testCase of POST_JSON_CASES) {
+      const res = await testCase.call({ 'x-api-key': 'sk-live-real-key' });
+      assert(
+        res.statusCode !== 401 && res.statusCode !== 429,
+        `${testCase.name} should not be rejected on access control for a valid key, got ${res.statusCode} ${JSON.stringify(res.body)}`
+      );
+      assert(
+        res.headers['X-RateLimit-Remaining'] !== undefined,
+        `${testCase.name} should report a remaining-quota header once authenticated`
+      );
+    }
+  });
+}
+
+async function testRateLimitIsEnforced(): Promise<void> {
+  await withApiKeys(['sk-live-real-key'], async () => {
+    for (const testCase of POST_JSON_CASES) {
+      resetRateLimitsForTests();
+
+      let lastRes: FakeResponse | null = null;
+      for (let i = 0; i < testCase.limits.maxRequests; i += 1) {
+        lastRes = await testCase.call({ 'x-api-key': 'sk-live-real-key' });
+        assert(
+          lastRes.statusCode !== 429,
+          `${testCase.name} should allow request ${i + 1} of ${testCase.limits.maxRequests}, got 429`
+        );
+      }
+
+      const overLimitRes = await testCase.call({ 'x-api-key': 'sk-live-real-key' });
+      assert(
+        overLimitRes.statusCode === 429,
+        `${testCase.name} should answer 429 once its budget of ${testCase.limits.maxRequests} is spent, got ${overLimitRes.statusCode}`
+      );
+      assert(
+        errorCode(overLimitRes) === 'RATE_LIMITED',
+        `${testCase.name} should report RATE_LIMITED, got ${errorCode(overLimitRes)}`
+      );
+    }
+  });
+}
+
+/**
+ * The bug this file exists to catch on its own: `authenticateRequest` used to
+ * check "is a key present?" before checking "are any keys configured?", so a
+ * request with no key at all — every request the app's own frontend has ever
+ * sent — was rejected even when `API_KEYS` was never set. Wiring the guard
+ * into every route without this would have 401'd every real user the moment
+ * this PR shipped.
+ */
+async function testUnconfiguredDeploymentStillServesRequestsWithNoKey(): Promise<void> {
+  const previous = process.env['API_KEYS'];
+  delete process.env['API_KEYS'];
+  resetRateLimitsForTests();
+  try {
+    for (const testCase of POST_JSON_CASES) {
+      const res = await testCase.call({});
+      assert(
+        res.statusCode !== 401,
+        `${testCase.name} should not be rejected when no API_KEYS are configured, got 401 ${JSON.stringify(res.body)}`
+      );
+    }
+  } finally {
+    if (previous === undefined) {
+      delete process.env['API_KEYS'];
+    } else {
+      process.env['API_KEYS'] = previous;
+    }
+    resetRateLimitsForTests();
+  }
+}
+
+/**
+ * Unauthenticated callers on an unconfigured deployment all collapse onto the
+ * same `development_user` id, so `checkRateLimit` gives them one *shared*
+ * budget per endpoint — the meaningful cap the fail-open path still offers
+ * without requiring a key.
+ */
+async function testUnconfiguredDeploymentStillRateLimitsTheSharedBucket(): Promise<void> {
+  const previous = process.env['API_KEYS'];
+  delete process.env['API_KEYS'];
+  resetRateLimitsForTests();
+  try {
+    const testCase = POST_JSON_CASES[0];
+    for (let i = 0; i < testCase.limits.maxRequests; i += 1) {
+      const res = await testCase.call({});
+      assert(res.statusCode !== 429, `request ${i + 1} should be within the shared budget, got 429`);
+    }
+
+    const overLimitRes = await testCase.call({});
+    assert(
+      overLimitRes.statusCode === 429,
+      `an unconfigured deployment's shared bucket should still cap volume, got ${overLimitRes.statusCode}`
+    );
+  } finally {
+    if (previous === undefined) {
+      delete process.env['API_KEYS'];
+    } else {
+      process.env['API_KEYS'] = previous;
+    }
+    resetRateLimitsForTests();
+  }
+}
+
+/**
+ * `EventSource` cannot set custom headers, so the two SSE routes read the key
+ * from an `apiKey` query parameter instead (`withEventStreamAuth`). This
+ * drives that path directly rather than through headers.
+ */
+async function testEventStreamRoutesAcceptTheQueryParameterKey(): Promise<void> {
+  await withApiKeys(['sk-live-real-key'], async () => {
+    const noKey = new FakeResponse();
+    await streamGenesisHandler({ method: 'GET', headers: {}, query: {} }, noKey);
+    assert(noKey.statusCode === 401, `stream/genesis with no key should answer 401, got ${noKey.statusCode}`);
+    assert(errorCode(noKey) === 'MISSING_API_KEY', 'stream/genesis with no key should report MISSING_API_KEY');
+
+    const wrongKey = new FakeResponse();
+    await streamGenesisHandler({ method: 'GET', headers: {}, query: { apiKey: 'wrong' } }, wrongKey);
+    assert(wrongKey.statusCode === 401, `stream/genesis with a wrong query key should answer 401, got ${wrongKey.statusCode}`);
+    assert(errorCode(wrongKey) === 'INVALID_API_KEY', 'stream/genesis with a wrong query key should report INVALID_API_KEY');
+
+    const validKey = new FakeResponse();
+    await streamGenesisHandler({ method: 'GET', headers: {}, query: { apiKey: 'sk-live-real-key' } }, validKey);
+    assert(
+      validKey.statusCode !== 401,
+      `stream/genesis with a valid query key should not be rejected on access control, got ${validKey.statusCode}`
+    );
+  });
+}
+
+async function main(): Promise<void> {
+  await testMissingKeyIsRejected();
+  await testWrongKeyIsRejected();
+  await testValidKeyPassesThrough();
+  await testRateLimitIsEnforced();
+  await testUnconfiguredDeploymentStillServesRequestsWithNoKey();
+  await testUnconfiguredDeploymentStillRateLimitsTheSharedBucket();
+  await testEventStreamRoutesAcceptTheQueryParameterKey();
+
+  console.log('API access control route tests passed');
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

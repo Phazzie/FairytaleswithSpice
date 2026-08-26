@@ -13,6 +13,8 @@ import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort } from '../auth/configuredAuthPort';
 import { applyCorsPolicy } from '../../http/corsPolicy';
 import { endSseStream, writeSseFrame, type SseResponseLike } from '../../http/sseStream';
+import { RATE_LIMITS } from '../../constants';
+import { enforceApiAccessControl, withEventStreamAuth } from '../../middleware/apiAccessControl';
 import { logError, logWarn } from '../../utils/logger';
 import { continueStoryLab, generateStoryLabGenesis } from '../storyLabEngine';
 import { getTransientStorySnapshot } from '../stateStore';
@@ -156,6 +158,11 @@ async function handleCreateStoryLabJobWithContext(
     return;
   }
 
+  const access = await enforceApiAccessControl(req, res, 'story-lab/jobs', RATE_LIMITS.STORY_LAB_JOB_CREATE);
+  if (!access.allowed) {
+    return;
+  }
+
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || typeof (req.body as { kind?: unknown }).kind !== 'string') {
     sendJson(res, 400, invalidRequest('Request body must include a Story Lab job kind.'));
     return;
@@ -247,6 +254,19 @@ async function handleStreamStoryLabJobEventsWithContext(
     credentials: true
   });
   if (cors.handled) {
+    return;
+  }
+
+  // `EventSource` cannot set custom headers, so this checks for the key
+  // through `withEventStreamAuth`'s `apiKey` query-parameter fallback as well
+  // as the usual headers — see that helper for why.
+  const access = await enforceApiAccessControl(
+    withEventStreamAuth(req),
+    res,
+    'story-lab/jobs/events',
+    RATE_LIMITS.STREAMING
+  );
+  if (!access.allowed) {
     return;
   }
 

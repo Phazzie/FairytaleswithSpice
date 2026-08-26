@@ -25,6 +25,14 @@ export const RATE_LIMITS = {
     maxRequests: 10,
     windowMs: 15 * 60 * 1000    // 15 minutes
   },
+  CHAPTER_CONTINUATION: {
+    maxRequests: 10,
+    windowMs: 15 * 60 * 1000    // 15 minutes — same tier as story generation
+  },
+  IMAGE_GENERATION: {
+    maxRequests: 10,
+    windowMs: 15 * 60 * 1000    // 15 minutes — same tier as story generation
+  },
   EXPORT: {
     maxRequests: 20,
     windowMs: 15 * 60 * 1000    // 15 minutes
@@ -32,6 +40,22 @@ export const RATE_LIMITS = {
   STREAMING: {
     maxRequests: 5,
     windowMs: 15 * 60 * 1000    // 15 minutes
+  },
+  STORY_LAB_GENESIS: {
+    maxRequests: 10,
+    windowMs: 15 * 60 * 1000    // 15 minutes — same tier as story generation
+  },
+  STORY_LAB_CONTINUATION: {
+    maxRequests: 10,
+    windowMs: 15 * 60 * 1000    // 15 minutes — same tier as chapter continuation
+  },
+  STORY_LAB_JOB_CREATE: {
+    maxRequests: 10,
+    windowMs: 15 * 60 * 1000    // 15 minutes — creates the same genesis/continuation work synchronously
+  },
+  STORY_LAB_EVALUATE: {
+    maxRequests: 20,
+    windowMs: 15 * 60 * 1000    // 15 minutes — cheaper than generation, higher tier
   }
 } as const;
 

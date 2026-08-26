@@ -3,6 +3,7 @@
 
 import genesisHandler, { createStoryLabGenesisHandler } from '../api/story-lab/stories';
 import continuationHandler, { createStoryLabContinuationHandler } from '../api/story-lab/stories/[storyId]/continue';
+import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { getStoryLabResponseStatus } from '../api/_lib/story-lab/routeStatus';
 
 interface FakeRequest {
@@ -92,6 +93,12 @@ function createRequest(
   body?: unknown,
   query?: Record<string, string | string[] | undefined>
 ): FakeRequest {
+  // This file drives the same route handlers many times over to exercise
+  // unrelated status-mapping behaviour, sharing the process-wide rate limit
+  // store with every other call. Reset it per request rather than let an
+  // earlier scenario's budget carry over and fail a later one with 429.
+  resetRateLimitsForTests();
+
   return {
     method,
     body,
