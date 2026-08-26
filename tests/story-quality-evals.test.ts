@@ -164,6 +164,53 @@ function testHtmlStoriesAreScoredOnTheirProse(): void {
 }
 
 /**
+ * The one thing in the audio-readiness dimension that can cost points has to
+ * say so.
+ *
+ * An overlong paragraph swings the score by thirty — the difference between the
+ * `+12` a clean story gets and the `-18` a penalised one takes — and the
+ * dimension printed nothing about it. The rationale claimed to check paragraph
+ * length while every signal beside it was about dialogue, so the reader was
+ * handed a number with no way to explain it and nothing to act on.
+ */
+function testOverlongParagraphsAreReportedNotJustPenalised(): void {
+  const longParagraph = Array.from({ length: 120 }, (_, index) => `word${index}`).join(' ');
+  const configuration = {
+    creature: 'siren',
+    themes: ['blood_oaths'],
+    spicyLevel: 3,
+    wordCount: 900
+  };
+
+  const audioReadiness = (storyContent: string) => {
+    const report = buildStoryQualityHeuristicReport({ storyContent, configuration });
+    const found = report.dimensions.find(entry => entry.id === 'audio_readiness');
+    assert(found, 'report should include the audio_readiness dimension');
+    return found;
+  };
+
+  const penalised = audioReadiness(`<p>${longParagraph}</p><p>She ran.</p>`);
+  const clean = audioReadiness('<p>She opened the door.</p><p>She ran.</p>');
+
+  assert(
+    penalised.score < clean.score,
+    `an overlong paragraph should cost the dimension points (penalised=${penalised.score}, clean=${clean.score})`
+  );
+  assert(
+    penalised.signals.some(signal => signal.startsWith('Overlong paragraphs (over 90 words): 1, longest 120 words')),
+    `the penalty should name what caused it (signals=${JSON.stringify(penalised.signals)})`
+  );
+  assert(
+    !penalised.signals.includes('No overlong paragraphs detected.'),
+    'a penalised story should not also claim it has no overlong paragraphs'
+  );
+  assert(
+    clean.signals.includes('No overlong paragraphs detected.'),
+    `a clean story should still report the check passing (signals=${JSON.stringify(clean.signals)})`
+  );
+}
+
+/**
  * The two identity-shaped dimensions have to be able to say "no".
  *
  * Both used to answer yes to everything. `\b[A-Z][a-z]+\b` matches the first
@@ -328,6 +375,7 @@ function testBoundaryRulesRejectOnlyTheBoundary(): void {
 
 async function main(): Promise<void> {
   testHtmlStoriesAreScoredOnTheirProse();
+  testOverlongParagraphsAreReportedNotJustPenalised();
   testAnonymousProseScoresAsAnonymous();
   testNamedProseStillScores();
   testDialogueSpeakersCountAsCast();

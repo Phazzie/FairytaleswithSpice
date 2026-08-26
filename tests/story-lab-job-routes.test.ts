@@ -250,6 +250,61 @@ async function testEventsReplaySnapshotsAndClose(): Promise<void> {
 }
 
 /**
+ * The route above replays and *ends the response*, every time, for a job that
+ * is still running — so a browser `EventSource` fires `error` and reopens the
+ * connection, roughly every three seconds, until the job finishes. That is the
+ * documented design on both sides: `shared/eventStreamRetry.ts` exists to tell
+ * the Angular reader to keep the subscription alive through it.
+ *
+ * So one reader watching one job is not one request here. Under
+ * `RATE_LIMITS.STREAMING` — five per fifteen minutes, sized for the *genesis*
+ * stream, which holds a single connection open for a whole paid generation and
+ * is deliberately never reopened — the budget was spent about fifteen seconds
+ * into the first generation. Every reconnect after that was answered 429, so
+ * the reader was told "Story generation updates stopped" for a job the server
+ * was still working on, and could not get the updates back for fifteen minutes.
+ *
+ * This drives the reconnects the design causes without resetting the limit
+ * between them, which is the thing `createRequest` does for every other
+ * scenario in this file.
+ */
+async function testEventsSurviveTheReconnectsItsOwnDesignCauses(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  const response = await postGenesisJob();
+  const jobId = (response.body as any).data.job.jobId as string;
+
+  resetRateLimitsForTests();
+  try {
+    // More reconnects than the single-connection `STREAMING` tier allows, and
+    // no more than one job's worth of them: a sixty-second generation retried
+    // every three seconds is about twenty.
+    const reconnects = 20;
+    for (let attempt = 1; attempt <= reconnects; attempt += 1) {
+      const eventsResponse = new FakeResponse();
+      await jobHandler(
+        {
+          method: 'GET',
+          query: { jobId, events: '1' },
+          url: `/api/story-lab/jobs/${encodeURIComponent(jobId)}/events`,
+          headers: {}
+        },
+        eventsResponse
+      );
+
+      assert(
+        eventsResponse.statusCode === 200,
+        `reconnect ${attempt} of ${reconnects} should still be served, got ${eventsResponse.statusCode} ` +
+          `${JSON.stringify(eventsResponse.body)}`
+      );
+    }
+  } finally {
+    resetRateLimitsForTests();
+  }
+}
+
+/**
  * A reader who closes the tab while the route is still reading the job store.
  *
  * The replay is reached only after two awaited store lookups, so the response
@@ -538,6 +593,7 @@ async function testThrownEngineFailureFinishesTheJob(): Promise<void> {
 async function run(): Promise<void> {
   await testGenesisJobCompletesInMockMode();
   await testEventsReplaySnapshotsAndClose();
+  await testEventsSurviveTheReconnectsItsOwnDesignCauses();
   await testEventsReplayStopsAtAClosedResponse();
   await testPreflightAdvertisesEveryMethodTheRouteServes();
   await testInvalidAndUnknownJobIds();

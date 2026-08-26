@@ -127,13 +127,33 @@ export class CliffhangerService {
     const cliffhangerType = detectedType ?? 'plot_twist';
     const cliffhangerDetected = detectedType !== null || CLIFFHANGER_PUNCTUATION_PATTERN.test(trimmedLastParagraph);
 
+    // `cliffhangerType` is a placeholder when nothing was found — the contract
+    // types it as a `CliffhangerType` rather than as an optional one, so
+    // "no hook" still has to be spelled as some member of the set, and
+    // `plot_twist` is the one it falls to. Every other field already knows that
+    // and reports nothing: strength is floored at 0 and `cliffhangerText` is
+    // empty. These two did not, and they are the two the caller acts on.
+    //
+    // `suggestedContinuations` handed back three instructions written for a
+    // twist — "Reveal the first consequence of the twist", "Show characters
+    // adapting to the new reality" — for a chapter the scan had just said ends
+    // on no hook at all. `varietyScore` was worse than merely wrong: it asked
+    // whether the placeholder appeared in `previousCliffhangers`, so a chapter
+    // with no cliffhanger scored 3 out of 8 for repetition whenever the chapter
+    // before it genuinely was a `plot_twist` — a sameness penalty for a hook
+    // that does not exist, which is the opposite of what a variety score is
+    // for. The whole analysis travels back to the caller as
+    // `cliffhangerAnalysis` on the continuation response, so both were public
+    // answers about a hook the service had not found.
     return {
       cliffhangerDetected,
       cliffhangerType,
       cliffhangerStrength: Math.min(10, Math.max(cliffhangerDetected ? 1 : 0, strength)),
       cliffhangerText: cliffhangerDetected ? lastParagraph : '',
-      suggestedContinuations: this.generateContinuationSuggestions(cliffhangerType),
-      varietyScore: previousCliffhangers.includes(cliffhangerType) ? 3 : 8
+      suggestedContinuations: cliffhangerDetected
+        ? this.generateContinuationSuggestions(cliffhangerType)
+        : [],
+      varietyScore: cliffhangerDetected && previousCliffhangers.includes(cliffhangerType) ? 3 : 8
     };
   }
 
