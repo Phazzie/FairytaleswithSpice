@@ -303,6 +303,41 @@ async function main(): Promise<void> {
     );
   }
 
+  // ==================== MOCK EVALUATION MARKER ====================
+  // With no Grok key configured the route answers a canned evaluation — a fixed
+  // 75 and fixed prose about a story it never read — and it went out as a plain
+  // `success: true`. Proving Grounds compares prompt variants by these scores,
+  // so an unmarked mock is two variants tying at 75 and a reader treating the
+  // tie as a result. `isMockEvaluation` is the marker the page already renders
+  // its "offline mock evaluation" notice and retry button from; only the client
+  // fallback was setting it.
+  const mockResponse = await post({ storyContent: STORY_HTML });
+  const mockEvaluation = (mockResponse.body as {
+    data?: { isMockEvaluation?: boolean; score?: number; heuristicReport?: { source?: string } };
+  })?.data;
+
+  assert(
+    mockEvaluation?.isMockEvaluation === true,
+    'a keyless deployment should mark its canned evaluation as a mock'
+  );
+  assert(
+    mockEvaluation?.score === 75,
+    `the canned evaluation should still carry its score, got ${JSON.stringify(mockEvaluation?.score)}`
+  );
+  assert(
+    mockEvaluation?.heuristicReport?.source === 'heuristic',
+    'the canned evaluation should still carry the real deterministic scan beside it'
+  );
+
+  // The marker has to mean "canned", so a real model answer must never carry
+  // it — including one that puts the field in its own JSON.
+  for (const modelAnswer of ['{"score":80}', '{"score":80,"isMockEvaluation":true}']) {
+    assert(
+      (parseEvaluation(modelAnswer) as { isMockEvaluation?: boolean }).isMockEvaluation === undefined,
+      `a model answer must not be reported as a mock evaluation (${modelAnswer})`
+    );
+  }
+
   console.log('Story Lab evaluate route tests passed');
 }
 

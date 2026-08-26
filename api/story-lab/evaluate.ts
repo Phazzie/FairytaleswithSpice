@@ -17,8 +17,32 @@ interface NormalizedEvaluationRequest {
   };
 }
 
+/**
+ * The evaluation a deployment with no Grok key can honestly offer.
+ *
+ * Every field but `heuristicReport` is canned: a fixed `score: 75` and a fixed
+ * set of strengths, weaknesses, and suggestions, written about a story this
+ * route never read. That went out as a plain `success: true` with nothing
+ * marking it, so the Proving Grounds page — whose entire purpose is A/B
+ * comparison of prompts by their scores — showed it exactly as it shows a real
+ * Grok evaluation. A reader comparing two variants on a deployment without a key
+ * was comparing 75 against 75 and reading the tie as a result.
+ *
+ * `isMockEvaluation` is the marker the frontend already understands: the client
+ * fallback in `PromptEvaluationService` sets it, and `proving-grounds.html`
+ * renders the "⚠️ Offline mock evaluation" notice, tags the score in the history
+ * and comparison views, and offers "🔁 Retry Evaluation" instead of locking into
+ * a false "✅ Evaluated" whenever it is set. The server side had the same
+ * fallback and never set it, so the one path that reaches every reader of a
+ * keyless deployment was the one path with no warning on it.
+ *
+ * `heuristicReport` is real either way — it is a deterministic scan of the
+ * submitted story, and the successful path attaches the same one beside the
+ * model's answer — so it cannot be what tells the two apart.
+ */
 function getMockEvaluation(request: NormalizedEvaluationRequest): EvaluationCriteria {
   return {
+    isMockEvaluation: true,
     score: 75,
     strengths: [
       'Strong opening hook that captures attention',

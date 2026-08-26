@@ -52,25 +52,36 @@ const DANGEROUS_BLOCK_TAGS = new Set([
   'select'
 ]);
 /**
- * The tags whose closing puts a line break into the plain-text export.
+ * The block-level tags a reader sees a break at.
  *
- * Anything not named here falls through to the single space every other tag is
+ * In the plain-text export, the closing of one of these writes a line break;
+ * anything not named here falls through to the single space every other tag is
  * replaced with, so the break a reader sees is silently downgraded to a word
  * gap. The list stopped at `h3`, so `<h4>The Vault</h4><div>She opened the
  * door.</div>` exported as the one line `The Vault She opened the door.` — the
  * heading run into the prose under it, in the `.txt` and `.pdf` documents and
- * in the `.docx` body, which are the only renderings that go through here. The
- * remaining heading levels, the generic containers, the list and definition
- * wrappers, and the table row and cell elements are all block-level in the
- * markup the generator emits, so every one of them is a break.
+ * in the `.docx` body. The remaining heading levels, the generic containers,
+ * the list and definition wrappers, and the table row and cell elements are all
+ * block-level in the markup the generator emits, so every one of them is a
+ * break.
+ *
+ * The HTML export reads the same list, for the same reason and against a worse
+ * failure: it replaces a tag outside `ALLOWED_STORY_TAGS` with nothing at all,
+ * so the words on either side were welded rather than merely run together —
+ * that same heading exported as `The VaultShe opened the door.`, and
+ * `<td>One</td><td>Two</td>` as `OneTwo`, while the plain-text export of the
+ * one story put each on its own line. This is the `door.</p><p>Blood` welding
+ * `splitStoryIntoTextBlocks` exists to prevent, on the last path that still had
+ * it.
  *
  * This is the same list `splitStoryIntoTextBlocks` reads for the scanners, and
  * it is complete for the same reason: a boundary left off it is not left to the
  * enclosing tag, it is deleted. `normalizePlainText` caps consecutive newlines
- * at two, so nested closings such as `</li></ul>` still end one paragraph
+ * at two and `sanitizeStoryHtmlForExport` collapses a run of boundaries to one
+ * `<br>`, so nested closings such as `</li></ul>` still end one paragraph
  * rather than opening a run of blank lines.
  */
-const PLAIN_TEXT_BREAK_TAGS = new Set([
+const BLOCK_BREAK_TAGS = new Set([
   'p',
   'div',
   'section',
@@ -111,7 +122,7 @@ const PLAIN_TEXT_BREAK_TAGS = new Set([
  * `<hr>` separates two passages just as plainly and was being written out as a
  * space between them.
  */
-const PLAIN_TEXT_VOID_BREAK_TAGS = new Set(['br', 'hr']);
+const VOID_BREAK_TAGS = new Set(['br', 'hr']);
 const BASIC_HTML_ENTITY_REPLACEMENTS = [
   ['&nbsp;', ' '],
   ['&lt;', '<'],
@@ -138,20 +149,76 @@ export function escapeHtml(value: string): string {
 }
 
 export function sanitizeStoryHtmlForExport(html: string): string {
-  return tokenizeHtml(removeDangerousHtml(html))
-    .map(token => {
-      if (!token) {
-        return '';
-      }
+  let sanitized = '';
+  // A boundary is held until something follows it, so it is written only where
+  // it separates two pieces of story: a leading or trailing one never reaches
+  // the document, and a run of them — `</td></tr></table><div>` — writes the
+  // single break a reader sees rather than one per tag.
+  let blockBreakPending = false;
 
-      if (token.startsWith('<') && token.endsWith('>')) {
-        return sanitizeStoryTag(token);
-      }
+  for (const token of tokenizeHtml(removeDangerousHtml(html))) {
+    if (!token) {
+      continue;
+    }
 
-      return escapeStoryText(token);
-    })
-    .join('')
-    .trim();
+    const isTag = token.startsWith('<') && token.endsWith('>');
+    if (isTag && isStrippedBlockBoundary(token)) {
+      blockBreakPending = blockBreakPending || sanitized.length > 0;
+      continue;
+    }
+
+    const rendered = isTag ? sanitizeStoryTag(token) : escapeStoryText(token);
+    if (!rendered) {
+      continue;
+    }
+
+    if (blockBreakPending) {
+      blockBreakPending = false;
+      // Nothing to add where the markup already ends on a break of its own: a
+      // `<div>` after a `</p>` is one paragraph boundary, not two.
+      if (!endsWithBlockBoundary(sanitized)) {
+        sanitized += '<br>';
+      }
+    }
+
+    sanitized += rendered;
+  }
+
+  return sanitized.trim();
+}
+
+/**
+ * Whether a tag is one the sanitizer drops but a reader still sees a break at.
+ *
+ * Both ends of the element count, unlike the plain-text export, which can afford
+ * to break on the closing tag alone because every other tag still leaves a space
+ * behind. Here the opening tag leaves nothing, so `door.<div>Blood` would weld
+ * on the way in exactly as `</div>` welds on the way out.
+ */
+function isStrippedBlockBoundary(token: string): boolean {
+  const parsed = parseHtmlTag(token);
+  if (!parsed || ALLOWED_STORY_TAGS.has(parsed.tagName)) {
+    return false;
+  }
+
+  return VOID_BREAK_TAGS.has(parsed.tagName)
+    ? !parsed.isClosing
+    : BLOCK_BREAK_TAGS.has(parsed.tagName);
+}
+
+/**
+ * Whether the document written so far already ends on a break, so a dropped
+ * block tag beside one does not add a second. Trailing whitespace is skipped
+ * because the text between two tags is emitted before the boundary is resolved.
+ */
+function endsWithBlockBoundary(sanitized: string): boolean {
+  const trimmed = sanitized.trimEnd();
+  if (trimmed.length === 0 || trimmed.endsWith('<br>')) {
+    return true;
+  }
+
+  const closingTag = /<\/([a-z0-9]+)>$/i.exec(trimmed);
+  return Boolean(closingTag && BLOCK_BREAK_TAGS.has(closingTag[1].toLowerCase()));
 }
 
 /**
@@ -220,12 +287,12 @@ export function stripStoryHtmlForExport(html: string): string {
         continue;
       }
 
-      if (PLAIN_TEXT_VOID_BREAK_TAGS.has(parsed.tagName) && !parsed.isClosing) {
+      if (VOID_BREAK_TAGS.has(parsed.tagName) && !parsed.isClosing) {
         text += '\n';
         continue;
       }
 
-      if (parsed.isClosing && PLAIN_TEXT_BREAK_TAGS.has(parsed.tagName)) {
+      if (parsed.isClosing && BLOCK_BREAK_TAGS.has(parsed.tagName)) {
         text += '\n';
         continue;
       }

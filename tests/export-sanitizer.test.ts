@@ -143,6 +143,80 @@ assert(
   'an unterminated comment should swallow the rest of the document rather than leaking it'
 );
 
+// ==================== BLOCK BOUNDARIES ====================
+// A tag outside the allowed set is replaced with nothing, so a block-level one
+// welded the words on either side of it: `<h4>The Vault</h4><div>She opened the
+// door.</div>` exported as `The VaultShe opened the door.`, and
+// `<td>One</td><td>Two</td>` as `OneTwo`, while the plain-text export of the
+// same story put each on its own line. Every boundary a reader sees has to
+// survive into both documents.
+const blockBoundarySamples: Array<{ label: string; html: string; expected: string }> = [
+  {
+    label: 'a heading level the allow-list does not carry',
+    html: '<h4>The Vault</h4><div>She opened the door.</div>',
+    expected: 'The Vault<br>She opened the door.'
+  },
+  {
+    label: 'table cells',
+    html: '<table><tr><td>One</td><td>Two</td></tr></table>',
+    expected: 'One<br>Two'
+  },
+  {
+    label: 'an opening container between two runs of prose',
+    html: 'door.<div>Blood',
+    expected: 'door.<br>Blood'
+  },
+  {
+    // One boundary is what a reader sees however many tags close at it. The
+    // plain-text export caps a run of newlines at two for the same reason.
+    label: 'a run of dropped boundaries',
+    html: 'Before<div><figure></figure></div><div>After</div>',
+    expected: 'Before<br>After'
+  },
+  {
+    // ...and a boundary with no story on one side of it is not a boundary.
+    label: 'leading and trailing dropped boundaries',
+    html: '<div><div>Nested</div></div>',
+    expected: 'Nested'
+  },
+  {
+    // An allowed block tag already ends the paragraph; a dropped one beside it
+    // must not add a second break.
+    label: 'a dropped container after an allowed paragraph',
+    html: '<p>She opened the door.</p><div>Blood pooled.</div>',
+    expected: '<p>She opened the door.</p>Blood pooled.'
+  },
+  {
+    // Inline tags are dropped without a boundary, which is what a reader sees.
+    label: 'an inline tag',
+    html: '<p>Hello <em>there</em>, <a href="x">reader</a>.</p>',
+    expected: '<p>Hello <em>there</em>, reader.</p>'
+  },
+  {
+    // A break the generator wrote is the story's own and is not collapsed.
+    label: 'an authored double break',
+    html: '<p>Line<br><br>Break</p>',
+    expected: '<p>Line<br><br>Break</p>'
+  }
+];
+
+for (const sample of blockBoundarySamples) {
+  const sanitized = sanitizeStoryHtmlForExport(sample.html);
+  assert(
+    sanitized === sample.expected,
+    `HTML export should render ${sample.label} as ${JSON.stringify(sample.expected)}, got ${JSON.stringify(sanitized)}`
+  );
+}
+
+// The two exports must agree on where one piece of story ends and the next
+// begins, which is the property the welding broke.
+const boundarySource = '<h4>The Vault</h4><div>She opened the door.</div><table><tr><td>One</td><td>Two</td></tr></table>';
+assert(
+  sanitizeStoryHtmlForExport(boundarySource).split('<br>').length
+    === stripStoryHtmlForExport(boundarySource).split('\n').length,
+  'HTML and plain-text exports should find the same number of block boundaries'
+);
+
 assert(
   escapeHtml('<title>"Angel"</title>') === '&lt;title&gt;&quot;Angel&quot;&lt;/title&gt;',
   'escapeHtml should escape markup and quotes'
