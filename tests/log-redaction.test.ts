@@ -4,10 +4,12 @@
 import { redactSensitiveLogData } from '../api/_lib/utils/logger';
 import {
   toLoggableBoolean,
+  toLoggableImageStyle,
   toLoggableStoryId,
   toLoggableNumber,
   toLoggableThemes
 } from '../api/_lib/utils/loggableRequestParameters';
+import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -245,6 +247,60 @@ assert(
 assert(
   toLoggableThemes(['betrayal', 'revenge']).unrecognizedThemeCount === undefined,
   'an ordinary request should log its themes with no unrecognized count beside them'
+);
+
+// The allow-list has to be the vocabulary the app actually sends, not only the
+// classic `ThemeType` one. Seven of the twelve seeds the picker offers —
+// `court_intrigue`, `blood_oaths`, `slow_burn`, `enemies_to_lovers`,
+// `magical_bargain`, `secret_identity`, `forced_proximity` — are on no other
+// list, so filtering against `ThemeType` alone reported the app's own themes as
+// unrecognised. Every real image generation then logged `themes: []` beside a
+// count, which is the marker for "the caller sent something that is not a
+// theme" written about the picker's own values.
+for (const seed of STORY_LAB_THEME_SEED_IDS) {
+  const loggable = toLoggableThemes([seed]);
+  assert(
+    loggable.themes.join(',') === seed && loggable.unrecognizedThemeCount === undefined,
+    `${seed} is on the app's own picker, so the request line should name it (got ${JSON.stringify(loggable)})`
+  );
+}
+
+const pickedFromTheUi = toLoggableThemes(['court_intrigue', 'blood_oaths']);
+assert(
+  pickedFromTheUi.themes.join(',') === 'court_intrigue,blood_oaths'
+    && pickedFromTheUi.unrecognizedThemeCount === undefined,
+  `a request the app itself makes should log its themes intact (got ${JSON.stringify(pickedFromTheUi)})`
+);
+
+// Widening the list must not turn the filter off: a value from neither picker
+// is still reported by count rather than repeated.
+const mixed = toLoggableThemes(['forced_proximity', privateProse]);
+assert(
+  mixed.themes.join(',') === 'forced_proximity' && mixed.unrecognizedThemeCount === 1,
+  `prose sent beside a real seed should still be counted, not repeated (got ${JSON.stringify(mixed)})`
+);
+
+// `style` reaches `/api/image/generate`'s request line as caller text: the
+// route's guard tests the field for truthiness, and the closed-set check lives
+// in `ImageService`, which has not run yet. It is the one field on that line
+// that was still being logged verbatim.
+assert(
+  toLoggableImageStyle('fantasy') === 'fantasy' && toLoggableImageStyle('artistic') === 'artistic',
+  'a style the contract names should be logged as it is'
+);
+assert(
+  toLoggableImageStyle(privateProse) === '[UNRECOGNIZED]',
+  `prose sent as an image style should be reported, not repeated (got ${toLoggableImageStyle(privateProse)})`
+);
+assert(
+  !JSON.stringify(redactSensitiveLogData({
+    requestParameters: { style: toLoggableImageStyle(privateProse) }
+  })).includes('Dana'),
+  'caller prose sent as an image style must not reach the log'
+);
+assert(
+  toLoggableImageStyle(42) === '[UNRECOGNIZED]' && toLoggableImageStyle(undefined) === '[UNRECOGNIZED]',
+  'a non-string style should be reported rather than stringified into the line'
 );
 
 // An identifier is filtered by its shape, not its length. A length cap alone

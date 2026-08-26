@@ -220,6 +220,58 @@ export class GenerationLogicService {
     }
   ];
 
+  /**
+   * Ported from the API's `SIREN_STYLES`, which is the bank a siren story is
+   * actually generated from. See `getAllAuthorStyles` below for what reading
+   * the fairy bank instead was doing to this panel.
+   */
+  private readonly sirenStyles: AuthorStyle[] = [
+    {
+      author: 'Drowning-Song Gothic',
+      voiceSample: 'She sang one note and the helmsman turned the wheel toward the rocks, smiling the whole way, certain he had chosen it himself.',
+      trait: 'Siren song as consent stolen politely, and the guilt that follows it'
+    },
+    {
+      author: 'Salt-Debt Bargainer',
+      voiceSample: '"You called me across four hundred miles of black water," she said. "Debts like that are not settled in coin, sailor."',
+      trait: 'Siren bargains, owed favours, and payment demanded at the worst hour'
+    },
+    {
+      author: 'Storm-Voice Romance',
+      voiceSample: 'Her voice cracked the squall open like an egg, and for one impossible breath the sea held still to listen to her.',
+      trait: 'Weather-bending siren power set against unguarded tenderness'
+    },
+    {
+      author: 'Harbour-Watch Longing',
+      voiceSample: 'Every night he left a lamp burning on the pier, and every night she surfaced just past its light, unwilling to be saved and unwilling to leave.',
+      trait: 'Shoreline distance, a siren who will not come in, and a lover who will not go home'
+    }
+  ];
+
+  /** Ported from the API's `DJINN_STYLES`, for the same reason. */
+  private readonly djinnStyles: AuthorStyle[] = [
+    {
+      author: 'Three-Wish Jurisprudence',
+      voiceSample: '"Say it precisely," the djinn warned, delighted. "I am bound to give you exactly what you asked for, and nothing has ever hurt a mortal more."',
+      trait: 'Wish law read aloud like a contract, granted with ruinous precision'
+    },
+    {
+      author: 'Lamp-Bound Devotion',
+      voiceSample: 'Four hundred years of masters, and she was the first to ask what he wanted before she asked for anything at all.',
+      trait: 'Servitude, ownership, and the terror of being wished free'
+    },
+    {
+      author: 'Smokeless-Fire Epic',
+      voiceSample: 'He unfolded out of the brazier in a column of smokeless fire, and the desert night went to glass beneath him.',
+      trait: 'Elemental djinn grandeur, desert magic, and courts older than scripture'
+    },
+    {
+      author: 'Brass-Seal Bargain',
+      voiceSample: '"One wish left," she said, turning the brass seal over in her palm. "Spend it on me and you stay a slave. Spend it on you and I stay alone."',
+      trait: 'Bargains where the only winning move costs the romance itself'
+    }
+  ];
+
   private readonly witchStyles: AuthorStyle[] = [
     {
       author: 'Coven Hearth Gothic',
@@ -481,6 +533,23 @@ export class GenerationLogicService {
     "Scar that burns, old wound aches in presence of specific person, reveals hidden connection"
   ];
 
+  /**
+   * The author bank a creature's prompt is built from.
+   *
+   * The point of this panel is to show which authors the API will be asked to
+   * write like, so the answer has to be the API's answer. `siren` and `djinn`
+   * fell through to `fairyStyles`, and the API has had its own `SIREN_STYLES`
+   * and `DJINN_STYLES` since that same fallthrough was fixed in
+   * `api/_lib/config/authorStyles.ts` — so for two of the ten creatures this
+   * screen reported a bank of twelve fae authors (Sarah J. Maas, Holly Black,
+   * Julie Kagawa) for a story the server generated from four sea or wish
+   * voices. A prompt-comparison tool that shows a prompt the run did not use is
+   * worse than one that shows nothing, because the reader has no way to tell.
+   *
+   * The `default` stays for a creature that reaches here from outside
+   * `CreatureArchetype`; with every archetype now named it is unreachable from
+   * the type.
+   */
   getAllAuthorStyles(creature: CreatureArchetype): AuthorStyle[] {
     switch (creature) {
       case 'vampire':
@@ -488,9 +557,11 @@ export class GenerationLogicService {
       case 'werewolf':
         return this.werewolfStyles;
       case 'fairy':
-      case 'siren':
-      case 'djinn':
         return this.fairyStyles;
+      case 'siren':
+        return this.sirenStyles;
+      case 'djinn':
+        return this.djinnStyles;
       case 'witch':
         return this.witchStyles;
       case 'dragon':

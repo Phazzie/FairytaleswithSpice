@@ -538,11 +538,93 @@ async function captureConsole<T>(run: () => Promise<T>): Promise<{ response: T; 
   }
 }
 
+/**
+ * `/api/image/generate`'s request line must not repeat what the caller sent —
+ * and must still say what an ordinary request asked for.
+ *
+ * The line reports four caller-supplied fields. Three of them go through this
+ * repository's allow-lists; `style` did not. The route's own guard tests the
+ * field for truthiness and `ImageService.validateImageInput` holds the closed
+ * set, but that runs after the line is written, so `style` was caller text at
+ * the moment it was logged and a body carrying prose under that name put the
+ * prose in the console and in the buffer the debug panel reads.
+ *
+ * The other half of the same line was failing in the opposite direction:
+ * `themes` was filtered against the eighteen classic `ThemeType`s, and the only
+ * client this route has sends Story Lab seed ids. An ordinary request logged
+ * `themes: []` with an unrecognized count beside it — the caller-sent-garbage
+ * marker, written about the picker's own values. Both readings are asserted
+ * here, because a filter that blanks everything satisfies the first on its own.
+ */
+async function verifyImageRequestLineNeitherRepeatsNorBlanksItsParameters(): Promise<void> {
+  const prose = 'Dana is in treatment at the clinic on Rosewood';
+  const storyId = 'story_0f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';
+
+  logger.clearLogs();
+  const { consoleOutput } = await captureConsole(async () => {
+    const res = new FakeResponse();
+    await imageGenerateHandler({
+      method: 'POST',
+      headers: {},
+      body: { storyId, content: 'A chapter.', creature: 'vampire', themes: ['court_intrigue'], style: prose }
+    }, res);
+    return res;
+  });
+
+  const proseLine = logger.getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === '/api/image/generate');
+  assert(proseLine, 'the route should log the request it was called with');
+
+  for (const [sink, written] of [
+    ['buffer', JSON.stringify(proseLine)],
+    ['console', consoleOutput]
+  ] as const) {
+    assert(
+      !written.includes('Dana') && !written.includes('Rosewood'),
+      `caller text sent as an image style must not reach the ${sink} (got ${written.slice(0, 300)})`
+    );
+  }
+
+  logger.clearLogs();
+  await captureConsole(async () => {
+    const res = new FakeResponse();
+    await imageGenerateHandler({
+      method: 'POST',
+      headers: {},
+      body: {
+        storyId,
+        content: 'A chapter.',
+        creature: 'siren',
+        // Two seeds straight off the picker `app.ts` builds.
+        themes: ['blood_oaths', 'forced_proximity'],
+        style: 'fantasy'
+      }
+    }, res);
+    return res;
+  });
+
+  const ordinaryLine = logger.getRecentLogs(50, 'info')
+    .find(entry => entry.context?.endpoint === '/api/image/generate');
+  assert(ordinaryLine, 'the route should log an ordinary request too');
+
+  const parameters = (ordinaryLine.context as any)?.requestParameters ?? {};
+  assert(
+    JSON.stringify(parameters.themes) === JSON.stringify(['blood_oaths', 'forced_proximity'])
+      && parameters.unrecognizedThemeCount === undefined,
+    `a request the app itself makes should have its themes logged intact (got ${JSON.stringify(parameters)})`
+  );
+  assert(
+    parameters.style === 'fantasy' && parameters.creature === 'siren' && parameters.storyId === storyId,
+    `the rest of the line should survive the allow-lists too (got ${JSON.stringify(parameters)})`
+  );
+}
+
 async function main(): Promise<void> {
   await verifyContinueDoesNotLogProseStoryIds();
   await verifyMalformedBodiesAreClientErrors();
   await verifyRejectedBodiesDoNotLogCallerFieldNames();
   await verifyRejectedStoryInputDoesNotRepeatCallerText();
+  await verifyImageRequestLineNeitherRepeatsNorBlanksItsParameters();
   await verifyExportMeasuresItsSizeCapInBytes();
 
   console.log('Story route contract tests passed');

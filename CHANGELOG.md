@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — an image style logged verbatim, the app's own themes reported as unrecognized, two creatures previewed as a third (August 26, 2026)
+
+#### `/api/image/generate` wrote the caller's `style` into the log as it arrived
+
+- The route's request line reports four caller-supplied fields. `storyId`,
+  `creature`, and `themes` each go through `loggableRequestParameters`, which
+  exists so that a value is repeated only when it is on the contract's own
+  allow-list. `style` did not: it was written as `style: input.style`.
+- Nothing before that line constrains it. The route's guard tests the field for
+  truthiness — `!input.style` — and the closed-set check lives in
+  `ImageService.validateImageInput`, which has not run yet. So a body of
+  `{"style": "Dana is in treatment at the clinic on Rosewood", …}` put that
+  sentence in the console and in the buffer the debug panel reads, verbatim,
+  under a log key that is deliberately kept. The token redaction every logged
+  string still passes through does not help: it removes credentials, addresses,
+  and URLs, not prose.
+- `ImageStyle` names five values, so there is a list to be recognised against.
+  `toLoggableImageStyle` joins its three siblings, reading
+  `VALIDATION_RULES.imageStyle.allowedValues` rather than restating them. A
+  request the app itself makes — which always sends one of the five — is logged
+  exactly as it was.
+
+#### The same line reported the app's own themes as unrecognized
+
+- `toLoggableThemes` filtered against `VALIDATION_RULES.themes.allowedValues`,
+  the eighteen classic `ThemeType`s. No screen in this repository sends those.
+  `app.ts` builds its picker from twelve Story Lab `ThemeSeed`s and passes
+  `theme.id` straight through, and seven of the twelve — `court_intrigue`,
+  `blood_oaths`, `slow_burn`, `enemies_to_lovers`, `magical_bargain`,
+  `secret_identity`, `forced_proximity` — are on no other list.
+- So the filter was rejecting the app's own traffic. A reader who picked "Court
+  Intrigue" and "Blood Oaths" and generated a chapter image produced the request
+  line `themes: [], unrecognizedThemeCount: 2` — the marker that means "the
+  caller sent something that is not a theme", written about the two themes the
+  picker itself offered. The diagnostic the module exists to preserve, *which
+  themes were asked for*, was blanked for exactly the requests that matter and
+  kept intact only for a vocabulary nothing sends.
+- This is the second time the same drift has been fixed in the same route:
+  `ImageService.mapThemeToVisualElement` described those seven seeds to the image
+  model as `mysterious elements` until it was taught both vocabularies. The list
+  had one copy, in `app.ts`, and no reader on the server side of the seam could
+  see it. It now lives in `shared/storyLabThemeSeeds.ts`, which the picker, the
+  log allow-list, and `tests/image-service.test.ts` all read — that test having
+  previously asserted against its own transcription of the list, so a seed added
+  to the picker and not to the test would have passed.
+- Widening the allow-list does not turn the filter off. A value from neither
+  picker is still reported by count rather than repeated.
+
+#### Proving Grounds showed a siren and a djinn the fairy author bank
+
+- `GenerationLogicService.getAllAuthorStyles` — the panel's preview of which
+  authors the API will be asked to write like — fell `siren` and `djinn` through
+  to `fairyStyles`. The API has had its own `SIREN_STYLES` and `DJINN_STYLES`
+  since that identical fallthrough was fixed in `api/_lib/config/authorStyles.ts`;
+  the browser-side copy was left behind.
+- For two of the ten creatures the screen therefore reported a bank of twelve fae
+  authors — Sarah J. Maas, Holly Black, Julie Kagawa — for a story the server
+  generated from four sea or wish voices. A prompt-comparison tool that shows a
+  prompt the run did not use is worse than one that shows nothing, because the
+  reader has no way to tell which they are looking at.
+- The spec was asserting the defect: `fairy, siren, and djinn share the same
+  fairy-styles pool` was a passing test over the drift. It is replaced by one
+  that requires every creature's bank to differ from every other's, and one that
+  names the siren and djinn authors the API actually uses — a borrowed bank is
+  still a non-empty, creature-shaped list, so only the contents catch it.
+
 ### 🐛 Three Quick Wins — every Story Lab refusal read as an outage, an adult gate that covered one chapter, a token count blanked from its own log (August 26, 2026)
 
 #### Every failure the story generator reported was served as HTTP 500 by the Story Lab routes

@@ -4,6 +4,7 @@
 import axios from 'axios';
 import { ImageService, readGeneratedImageUrl } from '../api/_lib/services/imageService';
 import { CreatureType, ImageGenerationSeam } from '../api/_lib/types/contracts';
+import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
 
 // The service reads `XAI_API_KEY` in its constructor and falls back to a mock
 // image URL when it is absent, so clearing it before the first `new
@@ -252,29 +253,19 @@ async function testEveryCreatureArchetypeReachesThePrompt(): Promise<void> {
   }
 }
 
-/**
- * The theme ids `app.ts` actually sends.
+/*
+ * The theme ids `app.ts` actually sends are read from `shared/`, not restated
+ * here.
  *
- * Not `ThemeType`. The image seam types `themes` as `string[]`, and the only
- * client this route has builds its picker from `availableThemes` — twelve Story
- * Lab `ThemeSeed`s — and passes `theme.id` straight through. Kept here as its
- * own list, alongside the creature list above, so a theme added to the picker
- * without a visual element is a failing case rather than a silent fallback.
+ * They are not `ThemeType`. The image seam types `themes` as `string[]`, and
+ * the only client this route has builds its picker from `availableThemes` —
+ * twelve Story Lab `ThemeSeed`s — and passes `theme.id` straight through. This
+ * file used to hold its own transcription of that list, which made the check
+ * below assert against a copy rather than against the picker: a seed added to
+ * the picker and not to this file would have passed. Importing the list the
+ * picker itself is built from is what makes a new seed with no visual element a
+ * failing case.
  */
-const STORY_LAB_THEME_SEED_IDS = [
-  'forbidden_love',
-  'dark_secrets',
-  'court_intrigue',
-  'blood_oaths',
-  'slow_burn',
-  'enemies_to_lovers',
-  'revenge',
-  'obsession',
-  'temptation',
-  'magical_bargain',
-  'secret_identity',
-  'forced_proximity'
-];
 
 /**
  * Seven of those twelve — `court_intrigue`, `blood_oaths`, `slow_burn`,

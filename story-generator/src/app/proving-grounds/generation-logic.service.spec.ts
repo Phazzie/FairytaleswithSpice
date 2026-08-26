@@ -25,13 +25,37 @@ describe('GenerationLogicService', () => {
     }
   });
 
-  it('fairy, siren, and djinn share the same fairy-styles pool', () => {
-    const fairyStyles = service.getAllAuthorStyles('fairy');
-    const sirenStyles = service.getAllAuthorStyles('siren');
-    const djinnStyles = service.getAllAuthorStyles('djinn');
+  // This used to assert the opposite — that fairy, siren, and djinn share one
+  // pool — which is how the fallthrough survived: the panel showed a bank of
+  // fae authors for two creatures the API generates from `SIREN_STYLES` and
+  // `DJINN_STYLES`, and the suite called that the expected result.
+  it('gives every creature its own author bank rather than borrowing another creature\'s', () => {
+    const creatures: CreatureArchetype[] = [
+      'vampire', 'werewolf', 'fairy', 'siren', 'djinn', 'witch', 'dragon', 'demon', 'angel', 'mermaid'
+    ];
 
-    expect(sirenStyles).toEqual(fairyStyles);
-    expect(djinnStyles).toEqual(fairyStyles);
+    for (const creature of creatures) {
+      const ownAuthors = service.getAllAuthorStyles(creature).map(style => style.author).join('|');
+
+      for (const other of creatures) {
+        if (other === creature) {
+          continue;
+        }
+
+        expect(service.getAllAuthorStyles(other).map(style => style.author).join('|'))
+          .withContext(`${other} should not reuse the ${creature} bank`)
+          .not.toEqual(ownAuthors);
+      }
+    }
+  });
+
+  // Named rather than checked by shape: a bank borrowed from a neighbour is
+  // still a non-empty, creature-shaped list, so only the contents catch it.
+  it('reads the siren and djinn banks the API generates those creatures from', () => {
+    expect(service.getAllAuthorStyles('siren').map(style => style.author))
+      .toEqual(['Drowning-Song Gothic', 'Salt-Debt Bargainer', 'Storm-Voice Romance', 'Harbour-Watch Longing']);
+    expect(service.getAllAuthorStyles('djinn').map(style => style.author))
+      .toEqual(['Three-Wish Jurisprudence', 'Lamp-Bound Devotion', 'Smokeless-Fire Epic', 'Brass-Seal Bargain']);
   });
 
   it('selectRandomAuthors never returns more authors than exist for the creature, and never duplicates one', () => {
