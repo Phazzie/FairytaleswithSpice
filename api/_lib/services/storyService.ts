@@ -1373,7 +1373,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
   private extractPlotThreads(content: string): string[] {
     const threads: string[] = [];
     const lowerContent = content.toLowerCase();
-    
+
     // Check for common plot thread indicators
     if (lowerContent.includes('secret') || lowerContent.includes('mystery')) {
       threads.push('Unresolved mystery or secret');
@@ -1396,18 +1396,29 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
 
   /**
    * Analyze emotional tone of existing content
+   *
+   * `dominan` was a word stem left behind from a substring scan, and every
+   * keyword here is matched as a whole word. Nothing in English is spelled
+   * `dominan`, so the alternative could never fire: the one register the
+   * `intense` tone exists to name — a chapter written about dominance — was
+   * recognised only if it also happened to say `power`, `control`, or
+   * `command`, and a scene that says `dominant` and nothing else was reported
+   * to the continuation prompt as `romantic with building tension`. The
+   * inflections the stem stood for are spelled out instead, which is the same
+   * repair `extractThemesFromContent` made when it moved to whole-word
+   * matching.
    */
   private analyzeEmotionalTone(content: string): string {
     const lowerContent = content.toLowerCase();
     const tones: string[] = [];
-    
+
     // Emotional indicators
     if (lowerContent.match(/\b(desire|passion|want|need|crave)\b/)) tones.push('passionate');
     if (lowerContent.match(/\b(dark|shadow|danger|fear|threat)\b/)) tones.push('dark/suspenseful');
     if (lowerContent.match(/\b(tease|playful|smile|grin|laugh)\b/)) tones.push('playful');
     if (lowerContent.match(/\b(pain|ache|hurt|wound|scar)\b/)) tones.push('angsty');
-    if (lowerContent.match(/\b(power|control|dominan|command)\b/)) tones.push('intense');
-    
+    if (lowerContent.match(/\b(power|control|dominant|dominance|dominated|command)\b/)) tones.push('intense');
+
     return tones.length > 0 ? tones.join(', ') : 'romantic with building tension';
   }
 

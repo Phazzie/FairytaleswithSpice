@@ -18,6 +18,7 @@ import {
   CloudStoryProjectList,
   CloudStoryProjectLoadResult,
   CloudStoryProjectSaveReceipt,
+  EXPORT_FORMATS,
   GeneratedChapter,
   ImageGenerationSeam,
   SaveExportSeam,
@@ -681,6 +682,57 @@ describe('App', () => {
     const preview = fixture.nativeElement.querySelector('[data-testid="chapter-image-preview"]') as HTMLImageElement | null;
     expect(errorText?.textContent?.trim()).toBe('AI image service temporarily unavailable');
     expect(preview).toBeNull();
+  });
+
+  // The image panel belongs to the chapter on screen, and the `<img>` has
+  // always known it: the preview is drawn only when the stored image names the
+  // selected chapter. The error had no such check and nothing cleared it, so a
+  // refusal earned by one chapter stayed pinned under every chapter the reader
+  // opened afterwards, describing a request that was never made for them.
+  it('keeps an image failure under the chapter that earned it', () => {
+    seedWorkbenchForContinuation({
+      batch: {
+        chapters: [
+          createChapter({ chapterId: 'chapter-1', chapterNumber: 1 }),
+          createChapter({ chapterId: 'chapter-2', chapterNumber: 2, title: 'Chapter Two' })
+        ],
+        totalWordCount: 1800,
+        suggestedNextPrompts: []
+      }
+    });
+    component.selectChapter('chapter-1');
+    storyService.generateImage.and.returnValue(of({
+      success: false,
+      error: { code: 'INVALID_INPUT', message: 'Themes are required and must be a non-empty array' }
+    }));
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('[data-testid="generate-image"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const failedChapterError = fixture.nativeElement.querySelector('[data-testid="chapter-image-error"]') as HTMLElement | null;
+    expect(failedChapterError?.textContent?.trim()).toBe('Themes are required and must be a non-empty array');
+
+    component.selectChapter('chapter-2');
+    fixture.detectChanges();
+
+    expect(component.imageGenerationError()).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="chapter-image-error"]')).toBeNull();
+
+    component.selectChapter('chapter-1');
+    fixture.detectChanges();
+
+    expect(component.imageGenerationError()).toBe('Themes are required and must be a non-empty array');
+  });
+
+  // The picker used to restate the export format list by hand and had lost
+  // `html` — the one format the export route renders that no reader could then
+  // ask for.
+  it('offers every export format the route renders', () => {
+    fixture.detectChanges();
+
+    expect(component.exportFormats).toEqual(EXPORT_FORMATS);
+    expect(component.exportFormats).toContain('html');
   });
 
   it('disables cloud save before an active story exists', () => {

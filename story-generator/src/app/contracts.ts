@@ -35,6 +35,10 @@ export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'r
 // drift the way the classic `/api/story/*` routes already had (see
 // `expressApiRoutes.ts`).
 export type { ExportFormat, SaveExportSeam } from '../../../api/_lib/types/contracts';
+// The runtime list travels with the type, for the same reason: the export
+// picker used to restate it and dropped `html`, the one format the route
+// renders that no reader could then choose.
+export { EXPORT_FORMATS } from '../../../api/_lib/types/contracts';
 
 export const IMAGE_STYLES = [
   'artistic',

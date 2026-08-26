@@ -56,6 +56,32 @@ export type CharacterVoiceType =
 export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
 export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
+
+/**
+ * The export formats, as a value rather than only as a type.
+ *
+ * `ExportFormat` has named five since the export pipeline was written, and
+ * `ExportService.generateExportContent` renders all five. The Angular export
+ * picker restated the list by hand as `['txt', 'pdf', 'epub', 'docx']` and lost
+ * `html` doing it, so the one format with no option in the dropdown was the one
+ * whose renderer is the only path that runs the story through
+ * `sanitizeStoryHtmlForExport` and attaches the export metadata — a reader could
+ * reach the sanitized HTML document from nowhere in the app. (The "Download"
+ * button beside the picker is a different document: the browser builds it from
+ * the workbench, without the sanitizer or the metadata.)
+ *
+ * Both readers take the list from here now, so a format added to the type has
+ * one place to be added to and cannot go missing from the picker again — the
+ * same arrangement `IMAGE_STYLES` and `CREATURE_ARCHETYPES` already have on the
+ * Angular side.
+ */
+export const EXPORT_FORMATS = [
+  'txt',
+  'pdf',
+  'html',
+  'epub',
+  'docx'
+] as const satisfies readonly ExportFormat[];
 export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
 export type CliffhangerType =
   | 'romantic_tension'
