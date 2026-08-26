@@ -22,6 +22,7 @@ import {
   CloudStoryProjectListItem,
   ContinuityPanelViewModel,
   CreatureArchetype,
+  EXPORT_FORMATS,
   ExportFormat,
   GeneratedChapter,
   HeatContract,
@@ -401,8 +402,34 @@ export class App implements OnDestroy {
   readonly selectedImageStyle = signal<ImageStyle>('artistic');
   readonly isGeneratingImage = signal(false);
   readonly generatedChapterImage = signal<{ chapterId: string; image: ImageGenerationSeam['output'] } | null>(null);
-  readonly imageGenerationError = signal<string | null>(null);
-  readonly exportFormats: ExportFormat[] = ['txt', 'pdf', 'epub', 'docx'];
+  readonly chapterImageFailure = signal<{ chapterId: string; message: string } | null>(null);
+  /**
+   * The image failure to show under the chapter currently open, if it is that
+   * chapter's failure.
+   *
+   * The panel this renders in belongs to the selected chapter, and the image
+   * beside it has always known that: the `<img>` is drawn only when
+   * `generatedChapterImage().chapterId` matches the chapter on screen, so
+   * selecting another chapter puts the preview away. The error had no such
+   * check and nothing cleared it, so a refusal earned by Chapter 1 — "Themes
+   * are required", "Invalid image style" — stayed pinned under Chapter 2,
+   * Chapter 3, and every chapter generated afterwards, describing a request
+   * that was never made for them. It outlived the story, too: loading a saved
+   * project leaves it on screen over chapters from a different story.
+   *
+   * Recording which chapter the failure belongs to and matching it the way the
+   * image already does makes the two halves of the panel agree, and means the
+   * message goes away on its own when the reader moves on.
+   */
+  readonly imageGenerationError = computed(() => {
+    const failure = this.chapterImageFailure();
+    return failure && failure.chapterId === this.selectedChapter()?.chapterId ? failure.message : null;
+  });
+  // Read from the contract rather than restated here: this list had lost
+  // `html`, so the export route's sanitized HTML document — the only rendering
+  // that runs the story through the export sanitizer and carries the export
+  // metadata — had no option in the picker to ask for it.
+  readonly exportFormats: readonly ExportFormat[] = EXPORT_FORMATS;
   readonly selectedExportFormat = signal<ExportFormat>('txt');
   readonly isExporting = signal(false);
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
@@ -1499,7 +1526,7 @@ ${chapters}
     }
 
     this.isGeneratingImage.set(true);
-    this.imageGenerationError.set(null);
+    this.chapterImageFailure.set(null);
 
     const themes = this.blueprint().themes.map(theme => theme.id);
 
@@ -1520,7 +1547,7 @@ ${chapters}
             this.notificationService.success('Image generated', 'Your chapter illustration is ready.');
           } else {
             const message = response.error?.message ?? 'Image generation failed.';
-            this.imageGenerationError.set(message);
+            this.chapterImageFailure.set({ chapterId: chapter.chapterId, message });
             this.notificationService.error('Image generation failed', message);
           }
         },
@@ -1533,7 +1560,7 @@ ${chapters}
         error: error => {
           this.isGeneratingImage.set(false);
           const message = this.formatHttpError(error, 'Image generation failed. Please try again.');
-          this.imageGenerationError.set(message);
+          this.chapterImageFailure.set({ chapterId: chapter.chapterId, message });
           this.notificationService.error('Image generation failed', message);
         }
       });

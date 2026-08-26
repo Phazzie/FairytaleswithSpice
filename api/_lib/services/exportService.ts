@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { SaveExportSeam, ApiResponse, ExportFormat } from '../types/contracts';
+import { SaveExportSeam, ApiResponse, EXPORT_FORMATS, ExportFormat } from '../types/contracts';
 import {
   escapeHtml,
   escapePdfText,
@@ -593,7 +593,10 @@ ${chapterXhtml}
   }
 
   private validateExportInput(input: SaveExportSeam['input']): any {
-    const supportedFormats: ExportFormat[] = ['pdf', 'txt', 'html', 'epub', 'docx'];
+    // The contract's own list rather than a fourth copy of it: the picker, this
+    // guard, and `generateExportContent`'s switch all have to name the same five
+    // formats, and the copy in the picker is the one that had already drifted.
+    const supportedFormats: ExportFormat[] = [...EXPORT_FORMATS];
 
     if (!supportedFormats.includes(input.format)) {
       return {

@@ -13,6 +13,7 @@ function assert(condition: unknown, message: string): asserts condition {
 const service = new StoryService() as unknown as {
   formatThemeContext(input: StoryGenerationSeam['input']): string;
   formatStoryLabContext(input: StoryGenerationSeam['input']): string;
+  analyzeEmotionalTone(content: string): string;
 };
 
 const longLabel = 'L'.repeat(120);
@@ -66,5 +67,33 @@ assert(!storyLabContext.includes('N'.repeat(321)), 'narrative directives should 
 assert(storyLabContext.includes('X'.repeat(320)), 'no-go content should be preserved up to the context cap');
 assert(!storyLabContext.includes('X'.repeat(321)), 'no-go content should be capped at the context cap');
 assert(!storyLabContext.includes('undefined'), 'malformed prompt context should not render undefined');
+
+// The continuation prompt is told what the previous chapter's emotional
+// register is. `dominan` was a word stem left over from substring matching and
+// every keyword is matched as a whole word, so nothing could ever match it: a
+// chapter written about dominance and nothing else was described to the model
+// as `romantic with building tension`.
+const dominanceChapter = '<p>She named the terms. He was dominant in every way that counted.</p>';
+const dominanceTone = service.analyzeEmotionalTone(dominanceChapter);
+assert(dominanceTone.includes('intense'), 'a chapter about dominance should read as an intense register');
+assert(
+  service.analyzeEmotionalTone('<p>Her dominance was not in question.</p>').includes('intense'),
+  'the dominance inflection should be recognised too'
+);
+assert(
+  service.analyzeEmotionalTone('<p>A quiet supper by the window.</p>') === 'romantic with building tension',
+  'a chapter carrying none of the registers should still fall back honestly'
+);
+
+// The registers that already worked keep working: this repair spells out one
+// alternative, it does not loosen the whole-word matching around it.
+assert(
+  service.analyzeEmotionalTone('<p>He took control of the room.</p>').includes('intense'),
+  'the registers that already matched should be unchanged'
+);
+assert(
+  !service.analyzeEmotionalTone('<p>The predominant colour was red.</p>').includes('intense'),
+  'a word that merely contains a keyword should still not match'
+);
 
 console.log('Story service prompt guard tests passed');

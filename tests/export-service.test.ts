@@ -3,7 +3,7 @@
 
 import { ExportService } from '../api/_lib/services/exportService';
 import { readZipEntries, ZipEntry } from '../api/_lib/services/zipArchive';
-import { SaveExportSeam } from '../api/_lib/types/contracts';
+import { EXPORT_FORMATS, SaveExportSeam } from '../api/_lib/types/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -433,6 +433,37 @@ async function testMetadataReflectsTheActualStory(): Promise<void> {
   );
 }
 
+/**
+ * The export format list has three readers — the service's own guard, the
+ * renderer's switch, and the Angular picker — and the picker's hand-written
+ * copy had lost `html`, so the one format nobody could choose was the one whose
+ * renderer runs the story through the export sanitizer and attaches the export
+ * metadata. `EXPORT_FORMATS` is now the single definition; this holds the two
+ * server-side readers to it, and the Angular spec holds the picker to it.
+ */
+async function testEveryDeclaredFormatRenders(): Promise<void> {
+  const exportService = new ExportService();
+
+  assert(EXPORT_FORMATS.includes('html'), 'html is an export format the service renders');
+
+  for (const format of EXPORT_FORMATS) {
+    const result = await exportService.saveAndExport(createInput({ format }));
+    assert(result.success, `${format} is a declared format and must not be refused as unsupported`);
+
+    const content = await exportService.generateExportContent(createInput({ format }));
+    assert(content.length > 0, `${format} should render a non-empty document`);
+  }
+
+  const unsupported = await exportService.saveAndExport(
+    createInput({ format: 'rtf' as SaveExportSeam['input']['format'] })
+  );
+  assert(!unsupported.success, 'a format outside the declared list should still be refused');
+  assert(
+    !unsupported.success && unsupported.error?.code === 'FORMAT_NOT_SUPPORTED',
+    'an unsupported format should be named as such rather than reported as a service failure'
+  );
+}
+
 function escapeForAssertion(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
@@ -449,6 +480,7 @@ async function main(): Promise<void> {
   await testEpubIsARealZipContainerWithItsChapter();
   await testDocxIsARealZipContainerWithItsDocument();
   await testMetadataReflectsTheActualStory();
+  await testEveryDeclaredFormatRenders();
 
   console.log('Export service tests passed');
 }
