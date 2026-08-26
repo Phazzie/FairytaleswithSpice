@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🐛 Three Quick Wins — the Proving Grounds bench, and a dropped image reason (August 26, 2026)
 
 #### Proving Grounds no longer spends a generation on a request the route always refuses
+
 - The page packs the selected template's system and user prompts — and the
   generation-logic summary once the reader has asked to see it — into the
   blueprint's `narrativeDirectives`, which `parseStoryLabBlueprintFromBody` caps
@@ -30,12 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Story generation failed. Check the debug panel or console for details."
 
 #### "Export Results" is a button that downloads something
+
 - The Proving Grounds history export built a `data:` URI and clicked an anchor it
-  had created but never attached — the pattern `downloadHtmlDocument` was
-  extracted to end. Firefox does not dispatch a synthetic click on a detached
-  anchor, so the button did nothing there at all, and a `data:` URI carries its
-  whole payload in the URL, which twenty-five generated stories with their
-  prompts and evaluations are not.
+  had created but never attached — the same pattern the story download had before
+  `downloadHtmlDocument` replaced it with an attached anchor over an object URL.
+  Firefox does not dispatch a synthetic click on a detached anchor, so the button
+  did nothing there at all, and a `data:` URI carries its whole payload in the
+  URL, which twenty-five generated stories with their prompts and evaluations are
+  not.
 - `downloadTextDocument` is the same attach-click-detach over an object URL that
   the story download already uses, parameterized by MIME type; `downloadHtmlDocument`
   now delegates to it, so both buttons share one implementation and one test.
@@ -46,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whole exported history in memory, on the path least likely to be noticed.
 
 #### A failed chapter illustration says why it failed
+
 - `generateChapterImage` was the one subscription in the component whose error
   handler ignored its argument, answering "Image generation failed. Please try
   again." for every failure. An unsupported style, an exhausted image quota, and
