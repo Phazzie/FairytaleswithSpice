@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — a witch read out of "switch", a reset instant fifty thousand years out, an evaluation refusal reported as an outage (August 26, 2026)
+
+#### Three story-quality dimensions still reading substrings
+
+- `scoreEmotionalVariety` and `extractSensoryTextures` were moved onto whole-word
+  matching one slice ago; the three dimensions beside them in the same file —
+  `scoreContinuity`, `scoreCliffhangerQuality`, and `scoreTropeFreshness` — were
+  left on `String.prototype.includes`, and they look for exactly the kind of
+  short word this genre writes longer words around.
+- `oath` is inside `loathe` and `loathing`, so a chapter about loathing someone
+  was credited with repeating a continuity promise. A `forbidden_love` seed looks
+  for `love`, which is inside `gloves` and `clover`; a `slow_burn` seed looks for
+  `burn`, inside `burnished`. The creature check was the worst of them: `fairy`
+  is inside `fairytale` — the word this app is named for — `witch` inside
+  `switch`, `dragon` inside `dragonfly`, and `demon` inside `demonstrate`, so
+  "she switched off the lamp" reported `Creature appears: witch` for a story with
+  no witch in it. `cost` is inside `costume`, in a genre that writes masquerades,
+  and `door`/`price`/`blood`/`name` are inside `doorway`/`priceless`/`bloodless`/
+  `nameless` — four of the eight hook words the cliffhanger dimension credits an
+  ending for, matched by the words that negate them.
+- These three dimensions cannot list their inflections the way the emotion
+  families do, because the words arrive from the request rather than from a fixed
+  lexicon: the creature and the theme words are whatever blueprint was sent. So
+  the new `containsWordForm` states the same Unicode-lookaround boundary the
+  other scans use and allows the endings that keep a word the same word
+  (`loved`, `lovers`, `burning`, `oaths`, `costs`), plus the two irregular
+  plurals that land on the contract's own archetypes (`fairies`, `werewolves`).
+  Endings that build a *different* word — the `less` of `priceless`, the `ly` of
+  `secretly` — are deliberately absent.
+
+#### A rate-limit reset instant no client can read
+
+- `enforceApiAccessControl` put `checkRateLimit`'s reset instant onto
+  `X-RateLimit-Reset` unconverted — `Date.now()` milliseconds, e.g.
+  `1787012345678`. Read as the header is defined everywhere it is read (GitHub,
+  Stripe, every generated client that knows the name treat it as a UTC epoch in
+  seconds), that is a date some fifty thousand years out: a client backing off
+  until the reset never came back, and one merely displaying it showed the reader
+  a seven-digit year. No convention anywhere uses milliseconds here. This is the
+  same reading `Retry-After` already got, and the reason that header was added.
+- `X-RateLimit-Limit` was missing entirely, so `X-RateLimit-Remaining: 3` could
+  not be read as a fraction — the budget is per route and per tier, and nothing
+  in the response said what this route's was.
+  `SECURITY_FIXES_QUICK_REFERENCE.md` has documented all three headers at this
+  call site since it was written.
+- Both are now sent, and `X-RateLimit-Limit` was added to `EXPOSED_HEADERS` in
+  the CORS policy: a header a cross-origin page cannot read is a header that was
+  not sent, which is the reason the rest of that list exists.
+  `error.resetTime` in the 429 body is unchanged and still milliseconds — it is
+  this API's own field, read by this app.
+
+#### An evaluation refusal reported as an outage
+
+- `PromptEvaluationService.evaluateStory` answers a fixed placeholder whenever
+  the evaluate call does not come back successful, and Proving Grounds marks it
+  honestly — a badge, a "🔁 Retry Evaluation" button, and a notice reading
+  "the evaluation API was unavailable". But the fallback was reached for every
+  unsuccessful call alike, and the reasons are not alike:
+  `/api/story-lab/evaluate` refuses a `storyContent` past its 60,000-character
+  cap with `400 INVALID_EVALUATION_REQUEST` naming the field, a caller with no
+  API key with `401`, and a caller past its budget with `429`. Each of those is
+  something the reader can act on, and each was reported as an outage — the one
+  thing none of them is. The API answered; it said no, and said why.
+- The refusal message is now carried onto the placeholder as
+  `mockEvaluationReason` — read out of either shape it arrives in, the parsed
+  body of a `success: false` answer or `HttpErrorResponse.error` for a non-2xx
+  one, which is the reading `readApiErrorMessage` already gives a failed
+  generation on the same page — and printed under the notice and in the status
+  line. A call that never reached the API has nothing to quote and says nothing,
+  so the outage wording still stands where it is true.
+- The component's `catch` around the evaluation claimed "mock scoring remains
+  available when the API is unavailable", describing a fallback that had already
+  happened one line above it, and the service never rejects, so it was
+  unreachable besides. It now reports only what it can know.
+
 ### ***WORST TO BEST*** Backend Seam Contracts — 120 dead lines describing features that were never built (August 26, 2026)
 
 - `api/_lib/types/contracts.ts` is the canonical "seam contract" reference every

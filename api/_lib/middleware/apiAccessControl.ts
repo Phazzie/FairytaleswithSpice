@@ -69,8 +69,33 @@ export async function enforceApiAccessControl(
   const userId = auth.userId as string;
   const rateLimit = checkRateLimit(userId, endpoint, limits.maxRequests, limits.windowMs);
 
+  // `X-RateLimit-Limit` is what makes `X-RateLimit-Remaining` a fraction rather
+  // than a bare number. The three headers are one family and always have been —
+  // `SECURITY_FIXES_QUICK_REFERENCE.md` documents all three at this call site —
+  // but only two were sent, so a client reading `X-RateLimit-Remaining: 3` could
+  // not tell whether it had spent a seventh of its budget or two thirds of it.
+  // The budget is not discoverable any other way: it is per route and per tier,
+  // and nothing in the response said what this route's was.
+  res.setHeader('X-RateLimit-Limit', limits.maxRequests.toString());
   res.setHeader('X-RateLimit-Remaining', rateLimit.remaining.toString());
-  res.setHeader('X-RateLimit-Reset', rateLimit.resetTime.toString());
+  // Epoch *seconds*, which is the only form anything outside this app reads.
+  //
+  // `checkRateLimit` reports its reset instant in milliseconds, because that is
+  // what `Date.now()` returns, and the value went onto the header unconverted:
+  // `X-RateLimit-Reset: 1787012345678`. Read as the header is defined — GitHub,
+  // Stripe, and every generated client that knows the name treat it as a UTC
+  // epoch in seconds — that is a date some fifty thousand years out, so a client
+  // backing off until the reset never came back at all, and one merely
+  // displaying it showed the reader a year in the seven digits. No convention
+  // anywhere uses milliseconds here.
+  //
+  // This is the same reading `Retry-After` below already gets, and the reason
+  // that header was added: the parts of a rate-limit answer a caller acts on
+  // have to be spelled the way callers spell them. `error.resetTime` in the body
+  // is unchanged and stays in milliseconds — it is this API's own field, read by
+  // this app, and a client that wants the instant rather than the delay can have
+  // it there.
+  res.setHeader('X-RateLimit-Reset', rateLimitResetSeconds(rateLimit.resetTime).toString());
 
   if (!rateLimit.allowed) {
     // `Retry-After` is the only part of this answer a caller can act on without
@@ -117,6 +142,27 @@ export function retryAfterSeconds(resetTime: number, now: number = Date.now()): 
   }
 
   return Math.max(1, Math.ceil((resetTime - now) / 1000));
+}
+
+/**
+ * Turn the reset instant `checkRateLimit` reports into the epoch seconds
+ * `X-RateLimit-Reset` carries.
+ *
+ * Rounded up, so the second the header names is one the window has actually
+ * ended in: rounding down would name a second the caller is still limited
+ * during, and a client that waits until exactly that instant would be refused
+ * again — the same reasoning as the `Math.ceil` in `retryAfterSeconds`.
+ *
+ * A non-finite instant cannot be spelled as a date, so it is reported as `0`,
+ * the epoch — a value a client reads as "already past" and falls back to
+ * `Retry-After` for, rather than a `NaN` in a header field.
+ *
+ * Exported for the same reason `retryAfterSeconds` is: asserting on the header
+ * string a driven route produced would mean reconstructing the clock that
+ * produced it.
+ */
+export function rateLimitResetSeconds(resetTime: number): number {
+  return Number.isFinite(resetTime) ? Math.max(0, Math.ceil(resetTime / 1000)) : 0;
 }
 
 /**

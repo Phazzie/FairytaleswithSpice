@@ -476,6 +476,14 @@
   color: #fee2e2;
   font-weight: 600;
 }
+/* The route's own sentence about why it refused, on its own line: it is the
+   actionable half of the notice, and it is not part of the warning wording. */
+.mock-evaluation-reason {
+  display: block;
+  margin-top: 0.35rem;
+  font-weight: 400;
+  font-style: italic;
+}
 .score-display {
   display: flex;
   gap: 2rem;

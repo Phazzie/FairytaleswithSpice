@@ -167,8 +167,14 @@ fetch('/api/story/generate', {
 
 `enforceApiAccessControl` (see the Authentication section above) already
 authenticates the request and checks its rate limit together, sets the
-`X-RateLimit-Remaining` / `X-RateLimit-Reset` headers, and answers `429` when
-the budget is spent — a handler does not call `checkRateLimit` directly.
+`X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers,
+and answers `429` (with `Retry-After`) when the budget is spent — a handler does
+not call `checkRateLimit` directly.
+
+`X-RateLimit-Reset` carries a **UTC epoch in seconds**, which is the form every
+client that knows the header name reads it in. `checkRateLimit` works in
+milliseconds internally and `error.resetTime` in the 429 body still reports
+milliseconds — that field is this API's own, not a standard header.
 
 Limits (from `api/_lib/constants.ts`):
 ```typescript

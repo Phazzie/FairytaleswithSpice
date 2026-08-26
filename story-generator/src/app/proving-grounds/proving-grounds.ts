@@ -7,6 +7,7 @@ import { RouterLink } from '@angular/router';
 import {
   ChapterBatchSize,
   CreatureArchetype,
+  EvaluationCriteria,
   GeneratedChapter,
   PromptTemplate,
   ProvingGroundsTestResult,
@@ -341,9 +342,16 @@ export class ProvingGroundsComponent implements OnInit {
         this.currentTest.set(updated);
       }
       this.selectedComparisons.set(this.selectedComparisons().map(test => test.id === updated.id ? updated : test));
+      this.statusMessage = this.describeEvaluationOutcome(evaluation);
     } catch (error) {
+      // `PromptEvaluationService.evaluateStory` answers a placeholder rather
+      // than rejecting, so this is only reached if the service itself throws.
+      // The message it used to carry — "mock scoring remains available when the
+      // API is unavailable" — described the fallback that had already happened
+      // one line up, which is why nothing on this page ever said what went
+      // wrong: the reason lives on the evaluation now, not here.
       console.error('Error evaluating story:', error);
-      this.statusMessage = 'Evaluation failed; mock scoring remains available when the API is unavailable.';
+      this.statusMessage = 'Evaluation could not be run.';
     } finally {
       this.isEvaluating.set(false);
     }
@@ -494,6 +502,26 @@ export class ProvingGroundsComponent implements OnInit {
     const message = envelope?.message;
 
     return typeof message === 'string' && message.trim().length > 0 ? message : null;
+  }
+
+  /**
+   * Say what came back from an evaluation, in the status line beside the button.
+   *
+   * The button and the notice both already distinguish a placeholder from a real
+   * score; neither says why there is a placeholder, and the status line — the one
+   * part of this page that reports what the last action did — said nothing about
+   * evaluation at all. A refusal the reader can act on (a story past the route's
+   * cap, an unauthenticated caller, a spent budget) belongs where the reader is
+   * already looking after pressing the button.
+   */
+  private describeEvaluationOutcome(evaluation: EvaluationCriteria): string {
+    if (!evaluation.isMockEvaluation) {
+      return `Evaluated: ${evaluation.score}/100.`;
+    }
+
+    return evaluation.mockEvaluationReason
+      ? `The evaluation API refused this request, so the score is a placeholder: ${evaluation.mockEvaluationReason}`
+      : 'The evaluation API was unavailable, so the score is a placeholder.';
   }
 
   private generateId(): string {
