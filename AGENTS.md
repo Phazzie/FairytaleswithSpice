@@ -409,9 +409,7 @@ Current Vercel-facing route families include:
 | Path | Purpose |
 |---|---|
 | `/api/health` | Health check |
-| `/api/story/generate` | Generate story |
 | `/api/story/stream` | Streaming story generation / SSE |
-| `/api/story/continue` | Continue story |
 | `/api/export/save` | Export/save |
 | `/api/story-lab/jobs` | Create a non-durable Story Lab job scaffold |
 | `/api/story-lab/jobs/:jobId` | Read a non-durable Story Lab job snapshot |

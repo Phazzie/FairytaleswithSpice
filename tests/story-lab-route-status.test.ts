@@ -237,6 +237,16 @@ async function main(): Promise<void> {
     assert(response.statusCode === 400, `content-policy genesis failure should return 400, got ${response.statusCode}`);
   });
 
+  // Both routes now report an unexpected throw through the shared `logError`
+  // helper the other paid routes already use (`api/story/generate.ts`'s catch
+  // block, before it was deleted, was the pattern this mirrors) rather than the
+  // route-local `console.error('Story Lab route failed unexpectedly', …)` this
+  // file used to drive here. That trades a single opaque console line for the
+  // structured, multi-line entry `logError` writes — timestamp/level line,
+  // context, and error detail — stamped with the request's own correlation id,
+  // which is the property worth proving now: the response the caller sees stays
+  // generic, and the detailed failure is findable by the id the caller was
+  // handed back.
   await withEnv({ NODE_ENV: undefined, VERCEL_ENV: undefined, XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
     const response = new FakeResponse();
     const handler = createStoryLabGenesisHandler(async () => {
@@ -248,11 +258,21 @@ async function main(): Promise<void> {
     });
 
     assert(response.statusCode === 500, `unexpected genesis throw should return 500, got ${response.statusCode}`);
-    assert((response.body as { success?: boolean }).success === false, 'unexpected genesis throw should return an error payload');
-    assert(errorLogs.length === 1, 'unexpected genesis throw should emit one redacted error log');
-    assert(JSON.stringify(errorLogs).includes('generateGenesis'), 'genesis error log should include operation name');
-    assert(JSON.stringify(errorLogs).includes('Error'), 'genesis error log should include error type');
-    assert(!JSON.stringify(errorLogs).includes('secret genesis payload'), 'genesis error log should not include raw error message');
+    const body = response.body as { success?: boolean; error?: { message?: string } };
+    assert(body.success === false, 'unexpected genesis throw should return an error payload');
+    assert(
+      body.error?.message === 'Story Lab request failed unexpectedly.',
+      `the response the caller sees should stay generic, got ${JSON.stringify(body.error)}`
+    );
+
+    const requestId = response.headers['X-Request-ID'];
+    assert(typeof requestId === 'string' && requestId.length > 0, 'the response should carry the correlation id even on a 500');
+
+    assert(errorLogs.length > 0, 'unexpected genesis throw should emit at least one console error log');
+    const combined = JSON.stringify(errorLogs);
+    assert(combined.includes(requestId), 'genesis error log should be findable by the request\'s own correlation id');
+    assert(combined.includes('/api/story-lab/stories'), 'genesis error log should include the endpoint');
+    assert(combined.includes('Error'), 'genesis error log should include error type');
   });
 
   await withEnv({ NODE_ENV: undefined, VERCEL_ENV: undefined, XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
@@ -266,11 +286,21 @@ async function main(): Promise<void> {
     });
 
     assert(response.statusCode === 500, `unexpected continuation throw should return 500, got ${response.statusCode}`);
-    assert((response.body as { success?: boolean }).success === false, 'unexpected continuation throw should return an error payload');
-    assert(errorLogs.length === 1, 'unexpected continuation throw should emit one redacted error log');
-    assert(JSON.stringify(errorLogs).includes('continueStory'), 'continuation error log should include operation name');
-    assert(JSON.stringify(errorLogs).includes('Error'), 'continuation error log should include error type');
-    assert(!JSON.stringify(errorLogs).includes('secret continuation payload'), 'continuation error log should not include raw error message');
+    const body = response.body as { success?: boolean; error?: { message?: string } };
+    assert(body.success === false, 'unexpected continuation throw should return an error payload');
+    assert(
+      body.error?.message === 'Story Lab request failed unexpectedly.',
+      `the response the caller sees should stay generic, got ${JSON.stringify(body.error)}`
+    );
+
+    const requestId = response.headers['X-Request-ID'];
+    assert(typeof requestId === 'string' && requestId.length > 0, 'the response should carry the correlation id even on a 500');
+
+    assert(errorLogs.length > 0, 'unexpected continuation throw should emit at least one console error log');
+    const combined = JSON.stringify(errorLogs);
+    assert(combined.includes(requestId), 'continuation error log should be findable by the request\'s own correlation id');
+    assert(combined.includes('/api/story-lab/stories/continue'), 'continuation error log should include the endpoint');
+    assert(combined.includes('Error'), 'continuation error log should include error type');
   });
 
   // `storyId` was read as `input.storyId?.trim()`, which throws for every
