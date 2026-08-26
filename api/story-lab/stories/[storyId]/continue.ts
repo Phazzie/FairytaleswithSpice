@@ -1,17 +1,20 @@
 // Created: 2025-10-29 08:27 UTC
 
 import type { ApiResponse, StoryContinuationSeam, StoryIterationPayload } from '../../../_lib/story-lab/contracts';
-import { applyCorsPolicy } from '../../../_lib/http/corsPolicy';
+import { beginPostRoute } from '../../../_lib/http/postRoutePreamble';
 import { RATE_LIMITS } from '../../../_lib/constants';
-import { enforceApiAccessControl } from '../../../_lib/middleware/apiAccessControl';
 import { getStoryLabResponseStatus } from '../../../_lib/story-lab/routeStatus';
 import { continueStoryLab } from '../../../_lib/story-lab/storyLabEngine';
 import { getTransientStorySnapshot } from '../../../_lib/story-lab/stateStore';
+import { logError, logInfo, logWarn } from '../../../_lib/utils/logger';
+import { toLoggableStoryId } from '../../../_lib/utils/loggableRequestParameters';
 
 const isValidBatchSize = (size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] =>
   [1, 2, 3].includes(size as StoryContinuationSeam['input']['chapterBatchSize']);
 
 type ContinueStoryLab = typeof continueStoryLab;
+
+const ENDPOINT = '/api/story-lab/stories/continue';
 
 const unexpectedStoryLabErrorResponse: ApiResponse<never> = {
   success: false,
@@ -20,11 +23,6 @@ const unexpectedStoryLabErrorResponse: ApiResponse<never> = {
     message: 'Story Lab request failed unexpectedly.'
   }
 };
-
-function logUnexpectedStoryLabRouteError(operation: string, error: unknown): void {
-  const errorType = error instanceof Error ? error.name : 'UnknownError';
-  console.error('Story Lab route failed unexpectedly', { operation, errorType });
-}
 
 /**
  * The story this URL addresses.
@@ -72,122 +70,158 @@ function readBodyStoryId(value: unknown): string | null {
 
 export function createStoryLabContinuationHandler(continueStory: ContinueStoryLab = continueStoryLab) {
   return async function handler(req: any, res: any) {
-    const cors = applyCorsPolicy(req, res, {
-      methods: ['POST', 'OPTIONS'],
-      credentials: true
-    });
-    if (cors.handled) {
+    // Correlation id, `X-Request-ID`, CORS, method, and access control, in the
+    // one place the other paid POST routes already state them.
+    const start = await beginPostRoute(req, res, 'story-lab/stories/continue', RATE_LIMITS.STORY_LAB_CONTINUATION);
+    if (!start) {
       return;
     }
 
-    if (req.method !== 'POST') {
-      res.status(405).json({
-        success: false,
-        error: {
-          code: 'METHOD_NOT_ALLOWED',
-          message: 'Only POST requests are supported.'
-        }
-      });
-      return;
-    }
+    const requestId = start.requestId;
 
-    const access = await enforceApiAccessControl(
-      req,
-      res,
-      'story-lab/stories/continue',
-      RATE_LIMITS.STORY_LAB_CONTINUATION
-    );
-    if (!access.allowed) {
-      return;
-    }
-
-    const input = req.body as Partial<StoryContinuationSeam['input']> | undefined;
-    if (!input || typeof input !== 'object') {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_REQUEST',
-          message: 'Request body is required.'
-        }
-      });
-      return;
-    }
-
-    // `storyId` arrives from the request body, so its type is whatever the
-    // caller sent. Calling `.trim()` on it directly threw a `TypeError` for
-    // every non-string — `{"storyId": 123}` was answered with an unhandled
-    // rejection rather than the 400 the field check below exists to give,
-    // because nothing here catches it. The job route's own normalizer already
-    // reads the field this way; this is the same check.
-    const routeStoryId = readRouteStoryId(req);
-    const bodyStoryId = readBodyStoryId(input.storyId);
-
-    if (bodyStoryId === null) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_REQUEST',
-          message: 'storyId must be a string when the request body carries one.'
-        }
-      });
-      return;
-    }
-
-    // Two ids that disagree are refused rather than resolved. Either one could
-    // be the mistake, and quietly picking one continues a story the caller did
-    // not ask for — which is the failure this route had when the body always
-    // won.
-    if (routeStoryId && bodyStoryId && routeStoryId !== bodyStoryId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_REQUEST',
-          message: 'storyId in the request body must match the story id in the request path.'
-        }
-      });
-      return;
-    }
-
-    const storyId = routeStoryId || bodyStoryId;
-    const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
-
-    const hasChapters = Array.isArray(input.previouslyGeneratedChapters);
-    const batchSizeNumber = Number(input.chapterBatchSize);
-
-    if (!storyId || (!input.storyState && !transientSnapshot) || (!hasChapters && !transientSnapshot) || !isValidBatchSize(batchSizeNumber)) {
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_REQUEST',
-          message: 'Continuation requires storyId, storyState or transient snapshot, previous chapters or transient snapshot, and a chapterBatchSize of 1-3.'
-        }
-      });
-      return;
-    }
-
-    const previousChapters = hasChapters
-      ? input.previouslyGeneratedChapters ?? []
-      : transientSnapshot!.chapters;
-
-    const normalizedInput: StoryContinuationSeam['input'] = {
-      ...(input as StoryContinuationSeam['input']),
-      storyId,
-      storyState: input.storyState ?? transientSnapshot!.state,
-      previouslyGeneratedChapters: previousChapters,
-      existingSummary: input.existingSummary ?? transientSnapshot?.summary,
-      chapterBatchSize: batchSizeNumber as StoryContinuationSeam['input']['chapterBatchSize']
-    };
-
-    let payload: ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }>;
     try {
-      payload = await continueStory(normalizedInput);
-    } catch (error) {
-      logUnexpectedStoryLabRouteError('continueStory', error);
-      res.status(500).json(unexpectedStoryLabErrorResponse);
-      return;
-    }
+      const input = req.body as Partial<StoryContinuationSeam['input']> | undefined;
+      if (!input || typeof input !== 'object') {
+        logWarn('Story Lab continuation request rejected', {
+          requestId,
+          endpoint: ENDPOINT,
+          method: 'POST'
+        }, { reason: 'missing_body' });
 
-    res.status(getStoryLabResponseStatus(payload)).json(payload);
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'Request body is required.'
+          }
+        });
+        return;
+      }
+
+      // `storyId` arrives from the request body, so its type is whatever the
+      // caller sent. Calling `.trim()` on it directly threw a `TypeError` for
+      // every non-string — `{"storyId": 123}` was answered with an unhandled
+      // rejection rather than the 400 the field check below exists to give,
+      // because nothing here catches it. The job route's own normalizer already
+      // reads the field this way; this is the same check.
+      const routeStoryId = readRouteStoryId(req);
+      const bodyStoryId = readBodyStoryId(input.storyId);
+
+      if (bodyStoryId === null) {
+        logWarn('Story Lab continuation request rejected', {
+          requestId,
+          endpoint: ENDPOINT,
+          method: 'POST'
+        }, { reason: 'storyId_type_mismatch' });
+
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'storyId must be a string when the request body carries one.'
+          }
+        });
+        return;
+      }
+
+      // Two ids that disagree are refused rather than resolved. Either one could
+      // be the mistake, and quietly picking one continues a story the caller did
+      // not ask for — which is the failure this route had when the body always
+      // won.
+      if (routeStoryId && bodyStoryId && routeStoryId !== bodyStoryId) {
+        logWarn('Story Lab continuation request rejected', {
+          requestId,
+          endpoint: ENDPOINT,
+          method: 'POST'
+        }, {
+          reason: 'storyId_conflict',
+          routeStoryId: toLoggableStoryId(routeStoryId),
+          bodyStoryId: toLoggableStoryId(bodyStoryId)
+        });
+
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'storyId in the request body must match the story id in the request path.'
+          }
+        });
+        return;
+      }
+
+      const storyId = routeStoryId || bodyStoryId;
+      const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
+
+      const hasChapters = Array.isArray(input.previouslyGeneratedChapters);
+      const batchSizeNumber = Number(input.chapterBatchSize);
+
+      if (!storyId || (!input.storyState && !transientSnapshot) || (!hasChapters && !transientSnapshot) || !isValidBatchSize(batchSizeNumber)) {
+        logWarn('Story Lab continuation request rejected', {
+          requestId,
+          endpoint: ENDPOINT,
+          method: 'POST'
+        }, {
+          reason: 'incomplete_continuation_input',
+          storyId: toLoggableStoryId(storyId)
+        });
+
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'Continuation requires storyId, storyState or transient snapshot, previous chapters or transient snapshot, and a chapterBatchSize of 1-3.'
+          }
+        });
+        return;
+      }
+
+      const previousChapters = hasChapters
+        ? input.previouslyGeneratedChapters ?? []
+        : transientSnapshot!.chapters;
+
+      const normalizedInput: StoryContinuationSeam['input'] = {
+        ...(input as StoryContinuationSeam['input']),
+        storyId,
+        storyState: input.storyState ?? transientSnapshot!.state,
+        previouslyGeneratedChapters: previousChapters,
+        existingSummary: input.existingSummary ?? transientSnapshot?.summary,
+        chapterBatchSize: batchSizeNumber as StoryContinuationSeam['input']['chapterBatchSize']
+      };
+
+      // Never `continuationBrief`, `heatContract.noGoContent`, or chapter text —
+      // only a count of what is already on hand.
+      logInfo('Story Lab continuation endpoint called', {
+        requestId,
+        endpoint: ENDPOINT,
+        method: 'POST',
+        requestParameters: {
+          storyId: toLoggableStoryId(storyId),
+          chapterBatchSize: normalizedInput.chapterBatchSize,
+          previousChapterCount: previousChapters.length
+        }
+      });
+
+      const payload: ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }> =
+        await continueStory(normalizedInput);
+
+      logInfo(`Story Lab continuation ${payload.success ? 'succeeded' : 'failed'}`, {
+        requestId,
+        endpoint: ENDPOINT,
+        method: 'POST',
+        statusCode: getStoryLabResponseStatus(payload)
+      });
+
+      res.status(getStoryLabResponseStatus(payload)).json(payload);
+    } catch (error) {
+      logError('Story Lab continuation endpoint error', error, {
+        requestId,
+        endpoint: ENDPOINT,
+        method: 'POST',
+        statusCode: 500
+      });
+
+      res.status(500).json(unexpectedStoryLabErrorResponse);
+    }
   };
 }
 

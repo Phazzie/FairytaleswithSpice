@@ -3,8 +3,6 @@
 import healthHandler from '../../health';
 import exportSaveHandler from '../../export/save';
 import imageGenerateHandler from '../../image/generate';
-import storyContinueHandler from '../../story/continue';
-import storyGenerateHandler from '../../story/generate';
 import storyLabEvaluateHandler from '../../story-lab/evaluate';
 import storyLabStreamGenesisHandler from '../../story-lab/stream/genesis';
 import { createStoryLabGenesisHandler } from '../../story-lab/stories';
@@ -35,6 +33,13 @@ import { handleStoryLabJobsRoute } from '../story-lab/jobs/jobRouteHandlers';
  * where the serverless route answers an `ApiResponse` envelope. Serving the
  * same handlers is what keeps the two deployments answering the same way
  * without either having to be kept in step by hand.
+ *
+ * `/api/story/generate` and `/api/story/continue` are gone from the table
+ * below: they were never reachable from the app described above — the
+ * Angular client only ever calls `/api/story-lab/...` — and the correlation
+ * id, access control, and redacted logging they carried have since moved onto
+ * the Story Lab genesis and continuation routes that do serve real traffic.
+ * See `api/README.md`'s "Retired route files" for the rest of that history.
  *
  * The handlers are written against the serverless `(req, res)` signature, which
  * is the Node request and response Express also extends: they read `method`,
@@ -78,8 +83,6 @@ export interface ApiRouteDefinition {
 
 export const API_ROUTES: readonly ApiRouteDefinition[] = [
   { path: '/api/health', handler: healthHandler },
-  { path: '/api/story/generate', handler: storyGenerateHandler },
-  { path: '/api/story/continue', handler: storyContinueHandler },
   { path: '/api/export/save', handler: exportSaveHandler },
   { path: '/api/image/generate', handler: imageGenerateHandler },
   { path: '/api/story-lab/stories', handler: storyLabGenesisHandler },

@@ -1,22 +1,39 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-24 22:15 UTC
 //
-// HTTP-contract regressions for the legacy story/export routes:
+// HTTP-contract regressions for the routes real traffic goes through:
 //
-// 1. `/api/story/generate`, `/api/story/continue`, `/api/export/save`, and
-//    `/api/image/generate` answer a missing or non-object body with 400
-//    INVALID_INPUT rather than crashing into their catch block and reporting
-//    500 INTERNAL_ERROR.
+// 1. `/api/story-lab/stories`, `/api/story-lab/stories/:storyId/continue`,
+//    `/api/export/save`, and `/api/image/generate` answer a missing or
+//    non-object body with a 400 (each route's own client-error code) rather
+//    than crashing into their catch block and reporting 500 INTERNAL_ERROR —
+//    and each stamps an `X-Request-ID` on the way.
 // 2. Caller-supplied text (a prose story id, an unrecognized field name) does
 //    not leak into request logs, on either the buffered sink or the console.
 // 3. The export size cap is measured in bytes, not UTF-16 code units.
+//
+// `/api/story/generate` and `/api/story/continue` — the classic, non-Story-Lab
+// handlers this file used to drive directly — are gone: nothing ever called
+// them (the Angular app talks only to `/api/story-lab/...`), and they have
+// been deleted along with their entries in `expressApiRoutes.ts` and the
+// Vercel function-count guard. The coverage that mattered moves with the
+// infrastructure it was protecting: the malformed-body and request-id checks
+// now drive the Story Lab genesis and continuation handlers those routes were
+// missing, and the prose-story-id check drives the Story Lab continuation
+// route. The one exception is `verifyRejectedStoryInputDoesNotRepeatCallerText`,
+// which protects `StoryService.generateStory`'s `validateStoryInput` rejection
+// shape — a service-level contract with no equivalent coverage elsewhere in
+// this suite — so it now calls the service directly rather than through the
+// deleted HTTP handler.
 
 import { FILE_SIZE } from '../api/_lib/constants';
 import { logger } from '../api/_lib/utils/logger';
+import { StoryService } from '../api/_lib/services/storyService';
 import exportHandler from '../api/export/save';
 import imageGenerateHandler from '../api/image/generate';
-import continueHandler from '../api/story/continue';
-import generateHandler from '../api/story/generate';
+import storyLabGenesisHandler from '../api/story-lab/stories';
+import storyLabContinuationHandler from '../api/story-lab/stories/[storyId]/continue';
+import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 
 interface FakeRequest {
   method: string;
@@ -114,10 +131,57 @@ async function verifyMalformedBodiesAreClientErrors(): Promise<void> {
   const alreadyRejectedBodies: unknown[] = ['creature=vampire', []];
 
   for (const body of [...throwingBodies, ...alreadyRejectedBodies]) {
-    await expectMissingBodyRejected('/api/story/generate', generateHandler, body);
-    await expectMissingBodyRejected('/api/story/continue', continueHandler, body);
     await expectMissingBodyRejected('/api/export/save', exportHandler, body);
     await expectMissingBodyRejected('/api/image/generate', imageGenerateHandler, body);
+  }
+}
+
+/**
+ * The Story Lab genesis and continuation routes answer the same family of
+ * malformed bodies with a 400 rather than a crash — but through their own
+ * parsers, so their own error codes: the blueprint parser refuses everything
+ * that is not a plain object with `INVALID_BLUEPRINT`, and the continuation
+ * route's body check refuses the same shapes with `INVALID_REQUEST`. Neither
+ * is `INVALID_INPUT`, which is why this is a separate check from
+ * `expectMissingBodyRejected` above rather than a third call added to its loop.
+ *
+ * Every one of these also proves the new correlation-id behaviour this change
+ * adds: `beginPostRoute` stamps `X-Request-ID` before either route reads its
+ * body, so it is present even on the requests that go on to be refused.
+ */
+async function verifyStoryLabRoutesRejectMalformedBodies(): Promise<void> {
+  const bodies: unknown[] = [undefined, null, 'creature=vampire', []];
+
+  const routes = [
+    ['/api/story-lab/stories', storyLabGenesisHandler, 'INVALID_BLUEPRINT'],
+    ['/api/story-lab/stories/:storyId/continue', storyLabContinuationHandler, 'INVALID_REQUEST']
+  ] as const;
+
+  for (const [name, handler, expectedCode] of routes) {
+    for (const body of bodies) {
+      const req: FakeRequest = { method: 'POST', headers: {}, query: {}, body };
+      const res = new FakeResponse();
+
+      await handler(req, res);
+
+      assert(
+        res.statusCode === 400,
+        `${name} should answer a ${describeBody(body)} body with 400, got ${res.statusCode}`
+      );
+
+      const payload = res.body as { success?: boolean; error?: { code?: string } };
+      assert(payload?.success === false, `${name} should report failure for a ${describeBody(body)} body`);
+      assert(
+        payload?.error?.code === expectedCode,
+        `${name} should report ${expectedCode} for a ${describeBody(body)} body, got ${payload?.error?.code}`
+      );
+
+      const requestId = res.headers['X-Request-ID'];
+      assert(
+        typeof requestId === 'string' && requestId.length > 0,
+        `${name} should stamp a non-empty X-Request-ID even on a ${describeBody(body)} body (got ${JSON.stringify(requestId)})`
+      );
+    }
   }
 }
 
@@ -133,17 +197,23 @@ async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
   // Underscore-separated and carrying a real UUID, so it passes every rule this
   // check went through before the minted form: it is shorter than any cap,
   // every character in it is one an id may contain, and the id-shaped tail is
-  // genuine. Only pinning the whole form rejects it.
-  const storyIdProse = 'Dana_at_the_clinic_on_Rosewood_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';
+  // genuine. Only pinning the whole form rejects it. Sent identically as both
+  // the route segment and the body field, so the route's own conflict check
+  // does not intercept it before the request-received line is written.
+  const proseStoryId = 'Dana_at_the_clinic_on_Rosewood_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';
+  const proseProject = createSavedStoryProjectFixture({ storyId: proseStoryId });
+
   const { consoleOutput } = await captureConsole(async () => {
     const res = new FakeResponse();
-    await continueHandler({
+    await storyLabContinuationHandler({
       method: 'POST',
       headers: {},
+      query: { storyId: proseStoryId },
       body: {
-        storyId: storyIdProse,
-        existingContent: '<p>She opened the door.</p>',
-        currentChapterCount: 1
+        storyId: proseStoryId,
+        chapterBatchSize: 1,
+        storyState: proseProject.state,
+        previouslyGeneratedChapters: proseProject.chapters
       }
     }, res);
     return res;
@@ -151,11 +221,11 @@ async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
 
   const started = logger
     .getRecentLogs(50, 'info')
-    .find(entry => entry.context?.endpoint === '/api/story/continue');
+    .find(entry => entry.context?.endpoint === '/api/story-lab/stories/continue');
 
   assert(started, 'the continuation route should log the request it started');
   assert(
-    consoleOutput.includes('/api/story/continue'),
+    consoleOutput.includes('/api/story-lab/stories/continue'),
     `the console capture should hold the request line (got ${consoleOutput.slice(0, 200)}…)`
   );
 
@@ -174,63 +244,29 @@ async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
     `a story id that is not shaped like one should be reported (got ${JSON.stringify(started.context?.requestParameters)})`
   );
 
-  // `maintainTone` is the scalar the route does not guard. `currentChapterCount`
-  // it does — `typeof input.currentChapterCount !== 'number'` is answered with a
-  // 400 before anything is logged — but nothing checks `maintainTone`, and the
-  // *service* logs it on the way past. A prose value therefore reaches the
-  // request line the service writes, one call below this route.
-  logger.clearLogs();
-  const scalarProse = 'Dana asked me not to tell anyone about Rosewood';
-  const { consoleOutput: scalarConsole } = await captureConsole(async () => {
-    const res = new FakeResponse();
-    await continueHandler({
-      method: 'POST',
-      headers: {},
-      body: {
-        storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
-        existingContent: '<p>She opened the door.</p>',
-        currentChapterCount: 1,
-        maintainTone: scalarProse
-      }
-    }, res);
-    return res;
-  });
-
-  const serviceEntry = logger
-    .getRecentLogs(50, 'info')
-    .find(entry => entry.context?.endpoint === 'continueChapter');
-
-  assert(serviceEntry, 'the continuation service should log the request it received');
-  for (const [sink, written] of [
-    ['buffer', JSON.stringify(serviceEntry.context)],
-    ['console', scalarConsole]
-  ] as const) {
-    assert(
-      !written.includes('Dana') && !written.includes('Rosewood'),
-      `prose sent as a flag must not reach the ${sink} (got ${written})`
-    );
-  }
-  assert(
-    serviceEntry.context?.requestParameters?.['maintainTone'] === '[UNRECOGNIZED]',
-    `a flag that is not a boolean should be reported (got ${JSON.stringify(serviceEntry.context?.requestParameters)})`
-  );
-
   // The ordinary case still logs the id, which is what makes it worth keeping.
   logger.clearLogs();
-  const realStoryId = 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';
+  const realStoryId = 'story-9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f';
+  const realProject = createSavedStoryProjectFixture({ storyId: realStoryId });
   await captureConsole(async () => {
     const res = new FakeResponse();
-    await continueHandler({
+    await storyLabContinuationHandler({
       method: 'POST',
       headers: {},
-      body: { storyId: realStoryId, existingContent: '<p>She opened the door.</p>', currentChapterCount: 1 }
+      query: { storyId: realStoryId },
+      body: {
+        storyId: realStoryId,
+        chapterBatchSize: 1,
+        storyState: realProject.state,
+        previouslyGeneratedChapters: realProject.chapters
+      }
     }, res);
     return res;
   });
 
   const realEntry = logger
     .getRecentLogs(50, 'info')
-    .find(entry => entry.context?.endpoint === '/api/story/continue');
+    .find(entry => entry.context?.endpoint === '/api/story-lab/stories/continue');
   assert(
     realEntry?.context?.requestParameters?.['storyId'] === realStoryId,
     `a real story id should still be logged (got ${JSON.stringify(realEntry?.context?.requestParameters)})`
@@ -245,18 +281,14 @@ async function verifyContinueDoesNotLogProseStoryIds(): Promise<void> {
  * had not been checked — and it is the malformed requests, the hand-written
  * ones, that take this path.
  *
- * Both sinks are asserted on, with prose markers, exactly as the value-side
- * checks above do: reverting either call site fails this.
+ * The Story Lab genesis route does not have this bug shape to regress-test:
+ * its 400 already reports `invalidFields`, the blueprint parser's own list of
+ * known field names, not `Object.keys(body)`. So only `/api/image/generate`
+ * remains here; the two classic story routes this test used to cover are gone
+ * along with the handlers that carried the bug.
  */
 async function verifyRejectedBodiesDoNotLogCallerFieldNames(): Promise<void> {
-  // The third entry is a field name each route's own contract recognises, so
-  // the fixture body below carries one real field alongside the prose one —
-  // `userInput` is not part of `/api/image/generate`'s contract, so reusing it
-  // there would fail for the wrong reason (the route correctly not recognising
-  // a field it was never sent).
   const routes = [
-    ['/api/story/generate', generateHandler, 'userInput'],
-    ['/api/story/continue', continueHandler, 'userInput'],
     ['/api/image/generate', imageGenerateHandler, 'style']
   ] as const;
 
@@ -324,6 +356,14 @@ async function verifyRejectedBodiesDoNotLogCallerFieldNames(): Promise<void> {
  * rejections sit beside. `userInput` is the reader's prose, and its rule fires
  * *because* the prose is long: the rejection that exists to keep an oversized
  * brief out of the request was the one that copied all of it into the log.
+ *
+ * This is a `StoryService` contract, not a routing one — `validateStoryInput`
+ * runs the same way no matter which route calls `generateStory` — and Story
+ * Lab genesis does not call this service at all (it calls
+ * `generateStoryLabGenesis`, a different code path with its own parser, already
+ * covered end-to-end by `tests/story-lab-blueprint-parser.test.ts`). With the
+ * classic `/api/story/generate` route gone, this now drives `StoryService`
+ * directly rather than through an HTTP handler.
  */
 async function verifyRejectedStoryInputDoesNotRepeatCallerText(): Promise<void> {
   const prose = 'Dana is in treatment at the clinic on Rosewood';
@@ -359,18 +399,14 @@ async function verifyRejectedStoryInputDoesNotRepeatCallerText(): Promise<void> 
   for (const testCase of cases) {
     logger.clearLogs();
 
-    const { response, consoleOutput } = await captureConsole(async () => {
-      const res = new FakeResponse();
-      await generateHandler({ method: 'POST', headers: {}, body: testCase.body }, res);
-      return res;
+    const { response: result, consoleOutput } = await captureConsole(async () => {
+      const service = new StoryService();
+      return service.generateStory(testCase.body as any);
     });
 
-    assert(
-      response.statusCode === 400,
-      `an invalid ${testCase.name} should be a caller error, got ${response.statusCode}`
-    );
+    assert(result.success === false, `an invalid ${testCase.name} should be refused, got success=${result.success}`);
 
-    const payload = response.body as { error?: { code?: string; providedValue?: unknown } };
+    const payload = result as { error?: { code?: string; providedValue?: unknown } };
     assert(
       payload.error?.code === 'INVALID_INPUT',
       `an invalid ${testCase.name} should be reported as INVALID_INPUT, got ${JSON.stringify(payload.error)}`
@@ -404,19 +440,15 @@ async function verifyRejectedStoryInputDoesNotRepeatCallerText(): Promise<void> 
   // An array under `userInput` has a `length` of 0, so it passed the length rule
   // and reached the prompt, where it is interpolated as text.
   logger.clearLogs();
-  const arrayInputResponse = new FakeResponse();
-  await captureConsole(async () => {
-    await generateHandler(
-      { method: 'POST', headers: {}, body: { ...validBody, userInput: [prose] } },
-      arrayInputResponse
-    );
-    return arrayInputResponse;
+  const { response: arrayInputResult } = await captureConsole(async () => {
+    const service = new StoryService();
+    return service.generateStory({ ...validBody, userInput: [prose] } as any);
   });
 
-  const arrayInputPayload = arrayInputResponse.body as { error?: { code?: string; field?: string } };
+  const arrayInputPayload = arrayInputResult as { error?: { code?: string; field?: string } };
   assert(
-    arrayInputResponse.statusCode === 400 && arrayInputPayload.error?.field === 'userInput',
-    `a non-string userInput should be refused as a caller error, got ${arrayInputResponse.statusCode} ${JSON.stringify(arrayInputPayload.error)}`
+    arrayInputResult.success === false && arrayInputPayload.error?.field === 'userInput',
+    `a non-string userInput should be refused as a caller error, got success=${arrayInputResult.success} ${JSON.stringify(arrayInputPayload.error)}`
   );
 
   logger.clearLogs();
@@ -622,6 +654,7 @@ async function verifyImageRequestLineNeitherRepeatsNorBlanksItsParameters(): Pro
 async function main(): Promise<void> {
   await verifyContinueDoesNotLogProseStoryIds();
   await verifyMalformedBodiesAreClientErrors();
+  await verifyStoryLabRoutesRejectMalformedBodies();
   await verifyRejectedBodiesDoNotLogCallerFieldNames();
   await verifyRejectedStoryInputDoesNotRepeatCallerText();
   await verifyImageRequestLineNeitherRepeatsNorBlanksItsParameters();

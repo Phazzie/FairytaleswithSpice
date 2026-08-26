@@ -10,8 +10,6 @@
 // wired handler the way a real request would rather than calling the
 // primitives directly.
 
-import generateHandler from '../api/story/generate';
-import continueHandler from '../api/story/continue';
 import imageGenerateHandler from '../api/image/generate';
 import exportHandler from '../api/export/save';
 import evaluateHandler from '../api/story-lab/evaluate';
@@ -92,24 +90,6 @@ interface HandlerCase {
 }
 
 const POST_JSON_CASES: HandlerCase[] = [
-  {
-    name: '/api/story/generate',
-    limits: RATE_LIMITS.STORY_GENERATION,
-    call: async headers => {
-      const res = new FakeResponse();
-      await generateHandler({ method: 'POST', headers, body: {} }, res);
-      return res;
-    }
-  },
-  {
-    name: '/api/story/continue',
-    limits: RATE_LIMITS.CHAPTER_CONTINUATION,
-    call: async headers => {
-      const res = new FakeResponse();
-      await continueHandler({ method: 'POST', headers, body: {} }, res);
-      return res;
-    }
-  },
   {
     name: '/api/image/generate',
     limits: RATE_LIMITS.IMAGE_GENERATION,
