@@ -4,6 +4,43 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-26 UTC - A Blend Voice Missing From Every Prompt Preview, A Theme Picker No Reader Can Reach, And A Form Refusing What The API Accepts
+
+Actions:
+
+- Ported `getSecondaryAuthorStyles` into `GenerationLogicService` and rebuilt `selectRandomAuthors` on the API's two-plus-one shape. `selectRandomAuthorStyles` takes two voices from the creature's own bank and one from a second bank belonging to other creatures; the panel drew `2 + randomInt(2)` voices, all primary. So the blend voice was missing from every preview for all ten creatures, and a preview that rolled three named three same-creature voices where the generator had used two. This is the other half of the fallthrough PR #240 fixed: that slice gave `siren` and `djinn` the right primary bank, but the secondary table had never been ported at all.
+- Pointed the Proving Grounds theme picker at `shared/storyLabThemeSeeds.ts`. `themeOptions` was a thirteenth copy of the vocabulary and the wrong one — ten classic `ThemeType` ids with descriptions written for that page — so seven of the app's twelve seeds could not be tested at all and five of the ids on offer are ones no reader can send. The five shared ids were worse: a seed's `label` and `description` reach the generation prompt, so matching ids carrying different wording had the panel reporting on prose the app would never have asked for.
+- Moved that picker's selection cap from a hard-coded three to `STORY_BLUEPRINT_LIMITS.maxThemes`, and made the label state the number instead of restating it.
+- Made `FormValidationService` measure `logline`, `worldDetails`, and `narrativeDirectives` the way the parser does. `parseStoryLabBlueprint` trims all three before comparing against the shared caps; the form counted the raw value, so a logline pasted with a trailing newline was refused at exactly the cap the route accepts it under. `heatContract.noGoContent` is left untrimmed on purpose — the parser does not trim that one, so trimming it here would accept a contract the route refuses.
+- Extended `tests/story-lab-blueprint-parser.test.ts` (registered in `test:all`) to pin the parser's trimming of `logline` and `worldDetails`, which was stated nowhere and is what the form has to mirror. Added and replaced specs in `generation-logic.service.spec.ts`, `proving-grounds.spec.ts`, and `form-validation.service.spec.ts`.
+
+Self-review:
+
+- Good: every fix was reproduced against the old behaviour before being kept. Reverting the three source files while leaving the specs in place produced four named Karma failures — `selectRandomAuthors draws two voices from the primary bank and one from the secondary bank`, `offers exactly the thematic seeds the app picker offers`, `lets a test carry as many seeds as the blueprint route accepts`, `accepts free text that only exceeds a cap through surrounding whitespace` — and no others.
+- Two existing specs were asserting the defect and were replaced rather than deleted. `selectRandomAuthors never returns more authors than exist for the creature` accepted anything from two authors up to the size of the bank, which is precisely the range the defect produced; `generateRandomLogic` required every selected author to be in the primary bank, which a selection that never reaches the secondary bank satisfies by construction.
+- The secondary-bank assertion had to be written as the API's pairings rather than as "borrows another creature". Several author names appear in two banks — `Kresley Cole` and `Laurell K. Hamilton` in both vampire and werewolf, `Nalini Singh` in both werewolf and fairy — so a disjointness check would have failed on correct data.
+- Non-claim: this slice changes no API route, no prompt the server builds, and no generated story. It changes which authors one browser panel previews, which themes that panel offers, and where the Angular form draws the line on three free-text fields.
+
+Review follow-up (same slice, after Codex flagged two P2s on the first push):
+
+- Transplanted the API's `WEREWOLF_STYLES` and `FAIRY_STYLES` over the panel's own copies. Codex was right and the divergence was larger than the pairings: six of the twelve werewolf voices and three of the twelve fae ones were authors the API has never generated from, in a different order and with different voice samples and traits, and `Nalini Singh` was listed twice in the panel's werewolf bank. Nine of the ten creatures borrow werewolf or fae for their blend voice, so fixing the selection while the banks stayed wrong would have left almost every preview still naming authors the server could not pick — the parity this slice claims. The banks were extracted from `api/_lib/config/authorStyles.ts` by script and diffed back rather than retyped; `VAMPIRE_STYLES` already matched byte for byte.
+- Changed the author list's `@for` from `track author.author` to `track $index`, and added a spec asserting that no creature can draw one author from both its banks. Codex's other P2 was the same defect seen from the template: the panel's banks put `Kresley Cole` and `Laurell K. Hamilton` in both vampire and werewolf, and `Nalini Singh` and `Jennifer L. Armentrout` in both werewolf and fae, so a vampire or fae draw could return the same author twice and hand Angular two identical keys, which is an NG0955 runtime error rather than a render. The API's ten banks share no name anywhere, so the port removes the collision; the spec keeps a later bank edit from reintroducing it silently, and position is the only identity a freshly-shuffled draw of three has.
+
+Self-review (follow-up):
+
+- Both findings were verified against the code before either was acted on, not taken on the bot's word: a script extracted the three shared banks from both trees and compared author lists, and a second one checked every creature's primary bank against its secondary pool for overlap across all ten of the API's banks.
+- The two findings turned out to be one cause. The duplicate-key error was reachable only because the panel's werewolf and fae banks were the wrong lists; deduplicating the selection instead — the fix the comment proposed first — would have made the panel diverge from the API in a new way, since `selectRandomAuthorStyles` does not deduplicate and does not need to.
+- Both new specs were confirmed to fail against the pre-port banks (`reads the werewolf and fae banks the API generates those creatures from`, `never lets a creature draw the same author from both of its banks`) and to pass after.
+- Known and not addressed here: the ten author banks now exist in full in two trees, which is the same one-copy-per-reader shape `shared/storyLabThemeSeeds.ts` was created to end. Moving them under `shared/` is the durable fix and is a change to the API tree as well, so it is worth its own slice rather than being folded into this one.
+
+Validation:
+
+- `npm test`: passed (all suites).
+- `cd story-generator && CHROME_BIN=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`: 184 of 184 passed (182 before the follow-up specs).
+- `tsc -p tsconfig.app.json --noEmit`, `tsc -p tsconfig.spec.json --noEmit`, and the Vercel API function typecheck: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+
 ## 2026-08-26 UTC - An Image Style Logged Verbatim, The App's Own Themes Reported As Unrecognized, And Two Creatures Previewed As A Third
 
 Actions:

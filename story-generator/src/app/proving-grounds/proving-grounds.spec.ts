@@ -4,6 +4,8 @@ import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { ProvingGroundsTestResult } from '../contracts';
 import { ProvingGroundsComponent } from './proving-grounds';
+import { STORY_BLUEPRINT_LIMITS } from '../../../../shared/storyBlueprintLimits';
+import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
 
 function createEvaluatedResult(): ProvingGroundsTestResult {
   return {
@@ -232,6 +234,30 @@ describe('ProvingGroundsComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-testid="mock-evaluation-badge"]')).toBeNull();
+  });
+
+  // The picker used to be its own list of ten classic `ThemeType` ids, so seven
+  // of the app's twelve seeds could not be tested at all and five of the ids on
+  // offer were ones no reader can send. Compared field by field rather than by
+  // id, because a seed's `label` and `description` reach the generation prompt:
+  // matching ids carrying this page's own wording would still test a prompt the
+  // app never builds.
+  it('offers exactly the thematic seeds the app picker offers', () => {
+    expect(component.themeOptions).toEqual(STORY_LAB_THEME_SEEDS.map(seed => ({ ...seed })));
+  });
+
+  it('lets a test carry as many seeds as the blueprint route accepts', () => {
+    component.selectedThemeIds = [];
+
+    for (const theme of component.themeOptions) {
+      component.toggleTheme(theme);
+    }
+
+    expect(component.selectedThemeIds.length).toBe(STORY_BLUEPRINT_LIMITS.maxThemes);
+    // The most recent choices, since selecting past the cap drops the oldest.
+    expect(component.selectedThemeIds).toEqual(
+      component.themeOptions.slice(-STORY_BLUEPRINT_LIMITS.maxThemes).map(theme => theme.id)
+    );
   });
 
   it('deletes the current history item when its delete action is clicked', () => {

@@ -212,4 +212,24 @@ assert(
   'whitespace around directives at the cap should not be refused by the parser'
 );
 
+// `logline` and `worldDetails` are read through the same trimming helpers and
+// were not stated anywhere, which is how the Angular `FormValidationService`
+// came to measure all three untrimmed: it refused a logline pasted with a
+// trailing newline at exactly the cap the route accepts it under. The parser's
+// reading is the one the form has to mirror, so it is written down here.
+const paddedFreeText = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  logline: `\n  ${longText(STORY_BLUEPRINT_LIMITS.maxLoglineLength)}  \n`,
+  worldDetails: `  ${longText(STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength)}\n`
+});
+assert(
+  !paddedFreeText.error,
+  'whitespace around a logline or world details at the cap should not be refused by the parser'
+);
+assert(
+  paddedFreeText.blueprint.logline.length === STORY_BLUEPRINT_LIMITS.maxLoglineLength
+    && paddedFreeText.blueprint.worldDetails?.length === STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength,
+  'the parsed blueprint should carry the trimmed value it was measured as'
+);
+
 console.log('Story Lab shared blueprint parser tests passed');

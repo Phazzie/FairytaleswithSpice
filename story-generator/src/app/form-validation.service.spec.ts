@@ -93,6 +93,32 @@ describe('FormValidationService', () => {
     expect(errors.heatContract).toContain('supported Heat Contract settings');
   });
 
+  // The three free-text caps the blueprint parser measures after trimming. A
+  // value that is exactly the cap once trimmed is one the route accepts, so
+  // refusing it here is the form disagreeing with the API about a blueprint that
+  // is fine — the failure the shared limits module exists to prevent.
+  it('accepts free text that only exceeds a cap through surrounding whitespace', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      logline: `${'l'.repeat(service.maxLoglineLength)}\n`,
+      worldDetails: `  ${'w'.repeat(service.maxWorldDetailsLength)}  `,
+      narrativeDirectives: `${'d'.repeat(service.maxNarrativeDirectivesLength)}\n\n`
+    }));
+
+    expect(service.isValid(errors)).withContext(service.getFirstError(errors) ?? '').toBeTrue();
+  });
+
+  it('still rejects free text past a cap once the surrounding whitespace is gone', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      logline: ` ${'l'.repeat(service.maxLoglineLength + 1)} `,
+      worldDetails: ` ${'w'.repeat(service.maxWorldDetailsLength + 1)} `,
+      narrativeDirectives: ` ${'d'.repeat(service.maxNarrativeDirectivesLength + 1)} `
+    }));
+
+    expect(errors.logline).toContain('logline');
+    expect(errors.worldDetails).toContain('world details');
+    expect(errors.narrativeDirectives).toContain('narrative directives');
+  });
+
   it('rejects unsupported Heat Contract intimacy boundary', () => {
     const errors = service.validateBlueprint(createBlueprint({
       heatContract: {

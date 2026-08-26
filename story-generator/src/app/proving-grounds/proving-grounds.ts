@@ -25,7 +25,11 @@ import {
   createBrowserHtmlDownloadHost,
   downloadTextDocument
 } from '../../../../shared/htmlDocumentDownload';
-import { describeNarrativeDirectivesOverflow } from '../../../../shared/storyBlueprintLimits';
+import {
+  STORY_BLUEPRINT_LIMITS,
+  describeNarrativeDirectivesOverflow
+} from '../../../../shared/storyBlueprintLimits';
+import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
 
 type TestResult = ProvingGroundsTestResult;
 type StoredTestResult = StoredProvingGroundsTestResult;
@@ -80,18 +84,32 @@ export class ProvingGroundsComponent implements OnInit {
     'angel',
     'mermaid'
   ];
-  readonly themeOptions: ThemeSeed[] = [
-    { id: 'betrayal', label: 'Betrayal', description: 'Trust becomes leverage.' },
-    { id: 'obsession', label: 'Obsession', description: 'Desire narrows into fixation.' },
-    { id: 'power_dynamics', label: 'Power Dynamics', description: 'Control shifts between rivals.' },
-    { id: 'forbidden_love', label: 'Forbidden Love', description: 'Rules make romance dangerous.' },
-    { id: 'revenge', label: 'Revenge', description: 'Old wounds drive present choices.' },
-    { id: 'manipulation', label: 'Manipulation', description: 'Truth is shaped as a weapon.' },
-    { id: 'seduction', label: 'Seduction', description: 'Attraction becomes strategy.' },
-    { id: 'dark_secrets', label: 'Dark Secrets', description: 'Hidden history threatens the bond.' },
-    { id: 'temptation', label: 'Temptation', description: 'The wrong choice feels inevitable.' },
-    { id: 'desire', label: 'Desire', description: 'Longing pushes the scene forward.' }
-  ];
+  /**
+   * The thematic seeds the app's own picker offers, so a test here is a test of
+   * something a reader can actually generate.
+   *
+   * This was a thirteenth copy of the theme vocabulary, and it was the other
+   * one: ten classic `ThemeType` ids with descriptions written for this page.
+   * `app.ts` builds its picker from `STORY_LAB_THEME_SEEDS`, so those twelve
+   * seeds are the only themes any request the app makes actually carries, and
+   * the two lists overlap on five ids. That left seven of the app's themes —
+   * `court_intrigue`, `blood_oaths`, `slow_burn`, `enemies_to_lovers`,
+   * `magical_bargain`, `secret_identity`, `forced_proximity` — untestable in the
+   * one screen built for testing prompts, while five of the ids this page did
+   * offer (`betrayal`, `power_dynamics`, `manipulation`, `seduction`, `desire`)
+   * are ones no reader can pick.
+   *
+   * The five shared ids were the worse half, because they looked right. A seed's
+   * `label` and `description` are carried into the generation prompt, not just
+   * printed beside a checkbox, so "Dark Secrets / Hidden history threatens the
+   * bond." here and "Hidden Secrets / Someone is lying beautifully." in the app
+   * are two different prompts under one id — a comparison tool reporting on
+   * prose the app would never have asked for, with nothing in the output to say
+   * so.
+   */
+  readonly themeOptions: ThemeSeed[] = STORY_LAB_THEME_SEEDS.map(seed => ({ ...seed }));
+  /** The cap the picker enforces, so its label cannot state a different number. */
+  readonly maxThemes = STORY_BLUEPRINT_LIMITS.maxThemes;
   readonly spicyLevelOptions: SpicyLevel[] = [1, 2, 3, 4, 5];
   readonly wordCountOptions: WordBudget[] = [600, 900, 1200, 1500];
   readonly chapterBatchOptions: ChapterBatchSize[] = [1, 2, 3];
@@ -111,13 +129,20 @@ export class ProvingGroundsComponent implements OnInit {
     return this.themeOptions.filter(theme => this.selectedThemeIds.includes(theme.id));
   }
 
+  /**
+   * Selecting past the cap drops the oldest choice rather than refusing the new
+   * one, which is this page's own behaviour and stays. The cap itself is the
+   * blueprint's, read from the shared limits: it was three, against the five the
+   * route accepts and `FormValidationService` enforces, so a prompt could not be
+   * tested against as many seeds as a reader can send it.
+   */
   toggleTheme(theme: ThemeSeed): void {
     if (this.selectedThemeIds.includes(theme.id)) {
       this.selectedThemeIds = this.selectedThemeIds.filter(id => id !== theme.id);
       return;
     }
 
-    this.selectedThemeIds = [...this.selectedThemeIds, theme.id].slice(-3);
+    this.selectedThemeIds = [...this.selectedThemeIds, theme.id].slice(-this.maxThemes);
   }
 
   isThemeSelected(theme: ThemeSeed): boolean {
