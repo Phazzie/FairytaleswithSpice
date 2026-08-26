@@ -260,6 +260,104 @@ async function testDocxIsARealZipContainerWithItsDocument(): Promise<void> {
   assert(documentXml.includes('Élodie smiled'), 'the document body should include the real story content');
 }
 
+// A PDF string is bytes, and the font decides which glyph each byte names.
+// The document is written out as UTF-8 and declared Helvetica with no
+// `/Encoding`, so every character above ASCII went in as two or three UTF-8
+// bytes that Helvetica then read as a glyph each: `don’t` reached the reader as
+// `donâ€™t`, `—` as `â€"`, and `café` as `cafÃ©`. A model writes curly quotes
+// and em dashes in ordinary prose, so this was every story.
+async function testPdfWritesStoryPunctuationInTheFontsEncoding(): Promise<void> {
+  const rightSingleQuote = String.fromCharCode(0x2019);
+  const leftDoubleQuote = String.fromCharCode(0x201c);
+  const rightDoubleQuote = String.fromCharCode(0x201d);
+  const emDash = String.fromCharCode(0x2014);
+  const document = await new ExportService().generateExportContent(
+    createInput({
+      format: 'pdf',
+      title: `The Vampire${rightSingleQuote}s Bargain`,
+      content: `<p>${leftDoubleQuote}Don${rightSingleQuote}t${rightDoubleQuote} ${emDash} she said, and the café went 🐉 quiet.</p>`
+    })
+  );
+
+  const text = document.toString('latin1');
+  assert(
+    text.includes('/Encoding /WinAnsiEncoding'),
+    'the font should declare the encoding its bytes are written in, or a base font is read in StandardEncoding'
+  );
+
+  // Every byte of the document is ASCII: the WinAnsi bytes are written as octal
+  // escapes, so writing the document out as UTF-8 cannot re-encode them and the
+  // stream's `/Length` counts exactly the bytes a reader will read.
+  assert(
+    document.every(byte => byte <= 0x7e),
+    'the PDF should contain no byte a UTF-8 encode would have expanded'
+  );
+
+  const stream = extractPdfStreamBody(text);
+  for (const [character, escape] of [
+    [rightSingleQuote, String.raw`\222`],
+    [leftDoubleQuote, String.raw`\223`],
+    [rightDoubleQuote, String.raw`\224`],
+    [emDash, String.raw`\227`],
+    ['é', String.raw`\351`]
+  ] as const) {
+    assert(
+      stream.includes(escape),
+      `the PDF should write ${JSON.stringify(character)} as its WinAnsi byte ${escape} (stream=${JSON.stringify(stream)})`
+    );
+  }
+
+  // A base font has no glyph for an emoji and WinAnsi has no byte for one, so
+  // it becomes `?` rather than the several bytes of mojibake it used to be.
+  assert(stream.includes('? quiet'), 'a character WinAnsi cannot write should become a single question mark');
+}
+
+// XML 1.0 admits no C0 control character but tab, newline, and carriage
+// return, and a conforming parser must refuse a document holding one. The
+// `.epub` and `.docx` exports are XML in a zip, and both interpolated story
+// text and the title straight in: one such character produced a file that
+// downloaded under the right name and then would not open.
+async function testXmlExportsCarryNoCharacterXmlForbids(): Promise<void> {
+  const bell = String.fromCharCode(0x07);
+  const substitute = String.fromCharCode(0x1a);
+  const exportService = new ExportService();
+  const input = createInput({
+    title: `Midnight${bell} Bargain`,
+    content: `<p>She reached the door${bell} and stopped${substitute}.</p>`
+  });
+
+  for (const [format, parts] of [
+    ['epub', ['OEBPS/content.opf', 'OEBPS/nav.xhtml', 'OEBPS/chapter1.xhtml']],
+    ['docx', ['word/document.xml']]
+  ] as const) {
+    const document = await exportService.generateExportContent({ ...input, format });
+    const byPath = readAsRealZipContainer(document, format);
+
+    for (const part of parts) {
+      const xml = byPath.get(part)?.data.toString('utf8');
+      assert(xml, `a ${format} should contain ${part}`);
+
+      const forbidden = Array.from(xml).filter(character => {
+        const codePoint = character.codePointAt(0) ?? 0;
+        return codePoint <= 0x1f && codePoint !== 0x09 && codePoint !== 0x0a && codePoint !== 0x0d;
+      });
+      assert(
+        forbidden.length === 0,
+        `${part} should hold no character XML forbids (found ${JSON.stringify(forbidden)})`
+      );
+    }
+
+    const body = byPath.get(parts[parts.length - 1])!.data.toString('utf8');
+    // Replaced with a space rather than deleted, the way the PDF path has
+    // always read a control character: dropping one welds the words it sat
+    // between.
+    assert(
+      body.includes('door  and stopped'),
+      `a ${format} should keep the words a control character sat between apart (body=${JSON.stringify(body)})`
+    );
+  }
+}
+
 // A reader resolves an object by seeking to the byte offset the xref table
 // gives for it, and finds the table through `startxref`. Both used to be fixed
 // constants, so they addressed whatever bytes a real title and excerpt pushed
@@ -477,6 +575,8 @@ async function main(): Promise<void> {
   await testPdfStreamLengthDescribesTheStream();
   await testPdfCarriesTheWholeStoryAcrossPages();
   await testPdfLinesBreakOnCharacterBoundaries();
+  await testPdfWritesStoryPunctuationInTheFontsEncoding();
+  await testXmlExportsCarryNoCharacterXmlForbids();
   await testEpubIsARealZipContainerWithItsChapter();
   await testDocxIsARealZipContainerWithItsDocument();
   await testMetadataReflectsTheActualStory();

@@ -334,15 +334,166 @@ export function stripStoryHtmlForExport(html: string): string {
   return decodeBasicEntities(normalizePlainText(text));
 }
 
+/**
+ * The characters WinAnsi encodes at a byte a Latin-1 reading would not.
+ *
+ * WinAnsi is Latin-1 above `0xA0`, so a code point in that range is its own
+ * byte. The range `0x80`-`0x9F`, which Latin-1 leaves to the C1 control
+ * characters, is where Windows put the punctuation prose is actually written
+ * with — and it is exactly the punctuation a language model writes: the curly
+ * quotes it closes dialogue with, the em dash it breaks a sentence on, the
+ * ellipsis it trails off into. Without this table those are the characters that
+ * cannot be written at all.
+ */
+const WIN_ANSI_PUNCTUATION_BYTES = new Map<number, number>([
+  [0x20ac, 0x80], // €
+  [0x201a, 0x82], // ‚
+  [0x0192, 0x83], // ƒ
+  [0x201e, 0x84], // „
+  [0x2026, 0x85], // …
+  [0x2020, 0x86], // †
+  [0x2021, 0x87], // ‡
+  [0x02c6, 0x88], // ˆ
+  [0x2030, 0x89], // ‰
+  [0x0160, 0x8a], // Š
+  [0x2039, 0x8b], // ‹
+  [0x0152, 0x8c], // Œ
+  [0x017d, 0x8e], // Ž
+  [0x2018, 0x91], // ‘
+  [0x2019, 0x92], // ’
+  [0x201c, 0x93], // “
+  [0x201d, 0x94], // ”
+  [0x2022, 0x95], // •
+  [0x2013, 0x96], // –
+  [0x2014, 0x97], // —
+  [0x02dc, 0x98], // ˜
+  [0x2122, 0x99], // ™
+  [0x0161, 0x9a], // š
+  [0x203a, 0x9b], // ›
+  [0x0153, 0x9c], // œ
+  [0x017e, 0x9e], // ž
+  [0x0178, 0x9f]  // Ÿ
+]);
+
+/** What a character WinAnsi has no byte for is written as. */
+const PDF_UNMAPPABLE_CHARACTER = '?';
+
+/**
+ * The byte WinAnsi writes a character as, or `undefined` for one it cannot.
+ *
+ * `0x80`-`0x9F` as *code points* are the C1 controls, not the punctuation the
+ * table above maps onto those bytes, so they are unmappable rather than passed
+ * through as themselves.
+ */
+function toWinAnsiByte(codePoint: number): number | undefined {
+  if (codePoint >= 0x20 && codePoint <= 0x7e) {
+    return codePoint;
+  }
+
+  if (codePoint >= 0xa0 && codePoint <= 0xff) {
+    return codePoint;
+  }
+
+  return WIN_ANSI_PUNCTUATION_BYTES.get(codePoint);
+}
+
+/**
+ * Write one line of story text as the bytes a PDF literal string holds.
+ *
+ * A PDF string is bytes, and the font decides which glyph each byte names. The
+ * export writes its document out as UTF-8, so every character above ASCII went
+ * into the string as the two or three bytes UTF-8 spells it with — and the
+ * Helvetica the document declares reads each of those bytes as a glyph of its
+ * own. So `don’t` reached the reader as `donâ€™t`, `—` as `â€"`, and `café` as
+ * `cafÃ©`: not an encoding a reader could switch, but the wrong number of
+ * characters, in a document that otherwise looked fine. Every story this app
+ * generates is affected, because a model writes curly quotes and em dashes in
+ * ordinary prose.
+ *
+ * Both halves of the fix have to be here. `/Encoding /WinAnsiEncoding` on the
+ * font (see `ExportService`) says which byte means which glyph — without it
+ * Helvetica falls back to StandardEncoding, which has no accented letters at
+ * all and puts the quote marks somewhere else again. And the text has to be
+ * written in that encoding rather than in UTF-8, which is what this does: each
+ * character becomes its WinAnsi byte, written as an octal escape wherever it is
+ * not printable ASCII. Escaping rather than emitting the byte raw keeps the
+ * whole document ASCII, so writing it out as UTF-8 — which `generateExportContent`
+ * does, and which is what a byte above `0x7F` would be mangled by — leaves the
+ * bytes exactly as they are counted in the stream's `/Length`.
+ *
+ * A character WinAnsi has no byte for — an emoji, a name in a non-Latin script —
+ * becomes `?`. That is a real loss, and it is the loss this format has: a
+ * fourteen-glyph base font cannot show a character it has no glyph for, and the
+ * alternative is the mojibake above. The other four export formats are Unicode
+ * throughout and keep such a story whole.
+ */
 export function escapePdfText(value: string): string {
-  return [
-    ['\\', String.raw`\\`],
-    ['(', String.raw`\(`],
-    [')', String.raw`\)`]
-  ].reduce(
-    (escaped, [searchValue, replacement]) => replaceEvery(escaped, searchValue, replacement),
-    replacePdfControlCharacters(value)
-  );
+  let escaped = '';
+
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+
+    // Control characters have no glyph and would end the line, or the string,
+    // in the middle of the operator that shows it.
+    if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)) {
+      escaped += ' ';
+      continue;
+    }
+
+    if (character === '\\' || character === '(' || character === ')') {
+      escaped += `\\${character}`;
+      continue;
+    }
+
+    const byte = toWinAnsiByte(codePoint);
+    if (byte === undefined) {
+      escaped += PDF_UNMAPPABLE_CHARACTER;
+      continue;
+    }
+
+    // Printable ASCII is written as itself; everything else as the three-digit
+    // octal escape, which is unambiguous however the next character begins.
+    escaped += byte <= 0x7e ? String.fromCharCode(byte) : `\\${byte.toString(8).padStart(3, '0')}`;
+  }
+
+  return escaped;
+}
+
+/**
+ * Escape text that is going into an XML document rather than an HTML one.
+ *
+ * XML 1.0 admits no C0 control character but tab, newline, and carriage
+ * return, and a document holding one is not merely untidy — it is not
+ * well-formed, so a conforming parser must refuse it. The `.epub` and `.docx`
+ * exports are XML in a zip container, and both interpolated story text and the
+ * story's title straight into that XML: a control character anywhere in either
+ * produced a file that downloaded under the right name, at the right size, and
+ * then failed to open, with the reader told only that it was corrupt.
+ *
+ * Nothing upstream removes them. `stripStoryHtmlForExport` treats tab, carriage
+ * return, form feed, and vertical tab as whitespace and collapses them, but a
+ * `BEL` or a `SUB` is not whitespace to it and travels through unchanged, and
+ * the title never goes through it at all. The PDF path has replaced these with
+ * a space since it was written, for its own reasons; this is the same reading
+ * for the two formats that cannot survive them.
+ */
+export function escapeXmlText(value: string): string {
+  return escapeHtml(replaceXmlForbiddenCharacters(value));
+}
+
+function replaceXmlForbiddenCharacters(value: string): string {
+  let sanitized = '';
+
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isAllowedWhitespace = codePoint === 0x09 || codePoint === 0x0a || codePoint === 0x0d;
+
+    sanitized += (codePoint <= 0x1f && !isAllowedWhitespace) || codePoint === 0x7f
+      ? ' '
+      : character;
+  }
+
+  return sanitized;
 }
 
 function removeNonStoryHtml(html: string): string {
@@ -412,17 +563,6 @@ function sanitizeStoryTag(token: string): string {
 
 function replaceEvery(value: string, searchValue: string, replacement: string): string {
   return value.split(searchValue).join(replacement);
-}
-
-function replacePdfControlCharacters(value: string): string {
-  let sanitized = '';
-
-  for (const character of value) {
-    const codePoint = character.codePointAt(0) ?? 0;
-    sanitized += codePoint <= 0x1f || codePoint === 0x7f ? ' ' : character;
-  }
-
-  return sanitized;
 }
 
 function tokenizeHtml(value: string): string[] {

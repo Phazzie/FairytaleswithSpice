@@ -3,6 +3,7 @@ import { SaveExportSeam, ApiResponse, EXPORT_FORMATS, ExportFormat } from '../ty
 import {
   escapeHtml,
   escapePdfText,
+  escapeXmlText,
   sanitizeStoryHtmlForExport,
   stripStoryHtmlForExport
 } from './exportSanitizer';
@@ -294,10 +295,17 @@ export class ExportService {
 /Kids [${pages.map((_page, index) => `${pageObjectNumber(index)} 0 R`).join(' ')}]
 /Count ${pages.length}
 >>`,
+      // `/Encoding` is not optional here. Without it a base font is read in
+      // StandardEncoding, which has no accented letter anywhere in it and puts
+      // the quotation marks at bytes WinAnsi uses for something else — so the
+      // bytes `escapePdfText` writes would name the wrong glyphs, which is the
+      // half of the mojibake a reader could never have worked around. See
+      // `escapePdfText` for the other half.
       `<<
 /Type /Font
 /Subtype /Type1
 /BaseFont /Helvetica
+/Encoding /WinAnsiEncoding
 >>`
     ];
 
@@ -466,13 +474,16 @@ ${xrefOffset}
    * version referenced a `chapter1.xhtml` it never wrote.
    */
   private generateEPUBContent(plainText: string, input: SaveExportSeam['input']): Buffer {
-    const title = escapeHtml(input.title);
+    // Every value interpolated below lands in XML rather than in HTML, so it
+    // goes through `escapeXmlText`: a control character an XML parser must
+    // refuse is what makes an otherwise-correct `.epub` unopenable.
+    const title = escapeXmlText(input.title);
     // Derived from the story being exported rather than a fresh `randomUUID()`
     // per call: the same story exported twice should produce the same book
     // identifier, and a real UUID would make otherwise-identical output
     // (including the copy this method itself hands back for verification)
     // vary from one call to the next.
-    const bookId = `urn:x-fairytales-with-spice:${escapeHtml(input.storyId)}`;
+    const bookId = `urn:x-fairytales-with-spice:${escapeXmlText(input.storyId)}`;
     const chapterXhtml = this.toXhtmlBody(plainText);
 
     const containerXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -553,7 +564,10 @@ ${chapterXhtml}
 
     const paragraphs = [input.title, ...plainText.split('\n').map(line => line.trim())]
       .filter(Boolean)
-      .map(line => `<w:p><w:r><w:t xml:space="preserve">${escapeHtml(line)}</w:t></w:r></w:p>`)
+      // `escapeXmlText` rather than `escapeHtml`, for the reason the EPUB body
+      // uses it: a `.docx` is XML in a zip, and Word refuses the whole package
+      // over one character XML does not admit.
+      .map(line => `<w:p><w:r><w:t xml:space="preserve">${escapeXmlText(line)}</w:t></w:r></w:p>`)
       .join('\n    ');
 
     const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -584,7 +598,7 @@ ${chapterXhtml}
       .split('\n')
       .map(line => line.trim())
       .filter(Boolean)
-      .map(line => `<p>${escapeHtml(line)}</p>`)
+      .map(line => `<p>${escapeXmlText(line)}</p>`)
       .join('\n');
   }
 
