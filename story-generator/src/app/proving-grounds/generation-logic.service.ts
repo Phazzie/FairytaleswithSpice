@@ -25,6 +25,15 @@ export interface GenerationLogic {
   chekovElements: ChekovElement[];
 }
 
+/**
+ * How many voices a generation draws from each bank, as
+ * `selectRandomAuthorStyles` in `api/_lib/config/authorStyles.ts` draws them.
+ * Named rather than inlined so the two slices below read as the API's shape
+ * rather than as two unrelated magic numbers.
+ */
+const PRIMARY_AUTHOR_COUNT = 2;
+const SECONDARY_AUTHOR_COUNT = 1;
+
 @Injectable({
   providedIn: 'root'
 })
@@ -577,6 +586,46 @@ export class GenerationLogicService {
     }
   }
 
+  /**
+   * The second bank a creature's prompt draws its blend voice from.
+   *
+   * Ported from `getSecondaryAuthorStyles` in `api/_lib/config/authorStyles.ts`,
+   * which is where the API decides it — see `selectRandomAuthors` below for what
+   * leaving it out was doing to this panel. The pairings are the API's, not a
+   * reconstruction: each creature borrows the two banks named there, in that
+   * order, so the pool a voice is drawn from is the same pool on both sides.
+   *
+   * The `default` stays for a creature that reaches here from outside
+   * `CreatureArchetype`; with every archetype named it is unreachable from the
+   * type, exactly as in `getAllAuthorStyles`.
+   */
+  getSecondaryAuthorStyles(creature: CreatureArchetype): AuthorStyle[] {
+    switch (creature) {
+      case 'vampire':
+        return [...this.werewolfStyles, ...this.fairyStyles];
+      case 'werewolf':
+        return [...this.vampireStyles, ...this.fairyStyles];
+      case 'fairy':
+        return [...this.vampireStyles, ...this.werewolfStyles];
+      case 'siren':
+        return [...this.mermaidStyles, ...this.fairyStyles];
+      case 'djinn':
+        return [...this.fairyStyles, ...this.demonStyles];
+      case 'witch':
+        return [...this.fairyStyles, ...this.vampireStyles];
+      case 'dragon':
+        return [...this.werewolfStyles, ...this.fairyStyles];
+      case 'demon':
+        return [...this.vampireStyles, ...this.fairyStyles];
+      case 'angel':
+        return [...this.fairyStyles, ...this.witchStyles];
+      case 'mermaid':
+        return [...this.fairyStyles, ...this.werewolfStyles];
+      default:
+        return [];
+    }
+  }
+
   getAllBeatStructures(): BeatStructure[] {
     return this.beatStructures;
   }
@@ -585,11 +634,38 @@ export class GenerationLogicService {
     return this.chekovElements;
   }
 
-  // Simulate the random selection logic from storyService
+  /**
+   * The author styles a generation would actually be prompted with.
+   *
+   * `selectRandomAuthorStyles` in `api/_lib/config/authorStyles.ts` takes two
+   * voices from the creature's own bank and one from a *second* bank belonging
+   * to other creatures — a werewolf story is written by two werewolf voices and
+   * one vampire or fae one, and that third voice is the whole reason the API
+   * keeps a `getSecondaryAuthorStyles` table at all. This panel drew two or
+   * three, all from the primary bank, so it disagreed with the run twice over:
+   * the blend voice never appeared in the preview for any creature, and a
+   * three-author preview named three primary voices where the API had used two.
+   *
+   * The count is what makes the second half wrong rather than merely incomplete.
+   * `2 + randomInt(2)` is a coin flip between two and three, so the panel that
+   * happened to roll three showed a prompt with one more same-creature voice
+   * than the generator ever builds. The API's shape is fixed — two plus one, in
+   * that order — so there is nothing to randomise here beyond which voices are
+   * drawn.
+   *
+   * `Math.min` still guards each slice, because a bank shorter than the slice it
+   * is asked for should hand back what it has rather than a padded list; the
+   * shipped banks are all at least four deep, so this is about the next one
+   * added rather than about any creature today.
+   */
   selectRandomAuthors(creature: CreatureArchetype): AuthorStyle[] {
-    const styles = this.getAllAuthorStyles(creature);
-    const count = Math.min(styles.length, 2 + this.randomInt(2));
-    return this.shuffle(styles).slice(0, count);
+    const primaryStyles = this.getAllAuthorStyles(creature);
+    const secondaryStyles = this.getSecondaryAuthorStyles(creature);
+
+    return [
+      ...this.shuffle(primaryStyles).slice(0, Math.min(PRIMARY_AUTHOR_COUNT, primaryStyles.length)),
+      ...this.shuffle(secondaryStyles).slice(0, Math.min(SECONDARY_AUTHOR_COUNT, secondaryStyles.length))
+    ];
   }
 
   selectRandomBeatStructure(): BeatStructure {

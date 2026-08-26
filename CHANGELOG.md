@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — a blend voice missing from every prompt preview, a theme picker no reader can reach, a form refusing what the API accepts (August 26, 2026)
+
+#### Proving Grounds never showed the third author the API actually blends in
+
+- `selectRandomAuthorStyles` in `api/_lib/config/authorStyles.ts` builds every
+  story's prompt from **two** voices out of the creature's own bank and **one**
+  out of a second bank belonging to other creatures — a werewolf story is written
+  by two werewolf voices and one vampire or fae one. That third voice is the
+  entire reason the API keeps a `getSecondaryAuthorStyles` table.
+- `GenerationLogicService.selectRandomAuthors`, whose stated job is to "simulate
+  the random selection logic from storyService", drew `2 + randomInt(2)` voices
+  and took all of them from the primary bank. So the panel disagreed with the run
+  twice over: the blend voice was absent from every preview for every one of the
+  ten creatures, and a preview that happened to roll three named three
+  same-creature voices where the generator had used two.
+- This is the second half of the fallthrough fixed in the previous slice. That
+  one made the panel read the right *primary* bank for `siren` and `djinn`; the
+  secondary bank had never been ported at all, so the panel was still describing
+  a prompt the run did not use — the failure a prompt-comparison tool cannot
+  afford, because the reader has no way to tell.
+- `getSecondaryAuthorStyles` is ported with the API's pairings, and the counts are
+  named (`PRIMARY_AUTHOR_COUNT`, `SECONDARY_AUTHOR_COUNT`) rather than left as a
+  coin flip. The spec that accepted "anything from two authors up to the size of
+  the bank" was accepting the defect exactly; it is replaced by one asserting the
+  two-plus-one shape for every creature and one naming the pairings.
+
+#### Proving Grounds offered ten themes, five of which no reader can send
+
+- Its `themeOptions` was a thirteenth copy of the theme vocabulary and it was the
+  other one: ten classic `ThemeType` ids with descriptions written for that page.
+  `app.ts` builds its picker from `STORY_LAB_THEME_SEEDS`, so those twelve seeds
+  are the only themes any request the app makes actually carries. The two lists
+  overlap on five ids.
+- Seven of the app's themes — `court_intrigue`, `blood_oaths`, `slow_burn`,
+  `enemies_to_lovers`, `magical_bargain`, `secret_identity`, `forced_proximity` —
+  could not be tested at all in the one screen built for testing prompts, and five
+  of the ids on offer (`betrayal`, `power_dynamics`, `manipulation`, `seduction`,
+  `desire`) are ones no reader can pick.
+- The five shared ids were the worse half, because they looked right. A seed's
+  `label` and `description` are carried into the generation prompt, not merely
+  printed beside a checkbox, so `Dark Secrets / Hidden history threatens the bond.`
+  here and `Hidden Secrets / Someone is lying beautifully.` in the app are two
+  different prompts under one id — a comparison tool reporting on prose the app
+  would never have asked for, with nothing in the output to say so.
+- The picker now reads `shared/storyLabThemeSeeds.ts`, the module the previous
+  slice created for exactly this class of drift, and its selection cap moves from
+  a hard-coded three to `STORY_BLUEPRINT_LIMITS.maxThemes` — the five the route
+  accepts and `FormValidationService` enforces. The label states that number
+  rather than restating it.
+
+#### The blueprint form refused loglines the API would have accepted
+
+- `parseStoryLabBlueprint` reads `logline` through `.trim()`, and `worldDetails`
+  and `narrativeDirectives` through `optionalString`, which trims too — and only
+  then compares against `STORY_BLUEPRINT_LIMITS`. `FormValidationService` measured
+  the raw value.
+- So surrounding whitespace counted on one side of the seam and not the other. A
+  logline pasted with a trailing newline — the ordinary result of copying a
+  paragraph out of a document — was refused by the form at exactly the cap the
+  route accepts it under, with a message telling the reader to shorten prose that
+  was already short enough.
+- `describeNarrativeDirectivesOverflow` in the shared limits module was written to
+  avoid this and says so in its own comment: measuring the field any other way
+  "would refuse a request the route would have taken". Both readers of the shared
+  numbers now measure it the same way the route does.
+- `heatContract.noGoContent` is deliberately left as it was: the parser checks that
+  field's length *without* trimming, so trimming it in the form would accept a
+  contract the route refuses — the drift running the more expensive way.
+- The parser's own trimming of `logline` and `worldDetails` was stated nowhere,
+  which is how the form came to disagree with it. `tests/story-lab-blueprint-parser.test.ts`
+  now pins it, beside the `narrativeDirectives` case that was already covered.
+
 ### 🐛 Three Quick Wins — an image style logged verbatim, the app's own themes reported as unrecognized, two creatures previewed as a third (August 26, 2026)
 
 #### `/api/image/generate` wrote the caller's `style` into the log as it arrived

@@ -58,14 +58,71 @@ describe('GenerationLogicService', () => {
       .toEqual(['Three-Wish Jurisprudence', 'Lamp-Bound Devotion', 'Smokeless-Fire Epic', 'Brass-Seal Bargain']);
   });
 
-  it('selectRandomAuthors never returns more authors than exist for the creature, and never duplicates one', () => {
+  it('selectRandomAuthors never duplicates a voice within one selection', () => {
     for (let i = 0; i < 20; i++) {
       const authors = service.selectRandomAuthors('witch');
-      expect(authors.length).toBeGreaterThanOrEqual(2);
-      expect(authors.length).toBeLessThanOrEqual(service.getAllAuthorStyles('witch').length);
 
       const uniqueNames = new Set(authors.map(author => author.author));
       expect(uniqueNames.size).toBe(authors.length);
+    }
+  });
+
+  // The shape the API builds, asserted as a shape rather than as a range: the
+  // previous version accepted anything from two authors up to the size of the
+  // primary bank, which is exactly what the defect produced. `selectRandomAuthors`
+  // drew two or three voices from the creature's own bank and never touched the
+  // secondary one, so the blend voice `selectRandomAuthorStyles` puts in every
+  // real prompt was missing from every preview.
+  it('selectRandomAuthors draws two voices from the primary bank and one from the secondary bank', () => {
+    const creatures: CreatureArchetype[] = [
+      'vampire', 'werewolf', 'fairy', 'siren', 'djinn', 'witch', 'dragon', 'demon', 'angel', 'mermaid'
+    ];
+
+    for (const creature of creatures) {
+      const primaryNames = new Set(service.getAllAuthorStyles(creature).map(style => style.author));
+      const secondaryNames = new Set(service.getSecondaryAuthorStyles(creature).map(style => style.author));
+
+      for (let i = 0; i < 10; i++) {
+        const authors = service.selectRandomAuthors(creature);
+
+        expect(authors.length).withContext(creature).toBe(3);
+        expect(authors.slice(0, 2).every(author => primaryNames.has(author.author)))
+          .withContext(`${creature} primary voices`)
+          .toBeTrue();
+        expect(secondaryNames.has(authors[2].author))
+          .withContext(`${creature} blend voice`)
+          .toBeTrue();
+      }
+    }
+  });
+
+  // The pairings themselves, spelled out the way `getSecondaryAuthorStyles` in
+  // `api/_lib/config/authorStyles.ts` spells them. Checked by name rather than
+  // by shape because a secondary bank pointing at the wrong creature is still a
+  // non-empty list of other creatures' voices, and the panel would still show
+  // three authors — the failure this exists to catch is a preview that names a
+  // blend the run never used.
+  it('pairs every creature with the two banks the API blends it with', () => {
+    const expectedPairings: ReadonlyArray<readonly [CreatureArchetype, CreatureArchetype, CreatureArchetype]> = [
+      ['vampire', 'werewolf', 'fairy'],
+      ['werewolf', 'vampire', 'fairy'],
+      ['fairy', 'vampire', 'werewolf'],
+      ['siren', 'mermaid', 'fairy'],
+      ['djinn', 'fairy', 'demon'],
+      ['witch', 'fairy', 'vampire'],
+      ['dragon', 'werewolf', 'fairy'],
+      ['demon', 'vampire', 'fairy'],
+      ['angel', 'fairy', 'witch'],
+      ['mermaid', 'fairy', 'werewolf']
+    ];
+
+    for (const [creature, first, second] of expectedPairings) {
+      expect(service.getSecondaryAuthorStyles(creature).map(style => style.author))
+        .withContext(`${creature} blends ${first} and ${second}`)
+        .toEqual([
+          ...service.getAllAuthorStyles(first).map(style => style.author),
+          ...service.getAllAuthorStyles(second).map(style => style.author)
+        ]);
     }
   });
 
@@ -92,10 +149,17 @@ describe('GenerationLogicService', () => {
 
   it('generateRandomLogic assembles authors, a beat structure, and Chekov elements for the requested creature', () => {
     const logic = service.generateRandomLogic('dragon');
+    // Both banks, because the third voice comes from the secondary one. Asserting
+    // membership of the primary bank alone is how the missing blend voice went
+    // unnoticed: a selection that never left the primary bank passed it.
+    const drawableStyles = [
+      ...service.getAllAuthorStyles('dragon'),
+      ...service.getSecondaryAuthorStyles('dragon')
+    ];
 
-    expect(logic.selectedAuthors.length).toBeGreaterThan(0);
+    expect(logic.selectedAuthors.length).toBe(3);
     for (const author of logic.selectedAuthors) {
-      expect(service.getAllAuthorStyles('dragon')).toContain(author);
+      expect(drawableStyles).toContain(author);
     }
     expect(logic.selectedBeatStructure).toBeTruthy();
     expect(logic.chekovElements.length).toBe(2);

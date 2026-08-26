@@ -47,6 +47,32 @@ const VALID_BATCH_SIZES = new Set<ChapterBatchSize>([1, 2, 3]);
 const VALID_HEAT_TENSION_MODES = new Set<HeatTensionMode>(['slow_burn', 'dangerous_proximity', 'playful_banter', 'devotional_longing']);
 const VALID_HEAT_BOUNDARIES = new Set<HeatIntimacyBoundary>(['fade_to_black', 'closed_door', 'literary_on_page']);
 
+/**
+ * The length the API will measure this free-text field at.
+ *
+ * `parseStoryLabBlueprint` reads `logline` through `.trim()` and `worldDetails`
+ * and `narrativeDirectives` through `optionalString`, which trims too, and only
+ * then compares against `STORY_BLUEPRINT_LIMITS`. This service read the raw
+ * value, so surrounding whitespace counted here and not there: a logline pasted
+ * with a trailing newline — the ordinary result of copying a paragraph out of a
+ * document — was refused by the form at exactly the cap the route would have
+ * accepted it under, with a message telling the reader to shorten prose that was
+ * already short enough.
+ *
+ * That is the mirror of the failure `describeNarrativeDirectivesOverflow` in the
+ * shared limits module was written to avoid, and it says so: measuring this any
+ * other way "would refuse a request the route would have taken". Both readers of
+ * the shared numbers now measure the field the same way the route does.
+ *
+ * `heatContract.noGoContent` is deliberately not routed through here. The parser
+ * checks that field's length as sent, without trimming, so trimming it here
+ * would accept a contract the route refuses — the drift running the other way,
+ * which is the more expensive direction.
+ */
+function measuredLength(value: string | undefined): number {
+  return value?.trim().length ?? 0;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -83,7 +109,7 @@ export class FormValidationService {
 
     if (!input.logline?.trim()) {
       errors.logline = 'Add a logline so the story has a clear hook.';
-    } else if (input.logline.length > this.maxLoglineLength) {
+    } else if (measuredLength(input.logline) > this.maxLoglineLength) {
       errors.logline = `Keep the logline under ${this.maxLoglineLength} characters.`;
     }
 
@@ -110,11 +136,11 @@ export class FormValidationService {
       errors.chapterBatchSize = 'Choose 1, 2, or 3 chapters per batch.';
     }
 
-    if ((input.worldDetails?.length ?? 0) > this.maxWorldDetailsLength) {
+    if (measuredLength(input.worldDetails) > this.maxWorldDetailsLength) {
       errors.worldDetails = `Keep world details under ${this.maxWorldDetailsLength} characters.`;
     }
 
-    if ((input.narrativeDirectives?.length ?? 0) > this.maxNarrativeDirectivesLength) {
+    if (measuredLength(input.narrativeDirectives) > this.maxNarrativeDirectivesLength) {
       errors.narrativeDirectives = `Keep narrative directives under ${this.maxNarrativeDirectivesLength} characters.`;
     }
 

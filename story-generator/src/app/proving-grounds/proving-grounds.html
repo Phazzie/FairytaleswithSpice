@@ -99,7 +99,7 @@
 
         <!-- Themes -->
         <div class="form-group">
-          <label id="pg-themes-label">Themes (Select 1-3)</label>
+          <label id="pg-themes-label">Themes (Select 1-{{ maxThemes }})</label>
           <div class="theme-grid" role="group" aria-labelledby="pg-themes-label">
             @for (theme of themeOptions; track theme.id) {
               <button
