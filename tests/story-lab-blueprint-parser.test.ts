@@ -106,6 +106,8 @@ const atTheLimit = parseStoryLabBlueprintFromBody({
   logline: longText(STORY_BLUEPRINT_LIMITS.maxLoglineLength),
   worldDetails: longText(STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength),
   narrativeDirectives: longText(STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength),
+  protagonistName: longText(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength),
+  antagonistName: longText(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength),
   heatContract: {
     ...bodyForCreature('dragon').heatContract,
     noGoContent: longText(STORY_BLUEPRINT_LIMITS.maxNoGoContentLength)
@@ -128,6 +130,39 @@ assert(
 assert(
   overTheLimit.error?.message.includes(String(STORY_BLUEPRINT_LIMITS.maxLoglineLength)),
   'the refusal should name the limit the caller has to write under'
+);
+
+// The two free-text fields the parser used to read straight into the returned
+// blueprint without measuring. `buildContinuityPrompt` stringifies both into the
+// continuity model call exactly as they arrived, so an unbounded field named for
+// one person is a paid model call billed by the token — the failure the shared
+// limits object exists to prevent, on the two fields it did not cover.
+for (const field of ['protagonistName', 'antagonistName'] as const) {
+  const overLongName = parseStoryLabBlueprintFromBody({
+    ...bodyForCreature('dragon'),
+    [field]: longText(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength + 1)
+  });
+  assert(
+    overLongName.error?.invalidFields.includes(field),
+    `an over-long ${field} should be reported as invalid`
+  );
+  assert(
+    overLongName.error?.message.includes(String(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength)),
+    `the ${field} refusal should name the limit the caller has to write under`
+  );
+}
+
+// The query-string genesis stream takes the same blueprint, and is the path a
+// caller reaches without the app's form in front of it.
+const overLongNameFromQuery = parseStoryLabBlueprintFromQuery({
+  ...bodyForCreature('dragon'),
+  themes: JSON.stringify(bodyForCreature('dragon').themes),
+  heatContract: JSON.stringify(bodyForCreature('dragon').heatContract),
+  protagonistName: longText(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength + 1)
+} as Record<string, string | number>);
+assert(
+  overLongNameFromQuery.error?.invalidFields.includes('protagonistName'),
+  'the query-string genesis stream should refuse an over-long protagonistName too'
 );
 
 const tooManyThemes = parseStoryLabBlueprintFromBody({

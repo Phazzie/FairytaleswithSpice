@@ -87,6 +87,28 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // The title is the other half of the caller's text, and it was the half
+    // nothing measured. Every renderer interpolates it — the `.txt` export
+    // writes it twice, once as the heading and once as the `=` rule under it;
+    // the `.epub` writes it into four XML parts — and the finished document
+    // comes back base64-encoded, so the title is the cheapest field to send a
+    // lot of and the most expensive one to leave open. Refused with the same
+    // code and the same shape as the content cap, naming which field overran so
+    // the caller is not left comparing its content against a limit it cleared.
+    const titleLength = Buffer.byteLength(input.title, 'utf8');
+    if (titleLength > FILE_SIZE.MAX_TITLE_LENGTH_BYTES) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: ERROR_CODES.CONTENT_TOO_LARGE,
+          message: `Title exceeds maximum size of ${FILE_SIZE.MAX_TITLE_LENGTH_BYTES} bytes`,
+          field: 'title',
+          contentLength: titleLength,
+          maxLength: FILE_SIZE.MAX_TITLE_LENGTH_BYTES
+        }
+      });
+    }
+
     const exportService = new ExportService();
     const result = await exportService.saveAndExport(input);
     
