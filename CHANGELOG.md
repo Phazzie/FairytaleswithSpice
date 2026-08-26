@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — every Story Lab refusal read as an outage, an adult gate that covered one chapter, a token count blanked from its own log (August 26, 2026)
+
+#### Every failure the story generator reported was served as HTTP 500 by the Story Lab routes
+
+- `/api/story-lab/stories` and `/api/story-lab/stories/:storyId/continue` choose
+  their status through `getStoryLabResponseStatus`, which carried a table of
+  four codes: `CONTENT_POLICY_VIOLATION`, `INVALID_BLUEPRINT`, and
+  `INVALID_REQUEST` for `400`, and `AI_UNAVAILABLE` for `503`.
+- Those four are the codes the Story Lab engine raises for itself, and they are
+  not the codes these routes mostly return. The engine forwards the classic
+  `StoryService`'s error verbatim through `storyLabErrorResponse` — that service
+  is what actually generates the story behind both routes — so its whole
+  vocabulary arrived at a table that had never heard of it. A blueprint its
+  validator rejects answers `INVALID_INPUT`, a throttled key `RATE_LIMITED`, an
+  exhausted one `QUOTA_EXCEEDED`, a provider outage `AI_SERVICE_UNAVAILABLE`, a
+  story past the cap `CONTENT_TOO_LARGE`: every one of them was served as `500`.
+- `500` says the service broke, which is the one thing none of those is. A retry
+  policy keyed on `5xx` retries a request that will be refused identically
+  forever; a rate limit that should back off does not; an uptime probe and a
+  proxy's error-rate metric record an outage over a caller's malformed field.
+  The classic `/api/story/*` routes have answered the right status for these
+  exact codes since `getApiResponseStatus` was introduced — the same code
+  arriving through a Story Lab route is the same failure.
+- The reading is now shared rather than restated: `INVALID_BLUEPRINT` moved into
+  the shared table beside the two Story Lab codes already there, and
+  `getStoryLabResponseStatus` delegates. What stays local is the one rule that
+  is genuinely this route's own — a `success: true` envelope with no payload is
+  a service failure, because these routes promise a story iteration and a caller
+  has nothing to render without one.
+
+#### The adult-reader confirmation gate covered chapter 1 and no chapter after it
+
+- `generateStoryLabGenesis` refuses a Heat Contract whose `adultOnlyConfirmed`
+  is not `true`, before any provider call. `continueStoryLab` did not check at
+  all — and continuation is the route that writes every chapter after the first.
+- The contract is not decoration on that path. `continueStoryLab` passes it into
+  the classic service as `generationContext.heatContract`, carrying the tension
+  mode and the intimacy boundary — `literary_on_page` among them — that decide
+  how explicit the prose is. So a continuation could name a contract that
+  withheld the confirmation and still be generated under the terms that same
+  rejected contract set. The Angular form will not submit without the
+  confirmation ticked, but the form is not the enforcement point; the route is,
+  and it serves most of the story the reader actually reads.
+- Both callers now go through one `heatContractPolicyError`, which differs only
+  in whether a contract is required. Genesis still refuses an absent one. A
+  continuation that names no contract is asking for more of the story it already
+  has under the terms it was begun on, so that stays served exactly as before —
+  the gate is on a contract the caller supplies, not on one it omits.
+
+#### `promptTokens` was written to every log entry as `[REDACTED]`
+
+- `SENSITIVE_KEY_PATTERNS` blanks a key without looking at what is under it,
+  which is right for the prose it exists to catch. `/prompt/i` also matches
+  `promptTokens` — a declared field of `LogContext`, filled by `storyService`
+  from the provider's own usage report on every story and continuation call.
+- So the input-token count of every paid request was replaced by `[REDACTED]`
+  while `completionTokens` beside it went through untouched. The one number that
+  says what a request cost to send was the one number the log did not keep, and
+  a redacted field keeps its name, so nothing in the entry said the value had
+  been dropped.
+- The existing redaction test asserted `serialized.includes('promptTokens')` —
+  the key, which survives redaction by definition — so it passed against the
+  defect. It now asserts the value, and asserts that `prompt`, `systemPrompt`,
+  `imagePrompt`, and `promptText` are still blanked.
+- The fix is a named exemption for the one key rather than a suffix rule. "Any
+  key ending in `Tokens`" reads better and would unblank `accessTokens` and
+  `refreshTokens`, which are credentials and not counts.
+
 ### 🐛 Three Quick Wins — seven creatures with no tropes, seven themes with no picture, an export refusal read as an outage (August 26, 2026)
 
 #### Trope subversion was silently off for seven of the ten creatures

@@ -6,6 +6,7 @@ import type {
   ChapterDelta,
   GenerationTelemetry,
   GeneratedChapter,
+  HeatContract,
   LoreArtifact,
   PlotThread,
   StoryContinuationSeam as LabContinuationSeam,
@@ -191,18 +192,45 @@ function storyLabErrorResponse(error: unknown, fallbackCode: string): StoryLabEr
   };
 }
 
-function validateHeatContract(input: LabGenerationSeam['input']): StoryLabErrorResponse | null {
-  if (!input.heatContract || input.heatContract.adultOnlyConfirmed !== true) {
-    return {
-      success: false,
-      error: {
-        code: 'CONTENT_POLICY_VIOLATION',
-        message: 'Story Lab requires adult-reader and consensual-fantasy confirmation before generating this Heat Contract.'
-      }
-    };
+/**
+ * Refuse a Heat Contract that withholds the adult-reader confirmation.
+ *
+ * `adultOnlyConfirmed` is the whole of the gate: the contract beside it names a
+ * tension mode and an intimacy boundary — `literary_on_page` among them — and
+ * both are written into the generation context the prompt is built from. So the
+ * contract is what decides how explicit the chapter is, and this flag is the
+ * reader's confirmation that they may be shown it.
+ *
+ * `required` is what separates the two callers. Genesis has to have a contract
+ * before there is a story at all, and refuses an absent one. A continuation
+ * carries the contract as an optional field, and one that omits it is asking for
+ * more of the story it already has under whatever terms that story was begun on
+ * — so an absent contract stays what it has always been there, and only a
+ * supplied one is held to its own confirmation.
+ */
+function heatContractPolicyError(
+  heatContract: HeatContract | undefined,
+  options: { required: boolean }
+): StoryLabErrorResponse | null {
+  if (!heatContract) {
+    return options.required ? contentPolicyViolation() : null;
   }
 
-  return null;
+  return heatContract.adultOnlyConfirmed === true ? null : contentPolicyViolation();
+}
+
+function contentPolicyViolation(): StoryLabErrorResponse {
+  return {
+    success: false,
+    error: {
+      code: 'CONTENT_POLICY_VIOLATION',
+      message: 'Story Lab requires adult-reader and consensual-fantasy confirmation before generating this Heat Contract.'
+    }
+  };
+}
+
+function validateHeatContract(input: LabGenerationSeam['input']): StoryLabErrorResponse | null {
+  return heatContractPolicyError(input.heatContract, { required: true });
 }
 
 function toClassicThemes(themeIds: string[]): ThemeType[] {
@@ -293,6 +321,20 @@ export async function continueStoryLab(
   options: StoryLabEngineOptions = {}
 ): Promise<ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }>> {
   const requestStartedAtMs = Date.now();
+  // The same gate genesis applies, on the route that writes every chapter after
+  // the first. It was only ever on genesis, so the adult-reader confirmation
+  // covered chapter 1 of a story and nothing else: a continuation could carry
+  // `adultOnlyConfirmed: false` and still be generated, with the tension mode
+  // and intimacy boundary the same rejected contract named handed to the prompt
+  // through `generationContext` below. The Angular form refuses to submit
+  // without the confirmation, but the form is not the enforcement point — the
+  // route is, and it is the route that serves the continuation the reader
+  // actually reads most of the story through.
+  const heatContractError = heatContractPolicyError(input.heatContract, { required: false });
+  if (heatContractError) {
+    return heatContractError;
+  }
+
   if (shouldFailClosedForMissingProvider()) {
     return missingProviderResponse();
   }

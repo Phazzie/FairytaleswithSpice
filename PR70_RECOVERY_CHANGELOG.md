@@ -4,6 +4,27 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-26 UTC - Every Story Lab Refusal Served As An Outage, An Adult Gate That Covered One Chapter, And A Token Count Blanked From Its Own Log
+
+Actions:
+
+- Collapsed `getStoryLabResponseStatus` onto the shared `getApiResponseStatus` table and moved `INVALID_BLUEPRINT` into it. The Story Lab table knew four codes; the routes it serves return the classic `StoryService`'s whole vocabulary, because `storyLabErrorResponse` forwards that service's error code verbatim. `INVALID_INPUT`, `RATE_LIMITED`, `QUOTA_EXCEEDED`, `AI_SERVICE_UNAVAILABLE`, `CONTENT_TOO_LARGE`, `MAX_CHAPTERS_REACHED` were every one of them served as `500` by `/api/story-lab/stories` and `/api/story-lab/stories/:storyId/continue`, while the classic `/api/story/*` routes answered `400`/`429`/`503` for the same codes. The one rule that stays local is the Story Lab-specific one: a `success: true` envelope with a null payload is a `500`.
+- Extended the adult-reader confirmation gate to continuation. `generateStoryLabGenesis` refused an unconfirmed Heat Contract; `continueStoryLab` did not check, and it is the route that writes every chapter after the first — passing the same contract's tension mode and intimacy boundary into `generationContext`. Both now call one `heatContractPolicyError`, parameterized only by whether a contract is required: genesis still refuses an absent one, continuation still serves a request that names none.
+- Stopped the log redactor blanking `promptTokens`. `/prompt/i` matches it, and it is a declared `LogContext` field filled from the provider's usage report on every paid call, so the input-token count was written as `[REDACTED]` while `completionTokens` beside it survived. Added a named `MEASUREMENT_KEY_EXEMPTIONS` entry rather than a `Tokens` suffix rule, which would also have unblanked `accessTokens` and `refreshTokens`.
+- Extended `tests/story-lab-route-status.test.ts`, `tests/story-lab-real-engine.test.ts`, and `tests/log-redaction.test.ts`, all three already registered in `test:all`.
+
+Self-review:
+
+- Good: each fix was reproduced against the old code before it was written. The redaction one is the sharpest example — `tests/log-redaction.test.ts` already asserted `telemetrySerialized.includes('promptTokens')`, which is the *key*, and a redacted field keeps its key, so the suite was green over a value that was being destroyed. The assertion now reads the value.
+- Correction: the continuation gate is deliberately narrower than the genesis one. Making continuation require a contract outright would refuse every caller that has been omitting the optional field, which is not the defect — the defect is that a contract saying "not confirmed" was honoured anyway.
+- Non-claim: this slice does not change what any route generates, what the prompts say, or how the Angular app calls them. It changes the status a Story Lab failure is served with, when a continuation is refused, and what one log field records.
+
+Validation:
+
+- `npm run test:all`: passed.
+- `npx tsc --noEmit --strict` over the four changed API files: passed.
+- `git diff --check`: passed.
+
 ## 2026-08-25 11:05 UTC - Two Live SSE Routes Writing To A Reader Who Had Already Left, And A Stream A Proxy Was Free To Buffer
 
 Actions:

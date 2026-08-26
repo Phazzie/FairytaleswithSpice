@@ -546,6 +546,81 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(sawHeatContract, 'continuation service input should receive the original Heat Contract');
   });
 
+  // The adult-reader confirmation used to be checked on genesis only, so it
+  // covered chapter 1 of a story and no chapter after it. The contract decides
+  // how explicit the prose is — the test above proves the boundary reaches the
+  // prompt — so a continuation carrying an unconfirmed one was generated under
+  // terms the reader had not agreed to.
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    const response = await continueStoryLab({
+      storyId: payload.summary.storyId,
+      chapterBatchSize: 1,
+      storyState: payload.state,
+      previouslyGeneratedChapters: payload.batch.chapters,
+      continuationBrief: 'Raise the danger.',
+      existingSummary: payload.summary,
+      heatContract: {
+        ...blueprint.heatContract!,
+        intimacyBoundary: 'literary_on_page',
+        adultOnlyConfirmed: false
+      }
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by continuation test');
+        },
+        continueChapter: async () => {
+          throw new Error('continueChapter should not be called for an unconfirmed Heat Contract');
+        }
+      })
+    });
+
+    assert(!response.success, 'unconfirmed continuation Heat Contract should fail before provider call');
+    assert(
+      response.error.code === 'CONTENT_POLICY_VIOLATION',
+      `unconfirmed continuation Heat Contract should use content policy error, got ${response.error.code}`
+    );
+  });
+
+  // A continuation that names no contract at all is asking for more of the
+  // story it already has, under the terms that story was begun on. That has
+  // always been served and stays served: the gate is on a contract the caller
+  // supplies, not on one it omits.
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    let reachedProvider = false;
+    const response = await continueStoryLab({
+      storyId: payload.summary.storyId,
+      chapterBatchSize: 1,
+      storyState: payload.state,
+      previouslyGeneratedChapters: payload.batch.chapters,
+      continuationBrief: 'Raise the danger.',
+      existingSummary: payload.summary
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by continuation test');
+        },
+        continueChapter: async () => {
+          reachedProvider = true;
+          return {
+            success: false,
+            error: {
+              code: 'CONTINUATION_UPSTREAM_DOWN',
+              message: 'Continuation provider unavailable.'
+            }
+          };
+        }
+      })
+    });
+
+    assert(reachedProvider, 'a continuation with no Heat Contract should still reach the provider');
+    assert(!response.success, 'the stubbed provider failure should still be reported');
+    assert(
+      response.error.code === 'CONTINUATION_UPSTREAM_DOWN',
+      `an absent Heat Contract should not be answered as a policy violation, got ${response.error.code}`
+    );
+  });
+
   await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
     let capturedInput: ClassicContinuationSeam['input'] | undefined;
     const courtroomState = {
