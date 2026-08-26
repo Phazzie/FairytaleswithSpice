@@ -51,6 +51,51 @@ describe('GenerationLogicService', () => {
 
   // Named rather than checked by shape: a bank borrowed from a neighbour is
   // still a non-empty, creature-shaped list, so only the contents catch it.
+  // Named for the same reason the siren and djinn banks are named below. These
+  // two were the last banks still carrying the panel's own authors: six of the
+  // twelve werewolf voices and three of the twelve fae ones were names the API
+  // has never generated from — and `Nalini Singh` appeared twice in the same
+  // werewolf bank. Every creature borrows werewolf or fae for its blend voice
+  // except siren, so a preview of almost any creature could name an author the
+  // server could not have picked.
+  it('reads the werewolf and fae banks the API generates those creatures from', () => {
+    expect(service.getAllAuthorStyles('werewolf').map(style => style.author))
+      .toEqual([
+        'Patricia Briggs', 'Ilona Andrews', 'Nalini Singh', 'Kelley Armstrong',
+        'Jennifer Ashley', 'Carrie Ann Ryan', 'Shelly Laurenston', 'Suzanne Wright',
+        'Faith Hunter', 'Keri Arthur', 'Rachel Vincent', 'Chloe Neill'
+      ]);
+    expect(service.getAllAuthorStyles('fairy').map(style => style.author))
+      .toEqual([
+        'Holly Black', 'Sarah J. Maas', 'Melissa Marr', 'Grace Draven',
+        'Julie Kagawa', 'Karen Marie Moning', 'Elise Kova', 'Jennifer Estep',
+        'Cassandra Clare', 'Sylvia Mercedes', 'Roshani Chokshi', 'Laura Thalassa'
+      ]);
+  });
+
+  // The property that keeps a three-voice draw three distinct voices. It holds
+  // across the API's banks today, and it is not a coincidence worth relying on
+  // silently: while the panel carried its own werewolf and fae lists, `Kresley
+  // Cole` and `Laurell K. Hamilton` sat in both the vampire and werewolf banks,
+  // so a vampire preview could draw the same author twice — reducing the variety
+  // the third voice exists for, and feeding two identical keys to a template
+  // that tracked by author name.
+  it('never lets a creature draw the same author from both of its banks', () => {
+    const creatures: CreatureArchetype[] = [
+      'vampire', 'werewolf', 'fairy', 'siren', 'djinn', 'witch', 'dragon', 'demon', 'angel', 'mermaid'
+    ];
+
+    for (const creature of creatures) {
+      const primary = service.getAllAuthorStyles(creature).map(style => style.author);
+      const secondary = service.getSecondaryAuthorStyles(creature).map(style => style.author);
+
+      expect(new Set(primary).size).withContext(`${creature} primary bank`).toBe(primary.length);
+      expect(primary.filter(author => secondary.includes(author)))
+        .withContext(`${creature} draws these from both banks`)
+        .toEqual([]);
+    }
+  });
+
   it('reads the siren and djinn banks the API generates those creatures from', () => {
     expect(service.getAllAuthorStyles('siren').map(style => style.author))
       .toEqual(['Drowning-Song Gothic', 'Salt-Debt Bargainer', 'Storm-Voice Romance', 'Harbour-Watch Longing']);

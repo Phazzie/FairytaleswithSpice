@@ -32,6 +32,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coin flip. The spec that accepted "anything from two authors up to the size of
   the bank" was accepting the defect exactly; it is replaced by one asserting the
   two-plus-one shape for every creature and one naming the pairings.
+- Porting the pairings surfaced that the panel's `werewolfStyles` and `fairyStyles`
+  were not the API's banks either — six of the twelve werewolf voices and three of
+  the twelve fae ones were names `WEREWOLF_STYLES` and `FAIRY_STYLES` have never
+  held, in a different order and with different voice samples and traits, and
+  `Nalini Singh` appeared twice inside the panel's own werewolf bank. Every
+  creature except siren borrows werewolf or fae for its blend voice, so pointing
+  the selection at the right banks while the banks themselves were wrong would
+  have left almost every preview still able to name an author the server could not
+  pick. Both are now the API's, transplanted rather than retyped, and pinned by
+  name the way the siren and djinn banks already were.
+- The two banks were also what made a preview able to name the *same* author
+  twice. `Kresley Cole` and `Laurell K. Hamilton` sat in both the panel's vampire
+  and werewolf banks, and `Nalini Singh` and `Jennifer L. Armentrout` in both its
+  werewolf and fae ones, so a vampire or fae draw could take one voice from each
+  bank and get one author — losing the variety the third voice exists for, and
+  handing two identical keys to a template that tracked by author name, which
+  Angular answers with an NG0955 runtime error rather than a render. The API's ten
+  banks share no name at all, within a bank or between any creature's two pools,
+  so the port removes the collision; a spec now states that property so a later
+  bank edit fails a test instead of a reader's screen, and the template tracks the
+  draw by position, which is the only identity a freshly-shuffled list has.
 
 #### Proving Grounds offered ten themes, five of which no reader can send
 

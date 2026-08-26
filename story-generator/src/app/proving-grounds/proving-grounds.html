@@ -174,7 +174,14 @@
             <!-- Selected Authors -->
             <div class="logic-section">
               <h4>📚 Author Styles ({{ currentGenerationLogic()!.selectedAuthors.length }}/3)</h4>
-              @for (author of currentGenerationLogic()!.selectedAuthors; track author.author) {
+              <!--
+                Tracked by position, not by name. This list is one random draw of
+                three voices, rebuilt whole every time the reader regenerates, so
+                there is no identity across renders for a key to preserve — and a
+                name is not one anyway: two banks may hold the same author, and
+                Angular throws NG0955 on a duplicate key rather than rendering.
+              -->
+              @for (author of currentGenerationLogic()!.selectedAuthors; track $index) {
                 <div class="author-card">
                   <div class="author-name">{{ author.author }}</div>
                   <div class="author-trait">{{ author.trait }}</div>

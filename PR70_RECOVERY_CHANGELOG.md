@@ -21,11 +21,24 @@ Self-review:
 - The secondary-bank assertion had to be written as the API's pairings rather than as "borrows another creature". Several author names appear in two banks — `Kresley Cole` and `Laurell K. Hamilton` in both vampire and werewolf, `Nalini Singh` in both werewolf and fairy — so a disjointness check would have failed on correct data.
 - Non-claim: this slice changes no API route, no prompt the server builds, and no generated story. It changes which authors one browser panel previews, which themes that panel offers, and where the Angular form draws the line on three free-text fields.
 
+Review follow-up (same slice, after Codex flagged two P2s on the first push):
+
+- Transplanted the API's `WEREWOLF_STYLES` and `FAIRY_STYLES` over the panel's own copies. Codex was right and the divergence was larger than the pairings: six of the twelve werewolf voices and three of the twelve fae ones were authors the API has never generated from, in a different order and with different voice samples and traits, and `Nalini Singh` was listed twice in the panel's werewolf bank. Nine of the ten creatures borrow werewolf or fae for their blend voice, so fixing the selection while the banks stayed wrong would have left almost every preview still naming authors the server could not pick — the parity this slice claims. The banks were extracted from `api/_lib/config/authorStyles.ts` by script and diffed back rather than retyped; `VAMPIRE_STYLES` already matched byte for byte.
+- Changed the author list's `@for` from `track author.author` to `track $index`, and added a spec asserting that no creature can draw one author from both its banks. Codex's other P2 was the same defect seen from the template: the panel's banks put `Kresley Cole` and `Laurell K. Hamilton` in both vampire and werewolf, and `Nalini Singh` and `Jennifer L. Armentrout` in both werewolf and fae, so a vampire or fae draw could return the same author twice and hand Angular two identical keys, which is an NG0955 runtime error rather than a render. The API's ten banks share no name anywhere, so the port removes the collision; the spec keeps a later bank edit from reintroducing it silently, and position is the only identity a freshly-shuffled draw of three has.
+
+Self-review (follow-up):
+
+- Both findings were verified against the code before either was acted on, not taken on the bot's word: a script extracted the three shared banks from both trees and compared author lists, and a second one checked every creature's primary bank against its secondary pool for overlap across all ten of the API's banks.
+- The two findings turned out to be one cause. The duplicate-key error was reachable only because the panel's werewolf and fae banks were the wrong lists; deduplicating the selection instead — the fix the comment proposed first — would have made the panel diverge from the API in a new way, since `selectRandomAuthorStyles` does not deduplicate and does not need to.
+- Both new specs were confirmed to fail against the pre-port banks (`reads the werewolf and fae banks the API generates those creatures from`, `never lets a creature draw the same author from both of its banks`) and to pass after.
+- Known and not addressed here: the ten author banks now exist in full in two trees, which is the same one-copy-per-reader shape `shared/storyLabThemeSeeds.ts` was created to end. Moving them under `shared/` is the durable fix and is a change to the API tree as well, so it is worth its own slice rather than being folded into this one.
+
 Validation:
 
 - `npm test`: passed (all suites).
-- `cd story-generator && CHROME_BIN=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`: 182 of 182 passed.
+- `cd story-generator && CHROME_BIN=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`: 184 of 184 passed (182 before the follow-up specs).
 - `tsc -p tsconfig.app.json --noEmit`, `tsc -p tsconfig.spec.json --noEmit`, and the Vercel API function typecheck: passed.
+- `npm run build`: passed.
 - `git diff --check`: passed.
 
 ## 2026-08-26 UTC - An Image Style Logged Verbatim, The App's Own Themes Reported As Unrecognized, And Two Creatures Previewed As A Third

@@ -132,125 +132,125 @@ export class GenerationLogicService {
     {
       author: 'Patricia Briggs',
       voiceSample: '"Pack means family. And family means I\'ll tear apart anyone who threatens what\'s mine."',
-      trait: 'Loyal pack dynamics with mechanical expertise'
-    },
-    {
-      author: 'Kelley Armstrong',
-      voiceSample: 'The wolf inside her stirred, recognizing the alpha in him even as her human side refused to submit.',
-      trait: 'Bitten werewolf discovering pack culture'
-    },
-    {
-      author: 'Nalini Singh',
-      voiceSample: 'His changeling leopard purred at her scent—wild forest and untamed woman, a combination that made his animal half want to chase.',
-      trait: 'Psy-Changeling world with mate bonds'
+      trait: 'Grounded pragmatism with fierce loyalty'
     },
     {
       author: 'Ilona Andrews',
-      voiceSample: '"You smell like mine," he growled, the beast in his voice making it clear this wasn\'t a request.',
-      trait: 'Kate Daniels urban fantasy with shapeshifter politics'
-    },
-    {
-      author: 'Jennifer L. Armentrout',
-      voiceSample: 'The connection between them snapped into place like a rubber band pulled too tight, inevitable and impossible to ignore.',
-      trait: 'New adult paranormal with fated mates'
-    },
-    {
-      author: 'Laurell K. Hamilton',
-      voiceSample: 'His beast rode too close to the surface, fur rippling beneath skin, amber bleeding into human eyes.',
-      trait: 'Anita Blake\'s complex werewolf power structure'
-    },
-    {
-      author: 'Yasmine Galenorn',
-      voiceSample: 'Moon magic sang in her blood, calling to the predator that lived beneath her skin, wild and free.',
-      trait: 'Sisters of the Moon goddess-touched werewolves'
-    },
-    {
-      author: 'Kresley Cole',
-      voiceSample: 'He\'d waited centuries for his mate. Now that he\'d found her, nothing—not even her terror—would keep him away.',
-      trait: 'Immortals After Dark fated mates and warrior culture'
-    },
-    {
-      author: 'Carrie Ann Ryan',
-      voiceSample: 'The mating bond thrummed between them, pack magic recognizing what their human halves still denied.',
-      trait: 'Redwood Pack family saga with pack bonds'
-    },
-    {
-      author: 'Lora Leigh',
-      voiceSample: 'Feline genetics mixed with human desire created something new, something the world wasn\'t ready for.',
-      trait: 'Breeds series genetic manipulation themes'
+      voiceSample: '"Great. Magical politics, ancient curses, and now this. Tuesday just keeps getting better."',
+      trait: 'Urban grit balanced with unexpected humor'
     },
     {
       author: 'Nalini Singh',
-      voiceSample: 'His wolf wanted to mark her, claim her, make it impossible for any other male to even look at her.',
-      trait: 'Guild Hunter world alpha dominance'
+      voiceSample: 'His wolf pressed against his skin, demanding he claim what was his, mark her, make her understand she belonged to the pack-to him.',
+      trait: 'Primal sensuality overwhelming rational thought'
+    },
+    {
+      author: 'Kelley Armstrong',
+      voiceSample: 'The change rippled through her bones like electricity, wild and barely contained, a storm waiting to break.',
+      trait: 'Suspenseful tension building like a storm'
+    },
+    {
+      author: 'Jennifer Ashley',
+      voiceSample: '"The pack protects its own. Always. Even when \'its own\' is too stubborn to ask for help."',
+      trait: 'Found family bonds stronger than blood'
+    },
+    {
+      author: 'Carrie Ann Ryan',
+      voiceSample: 'The mating bond snapped into place like fate clicking its final lock, and suddenly "mine" wasn\'t just a word-it was a destiny.',
+      trait: 'Fated mates with pack loyalty and emotional werewolf bonds'
     },
     {
       author: 'Shelly Laurenston',
-      voiceSample: '"Honey badger don\'t care," she said, right before she proved exactly how much damage a small woman with claws could do.',
-      trait: 'Pride series humor with fierce heroines'
+      voiceSample: '"Did you just challenge me to an alpha battle in the middle of brunch? Honey, I haven\'t even had my coffee yet."',
+      trait: 'Comedic werewolf chaos with irreverent alpha battles'
+    },
+    {
+      author: 'Suzanne Wright',
+      voiceSample: 'Possessive didn\'t begin to cover it. His wolf wanted to wrap around her, claim her, make sure every shifter within a hundred miles knew she was his.',
+      trait: 'Possessive alpha wolves with pack mentality and steamy romance'
+    },
+    {
+      author: 'Faith Hunter',
+      voiceSample: 'The skinwalker magic crawled across her skin, werewolf and vampire scents mixing in the humid Southern night like a supernatural storm brewing.',
+      trait: 'Southern Gothic werewolves with vampire-werewolf tension and skinwalker magic'
+    },
+    {
+      author: 'Keri Arthur',
+      voiceSample: 'Werewolf detective, vampire lover, and a murder case that smelled like death and dark magic. Just another night in the Riley Jenson universe.',
+      trait: 'Werewolf detective noir with Riley Jenson vibes and hybrid powers'
+    },
+    {
+      author: 'Rachel Vincent',
+      voiceSample: 'Territory. Dominance. Pride. The werecat politics translated perfectly to werewolf pack law-fight for your place or lose everything.',
+      trait: 'Werecats/shifter politics crossover with territorial dominance and family saga'
+    },
+    {
+      author: 'Chloe Neill',
+      voiceSample: '"Chicago werewolf packs play by different rules. Less howling at the moon, more political maneuvering with a side of violence."',
+      trait: 'Chicago werewolf packs with urban fantasy setting and political intrigue'
     }
   ];
 
   private readonly fairyStyles: AuthorStyle[] = [
     {
-      author: 'Sarah J. Maas',
-      voiceSample: 'High Fae beauty masked centuries of cunning and cruelty, but his smile promised things far more dangerous than death.',
-      trait: 'ACOTAR dark fae romance with mate bonds'
+      author: 'Holly Black',
+      voiceSample: '"I could give you what you desire most," she said, and her smile was sharp as winter. "The question is: what are you willing to lose for it?"',
+      trait: 'Court intrigue where every smile hides daggers'
     },
     {
-      author: 'Holly Black',
-      voiceSample: 'The Folk never lie, but truth can be shaped into weapons sharper than any blade forged in their realm.',
-      trait: 'Cruel Prince political intrigue and deception'
+      author: 'Sarah J. Maas',
+      voiceSample: 'Power thrummed beneath her skin like a living thing, ancient and terrible and beautiful enough to bring kingdoms to their knees.',
+      trait: 'Epic romance with world-shattering consequences'
+    },
+    {
+      author: 'Melissa Marr',
+      voiceSample: 'The mortal world blurred at the edges when he looked at her, reality bending around the impossible pull of fae magic.',
+      trait: 'Dangerous beauty drawing moths to flame'
+    },
+    {
+      author: 'Grace Draven',
+      voiceSample: '"In my realm, we have a saying: \'Love is the cruelest magic, for it makes even immortals mortal.\'"',
+      trait: 'Slow-burn intimacy across cultural impossibilities'
     },
     {
       author: 'Julie Kagawa',
-      voiceSample: 'Summer and Winter courts circled each other like predators, and she stood in the middle, desired by both.',
-      trait: 'Iron Fey world with court politics'
-    },
-    {
-      author: 'Jennifer L. Armentrout',
-      voiceSample: 'Fae glamour couldn\'t hide the wildness in his eyes, the barely leashed power that promised pleasure and pain in equal measure.',
-      trait: 'Dark Elements series fae warriors'
+      voiceSample: 'Honor and desire warred in his expression, duty and longing locked in a battle that would determine both their fates.',
+      trait: 'Hybrid honor versus desire in heart-wrenching choices'
     },
     {
       author: 'Karen Marie Moning',
-      voiceSample: 'Unseelie princes played with humans like toys, but she\'d learned their games and was playing to win.',
-      trait: 'Fever series dark fae mythology'
-    },
-    {
-      author: 'Cassandra Clare',
-      voiceSample: 'Seelie beauty hid seelie cruelty, and she\'d fallen for both—hook, line, and sinker.',
-      trait: 'Shadowhunter world fae courts'
+      voiceSample: '"Welcome to Dublin, where the Unseelie princes play and humans are just pretty toys to break." She should run. She should definitely run.',
+      trait: 'Fever series Fae with dark Unseelie princes and Dublin setting'
     },
     {
       author: 'Elise Kova',
-      voiceSample: 'Wings of starlight and eyes of eternal night—he was everything the stories warned about and everything she wanted.',
-      trait: 'Air Awakens elemental magic and fae romance'
-    },
-    {
-      author: 'Roshani Chokshi',
-      voiceSample: 'The bargain tasted of midnight and promises, sweet poison that would bind her to him until the stars fell.',
-      trait: 'Gilded Wolves mythology-rich fae bargains'
-    },
-    {
-      author: 'Nalini Singh',
-      voiceSample: 'Guild Hunter angels might not be fae, but they shared the same terrible beauty and ageless hunger.',
-      trait: 'Archangel-level power and immortal romance'
+      voiceSample: 'Air magic sang through her veins, elemental power awakening with each breath, the fairy prince watching like he knew exactly what she was becoming.',
+      trait: 'Air Awakens fairy magic with elemental powers and fantasy romance'
     },
     {
       author: 'Jennifer Estep',
-      voiceSample: 'Black Blade Academy taught her to fight monsters. No one warned her she\'d fall for one.',
-      trait: 'Academy setting with fae warrior training'
+      voiceSample: '"Mythos Academy Rule #1: Never trust a fairy. Rule #2: Especially not one who offers to teach you assassination techniques."',
+      trait: 'Mythos Academy fae with assassin protagonist and snarky tone'
     },
     {
-      author: 'Annette Marie',
-      voiceSample: 'Yokai and fae shared one thing: mortals were playthings. She\'d just have to play harder.',
-      trait: 'Guild Codex world with fae trickster energy'
+      author: 'Cassandra Clare',
+      voiceSample: 'Shadowhunter meets Seelie Court, and the lines between ally and enemy blur like glamour in moonlight-forbidden and intoxicating.',
+      trait: 'Shadowhunter fae crossover with Seelie/Unseelie courts and forbidden romance'
+    },
+    {
+      author: 'Sylvia Mercedes',
+      voiceSample: 'Bride of the Shadow King-the bargain was simple: her life for her kingdom. What she didn\'t expect was wanting to stay in the darkness.',
+      trait: 'Bride of the Shadow King vibes with dark fairy bargains and enemies-to-lovers'
+    },
+    {
+      author: 'Roshani Chokshi',
+      voiceSample: 'Indian mythology wove through the fairy realm like silk and starlight, lush magic painting the air in colors that had no earthly names.',
+      trait: 'Indian mythology fae with lush descriptions and magical realism'
     },
     {
       author: 'Laura Thalassa',
-      voiceSample: 'The Bargainer collected debts with a smile that could charm angels and destroy mortals.',
-      trait: 'Bargainer series dark fae debt collector'
+      voiceSample: '"The Bargainer collects debts, siren. And you\'ve owed me for a very long time." His smile promised wicked payments and dangerous pleasures.',
+      trait: 'Bargainer series vibes with siren fae, debts and deals'
     }
   ];
 
