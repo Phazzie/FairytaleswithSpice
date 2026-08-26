@@ -1184,6 +1184,38 @@ describe('App', () => {
     expect(component.workspaceSaveStatus()).toBe('Saved in this browser.');
   });
 
+  // The continuation twin of this has been asserted since the guard was written
+  // — "keeps existing chapters when a completed continuation job has a malformed
+  // story payload" below. Genesis only asked whether `job.result` was present at
+  // all, so a result that is merely *there* reached `applyIteration`, which
+  // reads `summary.storyId` and `batch.chapters` straight through. The throw
+  // lands inside the job event stream's `next` callback, where nothing catches
+  // it: the batch stays in progress, the progress timer keeps running, and the
+  // reader is told nothing.
+  const malformedGenesisPayloads: Array<[string, StoryIterationPayload]> = [
+    ['no batch', { summary: createSummary(), state: createState() } as unknown as StoryIterationPayload],
+    ['no summary', {
+      state: createState(),
+      batch: { chapters: [createChapter()], totalWordCount: 900, suggestedNextPrompts: [] }
+    } as unknown as StoryIterationPayload]
+  ];
+
+  for (const [label, malformedPayload] of malformedGenesisPayloads) {
+    it(`fails the genesis batch when a completed job has a malformed story payload (${label})`, () => {
+      const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+      startGenesisJobFlow('A vampire princess bound by forbidden vows.', events$);
+
+      expect(() => events$.next(createJobEvent(createGenesisJobResponse(malformedPayload)))).not.toThrow();
+
+      expect(component.workbench().story).toBeNull();
+      expect(component.workbench().chapterHistory).toEqual([]);
+      expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+      expect(component.statusMessage()).toContain('without a story payload');
+      expect(component.isGenerating()).toBeFalse();
+      expect(component.generationProgress().active).toBeFalse();
+    });
+  }
+
   it('updates genesis progress from Story Lab job snapshots', () => {
     const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
     startGenesisJobFlow(

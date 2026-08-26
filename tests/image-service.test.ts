@@ -2,7 +2,12 @@
 // Created: 2026-08-24 23:40 UTC
 
 import axios from 'axios';
-import { ImageService, readGeneratedImageUrl } from '../api/_lib/services/imageService';
+import {
+  IMAGE_SCENE_DESCRIPTION_MAX_LENGTH,
+  ImageService,
+  buildSceneDescriptionFromStory,
+  readGeneratedImageUrl
+} from '../api/_lib/services/imageService';
 import { CreatureType, ImageGenerationSeam } from '../api/_lib/types/contracts';
 import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
 
@@ -50,6 +55,77 @@ async function testSceneDescriptionReadsAsProse(): Promise<void> {
   // before failing for want of a `>`, which is quadratic in the run's length.
   // Excluding `<` decides each position once, and `<p>` still matches.
   assert(!/<[^<>]*>/.test(prompt), `no markup should reach the image model (got: ${prompt})`);
+}
+
+// `split('.')` is not a sentence split: `?` and `!` end a sentence too, and
+// this app writes dialogue-heavy openings. A chapter that opens on questions had
+// no period anywhere near its start, so "the first three sentences" was the
+// whole chapter — and rejoining the pieces with `'.'` replaced whatever
+// terminator each one actually ended on, so a question reached the image model
+// as a statement.
+function testTheOpeningSentencesAreReadAsSentences(): void {
+  const questions = '<p>Where is she? Who took her? Why now? '
+    + 'The hunter counted his knives and did not answer any of it.</p>';
+  const description = buildSceneDescriptionFromStory(questions);
+
+  assert(
+    description === 'Where is she? Who took her? Why now?',
+    `three questions are three sentences, terminators and all (got: ${JSON.stringify(description)})`
+  );
+  assert(
+    !description.includes('counted his knives'),
+    `the fourth sentence should not be in the scene (got: ${JSON.stringify(description)})`
+  );
+}
+
+// A story that stops mid-sentence still has a scene in it, and a story shorter
+// than three sentences is not padded or truncated.
+function testShortAndUnterminatedStoriesSurviveWhole(): void {
+  const unterminated = '<p>She opened the door and the cold came in</p>';
+  assert(
+    buildSceneDescriptionFromStory(unterminated) === 'She opened the door and the cold came in',
+    `a trailing unterminated sentence should still be read (got: ${JSON.stringify(buildSceneDescriptionFromStory(unterminated))})`
+  );
+
+  // The paragraph break between them is the one `stripStoryHtmlToText` put
+  // where the markup had a `</p><p>`, and it stays: welding those two words
+  // together is what that helper exists to prevent.
+  const twoSentences = '<p>He shut the door.</p><p>Blood pooled at her feet.</p>';
+  assert(
+    buildSceneDescriptionFromStory(twoSentences) === 'He shut the door.\n\nBlood pooled at her feet.',
+    `two sentences should come back as two (got: ${JSON.stringify(buildSceneDescriptionFromStory(twoSentences))})`
+  );
+}
+
+// `substring(0, 200)` counts UTF-16 code units, so a cut between the halves of a
+// surrogate pair left a lone surrogate in the text sent to the provider, and a
+// cut anywhere else landed mid-word.
+function testTheCapKeepsWholeCharactersAndWholeWords(): void {
+  const longSentence = `<p>${'astral '.repeat(40)}end.</p>`;
+  const description = buildSceneDescriptionFromStory(longSentence);
+
+  assert(
+    Array.from(description).length <= IMAGE_SCENE_DESCRIPTION_MAX_LENGTH,
+    `the description should respect the cap (got ${Array.from(description).length} code points)`
+  );
+  assert(
+    description.endsWith('astral'),
+    `the cap should land on a word boundary (got: ${JSON.stringify(description.slice(-20))})`
+  );
+
+  // One astral character per code point, so a UTF-16 cut at the cap falls
+  // between the halves of a surrogate pair.
+  const astral = `<p>${'𝔞'.repeat(300)}</p>`;
+  const astralDescription = buildSceneDescriptionFromStory(astral);
+
+  assert(
+    !/[\uD800-\uDFFF]/.test(astralDescription.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')),
+    'the cap should never strand half of a surrogate pair'
+  );
+  assert(
+    Array.from(astralDescription).length === IMAGE_SCENE_DESCRIPTION_MAX_LENGTH,
+    `an unbroken astral run should be cut at the cap in whole characters (got ${Array.from(astralDescription).length})`
+  );
 }
 
 // A malformed `themes` reached `input.themes.map(...)` and threw, and the
@@ -301,6 +377,9 @@ async function main(): Promise<void> {
   await testEveryCreatureArchetypeReachesThePrompt();
   await testEveryThemeTheAppOffersReachesThePrompt();
   await testSceneDescriptionReadsAsProse();
+  testTheOpeningSentencesAreReadAsSentences();
+  testShortAndUnterminatedStoriesSurviveWhole();
+  testTheCapKeepsWholeCharactersAndWholeWords();
   await testMalformedThemesAreRejectedAsCallerError();
   await testAspectRatioNeverContradictsTheDimensions();
   testProviderResponsesWithoutAUrlAreRefused();

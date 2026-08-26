@@ -67,6 +67,91 @@ export function readGeneratedImageUrl(responseData: unknown): string {
   return url.trim();
 }
 
+/**
+ * The longest scene description handed to the image model, in code points.
+ *
+ * Unchanged from the `substring(0, 200)` it replaces — the cap is not what was
+ * wrong with it.
+ */
+export const IMAGE_SCENE_DESCRIPTION_MAX_LENGTH = 200;
+
+/**
+ * One sentence: a run of text up to and including whatever ends it, or the
+ * trailing run a story that stops mid-sentence leaves behind.
+ *
+ * Both branches are linear — the engine can only take `[^.!?]` for the run and
+ * `[.!?]` for the terminator, so there is nothing to backtrack over on a long
+ * paragraph that ends without punctuation.
+ */
+const SCENE_SENTENCE_PATTERN = /[^.!?]+[.!?]+|[^.!?]+$/g;
+
+/** How many opening sentences describe the scene, as it always was. */
+const SCENE_SENTENCE_COUNT = 3;
+
+/**
+ * Describe the opening of a story for the image model.
+ *
+ * The story arrives as the generator's HTML. Deleting the tags on their own
+ * welds the words they separated — `door.</p><p>Blood` becomes `door.Blood` —
+ * and leaves `&amp;` and `&quot;` sitting in the prose as literal entity text,
+ * so the scene handed to the image model is neither what a reader sees nor
+ * valid English. `stripStoryHtmlToText` puts a paragraph break where the markup
+ * put one and decodes the entities the generator writes, which is the same
+ * rendering the cliffhanger and continuity scanners read.
+ *
+ * What was left after that was the sentence reading itself, and it got both
+ * halves wrong:
+ *
+ * - **`split('.')` is not a sentence split.** `?` and `!` end a sentence too,
+ *   and this app writes dialogue-heavy openings — the sibling story-quality scan
+ *   splits on `/[.!?]+/` for exactly that reason. A chapter that opens on three
+ *   questions has no period anywhere near its start, so "the first three
+ *   sentences" was the whole chapter, and the only thing that stopped it was the
+ *   200-character cut below. Rejoining with `'.'` then made it worse: the
+ *   terminator each piece actually ended on was replaced by a period, so
+ *   `"Where is she?"` reached the model as `"Where is she."`, and the final
+ *   sentence lost its punctuation entirely.
+ * - **`substring(0, 200)` counts UTF-16 code units.** A cut between the halves
+ *   of a surrogate pair leaves a lone surrogate — the failure `chunkByCodePoint`
+ *   in the export service and `capUtf8Bytes` in the download filename both
+ *   iterate code points to avoid — and a cut anywhere else lands mid-word, so
+ *   the prompt ended on a fragment. Capping at a code-point boundary and then
+ *   backing up to the last space keeps whole characters and whole words.
+ *
+ * Exported so the text actually sent to the provider can be asserted on
+ * directly, the way `readGeneratedImageUrl` above is; reaching it through
+ * `generateImage` needs a configured provider and would prove nothing about the
+ * prompt either way.
+ */
+export function buildSceneDescriptionFromStory(content: string): string {
+  const sentences = stripStoryHtmlToText(content).match(SCENE_SENTENCE_PATTERN) ?? [];
+  const opening = sentences.slice(0, SCENE_SENTENCE_COUNT).join('').trim();
+
+  return capAtWordBoundary(opening, IMAGE_SCENE_DESCRIPTION_MAX_LENGTH);
+}
+
+/**
+ * Cut to at most `maxCodePoints` whole characters, then back up to the last
+ * whitespace so the description does not end mid-word. A first word longer than
+ * the whole cap has no whitespace to back up to and is kept as it is, which is
+ * still a whole-character cut.
+ */
+function capAtWordBoundary(value: string, maxCodePoints: number): string {
+  const characters = Array.from(value);
+  if (characters.length <= maxCodePoints) {
+    return value;
+  }
+
+  const capped = characters.slice(0, maxCodePoints).join('');
+  for (let index = capped.length - 1; index >= 0; index -= 1) {
+    if (/\s/.test(capped[index])) {
+      return capped.slice(0, index).trimEnd();
+    }
+  }
+
+  return capped;
+}
+
 export class ImageService {
   private grokApiKey: string | undefined;
   private grokApiUrl: string;
@@ -191,23 +276,9 @@ export class ImageService {
     return `${basePrompt}. ${creatureContext}. Visual elements: ${themeElements}. ${styleModifier}. High quality, detailed, atmospheric lighting.`;
   }
 
-  /**
-   * Describe the opening of a story for the image model.
-   *
-   * The story arrives as the generator's HTML. Deleting the tags on their own
-   * welds the words they separated — `door.</p><p>Blood` becomes `door.Blood`
-   * — and leaves `&amp;` and `&quot;` sitting in the prose as literal entity
-   * text, so the scene handed to the image model is neither what a reader sees
-   * nor valid English. `stripStoryHtmlToText` puts a paragraph break where the
-   * markup put one and decodes the entities the generator emits, which is the
-   * same rendering the cliffhanger and continuity scanners read.
-   */
+  /** See `buildSceneDescriptionFromStory` for how the opening is read. */
   private extractSceneFromStory(content: string, creature: string): string {
-    const cleanContent = stripStoryHtmlToText(content);
-    const sentences = cleanContent.split('.').slice(0, 3); // First few sentences
-    const sceneDescription = sentences.join('.').substring(0, 200);
-
-    return `A scene featuring a ${creature}: ${sceneDescription}`;
+    return `A scene featuring a ${creature}: ${buildSceneDescriptionFromStory(content)}`;
   }
 
   /**
