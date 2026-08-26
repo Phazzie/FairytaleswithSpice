@@ -121,21 +121,59 @@ function scoreTropeFreshness(storyText: string): DimensionDraft {
   };
 }
 
+/**
+ * The five emotional registers this dimension looks for, and the words that
+ * count as each one.
+ *
+ * The groups were bare word lists matched with `String.prototype.includes`, and
+ * the failure is the one `StoryService.extractSpicyLevelFromContent` was fixed
+ * for a commit ago: a short emotion word sits inside longer words that mean
+ * something else, or the opposite thing, and this app writes those words
+ * constantly.
+ *
+ * - `anger` is inside `danger` and `stranger`. A dark-romance chapter about a
+ *   dangerous stranger scored the rage register without a single angry beat in
+ *   it, and `rage` is inside `courage`, so the same register was scored twice
+ *   over by a word for the opposite disposition.
+ * - `ache` is inside `reached` — an ordinary verb of motion, in almost every
+ *   chapter this app produces — so the grief register was effectively always
+ *   on, and `loss` is inside `blossom` and `gloss`.
+ * - `hope` is inside `hopeless`, `fear` inside `fearless`, and `trust` inside
+ *   `distrust` and `mistrust`. Three registers credited by the negations that
+ *   deny them.
+ *
+ * Five groups at twelve points each on a base of 48 tops out at 108, clamped to
+ * 100, so a scan this leaky did not merely inflate the number — it took
+ * `emotional_variety` to its maximum for nearly any prose, which makes the
+ * dimension unable to distinguish anything and pulls the `overallScore` it is
+ * one seventh of along with it.
+ *
+ * Whole words, then, with the inflections the substring form picked up for free
+ * listed rather than lost: `wanted` for `want`, `desires` for `desire`,
+ * `losses` for `loss`. What is deliberately not carried over is the rest of
+ * what the substrings caught — `danger` is not `anger`, `reached` is not
+ * `ache`, `hopeless` is not `hope`. Those are the defect, not coverage. The
+ * shape is `extractSensoryTextures`'s below, which has matched whole words
+ * since it was written; the label each group reports is unchanged.
+ */
+const EMOTION_FAMILIES: ReadonlyArray<{ label: string; terms: readonly string[] }> = [
+  { label: 'want', terms: ['want', 'wanted', 'wanting', 'wants', 'desire', 'desired', 'desires', 'desiring', 'hunger', 'hungered', 'hungering', 'hungers'] },
+  { label: 'fear', terms: ['fear', 'feared', 'fearing', 'fears', 'dread', 'dreaded', 'dreading', 'dreads', 'afraid'] },
+  { label: 'anger', terms: ['anger', 'angered', 'angering', 'angers', 'rage', 'raged', 'rages', 'fury'] },
+  { label: 'grief', terms: ['grief', 'ache', 'ached', 'aches', 'loss', 'losses'] },
+  { label: 'hope', terms: ['hope', 'hoped', 'hopes', 'trust', 'trusted', 'trusting', 'trusts', 'mercy'] }
+];
+
 function scoreEmotionalVariety(storyText: string): DimensionDraft {
-  const emotionGroups = [
-    ['want', 'desire', 'hunger'],
-    ['fear', 'dread', 'afraid'],
-    ['anger', 'rage', 'fury'],
-    ['grief', 'ache', 'loss'],
-    ['hope', 'trust', 'mercy']
-  ];
-  const matchedGroups = emotionGroups.filter(group => group.some(word => storyText.includes(word)));
+  const matchedFamilies = EMOTION_FAMILIES.filter(
+    family => family.terms.some(term => containsWholeWord(storyText, term))
+  );
   return {
     id: 'emotional_variety',
     label: 'Emotional variety',
-    score: 48 + matchedGroups.length * 12,
-    rationale: matchedGroups.length > 1 ? 'Multiple emotional registers are present.' : 'Emotional range looks narrow in the deterministic scan.',
-    signals: matchedGroups.map(group => `Emotion family: ${group[0]}`)
+    score: 48 + matchedFamilies.length * 12,
+    rationale: matchedFamilies.length > 1 ? 'Multiple emotional registers are present.' : 'Emotional range looks narrow in the deterministic scan.',
+    signals: matchedFamilies.map(family => `Emotion family: ${family.label}`)
   };
 }
 
@@ -488,6 +526,25 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
+/**
+ * Whether `text` contains `keyword` as a whole word. Both sides are already
+ * lowercased by the caller.
+ *
+ * The boundaries are stated as lookarounds rather than as `\b`, for the reason
+ * `NAMED_CHARACTER_RUN_PATTERN` and the agency scan above both give: `\b` is
+ * defined against `[A-Za-z0-9_]`, so it finds a boundary between an ASCII
+ * keyword and the non-ASCII letter beside it and reports a word that is really
+ * part of a longer one in another script. The keywords themselves are the
+ * lexicons' own ASCII words; it is the prose around them that is not
+ * guaranteed to be.
+ */
+function containsWholeWord(text: string, keyword: string): boolean {
+  return new RegExp(
+    String.raw`(?<![\p{L}\p{N}\p{M}])${escapeRegExp(keyword)}(?![\p{L}\p{N}\p{M}])`,
+    'u'
+  ).test(text);
+}
+
 function extractConcreteAnchors(storyContent: string): string[] {
   const objectNouns = new Set([
     'arch',
@@ -595,7 +652,11 @@ function extractSensoryTextures(storyContent: string): string[] {
     { label: 'sound', terms: ['sound', 'sang', 'whisper', 'rang'] }
   ];
 
+  // The same whole-word reading the emotion families use. This scan has matched
+  // whole words since it was written; what changes is only the boundary it
+  // states them with, which now holds when the prose around an ASCII term is
+  // not itself ASCII.
   return sensoryLexicon
-    .filter(entry => entry.terms.some(term => new RegExp(String.raw`\b${escapeRegExp(term)}\b`).test(normalized)))
+    .filter(entry => entry.terms.some(term => containsWholeWord(normalized, term)))
     .map(entry => entry.label);
 }

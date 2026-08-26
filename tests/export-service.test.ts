@@ -4,6 +4,7 @@
 import { ExportService } from '../api/_lib/services/exportService';
 import { readZipEntries, ZipEntry } from '../api/_lib/services/zipArchive';
 import { EXPORT_FORMATS, SaveExportSeam } from '../api/_lib/types/contracts';
+import { STORY_LAB_THEME_SEEDS } from '../shared/storyLabThemeSeeds';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -516,10 +517,10 @@ async function testMetadataReflectsTheActualStory(): Promise<void> {
   }));
   const text = withMetadata.toString('utf8');
 
-  assert(text.includes('Creature: werewolf'), `export should carry the passed creature (got ${JSON.stringify(text)})`);
-  assert(text.includes('Themes: mystery, adventure'), `export should carry the passed themes (got ${JSON.stringify(text)})`);
-  assert(!text.includes('vampire'), 'export should not fall back to the old hardcoded creature');
-  assert(!text.includes('romance, dark'), 'export should not fall back to the old hardcoded themes');
+  assert(text.includes('Creature: Werewolf'), `export should carry the passed creature (got ${JSON.stringify(text)})`);
+  assert(text.includes('Themes: Mystery, Adventure'), `export should carry the passed themes (got ${JSON.stringify(text)})`);
+  assert(!text.toLowerCase().includes('vampire'), 'export should not fall back to the old hardcoded creature');
+  assert(!text.toLowerCase().includes('romance, dark'), 'export should not fall back to the old hardcoded themes');
 
   const withoutMetadataInput = await exportService.generateExportContent(createInput({
     format: 'txt',
@@ -528,6 +529,60 @@ async function testMetadataReflectsTheActualStory(): Promise<void> {
   assert(
     withoutMetadataInput.toString('utf8').includes('Creature: unknown'),
     'an export with no creature supplied should say so honestly rather than guessing one'
+  );
+}
+
+/**
+ * The "Story Information" block is the one place in this app that shows a
+ * theme id to a reader rather than matching on it, and it showed the raw one.
+ *
+ * `app.ts` builds its picker from `STORY_LAB_THEME_SEEDS` and sends
+ * `theme.id` to `/api/export/save`, so the block a reader downloads and keeps
+ * read `Themes: enemies_to_lovers, secret_identity` for two seeds the picker
+ * beside it calls "Enemies to Lovers" and "Secret Identity". This is the third
+ * reader of these ids written against a vocabulary that is not the picker's,
+ * after the image service's visual-element table and the request logger's
+ * theme list, and the reason the seed list moved into `shared/`.
+ */
+async function testExportMetadataNamesThemesTheWayThePickerDoes(): Promise<void> {
+  const exportService = new ExportService();
+
+  const [firstSeed, secondSeed] = STORY_LAB_THEME_SEEDS;
+  const seededExport = await exportService.generateExportContent(createInput({
+    format: 'txt',
+    includeMetadata: true,
+    creature: 'vampire',
+    themes: [firstSeed.id, secondSeed.id]
+  }));
+  const seededText = seededExport.toString('utf8');
+
+  assert(
+    seededText.includes(`Themes: ${firstSeed.label}, ${secondSeed.label}`),
+    `the export should name seeds the way the picker does (got ${JSON.stringify(seededText)})`
+  );
+  assert(
+    !seededText.includes(firstSeed.id),
+    `the wire id should not reach the reader's document (got ${JSON.stringify(seededText)})`
+  );
+  assert(
+    seededText.includes('Creature: Vampire'),
+    `the creature should be named rather than spelled as its id (got ${JSON.stringify(seededText)})`
+  );
+
+  // The seams still accept the classic `ThemeType` vocabulary from a caller that
+  // sends it, and the export route takes whatever `themes` a body carries. An id
+  // from outside the seed list is titled from its own text rather than replaced
+  // by a placeholder, so it stays legible instead of being asserted a name it
+  // does not have.
+  const classicExport = await exportService.generateExportContent(createInput({
+    format: 'html',
+    includeMetadata: true,
+    creature: 'werewolf',
+    themes: ['power_dynamics']
+  }));
+  assert(
+    classicExport.toString('utf8').includes('Power Dynamics'),
+    'a classic ThemeType id should still be readable in the export metadata'
   );
 }
 
@@ -580,6 +635,7 @@ async function main(): Promise<void> {
   await testEpubIsARealZipContainerWithItsChapter();
   await testDocxIsARealZipContainerWithItsDocument();
   await testMetadataReflectsTheActualStory();
+  await testExportMetadataNamesThemesTheWayThePickerDoes();
   await testEveryDeclaredFormatRenders();
 
   console.log('Export service tests passed');

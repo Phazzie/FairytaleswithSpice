@@ -8,6 +8,7 @@ import {
   stripStoryHtmlForExport
 } from './exportSanitizer';
 import { buildZipArchive, ZipEntry } from './zipArchive';
+import { readStoryLabThemeLabel, titleCaseIdentifier } from '../../../shared/storyLabThemeSeeds';
 
 // US Letter, in the points a PDF's default user space is measured in.
 const PDF_PAGE_WIDTH = 612;
@@ -631,13 +632,30 @@ ${chapterXhtml}
     return null;
   }
 
+  /**
+   * Describe the story for the "Story Information" block of an export.
+   *
+   * `creature` and `themes` arrive as the wire values the request carried, and
+   * this is the one place in the app that shows them to a reader rather than
+   * matching on them: they are written into a document the reader downloads and
+   * keeps. `app.ts` sends `theme.id`, so the block read `Themes:
+   * enemies_to_lovers, secret_identity` for two seeds the picker beside it calls
+   * "Enemies to Lovers" and "Secret Identity", and `Creature: vampire` for the
+   * archetype the form calls "Vampire".
+   *
+   * `readStoryLabThemeLabel` is the picker's own naming, read from the shared
+   * seed list so a renamed seed is renamed here too; the creature is titled from
+   * its id, which is all these ids need. Neither changes what a caller may send
+   * — the seams still take the classic `ThemeType` vocabulary, and an id from
+   * outside the seed list is titled rather than dropped.
+   */
   private generateMetadata(content: string, input: SaveExportSeam['input']): ExportMetadata {
     return {
       generatedAt: new Date().toISOString(),
       wordCount: this.countWords(content),
       readTime: Math.ceil(this.countWords(content) / 200),
-      creature: input.creature ?? 'unknown',
-      themes: input.themes ?? []
+      creature: input.creature ? titleCaseIdentifier(input.creature) : 'unknown',
+      themes: (input.themes ?? []).map(readStoryLabThemeLabel)
     };
   }
 

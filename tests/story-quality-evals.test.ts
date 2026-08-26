@@ -498,9 +498,81 @@ function testActivationMatchingReadsNonLatinThreads(): void {
   );
 }
 
+/**
+ * The emotional-variety dimension has to be able to say "no".
+ *
+ * It matched its emotion words as substrings, and every one of the five
+ * registers has a common word of this genre sitting on top of it: `anger` is
+ * inside `danger` and `stranger`, `rage` inside `courage`, `ache` inside
+ * `reached`, `loss` inside `gloss`, and — worst — `hope` inside `hopeless`,
+ * `fear` inside `fearless`, and `trust` inside `distrust`, so three registers
+ * were credited by the negations that deny them.
+ *
+ * The prose below is built entirely from those decoys and contains no emotional
+ * statement at all; it used to score four of the five registers. Five at twelve
+ * points on a base of 48 clamps to 100, so the leak did not just inflate the
+ * number, it pinned the dimension near its ceiling for ordinary prose and took
+ * the `overallScore` it is one seventh of with it.
+ */
+function testEmotionalVarietyReadsWordsNotSubstrings(): void {
+  const configuration = {
+    creature: 'vampire',
+    themes: [],
+    spicyLevel: 3,
+    wordCount: 900
+  };
+
+  const emotionalVariety = (storyContent: string) => {
+    const report = buildStoryQualityHeuristicReport({ storyContent, configuration });
+    const found = report.dimensions.find(entry => entry.id === 'emotional_variety');
+    assert(found, 'report should include the emotional_variety dimension');
+    return found;
+  };
+
+  const decoys = emotionalVariety(
+    '<p>She reached for the door. A dangerous stranger waited in the hall, hopeless '
+      + 'and fearless at once, his courage a gloss over an old distrust.</p>'
+  );
+  assert(
+    decoys.signals.length === 0,
+    `words that merely contain an emotion word should score nothing (signals=${JSON.stringify(decoys.signals)})`
+  );
+  assert(
+    decoys.score === 48,
+    `prose with no emotional statement should sit at the dimension's base (score=${decoys.score})`
+  );
+
+  // The inflections the substring form picked up for free are listed rather than
+  // lost, so the repair does not cost the scan the matches it did get right.
+  const real = emotionalVariety(
+    '<p>She wanted him and hungered for the bargain. She dreaded the reef and was afraid. '
+      + 'Her anger raged. The loss ached. She hoped, and trusted him with the vow.</p>'
+  );
+  for (const family of ['want', 'fear', 'anger', 'grief', 'hope']) {
+    assert(
+      real.signals.includes(`Emotion family: ${family}`),
+      `the ${family} register should still be detected (signals=${JSON.stringify(real.signals)})`
+    );
+  }
+  assert(
+    real.score > decoys.score,
+    `real emotional range should outscore decoys (real=${real.score}, decoys=${decoys.score})`
+  );
+
+  // A whole-word boundary written as `\b` is defined against `[A-Za-z0-9_]`, so
+  // it finds a boundary between an ASCII term and the non-ASCII letter beside
+  // it and reports a word that is part of a longer one in another script.
+  const embedded = emotionalVariety('<p>Мира said the word angerё and nothing else.</p>');
+  assert(
+    embedded.signals.length === 0,
+    `an emotion word inside a non-ASCII word is not that word (signals=${JSON.stringify(embedded.signals)})`
+  );
+}
+
 async function main(): Promise<void> {
   testHtmlStoriesAreScoredOnTheirProse();
   testOverlongParagraphsAreReportedNotJustPenalised();
+  testEmotionalVarietyReadsWordsNotSubstrings();
   testAnonymousProseScoresAsAnonymous();
   testNamedProseStillScores();
   testNonAsciiNamesAreReadAsNames();
