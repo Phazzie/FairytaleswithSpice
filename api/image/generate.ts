@@ -9,6 +9,7 @@ import {
   IMAGE_GENERATION_REQUEST_FIELDS,
   toLoggableCreature,
   toLoggableFieldNames,
+  toLoggableImageStyle,
   toLoggableStoryId,
   toLoggableThemes
 } from '../_lib/utils/loggableRequestParameters';
@@ -72,7 +73,10 @@ export default async function handler(req: any, res: any) {
         storyId: toLoggableStoryId(input.storyId),
         creature: toLoggableCreature(input.creature),
         ...toLoggableThemes(input.themes),
-        style: input.style
+        // Through the allow-list like every other field on this line: the
+        // guard above accepted `style` for being present, not for being one of
+        // the five the contract names, so it is still caller text here.
+        style: toLoggableImageStyle(input.style)
       }
     });
 

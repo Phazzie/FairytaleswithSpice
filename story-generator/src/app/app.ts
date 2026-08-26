@@ -12,6 +12,7 @@ import {
   downloadBlob,
   downloadHtmlDocument
 } from '../../../shared/htmlDocumentDownload';
+import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import {
   BatchProgressState,
@@ -272,20 +273,13 @@ export class App implements OnDestroy {
     { id: 'mermaid', label: 'Mermaid', description: 'Tides, curses, pearl-lit longing.' }
   ];
 
-  readonly availableThemes: ThemeSeed[] = [
-    { id: 'forbidden_love', label: 'Forbidden Love', description: 'Desire has consequences.' },
-    { id: 'dark_secrets', label: 'Hidden Secrets', description: 'Someone is lying beautifully.' },
-    { id: 'court_intrigue', label: 'Court Intrigue', description: 'Power games under candlelight.' },
-    { id: 'blood_oaths', label: 'Blood Oaths', description: 'Promises that bite back.' },
-    { id: 'slow_burn', label: 'Slow Burn', description: 'Tension before surrender.' },
-    { id: 'enemies_to_lovers', label: 'Enemies to Lovers', description: 'Sparks from mutual danger.' },
-    { id: 'revenge', label: 'Revenge', description: 'A debt comes due.' },
-    { id: 'obsession', label: 'Obsession', description: 'Want sharp enough to wound.' },
-    { id: 'temptation', label: 'Temptation', description: 'The wrong door keeps opening.' },
-    { id: 'magical_bargain', label: 'Magical Bargain', description: 'Every wish has a price.' },
-    { id: 'secret_identity', label: 'Secret Identity', description: 'The lover is not who they seem.' },
-    { id: 'forced_proximity', label: 'Forced Proximity', description: 'No escape from chemistry.' }
-  ];
+  // Read from the shared seed list rather than restated here. These ids do not
+  // stay in the browser: they travel to `/api/image/generate`, `/api/export/save`,
+  // and the Story Lab routes, where server-side tables have to recognise them —
+  // and every one of those tables was first written against the classic
+  // `ThemeType` vocabulary instead, because this list had one copy and no
+  // reader on the other side of the seam could see it.
+  readonly availableThemes: ThemeSeed[] = STORY_LAB_THEME_SEEDS.map(seed => ({ ...seed }));
 
   readonly spiceOptions: SpiceOption[] = [
     { level: 1, label: 'Storybook Romance', description: 'Longing, flirtation, no explicit detail.' },

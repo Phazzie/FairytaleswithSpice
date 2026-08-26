@@ -1,8 +1,46 @@
 // Created: 2026-08-25 05:20 UTC
 
+import { STORY_LAB_THEME_SEED_IDS } from '../../../shared/storyLabThemeSeeds';
 import { VALIDATION_RULES } from '../types/contracts';
 
-const ALLOWED_THEMES: readonly string[] = VALIDATION_RULES.themes.allowedValues;
+/**
+ * The theme ids a log line may repeat, which is both vocabularies the seams
+ * accept — not just the classic one.
+ *
+ * `VALIDATION_RULES.themes.allowedValues` names the eighteen `ThemeType`s, and
+ * on its own that is the wrong list to filter a log against: no screen in this
+ * repository sends those. `app.ts` builds its picker from the twelve Story Lab
+ * seeds and passes `theme.id` through unchanged, and seven of the twelve —
+ * `court_intrigue`, `blood_oaths`, `slow_burn`, `enemies_to_lovers`,
+ * `magical_bargain`, `secret_identity`, and `forced_proximity` — are on neither
+ * the classic list nor any of its synonyms.
+ *
+ * So the filter below was rejecting the app's own traffic. A reader who picked
+ * "Court Intrigue" and "Blood Oaths" and generated a chapter image produced the
+ * request line `themes: [], unrecognizedThemeCount: 2` — the marker that exists
+ * to say "the caller sent something that is not a theme", written about the two
+ * themes the picker itself offered. The diagnostic this whole module exists to
+ * preserve, which themes were asked for, was blanked for exactly the requests
+ * that matter, and left intact only for a vocabulary nothing sends.
+ *
+ * Both are legitimate input — the seams type `themes` as `string[]`, and
+ * `ImageService.mapThemeToVisualElement` answers both for the same reason — so
+ * both are recognised here. `unrecognizedThemeCount` goes back to meaning what
+ * it says: a value that came from neither picker.
+ */
+const ALLOWED_THEMES: readonly string[] = [
+  ...VALIDATION_RULES.themes.allowedValues,
+  ...STORY_LAB_THEME_SEED_IDS
+];
+
+/**
+ * The image styles `ImageStyle` names, listed so a value can be checked at run
+ * time — the same arrangement as `ALLOWED_CREATURES`, and for the same reason.
+ * `ImageService.validateImageInput` holds its own copy and refuses anything
+ * outside it, but that runs after `/api/image/generate` has written its request
+ * line, and the route's own guard tests only that the field is present.
+ */
+const ALLOWED_IMAGE_STYLES: readonly string[] = VALIDATION_RULES.imageStyle.allowedValues;
 
 /**
  * The creatures `CreatureType` names, listed so a value can be checked at run
@@ -35,6 +73,31 @@ export const UNRECOGNIZED_PARAMETER = '[UNRECOGNIZED]';
 export function toLoggableCreature(creature: unknown): string {
   return typeof creature === 'string' && ALLOWED_CREATURES.includes(creature)
     ? creature
+    : UNRECOGNIZED_PARAMETER;
+}
+
+/**
+ * Log an image style only when it is one.
+ *
+ * `/api/image/generate` writes `style: input.style` on its request line, and
+ * `style` reaches that line as whatever JSON the caller wrote: the route's
+ * guard tests the field for truthiness, and the closed-set check lives in
+ * `ImageService`, which has not run yet. So a body of
+ * `{"style": "Dana is in treatment at the clinic on Rosewood", …}` put that
+ * sentence in the console and in the log buffer verbatim — the one field on
+ * that line still carrying caller text, beside `creature`, `themes`, and
+ * `storyId`, each of which is on this module precisely so it cannot.
+ *
+ * The redaction every logged string still passes through does not cover it:
+ * that removes credentials, addresses, and URLs, not prose.
+ *
+ * `ImageStyle` is five values, so there is a list to be recognised against, and
+ * a request the app itself makes — which always sends one of the five — is
+ * logged exactly as it was.
+ */
+export function toLoggableImageStyle(style: unknown): string {
+  return typeof style === 'string' && ALLOWED_IMAGE_STYLES.includes(style)
+    ? style
     : UNRECOGNIZED_PARAMETER;
 }
 

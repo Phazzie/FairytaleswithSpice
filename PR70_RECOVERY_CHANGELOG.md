@@ -4,6 +4,30 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-26 UTC - An Image Style Logged Verbatim, The App's Own Themes Reported As Unrecognized, And Two Creatures Previewed As A Third
+
+Actions:
+
+- Put `/api/image/generate`'s `style` field through an allow-list. Its request line reported `storyId`, `creature`, and `themes` through `loggableRequestParameters` and `style` as `input.style`. Nothing before that line constrains the field — the route's guard tests it for truthiness and the closed-set check lives in `ImageService.validateImageInput`, which has not run yet — so a body carrying prose under that name put the prose in the console and the log buffer verbatim. Added `toLoggableImageStyle`, reading `VALIDATION_RULES.imageStyle.allowedValues` rather than restating the five.
+- Widened `toLoggableThemes`' allow-list to the vocabulary the app actually sends. It filtered against the eighteen classic `ThemeType`s; `app.ts` builds its picker from twelve Story Lab seeds and seven of them are on no other list, so an ordinary image generation logged `themes: []` beside an `unrecognizedThemeCount` — the caller-sent-garbage marker, written about the picker's own values. Both vocabularies are legitimate seam input and both are now recognised; a value from neither is still counted rather than repeated.
+- Created `shared/storyLabThemeSeeds.ts` and pointed `app.ts`, the log allow-list, and `tests/image-service.test.ts` at it. The list had one copy, in `app.ts`, invisible to the server side of the seam, and that has now cost the same bug twice — `mapThemeToVisualElement` described those same seven seeds to the image model as `mysterious elements` until PR #238. The image-service test held its own transcription of the list, so it was asserting against a copy rather than against the picker.
+- Ported `SIREN_STYLES` and `DJINN_STYLES` into `GenerationLogicService`. `getAllAuthorStyles` fell `siren` and `djinn` through to `fairyStyles`, so the Proving Grounds panel previewed twelve fae authors for two creatures the API generates from four sea or wish voices — the same fallthrough already fixed on the API side in `api/_lib/config/authorStyles.ts`, left behind in the browser copy.
+- Extended `tests/log-redaction.test.ts` and `tests/story-route-contracts.test.ts`, both registered in `test:all`, and replaced two specs in `generation-logic.service.spec.ts`.
+
+Self-review:
+
+- Good: every fix was reproduced against the old code by reverting one file at a time and re-running. `caller text sent as an image style must not reach the buffer`, `a request the app itself makes should have its themes logged intact (got …"themes":[],"unrecognizedThemeCount":2…)`, and two named Karma failures for the author banks.
+- The Angular spec was asserting the defect outright: `fairy, siren, and djinn share the same fairy-styles pool` was a green test over the drift. Replaced rather than deleted — one spec requires every creature's bank to differ from every other's, one names the siren and djinn authors — because a borrowed bank is still a non-empty, creature-shaped list and the existing shape check could not see it.
+- The theme fix needed both readings asserted. A filter that blanks everything satisfies "no caller text in the log" perfectly, which is how this defect survived: the route-contract test now checks that an ordinary request's themes arrive intact as well as that prose does not.
+- Non-claim: this slice changes no prompt, no generated story, and no route's status or payload. It changes what two log fields record, where the theme seed list lives, and which author bank one browser panel displays.
+
+Validation:
+
+- `npm run test:all`: passed (74 suites).
+- `cd story-generator && CHROME_BIN=/opt/pw-browsers/chromium npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox`: 176 of 176 passed.
+- `npm run build`: passed. The `proving-grounds.css` budget warning (68 bytes over 12 kB) predates this slice and is untouched by it.
+- `git diff --check`: passed.
+
 ## 2026-08-26 UTC - Every Story Lab Refusal Served As An Outage, An Adult Gate That Covered One Chapter, And A Token Count Blanked From Its Own Log
 
 Actions:
