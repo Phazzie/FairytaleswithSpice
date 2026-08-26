@@ -2,9 +2,10 @@ import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { readRequestCorrelationId } from '../_lib/http/requestCorrelationId';
+import { enforceApiAccessControl } from '../_lib/middleware/apiAccessControl';
 import { ExportService } from '../_lib/services/exportService';
 import { SaveExportSeam } from '../_lib/types/contracts';
-import { FILE_SIZE } from '../_lib/constants';
+import { FILE_SIZE, RATE_LIMITS } from '../_lib/constants';
 import { ERROR_CODES } from '../_lib/errorCodes';
 
 /**
@@ -67,9 +68,14 @@ export default async function handler(req: any, res: any) {
     });
   }
 
+  const access = await enforceApiAccessControl(req, res, 'export/save', RATE_LIMITS.EXPORT);
+  if (!access.allowed) {
+    return;
+  }
+
   try {
     console.log(`[${requestId}] POST /api/export/save - Request received`);
-    
+
     const input = readExportRequest(req.body);
 
     if (!input) {

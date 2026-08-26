@@ -10,6 +10,7 @@ import type {
   StoryLabJobCreationResponse
 } from '../api/_lib/story-lab/contracts';
 import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
+import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { NonDurableStoryLabJobStore, nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
 import { StoryLabJobStoreError } from '../api/_lib/story-lab/jobs/postgresStoryLabJobStore';
 import type { CreateStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from '../api/_lib/story-lab/jobs/jobStorePort';
@@ -99,6 +100,12 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 function createRequest(method: string, body?: unknown, jobId?: string, events = false): FakeRequest {
+  // This file drives the same route handler many times to exercise unrelated
+  // job-lifecycle and ownership behaviour, sharing the process-wide rate
+  // limit store with every other call. Reset it per request rather than let
+  // an earlier scenario's budget carry over and fail a later one with 429.
+  resetRateLimitsForTests();
+
   return {
     method,
     body,

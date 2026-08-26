@@ -7,6 +7,8 @@ import type {
 } from '../../_lib/story-lab/contracts';
 import { applyCorsPolicy } from '../../_lib/http/corsPolicy';
 import { endSseStream, writeSseFrame } from '../../_lib/http/sseStream';
+import { RATE_LIMITS } from '../../_lib/constants';
+import { enforceApiAccessControl, withEventStreamAuth } from '../../_lib/middleware/apiAccessControl';
 import { generateStoryLabGenesis } from '../../_lib/story-lab/storyLabEngine';
 import {
   parseStoryLabBlueprintFromQuery,
@@ -29,6 +31,19 @@ export default async function handler(req: any, res: any) {
       success: false,
       error: { code: 'METHOD_NOT_ALLOWED', message: 'Only GET requests are supported for streaming.' }
     });
+    return;
+  }
+
+  // `EventSource` cannot set custom headers, so this checks for the key
+  // through `withEventStreamAuth`'s `apiKey` query-parameter fallback as well
+  // as the usual headers — see that helper for why.
+  const access = await enforceApiAccessControl(
+    withEventStreamAuth(req),
+    res,
+    'story-lab/stream/genesis',
+    RATE_LIMITS.STREAMING
+  );
+  if (!access.allowed) {
     return;
   }
 

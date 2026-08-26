@@ -2,6 +2,7 @@
 // Created: 2026-08-24 23:58 UTC
 
 import handler, { parseEvaluation } from '../api/story-lab/evaluate';
+import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { stripMarkdownJsonFence } from '../api/_lib/utils/modelJsonPayload';
 import { STORY_EVALUATION_LIMITS } from '../shared/storyBlueprintLimits';
 
@@ -68,6 +69,12 @@ async function withEnv(updates: Record<string, string | undefined>, fn: () => Pr
 }
 
 function createRequest(body: unknown): FakeRequest {
+  // This file drives the route handler many times to exercise unrelated
+  // validation and parsing behaviour, sharing the process-wide rate limit
+  // store with every other call. Reset it per request rather than let an
+  // earlier scenario's budget carry over and fail a later one with 429.
+  resetRateLimitsForTests();
+
   return { method: 'POST', body, headers: {} };
 }
 
