@@ -94,6 +94,25 @@ for (const title of ['', '   ', '***', '!!! ??? ...']) {
   );
 }
 
+// A mark on its own is not a name. Retaining marks is right for one attached to
+// a letter and wrong for one left behind when the character it followed was a
+// separator: `❤️` is U+2764 plus the U+FE0F variation selector, which is a
+// nonspacing mark, so the selector survived alone and the story downloaded as
+// `️.html` — a stem of one invisible character, and the same one for every
+// emoji-only title, which is the collision the fallback exists to prevent.
+for (const title of ['❤️', '👍🏽', '🎃🎃', '✅', '— ❤️ —']) {
+  assert(
+    buildStoryDownloadFilenameStem(title) === STORY_DOWNLOAD_FILENAME_FALLBACK_STEM,
+    `${title} has no letter or number and should fall back, got ${JSON.stringify(buildStoryDownloadFilenameStem(title))}`
+  );
+}
+
+// A title that pairs one with real words keeps the words and drops the orphan.
+assert(
+  buildStoryDownloadFilenameStem('❤️ Love') === 'love',
+  `an emoji beside a word should leave the word, got ${JSON.stringify(buildStoryDownloadFilenameStem('❤️ Love'))}`
+);
+
 // ==================== THE NAME FITS THE FILESYSTEM ====================
 // `<stem>.html` has to fit inside the 255-byte limit ext4 and APFS enforce.
 // Nothing used to bound the stem, so a long model-written title produced a name

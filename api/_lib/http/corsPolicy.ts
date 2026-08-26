@@ -42,6 +42,24 @@ export interface CorsPolicyResult {
 
 const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:4200'];
 const ORIGIN_ENV_KEYS = ['STORY_LAB_ALLOWED_ORIGINS', 'ALLOWED_ORIGINS', 'FRONTEND_URL'] as const;
+/**
+ * The response headers a cross-origin caller is allowed to read.
+ *
+ * `Access-Control-Allow-Headers` above is the request side — which headers a
+ * caller may *send*. It says nothing about what a browser will let the page
+ * read back, and the default there is a short safelist that `X-Request-ID` is
+ * not on. So the routes set the correlation id on the response and a
+ * cross-origin caller could not see it: the one value the API offers for
+ * tracing a request was readable only by a same-origin page, which is exactly
+ * the caller that needs it least.
+ *
+ * `X-RateLimit-Remaining` and `X-RateLimit-Reset` are invisible for the same
+ * reason and are deliberately not added here — they arrived with the access
+ * control in #244 and belong to whoever decides that contract, not to this
+ * change.
+ */
+const EXPOSED_HEADERS = ['X-Request-ID'];
+
 const DEFAULT_HEADERS = [
   'Authorization',
   'Cache-Control',
@@ -80,7 +98,8 @@ export function buildCorsHeaders(
   const headers: Record<string, string> = {
     Vary: 'Origin',
     'Access-Control-Allow-Methods': normalizeMethods(options.methods),
-    'Access-Control-Allow-Headers': unique(options.headers ?? DEFAULT_HEADERS).join(', ')
+    'Access-Control-Allow-Headers': unique(options.headers ?? DEFAULT_HEADERS).join(', '),
+    'Access-Control-Expose-Headers': unique(EXPOSED_HEADERS).join(', ')
   };
 
   if (allowedOrigin) {

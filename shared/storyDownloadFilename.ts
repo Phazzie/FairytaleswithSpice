@@ -72,18 +72,44 @@ export const STORY_DOWNLOAD_FILENAME_STEM_MAX_BYTES = 200;
  */
 const FILENAME_SEPARATOR_PATTERN = /[^\p{L}\p{N}\p{M}]+/u;
 
+/**
+ * What a part of the name has to contain to be worth keeping.
+ *
+ * Retaining marks is right for a mark attached to a letter and wrong for one
+ * left on its own, and the split above cannot tell the two apart: a symbol is a
+ * separator, so `❤️` — U+2764 followed by the U+FE0F variation selector, which
+ * is a nonspacing mark — split into a part holding nothing but the selector.
+ * On its own that produced `️.html`, a stem of one invisible character and the
+ * same one for every emoji-only title, which is the collision the fallback
+ * exists to prevent. Beside a word it produced `️-love.html`, where the
+ * invisible part is still there and now has a separator after it.
+ *
+ * So the rule is applied per part rather than to the finished stem: a run with
+ * no letter and no number in it is not a word of the title and is dropped, and
+ * if that leaves nothing the fallback answers. Stating it as the property a
+ * name needs, rather than as a rule about which marks may follow what, is what
+ * makes it hold for whatever else punctuation, symbols, and marks combine into.
+ */
+const FILENAME_PART_HAS_WORD_CHARACTER = /[\p{L}\p{N}]/u;
+
 export function buildStoryDownloadFilenameStem(title: string): string {
   // Splitting on the separator runs and joining the parts back collapses each
   // run and drops the leading and trailing ones in a single linear pass, the
   // way the export filename stem and the continuity slug are both built.
-  const parts = title.normalize('NFC').toLowerCase().split(FILENAME_SEPARATOR_PATTERN).filter(Boolean);
+  const parts = title
+    .normalize('NFC')
+    .toLowerCase()
+    .split(FILENAME_SEPARATOR_PATTERN)
+    .filter(part => FILENAME_PART_HAS_WORD_CHARACTER.test(part));
   const capped = capUtf8Bytes(parts.join('-'), STORY_DOWNLOAD_FILENAME_STEM_MAX_BYTES);
   // The join leaves single separators, so the cap can strand at most one — a
   // single slice says that, where the loop `ExportService` needs for its own
   // stem says only that some unknown number may be there.
   const stem = capped.endsWith('-') ? capped.slice(0, -1) : capped;
 
-  return stem || STORY_DOWNLOAD_FILENAME_FALLBACK_STEM;
+  // The cap can still leave a tail of only the leading marks of a part it cut
+  // into, so the finished stem is checked as well as each part.
+  return FILENAME_PART_HAS_WORD_CHARACTER.test(stem) ? stem : STORY_DOWNLOAD_FILENAME_FALLBACK_STEM;
 }
 
 /**
