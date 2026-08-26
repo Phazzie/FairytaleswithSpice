@@ -48,17 +48,35 @@ export const STORY_DOWNLOAD_FILENAME_FALLBACK_STEM = 'fairytales-story';
 export const STORY_DOWNLOAD_FILENAME_STEM_MAX_BYTES = 200;
 
 /**
- * A run of anything that is not a letter or a number, in any script. Matching
- * on the Unicode properties rather than on `[^a-z0-9]` is what keeps a
- * non-Latin title from slugging to nothing at all.
+ * A run of anything that is not part of a word, in any script. Matching on the
+ * Unicode properties rather than on `[^a-z0-9]` is what keeps a non-Latin title
+ * from slugging to nothing at all.
+ *
+ * `\p{M}` — the combining marks — has to be in the retained set beside the
+ * letters and numbers, or the claim above holds only for the scripts that
+ * happen to be written in precomposed characters. A mark is not a letter, so
+ * without it every mark is read as a separator and the word it belongs to is
+ * cut apart at each one: `मेरी कहानी` came back as `म-र-कह-न` and
+ * `เรื่องของฉัน` as `เร-องของฉ-น` — not shortened but corrupted, the vowels and
+ * tone marks deleted and hyphens left where they had been. It is not only the
+ * scripts that require marks, either: the same title typed in decomposed form
+ * (`José` as `Jose` plus a combining acute) would lose its accent where the
+ * precomposed spelling keeps it.
+ *
+ * Retaining marks is what stops that deletion, and normalizing is what makes
+ * the two spellings one name — the marks are kept either way, but `é` and `e` +
+ * U+0301 are different strings, so without `NFC` one story downloads under two
+ * names depending on how its title happened to be typed. Devanagari, Thai, and
+ * Arabic marks do not compose away under `NFC`, which is why both are needed
+ * rather than either alone.
  */
-const FILENAME_SEPARATOR_PATTERN = /[^\p{L}\p{N}]+/u;
+const FILENAME_SEPARATOR_PATTERN = /[^\p{L}\p{N}\p{M}]+/u;
 
 export function buildStoryDownloadFilenameStem(title: string): string {
   // Splitting on the separator runs and joining the parts back collapses each
   // run and drops the leading and trailing ones in a single linear pass, the
   // way the export filename stem and the continuity slug are both built.
-  const parts = title.toLowerCase().split(FILENAME_SEPARATOR_PATTERN).filter(Boolean);
+  const parts = title.normalize('NFC').toLowerCase().split(FILENAME_SEPARATOR_PATTERN).filter(Boolean);
   const capped = capUtf8Bytes(parts.join('-'), STORY_DOWNLOAD_FILENAME_STEM_MAX_BYTES);
   // The join leaves single separators, so the cap can strand at most one — a
   // single slice says that, where the loop `ExportService` needs for its own

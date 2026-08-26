@@ -57,6 +57,33 @@ assert(
   `a Cyrillic title should keep its words, got ${buildStoryDownloadFilenameStem('Мира и договор')}`
 );
 
+// ==================== COMBINING MARKS BELONG TO THEIR WORD ====================
+// Retaining only letters and numbers reads every combining mark as a separator,
+// which cuts a word apart at each one — `मेरी कहानी` came back as `म-र-कह-न`,
+// not shortened but corrupted, with the vowel signs deleted and hyphens left
+// where they had been. That is worse than the fallback it replaced: the name
+// looks like a slug of the title rather than like nothing at all.
+const markedTitles: Array<[string, string]> = [
+  ['मेरी कहानी', 'मेरी-कहानी'],
+  ['เรื่องของฉัน', 'เรื่องของฉัน'],
+  ['مُذَكِّرَة', 'مُذَكِّرَة']
+];
+
+for (const [title, expected] of markedTitles) {
+  assert(
+    buildStoryDownloadFilenameStem(title) === expected,
+    `${title} should keep its combining marks, got ${buildStoryDownloadFilenameStem(title)}`
+  );
+}
+
+// The same title typed in decomposed form is the same title, so it has to reach
+// the same name — not one with the accent dropped and the word split at it.
+assert(
+  buildStoryDownloadFilenameStem('José'.normalize('NFD'))
+    === buildStoryDownloadFilenameStem('José'.normalize('NFC')),
+  'a decomposed title should slug the same as its precomposed spelling'
+);
+
 // ==================== THE FALLBACK IS STILL THERE ====================
 // A title with no letter or number anywhere in it has nothing to slug, and an
 // empty filename is not a filename.

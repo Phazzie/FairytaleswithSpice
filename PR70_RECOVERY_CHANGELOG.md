@@ -4,6 +4,28 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-26 UTC - A Download Named The Same For Every Reader, A Continuation That Cannot Be Traced, And A "Production" Prompt That Is Not
+
+Actions:
+
+- Moved the story-download filename out of `App.safeFileName` into `shared/storyDownloadFilename.ts` and rebuilt it on Unicode letters, numbers, and marks with a UTF-8 byte cap. The old stem kept ASCII letters and digits and dropped everything else, so a title in any other script slugged to nothing and fell to the shared `fairytales-story` fallback — every story a reader generated in their own language downloaded under one name, the second landing beside the first as `fairytales-story (1).html`. Nothing bounded the length either, and the stem plus `.html` has to fit inside the 255-byte limit ext4 and APFS enforce. Both are the failures `ExportService.buildFilenameStem` was already fixed for, on the button beside it.
+- Gave `/api/story/continue` the correlation id the other three legacy routes already read and echo. It minted `req_<uuid>` unconditionally and never wrote `X-Request-ID` back, so a caller tracing a continuation across their own logs and this service's had its id discarded and got nothing in the response to correlate against — on the slowest of the four requests the app makes in one session.
+- Synchronised the Proving Grounds "Current Production" pacing block with `StoryService.buildUserPrompt`. It named 700, 900, and 1200 words while `wordCountOptions` offers 600, 900, 1200, and 1500 and the production prompt lists all five, so two of the four selectable budgets reached the model under a heading describing neither, and 700 — which no picker in this repository offers — was one of the three described. A prompt comparison at 600 or 1500 was measuring the drift rather than the variant.
+- Added `tests/story-download-filename.test.ts` and `tests/proving-grounds-production-prompt.test.ts`, extended `tests/request-correlation-id.test.ts` to cover the fourth route, and registered both new tests in `test:all`. Added two Angular specs covering the download filename through the component.
+
+Self-review:
+
+- Each fix was reproduced against the old behaviour before being kept: the ASCII-only stem answers `fairytales-story` for a Cyrillic title and `1119 bytes` uncapped, `/api/story/continue should echo a real correlation id back to the caller` fails on the old handler, and the pacing test reports `it paces [700,900,1200]` against the old block.
+- The prompt test compares the template block against the production block and against `wordCountOptions` rather than restating any of the three, so a later edit to either side fails a test instead of quietly reopening the gap.
+- `main` moved under the branch mid-review (#244, auth and rate limiting on every paid route). It was merged in rather than rebased; `api/story/continue.ts` takes both changes ordered as `api/story/generate.ts` now orders them, and `package.json` takes main's `test:all` with the two new tests inserted in the same slot.
+- Non-claim: this slice changes no generated story and no prompt the server sends. It changes what one browser button names its file, one response header on one route, and the text of one template on the Proving Grounds page.
+
+Review follow-up (same slice):
+
+- SonarCloud's quality gate failed at 3.4% duplication on new code against a 3% ceiling, and it was this slice's duplication rather than a standing failure — the gate passed on #242 and #243. Two blocks: `trimTrailingSeparators` was a copy of `ExportService`'s differing only in which character it trims, and is now a single `slice`, since the split-and-join leaves single separators and the cap can strand at most one; and the five-line `assert` helper each new test file re-declared now lives in `tests/assert.ts` for new tests to import. The forty-odd existing copies are left alone — rewriting every test in the repository is its own commit. That helper is the most duplicated block here, and on a small change that adds a test file those five lines are new duplicated code, enough to fail the gate on their own.
+- Codex flagged a P2 on the Unicode claim and was right: `[^\p{L}\p{N}]+` reads every combining mark as a separator, so a word is cut apart at each one. `मेरी कहानी` came back as `म-र-कह-न` and `เรื่องของฉัน` as `เร-องของฉ-น` — not shortened but corrupted, the vowel signs and tone marks deleted and hyphens left in their place, which is worse than the fallback it replaced because the result still looks like a slug of the title. `\p{M}` is now retained beside the letters and numbers. Writing the regression test surfaced a second half the P2 did not name: retaining marks does not make `José` typed decomposed and `José` typed precomposed one name, because they are different strings — one story would still download under two names. The title is normalised to `NFC` first. Both are needed: Devanagari, Thai, and Arabic marks do not compose away under `NFC`.
+- Codex also asked for this slice to be split into three, citing the slice-sizing rule. Answered on the PR rather than acted on: that rule is written for `recovery/story-lab-*` slices of unpublished Story Lab work, and this is the "three quick wins" line, whose merged precedent (#237 through #243) is three independent fixes per PR by construction. Splitting was outside what was asked for.
+
 ## 2026-08-26 UTC - A Blend Voice Missing From Every Prompt Preview, A Theme Picker No Reader Can Reach, And A Form Refusing What The API Accepts
 
 Actions:
