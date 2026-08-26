@@ -18,6 +18,7 @@ import {
   WordBudget
 } from '../contracts';
 import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
+import { readStreamingProgressEstimate } from '../../../../shared/streamingProgressEstimate';
 
 @Component({
   selector: 'app-streaming-story',
@@ -55,7 +56,7 @@ import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
           <span *ngIf="progress.generationSpeed > 0">
             {{ progress.generationSpeed | number:'1.1-1' }} words/sec
           </span>
-          <span *ngIf="progress.estimatedWordsRemaining > 0">
+          <span *ngIf="estimatedTimeRemaining !== null && progress.estimatedWordsRemaining > 0">
             ~{{ estimatedTimeRemaining }}s remaining
           </span>
         </div>
@@ -249,7 +250,18 @@ export class StreamingStoryComponent implements OnDestroy {
     estimatedWordsRemaining: 0,
     generationSpeed: 0
   };
-  
+
+  /**
+   * When the stream was opened, which is what makes `generationSpeed` a speed.
+   * `0` while no stream is running, so a chunk that somehow arrives outside one
+   * measures no elapsed time rather than measuring against the epoch.
+   */
+  private streamStartedAtMs = 0;
+  // Null until a speed has been measured, and rendered only then: the panel used
+  // to compute this from a fabricated speed and so always had a number to show,
+  // including for a stream that had not moved.
+  estimatedTimeRemaining: number | null = null;
+
   targetWords = this.streamingBlueprint.desiredWordBudget;
 
   get progressPercentage(): number {
@@ -258,13 +270,6 @@ export class StreamingStoryComponent implements OnDestroy {
       return 0;
     }
     return Math.min((this.progress.wordsGenerated / target) * 100, 100);
-  }
-
-  get estimatedTimeRemaining(): number {
-    if (this.progress.generationSpeed === 0 || this.progress.estimatedWordsRemaining === 0) {
-      return 0;
-    }
-    return Math.ceil(this.progress.estimatedWordsRemaining / this.progress.generationSpeed);
   }
 
   async startStreaming(): Promise<void> {
@@ -276,6 +281,8 @@ export class StreamingStoryComponent implements OnDestroy {
     this.errorMessage = '';
     this.storyTitle = 'Generating your story...';
     this.isStreaming = true;
+    this.streamStartedAtMs = Date.now();
+    this.estimatedTimeRemaining = null;
 
     // Example story generation input
     const input: StoryGenerationSeam['input'] = {
@@ -327,6 +334,7 @@ export class StreamingStoryComponent implements OnDestroy {
       estimatedWordsRemaining: 0,
       generationSpeed: 0
     };
+    this.estimatedTimeRemaining = null;
   }
 
   private handleStreamChunk(chunk: StreamingProgressChunk): void {
@@ -340,9 +348,21 @@ export class StreamingStoryComponent implements OnDestroy {
     }
 
     if (typeof chunk.percentage === 'number') {
-      this.progress.wordsGenerated = Math.round((chunk.percentage / 100) * this.targetWords);
-      this.progress.estimatedWordsRemaining = Math.max(this.targetWords - this.progress.wordsGenerated, 0);
-      this.progress.generationSpeed = Math.max(Math.floor(this.progress.wordsGenerated / 20), 1);
+      // Measured against the clock rather than derived from the word count: see
+      // `readStreamingProgressEstimate` for what the arithmetic here used to
+      // claim about a stream it had never timed.
+      const estimate = readStreamingProgressEstimate({
+        percentage: chunk.percentage,
+        targetWords: Number(this.targetWords),
+        elapsedMs: this.streamStartedAtMs ? Date.now() - this.streamStartedAtMs : 0
+      });
+
+      this.progress = {
+        wordsGenerated: estimate.wordsGenerated,
+        estimatedWordsRemaining: estimate.estimatedWordsRemaining,
+        generationSpeed: estimate.generationSpeed
+      };
+      this.estimatedTimeRemaining = estimate.estimatedSecondsRemaining;
     }
 
     if (chunk.type === 'chapter_progress' && chunk.chapterNumber && this.storyTitle.startsWith('Generating')) {

@@ -365,6 +365,17 @@ export async function continueStoryLab(
     };
   }
 
+  const unnumberedChapterIndex = findUnnumberedChapterIndex(previousChapters);
+  if (unnumberedChapterIndex >= 0) {
+    return {
+      success: false,
+      error: {
+        code: 'INVALID_REQUEST',
+        message: `Every previously generated chapter must carry a numeric chapterNumber; entry ${unnumberedChapterIndex} does not.`
+      }
+    };
+  }
+
   const service = options.serviceFactory?.() ?? new StoryService();
   const currentChapterCount = Math.max(...previousChapters.map(chapter => chapter.chapterNumber));
   const existingContent = previousChapters.map(chapter => chapter.rawContent || chapter.htmlContent).join('\n\n');
@@ -408,6 +419,43 @@ export async function continueStoryLab(
     success: true,
     data: payload
   };
+}
+
+/**
+ * The first previously generated chapter whose number cannot be read, or `-1`.
+ *
+ * `previouslyGeneratedChapters` arrives in the request body, and the routes that
+ * reach this function check that it is an array and nothing about what is in it.
+ * Both of this module's readings of that array are `Math.max` over
+ * `chapter.chapterNumber`, and `Math.max` answers `NaN` for a single entry that
+ * has no number on it — a chapter saved by an older shape of the record, a
+ * hand-written body, a client that sent its own summaries.
+ *
+ * `NaN` then travels the whole way through a paid generation without ever
+ * throwing. `currentChapterCount: NaN` reaches `StoryService.continueChapter`,
+ * which numbers what it writes `input.currentChapterCount + 1` — so the model is
+ * asked to continue from chapter `NaN`, and `toStoryLabChapters` numbers every
+ * chapter it hands back `NaN` too, since `NaN` is falsy and its `||` fallback is
+ * `NaN + index`. The response then serializes those as `null`: a batch of
+ * chapters titled `Chapter NaN`, with `chapterId`s of `…-chapter-NaN`, and an
+ * `appendedChapterNumbers` of `[null]` for the client to append to a project by.
+ *
+ * It is the request that is malformed and only the caller can fix it, so the
+ * answer is the same `INVALID_REQUEST` the check above gives, named to the
+ * entry, and given before the generation is billed rather than after it has
+ * produced an unusable batch. The index is reported rather than any of the
+ * entry's own text, which is the caller's.
+ *
+ * `Number.isFinite` rather than `Number.isFinite(Number(...))`, because the
+ * coercing form answers the wrong question here: `Math.max` coerces too, so
+ * `null` and `''` survive it as `0` rather than as `NaN` — a chapter that names
+ * no number at all, accepted, and the batch numbered from one as if the story
+ * had not started. The contract types this field as a number and every chapter
+ * this repository mints carries one, so a value that is not a number is the same
+ * caller error whichever way it would have failed.
+ */
+function findUnnumberedChapterIndex(chapters: readonly GeneratedChapter[]): number {
+  return chapters.findIndex(chapter => !Number.isFinite(chapter?.chapterNumber));
 }
 
 export function buildStoryLabPayloadFromGeneratedStory(

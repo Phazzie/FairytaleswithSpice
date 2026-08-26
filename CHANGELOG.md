@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — a words-per-second with no clock in it, an image prompt nothing measures, a continuation numbered NaN (August 26, 2026)
+
+#### A generation speed that was not a speed
+
+- The streaming panel reported `generationSpeed` as
+  `Math.max(Math.floor(wordsGenerated / 20), 1)` — the word count divided by a
+  constant — and rendered it as `words/sec` beside a `~Ns remaining` computed by
+  dividing the remaining words by that same number. The two readings cancel, so
+  the estimate collapsed onto a figure that depends only on how far through the
+  story the stream is: halfway through any story it said twenty seconds, on a fast
+  connection and on a slow one alike.
+- The `Math.max(…, 1)` floor made it worse at the one moment it mattered. A
+  generation that had stalled completely still reported `1 word/sec` and counted
+  down as though it were working, because a floor of one cannot express "nothing
+  is arriving".
+- Added `shared/streamingProgressEstimate.ts`, which takes the elapsed
+  milliseconds the caller has and answers the words seen per second actually
+  spent, plus the seconds remaining at that rate — or `null` when nothing has been
+  measured yet, so the panel can say nothing rather than say zero. The percentage
+  and the word budget are read defensively, since one arrives from the server and
+  the other from a form.
+- `StreamingStoryComponent` stamps the stream's start time and reads both numbers
+  from the shared module; the `~Ns remaining` span renders only once a speed
+  exists. New `tests/streaming-progress-estimate.test.ts`, wired into `test:all`.
+
+#### The one free-text field on the image route that nothing measured
+
+- `ImageService.buildImagePrompt` takes `imagePrompt` in preference to the story
+  when it is present, so it is the text that reaches `grok-2-image` verbatim — and
+  nothing bounded it. A caller could send a megabyte of prose under that name and
+  have it billed by the token and given the function's whole time budget: the same
+  failure `STORY_BLUEPRINT_LIMITS` and `STORY_EVALUATION_LIMITS` were written for,
+  on the last route that did not have it.
+- The other branch of the same method has been capped at 200 characters
+  (`IMAGE_SCENE_DESCRIPTION_MAX_LENGTH`) all along, so the two ways of describing
+  one picture disagreed by however much the caller felt like sending.
+- Added `IMAGE_GENERATION_LIMITS.maxImagePromptLength` (1200, matching
+  `maxNarrativeDirectivesLength`) and checked it in `validateImageInput`, beside
+  the creature, theme, style, and aspect-ratio checks — so an oversized prompt is
+  `INVALID_INPUT` naming the field rather than `IMAGE_GENERATION_FAILED` after the
+  request has been sent. A non-string `imagePrompt` is refused there too: the
+  contract types it as a string and the wire does not, and `buildImagePrompt`
+  treated any truthy value as a prompt.
+
+#### A paid continuation numbered NaN
+
+- `previouslyGeneratedChapters` arrives in the request body, and the routes that
+  reach `continueStoryLab` check that it is an array and nothing about what is in
+  it. Both of the engine's readings of that array are `Math.max` over
+  `chapter.chapterNumber`, which answers `NaN` for a single entry carrying no
+  number — a chapter saved by an older shape of the record, a hand-written body, a
+  client that sent its own summaries.
+- `NaN` then travelled the whole way through a paid generation without throwing.
+  `currentChapterCount: NaN` reached `StoryService.continueChapter`, which numbers
+  what it writes `currentChapterCount + 1`, so the model was asked to continue from
+  chapter `NaN`; `toStoryLabChapters` numbered every chapter it handed back `NaN`
+  too, since `NaN` is falsy and its `||` fallback is `NaN + index`. The response
+  serialized those as `null`: chapters titled `Chapter NaN`, `chapterId`s of
+  `…-chapter-NaN`, and an `appendedChapterNumbers` of `[null]` for the client to
+  append to a project by.
+- `continueStoryLab` now refuses such a batch with the same `INVALID_REQUEST` the
+  neighbouring check gives, naming the offending entry's index and nothing of its
+  text, and does so before the generation is billed. The guard lives in the engine
+  rather than in one route, so the job route reaches it too.
+
 ### 🔌 Error Logging & Display: a built and tested panel that was never plugged in (August 26, 2026)
 
 - `ErrorDisplayComponent` (component, template, CSS, 4 passing unit tests) subscribed

@@ -106,3 +106,35 @@ export const STORY_EVALUATION_LIMITS = {
 } as const;
 
 export type StoryEvaluationLimits = typeof STORY_EVALUATION_LIMITS;
+
+/**
+ * The size limits an image generation request has to satisfy.
+ *
+ * `imagePrompt` is the last free-text field in this repository that reaches a
+ * paid model call with nothing measuring it. `ImageService.buildImagePrompt`
+ * takes it in preference to the story when it is present and hands it to
+ * `enhancePromptWithStyle`, which interpolates the whole of it into the
+ * `grok-2-image` request — so a caller could send a megabyte of prose under that
+ * name and have it billed by the token and given the function's whole time
+ * budget, which is the failure the two objects above were written for.
+ *
+ * The cap the other branch of that same method already lives under is what fixes
+ * the number. When no `imagePrompt` is sent, the prompt's scene half is
+ * `buildSceneDescriptionFromStory`, capped at
+ * `IMAGE_SCENE_DESCRIPTION_MAX_LENGTH` — 200 characters — so the two ways of
+ * describing one picture disagreed by however much the caller felt like sending.
+ * 1200 leaves a custom prompt real room to be more specific than three sentences
+ * of the story without leaving the field open, and matches
+ * `maxNarrativeDirectivesLength`, the blueprint's own "describe how to write
+ * this" field.
+ *
+ * `/api/image/generate` is the route; the check lives in `ImageService`'s
+ * validator beside the creature, theme, style, and aspect-ratio checks, so it
+ * answers `INVALID_INPUT` naming the field rather than
+ * `IMAGE_GENERATION_FAILED` after the request has been sent.
+ */
+export const IMAGE_GENERATION_LIMITS = {
+  maxImagePromptLength: 1200
+} as const;
+
+export type ImageGenerationLimits = typeof IMAGE_GENERATION_LIMITS;
