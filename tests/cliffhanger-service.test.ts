@@ -117,6 +117,48 @@ assert(
   `an undetected cliffhanger reports no hook text (got ${JSON.stringify(answeredQuestion.cliffhangerText)})`
 );
 
+// `cliffhangerType` is a placeholder when nothing was detected — the contract
+// has no "none" member — and the two fields the caller acts on used to be built
+// from it anyway. The suggestions described a twist the scan had just said was
+// not there, and the variety score applied a repetition penalty for it.
+assert(
+  answeredQuestion.suggestedContinuations.length === 0,
+  'an undetected cliffhanger suggests no continuations for a hook it did not find ' +
+    `(got ${JSON.stringify(answeredQuestion.suggestedContinuations)})`
+);
+
+const undetectedAfterTwist = service.analyze(
+  '<p>The lamps guttered.</p><p>Did she stay? She stayed, and the night was warm.</p>',
+  ['plot_twist']
+);
+
+assert(
+  !undetectedAfterTwist.cliffhangerDetected,
+  'the same closing paragraph is still not a cliffhanger when a previous type is supplied'
+);
+assert(
+  undetectedAfterTwist.varietyScore === 8,
+  'a chapter with no cliffhanger cannot repeat the previous one, whatever the placeholder type is ' +
+    `(got ${undetectedAfterTwist.varietyScore})`
+);
+
+// The detected side of both fields is unchanged: a real hook still carries its
+// suggestions, and still loses variety when it repeats the type before it.
+const repeatedDanger = service.analyze(
+  '<p>The corridor went silent.</p><p>Footsteps stopped outside the door, and her blood froze.</p>',
+  ['danger']
+);
+
+assert(repeatedDanger.cliffhangerType === 'danger', 'a repeated danger hook is still a danger hook');
+assert(
+  repeatedDanger.suggestedContinuations.length > 0,
+  'a detected cliffhanger still carries its continuation suggestions'
+);
+assert(
+  repeatedDanger.varietyScore === 3,
+  `a detected hook repeating the previous type still loses variety (got ${repeatedDanger.varietyScore})`
+);
+
 // The same paragraph, left on the question, is still the mystery hook it was.
 const openQuestion = service.analyze('<p>The lamps guttered.</p><p>The night was warm, and she stayed. But had she chosen well?</p>');
 

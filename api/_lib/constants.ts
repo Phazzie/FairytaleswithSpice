@@ -41,6 +41,39 @@ export const RATE_LIMITS = {
     maxRequests: 5,
     windowMs: 15 * 60 * 1000    // 15 minutes
   },
+  /**
+   * The Story Lab job event stream, which is not the kind of stream `STREAMING`
+   * describes.
+   *
+   * `STREAMING` is sized for `/api/story-lab/stream/genesis`: one connection
+   * held open for a whole paid generation, which the Angular reader
+   * deliberately never reopens because reconnecting there re-runs the
+   * generation from the beginning. Five of those in fifteen minutes is a
+   * generous cap.
+   *
+   * `/api/story-lab/jobs/:jobId/events` works the opposite way. It replays the
+   * events a job has recorded so far and then *ends the response* — every time,
+   * for a job that is still running — so the browser fires `error`, reopens the
+   * connection, and asks again. That is the documented design on both sides:
+   * `shared/eventStreamRetry.ts` exists to tell the reader to keep the
+   * subscription alive through it, and `StoryService.streamStoryLabJobEvents`
+   * treats a reconnect as normal. So one reader watching one job is not one
+   * request here; it is a request every time the browser retries, roughly every
+   * three seconds.
+   *
+   * Under `STREAMING` that budget was spent about fifteen seconds into the
+   * first generation, and every reconnect after it was answered 429 for the
+   * rest of the window: the job kept running on the server while the reader was
+   * told "Story generation updates stopped", and could not get them back for
+   * fifteen minutes. The route spends nothing — it reads the job store and
+   * replays recorded snapshots — so the cap belongs on the polling, not on the
+   * generation. Fifteen minutes of uninterrupted three-second reconnects is
+   * three hundred requests, which is what this allows.
+   */
+  STORY_LAB_JOB_EVENTS: {
+    maxRequests: 300,
+    windowMs: 15 * 60 * 1000    // 15 minutes
+  },
   STORY_LAB_GENESIS: {
     maxRequests: 10,
     windowMs: 15 * 60 * 1000    // 15 minutes — same tier as story generation

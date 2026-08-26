@@ -264,7 +264,9 @@ async function handleStreamStoryLabJobEventsWithContext(
     withEventStreamAuth(req),
     res,
     'story-lab/jobs/events',
-    RATE_LIMITS.STREAMING
+    // Not `STREAMING`: this route replays and closes, so a reader watching one
+    // job reconnects every few seconds. See `RATE_LIMITS.STORY_LAB_JOB_EVENTS`.
+    RATE_LIMITS.STORY_LAB_JOB_EVENTS
   );
   if (!access.allowed) {
     return;

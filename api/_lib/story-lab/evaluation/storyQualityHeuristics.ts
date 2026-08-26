@@ -193,10 +193,17 @@ function scoreProseQuality(storyContent: string, wordCount: number, sentenceCoun
   };
 }
 
+/**
+ * The paragraph length a narrator has to read in one unbroken breath before
+ * this dimension counts it against the story.
+ */
+const AUDIO_READINESS_MAX_PARAGRAPH_WORDS = 90;
+
 function scoreAudioReadiness(dialogueLines: string[], paragraphs: string[]): DimensionDraft {
   const dialogueLineCount = dialogueLines.length;
   const speakers = extractDialogueSpeakers(dialogueLines);
-  const longParagraphs = paragraphs.filter(paragraph => paragraph.split(/\s+/).filter(Boolean).length > 90);
+  const paragraphWordCounts = paragraphs.map(paragraph => paragraph.split(/\s+/).filter(Boolean).length);
+  const longParagraphs = paragraphWordCounts.filter(count => count > AUDIO_READINESS_MAX_PARAGRAPH_WORDS);
   const signals: string[] = [];
   if (dialogueLineCount > 0) {
     signals.push(`Tagged dialogue lines: ${dialogueLineCount}`);
@@ -206,7 +213,21 @@ function scoreAudioReadiness(dialogueLines: string[], paragraphs: string[]): Dim
   } else if (speakers.length === 1) {
     signals.push(`Single speaker: ${speakers[0]}`);
   }
-  if (!longParagraphs.length) {
+  // Both sides of the paragraph-length check are reported, because this is the
+  // only thing in the dimension that can *cost* points and it used to say
+  // nothing when it did. An overlong paragraph swings the score by thirty — the
+  // difference between the `+12` below and the `-18` — so a story carrying one
+  // was scored down to a number the reader had no way to explain: the rationale
+  // claimed to check paragraph length, and every signal beside it was about
+  // dialogue. `scoreTropeFreshness` already prints the stale phrases that cost
+  // it points; this prints how many paragraphs are too long and how long the
+  // worst one runs, which is what a writer needs to act on it.
+  if (longParagraphs.length) {
+    signals.push(
+      `Overlong paragraphs (over ${AUDIO_READINESS_MAX_PARAGRAPH_WORDS} words): ${longParagraphs.length}, ` +
+        `longest ${Math.max(...longParagraphs)} words`
+    );
+  } else {
     signals.push('No overlong paragraphs detected.');
   }
 

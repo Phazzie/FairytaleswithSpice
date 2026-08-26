@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — a job stream throttled off fifteen seconds in, a score penalty that says nothing, continuation advice for a hook that is not there (August 26, 2026)
+
+#### The Story Lab job event stream was rate-limited as if it were the genesis stream
+
+- `/api/story-lab/jobs/:jobId/events` replays the events a job has recorded so
+  far and then **ends the response** — every time, for a job that is still
+  running. That is the design, and both sides document it:
+  `shared/eventStreamRetry.ts` exists precisely to tell the Angular reader that
+  the resulting `error` is a reconnect rather than a failure, and
+  `StoryService.streamStoryLabJobEvents` keeps the subscription alive through
+  it. So a browser `EventSource` reopens the connection roughly every three
+  seconds for as long as the generation runs.
+- Wiring access control into the route (#244) gave it `RATE_LIMITS.STREAMING`:
+  **five requests per fifteen minutes**. That tier is sized for
+  `/api/story-lab/stream/genesis`, the opposite kind of stream — one connection
+  held open for a whole paid generation, which the reader deliberately never
+  reopens because reconnecting there re-runs the generation from the beginning.
+- One reader watching one job therefore spent the entire budget about fifteen
+  seconds in. Every reconnect after that was answered `429`, so the job kept
+  running on the server while the page reported *"Story generation updates
+  stopped"* — and could not get them back for fifteen minutes. The route spends
+  nothing: it reads the job store and replays recorded snapshots.
+- Adds `RATE_LIMITS.STORY_LAB_JOB_EVENTS`, sized for the polling the route's own
+  design causes — fifteen minutes of uninterrupted three-second reconnects is
+  three hundred requests — and leaves `STREAMING` to the single-connection
+  genesis stream it was written for. The regression test drives twenty
+  consecutive reconnects without resetting the limit between them, which is what
+  every other scenario in that file does.
+
+#### The audio-readiness dimension penalised overlong paragraphs without saying so
+
+- `scoreAudioReadiness` swings a story's score by **thirty points** on one check
+  — `+12` when no paragraph runs past ninety words, `-18` when one does — and
+  printed a signal only for the passing case. A penalised story came back with a
+  rationale claiming to check paragraph length and a signal list that was
+  entirely about dialogue, so the reader was handed a lower number with nothing
+  explaining it and nothing to act on.
+- Every other dimension already reports what moved it: `scoreTropeFreshness`
+  prints the stale phrases that cost it points. This now prints how many
+  paragraphs are too long and how long the worst one runs, and the threshold is
+  named (`AUDIO_READINESS_MAX_PARAGRAPH_WORDS`) rather than inlined.
+
+#### Cliffhanger analysis suggested continuations for a hook it had not found
+
+- `CliffhangerAnalysis.cliffhangerType` is a closed set with no "none" member, so
+  a chapter with no cliffhanger still has to be labelled *something* — it falls
+  to `plot_twist`. Every other field on the analysis knows that label is a
+  placeholder and reports nothing: `cliffhangerStrength` floors at `0`,
+  `cliffhangerText` is empty.
+- The two fields a caller actually acts on did not. `suggestedContinuations`
+  handed back three instructions written for a twist — *"Reveal the first
+  consequence of the twist"* — for a chapter the same scan had just said ends on
+  no hook at all. `varietyScore` was worse: it asked whether the **placeholder**
+  appeared in `previousCliffhangers`, so a chapter with no cliffhanger scored 3
+  out of 8 for repetition whenever the chapter before it genuinely was a
+  `plot_twist` — a sameness penalty for a hook that does not exist.
+- The whole analysis travels back to the caller as `cliffhangerAnalysis` on the
+  continuation response, so both were public answers about something the service
+  had not detected. An undetected cliffhanger now suggests nothing and cannot
+  repeat anything; the detected side — suggestions, and the variety penalty for a
+  genuinely repeated type — is unchanged and covered by the existing assertions
+  plus new ones.
+
 ### 🐛 Three Quick Wins — a blend voice missing from every prompt preview, a theme picker no reader can reach, a form refusing what the API accepts (August 26, 2026)
 
 #### Proving Grounds never showed the third author the API actually blends in
