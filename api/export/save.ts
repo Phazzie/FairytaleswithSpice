@@ -21,6 +21,16 @@ import { ERROR_CODES } from '../_lib/errorCodes';
  * export had failed and that retrying might help, when it is the request that is
  * malformed and only the caller can fix it. It is also what makes the byte
  * measurement below safe, since `Buffer.byteLength` of a number throws.
+ *
+ * `creature` and `themes` are the same reasoning one field further on, and they
+ * were the two the check above did not cover. Both are optional — an export
+ * without them says `Creature: unknown` and lists nothing — but when they are
+ * sent they are rendered, and the renderer calls string methods on them too:
+ * `escapeHtml` reduces over the value, so an HTML export of `themes: [123]`
+ * already threw the `TypeError` this function exists to pre-empt, while the
+ * text export of the same body wrote `123` and succeeded. One body, two answers,
+ * neither of them the caller error it is. `ImageService.validateImageInput`
+ * checks these same two field names for the same reason.
  */
 function readExportRequest(body: unknown): SaveExportSeam['input'] | null {
   const input = readJsonObjectBody<SaveExportSeam['input']>(body);
@@ -32,11 +42,23 @@ function readExportRequest(body: unknown): SaveExportSeam['input'] | null {
     return null;
   }
 
+  if (input.creature !== undefined && !isNonEmptyString(input.creature)) {
+    return null;
+  }
+
+  if (input.themes !== undefined && !isArrayOfNonEmptyStrings(input.themes)) {
+    return null;
+  }
+
   return input;
 }
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+function isArrayOfNonEmptyStrings(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isNonEmptyString);
 }
 
 export default async function handler(req: any, res: any) {
@@ -60,7 +82,8 @@ export default async function handler(req: any, res: any) {
         success: false,
         error: {
           code: 'INVALID_INPUT',
-          message: 'Missing required fields: storyId, content, title, format'
+          message: 'Missing or malformed fields: storyId, content, title, and format are required; '
+            + 'creature, when sent, must be a non-empty string and themes an array of non-empty strings'
         }
       });
     }

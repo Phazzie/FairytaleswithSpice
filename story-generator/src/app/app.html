@@ -273,7 +273,12 @@
               type="text"
               [ngModel]="blueprint().protagonistName"
               (ngModelChange)="updateBlueprint('protagonistName', $event)"
+              [attr.aria-invalid]="hasFieldError('protagonistName')"
+              [attr.aria-describedby]="hasFieldError('protagonistName') ? 'protagonist-name-error' : null"
             />
+            <span class="field-error" id="protagonist-name-error" *ngIf="hasFieldError('protagonistName')" role="alert">
+              {{ getFieldError('protagonistName') }}
+            </span>
           </label>
           <label>
             Love interest or troublemaker
@@ -282,7 +287,12 @@
               type="text"
               [ngModel]="blueprint().antagonistName"
               (ngModelChange)="updateBlueprint('antagonistName', $event)"
+              [attr.aria-invalid]="hasFieldError('antagonistName')"
+              [attr.aria-describedby]="hasFieldError('antagonistName') ? 'antagonist-name-error' : null"
             />
+            <span class="field-error" id="antagonist-name-error" *ngIf="hasFieldError('antagonistName')" role="alert">
+              {{ getFieldError('antagonistName') }}
+            </span>
           </label>
         </div>
 

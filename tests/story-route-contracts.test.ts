@@ -28,6 +28,7 @@
 
 import { FILE_SIZE } from '../api/_lib/constants';
 import { logger } from '../api/_lib/utils/logger';
+import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { StoryService } from '../api/_lib/services/storyService';
 import exportHandler from '../api/export/save';
 import imageGenerateHandler from '../api/image/generate';
@@ -718,6 +719,91 @@ async function verifyImageRequestLineNeitherRepeatsNorBlanksItsParameters(): Pro
   );
 }
 
+/**
+ * `creature` and `themes` are caller text the route did not type-check.
+ *
+ * Both are optional and both are rendered when they are sent, and the renderers
+ * disagreed about what a non-string one means: `escapeHtml` reduces over the
+ * value, so an HTML export of `themes: [123]` threw a `TypeError` into
+ * `saveAndExport`'s catch and came back `EXPORT_FAILED` — the service reporting
+ * its own failure for the caller's malformed body — while the text export of
+ * the same body wrote `123` and answered 200. One body, two answers, neither of
+ * them the `INVALID_INPUT` it is.
+ *
+ * The two fields now go through the same shape check `content` and `title`
+ * already had, which is what `ImageService.validateImageInput` does with these
+ * same two field names.
+ */
+async function verifyExportTypeChecksItsOptionalDescriptiveFields(): Promise<void> {
+  // This check drives the route more times than its own rate-limit budget
+  // allows, and `rateLimitStore` is one process-wide map shared with every
+  // other check in this file — so a 429 would arrive here for a reason the
+  // check is not about.
+  resetRateLimitsForTests();
+
+  const validBody = {
+    storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+    title: 'Midnight Bargain',
+    content: '<p>Rain.</p>'
+  };
+
+  const malformed: Array<[string, Record<string, unknown>]> = [
+    ['a numeric theme entry', { themes: [123] }],
+    ['an object theme entry', { themes: [{ id: 'forbidden_love' }] }],
+    ['a themes value that is not an array', { themes: 'forbidden_love' }],
+    ['an empty-string theme entry', { themes: [''] }],
+    ['a numeric creature', { creature: 7 }],
+    ['an empty-string creature', { creature: '' }]
+  ];
+
+  // Both renderers, because the pair used to disagree: the HTML one threw where
+  // the text one succeeded, so a check driven through only one of them would
+  // have proved nothing about the other.
+  for (const format of ['txt', 'html'] as const) {
+    for (const [description, overrides] of malformed) {
+      resetRateLimitsForTests();
+      const res = new FakeResponse();
+      await exportHandler({
+        method: 'POST',
+        headers: {},
+        body: { ...validBody, format, ...overrides }
+      }, res);
+
+      const payload = res.body as { success?: boolean; error?: { code?: string } };
+      assert(
+        res.statusCode === 400,
+        `${format}: ${description} should be refused with 400, got ${res.statusCode}`
+      );
+      assert(
+        payload?.error?.code === 'INVALID_INPUT',
+        `${format}: ${description} is the caller's mistake, not the service's, got ${JSON.stringify(payload?.error)}`
+      );
+    }
+
+    // The ordinary request still exports, and so does one that omits both
+    // fields: these are optional, so "not sent" and "malformed" are different
+    // answers.
+    for (const [description, overrides] of [
+      ['a well-formed creature and themes', { creature: 'vampire', themes: ['forbidden_love'] }],
+      ['neither field', {}],
+      ['an empty themes array', { themes: [] }]
+    ] as Array<[string, Record<string, unknown>]>) {
+      resetRateLimitsForTests();
+      const res = new FakeResponse();
+      await exportHandler({
+        method: 'POST',
+        headers: {},
+        body: { ...validBody, format, ...overrides }
+      }, res);
+
+      assert(
+        res.statusCode === 200,
+        `${format}: ${description} should still export, got ${res.statusCode} ${JSON.stringify(res.body)}`
+      );
+    }
+  }
+}
+
 async function main(): Promise<void> {
   await verifyContinueDoesNotLogProseStoryIds();
   await verifyMalformedBodiesAreClientErrors();
@@ -727,6 +813,7 @@ async function main(): Promise<void> {
   await verifyImageRequestLineNeitherRepeatsNorBlanksItsParameters();
   await verifyExportMeasuresItsSizeCapInBytes();
   await verifyExportBoundsItsTitleAsWellAsItsContent();
+  await verifyExportTypeChecksItsOptionalDescriptiveFields();
 
   console.log('Story route contract tests passed');
 }

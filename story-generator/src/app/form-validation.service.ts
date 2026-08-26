@@ -23,6 +23,8 @@ export type BlueprintValidationField =
   | 'tone'
   | 'desiredWordBudget'
   | 'chapterBatchSize'
+  | 'protagonistName'
+  | 'antagonistName'
   | 'worldDetails'
   | 'narrativeDirectives';
 
@@ -85,6 +87,31 @@ export class FormValidationService {
   readonly maxWorldDetailsLength = STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength;
   readonly maxNarrativeDirectivesLength = STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength;
   readonly maxNoGoContentLength = STORY_BLUEPRINT_LIMITS.maxNoGoContentLength;
+  /**
+   * The two blueprint fields the route measures and this form did not.
+   *
+   * `maxCharacterNameLength` was added to the shared limits when
+   * `parseStoryLabBlueprint` started refusing an oversized `protagonistName` or
+   * `antagonistName` — both are interpolated into the continuity model call and
+   * stored in the story state, which is why the route caps them. This service
+   * reads every other number in that object and skipped these two, so the form
+   * accepted what the API refuses: the "Main character" and "Love interest or
+   * troublemaker" inputs are plain free text with no cap and no error slot, and
+   * a name pasted past 80 characters came back as `400 INVALID_BLUEPRINT` only
+   * after the reader pressed generate.
+   *
+   * That is precisely the drift the note above says this class exists to
+   * prevent, and the expensive direction of it: the refusal arrives after the
+   * request, naming a field by its wire name, on a form that never said there
+   * was a limit.
+   *
+   * The theme seeds' own caps — `maxThemeLabelLength` and
+   * `maxThemeDescriptionLength`, added in the same change — are deliberately
+   * not checked here. A reader picks seeds from a fixed list of twelve rather
+   * than typing them, so no value this form can produce reaches those caps, and
+   * a check against them would be a rule with no reachable input.
+   */
+  readonly maxCharacterNameLength = STORY_BLUEPRINT_LIMITS.maxCharacterNameLength;
 
   validateBlueprint(input: StoryGenerationSeam['input']): BlueprintValidationErrors {
     const errors: BlueprintValidationErrors = {};
@@ -134,6 +161,14 @@ export class FormValidationService {
 
     if (!VALID_BATCH_SIZES.has(chapterBatchSize as ChapterBatchSize)) {
       errors.chapterBatchSize = 'Choose 1, 2, or 3 chapters per batch.';
+    }
+
+    if (measuredLength(input.protagonistName) > this.maxCharacterNameLength) {
+      errors.protagonistName = `Keep the main character's name under ${this.maxCharacterNameLength} characters.`;
+    }
+
+    if (measuredLength(input.antagonistName) > this.maxCharacterNameLength) {
+      errors.antagonistName = `Keep the love interest's name under ${this.maxCharacterNameLength} characters.`;
     }
 
     if (measuredLength(input.worldDetails) > this.maxWorldDetailsLength) {
