@@ -13,7 +13,7 @@ import { XaiTextClient } from '../services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../config/xaiConfig';
 import { STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS } from './continuityBudget';
 import { stripMarkdownJsonFence } from '../utils/modelJsonPayload';
-import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
+import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary } from '../utils/textExcerpt';
 
 /**
