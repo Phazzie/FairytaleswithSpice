@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
 import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
+import { readRequestCorrelationId } from '../_lib/http/requestCorrelationId';
 import { StoryService } from '../_lib/services/storyService';
 import { ChapterContinuationSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
@@ -13,8 +13,23 @@ import {
 } from '../_lib/utils/loggableRequestParameters';
 
 export default async function handler(req: any, res: any) {
-  const requestId = `req_${randomUUID()}`;
-  
+  // Accept the caller's correlation id when it is one, otherwise mint it: the
+  // value is echoed below and stamped into every log line this request writes.
+  //
+  // This route was the one of the four legacy handlers that did neither. It
+  // minted `req_<uuid>` unconditionally and never wrote the header back, so a
+  // caller that sent `X-Request-ID` to trace a continuation across their own
+  // logs and this service's had it discarded, and the response carried no id to
+  // correlate against either — while `/api/story/generate`, `/api/image/generate`,
+  // and `/api/export/save`, which the same client calls in the same session, all
+  // honour and echo it. A continuation is the request most worth tracing: it is
+  // the slow one, the one that fails partway, and the one whose logs a reader
+  // reporting a stalled chapter would be looked up by.
+  const requestId = readRequestCorrelationId(req);
+
+  // Set request ID in response header for client tracking
+  res.setHeader('X-Request-ID', requestId);
+
   const cors = applyCorsPolicy(req, res, {
     methods: ['POST', 'OPTIONS'],
     credentials: true

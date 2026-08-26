@@ -150,6 +150,19 @@ Your goal: Create episodes that make listeners desperate for "Continue Chapter."
       .replaceAll('{{USER_INPUT}}', variables.userInput || '');
   }
 
+  /**
+   * The user prompt this page presents as "Current Production".
+   *
+   * Its whole claim is that it is what the app sends, so a variant tested
+   * against it is tested against the real thing. The pacing block had stopped
+   * being that: it named 700, 900, and 1200 words, while `wordCountOptions`
+   * offers 600, 900, 1200, and 1500 and `StoryService.buildUserPrompt` lists all
+   * five. So two of the four budgets a reader can choose here — 600 and 1500 —
+   * reached the model under a heading that describes neither, and 700, which no
+   * picker in this repository offers, was one of the three that did. A prompt
+   * comparison run at either of those budgets was measuring the drift rather
+   * than the variant.
+   */
   private getProductionUserPrompt(): string {
     return `Write a {{WORD_COUNT}}-word spicy supernatural romance story optimized for audio narration:
 
@@ -166,9 +179,11 @@ STORY REQUIREMENTS:
 - Layer multiple senses in every scene description
 
 WORD COUNT PACING:
+- 600 words: Compressed hook, immediate tension, clean payoff
 - 700 words: Fast, tense, sharp progression
 - 900 words: Character depth with tight focus
 - 1200 words: Layered, immersive with complex tension
+- 1500 words: Multi-scene escalation with richer reversals and payoff
 
 MANDATORY FORMATTING FOR AUDIO:
 - [Character Name, voice: 4-word description]: "dialogue" for FIRST appearance of each major character

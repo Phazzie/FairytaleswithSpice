@@ -2785,6 +2785,37 @@ describe('App', () => {
     expect(component.statusMessage()).toBe('Story download created.');
   }));
 
+  it('names the download after a title written in any script', fakeAsync(() => {
+    const { anchor } = spyOnAttachedAnchorDownload('blob:story-download');
+    // The filename stem used to keep ASCII letters and digits and drop
+    // everything else, so a title in any other script kept none of its
+    // characters and every such story downloaded as the shared fallback name —
+    // the second save landing beside the first as `fairytales-story (1).html`,
+    // with nothing in either name to say which story it is.
+    seedWorkbenchWithSingleChapter(component, { title: 'Мира и договор', synopsis: 'Договор стоит того.' });
+
+    component.downloadStory();
+
+    expect(anchor.download).toBe('мира-и-договор.html');
+    tick(OBJECT_URL_REVOKE_DELAY_MS);
+  }));
+
+  it('keeps the download filename inside the filesystem limit', fakeAsync(() => {
+    const { anchor } = spyOnAttachedAnchorDownload('blob:story-download');
+    // Nothing bounded the stem, and `<stem>.html` has to fit inside the
+    // 255-byte filename limit ext4 and APFS enforce: past it the save fails or
+    // is silently truncated, on a button whose only failure mode is otherwise
+    // silence.
+    const longTitle = 'The Blood Oath and the Very Long Night That Followed It '.repeat(20);
+    seedWorkbenchWithSingleChapter(component, { title: longTitle, synopsis: 'A pact worth keeping.' });
+
+    component.downloadStory();
+
+    expect(new TextEncoder().encode(anchor.download).length).toBeLessThanOrEqual(255);
+    expect(anchor.download.endsWith('-.html')).toBe(false);
+    tick(OBJECT_URL_REVOKE_DELAY_MS);
+  }));
+
   it('exports the story in the selected format through the backend', fakeAsync(() => {
     const { anchor, clickSpy } = spyOnAttachedAnchorDownload('blob:story-export');
 
