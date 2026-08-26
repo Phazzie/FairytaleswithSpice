@@ -264,7 +264,23 @@ export class ExportService {
   private generatePDFContent(content: string, input: SaveExportSeam['input']): string {
     // The title heads the document, then a blank line, then the story — the
     // same order the `.txt` export puts them in.
-    const lines = [input.title, '', ...content.split('\n')].flatMap(paragraph =>
+    //
+    // Rendered the same way as well. `content` reaches this method as
+    // `stripStoryHtmlForExport(input.content)`, and the title beside it was the
+    // raw field: a PDF page whose body is plain prose and whose heading is the
+    // markup the body had removed. `title` is caller text on this route — the
+    // service is reached by anything that can POST `/api/export/save`, not only
+    // by the app — and the four other formats all say something about it, so the
+    // PDF was the one export that said nothing. `.html`, `.epub`, and `.docx`
+    // escape it, because a tag in a title has to reach those readers as text
+    // rather than as markup; `.txt` strips it, because there is no markup in a
+    // plain-text document to escape it into. A PDF page is the second of those:
+    // `escapePdfText` escapes the PDF's own delimiters and knows nothing about
+    // HTML, so `<em>Mira</em>` was drawn on the page exactly as written, and
+    // `&amp;` in a title stayed `&amp;` where the same title in the `.txt`
+    // export read `&`.
+    const title = stripStoryHtmlForExport(input.title);
+    const lines = [title, '', ...content.split('\n')].flatMap(paragraph =>
       wrapPdfParagraph(paragraph, PDF_MAX_LINE_CHARACTERS)
     );
 

@@ -67,6 +67,10 @@ This work must run on a new branch based on the current Story Lab branch. Do not
   - Direct Node 20 TypeScript spec compile passed.
   - Function count remained `12/12`.
   - `scripts/recovery/preflight.sh --quick --skip-status` passed.
+- Later follow-up (2026-08-26): the genesis stream was leaking in the other direction as well.
+  - This plan closed the *inbound* streaming gap — what a caller may put in the query string, and which origins may read the response. It said nothing about what the stream *writes back* on a failure, and that branch was quoting the raw exception: `/api/story-lab/stream/genesis` sent `error.message` verbatim in its SSE `error` frame, so whatever threw inside the engine — a driver quoting a failing statement, a client naming an internal host or upstream URL — reached the browser and, through `StoryService`, the reader. `redactSensitiveLogData` covers this class of text on the way into the log; nothing covered it on the way to the client.
+  - The route also logged nothing for that branch, so the operator never saw the failure the reader did. It now answers a fixed message and calls `logError`, which is what its POST twin `/api/story-lab/stories` has always done for the same failure.
+  - Recorded here because "no private text leaves through the stream" is this plan's invariant and the outbound half of it was never stated. A future streaming route should be read against both directions.
 - What hostile review would still object to:
   - Current Story Lab genesis streaming still uses EventSource query fields until a POST job-creation route exists.
   - Export is safer, but server export is still mock storage and must not be described as durable Blob/email export.

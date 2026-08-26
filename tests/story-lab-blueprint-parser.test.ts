@@ -140,6 +140,64 @@ const tooManyThemes = parseStoryLabBlueprintFromBody({
 });
 assert(tooManyThemes.error?.invalidFields.includes('themes'), 'more themes than the cap should be reported as invalid');
 
+// Counting the seeds was the whole of what `themes` was checked for. Each seed
+// is three free-text fields that reach the continuity prompt — and, through the
+// engine's initial plot threads, the persisted story state every later
+// continuation re-sends — so a seed the caller writes a paragraph into is billed
+// once per continuation for as long as the serial runs. One case per field,
+// because the three caps differ and the refusal has to name the right one.
+const themeSeedFieldCaps = [
+  { field: 'id', limit: STORY_BLUEPRINT_LIMITS.maxThemeIdLength },
+  { field: 'label', limit: STORY_BLUEPRINT_LIMITS.maxThemeLabelLength },
+  { field: 'description', limit: STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength }
+] as const;
+
+for (const { field, limit } of themeSeedFieldCaps) {
+  const seedAtTheCap = {
+    id: 'forbidden_love',
+    label: 'Forbidden Love',
+    description: 'Desire has consequences.',
+    [field]: longText(limit)
+  };
+
+  assert(
+    !parseStoryLabBlueprintFromBody({ ...bodyForCreature('dragon'), themes: [seedAtTheCap] }).error,
+    `a theme seed whose ${field} is exactly at the cap should be accepted`
+  );
+
+  const overCap = parseStoryLabBlueprintFromBody({
+    ...bodyForCreature('dragon'),
+    themes: [{ ...seedAtTheCap, [field]: longText(limit + 1) }]
+  });
+
+  assert(
+    overCap.error?.invalidFields.includes('themes'),
+    `a theme seed whose ${field} is past the cap should be reported as an invalid themes field`
+  );
+  assert(
+    overCap.error?.message.includes(field) && overCap.error.message.includes(String(limit)),
+    `the refusal should name themes[].${field} and the limit the caller has to write under`
+  );
+}
+
+// The query form carries the same seeds as a JSON string, and the genesis event
+// stream is the route that reads it. A cap enforced on the POST body alone would
+// leave the paid streaming route — the one an `EventSource` opens and holds for
+// a whole generation — taking what the other refuses.
+const overLongSeedInQuery = parseStoryLabBlueprintFromQuery({
+  ...bodyForCreature('dragon'),
+  themes: JSON.stringify([{
+    id: 'forbidden_love',
+    label: longText(STORY_BLUEPRINT_LIMITS.maxThemeLabelLength + 1),
+    description: 'Desire has consequences.'
+  }]),
+  heatContract: JSON.stringify(bodyForCreature('dragon').heatContract)
+});
+assert(
+  overLongSeedInQuery.error?.invalidFields.includes('themes'),
+  'an oversized theme seed should be refused on the query form the genesis stream parses'
+);
+
 const overLongNoGoContent = parseStoryLabBlueprintFromBody({
   ...bodyForCreature('dragon'),
   heatContract: {

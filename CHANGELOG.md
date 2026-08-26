@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Three Quick Wins — a theme seed counted but never measured, a stream that quotes its own crash, a title only four exports agree on (August 26, 2026)
+
+#### `themes` was the one blueprint field checked for shape and not for size
+
+- `STORY_BLUEPRINT_LIMITS` exists because every free-text field on a blueprint is
+  interpolated straight into a paid Grok prompt, and its own comment names the
+  fields it bounds: the logline, the world details, the narrative directives, the
+  Heat Contract's no-go list. `themes` was not among them. The parser checked that
+  the array held no more than `maxThemes` entries and that each carried `id`,
+  `label`, and `description` strings — and then accepted a megabyte under any of
+  the three.
+- Where those strings go is worse than the other four. `buildContinuityPrompt`
+  interpolates `themes.map(theme => theme.label)` with no cap, beside
+  `existingState.threads` — whose `label` and `description` `buildInitialThreads`
+  seeds from these same strings. An oversized seed is therefore not spent once on
+  the genesis call: it is written into the story state, persisted with it, and
+  re-sent on every continuation of that story for as long as the serial runs. The
+  chapter prose beside it in that prompt is capped at 2,200 code points precisely
+  because prompt size is billed and bounded.
+- `maxThemeIdLength` (80), `maxThemeLabelLength` (80), and
+  `maxThemeDescriptionLength` (280) are now on `STORY_BLUEPRINT_LIMITS`, and
+  `parseThemes` refuses a seed past any of them, naming the field and its limit.
+  The numbers are the ones the repository had already chosen: 80 and 280 are
+  `StoryService`'s own `STORY_LAB_THEME_LABEL_MAX_LENGTH` and
+  `STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH`, which it silently truncates seeds to
+  before building a prompt, and 80 is what `STORY_EVALUATION_LIMITS` already calls
+  "one theme id or creature name, not a paragraph wearing the field's name".
+  Refusing at the route what the prompt builder would quietly cut is the
+  difference between a caller being told their seed is too long and a caller being
+  billed for a story generated from a seed they cannot see the end of.
+- Enforced in the parser, so both routes that take a blueprint get it: the POST
+  body at `/api/story-lab/stories` and the query string the genesis event stream
+  reads.
+
+#### The genesis stream sent its own exception to the browser and logged nothing
+
+- `/api/story-lab/stream/genesis` answered a thrown generation with
+  `error.message` verbatim inside its SSE `error` frame. Nothing between the
+  engine and that frame narrows the text, so a provider client's
+  `connect ECONNREFUSED 10.x.x.x:5432`, an `axios` error naming the upstream URL,
+  or a driver quoting the failing statement went straight out to the browser —
+  where `StoryService` turns it into `observer.error(new Error(chunk.error.message))`
+  and the Angular app puts it in front of the reader. `redactSensitiveLogData`
+  blanks this class of text on the way into the *log*; nothing was blanking it on
+  the way to the *client*.
+- And the route logged nothing at all for that branch, so the operator was the one
+  party who never saw it: a generation that threw produced one frame in a browser
+  nobody keeps and no line anywhere.
+- Its own POST twin, `/api/story-lab/stories` — the same blueprint through the
+  same engine — has had both right all along, answering a fixed
+  `'Story Lab request failed unexpectedly.'` and handing the real error to
+  `logError`. The stream now does the same.
+- The branch was unreachable from a test while the engine was imported and called
+  directly: a blueprint that parses is one the mock engine generates a story for,
+  so no input could make the real call reject. The route now exports
+  `createStoryLabGenesisStreamHandler(generateGenesis = generateStoryLabGenesis)`,
+  the factory shape `createStoryLabGenesisHandler` and
+  `createStoryLabContinuationHandler` already use, with the default export
+  unchanged for both deployments.
+
+#### The `.pdf` export was the only one that showed a title's markup to the reader
+
+- `generatePDFContent` receives the story body already through
+  `stripStoryHtmlForExport` and put the raw `title` field above it: one page whose
+  prose is plain and whose heading still wears the markup the body had removed.
+- `title` is caller text on `/api/export/save`, and the four other formats all say
+  something about it. `.html`, `.epub`, and `.docx` escape it, because a tag in a
+  title has to reach those readers as text rather than as markup; `.txt` strips
+  it, because a plain-text document has no markup to escape it into. A PDF page is
+  the second of those — `escapePdfText` escapes the PDF's own delimiters and knows
+  nothing about HTML — so `<em>Mira</em>` was drawn on the page exactly as
+  written, and `&amp;` in a title stayed `&amp;` where the same title in the
+  `.txt` export read `&`.
+- The PDF heading now goes through the same `stripStoryHtmlForExport` the `.txt`
+  export uses, so the repository's two plain-text renderings of one story agree
+  about what its title is.
+
+#### Validation
+
+- `npm test` (full suite) passes.
+- `npx tsc -p story-generator/tsconfig.json --noEmit` clean — that graph type-checks
+  `shared/` and, through the Node server's route table, the `api/` tree.
+- `scripts/recovery/check-vercel-function-count.sh`: 9/12, unchanged (no route files
+  added or retired).
+- Semantic counterfactuals run and reverted, one per fix: weakening the theme-seed
+  comparison, restoring `error.message` on the stream's error frame, and restoring
+  the raw `input.title` in the PDF each made the matching new assertion fail.
+
 ### 🐛 Three Quick Wins — a preflight nobody may cache, an export that fails without saying so, a cut between the halves of a character (August 26, 2026)
 
 #### Every cross-origin request paid for its own preflight

@@ -468,6 +468,44 @@ function escapeForAssertion(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
+/**
+ * The heading a PDF page shows is the title a reader would read, not its markup.
+ *
+ * `generatePDFContent` receives the story body already through
+ * `stripStoryHtmlForExport` and put the raw `title` field above it, so one page
+ * carried plain prose under a heading still wearing its tags and entities —
+ * the only one of the five formats that said nothing about the title at all.
+ * `title` is caller text on `/api/export/save`, and the generator's own titles
+ * reach the client decoded, so both halves are reachable: a tag from a caller
+ * that sends markup, and an `&` from a title the app itself round-trips.
+ *
+ * Asserted against the `.txt` export rather than against a literal, because
+ * these two are the repository's two plain-text renderings of one story and the
+ * defect was precisely that they disagreed.
+ */
+async function testPdfShowsTheTitleAReaderWouldRead(): Promise<void> {
+  const title = '<em>Mira</em> &amp; the Ember Pact';
+  const exportService = new ExportService();
+
+  const shown = pdfShownText(await pdfTextOf(createInput({ format: 'pdf', title })));
+  const plainText = (await exportService.generateExportContent(createInput({ format: 'txt', title })))
+    .toString('utf8');
+  const [plainTextTitle] = plainText.split('\n');
+
+  assert(
+    !shown.includes('<em>') && !shown.includes('&amp;'),
+    'a PDF heading should not show the title\'s markup or entities to the reader'
+  );
+  assert(
+    shown.startsWith(plainTextTitle),
+    `the PDF heading should read as the .txt export's title does; got "${shown.split('\n')[0]}" against "${plainTextTitle}"`
+  );
+  assert(
+    plainTextTitle === 'Mira & the Ember Pact',
+    'the shared plain-text reading of the title should decode its entities and drop its tags'
+  );
+}
+
 async function main(): Promise<void> {
   await testPlainTextExportKeepsEveryBlockBreak();
   await testFilenamesStayReadableAndPortable();
@@ -477,6 +515,7 @@ async function main(): Promise<void> {
   await testPdfStreamLengthDescribesTheStream();
   await testPdfCarriesTheWholeStoryAcrossPages();
   await testPdfLinesBreakOnCharacterBoundaries();
+  await testPdfShowsTheTitleAReaderWouldRead();
   await testEpubIsARealZipContainerWithItsChapter();
   await testDocxIsARealZipContainerWithItsDocument();
   await testMetadataReflectsTheActualStory();

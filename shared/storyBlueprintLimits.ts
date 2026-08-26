@@ -27,7 +27,43 @@ export const STORY_BLUEPRINT_LIMITS = {
   maxLoglineLength: 420,
   maxWorldDetailsLength: 600,
   maxNarrativeDirectivesLength: 1200,
-  maxNoGoContentLength: 320
+  maxNoGoContentLength: 320,
+  /**
+   * The three strings a theme seed is made of.
+   *
+   * `themes` was the one field above counted but never measured. The parser
+   * checks that the array holds no more than `maxThemes` entries and that each
+   * carries `id`, `label`, and `description` strings — and then accepts a
+   * megabyte under any of the three, which is exactly the failure the paragraph
+   * above says these numbers exist to prevent. It named "the logline, the world
+   * details, the narrative directives, the Heat Contract's no-go list" and
+   * stopped there, and a theme seed is free text arriving on the same two routes.
+   *
+   * Where it goes is worse than the other four. `buildContinuityPrompt`
+   * interpolates `themes.map(theme => theme.label)` into the continuity
+   * extraction prompt with no cap, beside `existingState.threads` — whose
+   * `label` and `description` `buildInitialThreads` seeds from these same
+   * strings. So an oversized seed is not spent once on the genesis call: it is
+   * written into the story state, persisted with it, and re-sent on every
+   * continuation of that story for as long as the serial runs. The chapter prose
+   * beside it in that prompt is capped at 2,200 code points precisely because
+   * prompt size is billed and bounded; the theme text next to it was not capped
+   * at all.
+   *
+   * The numbers are the ones the repository already chose for these fields
+   * rather than new ones: 80 and 280 are `StoryService`'s own
+   * `STORY_LAB_THEME_LABEL_MAX_LENGTH` and
+   * `STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH`, which it truncates seeds to before
+   * building a prompt, and 80 is what `STORY_EVALUATION_LIMITS` below already
+   * calls "one theme id or creature name, not a paragraph wearing the field's
+   * name". Refusing at the route what the prompt builder would silently cut is
+   * the difference between a caller being told their seed is too long and a
+   * caller being billed for a story generated from a seed they cannot see the
+   * end of.
+   */
+  maxThemeIdLength: 80,
+  maxThemeLabelLength: 80,
+  maxThemeDescriptionLength: 280
 } as const;
 
 export type StoryBlueprintLimits = typeof STORY_BLUEPRINT_LIMITS;

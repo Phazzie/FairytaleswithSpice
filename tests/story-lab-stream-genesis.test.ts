@@ -3,7 +3,7 @@
 
 import { EventEmitter } from 'node:events';
 
-import genesisHandler from '../api/story-lab/stream/genesis';
+import genesisHandler, { createStoryLabGenesisStreamHandler } from '../api/story-lab/stream/genesis';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -252,11 +252,58 @@ async function testInvalidBlueprintNeverOpensAStream(): Promise<void> {
   assert(response.chunks.length === 0, 'a refused request should write no SSE frames');
 }
 
+/**
+ * What the reader is told when the engine throws.
+ *
+ * The route used to send `error.message` verbatim, which is whatever threw:
+ * nothing between the engine and the SSE frame narrows it, so a driver quoting a
+ * failing statement or a client naming an internal host went out to the browser
+ * and, through `StoryService`, in front of the reader. The POST twin at
+ * `/api/story-lab/stories` has always answered a fixed message for the same
+ * failure. The thrown text is asserted absent by its own distinctive contents
+ * rather than by comparing the whole frame, so the test keeps holding if the
+ * fixed message is later reworded.
+ */
+async function testAThrownGenerationIsNotQuotedToTheReader(): Promise<void> {
+  setMockRuntime();
+
+  const leakedDetail = 'connect ECONNREFUSED 10.1.2.3:5432 while reading story_lab_projects';
+  const handler = createStoryLabGenesisStreamHandler(async () => {
+    throw new Error(leakedDetail);
+  });
+
+  const response = new FakeResponse();
+  await handler(createRequest(new FakeSocket()), response);
+  await delay(PAST_EVERY_SCHEDULED_FRAME_MS);
+
+  const frames = response.chunks.join('');
+  assert(
+    !frames.includes('ECONNREFUSED') && !frames.includes('10.1.2.3'),
+    'a thrown generation error should not be quoted into the SSE frame the reader receives'
+  );
+
+  const errorFrame = response.chunks
+    .map(chunk => JSON.parse(chunk.replace(/^data: /, '').trim()) as { type?: string; error?: { code?: string; message?: string } })
+    .find(chunk => chunk.type === 'error');
+
+  assert(errorFrame, 'a thrown generation should still produce an error frame');
+  assert(
+    errorFrame.error?.code === 'GENERATION_FAILED',
+    'the error frame should carry the code a client can act on'
+  );
+  assert(
+    Boolean(errorFrame.error?.message?.trim()),
+    'the error frame should still say that generation failed'
+  );
+  assert(response.ended, 'a thrown generation should end the stream rather than leave it open');
+}
+
 async function run(): Promise<void> {
   await testDisconnectStopsTheStream();
   await testAClosedResponseWithoutASocketIsNeverWrittenTo();
   await testAConnectedReaderStillReceivesTheWholeStream();
   await testInvalidBlueprintNeverOpensAStream();
+  await testAThrownGenerationIsNotQuotedToTheReader();
 
   console.log('Story Lab genesis stream tests passed');
 }

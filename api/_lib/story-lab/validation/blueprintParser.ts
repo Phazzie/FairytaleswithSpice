@@ -200,7 +200,36 @@ function parseThemes(value: QueryValue, mode: 'body' | 'query'): { value: ThemeS
     return { value: [], error: 'themes must include id, label, and description strings.' };
   }
 
+  // Shape is not size. Each of these three strings is free text that reaches the
+  // continuity prompt — and, through `buildInitialThreads`, the persisted story
+  // state that every later continuation re-sends — so a seed past its cap is
+  // refused here rather than truncated at the prompt builder, where the caller
+  // would never learn their seed was cut. See `STORY_BLUEPRINT_LIMITS`.
+  const oversizedField = parsed.map(findOversizedThemeSeedField).find(Boolean);
+  if (oversizedField) {
+    return { value: [], error: oversizedField };
+  }
+
   return { value: parsed };
+}
+
+/**
+ * Name the first theme-seed field past its cap, or `undefined` when the seed
+ * fits. One message per field rather than a shared one: the caller has to know
+ * which of the three to shorten, and the numbers differ.
+ */
+function findOversizedThemeSeedField(seed: ThemeSeed): string | undefined {
+  const fields = [
+    { name: 'id', value: seed.id, limit: STORY_BLUEPRINT_LIMITS.maxThemeIdLength },
+    { name: 'label', value: seed.label, limit: STORY_BLUEPRINT_LIMITS.maxThemeLabelLength },
+    { name: 'description', value: seed.description, limit: STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength }
+  ];
+
+  const oversized = fields.find(field => field.value.length > field.limit);
+
+  return oversized
+    ? `themes[].${oversized.name} must be ${oversized.limit} characters or fewer.`
+    : undefined;
 }
 
 function parseHeatContract(
