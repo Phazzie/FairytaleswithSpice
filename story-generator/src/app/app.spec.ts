@@ -2927,6 +2927,41 @@ describe('App', () => {
     expect(component.statusMessage()).toBe('Content exceeds maximum size of 500KB');
   });
 
+  // The one export failure the app could not describe: the file is built, the
+  // route answered `success: true`, and only the decoding of the inline
+  // `data:` URI went wrong. `dataUriToBlob` throws for that, and a throw inside
+  // a `next` callback is not routed to the `error` handler below it — RxJS
+  // reports it as an unhandled error and abandons the rest of the branch, so
+  // the two lines that tell the reader the export is ready never ran either.
+  // The spinner stopped, no file was saved, and nothing said why.
+  it('reports an export the browser could not decode instead of failing silently', () => {
+    const notificationService = TestBed.inject(NotificationService);
+    const { clickSpy } = spyOnAttachedAnchorDownload('blob:story-export');
+    seedWorkbenchWithSingleChapter(component, { title: 'Undecodable Pact' });
+
+    storyService.exportStory.and.returnValue(of({
+      success: true,
+      data: {
+        exportId: 'export-2',
+        storyId: component.workbench().story!.storyId,
+        downloadUrl: 'https://cdn.example.com/exports/undecodable-pact.epub',
+        filename: 'undecodable-pact.epub',
+        format: 'epub',
+        fileSize: 3,
+        exportedAt: new Date()
+      } as SaveExportSeam['output']
+    }));
+
+    expect(() => component.exportStory()).not.toThrow();
+
+    expect(component.isExporting()).toBeFalse();
+    expect(clickSpy).not.toHaveBeenCalled();
+    const notifications = notificationService.notifications();
+    expect(notifications[0]?.type).toBe('error');
+    expect(notifications[0]?.message).toBe('The export arrived in a form this browser could not save.');
+    expect(component.statusMessage()).toBe('The export arrived in a form this browser could not save.');
+  });
+
   // A transport failure has no envelope, so the connection wording is still the
   // right answer for the one case it actually describes.
   it('falls back to the connection message when the export request never reached the service', () => {

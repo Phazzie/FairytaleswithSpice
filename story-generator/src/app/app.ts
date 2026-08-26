@@ -1488,11 +1488,27 @@ ${chapters}
           this.isExporting.set(false);
 
           if (response.success) {
-            downloadBlob(
-              dataUriToBlob(response.data.downloadUrl),
-              response.data.filename,
-              createBrowserHtmlDownloadHost(document, URL)
-            );
+            // `dataUriToBlob` throws for a `downloadUrl` it cannot decode, and
+            // this is a `next` callback: RxJS does not route a throw from here
+            // to the `error` handler below, it reports it as an unhandled error
+            // and abandons the rest of this branch. So the two lines that tell
+            // the reader the export is ready never ran either, and the only
+            // export failure the app cannot describe was the one where the file
+            // is already built and only the decoding of it went wrong — the
+            // spinner stopped, no file was saved, and nothing said why.
+            try {
+              downloadBlob(
+                dataUriToBlob(response.data.downloadUrl),
+                response.data.filename,
+                createBrowserHtmlDownloadHost(document, URL)
+              );
+            } catch {
+              const message = 'The export arrived in a form this browser could not save.';
+              this.notificationService.error('Export failed', message);
+              this.statusMessage.set(message);
+              return;
+            }
+
             this.notificationService.success('Export ready', `${format.toUpperCase()} export created.`);
             this.statusMessage.set(`${format.toUpperCase()} export created.`);
           } else {

@@ -88,4 +88,40 @@ assert(
   `paragraph neighbours should not be welded together (got ${JSON.stringify(weldCandidate)})`
 );
 
+// The chapter is capped before it reaches the prompt, and `.slice(0, 2200)`
+// capped in UTF-16 code units. An astral character is two of those, so a
+// chapter whose cut lands inside one left a lone surrogate in the prompt —
+// `JSON.stringify` escapes it rather than refusing it, so nothing failed and
+// the model was simply shown a character the chapter never held.
+//
+// The pair is placed so that a code-unit cut at 2200 falls between its halves:
+// 2199 single-unit characters, then the pair.
+const surrogatePair = '\u{1F5DD}';
+const cappedChapter = chapterTextFrom(buildContinuityPrompt(createInput(
+  `<p>${'a '.repeat(1099)}b${surrogatePair}${' tail'.repeat(200)}</p>`
+)));
+
+assert(
+  ![...cappedChapter].some(character => {
+    const code = character.codePointAt(0) ?? 0;
+    return code >= 0xd800 && code <= 0xdfff;
+  }),
+  'the chapter cap should never leave half of a character in the prompt'
+);
+// `latestChapters` is the heading line plus the capped body; the cap applies to
+// the body.
+const cappedBody = cappedChapter.slice(cappedChapter.indexOf('\n') + 1);
+assert(
+  Array.from(cappedBody).length <= 2200,
+  `the cap should still bound the chapter (got ${Array.from(cappedBody).length} code points)`
+);
+assert(
+  Array.from(cappedBody).length > 2000,
+  'the cap should keep the chapter, not empty it'
+);
+assert(
+  !/\s$/.test(cappedBody),
+  'backing up to a word boundary should not leave the excerpt ending in whitespace'
+);
+
 console.log('Story Lab continuity prompt tests passed');

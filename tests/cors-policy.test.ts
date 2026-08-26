@@ -2,6 +2,7 @@
 // Created: 2026-06-05 01:43 EDT
 
 import {
+  CORS_PREFLIGHT_MAX_AGE_SECONDS,
   applyCorsPolicy,
   buildCorsHeaders,
   createCorsMiddleware,
@@ -315,6 +316,46 @@ const canonicalCasingResult = applyCorsPolicy(
 assert(
   !canonicalCasingResult.rejected,
   'header names are case-insensitive, so a canonical-cased bag resolves the same way'
+);
+
+// Nothing set `Access-Control-Max-Age`, and the absence is not neutral: a
+// browser with no value falls back to its own, five seconds in Chromium and in
+// Safari. Every paid POST route here is preflighted — the app sends
+// `Content-Type: application/json`, which is not CORS-safelisted — so a
+// split-origin deployment paid a second round trip for generation,
+// continuation, export, and image, and paid it again five seconds later, for an
+// answer that never varies with the request.
+const maxAgeResponse = new FakeResponse();
+applyCorsPolicy(request('OPTIONS', 'https://story.example.com'), maxAgeResponse, {
+  methods: ['POST', 'OPTIONS'],
+  credentials: true,
+  env
+});
+
+assert(
+  maxAgeResponse.headers['Access-Control-Max-Age'] === String(CORS_PREFLIGHT_MAX_AGE_SECONDS),
+  `a preflight should say how long it may be cached, got ${JSON.stringify(maxAgeResponse.headers['Access-Control-Max-Age'])}`
+);
+assert(
+  CORS_PREFLIGHT_MAX_AGE_SECONDS > 0 && CORS_PREFLIGHT_MAX_AGE_SECONDS <= 600,
+  'the cache window has to be positive and inside the smallest cap a major browser enforces'
+);
+assert(
+  Number.isInteger(CORS_PREFLIGHT_MAX_AGE_SECONDS),
+  'delta-seconds is a non-negative integer, so a fractional value is not a value a browser reads'
+);
+
+// The jobs route answers its own `OPTIONS` through `applyCorsPolicy` and the
+// Node deployment answers through `createCorsMiddleware`, so the header has to
+// come from the shared header set rather than from one preflight branch.
+const middlewareMaxAgeResponse = new FakeResponse();
+middleware(request('OPTIONS', 'https://preview.example.com'), middlewareMaxAgeResponse, () => {
+  throw new Error('the middleware should answer a preflight itself');
+});
+
+assert(
+  middlewareMaxAgeResponse.headers['Access-Control-Max-Age'] === String(CORS_PREFLIGHT_MAX_AGE_SECONDS),
+  'every path that answers a preflight should carry the cache window'
 );
 
 console.log('CORS policy tests passed');

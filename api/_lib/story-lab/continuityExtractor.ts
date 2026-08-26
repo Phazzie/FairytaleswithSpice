@@ -14,6 +14,13 @@ import { getXaiFastTimeoutMs } from '../config/xaiConfig';
 import { STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS } from './continuityBudget';
 import { stripMarkdownJsonFence } from '../utils/modelJsonPayload';
 import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
+import { capAtWordBoundary } from '../utils/textExcerpt';
+
+/**
+ * How much of each chapter the continuity extractor is shown, in code points.
+ * Unchanged from the `slice(0, 2200)` it replaces.
+ */
+const CONTINUITY_CHAPTER_EXCERPT_MAX_LENGTH = 2200;
 
 export interface ContinuityExtractionInput {
   storyId: string;
@@ -131,7 +138,13 @@ export function buildContinuityPrompt(input: ContinuityExtractionInput): string 
       // text, so the continuity facts were extracted from prose no reader ever
       // saw. `stripStoryHtmlToText` is the rendering the cliffhanger, image,
       // and story-quality scanners already read.
-      stripStoryHtmlToText(chapter.htmlContent).slice(0, 2200)
+      //
+      // Capped in code points rather than in code units: `.slice(0, 2200)` could
+      // cut between the halves of a surrogate pair and hand the model a lone
+      // surrogate — `JSON.stringify` escapes it rather than refusing it, so the
+      // prompt was simply built with a character the chapter never held — and
+      // cut mid-word wherever else it landed.
+      capAtWordBoundary(stripStoryHtmlToText(chapter.htmlContent), CONTINUITY_CHAPTER_EXCERPT_MAX_LENGTH)
     ].join('\n'))
     .join('\n\n');
 

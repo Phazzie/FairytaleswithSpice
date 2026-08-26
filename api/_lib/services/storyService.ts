@@ -20,6 +20,7 @@ import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogCon
 import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
 import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../utils/storyTextBlocks';
+import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
 import {
   UNRECOGNIZED_PARAMETER,
   toLoggableBoolean,
@@ -54,6 +55,12 @@ interface GeneratedChaptersResult {
   aiMetadata?: AiCallMetadata;
 }
 
+/**
+ * The longest `nextChapterHint`, in code points. Unchanged from the 200 the
+ * `slice(0, 197)` it replaces measured against — the length is not what was
+ * wrong with it; the ellipsis is still counted against the same total.
+ */
+const NEXT_CHAPTER_HINT_MAX_LENGTH = 200;
 const EXTRA_BATCH_CHAPTER_TIMEOUT_MS = 9000;
 const MOCK_CONTINUATION_TARGET_BODY_WORDS = 450;
 const STORY_LAB_THEME_SEED_LIMIT = 5;
@@ -1633,6 +1640,15 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     return `${existing.trim()}\n\n<hr>\n\n${trimmedAddition}`;
   }
 
+  /**
+   * The last sentence of a chapter, as the hint for what comes next.
+   *
+   * Measured and cut in code points. `candidate.slice(0, 197)` counted UTF-16
+   * code units, so a hint whose 197th unit fell between the halves of a
+   * surrogate pair ended on a lone surrogate — and the story this app writes is
+   * one whose prose carries the occasional astral character. The cut also landed
+   * mid-word wherever it landed, which is what `capAtWordBoundary` is for.
+   */
   private generateNextChapterHint(content: string): string {
     const text = this.stripHtml(content).replace(/\s+/g, ' ').trim();
     if (!text) {
@@ -1640,17 +1656,25 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     }
 
     const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-    const candidate = sentences[sentences.length - 1] || text;
-    return candidate.length > 200 ? `${candidate.slice(0, 197).trim()}...` : candidate.trim();
+    const candidate = (sentences[sentences.length - 1] || text).trim();
+
+    return Array.from(candidate).length > NEXT_CHAPTER_HINT_MAX_LENGTH
+      ? `${capAtWordBoundary(candidate, NEXT_CHAPTER_HINT_MAX_LENGTH - 3)}...`
+      : candidate;
   }
 
+  /**
+   * The tail of everything written so far, shown to the model as
+   * `PREVIOUS CHAPTER EXCERPT` when it continues the story.
+   *
+   * `text.slice(-maxLength)` cut at the front, in code units, so the excerpt
+   * could begin on the second half of a surrogate pair — and began mid-word
+   * whatever it began on, which is the first thing the model reads.
+   */
   private createContextExcerpt(html: string, maxLength: number = 1200): string {
     const text = this.stripHtml(html || '').replace(/\s+/g, ' ').trim();
-    if (text.length <= maxLength) {
-      return text;
-    }
 
-    return text.slice(-maxLength);
+    return tailAtWordBoundary(text, maxLength);
   }
 
   private generateMockStory(input: StoryGenerationSeam['input'], _tropeSelection?: TropeSelection): string {

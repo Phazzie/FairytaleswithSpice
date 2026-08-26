@@ -2,6 +2,7 @@
 // Created: 2026-08-25 14:05 UTC
 
 import {
+  dataUriToBlob,
   downloadHtmlDocument,
   downloadTextDocument,
   type DownloadAnchorLike,
@@ -182,5 +183,47 @@ assert(
   exported.events.includes('revokeObjectUrl:blob:story-download'),
   'the export should release its object URL on the scheduled revoke'
 );
+
+// `/api/export/save` hands the exported bytes back inline as a `data:` URI, so
+// this is the decode the export button runs before it can offer anything at
+// all.
+const epubBlob = dataUriToBlob('data:application/epub+zip;base64,QUJD');
+assert(epubBlob.type === 'application/epub+zip', 'the blob should carry the media type the URI declared');
+assert(epubBlob.size === 3, 'the blob should carry the decoded payload');
+
+// The media type is everything before `;base64`, not everything before the
+// first `;`. RFC 2397 lets it carry parameters, and a pattern that stopped at
+// the first one did not match such a URI at all — so an ordinary
+// `data:text/plain;charset=utf-8;base64,…` was refused rather than decoded, and
+// the refusal reached the reader as a button that did nothing.
+const parameterisedBlob = dataUriToBlob('data:text/plain;charset=utf-8;base64,QUJD');
+assert(
+  parameterisedBlob.type === 'text/plain;charset=utf-8',
+  `a media type with parameters should survive the decode, got ${JSON.stringify(parameterisedBlob.type)}`
+);
+assert(parameterisedBlob.size === 3, 'a parameterised URI should decode its payload too');
+
+// A URI scheme and the `base64` token are both case-insensitive.
+assert(dataUriToBlob('DATA:text/plain;BASE64,QUJD').size === 3, 'the header tokens are case-insensitive');
+
+// No media type at all is a legal data URI; the blob falls back rather than
+// being typed with an empty string.
+assert(
+  dataUriToBlob('data:;base64,QUJD').type === 'application/octet-stream',
+  'a URI with no media type should fall back to a generic one'
+);
+
+// And what it still refuses, so the caller has something to catch. A throw from
+// here inside an RxJS `next` callback does not reach that subscription's
+// `error` handler, which is why `AppComponent.exportStory` wraps the call.
+for (const refused of ['not-a-data-uri', 'data:text/plain,plain%20text', 'data:text/plain;base64,!!!']) {
+  let decodeError: unknown;
+  try {
+    dataUriToBlob(refused);
+  } catch (error) {
+    decodeError = error;
+  }
+  assert(decodeError instanceof Error, `${refused} should be refused rather than decoded`);
+}
 
 console.log('HTML document download tests passed');
