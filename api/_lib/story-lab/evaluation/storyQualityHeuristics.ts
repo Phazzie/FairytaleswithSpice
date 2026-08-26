@@ -60,12 +60,12 @@ export function buildStoryQualityHeuristicReport(input: StoryQualityHeuristicInp
 
 function scoreContinuity(storyText: string, configuration: StoryQualityHeuristicInput['configuration']): DimensionDraft {
   const signals: string[] = [];
-  if (configuration.creature && storyText.includes(configuration.creature.toLowerCase())) {
+  if (configuration.creature && containsWordForm(storyText, configuration.creature.toLowerCase())) {
     signals.push(`Creature appears: ${configuration.creature}`);
   }
   for (const theme of configuration.themes) {
     const themeWords = theme.split(/[_\s-]+/).filter(word => word.length > 3);
-    if (themeWords.some(word => storyText.includes(word.toLowerCase()))) {
+    if (themeWords.some(word => containsWordForm(storyText, word.toLowerCase()))) {
       signals.push(`Theme echo appears: ${theme}`);
     }
   }
@@ -110,8 +110,12 @@ function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): Dimen
 
 function scoreTropeFreshness(storyText: string): DimensionDraft {
   const staleSignals = ['damsel in distress', 'it was all a dream', 'love at first sight', 'chosen one'];
-  const staleHits = staleSignals.filter(signal => storyText.includes(signal));
-  const freshSignals = ['cost', 'bargain', 'choice', 'consequence', 'leverage'].filter(signal => storyText.includes(signal));
+  // The stale entries are phrases, and the boundary is still only asked about
+  // their ends: `chosen ones` is the same phrase as `chosen one`, and nothing
+  // in English attaches to the front of `damsel in distress`.
+  const staleHits = staleSignals.filter(signal => containsWordForm(storyText, signal));
+  const freshSignals = ['cost', 'bargain', 'choice', 'consequence', 'leverage']
+    .filter(signal => containsWordForm(storyText, signal));
   return {
     id: 'trope_freshness',
     label: 'Trope freshness',
@@ -289,8 +293,13 @@ function clampScore(score: number): number {
   return Math.max(0, Math.min(100, score));
 }
 
+/**
+ * Whether any of `needles` appears in `value` as a word rather than as a run of
+ * letters inside another one. See `containsWordForm` for what the substring
+ * reading this replaces was crediting.
+ */
 function containsAny(value: string, needles: readonly string[]): boolean {
-  return needles.some(needle => value.includes(needle));
+  return needles.some(needle => containsWordForm(value, needle));
 }
 
 function collapseWhitespace(value: string): string {
@@ -543,6 +552,83 @@ function containsWholeWord(text: string, keyword: string): boolean {
     String.raw`(?<![\p{L}\p{N}\p{M}])${escapeRegExp(keyword)}(?![\p{L}\p{N}\p{M}])`,
     'u'
   ).test(text);
+}
+
+/**
+ * The endings a keyword may pick up and still be the same word.
+ *
+ * `EMOTION_FAMILIES` and `extractSensoryTextures` answer this by listing every
+ * inflection they accept, which works because each of them is a fixed lexicon
+ * written beside its own matcher. The three dimensions below are not: the
+ * continuity scan matches the creature and the theme words a *request* carried,
+ * so there is no list to extend — the words arrive from the blueprint.
+ *
+ * `d` and `ed` are both here because English spells the past tense both ways
+ * depending on whether the stem already ends in `e` (`loved`, `burned`), and
+ * `r`/`rs` because an agent noun is the form this genre actually writes for
+ * several of these stems (`lover`, `lovers` for a `forbidden_love` seed).
+ * Endings that build a *different* word are deliberately absent: `less` is what
+ * makes `priceless` out of `price` and `bloodless` out of `blood`, and `ly`
+ * what makes `secretly` out of `secret`.
+ */
+const WORD_INFLECTION_SUFFIXES = String.raw`(?:s|es|d|ed|ing|r|rs)?`;
+
+/**
+ * The spellings of `word` this scan will accept before suffixes are considered.
+ *
+ * Two English plurals are not suffixes at all — they replace the last letter —
+ * and both of them land on the creature archetypes the blueprint contract
+ * names: `fairy` becomes `fairies` and `werewolf` becomes `werewolves`. Every
+ * other archetype in that list of ten pluralizes by suffix, so those two are
+ * the whole of the irregularity worth spelling out here.
+ */
+function wordSpellings(word: string): string[] {
+  const spellings = [word];
+
+  if (/[^aeiou]y$/.test(word)) {
+    spellings.push(`${word.slice(0, -1)}ie`);
+  }
+  if (/f$/.test(word)) {
+    spellings.push(`${word.slice(0, -1)}ve`);
+  }
+
+  return spellings;
+}
+
+/**
+ * Whether `text` contains `word` — or an inflection of it — as a whole word.
+ *
+ * This is `containsWholeWord` with the tolerance the three dimensions above
+ * need and the emotion families do not: their terms are listed with their
+ * inflections already, these arrive from a request.
+ *
+ * The boundary is the point. Every one of these scans read `String.prototype
+ * .includes` before this, and the words they look for are short ones this genre
+ * writes longer words around:
+ *
+ * - `oath` is inside `loathe` and `loathing`, so a chapter about loathing
+ *   someone was credited with repeating a continuity promise.
+ * - A `forbidden_love` seed looks for `love`, which is inside `gloves` and
+ *   `clover`; a `slow_burn` seed looks for `burn`, inside `burnished`.
+ * - `fairy` is inside `fairytale` — the word this app is named for — and
+ *   `witch` inside `switch`, `dragon` inside `dragonfly`, and `demon` inside
+ *   `demonstrate`, so "she switched off the lamp" reported `Creature appears:
+ *   witch` for a story with no witch in it.
+ * - `cost` is inside `costume`, in a genre that writes masquerades.
+ * - `door` is inside `doorway`, `price` inside `priceless`, `blood` inside
+ *   `bloodless`, and `name` inside `nameless` — three of the eight hook words
+ *   the cliffhanger dimension credits an ending for, matched by the words that
+ *   negate them.
+ *
+ * The tolerance is what keeps the fix from costing what the substrings were
+ * really buying: `loved`, `lovers`, `burning`, `oaths`, `secrets`, `bargained`
+ * all still count, because they are the same word.
+ */
+function containsWordForm(text: string, word: string): boolean {
+  return wordSpellings(word).some(spelling => new RegExp(
+    String.raw`(?<![\p{L}\p{N}\p{M}])${escapeRegExp(spelling)}${WORD_INFLECTION_SUFFIXES}(?![\p{L}\p{N}\p{M}])`,
+    'u'
+  ).test(text));
 }
 
 function extractConcreteAnchors(storyContent: string): string[] {

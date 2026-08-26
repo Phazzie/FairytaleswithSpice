@@ -666,6 +666,22 @@ export interface EvaluationCriteria {
    * never shows a fabricated score as if it were real feedback.
    */
   isMockEvaluation?: boolean;
+  /**
+   * Why the placeholder was used, in the route's own words, when the route gave
+   * a reason.
+   *
+   * `isMockEvaluation` says the score is not real; on its own it does not say
+   * whether the reader can do anything about that. `/api/story-lab/evaluate`
+   * refuses an oversized `storyContent` with the field named, an unauthenticated
+   * caller with `401`, and one past its budget with `429` — all actionable, all
+   * previously rendered as "the evaluation API was unavailable".
+   *
+   * Absent when there was nothing to quote: a network failure that never reached
+   * the API, or a keyless deployment answering `success: true` with the server's
+   * own honest placeholder, which sets `isMockEvaluation` and has no refusal
+   * behind it.
+   */
+  mockEvaluationReason?: string;
 }
 
 export interface EvaluationRequest {

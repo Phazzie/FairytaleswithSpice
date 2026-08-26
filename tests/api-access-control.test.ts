@@ -18,7 +18,7 @@ import continuationHandler from '../api/story-lab/stories/[storyId]/continue';
 import streamGenesisHandler from '../api/story-lab/stream/genesis';
 import jobsHandler from '../api/story-lab/jobs';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
-import { retryAfterSeconds } from '../api/_lib/middleware/apiAccessControl';
+import { rateLimitResetSeconds, retryAfterSeconds } from '../api/_lib/middleware/apiAccessControl';
 import { RATE_LIMITS } from '../api/_lib/constants';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -191,6 +191,28 @@ async function testValidKeyPassesThrough(): Promise<void> {
         res.headers['X-RateLimit-Remaining'] !== undefined,
         `${testCase.name} should report a remaining-quota header once authenticated`
       );
+      // Without the limit, `Remaining` is a bare number: a client cannot tell
+      // whether `3` is most of the budget or the last of it, and the budget is
+      // per route and per tier so nothing else in the response says.
+      assert(
+        res.headers['X-RateLimit-Limit'] === String(testCase.limits.maxRequests),
+        `${testCase.name} should report its own budget as X-RateLimit-Limit, got ${JSON.stringify(res.headers['X-RateLimit-Limit'])}`
+      );
+      // Epoch seconds, which is the only form anything outside this app reads.
+      // Sent unconverted from `Date.now()`, the value is a date fifty thousand
+      // years out, and a client backing off until it never returns.
+      const resetHeader = res.headers['X-RateLimit-Reset'];
+      const resetSeconds = Number(resetHeader);
+      const nowSeconds = Date.now() / 1000;
+      assert(
+        typeof resetHeader === 'string' && /^[0-9]+$/.test(resetHeader),
+        `${testCase.name} should answer a whole-number X-RateLimit-Reset, got ${JSON.stringify(resetHeader)}`
+      );
+      assert(
+        resetSeconds >= nowSeconds
+          && resetSeconds <= nowSeconds + Math.ceil(testCase.limits.windowMs / 1000) + 1,
+        `${testCase.name} should reset within its own window in epoch seconds, got ${resetHeader} against ${Math.floor(nowSeconds)}`
+      );
     }
   });
 }
@@ -218,11 +240,12 @@ async function testRateLimitIsEnforced(): Promise<void> {
         errorCode(overLimitRes) === 'RATE_LIMITED',
         `${testCase.name} should report RATE_LIMITED, got ${errorCode(overLimitRes)}`
       );
-      // The one part of a 429 an ordinary client acts on. Without it a caller
-      // knows only that it was refused: `error.resetTime` and the two
-      // `X-RateLimit-*` headers are absolute epoch milliseconds, so turning
-      // either into a delay means trusting the caller's clock against the
-      // server's, and nothing outside this app reads them at all.
+      // The part of a 429 an ordinary client acts on without consulting its own
+      // clock. `error.resetTime` in the body is still absolute epoch
+      // milliseconds — this API's own field — and `X-RateLimit-Reset` is the
+      // same instant in the epoch seconds the header name means everywhere
+      // else; both are instants, so turning either into a delay means trusting
+      // the caller's clock against the server's. This one is already a delay.
       const retryAfter = overLimitRes.headers['Retry-After'];
       assert(
         typeof retryAfter === 'string' && /^[0-9]+$/.test(retryAfter) && Number(retryAfter) >= 1,
@@ -249,6 +272,22 @@ function testRetryAfterSeconds(): void {
   assert(retryAfterSeconds(0, 0) === 1, 'a window that has just expired should still ask for one second');
   assert(retryAfterSeconds(-5_000, 0) === 1, 'a window that expired between the check and the header should not go negative');
   assert(retryAfterSeconds(Number.NaN, 0) === 1, 'an unreadable reset instant should still produce a usable delay');
+}
+
+/**
+ * `X-RateLimit-Reset` carries an instant, in the epoch seconds the header name
+ * means everywhere it is read. `checkRateLimit` reports milliseconds, and the
+ * unconverted value is a date fifty thousand years out — a client backing off
+ * until it never comes back, and one displaying it shows a seven-digit year.
+ */
+function testRateLimitResetSeconds(): void {
+  assert(rateLimitResetSeconds(1_700_000_000_000) === 1_700_000_000, 'a whole second should convert exactly');
+  // Rounded up for the same reason `Retry-After` is: the second the header names
+  // has to be one the window has actually ended in, or a client that waits for
+  // exactly that instant is refused again.
+  assert(rateLimitResetSeconds(1_700_000_000_400) === 1_700_000_001, 'a partial second should round up past the window');
+  assert(rateLimitResetSeconds(Number.NaN) === 0, 'an unreadable reset instant should not put NaN in a header');
+  assert(rateLimitResetSeconds(-1_000) === 0, 'a reset instant before the epoch should not go negative');
 }
 
 /**
@@ -345,6 +384,7 @@ async function main(): Promise<void> {
   await testValidKeyPassesThrough();
   await testRateLimitIsEnforced();
   testRetryAfterSeconds();
+  testRateLimitResetSeconds();
   await testUnconfiguredDeploymentStillServesRequestsWithNoKey();
   await testUnconfiguredDeploymentStillRateLimitsTheSharedBucket();
   await testEventStreamRoutesAcceptTheQueryParameterKey();

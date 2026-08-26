@@ -59,12 +59,16 @@ const ORIGIN_ENV_KEYS = ['STORY_LAB_ALLOWED_ORIGINS', 'ALLOWED_ORIGINS', 'FRONTE
  * `Last-Modified`, and `Pragma`, and nothing else — so `enforceApiAccessControl`
  * setting it on a 429 reached a same-origin page and no other. Every deployment
  * that serves the app from one origin and the API from another therefore had a
- * browser client that could see the 429 and not a single one of the three
- * values that say what to do about it, which is the state this whole set of
- * headers exists to prevent.
+ * browser client that could see the 429 and not a single one of the values that
+ * say what to do about it, which is the state this whole set of headers exists
+ * to prevent.
+ *
+ * `X-RateLimit-Limit` joins them for exactly that reason: a header the routes
+ * set and a cross-origin page cannot read is a header that was not sent.
  */
 const EXPOSED_HEADERS = [
   'Retry-After',
+  'X-RateLimit-Limit',
   'X-RateLimit-Remaining',
   'X-RateLimit-Reset',
   'X-Request-ID'

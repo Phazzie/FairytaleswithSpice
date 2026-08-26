@@ -294,7 +294,12 @@
                     {{ test.aiEvaluation.score }}/100
                   </div>
                   @if (test.aiEvaluation.isMockEvaluation) {
-                    <p class="mock-evaluation-notice" data-testid="mock-evaluation-badge">⚠️ Offline mock evaluation — not a real AI score.</p>
+                    <p class="mock-evaluation-notice" data-testid="mock-evaluation-badge">
+                      ⚠️ Offline mock evaluation — not a real AI score.
+                      @if (test.aiEvaluation.mockEvaluationReason; as reason) {
+                        <span class="mock-evaluation-reason">{{ reason }}</span>
+                      }
+                    </p>
                   }
                   @if (test.aiEvaluation.heuristicReport) {
                     <p class="feedback"><strong>Quality:</strong> {{ test.aiEvaluation.heuristicReport.overallScore }}/100</p>
@@ -348,8 +353,16 @@
 
               @if (currentTest()!.aiEvaluation!.isMockEvaluation) {
                 <p class="mock-evaluation-notice" data-testid="mock-evaluation-badge">
-                  ⚠️ Offline mock evaluation — the evaluation API was unavailable, so this score is a fixed
-                  placeholder, not real AI feedback. Do not use it for comparisons.
+                  @if (currentTest()!.aiEvaluation!.mockEvaluationReason; as reason) {
+                    <!-- The API answered and said no. Reporting that as an outage
+                         hid the one sentence the reader can act on. -->
+                    ⚠️ Offline mock evaluation — the evaluation API refused this request, so this score is a
+                    fixed placeholder, not real AI feedback. Do not use it for comparisons.
+                    <span class="mock-evaluation-reason" data-testid="mock-evaluation-reason">{{ reason }}</span>
+                  } @else {
+                    ⚠️ Offline mock evaluation — the evaluation API was unavailable, so this score is a fixed
+                    placeholder, not real AI feedback. Do not use it for comparisons.
+                  }
                 </p>
               }
 
