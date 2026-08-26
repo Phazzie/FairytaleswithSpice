@@ -880,4 +880,7 @@
   </main>
 </div>
 
-<app-debug-panel data-testid="story-lab-debug-panel" *ngIf="showDebugPanel()"></app-debug-panel>
+@defer (when showDebugPanel()) {
+  <app-debug-panel data-testid="story-lab-debug-panel"></app-debug-panel>
+  <app-error-display data-testid="story-lab-error-display"></app-error-display>
+}

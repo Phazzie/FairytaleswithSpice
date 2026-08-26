@@ -1,4 +1,4 @@
-import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing';
+import { ComponentFixture, DeferBlockState, fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
@@ -350,8 +350,10 @@ describe('App', () => {
     ]);
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
       'logInfo',
-      'logError'
+      'logError',
+      'getErrors'
     ]);
+    errorLoggingSpy.getErrors.and.returnValue(of([]));
 
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
@@ -569,6 +571,19 @@ describe('App', () => {
   it('enables the debug panel with the debug query parameter', () => {
     queryParamMap$.next(convertToParamMap({ debug: '1' }));
     expect(component.showDebugPanel()).toBeTrue();
+  });
+
+  it('hides the error display panel unless debug mode is requested', () => {
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="story-lab-error-display"]')).toBeNull();
+  });
+
+  it('mounts the error display panel with the debug query parameter', async () => {
+    queryParamMap$.next(convertToParamMap({ debug: '1' }));
+    fixture.detectChanges();
+    const [deferBlock] = await fixture.getDeferBlocks();
+    await deferBlock.render(DeferBlockState.Complete);
+    expect(fixture.nativeElement.querySelector('[data-testid="story-lab-error-display"]')).not.toBeNull();
   });
 
   it('toggles theme selections', () => {
