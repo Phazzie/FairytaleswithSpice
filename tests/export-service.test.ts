@@ -104,24 +104,66 @@ async function testPdfStreamLengthDescribesTheStream(): Promise<void> {
   );
 }
 
-// The excerpt used to be cut out of the *escaped* text, which splits whatever
-// the escaping added at the cut. The 100th code unit of this body falls inside
-// the `\(` written for its parenthesis and inside the surrogate pair written
-// for its dragon, so the old cut left a trailing backslash — escaping the `.`
-// that follows it — and a lone surrogate that encodes as U+FFFD.
-async function testPdfExcerptIsCutOnCharacterBoundaries(): Promise<void> {
+// The PDF used to hold the story's first 100 code points followed by a literal
+// `...`, on a single page, while the four other formats shipped the whole
+// story. Nothing about the file said so — it downloaded under the story's own
+// name, and a trailing ellipsis reads as ordinary prose.
+async function testPdfCarriesTheWholeStoryAcrossPages(): Promise<void> {
+  // Long enough to need several pages, and marked at both ends so a truncation
+  // anywhere between them is visible.
+  const paragraphs = Array.from(
+    { length: 60 },
+    (_unused, index) => `<p>Paragraph ${index} — Élodie counted the 🐉 scales in the (dark).</p>`
+  );
+  const content = `<p>OPENING-MARKER</p>${paragraphs.join('')}<p>CLOSING-MARKER</p>`;
+  const document = await pdfTextOf(createInput({ format: 'pdf', content }));
+
+  const shownText = pdfShownText(document);
+  assert(shownText.includes('OPENING-MARKER'), 'the PDF should show the start of the story');
+  assert(shownText.includes('CLOSING-MARKER'), 'the PDF should show the end of the story');
+  for (let index = 0; index < 60; index += 1) {
+    assert(shownText.includes(`Paragraph ${index} `), `the PDF should show paragraph ${index}`);
+  }
+
+  const pageCount = Number(/\/Count (\d+)/.exec(document)?.[1]);
+  const pageObjects = document.match(/\/Type \/Page\b/g) ?? [];
+  assert(pageCount > 1, `a story this long should run to more than one page (got ${pageCount})`);
+  assert(
+    pageObjects.length === pageCount,
+    `the page tree should declare as many pages as it holds (declared=${pageCount}, objects=${pageObjects.length})`
+  );
+
+  const kids = /\/Kids \[([^\]]*)\]/.exec(document)?.[1].trim().split(/\s+(?=\d+ 0 R)/) ?? [];
+  assert(kids.length === pageCount, `the /Kids array should name every page (named=${kids.length})`);
+  for (const kid of kids) {
+    const objectNumber = Number(/^(\d+) 0 R$/.exec(kid.trim())?.[1]);
+    assert(
+      new RegExp(`\\n${objectNumber} 0 obj\\n<<\\n/Type /Page\\b`).test(document),
+      `/Kids entry ${JSON.stringify(kid)} should name a page object`
+    );
+  }
+}
+
+// Escaping is applied to each line as it is written, from the source text
+// rather than from text that has already been escaped: cutting escaped text
+// splits whatever the escaping added at the cut — a `\(` pair loses its
+// parenthesis and strands a backslash that escapes the next character, and a
+// surrogate pair loses its second half and encodes as U+FFFD.
+async function testPdfLinesBreakOnCharacterBoundaries(): Promise<void> {
   for (const boundary of ['(spice)', '🐉 tail']) {
-    const content = `<p>${'x'.repeat(99)}${boundary}</p>`;
+    // No spaces, so the line is longer than a page is wide and has to be broken
+    // inside the word — the only place a break can land mid-character.
+    const content = `<p>${`${'x'.repeat(60)}${boundary.replace(/\s/g, '')}`.repeat(6)}</p>`;
     const document = await pdfTextOf(createInput({ format: 'pdf', content }));
     const streamBody = extractPdfStreamBody(document);
 
     assert(
-      !/(^|[^\\])(\\\\)*\\\.\.\.\) Tj/.test(streamBody),
-      `a ${boundary} excerpt should not end mid-escape (stream=${JSON.stringify(streamBody)})`
+      !/(^|[^\\])(\\\\)*\\\) Tj/.test(streamBody),
+      `a ${boundary} line should not end mid-escape (stream=${JSON.stringify(streamBody)})`
     );
     assert(
       !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(streamBody),
-      `a ${boundary} excerpt should not end on half a surrogate pair`
+      `a ${boundary} line should not end on half a surrogate pair`
     );
   }
 }
@@ -130,6 +172,11 @@ function extractPdfStreamBody(document: string): string {
   const match = /\nstream\n([\s\S]*?)\nendstream\n/.exec(document);
   assert(match, 'the PDF should contain a content stream');
   return match[1];
+}
+
+/** The text every page of a PDF actually shows, in page order. */
+function pdfShownText(document: string): string {
+  return Array.from(document.matchAll(/\((.*)\) Tj/g), match => match[1].replace(/\\([\\()])/g, '$1')).join('\n');
 }
 
 async function pdfTextOf(input: SaveExportSeam['input']): Promise<string> {
@@ -397,7 +444,8 @@ async function main(): Promise<void> {
   await testPdfCrossReferenceTablePointsAtItsObjects();
   await testFileSizeIsMeasuredInBytes();
   await testPdfStreamLengthDescribesTheStream();
-  await testPdfExcerptIsCutOnCharacterBoundaries();
+  await testPdfCarriesTheWholeStoryAcrossPages();
+  await testPdfLinesBreakOnCharacterBoundaries();
   await testEpubIsARealZipContainerWithItsChapter();
   await testDocxIsARealZipContainerWithItsDocument();
   await testMetadataReflectsTheActualStory();
