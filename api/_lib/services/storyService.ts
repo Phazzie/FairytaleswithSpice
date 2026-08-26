@@ -28,6 +28,7 @@ import {
   toLoggableNumber,
   toLoggableThemes
 } from '../utils/loggableRequestParameters';
+import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 
 interface AiCallMetadata {
   model?: string;
@@ -63,9 +64,14 @@ interface GeneratedChaptersResult {
 const NEXT_CHAPTER_HINT_MAX_LENGTH = 200;
 const EXTRA_BATCH_CHAPTER_TIMEOUT_MS = 9000;
 const MOCK_CONTINUATION_TARGET_BODY_WORDS = 450;
-const STORY_LAB_THEME_SEED_LIMIT = 5;
-const STORY_LAB_THEME_LABEL_MAX_LENGTH = 80;
-const STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH = 280;
+// The prompt boundary's own reading of a theme seed, taken from the shared
+// blueprint limits rather than restated here. The routes now refuse a seed
+// larger than this, and a cap the routes enforce and a cap the prompt applies
+// have to be the same number or the guarantee is only as good as whichever is
+// looser.
+const STORY_LAB_THEME_SEED_LIMIT = STORY_BLUEPRINT_LIMITS.maxThemes;
+const STORY_LAB_THEME_LABEL_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxThemeLabelLength;
+const STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength;
 const STORY_LAB_CONTEXT_VALUE_MAX_LENGTH = 320;
 const STORY_LAB_NO_GO_CONTENT_MAX_LENGTH = STORY_LAB_CONTEXT_VALUE_MAX_LENGTH;
 // How much of the closing passage the continuation prompt is shown as "what
@@ -1928,33 +1934,89 @@ ${renderBody()}`;
     return detectedThemes;
   }
 
+  /**
+   * The spice level a batch of chapters actually reads at.
+   *
+   * The answer travels: it is `spicyLevelMaintained` on the continuation
+   * response, and `buildContinuationPayload` writes it into a new story's
+   * `StorySummary.spicyLevel` — the level the project is then stored and
+   * reopened under. So a misread here is not a cosmetic number beside the
+   * prose; it is what the library says the story is.
+   *
+   * Its sibling `extractThemesFromContent` directly above scans the rendered
+   * text with whole-word matching. This one did neither, and the two failures
+   * compound:
+   *
+   * - **It scanned the markup.** Every other scanner here — the cliffhanger
+   *   service, the image service, the continuity extractor, the story-quality
+   *   heuristics, and `extractThemesFromContent` beside it — reads
+   *   `stripStoryHtmlToText` first, so that what is measured is what the
+   *   reader sees: block tags become paragraph breaks and the entities the
+   *   generator writes are decoded. Undecoded, `intense&nbsp;passion` is not
+   *   the phrase `intense passion` at all, and the one multi-word keyword the
+   *   scan has matched nothing whenever the model spaced it that way.
+   * - **It matched substrings.** `heart` is inside `hearth`, `love` inside
+   *   `glove` and `clover`, `touch` inside `untouched`, `heat` inside
+   *   `sheath` and `wheat`, and `climax` inside `anticlimax` — so a chaste
+   *   scene at a hearth in wool gloves was filed as level 2, a chapter that
+   *   ends `he left her untouched` as level 3, and one that calls a duel an
+   *   anticlimax as level 5, the maximum, on the strength of a word that says
+   *   the opposite. The story then reopens at that level, and the reader who
+   *   set the dial themselves is the one contradicted.
+   *
+   * Keywords are matched as whole words for the same reason
+   * `extractThemesFromContent` was changed to: it is the only way to state
+   * `heat` or `love` as itself. The inflections the substring form picked up
+   * for free — `kissed` for `kiss`, `caressing` for `caress`, `desired` for
+   * `desire` — are listed instead, so the repair does not quietly cost the
+   * scan the matches it did get right. What it does not carry over is the rest
+   * of what the substrings caught: `lovely` is not `love`, `gentleman` is not
+   * `gentle`, and `hearth` is not `heart`. Those are the defect, not coverage.
+   */
   private extractSpicyLevelFromContent(content: string): SpicyLevel {
-    const lowerContent = content.toLowerCase();
-    
+    const lowerContent = this.stripHtml(content).toLowerCase();
+
     // Level 5 - Very Explicit
-    const level5Keywords = ['explicit', 'graphic', 'intense passion', 'climax', 'ecstasy'];
-    if (level5Keywords.some(keyword => lowerContent.includes(keyword))) {
+    const level5Keywords = [
+      'explicit', 'explicitly', 'graphic', 'graphically', 'intense passion',
+      'climax', 'climaxed', 'climaxes', 'ecstasy'
+    ];
+    if (level5Keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
       return 5 as SpicyLevel;
     }
-    
+
     // Level 4 - Passionate
-    const level4Keywords = ['passionate', 'breathless', 'desire', 'yearning', 'heat'];
-    if (level4Keywords.some(keyword => lowerContent.includes(keyword))) {
+    const level4Keywords = [
+      'passionate', 'passionately', 'breathless', 'breathlessly',
+      'desire', 'desires', 'desired', 'yearning', 'heat', 'heated'
+    ];
+    if (level4Keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
       return 4 as SpicyLevel;
     }
-    
+
     // Level 3 - Romantic with Heat
-    const level3Keywords = ['kiss', 'embrace', 'caress', 'touch', 'intimate'];
-    if (level3Keywords.some(keyword => lowerContent.includes(keyword))) {
+    const level3Keywords = [
+      'kiss', 'kissed', 'kisses', 'kissing',
+      'embrace', 'embraced', 'embraces', 'embracing',
+      'caress', 'caressed', 'caresses', 'caressing',
+      'touch', 'touched', 'touches', 'touching',
+      'intimate', 'intimately'
+    ];
+    if (level3Keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
       return 3 as SpicyLevel;
     }
-    
+
     // Level 2 - Sweet Romance
-    const level2Keywords = ['love', 'affection', 'tender', 'gentle', 'heart'];
-    if (level2Keywords.some(keyword => lowerContent.includes(keyword))) {
+    const level2Keywords = [
+      'love', 'loved', 'loves', 'lover', 'lovers', 'loving',
+      'affection', 'affections', 'affectionate',
+      'tender', 'tenderly', 'tenderness',
+      'gentle', 'gently', 'heart', 'hearts'
+    ];
+    if (level2Keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
       return 2 as SpicyLevel;
     }
-    
+
     // Default to Level 1 - Mild
     return 1 as SpicyLevel;
   }

@@ -12,6 +12,7 @@ import type { AuthPort, AuthUser } from '../auth/authPort';
 import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort } from '../auth/configuredAuthPort';
 import { applyCorsPolicy } from '../../http/corsPolicy';
+import { sendMethodNotAllowed } from '../../http/methodNotAllowed';
 import { endSseStream, writeSseFrame, type SseResponseLike } from '../../http/sseStream';
 import { RATE_LIMITS } from '../../constants';
 import { enforceApiAccessControl, withEventStreamAuth } from '../../middleware/apiAccessControl';
@@ -102,6 +103,15 @@ export const handleStoryLabJobsRoute = createStoryLabJobsRouteHandler();
  */
 const STORY_LAB_JOBS_ROUTE_METHODS = ['GET', 'POST', 'OPTIONS'];
 
+/**
+ * And the per-handler lists, which are what `Allow` reports: the header names
+ * the target resource's methods, so creating a job answers `POST, OPTIONS`
+ * while reading one answers `GET, OPTIONS`, even though the route as a whole
+ * serves both.
+ */
+const STORY_LAB_JOB_CREATE_METHODS = ['POST', 'OPTIONS'];
+const STORY_LAB_JOB_READ_METHODS = ['GET', 'OPTIONS'];
+
 async function handleStoryLabJobsRouteWithContext(
   context: StoryLabJobRouteContext,
   req: RequestLike,
@@ -146,7 +156,7 @@ async function handleCreateStoryLabJobWithContext(
   res: ResponseLike
 ): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
-    methods: ['POST', 'OPTIONS'],
+    methods: STORY_LAB_JOB_CREATE_METHODS,
     credentials: true
   });
   if (cors.handled) {
@@ -154,7 +164,7 @@ async function handleCreateStoryLabJobWithContext(
   }
 
   if ((req.method ?? '').toUpperCase() !== 'POST') {
-    sendJson(res, 405, methodNotAllowed('Only POST requests are supported.'));
+    sendMethodNotAllowed(res, STORY_LAB_JOB_CREATE_METHODS, 'Only POST requests are supported.');
     return;
   }
 
@@ -659,7 +669,7 @@ function isValidBatchSize(size: number): size is StoryContinuationSeam['input'][
 
 function readValidJobIdOrRespond(req: RequestLike, res: ResponseLike): string | null {
   if ((req.method ?? '').toUpperCase() !== 'GET') {
-    sendJson(res, 405, methodNotAllowed('Only GET requests are supported.'));
+    sendMethodNotAllowed(res, STORY_LAB_JOB_READ_METHODS, 'Only GET requests are supported.');
     return null;
   }
 
@@ -706,16 +716,6 @@ function readJobId(req: RequestLike): string | null {
 
 function sendJson<T>(res: ResponseLike, statusCode: number, body: T): void {
   res.status(statusCode).json(body);
-}
-
-function methodNotAllowed(message: string): ApiResponse<never> {
-  return {
-    success: false,
-    error: {
-      code: 'METHOD_NOT_ALLOWED',
-      message
-    }
-  };
 }
 
 function invalidRequest(message: string): ApiResponse<never> {

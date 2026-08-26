@@ -106,6 +106,15 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
   } else if (themes.value.length > STORY_BLUEPRINT_LIMITS.maxThemes) {
     invalidFields.push('themes');
     messages.push(`themes must include no more than ${STORY_BLUEPRINT_LIMITS.maxThemes} theme seeds.`);
+  } else {
+    // How many seeds arrived was measured; how large one is was not. See
+    // `maxThemeLabelLength` for where an uncapped seed ends up — the continuity
+    // model call, and a plot thread stored with the project.
+    const oversized = describeOversizedThemeSeed(themes.value);
+    if (oversized) {
+      invalidFields.push('themes');
+      messages.push(oversized);
+    }
   }
 
   // The optional free-text fields are read here rather than at the point they
@@ -185,6 +194,31 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
       worldDetails
     }
   };
+}
+
+/**
+ * Name the first theme seed whose own text is past its cap, or `null`.
+ *
+ * One message for the whole array rather than one per seed, because `themes`
+ * is a single invalid field either way and the caller fixes the array. The
+ * index is in it so the caller knows which seed, and the field name so they
+ * know which half of it.
+ */
+function describeOversizedThemeSeed(themes: readonly ThemeSeed[]): string | null {
+  const caps = [
+    { field: 'label', limit: STORY_BLUEPRINT_LIMITS.maxThemeLabelLength },
+    { field: 'description', limit: STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength }
+  ] as const;
+
+  for (const [index, theme] of themes.entries()) {
+    for (const { field, limit } of caps) {
+      if (theme[field].length > limit) {
+        return `themes[${index}].${field} must be ${limit} characters or fewer.`;
+      }
+    }
+  }
+
+  return null;
 }
 
 /**

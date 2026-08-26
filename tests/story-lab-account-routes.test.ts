@@ -517,6 +517,30 @@ async function testInvalidRouteAndMethodResponses() {
   await handler(createRequest('POST', 'profile'), methodResponse);
   assert(methodResponse.statusCode === 405, 'unsupported account method should return 405');
   assert((methodResponse.body as any).error.code === 'METHOD_NOT_ALLOWED', 'unsupported account method should use method code');
+  // RFC 9110 §15.5.6 requires the header, and it is the only part of this
+  // answer a caller that does not know this envelope can read. It names the
+  // target resource's methods, so the profile resource answers its own three
+  // rather than the five the route file declares to CORS.
+  assert(
+    methodResponse.headers['Allow'] === 'GET, PUT, OPTIONS',
+    `profile 405 should send Allow: GET, PUT, OPTIONS, got ${JSON.stringify(methodResponse.headers['Allow'])}`
+  );
+
+  const projectsMethodResponse = new FakeResponse();
+  await handler(createRequest('PUT', 'projects'), projectsMethodResponse);
+  assert(projectsMethodResponse.statusCode === 405, 'unsupported project collection method should return 405');
+  assert(
+    projectsMethodResponse.headers['Allow'] === 'GET, POST, OPTIONS',
+    `project collection 405 should send Allow: GET, POST, OPTIONS, got ${JSON.stringify(projectsMethodResponse.headers['Allow'])}`
+  );
+
+  const projectMethodResponse = new FakeResponse();
+  await handler(createRequest('PUT', 'project', undefined, 'project-1'), projectMethodResponse);
+  assert(projectMethodResponse.statusCode === 405, 'unsupported project item method should return 405');
+  assert(
+    projectMethodResponse.headers['Allow'] === 'GET, DELETE, OPTIONS',
+    `project item 405 should send Allow: GET, DELETE, OPTIONS, got ${JSON.stringify(projectMethodResponse.headers['Allow'])}`
+  );
 }
 
 function createTestHandler(user: AuthUser) {

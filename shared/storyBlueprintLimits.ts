@@ -24,6 +24,39 @@
 export const STORY_BLUEPRINT_LIMITS = {
   /** Thematic seeds the generator will weave into one story. */
   maxThemes: 5,
+  /**
+   * One theme seed's own text, not a paragraph wearing a seed's field names.
+   *
+   * `maxThemes` bounded how many seeds a blueprint may carry and nothing
+   * bounded how large one is. A seed is `{ id, label, description }`, and the
+   * parser checked only that all three are strings — so five seeds was five
+   * unbounded free-text fields, on the same routes and for the same reasons as
+   * the two names below.
+   *
+   * They travel further than the names do. `buildContinuityPrompt` puts every
+   * `theme.label` into the JSON payload the continuity extractor sends,
+   * verbatim and at whatever length arrived; `buildInitialThreads` writes each
+   * seed's `label` and `description` into a `PlotThread` on the story state,
+   * which travels back to the caller and is stored with the project, so the
+   * text outlives the request that sent it. `formatThemeContext` and
+   * `buildStoryLabContext` in `StoryService` cap them at their own prompt
+   * boundary — the same reason this never showed up as a genesis bill — and
+   * the continuity call and the state have no such guard.
+   *
+   * The numbers are that prompt boundary's, so the two readings cannot
+   * disagree about how much of a seed is worth sending; `StoryService` reads
+   * them from here now rather than restating them. The label is
+   * `maxCharacterNameLength`'s 80, because a label names one thing the way
+   * those fields name one person; the description is wider because it is a
+   * sentence — the twelve the picker offers run to about forty characters.
+   *
+   * `id` is not capped here: it never reaches a prompt or the state. It is
+   * matched against the classic-theme table, which drops anything it does not
+   * recognise, and reported through `toLoggableThemes`, which reduces an
+   * unrecognised id to a count rather than logging it.
+   */
+  maxThemeLabelLength: 80,
+  maxThemeDescriptionLength: 280,
   maxLoglineLength: 420,
   maxWorldDetailsLength: 600,
   maxNarrativeDirectivesLength: 1200,

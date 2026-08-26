@@ -10,6 +10,7 @@ import {
   describeNarrativeDirectivesOverflow,
   STORY_BLUEPRINT_LIMITS
 } from '../shared/storyBlueprintLimits';
+import { STORY_LAB_THEME_SEEDS } from '../shared/storyLabThemeSeeds';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -174,6 +175,79 @@ const tooManyThemes = parseStoryLabBlueprintFromBody({
   }))
 });
 assert(tooManyThemes.error?.invalidFields.includes('themes'), 'more themes than the cap should be reported as invalid');
+
+// How many seeds arrive was measured; how large one is was not. Every seed's
+// `label` reaches the continuity model call through `buildContinuityPrompt`,
+// and both `label` and `description` are written into a stored `PlotThread` by
+// `buildInitialThreads`, so an unbounded seed is billed by the token and then
+// kept.
+const overLongThemeLabel = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  themes: [{
+    id: 'forbidden_love',
+    label: longText(STORY_BLUEPRINT_LIMITS.maxThemeLabelLength + 1),
+    description: 'A dangerous bond.'
+  }]
+});
+assert(
+  overLongThemeLabel.error?.invalidFields.includes('themes'),
+  'a theme seed label past the cap should be reported as an invalid theme'
+);
+assert(
+  overLongThemeLabel.error?.message.includes('themes[0].label'),
+  'the refusal should name which seed and which field has to be fixed'
+);
+
+const overLongThemeDescription = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  themes: [{
+    id: 'forbidden_love',
+    label: 'Forbidden Love',
+    description: longText(STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength + 1)
+  }]
+});
+assert(
+  overLongThemeDescription.error?.invalidFields.includes('themes'),
+  'a theme seed description past the cap should be reported as an invalid theme'
+);
+
+// The query-string genesis stream takes the same blueprint, so it takes the
+// same caps — it is the path with no form in front of it.
+const overLongThemeFromQuery = parseStoryLabBlueprintFromQuery({
+  ...bodyForCreature('dragon'),
+  themes: JSON.stringify([{
+    id: 'forbidden_love',
+    label: longText(STORY_BLUEPRINT_LIMITS.maxThemeLabelLength + 1),
+    description: 'A dangerous bond.'
+  }]),
+  heatContract: JSON.stringify(bodyForCreature('dragon').heatContract)
+} as Record<string, string | number>);
+assert(
+  overLongThemeFromQuery.error?.invalidFields.includes('themes'),
+  'the query-string genesis stream should refuse an over-long theme seed too'
+);
+
+// A seed exactly at both caps is a seed the routes accept, so the caps and the
+// prompt boundary in `StoryService` cannot disagree about it.
+const themeAtTheLimit = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  themes: [{
+    id: 'forbidden_love',
+    label: longText(STORY_BLUEPRINT_LIMITS.maxThemeLabelLength),
+    description: longText(STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength)
+  }]
+});
+assert(!themeAtTheLimit.error, 'a theme seed exactly at both caps should be accepted');
+
+// The twelve seeds the picker actually offers have to clear the caps they are
+// measured against, or the app cannot generate with its own list.
+for (const seed of STORY_LAB_THEME_SEEDS) {
+  assert(
+    seed.label.length <= STORY_BLUEPRINT_LIMITS.maxThemeLabelLength
+      && seed.description.length <= STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength,
+    `the offered theme seed "${seed.id}" should clear the blueprint caps`
+  );
+}
 
 const overLongNoGoContent = parseStoryLabBlueprintFromBody({
   ...bodyForCreature('dragon'),
