@@ -1,14 +1,15 @@
 // Created: 2026-06-05 04:02 EDT
 
 import type { AuthUser } from '../auth/authPort';
-import type { SavedStoryProject } from '../contracts';
+import type { SavedStoryProject, StoryLabLibrarySort } from '../contracts';
 import {
   cloneSavedStoryProject,
   createStoredStoryProjectRecord,
   createStoryProjectStoreError,
   errorResult,
   StoryProjectDeleteReceipt,
-  StoryProjectListItem,
+  StoryProjectListPage,
+  StoryProjectListQuery,
   StoryProjectStore,
   StoryProjectStoreError,
   StoryProjectStoreResult,
@@ -78,12 +79,64 @@ where id = $1 and owner_user_id = $2
 limit 1
 `;
 
-const LIST_PROJECTS_SQL = `
+/**
+ * One page of the owner's library, in the order the caller asked for.
+ *
+ * This used to be a single `order by updated_at desc limit 50` — a cap on the
+ * *answer*, applied in the one place that could not know what the answer was
+ * ordered by. `handleProjectsRoute` reads `librarySort` off the caller's
+ * profile, so the fifty rows were always the fifty most recently updated and
+ * the reader's sort only rearranged the survivors: a `title_asc` library was
+ * the alphabetical order of the fifty most recently touched projects, not the
+ * first fifty by title, and the project that should have been at the top of it
+ * was gone with nothing in the response saying so. The in-memory adapter beside
+ * this one had no cap at all, so the two did not agree on what the library
+ * contained.
+ *
+ * Taking the ordering as part of the query is what lets the bound stay here,
+ * where the rows are. Removing the `limit` and capping at the route would have
+ * fixed the ordering and broken the cost: every row of the library, including
+ * its whole `project_json`, read and parsed on every listing so that the route
+ * could throw most of it away.
+ *
+ * `ORDER_BY_CLAUSES` is a closed table keyed by `StoryLabLibrarySort` rather
+ * than a string built from the caller's value — the ordering comes from a
+ * stored profile field, and an `order by` is not a place to find out that a
+ * validator was skipped. `id` breaks every tie so one library always pages the
+ * same way.
+ */
+const LIST_PROJECTS_SQL_PREFIX = `
 select id, story_id, owner_user_id, project_json, created_at, updated_at
 from story_projects
 where owner_user_id = $1
-order by updated_at desc
-limit 50
+order by `;
+
+const LIST_PROJECTS_SQL_SUFFIX = `
+limit $2
+`;
+
+/**
+ * The three orderings `StoryLabLibrarySort` names, as SQL.
+ *
+ * `updated_desc` and `created_desc` read the columns directly.
+ * `title_asc` orders on `lower(title)` so that it does not depend on whether
+ * the deployment's collation is case-sensitive — but SQL collation and
+ * `localeCompare` are still not the same ordering for accented titles, so this
+ * clause decides only *which* rows a page holds. The route re-applies
+ * `sortStoryProjectListItems` to the page it gets back, and that comparator is
+ * what decides the order a caller actually sees.
+ */
+const ORDER_BY_CLAUSES: Record<StoryLabLibrarySort, string> = {
+  updated_desc: 'updated_at desc, id asc',
+  created_desc: 'created_at desc, id asc',
+  title_asc: 'lower(title) asc, id asc'
+};
+
+/** The owner's whole count, which is not the page's — see `StoryProjectListPage`. */
+const COUNT_PROJECTS_SQL = `
+select count(*)::int as total
+from story_projects
+where owner_user_id = $1
 `;
 
 const DELETE_PROJECT_SQL = `
@@ -174,15 +227,28 @@ class PostgresStoryProjectStore implements StoryProjectStore {
     }
   }
 
-  async listProjects(user: AuthUser): Promise<StoryProjectStoreResult<StoryProjectListItem[]>> {
+  async listProjects(user: AuthUser, query: StoryProjectListQuery): Promise<StoryProjectStoreResult<StoryProjectListPage>> {
     const readyError = this.getReadinessError();
     if (readyError) {
       return errorResult(readyError);
     }
 
+    // The count is its own statement rather than a window function over the
+    // page, because the page is bounded and a `count(*) over ()` beside it
+    // would make the database read every row again to answer it — the cost the
+    // `limit` is here to avoid.
+    const listSql = `${LIST_PROJECTS_SQL_PREFIX}${ORDER_BY_CLAUSES[query.sort]}${LIST_PROJECTS_SQL_SUFFIX}`;
+
     try {
-      const result = await this.executor().query<StoryProjectRow>(LIST_PROJECTS_SQL, [user.userId]);
-      return successResult(result.rows.map(row => toStoryProjectListItem(recordFromRow(row))));
+      const [page, count] = await Promise.all([
+        this.executor().query<StoryProjectRow>(listSql, [user.userId, query.limit]),
+        this.executor().query<{ total: number }>(COUNT_PROJECTS_SQL, [user.userId])
+      ]);
+
+      return successResult({
+        items: page.rows.map(row => toStoryProjectListItem(recordFromRow(row))),
+        totalCount: count.rows[0]?.total ?? page.rows.length
+      });
     } catch {
       return errorResult(this.storageError());
     }

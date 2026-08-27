@@ -9,8 +9,10 @@ import {
   createStoryProjectStoreError,
   errorResult,
   projectAccessRecordFromStoredProject,
+  sortStoryProjectListItems,
   StoryProjectDeleteReceipt,
-  StoryProjectListItem,
+  StoryProjectListPage,
+  StoryProjectListQuery,
   StoryProjectStore,
   StoryProjectStoreError,
   StoryProjectStoreResult,
@@ -83,13 +85,19 @@ class NonDurableInMemoryStoryProjectStore implements StoryProjectStore {
     return successResult(cloneStoredStoryProjectRecord(record));
   }
 
-  async listProjects(user: AuthUser): Promise<StoryProjectStoreResult<StoryProjectListItem[]>> {
-    const items = Array.from(this.records.values())
+  // The ordering and the cap are the query's, so this adapter answers them with
+  // the shared comparator rather than a second reading of its own: it and the
+  // Postgres adapter have to agree about what "the first `limit` by this sort"
+  // means, and the only way two implementations agree is by not being two.
+  async listProjects(user: AuthUser, query: StoryProjectListQuery): Promise<StoryProjectStoreResult<StoryProjectListPage>> {
+    const owned = Array.from(this.records.values())
       .filter(record => record.ownerUserId === user.userId)
-      .sort((first, second) => Date.parse(second.updatedAt) - Date.parse(first.updatedAt))
       .map(toStoryProjectListItem);
 
-    return successResult(items);
+    return successResult({
+      items: sortStoryProjectListItems(owned, query.sort).slice(0, query.limit),
+      totalCount: owned.length
+    });
   }
 
   async deleteProject(user: AuthUser, projectId: string): Promise<StoryProjectStoreResult<StoryProjectDeleteReceipt>> {

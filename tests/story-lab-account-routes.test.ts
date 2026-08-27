@@ -11,10 +11,12 @@ import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/
 import { createNonDurableInMemoryStoryProjectStore } from '../api/_lib/story-lab/storage/inMemoryStoryProjectStore';
 import { createPostgresStoryLabProfileStore } from '../api/_lib/story-lab/profile/postgresStoryLabProfileStore';
 import { createPostgresStoryProjectStore } from '../api/_lib/story-lab/storage/postgresStoryProjectStore';
+import { STORY_LAB_LIBRARY_MAX_ITEMS } from '../api/_lib/story-lab/storage/storyProjectStore';
+import { STORY_LAB_PROFILE_LIMITS } from '../shared/storyBlueprintLimits';
 import type {
   StoredStoryProjectRecord,
   StoryProjectDeleteReceipt,
-  StoryProjectListItem,
+  StoryProjectListPage,
   StoryProjectStore,
   StoryProjectStoreResult
 } from '../api/_lib/story-lab/storage/storyProjectStore';
@@ -92,6 +94,8 @@ async function main() {
   await testInjectedStoreErrorMessageIsSanitized();
   await testInvalidRouteAndMethodResponses();
   await testLibrarySortPreferenceOrdersTheProjectList();
+  await testLibraryListingCapIsAppliedAfterTheReadersSort();
+  await testProfileFreeTextIsMeasuredBeforeItIsStored();
 
   console.log('Story Lab account route tests passed');
 }
@@ -662,6 +666,217 @@ async function testLibrarySortPreferenceOrdersTheProjectList() {
   );
 }
 
+/**
+ * A capped listing has to be capped by the ordering the reader chose.
+ *
+ * The Postgres adapter carried the cap in its own SQL, as `order by updated_at
+ * desc limit 50`, and the route then sorted whatever came back. So the fifty
+ * items were always the fifty most recently updated ones and `librarySort` only
+ * rearranged them: a reader on `title_asc` was shown the alphabetical order of
+ * the fifty most recently touched projects, not the first fifty by title, and
+ * the project that should have been at the very top of their library was
+ * missing with nothing in the response to say so. The in-memory adapter applied
+ * no cap at all, so the two disagreed about what the library contained.
+ *
+ * The ordering now travels *down* to the store as part of the query, so the
+ * cap can stay where the rows are without choosing them under an ordering
+ * nobody asked for. This is the end-to-end proof of that: what the reader gets
+ * back is the front of their own order, however the adapter beneath produced
+ * it.
+ *
+ * `Aardvark Oath` is the test's whole point: it sorts first by title and last
+ * by update, so it is exactly the item the old ordering dropped and the new one
+ * must keep.
+ */
+async function testLibraryListingCapIsAppliedAfterTheReadersSort() {
+  let tick = 0;
+  const advancingNow = () => `2026-06-08T09:${String(tick++).padStart(2, '0')}:00.000Z`;
+  const profileStore = createNonDurableInMemoryStoryLabProfileStore({ now: advancingNow });
+  const projectStore = createNonDurableInMemoryStoryProjectStore({ now: advancingNow });
+  const handler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore,
+    projectStore,
+    now: advancingNow
+  });
+
+  const saveProject = async (id: string, title: string): Promise<void> => {
+    const saveResponse = new FakeResponse();
+    await handler(createRequest('POST', 'projects', {
+      project: { ...createProject(), id, storyId: `story-${id}`, title }
+    }), saveResponse);
+    assert(saveResponse.statusCode === 200, `saving ${id} should succeed`);
+  };
+
+  // Saved first, so it is the least recently updated of the set.
+  await saveProject('project-aardvark', 'Aardvark Oath');
+  const overflow = STORY_LAB_LIBRARY_MAX_ITEMS + 4;
+  for (let index = 0; index < overflow; index += 1) {
+    await saveProject(`project-${index}`, `Zephyr Court ${String(index).padStart(3, '0')}`);
+  }
+
+  const profileResponse = new FakeResponse();
+  await handler(createRequest('PUT', 'profile', {
+    profile: {
+      userId: owner.userId,
+      displayName: 'Avery',
+      preferences: { librarySort: 'title_asc' }
+    }
+  }), profileResponse);
+  assert(profileResponse.statusCode === 200, 'saving librarySort=title_asc should succeed');
+
+  const listResponse = new FakeResponse();
+  await handler(createRequest('GET', 'projects'), listResponse);
+  assert(listResponse.statusCode === 200, 'listing projects should succeed');
+
+  const list = (listResponse.body as any).data as {
+    projects: { title: string }[];
+    totalProjectCount: number;
+  };
+
+  assert(
+    list.projects.length === STORY_LAB_LIBRARY_MAX_ITEMS,
+    `an over-full library lists at most ${STORY_LAB_LIBRARY_MAX_ITEMS} projects (got ${list.projects.length})`
+  );
+  assert(
+    list.totalProjectCount === overflow + 1,
+    `a capped listing reports the untruncated count (got ${list.totalProjectCount}, expected ${overflow + 1})`
+  );
+  assert(
+    list.projects[0].title === 'Aardvark Oath',
+    'the cap keeps the front of the reader\'s own ordering, not of the storage\'s ' +
+      `(got ${JSON.stringify(list.projects[0].title)})`
+  );
+
+  // The count is the owner's, not the page's, so a library inside the cap must
+  // not start reporting a number that disagrees with what it carries.
+  const smallLibraryStore = createNonDurableInMemoryStoryProjectStore({ now: advancingNow });
+  const smallLibraryHandler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore: createNonDurableInMemoryStoryLabProfileStore({ now: advancingNow }),
+    projectStore: smallLibraryStore,
+    now: advancingNow
+  });
+  const smallSaveResponse = new FakeResponse();
+  await smallLibraryHandler(createRequest('POST', 'projects', { project: createProject() }), smallSaveResponse);
+  assert(smallSaveResponse.statusCode === 200, 'saving one project should succeed');
+
+  const smallListResponse = new FakeResponse();
+  await smallLibraryHandler(createRequest('GET', 'projects'), smallListResponse);
+  const smallList = (smallListResponse.body as any).data as {
+    projects: unknown[];
+    totalProjectCount: number;
+  };
+  assert(
+    smallList.projects.length === 1 && smallList.totalProjectCount === 1,
+    'an uncapped listing reports exactly what it carries ' +
+      `(got ${smallList.projects.length} of ${smallList.totalProjectCount})`
+  );
+}
+
+/**
+ * The profile is the one thing this API stores durably on a caller's word, and
+ * its three free-text fields were the last ones in the repository that nothing
+ * measured. `normalizeStoryLabProfilePreferences` checks every closed field on
+ * the same object against its allowed set and reads these three through a
+ * helper that asks only whether the value is a string, so an authenticated
+ * caller could park as much prose per account as a request body carries and
+ * have this route hand it back on every read afterwards.
+ *
+ * `noGoContent` is the sharp end: `parseStoryLabBlueprint` refuses that field
+ * past `maxNoGoContentLength` on the generation routes, so the *default* for a
+ * field was accepted at any length while the per-story value of it was capped.
+ *
+ * Refusal rather than truncation is the behaviour under test. These fields say
+ * what a reader does not want written; a silently shortened one is a shortened
+ * set of constraints they cannot see the end of.
+ */
+async function testProfileFreeTextIsMeasuredBeforeItIsStored() {
+  const profileStore = createNonDurableInMemoryStoryLabProfileStore({ now: () => now });
+  const handler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore,
+    projectStore: createNonDurableInMemoryStoryProjectStore({ now: () => now }),
+    now: () => now
+  });
+
+  const putProfile = async (preferences: unknown, displayName = 'Avery'): Promise<FakeResponse> => {
+    const response = new FakeResponse();
+    await handler(createRequest('PUT', 'profile', {
+      profile: { userId: owner.userId, displayName, preferences }
+    }), response);
+    return response;
+  };
+
+  const oversized: Array<{ label: string; field: string; response: Promise<FakeResponse> }> = [
+    {
+      label: 'displayName',
+      field: 'displayName',
+      response: putProfile({}, 'A'.repeat(STORY_LAB_PROFILE_LIMITS.maxDisplayNameLength + 1))
+    },
+    {
+      label: 'contentBoundaries',
+      field: 'preferences.contentBoundaries',
+      response: putProfile({
+        contentBoundaries: 'B'.repeat(STORY_LAB_PROFILE_LIMITS.maxContentBoundariesLength + 1)
+      })
+    },
+    {
+      label: 'noGoContent',
+      field: 'preferences.defaultHeatContract.noGoContent',
+      response: putProfile({
+        defaultHeatContract: {
+          noGoContent: 'C'.repeat(STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength + 1)
+        }
+      })
+    }
+  ];
+
+  for (const candidate of oversized) {
+    const response = await candidate.response;
+    assert(
+      response.statusCode === 400,
+      `an oversized ${candidate.label} should be refused, not stored (got ${response.statusCode})`
+    );
+    const body = response.body as any;
+    assert(
+      body.error.code === 'INVALID_REQUEST',
+      `an oversized ${candidate.label} should answer INVALID_REQUEST (got ${JSON.stringify(body.error.code)})`
+    );
+    assert(
+      typeof body.error.message === 'string' && body.error.message.startsWith(candidate.field),
+      `the refusal should name the field to shorten (got ${JSON.stringify(body.error.message)})`
+    );
+  }
+
+  // Nothing was written: a refused PUT must not have left the oversized value
+  // in the store for the next GET to hand back.
+  const afterRefusals = new FakeResponse();
+  await handler(createRequest('GET', 'profile'), afterRefusals);
+  assert(afterRefusals.statusCode === 200, 'reading the profile after a refused write should succeed');
+  assert(
+    !JSON.stringify(afterRefusals.body).includes('BBBBBBBBBB'),
+    'a refused profile write should leave nothing behind'
+  );
+
+  // Exactly at the cap is accepted: the limit is inclusive, the way every other
+  // limit in `STORY_BLUEPRINT_LIMITS` is read.
+  const atTheCap = await putProfile({
+    contentBoundaries: 'B'.repeat(STORY_LAB_PROFILE_LIMITS.maxContentBoundariesLength),
+    defaultHeatContract: {
+      noGoContent: 'C'.repeat(STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength)
+    }
+  }, 'A'.repeat(STORY_LAB_PROFILE_LIMITS.maxDisplayNameLength));
+  assert(atTheCap.statusCode === 200, `a profile exactly at the caps should be stored (got ${atTheCap.statusCode})`);
+
+  const stored = (atTheCap.body as any).data.preferences;
+  assert(
+    stored.contentBoundaries.length === STORY_LAB_PROFILE_LIMITS.maxContentBoundariesLength
+      && stored.defaultHeatContract.noGoContent.length === STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength,
+    'an accepted profile keeps its free text whole rather than truncating it'
+  );
+}
+
 function createTestHandler(user: AuthUser) {
   return createHandlerFor(
     user,
@@ -776,7 +991,7 @@ function createLeakyProjectStore(): StoryProjectStore {
     async loadProject(): Promise<StoryProjectStoreResult<StoredStoryProjectRecord | null>> {
       return leakResult();
     },
-    async listProjects(): Promise<StoryProjectStoreResult<StoryProjectListItem[]>> {
+    async listProjects(): Promise<StoryProjectStoreResult<StoryProjectListPage>> {
       return leakResult();
     },
     async deleteProject(): Promise<StoryProjectStoreResult<StoryProjectDeleteReceipt>> {

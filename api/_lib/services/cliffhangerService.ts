@@ -3,71 +3,165 @@
 
 import { CliffhangerAnalysis, CliffhangerType } from '../types/contracts';
 import { splitStoryIntoTextBlocks } from '../../../shared/storyTextBlocks';
+import { collapseWhitespace } from '../utils/whitespace';
+import { escapeRegExp } from '../utils/regexEscape';
 
-const CLIFFHANGER_PATTERNS: Record<CliffhangerType, string[]> = {
+/**
+ * The hook words and phrases each kind of cliffhanger is recognised by, and the
+ * forms of each one that count as it.
+ *
+ * These were bare lists matched with `String.prototype.includes`, and that is
+ * the last substring scan in the repository — the same one
+ * `extractThemesFromContent`, `extractSpicyLevelFromContent`,
+ * `extractPlotThreads`, and `continuationGuidance`'s pressure scans were all
+ * moved off, arriving here through the one door nobody had checked. The
+ * collisions are the same kind, and the sharpest of them are the negations —
+ * four of the six types could be credited by a word that denies the beat it
+ * was counted for:
+ *
+ * - **`understood` is inside `misunderstood`.** Two people misunderstanding
+ *   each other for a whole chapter is the premise of most of this genre, and
+ *   it scored `character_revelation` — the type whose three suggestions tell
+ *   the next batch to show how the truth changed a relationship.
+ * - **`decision` is inside `indecision`**, so a chapter about a character who
+ *   cannot choose scored `emotional_conflict`, whose first suggestion is
+ *   "Force the character to choose".
+ * - **`truth` is inside `untruth`**, and **`price` inside `priceless`** — the
+ *   exact collision `PRESSURE_KEYWORD_FORMS` was fixed for a commit ago, on
+ *   the same word.
+ * - **`revealed` is inside `unrevealed`**, and **`realized` inside
+ *   `unrealized`**.
+ *
+ * The rest are the ordinary kind: **`trapped` is inside `strapped`**, so a
+ * character strapped into a chair scored `danger` (`trap` inside `strapped` is
+ * again a collision the pressure scans already name); **`shadow` is inside
+ * `overshadowed`**; **`secret` is inside `secretary`**, which
+ * `extractPlotThreads` names too; **`question` is inside `questionable`**.
+ *
+ * What that decided is not internal. The winning type becomes
+ * `cliffhangerType`, which selects the three `suggestedContinuations` the next
+ * batch is prompted with, and `varietyScore`, which penalises a chapter for
+ * repeating the type before it; the whole analysis travels back to the caller
+ * as `cliffhangerAnalysis` on the continuation response, and
+ * `cliffhangerDetected` becomes each chapter's `cliffhangerEnding`. A final
+ * paragraph counts three times over — once in the whole-story scan and twice
+ * more on its own — so one collision in the closing lines is worth three
+ * points, more than any real hook in the rest of the chapter.
+ *
+ * So the hooks are spelled out as whole words, the same repair and the same
+ * reading `containsWholeWord` in `storyContentAnalysis` and
+ * `PRESSURE_KEYWORD_FORMS` in `continuationGuidance` already apply. Each entry
+ * below is one hook and every spelling that counts as it, which is what keeps
+ * the score comparable: a type's strength is how many of its *hooks* appear,
+ * exactly as the substring scan counted one hit per needle, so a chapter
+ * saying both `danger` and `dangerous` scores that hook once — the way it did
+ * when `danger` was a substring of both — and listing inflections does not
+ * quietly re-weight a hook against the ones with fewer spellings.
+ *
+ * The inflections the substring form picked up for free — `dangerous` for
+ * `danger`, `threatening` for `threat`, `secretly` for `secret`, `questions`
+ * for `question` — are listed rather than lost, and the other half of an
+ * inflection the substring form could not see either way (`consequence` beside
+ * `consequences`, `mysteries` beside `mystery`) is listed with them, the way
+ * `PRESSURE_KEYWORD_FORMS` lists `chose` and `chosen` beside `choose`. What is
+ * deliberately not carried over is the rest of what the substrings caught: the
+ * collisions above are the defect, not coverage.
+ */
+const CLIFFHANGER_PATTERNS: Record<CliffhangerType, ReadonlyArray<readonly string[]>> = {
   romantic_tension: [
-    'pulled away',
-    'hesitated',
-    'almost kissed',
-    'unspoken desire',
-    'locked eyes',
-    'breath caught',
-    'heart raced',
-    'wanted him',
-    'wanted her'
+    ['pulled away', 'pulls away', 'pulling away'],
+    ['hesitate', 'hesitated', 'hesitates', 'hesitating'],
+    ['almost kissed'],
+    ['unspoken desire', 'unspoken desires'],
+    ['locked eyes'],
+    ['breath caught'],
+    ['heart raced', 'heart racing'],
+    ['wanted him'],
+    ['wanted her']
   ],
   plot_twist: [
-    'suddenly',
-    'but then',
-    'however',
-    'unexpectedly',
-    'revealed',
-    'discovered',
-    'truth was',
-    'it was not'
+    ['suddenly'],
+    ['but then'],
+    ['however'],
+    ['unexpectedly'],
+    ['reveal', 'reveals', 'revealed', 'revealing'],
+    ['discover', 'discovers', 'discovered', 'discovering'],
+    ['truth was'],
+    ['it was not']
   ],
   danger: [
-    'footsteps',
-    'shadow',
-    'threat',
-    'danger',
-    'hunted',
-    'pursued',
-    'stalked',
-    'trapped',
-    'blood froze'
+    ['footstep', 'footsteps'],
+    ['shadow', 'shadows', 'shadowed', 'shadowy'],
+    ['threat', 'threats', 'threaten', 'threatens', 'threatened', 'threatening'],
+    ['danger', 'dangers', 'dangerous', 'dangerously'],
+    ['hunt', 'hunts', 'hunted', 'hunting'],
+    ['pursue', 'pursues', 'pursued', 'pursuing'],
+    ['stalk', 'stalks', 'stalked', 'stalking'],
+    ['trap', 'traps', 'trapped', 'trapping'],
+    ['blood froze']
   ],
   mystery: [
-    'wondered',
-    'question',
-    'secret',
-    'mystery',
-    'hidden',
-    'concealed',
-    'truth',
-    'why had'
+    ['wonder', 'wonders', 'wondered', 'wondering'],
+    ['question', 'questions', 'questioned', 'questioning'],
+    ['secret', 'secrets', 'secretly'],
+    ['mystery', 'mysteries'],
+    ['hidden'],
+    ['conceal', 'conceals', 'concealed', 'concealing'],
+    ['truth', 'truths'],
+    ['why had']
   ],
   character_revelation: [
-    'realized',
-    'understood',
-    'dawned on',
-    'recognition',
-    'identity',
-    'true nature',
-    'confession',
-    'admission'
+    ['realize', 'realizes', 'realized', 'realizing'],
+    ['understood'],
+    ['dawned on'],
+    ['recognition'],
+    ['identity', 'identities'],
+    ['true nature'],
+    ['confession', 'confessions'],
+    ['admission', 'admissions']
   ],
   emotional_conflict: [
-    'torn between',
-    'conflicted',
-    'struggled',
-    'dilemma',
-    'choice',
-    'decision',
-    'consequences',
-    'price'
+    ['torn between'],
+    ['conflicted'],
+    ['struggle', 'struggles', 'struggled', 'struggling'],
+    ['dilemma', 'dilemmas'],
+    ['choice', 'choices'],
+    ['decision', 'decisions'],
+    ['consequence', 'consequences'],
+    ['price', 'prices']
   ]
 };
+
+/**
+ * One compiled alternation per hook, built once at module load.
+ *
+ * `analyze` runs twelve of these scans per chapter — six types against the
+ * whole story and six against its final paragraph — and compiling a `RegExp`
+ * per spelling per call would rebuild the same fixed set on every one of them.
+ * The arrangement is `PRESSURE_KEYWORD_PATTERNS`'s in `continuationGuidance`,
+ * for the same reason and against text the caller has already lowercased.
+ *
+ * `\b` at each end is what separates a hook from the longer word it sits
+ * inside. The multi-word entries take it at the ends of the phrase rather than
+ * around each word, which is what makes `blood froze` one hook and not two
+ * independent hits — and the single space inside those phrases is why the
+ * scanned text has its whitespace collapsed first: a phrase the generator
+ * wrapped across a line inside one paragraph was invisible to a matcher looking
+ * for one space, the same failure `extractPlotThreads`'s
+ * `\bwhat\s+(if|would|could)\b` names.
+ */
+const CLIFFHANGER_HOOK_PATTERNS = new Map<CliffhangerType, RegExp[]>(
+  (Object.entries(CLIFFHANGER_PATTERNS) as Array<[CliffhangerType, ReadonlyArray<readonly string[]>]>)
+    .map(([type, hooks]) => [
+      type,
+      hooks.map(spellings => new RegExp(String.raw`\b(?:${spellings.map(escapeRegExp).join('|')})\b`))
+    ])
+);
+
+/** How many of a type's hooks appear in `text`, counting each hook at most once. */
+function countHookMatches(type: CliffhangerType, text: string): number {
+  return (CLIFFHANGER_HOOK_PATTERNS.get(type) ?? []).filter(pattern => pattern.test(text)).length;
+}
 
 /**
  * The punctuation a chapter stops on when it stops on a hook. Anchored, because
@@ -107,17 +201,24 @@ export class CliffhangerService {
     // putting a boundary in their place also ran the neighbouring words
     // together, so `door.</p><p>Blood` was scanned as `door.Blood`.
     const paragraphs = splitStoryIntoTextBlocks(content);
-    const lowerContent = paragraphs.join('\n\n').toLowerCase();
     const lastParagraph = paragraphs.length > 0 ? paragraphs[paragraphs.length - 1] : '';
     const trimmedLastParagraph = lastParagraph.trim();
-    const lowerLastParagraph = lastParagraph.toLowerCase();
+
+    // The scanned copy, not the reported one: whitespace is collapsed *within*
+    // each paragraph so a hook phrase the generator wrapped across a line is
+    // still one space wide, and the paragraphs are still joined by a blank line
+    // so a phrase cannot be assembled across the boundary between two of them.
+    // `cliffhangerText` below keeps the paragraph as the reader sees it.
+    const scannedParagraphs = paragraphs.map(collapseWhitespace);
+    const lowerContent = scannedParagraphs.join('\n\n').toLowerCase();
+    const lowerLastParagraph = (scannedParagraphs[scannedParagraphs.length - 1] ?? '').toLowerCase();
 
     let detectedType: CliffhangerType | null = null;
     let strength = 0;
 
-    for (const [type, patterns] of Object.entries(CLIFFHANGER_PATTERNS) as Array<[CliffhangerType, string[]]>) {
-      const wholeContentMatches = patterns.filter(pattern => lowerContent.includes(pattern)).length;
-      const finalParagraphMatches = patterns.filter(pattern => lowerLastParagraph.includes(pattern)).length;
+    for (const type of Object.keys(CLIFFHANGER_PATTERNS) as CliffhangerType[]) {
+      const wholeContentMatches = countHookMatches(type, lowerContent);
+      const finalParagraphMatches = countHookMatches(type, lowerLastParagraph);
       const currentStrength = wholeContentMatches + finalParagraphMatches * 2;
 
       if (currentStrength > strength) {

@@ -382,7 +382,8 @@ describe('StoryService', () => {
         acceptedMemoryCardCount: 0,
         createdAt: project.createdAt,
         updatedAt: project.updatedAt
-      }]
+      }],
+      totalProjectCount: 1
     };
     const saveReceipt: CloudStoryProjectSaveReceipt = {
       projectId: project.id,

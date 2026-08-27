@@ -37,6 +37,9 @@ const owner: AuthUser = {
   userId: 'user-owner',
   email: 'owner@example.com'
 };
+/** The listing these tests ask for; paging itself is covered in the storage-port suite. */
+const wholeLibraryQuery = { sort: 'updated_desc', limit: 50 } as const;
+
 const now = '2026-06-08T10:50:00.000Z';
 
 async function main() {
@@ -69,7 +72,7 @@ async function testMissingDatabaseDoesNotCreateExecutor() {
   assert(!profileResult.success, 'profile store should fail closed without DATABASE_URL');
   assert(profileResult.error.code === 'STORY_LAB_PROFILE_STORAGE_UNCONFIGURED', 'profile store should expose profile storage config error');
 
-  const projectResult = await storage.projectStore.listProjects(owner);
+  const projectResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
   assert(!projectResult.success, 'project store should fail closed without DATABASE_URL');
   assert(projectResult.error.code === 'STORY_LAB_STORAGE_UNCONFIGURED', 'project store should expose project storage config error');
 }
@@ -132,9 +135,10 @@ async function testConfiguredExecutorFactoryBuildsProfileAndProjectStores() {
 
   const project = createProject();
   executor.enqueueRows([createProjectRow(project)]);
-  const listResult = await storage.projectStore.listProjects(owner);
+  executor.enqueueRows([{ total: 1 }]);
+  const listResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
   assert(listResult.success, 'project store should use configured executor');
-  assert(listResult.data[0]?.projectId === project.id, 'project store should map configured executor row');
+  assert(listResult.data.items[0]?.projectId === project.id, 'project store should map configured executor row');
 
   assert(executor.queries.some(query => query.sql.includes('story_lab_profiles')), 'shared executor should receive profile SQL');
   assert(executor.queries.some(query => query.sql.includes('story_projects')), 'shared executor should receive project SQL');
@@ -165,7 +169,7 @@ async function testInvalidDatabaseUrlFailsClosed() {
   assert(!profileResult.success, 'profile store without executor should fail closed');
   assert(profileResult.error.code === 'STORY_LAB_PROFILE_STORAGE_DRIVER_MISSING', 'profile store should expose driver-missing error');
 
-  const projectResult = await storage.projectStore.listProjects(owner);
+  const projectResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
   assert(!projectResult.success, 'project store without executor should fail closed');
   assert(projectResult.error.code === 'STORY_LAB_STORAGE_DRIVER_MISSING', 'project store should expose driver-missing error');
 }

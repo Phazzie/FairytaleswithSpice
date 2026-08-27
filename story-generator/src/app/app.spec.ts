@@ -881,7 +881,8 @@ describe('App', () => {
         acceptedMemoryCardCount: 0,
         createdAt: '2026-06-08T08:37:00.000Z',
         updatedAt: '2026-06-08T08:38:00.000Z'
-      }]
+      }],
+      totalProjectCount: 1
     };
     storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
 
@@ -891,7 +892,37 @@ describe('App', () => {
     expect(storyService.listCloudStoryProjects).toHaveBeenCalled();
     expect(component.cloudProjects().length).toBe(1);
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
+    expect(component.cloudLibrarySyncState().message).toBe('1 cloud project loaded.');
     expect(fixture.nativeElement.textContent).toContain('Cloud Chapel');
+  });
+
+  // The account route caps the listing at `STORY_LAB_LIBRARY_MAX_ITEMS`, so a
+  // page that reports only its own length reads exactly like a complete
+  // library — "the story I saved yesterday is gone" and "it is past the cap"
+  // looked the same. `totalProjectCount` is what separates them, and this is
+  // the only place a reader ever sees the difference.
+  it('says how many cloud projects the account holds when the listing is capped', () => {
+    const cloudList: CloudStoryProjectList = {
+      ownerUserId: 'user-owner',
+      storageMode: 'cloud_postgres',
+      projects: [{
+        projectId: 'project-cloud',
+        storyId: 'story-cloud',
+        title: 'Cloud Chapel',
+        synopsis: 'A cloud-synced oath.',
+        chapterCount: 2,
+        acceptedMemoryCardCount: 0,
+        createdAt: '2026-06-08T08:37:00.000Z',
+        updatedAt: '2026-06-08T08:38:00.000Z'
+      }],
+      totalProjectCount: 61
+    };
+    storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
+
+    component.refreshCloudLibrary();
+    fixture.detectChanges();
+
+    expect(component.cloudLibrarySyncState().message).toBe('1 of 61 cloud projects loaded.');
   });
 
   it('does not mark cloud library synced when account storage is non-durable', () => {
@@ -907,7 +938,8 @@ describe('App', () => {
         acceptedMemoryCardCount: 0,
         createdAt: '2026-06-08T08:37:00.000Z',
         updatedAt: '2026-06-08T08:38:00.000Z'
-      }]
+      }],
+      totalProjectCount: 1
     };
     storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
 
@@ -934,7 +966,8 @@ describe('App', () => {
         acceptedMemoryCardCount: 2,
         createdAt: '2026-06-08T08:37:00.000Z',
         updatedAt: '2026-06-08T08:38:00.000Z'
-      }]
+      }],
+      totalProjectCount: 1
     };
     storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
     component.refreshCloudLibrary();
@@ -973,7 +1006,8 @@ describe('App', () => {
         acceptedMemoryCardCount: 0,
         createdAt: '2026-06-08T08:37:00.000Z',
         updatedAt: '2026-06-08T08:38:00.000Z'
-      }]
+      }],
+      totalProjectCount: 1
     };
     storyService.listCloudStoryProjects.and.returnValue(of({ success: true, data: cloudList }));
     component.refreshCloudLibrary();

@@ -4,6 +4,7 @@ import type {
 } from '../contracts';
 import { splitStoryIntoTextBlocks } from '../../../../shared/storyTextBlocks';
 import { collapseWhitespace } from '../../utils/whitespace';
+import { escapeRegExp } from '../../utils/regexEscape';
 
 export interface StoryQualityHeuristicInput {
   storyContent: string;
@@ -526,10 +527,6 @@ function normalizeProseForScanning(value: string): string {
     .toLowerCase()
     .replace(/[^\p{L}\p{M}'\s-]/gu, ' ')
     .replace(/\s+/g, ' ');
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /**

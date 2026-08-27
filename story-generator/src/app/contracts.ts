@@ -332,7 +332,22 @@ export interface CloudStoryProjectListItem {
 export interface CloudStoryProjectList {
   ownerUserId: string;
   storageMode: CloudStoryProjectStorageMode;
+  /**
+   * At most `STORY_LAB_LIBRARY_MAX_ITEMS` of them, taken from the front of the
+   * order the owner's `librarySort` puts their library in.
+   */
   projects: CloudStoryProjectListItem[];
+  /**
+   * How many projects the owner has, which is not always how many `projects`
+   * carries.
+   *
+   * The listing is capped, and a capped listing that reports only what it
+   * carries is indistinguishable from a complete one: a reader with fifty-one
+   * projects was shown fifty and told nothing, so "the story I saved yesterday
+   * is gone" and "the story I saved yesterday is on page two" looked the same
+   * from the response. This is the number that separates them.
+   */
+  totalProjectCount: number;
 }
 
 export interface CloudStoryProjectSaveReceipt {
