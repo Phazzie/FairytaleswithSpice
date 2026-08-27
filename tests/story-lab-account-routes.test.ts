@@ -516,12 +516,17 @@ async function testInvalidProjectBodyFailsClosedBeforeStoreAccess() {
  */
 async function testProjectSaveChecksTheFieldsItUsedToCast() {
   const handler = createTestHandler(owner);
+  // Named rather than repeated: each id is written at the save and again at the
+  // read that checks what the save stored.
+  const junkAnnotationsProjectId = 'project-account-junk-annotations';
+  const partialCardsProjectId = 'project-account-partial-cards';
+  const brokenChapterProjectId = 'project-account-broken-chapter';
 
   const junkAnnotationsResponse = new FakeResponse();
   await handler(createRequest('POST', 'projects', {
     project: {
       ...createProject(),
-      id: 'project-account-junk-annotations',
+      id: junkAnnotationsProjectId,
       telemetry: 'not-telemetry',
       continuityExtraction: 'not-a-receipt',
       pinnedMemoryCardDraftIds: 'memory-card-character-avery',
@@ -536,7 +541,7 @@ async function testProjectSaveChecksTheFieldsItUsedToCast() {
   const listResponse = new FakeResponse();
   await handler(createRequest('GET', 'projects'), listResponse);
   const listed = (listResponse.body as any).data.projects
-    .find((item: any) => item.projectId === 'project-account-junk-annotations');
+    .find((item: any) => item.projectId === junkAnnotationsProjectId);
   assert(Boolean(listed), 'the saved project should be listed');
   assert(
     listed.acceptedMemoryCardCount === 0,
@@ -544,7 +549,7 @@ async function testProjectSaveChecksTheFieldsItUsedToCast() {
   );
 
   const loadResponse = new FakeResponse();
-  await handler(createRequest('GET', 'project', undefined, 'project-account-junk-annotations'), loadResponse);
+  await handler(createRequest('GET', 'project', undefined, junkAnnotationsProjectId), loadResponse);
   const loaded = (loadResponse.body as any).data.project;
   assert(
     loaded.acceptedMemoryCards === undefined,
@@ -567,7 +572,7 @@ async function testProjectSaveChecksTheFieldsItUsedToCast() {
   await handler(createRequest('POST', 'projects', {
     project: {
       ...createProject(),
-      id: 'project-account-partial-cards',
+      id: partialCardsProjectId,
       pinnedMemoryCardDraftIds: ['draft-1', '', 42, null],
       acceptedMemoryCards: [realCard, { id: 'no-other-fields' }, null, 'card']
     }
@@ -575,7 +580,7 @@ async function testProjectSaveChecksTheFieldsItUsedToCast() {
   assert(partialCardsResponse.statusCode === 200, 'a partly readable annotation list should still save');
 
   const partialLoad = new FakeResponse();
-  await handler(createRequest('GET', 'project', undefined, 'project-account-partial-cards'), partialLoad);
+  await handler(createRequest('GET', 'project', undefined, partialCardsProjectId), partialLoad);
   const partial = (partialLoad.body as any).data.project;
   assert(
     partial.acceptedMemoryCards.length === 1 && partial.acceptedMemoryCards[0].title === 'Avery',
@@ -592,7 +597,7 @@ async function testProjectSaveChecksTheFieldsItUsedToCast() {
   await handler(createRequest('POST', 'projects', {
     project: {
       ...createProject(),
-      id: 'project-account-broken-chapter',
+      id: brokenChapterProjectId,
       chapters: [...createProject().chapters, { chapterNumber: 2 }]
     }
   }), brokenChapterResponse);
@@ -606,7 +611,7 @@ async function testProjectSaveChecksTheFieldsItUsedToCast() {
   );
 
   const missingProjectResponse = new FakeResponse();
-  await handler(createRequest('GET', 'project', undefined, 'project-account-broken-chapter'), missingProjectResponse);
+  await handler(createRequest('GET', 'project', undefined, brokenChapterProjectId), missingProjectResponse);
   assert(
     missingProjectResponse.statusCode === 404,
     'a refused save should store nothing at all'
