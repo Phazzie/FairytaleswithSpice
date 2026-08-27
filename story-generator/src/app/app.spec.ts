@@ -18,11 +18,18 @@ import {
   CloudStoryProjectList,
   CloudStoryProjectLoadResult,
   CloudStoryProjectSaveReceipt,
+  CHAPTER_BATCH_SIZES,
+  CREATURE_ARCHETYPES,
   EXPORT_FORMATS,
   GeneratedChapter,
+  HEAT_INTIMACY_BOUNDARIES,
+  HEAT_TENSION_MODES,
   ImageGenerationSeam,
+  NARRATIVE_TONES,
+  SPICY_LEVELS,
   SaveExportSeam,
-  SavedStoryProject
+  SavedStoryProject,
+  WORD_BUDGETS
 } from './contracts';
 
 const STORAGE_KEY = 'fairytales_story_lab_projects_v1';
@@ -614,6 +621,37 @@ describe('App', () => {
 
     expect(component.blueprint().creature).toBe('dragon');
     expect(component.activeSpiceOption().label).toBe('Inferno');
+  });
+
+  // The pickers are what a reader may actually send, so a value the
+  // vocabularies name and the form does not offer is accepted by the parser,
+  // by `FormValidationService`, and by every prompt builder, and can be chosen
+  // nowhere — with nothing to fail and nothing on the page to say it is
+  // missing. Compared as ordered lists so a picker cannot satisfy this by
+  // offering the values in an order the vocabulary does not state.
+  it('offers every value of every blueprint vocabulary', () => {
+    expect(component.creatureOptions.map(option => option.id)).toEqual([...CREATURE_ARCHETYPES]);
+    expect(component.spiceOptions.map(option => option.level)).toEqual([...SPICY_LEVELS]);
+    expect(component.heatTensionOptions.map(option => option.id)).toEqual([...HEAT_TENSION_MODES]);
+    expect(component.heatBoundaryOptions.map(option => option.id)).toEqual([...HEAT_INTIMACY_BOUNDARIES]);
+    expect(component.toneOptions.map(option => option.id)).toEqual([...NARRATIVE_TONES]);
+    expect(component.wordBudgetOptions.map(option => option.id)).toEqual([...WORD_BUDGETS]);
+    expect(component.chapterBatchOptions.map(option => option.id)).toEqual([...CHAPTER_BATCH_SIZES]);
+  });
+
+  // The three `<select>`s were hand-written `<option>` elements, which is the
+  // same second declaration one layer further from anything that can check it.
+  it('renders one option per value in the three blueprint selects', () => {
+    fixture.detectChanges();
+
+    for (const [testId, expected] of [
+      ['blueprint-tone', NARRATIVE_TONES],
+      ['blueprint-word-budget', WORD_BUDGETS],
+      ['blueprint-chapter-batch-size', CHAPTER_BATCH_SIZES]
+    ] as const) {
+      const select: HTMLSelectElement = fixture.nativeElement.querySelector(`[data-testid="${testId}"]`);
+      expect(select.options.length).toBe(expected.length);
+    }
   });
 
   it('does not render story actions before a story exists', () => {

@@ -5,19 +5,24 @@ import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
 import {
+  CHAPTER_BATCH_SIZES,
+  CREATURE_ARCHETYPES,
   ChapterBatchSize,
   CreatureArchetype,
   EvaluationCriteria,
   GeneratedChapter,
   PromptTemplate,
   ProvingGroundsTestResult,
+  SPICY_LEVELS,
   SpicyLevel,
   StoryGenerationSeam,
   StoryIterationPayload,
   StoredProvingGroundsTestResult,
   ThemeSeed,
+  WORD_BUDGETS,
   WordBudget
 } from '../contracts';
+import { escapeHtml } from '../story-html-exporter';
 import { StoryService } from '../story.service';
 import { GenerationLogic, GenerationLogicService } from './generation-logic.service';
 import { PromptEvaluationService } from './prompt-evaluation.service';
@@ -124,18 +129,24 @@ export class ProvingGroundsComponent implements OnInit {
   showGenerationLogic = false;
   statusMessage = 'Configure a prompt test and generate a Story Lab sample.';
 
-  readonly creatureOptions: CreatureArchetype[] = [
-    'vampire',
-    'werewolf',
-    'fairy',
-    'siren',
-    'djinn',
-    'witch',
-    'dragon',
-    'demon',
-    'angel',
-    'mermaid'
-  ];
+  /**
+   * The creatures this page can test, read from the vocabulary rather than
+   * written out again.
+   *
+   * `shared/creatureVocabulary` was written because the ten names had been
+   * spelled out seven times and an eleventh creature would have had to be added
+   * to each; this list was the copy that change did not reach, because it is a
+   * picker rather than a validator. It fails the same way the others did and
+   * more quietly: the vocabulary, the API's validator, the app's own form and
+   * both prompt builders would all accept a new creature, and the one screen
+   * built for testing prompts would simply not offer it — so the prompt for the
+   * newest creature is the prompt nobody can compare, with nothing on the page
+   * to say a creature is missing.
+   *
+   * That is the argument `themeOptions` below already makes about this page's
+   * other hand-kept vocabulary, held on the field beside it.
+   */
+  readonly creatureOptions: readonly CreatureArchetype[] = CREATURE_ARCHETYPES;
   /**
    * The thematic seeds the app's own picker offers, so a test here is a test of
    * something a reader can actually generate.
@@ -162,9 +173,35 @@ export class ProvingGroundsComponent implements OnInit {
   readonly themeOptions: ThemeSeed[] = STORY_LAB_THEME_SEEDS.map(seed => ({ ...seed }));
   /** The cap the picker enforces, so its label cannot state a different number. */
   readonly maxThemes = STORY_BLUEPRINT_LIMITS.maxThemes;
-  readonly spicyLevelOptions: SpicyLevel[] = [1, 2, 3, 4, 5];
-  readonly wordCountOptions: WordBudget[] = [600, 900, 1200, 1500];
-  readonly chapterBatchOptions: ChapterBatchSize[] = [1, 2, 3];
+  /**
+   * The word budgets and batch sizes the blueprint routes accept, read from
+   * the contract's tables for the reason `creatureOptions` gives.
+   *
+   * These two are the more expensive half of that argument, because they are
+   * `[ngValue]` numbers rather than display names: a budget this page offers
+   * that `WORD_BUDGETS` does not name is refused by `parseStoryLabBlueprint`,
+   * so the test does not run at all and the reader is told their blueprint is
+   * invalid on a form that only ever offered them four choices. The
+   * transcription of the production user prompt had already drifted this exact
+   * way once — it named 700, 900, and 1200 words while the picker offered 600,
+   * 900, 1200, and 1500 — which is what `getProductionUserPrompt` now reads
+   * from the shared prompt module to avoid.
+   */
+  readonly wordCountOptions: readonly WordBudget[] = WORD_BUDGETS;
+  readonly chapterBatchOptions: readonly ChapterBatchSize[] = CHAPTER_BATCH_SIZES;
+  /**
+   * The ends of the spice slider, and the number its label says it is out of.
+   *
+   * The control is an `input[type=range]` with `min="1"`, `max="5"`, and a
+   * `{{ spicyLevel }}/5` label — three more copies of the ladder — beside a
+   * `spicyLevelOptions` array that listed the same five levels and that no
+   * template ever read. The dead list is gone and the live numbers are the
+   * table's, so a sixth rung added to `SPICE_LEVEL_PROMPT_RUNGS` (and therefore
+   * to `SPICY_LEVELS`) moves the slider with it instead of leaving a level the
+   * prompt describes and the page cannot select.
+   */
+  readonly minSpicyLevel: number = Math.min(...SPICY_LEVELS);
+  readonly maxSpicyLevel: number = Math.max(...SPICY_LEVELS);
   promptTemplates: PromptTemplate[] = [];
 
   ngOnInit(): void {
@@ -480,9 +517,34 @@ export class ProvingGroundsComponent implements OnInit {
     };
   }
 
+  /**
+   * Assemble one run's chapters into the document this page stores, exports,
+   * and renders.
+   *
+   * `title` and `summary` are model prose and were interpolated into the markup
+   * as they arrived. `htmlContent` is markup by contract and stays as it is —
+   * it is sanitized at the point it is rendered — but the other two are text,
+   * and text carrying a `<` or an `&` is not markup that happens to be safe: it
+   * is markup that is wrong. A chapter called `Blood & Roses` reaches the
+   * comparison panel as `Blood & Roses` only by the parser's goodwill, and one
+   * called `<The Reckoning>` loses its own name to an unknown element — then
+   * takes the paragraph after it, and in the worst case the rest of the
+   * `<section>`, into an unclosed tag the sanitizer then drops.
+   *
+   * `escapeHtml` is `story-html-exporter`'s, which builds the reader's
+   * downloadable copy out of exactly these three fields and has escaped the two
+   * text ones since it was written. This page is the one that compares runs, so
+   * a chapter whose title cost it a paragraph is a comparison reporting on
+   * prose that was generated and not shown.
+   *
+   * Only new runs are affected: what is already in `provingGrounds_testHistory`
+   * was assembled by the old reading and is stored as finished markup.
+   */
   private renderChapters(chapters: GeneratedChapter[]): string {
     return chapters
-      .map(chapter => `<section><h3>${chapter.title}</h3>${chapter.htmlContent}<p><strong>Summary:</strong> ${chapter.summary}</p></section>`)
+      .map(chapter =>
+        `<section><h3>${escapeHtml(chapter.title)}</h3>${chapter.htmlContent}`
+        + `<p><strong>Summary:</strong> ${escapeHtml(chapter.summary)}</p></section>`)
       .join('\n');
   }
 
