@@ -89,15 +89,14 @@ private validateStoryInput(input: StoryGenerationSeam['input']): any {
   resource-costing request: `api/story/generate.ts`, `api/story/continue.ts`,
   `api/image/generate.ts`, `api/export/save.ts`, `api/story-lab/evaluate.ts`,
   `api/story-lab/stories.ts`, `api/story-lab/stories/[storyId]/continue.ts`,
-  `api/story-lab/stream/genesis.ts`, and both handlers in
-  `api/_lib/story-lab/jobs/jobRouteHandlers.ts` (job creation and the job
-  event stream) — on both the Vercel serverless and the Node/Docker
-  deployments, since both serve the same handler functions
+  and both handlers in `api/_lib/story-lab/jobs/jobRouteHandlers.ts` (job
+  creation and the job event stream) — on both the Vercel serverless and the
+  Node/Docker deployments, since both serve the same handler functions
   (`api/_lib/http/expressApiRoutes.ts`).
-- The two routes a browser reaches through `EventSource`
-  (`story-lab/stream/genesis`, `story-lab/jobs/:jobId/events`) also accept the
-  key as an `apiKey` query parameter, since `EventSource` cannot set custom
-  headers (`withEventStreamAuth` in `apiAccessControl.ts`).
+- The route a browser reaches through `EventSource`
+  (`story-lab/jobs/:jobId/events`) also accepts the key as an `apiKey` query
+  parameter, since `EventSource` cannot set custom headers
+  (`withEventStreamAuth` in `apiAccessControl.ts`).
 
 **Setup:**
 

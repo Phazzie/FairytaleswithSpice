@@ -14,8 +14,7 @@ import {
   CloudStoryProjectSaveReceipt,
   SavedStoryProject,
   StorySummary,
-  StoryStateSnapshot,
-  StreamingProgressChunk
+  StoryStateSnapshot
 } from './contracts';
 import { EVENT_SOURCE_CLOSED, EVENT_SOURCE_CONNECTING } from '../../../shared/eventStreamRetry';
 
@@ -446,33 +445,6 @@ describe('StoryService', () => {
     });
   });
 
-  it('ends the genesis stream when the server reports an error chunk', () => {
-    const progressChunks: StreamingProgressChunk[] = [];
-    let reportedError: Error | undefined;
-
-    service.streamStoryGeneration(createGenesisInput(), chunk => progressChunks.push(chunk)).subscribe({
-      next: () => fail('Expected the error chunk to end the stream'),
-      error: (error: Error) => {
-        reportedError = error;
-      }
-    });
-
-    expect(MockEventSource.instances.length).toBe(1);
-    const source = MockEventSource.instances[0];
-
-    source.emit({
-      type: 'error',
-      percentage: 100,
-      error: { code: 'GENERATION_FAILED', message: 'Grok was unavailable.' }
-    } satisfies StreamingProgressChunk);
-
-    expect(progressChunks.length).toBe(1);
-    expect(reportedError?.message).toBe('Grok was unavailable.');
-    // Left open, the browser reads the server's end of the response as a
-    // dropped connection and reconnects, re-running the whole generation.
-    expect(source.close).toHaveBeenCalled();
-  });
-
   it('streams Story Lab job events by opaque job id', () => {
     const jobId = 'job_00000000-0000-4000-8000-000000000000';
     const response = createJobResponse<StoryIterationPayload>(jobId);
@@ -567,26 +539,6 @@ describe('StoryService', () => {
     expect(source.readyState).toBe(EVENT_SOURCE_CLOSED);
 
     source.fail();
-
-    expect(failure).toBeDefined();
-    expect(source.close).toHaveBeenCalled();
-  });
-
-  it('closes the genesis stream on the first connection error', () => {
-    const input = createGenesisInput();
-    let failure: unknown;
-
-    service.streamStoryGeneration(input, () => undefined).subscribe({
-      error: error => {
-        failure = error;
-      }
-    });
-
-    const source = MockEventSource.instances[0];
-    // Reconnecting here would restart the paid generation from the beginning,
-    // so this stream fails even when the browser would have retried.
-    source.readyState = EVENT_SOURCE_CONNECTING;
-    source.onerror?.(new Event('error'));
 
     expect(failure).toBeDefined();
     expect(source.close).toHaveBeenCalled();

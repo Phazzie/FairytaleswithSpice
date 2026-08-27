@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Real-Time Story Streaming (`StreamingStoryComponent`) — a fake-progress demo left live after its predecessor's cleanup, retired (August 27, 2026)
+
+- A prior PR retired a *duplicate* SSE route and left `api/story-lab/stream/genesis.ts` live;
+  a follow-up found wiring `StreamingStoryComponent` into nav leaked the reader's free-text
+  logline/character names/world details into the `EventSource` query string (server access
+  logs, proxies, browser history) and reverted only the nav link, leaving the component, its
+  `StoryService.streamStoryGeneration` method, and the route in place "for a future fix that
+  never came." Two more cosmetic bugfixes landed on the unreachable component since.
+- It never actually streamed: `stream/genesis.ts` `await`ed the entire `generateStoryLabGenesis()`
+  batch — however long real generation took — with zero progress frames sent during the wait,
+  then replayed the already-finished chapters back through fixed `setTimeout`s (500ms apart) as
+  fabricated per-chapter "progress." A canned animation over a blocking call, not real-time
+  generation.
+- It was a hardcoded demo, literally labeled so in its own header comment ("Streaming Story
+  Component Example"): a fixed vampire/dark-romance/900-word blueprint, ignoring whatever the
+  reader actually built in the form.
+- It duplicated a feature that already ships and works: `AppComponent`'s job-based progress UI
+  (`openJobEventStream`) is the real, production progress path — genuine per-chapter SSE
+  snapshots against the job system, wired into the main generation flow. This component was a
+  second, parallel "live progress" implementation that was fake, unreachable, and
+  privacy-unsafe, sitting next to the one that's real.
+- Deleted `story-generator/src/app/streaming-story/` (component + spec),
+  `StoryService.streamStoryGeneration` and its test coverage, `api/story-lab/stream/genesis.ts`
+  and its route registration/rate-limit tier/dedicated tests
+  (`story-lab-stream-genesis.test.ts`, `story-lab-stream-parse.test.ts`), and repointed the
+  `EventSource` query-parameter-auth coverage in `api-access-control.test.ts` onto the
+  surviving job event stream route it was always meant to protect. Confirmed zero remaining
+  references before and after.
+- No behavior change to any reachable path: the job-based generation/progress flow this app
+  actually serves is untouched.
+
 ### ***WORST TO BEST*** storyLabEngine — five concerns in one 1,726-line file, a 700-line prompt-guidance subsystem with zero unit tests, and a whitespace helper hand-rolled three different ways (August 27, 2026)
 
 - `api/_lib/story-lab/storyLabEngine.ts` was the largest file in the repo and

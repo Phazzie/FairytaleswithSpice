@@ -15,8 +15,8 @@ import exportHandler from '../api/export/save';
 import evaluateHandler from '../api/story-lab/evaluate';
 import genesisHandler from '../api/story-lab/stories';
 import continuationHandler from '../api/story-lab/stories/[storyId]/continue';
-import streamGenesisHandler from '../api/story-lab/stream/genesis';
 import jobsHandler from '../api/story-lab/jobs';
+import { handleStreamStoryLabJobEvents } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { rateLimitResetSeconds, retryAfterSeconds } from '../api/_lib/middleware/apiAccessControl';
 import { RATE_LIMITS } from '../api/_lib/constants';
@@ -353,27 +353,30 @@ async function testUnconfiguredDeploymentStillRateLimitsTheSharedBucket(): Promi
 }
 
 /**
- * `EventSource` cannot set custom headers, so the two SSE routes read the key
- * from an `apiKey` query parameter instead (`withEventStreamAuth`). This
- * drives that path directly rather than through headers.
+ * `EventSource` cannot set custom headers, so the job event stream route reads
+ * the key from an `apiKey` query parameter instead (`withEventStreamAuth`).
+ * This drives that path directly rather than through headers.
  */
 async function testEventStreamRoutesAcceptTheQueryParameterKey(): Promise<void> {
   await withApiKeys(['sk-live-real-key'], async () => {
     const noKey = new FakeResponse();
-    await streamGenesisHandler({ method: 'GET', headers: {}, query: {} }, noKey);
-    assert(noKey.statusCode === 401, `stream/genesis with no key should answer 401, got ${noKey.statusCode}`);
-    assert(errorCode(noKey) === 'MISSING_API_KEY', 'stream/genesis with no key should report MISSING_API_KEY');
+    await handleStreamStoryLabJobEvents({ method: 'GET', headers: {}, query: {} }, noKey);
+    assert(noKey.statusCode === 401, `jobs/:jobId/events with no key should answer 401, got ${noKey.statusCode}`);
+    assert(errorCode(noKey) === 'MISSING_API_KEY', 'jobs/:jobId/events with no key should report MISSING_API_KEY');
 
     const wrongKey = new FakeResponse();
-    await streamGenesisHandler({ method: 'GET', headers: {}, query: { apiKey: 'wrong' } }, wrongKey);
-    assert(wrongKey.statusCode === 401, `stream/genesis with a wrong query key should answer 401, got ${wrongKey.statusCode}`);
-    assert(errorCode(wrongKey) === 'INVALID_API_KEY', 'stream/genesis with a wrong query key should report INVALID_API_KEY');
+    await handleStreamStoryLabJobEvents({ method: 'GET', headers: {}, query: { apiKey: 'wrong' } }, wrongKey);
+    assert(wrongKey.statusCode === 401, `jobs/:jobId/events with a wrong query key should answer 401, got ${wrongKey.statusCode}`);
+    assert(errorCode(wrongKey) === 'INVALID_API_KEY', 'jobs/:jobId/events with a wrong query key should report INVALID_API_KEY');
 
     const validKey = new FakeResponse();
-    await streamGenesisHandler({ method: 'GET', headers: {}, query: { apiKey: 'sk-live-real-key' } }, validKey);
+    await handleStreamStoryLabJobEvents(
+      { method: 'GET', headers: {}, query: { apiKey: 'sk-live-real-key' } },
+      validKey
+    );
     assert(
       validKey.statusCode !== 401,
-      `stream/genesis with a valid query key should not be rejected on access control, got ${validKey.statusCode}`
+      `jobs/:jobId/events with a valid query key should not be rejected on access control, got ${validKey.statusCode}`
     );
   });
 }
