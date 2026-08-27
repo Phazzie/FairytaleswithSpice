@@ -316,24 +316,53 @@ export class ExportService {
    * way to assert on what an export actually contains.
    */
   async generateExportContent(input: SaveExportSeam['input']): Promise<Buffer> {
-    const sanitizedHtml = sanitizeStoryHtmlForExport(input.content);
-    const plainText = stripStoryHtmlForExport(input.content);
-    const metadata = this.generateMetadata(plainText, input);
-
+    // Each branch takes only the readings its own document is built from. All
+    // three used to run for every format, and two of them are whole-story scans
+    // on the one route that caps its body at 500KB *because* the story is large:
+    //
+    // - `sanitizeStoryHtmlForExport` walks the markup tag by tag, and only the
+    //   `.html` document contains any markup — the other four are built from the
+    //   plain text. Four of the five formats were paying for a sanitize pass
+    //   whose result nothing in their output reads.
+    // - `generateMetadata` splits the whole story on whitespace to count its
+    //   words, and only the `.html` and `.txt` documents print the "Story
+    //   Information" block it fills in. The PDF, EPUB, and DOCX renderers never
+    //   receive it.
+    //
+    // That is the same reading `generateMetadata` already applies one level
+    // down, where it counts the words once rather than once for the count and
+    // again for the read time derived from it. The documents themselves are
+    // unchanged: every branch is handed exactly what it was handed before.
     switch (input.format) {
       case 'pdf':
-        return Buffer.from(this.generatePDFContent(plainText, input), 'utf8');
-      case 'html':
-        return Buffer.from(this.generateHTMLContent(sanitizedHtml, metadata, input), 'utf8');
-      case 'txt':
-        return Buffer.from(this.generateTextContent(plainText, metadata, input), 'utf8');
+        return Buffer.from(this.generatePDFContent(this.toPlainText(input), input), 'utf8');
+      case 'html': {
+        const plainText = this.toPlainText(input);
+        return Buffer.from(
+          this.generateHTMLContent(sanitizeStoryHtmlForExport(input.content), this.generateMetadata(plainText, input), input),
+          'utf8'
+        );
+      }
+      case 'txt': {
+        const plainText = this.toPlainText(input);
+        return Buffer.from(this.generateTextContent(plainText, this.generateMetadata(plainText, input), input), 'utf8');
+      }
       case 'epub':
-        return this.generateEPUBContent(plainText, input);
+        return this.generateEPUBContent(this.toPlainText(input), input);
       case 'docx':
-        return this.generateDOCXContent(plainText, input);
+        return this.generateDOCXContent(this.toPlainText(input), input);
       default:
         throw new Error(`Unsupported format: ${input.format}`);
     }
+  }
+
+  /**
+   * The story with its markup resolved to text — what every format but `.html`
+   * is rendered from, and what the word count is measured over for the two that
+   * print one.
+   */
+  private toPlainText(input: SaveExportSeam['input']): string {
+    return stripStoryHtmlForExport(input.content);
   }
 
   /**

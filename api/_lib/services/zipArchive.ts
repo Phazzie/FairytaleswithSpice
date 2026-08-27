@@ -27,9 +27,75 @@ const LOCAL_FILE_HEADER_SIZE = 30;
 const CENTRAL_DIRECTORY_HEADER_SIZE = 46;
 const END_OF_CENTRAL_DIRECTORY_SIZE = 22;
 
+/**
+ * The modification instant every entry carries: 1980-01-01 00:00.
+ *
+ * Both fields were written as `0`, commented "last mod file time"/"last mod file
+ * date", and zero is not a date. The MS-DOS date field packs
+ * `((year - 1980) << 9) | (month << 5) | day` with the month and day counted
+ * from one, so all-zero bits decode to **month 0, day 0** — a calendar position
+ * that does not exist, on every `.epub` and `.docx` this service has ever handed
+ * a reader.
+ *
+ * What that costs depends on who opens the file, and none of the answers are
+ * "nothing". `unzip -l` prints `1980-00-00 00:00`. Java's `ZipEntry.getTime()`
+ * feeds the fields to a lenient calendar, where month 0 and day 0 roll backwards
+ * to November 1979 — so a reader written on `java.util.zip`, which is most of
+ * the EPUB tooling that is not a browser, reports a modification date a year
+ * before the format's own epoch. Python's `zipfile` hands the tuple through as
+ * `(1980, 0, 0, 0, 0, 0)`, which `datetime` refuses, so anything that turns an
+ * entry's date into a `datetime` raises `ValueError` on a file it could
+ * otherwise read.
+ *
+ * 1980-01-01 is the earliest instant the fields can spell, which is the honest
+ * value for a writer that tracks no timestamp — and it keeps the archive a pure
+ * function of its entries, which `generateEPUBContent` already relies on: "the
+ * same story exported twice should produce the same book identifier", and the
+ * copy this module hands back for verification must not vary between calls.
+ * Stamping the real clock here — the obvious other way to give the fields a
+ * valid date — would break exactly that.
+ */
+const DOS_EPOCH_TIME = 0;
+const DOS_EPOCH_DATE = (1 << 5) | 1;
+
 export interface ZipEntry {
   path: string;
   data: Buffer;
+}
+
+/** An entry's MS-DOS modification fields, decoded into the date they spell. */
+export interface DosDateTime {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}
+
+/**
+ * What `readZipEntries` answers: an entry plus the modification date its header
+ * carries, so that field can be asserted on through the reader like every other
+ * one rather than by decoding two `u16`s at hand-counted offsets in a test.
+ */
+export interface ReadZipEntry extends ZipEntry {
+  modifiedAt: DosDateTime;
+}
+
+/**
+ * Decode the MS-DOS time and date fields a ZIP header stores an entry's
+ * modification instant in. Month and day are counted from one, so a zero in
+ * either is not a date — see `DOS_EPOCH_DATE`.
+ */
+export function decodeDosDateTime(time: number, date: number): DosDateTime {
+  return {
+    year: 1980 + ((date >>> 9) & 0x7f),
+    month: (date >>> 5) & 0x0f,
+    day: date & 0x1f,
+    hour: (time >>> 11) & 0x1f,
+    minute: (time >>> 5) & 0x3f,
+    second: (time & 0x1f) * 2
+  };
 }
 
 const CRC32_TABLE = buildCrc32Table();
@@ -91,17 +157,18 @@ class SequentialBufferWriter {
 /**
  * The fields a local file header and a central directory record describe
  * identically once past their signature and version fields: this entry was
- * stored (never deflated), when (never — no timestamp is tracked), its CRC,
- * its size (twice — STORE makes the compressed and uncompressed sizes equal),
- * and how long its filename is. Shared so the two headers can't drift apart on
- * a field neither of them actually varies.
+ * stored (never deflated), when (the DOS epoch — no timestamp is tracked, and
+ * that is the earliest instant the fields can spell), its CRC, its size (twice —
+ * STORE makes the compressed and uncompressed sizes equal), and how long its
+ * filename is. Shared so the two headers can't drift apart on a field neither of
+ * them actually varies.
  */
 function writeStoreMethodFields(writer: SequentialBufferWriter, crc: number, size: number, nameLength: number): SequentialBufferWriter {
   return writer
     .u16(0) // general purpose bit flag
     .u16(STORE_METHOD)
-    .u16(0) // last mod file time
-    .u16(0) // last mod file date
+    .u16(DOS_EPOCH_TIME) // last mod file time
+    .u16(DOS_EPOCH_DATE) // last mod file date
     .u32(crc)
     .u32(size) // compressed size == uncompressed size for STORE
     .u32(size)
@@ -183,7 +250,7 @@ export function buildZipArchive(entries: ZipEntry[]): Buffer {
  * records name). Used to verify the archives this module writes rather than
  * asserting on raw byte offsets in tests.
  */
-export function readZipEntries(archive: Buffer): ZipEntry[] {
+export function readZipEntries(archive: Buffer): ReadZipEntry[] {
   const eocdOffset = archive.lastIndexOf(
     Buffer.from([
       END_OF_CENTRAL_DIRECTORY_SIGNATURE & 0xff,
@@ -200,7 +267,7 @@ export function readZipEntries(archive: Buffer): ZipEntry[] {
   const entryCount = archive.readUInt16LE(eocdOffset + 10);
   const centralDirectoryOffset = archive.readUInt32LE(eocdOffset + 16);
 
-  const entries: ZipEntry[] = [];
+  const entries: ReadZipEntry[] = [];
   let cursor = centralDirectoryOffset;
 
   for (let i = 0; i < entryCount; i++) {
@@ -208,6 +275,7 @@ export function readZipEntries(archive: Buffer): ZipEntry[] {
       throw new Error(`Not a valid zip archive: central directory record ${i} missing its signature`);
     }
 
+    const modifiedAt = decodeDosDateTime(archive.readUInt16LE(cursor + 12), archive.readUInt16LE(cursor + 14));
     const compressedSize = archive.readUInt32LE(cursor + 20);
     const nameLength = archive.readUInt16LE(cursor + 28);
     const extraLength = archive.readUInt16LE(cursor + 30);
@@ -224,7 +292,7 @@ export function readZipEntries(archive: Buffer): ZipEntry[] {
     const dataOffset = localHeaderOffset + LOCAL_FILE_HEADER_SIZE + localNameLength + localExtraLength;
     const data = archive.subarray(dataOffset, dataOffset + compressedSize);
 
-    entries.push({ path, data: Buffer.from(data) });
+    entries.push({ path, data: Buffer.from(data), modifiedAt });
     cursor += CENTRAL_DIRECTORY_HEADER_SIZE + nameLength + extraLength + commentLength;
   }
 

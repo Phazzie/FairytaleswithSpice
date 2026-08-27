@@ -134,6 +134,45 @@ export function buildSceneDescriptionFromStory(content: string): string {
   return capAtWordBoundary(opening, IMAGE_SCENE_DESCRIPTION_MAX_LENGTH);
 }
 
+/**
+ * A failure whose message was written to be read by the caller.
+ *
+ * `generateImage`'s catch block ends `message: error.message || 'Failed to
+ * generate image'`, so whatever was thrown anywhere under it decides what the
+ * `/api/image/generate` response says. That is the same argument the comment in
+ * that catch block makes about the log line it replaced — "the axios error is
+ * caught and replaced one method below today, so what reaches here is currently
+ * the plain `Error` that replaced it; that is a property of the call below
+ * rather than of this line, and it is the kind of property a later change
+ * silently removes" — applied to the one field of the response a reader
+ * actually sees.
+ *
+ * The rule this repository already states for the same situation is in
+ * `runJobWork`: "The thrown detail goes to the log rather than into the job,
+ * which is read by the caller and should not carry whatever a provider error
+ * says." `ExportService.saveAndExport` follows it — it logs the bound error and
+ * answers a fixed `'Failed to export story'`. This catch is the exception, and
+ * the messages it can forward are not hypothetical: a `TypeError` from a body
+ * shape `validateImageInput` does not cover reaches the reader as
+ * `input.themes.map is not a function` (the failure that validator's own
+ * docblock describes), and a DNS or TLS failure reaching this level as
+ * `getaddrinfo ENOTFOUND api.x.ai` names the provider and the host to an
+ * unauthenticated caller.
+ *
+ * Marking the one message that *was* written for the caller is what keeps the
+ * fix from costing it. `callGrokImageAI` deliberately replaces the provider
+ * error with "AI image service temporarily unavailable" — a sentence about what
+ * the reader should do, chosen after the real error has been logged — so that
+ * one is thrown as this type and still forwarded, and everything else falls to
+ * the fixed sentence.
+ */
+class CallerFacingImageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CallerFacingImageError';
+  }
+}
+
 export class ImageService {
   private grokApiKey: string | undefined;
   private grokApiUrl: string;
@@ -230,7 +269,12 @@ export class ImageService {
         success: false,
         error: {
           code: 'IMAGE_GENERATION_FAILED',
-          message: error.message || 'Failed to generate image'
+          // Only a message written for the caller is forwarded; see
+          // `CallerFacingImageError`. Everything else is in the log line above,
+          // named by the correlation id this envelope also carries.
+          message: error instanceof CallerFacingImageError
+            ? error.message
+            : 'Failed to generate image'
         },
         metadata: {
           requestId: correlationId,
@@ -280,7 +324,11 @@ export class ImageService {
         endpoint: '/api/image/generate',
         method: 'POST'
       });
-      throw new Error('AI image service temporarily unavailable');
+      // Caller-facing by construction: the real error has just been logged, and
+      // this sentence is what the reader is told instead. See
+      // `CallerFacingImageError` for why the distinction is marked on the throw
+      // rather than assumed by the catch block that forwards it.
+      throw new CallerFacingImageError('AI image service temporarily unavailable');
     }
   }
 

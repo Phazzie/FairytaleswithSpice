@@ -238,6 +238,62 @@ async function testEpubIsARealZipContainerWithItsChapter(): Promise<void> {
   assert(chapter.includes('Élodie smiled'), 'the chapter should contain the real story content');
 }
 
+/**
+ * Every entry of every archive this service writes has to name a date that
+ * exists.
+ *
+ * The MS-DOS date field packs `((year - 1980) << 9) | (month << 5) | day` with
+ * the month and day counted from one, and both timestamp fields were written as
+ * `0` — so every entry of every `.epub` and `.docx` claimed month 0, day 0.
+ * `unzip -l` printed `1980-00-00 00:00`; Java's lenient calendar rolled the
+ * same bits back to November 1979; Python's `zipfile` handed out a tuple
+ * `datetime` refuses.
+ *
+ * Asserted through `readZipEntries` rather than by decoding two `u16`s at
+ * hand-counted offsets, which is the reason that reader exists.
+ */
+async function testArchiveEntriesCarryADateThatExists(): Promise<void> {
+  for (const format of ['epub', 'docx'] as const) {
+    const document = await new ExportService().generateExportContent(createInput({ format }));
+    const entries = readZipEntries(document);
+
+    assert(entries.length > 0, `a ${format} should hold at least one entry`);
+    for (const entry of entries) {
+      const { modifiedAt } = entry;
+      assert(
+        modifiedAt.month >= 1 && modifiedAt.month <= 12,
+        `${format} entry "${entry.path}" should name a real month (got ${modifiedAt.month})`
+      );
+      assert(
+        modifiedAt.day >= 1 && modifiedAt.day <= 31,
+        `${format} entry "${entry.path}" should name a real day (got ${modifiedAt.day})`
+      );
+      assert(
+        modifiedAt.year >= 1980,
+        `${format} entry "${entry.path}" should not predate the DOS epoch (got ${modifiedAt.year})`
+      );
+    }
+  }
+}
+
+/**
+ * The same story exported twice has to produce the same bytes.
+ *
+ * `generateEPUBContent` derives the book identifier from the story rather than
+ * minting a UUID precisely so this holds, and the archive writer is the other
+ * half of it: stamping a real clock into the modification fields — the obvious
+ * way to give them a valid date — would make two exports of one story differ.
+ */
+async function testArchivesAreAFunctionOfTheirInput(): Promise<void> {
+  for (const format of ['epub', 'docx'] as const) {
+    const service = new ExportService();
+    const first = await service.generateExportContent(createInput({ format }));
+    const second = await service.generateExportContent(createInput({ format }));
+
+    assert(first.equals(second), `two ${format} exports of one story should be byte-identical`);
+  }
+}
+
 // The DOCX used to be literal text made to *look* like a zip's local-file-header
 // strings, concatenated with escaped plain text — not a valid archive. This
 // confirms the required OOXML package parts exist and the document body holds
@@ -838,6 +894,8 @@ async function main(): Promise<void> {
   await testXmlExportsCarryNoCharacterXmlForbids();
   await testEpubIsARealZipContainerWithItsChapter();
   await testDocxIsARealZipContainerWithItsDocument();
+  await testArchiveEntriesCarryADateThatExists();
+  await testArchivesAreAFunctionOfTheirInput();
   await testMetadataReflectsTheActualStory();
   await testExportMetadataNamesThemesTheWayThePickerDoes();
   await testStoryInformationIsWrittenForAReader();
