@@ -2,6 +2,7 @@
 // Created: 2026-08-26
 
 import {
+  splitStoryIntoRenderedParagraphs,
   splitStoryIntoTextBlocks,
   stripStoryHtmlToText
 } from '../shared/storyTextBlocks';
@@ -53,6 +54,45 @@ assert(
 assert(
   stripStoryHtmlToText('<p>First.</p><p>Second.</p>') === 'First.\n\nSecond.',
   'stripStoryHtmlToText should join blocks with a blank line'
+);
+
+// A `<br>` and a `</p><p>` both end a block, and the grouped reading is what
+// tells them apart: the `<br>` wraps a line inside the paragraph already open,
+// so its two blocks stay in one group.
+assert(
+  JSON.stringify(splitStoryIntoRenderedParagraphs('<p>First<br>line.</p><p>Second.</p>')) ===
+    JSON.stringify([['First', 'line.'], ['Second.']]),
+  'a <br> should end a block without starting a new rendered paragraph'
+);
+
+// The flat list is defined as the flattening of the grouped one, so the two
+// cannot disagree about where a boundary falls. Asserted across every shape the
+// splitter is documented to handle, because the grouped reading was introduced
+// underneath an existing function and its whole claim is that nothing changed.
+for (const storyContent of [
+  '<p>First.</p><p>Second.</p>',
+  '<p>First<br>line.</p><p>Second.</p>',
+  'One.\n\nTwo.',
+  '<p>Only.</p><p>   </p>',
+  '<p>He was <strong>certain</strong> of it.</p>',
+  '<div>Outer<br><br>gap</div><li>Item</li>',
+  'text<br><p>after</p>',
+  ''
+]) {
+  assert(
+    JSON.stringify(splitStoryIntoRenderedParagraphs(storyContent).flat()) ===
+      JSON.stringify(splitStoryIntoTextBlocks(storyContent)),
+    `the flat blocks should be the grouped blocks flattened (${JSON.stringify(storyContent)})`
+  );
+}
+
+// A paragraph whose every block is blank is dropped rather than returned as an
+// empty group, so "the last rendered paragraph" is never an empty list while
+// real text sits above it.
+assert(
+  JSON.stringify(splitStoryIntoRenderedParagraphs('<p>Only.</p><p>   <br>  </p>')) ===
+    JSON.stringify([['Only.']]),
+  'blank rendered paragraphs should be filtered out'
 );
 
 console.log('Story text block tests passed');

@@ -306,24 +306,86 @@ function testTheEndingIsScannedWithItsWhitespaceCollapsed(): void {
     wrapped?.score === inline?.score,
     `where the line breaks should not change the score (wrapped=${wrapped?.score}, inline=${inline?.score})`
   );
+
+  // The rules the reconstruction was narrowed by over PR #293's rounds two,
+  // three and four. They were correct then and are unchanged now — this slice
+  // restored the input they assume, not the rules — so they are pinned again
+  // rather than left to be rediscovered a third time.
+  //
+  // The joined text here holds `continued` as an ordinary verb, and the label
+  // lexicon must still refuse it.
+  const shortEnding = scan('<p>He continued down the long dark hall.<br>She ran</p>');
+  assert(
+    !shortEnding?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `joining the trailing blocks must not bring back the bare-verb match (signals=${JSON.stringify(shortEnding?.signals)})`
+  );
+
+  // A label that survives dropping the ending was never the ending's: here it
+  // sits wholly inside an earlier fragment, and the ending announces nothing.
+  const labelBefore = scan('<p>The chapter was a cliffhanger.<br>She ran</p>');
+  assert(
+    !labelBefore?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label before the ending is not this ending's (signals=${JSON.stringify(labelBefore?.signals)})`
+  );
+
+  // The same, one fragment further on: the label really is split and really is
+  // in none of the fragments alone, and still stops short of the ending.
+  const shortOfTheEnd = scan('<p>To<br>be continued<br>She ran</p>');
+  assert(
+    !shortOfTheEnd?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label that survives dropping the ending was never the ending's (signals=${JSON.stringify(shortOfTheEnd?.signals)})`
+  );
+
+  // And the case easiest to lose while excluding the one above: a label the
+  // markup broke into three pieces, where the last piece is load-bearing.
+  const thirds = scan('<p>The door opened.</p><p>To<br>be<br>continued</p>');
+  assert(
+    thirds?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label broken into three fragments is still the ending (signals=${JSON.stringify(thirds?.signals)})`
+  );
+
+  // A fragment may carry text of its own, so how long one is never said whether
+  // it was a piece of a label. Both spellings are the same sentence to a reader.
+  const longTail = scan('<p>To be<br>continued in Chapter Two</p>');
+  const longTailInline = scan('<p>To be continued in Chapter Two</p>');
+  assert(
+    longTailInline?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `the inline spelling scores (signals=${JSON.stringify(longTailInline?.signals)})`
+  );
+  assert(
+    longTail?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a <br> before a long remainder is still the same label (signals=${JSON.stringify(longTail?.signals)})`
+  );
+
+  // The reconstruction must not cost the ordinary case: a label with prose after
+  // it, inside one block, is still that block's own match.
+  const trailing = scan('<p>The door opened.</p><p>To be continued, she thought.</p>');
+  assert(
+    trailing?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label inside the final block still scores wherever it sits (signals=${JSON.stringify(trailing?.signals)})`
+  );
 }
 
 /**
  * The scan must not manufacture a label out of prose that never held one.
  *
- * This PR carried a reconstruction that joined the trailing blocks, so a label
+ * PR #293 carried a reconstruction that joined the trailing blocks, so a label
  * a `<br>` had broken across two of them could be put back together. Codex
  * found four cases against it, and the last one withdrew it: a `<p>` break and
  * a `<br>` break are the same `\n\n` once `splitStoryIntoTextBlocks` has run,
  * so joining blocks cannot tell a torn label from two ordinary paragraphs — and
  * `She wanted to be` / `continued through the next trial.` is two ordinary
- * paragraphs whose join *spells* the label.
+ * paragraphs whose join *spells* the label. Synthesising a signal from prose is
+ * the defect the bare `continued` entry was removed for, arriving by another
+ * route.
  *
- * Synthesising a signal from prose is the defect the bare `continued` entry was
- * removed for, arriving by another route. The gap it leaves — a `<br>`-split
- * label going unrecognised — is a missed signal, which is the direction an
- * advisory scan should err in, and it is asserted here so that reintroducing
- * the join has to argue with a test rather than slip past one.
+ * These assertions outlive that withdrawal and are the reason this slice can be
+ * trusted: the reconstruction is back, and the prose cases below still must not
+ * score. What changed is not the joining rule but its input — the scan now reads
+ * the final *rendered paragraph*, so a join can no longer cross a `</p><p>` at
+ * all. The `<br>` case that was the stated cost of the withdrawal is a match
+ * again, and it is asserted here beside the prose cases precisely because the
+ * two used to trade off against each other and no longer do.
  */
 function testTheScanDoesNotSynthesiseALabelFromProse(): void {
   const scan = (storyContent: string) => buildStoryQualityHeuristicReport({
@@ -344,12 +406,31 @@ function testTheScanDoesNotSynthesiseALabelFromProse(): void {
     );
   }
 
-  // The cost of that, stated rather than left to be rediscovered: a label the
-  // markup really did tear in half is missed. A missed signal, not a false one.
+  // What the withdrawal cost, and what boundary provenance buys back: a label
+  // the markup really did tear in half, across a `<br>` inside one paragraph.
   const torn = scan('<p>The door opened.</p><p>To be<br>continued</p>');
   assert(
-    !torn?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
-    `the known limit is a miss, not a match (signals=${JSON.stringify(torn?.signals)})`
+    torn?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label a <br> tore in half is the same ending (signals=${JSON.stringify(torn?.signals)})`
+  );
+
+  // The two are structurally identical on a flat list of blocks — two blocks
+  // whose join spells the label — and that is the whole point: only the
+  // boundary that produced them tells the torn label from the prose. Asserted
+  // as one pair so the distinction cannot quietly collapse back into a proxy.
+  const proseTwin = scan('<p>The door opened.</p><p>She wanted to be</p><p>continued through the trial.</p>');
+  assert(
+    !proseTwin?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `the same two-block shape across a paragraph break is prose (signals=${JSON.stringify(proseTwin?.signals)})`
+  );
+
+  // The narrowed input has its own cost, asserted rather than implied: a label
+  // spelled across separate `<p>` elements is no longer reconstructed. A reader
+  // sees three paragraphs there, not one label, and no generator writes it.
+  const acrossParagraphs = scan('<p>The door opened.</p><p>To</p><p>be</p><p>continued</p>');
+  assert(
+    !acrossParagraphs?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label spread over whole paragraphs is not one label (signals=${JSON.stringify(acrossParagraphs?.signals)})`
   );
 
   // A break *inside* one block is still reached, because collapsing whitespace

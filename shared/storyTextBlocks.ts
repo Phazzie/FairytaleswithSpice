@@ -19,11 +19,45 @@
  * caller scanning arbitrary prose would want the entities encoded first.
  */
 export function splitStoryIntoTextBlocks(storyContent: string): string[] {
+  return splitStoryIntoRenderedParagraphs(storyContent).flat();
+}
+
+/**
+ * The same blocks, still grouped by the rendered paragraph each came from.
+ *
+ * `splitStoryIntoTextBlocks` answers with one flat list because a `<br>` has to
+ * end a block for the same reason a `</p>` does — the words on either side of
+ * one would otherwise weld into a single token. But the two boundaries are not
+ * the same thing to a reader: a `</p><p>` starts a new paragraph, and a `<br>`
+ * only wraps a line inside the paragraph already open. The flat list cannot
+ * tell them apart, so a caller joining adjacent blocks back together cannot
+ * know whether it is repairing one paragraph the markup broke in half or
+ * welding two paragraphs the author wrote separately.
+ *
+ * That distinction is not decorative. `<p>She wanted to be</p><p>continued
+ * through the next trial.</p>` is two ordinary paragraphs of prose, and joining
+ * them synthesizes the phrase `to be continued` that neither one contains —
+ * which is exactly the false positive `EXPLICIT_CLIFFHANGER_LABELS` was pruned
+ * to remove, re-entering through the repair rather than through the lexicon.
+ *
+ * So the outer array is what the reader sees as paragraphs and the inner one is
+ * the lines a `<br>` wrapped within each. The flattening above is the whole of
+ * the old function, which keeps the two from drifting: there is one definition
+ * of where a boundary falls, and the flat list is derived from the grouped one
+ * rather than computed a second way.
+ */
+export function splitStoryIntoRenderedParagraphs(storyContent: string): string[][] {
   return storyContent
-    .replace(BLOCK_BOUNDARY_PATTERN, '\n\n')
+    .replace(PARAGRAPH_BOUNDARY_PATTERN, '\n\n')
     .split(/\n\s*\n/)
-    .map(block => decodeBasicEntities(stripInlineTags(block)).trim())
-    .filter(Boolean);
+    .map(paragraph =>
+      paragraph
+        .replace(LINE_BREAK_BOUNDARY_PATTERN, '\n\n')
+        .split(/\n\s*\n/)
+        .map(block => decodeBasicEntities(stripInlineTags(block)).trim())
+        .filter(Boolean)
+    )
+    .filter(paragraph => paragraph.length > 0);
 }
 
 /**
@@ -50,9 +84,16 @@ export function stripStoryHtmlToText(storyContent: string): string {
  * level further in. The list is the block-level and table-cell elements the
  * generator's markup can contain, so a boundary is never left to the tag that
  * happens to enclose it.
+ *
+ * `br` is not in this list, and is not an omission: it ends a block too, and
+ * `splitStoryIntoRenderedParagraphs` applies it as its own boundary directly
+ * below the paragraph split, so the flat list of blocks is unchanged. It is
+ * named apart because it is the one boundary here that does *not* start a new
+ * paragraph, and telling the two kinds apart is what lets a caller know whether
+ * two adjacent blocks are one paragraph the markup broke or two the author
+ * wrote.
  */
-const BLOCK_LEVEL_TAG_NAMES = [
-  'br',
+const PARAGRAPH_LEVEL_TAG_NAMES = [
   'p',
   'div',
   'section',
@@ -84,7 +125,8 @@ const BLOCK_LEVEL_TAG_NAMES = [
   'th'
 ].join('|');
 /**
- * Match an opening or closing block-level tag, with or without attributes.
+ * Match an opening or closing tag from one of the lists above, with or without
+ * attributes.
  *
  * Written so the engine never has a choice about where one part ends and the
  * next begins. The earlier form paired `\s*` with `/?` and then `\s*` again,
@@ -96,10 +138,15 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * `>` that closes the tag, so each position is decided once. The `\b` is what
  * keeps `<paragraph>` from matching on `p`.
  */
-const BLOCK_BOUNDARY_PATTERN = new RegExp(
-  String.raw`<\s*/?(?:${BLOCK_LEVEL_TAG_NAMES})\b[^>]*>`,
-  'gi'
-);
+function boundaryPattern(tagNames: string): RegExp {
+  return new RegExp(String.raw`<\s*/?(?:${tagNames})\b[^>]*>`, 'gi');
+}
+
+/** Where a reader sees a new paragraph begin. */
+const PARAGRAPH_BOUNDARY_PATTERN = boundaryPattern(PARAGRAPH_LEVEL_TAG_NAMES);
+
+/** Where a reader sees a line wrap inside the paragraph already open. */
+const LINE_BREAK_BOUNDARY_PATTERN = boundaryPattern('br');
 
 /**
  * Drop what is left of the markup once the block boundaries are marked.
