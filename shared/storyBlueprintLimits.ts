@@ -167,7 +167,38 @@ export type StoryEvaluationLimits = typeof STORY_EVALUATION_LIMITS;
  * `IMAGE_GENERATION_FAILED` after the request has been sent.
  */
 export const IMAGE_GENERATION_LIMITS = {
-  maxImagePromptLength: 1200
+  maxImagePromptLength: 1200,
+  /**
+   * Thematic seeds one picture may be asked for.
+   *
+   * Capping `imagePrompt` closed the larger of the two ways a caller decides
+   * how big this route's provider request is, and left the other one open.
+   * `enhancePromptWithStyle` maps *every* entry of `themes` through
+   * `mapThemeToVisualElement` and joins the results into the same
+   * `grok-2-image` prompt the capped field lands in — so the field that was
+   * measured is one sentence long and the field beside it was however many
+   * sentences the caller cared to ask for. `validateImageInput` checked only
+   * that the array is an array, is not empty, and holds strings.
+   *
+   * The arithmetic is the whole of it: each entry contributes about thirty
+   * characters of visual phrasing, and nothing bounded the entry count, so a
+   * body within the platform's own 4.5MB limit — a JSON array of one-character
+   * ids is four bytes an entry — reaches the provider as a prompt of tens of
+   * megabytes, billed by the token, on the route this app pays per call for.
+   * `themes` is also the field a caller is least likely to be stopped at by
+   * anything else: `content` is read only through
+   * `IMAGE_SCENE_DESCRIPTION_MAX_LENGTH`'s 200-character excerpt, and
+   * `creature`, `style`, and `aspectRatio` are each one value from a closed set.
+   *
+   * The number is `STORY_BLUEPRINT_LIMITS.maxThemes`, read from there rather
+   * than restated, for the reason `STORY_EVALUATION_LIMITS.maxThemes` reads it
+   * from there: this is the same picture the same blueprint asked for, and the
+   * three routes should not disagree about how many seeds one story carries.
+   * `validateStoryInput` has enforced it on `/api/story/generate` since
+   * `VALIDATION_RULES` was written, with the same value; this route was the one
+   * that never did.
+   */
+  maxThemes: STORY_BLUEPRINT_LIMITS.maxThemes
 } as const;
 
 export type ImageGenerationLimits = typeof IMAGE_GENERATION_LIMITS;

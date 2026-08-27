@@ -7,6 +7,10 @@ import {
   createPostgresStoryProjectStore,
   PostgresQueryExecutor
 } from '../api/_lib/story-lab/storage/postgresStoryProjectStore';
+import {
+  sortStoryProjectListItems,
+  type StoryProjectListItem
+} from '../api/_lib/story-lab/storage/storyProjectStore';
 import type { SavedStoryProject } from '../story-generator/src/app/contracts';
 import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 
@@ -62,6 +66,7 @@ async function main() {
   await testPostgresStoreExecutorPath();
   await testPostgresStoreOwnerConflict();
   await testPostgresStoreMalformedRowsFailClosed();
+  testLibrarySortOrdersTheList();
 
   console.log('Story Lab storage port tests passed');
 }
@@ -311,6 +316,75 @@ function createProjectWithMissingMetadata(): SavedStoryProject {
     chapters: undefined,
     acceptedMemoryCards: undefined
   } as unknown as SavedStoryProject;
+}
+
+/**
+ * `librarySort` is a three-value closed set the profile stores have persisted
+ * and the account route has echoed back since it was introduced, and nothing
+ * read it: both project stores order their list newest-updated-first, so two of
+ * its three values were settings with no effect.
+ */
+function testLibrarySortOrdersTheList(): void {
+  const item = (
+    projectId: string,
+    title: string,
+    createdAt: string,
+    updatedAt: string
+  ): StoryProjectListItem => ({
+    projectId,
+    storyId: `story-${projectId}`,
+    title,
+    synopsis: '',
+    chapterCount: 1,
+    acceptedMemoryCardCount: 0,
+    createdAt,
+    updatedAt
+  });
+
+  const items = [
+    item('a', 'Zephyr Court', '2026-01-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z'),
+    item('b', 'Ashen Vow', '2026-02-01T00:00:00.000Z', '2026-01-15T00:00:00.000Z'),
+    item('c', 'Moonlit Debt', '2026-01-15T00:00:00.000Z', '2026-02-01T00:00:00.000Z')
+  ];
+
+  const ids = (sort: Parameters<typeof sortStoryProjectListItems>[1]) =>
+    sortStoryProjectListItems(items, sort).map(entry => entry.projectId).join(',');
+
+  assert(ids('updated_desc') === 'a,c,b', `updated_desc should order by last update (got ${ids('updated_desc')})`);
+  assert(ids('created_desc') === 'b,c,a', `created_desc should order by creation (got ${ids('created_desc')})`);
+  assert(ids('title_asc') === 'b,c,a', `title_asc should order by title (got ${ids('title_asc')})`);
+
+  assert(
+    items.map(entry => entry.projectId).join(',') === 'a,b,c',
+    'sorting should not reorder the caller\'s array in place'
+  );
+
+  // `Date.parse` answers `NaN` for a timestamp it cannot read, and a comparator
+  // that answers `NaN` is read as *equal* — so one unreadable entry would
+  // otherwise compare equal to every other and pin the whole list in the order
+  // it arrived in. This is the failure `byNewestUpdateFirst` was fixed for on
+  // the local library.
+  const withCorruptTimestamp = [
+    item('x', 'Corrupt', 'not-a-date', 'not-a-date'),
+    ...items
+  ];
+  const corruptOrder = sortStoryProjectListItems(withCorruptTimestamp, 'updated_desc')
+    .map(entry => entry.projectId)
+    .join(',');
+  assert(
+    corruptOrder === 'a,c,b,x',
+    `an unreadable timestamp should sort last, not stop the sort (got ${corruptOrder})`
+  );
+
+  const twoCorrupt = sortStoryProjectListItems([
+    item('y', 'Second corrupt', '', ''),
+    item('x', 'Corrupt', 'not-a-date', 'not-a-date'),
+    ...items
+  ], 'updated_desc').map(entry => entry.projectId).join(',');
+  assert(
+    twoCorrupt === 'a,c,b,x,y',
+    `two unreadable timestamps should compare equal to each other, not to NaN (got ${twoCorrupt})`
+  );
 }
 
 main().catch(error => {

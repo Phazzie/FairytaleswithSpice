@@ -96,23 +96,53 @@ export function extractLastChapterSummary(content: string): string {
 }
 
 /**
- * Extract active plot threads and unresolved elements
+ * Report the threads a continuation has to carry forward.
+ *
+ * The result is interpolated into the continuation prompt as
+ * `Active Plot Threads`, so what this finds is what the next chapter is told is
+ * still open. It was the last scan in this module reading the markup and
+ * matching substrings, and both of its siblings above and below have already
+ * been moved off both:
+ *
+ * - **It scanned the markup.** `extractThemesFromContent` and
+ *   `extractSpicyLevelFromContent` read `stripHtml(content)` first, so that what
+ *   is measured is what the reader sees. Here the cost falls on the one
+ *   multi-word pattern: `\bwhat\s+(if|would|could)\b` needs whitespace between
+ *   the two words, and a chapter that breaks its paragraph between them —
+ *   `what</p><p>if she was lying` — has markup there instead, so the question
+ *   the scan exists to notice was invisible whenever the model put it across a
+ *   paragraph break.
+ * - **It matched substrings.** `secret` is inside `secretary`, `power` inside
+ *   `powerless`, and `control` inside `uncontrollable` — and the last of the
+ *   five checks, on the same lines, already used `\b`. Whole-word matching is
+ *   what makes the other four agree with it, and with the two scans beside them
+ *   that were repaired for the same reason.
+ *
+ * The inflections the substring form picked up for free — `secrets` for
+ * `secret`, `dangerous` for `danger`, `threatening` for `threat`, `powerful`
+ * for `power`, `controlled` for `control` — are listed rather than lost.
  */
 export function extractPlotThreads(content: string): string[] {
   const threads: string[] = [];
-  const lowerContent = content.toLowerCase();
+  const lowerContent = stripHtml(content).toLowerCase();
+
+  const mentions = (...keywords: string[]): boolean =>
+    keywords.some(keyword => containsWholeWord(lowerContent, keyword));
 
   // Check for common plot thread indicators
-  if (lowerContent.includes('secret') || lowerContent.includes('mystery')) {
+  if (mentions('secret', 'secrets', 'secretly', 'mystery')) {
     threads.push('Unresolved mystery or secret');
   }
-  if (lowerContent.includes('danger') || lowerContent.includes('threat')) {
+  if (mentions(
+    'danger', 'dangers', 'dangerous', 'dangerously',
+    'threat', 'threats', 'threaten', 'threatens', 'threatened', 'threatening'
+  )) {
     threads.push('Active threat or danger');
   }
-  if (lowerContent.includes('forbidden') || lowerContent.includes('impossible')) {
+  if (mentions('forbidden', 'impossible')) {
     threads.push('Forbidden relationship tension');
   }
-  if (lowerContent.includes('power') || lowerContent.includes('control')) {
+  if (mentions('power', 'powers', 'powerful', 'control', 'controls', 'controlled', 'controlling')) {
     threads.push('Power dynamics in play');
   }
   if (lowerContent.match(/\bwhat\s+(if|would|could)\b/)) {

@@ -2,7 +2,7 @@
 
 import type { AuthUser } from '../auth/authPort';
 import type { ProjectAccessRecord } from '../auth/authorizeProjectAccess';
-import type { SavedStoryProject } from '../contracts';
+import type { SavedStoryProject, StoryLabLibrarySort } from '../contracts';
 
 export type StoryProjectStorageMode = 'non_durable_memory' | 'postgres';
 
@@ -122,6 +122,62 @@ export function toStoryProjectListItem(record: StoredStoryProjectRecord): StoryP
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };
+}
+
+/**
+ * Order a cloud library the way its owner asked for it.
+ *
+ * `StoryLabProfilePreferences.librarySort` is a three-value closed set —
+ * `updated_desc`, `created_desc`, `title_asc` — declared in the shared
+ * contracts, defaulted by `createDefaultStoryLabProfilePreferences`, validated
+ * against `STORY_LAB_LIBRARY_SORTS` by `normalizeStoryLabProfilePreferences`,
+ * written to both profile stores, and handed back by
+ * `GET /api/story-lab/account/profile`. Nothing read it. Both project stores
+ * order their own list newest-updated-first and hand it straight to the route,
+ * so two of the three values a reader could save were settings with no effect:
+ * the preference round-tripped through the API intact and the library came back
+ * in the same order whatever it said.
+ *
+ * The ordering is applied here rather than pushed into the stores because it is
+ * a property of the answer, not of the storage: the Postgres store's
+ * `LIST_PROJECTS_SQL` and the in-memory store's comparator would otherwise both
+ * have to learn the same three orderings and be kept agreeing about them, and
+ * the list item already carries all three fields the orderings read.
+ *
+ * `Date.parse` answers `NaN` for a timestamp it cannot read, and a comparator
+ * that answers `NaN` is read as *equal* — `Array.prototype.sort` coerces it to
+ * `+0` — so one unreadable entry would compare equal to every other and pin the
+ * list in whatever order it arrived in. That is the failure
+ * `byNewestUpdateFirst` in `story-workspace-storage.service.ts` was fixed for on
+ * the local library, and this is the same reading: an unreadable timestamp sorts
+ * as older than any real one, using a finite floor so that two of them compare
+ * equal to each other rather than subtracting to `NaN` again.
+ *
+ * Titles are compared with `localeCompare` so that `Élise` files with the `E`s
+ * rather than after `Z`, and the project id breaks every tie so that one library
+ * always comes back in one order.
+ */
+export function sortStoryProjectListItems(
+  items: readonly StoryProjectListItem[],
+  sort: StoryLabLibrarySort
+): StoryProjectListItem[] {
+  const ordered = [...items];
+
+  if (sort === 'title_asc') {
+    return ordered.sort((first, second) =>
+      first.title.localeCompare(second.title) || first.projectId.localeCompare(second.projectId));
+  }
+
+  const field = sort === 'created_desc' ? 'createdAt' : 'updatedAt';
+
+  return ordered.sort((first, second) =>
+    toSortableTimestamp(second[field]) - toSortableTimestamp(first[field])
+      || first.projectId.localeCompare(second.projectId));
+}
+
+function toSortableTimestamp(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? Number.MIN_SAFE_INTEGER : parsed;
 }
 
 export function projectAccessRecordFromStoredProject(record: StoredStoryProjectRecord): ProjectAccessRecord {
