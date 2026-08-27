@@ -9,7 +9,9 @@ import {
   StoryLabJob,
   StoryLabJobCreationRequest
 } from '../api/_lib/story-lab/jobs/jobContracts';
-import type { StoryGenerationSeam } from '../api/_lib/story-lab/contracts';
+import type { StoryGenerationSeam, StoryLabJobStatus } from '../api/_lib/story-lab/contracts';
+import { STORY_LAB_TERMINAL_JOB_STATUSES, isTerminalStoryLabJobStatus } from '../api/_lib/story-lab/contracts';
+import { readFileSync } from 'node:fs';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -103,5 +105,59 @@ assert(job.kind === 'genesis', 'job contract should carry the job kind');
 assert(job.status === 'queued', 'job contract should carry the job status');
 assert(NON_DURABLE_STORY_LAB_JOB_DURABILITY.mode === 'non_durable_memory', 'job scaffold should be explicitly non-durable');
 assert(!NON_DURABLE_STORY_LAB_JOB_DURABILITY.durable, 'job scaffold should not claim durable storage');
+
+// ==================== terminal statuses ====================
+// The set of statuses a job does not leave was decided in three places at once
+// — the event stream's close, the workbench's "is this over", and the SQL that
+// stamps `completed_at` — each with its own copy of the same three names beside
+// a union of six. Each assertion below is one of those three readers proving it
+// reads the list rather than a copy.
+
+assert(
+  isTerminalStoryLabJobStatus('completed')
+    && isTerminalStoryLabJobStatus('failed')
+    && isTerminalStoryLabJobStatus('cancelled'),
+  'a finished job should read as finished however it finished'
+);
+assert(
+  !isTerminalStoryLabJobStatus('queued')
+    && !isTerminalStoryLabJobStatus('running')
+    && !isTerminalStoryLabJobStatus('waiting_for_review'),
+  'a job still in flight should not read as finished'
+);
+
+// `waiting_for_review` is the status that makes this worth asserting: it is the
+// one of the six that arrived after the other five, and the one a fourth
+// terminal status would arrive the same way as.
+const everyStatus: StoryLabJobStatus[] = [
+  'queued',
+  'running',
+  'waiting_for_review',
+  'completed',
+  'failed',
+  'cancelled'
+];
+assert(
+  everyStatus.filter(isTerminalStoryLabJobStatus).length === STORY_LAB_TERMINAL_JOB_STATUSES.length,
+  'the terminal list should name terminal statuses and nothing else'
+);
+
+// The SQL is the third reader, and the only one a type cannot check: it is a
+// string. So it is asserted here that the statement quotes the list rather than
+// restating it, which is the whole reason `TERMINAL_JOB_STATUS_SQL_LIST` exists.
+const postgresJobStoreSource = readFileSync(
+  new URL('../api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts', import.meta.url),
+  'utf8'
+);
+assert(
+  postgresJobStoreSource.includes('${TERMINAL_JOB_STATUS_SQL_LIST}'),
+  'the update statement should take its terminal statuses from the shared list'
+);
+for (const status of STORY_LAB_TERMINAL_JOB_STATUSES) {
+  assert(
+    !postgresJobStoreSource.includes(`in ('${status}'`),
+    `the update statement should not restate ${status} by hand`
+  );
+}
 
 console.log('Story Lab job contract tests passed');

@@ -27,8 +27,6 @@ export type ChapterBatchSize = 1 | 2 | 3;
 export type WordBudget = 600 | 900 | 1200 | 1500;
 export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_banter' | 'devotional_longing';
 export type HeatIntimacyBoundary = 'fade_to_black' | 'closed_door' | 'literary_on_page';
-export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
-
 // `ExportFormat` and `SaveExportSeam` are re-exported from the backend's own
 // contract rather than redeclared here: the export pipeline runs entirely in
 // `api/_lib`, so its seam has exactly one definition instead of two that could
@@ -40,13 +38,12 @@ export type { ExportFormat, SaveExportSeam } from '../../../api/_lib/types/contr
 // renders that no reader could then choose.
 export { EXPORT_FORMATS } from '../../../api/_lib/types/contracts';
 
-export const IMAGE_STYLES = [
-  'artistic',
-  'photorealistic',
-  'fantasy',
-  'dark',
-  'romantic'
-] as const satisfies readonly ImageStyle[];
+// `ImageStyle`, `IMAGE_STYLES`, and `ImageGenerationSeam` for the same reason,
+// after the second declarations of the first and the last had already drifted
+// from these: the image pipeline runs entirely in `api/_lib` too. See
+// `IMAGE_STYLES` and `ImageGenerationSeam` there for what the copies cost.
+export type { ImageStyle, ImageGenerationSeam } from '../../../api/_lib/types/contracts';
+export { IMAGE_STYLES } from '../../../api/_lib/types/contracts';
 
 export const CREATURE_ARCHETYPES = [
   'vampire',
@@ -486,55 +483,6 @@ export interface StoryContinuationSeam {
   };
 }
 
-export interface ImageGenerationSeam {
-  seamName: 'Story → Image Generation';
-  description: 'Generates a scene image from story content using Grok-2-Image.';
-
-  input: {
-    storyId: string;
-    content: string;
-    imagePrompt?: string;
-    creature: CreatureArchetype;
-    themes: string[];
-    style: ImageStyle;
-    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3';
-  };
-
-  output: {
-    imageId: string;
-    storyId: string;
-    imageUrl: string;
-    prompt: string;
-    style: ImageStyle;
-    aspectRatio: string;
-    width: number;
-    height: number;
-    fileSize: number;
-    generatedAt: Date;
-  };
-
-  errors: {
-    IMAGE_GENERATION_FAILED: {
-      code: 'IMAGE_GENERATION_FAILED';
-      message: string;
-      retryable: boolean;
-      reason: 'content_policy' | 'quota_exceeded' | 'service_error';
-    };
-    UNSUPPORTED_STYLE: {
-      code: 'UNSUPPORTED_STYLE';
-      message: string;
-      requestedStyle: ImageStyle;
-      supportedStyles: ImageStyle[];
-    };
-    IMAGE_QUOTA_EXCEEDED: {
-      code: 'IMAGE_QUOTA_EXCEEDED';
-      message: string;
-      quotaRemaining: number;
-      resetTime: Date;
-    };
-  };
-}
-
 export interface StoryPersistenceSeam {
   seamName: 'Story Snapshot ↔ Persistence Layer';
   description: 'Defines how story state and chapter metadata are stored in a Vercel-compatible persistence layer.';
@@ -595,6 +543,43 @@ export type StoryLabJobStatus =
   | 'completed'
   | 'failed'
   | 'cancelled';
+
+/**
+ * The statuses a job does not leave.
+ *
+ * Three places decided this independently, each with its own copy of the same
+ * three names beside a union that has six:
+ *
+ * - `StoryService.streamStoryLabJobEvents` closed the `EventSource` and
+ *   completed the observable on `['completed', 'failed', 'cancelled']`;
+ * - `AppComponent.handleJobSnapshot` reported "still running" for anything its
+ *   three `if` branches did not name, which is what keeps the progress timer
+ *   turning and the reader waiting;
+ * - `postgresStoryLabJobStore`'s `UPDATE_JOB_SQL` stamped `completed_at` when
+ *   `$3 in ('completed', 'failed', 'cancelled')`.
+ *
+ * They agree today. What they cannot do is disagree usefully: a status added to
+ * the union — `waiting_for_review` is already there, and it is the only one of
+ * the six that arrived after the other five — has three unrelated files to be
+ * remembered in, in two languages, and being forgotten in any one of them fails
+ * quietly. Forgotten in the stream, the browser holds a connection open for a
+ * job that is over; forgotten in the component, the reader watches a progress
+ * bar for a batch that will never arrive; forgotten in the SQL, the row's
+ * `completed_at` stays null forever.
+ *
+ * So this is the list, and all three read it. `satisfies` rather than a bare
+ * `as const` so an entry that is not a status does not compile.
+ */
+export const STORY_LAB_TERMINAL_JOB_STATUSES = [
+  'completed',
+  'failed',
+  'cancelled'
+] as const satisfies readonly StoryLabJobStatus[];
+
+/** Whether a job in `status` is finished, however it finished. */
+export function isTerminalStoryLabJobStatus(status: StoryLabJobStatus): boolean {
+  return (STORY_LAB_TERMINAL_JOB_STATUSES as readonly StoryLabJobStatus[]).includes(status);
+}
 
 export interface StoryLabJobError {
   code: string;

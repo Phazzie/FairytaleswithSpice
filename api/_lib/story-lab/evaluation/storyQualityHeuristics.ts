@@ -5,6 +5,7 @@ import type {
 import { splitStoryIntoTextBlocks } from '../../../../shared/storyTextBlocks';
 import { collapseWhitespace } from '../../utils/whitespace';
 import { escapeRegExp } from '../../utils/regexEscape';
+import { containsWholeWord, wholeWordPattern } from '../../utils/wholeWord';
 
 export interface StoryQualityHeuristicInput {
   storyContent: string;
@@ -540,13 +541,12 @@ function normalizeProseForScanning(value: string): string {
  * part of a longer one in another script. The keywords themselves are the
  * lexicons' own ASCII words; it is the prose around them that is not
  * guaranteed to be.
+ *
+ * That reading is now `api/_lib/utils/wholeWord.ts`'s, which is what the three
+ * scans that still spelled the boundary `\b` — the content analysis, the
+ * pressure keywords, and the cliffhanger hooks — were moved onto. This one was
+ * already right; what changes is that it is no longer the only one.
  */
-function containsWholeWord(text: string, keyword: string): boolean {
-  return new RegExp(
-    String.raw`(?<![\p{L}\p{N}\p{M}])${escapeRegExp(keyword)}(?![\p{L}\p{N}\p{M}])`,
-    'u'
-  ).test(text);
-}
 
 /**
  * The endings a keyword may pick up and still be the same word.
@@ -619,10 +619,9 @@ function wordSpellings(word: string): string[] {
  * all still count, because they are the same word.
  */
 function containsWordForm(text: string, word: string): boolean {
-  return wordSpellings(word).some(spelling => new RegExp(
-    String.raw`(?<![\p{L}\p{N}\p{M}])${escapeRegExp(spelling)}${WORD_INFLECTION_SUFFIXES}(?![\p{L}\p{N}\p{M}])`,
-    'u'
-  ).test(text));
+  return wordSpellings(word).some(spelling =>
+    wholeWordPattern(`${escapeRegExp(spelling)}${WORD_INFLECTION_SUFFIXES}`).test(text)
+  );
 }
 
 function extractConcreteAnchors(storyContent: string): string[] {

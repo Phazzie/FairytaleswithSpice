@@ -50,7 +50,8 @@ import {
   StoryLabJob,
   StoryLabJobStatus,
   StoryWorkbenchSession,
-  ThemeSeed
+  ThemeSeed,
+  isTerminalStoryLabJobStatus
 } from './contracts';
 import { StoryService } from './story.service';
 import { StoryWorkspaceStorageService } from './story-workspace-storage.service';
@@ -2035,6 +2036,17 @@ export class App implements OnDestroy {
 
     if (job.status === 'cancelled') {
       this.failJob(kind, batchId, copy.cancelledMessage);
+      return true;
+    }
+
+    // A terminal status without a branch above must not read as "still
+    // running". Returning `false` here is what keeps the progress timer turning
+    // and the batch queued: nothing else in this component ever revisits the
+    // job, because the stream that would have delivered the next snapshot has
+    // already closed on the same status. See `STORY_LAB_TERMINAL_JOB_STATUSES`
+    // for the three places this set is read and why none of them may guess.
+    if (isTerminalStoryLabJobStatus(job.status)) {
+      this.failJob(kind, batchId, copy.defaultFailedMessage);
       return true;
     }
 

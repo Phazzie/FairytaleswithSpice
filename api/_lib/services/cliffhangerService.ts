@@ -4,7 +4,7 @@
 import { CliffhangerAnalysis, CliffhangerType } from '../types/contracts';
 import { splitStoryIntoTextBlocks } from '../../../shared/storyTextBlocks';
 import { collapseWhitespace } from '../utils/whitespace';
-import { escapeRegExp } from '../utils/regexEscape';
+import { wholeWordAlternationPattern } from '../utils/wholeWord';
 
 /**
  * The hook words and phrases each kind of cliffhanger is recognised by, and the
@@ -141,20 +141,27 @@ const CLIFFHANGER_PATTERNS: Record<CliffhangerType, ReadonlyArray<readonly strin
  * The arrangement is `PRESSURE_KEYWORD_PATTERNS`'s in `continuationGuidance`,
  * for the same reason and against text the caller has already lowercased.
  *
- * `\b` at each end is what separates a hook from the longer word it sits
- * inside. The multi-word entries take it at the ends of the phrase rather than
- * around each word, which is what makes `blood froze` one hook and not two
+ * The boundary at each end is what separates a hook from the longer word it
+ * sits inside, and it is `wholeWordAlternationPattern`'s — the repository's one
+ * answer to that question — rather than the `\b(?:…)\b` this replaces. `\b` is
+ * ASCII-only, so it read a boundary between an ASCII letter and an accented
+ * one and credited `truth` for `truthé` and `name` for `namé`; the whole point
+ * of matching hooks as words is that they are not credited from inside another
+ * one. See `WORD_CHARACTERS` there.
+ *
+ * The multi-word entries take the boundary at the ends of the phrase rather
+ * than around each word, which is what makes `blood froze` one hook and not two
  * independent hits — and the single space inside those phrases is why the
  * scanned text has its whitespace collapsed first: a phrase the generator
  * wrapped across a line inside one paragraph was invisible to a matcher looking
  * for one space, the same failure `extractPlotThreads`'s
- * `\bwhat\s+(if|would|could)\b` names.
+ * `UNRESOLVED_QUESTION_PATTERN` names.
  */
 const CLIFFHANGER_HOOK_PATTERNS = new Map<CliffhangerType, RegExp[]>(
   (Object.entries(CLIFFHANGER_PATTERNS) as Array<[CliffhangerType, ReadonlyArray<readonly string[]>]>)
     .map(([type, hooks]) => [
       type,
-      hooks.map(spellings => new RegExp(String.raw`\b(?:${spellings.map(escapeRegExp).join('|')})\b`))
+      hooks.map(spellings => wholeWordAlternationPattern(spellings))
     ])
 );
 
