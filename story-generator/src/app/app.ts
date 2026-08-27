@@ -1713,11 +1713,17 @@ export class App implements OnDestroy {
    * either: the count comes from the same request as the items, so the honest
    * thing for an unexpected pair is to report the items, which is what the
    * reader is looking at.
+   *
+   * The noun agrees with the last number before it — `totalCount` in the
+   * "1 of 61" form, `loadedCount` otherwise — so a single project out of
+   * sixty-one reads as "1 of 61 cloud projects" rather than "1 of 61 cloud
+   * project".
    */
   private describeCloudProjectsLoaded(loadedCount: number, totalCount: number): string {
-    const noun = `cloud project${loadedCount === 1 ? '' : 's'}`;
+    const isCapped = totalCount > loadedCount;
+    const noun = `cloud project${(isCapped ? totalCount : loadedCount) === 1 ? '' : 's'}`;
 
-    return totalCount > loadedCount
+    return isCapped
       ? `${loadedCount} of ${totalCount} ${noun}`
       : `${loadedCount} ${noun}`;
   }
