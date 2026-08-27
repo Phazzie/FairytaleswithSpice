@@ -58,7 +58,9 @@ import {
   toLoggableNumber,
   toLoggableThemes
 } from '../utils/loggableRequestParameters';
-import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
+import { STORY_BLUEPRINT_LIMITS, STORY_EVALUATION_LIMITS } from '../../../shared/storyBlueprintLimits';
+import { capAtWordBoundaryWithinCodeUnits } from '../utils/textExcerpt';
+import { collapseWhitespace } from '../utils/whitespace';
 import {
   STORY_BEAT_STRUCTURES,
   STORY_CHEKHOV_ELEMENTS,
@@ -101,8 +103,46 @@ const MOCK_CONTINUATION_TARGET_BODY_WORDS = 450;
 const STORY_LAB_THEME_SEED_LIMIT = STORY_BLUEPRINT_LIMITS.maxThemes;
 const STORY_LAB_THEME_LABEL_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxThemeLabelLength;
 const STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength;
-const STORY_LAB_CONTEXT_VALUE_MAX_LENGTH = 320;
-const STORY_LAB_NO_GO_CONTENT_MAX_LENGTH = STORY_LAB_CONTEXT_VALUE_MAX_LENGTH;
+/**
+ * The rest of the blueprint's free-text fields, each at its own field's cap.
+ *
+ * The two seed caps above were moved onto the shared limits with the note that
+ * "a cap the routes enforce and a cap the prompt applies have to be the same
+ * number or the guarantee is only as good as whichever is looser". The six
+ * fields below were left on one shared `320`, which is the same defect running
+ * the other way: not looser than the route, but *tighter*, and silently.
+ *
+ * `parseStoryLabBlueprint` accepts a 420-character logline, 600 characters of
+ * world details, and 1200 of narrative directives, and the form built on
+ * `STORY_BLUEPRINT_LIMITS` tells the reader those are the limits — the logline
+ * counter counts down from 420. Every one of them then arrived here and was cut
+ * to 320 before the model ever saw it. Narrative directives lost three-quarters
+ * of an accepted field; world details lost nearly half; a logline written to the
+ * limit the form states lost its last hundred characters. The block those lines
+ * are written into ends `- Treat these blueprint fields as binding story intent,
+ * not as optional flavor`, and nothing in the response said a quarter of that
+ * intent had been dropped.
+ *
+ * The cap itself is not removable, and that is why these are numbers rather than
+ * nothing: `/api/story/generate` takes a `generationContext` too, and
+ * `validateStoryInput` does not measure its fields, so this is the only boundary
+ * on that path. It just has to be the boundary the blueprint routes already
+ * publish for each field, one field at a time, rather than one number that
+ * happens to be the smallest of them.
+ *
+ * `noGoContent` keeps `320` — it was always this field's own cap, which is what
+ * `STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength` reads it as too. `tone` takes
+ * the evaluation limits' configuration-value cap, which is documented for
+ * exactly this shape of field: "one theme id or creature name, not a paragraph
+ * wearing the field's name". The blueprint parser checks `tone` against
+ * `NARRATIVE_TONES`, so only the classic route can deliver anything else here.
+ */
+const STORY_LAB_LOGLINE_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxLoglineLength;
+const STORY_LAB_TONE_MAX_LENGTH = STORY_EVALUATION_LIMITS.maxConfigurationValueLength;
+const STORY_LAB_CHARACTER_NAME_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxCharacterNameLength;
+const STORY_LAB_WORLD_DETAILS_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength;
+const STORY_LAB_NARRATIVE_DIRECTIVES_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength;
+const STORY_LAB_NO_GO_CONTENT_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxNoGoContentLength;
 
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
@@ -146,14 +186,35 @@ export class StoryService {
     );
   }
 
+  /**
+   * How many tropes one story is asked to subvert, decided where the range is
+   * declared.
+   *
+   * `TropeSubversionService` owns that range — `minTropes` and `maxTropes`, with
+   * `getRandomTropeCount` drawing from it, and `selectTropesForSubversion`
+   * falling back to it when the caller names no count. This is that service's
+   * only caller in the app, and it named a count every time: `randomInt(2, 4)`,
+   * which is the same two-or-three drawn the same way, written out again on the
+   * other side of the seam.
+   *
+   * So the two fields and the method they feed had no reachable reader at all —
+   * a named range nothing consults is not a range, it is a note, which is the
+   * argument `estimateReadTimeMinutes` was extracted under for
+   * `READING_SPEED.WORDS_PER_MINUTE`. And it is the arrangement where retuning
+   * the range does nothing: widening `maxTropes` to four would leave every
+   * generated story on two or three, because the caller decides.
+   *
+   * Omitting the count is what gives the declaration back its reader. The draw
+   * is unchanged — `getRandomTropeCount` is `randomInt(this.minTropes,
+   * this.maxTropes + 1)`, which is `randomInt(2, 4)`.
+   */
   private selectTropeSubversions(input: StoryGenerationSeam['input']): TropeSelection | undefined {
     if (!this.tropeService.supportsCreature(input.creature)) {
       return undefined;
     }
 
     return this.tropeService.selectTropesForSubversion({
-      creature: input.creature,
-      tropeCount: randomInt(2, 4)
+      creature: input.creature
     });
   }
 
@@ -898,32 +959,32 @@ AVOID: ${selectedStructure.avoid}`;
       'STORY LAB BLUEPRINT - FIRST-CLASS CREATIVE CONSTRAINTS:'
     ];
 
-    const logline = this.limitStoryLabPromptText(context.logline, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const logline = this.limitStoryLabPromptText(context.logline, STORY_LAB_LOGLINE_MAX_LENGTH);
     if (logline) {
       lines.push(`- Logline: ${logline}`);
     }
-    const tone = this.limitStoryLabPromptText(context.tone, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const tone = this.limitStoryLabPromptText(context.tone, STORY_LAB_TONE_MAX_LENGTH);
     if (tone) {
-      lines.push(`- Narrative tone: ${tone.split('_').join(' ')}`);
+      lines.push(`- Narrative tone: ${this.formatBlueprintIdLabel(tone)}`);
     }
-    const protagonistName = this.limitStoryLabPromptText(context.protagonistName, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const protagonistName = this.limitStoryLabPromptText(context.protagonistName, STORY_LAB_CHARACTER_NAME_MAX_LENGTH);
     if (protagonistName) {
       lines.push(`- Protagonist name: ${protagonistName}`);
     }
-    const antagonistName = this.limitStoryLabPromptText(context.antagonistName, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const antagonistName = this.limitStoryLabPromptText(context.antagonistName, STORY_LAB_CHARACTER_NAME_MAX_LENGTH);
     if (antagonistName) {
       lines.push(`- Antagonist name or opposing force: ${antagonistName}`);
     }
-    const worldDetails = this.limitStoryLabPromptText(context.worldDetails, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const worldDetails = this.limitStoryLabPromptText(context.worldDetails, STORY_LAB_WORLD_DETAILS_MAX_LENGTH);
     if (worldDetails) {
       lines.push(`- World details: ${worldDetails}`);
     }
-    const narrativeDirectives = this.limitStoryLabPromptText(context.narrativeDirectives, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const narrativeDirectives = this.limitStoryLabPromptText(context.narrativeDirectives, STORY_LAB_NARRATIVE_DIRECTIVES_MAX_LENGTH);
     if (narrativeDirectives) {
       lines.push(`- Narrative directives: ${narrativeDirectives}`);
     }
     if (context.heatContract) {
-      lines.push(`- Heat contract: adult readers only confirmed; tension mode ${this.formatHeatContractLabel(context.heatContract.tensionMode)}; boundary ${this.formatHeatContractLabel(context.heatContract.intimacyBoundary)}.`);
+      lines.push(`- Heat contract: adult readers only confirmed; tension mode ${this.formatBlueprintIdLabel(context.heatContract.tensionMode)}; boundary ${this.formatBlueprintIdLabel(context.heatContract.intimacyBoundary)}.`);
       const noGoContent = this.limitStoryLabPromptText(context.heatContract.noGoContent, STORY_LAB_NO_GO_CONTENT_MAX_LENGTH);
       if (noGoContent) {
         lines.push(`- No-go content: ${noGoContent}`);
@@ -962,22 +1023,63 @@ AVOID: ${selectedStructure.avoid}`;
       .slice(0, STORY_LAB_THEME_SEED_LIMIT);
   }
 
+  /**
+   * Read one blueprint free-text field down to what the prompt will carry.
+   *
+   * Every Story Lab field that reaches a prompt goes through here — the
+   * logline, the tone, both character names, the world details, the narrative
+   * directives, the Heat Contract's no-go list, and each theme seed's label and
+   * description — so the cut this makes is the cut the model sees, on nine
+   * fields at once.
+   *
+   * It was `compacted.slice(0, maxLength)`, which is the defect `textExcerpt`
+   * was written for and names three earlier instances of: "Three places still
+   * cut with `String.prototype.slice` and a number, and all three feed a model
+   * rather than a screen." This is the fourth, and it is the widest of them.
+   * `slice` counts UTF-16 code units, so a cut landing between the halves of a
+   * surrogate pair leaves a lone surrogate in the prompt — nothing throws,
+   * because `JSON.stringify` escapes it rather than refusing it, so the request
+   * simply carries a character the reader never typed in place of the emoji or
+   * astral-script character that was there. And a cut at an arbitrary offset
+   * ends mid-word, so a world-detail field is handed to the model as a
+   * fragment.
+   *
+   * `capAtWordBoundaryWithinCodeUnits` rather than `capAtWordBoundary` because
+   * the caps these are measured against are the route's, and the route measures
+   * them with `.length`: `parseStoryLabBlueprint` refuses a `logline` whose
+   * `.length` is past 420. Cutting in code points here would let a field of
+   * astral characters pass the route and be measured differently at the prompt,
+   * which is the drift the shared limits exist to prevent. A code point is
+   * still never split — an astral character costs two units and is taken whole
+   * or not at all.
+   *
+   * `collapseWhitespace` is the same operation the trim-and-`\s+` this replaces
+   * performed, read from the module that already holds it rather than spelled
+   * out a fifth time.
+   */
   private limitStoryLabPromptText(value: unknown, maxLength: number): string | undefined {
     if (typeof value !== 'string') {
       return undefined;
     }
 
-    const compacted = value.trim().replace(/\s+/g, ' ');
+    const compacted = collapseWhitespace(value);
     if (!compacted) {
       return undefined;
     }
 
-    return compacted.length > maxLength
-      ? compacted.slice(0, maxLength).trim()
-      : compacted;
+    return capAtWordBoundaryWithinCodeUnits(compacted, maxLength);
   }
 
-  private formatHeatContractLabel(value: string): string {
+  /**
+   * Write a blueprint id the way the prompt reads it: `slow_burn` becomes
+   * `slow burn`.
+   *
+   * Named for the Heat Contract when the two contract fields were its only
+   * callers, and the narrative tone one line above spelled the same
+   * `split('_').join(' ')` out again rather than asking for it. Three fields
+   * from three closed vocabularies, one reading.
+   */
+  private formatBlueprintIdLabel(value: string): string {
     return value.split('_').join(' ');
   }
 
@@ -1061,7 +1163,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     const lines = [
       '',
       'STORY LAB HEAT CONTRACT - CONTINUATION CONSTRAINTS:',
-      `- Adult readers only confirmed; tension mode ${this.formatHeatContractLabel(context.heatContract.tensionMode)}; boundary ${this.formatHeatContractLabel(context.heatContract.intimacyBoundary)}.`
+      `- Adult readers only confirmed; tension mode ${this.formatBlueprintIdLabel(context.heatContract.tensionMode)}; boundary ${this.formatBlueprintIdLabel(context.heatContract.intimacyBoundary)}.`
     ];
 
     if (context.heatContract.noGoContent?.trim()) {
