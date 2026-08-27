@@ -59,6 +59,15 @@ function requestWith(header: unknown) {
 
 const GENERATED_ID_PATTERN = /^req_[0-9a-f-]{36}$/;
 
+/** The correlation id the route cases below send, named for the reason
+ * `tests/story-lab-continuity-prompt.test.ts` names its own `STORY_ID`: it is
+ * asserted on in three places, and three spellings of one id is three chances
+ * for the assertion to be checking something the request never carried. */
+const GENERATION_TRACE_ID = 'trace-generation-1';
+
+/** The story the continuity case runs against. Named for the same reason. */
+const CONTINUITY_STORY_ID = 'story-continuity-correlation';
+
 // ==================== IDS THAT ARE HONOURED ====================
 // The whole value of the header is a caller tracing one request across their
 // logs and this service's, so an id that is plausibly a correlation id survives
@@ -227,16 +236,16 @@ async function testTheStoryLabRoutesHandTheirIdToTheGeneration(): Promise<void> 
     let seen: any;
     const response = new FakeResponse();
     await routeCase.build(options => { seen = options; })(
-      { method: 'POST', headers: { 'x-request-id': 'trace-generation-1' }, body: routeCase.body },
+      { method: 'POST', headers: { 'x-request-id': GENERATION_TRACE_ID }, body: routeCase.body },
       response
     );
 
     assert(
-      response.headers['X-Request-ID'] === 'trace-generation-1',
+      response.headers['X-Request-ID'] === GENERATION_TRACE_ID,
       `${routeCase.path} should echo the correlation id (got ${JSON.stringify(response.headers['X-Request-ID'])})`
     );
     assert(
-      seen?.requestId === 'trace-generation-1',
+      seen?.requestId === GENERATION_TRACE_ID,
       `${routeCase.path} should hand the settled id to the generation, got ${JSON.stringify(seen?.requestId)}`
     );
   }
@@ -340,7 +349,7 @@ async function testTheContinuityCallCarriesTheSameId(): Promise<void> {
 
   try {
     await extractContinuity({
-      storyId: 'story-continuity-correlation',
+      storyId: CONTINUITY_STORY_ID,
       currentState: continuityState(),
       chapters: [],
       summary: continuitySummary(),
@@ -366,7 +375,7 @@ async function testTheContinuityCallCarriesTheSameId(): Promise<void> {
 
 function continuityState() {
   return {
-    storyId: 'story-continuity-correlation',
+    storyId: CONTINUITY_STORY_ID,
     revision: 1,
     characters: [],
     threads: [],
@@ -379,7 +388,7 @@ function continuityState() {
 
 function continuitySummary() {
   return {
-    storyId: 'story-continuity-correlation',
+    storyId: CONTINUITY_STORY_ID,
     title: 'Continuity correlation',
     creature: 'siren',
     themes: [],
