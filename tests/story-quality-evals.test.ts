@@ -319,13 +319,34 @@ function testTheEndingIsScannedWithItsWhitespaceCollapsed(): void {
   );
 
   // A short final block is what makes the walk take in the paragraph before it,
-  // so that is exactly where a resurrected false positive would show up: the
-  // joined text here holds `continued` as an ordinary verb, and the label
+  // so that is exactly where a false positive would show up. Two of them, both
+  // of which the reconstruction has to refuse.
+  //
+  // The joined text here holds `continued` as an ordinary verb, and the label
   // lexicon must still refuse it.
   const shortEnding = scan('<p>He continued down the long dark hall.</p><p>She ran</p>');
   assert(
     !shortEnding?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
     `joining the trailing blocks must not bring back the bare-verb match (signals=${JSON.stringify(shortEnding?.signals)})`
+  );
+
+  // And here the label is real but sits wholly inside the *previous* paragraph,
+  // so the ending announces nothing. Caught by Codex on this PR: judging the
+  // join by block length alone bought the split label at the price of this.
+  // Only a match that exists in the joined text and in none of the blocks it
+  // was joined from can be a label a boundary broke apart.
+  const labelBefore = scan('<p>The chapter was a cliffhanger.</p><p>She ran</p>');
+  assert(
+    !labelBefore?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label in the paragraph before the ending is not this ending's (signals=${JSON.stringify(labelBefore?.signals)})`
+  );
+
+  // The reconstruction must not cost the ordinary case either: a label with
+  // prose after it, inside one block, is still the block's own match.
+  const trailing = scan('<p>The door opened.</p><p>To be continued, she thought.</p>');
+  assert(
+    trailing?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label inside the final block still scores wherever it sits (signals=${JSON.stringify(trailing?.signals)})`
   );
 }
 

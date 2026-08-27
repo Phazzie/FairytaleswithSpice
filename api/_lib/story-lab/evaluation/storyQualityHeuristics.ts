@@ -187,37 +187,43 @@ const EXPLICIT_CLIFFHANGER_PATTERN = wordFormAlternationPattern([
 const LONGEST_EXPLICIT_CLIFFHANGER_LABEL = 'to be continued'.length;
 
 /**
- * The ending as one line, with a label a `<br>` broke apart put back together.
+ * Whether a label the markup tore in half is sitting at the end of the story.
  *
  * `splitStoryIntoTextBlocks` treats `<br>` as a block boundary — it has to, or
  * the words on either side of one weld into a single token — so the generator's
  * `<p>To be<br>continued</p>` arrives here as the two blocks `To be` and
- * `continued`, and the last of them is the whole of what a final-paragraph scan
- * can see. Collapsing whitespace does not reach that: the break is *between*
- * blocks, not inside one, which is the half of this failure the raw-newline case
- * above does not cover. What the reader sees is one label either way.
+ * `continued`, and the last of them is the whole of what a final-block scan can
+ * see. Collapsing whitespace does not reach that: the break is *between* blocks,
+ * not inside one. What the reader sees is one label either way.
  *
- * So the walk goes back through the trailing blocks that are shorter than the
- * label itself — the fragments a break leaves — and stops on the first block
- * long enough to be prose, which is included because a label can begin at the
- * end of a real paragraph. A story whose last block is an ordinary paragraph
- * stops on the first step and is read exactly as before.
+ * The reconstruction has to be exactly that and nothing more. Judging the join
+ * by block length alone — "the final block is too short to be prose, so read the
+ * one before it too" — buys the split label at the price of a false positive
+ * Codex caught on this PR: `<p>The chapter was a cliffhanger.</p><p>She ran</p>`
+ * has its label wholly inside the *previous* paragraph and an ending that
+ * announces nothing, and it scored the signal and its sixteen points.
+ *
+ * So the join is only ever read for what no single block already says. A label
+ * that fits inside one block is that block's business — the final block's test
+ * above reports it when it is the ending, and does not when it is not — and only
+ * a match that exists in the joined text and in none of the blocks it was joined
+ * from can be a label a boundary broke apart.
  */
-function readEndingLabelText(paragraphs: readonly string[], fallback: string): string {
-  if (paragraphs.length === 0) {
-    return collapseWhitespace(fallback).toLowerCase();
-  }
-
-  const tail: string[] = [];
+function hasReconstructedCliffhangerLabel(paragraphs: readonly string[]): boolean {
+  const fragments: string[] = [];
   for (let index = paragraphs.length - 1; index >= 0; index -= 1) {
-    const block = collapseWhitespace(paragraphs[index]);
-    tail.unshift(block);
+    const block = collapseWhitespace(paragraphs[index]).toLowerCase();
+    fragments.unshift(block);
     if (block.length >= LONGEST_EXPLICIT_CLIFFHANGER_LABEL) {
       break;
     }
   }
 
-  return tail.join(' ').toLowerCase();
+  if (fragments.length < 2 || !EXPLICIT_CLIFFHANGER_PATTERN.test(fragments.join(' '))) {
+    return false;
+  }
+
+  return !fragments.some(fragment => EXPLICIT_CLIFFHANGER_PATTERN.test(fragment));
 }
 
 /**
@@ -239,12 +245,12 @@ function readEndingLabelText(paragraphs: readonly string[], fallback: string): s
  * `UNRESOLVED_QUESTION_PATTERN` names. It was masked until now by the `continued`
  * entry removed above, which matched either way for the wrong reason.
  *
- * The label test reads `readEndingLabelText` rather than the final block,
- * because the other way a label comes apart is a `<br>`, which is a boundary
- * *between* blocks that no amount of collapsing inside one can reach. The two
- * punctuation-and-hook tests stay on the final block: those are about how the
- * last thing the reader reads ends, and neither can be split the way a phrase
- * can.
+ * The label test reads the final block as it always did, and falls back to
+ * `hasReconstructedCliffhangerLabel` for the other way a label comes apart: a
+ * `<br>`, which is a boundary *between* blocks that no amount of collapsing
+ * inside one can reach. The two punctuation-and-hook tests stay on the final
+ * block alone: those are about how the last thing the reader reads ends, and
+ * neither can be split the way a phrase can.
  */
 function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): DimensionDraft {
   const finalParagraph = collapseWhitespace(
@@ -257,7 +263,10 @@ function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): Dimen
   if (UNRESOLVED_HOOK_WORD_PATTERN.test(finalParagraph)) {
     signals.push('Ending contains an unresolved hook word.');
   }
-  if (EXPLICIT_CLIFFHANGER_PATTERN.test(readEndingLabelText(paragraphs, storyText))) {
+  if (
+    EXPLICIT_CLIFFHANGER_PATTERN.test(finalParagraph)
+    || hasReconstructedCliffhangerLabel(paragraphs)
+  ) {
     signals.push('Ending uses explicit cliffhanger language.');
   }
 
