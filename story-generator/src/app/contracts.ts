@@ -12,6 +12,12 @@
 
 import type { CreatureArchetype } from '../../../shared/creatureVocabulary';
 import type {
+  CharacterArchetype,
+  PlotThreadStatus,
+  RelationshipKind,
+  StoryMemoryLifetime
+} from '../../../shared/storyStateVocabulary';
+import type {
   HeatIntimacyBoundary,
   HeatTensionMode,
   NarrativeTone,
@@ -25,6 +31,27 @@ import type {
 // module for what each copy broke on its own.
 export type { CreatureArchetype };
 export { CREATURE_ARCHETYPES } from '../../../shared/creatureVocabulary';
+
+// The four vocabularies a continuity state is written in — a character's
+// archetype, a thread's status, a thread or artifact's lifetime, and a
+// relationship edge's kind — come from `shared/storyStateVocabulary` for the
+// same reason. They were the last closed sets in this file declared as inline
+// unions on the interfaces, with no runtime list anywhere; every reader that
+// had to check one of them wrote the list out again, and the continuity
+// extractor alone held four such copies. See that module for what each drop
+// costs.
+export type {
+  CharacterArchetype,
+  PlotThreadStatus,
+  RelationshipKind,
+  StoryMemoryLifetime
+};
+export {
+  CHARACTER_ARCHETYPES,
+  PLOT_THREAD_STATUSES,
+  RELATIONSHIP_KINDS,
+  STORY_MEMORY_LIFETIMES
+} from '../../../shared/storyStateVocabulary';
 
 // These four were declared here *and*, character for character, in the API's
 // contract — which is the one that describes the wire: `StoryGenerationContext`
@@ -132,14 +159,14 @@ export interface StoryBlueprint {
 
 export interface RelationshipEdge {
   characterId: string;
-  relationship: 'ally' | 'lover' | 'rival' | 'family' | 'unknown';
+  relationship: RelationshipKind;
   notes: string;
 }
 
 export interface CharacterProfile {
   id: string;
   displayName: string;
-  archetype: 'protagonist' | 'antagonist' | 'supporting' | 'narrator';
+  archetype: CharacterArchetype;
   summary: string;
   currentGoal: string;
   internalConflict: string;
@@ -149,12 +176,10 @@ export interface CharacterProfile {
   spiceCompatibilities: SpicyLevel[];
 }
 
-export type StoryMemoryLifetime = 'scene' | 'chapter' | 'series';
-
 export interface PlotThread {
   id: string;
   label: string;
-  status: 'active' | 'escalating' | 'resolved' | 'dormant';
+  status: PlotThreadStatus;
   description: string;
   foreshadowedDevices: string[];
   lifetime?: StoryMemoryLifetime;
@@ -538,6 +563,49 @@ export type ApiEnvelope<T> = ApiResponse<T>;
 
 export type StoryLabJobKind = 'genesis' | 'continuation' | 'export' | 'audio';
 
+/**
+ * The two job kinds this scaffold actually runs, and the two it defers.
+ *
+ * `StoryLabJobKind` has four members and the job routes serve two of them:
+ * `POST /api/story-lab/jobs` answers `export` and `audio` with
+ * `UNSUPPORTED_JOB_KIND` and reserves them for the durable runner. That split
+ * is the real vocabulary, and until now it had no name — so the pair was
+ * written out by hand everywhere it was needed, three times in two trees:
+ *
+ * - `runJobWork` in `jobRouteHandlers.ts` took `kind: 'genesis' | 'continuation'`;
+ * - the route's refusal branch matched `'export'` and `'audio'` as two literals;
+ * - `AppComponent` declared its *own* `type StoryLabJobKind = 'genesis' |
+ *   'continuation'` — the same name as this one, three hundred lines below the
+ *   import block, shadowing the contract's four-member union for the whole
+ *   file. Nothing reports that: a narrower union is assignable to a wider one,
+ *   so `JobStatusPanelState.kind` looked like the contract's type and was not,
+ *   and `updateJobStatusFromJob` quietly coerces any non-`continuation` job to
+ *   `genesis` to satisfy it — which is why an `export` job snapshot would have
+ *   been announced to the reader as "Story generation".
+ *
+ * Splitting the union in two named halves is what makes a fifth kind a decision
+ * rather than an omission: it has to be added to one of these tables, and
+ * `story-lab-job-contracts` fails if it is in neither.
+ */
+export const STORY_LAB_GENERATION_JOB_KINDS = [
+  'genesis',
+  'continuation'
+] as const satisfies readonly StoryLabJobKind[];
+
+/** The kinds the non-durable scaffold refuses, reserved for the durable runner. */
+export const STORY_LAB_DEFERRED_JOB_KINDS = [
+  'export',
+  'audio'
+] as const satisfies readonly StoryLabJobKind[];
+
+/** A job kind the Story Lab job routes run rather than defer. */
+export type StoryLabGenerationJobKind = typeof STORY_LAB_GENERATION_JOB_KINDS[number];
+
+/** Whether `kind` is one the durable runner owns rather than these routes. */
+export function isDeferredStoryLabJobKind(kind: StoryLabJobKind): boolean {
+  return (STORY_LAB_DEFERRED_JOB_KINDS as readonly StoryLabJobKind[]).includes(kind);
+}
+
 export type StoryLabJobStatus =
   | 'queued'
   | 'running'
@@ -788,6 +856,31 @@ export interface ChapterTimelineEntry {
 // ==================== ERROR LOGGING CONTRACTS ====================
 
 export type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+/**
+ * The four severities, ordered loudest first — the order the debug panel's
+ * count row reads in.
+ *
+ * This was the last closed vocabulary in this file with no runtime list, and
+ * the debug panel wrote it out twice more: `getErrorCounts` returned an object
+ * literal with one hand-written key per severity, and the template rendered one
+ * hand-written `<span *ngIf>` per severity beside it, each carrying an emoji
+ * that `getSeverityIcon`'s `switch` in the same component already decided. So
+ * the icon for a severity was declared in two files, and the day they disagree
+ * the same error is one glyph in the list and another in the count beside it.
+ *
+ * A fifth severity failed worse and more quietly: `ErrorLoggingService.logError`
+ * would accept it, `getSeverityIcon` would fall through its `switch` to the
+ * `default` — a `📝` that exists only to satisfy a `switch` that is already
+ * total — and the counts row, which is the only place the panel says how many
+ * of something there are, would not count it at all.
+ */
+export const ERROR_SEVERITIES = [
+  'critical',
+  'error',
+  'warning',
+  'info'
+] as const satisfies readonly ErrorSeverity[];
 
 export interface ErrorLog {
   id: string;

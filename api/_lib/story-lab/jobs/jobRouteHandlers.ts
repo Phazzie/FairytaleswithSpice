@@ -4,10 +4,12 @@ import type {
   ApiResponse,
   StoryContinuationSeam,
   StoryIterationPayload,
+  StoryLabGenerationJobKind,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
   StoryLabJobError
 } from '../contracts';
+import { STORY_LAB_DEFERRED_JOB_KINDS, isDeferredStoryLabJobKind } from '../contracts';
 import type { AuthPort, AuthUser } from '../auth/authPort';
 import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort } from '../auth/configuredAuthPort';
@@ -186,12 +188,12 @@ async function handleCreateStoryLabJobWithContext(
 
   const request = req.body as StoryLabJobCreationRequest;
 
-  if (request.kind === 'export' || request.kind === 'audio') {
+  if (isDeferredStoryLabJobKind(request.kind)) {
     sendJson(res, 400, {
       success: false,
       error: {
         code: 'UNSUPPORTED_JOB_KIND',
-        message: 'Export and audio jobs are reserved for the durable job runner and are not supported by this non-durable scaffold.'
+        message: `${formatDeferredJobKindList()} jobs are reserved for the durable job runner and are not supported by this non-durable scaffold.`
       }
     });
     return;
@@ -500,6 +502,22 @@ async function createContinuationJob(
 }
 
 /**
+ * The deferred kinds as the refusal names them, read from the table it checks.
+ *
+ * The message used to say "Export and audio" in prose beside a branch that
+ * matched the two literals, so a third deferred kind would have been refused
+ * and not mentioned. Capitalised only at the front, the way the sentence was.
+ */
+function formatDeferredJobKindList(): string {
+  const kinds: readonly string[] = STORY_LAB_DEFERRED_JOB_KINDS;
+  const sentence = kinds.length > 1
+    ? `${kinds.slice(0, -1).join(', ')} and ${kinds[kinds.length - 1]}`
+    : kinds.join('');
+
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/**
  * Run the engine for a job that is already recorded as `running`.
  *
  * The engine reports its own failures as an unsuccessful envelope, but it can
@@ -514,7 +532,7 @@ async function createContinuationJob(
  */
 async function runJobWork<TPublicResult extends JobResult>(
   work: () => Promise<ApiResponse<TPublicResult>>,
-  kind: 'genesis' | 'continuation',
+  kind: StoryLabGenerationJobKind,
   jobId: string
 ): Promise<ApiResponse<TPublicResult>> {
   try {

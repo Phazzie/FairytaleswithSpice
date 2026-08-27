@@ -1,5 +1,7 @@
 // Created: 2026-08-27 UTC
 
+import type { PlotThreadStatus } from './storyStateVocabulary';
+
 /**
  * How a continuation brief decides which continuity the next batch is shown.
  *
@@ -61,8 +63,16 @@ export const ACTIVATION_WHOLE_CANDIDATE_SCORE = 6;
  */
 export const ACTIVATION_TOKEN_MIN_LENGTH = 4;
 
-/** What a plot thread's `status` may be, as both trees' `PlotThread` declares it. */
-export type PlotThreadStatus = 'active' | 'escalating' | 'resolved' | 'dormant';
+/**
+ * What a plot thread's `status` may be, as both trees' `PlotThread` declares it.
+ *
+ * Re-exported from `storyStateVocabulary` rather than declared here: this was a
+ * fifth hand-written copy of the four statuses, and the one furthest from the
+ * table — `formatThreadDebtLabel` below names three of them and falls through
+ * for the fourth, which is only correct while the union has exactly four
+ * members.
+ */
+export type { PlotThreadStatus };
 
 /**
  * Reduce a continuation brief, or one thread label, artifact name, or
