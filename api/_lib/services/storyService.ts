@@ -8,9 +8,11 @@ import {
   VALIDATION_RULES,
   Chapter,
   ChapterFailure,
-  CliffhangerType
+  CliffhangerType,
+  isSupportedWordCount
 } from '../types/contracts';
 import { isCreatureArchetype } from '../../../shared/creatureVocabulary';
+import { isClassicStoryTheme } from '../../../shared/themeVocabulary';
 import {
   buildProductionChapterScopeBlock,
   buildProductionSystemPrompt,
@@ -1118,6 +1120,59 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
       };
     }
 
+    /**
+     * The contents of the array, not only how many of them there are.
+     *
+     * This rule counted the themes and stopped, and the log line above the
+     * generation says so — "the number of themes but not their contents, so the
+     * array can hold [...]". `creature` two checks up is measured against its
+     * closed set by `isCreatureArchetype`, and `themes` is typed as the same
+     * kind of closed set: the eighteen `ThemeType` ids that
+     * `VALIDATION_RULES.themes.allowedValues` names in this file's own rules
+     * object. Nothing read that list on the way in.
+     *
+     * This is not a live hole, and the note is here so nobody later reads it as
+     * one. The only caller of `generateStory` is `generateStoryLabGenesis`, and
+     * it arrives through `toClassicGenerationInput`, which filters the
+     * blueprint's seed ids through `isClassicStoryTheme` and substitutes
+     * `DEFAULT_CLASSIC_THEME` when a batch names none of them — so the array
+     * this method is handed today has already been made valid by its one
+     * caller, and no request the app can assemble is refused by this rule. What
+     * the rule changes is where the guarantee lives: a validator that declares
+     * a closed set and checks only the length of it is trusting a filter three
+     * modules away that nothing states it depends on.
+     *
+     * What it would cost to be wrong is why it is worth stating here rather
+     * than left to that filter. `formatThemeContext` is where an unchecked
+     * value lands: it keeps every non-empty string in the array and joins them
+     * into the `THEMES` line of the Grok prompt, at whatever length arrived. So
+     * a second caller — a restored classic route, a job runner, a test harness
+     * driving the service directly — that passed a caller's array through would
+     * put arbitrary caller text into a paid model call, and nothing between
+     * here and the provider would notice. The evidence that this is the failure
+     * mode rather than a hypothetical is in this repository's own fixtures:
+     * `tests/story-service-improved.test.ts` had been generating stories with
+     * `themes: ['romance', 'dark']` since it was written — two narrative
+     * *tones*, neither of them one of the eighteen — and reached the prompt
+     * builder every time with nothing to say so.
+     *
+     * A closed set needs no length cap: an id is either one of the eighteen or
+     * it is not, so membership bounds the field more tightly than a number
+     * could. `toLoggableThemes` — which the count rule above already uses, and
+     * which reduces an unrecognised id to a count rather than printing caller
+     * prose — is what reports the refusal, so the answer names the field
+     * without quoting what was sent.
+     */
+    if (!input.themes.every(isClassicStoryTheme)) {
+      return {
+        code: 'INVALID_INPUT',
+        message: 'Invalid theme',
+        field: 'themes',
+        providedValue: toLoggableThemes(input.themes),
+        expectedType: 'ThemeType[]'
+      };
+    }
+
     if (
       !Number.isInteger(input.spicyLevel) ||
       input.spicyLevel < VALIDATION_RULES.spicyLevel.min ||
@@ -1132,7 +1187,11 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
       };
     }
 
-    if (!(VALIDATION_RULES.wordCount.allowedValues as readonly number[]).includes(input.wordCount)) {
+    // Through the table's own guard rather than `allowedValues as readonly
+    // number[]`. The cast was there because the restated literal had no
+    // relationship to the `WordCount` union to check against; the list and the
+    // union are one table now, so the guard narrows instead of widening.
+    if (!isSupportedWordCount(input.wordCount)) {
       return {
         code: 'INVALID_INPUT',
         message: 'Invalid word count',
