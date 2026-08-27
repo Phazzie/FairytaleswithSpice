@@ -27,7 +27,6 @@ import healthHandler from '../api/health';
 import exportSaveHandler from '../api/export/save';
 import imageGenerateHandler from '../api/image/generate';
 import evaluateHandler from '../api/story-lab/evaluate';
-import genesisStreamHandler from '../api/story-lab/stream/genesis';
 import { handleGetStoryLabJob } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -108,12 +107,6 @@ const routes: RouteCase[] = [
     handler: evaluateHandler,
     request: { method: 'GET', headers: {} },
     allow: 'POST, OPTIONS'
-  },
-  {
-    name: '/api/story-lab/stream/genesis',
-    handler: genesisStreamHandler,
-    request: { method: 'POST', headers: {}, query: {} },
-    allow: 'GET, OPTIONS'
   },
   {
     name: '/api/story-lab/jobs/:jobId',

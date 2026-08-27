@@ -169,14 +169,14 @@ export function rateLimitResetSeconds(resetTime: number): number {
  * Read the API key for a request a browser `EventSource` made.
  *
  * `EventSource` cannot set custom headers — there is no way for a browser
- * stream reader to send `X-API-Key` or `Authorization`, so the two SSE
- * routes (`story-lab/stream/genesis`, `story-lab/jobs/:jobId/events`) can
- * never satisfy `authenticateRequest`'s header check once a deployment sets
- * `API_KEYS`, no matter what the caller does. This reads the same key from an
- * `apiKey` query parameter instead, so those two routes stay reachable from a
- * real browser stream once authentication is actually enforced, and falls
- * back to whatever header the request already carries (a non-browser client
- * that can set one) when the query parameter is absent.
+ * stream reader to send `X-API-Key` or `Authorization`, so an SSE route
+ * (`story-lab/jobs/:jobId/events`) can never satisfy `authenticateRequest`'s
+ * header check once a deployment sets `API_KEYS`, no matter what the caller
+ * does. This reads the same key from an `apiKey` query parameter instead, so
+ * that route stays reachable from a real browser stream once authentication
+ * is actually enforced, and falls back to whatever header the request
+ * already carries (a non-browser client that can set one) when the query
+ * parameter is absent.
  */
 export function withEventStreamAuth(req: {
   method?: string;

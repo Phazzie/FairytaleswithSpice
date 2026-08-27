@@ -13,7 +13,6 @@ EXPECTED_FUNCTIONS=(
   "api/story-lab/jobs.ts"
   "api/story-lab/stories.ts"
   "api/story-lab/stories/[storyId]/continue.ts"
-  "api/story-lab/stream/genesis.ts"
 )
 
 DISCOVERED_FUNCTIONS=()

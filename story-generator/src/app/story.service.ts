@@ -17,8 +17,7 @@ import {
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
   StoryLabJobEvent,
-  StoryLabUserProfile,
-  StreamingProgressChunk
+  StoryLabUserProfile
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
 import { readEventStreamErrorAction } from '../../../shared/eventStreamRetry';
@@ -253,98 +252,6 @@ export class StoryService {
         this.errorLogging.logInfo('Closing Story Lab job event stream', 'StoryService.streamStoryLabJobEvents', {
           jobId
         });
-        eventSource.close();
-      };
-    });
-  }
-
-  /**
-   * Connect to the streaming endpoint for real-time progress updates.
-   */
-  streamStoryGeneration(
-    input: StoryGenerationSeam['input'],
-    onProgress: (chunk: StreamingProgressChunk) => void
-  ): Observable<ApiResponse<StoryIterationPayload>> {
-    return new Observable<ApiResponse<StoryIterationPayload>>(observer => {
-      const params = new URLSearchParams({
-        creature: input.creature,
-        spicyLevel: String(input.spicyLevel),
-        tone: input.tone,
-        chapterBatchSize: String(input.chapterBatchSize),
-        desiredWordBudget: String(input.desiredWordBudget),
-        logline: input.logline,
-        themes: JSON.stringify(input.themes ?? [])
-      });
-
-      if (input.narrativeDirectives) {
-        params.set('narrativeDirectives', input.narrativeDirectives);
-      }
-      if (input.heatContract) {
-        params.set('heatContract', JSON.stringify(input.heatContract));
-      }
-      if (input.protagonistName) {
-        params.set('protagonistName', input.protagonistName);
-      }
-      if (input.antagonistName) {
-        params.set('antagonistName', input.antagonistName);
-      }
-      if (input.worldDetails) {
-        params.set('worldDetails', input.worldDetails);
-      }
-
-      const streamUrl = `${this.apiUrl}/stream/genesis?${params.toString()}`;
-      const eventSource = new EventSource(streamUrl);
-      this.errorLogging.logInfo('Opened streaming connection', 'StoryService.streamStoryGeneration', {
-        creature: input.creature,
-        tone: input.tone,
-        chapterBatchSize: input.chapterBatchSize,
-        themeCount: input.themes?.length ?? 0
-      });
-
-      eventSource.onmessage = event => {
-        try {
-          const chunk = JSON.parse(event.data) as StreamingProgressChunk | ApiResponse<StoryIterationPayload>;
-          if ('type' in chunk) {
-            onProgress(chunk);
-
-            // An `error` chunk is the server's last word: the genesis route
-            // writes it and ends the response. Treated as ordinary progress,
-            // the stream was left open, and an `EventSource` reads a closed
-            // response as a dropped connection and reconnects — which re-runs
-            // the whole paid generation, again on every retry, with the
-            // subscriber still waiting on an observable that never settles.
-            // Ending the stream here reports the failure the server actually
-            // described instead of the generic connection error that followed.
-            if (chunk.type === 'error') {
-              eventSource.close();
-              observer.error(new Error(chunk.error?.message ?? 'Story streaming failed.'));
-            }
-            return;
-          }
-
-          observer.next(chunk);
-          observer.complete();
-          eventSource.close();
-        } catch (error) {
-          this.errorLogging.logError(error, 'StoryService.streamStoryGeneration.parse', 'error');
-          observer.error(error);
-          eventSource.close();
-        }
-      };
-
-      eventSource.onerror = error => {
-        // Deliberately not the retry-aware reading the job event stream uses:
-        // this route holds one connection open for the whole generation, so
-        // letting the browser reopen it runs the paid generation again from the
-        // beginning — the reason the `error` chunk above closes the stream by
-        // hand rather than leaving the response to end on its own.
-        this.errorLogging.logError(error, 'StoryService.streamStoryGeneration.connection', 'critical');
-        observer.error(error);
-        eventSource.close();
-      };
-
-      return () => {
-        this.errorLogging.logInfo('Closing streaming connection', 'StoryService.streamStoryGeneration');
         eventSource.close();
       };
     });
