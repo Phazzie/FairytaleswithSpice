@@ -5,10 +5,12 @@
 import { CREATURE_ARCHETYPES, type CreatureArchetype } from '../../../shared/creatureVocabulary';
 import { CLASSIC_STORY_THEMES, type ClassicStoryTheme } from '../../../shared/themeVocabulary';
 import { CHAPTER_BATCH_SIZES, type ChapterBatchSize } from '../../../shared/chapterBatchVocabulary';
+import { SPICY_LEVELS, type SpicyLevel } from '../../../shared/spiceLevelVocabulary';
+import type { XaiReasoningEffort } from '../../../shared/reasoningEffortVocabulary';
 import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 
-export { CREATURE_ARCHETYPES, CLASSIC_STORY_THEMES, CHAPTER_BATCH_SIZES };
-export type { CreatureArchetype, ClassicStoryTheme, ChapterBatchSize };
+export { CREATURE_ARCHETYPES, CLASSIC_STORY_THEMES, CHAPTER_BATCH_SIZES, SPICY_LEVELS };
+export type { CreatureArchetype, ClassicStoryTheme, ChapterBatchSize, SpicyLevel };
 
 // ==================== TYPE DEFINITIONS ====================
 // `CreatureType` is this contract's name for the ten creatures, which are now
@@ -23,7 +25,10 @@ export type CreatureType = CreatureArchetype;
 // them broke on its own. The alias is kept because the whole API tree spells
 // the type this way; the values behind it are no longer restated here.
 export type ThemeType = ClassicStoryTheme;
-export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
+// The five heat levels are `shared/spiceLevelVocabulary` for the same reason,
+// after `VALIDATION_RULES.spicyLevel` below was found stating the scale a third
+// time as the bare `{ min: 1, max: 5 }` the classic seam validates against. See
+// that module for what the range check could not say that membership can.
 /**
  * The word counts the classic generator accepts, as a value rather than only as
  * a type.
@@ -521,8 +526,18 @@ export const VALIDATION_RULES = {
     allowedValues: CLASSIC_STORY_THEMES
   },
   spicyLevel: {
-    min: 1,
-    max: 5
+    /**
+     * Read from the table rather than restated here, the way every rule around
+     * it now reads its own.
+     *
+     * This one was stated as `{ min: 1, max: 5 }` — the only rule in this object
+     * that described its closed set as a range instead of naming it — and
+     * `StoryService.validateStoryInput` checked it as one, pairing the two
+     * numbers with a `Number.isInteger` guard that is doing the other half of
+     * what membership would answer on its own. See `spiceLevelVocabulary` for
+     * what a range cannot say once the table it stands in for changes.
+     */
+    allowedValues: SPICY_LEVELS
   },
   wordCount: {
     // Read from the table rather than restated here, for the reason the two
@@ -574,7 +589,10 @@ export interface ApiResponseMetadata {
   chaptersGenerated?: number;
   partialFailures?: ChapterFailure[];
   model?: string;
-  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+  // The union from `shared/reasoningEffortVocabulary`, not a second spelling of
+  // it: this field reports what `getXaiReasoningEffortForModel` chose, and the
+  // two were written out separately with nothing tying them together.
+  reasoningEffort?: XaiReasoningEffort;
   fallbackFromModel?: string;
 }
 

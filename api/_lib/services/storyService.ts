@@ -19,6 +19,7 @@ import {
   isChapterBatchSize,
   type ChapterBatchSize
 } from '../../../shared/chapterBatchVocabulary';
+import { formatSpicyLevelList, isSpicyLevel } from '../../../shared/spiceLevelVocabulary';
 import { isClassicStoryTheme } from '../../../shared/themeVocabulary';
 import {
   buildProductionChapterScopeBlock,
@@ -1279,14 +1280,16 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
       };
     }
 
-    if (
-      !Number.isInteger(input.spicyLevel) ||
-      input.spicyLevel < VALIDATION_RULES.spicyLevel.min ||
-      input.spicyLevel > VALIDATION_RULES.spicyLevel.max
-    ) {
+    // Through the table's own guard rather than the integer-plus-range check
+    // this replaces, for the reason the word-count rule below reads its table:
+    // a level is either one of the five or it is not, and membership says that
+    // without depending on the scale staying contiguous and whole-numbered.
+    // The refusal names the levels it checked rather than the ends of a range,
+    // the way `formatChapterBatchSizeList` does for the batch sizes.
+    if (!isSpicyLevel(input.spicyLevel)) {
       return {
         code: 'INVALID_INPUT',
-        message: `Invalid spicy level (${VALIDATION_RULES.spicyLevel.min}-${VALIDATION_RULES.spicyLevel.max})`,
+        message: `Invalid spicy level (must be ${formatSpicyLevelList()})`,
         field: 'spicyLevel',
         providedValue: toLoggableNumber(input.spicyLevel),
         expectedType: 'SpicyLevel'
