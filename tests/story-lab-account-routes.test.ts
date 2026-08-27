@@ -91,6 +91,7 @@ async function main() {
   await testMalformedProjectIdFailsClosed();
   await testInvalidProjectIdsFailClosedBeforeStoreAccess();
   await testInvalidProjectBodyFailsClosedBeforeStoreAccess();
+  await testProjectSaveChecksTheFieldsItUsedToCast();
   await testInjectedStoreErrorMessageIsSanitized();
   await testInvalidRouteAndMethodResponses();
   await testLibrarySortPreferenceOrdersTheProjectList();
@@ -493,6 +494,122 @@ async function testInvalidProjectBodyFailsClosedBeforeStoreAccess() {
   assert(
     (malformedWrapperResponse.body as any).error.code === 'INVALID_REQUEST',
     'malformed project wrapper should use invalid request code'
+  );
+}
+
+/**
+ * The five fields the save route used to take on trust.
+ *
+ * `readProjectFromBody` checked eight fields and wrote the last five down as
+ * casts: `chapters` got as far as `Array.isArray` and its entries were never
+ * looked at, and `telemetry`, `continuityExtraction`, `pinnedMemoryCardDraftIds`
+ * and `acceptedMemoryCards` were not looked at at all.
+ *
+ * The cost is not hypothetical. `toStoryProjectListItem` computes
+ * `acceptedMemoryCardCount` as `acceptedMemoryCards?.length ?? 0`, so a project
+ * saved with the string `"none"` in that field was a library card announcing
+ * **four** memory cards for a story with none — `.length` of a string, counted
+ * and rendered. Meanwhile the Angular tree had already written
+ * `normalizeAcceptedMemoryCards` and `normalizePinnedMemoryCardDraftIds` over
+ * `unknown` for two of those five fields, defending itself on load against data
+ * its own server let in without looking.
+ */
+async function testProjectSaveChecksTheFieldsItUsedToCast() {
+  const handler = createTestHandler(owner);
+
+  const junkAnnotationsResponse = new FakeResponse();
+  await handler(createRequest('POST', 'projects', {
+    project: {
+      ...createProject(),
+      id: 'project-account-junk-annotations',
+      telemetry: 'not-telemetry',
+      continuityExtraction: 'not-a-receipt',
+      pinnedMemoryCardDraftIds: 'memory-card-character-avery',
+      acceptedMemoryCards: 'none'
+    }
+  }), junkAnnotationsResponse);
+  assert(
+    junkAnnotationsResponse.statusCode === 200,
+    'a malformed annotation should not lose the story it annotates'
+  );
+
+  const listResponse = new FakeResponse();
+  await handler(createRequest('GET', 'projects'), listResponse);
+  const listed = (listResponse.body as any).data.projects
+    .find((item: any) => item.projectId === 'project-account-junk-annotations');
+  assert(Boolean(listed), 'the saved project should be listed');
+  assert(
+    listed.acceptedMemoryCardCount === 0,
+    `the library card should report no memory cards, not the length of a string (got ${listed.acceptedMemoryCardCount})`
+  );
+
+  const loadResponse = new FakeResponse();
+  await handler(createRequest('GET', 'project', undefined, 'project-account-junk-annotations'), loadResponse);
+  const loaded = (loadResponse.body as any).data.project;
+  assert(
+    loaded.acceptedMemoryCards === undefined,
+    'a non-array memory-card field should be stored as absent rather than as itself'
+  );
+  assert(
+    loaded.pinnedMemoryCardDraftIds === undefined,
+    'a non-array pinned-id field should be stored as absent rather than as itself'
+  );
+  assert(
+    loaded.telemetry === undefined && loaded.continuityExtraction === undefined,
+    'a receipt that is not an object should be dropped rather than stored as a string'
+  );
+
+  // An array with entries in it is the caller trying to report annotations and
+  // getting the shape wrong: what survives is kept, and only what survives is
+  // counted. Same rule, entry by entry, as the client's own normalizers.
+  const partialCardsResponse = new FakeResponse();
+  const [realCard] = createProject().acceptedMemoryCards!;
+  await handler(createRequest('POST', 'projects', {
+    project: {
+      ...createProject(),
+      id: 'project-account-partial-cards',
+      pinnedMemoryCardDraftIds: ['draft-1', '', 42, null],
+      acceptedMemoryCards: [realCard, { id: 'no-other-fields' }, null, 'card']
+    }
+  }), partialCardsResponse);
+  assert(partialCardsResponse.statusCode === 200, 'a partly readable annotation list should still save');
+
+  const partialLoad = new FakeResponse();
+  await handler(createRequest('GET', 'project', undefined, 'project-account-partial-cards'), partialLoad);
+  const partial = (partialLoad.body as any).data.project;
+  assert(
+    partial.acceptedMemoryCards.length === 1 && partial.acceptedMemoryCards[0].title === 'Avery',
+    'the readable memory card should survive and the unreadable ones should not'
+  );
+  assert(
+    partial.pinnedMemoryCardDraftIds.length === 1 && partial.pinnedMemoryCardDraftIds[0] === 'draft-1',
+    'a blank or non-string pinned id should be dropped, the way the client drops it on load'
+  );
+
+  // The story itself is the other rule: refused, not repaired. Storing the
+  // chapters that passed would lose a chapter the caller believed they saved.
+  const brokenChapterResponse = new FakeResponse();
+  await handler(createRequest('POST', 'projects', {
+    project: {
+      ...createProject(),
+      id: 'project-account-broken-chapter',
+      chapters: [...createProject().chapters, { chapterNumber: 2 }]
+    }
+  }), brokenChapterResponse);
+  assert(
+    brokenChapterResponse.statusCode === 400,
+    'a chapter list holding something that is not a chapter should be refused, not truncated'
+  );
+  assert(
+    (brokenChapterResponse.body as any).error.code === 'INVALID_REQUEST',
+    'an unreadable chapter should use the invalid request code'
+  );
+
+  const missingProjectResponse = new FakeResponse();
+  await handler(createRequest('GET', 'project', undefined, 'project-account-broken-chapter'), missingProjectResponse);
+  assert(
+    missingProjectResponse.statusCode === 404,
+    'a refused save should store nothing at all'
   );
 }
 

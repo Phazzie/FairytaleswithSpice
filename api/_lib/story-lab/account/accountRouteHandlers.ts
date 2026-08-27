@@ -13,7 +13,8 @@ import type {
   CloudStoryProjectSaveReceipt,
   SavedStoryProject,
   StoryLabLibrarySort,
-  StoryLabUserProfile
+  StoryLabUserProfile,
+  StoryMemoryCard
 } from '../contracts';
 import { applyCorsPolicy } from '../../http/corsPolicy';
 import { sendMethodNotAllowed } from '../../http/methodNotAllowed';
@@ -471,6 +472,43 @@ function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
   };
 }
 
+/**
+ * The project a save request is asking this account to store.
+ *
+ * Eight fields were checked here and the last five were written down as casts.
+ * `chapters` got as far as `Array.isArray` and its entries were taken on trust;
+ * `telemetry`, `continuityExtraction`, `pinnedMemoryCardDraftIds`, and
+ * `acceptedMemoryCards` were not looked at at all. A cast is not a check, and
+ * these arrive over the wire from whatever posted them.
+ *
+ * The Angular tree already knows this. `normalizePinnedMemoryCardDraftIds` and
+ * `normalizeAcceptedMemoryCards` in `app.ts` are both declared over `unknown`
+ * and both filter entry by entry — written for exactly two of the five fields
+ * this route was casting, and run on the way *out* of a project this route let
+ * in without looking. So the client defends itself against data its own server
+ * accepted, which is the wrong half of the seam to be doing it on, and the one
+ * reader that is not the Angular tree is not defended at all:
+ * `toStoryProjectListItem` computes `acceptedMemoryCardCount` as
+ * `acceptedMemoryCards?.length ?? 0`, so a project saved with
+ * `"acceptedMemoryCards": "none"` is a library card reporting **four** memory
+ * cards for a story that has none — `.length` of a string, counted and shown.
+ *
+ * Two rules, and the split is deliberate:
+ *
+ * - The story is refused, not repaired. `chapters` joins `summary`, `state`,
+ *   and `blueprint`: a save whose chapter list holds something that is not a
+ *   chapter is a `400`, because the alternative is storing the chapters that
+ *   passed and silently dropping the ones that did not — and losing a chapter
+ *   the caller believed they saved is worse than making them send it again.
+ * - The annotations are filtered, not refused. The two memory-card fields and
+ *   the two receipts are things said *about* the story, and refusing an entire
+ *   novel over one malformed memory card would lose the story to save a note
+ *   about it. A list keeps the entries that can be read and drops the rest,
+ *   entry by entry, on the client's own rule; a value that is not a list at all
+ *   is stored as absent, which is a state the field already has and every
+ *   reader already handles — and which the client's normalizers turn back into
+ *   `[]` on load, so the two sides agree where it shows.
+ */
 function readProjectFromBody(body: unknown): SavedStoryProject | null {
   if (!isObjectRecord(body)) {
     return null;
@@ -485,6 +523,7 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
   const synopsis = readOptionalString(candidate['synopsis']);
   const createdAt = readOptionalString(candidate['createdAt']);
   const updatedAt = readOptionalString(candidate['updatedAt']);
+  const chapters = readChapters(candidate['chapters']);
   if (
     !projectId ||
     !isNonBlankString(candidate['storyId']) ||
@@ -495,7 +534,7 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
     !isObjectRecord(candidate['summary']) ||
     !isObjectRecord(candidate['state']) ||
     !isObjectRecord(candidate['blueprint']) ||
-    !Array.isArray(candidate['chapters'])
+    chapters === null
   ) {
     return null;
   }
@@ -508,14 +547,95 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
     blueprint: candidate['blueprint'] as unknown as SavedStoryProject['blueprint'],
     summary: candidate['summary'] as unknown as SavedStoryProject['summary'],
     state: candidate['state'] as unknown as SavedStoryProject['state'],
-    chapters: candidate['chapters'] as SavedStoryProject['chapters'],
-    telemetry: candidate['telemetry'] as SavedStoryProject['telemetry'],
-    continuityExtraction: candidate['continuityExtraction'] as SavedStoryProject['continuityExtraction'],
-    pinnedMemoryCardDraftIds: candidate['pinnedMemoryCardDraftIds'] as SavedStoryProject['pinnedMemoryCardDraftIds'],
-    acceptedMemoryCards: candidate['acceptedMemoryCards'] as SavedStoryProject['acceptedMemoryCards'],
+    chapters,
+    telemetry: readObjectRecordOrUndefined(candidate['telemetry']) as unknown as SavedStoryProject['telemetry'],
+    continuityExtraction: readObjectRecordOrUndefined(
+      candidate['continuityExtraction']
+    ) as unknown as SavedStoryProject['continuityExtraction'],
+    pinnedMemoryCardDraftIds: readMemoryCardDraftIds(candidate['pinnedMemoryCardDraftIds']),
+    acceptedMemoryCards: readAcceptedMemoryCards(candidate['acceptedMemoryCards']),
     createdAt: createdAt ?? '',
     updatedAt: updatedAt ?? ''
   };
+}
+
+/**
+ * The chapter list, or `null` when it is not one.
+ *
+ * The fields required are the ones readers dereference rather than every field
+ * `GeneratedChapter` declares: `chapterId` selects the chapter in the Angular
+ * tree, `chapterNumber` orders it, and `title` and `htmlContent` are what a
+ * reader or an export is shown. Demanding all eight would refuse projects saved
+ * by an earlier client over a field nothing reads, which is a worse trade than
+ * the one this check exists to make.
+ *
+ * `null` rather than a filtered list: see `readProjectFromBody`. A chapter that
+ * cannot be read is a refused save, not a shorter story.
+ */
+function readChapters(value: unknown): SavedStoryProject['chapters'] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const readable = value.every(chapter =>
+    isObjectRecord(chapter)
+    && isNonBlankString(chapter['chapterId'])
+    && typeof chapter['chapterNumber'] === 'number'
+    && typeof chapter['title'] === 'string'
+    && typeof chapter['htmlContent'] === 'string');
+
+  return readable ? (value as SavedStoryProject['chapters']) : null;
+}
+
+/**
+ * An optional receipt: the object it claims to be, or nothing.
+ *
+ * `telemetry` and `continuityExtraction` are both optional on the project, so a
+ * value that is not an object record is dropped to `undefined` — which is what
+ * the field already means when the caller omits it, and what every reader of
+ * either one already handles.
+ */
+function readObjectRecordOrUndefined(value: unknown): Record<string, unknown> | undefined {
+  return isObjectRecord(value) ? value : undefined;
+}
+
+/**
+ * The pinned draft ids, filtered the way the client filters them on load.
+ *
+ * Deliberately the same rule as `normalizePinnedMemoryCardDraftIds` in `app.ts`
+ * — non-blank strings, everything else dropped — because a save and the load
+ * that follows it disagreeing about which ids are real is the one outcome
+ * neither side can detect.
+ */
+function readMemoryCardDraftIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.filter((id): id is string => isNonBlankString(id));
+}
+
+/**
+ * The accepted memory cards, filtered the way the client filters them on load.
+ *
+ * The six required fields are `normalizeAcceptedMemoryCards`'s six in `app.ts`,
+ * for the same reason as the ids above. This is also the field
+ * `toStoryProjectListItem` counts with a bare `.length`, so what survives here
+ * is what the library card reports.
+ */
+function readAcceptedMemoryCards(value: unknown): SavedStoryProject['acceptedMemoryCards'] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.filter((card): card is StoryMemoryCard =>
+    isObjectRecord(card)
+    && typeof card['id'] === 'string'
+    && typeof card['label'] === 'string'
+    && typeof card['title'] === 'string'
+    && typeof card['detail'] === 'string'
+    && typeof card['triggerLabel'] === 'string'
+    && typeof card['acceptedAt'] === 'string');
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {

@@ -1,6 +1,7 @@
 // Created: 2025-10-29 08:27 UTC
 
 import type { ApiResponse, StoryContinuationSeam, StoryIterationPayload } from '../../../_lib/story-lab/contracts';
+import { formatChapterBatchSizeList, isChapterBatchSize } from '../../../_lib/story-lab/contracts';
 import { beginPostRoute } from '../../../_lib/http/postRoutePreamble';
 import { RATE_LIMITS } from '../../../_lib/constants';
 import { getStoryLabResponseStatus } from '../../../_lib/story-lab/routeStatus';
@@ -8,9 +9,6 @@ import { continueStoryLab } from '../../../_lib/story-lab/storyLabEngine';
 import { getTransientStorySnapshot } from '../../../_lib/story-lab/stateStore';
 import { logError, logInfo, logWarn } from '../../../_lib/utils/logger';
 import { toLoggableStoryId } from '../../../_lib/utils/loggableRequestParameters';
-
-const isValidBatchSize = (size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] =>
-  [1, 2, 3].includes(size as StoryContinuationSeam['input']['chapterBatchSize']);
 
 type ContinueStoryLab = typeof continueStoryLab;
 
@@ -155,7 +153,7 @@ export function createStoryLabContinuationHandler(continueStory: ContinueStoryLa
       const hasChapters = Array.isArray(input.previouslyGeneratedChapters);
       const batchSizeNumber = Number(input.chapterBatchSize);
 
-      if (!storyId || (!input.storyState && !transientSnapshot) || (!hasChapters && !transientSnapshot) || !isValidBatchSize(batchSizeNumber)) {
+      if (!storyId || (!input.storyState && !transientSnapshot) || (!hasChapters && !transientSnapshot) || !isChapterBatchSize(batchSizeNumber)) {
         logWarn('Story Lab continuation request rejected', {
           requestId,
           endpoint: ENDPOINT,
@@ -169,7 +167,8 @@ export function createStoryLabContinuationHandler(continueStory: ContinueStoryLa
           success: false,
           error: {
             code: 'INVALID_REQUEST',
-            message: 'Continuation requires storyId, storyState or transient snapshot, previous chapters or transient snapshot, and a chapterBatchSize of 1-3.'
+            message: 'Continuation requires storyId, storyState or transient snapshot, previous chapters or transient snapshot, '
+              + `and a chapterBatchSize of ${formatChapterBatchSizeList()}.`
           }
         });
         return;
@@ -185,7 +184,9 @@ export function createStoryLabContinuationHandler(continueStory: ContinueStoryLa
         storyState: input.storyState ?? transientSnapshot!.state,
         previouslyGeneratedChapters: previousChapters,
         existingSummary: input.existingSummary ?? transientSnapshot?.summary,
-        chapterBatchSize: batchSizeNumber as StoryContinuationSeam['input']['chapterBatchSize']
+        // No cast: `isChapterBatchSize` above is a type predicate over the
+        // table, so the refusal that guards this line is also what narrows it.
+        chapterBatchSize: batchSizeNumber
       };
 
       // Never `continuationBrief`, `heatContract.noGoContent`, or chapter text —

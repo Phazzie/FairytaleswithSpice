@@ -9,7 +9,12 @@ import type {
   StoryLabJobCreationResponse,
   StoryLabJobError
 } from '../contracts';
-import { STORY_LAB_DEFERRED_JOB_KINDS, isDeferredStoryLabJobKind } from '../contracts';
+import {
+  STORY_LAB_DEFERRED_JOB_KINDS,
+  formatChapterBatchSizeList,
+  isChapterBatchSize,
+  isDeferredStoryLabJobKind
+} from '../contracts';
 import type { AuthPort, AuthUser } from '../auth/authPort';
 import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort } from '../auth/configuredAuthPort';
@@ -435,7 +440,8 @@ async function createContinuationJob(
   const normalized = normalizeContinuationInput(request.continuation);
   if (!normalized) {
     sendJson(res, 400, invalidRequest(
-      'Continuation jobs require storyId, storyState or transient snapshot, previous chapters or transient snapshot, and a chapterBatchSize of 1-3.'
+      'Continuation jobs require storyId, storyState or transient snapshot, previous chapters or transient snapshot, '
+      + `and a chapterBatchSize of ${formatChapterBatchSizeList()}.`
     ));
     return;
   }
@@ -741,7 +747,7 @@ function normalizeContinuationInput(input: unknown): StoryContinuationSeam['inpu
     !storyId ||
     !storyState ||
     !previouslyGeneratedChapters ||
-    !isValidBatchSize(batchSizeNumber)
+    !isChapterBatchSize(batchSizeNumber)
   ) {
     return null;
   }
@@ -758,9 +764,6 @@ function normalizeContinuationInput(input: unknown): StoryContinuationSeam['inpu
   };
 }
 
-function isValidBatchSize(size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] {
-  return [1, 2, 3].includes(size);
-}
 
 function readValidJobIdOrRespond(req: RequestLike, res: ResponseLike): string | null {
   if ((req.method ?? '').toUpperCase() !== 'GET') {

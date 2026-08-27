@@ -60,10 +60,12 @@ import {
   StoryLabGenerationJobKind,
   StoryLabJob,
   StoryLabJobStatus,
+  STORY_LAB_JOB_STEP_LABELS,
   StoryWorkbenchSession,
   ThemeSeed,
   WORD_BUDGETS,
   WordBudget,
+  isStoryLabJobStep,
   isTerminalStoryLabJobStatus
 } from './contracts';
 import { StoryService } from './story.service';
@@ -2236,29 +2238,36 @@ export class App implements OnDestroy {
     this.closeJobEventSubscription();
   }
 
+  /**
+   * The sentence the reader watches while a job runs.
+   *
+   * The five step cases were a `switch` over string literals with
+   * `humanizeIdentifier` under them, and that fallback is the reason this is
+   * worth changing. It cannot fail visibly: it takes any identifier and makes it
+   * presentable, so a sixth step added on the API side would have arrived here,
+   * missed all five cases, and rendered as its own title-cased wire name — the
+   * reader shown "Extracting continuity." where a written sentence belonged,
+   * with nothing to report that one was missing. Both sides typed `currentStep`
+   * as `string`, so there was nothing for TypeScript to compare either.
+   *
+   * `STORY_LAB_JOB_STEP_LABELS` is total over `StoryLabJobStep`, so a sixth step
+   * added to the table is a compile error here instead. The fallback stays,
+   * because `currentStep` still arrives off the wire and a durable row written
+   * by an older deployment may name a step this build has retired — but it is
+   * now only for that, rather than for the app's own vocabulary.
+   */
   private formatJobStage(currentStep: string, status: StoryLabJobStatus): string {
     if (status === 'queued') {
-      return 'Story job queued.';
+      return STORY_LAB_JOB_STEP_LABELS.queued;
     }
 
     if (status === 'waiting_for_review') {
       return 'Story job is waiting for review.';
     }
 
-    switch (currentStep) {
-      case 'queued':
-        return 'Story job queued.';
-      case 'generating_story':
-        return 'Grok is writing your first chapter.';
-      case 'continuing_story':
-        return 'Grok is continuing the saga.';
-      case 'completed':
-        return 'Binding the pages.';
-      case 'failed':
-        return 'Generation failed.';
-      default:
-        return this.humanizeIdentifier(currentStep);
-    }
+    return isStoryLabJobStep(currentStep)
+      ? STORY_LAB_JOB_STEP_LABELS[currentStep]
+      : this.humanizeIdentifier(currentStep);
   }
 
   private createHiddenJobStatusPanel(): JobStatusPanelState {

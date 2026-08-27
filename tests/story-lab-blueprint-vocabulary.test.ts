@@ -40,7 +40,9 @@ import {
   HEAT_TENSION_MODES,
   NARRATIVE_TONES,
   SPICY_LEVELS,
-  WORD_BUDGETS
+  WORD_BUDGETS,
+  formatChapterBatchSizeList,
+  isChapterBatchSize
 } from '../api/_lib/story-lab/contracts';
 
 const repoRoot = process.cwd();
@@ -156,6 +158,52 @@ for (const [label, path] of [
       `${label} lists the ${vocabulary} again; there should be one table`
     );
   }
+}
+
+// Batch size has a third and fourth checker the two above do not cover, because
+// a continuation never reaches `parseStoryLabBlueprint`: it arrives at
+// `POST /stories/:storyId/continue` or at the continuation half of `POST /jobs`,
+// and both of those declared their own `isValidBatchSize` over a literal
+// `[1, 2, 3]` — then explained the refusal as "a chapterBatchSize of 1-3", a
+// third and fourth spelling of the same bound in the sentence describing it.
+//
+// The defect a fourth batch size would have caused is worth naming: the picker
+// offers it and genesis accepts it, both reading the table, and the reader's
+// next chapter request is refused by a route insisting on a range nobody told it
+// had moved — a story generated at a size it cannot be continued at.
+for (const [label, path] of [
+  ['the continue route', 'api/story-lab/stories/[storyId]/continue.ts'],
+  ['the job route handlers', 'api/_lib/story-lab/jobs/jobRouteHandlers.ts']
+] as const) {
+  const source = readSource(path);
+
+  assert(
+    source.includes('isChapterBatchSize'),
+    `${label} should check the batch size with the predicate over CHAPTER_BATCH_SIZES`
+  );
+  assert(
+    !/\[\s*1\s*,\s*2\s*,\s*3\s*\]/.test(source),
+    `${label} lists the batch sizes again; there should be one table`
+  );
+  assert(
+    !source.includes('chapterBatchSize of 1-3'),
+    `${label} should name the accepted batch sizes from the list it checks, not as a prose range`
+  );
+}
+
+// And the list the refusals render, which is the table's own contents.
+assert(
+  formatChapterBatchSizeList() === '1, 2, or 3',
+  'the refusal should name every batch size the table holds'
+);
+for (const size of CHAPTER_BATCH_SIZES) {
+  assert(isChapterBatchSize(size), `${size} is in the table and should be accepted`);
+}
+for (const rejected of [0, 4, '2', 2.5, NaN, null, undefined]) {
+  assert(
+    !isChapterBatchSize(rejected),
+    `${String(rejected)} is not a batch size this app runs and should be refused`
+  );
 }
 
 console.log('Story Lab blueprint vocabulary tests passed');
