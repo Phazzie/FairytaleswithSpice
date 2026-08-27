@@ -5,6 +5,13 @@ import { ExportService } from '../_lib/services/exportService';
 import { SaveExportSeam } from '../_lib/types/contracts';
 import { FILE_SIZE, RATE_LIMITS } from '../_lib/constants';
 import { ERROR_CODES } from '../_lib/errorCodes';
+import { logError, logInfo, logWarn } from '../_lib/utils/logger';
+import {
+  EXPORT_REQUEST_FIELDS,
+  toLoggableExportFormat,
+  toLoggableFieldNames,
+  toLoggableStoryId
+} from '../_lib/utils/loggableRequestParameters';
 
 /**
  * Read an export request, or say the body cannot be served.
@@ -73,11 +80,33 @@ export default async function handler(req: any, res: any) {
   const requestId = start.requestId;
 
   try {
-    console.log(`[${requestId}] POST /api/export/save - Request received`);
+    // Through the logger rather than `console.log`, which is what all three of
+    // this handler's lines were and what made it the last paid route not on the
+    // structured logger. A `console.log` writes a bare string: it skips the
+    // redaction every logged value passes through, it never reaches the
+    // recent-log buffer an operator reads a failure out of, and the correlation
+    // id it interpolates into its own prose is not a field anything can filter
+    // on. `/api/image/generate` — the same shape of route, with the same
+    // preamble — has logged this way since it was written.
+    logInfo('Export endpoint called', {
+      requestId,
+      endpoint: '/api/export/save',
+      method: 'POST'
+    });
 
     const input = readExportRequest(req.body);
 
     if (!input) {
+      // Which fields arrived, so a refusal says what was wrong with the body
+      // rather than only that something was. Through the allow-list because a
+      // JSON object's keys are whatever the caller wrote, and it is the
+      // malformed bodies — the hand-written ones — that take this path.
+      logWarn('Invalid input - missing or malformed fields', {
+        requestId,
+        endpoint: '/api/export/save',
+        method: 'POST'
+      }, toLoggableFieldNames(req.body, EXPORT_REQUEST_FIELDS));
+
       return res.status(400).json({
         success: false,
         error: {
@@ -99,6 +128,14 @@ export default async function handler(req: any, res: any) {
     const MAX_CONTENT_LENGTH = FILE_SIZE.MAX_CONTENT_LENGTH_KB * FILE_SIZE.BYTES_PER_KB;
     const contentLength = Buffer.byteLength(input.content, 'utf8');
     if (contentLength > MAX_CONTENT_LENGTH) {
+      // The measurement, never the prose: `contentLength` is a number about the
+      // story, which is exactly what `LogContext.requestParameters` is for.
+      logWarn('Export content exceeds the size cap', {
+        requestId,
+        endpoint: '/api/export/save',
+        method: 'POST'
+      }, { field: 'content', contentLength, maxLength: MAX_CONTENT_LENGTH });
+
       return res.status(400).json({
         success: false,
         error: {
@@ -120,6 +157,12 @@ export default async function handler(req: any, res: any) {
     // the caller is not left comparing its content against a limit it cleared.
     const titleLength = Buffer.byteLength(input.title, 'utf8');
     if (titleLength > FILE_SIZE.MAX_TITLE_LENGTH_BYTES) {
+      logWarn('Export title exceeds the size cap', {
+        requestId,
+        endpoint: '/api/export/save',
+        method: 'POST'
+      }, { field: 'title', contentLength: titleLength, maxLength: FILE_SIZE.MAX_TITLE_LENGTH_BYTES });
+
       return res.status(400).json({
         success: false,
         error: {
@@ -133,13 +176,36 @@ export default async function handler(req: any, res: any) {
     }
 
     const exportService = new ExportService();
-    const result = await exportService.saveAndExport(input);
-    
-    console.log(`[${requestId}] Export ${result.success ? 'succeeded' : 'failed'}`);
+    // The correlation id goes with the request, so the envelope's
+    // `metadata.requestId` is the id this handler logs under and the id the
+    // caller was echoed as `X-Request-ID` — rather than a `req_<uuid>` minted
+    // inside the service that appeared in no log line anywhere.
+    const result = await exportService.saveAndExport(input, requestId);
+
+    logInfo(`Export ${result.success ? 'succeeded' : 'failed'}`, {
+      requestId,
+      endpoint: '/api/export/save'
+    }, {
+      storyId: toLoggableStoryId(input.storyId),
+      format: toLoggableExportFormat(input.format)
+    });
     res.status(getApiResponseStatus(result)).json(result);
 
-  } catch {
-    console.error(`[${requestId}] Export serverless function failed`);
+  } catch (error: any) {
+    // Bound, and kept. `catch {}` discards the only object that says what went
+    // wrong, and the `console.error` inside it wrote one fixed sentence — so a
+    // 500 from this route left no name, no message, no code, and no stack
+    // anywhere, on either deployment. It was the one paid route whose failures
+    // could not be diagnosed at all. `logError` names the fields it keeps and
+    // runs them through `redactSensitiveLogData`, which is what makes keeping
+    // the error safe on a route whose body is the reader's whole story.
+    logError('Export endpoint error', error, {
+      requestId,
+      endpoint: '/api/export/save',
+      method: 'POST',
+      statusCode: 500
+    });
+
     res.status(500).json({
       success: false,
       error: {

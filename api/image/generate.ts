@@ -64,7 +64,12 @@ export default async function handler(req: any, res: any) {
     });
 
     const imageService = new ImageService();
-    const result = await imageService.generateImage(input);
+    // The correlation id goes with the request: it is what this handler's own
+    // lines are stamped with, what the caller was echoed as `X-Request-ID`, and
+    // now what the envelope's `metadata.requestId` and the service's own failure
+    // lines carry, instead of an `img-req-<uuid>` minted inside the service that
+    // appeared in no log line anywhere.
+    const result = await imageService.generateImage(input, requestId);
 
     logInfo(`Image generation ${result.success ? 'succeeded' : 'failed'}`, {
       requestId,

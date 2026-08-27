@@ -10,6 +10,7 @@ import {
   readGeneratedImageUrl
 } from '../api/_lib/services/imageService';
 import { CreatureType, ImageGenerationSeam } from '../api/_lib/types/contracts';
+import { logger } from '../api/_lib/utils/logger';
 import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
 import { IMAGE_GENERATION_LIMITS } from '../shared/storyBlueprintLimits';
 
@@ -508,6 +509,99 @@ async function testCustomImagePromptsAreBounded(): Promise<void> {
   assert(omitted.success, 'an omitted imagePrompt should still be served from the story');
 }
 
+/**
+ * The id in the envelope, and the id on the failure lines, have to be the
+ * request's.
+ *
+ * `metadata.requestId` was `img-req-${randomUUID()}`, minted inside this
+ * service — once per branch, for a response that carries one — and written into
+ * the response body and nowhere else. Both of the service's log calls carried
+ * no `requestId` at all, which is precisely what the comment beside the second
+ * of them names as the defect it was written to fix: "this route's own handler
+ * logs a `requestId` on every other line it writes, and the one line describing
+ * why the image failed had none". Moving those calls onto the logger did not
+ * give them one, because the route's correlation id stopped at the route.
+ *
+ * Driven through a refused provider request, because that is the path where all
+ * three — the envelope, this service's failure line, and the provider's own
+ * error line — exist at once.
+ */
+async function testTheRequestIdReachesTheEnvelopeAndTheLog(): Promise<void> {
+  const succeeded = await new ImageService().generateImage(createInput(), 'trace-image-ok');
+  assert(succeeded.success, 'a valid request should succeed against the mock provider');
+  assert(
+    succeeded.metadata?.requestId === 'trace-image-ok',
+    `a successful generation should report the route's id (got ${JSON.stringify(succeeded.metadata?.requestId)})`
+  );
+
+  const refused = await new ImageService().generateImage(
+    createInput({ style: 'watercolour' as ImageGenerationSeam['input']['style'] }),
+    'trace-image-refused'
+  );
+  assert(!refused.success, 'an unsupported style should still be refused');
+  assert(
+    refused.metadata?.requestId === 'trace-image-refused',
+    `a refused generation should report the route's id (got ${JSON.stringify(refused.metadata?.requestId)})`
+  );
+
+  const unattributed = await new ImageService().generateImage(createInput());
+  assert(
+    /^img-req-[0-9a-f-]{36}$/.test(unattributed.metadata?.requestId ?? ''),
+    `a generation with no correlation id should still be given one (got ${JSON.stringify(unattributed.metadata?.requestId)})`
+  );
+
+  const originalPost = axios.post;
+  const originalKey = process.env['XAI_API_KEY'];
+  process.env['XAI_API_KEY'] = 'xai-test-key-for-the-request-id-check';
+  const captured = { log: console.log, warn: console.warn, error: console.error };
+  const silence = () => {};
+
+  try {
+    (axios as { post: unknown }).post = async () => {
+      throw new AxiosError('Request failed with status code 503', 'ERR_BAD_RESPONSE');
+    };
+
+    logger.clearLogs();
+    console.log = silence;
+    console.warn = silence;
+    console.error = silence;
+
+    const failed = await new ImageService().generateImage(createInput(), 'trace-image-failure');
+
+    console.log = captured.log;
+    console.warn = captured.warn;
+    console.error = captured.error;
+
+    assert(!failed.success, 'a refused provider request should not be reported as a success');
+    assert(
+      failed.metadata?.requestId === 'trace-image-failure',
+      `a failed generation should report the route's id (got ${JSON.stringify(failed.metadata?.requestId)})`
+    );
+
+    // Both lines: the provider's own error and this service's failure. Either
+    // one without an id is a line an operator cannot join to the request.
+    const errors = logger.getRecentLogs(50, 'error');
+    for (const expected of ['Grok Image API', 'Image generation failed']) {
+      const entry = errors.find(log => log.message.includes(expected));
+      assert(entry, `"${expected}" should still be logged (got ${JSON.stringify(errors.map(e => e.message))})`);
+      assert(
+        entry.context?.requestId === 'trace-image-failure',
+        `"${expected}" should be logged under the request's own id (got ${JSON.stringify(entry.context?.requestId)})`
+      );
+    }
+  } finally {
+    console.log = captured.log;
+    console.warn = captured.warn;
+    console.error = captured.error;
+    (axios as { post: unknown }).post = originalPost;
+    if (originalKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalKey;
+    }
+  }
+}
+
 async function main(): Promise<void> {
   await testEveryCreatureArchetypeReachesThePrompt();
   await testEveryThemeTheAppOffersReachesThePrompt();
@@ -521,6 +615,7 @@ async function main(): Promise<void> {
   testProviderResponsesWithoutAUrlAreRefused();
   await testTheServiceRefusesAProviderResponseWithoutAUrl();
   await testProviderFailuresNeverPrintTheApiKey();
+  await testTheRequestIdReachesTheEnvelopeAndTheLog();
 
   console.log('Image service tests passed');
 }

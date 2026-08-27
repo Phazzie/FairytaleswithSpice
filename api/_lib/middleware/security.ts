@@ -6,6 +6,7 @@
  */
 
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { logWarn } from '../utils/logger';
 
 export interface AuthenticatedRequest {
   userId?: string;
@@ -46,14 +47,16 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
   // mode" fallback reachable only by a caller that happened to send some key
   // anyway; the one request shape this module exists to let through when
   // unconfigured was the one shape it never actually let through.
-  const validKeys = (process.env['API_KEYS'] || '')
+  const rawApiKeys = process.env['API_KEYS'];
+  const validKeys = (rawApiKeys || '')
     .split(',')
     .map(k => k.trim())
     .filter(k => k.length > 0);
 
+  noteApiKeyConfiguration(rawApiKeys, validKeys.length > 0);
+
   if (validKeys.length === 0) {
     // No API keys configured - allow request in development mode
-    console.warn('⚠️  No API keys configured. Set API_KEYS environment variable for production.');
     return {
       authenticated: true,
       userId: 'development_user'
@@ -90,6 +93,63 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
     authenticated: true,
     userId: deriveUserId(apiKey)
   };
+}
+
+/**
+ * The `API_KEYS` value this process last saw, or `null` before the first
+ * request.
+ *
+ * The "no API keys configured" warning was a bare `console.warn` on the
+ * unconfigured branch above, and that branch is not an event — it is the
+ * deployment's configuration, read again on every call.
+ * `enforceApiAccessControl` runs `authenticateRequest` once per request on
+ * every paid route, and `API_KEYS` is unset by default, so an ordinary
+ * deployment wrote that line for every story generation, continuation, export,
+ * image, evaluation, and job request it ever served. A line repeated at request
+ * rate is not a warning: it is the bulk of the deployment log, it costs money
+ * on a platform billed by ingested log volume, and it buries the entries that
+ * describe something that actually happened once.
+ *
+ * Keeping the value rather than a "have warned" flag is what makes the rule
+ * "say it when there is something new to say" rather than "say it once ever":
+ * a process that loses its configuration warns again, and a process that gains
+ * one stops. Nothing else here would notice either transition.
+ */
+let lastObservedApiKeysValue: { raw: string | undefined } | null = null;
+
+function noteApiKeyConfiguration(rawApiKeys: string | undefined, configured: boolean): void {
+  if (lastObservedApiKeysValue && lastObservedApiKeysValue.raw === rawApiKeys) {
+    return;
+  }
+
+  lastObservedApiKeysValue = { raw: rawApiKeys };
+  if (configured) {
+    return;
+  }
+
+  // Through the logger rather than the console, for the reason every other
+  // warning on this surface goes through it: the console line carried no
+  // structure, never reached the recent-log buffer an operator reads a failure
+  // out of, and skipped the redaction every logged string passes through. The
+  // message names no value — the point is that there is none to name.
+  logWarn(
+    'No API keys are configured; every request is being served as the development user.',
+    { endpoint: 'authenticateRequest' },
+    { environmentVariable: 'API_KEYS' }
+  );
+}
+
+/**
+ * Test-only: forget the configuration seen so far, so a test can assert how
+ * many times one configuration produces the warning above.
+ *
+ * The state is process-wide and deliberately survives individual requests,
+ * which is the whole point of it; a test asserting "once, however many requests
+ * arrive" has to be able to start from nothing. Named beside
+ * `resetRateLimitsForTests` below, which exists for the same reason.
+ */
+export function resetApiKeyConfigurationWarningForTests(): void {
+  lastObservedApiKeysValue = null;
 }
 
 /**

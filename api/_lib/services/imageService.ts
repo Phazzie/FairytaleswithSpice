@@ -146,8 +146,15 @@ export class ImageService {
   /**
    * Generates an image based on story content using Grok-2-Image
    */
-  async generateImage(input: ImageGenerationSeam['input']): Promise<ApiResponse<ImageGenerationSeam['output']>> {
+  async generateImage(
+    input: ImageGenerationSeam['input'],
+    requestId?: string
+  ): Promise<ApiResponse<ImageGenerationSeam['output']>> {
     const startTime = Date.now();
+    // Once, at the top, so the envelope, this method's failure line, and the
+    // provider line one method below all name the same request. See
+    // `resolveRequestId`.
+    const correlationId = this.resolveRequestId(requestId);
 
     try {
       // Validate input
@@ -157,14 +164,14 @@ export class ImageService {
           success: false,
           error: validationError,
           metadata: {
-            requestId: this.generateRequestId(),
+            requestId: correlationId,
             processingTime: Date.now() - startTime
           }
         };
       }
 
       // Generate image using Grok-2-Image
-      const imageUrl = await this.callGrokImageAI(input);
+      const imageUrl = await this.callGrokImageAI(input, correlationId);
 
       // Create response
       const aspectRatio = input.aspectRatio ?? DEFAULT_ASPECT_RATIO;
@@ -186,7 +193,7 @@ export class ImageService {
         success: true,
         data: output,
         metadata: {
-          requestId: this.generateRequestId(),
+          requestId: correlationId,
           processingTime: Date.now() - startTime
         }
       };
@@ -215,6 +222,7 @@ export class ImageService {
       // put it through: it is caller text, and an id that is not id-shaped is
       // reduced rather than printed.
       logError('Image generation failed', error, {
+        requestId: correlationId,
         endpoint: '/api/image/generate',
         method: 'POST'
       }, { storyId: toLoggableStoryId(input.storyId) });
@@ -225,14 +233,14 @@ export class ImageService {
           message: error.message || 'Failed to generate image'
         },
         metadata: {
-          requestId: this.generateRequestId(),
+          requestId: correlationId,
           processingTime: Date.now() - startTime
         }
       };
     }
   }
 
-  private async callGrokImageAI(input: ImageGenerationSeam['input']): Promise<string> {
+  private async callGrokImageAI(input: ImageGenerationSeam['input'], requestId: string): Promise<string> {
     if (!this.grokApiKey) {
       // Return mock image URL if no API key
       return this.generateMockImageUrl(input);
@@ -268,6 +276,7 @@ export class ImageService {
       // handler logs a `requestId` on every other line it writes, and the one
       // line describing why the image failed had none.
       logApiError('Grok Image API', error, {
+        requestId,
         endpoint: '/api/image/generate',
         method: 'POST'
       });
@@ -499,8 +508,27 @@ export class ImageService {
     return null;
   }
 
-  private generateRequestId(): string {
-    return `img-req-${randomUUID()}`;
+  /**
+   * The id this generation is known by, in the envelope and in the log alike.
+   *
+   * It used to be `img-req-${randomUUID()}`, minted here and written into
+   * `metadata.requestId` — an id that exists in exactly one place, the response
+   * body, and appears in no log line anywhere. The two log calls on this
+   * service's failure paths carried no `requestId` at all, which is the very
+   * thing the comment beside the one below names as the defect it was written
+   * to fix: "this route's own handler logs a `requestId` on every other line it
+   * writes, and the one line describing why the image failed had none". Moving
+   * those calls onto the logger did not give them one, because the service had
+   * no id to give: the route's correlation id stopped at the route.
+   *
+   * `beginPostRoute` reads `X-Request-ID` or mints one, echoes it back as a
+   * header, and stamps it into every line the handler writes; taking it here
+   * makes the envelope, the header, the handler's lines, this method's failure
+   * line, and the provider's own error line all name the same request. Minting
+   * one is kept for a caller that has none, so the field is never empty.
+   */
+  private resolveRequestId(requestId?: string): string {
+    return requestId && requestId.trim() ? requestId.trim() : `img-req-${randomUUID()}`;
   }
 
   private generateImageId(): string {
