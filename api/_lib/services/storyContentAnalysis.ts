@@ -154,29 +154,105 @@ export function extractPlotThreads(content: string): string[] {
 }
 
 /**
- * Analyze emotional tone of existing content
+ * The registers this scan can name, and the words that put a chapter in each.
  *
- * `dominan` was a word stem left behind from a substring scan, and every
- * keyword here is matched as a whole word. Nothing in English is spelled
- * `dominan`, so the alternative could never fire: the one register the
- * `intense` tone exists to name — a chapter written about dominance — was
- * recognised only if it also happened to say `power`, `control`, or
- * `command`, and a scene that says `dominant` and nothing else was reported
- * to the continuation prompt as `romantic with building tension`. The
- * inflections the stem stood for are spelled out instead, which is the same
- * repair `extractThemesFromContent` made when it moved to whole-word
- * matching.
+ * A fixed lexicon written beside its own matcher, so — as the story-quality
+ * heuristics' `EMOTION_FAMILIES` puts it — every inflection it accepts has to
+ * be listed. That is the half of the whole-word repair this scan never got.
+ * `dominan` was fixed by spelling out `dominant`, `dominance`, and
+ * `dominated`; the other four families kept their bare stems, and a bare stem
+ * under `\b…\b` matches only the present-tense dictionary form of the word.
+ *
+ * Narrative prose is written in the past tense. `smile` does not match
+ * "he smiled", `laugh` does not match "she laughed", `desire` does not match
+ * "he desired her", `want` does not match "she wanted him", `wound` does not
+ * match "the wound had scarred", `danger` does not match "dangerous", and
+ * `power` does not match "powerful" — so the tones this function exists to
+ * report were unreachable for the way the generator actually writes, and the
+ * scan fell through to `romantic with building tension` for chapter after
+ * chapter. That string is not cosmetic: `buildContinuationPrompt` writes it
+ * into the model's context as `Emotional Tone`, so a chapter of wounds and
+ * threats was described to the model as mild romance and continued from there.
+ *
+ * The stems are unchanged and nothing is added to them; what is written out
+ * is the inflections the stems were already meant to stand for, the same way
+ * `extractPlotThreads` above lists `dangers`/`dangerous`/`dangerously` and
+ * `extractSpicyLevelFromContent` below lists `kissed` for `kiss`.
+ */
+const EMOTIONAL_TONE_FAMILIES: ReadonlyArray<{ tone: string; terms: readonly string[] }> = [
+  {
+    tone: 'passionate',
+    terms: [
+      'desire', 'desired', 'desires', 'desiring',
+      'passion', 'passionate', 'passionately', 'passions',
+      'want', 'wanted', 'wanting', 'wants',
+      'need', 'needed', 'needing', 'needs',
+      'crave', 'craved', 'craves', 'craving'
+    ]
+  },
+  {
+    tone: 'dark/suspenseful',
+    terms: [
+      'dark', 'darker', 'darkness',
+      'shadow', 'shadowed', 'shadows', 'shadowy',
+      'danger', 'dangerous', 'dangerously', 'dangers',
+      'fear', 'feared', 'fearful', 'fearing', 'fears',
+      'threat', 'threaten', 'threatened', 'threatening', 'threatens', 'threats'
+    ]
+  },
+  {
+    tone: 'playful',
+    terms: [
+      'tease', 'teased', 'teases', 'teasing',
+      'playful', 'playfully',
+      'smile', 'smiled', 'smiles', 'smiling',
+      'grin', 'grinned', 'grinning', 'grins',
+      'laugh', 'laughed', 'laughing', 'laughs', 'laughter'
+    ]
+  },
+  {
+    tone: 'angsty',
+    terms: [
+      'pain', 'pained', 'painful', 'pains',
+      'ache', 'ached', 'aches', 'aching',
+      'hurt', 'hurting', 'hurts',
+      'wound', 'wounded', 'wounding', 'wounds',
+      'scar', 'scarred', 'scarring', 'scars'
+    ]
+  },
+  {
+    tone: 'intense',
+    terms: [
+      'power', 'powerful', 'powers',
+      'control', 'controlled', 'controlling', 'controls',
+      'dominance', 'dominant', 'dominated', 'dominating',
+      'command', 'commanded', 'commanding', 'commands'
+    ]
+  }
+];
+
+/**
+ * Analyze emotional tone of existing content.
+ *
+ * The scan reads the rendered text rather than the markup, like every other
+ * scanner in this file. This one was the last that did not: it lowercased the
+ * generator's HTML and matched against that, so a word the model split across
+ * an inline tag — `dan<em>ger</em>ous` — was two fragments rather than the
+ * word, and the entities the generator writes (`&amp;`, `&nbsp;`) sat in the
+ * text undecoded where `stripStoryHtmlToText` would have turned them back into
+ * the characters the reader sees. `extractSpicyLevelFromContent` below names
+ * the same defect and the same repair; this is the sibling it was still true
+ * of.
+ *
+ * See `EMOTIONAL_TONE_FAMILIES` for the other half — the inflections a
+ * whole-word match needs spelled out, without which none of these tones could
+ * be reported for prose written in the past tense.
  */
 export function analyzeEmotionalTone(content: string): string {
-  const lowerContent = content.toLowerCase();
-  const tones: string[] = [];
-
-  // Emotional indicators
-  if (lowerContent.match(/\b(desire|passion|want|need|crave)\b/)) tones.push('passionate');
-  if (lowerContent.match(/\b(dark|shadow|danger|fear|threat)\b/)) tones.push('dark/suspenseful');
-  if (lowerContent.match(/\b(tease|playful|smile|grin|laugh)\b/)) tones.push('playful');
-  if (lowerContent.match(/\b(pain|ache|hurt|wound|scar)\b/)) tones.push('angsty');
-  if (lowerContent.match(/\b(power|control|dominant|dominance|dominated|command)\b/)) tones.push('intense');
+  const lowerContent = stripHtml(content).toLowerCase();
+  const tones = EMOTIONAL_TONE_FAMILIES
+    .filter(family => family.terms.some(term => containsWholeWord(lowerContent, term)))
+    .map(family => family.tone);
 
   return tones.length > 0 ? tones.join(', ') : 'romantic with building tension';
 }
