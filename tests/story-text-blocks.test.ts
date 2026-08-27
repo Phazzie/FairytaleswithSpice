@@ -150,14 +150,19 @@ for (const [withAttribute, bare] of [
   );
 }
 
-// A `\0` cannot appear in rendered prose and is how a line wrap is carried
-// internally, so one arriving from a caller must not be able to forge a
-// boundary inside a paragraph.
-assert(
-  JSON.stringify(splitStoryIntoRenderedParagraphs('<p>To be\0continued</p>')) ===
-    JSON.stringify([['To becontinued']]),
-  'a caller-supplied \\0 should not forge a block boundary'
-);
+// No character stands for a boundary, so no character a caller sends can forge
+// one - and, equally, none has to be stripped to stop it. Earlier versions of
+// this function marked line wraps with a sentinel character (\0, then U+E000)
+// and removed that character from the input so it could not be forged; removing
+// it is itself a change to what `splitStoryIntoTextBlocks` returns, which is the
+// trade in-band signalling cannot avoid. Both characters are ordinary text now.
+for (const marker of ['\0', '\uE000', '\uE001', '\uFFFD']) {
+  assert(
+    JSON.stringify(splitStoryIntoRenderedParagraphs(`<p>To be${marker}continued</p>`)) ===
+      JSON.stringify([[`To be${marker}continued`]]),
+    `a caller-supplied ${JSON.stringify(marker)} is ordinary text, not a boundary`
+  );
+}
 
 // Known limit, asserted rather than left to be rediscovered: a raw blank line
 // is read as a paragraph boundary even inside an open `<p>`, where a browser

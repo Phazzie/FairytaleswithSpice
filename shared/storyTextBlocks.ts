@@ -46,15 +46,30 @@ export function splitStoryIntoTextBlocks(storyContent: string): string[] {
  * of where a boundary falls, and the flat list is derived from the grouped one
  * rather than computed a second way.
  *
- * **Every boundary tag is matched in one pass over the original markup**, by the
- * same pattern the flat splitter always used, and only the *replacement* differs
- * by kind. Marking the two kinds in two passes is not equivalent and was a real
- * defect: the second pass would be searching text the first had already cut up,
- * so a tag containing a blank line in its attributes — `<br\n\nclass="x">` — was
- * torn in half by the paragraph split before the `<br>` pattern could see it,
- * and its halves survived into the blocks as raw markup (`A<br`,
- * `class="x">B`). `[^>]*` spans newlines, so one pass over the untouched string
- * matches such a tag whole, exactly as before this function existed.
+ * **The markup is walked once, and nothing is ever written into the text to
+ * stand for a boundary.** Each match of `BLOCK_BOUNDARY_PATTERN` is classified
+ * by its own leading tag name and ends either a block or a paragraph; the text
+ * between matches is appended as it stands. Two earlier versions of this
+ * function did it by rewriting the string instead, and each failed in its own
+ * way, which is why it is worth stating what the walk avoids:
+ *
+ * - *Marking the two kinds in two passes* left the second pass searching text
+ *   the first had already cut up, so `<br\n\nclass="x">` — a tag whose
+ *   attributes contain a blank line — was torn in half by the paragraph split
+ *   before the `<br>` pattern could see it, and its halves survived into the
+ *   blocks as raw markup (`A<br`, `class="x">B`).
+ * - *Marking line wraps with a sentinel character* then had to strip that
+ *   character from the input so a caller could not forge a boundary with it —
+ *   and stripping it is itself a change to what `splitStoryIntoTextBlocks`
+ *   returns. In-band signalling cannot avoid that trade: either the sentinel is
+ *   removable from the input, which alters the text, or it is not, which lets
+ *   the input forge boundaries. Both `\0` and a private-use code point were
+ *   tried; the problem is the technique, not the character.
+ *
+ * Carrying the boundary kind beside the text rather than inside it has neither
+ * failure, and leaves the flat list byte-identical to what the splitter
+ * returned before this function existed — for every input, not merely for
+ * inputs that avoid whichever character was load-bearing.
  *
  * Known limit, inherited rather than introduced: a *raw* blank line is read as a
  * paragraph boundary even inside an open `<p>`, where a browser would collapse
@@ -67,19 +82,50 @@ export function splitStoryIntoTextBlocks(storyContent: string): string[] {
  * joining within one can only miss a repair, never invent one.
  */
 export function splitStoryIntoRenderedParagraphs(storyContent: string): string[][] {
-  return storyContent
-    .replace(LINE_BREAK_MARKER_PATTERN, '')
-    .replace(BLOCK_BOUNDARY_PATTERN, tag =>
-      LINE_BREAK_TAG_PATTERN.test(tag) ? LINE_BREAK_MARKER : '\n\n'
-    )
-    .split(/\n\s*\n/)
-    .map(paragraph =>
-      paragraph
-        .split(LINE_BREAK_MARKER)
-        .map(block => decodeBasicEntities(stripInlineTags(block)).trim())
-        .filter(Boolean)
-    )
-    .filter(paragraph => paragraph.length > 0);
+  const paragraphs: string[][] = [];
+  let paragraph: string[] = [];
+  let pending = '';
+
+  const endBlock = () => {
+    const block = decodeBasicEntities(stripInlineTags(pending)).trim();
+    if (block) {
+      paragraph.push(block);
+    }
+    pending = '';
+  };
+  const endParagraph = () => {
+    endBlock();
+    if (paragraph.length) {
+      paragraphs.push(paragraph);
+      paragraph = [];
+    }
+  };
+  // A raw blank line ends a paragraph, which is how plain text gets any
+  // structure at all — see the known limit above for what that costs inside an
+  // open `<p>`.
+  const addText = (text: string) => {
+    text.split(BLANK_LINE_PATTERN).forEach((piece, index) => {
+      if (index > 0) {
+        endParagraph();
+      }
+      pending += piece;
+    });
+  };
+
+  let textStart = 0;
+  for (const match of storyContent.matchAll(BLOCK_BOUNDARY_PATTERN)) {
+    addText(storyContent.slice(textStart, match.index));
+    if (LINE_BREAK_TAG_PATTERN.test(match[0])) {
+      endBlock();
+    } else {
+      endParagraph();
+    }
+    textStart = match.index + match[0].length;
+  }
+  addText(storyContent.slice(textStart));
+  endParagraph();
+
+  return paragraphs;
 }
 
 /**
@@ -107,13 +153,12 @@ export function stripStoryHtmlToText(storyContent: string): string {
  * generator's markup can contain, so a boundary is never left to the tag that
  * happens to enclose it.
  *
- * `br` is not in this list, and is not an omission: it ends a block too, and
- * `splitStoryIntoRenderedParagraphs` applies it as its own boundary directly
- * below the paragraph split, so the flat list of blocks is unchanged. It is
- * named apart because it is the one boundary here that does *not* start a new
- * paragraph, and telling the two kinds apart is what lets a caller know whether
- * two adjacent blocks are one paragraph the markup broke or two the author
- * wrote.
+ * `br` is not in this list, and is not an omission: it ends a block too, and is
+ * added back into `BLOCK_BOUNDARY_PATTERN` below so the one walk still sees
+ * every boundary. It is named apart because it is the one boundary here that
+ * does *not* start a new paragraph, and telling the two kinds apart is what lets
+ * a caller know whether two adjacent blocks are one paragraph the markup broke
+ * or two the author wrote.
  */
 const PARAGRAPH_LEVEL_TAG_NAMES = [
   'p',
@@ -190,15 +235,20 @@ const BLOCK_BOUNDARY_PATTERN = boundaryPattern(`${PARAGRAPH_LEVEL_TAG_NAMES}|br`
 const LINE_BREAK_TAG_PATTERN = /^<\s*\/?br\b/i;
 
 /**
- * How a line wrap is carried from the boundary pass to the split below.
+ * Where a reader sees a paragraph end in text that carries no markup.
  *
- * A marker rather than a second regex pass, because the pass above has to see
- * the markup whole and this one has to survive the paragraph split intact. `\0`
- * cannot appear in rendered prose, and any that a caller sends is stripped
- * first so nothing outside this module can forge a boundary with it.
+ * Split out because the walk above applies it to each run of text *between*
+ * boundary tags, rather than to the whole document after the tags have been
+ * rewritten. Nothing is ever written into the string to stand for a boundary,
+ * which is the property that matters: an earlier version marked line wraps with
+ * a sentinel character and had to strip that character from caller input to
+ * stop it forging one, and stripping it is itself a change to what
+ * `splitStoryIntoTextBlocks` returns. In-band signalling cannot avoid that
+ * trade — either the sentinel is removable from input, which changes the text,
+ * or it is not, which lets input forge boundaries. Carrying the boundary kind
+ * beside the text instead of inside it has neither problem.
  */
-const LINE_BREAK_MARKER = '\0';
-const LINE_BREAK_MARKER_PATTERN = /\0/g;
+const BLANK_LINE_PATTERN = /\n\s*\n/;
 
 /**
  * Drop what is left of the markup once the block boundaries are marked.
