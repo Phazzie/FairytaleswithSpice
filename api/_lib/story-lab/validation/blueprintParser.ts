@@ -258,6 +258,9 @@ function parseThemes(value: QueryValue, mode: 'body' | 'query'): { value: ThemeS
     return { value: [], error: 'themes must include id, label, and description strings.' };
   }
 
+  // Size is measured by `describeOversizedThemeSeed` at the caller, where the
+  // seed's index is in scope and the message can name which of the array's
+  // entries has to be shortened.
   return { value: parsed };
 }
 

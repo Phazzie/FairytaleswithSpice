@@ -4,6 +4,25 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-27 UTC - A Title Only Four Exports Agree On (rebase of the 2026-08-26 three-quick-wins slice)
+
+Actions:
+
+- Made the `.pdf` export render its heading through `stripStoryHtmlForExport`, as the `.txt` export already does. `generatePDFContent` receives the story body already stripped and put the raw `title` above it, so one page carried plain prose under a heading still wearing the markup the body had removed. `title` is caller text on `/api/export/save` and the four other formats all say something about it — `.html`, `.epub`, and `.docx` escape it, `.txt` strips it — leaving the PDF the only export that said nothing: `escapePdfText` escapes the PDF's own delimiters and knows nothing about HTML, so `<em>Mira</em>` was drawn on the page as written and `&amp;` stayed `&amp;` where the same title in the `.txt` export read `&`.
+- Extended `tests/export-service.test.ts`: the PDF heading reads as the `.txt` export's title does. No new test files, so no new `test:all` entries.
+
+Rebase notes — two of this slice's three fixes were superseded on `main` before it merged:
+
+- The theme-seed length caps are already on `main`. `#258` ("five theme seeds nothing measures") added `maxThemeLabelLength` and `maxThemeDescriptionLength` and enforces them from `describeOversizedThemeSeed` at the parser's caller, where the seed's index is in scope and the refusal can name which array entry to shorten — a strictly better message than this slice's `themes[].field` form. This slice's parallel `findOversizedThemeSeedField` was dropped rather than merged; keeping both would have left two checks answering one question. Its `maxThemeIdLength` was dropped with it, deliberately: `main`'s comment records the reasoning that `id` is not capped because it never reaches a prompt or the story state — it is matched against the classic-theme table, which drops what it does not recognise, and reported through `toLoggableThemes`, which reduces an unrecognised id to a count.
+- The genesis stream error-message fix is moot. `#271` retired `api/story-lab/stream/genesis.ts` outright: it awaited the whole generation and then replayed finished chapters through fixed `setTimeout`s as fake progress, and its only caller was an unmounted demo component. The route, its test, and this slice's `createStoryLabGenesisStreamHandler` factory are all deleted here. The privacy invariant the fix was written to state survives in `STORY_LAB_PRIVACY_STREAMING_GATES_EXEC_PLAN.md` and applies to the job event stream that replaced it.
+
+Self-review:
+
+- Semantic counterfactual for the surviving fix, run and reverted: restoring the raw `input.title` in the PDF made the new assertion fail. It is not committed.
+- The PDF assertion compares against the `.txt` export rather than a literal, since the defect was precisely that the repository's two plain-text renderings of one story disagreed.
+- `npm test` passes in full; `npx tsc -p story-generator/tsconfig.json --noEmit` is clean.
+- Non-claim: no generated story changes and no prompt the server sends changes. What changes is the heading on one export format.
+
 ## 2026-08-27 UTC - A Spice Scale The Classic Seam Checked As A Range, A Reasoning-Effort Vocabulary Spelled Four Times, And Two Keyword Scans That Rebuilt Their Tables On Every Chapter
 
 Actions:

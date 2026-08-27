@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 The `.pdf` export was the only one that showed a title's markup to the reader (August 27, 2026)
+
+- `generatePDFContent` receives the story body already through
+  `stripStoryHtmlForExport` and put the raw `title` field above it: one page whose
+  prose is plain and whose heading still wears the markup the body had removed.
+- `title` is caller text on `/api/export/save`, and the four other formats all say
+  something about it. `.html`, `.epub`, and `.docx` escape it, because a tag in a
+  title has to reach those readers as text rather than as markup; `.txt` strips
+  it, because a plain-text document has no markup to escape it into. A PDF page is
+  the second of those — `escapePdfText` escapes the PDF's own delimiters and knows
+  nothing about HTML — so `<em>Mira</em>` was drawn on the page exactly as
+  written, and `&amp;` in a title stayed `&amp;` where the same title in the
+  `.txt` export read `&`.
+- The PDF heading now goes through the same `stripStoryHtmlForExport` the `.txt`
+  export uses, so the repository's two plain-text renderings of one story agree
+  about what its title is.
+
+#### Validation
+
+- `npm test` (full suite) passes.
+- `npx tsc -p story-generator/tsconfig.json --noEmit` clean.
+- Semantic counterfactual run and reverted: restoring the raw `input.title` in the
+  PDF made the new assertion fail.
+
 ### ***WORST TO BEST*** Story Lab Auth & Profile Storage failure logging (`clerkAuthPort.ts`, `postgresStoryLabProfileStore.ts`) — the last two `console.warn` call sites in the backend, on the two failure paths that decide whether a signed-in user's session and profile data are trustworthy (August 27, 2026)
 
 - Every sibling paid-surface service (`imageService.ts`, `exportService.ts`, `security.ts`'s
