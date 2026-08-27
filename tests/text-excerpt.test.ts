@@ -1,7 +1,11 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-26 UTC
 
-import { capAtWordBoundary, tailAtWordBoundary } from '../api/_lib/utils/textExcerpt';
+import {
+  capAtWordBoundary,
+  capAtWordBoundaryWithinCodeUnits,
+  tailAtWordBoundary
+} from '../api/_lib/utils/textExcerpt';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -63,5 +67,36 @@ assert(!/^\s/.test(wordTail), 'moving forward should not leave leading whitespac
 // A tail with no whitespace in it at all is kept as it is, for the same reason
 // the cap keeps an over-long first word: dropping it would leave nothing.
 assert(tailAtWordBoundary('antidisestablishmentarianism', 10) === 'ntarianism', 'an unbroken tail is still cut, at a character boundary');
+
+// ==================== capAtWordBoundaryWithinCodeUnits ====================
+// The same cut for `continuationGuidance`, whose per-line budget is spent in
+// `.length` — UTF-16 code units — rather than in code points.
+
+assert(
+  capAtWordBoundaryWithinCodeUnits('short enough', 40) === 'short enough',
+  'text inside the cap is returned untouched'
+);
+
+// An astral character costs two units, so it is taken whole or not at all: the
+// `slice` this replaces would have cut between its halves and left a lone
+// surrogate in the continuation prompt.
+const unitAstral = capAtWordBoundaryWithinCodeUnits('ab🗝', 3);
+assert(!hasLoneSurrogate(unitAstral), `an astral character must be kept whole or dropped whole, got ${JSON.stringify(unitAstral)}`);
+assert(unitAstral === 'ab', 'a pair that does not fit the remaining units is dropped whole');
+assert(capAtWordBoundaryWithinCodeUnits('ab🗝', 4) === 'ab🗝', 'a pair that fits is kept');
+
+// The budget is the caller's, and it is in code units: an astral character must
+// never let one line spend more of it than the cap allows.
+const budgeted = capAtWordBoundaryWithinCodeUnits('🗝🗝🗝🗝', 5);
+assert(budgeted.length <= 5, `the cap counts code units, got length ${budgeted.length}`);
+
+const unitWords = capAtWordBoundaryWithinCodeUnits('the hunter opened the door', 14);
+assert(unitWords === 'the hunter', `the cut should back up to a word boundary, got ${JSON.stringify(unitWords)}`);
+assert(!/\s$/.test(unitWords), 'backing up should not leave trailing whitespace');
+
+assert(
+  capAtWordBoundaryWithinCodeUnits('antidisestablishmentarianism', 10) === 'antidisest',
+  'an unbroken first word longer than the cap is still cut, at a character boundary'
+);
 
 console.log('Text excerpt tests passed');

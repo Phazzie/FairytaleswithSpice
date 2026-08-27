@@ -341,4 +341,77 @@ assert(
   'the parsed blueprint should carry the trimmed value it was measured as'
 );
 
+// A body field wrapped in an array is refused, not thrown on.
+//
+// `getString` reads the repeated-value form a query string carries — `value[0]`
+// — and handed the entry back typed `string` without checking it. On the body
+// path a JSON array holds whatever the caller put in it, so `{"logline": [42]}`
+// reached `getString(...)?.trim()` as a number and threw a `TypeError` out of
+// the parser entirely. The route's own catch answers `500 INTERNAL_ERROR` for
+// that — the service failed, try again — on a body only the caller can fix, and
+// on the exact field this parser exists to refuse by name. Every field read
+// through this helper had the same hole.
+for (const field of ['logline', 'worldDetails', 'narrativeDirectives', 'protagonistName', 'antagonistName']) {
+  for (const wrapped of [[42], [{ nested: true }], [['deeper']], [null]]) {
+    let result: ReturnType<typeof parseStoryLabBlueprintFromBody>;
+    try {
+      result = parseStoryLabBlueprintFromBody({ ...bodyForCreature('vampire'), [field]: wrapped });
+    } catch (error) {
+      throw new Error(`${field}: ${JSON.stringify(wrapped)} threw instead of being answered: ${(error as Error).message}`);
+    }
+
+    const isSpellableScalar = typeof wrapped[0] === 'number' || typeof wrapped[0] === 'boolean';
+    if (isSpellableScalar) {
+      // Read under the same rule a bare value already was: `logline: 42` has
+      // always parsed as `"42"`, so wrapping it changes nothing.
+      assert(!result.error, `${field}: ${JSON.stringify(wrapped)} should parse the way a bare scalar does`);
+      continue;
+    }
+
+    if (field === 'logline') {
+      assert(
+        result.error?.invalidFields.includes('logline'),
+        `a logline wrapped in ${JSON.stringify(wrapped)} should be reported as an invalid field, not crash the parser`
+      );
+    } else {
+      // The optional fields are absent rather than invalid when they are not a
+      // string, which is what `optionalString` already answers for every other
+      // shape that is not one.
+      assert(!result.error, `${field}: ${JSON.stringify(wrapped)} should leave the blueprint parseable`);
+      assert(
+        result.blueprint[field as 'worldDetails'] === undefined,
+        `${field}: a non-string value should read as absent rather than as text`
+      );
+    }
+  }
+}
+
+// The Heat Contract is read through the same helper on the query path, where a
+// wrapped non-string reached `JSON.parse`.
+const wrappedHeatContract = parseStoryLabBlueprintFromQuery({
+  ...bodyForCreature('vampire'),
+  heatContract: [{ adultOnlyConfirmed: true }] as unknown as string[]
+});
+assert(
+  wrappedHeatContract.error?.invalidFields.includes('heatContract'),
+  'a heat contract that is not a string on the query path should be refused, not crash the parser'
+);
+
+// The reading a repeated query parameter actually needs is unchanged, and a
+// number or boolean wrapped in an array is spelled out the same way a bare one
+// already was.
+const repeatedLogline = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('vampire'),
+  logline: ['The first value wins.', 'The second is the stale tab.']
+});
+assert(!repeatedLogline.error, 'a repeated string value should still parse');
+assert(
+  repeatedLogline.blueprint.logline === 'The first value wins.',
+  `the first entry is the one the client-facing hop sent (got ${JSON.stringify(repeatedLogline.blueprint?.logline)})`
+);
+
+const wrappedSpicyLevel = parseStoryLabBlueprintFromBody({ ...bodyForCreature('vampire'), spicyLevel: [4] });
+assert(!wrappedSpicyLevel.error, 'a numeric field wrapped in an array should still parse');
+assert(wrappedSpicyLevel.blueprint.spicyLevel === 4, 'a wrapped number should read as the number it is');
+
 console.log('Story Lab shared blueprint parser tests passed');

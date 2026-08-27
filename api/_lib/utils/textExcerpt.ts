@@ -44,7 +44,48 @@ export function capAtWordBoundary(value: string, maxCodePoints: number): string 
     return value;
   }
 
-  const capped = characters.slice(0, maxCodePoints).join('');
+  return backUpToWordBoundary(characters.slice(0, maxCodePoints).join(''));
+}
+
+/**
+ * The same cut, measured in UTF-16 code units instead of code points.
+ *
+ * `continuationGuidance` packs the hidden guidance into a byte-ish budget it
+ * spends line by line — `usedLength += 1 + nextLine.length` — so a cut stated
+ * in code points would let one astral character spend two of the budget's
+ * units, and the section it belongs to would overrun the cap it was measured
+ * against. Restating that module's budget in code points is a different change
+ * with a wider blast radius than the cut itself, so the cut is stated in the
+ * unit the budget is already kept in.
+ *
+ * That is the only difference. A code point is never split — an astral
+ * character costs two units and is taken whole or not at all, so the cut cannot
+ * leave the lone surrogate `slice` leaves — and the result still backs up to
+ * the last whitespace rather than ending mid-word.
+ */
+export function capAtWordBoundaryWithinCodeUnits(value: string, maxCodeUnits: number): string {
+  if (value.length <= maxCodeUnits) {
+    return value;
+  }
+
+  let capped = '';
+  for (const character of value) {
+    if (capped.length + character.length > maxCodeUnits) {
+      break;
+    }
+
+    capped += character;
+  }
+
+  return backUpToWordBoundary(capped);
+}
+
+/**
+ * Give back whatever a cut took out of the middle of a word. A cut with no
+ * whitespace in it at all — one unbroken run longer than the cap — is kept as
+ * it is, which is still a whole-character cut.
+ */
+function backUpToWordBoundary(capped: string): string {
   for (let index = capped.length - 1; index >= 0; index -= 1) {
     if (/\s/.test(capped[index])) {
       return capped.slice(0, index).trimEnd();

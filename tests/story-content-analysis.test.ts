@@ -22,7 +22,8 @@ import {
   extractThemesFromContent,
   formatChapterContent,
   getCreatureDisplayName,
-  getSpicyLabel
+  getSpicyLabel,
+  stripSpeakerTagsForDisplay
 } from '../api/_lib/services/storyContentAnalysis';
 import { VALIDATION_RULES } from '../api/_lib/types/contracts';
 
@@ -218,5 +219,62 @@ assert(
   extractSpicyLevelFromContent('<p>The night turned to intense&nbsp;passion.</p>') === 5,
   'a multi-word keyword spaced with an HTML entity should still be read from the rendered prose'
 );
+
+// ==================== stripSpeakerTagsForDisplay ====================
+// The narrative-shift test decides where the reader sees a paragraph break in
+// every chapter this app displays. It was `/^(The|As|But|However|Still)/i` with
+// no word boundary beside four unanchored `includes` calls.
+
+function paragraphsOf(display: string): number {
+  return display.split('<p>').length - 1;
+}
+
+// `They`, `Butler`, and `Asked` begin with `The`, `But`, and `As`, so three
+// ordinary sentences of narration were each declared a new beat and each given
+// a paragraph of its own — the reader was shown a chapter chopped into
+// one-sentence stubs wherever the prose used a pronoun.
+{
+  const raw = [
+    'She set the cup down.',
+    'They had not spoken since.',
+    'Butler waited by the stair.',
+    'Asked once, he said nothing.'
+  ].join('\n');
+  const display = stripSpeakerTagsForDisplay(raw);
+  assert(
+    paragraphsOf(display) === 1,
+    `lines that merely start with a longer word should stay in one paragraph, got ${paragraphsOf(display)}: ${JSON.stringify(display)}`
+  );
+}
+
+// A transition word inside a line is not a line that opens on one, and the
+// break this test decides goes before the whole line — so a mid-line `Then`
+// put the break somewhere the word never justified.
+{
+  const raw = ['She waited by the window.', 'Her cup cooled. Then he spoke.'].join('\n');
+  const display = stripSpeakerTagsForDisplay(raw);
+  assert(
+    paragraphsOf(display) === 1,
+    `a mid-line transition word should not open a paragraph on its own, got ${paragraphsOf(display)}: ${JSON.stringify(display)}`
+  );
+}
+
+// The words themselves are unchanged: a line that really does open on one of
+// them is still a new beat.
+for (const opener of ['Later, the hall emptied.', 'Suddenly the door gave.', 'Meanwhile, he waited.', 'The manor slept.']) {
+  const display = stripSpeakerTagsForDisplay(['She set the cup down.', opener].join('\n'));
+  assert(
+    paragraphsOf(display) === 2,
+    `"${opener}" should still open a new paragraph, got ${paragraphsOf(display)}: ${JSON.stringify(display)}`
+  );
+}
+
+// A blank line is still the paragraph break it is — the branch this heuristic
+// sits beside, and the one this method was fixed for once already.
+{
+  const raw = ['[Narrator]: She opened the door.', '', '[Narrator]: Blood pooled on the floor.'].join('\n');
+  const display = stripSpeakerTagsForDisplay(raw);
+  assert(paragraphsOf(display) === 2, `blank-line separated lines should still be two paragraphs: ${JSON.stringify(display)}`);
+}
 
 console.log('Story content analysis tests passed');
