@@ -179,6 +179,48 @@ const EXPLICIT_CLIFFHANGER_PATTERN = wordFormAlternationPattern([
 ]);
 
 /**
+ * The longest label the pattern above can match, in characters.
+ *
+ * Used as the measure of "too short to be a paragraph" below, because a block
+ * that could not even hold the whole label is not prose — it is a piece of one.
+ */
+const LONGEST_EXPLICIT_CLIFFHANGER_LABEL = 'to be continued'.length;
+
+/**
+ * The ending as one line, with a label a `<br>` broke apart put back together.
+ *
+ * `splitStoryIntoTextBlocks` treats `<br>` as a block boundary — it has to, or
+ * the words on either side of one weld into a single token — so the generator's
+ * `<p>To be<br>continued</p>` arrives here as the two blocks `To be` and
+ * `continued`, and the last of them is the whole of what a final-paragraph scan
+ * can see. Collapsing whitespace does not reach that: the break is *between*
+ * blocks, not inside one, which is the half of this failure the raw-newline case
+ * above does not cover. What the reader sees is one label either way.
+ *
+ * So the walk goes back through the trailing blocks that are shorter than the
+ * label itself — the fragments a break leaves — and stops on the first block
+ * long enough to be prose, which is included because a label can begin at the
+ * end of a real paragraph. A story whose last block is an ordinary paragraph
+ * stops on the first step and is read exactly as before.
+ */
+function readEndingLabelText(paragraphs: readonly string[], fallback: string): string {
+  if (paragraphs.length === 0) {
+    return collapseWhitespace(fallback).toLowerCase();
+  }
+
+  const tail: string[] = [];
+  for (let index = paragraphs.length - 1; index >= 0; index -= 1) {
+    const block = collapseWhitespace(paragraphs[index]);
+    tail.unshift(block);
+    if (block.length >= LONGEST_EXPLICIT_CLIFFHANGER_LABEL) {
+      break;
+    }
+  }
+
+  return tail.join(' ').toLowerCase();
+}
+
+/**
  * Score the ending, reading the final paragraph the way every other dimension
  * here reads its text.
  *
@@ -196,6 +238,13 @@ const EXPLICIT_CLIFFHANGER_PATTERN = wordFormAlternationPattern([
  * paragraphs for, and the same one `extractPlotThreads`'s
  * `UNRESOLVED_QUESTION_PATTERN` names. It was masked until now by the `continued`
  * entry removed above, which matched either way for the wrong reason.
+ *
+ * The label test reads `readEndingLabelText` rather than the final block,
+ * because the other way a label comes apart is a `<br>`, which is a boundary
+ * *between* blocks that no amount of collapsing inside one can reach. The two
+ * punctuation-and-hook tests stay on the final block: those are about how the
+ * last thing the reader reads ends, and neither can be split the way a phrase
+ * can.
  */
 function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): DimensionDraft {
   const finalParagraph = collapseWhitespace(
@@ -208,7 +257,7 @@ function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): Dimen
   if (UNRESOLVED_HOOK_WORD_PATTERN.test(finalParagraph)) {
     signals.push('Ending contains an unresolved hook word.');
   }
-  if (EXPLICIT_CLIFFHANGER_PATTERN.test(finalParagraph)) {
+  if (EXPLICIT_CLIFFHANGER_PATTERN.test(readEndingLabelText(paragraphs, storyText))) {
     signals.push('Ending uses explicit cliffhanger language.');
   }
 

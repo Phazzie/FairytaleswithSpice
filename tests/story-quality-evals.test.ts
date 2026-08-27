@@ -294,6 +294,12 @@ function testTheEndingIsScannedWithItsWhitespaceCollapsed(): void {
 
   const wrapped = scan('The door opened.\n\nTo be\ncontinued');
   const inline = scan('The door opened.\n\nTo be continued');
+  // The other way the label comes apart, and the one collapsing cannot reach:
+  // `<br>` is a block boundary, so `splitStoryIntoTextBlocks` hands the scan
+  // `To be` and `continued` as two blocks and the final one is the whole of what
+  // a final-block scan sees. Caught by Codex on this PR — removing the bare
+  // `continued` entry is what exposed it.
+  const broken = scan('<p>The door opened.</p><p>To be<br>continued</p>');
 
   assert(
     inline?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
@@ -304,8 +310,22 @@ function testTheEndingIsScannedWithItsWhitespaceCollapsed(): void {
     `the same phrase wrapped between its words is the same ending (signals=${JSON.stringify(wrapped?.signals)})`
   );
   assert(
-    wrapped?.score === inline?.score,
-    `where the line breaks should not change the score (wrapped=${wrapped?.score}, inline=${inline?.score})`
+    broken?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label a <br> split across two blocks is the same ending (signals=${JSON.stringify(broken?.signals)})`
+  );
+  assert(
+    wrapped?.score === inline?.score && broken?.score === inline?.score,
+    `where the line breaks should not change the score (wrapped=${wrapped?.score}, broken=${broken?.score}, inline=${inline?.score})`
+  );
+
+  // A short final block is what makes the walk take in the paragraph before it,
+  // so that is exactly where a resurrected false positive would show up: the
+  // joined text here holds `continued` as an ordinary verb, and the label
+  // lexicon must still refuse it.
+  const shortEnding = scan('<p>He continued down the long dark hall.</p><p>She ran</p>');
+  assert(
+    !shortEnding?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `joining the trailing blocks must not bring back the bare-verb match (signals=${JSON.stringify(shortEnding?.signals)})`
   );
 }
 
