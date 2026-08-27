@@ -71,18 +71,32 @@ assert(
   'a value that is not a string is not a member of a string vocabulary'
 );
 
-// `formatThreadDebtLabel` names three statuses and falls through for the
-// fourth, which is only correct while there are exactly four. It reads the
-// union derived from this table now, so the table is what keeps it honest.
+// `formatThreadDebtLabel` used to name three statuses and fall through for the
+// fourth, and this file asserted `PLOT_THREAD_STATUSES.length === 4` to say so
+// — a test standing in for a guarantee the language can make. It reads a total
+// `Record` keyed by the union now, so a fifth status fails to compile rather
+// than inheriting a label. What is left to prove at runtime is that every
+// status has a *distinct*, non-empty label: a `Record` is total whatever is
+// written in it, and two statuses sharing a line is the same failure the
+// fall-through was.
+const threadDebtLabels = PLOT_THREAD_STATUSES.map(status => formatThreadDebtLabel(status));
 assert(
-  PLOT_THREAD_STATUSES.length === 4,
-  'the thread-debt label falls through for its fourth status; a fifth needs its own branch'
+  threadDebtLabels.every(label => label.trim().length > 0)
+  && new Set(threadDebtLabels).size === PLOT_THREAD_STATUSES.length,
+  `every thread status should have its own label (got ${JSON.stringify(threadDebtLabels)})`
 );
 assert(
   formatThreadDebtLabel('escalating') === 'Pressure rising'
   && formatThreadDebtLabel('dormant') === 'Quiet promise'
   && formatThreadDebtLabel('active') === 'Open promise',
   'each named status should keep its label'
+);
+// The status both callers filter out before the label is reached. It said
+// "Open promise" under the fall-through, so the one way it could ever be
+// rendered was to announce a paid-off thread as one the story still owes.
+assert(
+  formatThreadDebtLabel('resolved') === 'Paid promise',
+  'a resolved thread should not be labelled as an open promise'
 );
 
 // ==================== Every table value survives the merge ====================
@@ -300,5 +314,78 @@ for (const [path, expected] of [
     `the prompt should offer "${path}" exactly the values the merge accepts for it`
   );
 }
+
+// ==================== A refused list does not delete the one it replaces ====================
+
+// `relationshipEdges` and `spiceLevels` distinguish an array that arrives empty
+// from one whose entries were all refused; `arrayOfStrings` — the reader behind
+// `secrets` and `foreshadowedDevices` — did not, so a model answering in the
+// shape it found natural cleared facts it was asked to add to.
+const withKeptSecrets = mergeAiContinuity({
+  ...emptyState(),
+  characters: [{
+    id: 'character-1',
+    displayName: 'Mira',
+    archetype: 'protagonist',
+    summary: 's',
+    currentGoal: 'g',
+    internalConflict: 'i',
+    externalConflict: 'e',
+    secrets: ['She was there that night'],
+    relationships: [],
+    spiceCompatibilities: [3]
+  }],
+  threads: [{
+    id: 'thread-1',
+    label: 'The oath',
+    status: 'active',
+    description: 'd',
+    foreshadowedDevices: ['the sealed door']
+  }]
+}, {
+  characters: [{
+    id: 'character-1',
+    displayName: 'Mira',
+    // The three shapes a model reaches for when asked for a list of short
+    // prose, none of them a string.
+    secrets: [{ secret: 'She was there that night' }, null, ['the pact']] as unknown as string[]
+  }],
+  threads: [{ id: 'thread-1', label: 'The oath', foreshadowedDevices: [null] as unknown as string[] }]
+}, now);
+
+assert(
+  JSON.stringify(withKeptSecrets.characters[0]?.secrets) === JSON.stringify(['She was there that night']),
+  'an all-refused secrets array should keep the secrets the state already held'
+);
+assert(
+  JSON.stringify(withKeptSecrets.threads[0]?.foreshadowedDevices) === JSON.stringify(['the sealed door']),
+  'an all-refused device array should keep the devices the state already held'
+);
+
+const withClearedSecrets = mergeAiContinuity({
+  ...emptyState(),
+  characters: [{
+    id: 'character-1',
+    displayName: 'Mira',
+    archetype: 'protagonist',
+    summary: 's',
+    currentGoal: 'g',
+    internalConflict: 'i',
+    externalConflict: 'e',
+    secrets: ['She was there that night'],
+    relationships: [],
+    spiceCompatibilities: [3]
+  }]
+}, {
+  characters: [{ id: 'character-1', displayName: 'Mira', secrets: [] }]
+}, now);
+
+// The other half of the rule, and the reason it is not simply "never clear":
+// `[]` is the model reporting that this character keeps nothing, which is a
+// fact it is allowed to report.
+assert(
+  JSON.stringify(withClearedSecrets.characters[0]?.secrets) === JSON.stringify([]),
+  'an empty secrets array is the model reporting no secrets and should still clear'
+);
 
 console.log('story-state vocabulary checks passed');

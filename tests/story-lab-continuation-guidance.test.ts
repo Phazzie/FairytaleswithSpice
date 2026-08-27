@@ -350,8 +350,51 @@ function testOverlongCourtroomDetailKeepsCharactersWhole(): void {
   );
 }
 
+/**
+ * `RelationshipEdge.relationship` is declared `RelationshipKind`, and
+ * `getCharacterRelationships` used to accept any string for it — so a stored
+ * snapshot could hand the guidance, and the Angular panel behind it, a kind the
+ * vocabulary does not list, wearing the union's type. An unrecognised kind is
+ * read as `unknown` now.
+ *
+ * The edge itself must survive that: it names two characters the story really
+ * connected, and dropping it would take the whole relationship-pressure line out
+ * of the courtroom brief over one misspelled field.
+ */
+function testUnknownRelationshipKindKeepsTheEdge(): void {
+  const state = baseState();
+  const [mira, ...rest] = state.characters;
+  const preview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Put Mira and Corvin in the same room.',
+    storyState: {
+      ...state,
+      characters: [
+        {
+          ...mira,
+          relationships: [{
+            characterId: 'character-corvin',
+            relationship: 'mentor' as never,
+            notes: 'Corvin holds the debt that binds her.'
+          }]
+        },
+        ...rest
+      ]
+    }
+  });
+
+  assert(
+    preview.hiddenGuidance.includes('Relationship pressure: Mira and Corvin'),
+    `an unrecognised relationship kind should not cost the edge its pressure line (got ${JSON.stringify(preview.hiddenGuidance)})`
+  );
+  assert(
+    preview.contextSourceMap.some(entry => entry.kind === 'relationship' && entry.label === 'Mira and Corvin'),
+    'the edge should still be reported in the context source map'
+  );
+}
+
 function main(): void {
   testBriefMentioningThreadActivatesIt();
+  testUnknownRelationshipKindKeepsTheEdge();
   testNoBriefFallsBackToUnresolvedPriority();
   testResolvedThreadsAreExcluded();
   testDangerKeywordsChooseDangerEscalation();

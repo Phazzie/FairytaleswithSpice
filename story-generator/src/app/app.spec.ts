@@ -1488,6 +1488,58 @@ describe('App', () => {
     expect(previewText).toContain('Mara and Duke Vale');
   });
 
+  // `RelationshipEdge.relationship` is declared `RelationshipKind`, and this
+  // reader checked it with `typeof === 'string'` — so a kind outside the five
+  // the vocabulary lists was handed on wearing the union's type, and the
+  // preview's detail table, which is keyed by that union, had nothing written
+  // for it. The kind normalizes to `unknown` now: the pair and the note are a
+  // relationship the story really established, and only the kind is the part
+  // nobody can vouch for.
+  it('reads a stored relationship kind outside the vocabulary as unknown', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [
+              { characterId: 'duke-vale', relationship: 'mentor', notes: '' }
+            ] as never,
+            spiceCompatibilities: [3]
+          },
+          {
+            id: 'duke-vale',
+            displayName: 'Duke Vale',
+            archetype: 'antagonist',
+            summary: 'A moonlit duke with a claim on the reef archive.',
+            currentGoal: 'Turn Mara toward the court bargain.',
+            internalConflict: 'His desire compromises his strategy.',
+            externalConflict: 'Mara can refuse him in public.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        continuityWarnings: []
+      })
+    });
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    // The edge survives — dropping it would take a real relationship out of the
+    // panel whose job is to show them.
+    expect(previewText).toContain('Mara and Duke Vale');
+    // And it reads the line `unknown` was written for, rather than one of the
+    // four characterized kinds.
+    expect(previewText).toContain('This connection should change the next scene.');
+  });
+
   it('prioritizes custom-brief matches in the Continuity Preview', () => {
     seedWorkbenchForContinuation({
       state: createState({

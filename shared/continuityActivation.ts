@@ -68,9 +68,9 @@ export const ACTIVATION_TOKEN_MIN_LENGTH = 4;
  *
  * Re-exported from `storyStateVocabulary` rather than declared here: this was a
  * fifth hand-written copy of the four statuses, and the one furthest from the
- * table — `formatThreadDebtLabel` below names three of them and falls through
- * for the fourth, which is only correct while the union has exactly four
- * members.
+ * table — `formatThreadDebtLabel` below named three of them and fell through for
+ * the fourth, which was only correct while the union had exactly four members.
+ * It is keyed by this union now, so the table decides how many branches it has.
  */
 export type { PlotThreadStatus };
 
@@ -141,14 +141,34 @@ export function scoreActivationCandidates(candidates: readonly unknown[], source
   return score;
 }
 
+/**
+ * What each thread status is called where the reader and the model both see it.
+ *
+ * A total `Record` rather than the `if`/`if`/fall-through this replaces. The
+ * note on `PlotThreadStatus` above named that ladder as the copy furthest from
+ * the table — it answered three statuses and let the fourth take whichever
+ * branch it fell into — and `story-state-vocabulary` held it together with an
+ * assertion that `PLOT_THREAD_STATUSES.length === 4`, which is a test standing
+ * in for a guarantee the language can make. Keyed by the union derived from the
+ * table, a fifth status is a compile error in this object rather than a label
+ * quietly chosen for it.
+ *
+ * `resolved` gets its own line rather than the fallback's. Both callers filter
+ * resolved threads out before they reach here — `selectScoredCourtroomThreads`
+ * in `continuationGuidance.ts` through `isUnresolvedThread`, and the Angular
+ * continuity panel through `status !== 'resolved'` — so nothing renders it
+ * today. That is exactly why it was worth naming: the fallback said *Open
+ * promise*, so the one way this label could ever reach a reader or the model was
+ * to announce a thread the story has already paid off as one it still owes.
+ */
+const THREAD_DEBT_LABELS: Record<PlotThreadStatus, string> = {
+  active: 'Open promise',
+  escalating: 'Pressure rising',
+  dormant: 'Quiet promise',
+  resolved: 'Paid promise'
+};
+
 /** What an unresolved thread is called where the reader and the model both see it. */
 export function formatThreadDebtLabel(status: PlotThreadStatus): string {
-  if (status === 'escalating') {
-    return 'Pressure rising';
-  }
-  if (status === 'dormant') {
-    return 'Quiet promise';
-  }
-
-  return 'Open promise';
+  return THREAD_DEBT_LABELS[status];
 }
