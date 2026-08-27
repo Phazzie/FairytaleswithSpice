@@ -45,6 +45,42 @@ export interface StoryProjectListItem {
   createdAt: string;
 }
 
+/**
+ * What a listing asks for: an order, and how many of it to answer with.
+ *
+ * `listProjects` used to take neither and hand back the owner's whole library,
+ * because the ordering and the cap both lived above it — the ordering
+ * deliberately, at the route, and the cap accidentally, in the Postgres
+ * adapter's own SQL under an ordering nobody had chosen. Removing that `limit`
+ * fixed the second problem by creating a third: the durable query then read and
+ * parsed every row of a library, `project_json` and all, so a request's
+ * transfer, memory, and CPU scaled with everything the owner had ever saved,
+ * and only the route threw the excess away.
+ *
+ * Passing the ordering *down* is what lets the bound live where the rows are.
+ * The route still decides what the order is — it reads `librarySort` off the
+ * profile, and re-applies `sortStoryProjectListItems` to the page it gets back,
+ * so the order a caller sees is always that one comparator's — and the store
+ * decides only which rows are worth sending under it.
+ */
+export interface StoryProjectListQuery {
+  sort: StoryLabLibrarySort;
+  limit: number;
+}
+
+/**
+ * One page of a library, and the size of the library it came from.
+ *
+ * `totalCount` is the owner's whole count, not the page's: a page that reports
+ * only its own length is indistinguishable from a complete library, which is
+ * the difference between "the story I saved is gone" and "it is past the cap".
+ * It travels to the caller as `CloudStoryProjectList.totalProjectCount`.
+ */
+export interface StoryProjectListPage {
+  items: StoryProjectListItem[];
+  totalCount: number;
+}
+
 export interface StoryProjectDeleteReceipt {
   projectId: string;
   deleted: boolean;
@@ -56,7 +92,7 @@ export interface StoryProjectStore {
   isConfigured(): boolean;
   saveProject(user: AuthUser, project: SavedStoryProject): Promise<StoryProjectStoreResult<StoredStoryProjectRecord>>;
   loadProject(user: AuthUser, projectId: string): Promise<StoryProjectStoreResult<StoredStoryProjectRecord | null>>;
-  listProjects(user: AuthUser): Promise<StoryProjectStoreResult<StoryProjectListItem[]>>;
+  listProjects(user: AuthUser, query: StoryProjectListQuery): Promise<StoryProjectStoreResult<StoryProjectListPage>>;
   deleteProject(user: AuthUser, projectId: string): Promise<StoryProjectStoreResult<StoryProjectDeleteReceipt>>;
 }
 

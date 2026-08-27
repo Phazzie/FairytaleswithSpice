@@ -12,6 +12,7 @@
 import { SpicyLevel, ThemeType } from '../types/contracts';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
+import { escapeRegExp } from '../utils/regexEscape';
 
 /** The longest `nextChapterHint`, in code points. */
 export const NEXT_CHAPTER_HINT_MAX_LENGTH = 200;
@@ -272,10 +273,6 @@ export function getSpicyLabel(level: number): string {
  */
 function containsWholeWord(text: string, keyword: string): boolean {
   return new RegExp(String.raw`\b${escapeRegExp(keyword)}\b`).test(text);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /**

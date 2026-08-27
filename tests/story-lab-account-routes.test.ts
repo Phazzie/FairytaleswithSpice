@@ -16,7 +16,7 @@ import { STORY_LAB_PROFILE_LIMITS } from '../shared/storyBlueprintLimits';
 import type {
   StoredStoryProjectRecord,
   StoryProjectDeleteReceipt,
-  StoryProjectListItem,
+  StoryProjectListPage,
   StoryProjectStore,
   StoryProjectStoreResult
 } from '../api/_lib/story-lab/storage/storyProjectStore';
@@ -678,6 +678,12 @@ async function testLibrarySortPreferenceOrdersTheProjectList() {
  * missing with nothing in the response to say so. The in-memory adapter applied
  * no cap at all, so the two disagreed about what the library contained.
  *
+ * The ordering now travels *down* to the store as part of the query, so the
+ * cap can stay where the rows are without choosing them under an ordering
+ * nobody asked for. This is the end-to-end proof of that: what the reader gets
+ * back is the front of their own order, however the adapter beneath produced
+ * it.
+ *
  * `Aardvark Oath` is the test's whole point: it sorts first by title and last
  * by update, so it is exactly the item the old ordering dropped and the new one
  * must keep.
@@ -985,7 +991,7 @@ function createLeakyProjectStore(): StoryProjectStore {
     async loadProject(): Promise<StoryProjectStoreResult<StoredStoryProjectRecord | null>> {
       return leakResult();
     },
-    async listProjects(): Promise<StoryProjectStoreResult<StoryProjectListItem[]>> {
+    async listProjects(): Promise<StoryProjectStoreResult<StoryProjectListPage>> {
       return leakResult();
     },
     async deleteProject(): Promise<StoryProjectStoreResult<StoryProjectDeleteReceipt>> {

@@ -215,25 +215,34 @@ async function handleProjectsRoute(
   const method = normalizeMethod(req.method);
 
   if (method === 'GET') {
-    const listResult = await context.projectStore.listProjects(user);
+    // The ordering is the reader's and it goes *down* to the store, because the
+    // cap belongs with the rows and a cap can only be applied under an
+    // ordering. The Postgres adapter used to carry `order by updated_at desc
+    // limit 50` in its own SQL while this route sorted whatever came back, so a
+    // reader on `title_asc` was shown the alphabetical order of the fifty most
+    // recently *updated* projects.
+    const librarySort = await readLibrarySort(context, user);
+    const listResult = await context.projectStore.listProjects(user, {
+      sort: librarySort,
+      limit: STORY_LAB_LIBRARY_MAX_ITEMS
+    });
     if (listResult.success === false) {
       sendJson(res, listResult.error.statusCode, projectStoreErrorResponse(listResult.error));
       return;
     }
-
-    // Sort first, then cap. The cap keeps the front of *this reader's* order,
-    // which is the only reading of "their fifty most relevant projects" that
-    // matches what they asked their library to be sorted by; the store used to
-    // do it the other way round, in SQL, under an ordering nobody had chosen.
-    const sortedProjects = sortStoryProjectListItems(listResult.data, await readLibrarySort(context, user));
 
     sendJson(res, 200, {
       success: true,
       data: toCloudProjectList(
         context,
         user,
-        sortedProjects.slice(0, STORY_LAB_LIBRARY_MAX_ITEMS),
-        sortedProjects.length
+        // Re-sorted here, over at most `STORY_LAB_LIBRARY_MAX_ITEMS` items, so
+        // that the order a caller sees is always `sortStoryProjectListItems`'s
+        // — SQL collation and `localeCompare` do not agree about accented
+        // titles, and the store's clause decides only which rows the page
+        // holds.
+        sortStoryProjectListItems(listResult.data.items, librarySort),
+        listResult.data.totalCount
       )
     });
     return;
@@ -672,7 +681,21 @@ function profileStorePublicMessage(error: StoryLabProfileStoreError): string {
   }
 }
 
-function sendJson<T>(res: ResponseLike, statusCode: number, body: T): void {
+/**
+ * Every answer this route file sends, typed as the envelope it is.
+ *
+ * The parameter was a bare `T`, so nothing checked that a body handed to it was
+ * an `ApiResponse` at all — which is the one property every caller of this API
+ * relies on and the one a changed response shape can quietly lose. Adding a
+ * required field to `CloudStoryProjectList` is exactly that kind of change:
+ * the literal below builds the payload by hand, and an unconstrained `T`
+ * accepts whatever it happens to be.
+ *
+ * Constraining the helper rather than annotating one call site is what makes it
+ * a rule about this file's answers instead of a note on the one that was
+ * changed last.
+ */
+function sendJson<T>(res: ResponseLike, statusCode: number, body: ApiResponse<T>): void {
   res.status(statusCode).json(body);
 }
 

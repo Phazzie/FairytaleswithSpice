@@ -4,6 +4,7 @@
 import { CliffhangerAnalysis, CliffhangerType } from '../types/contracts';
 import { splitStoryIntoTextBlocks } from '../../../shared/storyTextBlocks';
 import { collapseWhitespace } from '../utils/whitespace';
+import { escapeRegExp } from '../utils/regexEscape';
 
 /**
  * The hook words and phrases each kind of cliffhanger is recognised by, and the
@@ -156,10 +157,6 @@ const CLIFFHANGER_HOOK_PATTERNS = new Map<CliffhangerType, RegExp[]>(
       hooks.map(spellings => new RegExp(String.raw`\b(?:${spellings.map(escapeRegExp).join('|')})\b`))
     ])
 );
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
 
 /** How many of a type's hooks appear in `text`, counting each hook at most once. */
 function countHookMatches(type: CliffhangerType, text: string): number {
