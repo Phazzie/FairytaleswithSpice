@@ -10,6 +10,16 @@
 
 import { StoryService } from '../api/_lib/services/storyService';
 import { StoryGenerationSeam, ChapterContinuationSeam, VALIDATION_RULES } from '../api/_lib/types/contracts';
+import {
+  countWords,
+  extractLastChapterSummary,
+  extractSpicyLevelFromContent,
+  extractThemesFromContent,
+  formatStoryContent,
+  generateNextChapterHint,
+  stripHtml,
+  stripSpeakerTagsForDisplay
+} from '../api/_lib/services/storyContentAnalysis';
 
 // ==================== TEST UTILITIES ====================
 
@@ -567,9 +577,6 @@ const HTML_CHAPTER = [
 
 const storyTextTests = {
   testWordCountAcrossParagraphBoundaries: test('Word Count Reads Paragraph Boundaries', () => {
-    const service = new StoryService();
-    const countWords = (content: string) => (service as any).countWords(content);
-
     // "one" and "two" are two words to a reader, and were one before the fix.
     const twoWords = countWords('<p>one</p><p>two</p>');
     if (twoWords !== 2) {
@@ -595,8 +602,7 @@ const storyTextTests = {
   }),
 
   testStripHtmlKeepsWordsApart: test('Stripped Story Text Keeps Words Apart', () => {
-    const service = new StoryService();
-    const stripped: string = (service as any).stripHtml(HTML_CHAPTER);
+    const stripped: string = stripHtml(HTML_CHAPTER);
 
     for (const welded of ['DoorShe', 'door.Blood', 'floor.Who']) {
       if (stripped.includes(welded)) {
@@ -612,7 +618,6 @@ const storyTextTests = {
   }),
 
   testLastChapterSummaryReadsTheEnding: test('Last Chapter Summary Reads The Ending', () => {
-    const service = new StoryService();
     // Six paragraphs, so "the last three" is a strictly smaller set than "all".
     const story = [
       '<p>Paragraph one opens the chapter.</p>',
@@ -623,7 +628,7 @@ const storyTextTests = {
       '<p>Paragraph six leaves the door open.</p>'
     ].join('');
 
-    const summary: string = (service as any).extractLastChapterSummary(story);
+    const summary: string = extractLastChapterSummary(story);
 
     if (!summary.includes('Paragraph six')) {
       throw new Error(`Summary of the last chapter should reach its final paragraph: ${summary}`);
@@ -636,8 +641,7 @@ const storyTextTests = {
   }),
 
   testNextChapterHintIsTheClosingSentence: test('Next Chapter Hint Is The Closing Sentence', () => {
-    const service = new StoryService();
-    const hint: string = (service as any).generateNextChapterHint(HTML_CHAPTER);
+    const hint: string = generateNextChapterHint(HTML_CHAPTER);
 
     // With no whitespace after the full stops, the sentence split had nothing to
     // split on and the "hint" was the whole chapter, cut 200 characters in from
@@ -650,8 +654,7 @@ const storyTextTests = {
   }),
 
   testLastChapterSummaryOnlyMarksRealTruncation: test('Last Chapter Summary Only Marks Real Truncation', () => {
-    const service = new StoryService();
-    const summarize = (content: string) => (service as any).extractLastChapterSummary(content) as string;
+    const summarize = (content: string) => extractLastChapterSummary(content);
 
     // A short closing passage that the 150-word cut cannot reach, written the
     // way generator HTML actually arrives: the paragraphs carry line breaks and
@@ -684,7 +687,6 @@ const storyTextTests = {
   }),
 
   testDisplayContentKeepsBlankLineParagraphs: test('Display Content Keeps Blank-Line Paragraphs', () => {
-    const service = new StoryService();
     // Plain paragraphs separated the ordinary way: a blank line, with no
     // opening quote and no `Suddenly` for the shift heuristic to catch. Every
     // one of them used to be welded into a single `<p>`.
@@ -696,7 +698,7 @@ const storyTextTests = {
       '[Narrator]: Nobody had been there for years.'
     ].join('\n');
 
-    const display: string = (service as any).stripSpeakerTagsForDisplay(raw);
+    const display: string = stripSpeakerTagsForDisplay(raw);
     const paragraphCount = display.split('<p>').length - 1;
 
     if (paragraphCount !== 3) {
@@ -710,7 +712,6 @@ const storyTextTests = {
   }),
 
   testTitledPlainTextKeepsParagraphs: test('Titled Plain Text Keeps Its Paragraphs', () => {
-    const service = new StoryService();
     // A plain-text answer that opens with a title line. Dropping every blank
     // line to find the title also removed the paragraph separators, so the
     // whole body came back inside one `<p>`.
@@ -724,7 +725,7 @@ const storyTextTests = {
       'He did not look away.'
     ].join('\n');
 
-    const formatted: string = (service as any).formatStoryContent(raw);
+    const formatted: string = formatStoryContent(raw);
     const paragraphCount = formatted.split('<p>').length - 1;
 
     if (!formatted.startsWith('<h3>Salt Vows</h3>')) {
@@ -735,7 +736,7 @@ const storyTextTests = {
     }
 
     // The untitled form always kept its paragraphs; it must still.
-    const untitled: string = (service as any).formatStoryContent('She opened the door.\n\nBlood pooled.');
+    const untitled: string = formatStoryContent('She opened the door.\n\nBlood pooled.');
     if (untitled.split('<p>').length - 1 !== 2) {
       throw new Error(`Untitled plain text lost a paragraph: ${JSON.stringify(untitled)}`);
     }
@@ -744,19 +745,18 @@ const storyTextTests = {
   }),
 
   testContinuedThemesAreContractThemes: test('Continued Themes Stay Inside The Theme Contract', () => {
-    const service = new StoryService();
     const allowedThemes: readonly string[] = VALIDATION_RULES.themes.allowedValues;
 
     // Nothing to detect: the answer used to be `['romance', 'fantasy']`, two
     // ids that are not themes at all.
-    const none: string[] = (service as any).extractThemesFromContent('<p>A quiet afternoon by the reef.</p>');
+    const none: string[] = extractThemesFromContent('<p>A quiet afternoon by the reef.</p>');
     if (none.length !== 0) {
       throw new Error(`Expected no themes for neutral prose, got ${JSON.stringify(none)}`);
     }
 
     // The six themes that had no keywords and so could never be reported.
     const unreachable = ['dominance', 'submission', 'temptation', 'sin', 'lust', 'deceit'];
-    const detected: string[] = (service as any).extractThemesFromContent(
+    const detected: string[] = extractThemesFromContent(
       '<p>He knelt in submission to her dominance.</p>'
       + '<p>Temptation was a sin, and her lust was built on deceit.</p>'
     );
@@ -774,7 +774,7 @@ const storyTextTests = {
 
     // Whole-word matching: `sin` must not be read out of `rising`, nor `lust`
     // out of `lustre`.
-    const substrings: string[] = (service as any).extractThemesFromContent(
+    const substrings: string[] = extractThemesFromContent(
       '<p>The lustre of the rising tide was using the last of the light.</p>'
     );
     for (const theme of ['sin', 'lust', 'manipulation']) {
@@ -787,8 +787,7 @@ const storyTextTests = {
   }),
 
   testSpicyLevelIsReadFromTheProseNotTheMarkup: test('Spicy Level Is Read From The Prose, Not The Markup', () => {
-    const service = new StoryService();
-    const readLevel = (content: string) => (service as any).extractSpicyLevelFromContent(content) as number;
+    const readLevel = (content: string) => extractSpicyLevelFromContent(content);
 
     // A hearth, wool gloves, and an anticlimactic duel. Under substring
     // matching `hearth` was `heart`, `gloves` was `love`, and `anticlimax` was
