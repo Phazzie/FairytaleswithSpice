@@ -26,6 +26,7 @@ import {
   readSpiceLevelPromptLabel,
   UNKNOWN_SPICE_LEVEL_PROMPT_LABEL
 } from '../shared/spiceLevelPromptLadder';
+import { buildProductionSystemPrompt } from '../shared/productionStoryPrompt';
 import { getSpicyLabel } from '../api/_lib/services/storyContentAnalysis';
 import { StoryService } from '../api/_lib/services/storyService';
 import { assert } from './assert';
@@ -100,9 +101,17 @@ const promptTemplatesSource = readFileSync(
   'utf8'
 );
 
+// The whole production system prompt is now assembled by
+// `buildProductionSystemPrompt`, which is where the ladder is interpolated —
+// so the assertion is that the page presents that prompt, and that the prompt
+// carries the ladder.
 assert(
-  promptTemplatesSource.includes('${SPICE_LEVEL_PROMPT_BLOCK}'),
-  'the Proving Grounds production prompt should interpolate the shared ladder'
+  promptTemplatesSource.includes('buildProductionSystemPrompt()'),
+  'the Proving Grounds production prompt should be the shared builder\'s answer'
+);
+assert(
+  buildProductionSystemPrompt().includes(SPICE_LEVEL_PROMPT_BLOCK),
+  'the shared production system prompt should carry the shared ladder'
 );
 assert(
   promptTemplatesSource.includes('readSpiceLevelPromptLabel'),

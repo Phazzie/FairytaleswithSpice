@@ -515,22 +515,25 @@ export interface StreamingProgressChunk {
   };
 }
 
-export interface ApiErrorPayload {
-  code: string;
-  message: string;
-  details?: unknown;
-}
+// The envelope every route in this repository answers with, re-exported from
+// the backend's own contract rather than redeclared here — the arrangement
+// `ExportFormat` and `ImageGenerationSeam` above already have.
+//
+// The two declarations had drifted in the way that matters most for an
+// envelope: the API's carries `metadata`, and this one did not. Every classic
+// route attaches one — `requestId`, `processingTime`, the model that answered,
+// `rateLimitRemaining`, and `partialFailures`, the only place a chapter that
+// failed inside a successful batch is reported — and the Story Lab engine reads
+// `result.metadata?.partialFailures` off it. None of that was reachable from
+// the Angular tree: a client that wanted to log the server's own `requestId`
+// beside a failed export, or to tell the reader which chapters of a batch did
+// not arrive, was reading a field its type said did not exist. The two
+// interfaces were also not assignable to each other, so nothing would have
+// reported the drift.
+export type { ApiErrorPayload, ApiResponseMetadata } from '../../../api/_lib/types/contracts';
+import type { ApiResponse as BackendApiResponse } from '../../../api/_lib/types/contracts';
 
-export type ApiResponse<T> = {
-  success: true;
-  data: T;
-  error?: never;
-} | {
-  success: false;
-  data?: never;
-  error: ApiErrorPayload;
-};
-
+export type ApiResponse<T> = BackendApiResponse<T>;
 export type ApiEnvelope<T> = ApiResponse<T>;
 
 export type StoryLabJobKind = 'genesis' | 'continuation' | 'export' | 'audio';

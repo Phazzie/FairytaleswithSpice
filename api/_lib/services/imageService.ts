@@ -4,7 +4,8 @@
 
 import axios from 'axios';
 import { randomUUID } from 'node:crypto';
-import { ImageGenerationSeam, ApiResponse, CreatureType, ImageStyle, IMAGE_STYLES } from '../types/contracts.js';
+import { ImageGenerationSeam, ApiResponse, CreatureType, ImageStyle, IMAGE_STYLES, ThemeType } from '../types/contracts.js';
+import { isClassicStoryTheme } from '../../../shared/themeVocabulary';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary } from '../utils/textExcerpt';
 import { logApiError, logError } from '../utils/logger';
@@ -20,6 +21,42 @@ interface AspectRatioSpec {
 }
 
 const DEFAULT_ASPECT_RATIO: SupportedAspectRatio = '16:9';
+
+/**
+ * What the image model is asked to draw for each Story Lab theme seed, as
+ * `app.ts` offers them. Keyed by `string`: the seam accepts any seed id.
+ */
+const STORY_LAB_SEED_VISUAL_ELEMENTS: Record<string, string> = {
+  court_intrigue: 'candlelit halls and watching courtiers',
+  blood_oaths: 'cut palms and binding sigils',
+  slow_burn: 'held distance and charged glances',
+  enemies_to_lovers: 'drawn weapons lowered mid-reach',
+  magical_bargain: 'outstretched hands and glowing terms',
+  secret_identity: 'half-shadowed faces and shed disguises',
+  forced_proximity: 'a narrow room and no way past each other'
+};
+
+/** The same, for the eighteen classic `ThemeType` values. See `mapThemeToVisualElement`. */
+const CLASSIC_THEME_VISUAL_ELEMENTS: Record<ThemeType, string> = {
+  betrayal: 'shadows and daggers',
+  obsession: 'intense gazes and mirrors',
+  power_dynamics: 'thrones and chains',
+  forbidden_love: 'roses and thorns',
+  revenge: 'fire and darkness',
+  manipulation: 'puppet strings and masks',
+  seduction: 'silk and candlelight',
+  dark_secrets: 'locked doors and keys',
+  corruption: 'wilting flowers and decay',
+  dominance: 'crowns and submission poses',
+  submission: 'kneeling figures and restraints',
+  jealousy: 'green eyes and broken hearts',
+  temptation: 'apples and serpents',
+  sin: 'fallen angels and shadows',
+  desire: 'reaching hands and longing looks',
+  passion: 'fire and embraces',
+  lust: 'revealing clothing and desire',
+  deceit: 'masks and false smiles'
+};
 
 /**
  * The requested ratio decides three things at once: the size asked of the
@@ -408,38 +445,19 @@ export class ImageService {
    * entries stay for a caller that sends them; the seed ids are added beside
    * them, worded from the same seed descriptions the story prompt is built
    * from, so the picture and the prose are asked for the same thing.
+   *
+   * The two vocabularies are two tables rather than one, so the classic half
+   * can be typed `Record<ThemeType, string>` the way `getCreatureContext` above
+   * is typed on its own vocabulary: a nineteenth theme added to
+   * `CLASSIC_STORY_THEMES` is a compile error here rather than an image that
+   * silently asks for `mysterious elements`. The seed half stays keyed by
+   * `string` because the seam accepts any seed id, including one a future
+   * picker adds.
    */
   private mapThemeToVisualElement(theme: string): string {
-    const visualMap: Record<string, string> = {
-      // Story Lab theme seeds, as `app.ts` offers them.
-      court_intrigue: 'candlelit halls and watching courtiers',
-      blood_oaths: 'cut palms and binding sigils',
-      slow_burn: 'held distance and charged glances',
-      enemies_to_lovers: 'drawn weapons lowered mid-reach',
-      magical_bargain: 'outstretched hands and glowing terms',
-      secret_identity: 'half-shadowed faces and shed disguises',
-      forced_proximity: 'a narrow room and no way past each other',
-      // Classic `ThemeType` values, for a caller that sends those instead.
-      betrayal: 'shadows and daggers',
-      obsession: 'intense gazes and mirrors',
-      power_dynamics: 'thrones and chains',
-      forbidden_love: 'roses and thorns',
-      revenge: 'fire and darkness',
-      manipulation: 'puppet strings and masks',
-      seduction: 'silk and candlelight',
-      dark_secrets: 'locked doors and keys',
-      corruption: 'wilting flowers and decay',
-      dominance: 'crowns and submission poses',
-      submission: 'kneeling figures and restraints',
-      jealousy: 'green eyes and broken hearts',
-      temptation: 'apples and serpents',
-      sin: 'fallen angels and shadows',
-      desire: 'reaching hands and longing looks',
-      passion: 'fire and embraces',
-      lust: 'revealing clothing and desire',
-      deceit: 'masks and false smiles'
-    };
-    return visualMap[theme] || 'mysterious elements';
+    return STORY_LAB_SEED_VISUAL_ELEMENTS[theme]
+      ?? (isClassicStoryTheme(theme) ? CLASSIC_THEME_VISUAL_ELEMENTS[theme] : undefined)
+      ?? 'mysterious elements';
   }
 
   /**

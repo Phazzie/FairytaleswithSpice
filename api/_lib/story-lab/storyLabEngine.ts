@@ -19,6 +19,7 @@ import type {
   StoryGenerationSeam as ClassicGenerationSeam,
   ThemeType
 } from '../types/contracts';
+import { isClassicStoryTheme } from '../../../shared/themeVocabulary';
 import { StoryService } from '../services/storyService';
 import { buildContinuationResponse, buildGenesisResponse } from './mockData';
 import { getTransientStorySnapshot, persistStoryIteration } from './stateStore';
@@ -46,27 +47,11 @@ interface StoryLabEngineOptions {
 }
 
 const MOCK_FLAG_VALUES = new Set(['1', 'true', 'yes']);
-const CLASSIC_THEME_TYPES: readonly ThemeType[] = [
-  'betrayal',
-  'obsession',
-  'power_dynamics',
-  'forbidden_love',
-  'revenge',
-  'manipulation',
-  'seduction',
-  'dark_secrets',
-  'corruption',
-  'dominance',
-  'submission',
-  'jealousy',
-  'temptation',
-  'sin',
-  'desire',
-  'passion',
-  'lust',
-  'deceit'
-];
-const CLASSIC_THEME_SET = new Set<string>(CLASSIC_THEME_TYPES);
+/**
+ * The theme this route sends when none of the reader's seeds is a classic
+ * theme. It is a `ThemeType` and not a seed id: this is the value handed to the
+ * classic generator, which knows only the eighteen.
+ */
 const DEFAULT_CLASSIC_THEME: ThemeType = 'forbidden_love';
 
 export function shouldUseMockStoryLab(): boolean {
@@ -158,14 +143,10 @@ function validateHeatContract(input: LabGenerationSeam['input']): StoryLabErrorR
 function toClassicThemes(themeIds: string[]): ThemeType[] {
   const classicThemes = themeIds
     .map(themeId => themeId.split('-').join('_'))
-    .filter(isThemeType)
+    .filter(isClassicStoryTheme)
     .slice(0, 5);
 
   return classicThemes.length ? classicThemes : [DEFAULT_CLASSIC_THEME];
-}
-
-function isThemeType(themeId: string): themeId is ThemeType {
-  return CLASSIC_THEME_SET.has(themeId);
 }
 
 export function toClassicGenerationInput(input: LabGenerationSeam['input']): ClassicGenerationSeam['input'] {
