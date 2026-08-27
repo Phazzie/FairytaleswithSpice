@@ -77,6 +77,8 @@ for (const storyContent of [
   '<p>He was <strong>certain</strong> of it.</p>',
   '<div>Outer<br><br>gap</div><li>Item</li>',
   'text<br><p>after</p>',
+  '<p>A<br\n\nclass="x">B</p>',
+  '<p>To be<br>\n\ncontinued</p>',
   ''
 ]) {
   assert(
@@ -93,6 +95,52 @@ assert(
   JSON.stringify(splitStoryIntoRenderedParagraphs('<p>Only.</p><p>   <br>  </p>')) ===
     JSON.stringify([['Only.']]),
   'blank rendered paragraphs should be filtered out'
+);
+
+// Whitespace inside a boundary tag's own attributes is part of the tag, not
+// text around it, so where the attributes wrap cannot change what comes back.
+// Caught by Codex on this PR: marking the two boundary kinds in two passes left
+// the second one searching text the first had already cut up, so a `<br>` whose
+// attributes contained a blank line was torn in half by the paragraph split and
+// its halves survived into the blocks as raw markup (`A<br`, `class="x">B`).
+// That is a change in `splitStoryIntoTextBlocks`, which every scanner reads.
+for (const [wrapped, inline] of [
+  ['<p>A<br\n\nclass="x">B</p>', '<p>A<br class="x">B</p>'],
+  ['<p\n\nclass="y">A</p><p>B</p>', '<p class="y">A</p><p>B</p>'],
+  ['<div\n\nid="d">One</div><div>Two</div>', '<div id="d">One</div><div>Two</div>']
+]) {
+  assert(
+    JSON.stringify(splitStoryIntoTextBlocks(wrapped)) ===
+      JSON.stringify(splitStoryIntoTextBlocks(inline)),
+    `a blank line inside a tag's attributes is part of the tag (${JSON.stringify(wrapped)} gave ${JSON.stringify(splitStoryIntoTextBlocks(wrapped))})`
+  );
+  assert(
+    !splitStoryIntoTextBlocks(wrapped).some(block => /[<>]/.test(block)),
+    `no block should carry a fragment of a boundary tag (${JSON.stringify(wrapped)})`
+  );
+}
+
+// A `\0` cannot appear in rendered prose and is how a line wrap is carried
+// internally, so one arriving from a caller must not be able to forge a
+// boundary inside a paragraph.
+assert(
+  JSON.stringify(splitStoryIntoRenderedParagraphs('<p>To be\0continued</p>')) ===
+    JSON.stringify([['To becontinued']]),
+  'a caller-supplied \\0 should not forge a block boundary'
+);
+
+// Known limit, asserted rather than left to be rediscovered: a raw blank line
+// is read as a paragraph boundary even inside an open `<p>`, where a browser
+// collapses it as ordinary whitespace. That is the flat splitter's own
+// long-standing conflation — blank lines have always ended a block, which is
+// what plain-text callers depend on — so unpicking it changes the flat output
+// every scanner reads and is a slice of its own. It errs safely: extra
+// boundaries make the final paragraph smaller, so a caller joining within one
+// can only miss a repair, never invent one.
+assert(
+  JSON.stringify(splitStoryIntoRenderedParagraphs('<p>To be<br>\n\ncontinued</p>')) ===
+    JSON.stringify([['To be'], ['continued']]),
+  'a raw blank line inside a <p> still starts a rendered paragraph (known limit)'
 );
 
 console.log('Story text block tests passed');

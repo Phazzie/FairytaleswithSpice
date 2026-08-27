@@ -45,15 +45,37 @@ export function splitStoryIntoTextBlocks(storyContent: string): string[] {
  * the old function, which keeps the two from drifting: there is one definition
  * of where a boundary falls, and the flat list is derived from the grouped one
  * rather than computed a second way.
+ *
+ * **Every boundary tag is matched in one pass over the original markup**, by the
+ * same pattern the flat splitter always used, and only the *replacement* differs
+ * by kind. Marking the two kinds in two passes is not equivalent and was a real
+ * defect: the second pass would be searching text the first had already cut up,
+ * so a tag containing a blank line in its attributes — `<br\n\nclass="x">` — was
+ * torn in half by the paragraph split before the `<br>` pattern could see it,
+ * and its halves survived into the blocks as raw markup (`A<br`,
+ * `class="x">B`). `[^>]*` spans newlines, so one pass over the untouched string
+ * matches such a tag whole, exactly as before this function existed.
+ *
+ * Known limit, inherited rather than introduced: a *raw* blank line is read as a
+ * paragraph boundary even inside an open `<p>`, where a browser would collapse
+ * it as ordinary whitespace. `<p>To be<br>\n\ncontinued</p>` is therefore
+ * grouped as two paragraphs. That is the flat splitter's own long-standing
+ * conflation — blank lines have always ended a block, which is what plain-text
+ * callers depend on — and unpicking it would change `splitStoryIntoTextBlocks`'s
+ * output for every scanner that reads it, so it is a slice of its own. It errs
+ * safely here: extra boundaries make the final paragraph *smaller*, so a caller
+ * joining within one can only miss a repair, never invent one.
  */
 export function splitStoryIntoRenderedParagraphs(storyContent: string): string[][] {
   return storyContent
-    .replace(PARAGRAPH_BOUNDARY_PATTERN, '\n\n')
+    .replace(LINE_BREAK_MARKER_PATTERN, '')
+    .replace(BLOCK_BOUNDARY_PATTERN, tag =>
+      LINE_BREAK_TAG_PATTERN.test(tag) ? LINE_BREAK_MARKER : '\n\n'
+    )
     .split(/\n\s*\n/)
     .map(paragraph =>
       paragraph
-        .replace(LINE_BREAK_BOUNDARY_PATTERN, '\n\n')
-        .split(/\n\s*\n/)
+        .split(LINE_BREAK_MARKER)
         .map(block => decodeBasicEntities(stripInlineTags(block)).trim())
         .filter(Boolean)
     )
@@ -138,15 +160,38 @@ const PARAGRAPH_LEVEL_TAG_NAMES = [
  * `>` that closes the tag, so each position is decided once. The `\b` is what
  * keeps `<paragraph>` from matching on `p`.
  */
-function boundaryPattern(tagNames: string): RegExp {
-  return new RegExp(String.raw`<\s*/?(?:${tagNames})\b[^>]*>`, 'gi');
+function boundaryPattern(tagNames: string, flags: string): RegExp {
+  return new RegExp(String.raw`<\s*/?(?:${tagNames})\b[^>]*>`, flags);
 }
 
-/** Where a reader sees a new paragraph begin. */
-const PARAGRAPH_BOUNDARY_PATTERN = boundaryPattern(PARAGRAPH_LEVEL_TAG_NAMES);
+/**
+ * Every tag that ends a block, `br` included — the one pass, over the markup as
+ * it arrived, that decides where all the boundaries are.
+ */
+const BLOCK_BOUNDARY_PATTERN = boundaryPattern(`${PARAGRAPH_LEVEL_TAG_NAMES}|br`, 'gi');
 
-/** Where a reader sees a line wrap inside the paragraph already open. */
-const LINE_BREAK_BOUNDARY_PATTERN = boundaryPattern('br');
+/**
+ * Whether a tag the pass above matched is the one kind that does *not* start a
+ * new paragraph.
+ *
+ * Deliberately not global: `.test()` on a `g` pattern advances `lastIndex` and
+ * so answers differently on the same input from one call to the next, which in
+ * a classifier is a defect waiting for its second caller. It is asked only
+ * about a whole tag the pass above already matched, so there is nothing else in
+ * the string for an unanchored test to find.
+ */
+const LINE_BREAK_TAG_PATTERN = boundaryPattern('br', 'i');
+
+/**
+ * How a line wrap is carried from the boundary pass to the split below.
+ *
+ * A marker rather than a second regex pass, because the pass above has to see
+ * the markup whole and this one has to survive the paragraph split intact. `\0`
+ * cannot appear in rendered prose, and any that a caller sends is stripped
+ * first so nothing outside this module can forge a boundary with it.
+ */
+const LINE_BREAK_MARKER = '\0';
+const LINE_BREAK_MARKER_PATTERN = /\0/g;
 
 /**
  * Drop what is left of the markup once the block boundaries are marked.
