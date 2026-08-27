@@ -502,6 +502,22 @@ async function createContinuationJob(
 }
 
 /**
+ * The deferred kinds as the refusal names them, read from the table it checks.
+ *
+ * The message used to say "Export and audio" in prose beside a branch that
+ * matched the two literals, so a third deferred kind would have been refused
+ * and not mentioned. Capitalised only at the front, the way the sentence was.
+ */
+function formatDeferredJobKindList(): string {
+  const kinds: readonly string[] = STORY_LAB_DEFERRED_JOB_KINDS;
+  const sentence = kinds.length > 1
+    ? `${kinds.slice(0, -1).join(', ')} and ${kinds[kinds.length - 1]}`
+    : kinds.join('');
+
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/**
  * Run the engine for a job that is already recorded as `running`.
  *
  * The engine reports its own failures as an unsuccessful envelope, but it can
@@ -514,23 +530,6 @@ async function createContinuationJob(
  * other. The thrown detail goes to the log rather than into the job, which is
  * read by the caller and should not carry whatever a provider error says.
  */
-/**
- * The deferred kinds as the refusal names them, read from the table it checks.
- *
- * The message used to say "Export and audio" in prose beside a branch that
- * matched the two literals, so a third deferred kind would have been refused
- * and not mentioned. Capitalised only at the front, the way the sentence was.
- */
-function formatDeferredJobKindList(): string {
-  const kinds = [...STORY_LAB_DEFERRED_JOB_KINDS];
-  const last = kinds[kinds.length - 1];
-  const sentence = kinds.length > 1
-    ? `${kinds.slice(0, -1).join(', ')} and ${last}`
-    : last;
-
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
-}
-
 async function runJobWork<TPublicResult extends JobResult>(
   work: () => Promise<ApiResponse<TPublicResult>>,
   kind: StoryLabGenerationJobKind,
