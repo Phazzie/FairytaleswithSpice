@@ -24,6 +24,7 @@ import type {
   SpicyLevel
 } from '../../../api/_lib/types/contracts';
 import type { ChapterBatchSize } from '../../../shared/chapterBatchVocabulary';
+import type { XaiReasoningEffort } from '../../../shared/reasoningEffortVocabulary';
 
 // `CreatureArchetype` and its table come from `shared/creatureVocabulary`,
 // which sits below both trees: the union used to be written out here and again
@@ -132,7 +133,14 @@ export const HEAT_INTIMACY_BOUNDARIES = [
  * error message and a fourth in the template's `<option>` values. These are the
  * list; everything that checks one of these fields reads it.
  */
-export const SPICY_LEVELS = [1, 2, 3, 4, 5] as const satisfies readonly SpicyLevel[];
+// Spice level's table has moved to `shared/spiceLevelVocabulary` and is
+// re-exported here, where the picker and `FormValidationService` already read
+// it. It was declared in this tree and read all over it, and the classic seam
+// the Story Lab hands its blueprint to — the one place a request is actually
+// refused — could not see it: `VALIDATION_RULES.spicyLevel` restated the scale
+// as `{ min: 1, max: 5 }`. See that module for what each direction of drift
+// costs.
+export { SPICY_LEVELS } from '../../../shared/spiceLevelVocabulary';
 
 export const WORD_BUDGETS = [600, 900, 1200, 1500] as const satisfies readonly WordBudget[];
 
@@ -300,7 +308,12 @@ export interface StoryPersistenceReceipt {
 export interface GenerationTelemetry {
   engine: 'gpt' | 'grok' | 'custom';
   model?: string;
-  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+  // The same union `ApiResponseMetadata.reasoningEffort` carries, from the
+  // shared table rather than a fourth spelling of it. `app.ts` prints this
+  // field in the telemetry panel, so a value the API can send and this
+  // declaration does not name is one a reader sees under a type that says it
+  // cannot exist.
+  reasoningEffort?: XaiReasoningEffort;
   fallbackFromModel?: string;
   totalLatencyMs: number;
   averageChapterLatencyMs: number;

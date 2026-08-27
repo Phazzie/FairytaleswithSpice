@@ -1,13 +1,21 @@
+import {
+  isXaiReasoningEffort,
+  type XaiReasoningEffort
+} from '../../../shared/reasoningEffortVocabulary';
+
 export const DEFAULT_XAI_STORY_MODEL = 'grok-4.3';
 export const DEFAULT_XAI_FAST_MODEL = 'grok-4.3';
-export const DEFAULT_XAI_REASONING_EFFORT = 'medium';
+export const DEFAULT_XAI_REASONING_EFFORT: XaiReasoningEffort = 'medium';
 export const XAI_RESPONSES_API_URL = 'https://api.x.ai/v1/responses';
 export const DEFAULT_XAI_PRIMARY_TIMEOUT_MS = 40000;
 export const DEFAULT_XAI_FAST_TIMEOUT_MS = 40000;
 
-export type XaiReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh';
-
-const VALID_REASONING_EFFORTS = new Set<XaiReasoningEffort>(['none', 'low', 'medium', 'high', 'xhigh']);
+// The union and the list it is checked against are one table in
+// `shared/reasoningEffortVocabulary`, re-exported here because the whole API
+// tree spells the type by this name. See that module for the four copies this
+// replaces and what each direction of drift costs.
+export type { XaiReasoningEffort };
+export { XAI_REASONING_EFFORTS } from '../../../shared/reasoningEffortVocabulary';
 
 export function getXaiStoryModel(): string {
   return process.env['XAI_STORY_MODEL']?.trim() || DEFAULT_XAI_STORY_MODEL;
@@ -17,18 +25,26 @@ export function getXaiFastModel(): string {
   return process.env['XAI_FAST_MODEL']?.trim() || DEFAULT_XAI_FAST_MODEL;
 }
 
+/**
+ * The effort this deployment asks for, from `XAI_STORY_REASONING_EFFORT`.
+ *
+ * `isHighAgentEffort` stood beside this function and is gone. It was the third
+ * reader of the union — `GROK_MULTIAGENT_STORY_LAB_POLISH_EXEC_PLAN.md` asked
+ * for it so that choosing `high` or `xhigh` could be logged — and the logging
+ * was never written, so nothing in the repository, tests included, ever called
+ * it. What it left behind is the thing a dead reader costs: a second place that
+ * decides what "high effort" means, which the two efforts it names would have
+ * to be kept in step with, standing in for a rule no caller ever asked for.
+ * `getXaiReasoningEffortForModel` below is where every real decision about
+ * effort is made, and it names the values it acts on itself.
+ */
 export function getXaiReasoningEffort(): XaiReasoningEffort {
   const configuredEffort = process.env['XAI_STORY_REASONING_EFFORT']?.trim().toLowerCase();
 
-  if (configuredEffort && VALID_REASONING_EFFORTS.has(configuredEffort as XaiReasoningEffort)) {
-    return configuredEffort as XaiReasoningEffort;
-  }
-
-  return DEFAULT_XAI_REASONING_EFFORT;
-}
-
-export function isHighAgentEffort(effort: XaiReasoningEffort = getXaiReasoningEffort()): boolean {
-  return effort === 'high' || effort === 'xhigh';
+  // The guard narrows, so neither of the two `as XaiReasoningEffort` casts this
+  // replaces is needed: the check and the type it produces come from the same
+  // table.
+  return isXaiReasoningEffort(configuredEffort) ? configuredEffort : DEFAULT_XAI_REASONING_EFFORT;
 }
 
 export function supportsXaiReasoningParameter(model: string | null | undefined): boolean {

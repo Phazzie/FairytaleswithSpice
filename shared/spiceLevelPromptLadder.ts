@@ -34,10 +34,17 @@
  * gives: it sits below both trees and can import neither.
  */
 
+import type { SpicyLevel } from './spiceLevelVocabulary';
+
 /** One rung of the ladder. */
 export interface SpiceLevelPromptRung {
-  /** 1 through 5, as the seams, the picker, and the prompt all number them. */
-  readonly level: number;
+  /**
+   * The level this rung describes, from `SPICY_LEVELS` — the same table the
+   * seams, the picker, and the routes all check a request against, rather than
+   * the bare `number` this was, which let the ladder and the scale disagree
+   * about how many levels there are without anything saying so.
+   */
+  readonly level: SpicyLevel;
   /** The name written into the user prompt's `SPICE LEVEL:` line. */
   readonly label: string;
   /** What the system prompt tells the model that level permits and forbids. */
@@ -75,7 +82,8 @@ export const SPICE_LEVEL_PROMPT_RUNGS: readonly SpiceLevelPromptRung[] = [
 /**
  * What a level outside the ladder is called.
  *
- * `spicyLevel` is validated against 1-5 before a story is generated, so this is
+ * `spicyLevel` is checked against `SPICY_LEVELS` before a story is generated,
+ * on both the blueprint and the classic path, so this is
  * the same kind of unreachable-but-kept fallback as
  * `UNKNOWN_CREATURE_DISPLAY_NAME`: it is what the API's `getSpicyLabel` has
  * always returned, and naming the middle rung is safer in a prompt than naming
@@ -83,7 +91,12 @@ export const SPICE_LEVEL_PROMPT_RUNGS: readonly SpiceLevelPromptRung[] = [
  */
 export const UNKNOWN_SPICE_LEVEL_PROMPT_LABEL = 'Spicy';
 
-const LABELS_BY_LEVEL = new Map(SPICE_LEVEL_PROMPT_RUNGS.map(rung => [rung.level, rung.label]));
+// Keyed by `number`, not by `SpicyLevel`, because the lookup below is the one
+// place that has to answer for a level *outside* the scale — see
+// `UNKNOWN_SPICE_LEVEL_PROMPT_LABEL`.
+const LABELS_BY_LEVEL = new Map<number, string>(
+  SPICE_LEVEL_PROMPT_RUNGS.map(rung => [rung.level, rung.label])
+);
 
 /** The name this level goes into the user prompt under. */
 export function readSpiceLevelPromptLabel(level: number): string {

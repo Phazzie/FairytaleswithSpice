@@ -14,7 +14,7 @@ import { readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import { readSpiceLevelPromptLabel } from '../../../shared/spiceLevelPromptLadder';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
-import { containsWholeWord, wholeWordPattern } from '../utils/wholeWord';
+import { wholeWordAlternationPattern, wholeWordPattern } from '../utils/wholeWord';
 
 /** The longest `nextChapterHint`, in code points. */
 export const NEXT_CHAPTER_HINT_MAX_LENGTH = 200;
@@ -99,6 +99,60 @@ export function extractLastChapterSummary(content: string): string {
 }
 
 /**
+ * The open question this scan reads as a thread the chapter left standing.
+ *
+ * Built through `wholeWordPattern` like the plain keywords beside it rather
+ * than carrying its own `\b`, so the phrase asks the same boundary question
+ * they do — see `WORD_CHARACTERS` for what `\b` was answering wrong. `\s+`
+ * because the two words are separated by whatever whitespace the generator
+ * wrote, and the group is non-capturing because nothing reads the match.
+ */
+const UNRESOLVED_QUESTION_PATTERN = wholeWordPattern(String.raw`what\s+(?:if|would|could)`);
+
+/**
+ * The threads this scan can report, and the words that put one on the list.
+ *
+ * The keywords were five `if`s over a `mentions(...)` helper that asked
+ * `containsWholeWord` one word at a time, and `containsWholeWord` compiles a
+ * `RegExp` per call — so the whole table was rebuilt as twenty-three patterns
+ * on every chapter this scan reads. `wholeWordAlternationPattern` exists to be
+ * "compiled once per table by the callers that scan repeatedly, never per
+ * call", which is what `CLIFFHANGER_HOOK_PATTERNS` and
+ * `PRESSURE_KEYWORD_PATTERNS` already do with it; this file was one of the two
+ * that still asked per keyword. The boundary the alternation puts at its ends
+ * is the boundary each keyword carried on its own, so what a chapter matches is
+ * unchanged.
+ *
+ * `UNRESOLVED_QUESTION_PATTERN` joins the table rather than staying a fifth
+ * `if` below it: it was already a compiled pattern, and it is one more signal
+ * with one more thread behind it.
+ */
+const PLOT_THREAD_SIGNALS: ReadonlyArray<{ thread: string; pattern: RegExp }> = [
+  {
+    thread: 'Unresolved mystery or secret',
+    pattern: wholeWordAlternationPattern(['secret', 'secrets', 'secretly', 'mystery'])
+  },
+  {
+    thread: 'Active threat or danger',
+    pattern: wholeWordAlternationPattern([
+      'danger', 'dangers', 'dangerous', 'dangerously',
+      'threat', 'threats', 'threaten', 'threatens', 'threatened', 'threatening'
+    ])
+  },
+  {
+    thread: 'Forbidden relationship tension',
+    pattern: wholeWordAlternationPattern(['forbidden', 'impossible'])
+  },
+  {
+    thread: 'Power dynamics in play',
+    pattern: wholeWordAlternationPattern([
+      'power', 'powers', 'powerful', 'control', 'controls', 'controlled', 'controlling'
+    ])
+  },
+  { thread: 'Unresolved questions', pattern: UNRESOLVED_QUESTION_PATTERN }
+];
+
+/**
  * Report the threads a continuation has to carry forward.
  *
  * The result is interpolated into the continuation prompt as
@@ -125,43 +179,11 @@ export function extractLastChapterSummary(content: string): string {
  * `secret`, `dangerous` for `danger`, `threatening` for `threat`, `powerful`
  * for `power`, `controlled` for `control` — are listed rather than lost.
  */
-/**
- * The open question this scan reads as a thread the chapter left standing.
- *
- * Built through `wholeWordPattern` like the plain keywords beside it rather
- * than carrying its own `\b`, so the phrase asks the same boundary question
- * they do — see `WORD_CHARACTERS` for what `\b` was answering wrong. `\s+`
- * because the two words are separated by whatever whitespace the generator
- * wrote, and the group is non-capturing because nothing reads the match.
- */
-const UNRESOLVED_QUESTION_PATTERN = wholeWordPattern(String.raw`what\s+(?:if|would|could)`);
-
 export function extractPlotThreads(content: string): string[] {
-  const threads: string[] = [];
   const lowerContent = stripHtml(content).toLowerCase();
-
-  const mentions = (...keywords: string[]): boolean =>
-    keywords.some(keyword => containsWholeWord(lowerContent, keyword));
-
-  // Check for common plot thread indicators
-  if (mentions('secret', 'secrets', 'secretly', 'mystery')) {
-    threads.push('Unresolved mystery or secret');
-  }
-  if (mentions(
-    'danger', 'dangers', 'dangerous', 'dangerously',
-    'threat', 'threats', 'threaten', 'threatens', 'threatened', 'threatening'
-  )) {
-    threads.push('Active threat or danger');
-  }
-  if (mentions('forbidden', 'impossible')) {
-    threads.push('Forbidden relationship tension');
-  }
-  if (mentions('power', 'powers', 'powerful', 'control', 'controls', 'controlled', 'controlling')) {
-    threads.push('Power dynamics in play');
-  }
-  if (UNRESOLVED_QUESTION_PATTERN.test(lowerContent)) {
-    threads.push('Unresolved questions');
-  }
+  const threads = PLOT_THREAD_SIGNALS
+    .filter(signal => signal.pattern.test(lowerContent))
+    .map(signal => signal.thread);
 
   return threads.length > 0 ? threads : ['Character development', 'Relationship progression'];
 }
@@ -261,10 +283,22 @@ const EMOTIONAL_TONE_FAMILIES: ReadonlyArray<{ tone: string; terms: readonly str
  * whole-word match needs spelled out, without which none of these tones could
  * be reported for prose written in the past tense.
  */
+/**
+ * One pattern per register, compiled with the table rather than per term on
+ * every scan. See `PLOT_THREAD_SIGNALS` for what the per-term form was costing:
+ * these five families hold ninety-four terms between them, and each was a
+ * `RegExp` built and thrown away for every chapter read.
+ */
+const EMOTIONAL_TONE_PATTERNS: ReadonlyArray<{ tone: string; pattern: RegExp }> =
+  EMOTIONAL_TONE_FAMILIES.map(family => ({
+    tone: family.tone,
+    pattern: wholeWordAlternationPattern(family.terms)
+  }));
+
 export function analyzeEmotionalTone(content: string): string {
   const lowerContent = stripHtml(content).toLowerCase();
-  const tones = EMOTIONAL_TONE_FAMILIES
-    .filter(family => family.terms.some(term => containsWholeWord(lowerContent, term)))
+  const tones = EMOTIONAL_TONE_PATTERNS
+    .filter(family => family.pattern.test(lowerContent))
     .map(family => family.tone);
 
   return tones.length > 0 ? tones.join(', ') : 'romantic with building tension';
@@ -388,40 +422,46 @@ export function getSpicyLabel(level: number): string {
  * ordinary "she used the key" is not a story about being used, and it was the
  * loosest keyword in the table.
  */
+// Ordered as `VALIDATION_RULES.themes.allowedValues` orders them, so the same
+// chapter always reports the same list in the same order.
+//
+// At module scope, and compiled to one pattern per theme, rather than rebuilt
+// inside the scan: this record of eighteen themes and ninety-eight keywords was
+// a function-local literal, so both the table and a `RegExp` for every keyword
+// in it were constructed again for every chapter this function reads — on a
+// path that reads every chapter of every continuation. See `PLOT_THREAD_SIGNALS`
+// for the reading, which is unchanged.
+const THEME_KEYWORDS: Record<ThemeType, readonly string[]> = {
+  betrayal: ['betrayed', 'betrayal', 'deceived', 'backstabbed', 'treachery', 'double-crossed'],
+  obsession: ['obsessed', 'obsession', 'possessed', 'consumed', 'fixated', 'addicted'],
+  power_dynamics: ['power', 'powers', 'powerful', 'control', 'authority', 'command', 'leverage'],
+  forbidden_love: ['forbidden', 'secret love', 'star-crossed', 'illicit', 'taboo'],
+  revenge: ['revenge', 'vengeance', 'retribution', 'payback', 'avenge', 'avenged'],
+  manipulation: ['manipulated', 'manipulation', 'controlled', 'exploited', 'influenced'],
+  seduction: ['seduced', 'seduction', 'allured', 'enticed', 'charmed', 'coaxed'],
+  dark_secrets: ['secret', 'secrets', 'hidden', 'mysterious', 'concealed', 'buried'],
+  corruption: ['corrupted', 'corruption', 'tainted', 'fallen', 'darkness', 'evil'],
+  dominance: ['dominance', 'dominant', 'dominated', 'dominion', 'mastery'],
+  submission: ['submission', 'submitted', 'submissive', 'yielded', 'knelt', 'obeyed'],
+  jealousy: ['jealous', 'jealousy', 'envious', 'possessive', 'resentful', 'covetous'],
+  temptation: ['tempted', 'temptation', 'tempting', 'lured', 'beckoned'],
+  sin: ['sin', 'sins', 'sinful', 'sinner', 'damnation', 'damned', 'penance'],
+  desire: ['desire', 'desires', 'yearning', 'craving', 'longing', 'wanting'],
+  passion: ['passionate', 'passion', 'intense', 'burning', 'fiery', 'ardent'],
+  lust: ['lust', 'lustful', 'lusted', 'carnal', 'ravenous'],
+  deceit: ['deceit', 'deceitful', 'lied', 'lying', 'false promise']
+};
+
+const THEME_PATTERNS: ReadonlyArray<[ThemeType, RegExp]> =
+  (Object.entries(THEME_KEYWORDS) as Array<[ThemeType, readonly string[]]>)
+    .map(([theme, keywords]) => [theme, wholeWordAlternationPattern(keywords)]);
+
 export function extractThemesFromContent(content: string): ThemeType[] {
   const lowerContent = stripHtml(content).toLowerCase();
 
-  // Ordered as `VALIDATION_RULES.themes.allowedValues` orders them, so the
-  // same chapter always reports the same list in the same order.
-  const themeKeywords: Record<ThemeType, readonly string[]> = {
-    betrayal: ['betrayed', 'betrayal', 'deceived', 'backstabbed', 'treachery', 'double-crossed'],
-    obsession: ['obsessed', 'obsession', 'possessed', 'consumed', 'fixated', 'addicted'],
-    power_dynamics: ['power', 'powers', 'powerful', 'control', 'authority', 'command', 'leverage'],
-    forbidden_love: ['forbidden', 'secret love', 'star-crossed', 'illicit', 'taboo'],
-    revenge: ['revenge', 'vengeance', 'retribution', 'payback', 'avenge', 'avenged'],
-    manipulation: ['manipulated', 'manipulation', 'controlled', 'exploited', 'influenced'],
-    seduction: ['seduced', 'seduction', 'allured', 'enticed', 'charmed', 'coaxed'],
-    dark_secrets: ['secret', 'secrets', 'hidden', 'mysterious', 'concealed', 'buried'],
-    corruption: ['corrupted', 'corruption', 'tainted', 'fallen', 'darkness', 'evil'],
-    dominance: ['dominance', 'dominant', 'dominated', 'dominion', 'mastery'],
-    submission: ['submission', 'submitted', 'submissive', 'yielded', 'knelt', 'obeyed'],
-    jealousy: ['jealous', 'jealousy', 'envious', 'possessive', 'resentful', 'covetous'],
-    temptation: ['tempted', 'temptation', 'tempting', 'lured', 'beckoned'],
-    sin: ['sin', 'sins', 'sinful', 'sinner', 'damnation', 'damned', 'penance'],
-    desire: ['desire', 'desires', 'yearning', 'craving', 'longing', 'wanting'],
-    passion: ['passionate', 'passion', 'intense', 'burning', 'fiery', 'ardent'],
-    lust: ['lust', 'lustful', 'lusted', 'carnal', 'ravenous'],
-    deceit: ['deceit', 'deceitful', 'lied', 'lying', 'false promise']
-  };
-
-  const detectedThemes: ThemeType[] = [];
-  for (const [theme, keywords] of Object.entries(themeKeywords) as Array<[ThemeType, readonly string[]]>) {
-    if (keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
-      detectedThemes.push(theme);
-    }
-  }
-
-  return detectedThemes;
+  return THEME_PATTERNS
+    .filter(([, pattern]) => pattern.test(lowerContent))
+    .map(([theme]) => theme);
 }
 
 /**
@@ -463,52 +503,71 @@ export function extractThemesFromContent(content: string): ThemeType[] {
  * of what the substrings caught: `lovely` is not `love`, `gentleman` is not
  * `gentle`, and `hearth` is not `heart`. Those are the defect, not coverage.
  */
+/**
+ * The ladder this scan reads, hottest rung first, compiled once.
+ *
+ * Four `const` arrays inside the function and a `RegExp` per keyword per call,
+ * for the reason `PLOT_THREAD_SIGNALS` and `THEME_KEYWORDS` give — this is the
+ * fourth and last scan in the file that was rebuilding its table on every
+ * chapter, and the largest, at fifty-three keywords. The rungs are read in
+ * order and the first that matches wins, which is what the fall-through chain
+ * of `if`s did.
+ *
+ * The `level` is typed from `SpicyLevel` rather than cast to it at each
+ * `return`, which is what the four `as SpicyLevel` assertions this replaces
+ * were for: a bare numeric literal has no relationship to the scale, so the
+ * only way to hand one back under that type was to assert it. Named in a table
+ * whose entries the compiler checks, `6` is a type error here rather than an
+ * assertion nobody would question.
+ */
+const SPICE_LEVEL_KEYWORD_PATTERNS: ReadonlyArray<{ level: SpicyLevel; pattern: RegExp }> = [
+  {
+    // Level 5 - Very Explicit
+    level: 5,
+    pattern: wholeWordAlternationPattern([
+      'explicit', 'explicitly', 'graphic', 'graphically', 'intense passion',
+      'climax', 'climaxed', 'climaxes', 'ecstasy'
+    ])
+  },
+  {
+    // Level 4 - Passionate
+    level: 4,
+    pattern: wholeWordAlternationPattern([
+      'passionate', 'passionately', 'breathless', 'breathlessly',
+      'desire', 'desires', 'desired', 'yearning', 'heat', 'heated'
+    ])
+  },
+  {
+    // Level 3 - Romantic with Heat
+    level: 3,
+    pattern: wholeWordAlternationPattern([
+      'kiss', 'kissed', 'kisses', 'kissing',
+      'embrace', 'embraced', 'embraces', 'embracing',
+      'caress', 'caressed', 'caresses', 'caressing',
+      'touch', 'touched', 'touches', 'touching',
+      'intimate', 'intimately'
+    ])
+  },
+  {
+    // Level 2 - Sweet Romance
+    level: 2,
+    pattern: wholeWordAlternationPattern([
+      'love', 'loved', 'loves', 'lover', 'lovers', 'loving',
+      'affection', 'affections', 'affectionate',
+      'tender', 'tenderly', 'tenderness',
+      'gentle', 'gently', 'heart', 'hearts'
+    ])
+  }
+];
+
+/** Level 1 - Mild: what a chapter matching no rung above reads at. */
+const MILDEST_DETECTED_SPICY_LEVEL: SpicyLevel = 1;
+
 export function extractSpicyLevelFromContent(content: string): SpicyLevel {
   const lowerContent = stripHtml(content).toLowerCase();
 
-  // Level 5 - Very Explicit
-  const level5Keywords = [
-    'explicit', 'explicitly', 'graphic', 'graphically', 'intense passion',
-    'climax', 'climaxed', 'climaxes', 'ecstasy'
-  ];
-  if (level5Keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
-    return 5 as SpicyLevel;
-  }
-
-  // Level 4 - Passionate
-  const level4Keywords = [
-    'passionate', 'passionately', 'breathless', 'breathlessly',
-    'desire', 'desires', 'desired', 'yearning', 'heat', 'heated'
-  ];
-  if (level4Keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
-    return 4 as SpicyLevel;
-  }
-
-  // Level 3 - Romantic with Heat
-  const level3Keywords = [
-    'kiss', 'kissed', 'kisses', 'kissing',
-    'embrace', 'embraced', 'embraces', 'embracing',
-    'caress', 'caressed', 'caresses', 'caressing',
-    'touch', 'touched', 'touches', 'touching',
-    'intimate', 'intimately'
-  ];
-  if (level3Keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
-    return 3 as SpicyLevel;
-  }
-
-  // Level 2 - Sweet Romance
-  const level2Keywords = [
-    'love', 'loved', 'loves', 'lover', 'lovers', 'loving',
-    'affection', 'affections', 'affectionate',
-    'tender', 'tenderly', 'tenderness',
-    'gentle', 'gently', 'heart', 'hearts'
-  ];
-  if (level2Keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
-    return 2 as SpicyLevel;
-  }
-
-  // Default to Level 1 - Mild
-  return 1 as SpicyLevel;
+  return SPICE_LEVEL_KEYWORD_PATTERNS.find(rung => rung.pattern.test(lowerContent))?.level
+    ?? MILDEST_DETECTED_SPICY_LEVEL;
 }
 
 export function formatStoryContent(content: string): string {
@@ -611,9 +670,9 @@ export function formatChapterContent(content: string): string {
  * spoke." — put the break in a place the word never justified.
  *
  * So the rule is one pattern: the line *opens* with one of these words, as a
- * whole word. That is the same reading `containsWholeWord` above already
- * applies to the theme and emotion scans, anchored at the start because "opens
- * a new beat" is what this test means.
+ * whole word. That is the same reading `wholeWordAlternationPattern` above
+ * already applies to the theme and emotion scans, anchored at the start because
+ * "opens a new beat" is what this test means.
  *
  * The pattern stays case-insensitive, as the anchored half always was: the
  * lines reaching here are model prose, where a beat can open mid-sentence after
