@@ -159,6 +159,64 @@ async function testMalformedThemesAreRejectedAsCallerError(): Promise<void> {
   assert(missingCreature.error?.code === 'INVALID_INPUT', 'an empty creature is a caller error');
 }
 
+/**
+ * The same rule as the themes above, for the two fields it did not reach.
+ *
+ * `storyId` and `content` were the last fields in this validator checked for
+ * truthiness alone, and `length` is `undefined` on a number while `undefined <
+ * 10` is `false` — so a body sending `content: 1234567890123` passed this check
+ * *and* the route's own guard, which is a truthiness test too, and reached
+ * `stripStoryHtmlToText`. That throws `storyContent.replace is not a function`
+ * into the catch that answers `IMAGE_GENERATION_FAILED`, so the caller was told
+ * the image service had failed for a mistake only the caller can fix. It is the
+ * pairing of two truthiness checks that let a non-string through both layers,
+ * which is why neither caught it, and why this asserts the service directly.
+ *
+ * A non-string `storyId` failed differently and more quietly: nothing
+ * downstream calls a string method on it, so it was copied into the response
+ * envelope's `storyId` and the caller was handed a success whose id contradicts
+ * the type the contract declares for it.
+ */
+async function testMalformedStoryIdAndContentAreRejectedAsCallerError(): Promise<void> {
+  const malformedContent: unknown[] = [1234567890123, { length: 50 }, ['a story'], true, null, undefined, ''];
+
+  for (const content of malformedContent) {
+    const input = createInput({ content: content as ImageGenerationSeam['input']['content'] });
+    const result = await new ImageService().generateImage(input);
+
+    assert(!result.success, `content=${JSON.stringify(content)} should be rejected`);
+    assert(
+      result.error?.code === 'INVALID_INPUT',
+      `content=${JSON.stringify(content)} is a caller error, not a service failure (got ${result.error?.code})`
+    );
+    assert(
+      !(result.error?.message ?? '').includes('is not a function'),
+      `content=${JSON.stringify(content)} should not leak an internal TypeError (got ${result.error?.message})`
+    );
+  }
+
+  const malformedStoryIds: unknown[] = [12345, {}, [], true, null, undefined, '', '   '];
+
+  for (const storyId of malformedStoryIds) {
+    const input = createInput({ storyId: storyId as ImageGenerationSeam['input']['storyId'] });
+    const result = await new ImageService().generateImage(input);
+
+    assert(
+      !result.success && result.error?.code === 'INVALID_INPUT',
+      `storyId=${JSON.stringify(storyId)} is a caller error, not a generated image ` +
+        `(got success=${result.success}, code=${result.error?.code})`
+    );
+  }
+
+  // The floor itself is unchanged: a story one character short of it is still
+  // refused, and one at it is still accepted.
+  const tooShort = await new ImageService().generateImage(createInput({ content: 'a'.repeat(9) }));
+  assert(tooShort.error?.code === 'INVALID_INPUT', 'a story below the length floor is still a caller error');
+
+  const longEnough = await new ImageService().generateImage(createInput({ content: 'a'.repeat(10) }));
+  assert(longEnough.success, `a story at the length floor should still be accepted, got ${JSON.stringify(longEnough.error)}`);
+}
+
 // An unsupported ratio fell back to 16:9 for the provider request and for the
 // reported dimensions, while the response echoed the ratio that was asked for.
 // The caller was handed a payload whose `aspectRatio` contradicted its own
@@ -826,6 +884,7 @@ async function main(): Promise<void> {
   testShortAndUnterminatedStoriesSurviveWhole();
   testTheCapKeepsWholeCharactersAndWholeWords();
   await testMalformedThemesAreRejectedAsCallerError();
+  await testMalformedStoryIdAndContentAreRejectedAsCallerError();
   await testAspectRatioNeverContradictsTheDimensions();
   await testCustomImagePromptsAreBounded();
   await testThemeCountIsBounded();

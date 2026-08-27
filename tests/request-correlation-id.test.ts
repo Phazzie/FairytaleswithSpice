@@ -6,10 +6,13 @@ import {
   readRequestCorrelationId
 } from '../api/_lib/http/requestCorrelationId';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
+import { StoryService } from '../api/_lib/services/storyService';
 import exportSaveHandler from '../api/export/save';
 import imageGenerateHandler from '../api/image/generate';
-import storyLabGenesisHandler from '../api/story-lab/stories';
-import storyLabContinuationHandler from '../api/story-lab/stories/[storyId]/continue';
+import storyLabGenesisHandler, { createStoryLabGenesisHandler } from '../api/story-lab/stories';
+import storyLabContinuationHandler, {
+  createStoryLabContinuationHandler
+} from '../api/story-lab/stories/[storyId]/continue';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -158,8 +161,182 @@ async function main(): Promise<void> {
   }
 
   await testTheEnvelopeReportsTheIdTheHeaderCarries();
+  await testTheStoryLabRoutesHandTheirIdToTheGeneration();
+  await testTheStoryServiceHonoursTheIdItIsGiven();
 
   console.log('Request correlation id tests passed');
+}
+
+/**
+ * The id the route settled has to reach the generation itself.
+ *
+ * Echoing `X-Request-ID` and stamping it on the route's own lines was as far as
+ * it went: `generateStoryLabGenesis` and `continueStoryLab` were called with the
+ * request body alone, and `StoryService` opened both entry points with
+ * `logger.generateRequestId()`. So every line describing the work a reader would
+ * actually be asking about — the prompt sizes, the provider call this app pays
+ * for, the failure itself — was filed under a second id that appears in no
+ * response, no header, and nothing the caller was told to keep. `ImageService`
+ * and `ExportService` were each given this argument for this reason and left
+ * `StoryService` the last of the three minting its own.
+ *
+ * Driven through the handler factories, which take the engine function as their
+ * parameter, so this asserts the whole chain the caller depends on: header ->
+ * `beginPostRoute` -> route -> engine options, with no provider call spent.
+ */
+async function testTheStoryLabRoutesHandTheirIdToTheGeneration(): Promise<void> {
+  const cases: Array<{
+    path: string;
+    build: (record: (options: unknown) => void) => (req: any, res: any) => unknown;
+    body: unknown;
+  }> = [
+    {
+      path: '/api/story-lab/stories',
+      build: record => createStoryLabGenesisHandler((async (_blueprint: any, options: any) => {
+        record(options);
+        return { success: true, data: {} as any };
+      }) as any),
+      body: genesisBlueprint()
+    },
+    {
+      path: '/api/story-lab/stories/:storyId/continue',
+      build: record => createStoryLabContinuationHandler((async (_input: any, options: any) => {
+        record(options);
+        return { success: true, data: {} as any };
+      }) as any),
+      body: continuationBody()
+    }
+  ];
+
+  for (const routeCase of cases) {
+    resetRateLimitsForTests();
+
+    let seen: any;
+    const response = new FakeResponse();
+    await routeCase.build(options => { seen = options; })(
+      { method: 'POST', headers: { 'x-request-id': 'trace-generation-1' }, body: routeCase.body },
+      response
+    );
+
+    assert(
+      response.headers['X-Request-ID'] === 'trace-generation-1',
+      `${routeCase.path} should echo the correlation id (got ${JSON.stringify(response.headers['X-Request-ID'])})`
+    );
+    assert(
+      seen?.requestId === 'trace-generation-1',
+      `${routeCase.path} should hand the settled id to the generation, got ${JSON.stringify(seen?.requestId)}`
+    );
+  }
+
+  // And with no id from the caller, the route still hands on the one it minted,
+  // rather than leaving the generation to mint a third.
+  resetRateLimitsForTests();
+  let mintedSeen: any;
+  const mintedResponse = new FakeResponse();
+  await createStoryLabGenesisHandler((async (_blueprint: any, options: any) => {
+    mintedSeen = options;
+    return { success: true, data: {} as any };
+  }) as any)(
+    { method: 'POST', headers: {}, body: genesisBlueprint() },
+    mintedResponse
+  );
+
+  assert(
+    mintedSeen?.requestId === mintedResponse.headers['X-Request-ID'],
+    `a minted id should reach the generation too, got ${JSON.stringify(mintedSeen?.requestId)} ` +
+      `against the header's ${JSON.stringify(mintedResponse.headers['X-Request-ID'])}`
+  );
+}
+
+/**
+ * `StoryService` reports the id it was handed, and mints one only when it has
+ * none.
+ *
+ * The other half of the same defect: the argument is worth nothing if the
+ * service ignores it. Driven through the input-validation refusal, which is the
+ * service's earliest return and spends no provider call, so what is asserted is
+ * the id in the envelope rather than anything about generation.
+ */
+async function testTheStoryServiceHonoursTheIdItIsGiven(): Promise<void> {
+  const service = new StoryService();
+  // Refused by `validateStoryInput`: no creature, no themes.
+  const refusedInput = { creature: '', themes: [], spicyLevel: 3, wordCount: 700 } as any;
+
+  const honoured = await service.generateStory(refusedInput, 'trace-service-1');
+  assert(
+    honoured.success === false,
+    'the malformed input should be refused, so the envelope carries the id without a provider call'
+  );
+  assert(
+    honoured.metadata?.requestId === 'trace-service-1',
+    `generateStory should report the id it was given, got ${JSON.stringify(honoured.metadata?.requestId)}`
+  );
+
+  const continued = await service.continueChapter(
+    { storyId: '', currentChapterCount: 0, existingContent: '' } as any,
+    'trace-service-2'
+  );
+  assert(
+    continued.metadata?.requestId === 'trace-service-2',
+    `continueChapter should report the id it was given, got ${JSON.stringify(continued.metadata?.requestId)}`
+  );
+
+  const minted = await service.generateStory(refusedInput);
+  assert(
+    GENERATED_ID_PATTERN.test(minted.metadata?.requestId ?? ''),
+    `a caller with no id should still get one, got ${JSON.stringify(minted.metadata?.requestId)}`
+  );
+}
+
+function genesisBlueprint() {
+  return {
+    creature: 'siren',
+    tone: 'dark_romance',
+    logline: 'A siren diplomat risks exile for a forbidden lover.',
+    spicyLevel: 3,
+    desiredWordBudget: 900,
+    chapterBatchSize: 1,
+    themes: [{
+      id: 'forbidden_love',
+      label: 'Forbidden Love',
+      description: 'A relationship that breaks supernatural law.'
+    }],
+    heatContract: {
+      adultOnlyConfirmed: true,
+      tensionMode: 'dangerous_proximity',
+      intimacyBoundary: 'fade_to_black',
+      noGoContent: ''
+    }
+  };
+}
+
+function continuationBody() {
+  const now = new Date().toISOString();
+  return {
+    storyId: 'story-correlation-id',
+    chapterBatchSize: 1,
+    storyState: {
+      storyId: 'story-correlation-id',
+      revision: 1,
+      characters: [],
+      threads: [],
+      artifacts: [],
+      narrativeVoice: 'tense romantic fantasy',
+      continuityWarnings: [],
+      lastUpdatedAt: now
+    },
+    previouslyGeneratedChapters: [{
+      chapterId: 'chapter-1',
+      chapterNumber: 1,
+      title: 'Chapter 1',
+      htmlContent: '<h3>Chapter 1</h3><p>Mira entered the court.</p>',
+      rawContent: 'Mira entered the court.',
+      summary: 'Mira entered the court.',
+      wordCount: 5,
+      hasCliffhanger: true
+    }],
+    continuationBrief: 'Raise the danger.'
+  };
 }
 
 /**

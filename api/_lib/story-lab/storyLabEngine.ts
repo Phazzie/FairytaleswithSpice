@@ -46,6 +46,16 @@ type StoryLabErrorResponse = Extract<ApiResponse<never>, { success: false }>;
 
 interface StoryLabEngineOptions {
   serviceFactory?: () => StoryServiceLike;
+  /**
+   * The correlation id the route settled, passed on to `StoryService`.
+   *
+   * `beginPostRoute` reads the caller's `X-Request-ID` or mints one, echoes it
+   * back, and stamps it into every line the route writes. Without it here, the
+   * service minted a second id for the generation itself, so the caller's id
+   * named the route's lines and nothing else. Optional because the engine is
+   * also called from tests and from job execution, which have no route id.
+   */
+  requestId?: string;
 }
 
 const MOCK_FLAG_VALUES = new Set(['1', 'true', 'yes']);
@@ -205,7 +215,7 @@ export async function generateStoryLabGenesis(
   }
 
   const service = options.serviceFactory?.() ?? new StoryService();
-  const result = await service.generateStory(toClassicGenerationInput(input));
+  const result = await service.generateStory(toClassicGenerationInput(input), options.requestId);
 
   if (!result.success) {
     return storyLabErrorResponse(result.error, 'GENERATION_FAILED');
@@ -310,7 +320,7 @@ export async function continueStoryLab(
       source: 'story_lab',
       heatContract: input.heatContract
     } : undefined
-  });
+  }, options.requestId);
 
   if (!result.success) {
     return storyLabErrorResponse(result.error, 'CONTINUATION_FAILED');
