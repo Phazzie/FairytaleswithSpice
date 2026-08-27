@@ -84,6 +84,27 @@ const BLOCK_LEVEL_TAG_NAMES = [
   'th'
 ].join('|');
 /**
+ * Match the rest of a tag once its name has been read, attributes and all.
+ *
+ * A tag does not end at the first `>` — it ends at the first `>` that is not
+ * inside a quoted attribute value. Reading it as `[^>]*>` stops early on
+ * `<p title="a>b">`, so the tag's own remaining text (`b">`) was left behind as
+ * prose and reached the reader: through `stripStoryHtmlToText` that is what
+ * gets exported and pasted into the next continuation prompt.
+ *
+ * This is the unrolled form of "unquoted runs separated by quoted ones". The
+ * unquoted run and the two quoted alternatives can never start on the same
+ * character, so each position is still decided once and no input has two ways
+ * to match. A quoted run stops at `<` because an unterminated quote must not
+ * be allowed to swallow the story's own dialogue looking for a partner: `<` is
+ * where the next tag starts, and that bounds the damage to the markup it began
+ * in.
+ */
+function tagAttributesPattern(unquotedRun: string): string {
+  return String.raw`${unquotedRun}*(?:(?:"[^"<]*"|'[^'<]*')${unquotedRun}*)*`;
+}
+
+/**
  * Match an opening or closing block-level tag, with or without attributes.
  *
  * Written so the engine never has a choice about where one part ends and the
@@ -92,12 +113,16 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * that ultimately fails to match — a `<` followed by a long run of spaces —
  * every way of splitting that run between the two groups gets tried in turn,
  * which is quadratic in the length of the run. Here `\s*` stops at the `/`,
- * `/?` stops at the tag name, `\b` ends the name, and `[^>]*` cannot pass the
- * `>` that closes the tag, so each position is decided once. The `\b` is what
- * keeps `<paragraph>` from matching on `p`.
+ * `/?` stops at the tag name, and `\b` ends the name, so each position is
+ * decided once. The `\b` is what keeps `<paragraph>` from matching on `p`.
+ *
+ * The `[^>]*>` alternative is the older reading, kept as a fallback rather
+ * than as an equal: markup whose quote never closes has no well-formed reading
+ * at all, and answering it exactly as before is better than declining to see a
+ * boundary there and leaving the raw tag in the text.
  */
 const BLOCK_BOUNDARY_PATTERN = new RegExp(
-  String.raw`<\s*/?(?:${BLOCK_LEVEL_TAG_NAMES})\b[^>]*>`,
+  String.raw`<\s*/?(?:${BLOCK_LEVEL_TAG_NAMES})\b(?:${tagAttributesPattern(String.raw`[^>"']`)}>|[^>]*>)`,
   'gi'
 );
 
@@ -110,10 +135,23 @@ const BLOCK_BOUNDARY_PATTERN = new RegExp(
  * fails for want of a `>`. Excluding `<` also ends a malformed tag where the
  * next one starts, which is what a reader sees; well-formed markup, where no
  * `<` appears inside a tag, is unaffected either way.
+ *
+ * An inline tag ends where a block-level one does — past its quoted attribute
+ * values, not at the first `>` inside one — so `<em title="a>b">` leaves no
+ * `b">` behind either. That reading is offered only to a `<` that begins a tag
+ * name, because prose is where this runs: `Price < 5. "x > y."` is not markup,
+ * and letting a quoted run reach across it would delete more of the sentence
+ * than the older reading did. Tag-shaped or not, the `[^<>]*>` alternative
+ * still answers exactly as before.
  */
 function stripInlineTags(value: string): string {
-  return value.replace(/<[^<>]*>/g, '');
+  return value.replace(INLINE_TAG_PATTERN, '');
 }
+
+const INLINE_TAG_PATTERN = new RegExp(
+  String.raw`<\s*/?[a-zA-Z]${tagAttributesPattern(String.raw`[^<>"']`)}>|<[^<>]*>`,
+  'g'
+);
 
 function decodeBasicEntities(value: string): string {
   return value
