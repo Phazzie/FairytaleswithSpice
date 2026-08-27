@@ -54,6 +54,7 @@ import {
   StoryMemoryCard,
   StoryBlueprint,
   StoryIterationPayload,
+  StoryLabGenerationJobKind,
   StoryLabJob,
   StoryLabJobStatus,
   StoryWorkbenchSession,
@@ -359,7 +360,7 @@ function readRelationshipEdges(character: CharacterProfile): RelationshipEdge[] 
 
 type JobStatusPanelState = {
   visible: boolean;
-  kind: StoryLabJobKind;
+  kind: StoryLabGenerationJobKind;
   tone: 'starting' | 'running';
   label: string;
   title: string;
@@ -374,8 +375,6 @@ type JobStatusPanelState = {
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 
-type StoryLabJobKind = 'genesis' | 'continuation';
-
 /**
  * The copy that told genesis and continuation apart in what used to be three
  * pairs of near-identical methods (`handle{Genesis,Continuation}JobSnapshot`,
@@ -385,7 +384,7 @@ type StoryLabJobKind = 'genesis' | 'continuation';
  * was already identical.
  */
 const JOB_KIND_COPY: Record<
-  StoryLabJobKind,
+  StoryLabGenerationJobKind,
   {
     incompletePayloadMessage: string;
     completedStatusMessage: string;
@@ -2074,7 +2073,7 @@ export class App implements OnDestroy {
    * only ever read the fields the bound guarantees.
    */
   private handleJobSnapshot<T extends StoryIterationPayload>(
-    kind: StoryLabJobKind,
+    kind: StoryLabGenerationJobKind,
     job: StoryLabJob<T>,
     batchId: string,
     batchSize: ChapterBatchSize,
@@ -2148,7 +2147,7 @@ export class App implements OnDestroy {
     }));
   }
 
-  private failJob(kind: StoryLabJobKind, batchId: string, message: string) {
+  private failJob(kind: StoryLabGenerationJobKind, batchId: string, message: string) {
     this.clearJobStatusPanel();
     this.closeJobSubscriptions();
     this.statusMessage.set(message);
@@ -2226,7 +2225,7 @@ export class App implements OnDestroy {
     };
   }
 
-  private showStartingJobStatus(kind: StoryLabJobKind) {
+  private showStartingJobStatus(kind: StoryLabGenerationJobKind) {
     this.setJobStatusPanel({
       kind,
       tone: 'starting',
@@ -2237,7 +2236,12 @@ export class App implements OnDestroy {
   }
 
   private updateJobStatusFromJob(job: StoryLabJob<unknown>, durabilityWarning?: string) {
-    const kind: StoryLabJobKind = job.kind === 'continuation' ? 'continuation' : 'genesis';
+    // `job.kind` is the wire's four-member `StoryLabJobKind`; the panel speaks
+    // only the two this client creates. The narrowing is correct because the
+    // route refuses the deferred kinds outright, so no `export` or `audio` job
+    // exists for this client to be polling — but it is a narrowing, and it used
+    // to be hidden by a local `StoryLabJobKind` shadowing the contract's own.
+    const kind: StoryLabGenerationJobKind = job.kind === 'continuation' ? 'continuation' : 'genesis';
     const current = this.jobStatusPanel();
     const tone = 'running';
     const stage = this.formatJobStage(job.currentStep, job.status);
@@ -2268,11 +2272,11 @@ export class App implements OnDestroy {
     });
   }
 
-  private formatJobStatusLabel(kind: StoryLabJobKind, tone: JobStatusPanelState['tone']): string {
+  private formatJobStatusLabel(kind: StoryLabGenerationJobKind, tone: JobStatusPanelState['tone']): string {
     return kind === 'genesis' ? 'Story generation' : 'Story continuation';
   }
 
-  private formatJobStatusTitle(kind: StoryLabJobKind, tone: JobStatusPanelState['tone']): string {
+  private formatJobStatusTitle(kind: StoryLabGenerationJobKind, tone: JobStatusPanelState['tone']): string {
     if (tone === 'starting') {
       if (kind === 'genesis') {
         return 'First chapter job starting';
@@ -2288,7 +2292,7 @@ export class App implements OnDestroy {
     return 'Continuation job running';
   }
 
-  private formatJobStatusDescription(kind: StoryLabJobKind, tone: JobStatusPanelState['tone']): string {
+  private formatJobStatusDescription(kind: StoryLabGenerationJobKind, tone: JobStatusPanelState['tone']): string {
     if (kind === 'genesis') {
       if (tone === 'starting') {
         return 'Story Lab is creating a background job for the opening batch.';

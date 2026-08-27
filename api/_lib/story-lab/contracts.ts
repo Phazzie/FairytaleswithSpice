@@ -50,6 +50,7 @@ export type {
   StoryLabJobDurability,
   StoryLabJobError,
   StoryLabJobEvent,
+  StoryLabGenerationJobKind,
   StoryLabJobKind,
   StoryLabJobPaths,
   StoryLabJobStatus,
@@ -73,9 +74,12 @@ export {
   HEAT_TENSION_MODES,
   NARRATIVE_TONES,
   SPICY_LEVELS,
+  STORY_LAB_DEFERRED_JOB_KINDS,
+  STORY_LAB_GENERATION_JOB_KINDS,
   STORY_LAB_LIBRARY_SORTS,
   STORY_LAB_TERMINAL_JOB_STATUSES,
   WORD_BUDGETS,
+  isDeferredStoryLabJobKind,
   isTerminalStoryLabJobStatus
 } from '../../../story-generator/src/app/contracts';
 

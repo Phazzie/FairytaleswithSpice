@@ -9,6 +9,14 @@ import type {
   StoryStateSnapshot,
   StorySummary
 } from './contracts';
+import { SPICY_LEVELS } from './contracts';
+import {
+  CHARACTER_ARCHETYPES,
+  PLOT_THREAD_STATUSES,
+  RELATIONSHIP_KINDS,
+  STORY_MEMORY_LIFETIMES,
+  isVocabularyMember
+} from '../../../shared/storyStateVocabulary';
 import { XaiTextClient } from '../services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../config/xaiConfig';
 import { STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS } from './continuityBudget';
@@ -157,6 +165,27 @@ export function buildContinuityPrompt(input: ContinuityExtractionInput): string 
       continuityWarnings: 'array of concise warnings',
       suggestedNarrativeVoice: 'short description',
       confidence: 'number from 0 to 1'
+    },
+    // The four closed fields of those objects, named to the model that is being
+    // asked to fill them.
+    //
+    // `mergeAiContinuity` checks each of these against its vocabulary and
+    // *drops* a value that is not in it, keeping whatever the state already
+    // held — so a model answering `archetype: "love_interest"`, `status:
+    // "open"`, `lifetime: "arc"`, or `relationship: "mentor"` has its
+    // continuity fact discarded in silence, and the reader sees a character
+    // whose archetype never changed and a thread whose status never moved.
+    // Nothing in this prompt had ever told it otherwise: `requiredJsonShape`
+    // named the object types and stopped, and `existingState` below shows
+    // values only for the entities the story already has. Sending the tables
+    // costs a few dozen tokens and is read from the same lists the merge checks
+    // against, so the two cannot disagree.
+    allowedValues: {
+      'characters[].archetype': CHARACTER_ARCHETYPES,
+      'characters[].spiceCompatibilities[]': SPICY_LEVELS,
+      'characters[].relationships[].relationship': RELATIONSHIP_KINDS,
+      'threads[].status': PLOT_THREAD_STATUSES,
+      'threads[].lifetime and artifacts[].lifetime': STORY_MEMORY_LIFETIMES
     },
     existingState: {
       characters: input.currentState.characters,
@@ -310,21 +339,15 @@ function mergeArtifacts(existing: LoreArtifact[], incoming: Partial<LoreArtifact
 }
 
 function normalizeArchetype(value: unknown): CharacterProfile['archetype'] | undefined {
-  return value === 'protagonist' || value === 'antagonist' || value === 'supporting' || value === 'narrator'
-    ? value
-    : undefined;
+  return isVocabularyMember(CHARACTER_ARCHETYPES, value) ? value : undefined;
 }
 
 function normalizeThreadStatus(value: unknown): PlotThread['status'] | undefined {
-  return value === 'active' || value === 'escalating' || value === 'resolved' || value === 'dormant'
-    ? value
-    : undefined;
+  return isVocabularyMember(PLOT_THREAD_STATUSES, value) ? value : undefined;
 }
 
 function normalizeStoryMemoryLifetime(value: unknown): PlotThread['lifetime'] | undefined {
-  return value === 'scene' || value === 'chapter' || value === 'series'
-    ? value
-    : undefined;
+  return isVocabularyMember(STORY_MEMORY_LIFETIMES, value) ? value : undefined;
 }
 
 function stringOr(candidate: unknown, fallback: string | undefined, defaultValue: string): string {
@@ -340,9 +363,6 @@ function arrayOfStrings(candidate: unknown, fallback: string[] | undefined): str
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
-
-/** The relationship kinds `RelationshipEdge` allows, as the contract spells them. */
-const RELATIONSHIP_KINDS: ReadonlySet<string> = new Set(['ally', 'lover', 'rival', 'family', 'unknown']);
 
 /**
  * Read the relationship edges a model proposed for a character.
@@ -390,13 +410,13 @@ function relationshipEdges(
     }
 
     const edge = entry as Partial<CharacterProfile['relationships'][number]>;
-    if (!isNonEmptyString(edge.characterId) || !RELATIONSHIP_KINDS.has(edge.relationship as string)) {
+    if (!isNonEmptyString(edge.characterId) || !isVocabularyMember(RELATIONSHIP_KINDS, edge.relationship)) {
       return [];
     }
 
     return [{
       characterId: edge.characterId.trim(),
-      relationship: edge.relationship as CharacterProfile['relationships'][number]['relationship'],
+      relationship: edge.relationship,
       notes: typeof edge.notes === 'string' ? edge.notes.trim() : ''
     }];
   });
@@ -426,9 +446,13 @@ function spiceLevels(
     return fallback ?? [3];
   }
 
+  // `SPICY_LEVELS` rather than a sixth spelling of `1 | 2 | 3 | 4 | 5`: the
+  // scale has had a table since the blueprint pickers were given one, and this
+  // was the last reader in the repository still comparing against the numbers
+  // by hand.
   const levels = Array.from(new Set(
     candidate.filter((level): level is CharacterProfile['spiceCompatibilities'][number] =>
-      level === 1 || level === 2 || level === 3 || level === 4 || level === 5)
+      (SPICY_LEVELS as readonly number[]).includes(level))
   ));
 
   return levels.length ? levels : fallback ?? [3];
