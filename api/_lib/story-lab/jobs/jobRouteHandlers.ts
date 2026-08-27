@@ -30,6 +30,9 @@ import {
   createStoryLabJobStoreConfig,
   type StoryLabJobStoreConfig
 } from './storyLabJobStoreConfig';
+import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
+import type { StoryLabProfileStore } from '../profile/storyLabProfileStore';
+import type { HeatContract } from '../contracts';
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 type JobResult = StoryIterationPayload | ContinuationJobResult;
@@ -57,6 +60,7 @@ interface ResponseLike extends SseResponseLike {
 
 export interface StoryLabJobRouteDependencies {
   authPort?: AuthPort;
+  profileStore?: StoryLabProfileStore;
   createJobStoreConfig?: () => StoryLabJobStoreConfig;
   generateGenesis?: typeof generateStoryLabGenesis;
   continueStory?: typeof continueStoryLab;
@@ -64,6 +68,7 @@ export interface StoryLabJobRouteDependencies {
 
 interface StoryLabJobRouteContext {
   authPort: AuthPort;
+  profileStore: StoryLabProfileStore;
   createJobStoreConfig: () => StoryLabJobStoreConfig;
   generateGenesis: typeof generateStoryLabGenesis;
   continueStory: typeof continueStoryLab;
@@ -83,6 +88,7 @@ export function createStoryLabJobsRouteHandler(
 ): (req: RequestLike, res: ResponseLike) => Promise<void> {
   const context: StoryLabJobRouteContext = {
     authPort: dependencies.authPort ?? configuredAuthPort,
+    profileStore: dependencies.profileStore ?? createStoryLabCloudStorage().profileStore,
     createJobStoreConfig: dependencies.createJobStoreConfig ?? (() => createStoryLabJobStoreConfig()),
     generateGenesis: dependencies.generateGenesis ?? generateStoryLabGenesis,
     continueStory: dependencies.continueStory ?? continueStoryLab
@@ -394,8 +400,13 @@ async function createGenesisJob(
     return;
   }
 
+  const contentBoundaries = await loadAuthenticatedContentBoundaries(context, req);
+  const genesisInput = contentBoundaries
+    ? { ...parsed.blueprint, heatContract: withMergedContentBoundaries(parsed.blueprint.heatContract, contentBoundaries) }
+    : parsed.blueprint;
+
   const result = await runJobWork(
-    () => context.generateGenesis(parsed.blueprint),
+    () => context.generateGenesis(genesisInput),
     'genesis',
     job.job.jobId
   );
@@ -464,8 +475,13 @@ async function createContinuationJob(
     return;
   }
 
+  const contentBoundaries = await loadAuthenticatedContentBoundaries(context, req);
+  const continuationInput = contentBoundaries && normalized.heatContract
+    ? { ...normalized, heatContract: withMergedContentBoundaries(normalized.heatContract, contentBoundaries) }
+    : normalized;
+
   const result = await runJobWork(
-    () => context.continueStory(normalized),
+    () => context.continueStory(continuationInput),
     'continuation',
     job.job.jobId
   );
@@ -595,9 +611,70 @@ async function resolveJobStoreOrRespond(
 function createDefaultJobRouteContext(): StoryLabJobRouteContext {
   return {
     authPort: configuredAuthPort,
+    profileStore: createStoryLabCloudStorage().profileStore,
     createJobStoreConfig: () => createStoryLabJobStoreConfig(),
     generateGenesis: generateStoryLabGenesis,
     continueStory: continueStoryLab
+  };
+}
+
+/**
+ * A signed-in caller's content boundaries, folded into generation.
+ *
+ * `StoryLabProfilePreferences.contentBoundaries` is validated and persisted by
+ * the account routes, but nothing has ever read it back — a reader who wrote
+ * "no humiliation" into their profile got no different a story than one who
+ * left it blank. This never requires auth (`requireUser`) the way the account
+ * routes do; a caller with no signed-in identity, which is every caller today
+ * since no `STORY_LAB_AUTH_PROVIDER` is configured, simply gets no boundaries
+ * to fold in, and generation proceeds exactly as it does now. Any failure
+ * along the way — no user, no profile, a store error — is silently treated as
+ * "nothing to add"; a reader's boundary is a courtesy layered onto generation,
+ * not a gate that should ever turn a working request into a failed one.
+ */
+async function loadAuthenticatedContentBoundaries(
+  context: StoryLabJobRouteContext,
+  req: RequestLike
+): Promise<string | undefined> {
+  try {
+    const user = await context.authPort.getCurrentUser(req);
+    if (!user) {
+      return undefined;
+    }
+
+    const loadResult = await context.profileStore.loadProfile(user);
+    return loadResult.success === true
+      ? loadResult.data?.profile.preferences.contentBoundaries
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Folds a profile's content boundaries into an already-accepted Heat Contract.
+ *
+ * Never called on an absent contract, and never changes `adultOnlyConfirmed`
+ * or any other field: `heatContractPolicyError` treats any *present* contract
+ * whose `adultOnlyConfirmed` is not `true` as a policy violation, required or
+ * not, so manufacturing a contract here for a continuation that supplied none
+ * would turn a request that used to succeed into one that fails the adult-
+ * reader gate it never actually asked for. Only `noGoContent` — the free-text
+ * field this is the profile-wide counterpart of — is touched, joined onto
+ * whatever the request itself already carried rather than replacing it.
+ */
+function withMergedContentBoundaries(
+  heatContract: HeatContract,
+  contentBoundaries: string | undefined
+): HeatContract {
+  if (!contentBoundaries) {
+    return heatContract;
+  }
+
+  const existing = heatContract.noGoContent?.trim();
+  return {
+    ...heatContract,
+    noGoContent: existing ? `${existing}\n${contentBoundaries}` : contentBoundaries
   };
 }
 
