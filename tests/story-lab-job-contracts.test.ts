@@ -13,8 +13,11 @@ import type { StoryGenerationSeam, StoryLabJobKind, StoryLabJobStatus } from '..
 import {
   STORY_LAB_DEFERRED_JOB_KINDS,
   STORY_LAB_GENERATION_JOB_KINDS,
+  STORY_LAB_JOB_STEPS,
+  STORY_LAB_JOB_STEP_LABELS,
   STORY_LAB_TERMINAL_JOB_STATUSES,
   isDeferredStoryLabJobKind,
+  isStoryLabJobStep,
   isTerminalStoryLabJobStatus
 } from '../api/_lib/story-lab/contracts';
 import { readFileSync } from 'node:fs';
@@ -218,5 +221,70 @@ for (const kind of STORY_LAB_DEFERRED_JOB_KINDS) {
     `the route should refuse ${kind} by reading the deferred list, not by matching it`
   );
 }
+
+// `currentStep` was the job's last open vocabulary: `string` on the job, on the
+// store's create input, and on its update input, for a set with exactly five
+// members written out by hand at every place the route moves a job along.
+//
+// The reader is where that cost. `formatJobStage` switched on the five literals
+// with `humanizeIdentifier` beneath, and that fallback cannot fail visibly — it
+// makes any identifier presentable, so a sixth step would have reached the
+// reader as its own title-cased wire name with a written sentence missing and
+// nothing to say so.
+assert(
+  STORY_LAB_JOB_STEPS.length === Object.keys(STORY_LAB_JOB_STEP_LABELS).length,
+  'every step in the table should have a label and the labels should name no step the table does not'
+);
+
+const stepLabels = new Set<string>();
+for (const step of STORY_LAB_JOB_STEPS) {
+  const label = STORY_LAB_JOB_STEP_LABELS[step];
+  assert(Boolean(label?.trim()), `${step} should have a label written for it`);
+  assert(!stepLabels.has(label), `${step} shares its label with another step; each names its own moment`);
+  stepLabels.add(label);
+  assert(isStoryLabJobStep(step), `${step} is in the table and should read as a step`);
+}
+
+for (const rejected of ['extracting_continuity', 'QUEUED', '', 7, null, undefined]) {
+  assert(
+    !isStoryLabJobStep(rejected),
+    `${String(rejected)} is not a step this app writes and should not read as one`
+  );
+}
+
+// The writers, which is what makes the set closed: every step the route stamps
+// has to be one the reader has a sentence for. `UpdateStoryLabJobInput.currentStep`
+// is typed `StoryLabJobStep`, so this is a compile-time guarantee — asserted
+// here as text because the literals are what a future edit would add to.
+for (const step of jobRouteHandlersSource.matchAll(/currentStep:\s*'([a-z_]+)'/g)) {
+  assert(
+    isStoryLabJobStep(step[1]),
+    `the route writes the step '${step[1]}', which the reader has no sentence for`
+  );
+}
+
+// And the reader, which should no longer name the five steps itself.
+assert(
+  appComponentSource.includes('STORY_LAB_JOB_STEP_LABELS'),
+  'the component should read the step labels from the table'
+);
+assert(
+  !appComponentSource.includes("case 'generating_story'"),
+  'the component lists the job steps again; there should be one table'
+);
+
+// `StoryLabJobCreationRequest`'s deferred variant was the fifth hand-spelling of
+// the pair `STORY_LAB_DEFERRED_JOB_KINDS` names, and the last one left.
+const contractsSource = readFileSync(
+  new URL('../story-generator/src/app/contracts.ts', import.meta.url),
+  'utf8'
+);
+// The declaration, not a mention: the docblock above the table quotes the old
+// spelling to say what it replaced, which is the same distinction the creature
+// and tone assertions in `story-lab-blueprint-vocabulary` draw.
+assert(
+  !/^\s*kind:\s*'export'\s*\|\s*'audio'/m.test(contractsSource),
+  'the creation request should take the deferred kinds from the table rather than respell them'
+);
 
 console.log('Story Lab job contract tests passed');

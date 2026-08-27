@@ -131,6 +131,45 @@ export const WORD_BUDGETS = [600, 900, 1200, 1500] as const satisfies readonly W
 
 export const CHAPTER_BATCH_SIZES = [1, 2, 3] as const satisfies readonly ChapterBatchSize[];
 
+/**
+ * Whether `value` is a batch size this app runs, checked against the table.
+ *
+ * The docblock above claims that everything checking one of these three fields
+ * reads the list, and for spicy level and word budget it was true. Batch size
+ * had a second checker the blueprint parser never sees: a continuation does not
+ * arrive through `parseStoryLabBlueprint`, it arrives at
+ * `POST /stories/:storyId/continue` or at the continuation half of
+ * `POST /jobs`, and **both of those wrote the bound out by hand** as
+ * `[1, 2, 3].includes(size)` inside their own local `isValidBatchSize`. Two
+ * identical copies in two files, neither reading the table beside them, and the
+ * refusal each sends says "a chapterBatchSize of 1-3" in prose — a third and
+ * fourth spelling of the same bound, in the sentence that explains it.
+ *
+ * A fourth batch size is the failure that costs: the picker offers it because
+ * the picker reads the table, genesis accepts it because the parser reads the
+ * table, and the reader's *next* chapter request is refused by a route insisting
+ * on a range nobody told it had moved. The same story would generate and then
+ * be unable to continue at the size it was generated at.
+ */
+export function isChapterBatchSize(value: unknown): value is ChapterBatchSize {
+  return (CHAPTER_BATCH_SIZES as readonly unknown[]).includes(value);
+}
+
+/**
+ * The batch sizes as a refusal names them, read from the table it checks.
+ *
+ * Rendered as a list rather than the `1-3` range the two messages used, because
+ * a range is only honest while the table is contiguous and a list is honest
+ * either way. Today it reads `1, 2, or 3`.
+ */
+export function formatChapterBatchSizeList(): string {
+  const sizes: readonly number[] = CHAPTER_BATCH_SIZES;
+
+  return sizes.length > 1
+    ? `${sizes.slice(0, -1).join(', ')}, or ${sizes[sizes.length - 1]}`
+    : sizes.join('');
+}
+
 export interface ThemeSeed {
   id: string;
   label: string;
@@ -601,6 +640,16 @@ export const STORY_LAB_DEFERRED_JOB_KINDS = [
 /** A job kind the Story Lab job routes run rather than defer. */
 export type StoryLabGenerationJobKind = typeof STORY_LAB_GENERATION_JOB_KINDS[number];
 
+/**
+ * A job kind these routes defer to the durable runner.
+ *
+ * The half of the split that had no name. `StoryLabJobCreationRequest`'s third
+ * variant went on spelling `kind: 'export' | 'audio'` by hand — the fifth
+ * spelling of a pair the table above had already been written to end, and the
+ * last one left after the previous slice took the other four.
+ */
+export type StoryLabDeferredJobKind = typeof STORY_LAB_DEFERRED_JOB_KINDS[number];
+
 /** Whether `kind` is one the durable runner owns rather than these routes. */
 export function isDeferredStoryLabJobKind(kind: StoryLabJobKind): boolean {
   return (STORY_LAB_DEFERRED_JOB_KINDS as readonly StoryLabJobKind[]).includes(kind);
@@ -648,6 +697,69 @@ export function isTerminalStoryLabJobStatus(status: StoryLabJobStatus): boolean 
   return (STORY_LAB_TERMINAL_JOB_STATUSES as readonly StoryLabJobStatus[]).includes(status);
 }
 
+/**
+ * The steps a Story Lab job reports itself to be on.
+ *
+ * `status` is where a job is in its lifecycle and had a union and a table;
+ * `currentStep` is what the job is *doing*, and it had neither. It was declared
+ * `currentStep: string` on the job, `currentStep?: string` on the store's create
+ * input, and `currentStep: string` on its update input — an open type for a set
+ * with exactly five members, every one of them a literal written by hand at the
+ * five places `jobRouteHandlers` moves a job along, plus `'queued'` twice more
+ * as the two stores' default.
+ *
+ * The reader is where an open type costs. `AppComponent.formatJobStage` is the
+ * only one, and it switches on the step to choose the sentence the reader
+ * watches — "Grok is writing your first chapter." — with `humanizeIdentifier`
+ * beneath as the fallback. That fallback cannot fail loudly, because it is built
+ * to make *any* identifier presentable: a sixth step would title-case its own
+ * wire name and render, so `extracting_continuity` reaches the reader as
+ * "Extracting continuity." and no test, type, or log records that the sentence
+ * written for that moment was never written. Both sides said `string`, so
+ * TypeScript had nothing to compare.
+ *
+ * These are the five. `STORY_LAB_JOB_STEP_LABELS` beside them is a total
+ * `Record`, so a sixth step is a compile error in the reader that would
+ * otherwise have quietly humanized it.
+ */
+export const STORY_LAB_JOB_STEPS = [
+  'queued',
+  'generating_story',
+  'continuing_story',
+  'completed',
+  'failed'
+] as const;
+
+export type StoryLabJobStep = typeof STORY_LAB_JOB_STEPS[number];
+
+/**
+ * What each step is called where a reader can see it.
+ *
+ * Total by type. `queued` reads as the status line of the same name because a
+ * job that is queued is queued whichever field says so, and `formatJobStage`
+ * answered both with that sentence before this record existed.
+ */
+export const STORY_LAB_JOB_STEP_LABELS: Record<StoryLabJobStep, string> = {
+  queued: 'Story job queued.',
+  generating_story: 'Grok is writing your first chapter.',
+  continuing_story: 'Grok is continuing the saga.',
+  completed: 'Binding the pages.',
+  failed: 'Generation failed.'
+};
+
+/**
+ * Whether `value` is a step this app writes.
+ *
+ * Needed because `currentStep` also arrives from outside this app's writers —
+ * off the wire at the client, and out of `current_step` at the Postgres store,
+ * where a row written by an older deployment may name a step this build has
+ * never heard of. Those readers keep a fallback; what they no longer do is use
+ * it for the app's own steps.
+ */
+export function isStoryLabJobStep(value: unknown): value is StoryLabJobStep {
+  return typeof value === 'string' && (STORY_LAB_JOB_STEPS as readonly string[]).includes(value);
+}
+
 export interface StoryLabJobError {
   code: string;
   message: string;
@@ -658,6 +770,19 @@ export interface StoryLabJob<TPublicResult = unknown> {
   jobId: string;
   kind: StoryLabJobKind;
   status: StoryLabJobStatus;
+  /**
+   * The step the job last reported, as `STORY_LAB_JOB_STEPS` names them.
+   *
+   * Deliberately still `string` and not `StoryLabJobStep`: this is a snapshot
+   * off the wire, and a durable job row written by an older deployment can name
+   * a step this build has retired. Narrowing it here would be a promise the
+   * network cannot keep. What the table does guarantee is the other direction —
+   * `UpdateStoryLabJobInput.currentStep` is a `StoryLabJobStep`, so nothing in
+   * this repository can *write* a step the reader has not been taught, and
+   * `isStoryLabJobStep` is how a reader tells a step it knows from one it does
+   * not. Same arrangement as `BatchProgressState['status'] | string` at
+   * `formatBatchStatus`.
+   */
   currentStep: string;
   progressPercent: number;
   createdAt: string;
@@ -706,7 +831,7 @@ export type StoryLabJobCreationRequest =
       storyId?: string;
     }
   | {
-      kind: 'export' | 'audio';
+      kind: StoryLabDeferredJobKind;
       projectId?: string;
       storyId?: string;
       idempotencyKey?: string;

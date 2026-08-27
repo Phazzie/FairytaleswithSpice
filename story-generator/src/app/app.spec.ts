@@ -26,6 +26,7 @@ import {
   ImageGenerationSeam,
   NARRATIVE_TONES,
   SPICY_LEVELS,
+  STORY_LAB_JOB_STEP_LABELS,
   SaveExportSeam,
   SavedStoryProject,
   WORD_BUDGETS
@@ -2265,6 +2266,40 @@ describe('App', () => {
     const statusText = renderedJobStatusText();
     expect(statusText).toContain('33%');
     expect(statusText).toContain('Jobs are held in memory for this deployment.');
+  });
+
+  it('reads the sentence written for a job step from the table', () => {
+    const response = createGenesisJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'generating_story',
+      progressPercent: 25
+    });
+    storyService.createStoryLabJob.and.returnValue(of({ success: true, data: response }));
+    configureValidBlueprint('A banshee negotiates one more verse before dawn.');
+
+    component.startGenesis();
+
+    expect(component.statusMessage()).toBe(STORY_LAB_JOB_STEP_LABELS.generating_story);
+  });
+
+  it('falls back to the humanized identifier only for a step outside the table', () => {
+    // A durable row written by a deployment this build has not caught up with is
+    // the one case the fallback is for. It used to be the case for the app's own
+    // steps too: a sixth step reached `formatJobStage`, missed all five literals,
+    // and rendered as its own title-cased wire name with nothing to report that
+    // the sentence written for that moment was missing.
+    const response = createGenesisJobResponse(undefined, {
+      status: 'running',
+      currentStep: 'extracting_continuity',
+      progressPercent: 60
+    });
+    storyService.createStoryLabJob.and.returnValue(of({ success: true, data: response }));
+    configureValidBlueprint('A kelpie is asked to explain the tide it did not turn.');
+
+    component.startGenesis();
+
+    expect(component.statusMessage()).toBe('Extracting continuity.');
+    expect(Object.values(STORY_LAB_JOB_STEP_LABELS)).not.toContain('Extracting continuity.');
   });
 
   it('shows a friendly AI configuration error when a genesis job cannot use Grok', () => {
