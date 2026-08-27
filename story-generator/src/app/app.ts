@@ -1664,10 +1664,18 @@ export class App implements OnDestroy {
         }
 
         this.cloudProjects.set(response.data.projects);
+        // The listing is capped, so "12 cloud projects loaded" is only the
+        // whole story while the reader has twelve. `totalProjectCount` is what
+        // they actually have, and saying both is the difference between a
+        // library that is short and one that has silently lost a story.
+        const loaded = this.describeCloudProjectsLoaded(
+          response.data.projects.length,
+          response.data.totalProjectCount
+        );
         if (response.data.storageMode === 'non_durable_memory') {
           this.cloudLibrarySyncState.set({
             mode: 'cloud_unavailable',
-            message: `Cloud library is using non-durable account storage. ${response.data.projects.length} project${response.data.projects.length === 1 ? '' : 's'} loaded for inspection.`
+            message: `Cloud library is using non-durable account storage. ${loaded} loaded for inspection.`
           });
           return;
         }
@@ -1675,7 +1683,7 @@ export class App implements OnDestroy {
         this.cloudLibrarySyncState.set({
           mode: 'cloud_synced',
           lastSyncedAt: new Date().toISOString(),
-          message: `${response.data.projects.length} cloud project${response.data.projects.length === 1 ? '' : 's'} loaded.`
+          message: `${loaded} loaded.`
         });
       },
       error: error => {
@@ -1690,6 +1698,28 @@ export class App implements OnDestroy {
         this.isCloudLibraryBusy.set(false);
       }
     });
+  }
+
+  /**
+   * How many cloud projects this listing carries, and — when the listing is
+   * capped — how many the account holds.
+   *
+   * A total larger than the page is not an error state and does not get its own
+   * banner: the reader has more stories than one listing shows, which is
+   * ordinary. What it must not do is go unsaid, because a page that reports only
+   * its own length reads exactly like a complete library.
+   *
+   * A total *smaller* than the page cannot happen, and is not asserted against
+   * either: the count comes from the same request as the items, so the honest
+   * thing for an unexpected pair is to report the items, which is what the
+   * reader is looking at.
+   */
+  private describeCloudProjectsLoaded(loadedCount: number, totalCount: number): string {
+    const noun = `cloud project${loadedCount === 1 ? '' : 's'}`;
+
+    return totalCount > loadedCount
+      ? `${loadedCount} of ${totalCount} ${noun}`
+      : `${loadedCount} ${noun}`;
   }
 
   showCloudAccountSetupStatus() {

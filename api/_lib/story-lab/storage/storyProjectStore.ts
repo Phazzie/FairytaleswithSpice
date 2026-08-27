@@ -125,6 +125,25 @@ export function toStoryProjectListItem(record: StoredStoryProjectRecord): StoryP
 }
 
 /**
+ * The most projects one library listing carries.
+ *
+ * The number is the Postgres adapter's old `limit 50`, moved here from the SQL
+ * because a cap and an ordering are one decision: whichever ordering picks the
+ * items decides which ones are kept, and the ordering is the reader's
+ * `librarySort`, applied by `sortStoryProjectListItems` at the route. Capping
+ * in the query meant `updated_at desc` chose the fifty and the reader's sort
+ * then only rearranged them, so a `title_asc` library was the alphabetical
+ * order of the fifty most recently touched projects rather than the first fifty
+ * by title — and the in-memory adapter, which had no limit at all, disagreed
+ * with it about what the library even contained.
+ *
+ * Applied after the sort, by both adapters, it is the same cap on the same
+ * answer. `CloudStoryProjectList.totalProjectCount` reports what the owner
+ * actually has, so a truncated listing says that it is one.
+ */
+export const STORY_LAB_LIBRARY_MAX_ITEMS = 50;
+
+/**
  * Order a cloud library the way its owner asked for it.
  *
  * `StoryLabProfilePreferences.librarySort` is a three-value closed set —

@@ -20,6 +20,7 @@ import { sendMethodNotAllowed } from '../../http/methodNotAllowed';
 import { createDefaultStoryLabProfilePreferences } from '../profile/profileDefaults';
 import {
   createDefaultStoryLabUserProfile,
+  describeOversizedStoryLabProfileField,
   normalizeStoryLabProfilePreferences,
   StoryLabProfileStore,
   StoryLabProfileStoreError
@@ -27,6 +28,7 @@ import {
 import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
 import {
   sortStoryProjectListItems,
+  STORY_LAB_LIBRARY_MAX_ITEMS,
   StoryProjectDeleteReceipt,
   StoryProjectListItem,
   StoryProjectStore,
@@ -178,6 +180,16 @@ async function handleProfileRoute(
       return;
     }
 
+    // The profile's free text is the only caller text this route stores
+    // durably, and nothing measured it. Answered before the store is reached,
+    // naming the field, so the caller is told what to shorten rather than
+    // having a boundary they wrote silently kept at whatever length it arrived.
+    const oversizedField = describeOversizedStoryLabProfileField(profile);
+    if (oversizedField) {
+      sendJson(res, 400, invalidRequest(oversizedField));
+      return;
+    }
+
     const saveResult = await context.profileStore.saveProfile(user, profile);
     if (saveResult.success === false) {
       sendJson(res, saveResult.error.statusCode, profileStoreErrorResponse(saveResult.error));
@@ -209,12 +221,19 @@ async function handleProjectsRoute(
       return;
     }
 
+    // Sort first, then cap. The cap keeps the front of *this reader's* order,
+    // which is the only reading of "their fifty most relevant projects" that
+    // matches what they asked their library to be sorted by; the store used to
+    // do it the other way round, in SQL, under an ordering nobody had chosen.
+    const sortedProjects = sortStoryProjectListItems(listResult.data, await readLibrarySort(context, user));
+
     sendJson(res, 200, {
       success: true,
       data: toCloudProjectList(
         context,
         user,
-        sortStoryProjectListItems(listResult.data, await readLibrarySort(context, user))
+        sortedProjects.slice(0, STORY_LAB_LIBRARY_MAX_ITEMS),
+        sortedProjects.length
       )
     });
     return;
@@ -531,12 +550,14 @@ function normalizeProjectId(projectId: unknown): string | null {
 function toCloudProjectList(
   context: StoryLabAccountRouteContext,
   user: AuthUser,
-  projects: StoryProjectListItem[]
+  projects: StoryProjectListItem[],
+  totalProjectCount: number
 ): CloudStoryProjectList {
   return {
     ownerUserId: user.userId,
     storageMode: toCloudStorageMode(context.projectStore),
-    projects
+    projects,
+    totalProjectCount
   };
 }
 

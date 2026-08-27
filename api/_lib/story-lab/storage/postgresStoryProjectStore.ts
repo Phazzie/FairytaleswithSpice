@@ -78,12 +78,36 @@ where id = $1 and owner_user_id = $2
 limit 1
 `;
 
+/**
+ * The owner's whole library, newest-updated first.
+ *
+ * This used to end `limit 50`, and that number was a cap on the *answer*
+ * applied in the one place that cannot know what the answer is ordered by.
+ * `handleProjectsRoute` reads `librarySort` off the caller's profile and hands
+ * the list to `sortStoryProjectListItems` — deliberately at the route, because
+ * "the ordering is a property of the answer, not of the storage" — so a reader
+ * who had chosen `title_asc` was shown the alphabetical order of *the fifty
+ * most recently updated projects*, and one who had chosen `created_desc` the
+ * creation order of the same fifty. A project whose title sorts first, or which
+ * was created most recently, simply vanished from a library of fifty-one as
+ * soon as fifty others had been saved more recently than it — with nothing in
+ * the response to say so.
+ *
+ * The in-memory adapter beside this one applied no such limit, so the two
+ * stores did not even agree on what the library contained.
+ *
+ * A cap still exists; it is now `STORY_LAB_LIBRARY_MAX_ITEMS`, applied at the
+ * route after the sort — where the ordering that decides which items it keeps
+ * is the one the reader asked for — and the untruncated count travels back as
+ * `totalProjectCount` so the cap is visible rather than silent. The `order by`
+ * stays because it is index-backed (`story_projects_owner_updated_idx`) and
+ * gives the two adapters the same base order to sort from.
+ */
 const LIST_PROJECTS_SQL = `
 select id, story_id, owner_user_id, project_json, created_at, updated_at
 from story_projects
 where owner_user_id = $1
 order by updated_at desc
-limit 50
 `;
 
 const DELETE_PROJECT_SQL = `

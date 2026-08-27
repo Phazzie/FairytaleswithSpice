@@ -242,6 +242,16 @@ async function testPostgresStoreExecutorPath() {
   assert(listResult.data[0]?.acceptedMemoryCardCount === 1, 'Postgres list item should include accepted memory card count');
   const listQuery = executor.latestQuery();
   assert(listQuery.sql.includes('where owner_user_id = $1'), 'list SQL should scope by owner id');
+  // The listing cap is `STORY_LAB_LIBRARY_MAX_ITEMS`, applied at the account
+  // route *after* the reader's `librarySort` has ordered the list. Capping in
+  // the query instead meant `updated_at desc` chose which items survived and
+  // the reader's ordering only rearranged the survivors — so a `title_asc`
+  // library silently lost whichever project sorted first by title but had not
+  // been touched lately. A cap here would put that back.
+  assert(
+    !/\blimit\b/i.test(listQuery.sql),
+    `list SQL must not cap the answer: the cap belongs with the ordering (got ${JSON.stringify(listQuery.sql)})`
+  );
 
   executor.enqueueRows([{ id: project.id }]);
   const deleteResult = await store.deleteProject(owner, project.id);

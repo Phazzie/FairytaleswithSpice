@@ -141,6 +141,46 @@ export const STORY_EVALUATION_LIMITS = {
 export type StoryEvaluationLimits = typeof STORY_EVALUATION_LIMITS;
 
 /**
+ * The size limits a saved Story Lab profile has to satisfy.
+ *
+ * `PUT /api/story-lab/account/profile` was the last route in this repository
+ * that took free text from a caller and measured none of it.
+ * `normalizeStoryLabProfilePreferences` is careful about every *closed* field on
+ * the profile — the creature list, the tone list, the tension mode, the
+ * intimacy boundary, and `librarySort` are each checked against their allowed
+ * set and replaced by the default when they miss — and reads the three open
+ * ones through a helper that asks only whether the value is a string.
+ *
+ * That is a stricter miss than the blueprint routes' was, because the profile
+ * is *durable*. A blueprint's oversized field costs one refused request; a
+ * profile's is written to `story_lab_profiles.preferences_json`, where the
+ * columns are `text` and `jsonb` with no length of their own, and comes back on
+ * every `GET` of that profile afterwards. An authenticated caller could
+ * therefore park as much prose per account as the platform's own 4.5MB body
+ * limit allows, and this API would keep handing it back.
+ *
+ * `noGoContent` makes it a contradiction as well as a gap: it is the same field,
+ * on the same `HeatContract` type, that `parseStoryLabBlueprint` refuses past
+ * `maxNoGoContentLength` — so the standing default for a field was accepted at
+ * any length while the per-story value of it was capped at 320 characters. The
+ * number here is that number, read from above rather than restated, for the
+ * reason `STORY_EVALUATION_LIMITS.maxThemes` reads `maxThemes` from there: it is
+ * the same field and the two routes should not disagree about how much of it is
+ * worth keeping. `contentBoundaries` is the profile-wide statement of the same
+ * thing — what this reader does not want written — so it takes the same number.
+ *
+ * `displayName` takes `maxCharacterNameLength`, and for the reason that constant
+ * gives: it names one person.
+ */
+export const STORY_LAB_PROFILE_LIMITS = {
+  maxDisplayNameLength: STORY_BLUEPRINT_LIMITS.maxCharacterNameLength,
+  maxContentBoundariesLength: STORY_BLUEPRINT_LIMITS.maxNoGoContentLength,
+  maxNoGoContentLength: STORY_BLUEPRINT_LIMITS.maxNoGoContentLength
+} as const;
+
+export type StoryLabProfileLimits = typeof STORY_LAB_PROFILE_LIMITS;
+
+/**
  * The size limits an image generation request has to satisfy.
  *
  * `imagePrompt` is the last free-text field in this repository that reaches a
