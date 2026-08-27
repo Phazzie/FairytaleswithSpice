@@ -1,5 +1,6 @@
 // Created: 2026-08-25 05:20 UTC
 
+import { CREATURE_ARCHETYPES } from '../../../shared/creatureVocabulary';
 import { STORY_LAB_THEME_SEED_IDS } from '../../../shared/storyLabThemeSeeds';
 import { EXPORT_FORMATS, VALIDATION_RULES } from '../types/contracts';
 
@@ -44,23 +45,19 @@ const ALLOWED_IMAGE_STYLES: readonly string[] = VALIDATION_RULES.imageStyle.allo
 
 /**
  * The creatures `CreatureType` names, listed so a value can be checked at run
- * time. `validateStoryInput` has its own copy and rejects anything outside it —
- * but it runs after the request line is written, and the route checks that
- * reach the log first test only that the field is present, so `creature` is
- * caller text at the moment it would be logged.
+ * time. `validateStoryInput` reads the same table and rejects anything outside
+ * it — but that runs after the request line is written, and the route checks
+ * that reach the log first test only that the field is present, so `creature`
+ * is caller text at the moment it would be logged.
+ *
+ * This was the copy the comment on `ALLOWED_IMAGE_STYLES` above already
+ * described it as having: a hand-written list of ten names rather than the
+ * table. An eleventh creature added to the vocabulary would have been logged as
+ * `[UNRECOGNIZED]` — the marker that exists to say "the caller sent something
+ * that is not a creature", written about the app's own picker value, which is
+ * exactly the bug `ALLOWED_THEMES` above was widened to end.
  */
-const ALLOWED_CREATURES: readonly string[] = [
-  'vampire',
-  'werewolf',
-  'fairy',
-  'siren',
-  'djinn',
-  'witch',
-  'dragon',
-  'demon',
-  'angel',
-  'mermaid'
-];
+const ALLOWED_CREATURES: readonly string[] = CREATURE_ARCHETYPES;
 
 /** What is written in place of a value that is not on its allow-list. */
 export const UNRECOGNIZED_PARAMETER = '[UNRECOGNIZED]';

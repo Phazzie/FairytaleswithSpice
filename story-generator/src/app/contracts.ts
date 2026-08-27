@@ -10,23 +10,35 @@
 
 // ==================== CORE DOMAIN TYPES ====================
 
-export type CreatureArchetype =
-  | 'vampire'
-  | 'werewolf'
-  | 'fairy'
-  | 'siren'
-  | 'djinn'
-  | 'witch'
-  | 'dragon'
-  | 'demon'
-  | 'angel'
-  | 'mermaid';
-export type NarrativeTone = 'romance' | 'dark_romance' | 'mystery' | 'adventure' | 'comedy' | 'tragedy';
-export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
+import type { CreatureArchetype } from '../../../shared/creatureVocabulary';
+import type {
+  HeatIntimacyBoundary,
+  HeatTensionMode,
+  NarrativeTone,
+  SpicyLevel
+} from '../../../api/_lib/types/contracts';
+
+// `CreatureArchetype` and its table come from `shared/creatureVocabulary`,
+// which sits below both trees: the union used to be written out here and again
+// as `CreatureType` in the API's contract, with the table below them and four
+// more copies in the readers that validate, log, and name a creature. See that
+// module for what each copy broke on its own.
+export type { CreatureArchetype };
+export { CREATURE_ARCHETYPES } from '../../../shared/creatureVocabulary';
+
+// These four were declared here *and*, character for character, in the API's
+// contract — which is the one that describes the wire: `StoryGenerationContext`
+// and `HeatContractIntent` there are what a generation request actually
+// carries, and `tensionMode` and `intimacyBoundary` are fields of the second.
+// Two identical unions are structurally assignable to each other, so nothing
+// would have reported the drift; the first value added to one of them and not
+// the other would simply have been refused at the route, after the form let the
+// reader choose it. Re-exported for the same reason `ExportFormat` and
+// `ImageStyle` below already are, with the runtime tables that go with them
+// kept here, where the picker and `FormValidationService` read them.
+export type { HeatIntimacyBoundary, HeatTensionMode, NarrativeTone, SpicyLevel };
 export type ChapterBatchSize = 1 | 2 | 3;
 export type WordBudget = 600 | 900 | 1200 | 1500;
-export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_banter' | 'devotional_longing';
-export type HeatIntimacyBoundary = 'fade_to_black' | 'closed_door' | 'literary_on_page';
 // `ExportFormat` and `SaveExportSeam` are re-exported from the backend's own
 // contract rather than redeclared here: the export pipeline runs entirely in
 // `api/_lib`, so its seam has exactly one definition instead of two that could
@@ -44,19 +56,6 @@ export { EXPORT_FORMATS } from '../../../api/_lib/types/contracts';
 // `IMAGE_STYLES` and `ImageGenerationSeam` there for what the copies cost.
 export type { ImageStyle, ImageGenerationSeam } from '../../../api/_lib/types/contracts';
 export { IMAGE_STYLES } from '../../../api/_lib/types/contracts';
-
-export const CREATURE_ARCHETYPES = [
-  'vampire',
-  'werewolf',
-  'fairy',
-  'siren',
-  'djinn',
-  'witch',
-  'dragon',
-  'demon',
-  'angel',
-  'mermaid'
-] as const satisfies readonly CreatureArchetype[];
 
 export const NARRATIVE_TONES = [
   'romance',

@@ -1,4 +1,9 @@
 import { TestBed } from '@angular/core/testing';
+import {
+  SPICE_LEVEL_PROMPT_BLOCK,
+  SPICE_LEVEL_PROMPT_RUNGS
+} from '../../../../shared/spiceLevelPromptLadder';
+import { SpicyLevel } from '../contracts';
 import { PromptTemplatesService } from './prompt-templates.service';
 
 describe('PromptTemplatesService', () => {
@@ -47,8 +52,28 @@ describe('PromptTemplatesService', () => {
       }
     );
 
-    expect(filled).toBe('Vampire | Obsession, Betrayal | Scorching & Explicit (Level 4) | 1200 words | Set it in an opera house.');
+    // `Very spicy` is what `StoryService` sends for level 4. This expectation
+    // used to read `Scorching & Explicit`, which was this service's own label
+    // for that level and reached no run — see `shared/spiceLevelPromptLadder`.
+    expect(filled).toBe('Vampire | Obsession, Betrayal | Very spicy (Level 4) | 1200 words | Set it in an opera house.');
     expect(filled).not.toContain('{{');
+  });
+
+  it('names each spice level the way the production prompt names it', () => {
+    for (const rung of SPICE_LEVEL_PROMPT_RUNGS) {
+      const filled = service.fillUserTemplate('{{SPICY_LABEL}}', {
+        creature: 'vampire',
+        themes: [],
+        spicyLevel: rung.level as SpicyLevel,
+        wordCount: 900
+      });
+
+      expect(filled).withContext(`level ${rung.level}`).toBe(rung.label);
+    }
+  });
+
+  it('presents the production system prompt with the spice ladder the run is given', () => {
+    expect(service.getTemplate('production')!.systemPrompt).toContain(SPICE_LEVEL_PROMPT_BLOCK);
   });
 
   it('fillUserTemplate replaces USER_INPUT with an empty string when none is supplied', () => {

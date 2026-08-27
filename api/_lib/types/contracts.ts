@@ -2,18 +2,18 @@
 // These contracts are derived directly from UI interactions and data flows
 // Each seam represents a boundary where data crosses between components
 
+import { CREATURE_ARCHETYPES, type CreatureArchetype } from '../../../shared/creatureVocabulary';
+
+export { CREATURE_ARCHETYPES };
+export type { CreatureArchetype };
+
 // ==================== TYPE DEFINITIONS ====================
-export type CreatureType =
-  | 'vampire'
-  | 'werewolf'
-  | 'fairy'
-  | 'siren'
-  | 'djinn'
-  | 'witch'
-  | 'dragon'
-  | 'demon'
-  | 'angel'
-  | 'mermaid';
+// `CreatureType` is this contract's name for the ten creatures, which are now
+// one table in `shared/creatureVocabulary` rather than seven hand-written
+// copies — see the note there for what the other six were and what each of
+// them broke on its own. The alias is kept because the whole API tree spells
+// the type this way; the values behind it are no longer restated here.
+export type CreatureType = CreatureArchetype;
 export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden_love' | 'revenge' | 'manipulation' | 'seduction' | 'dark_secrets' | 'corruption' | 'dominance' | 'submission' | 'jealousy' | 'temptation' | 'sin' | 'desire' | 'passion' | 'lust' | 'deceit';
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
 export type WordCount = 600 | 700 | 900 | 1200 | 1500;
