@@ -26,6 +26,7 @@ import {
   normalizeActivationText,
   scoreActivationCandidates
 } from '../../../shared/continuityActivation';
+import { RELATIONSHIP_KINDS, isVocabularyMember } from '../../../shared/storyStateVocabulary';
 
 export interface StoryLabContinuationGuidancePreview {
   originalBrief: string;
@@ -480,16 +481,47 @@ function getThreadForeshadowedDevices(thread: PlotThread): string[] {
     : [];
 }
 
+/**
+ * Read a character's relationship edges out of state this function did not
+ * write.
+ *
+ * The kind is checked against `RELATIONSHIP_KINDS` for the reason
+ * `readRelationshipEdges` in the Angular tree gives: `typeof === 'string'` was
+ * the check on both readers, and it hands back a value *declared*
+ * `RelationshipKind` that can be any string a stored snapshot happens to hold.
+ * Nothing here renders the kind — `formatRelationshipPressureLine` names the two
+ * characters and stops — so what an unvouched-for value reaches on this side is
+ * `scoreRelationshipActivation`, which puts it in front of the reader's brief as
+ * a word to match on. That is the smaller of the two costs; the larger is that
+ * this function's return type is where the promise was made, and the Angular
+ * panel is what pays for it. `formatRelationshipPreviewDetail` there is keyed by
+ * the union, so a kind the union does not have arrives at a table with no line
+ * written for it. Both readers check the same table now, and neither hands on a
+ * value the other cannot read.
+ *
+ * Normalized to `'unknown'` rather than dropped: the pair and the note are still
+ * a relationship the story established, and `'unknown'` is the member of the
+ * vocabulary that says the kind is the part nobody can vouch for.
+ */
 function getCharacterRelationships(character: CharacterProfile): CharacterProfile['relationships'] {
   const relationships = (character as Partial<CharacterProfile>).relationships;
-  return Array.isArray(relationships)
-    ? relationships.filter((relationship): relationship is CharacterProfile['relationships'][number] =>
-        Boolean(relationship)
-        && typeof relationship === 'object'
-        && typeof relationship.characterId === 'string'
-        && typeof relationship.relationship === 'string'
-      )
-    : [];
+  if (!Array.isArray(relationships)) {
+    return [];
+  }
+
+  return relationships.flatMap(relationship => {
+    if (!relationship || typeof relationship !== 'object' || typeof relationship.characterId !== 'string') {
+      return [];
+    }
+
+    return [{
+      characterId: relationship.characterId,
+      relationship: isVocabularyMember(RELATIONSHIP_KINDS, relationship.relationship)
+        ? relationship.relationship
+        : 'unknown',
+      notes: typeof relationship.notes === 'string' ? relationship.notes : ''
+    }];
+  });
 }
 
 function safeString(value: unknown): string {

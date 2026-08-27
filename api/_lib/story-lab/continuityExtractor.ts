@@ -354,10 +354,39 @@ function stringOr(candidate: unknown, fallback: string | undefined, defaultValue
   return isNonEmptyString(candidate) ? candidate.trim() : fallback ?? defaultValue;
 }
 
+/**
+ * Read a list of free-text facts a model proposed — a character's secrets, a
+ * thread's foreshadowed devices.
+ *
+ * `relationshipEdges` and `spiceLevels` below both distinguish an array that
+ * arrives *empty* from an array whose entries were all refused, and their notes
+ * say why: the first is the model reporting that there is nothing here, which is
+ * a fact it is allowed to report; the second is the model trying to report
+ * something and getting the shape wrong, which is not a reason to believe what
+ * was already recorded is gone. This function is the third array reader in the
+ * merge and it was the one still storing the empty list the filter produced.
+ *
+ * Nothing here refuses a plain string, so the case looks unreachable until you
+ * remember what these entries actually are. `secrets` and `foreshadowedDevices`
+ * are lists of short prose, and a model asked for them answers in the shape it
+ * finds natural: `[{"secret": "She was there that night"}]`, `[["the pact"]]`,
+ * or a single `null` where it had nothing for one slot. Every one of those
+ * satisfies `Array.isArray`, survives nothing, and cleared the character's real
+ * secrets — the extraction that was supposed to add a fact deleted several, and
+ * the next continuation prompt was built from a character who had never kept
+ * anything from anyone.
+ *
+ * The same rule as its two siblings, then: entries that arrive and are all
+ * refused fall back; `[]` still clears.
+ */
 function arrayOfStrings(candidate: unknown, fallback: string[] | undefined): string[] {
-  return Array.isArray(candidate)
-    ? uniqueStrings(candidate.filter(isNonEmptyString).map(item => item.trim()))
-    : fallback ?? [];
+  if (!Array.isArray(candidate)) {
+    return fallback ?? [];
+  }
+
+  const values = uniqueStrings(candidate.filter(isNonEmptyString).map(item => item.trim()));
+
+  return values.length || candidate.length === 0 ? values : fallback ?? [];
 }
 
 function isNonEmptyString(value: unknown): value is string {

@@ -19,6 +19,7 @@ import {
 import { buildStoryDownloadFilename } from '../../../shared/storyDownloadFilename';
 import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
+import { isVocabularyMember } from '../../../shared/storyStateVocabulary';
 import { buildStoryHtmlDocument } from './story-html-exporter';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { CREATURE_ARCHETYPES, readCreatureDisplayName } from '../../../shared/creatureVocabulary';
@@ -46,7 +47,9 @@ import {
   NARRATIVE_TONES,
   NarrativeTone,
   PlotThread,
+  RELATIONSHIP_KINDS,
   RelationshipEdge,
+  RelationshipKind,
   SPICY_LEVELS,
   SavedStoryProject,
   SpicyLevel,
@@ -320,6 +323,38 @@ function isBatchProgressStatus(status: unknown): status is BatchProgressState['s
 }
 
 /**
+ * How long a thread or artifact is expected to matter, as the continuity panel
+ * says it. Total over `STORY_MEMORY_LIFETIMES` — see
+ * `formatStoryMemoryLifetimeLabel`.
+ */
+const STORY_MEMORY_LIFETIME_LABELS: Record<StoryMemoryLifetime, string> = {
+  scene: 'Scene memory',
+  chapter: 'Chapter memory',
+  series: 'Series memory'
+};
+
+/**
+ * What each relationship kind asks of the next scene, for an edge the model
+ * wrote no note on. Total over `RELATIONSHIP_KINDS` — see
+ * `formatRelationshipPreviewDetail`.
+ */
+const RELATIONSHIP_PRESSURE_DETAILS: Record<RelationshipKind, string> = {
+  lover: 'Want has a cost in the next scene.',
+  rival: 'Opposition should change what someone risks.',
+  ally: 'Trust should require an action.',
+  family: 'Loyalty should complicate the next choice.',
+  unknown: 'This connection should change the next scene.'
+};
+
+/** The devices a thread planted, read the way the guidance builder reads them. */
+function readThreadForeshadowedDevices(thread: PlotThread): string[] {
+  const devices = (thread as Partial<PlotThread>).foreshadowedDevices;
+  return Array.isArray(devices)
+    ? devices.filter((device): device is string => typeof device === 'string' && device.trim().length > 0)
+    : [];
+}
+
+/**
  * Read a character's relationship edges before the panel dereferences them.
  *
  * `CharacterProfile.relationships` is typed `RelationshipEdge[]`, and the
@@ -337,25 +372,41 @@ function isBatchProgressStatus(status: unknown): status is BatchProgressState['s
  * array through a filter for exactly this reason: `getCharacterRelationships` in
  * `continuationGuidance.ts` re-checks object, `characterId`, and `relationship`
  * on every read. This is that guard, on the reader that did not have one.
+ *
+ * The kind is checked against `RELATIONSHIP_KINDS` rather than against `typeof
+ * === 'string'`, which is what both readers were doing and what the writer
+ * stopped doing when the vocabulary got a table. That split had a cost of its
+ * own: `edge.relationship` was *declared* `RelationshipKind` and could hold any
+ * string at all, so `formatRelationshipPreviewDetail` below — which switches on
+ * exactly the five the union lists — received `"mentor"` from a snapshot written
+ * before the writer's check and had a total table's worth of nothing to say
+ * about it. TypeScript reports none of it, because the assertion this guard is
+ * written with is the thing that made the promise.
+ *
+ * An unrecognised kind normalizes to `'unknown'` rather than dropping the edge,
+ * which is what that member of the vocabulary is for. A model that answered
+ * `"mentor"` still named two characters and wrote a note about them; the kind is
+ * the part it got wrong, and discarding the pair along with it would lose a
+ * relationship the story really has from a panel whose whole job is to show
+ * them.
  */
-function readThreadForeshadowedDevices(thread: PlotThread): string[] {
-  const devices = (thread as Partial<PlotThread>).foreshadowedDevices;
-  return Array.isArray(devices)
-    ? devices.filter((device): device is string => typeof device === 'string' && device.trim().length > 0)
-    : [];
-}
-
 function readRelationshipEdges(character: CharacterProfile): RelationshipEdge[] {
   const relationships = (character as Partial<CharacterProfile>).relationships;
   if (!Array.isArray(relationships)) {
     return [];
   }
 
-  return relationships.filter((edge): edge is RelationshipEdge =>
-    Boolean(edge)
-    && typeof edge === 'object'
-    && typeof edge.characterId === 'string'
-    && typeof edge.relationship === 'string');
+  return relationships.flatMap(edge => {
+    if (!edge || typeof edge !== 'object' || typeof edge.characterId !== 'string') {
+      return [];
+    }
+
+    return [{
+      characterId: edge.characterId,
+      relationship: isVocabularyMember(RELATIONSHIP_KINDS, edge.relationship) ? edge.relationship : 'unknown',
+      notes: typeof edge.notes === 'string' ? edge.notes : ''
+    }];
+  });
 }
 
 type JobStatusPanelState = {
@@ -837,18 +888,19 @@ export class App implements OnDestroy {
     return alias === trimmedTitle.toLowerCase() ? null : alias;
   }
 
+  /**
+   * How long a thread or artifact is expected to matter, named for the reader.
+   *
+   * Read from `STORY_MEMORY_LIFETIME_LABELS` rather than the three `if`s this
+   * replaces, for the reason `formatThreadDebtLabel` gives: an `if` ladder over
+   * a closed vocabulary is a table with no one checking it is complete, and the
+   * chapter memory line is the only thing that would have said a fourth lifetime
+   * had been added — by not appearing. `undefined` stays the answer for an
+   * absent lifetime, which is the field being optional rather than a value this
+   * has no name for.
+   */
   private formatStoryMemoryLifetimeLabel(lifetime: StoryMemoryLifetime | undefined): string | undefined {
-    if (lifetime === 'scene') {
-      return 'Scene memory';
-    }
-    if (lifetime === 'chapter') {
-      return 'Chapter memory';
-    }
-    if (lifetime === 'series') {
-      return 'Series memory';
-    }
-
-    return undefined;
+    return lifetime ? STORY_MEMORY_LIFETIME_LABELS[lifetime] : undefined;
   }
 
   private buildContinuityRelationshipPreviewItem(
@@ -949,23 +1001,20 @@ export class App implements OnDestroy {
     return scoreActivationCandidates(candidates, activationSource);
   }
 
-  private formatRelationshipPreviewDetail(
-    relationship: ContinuityPanelViewModel['characters'][number]['relationships'][number]['relationship']
-  ): string {
-    if (relationship === 'lover') {
-      return 'Want has a cost in the next scene.';
-    }
-    if (relationship === 'rival') {
-      return 'Opposition should change what someone risks.';
-    }
-    if (relationship === 'ally') {
-      return 'Trust should require an action.';
-    }
-    if (relationship === 'family') {
-      return 'Loyalty should complicate the next choice.';
-    }
-
-    return 'This connection should change the next scene.';
+  /**
+   * The pressure line the preview shows for an edge the model wrote no note on.
+   *
+   * Read from `RELATIONSHIP_PRESSURE_DETAILS` rather than the four `if`s this
+   * replaces. `RELATIONSHIP_KINDS` has five members and the ladder named four,
+   * so `unknown` — the kind `readRelationshipEdges` now normalizes an
+   * unrecognised value *to* — arrived at a fallback that was doing two jobs at
+   * once: the honest line for a connection nobody has characterized, and the
+   * line a sixth kind would silently inherit on the day one is added. Keyed by
+   * the union, `unknown` has that line because it was written for it and a sixth
+   * kind has to be given its own.
+   */
+  private formatRelationshipPreviewDetail(relationship: RelationshipKind): string {
+    return RELATIONSHIP_PRESSURE_DETAILS[relationship];
   }
 
   readonly selectedChapter = computed(() => {
