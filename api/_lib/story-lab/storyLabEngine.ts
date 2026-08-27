@@ -1118,8 +1118,121 @@ function stableSeedIndex(seed: string, modulo: number): number {
   return modulo > 0 ? hash % modulo : 0;
 }
 
-function containsAny(value: string, needles: readonly string[]): boolean {
-  return needles.some(needle => value.includes(needle));
+/**
+ * Every word the pressure scans below look for, and the forms of it they count.
+ *
+ * The scans read `buildContinuationPressureSource` — the unresolved threads'
+ * labels and descriptions, the unresolved artifacts' names and significance,
+ * the continuity warnings, and the continuation brief — and what they decide
+ * goes into the continuation prompt: which of the three chapter-ending
+ * pressures the next chapter is told to end on, which pair of scene pressures
+ * it is told to work in, and which cliche the Cliche Alarm tells it to avoid.
+ *
+ * `containsAny` was `value.includes(needle)`, and these needles are short. That
+ * is the substring scan `extractThemesFromContent` and
+ * `extractSpicyLevelFromContent` were both moved off, arriving here through the
+ * one door nobody had checked, and the collisions are the same kind:
+ *
+ * - **`lie` is inside `courtier`**, and also inside `earlier`, `relief`,
+ *   `believed`, `soldier`, and `chandelier`. It is worth `+3` to
+ *   `secret_exposed`, the largest single weight in `chooseChapterEndingPressure`
+ *   and on its own enough to beat a fully scored `emotional_reveal` — so a
+ *   court-intrigue saga, which is the app's own third theme seed and whose
+ *   prose says `courtiers` as a matter of course, was told to end on an exposed
+ *   secret whatever the chapter was actually about.
+ * - **`heart` is inside `hearth`**, the exact collision
+ *   `extractSpicyLevelFromContent`'s own note names.
+ * - **`hall` is inside `shall` and `challenge`**, so `Setting` was offered to
+ *   the scene pressure mix by any state that merely used the word `shall`.
+ * - **`want` is inside `unwanted`** and **`price` is inside `priceless`** —
+ *   both of which read as the opposite of the beat they were credited to.
+ * - **`force` is inside `enforce`**, **`trap` inside `strapped`**, **`room`
+ *   inside `groom`**, **`lord` inside `landlord`**, **`vow` inside `vowel`**,
+ *   **`secret` inside `secretary`**, **`name` inside `nameless`**.
+ *
+ * So the forms are spelled out and matched as whole words, which is the same
+ * repair and the same reading `containsWholeWord` in `storyContentAnalysis`
+ * already applies. The inflections the substring form picked up for free —
+ * `dangerous` for `danger`, `threatening` for `threat`, `betrayal` for
+ * `betray`, `hunters` for `hunt`, `confession` for `confess` — are listed
+ * rather than lost, so the repair does not quietly cost the scans the matches
+ * they got right. What is not carried over is the rest of what the substrings
+ * caught: the collisions above, and the compounds (`bloodline`, `courtyard`,
+ * `bedroom`, `clockwork`, `hourglass`) where the compound is its own word
+ * rather than an inflection of the one being looked for.
+ *
+ * Keying the table by the words the call sites use, and typing those sites
+ * against it, is what stops a keyword being added below without a decision
+ * being made here about what counts as that word — the same guarantee
+ * `extractThemesFromContent` gets from keying its table by `ThemeType`.
+ */
+const PRESSURE_KEYWORD_FORMS = {
+  attack: ['attack', 'attacks', 'attacked', 'attacking'],
+  bargain: ['bargain', 'bargains', 'bargained', 'bargaining'],
+  betray: ['betray', 'betrays', 'betrayed', 'betraying', 'betrayal', 'betrayals'],
+  blood: ['blood', 'bloodied', 'bloody'],
+  boundary: ['boundary', 'boundaries'],
+  choose: ['choose', 'chooses', 'choosing', 'chose', 'chosen'],
+  clock: ['clock', 'clocks'],
+  confess: ['confess', 'confesses', 'confessed', 'confessing', 'confession', 'confessions'],
+  council: ['council', 'councils'],
+  court: ['court', 'courts', 'courtier', 'courtiers'],
+  crowd: ['crowd', 'crowds', 'crowded'],
+  danger: ['danger', 'dangers', 'dangerous', 'dangerously'],
+  deadline: ['deadline', 'deadlines'],
+  debt: ['debt', 'debts'],
+  demand: ['demand', 'demands', 'demanded', 'demanding'],
+  desire: ['desire', 'desires', 'desired', 'desiring'],
+  door: ['door', 'doors', 'doorway', 'doorways'],
+  family: ['family', 'families'],
+  force: ['force', 'forces', 'forced', 'forcing'],
+  heart: ['heart', 'hearts'],
+  hidden: ['hidden'],
+  hour: ['hour', 'hours'],
+  hunt: ['hunt', 'hunts', 'hunted', 'hunting', 'hunter', 'hunters'],
+  kiss: ['kiss', 'kisses', 'kissed', 'kissing'],
+  lie: ['lie', 'lies', 'lied', 'lying'],
+  lord: ['lord', 'lords'],
+  love: ['love', 'loves', 'loved', 'loving', 'lover', 'lovers'],
+  name: ['name', 'names', 'named', 'naming'],
+  payment: ['payment', 'payments'],
+  place: ['place', 'places', 'placed'],
+  price: ['price', 'prices', 'priced'],
+  queen: ['queen', 'queens'],
+  reef: ['reef', 'reefs'],
+  room: ['room', 'rooms'],
+  secret: ['secret', 'secrets', 'secretly'],
+  shell: ['shell', 'shells'],
+  song: ['song', 'songs'],
+  sunrise: ['sunrise'],
+  threat: ['threat', 'threats', 'threaten', 'threatens', 'threatened', 'threatening'],
+  tonight: ['tonight'],
+  trap: ['trap', 'traps', 'trapped', 'trapping'],
+  truth: ['truth', 'truths', 'truthful'],
+  hall: ['hall', 'halls'],
+  vow: ['vow', 'vows', 'vowed'],
+  want: ['want', 'wants', 'wanted', 'wanting'],
+  witness: ['witness', 'witnesses', 'witnessed']
+} as const satisfies Record<string, readonly string[]>;
+
+type PressureKeyword = keyof typeof PRESSURE_KEYWORD_FORMS;
+
+/**
+ * One compiled alternation per keyword, built once at module load.
+ *
+ * `containsAny` runs eleven times per continuation, and building a `RegExp` per
+ * call would recompile the same handful of patterns on every one of them. The
+ * source is already lowercased by `buildContinuationPressureSource`, so no
+ * case-insensitive flag is needed — the same arrangement `containsWholeWord`
+ * relies on.
+ */
+const PRESSURE_KEYWORD_PATTERNS = new Map<PressureKeyword, RegExp>(
+  (Object.entries(PRESSURE_KEYWORD_FORMS) as Array<[PressureKeyword, readonly string[]]>)
+    .map(([keyword, forms]) => [keyword, new RegExp(String.raw`\b(?:${forms.join('|')})\b`)])
+);
+
+function containsAny(value: string, needles: readonly PressureKeyword[]): boolean {
+  return needles.some(needle => PRESSURE_KEYWORD_PATTERNS.get(needle)?.test(value) === true);
 }
 
 function buildContinuationPressureSource(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {

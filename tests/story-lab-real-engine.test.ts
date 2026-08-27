@@ -5,6 +5,7 @@ import {
   buildStoryLabPayloadFromGeneratedStory,
   continueStoryLab,
   generateStoryLabGenesis,
+  previewStoryLabContinuationGuidance,
   shouldUseMockStoryLab,
   toClassicGenerationInput
 } from '../api/_lib/story-lab/storyLabEngine';
@@ -941,6 +942,84 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
       assert(!providerWasCalled, `chapterNumber=${label} must be refused before the generation is billed`);
     }
   });
+
+  // The pressure scans behind the hidden continuation guidance read the story
+  // state as whole words rather than as substrings. Each case below is a word
+  // the substring scan matched a shorter keyword inside, and the defect it
+  // produced is the guidance line the model was then given: `lie` inside
+  // `courtier` is worth `+3` to `secret_exposed`, which is on its own enough to
+  // decide the chapter's ending pressure, and `heart` inside `hearth` decided
+  // which cliche the chapter was told to avoid.
+  {
+    const pressureState = (label: string, description: string): StoryStateSnapshot => ({
+      storyId: 'story-pressure-probe',
+      revision: 2,
+      characters: [],
+      threads: [{
+        id: 'story-pressure-probe-thread-1',
+        label,
+        status: 'active',
+        description,
+        foreshadowedDevices: [],
+        lifetime: 'series'
+      }],
+      artifacts: [],
+      beats: [],
+      continuityWarnings: [],
+      narrativeVoice: 'close third',
+      lastUpdatedAt: '2026-08-27T00:00:00.000Z'
+    } as unknown as StoryStateSnapshot);
+
+    const guidanceFor = (label: string, description: string): string =>
+      previewStoryLabContinuationGuidance({
+        continuationBrief: '',
+        storyState: pressureState(label, description)
+      }).hiddenGuidance;
+
+    const courtiers = guidanceFor('Court Intrigue', 'The courtiers gather beneath the chandeliers.');
+    assert(
+      !courtiers.includes('Scene pressure mix: Secret'),
+      '`courtiers` and `chandeliers` are not the word `lie`, so they must not choose the secret pressure'
+    );
+
+    const hearth = guidanceFor('Winter Refuge', 'She banks the hearth and waits for the thaw.');
+    assert(
+      !hearth.includes('Avoid: confession of what they already know.'),
+      '`hearth` is not the word `heart`, so it must not choose the confession cliche'
+    );
+
+    const unwanted = guidanceFor('Unwelcome Guest', 'The unwanted visitor will not leave.');
+    assert(
+      !unwanted.includes('Avoid: confession of what they already know.'),
+      '`unwanted` is not the word `want`, and reads as the opposite of the beat it was credited to'
+    );
+
+    const priceless = guidanceFor('The Reliquary', 'A priceless relic sits unclaimed on the altar.');
+    assert(
+      !priceless.includes('Avoid: formal demand with no personal cost.'),
+      '`priceless` is not the word `price`, so it must not read as a bargain coming due'
+    );
+
+    // The matches the substring scan got right are still matches, inflections
+    // included — the repair must not cost the scans their real signal.
+    const lies = guidanceFor('Hidden Secrets', 'Someone is telling lies beautifully.');
+    assert(
+      lies.includes('Scene pressure mix: Secret'),
+      '`lies` is the word `lie`, so a state that names one must still choose the secret pressure'
+    );
+
+    const dangerous = guidanceFor('The Treeline', 'A dangerous hunter waits beyond it.');
+    assert(
+      dangerous.includes('Chosen: Danger escalation'),
+      '`dangerous` and `hunter` are inflections of `danger` and `hunt`, and must still escalate'
+    );
+
+    const threatening = guidanceFor('The Siege', 'Something threatening moves outside the walls.');
+    assert(
+      threatening.includes('Chosen: Danger escalation'),
+      '`threatening` is an inflection of `threat`, and must still escalate'
+    );
+  }
 
   console.log('Story Lab real-engine mapping tests passed');
 })().catch(error => {

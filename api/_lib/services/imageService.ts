@@ -513,6 +513,18 @@ export class ImageService {
     if (!Array.isArray(input.themes) || input.themes.length === 0) {
       return { code: 'INVALID_INPUT', message: 'Themes are required and must be a non-empty array' };
     }
+    // The count, not just the shape. `enhancePromptWithStyle` maps every entry
+    // into the `grok-2-image` prompt, and this was the field that decided how
+    // long that prompt is: `imagePrompt` beside it is capped at one sentence's
+    // worth while `themes` took as many as a body could carry. See
+    // `IMAGE_GENERATION_LIMITS.maxThemes`, which is the same number
+    // `validateStoryInput` has always enforced on `/api/story/generate`.
+    if (input.themes.length > IMAGE_GENERATION_LIMITS.maxThemes) {
+      return {
+        code: 'INVALID_INPUT',
+        message: `Too many themes (max ${IMAGE_GENERATION_LIMITS.maxThemes})`
+      };
+    }
     if (!input.themes.every(theme => typeof theme === 'string' && theme.trim().length > 0)) {
       return { code: 'INVALID_INPUT', message: 'Every theme must be a non-empty string' };
     }

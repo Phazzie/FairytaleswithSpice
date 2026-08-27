@@ -70,6 +70,41 @@ assert(
   'a mention of danger should be read as an active-threat thread'
 );
 
+// The last scan in this module still reading the markup and matching
+// substrings, and the last of its own five checks already used `\b`.
+assert(
+  !extractPlotThreads('<p>The secretary showed her into the empty office.</p>')
+    .includes('Unresolved mystery or secret'),
+  '`secretary` is not the word `secret`, so it should not open a mystery thread'
+);
+
+assert(
+  !extractPlotThreads('<p>She was powerless, and the room was uncontrollable.</p>')
+    .includes('Power dynamics in play'),
+  '`powerless` and `uncontrollable` are not the words `power` and `control`'
+);
+
+assert(
+  extractPlotThreads('<p>Her powers frightened him, and she controlled the room.</p>')
+    .includes('Power dynamics in play'),
+  '`powers` and `controlled` are inflections that must still be read as power dynamics'
+);
+
+assert(
+  extractPlotThreads('<p>Something dangerous was threatening the house.</p>')
+    .includes('Active threat or danger'),
+  '`dangerous` and `threatening` are inflections that must still be read as a threat'
+);
+
+// The one multi-word pattern needs whitespace between its two words, and a
+// paragraph break puts markup there instead — so the question the scan exists
+// to notice was invisible whenever the model wrote it across one.
+assert(
+  extractPlotThreads('<p>She wondered what</p><p>if he had been lying all along.</p>')
+    .includes('Unresolved questions'),
+  'a question split across a paragraph break is still a question'
+);
+
 // ==================== extractChapterTitleAndBody ====================
 // No dedicated test existed for this before now.
 
