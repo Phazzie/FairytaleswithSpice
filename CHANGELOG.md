@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Story Lab's mock generation engine (`mockData.ts`) — the actual runtime path for every keyless deployment, local dev session, and CI run, discarding nearly all of its own input (August 27, 2026)
+
+- `mockData.ts` is what every local dev session, CI run, and any deployment without
+  `XAI_API_KEY` actually generates from — `shouldUseMockStoryLab()` returns true whenever the
+  runtime isn't production and no key is configured. `buildGenesisResponse` used to read only
+  `input.logline` and `input.chapterBatchSize` off the blueprint; `creature`, `themes`,
+  `spicyLevel`, `tone`, `protagonistName`, `antagonistName`, and `worldDetails` were all accepted
+  and silently discarded. Every mock story was "Selene of the Velvet Court" against "Marcellus
+  Nightbloom" in a vampire-coded court, regardless of whether the reader picked werewolf, siren,
+  or dragon — so testing "does the creature picker do anything" locally had no signal either way.
+- Added a `CREATURE_FLAVORS` table (one entry per `CreatureArchetype`, the same pattern
+  `imageService.ts`'s `getCreatureContext` already reads) so the protagonist, love interest,
+  rival, court setting, thread, and both lore artifacts all vary by the creature actually
+  requested. The vampire entry keeps its original names byte-for-byte, since
+  `tests/story-lab-state.test.ts` already asserts on `'Crimson Signet Ring'`/`'Broken Oath
+  Scroll'` for a vampire fixture.
+- `protagonistName`/`antagonistName` now override the flavor's default cast names when supplied;
+  `tone`/`spicyLevel` now flow into the generated `StorySummary` instead of a hardcoded
+  `dark_romance`/`3`; a supplied `worldDetails` sentence is now appended to the opening chapter
+  instead of being dropped. A `NARRATIVE_TONE_MOOD`/`NARRATIVE_TONE_CHAPTER_TITLE` table gives
+  chapter text and titles their own tone-driven variation (`dark_romance` keeps the original
+  "Midnight Reverie" title).
+- Removed the two module-level `let` counters (`storyRevisionCounter`, `chapterIdCounter`) that
+  incremented forever across a warm process's lifetime with no reset — unlike `stateStore.ts`'s
+  `resetTransientStorySnapshots()`, built for exactly this kind of isolation. A fresh story's
+  `state.revision` is now always `1`; chapter ids are now `chapter-${randomUUID()}`. Two stories
+  generated in the same process can no longer get arbitrary, order-dependent starting revisions.
+- A continuation's input carries the story's ongoing state and summary rather than the original
+  blueprint, so it has no `creature` to look a flavor up by; its chapter text now reuses the
+  `narrativeVoice` and `tone` the genesis already established instead of always emitting the
+  same hardcoded phrasing, while character/artifact names introduced mid-continuation (possible
+  when a genesis with `chapterBatchSize: 1` makes chapter 2 land inside a continuation call) keep
+  falling back to the vampire cast, exactly as this module always named them — no contract change
+  was in scope for this pass.
+- Added `tests/story-lab-mock-data.test.ts`: this module's first direct unit coverage. Creature-
+  driven character/artifact/voice variation, name overrides, tone/spicyLevel flowing into the
+  summary instead of being hardcoded, `worldDetails` reaching the opening chapter, revision
+  determinism across repeated genesis calls in one process, chapter id uniqueness, and a
+  continuation carrying its established tone/voice forward.
+
 ### ***WORST TO BEST*** Story Continuity State Tracking (`storyStateBuilder.ts`) — the state-merge module every genesis/continuation request is built from, shipped with zero unit tests and a real resolved-thread bug (August 27, 2026)
 
 - `storyStateBuilder.ts` builds/merges the `StoryStateSnapshot` (characters, plot threads, world
