@@ -9,7 +9,7 @@ import {
   buildSceneDescriptionFromStory,
   readGeneratedImageUrl
 } from '../api/_lib/services/imageService';
-import { CreatureType, IMAGE_STYLES, ImageGenerationSeam, VALIDATION_RULES } from '../api/_lib/types/contracts';
+import { ASPECT_RATIOS, CreatureType, IMAGE_STYLES, ImageGenerationSeam, VALIDATION_RULES } from '../api/_lib/types/contracts';
 import { logger } from '../api/_lib/utils/logger';
 import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
 import { IMAGE_GENERATION_LIMITS } from '../shared/storyBlueprintLimits';
@@ -174,12 +174,23 @@ async function testAspectRatioNeverContradictsTheDimensions(): Promise<void> {
     `an unsupported aspect ratio is a caller error (got ${unsupported.error?.code})`
   );
 
+  // Spelled out rather than read off the table, deliberately: a table-driven
+  // expectation would pass no matter what pixels the table named. What ties the
+  // two together is the assertion below, which turns this from a fifth copy of
+  // the ratio list into a checked mirror of it — a ratio added to `ASPECT_RATIOS`
+  // and not to this map fails here rather than going unexercised.
   const expectedDimensions: Record<string, { width: number; height: number }> = {
     '1:1': { width: 1024, height: 1024 },
     '16:9': { width: 1792, height: 1024 },
     '9:16': { width: 1024, height: 1792 },
     '4:3': { width: 1536, height: 1152 }
   };
+
+  assert(
+    ASPECT_RATIOS.length === Object.keys(expectedDimensions).length
+      && ASPECT_RATIOS.every(ratio => ratio in expectedDimensions),
+    'every ratio in the contract table should have an expected size here'
+  );
 
   for (const [aspectRatio, dimensions] of Object.entries(expectedDimensions)) {
     const result = await new ImageService().generateImage(
@@ -203,6 +214,61 @@ async function testAspectRatioNeverContradictsTheDimensions(): Promise<void> {
   const defaultedOutput = defaulted.data as ImageGenerationSeam['output'];
   assert(defaultedOutput.aspectRatio === '16:9', 'an omitted ratio should default to 16:9');
   assert(defaultedOutput.width === 1792 && defaultedOutput.height === 1024, 'the default ratio should report 1792x1024');
+
+  await testTheProviderIsAskedForTheSizeTheResponseReports();
+}
+
+/**
+ * The `size` asked of the provider is the one reader of an absent ratio that
+ * never appears in the response — which is exactly why it could drift
+ * unnoticed. Everything above this proves what the envelope *says*; the line
+ * that decides what is actually drawn was `this.mapAspectRatioToSize(input
+ * .aspectRatio || '16:9')`, the last hand-written fallback of the family
+ * `ASPECT_RATIO_SPECS` was consolidated to end. Retuning `DEFAULT_ASPECT_RATIO`
+ * would have moved the reported `width` and `height`, and the mock URL's
+ * dimensions, and left the picture at 16:9.
+ *
+ * The service takes the mock path without a key, so the key is set for the
+ * duration and `axios.post` is replaced — the same arrangement the provider
+ * tests below use.
+ */
+async function testTheProviderIsAskedForTheSizeTheResponseReports(): Promise<void> {
+  const originalPost = axios.post;
+  process.env['XAI_API_KEY'] = 'xai-test-key-for-aspect-ratio';
+
+  try {
+    const service = new ImageService();
+    let requestedSize: unknown;
+
+    (axios as { post: unknown }).post = async (_url: string, body: any) => {
+      requestedSize = body?.size;
+      return { data: { data: [{ url: 'https://images.example/generated.png' }] } };
+    };
+
+    // An omitted ratio: the case the restated `'16:9'` decided on its own.
+    const defaulted = await service.generateImage(createInput());
+    assert(defaulted.success, 'a request naming no ratio should succeed');
+    const defaultedOutput = defaulted.data as ImageGenerationSeam['output'];
+    assert(
+      requestedSize === `${defaultedOutput.width}x${defaultedOutput.height}`,
+      `the provider should be asked for the size the response reports `
+        + `(asked ${String(requestedSize)}, reported ${defaultedOutput.width}x${defaultedOutput.height})`
+    );
+
+    // And a named ratio, which was already right and has to stay right.
+    for (const aspectRatio of ASPECT_RATIOS) {
+      const result = await service.generateImage(createInput({ aspectRatio }));
+      assert(result.success, `a request for ${aspectRatio} should succeed`);
+      const output = result.data as ImageGenerationSeam['output'];
+      assert(
+        requestedSize === `${output.width}x${output.height}`,
+        `${aspectRatio} should ask the provider for the size it reports (asked ${String(requestedSize)})`
+      );
+    }
+  } finally {
+    (axios as { post: unknown }).post = originalPost;
+    delete process.env['XAI_API_KEY'];
+  }
 }
 
 // `response.data.data[0].url` was read straight through, and reading a missing
