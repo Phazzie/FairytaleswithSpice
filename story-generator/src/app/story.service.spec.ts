@@ -8,7 +8,6 @@ import {
   StoryContinuationSeam,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
-  StoryLabJobEvent,
   StoryLabUserProfile,
   CloudStoryProjectList,
   CloudStoryProjectSaveReceipt,
@@ -16,7 +15,6 @@ import {
   StorySummary,
   StoryStateSnapshot
 } from './contracts';
-import { EVENT_SOURCE_CLOSED, EVENT_SOURCE_CONNECTING } from '../../../shared/eventStreamRetry';
 
 function createGenesisInput(): StoryGenerationSeam['input'] {
   return {
@@ -130,43 +128,10 @@ function createJobResponse<TResult = unknown>(
   };
 }
 
-class MockEventSource {
-  static readonly instances: MockEventSource[] = [];
-
-  onmessage: ((event: MessageEvent) => void) | null = null;
-  onerror: ((event: Event) => void) | null = null;
-  readonly close = jasmine.createSpy('close');
-  /** `CLOSED` unless a test says the browser is reopening the connection. */
-  readyState = EVENT_SOURCE_CLOSED;
-
-  constructor(readonly url: string) {
-    MockEventSource.instances.push(this);
-  }
-
-  emit(data: unknown): void {
-    this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
-  }
-
-  fail(): void {
-    this.readyState = EVENT_SOURCE_CLOSED;
-    this.onerror?.(new Event('error'));
-  }
-
-  /**
-   * The end of a connection the browser will reopen — which is every response
-   * the job event route sends for a job that has not finished yet.
-   */
-  dropAndReconnect(): void {
-    this.readyState = EVENT_SOURCE_CONNECTING;
-    this.onerror?.(new Event('error'));
-  }
-}
-
 describe('StoryService', () => {
   let service: StoryService;
   let httpMock: HttpTestingController;
   let errorLogging: jasmine.SpyObj<ErrorLoggingService>;
-  let originalEventSource: typeof EventSource;
 
   beforeEach(() => {
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
@@ -185,22 +150,10 @@ describe('StoryService', () => {
     service = TestBed.inject(StoryService);
     httpMock = TestBed.inject(HttpTestingController);
     errorLogging = TestBed.inject(ErrorLoggingService) as jasmine.SpyObj<ErrorLoggingService>;
-    originalEventSource = globalThis.EventSource;
-    MockEventSource.instances.length = 0;
-    Object.defineProperty(globalThis, 'EventSource', {
-      configurable: true,
-      writable: true,
-      value: MockEventSource
-    });
   });
 
   afterEach(() => {
     httpMock.verify();
-    Object.defineProperty(globalThis, 'EventSource', {
-      configurable: true,
-      writable: true,
-      value: originalEventSource
-    });
   });
 
   it('posts genesis requests to the story lab endpoint', () => {
@@ -330,20 +283,6 @@ describe('StoryService', () => {
     );
   });
 
-  it('gets Story Lab job snapshots by opaque job id', () => {
-    const jobId = 'job_00000000-0000-4000-8000-000000000000';
-    const payload = createJobResponse(jobId);
-
-    service.getStoryLabJob(jobId).subscribe(response => {
-      expect(response.success).toBeTrue();
-      expect(response.data?.paths.eventsPath).toContain(jobId);
-    });
-
-    const req = httpMock.expectOne(`/api/story-lab/jobs/${jobId}`);
-    expect(req.request.method).toBe('GET');
-    req.flush({ success: true, data: payload });
-  });
-
   it('gets and updates the Story Lab account profile', () => {
     const profile = createProfile();
 
@@ -443,105 +382,6 @@ describe('StoryService', () => {
         deleted: true
       }
     });
-  });
-
-  it('streams Story Lab job events by opaque job id', () => {
-    const jobId = 'job_00000000-0000-4000-8000-000000000000';
-    const response = createJobResponse<StoryIterationPayload>(jobId);
-    const event: StoryLabJobEvent<StoryIterationPayload> = {
-      eventId: 'event-1',
-      type: 'snapshot',
-      emittedAt: response.job.updatedAt,
-      job: response.job
-    };
-    const received: StoryLabJobEvent<StoryIterationPayload>[] = [];
-    let completed = false;
-
-    service.streamStoryLabJobEvents<StoryIterationPayload>(jobId, nextEvent => received.push(nextEvent)).subscribe({
-      complete: () => {
-        completed = true;
-      }
-    });
-
-    expect(MockEventSource.instances.length).toBe(1);
-    const source = MockEventSource.instances[0];
-    expect(source.url).toBe(`/api/story-lab/jobs/${jobId}/events`);
-
-    source.emit(event);
-
-    expect(received).toEqual([event]);
-    expect(completed).toBeTrue();
-    expect(source.close).toHaveBeenCalled();
-  });
-
-  it('keeps a job event subscription alive while the browser reconnects', () => {
-    const jobId = 'job_00000000-0000-4000-8000-000000000001';
-    const running = createJobResponse<StoryIterationPayload>(jobId);
-    running.job.status = 'running';
-    running.job.currentStep = 'drafting';
-    running.job.progressPercent = 40;
-
-    const received: StoryLabJobEvent<StoryIterationPayload>[] = [];
-    let failure: unknown;
-    let completed = false;
-
-    service.streamStoryLabJobEvents<StoryIterationPayload>(jobId, nextEvent => received.push(nextEvent)).subscribe({
-      error: error => {
-        failure = error;
-      },
-      complete: () => {
-        completed = true;
-      }
-    });
-
-    const source = MockEventSource.instances[0];
-    source.emit({
-      eventId: 'event-1',
-      type: 'snapshot',
-      emittedAt: running.job.updatedAt,
-      job: running.job
-    } satisfies StoryLabJobEvent<StoryIterationPayload>);
-
-    // The route replays what the job has recorded and ends the response, so the
-    // browser drops the connection and reopens it. That is not the job failing.
-    source.dropAndReconnect();
-
-    expect(failure).toBeUndefined();
-    expect(completed).toBeFalse();
-    expect(source.close).not.toHaveBeenCalled();
-    expect(received.length).toBe(1);
-
-    // The reopened connection replays the terminal snapshot, which is what ends
-    // the subscription.
-    const finished = createJobResponse<StoryIterationPayload>(jobId);
-    source.emit({
-      eventId: 'event-2',
-      type: 'snapshot',
-      emittedAt: finished.job.updatedAt,
-      job: finished.job
-    } satisfies StoryLabJobEvent<StoryIterationPayload>);
-
-    expect(completed).toBeTrue();
-    expect(source.close).toHaveBeenCalled();
-  });
-
-  it('fails a job event subscription when the browser gives up on the stream', () => {
-    const jobId = 'job_00000000-0000-4000-8000-000000000002';
-    let failure: unknown;
-
-    service.streamStoryLabJobEvents<StoryIterationPayload>(jobId, () => undefined).subscribe({
-      error: error => {
-        failure = error;
-      }
-    });
-
-    const source = MockEventSource.instances[0];
-    expect(source.readyState).toBe(EVENT_SOURCE_CLOSED);
-
-    source.fail();
-
-    expect(failure).toBeDefined();
-    expect(source.close).toHaveBeenCalled();
   });
 
   it('logs http errors through the error logger', () => {

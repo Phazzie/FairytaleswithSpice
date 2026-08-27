@@ -613,11 +613,6 @@ button:disabled {
   background: color-mix(in srgb, var(--paper-strong) 82%, var(--accent) 18%);
 }
 
-.job-status-panel--recovering {
-  border-color: color-mix(in srgb, var(--accent-2) 44%, var(--line) 56%);
-  background: color-mix(in srgb, var(--paper-strong) 80%, var(--accent-2) 20%);
-}
-
 .job-status-panel__header,
 .job-status-panel__meta {
   display: flex;

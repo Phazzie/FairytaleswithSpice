@@ -16,12 +16,9 @@ import {
   StoryContinuationSeam,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
-  StoryLabJobEvent,
-  StoryLabUserProfile,
-  isTerminalStoryLabJobStatus
+  StoryLabUserProfile
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
-import { readEventStreamErrorAction } from '../../../shared/eventStreamRetry';
 
 /**
  * StoryService orchestrates all interactions with the backend story API.
@@ -97,21 +94,6 @@ export class StoryService {
     return this.http
       .post<ApiResponse<StoryLabJobCreationResponse<TResult>>>(`${this.apiUrl}/jobs`, request)
       .pipe(catchError(error => this.handleHttpError(error, 'createStoryLabJob')));
-  }
-
-  /**
-   * Read a Story Lab job snapshot by opaque job id.
-   */
-  getStoryLabJob<TResult = unknown>(
-    jobId: string
-  ): Observable<ApiResponse<StoryLabJobCreationResponse<TResult>>> {
-    this.errorLogging.logInfo('Reading Story Lab job', 'StoryService.getStoryLabJob', {
-      jobId
-    });
-
-    return this.http
-      .get<ApiResponse<StoryLabJobCreationResponse<TResult>>>(`${this.apiUrl}/jobs/${encodeURIComponent(jobId)}`)
-      .pipe(catchError(error => this.handleHttpError(error, 'getStoryLabJob')));
   }
 
   /**
@@ -191,71 +173,6 @@ export class StoryService {
         `${this.apiUrl}/account/projects/${encodeURIComponent(projectId)}`
       )
       .pipe(catchError(error => this.handleHttpError(error, 'deleteCloudStoryProject')));
-  }
-
-  /**
-   * Subscribe to Story Lab job snapshot events.
-   */
-  streamStoryLabJobEvents<TResult = unknown>(
-    jobId: string,
-    onEvent: (event: StoryLabJobEvent<TResult>) => void
-  ): Observable<StoryLabJobEvent<TResult>> {
-    return new Observable<StoryLabJobEvent<TResult>>(observer => {
-      const streamUrl = `${this.apiUrl}/jobs/${encodeURIComponent(jobId)}/events`;
-      const eventSource = new EventSource(streamUrl);
-      this.errorLogging.logInfo('Opened Story Lab job event stream', 'StoryService.streamStoryLabJobEvents', {
-        jobId
-      });
-
-      eventSource.onmessage = event => {
-        try {
-          const jobEvent = JSON.parse(event.data) as StoryLabJobEvent<TResult>;
-          onEvent(jobEvent);
-          observer.next(jobEvent);
-
-          if (isTerminalStoryLabJobStatus(jobEvent.job.status)) {
-            observer.complete();
-            eventSource.close();
-          }
-        } catch (error) {
-          this.errorLogging.logError(error, 'StoryService.streamStoryLabJobEvents.parse', 'error');
-          observer.error(error);
-          eventSource.close();
-        }
-      };
-
-      eventSource.onerror = error => {
-        // The job event route answers with the events recorded so far and ends
-        // the response, so a running job's stream closes — normally — after
-        // every replay, and the browser fires `error` on its way to reopening
-        // it. Ending the subscription there told the reader that generation
-        // updates had stopped, and closed the `EventSource` that was about to
-        // reconnect and deliver the rest, for a job the server was still
-        // working on quite happily. Only an error the browser will not retry is
-        // the end of this stream.
-        if (readEventStreamErrorAction(eventSource.readyState) === 'retry') {
-          this.errorLogging.logInfo(
-            'Story Lab job event stream reconnecting',
-            'StoryService.streamStoryLabJobEvents',
-            { jobId }
-          );
-          return;
-        }
-
-        this.errorLogging.logError(error, 'StoryService.streamStoryLabJobEvents.connection', 'error', {
-          jobId
-        });
-        observer.error(error);
-        eventSource.close();
-      };
-
-      return () => {
-        this.errorLogging.logInfo('Closing Story Lab job event stream', 'StoryService.streamStoryLabJobEvents', {
-          jobId
-        });
-        eventSource.close();
-      };
-    });
   }
 
   /**

@@ -12,7 +12,6 @@ import {
   CloudStoryProjectDeleteReceipt,
   StoryIterationPayload,
   StoryLabJobCreationResponse,
-  StoryLabJobEvent,
   StoryStateSnapshot,
   StorySummary,
   CloudStoryProjectList,
@@ -34,7 +33,6 @@ import {
 
 const STORAGE_KEY = 'fairytales_story_lab_projects_v1';
 const SKIN_STORAGE_KEY = 'fairytales_story_lab_skin_v1';
-const ACTIVE_JOB_STORAGE_KEY = 'fairytales_story_lab_active_job_v1';
 type GenesisJobOverrides = Partial<StoryLabJobCreationResponse<StoryIterationPayload>['job']>;
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 type ContinuationJobOverrides = Partial<StoryLabJobCreationResponse<ContinuationJobResult>['job']>;
@@ -208,63 +206,6 @@ function createContinuationJobResponse(
   });
 }
 
-function createJobEvent<TResult>(
-  response: StoryLabJobCreationResponse<TResult>
-): StoryLabJobEvent<TResult> {
-  return {
-    eventId: `event-${response.job.status}`,
-    type: 'snapshot',
-    emittedAt: response.job.updatedAt,
-    job: response.job
-  };
-}
-
-function createActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    jobId: 'job_123e4567-e89b-12d3-a456-426614174000',
-    kind: 'genesis',
-    batchId: 'batch-recovered',
-    batchSize: 1,
-    statusPath: '/api/story-lab/jobs/job_123e4567-e89b-12d3-a456-426614174000',
-    startedAt: new Date().toISOString(),
-    ...overrides
-  };
-}
-
-function storeActiveJobMarker(overrides: Partial<Record<string, unknown>> = {}) {
-  sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, JSON.stringify(createActiveJobMarker(overrides)));
-}
-
-function storeContinuationRecoveryMarker(storyId = 'story-123') {
-  storeActiveJobMarker({
-    jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-    kind: 'continuation',
-    batchId: 'batch-continuation-recovered',
-    statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-    storyId
-  });
-}
-
-function stubRunningContinuationRecovery(
-  storyService: jasmine.SpyObj<StoryService>,
-  storyId: string,
-  progressPercent = 44
-) {
-  const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
-  storeContinuationRecoveryMarker(storyId);
-  storyService.getStoryLabJob.calls.reset();
-  storyService.getStoryLabJob.and.returnValue(of({
-    success: true,
-    data: createContinuationJobResponse(undefined, {
-      status: 'running',
-      currentStep: 'continuing_story',
-      progressPercent
-    })
-  }));
-  storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
-  return events$;
-}
-
 function makePayloadForStory(storyId: string, title: string): Partial<StoryIterationPayload> {
   return {
     summary: createSummary({ storyId, title }),
@@ -339,14 +280,11 @@ describe('App', () => {
     queryParamMap$ = new BehaviorSubject<ParamMap>(convertToParamMap({}));
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SKIN_STORAGE_KEY);
-    sessionStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
 
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'beginStory',
       'continueStory',
       'createStoryLabJob',
-      'getStoryLabJob',
-      'streamStoryLabJobEvents',
       'listCloudStoryProjects',
       'saveCloudStoryProject',
       'loadCloudStoryProject',
@@ -378,7 +316,6 @@ describe('App', () => {
   afterEach(() => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SKIN_STORAGE_KEY);
-    sessionStorage.removeItem(ACTIVE_JOB_STORAGE_KEY);
   });
 
   function configureValidBlueprint(logline: string) {
@@ -390,10 +327,7 @@ describe('App', () => {
     });
   }
 
-  function stubRunningGenesisJob(
-    events$: Subject<StoryLabJobEvent<StoryIterationPayload>>,
-    overrides: GenesisJobOverrides = {}
-  ) {
+  function stubRunningGenesisJob(overrides: GenesisJobOverrides = {}) {
     storyService.createStoryLabJob.and.returnValue(of({
       success: true,
       data: createGenesisJobResponse(undefined, {
@@ -403,15 +337,10 @@ describe('App', () => {
         ...overrides
       })
     }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
   }
 
-  function startGenesisJobFlow(
-    logline: string,
-    events$: Subject<StoryLabJobEvent<StoryIterationPayload>>,
-    initialJobOverrides: GenesisJobOverrides = {}
-  ) {
-    stubRunningGenesisJob(events$, initialJobOverrides);
+  function startGenesisJobFlow(logline: string, initialJobOverrides: GenesisJobOverrides = {}) {
+    stubRunningGenesisJob(initialJobOverrides);
     configureValidBlueprint(logline);
     component.startGenesis();
   }
@@ -481,13 +410,6 @@ describe('App', () => {
     };
     expect(jobRequest.kind).toBe('continuation');
     return jobRequest.continuation.continuationBrief ?? '';
-  }
-
-  function prepareRunningContinuationRecovery(): StoryIterationPayload {
-    const genesisPayload = seedWorkbenchForContinuation();
-    component.saveActiveProject();
-    stubRunningContinuationRecovery(storyService, genesisPayload.summary.storyId);
-    return genesisPayload;
   }
 
   function renderedJobStatusText(targetFixture: ComponentFixture<App> = fixture): string | null {
@@ -1240,9 +1162,12 @@ describe('App', () => {
         retryCount: 0
       }
     };
-    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
-
-    startGenesisJobFlow('A vampire princess bound by forbidden vows.', events$);
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(payload)
+    }));
+    configureValidBlueprint('A vampire princess bound by forbidden vows.');
+    component.startGenesis();
 
     expect(storyService.beginStory).not.toHaveBeenCalled();
     expect(storyService.createStoryLabJob).toHaveBeenCalled();
@@ -1253,13 +1178,6 @@ describe('App', () => {
         chapterBatchSize: 1
       })
     }));
-    expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(
-      'job_123e4567-e89b-12d3-a456-426614174000',
-      jasmine.any(Function)
-    );
-
-    events$.next(createJobEvent(createGenesisJobResponse(payload)));
-    events$.complete();
 
     expect(component.workbench().story?.storyId).toBe('story-123');
     expect(component.workbench().chapterHistory.length).toBe(2);
@@ -1275,9 +1193,9 @@ describe('App', () => {
   // story payload" below. Genesis only asked whether `job.result` was present at
   // all, so a result that is merely *there* reached `applyIteration`, which
   // reads `summary.storyId` and `batch.chapters` straight through. The throw
-  // lands inside the job event stream's `next` callback, where nothing catches
-  // it: the batch stays in progress, the progress timer keeps running, and the
-  // reader is told nothing.
+  // lands inside the job creation subscription's `next` callback, where nothing
+  // catches it: the batch stays in progress, the progress timer keeps running,
+  // and the reader is told nothing.
   const malformedGenesisPayloads: Array<[string, StoryIterationPayload]> = [
     ['no batch', { summary: createSummary(), state: createState() } as unknown as StoryIterationPayload],
     ['no summary', {
@@ -1288,10 +1206,13 @@ describe('App', () => {
 
   for (const [label, malformedPayload] of malformedGenesisPayloads) {
     it(`fails the genesis batch when a completed job has a malformed story payload (${label})`, () => {
-      const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
-      startGenesisJobFlow('A vampire princess bound by forbidden vows.', events$);
+      storyService.createStoryLabJob.and.returnValue(of({
+        success: true,
+        data: createGenesisJobResponse(malformedPayload)
+      }));
+      configureValidBlueprint('A vampire princess bound by forbidden vows.');
 
-      expect(() => events$.next(createJobEvent(createGenesisJobResponse(malformedPayload)))).not.toThrow();
+      expect(() => component.startGenesis()).not.toThrow();
 
       expect(component.workbench().story).toBeNull();
       expect(component.workbench().chapterHistory).toEqual([]);
@@ -1302,23 +1223,15 @@ describe('App', () => {
     });
   }
 
-  it('updates genesis progress from Story Lab job snapshots', () => {
-    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+  it('updates genesis progress from a running Story Lab job snapshot', () => {
     startGenesisJobFlow(
       'A siren archivist bargains with a moonlit duke.',
-      events$,
       {
         status: 'running',
-        currentStep: 'queued',
-        progressPercent: 10
+        currentStep: 'generating_story',
+        progressPercent: 47
       }
     );
-
-    events$.next(createJobEvent(createGenesisJobResponse(undefined, {
-      status: 'running',
-      currentStep: 'generating_story',
-      progressPercent: 47
-    })));
 
     expect(component.generationProgress().active).toBeTrue();
     expect(component.generationProgress().percent).toBe(47);
@@ -1327,9 +1240,7 @@ describe('App', () => {
   });
 
   it('renders the active genesis job status panel while a story job is running', () => {
-    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
-
-    startGenesisJobFlow('A siren archivist bargains with a moonlit duke.', events$);
+    startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
 
     const statusText = renderedJobStatusText();
     expect(statusText).toContain('First chapter job running');
@@ -1339,9 +1250,7 @@ describe('App', () => {
   });
 
   it('renders the active batch queue while a genesis job is running', () => {
-    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
-
-    startGenesisJobFlow('A siren archivist bargains with a moonlit duke.', events$);
+    startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
 
     const queueText = renderedBatchQueueText();
     expect(queueText).toContain('Story Lab queue');
@@ -2274,14 +2183,12 @@ describe('App', () => {
   });
 
   it('defaults missing job progress to zero instead of rendering NaN', () => {
-    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
     const response = createGenesisJobResponse(undefined, {
       status: 'running',
       currentStep: 'generating_story'
     });
     delete (response.job as Partial<typeof response.job>).progressPercent;
     storyService.createStoryLabJob.and.returnValue(of({ success: true, data: response }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
     configureValidBlueprint('A moonlit archivist bargains with a dangerous fae prince.');
 
     component.startGenesis();
@@ -2293,22 +2200,15 @@ describe('App', () => {
   });
 
   it('shows the job durability warning while a non-durable story job is running', () => {
-    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
     const response = createGenesisJobResponse(undefined, {
       status: 'running',
       currentStep: 'generating_story',
-      progressPercent: 18
+      progressPercent: 33
     });
     storyService.createStoryLabJob.and.returnValue(of({ success: true, data: response }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
     configureValidBlueprint('A selkie spy signs a forbidden library contract.');
 
     component.startGenesis();
-    events$.next(createJobEvent(createGenesisJobResponse(undefined, {
-      status: 'running',
-      currentStep: 'generating_story',
-      progressPercent: 33
-    })));
 
     const statusText = renderedJobStatusText();
     expect(statusText).toContain('33%');
@@ -2316,18 +2216,21 @@ describe('App', () => {
   });
 
   it('shows a friendly AI configuration error when a genesis job cannot use Grok', () => {
-    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(undefined, {
+        status: 'failed',
+        currentStep: 'failed',
+        progressPercent: 100,
+        error: {
+          code: 'AI_UNAVAILABLE',
+          message: 'The AI story engine is not configured for this deployment.'
+        }
+      })
+    }));
+    configureValidBlueprint('A dragon guardian bargains for one night of forbidden mercy.');
 
-    startGenesisJobFlow('A dragon guardian bargains for one night of forbidden mercy.', events$);
-    events$.next(createJobEvent(createGenesisJobResponse(undefined, {
-      status: 'failed',
-      currentStep: 'failed',
-      progressPercent: 100,
-      error: {
-        code: 'AI_UNAVAILABLE',
-        message: 'The AI story engine is not configured for this deployment.'
-      }
-    })));
+    component.startGenesis();
 
     expect(component.statusMessage()).toContain('missing its Grok configuration');
     expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
@@ -2364,431 +2267,6 @@ describe('App', () => {
 
     expect(creation$.observed).toBeFalse();
     expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
-  });
-
-  it('cancels an in-flight recovered genesis job snapshot on destroy', () => {
-    const restore$ = new Subject<ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>>();
-    storeActiveJobMarker();
-    storyService.getStoryLabJob.and.returnValue(restore$.asObservable());
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(restore$.observed).toBeTrue();
-    recovered.ngOnDestroy();
-    expect(restore$.observed).toBeFalse();
-  });
-
-  it('cancels an in-flight recovered genesis job snapshot when recovery fails', () => {
-    const restore$ = new Subject<ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>>();
-    storeActiveJobMarker();
-    storyService.getStoryLabJob.and.returnValue(restore$.asObservable());
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(restore$.observed).toBeTrue();
-
-    restore$.next({
-      success: false,
-      error: {
-        code: 'JOB_STORE_UNAVAILABLE',
-        message: 'Story Lab job storage is not configured.'
-      }
-    });
-
-    expect(restore$.observed).toBeFalse();
-    expect(recovered.generationProgress().active).toBeFalse();
-    expect(recovered.statusMessage()).toBe('Story Lab job storage is not configured.');
-  });
-
-  it('stores an active genesis job marker while job snapshots are running', () => {
-    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
-
-    startGenesisJobFlow('A siren spy steals a vow from a forbidden archive.', events$);
-
-    const marker = JSON.parse(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY) ?? '{}');
-    expect(marker).toEqual(jasmine.objectContaining({
-      jobId: 'job_123e4567-e89b-12d3-a456-426614174000',
-      kind: 'genesis',
-      batchSize: 1,
-      statusPath: '/api/story-lab/jobs/job_123e4567-e89b-12d3-a456-426614174000'
-    }));
-    expect(marker.batchId).toMatch(/^batch-/);
-  });
-
-  it('recovers a running genesis job from browser storage and resumes events', () => {
-    const events$ = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
-    storeActiveJobMarker();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createGenesisJobResponse(undefined, {
-        status: 'running',
-        currentStep: 'generating_story',
-        progressPercent: 41
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_123e4567-e89b-12d3-a456-426614174000');
-    expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(
-      'job_123e4567-e89b-12d3-a456-426614174000',
-      jasmine.any(Function)
-    );
-    expect(recovered.generationProgress().active).toBeTrue();
-    expect(recovered.generationProgress().percent).toBe(41);
-    expect(recovered.statusMessage()).toContain('Grok');
-  });
-
-  it('clears an unavailable recovered genesis job with recovery-specific status copy', () => {
-    storeActiveJobMarker();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: false,
-      error: {
-        code: 'STORY_LAB_JOB_NOT_FOUND',
-        message: 'The story job is no longer in memory.'
-      }
-    } as ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>));
-
-    const recoveredFixture = TestBed.createComponent(App);
-    const recovered = recoveredFixture.componentInstance;
-
-    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_123e4567-e89b-12d3-a456-426614174000');
-    expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
-    expect(recovered.generationProgress().active).toBeFalse();
-    expect(renderedJobStatusText(recoveredFixture)).toBeNull();
-    expect(recovered.statusMessage()).toContain('could not be restored');
-    expect(recovered.statusMessage()).toContain('in-memory job state is no longer available');
-  });
-
-  it('keeps recovered genesis API failures out of in-memory unavailable copy', () => {
-    storeActiveJobMarker();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: false,
-      error: {
-        code: 'JOB_STORE_UNAVAILABLE',
-        message: 'Story Lab job storage is not configured.'
-      }
-    } as ApiResponse<StoryLabJobCreationResponse<StoryIterationPayload>>));
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_123e4567-e89b-12d3-a456-426614174000');
-    expect(recovered.statusMessage()).toBe('Story Lab job storage is not configured.');
-    expect(recovered.statusMessage()).not.toContain('in-memory job state is no longer available');
-  });
-
-  it('recovers a completed genesis job and clears the active job marker', () => {
-    const payload: StoryIterationPayload = {
-      summary: createSummary({ title: 'Recovered Pact' }),
-      batch: {
-        chapters: [createChapter()],
-        totalWordCount: 900,
-        suggestedNextPrompts: []
-      },
-      state: createState(),
-      telemetry: {
-        engine: 'grok',
-        model: 'grok-4.3',
-        totalLatencyMs: 1200,
-        averageChapterLatencyMs: 1200,
-        tokensConsumed: 900,
-        retryCount: 0
-      }
-    };
-    storeActiveJobMarker();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createGenesisJobResponse(payload)
-    }));
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(recovered.workbench().story?.title).toBe('Recovered Pact');
-    expect(recovered.workbench().chapterHistory.length).toBe(1);
-    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
-  });
-
-  it('stores an active continuation job marker while job snapshots are running', () => {
-    seedWorkbenchForContinuation();
-    const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
-    storyService.createStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createContinuationJobResponse(undefined, {
-        status: 'running',
-        currentStep: 'continuing_story',
-        progressPercent: 28
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
-
-    component.continueSaga('Make the betrayal more dangerous.');
-
-    const marker = JSON.parse(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY) ?? '{}');
-    expect(marker).toEqual(jasmine.objectContaining({
-      jobId: 'job_223e4567-e89b-12d3-a456-426614174000',
-      kind: 'continuation',
-      batchSize: 1,
-      statusPath: '/api/story-lab/jobs/job_223e4567-e89b-12d3-a456-426614174000',
-      storyId: 'story-123'
-    }));
-    expect(marker.batchId).toMatch(/^batch-/);
-  });
-
-  it('cancels an in-flight continuation job creation subscription when creation fails', () => {
-    const creation$ = new Subject<ApiResponse<StoryLabJobCreationResponse<ContinuationJobResult>>>();
-    seedWorkbenchForContinuation();
-    storyService.createStoryLabJob.and.returnValue(creation$.asObservable());
-
-    component.continueSaga('Make the betrayal more dangerous.');
-
-    expect(creation$.observed).toBeTrue();
-
-    creation$.next({
-      success: false,
-      error: {
-        code: 'STORY_LAB_JOB_FAILED',
-        message: 'Continuation failed.'
-      }
-    });
-
-    expect(creation$.observed).toBeFalse();
-    expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
-  });
-
-  it('persists accepted and pinned memory cards before continuation job recovery', () => {
-    const genesisPayload = seedMaraMemoryCardWorkbench();
-    const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
-    storyService.createStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createContinuationJobResponse(undefined, {
-        status: 'running',
-        currentStep: 'continuing_story',
-        progressPercent: 28
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
-
-    clickFirstMemoryCardDraftAction('accept-memory-card-draft');
-    component.pinMemoryCardDraft('memory-card-thread-oath');
-    component.continueSaga('Make the betrayal more dangerous.');
-
-    const savedProjects = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as Array<Record<string, unknown>>;
-    const acceptedCards = savedProjects[0]['acceptedMemoryCards'] as unknown[];
-    const pinnedDraftIds = savedProjects[0]['pinnedMemoryCardDraftIds'] as string[];
-    expect(acceptedCards).toEqual([
-      jasmine.objectContaining({
-        id: 'memory-card-character-mara',
-        title: 'Mara',
-        detail: 'Keep the moonlit bargain from consuming her archive.'
-      })
-    ]);
-    expect(pinnedDraftIds).toContain('memory-card-thread-oath');
-
-    const continuationPayload = createContinuationPayload(genesisPayload);
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createContinuationJobResponse(continuationPayload)
-    }));
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(recovered.workbench().chapterHistory.length).toBe(2);
-    expect(recovered.acceptedMemoryCards()[0]?.title).toBe('Mara');
-    expect(recovered.pinnedMemoryCardDraftIds().has('memory-card-thread-oath')).toBeTrue();
-  });
-
-  it('recovers a running continuation job from browser storage and resumes events', () => {
-    const genesisPayload = prepareRunningContinuationRecovery();
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_223e4567-e89b-12d3-a456-426614174000');
-    expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(
-      'job_223e4567-e89b-12d3-a456-426614174000',
-      jasmine.any(Function)
-    );
-    expect(recovered.workbench().story?.storyId).toBe(genesisPayload.summary.storyId);
-    expect(recovered.generationProgress().active).toBeTrue();
-    expect(recovered.generationProgress().percent).toBe(44);
-    expect(recovered.statusMessage()).toContain('Grok');
-    expect(recovered.activeBatchQueue().at(-1)?.label).toBe('Continuation');
-  });
-
-  it('cancels an in-flight recovered continuation job snapshot on destroy', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    const restore$ = new Subject<ApiResponse<StoryLabJobCreationResponse<ContinuationJobResult>>>();
-    component.saveActiveProject();
-    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(restore$.asObservable());
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(restore$.observed).toBeTrue();
-    recovered.ngOnDestroy();
-    expect(restore$.observed).toBeFalse();
-  });
-
-  it('cancels an in-flight recovered continuation job snapshot when recovery fails', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    const restore$ = new Subject<ApiResponse<StoryLabJobCreationResponse<ContinuationJobResult>>>();
-    component.saveActiveProject();
-    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(restore$.asObservable());
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(restore$.observed).toBeTrue();
-
-    restore$.next({
-      success: false,
-      error: {
-        code: 'JOB_STORE_UNAVAILABLE',
-        message: 'Story Lab job storage is not configured.'
-      }
-    });
-
-    expect(restore$.observed).toBeFalse();
-    expect(recovered.generationProgress().active).toBeFalse();
-    expect(recovered.statusMessage()).toBe('Story Lab job storage is not configured.');
-  });
-
-  it('clears an unavailable recovered continuation job with recovery-specific status copy', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    component.saveActiveProject();
-    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: false,
-      error: {
-        code: 'STORY_LAB_JOB_NOT_FOUND',
-        message: 'The continuation job is no longer in memory.'
-      }
-    } as ApiResponse<StoryLabJobCreationResponse<ContinuationJobResult>>));
-
-    const recoveredFixture = TestBed.createComponent(App);
-    const recovered = recoveredFixture.componentInstance;
-
-    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_223e4567-e89b-12d3-a456-426614174000');
-    expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
-    expect(recovered.generationProgress().active).toBeFalse();
-    expect(renderedJobStatusText(recoveredFixture)).toBeNull();
-    expect(recovered.statusMessage()).toContain('could not be restored');
-    expect(recovered.statusMessage()).toContain('in-memory job state is no longer available');
-  });
-
-  it('keeps recovered continuation transport failures out of in-memory unavailable copy', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    component.saveActiveProject();
-    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(throwError(() => ({
-      error: {
-        error: {
-          code: 'JOB_STORE_UNAVAILABLE',
-          message: 'Story Lab job storage is not configured.'
-        }
-      }
-    })));
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(storyService.getStoryLabJob).toHaveBeenCalledWith('job_223e4567-e89b-12d3-a456-426614174000');
-    expect(recovered.statusMessage()).toBe('Story Lab job storage is not configured.');
-    expect(recovered.statusMessage()).not.toContain('in-memory job state is no longer available');
-  });
-
-  it('renders a recovered continuation job status panel after reload', () => {
-    prepareRunningContinuationRecovery();
-
-    const recoveredFixture = TestBed.createComponent(App);
-
-    const statusText = renderedJobStatusText(recoveredFixture);
-    expect(statusText).toContain('Continuation job recovered');
-    expect(statusText).toContain('44%');
-    expect(statusText).toContain('job_223e...4000');
-    expect(statusText).toContain('Grok is continuing the saga.');
-  });
-
-  it('recovers a completed continuation job and clears the active job marker', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    const continuationPayload = createContinuationPayload(genesisPayload);
-    component.saveActiveProject();
-    storeContinuationRecoveryMarker(genesisPayload.summary.storyId);
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createContinuationJobResponse(continuationPayload)
-    }));
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(recovered.workbench().chapterHistory.length).toBe(2);
-    expect(recovered.selectedChapter()?.chapterNumber).toBe(2);
-    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
-  });
-
-  it('loads the continuation marker story instead of the newest saved project on recovery', () => {
-    const originalPayload = seedWorkbenchForContinuation(makePayloadForStory('story-original', 'Original Pact'));
-    component.saveActiveProject();
-    seedWorkbenchForContinuation(makePayloadForStory('story-newer', 'Newer Pact'));
-    component.saveActiveProject();
-    const continuationPayload = createContinuationPayload(originalPayload);
-    storeContinuationRecoveryMarker('story-original');
-    storyService.getStoryLabJob.calls.reset();
-    storyService.getStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createContinuationJobResponse(continuationPayload)
-    }));
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(recovered.workbench().story?.storyId).toBe('story-original');
-    expect(recovered.workbench().chapterHistory.length).toBe(2);
-    expect(recovered.workbench().chapterHistory[0].chapterId).toBe('story-original-chapter-1');
-    expect(recovered.selectedChapter()?.chapterNumber).toBe(2);
-  });
-
-  it('clears a continuation active job marker when no saved story context exists', () => {
-    storeContinuationRecoveryMarker();
-    storyService.getStoryLabJob.calls.reset();
-
-    const recovered = TestBed.createComponent(App).componentInstance;
-
-    expect(storyService.getStoryLabJob).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
-    expect(recovered.statusMessage()).toContain('saved story');
-  });
-
-  it('does not render a job status panel when continuation recovery lacks saved story context', () => {
-    storeContinuationRecoveryMarker();
-    storyService.getStoryLabJob.calls.reset();
-
-    const recoveredFixture = TestBed.createComponent(App);
-
-    expect(renderedJobStatusText(recoveredFixture)).toBeNull();
-    expect(storyService.getStoryLabJob).not.toHaveBeenCalled();
-  });
-
-  it('clears malformed active job storage without crashing startup', () => {
-    sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, '{not-json');
-
-    expect(() => TestBed.createComponent(App).componentInstance).not.toThrow();
-    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
-    expect(storyService.getStoryLabJob).not.toHaveBeenCalled();
-  });
-
-  it('clears null active job storage without crashing startup', () => {
-    sessionStorage.setItem(ACTIVE_JOB_STORAGE_KEY, 'null');
-
-    expect(() => TestBed.createComponent(App).componentInstance).not.toThrow();
-    expect(sessionStorage.getItem(ACTIVE_JOB_STORAGE_KEY)).toBeNull();
-    expect(storyService.getStoryLabJob).not.toHaveBeenCalled();
   });
 
   it('loads a saved browser-local project into the workbench', () => {
@@ -2874,10 +2352,8 @@ describe('App', () => {
       .toContain('external danger');
   });
 
-  it('updates continuation progress from Story Lab job snapshots', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    const continuationPayload = createContinuationPayload(genesisPayload);
-    const events$ = new Subject<StoryLabJobEvent<ContinuationJobResult>>();
+  it('updates continuation progress from a running Story Lab job snapshot', () => {
+    seedWorkbenchForContinuation();
     storyService.createStoryLabJob.and.returnValue(of({
       success: true,
       data: createContinuationJobResponse(undefined, {
@@ -2886,25 +2362,12 @@ describe('App', () => {
         progressPercent: 28
       })
     }));
-    storyService.streamStoryLabJobEvents.and.returnValue(events$.asObservable());
-    storyService.continueStory.and.returnValue(of({ success: true, data: continuationPayload }));
 
     component.continueSaga('Make the rival reveal dangerous.');
 
     expect(storyService.continueStory).not.toHaveBeenCalled();
-    expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(
-      'job_223e4567-e89b-12d3-a456-426614174000',
-      jasmine.any(Function)
-    );
     expect(component.generationProgress().percent).toBe(28);
     expect(component.statusMessage()).toContain('Grok');
-
-    events$.next(createJobEvent(createContinuationJobResponse(continuationPayload)));
-    events$.complete();
-
-    expect(component.workbench().chapterHistory.length).toBe(2);
-    expect(component.selectedChapter()?.chapterNumber).toBe(2);
-    expect(component.activeBatchQueue().at(-1)?.status).toBe('completed');
   });
 
   it('keeps existing chapters when a continuation job fails', () => {
@@ -2947,27 +2410,6 @@ describe('App', () => {
     expect(component.workbench().chapterHistory).toEqual(genesisPayload.batch.chapters);
     expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
     expect(component.statusMessage()).toContain('valid story payload');
-  });
-
-  it('clears a continuation event subscription that completes synchronously', () => {
-    const genesisPayload = seedWorkbenchForContinuation();
-    const continuationPayload = createContinuationPayload(genesisPayload);
-    storyService.createStoryLabJob.and.returnValue(of({
-      success: true,
-      data: createContinuationJobResponse(undefined, {
-        status: 'running',
-        currentStep: 'continuing_story',
-        progressPercent: 28
-      })
-    }));
-    storyService.streamStoryLabJobEvents.and.returnValue(of(
-      createJobEvent(createContinuationJobResponse(continuationPayload))
-    ));
-
-    component.continueSaga('Make the rival reveal dangerous.');
-
-    expect(component.workbench().chapterHistory.length).toBe(2);
-    expect((component as unknown as { jobEventSubscription: unknown }).jobEventSubscription).toBeNull();
   });
 
   it('copies generated story text to the clipboard', async () => {
