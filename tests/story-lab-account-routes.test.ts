@@ -91,6 +91,7 @@ async function main() {
   await testInvalidProjectBodyFailsClosedBeforeStoreAccess();
   await testInjectedStoreErrorMessageIsSanitized();
   await testInvalidRouteAndMethodResponses();
+  await testLibrarySortPreferenceOrdersTheProjectList();
 
   console.log('Story Lab account route tests passed');
 }
@@ -540,6 +541,124 @@ async function testInvalidRouteAndMethodResponses() {
   assert(
     projectMethodResponse.headers['Allow'] === 'GET, DELETE, OPTIONS',
     `project item 405 should send Allow: GET, DELETE, OPTIONS, got ${JSON.stringify(projectMethodResponse.headers['Allow'])}`
+  );
+}
+
+/**
+ * `preferences.librarySort` is validated, stored, and echoed back by the
+ * profile route, and until now nothing read it: the project stores order their
+ * list newest-updated-first and the route passed that order straight through,
+ * so a reader who saved `title_asc` or `created_desc` got the same library back
+ * either way. The preference is only reachable through this route, so this is
+ * where it has to be proved.
+ *
+ * The three projects are arranged so that no two of the three orderings agree
+ * by accident: `Zephyr Court` is created first and updated last, which puts it
+ * at opposite ends of `created_desc` and `updated_desc`, and the titles run in
+ * a third order again.
+ */
+async function testLibrarySortPreferenceOrdersTheProjectList() {
+  let tick = 0;
+  const advancingNow = () => `2026-06-08T09:${String(tick++).padStart(2, '0')}:00.000Z`;
+  const profileStore = createNonDurableInMemoryStoryLabProfileStore({ now: advancingNow });
+  const projectStore = createNonDurableInMemoryStoryProjectStore({ now: advancingNow });
+  const handler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore,
+    projectStore,
+    now: advancingNow
+  });
+
+  // `createdAt` is the caller's on a first save and the stored record's on
+  // every one after it, so it is set here rather than taken from the clock.
+  const saveProject = async (id: string, title: string, createdAt: string): Promise<void> => {
+    const saveResponse = new FakeResponse();
+    await handler(createRequest('POST', 'projects', {
+      project: { ...createProject(), id, storyId: `story-${id}`, title, createdAt }
+    }), saveResponse);
+    assert(saveResponse.statusCode === 200, `saving ${id} should succeed`);
+  };
+
+  await saveProject('project-zephyr', 'Zephyr Court', '2026-06-08T08:00:00.000Z');
+  await saveProject('project-ashen', 'Ashen Vow', '2026-06-08T08:01:00.000Z');
+  await saveProject('project-moonlit', 'Moonlit Debt', '2026-06-08T08:02:00.000Z');
+  // Re-saving keeps `createdAt` and moves `updatedAt`, which is what separates
+  // the two timestamp orderings from each other.
+  await saveProject('project-zephyr', 'Zephyr Court', '2026-06-08T08:00:00.000Z');
+
+  const titlesFor = async (): Promise<string> => {
+    const listResponse = new FakeResponse();
+    await handler(createRequest('GET', 'projects'), listResponse);
+    assert(listResponse.statusCode === 200, 'listing projects should succeed');
+    return ((listResponse.body as any).data.projects as { title: string }[])
+      .map(project => project.title)
+      .join(',');
+  };
+
+  const saveSort = async (librarySort: string): Promise<void> => {
+    const profileResponse = new FakeResponse();
+    await handler(createRequest('PUT', 'profile', {
+      profile: {
+        userId: owner.userId,
+        displayName: 'Avery',
+        preferences: { librarySort }
+      }
+    }), profileResponse);
+    assert(profileResponse.statusCode === 200, `saving librarySort=${librarySort} should succeed`);
+    assert(
+      (profileResponse.body as any).data.preferences.librarySort === librarySort,
+      `the profile route should keep librarySort=${librarySort}`
+    );
+  };
+
+  // The default, and the order both stores already answer in.
+  const defaultOrder = await titlesFor();
+  assert(
+    defaultOrder === 'Zephyr Court,Moonlit Debt,Ashen Vow',
+    `the default library sort is newest-updated-first (got ${defaultOrder})`
+  );
+
+  await saveSort('title_asc');
+  const alphabetical = await titlesFor();
+  assert(
+    alphabetical === 'Ashen Vow,Moonlit Debt,Zephyr Court',
+    `title_asc should order the library by title (got ${alphabetical})`
+  );
+
+  await saveSort('created_desc');
+  const newestCreated = await titlesFor();
+  assert(
+    newestCreated === 'Moonlit Debt,Ashen Vow,Zephyr Court',
+    `created_desc should order the library by creation (got ${newestCreated})`
+  );
+
+  await saveSort('updated_desc');
+  const newestUpdated = await titlesFor();
+  assert(
+    newestUpdated === defaultOrder,
+    `updated_desc should return the default order (got ${newestUpdated})`
+  );
+
+  // A profile store that cannot be read is not a reason to refuse the library:
+  // the projects are the answer and the ordering is a preference about them.
+  const brokenProfileStore = {
+    ...profileStore,
+    async loadProfile() {
+      throw new Error(privateStoryText);
+    }
+  } as unknown as ReturnType<typeof createNonDurableInMemoryStoryLabProfileStore>;
+  const resilientHandler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore: brokenProfileStore,
+    projectStore,
+    now: advancingNow
+  });
+  const resilientResponse = new FakeResponse();
+  await resilientHandler(createRequest('GET', 'projects'), resilientResponse);
+  assert(resilientResponse.statusCode === 200, 'an unreadable profile should not turn a working library into an error');
+  assert(
+    !JSON.stringify(resilientResponse.body).includes(privateStoryText),
+    'a profile store failure should not reach the project list response'
   );
 }
 

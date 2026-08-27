@@ -9,7 +9,7 @@ import {
   buildSceneDescriptionFromStory,
   readGeneratedImageUrl
 } from '../api/_lib/services/imageService';
-import { CreatureType, ImageGenerationSeam } from '../api/_lib/types/contracts';
+import { CreatureType, ImageGenerationSeam, VALIDATION_RULES } from '../api/_lib/types/contracts';
 import { logger } from '../api/_lib/utils/logger';
 import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
 import { IMAGE_GENERATION_LIMITS } from '../shared/storyBlueprintLimits';
@@ -509,6 +509,48 @@ async function testCustomImagePromptsAreBounded(): Promise<void> {
   assert(omitted.success, 'an omitted imagePrompt should still be served from the story');
 }
 
+// Capping `imagePrompt` closed the larger of the two ways a caller decides how
+// big this route's provider request is. `themes` is the other one:
+// `enhancePromptWithStyle` maps every entry into the same `grok-2-image`
+// prompt, and nothing bounded the entry count — so the field that was measured
+// was one sentence long while the field beside it took as many sentences as a
+// body could carry, on a route billed per call.
+async function testThemeCountIsBounded(): Promise<void> {
+  type Themes = ImageGenerationSeam['input']['themes'];
+  const atCap = Array.from({ length: IMAGE_GENERATION_LIMITS.maxThemes }, () => 'betrayal') as Themes;
+  const accepted = await new ImageService().generateImage(createInput({ themes: atCap }));
+  assert(accepted.success, 'a request at the theme cap should still be served');
+
+  const overCap = Array.from({ length: IMAGE_GENERATION_LIMITS.maxThemes + 1 }, () => 'betrayal') as Themes;
+  const refused = await new ImageService().generateImage(createInput({ themes: overCap }));
+  assert(!refused.success, 'a request past the theme cap should be refused');
+  assert(
+    refused.error?.code === 'INVALID_INPUT',
+    `too many themes is a caller error, not a service failure (got ${refused.error?.code})`
+  );
+  assert(
+    (refused.error?.message ?? '').includes('themes'),
+    `the refusal should name the field that overran (got ${refused.error?.message})`
+  );
+
+  // The bound has to hold before the provider prompt is built, which is the
+  // whole point of it: the cost is the prompt, not the array.
+  const many = Array.from({ length: 5000 }, () => 'unrecognized_theme_id') as unknown as Themes;
+  const refusedLarge = await new ImageService().generateImage(createInput({ themes: many }));
+  assert(!refusedLarge.success, 'five thousand themes should be refused rather than rendered into a prompt');
+  assert(
+    refusedLarge.error?.code === 'INVALID_INPUT',
+    `an oversized themes array is a caller error (got ${refusedLarge.error?.code})`
+  );
+
+  // The number is the one `/api/story/generate` has always enforced, so the two
+  // routes cannot disagree about how many seeds one story carries.
+  assert(
+    IMAGE_GENERATION_LIMITS.maxThemes === VALIDATION_RULES.themes.maxCount,
+    'the image route and the story route should bound themes at the same number'
+  );
+}
+
 /**
  * The id in the envelope, and the id on the failure lines, have to be the
  * request's.
@@ -678,6 +720,7 @@ async function main(): Promise<void> {
   await testMalformedThemesAreRejectedAsCallerError();
   await testAspectRatioNeverContradictsTheDimensions();
   await testCustomImagePromptsAreBounded();
+  await testThemeCountIsBounded();
   testProviderResponsesWithoutAUrlAreRefused();
   await testTheServiceRefusesAProviderResponseWithoutAUrl();
   await testProviderFailuresNeverPrintTheApiKey();

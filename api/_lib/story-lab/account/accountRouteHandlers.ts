@@ -12,10 +12,12 @@ import type {
   CloudStoryProjectStorageMode,
   CloudStoryProjectSaveReceipt,
   SavedStoryProject,
+  StoryLabLibrarySort,
   StoryLabUserProfile
 } from '../contracts';
 import { applyCorsPolicy } from '../../http/corsPolicy';
 import { sendMethodNotAllowed } from '../../http/methodNotAllowed';
+import { createDefaultStoryLabProfilePreferences } from '../profile/profileDefaults';
 import {
   createDefaultStoryLabUserProfile,
   normalizeStoryLabProfilePreferences,
@@ -24,6 +26,7 @@ import {
 } from '../profile/storyLabProfileStore';
 import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
 import {
+  sortStoryProjectListItems,
   StoryProjectDeleteReceipt,
   StoryProjectListItem,
   StoryProjectStore,
@@ -208,7 +211,11 @@ async function handleProjectsRoute(
 
     sendJson(res, 200, {
       success: true,
-      data: toCloudProjectList(context, user, listResult.data)
+      data: toCloudProjectList(
+        context,
+        user,
+        sortStoryProjectListItems(listResult.data, await readLibrarySort(context, user))
+      )
     });
     return;
   }
@@ -234,6 +241,36 @@ async function handleProjectsRoute(
   }
 
   sendMethodNotAllowed(res, PROJECT_COLLECTION_ROUTE_METHODS, 'Project collection routes support GET and POST.');
+}
+
+/**
+ * The order this caller has asked their library to come back in.
+ *
+ * The preference lives on the profile rather than in the request, so the list
+ * route has to read it — the client sends no sort and never has. A caller with
+ * no saved profile gets the default the profile route would have answered them
+ * with, which is the order the list already came back in.
+ *
+ * A profile store failure is not a list failure. The projects are the answer
+ * here and the ordering is a preference about them, so a store that cannot be
+ * read falls back to the default rather than turning a working library into a
+ * `503` — the opposite of how `listProjects` above treats its own store, and
+ * deliberately so.
+ */
+async function readLibrarySort(
+  context: StoryLabAccountRouteContext,
+  user: AuthUser
+): Promise<StoryLabLibrarySort> {
+  const defaultSort = createDefaultStoryLabProfilePreferences().librarySort;
+
+  try {
+    const loadResult = await context.profileStore.loadProfile(user);
+    return loadResult.success === true
+      ? loadResult.data?.profile.preferences.librarySort ?? defaultSort
+      : defaultSort;
+  } catch {
+    return defaultSort;
+  }
 }
 
 async function handleProjectRoute(
