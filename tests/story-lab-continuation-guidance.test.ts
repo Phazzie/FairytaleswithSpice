@@ -261,6 +261,95 @@ function testNonLatinBriefStillActivatesThreads(): void {
   assert(oathEntry.activationScore > 0, `a matching non-Latin brief should score above zero (got ${oathEntry.activationScore})`);
 }
 
+/**
+ * A courtroom detail longer than its budget is cut the way `textExcerpt` cuts
+ * prose: at a word boundary, and never through a character.
+ *
+ * `compactPromptLine` was `compacted.slice(0, 177) + '...'` — the cut
+ * `textExcerpt` was written to replace, still in place on the lines the next
+ * chapter is actually written from. The cut landed wherever 177 code units
+ * happened to land, which is mid-word for all but one label in ninety.
+ */
+function testOverlongCourtroomDetailIsCutAtAWordBoundary(): void {
+  const label = 'The binding debt waits behind the locked door in the east wing where nobody speaks of it. '.repeat(4).trim();
+  assert(label.length > 180, 'the fixture has to exceed the courtroom detail budget to be cut at all');
+  // The fixture only proves anything if a raw code-unit cut would land inside a
+  // word: `180 - '...'.length` has to fall between two non-space characters.
+  assert(
+    /\S/.test(label[176]) && /\S/.test(label[177]),
+    'the fixture must be one a raw slice would cut mid-word'
+  );
+
+  const state = baseState({
+    threads: [{
+      id: 'thread-overlong',
+      label,
+      status: 'active',
+      description: 'A thread whose label runs past the courtroom detail budget.',
+      foreshadowedDevices: [],
+      lifetime: 'series'
+    }]
+  });
+
+  const preview = previewStoryLabContinuationGuidance({
+    continuationBrief: 'Make Mira confront the binding debt tonight.',
+    storyState: state
+  });
+
+  const cutLine = preview.hiddenGuidance
+    .split('\n')
+    .find(line => line.includes('The binding debt waits behind'));
+  assert(cutLine, `the over-long thread should still reach the guidance (got ${JSON.stringify(preview.hiddenGuidance)})`);
+  assert(cutLine.includes('...'), `an over-long detail should be marked as cut (got ${JSON.stringify(cutLine)})`);
+
+  const detail = cutLine.slice(cutLine.indexOf('The binding debt'), cutLine.indexOf('...'));
+  assert(
+    label.startsWith(`${detail} `),
+    `the cut should end on a whole word of the label (got ${JSON.stringify(detail)})`
+  );
+}
+
+/**
+ * The same cut, on a label written in a script whose characters are surrogate
+ * pairs. A cut counted in code units can land between the halves of one; the
+ * result is a character the story never contained, escaped rather than refused
+ * by `JSON.stringify` on its way into the prompt.
+ */
+function testOverlongCourtroomDetailKeepsCharactersWhole(): void {
+  // No spaces, so the budget's 177th code unit falls inside a pair rather than
+  // between two of them: a raw slice ends on a lone high surrogate.
+  const label = '🗝'.repeat(120);
+  assert(
+    label.slice(0, 177).charCodeAt(176) >= 0xd800,
+    'the fixture must be one a raw slice would cut through a character'
+  );
+
+  const state = baseState({
+    threads: [{
+      id: 'thread-astral',
+      label,
+      status: 'active',
+      description: 'A thread whose label is written in surrogate pairs.',
+      foreshadowedDevices: [],
+      lifetime: 'series'
+    }]
+  });
+
+  const preview = previewStoryLabContinuationGuidance({
+    continuationBrief: undefined,
+    storyState: state
+  });
+
+  const hasLoneSurrogate = [...preview.hiddenGuidance].some(character => {
+    const code = character.codePointAt(0) ?? 0;
+    return code >= 0xd800 && code <= 0xdfff;
+  });
+  assert(
+    !hasLoneSurrogate,
+    `the guidance must not carry half a character (got ${JSON.stringify(preview.hiddenGuidance)})`
+  );
+}
+
 function main(): void {
   testBriefMentioningThreadActivatesIt();
   testNoBriefFallsBackToUnresolvedPriority();
@@ -270,6 +359,8 @@ function main(): void {
   testClicheAlarmPathVariesWithContent();
   testStripStoryMemoryCardSectionsDropsBookkeeping();
   testNonLatinBriefStillActivatesThreads();
+  testOverlongCourtroomDetailIsCutAtAWordBoundary();
+  testOverlongCourtroomDetailKeepsCharactersWhole();
 
   console.log('Story Lab continuation guidance tests passed');
 }

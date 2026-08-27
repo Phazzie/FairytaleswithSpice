@@ -286,15 +286,43 @@ function parseJsonValue(value: QueryValue): unknown {
   }
 }
 
+/**
+ * Read one blueprint field as a string, or answer that it is not one.
+ *
+ * The repeated-value form is read first because a query string carries one for
+ * every parameter sent twice — and `value[0]` was handed straight back, typed
+ * `string` on the strength of the `QueryValue` union rather than checked. On
+ * the query path that holds: a runtime parses `?logline=a&logline=b` into an
+ * array of strings. On the *body* path it does not. `parseStoryLabBlueprintFromBody`
+ * casts a parsed JSON object to `QuerySource`, so an array field there holds
+ * whatever the caller put in it, and `{"logline": [42]}` handed a `number` to
+ * every caller that had been promised a string:
+ * `getString(source['logline'])?.trim()` is a `TypeError`, `?.` being no help
+ * against a value that is present and merely of the wrong type.
+ *
+ * That throw leaves this parser entirely. The route's own catch answers `500
+ * INTERNAL_ERROR` — the service failed, try again — for a body only the caller
+ * can fix, on the one field the parser exists to refuse with `400
+ * INVALID_BLUEPRINT` and a message naming it. It is the same failure
+ * `readJsonObjectBody` was written for one layer up, arriving through a field
+ * rather than through the body itself: `logline`, `worldDetails`,
+ * `narrativeDirectives`, `protagonistName`, `antagonistName`, and
+ * `heatContract` are all read through this helper and a trim, so any one of
+ * them wrapped in an array is a 500.
+ *
+ * So the first entry is read under the same rules as a bare value: a string is
+ * itself, a number or a boolean is spelled out, and anything else — an object,
+ * a nested array, `null` — is not a string and is reported as the missing or
+ * invalid field it is.
+ */
 function getString(value: QueryValue): string | undefined {
-  if (Array.isArray(value)) {
-    return value[0];
+  const scalar = Array.isArray(value) ? value[0] : value;
+
+  if (typeof scalar === 'string') {
+    return scalar;
   }
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
+  if (typeof scalar === 'number' || typeof scalar === 'boolean') {
+    return String(scalar);
   }
   return undefined;
 }

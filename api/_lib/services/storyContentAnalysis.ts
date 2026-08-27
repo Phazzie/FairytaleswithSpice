@@ -511,6 +511,64 @@ export function formatChapterContent(content: string): string {
   return formatted;
 }
 
+/**
+ * The words that open a new beat, and so a new paragraph.
+ *
+ * The list is unchanged. What changes is where and how it is read, because the
+ * test it was written into got both wrong:
+ *
+ * ```
+ * trimmedLine.includes('Later') || ... || /^(The|As|But|However|Still)/i.test(trimmedLine)
+ * ```
+ *
+ * **The anchored half had no word boundary**, so it fired on the words that
+ * merely *begin* with one of these — and the ones it catches are the commonest
+ * openers in narrative prose. `The` is inside `They`, `Them`, `Their`,
+ * `Theatre`; `As` is inside `Asked`, `Aside`, `Ashes`, `Astonished`; `But` is
+ * inside `Butler`, `Button`; `Still` is inside `Stillness`. A run of ordinary
+ * sentences — "She set the cup down. / They had not spoken since. / Butler
+ * waited by the stair." — was therefore broken into a paragraph per line, which
+ * is the opposite of the welding this method's blank-line branch exists to
+ * prevent and just as wrong: the reader is shown a chapter chopped into
+ * one-sentence stubs wherever the prose happens to use a pronoun.
+ *
+ * **The `includes` half was not anchored at all**, so a line was declared a
+ * shift for a word anywhere inside it. The break this test decides goes *before
+ * the whole line*, so a mid-line `Then` or `Later` — "She waited. Then he
+ * spoke." — put the break in a place the word never justified.
+ *
+ * So the rule is one pattern: the line *opens* with one of these words, as a
+ * whole word. That is the same reading `containsWholeWord` above already
+ * applies to the theme and emotion scans, anchored at the start because "opens
+ * a new beat" is what this test means.
+ *
+ * The pattern stays case-insensitive, as the anchored half always was: the
+ * lines reaching here are model prose, where a beat can open mid-sentence after
+ * a speaker tag has been stripped.
+ */
+const NARRATIVE_SHIFT_OPENERS = [
+  'later',
+  'meanwhile',
+  'suddenly',
+  'then',
+  'the',
+  'as',
+  'but',
+  'however',
+  'still'
+];
+const NARRATIVE_SHIFT_OPENING_PATTERN = new RegExp(
+  String.raw`^(?:${NARRATIVE_SHIFT_OPENERS.join('|')})\b`,
+  'i'
+);
+
+/**
+ * How short a line has to be to read as a beat marker rather than as prose.
+ * Unchanged from the `< 50` it replaces; named so the two halves of the test
+ * are both legible.
+ */
+const NARRATIVE_SHIFT_MAX_LINE_LENGTH = 50;
+
 export function stripSpeakerTagsForDisplay(content: string): string {
   // Enhanced speaker tag removal with better text formatting
   let displayContent = content;
@@ -550,13 +608,8 @@ export function stripSpeakerTagsForDisplay(content: string): string {
 
     // Start new paragraph for dialogue or narrative shifts
     const isDialogue = trimmedLine.startsWith('"') || trimmedLine.includes('"');
-    const isNarrativeShift = trimmedLine.length < 50 && (
-      trimmedLine.includes('Later') ||
-      trimmedLine.includes('Meanwhile') ||
-      trimmedLine.includes('Suddenly') ||
-      trimmedLine.includes('Then') ||
-      /^(The|As|But|However|Still)/i.test(trimmedLine)
-    );
+    const isNarrativeShift = trimmedLine.length < NARRATIVE_SHIFT_MAX_LINE_LENGTH
+      && NARRATIVE_SHIFT_OPENING_PATTERN.test(trimmedLine);
 
     if (currentParagraph && (isNarrativeShift || (isDialogue && !currentParagraph.includes('"')))) {
       paragraphs.push(currentParagraph.trim());

@@ -19,6 +19,7 @@ import type {
   StoryStateSnapshot
 } from './contracts';
 import { collapseWhitespace } from '../utils/whitespace';
+import { capAtWordBoundaryWithinCodeUnits } from '../utils/textExcerpt';
 
 export interface StoryLabContinuationGuidancePreview {
   originalBrief: string;
@@ -193,6 +194,40 @@ function limitGuidanceSection(lines: string[], maxLength: number): string | unde
   return selectedLines.length > 1 ? selectedLines.join('\n') : undefined;
 }
 
+/**
+ * The mark that says a line was cut, and the room it needs.
+ *
+ * Stated once so the cut and the budget it is measured against cannot disagree
+ * about how much of the line the mark itself costs — the `- 3` was written into
+ * both truncations below, and neither said what the three characters were.
+ */
+const PROMPT_LINE_ELLIPSIS = '...';
+
+/**
+ * Cut one guidance line down to a budget.
+ *
+ * `compacted.slice(0, maxLength - 3)` is the cut `textExcerpt` was written to
+ * replace, and its module comment names the three sites it replaced it at —
+ * `generateNextChapterHint`, `createContextExcerpt`, and `buildContinuityPrompt`.
+ * These two were missed, and they are the same cut with the same two failures:
+ *
+ * - **`slice` counts UTF-16 code units**, so a cut can land between the halves
+ *   of a surrogate pair and leave a lone surrogate. `JSON.stringify` escapes
+ *   such a surrogate rather than refusing it, so nothing throws: the
+ *   continuation prompt is simply built with a character the story never
+ *   contained, in place of the emoji or astral-script character that was there.
+ * - **The cut lands mid-word**, so what reaches the model is a thread label, an
+ *   artifact name, a character's name, or a continuity warning ending on a
+ *   fragment — and these lines are the guidance the next chapter is written
+ *   from, not a screen the reader can re-read the whole of.
+ *
+ * `.trim()` on the far side of the old `slice` hid neither: it removes the
+ * space a cut may have ended on, which is the one case the cut got right
+ * already.
+ *
+ * The budget stays in code units, which is what `limitGuidanceSection` spends
+ * it in — see `capAtWordBoundaryWithinCodeUnits`.
+ */
 function compactPromptLineToLength(value: string, maxLength: number): string {
   const compacted = collapseWhitespace(value).trim();
   if (compacted.length <= maxLength) {
@@ -203,7 +238,9 @@ function compactPromptLineToLength(value: string, maxLength: number): string {
     return '';
   }
 
-  return `${compacted.slice(0, maxLength - 3).trim()}...`;
+  const kept = capAtWordBoundaryWithinCodeUnits(compacted, maxLength - PROMPT_LINE_ELLIPSIS.length);
+
+  return kept ? `${kept}${PROMPT_LINE_ELLIPSIS}` : '';
 }
 
 function buildContinuityCourtroomBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string | undefined {
@@ -609,13 +646,9 @@ function formatCourtroomDetail(value: unknown): string {
   return detail ? ` - ${detail}` : '';
 }
 
+/** The courtroom's own detail budget, cut the same way. */
 function compactPromptLine(value: unknown): string {
-  const compacted = collapseWhitespace(safeString(value)).trim();
-  if (compacted.length <= CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH) {
-    return compacted;
-  }
-
-  return `${compacted.slice(0, CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH - 3).trim()}...`;
+  return compactPromptLineToLength(safeString(value), CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH);
 }
 
 function buildChapterEndingStressTestBrief(storyState: StoryStateSnapshot, continuationBrief: string | undefined): string {
