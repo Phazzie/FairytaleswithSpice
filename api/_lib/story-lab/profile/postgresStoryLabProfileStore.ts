@@ -2,6 +2,7 @@
 
 import type { AuthUser } from '../auth/authPort';
 import type { StoryLabProfilePreferences, StoryLabUserProfile } from '../contracts';
+import { logWarn } from '../../utils/logger';
 import {
   createStoredStoryLabProfileRecord,
   createStoryLabProfileStoreError,
@@ -109,7 +110,7 @@ class PostgresStoryLabProfileStore implements StoryLabProfileStore {
 
       return successResult(recordFromRow(row));
     } catch (error) {
-      warnProfileStorageFailure('save', error);
+      warnProfileStorageFailure('save', user.userId, error);
       return errorResult(this.storageError());
     }
   }
@@ -129,7 +130,7 @@ class PostgresStoryLabProfileStore implements StoryLabProfileStore {
 
       return successResult(recordFromRow(row));
     } catch (error) {
-      warnProfileStorageFailure('load', error);
+      warnProfileStorageFailure('load', user.userId, error);
       return errorResult(this.storageError());
     }
   }
@@ -234,9 +235,13 @@ function preferencesFromJson(value: unknown): StoryLabProfilePreferences {
   }
 }
 
-function warnProfileStorageFailure(operation: 'save' | 'load', error: unknown): void {
+function warnProfileStorageFailure(operation: 'save' | 'load', userId: string, error: unknown): void {
   const errorName = error instanceof Error ? error.name : typeof error;
-  console.warn('Story Lab profile storage operation failed.', { operation, errorName });
+  logWarn(
+    'Story Lab profile storage operation failed.',
+    { userId, endpoint: `postgresStoryLabProfileStore.${operation}` },
+    { errorName }
+  );
 }
 
 function toIsoString(value: string | Date): string {
