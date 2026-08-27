@@ -121,7 +121,14 @@ assert(
 
 // The prompt names them `[Chekhov1]` and `[Chekhov2]`, so a count changed
 // without that template changing would leave an element planted and unnamed.
-const namedChekhovSlots = (storyServiceSource.match(/\[Chekhov\d+\]:/g) ?? []).length;
+// The three lines they are written into moved to `shared/productionStoryPrompt`
+// when the Proving Grounds stopped transcribing the prompt and started building
+// it; the slots are counted where they are now written.
+const productionPromptSource = readFileSync(
+  join(process.cwd(), 'shared/productionStoryPrompt.ts'),
+  'utf8'
+);
+const namedChekhovSlots = (productionPromptSource.match(/\[Chekhov\d+\]:/g) ?? []).length;
 assert(
   namedChekhovSlots === STORY_CHEKHOV_ELEMENTS_PER_STORY,
   `the prompt names ${namedChekhovSlots} Chekhov slots but plants ${STORY_CHEKHOV_ELEMENTS_PER_STORY}`

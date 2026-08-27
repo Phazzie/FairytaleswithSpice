@@ -3,9 +3,10 @@
 // Each seam represents a boundary where data crosses between components
 
 import { CREATURE_ARCHETYPES, type CreatureArchetype } from '../../../shared/creatureVocabulary';
+import { CLASSIC_STORY_THEMES, type ClassicStoryTheme } from '../../../shared/themeVocabulary';
 
-export { CREATURE_ARCHETYPES };
-export type { CreatureArchetype };
+export { CREATURE_ARCHETYPES, CLASSIC_STORY_THEMES };
+export type { CreatureArchetype, ClassicStoryTheme };
 
 // ==================== TYPE DEFINITIONS ====================
 // `CreatureType` is this contract's name for the ten creatures, which are now
@@ -14,7 +15,12 @@ export type { CreatureArchetype };
 // them broke on its own. The alias is kept because the whole API tree spells
 // the type this way; the values behind it are no longer restated here.
 export type CreatureType = CreatureArchetype;
-export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden_love' | 'revenge' | 'manipulation' | 'seduction' | 'dark_secrets' | 'corruption' | 'dominance' | 'submission' | 'jealousy' | 'temptation' | 'sin' | 'desire' | 'passion' | 'lust' | 'deceit';
+// `ThemeType` is this contract's name for the eighteen classic themes, which
+// are now one table in `shared/themeVocabulary` rather than four hand-written
+// copies — see the note there for what the other three were and what each of
+// them broke on its own. The alias is kept because the whole API tree spells
+// the type this way; the values behind it are no longer restated here.
+export type ThemeType = ClassicStoryTheme;
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
 export type WordCount = 600 | 700 | 900 | 1200 | 1500;
 export type NarrativeTone = 'romance' | 'dark_romance' | 'mystery' | 'adventure' | 'comedy' | 'tragedy';
@@ -400,7 +406,12 @@ export const VALIDATION_RULES = {
   },
   themes: {
     maxCount: 5,
-    allowedValues: ['betrayal', 'obsession', 'power_dynamics', 'forbidden_love', 'revenge', 'manipulation', 'seduction', 'dark_secrets', 'corruption', 'dominance', 'submission', 'jealousy', 'temptation', 'sin', 'desire', 'passion', 'lust', 'deceit']
+    // Read from the table rather than restated here, for the reason
+    // `imageStyle.allowedValues` below reads `IMAGE_STYLES`: this copy is what
+    // decides whether a caller's theme reaches the log or is written as
+    // `[UNRECOGNIZED]`, so a theme in the union and missing here is a theme the
+    // app can request and cannot report.
+    allowedValues: CLASSIC_STORY_THEMES
   },
   spicyLevel: {
     min: 1,
@@ -451,7 +462,12 @@ export interface ApiResponseMetadata {
 export interface ApiErrorPayload {
   code: string;
   message: string;
-  details?: any;
+  // `unknown` rather than `any`: this is provider or store text a handler
+  // attaches, and every reader of it — `toJobError` is the only one — passes it
+  // along rather than reaching into it. It was `any` here and `unknown` in the
+  // Angular declaration this replaces, which is the looser of two spellings of
+  // one field winning by being the one the API tree read.
+  details?: unknown;
 }
 
 export type ApiResponse<T> = {

@@ -87,6 +87,50 @@ describe('PromptTemplatesService', () => {
     expect(filled).toBe('Notes: ');
   });
 
+  it('presents the production system prompt sections the transcription had lost', () => {
+    const systemPrompt = service.getTemplate('production')!.systemPrompt;
+
+    // Each of these is a section the hand-copy of the production prompt did not
+    // carry, so a variant measured against it was measured against a prompt no
+    // story was ever generated from. See `shared/productionStoryPrompt`.
+    expect(systemPrompt).toContain('MORAL DILEMMA TRIGGER:');
+    expect(systemPrompt).toContain('HOOK PLACEMENT:');
+    expect(systemPrompt).toContain('SERIALIZATION PROMISE:');
+    expect(systemPrompt).toContain('ENHANCED VOICE SYSTEM');
+  });
+
+  it('fills the production user prompt with a planted-element ledger and a labelled creative direction', () => {
+    const template = service.getTemplate('production')!;
+
+    const filled = service.fillTemplate(template, {
+      creature: 'vampire',
+      themes: [{ id: 'betrayal', label: 'Betrayal', description: 'Trust becomes leverage.' }],
+      spicyLevel: 3,
+      wordCount: 900,
+      userInput: 'Set it in an opera house.'
+    });
+
+    expect(filled.user).toContain('CREATIVE DIRECTION: Set it in an opera house.');
+    expect(filled.user).toContain('[Chekhov1]:');
+    expect(filled.user).toContain('[Chekhov2]:');
+    expect(filled.user).not.toContain('{{');
+  });
+
+  it('drops the creative-direction heading when the reader gave no direction, as production does', () => {
+    const template = service.getTemplate('production')!;
+
+    const filled = service.fillTemplate(template, {
+      creature: 'vampire',
+      themes: [],
+      spicyLevel: 3,
+      wordCount: 900,
+      userInput: '   '
+    });
+
+    expect(filled.user).not.toContain('CREATIVE DIRECTION:');
+    expect(filled.user).not.toContain('{{');
+  });
+
   it('fillTemplate keeps the system prompt untouched and fills the user prompt template', () => {
     const template = service.getTemplate('concise')!;
 

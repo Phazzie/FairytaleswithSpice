@@ -79,5 +79,8 @@ export {
   isTerminalStoryLabJobStatus
 } from '../../../story-generator/src/app/contracts';
 
-export type ApiResponse<T> = import('../../../story-generator/src/app/contracts').ApiResponse<T>;
+// Taken from the API's own contract rather than through the Angular one, which
+// now re-exports it from here: the envelope is the backend's, and the Story Lab
+// routes answer with exactly the envelope the classic routes do.
+export type ApiResponse<T> = import('../types/contracts').ApiResponse<T>;
 export type ApiEnvelope<T> = ApiResponse<T>;
