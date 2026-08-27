@@ -60,6 +60,13 @@ for (const structure of STORY_BEAT_STRUCTURES) {
       typeof structure[field] === 'string' && structure[field].trim().length > 0,
       `beat structure ${structure.name} has no ${field}, and every field is written into the prompt`
     );
+    // The rows are delimited, so a cell that still holds the delimiter is a row
+    // whose columns did not land where they were meant to — a mistyped edit that
+    // would otherwise reach the prompt looking like ordinary prose.
+    assert(
+      !structure[field].includes('|'),
+      `beat structure ${structure.name} has a stray delimiter in ${field}; its row is mis-split`
+    );
   }
 }
 
