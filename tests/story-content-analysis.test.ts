@@ -179,6 +179,42 @@ assert(
   'a chapter carrying none of the registers should fall back honestly'
 );
 
+// A whole-word match against a bare stem only matches the present-tense
+// dictionary form, and the prose this scan reads is written in the past tense.
+// Every register was unreachable for an ordinary chapter, so the fallback —
+// which `buildContinuationPrompt` writes into the model's context as the
+// story's `Emotional Tone` — was what the model was told about a chapter of
+// wounds, threats, and laughter.
+{
+  const pastTenseChapter = [
+    '<p>He smiled, and she laughed before the door closed.</p>',
+    '<p>She wanted him, and desired the ruin that came with it.</p>',
+    '<p>The wound ached where the hunt had scarred him.</p>',
+    '<p>It was a dangerous house, and she feared what it threatened.</p>',
+    '<p>He was powerful, and she controlled nothing at all.</p>'
+  ].join('');
+  const tone = analyzeEmotionalTone(pastTenseChapter);
+
+  for (const register of ['passionate', 'dark/suspenseful', 'playful', 'angsty', 'intense']) {
+    assert(
+      tone.includes(register),
+      `past-tense prose should still read as ${register}, got "${tone}"`
+    );
+  }
+}
+
+// The scan reads the rendered text, like every other scanner in that module.
+// Read against the markup, a word the model split across an inline tag is two
+// fragments and matches nothing.
+assert(
+  analyzeEmotionalTone('<p>The house was dan<em>ger</em>ous after dark.</p>').includes('dark/suspenseful'),
+  'a word split across an inline tag should still be read as the word'
+);
+assert(
+  !analyzeEmotionalTone('<p>He was <em>pre</em>dominant among the guests.</p>').includes('intense'),
+  'rejoining the markup should not manufacture a match the prose does not contain'
+);
+
 // ==================== extractThemesFromContent ====================
 // Ported from the whole-word-matching / previously-unreachable-theme regression.
 

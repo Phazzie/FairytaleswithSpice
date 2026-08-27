@@ -21,6 +21,35 @@ type GenesisResponse = ApiEnvelope<StoryIterationPayload>;
 /** What this route serves, for CORS and for `Allow` alike. */
 const GENESIS_STREAM_METHODS = ['GET', 'OPTIONS'];
 
+/**
+ * How far apart the finished chapters are handed out.
+ *
+ * The generation itself is not streamed — `generateStoryLabGenesis` is awaited
+ * whole — so this is the pace of the replay that follows it, which is what
+ * gives the reader a chapter at a time instead of the batch in one frame.
+ *
+ * It was written three times: once as the delay of chapter `n`'s timer, once
+ * inside the `estimatedMsRemaining` each of those frames reports, and once as
+ * the delay of the completion timer. Three copies of one interval is three
+ * places to retune it and two places to forget, and the countdown is the copy
+ * that would be forgotten — nothing in this repository reads it, so a stagger
+ * changed here and not there would go out reporting a rate the stream no
+ * longer runs at, with no failing screen to say so.
+ */
+const CHAPTER_REPLAY_INTERVAL_MS = 500;
+
+/**
+ * What the `connected` frame promises before the generation starts.
+ *
+ * This is an estimate of the model call, not of the replay above: the frame is
+ * sent before `generateStoryLabGenesis` is awaited, and that await is the whole
+ * of the wait. Named beside the interval so the two are visibly measuring
+ * different things — a reader finding `90000` and `500` inline in one handler
+ * has no way to tell that only one of them describes a schedule this file
+ * keeps.
+ */
+const ESTIMATED_MS_PER_GENERATED_CHAPTER = 90_000;
+
 export default async function handler(req: any, res: any) {
   const cors = applyCorsPolicy(req, res, {
     methods: GENESIS_STREAM_METHODS,
@@ -131,7 +160,7 @@ export default async function handler(req: any, res: any) {
   sendChunk({
     type: 'connected',
     percentage: 0,
-    estimatedMsRemaining: parsed.blueprint.chapterBatchSize * 90000
+    estimatedMsRemaining: parsed.blueprint.chapterBatchSize * ESTIMATED_MS_PER_GENERATED_CHAPTER
   });
 
   let genesis: GenesisResponse;
@@ -167,19 +196,30 @@ export default async function handler(req: any, res: any) {
   const storyId = genesis.data.summary.storyId;
   const totalChapters = genesis.data.batch.chapters.length;
 
+  // The last frame of the replay is the completion one, an interval past the
+  // last chapter — so what remains after chapter `n` is every later chapter
+  // plus that one. Counting only the chapters left told the reader nothing was
+  // remaining while the story they are waiting for had not been sent yet: the
+  // final chapter frame reported `0`, and the payload arrived an interval
+  // later. A countdown that reaches zero before the thing it counts down to is
+  // worse than none, because it is the frame that says "now".
+  const replayFrameDelayMs = (frameIndex: number) => frameIndex * CHAPTER_REPLAY_INTERVAL_MS;
+  const completionFrameIndex = totalChapters + 1;
+
   genesis.data.batch.chapters.forEach((chapter, index) => {
+    const frameIndex = index + 1;
     const timeout = setTimeout(() => {
       const progress: StreamingProgressChunk = {
         type: 'chapter_progress',
         storyId,
         chapterNumber: chapter.chapterNumber,
         partialHtml: chapter.htmlContent,
-        percentage: Math.round(((index + 1) / Math.max(totalChapters, 1)) * 100),
-        estimatedMsRemaining: Math.max(totalChapters - (index + 1), 0) * 500
+        percentage: Math.round((frameIndex / Math.max(totalChapters, 1)) * 100),
+        estimatedMsRemaining: replayFrameDelayMs(completionFrameIndex - frameIndex)
       };
 
       sendChunk(progress);
-    }, (index + 1) * 500);
+    }, replayFrameDelayMs(frameIndex));
 
     timeouts.push(timeout);
   });
@@ -193,7 +233,7 @@ export default async function handler(req: any, res: any) {
 
     sendChunk(genesis);
     endStream();
-  }, (totalChapters + 1) * 500);
+  }, replayFrameDelayMs(completionFrameIndex));
 
   timeouts.push(completionTimeout);
 }

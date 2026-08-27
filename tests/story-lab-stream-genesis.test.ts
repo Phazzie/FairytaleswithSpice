@@ -238,6 +238,58 @@ async function testAClosedResponseWithoutASocketIsNeverWrittenTo(): Promise<void
   );
 }
 
+/** Every `data:` frame the route wrote, parsed back out of the SSE framing. */
+function readFrames(response: FakeResponse): Array<Record<string, any>> {
+  return response.chunks
+    .join('')
+    .split('\n\n')
+    .filter(frame => frame.startsWith('data: '))
+    .map(frame => JSON.parse(frame.slice('data: '.length)));
+}
+
+/**
+ * The countdown a chapter frame carries has to be a countdown to the story,
+ * not to the chapter before it.
+ *
+ * `estimatedMsRemaining` counted the chapters still to be replayed and stopped
+ * there, but the replay does not end on the last chapter: the payload the
+ * reader is waiting for goes out one interval later, in the completion frame.
+ * So the final `chapter_progress` frame reported `0` — "arriving now" — while
+ * the story it announces had not been sent, which is the one moment a
+ * countdown must not be wrong about.
+ */
+async function testTheCountdownRunsOutOnlyWhenTheStoryArrives(): Promise<void> {
+  setMockRuntime();
+
+  const response = new FakeResponse();
+  await genesisHandler(createRequest(new FakeSocket()), response);
+  await delay(PAST_EVERY_SCHEDULED_FRAME_MS);
+
+  const frames = readFrames(response);
+  const chapterFrames = frames.filter(frame => frame.type === 'chapter_progress');
+  assert(chapterFrames.length > 0, 'the stream should carry at least one chapter frame');
+
+  for (const frame of chapterFrames) {
+    assert(
+      typeof frame.estimatedMsRemaining === 'number' && frame.estimatedMsRemaining > 0,
+      `a chapter frame should not report the story as already arrived, got ${frame.estimatedMsRemaining}`
+    );
+  }
+
+  // The replay is evenly spaced, so each frame's estimate is the number of
+  // frames still to come times one interval — and for the last chapter that is
+  // exactly the completion frame.
+  const estimates = chapterFrames.map(frame => frame.estimatedMsRemaining as number);
+  const interval = estimates[estimates.length - 1];
+  estimates.forEach((estimate, index) => {
+    const framesRemaining = estimates.length - index;
+    assert(
+      estimate === framesRemaining * interval,
+      `chapter ${index + 1} should count down ${framesRemaining} frames, got ${estimate}`
+    );
+  });
+}
+
 async function testInvalidBlueprintNeverOpensAStream(): Promise<void> {
   setMockRuntime();
 
@@ -256,6 +308,7 @@ async function run(): Promise<void> {
   await testDisconnectStopsTheStream();
   await testAClosedResponseWithoutASocketIsNeverWrittenTo();
   await testAConnectedReaderStillReceivesTheWholeStream();
+  await testTheCountdownRunsOutOnlyWhenTheStoryArrives();
   await testInvalidBlueprintNeverOpensAStream();
 
   console.log('Story Lab genesis stream tests passed');
