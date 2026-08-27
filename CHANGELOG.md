@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Story Lab Auth & Profile Storage failure logging (`clerkAuthPort.ts`, `postgresStoryLabProfileStore.ts`) — the last two `console.warn` call sites in the backend, on the two failure paths that decide whether a signed-in user's session and profile data are trustworthy (August 27, 2026)
+
+- Every sibling paid-surface service (`imageService.ts`, `exportService.ts`, `security.ts`'s
+  `authenticateRequest`, `api/story-lab/evaluate.ts`) had already been migrated off bare
+  `console.warn`/`console.error` onto the structured `logWarn`/`logError` in
+  `api/_lib/utils/logger.ts`. `clerkAuthPort.ts`'s session-verification failure and
+  `postgresStoryLabProfileStore.ts`'s save/load failures were the two call sites left behind —
+  and they guard the paths that matter most for account integrity: whether a signed-in user's
+  session is real, and whether their profile data actually got saved or loaded. A bare
+  `console.warn` here carried no request/user correlation, skipped `redactSensitiveLogData`, and
+  never reached the shared `logBuffer` the Error Display panel reads via `getRecentLogs()` — an
+  operator watching that panel during a production auth or profile incident would have seen
+  nothing.
+- `clerkAuthPort.ts`'s `requireUser` now logs a verification failure through `logWarn` with the
+  request's own correlation id (`readRequestCorrelationId(req)`, the same helper every route
+  already uses) and an `endpoint` tag, instead of a structureless `console.warn`.
+- `postgresStoryLabProfileStore.ts`'s `saveProfile`/`loadProfile` now log a storage failure
+  through `logWarn` with the acting user's id and an `endpoint` tag naming the failing operation
+  (`postgresStoryLabProfileStore.save`/`.load`), instead of `console.warn`.
+- No behavior change to any success path, no contract changes.
+- Added regression coverage in `tests/story-lab-clerk-auth.test.ts` and
+  `tests/story-lab-profile-store.test.ts` asserting the failures land in the structured log
+  buffer with the expected correlation context, and updated the existing malformed-profile test
+  (previously spying on raw `console.warn`) to read `logger.getRecentLogs()` instead, since a
+  single `logWarn` call now produces more than one `console.warn` line.
+
 ### ***WORST TO BEST*** Story Lab's mock generation engine (`mockData.ts`) — the actual runtime path for every keyless deployment, local dev session, and CI run, discarding nearly all of its own input (August 27, 2026)
 
 - `mockData.ts` is what every local dev session, CI run, and any deployment without
