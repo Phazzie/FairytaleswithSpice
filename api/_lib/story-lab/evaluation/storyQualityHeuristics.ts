@@ -174,73 +174,38 @@ const UNRESOLVED_HOOK_WORD_PATTERN = wordFormAlternationPattern([
  * through a lexicon entry rather than through a substring match: a word that
  * means something else, credited as the signal.
  */
-const EXPLICIT_CLIFFHANGER_LABELS = ['cliffhanger', 'to be continued'] as const;
-
-const EXPLICIT_CLIFFHANGER_PATTERN = wordFormAlternationPattern([...EXPLICIT_CLIFFHANGER_LABELS]);
-
-/**
- * How many blocks one label can be spread across, read off the labels
- * themselves.
- *
- * A boundary can only fall *between* words, so a label of three words survives
- * at most three pieces — and that, rather than any measure of how long a block
- * is, is what bounds the reconstruction below. The distinction is the whole of
- * the fourth review finding on this PR: block length is a proxy for "this is a
- * fragment, not prose", and a fragment is free to carry text of its own.
- * `<p>To be<br>continued in Chapter Two</p>` leaves `continued in Chapter Two`
- * as the final piece, which is long enough to read as a paragraph under any
- * length rule — so the walk stopped there and never reached `To be`, and the
- * split spelling scored nothing where the identical inline sentence scored.
- */
-const MOST_BLOCKS_ONE_LABEL_CAN_SPAN = Math.max(
-  ...EXPLICIT_CLIFFHANGER_LABELS.map(label => label.split(' ').length)
-);
+const EXPLICIT_CLIFFHANGER_PATTERN = wordFormAlternationPattern([
+  'cliffhanger', 'to be continued'
+]);
 
 /**
- * Whether a label the markup tore in half is sitting at the end of the story.
+ * Known limit: a label the markup tore in half is not recognised.
  *
  * `splitStoryIntoTextBlocks` treats `<br>` as a block boundary — it has to, or
- * the words on either side of one weld into a single token — so the generator's
- * `<p>To be<br>continued</p>` arrives here as the two blocks `To be` and
- * `continued`, and the last of them is the whole of what a final-block scan can
- * see. Collapsing whitespace does not reach that: the break is *between* blocks,
- * not inside one. What the reader sees is one label either way.
+ * the words on either side weld into a single token — so `<p>To be<br>continued
+ * </p>` arrives as the two blocks `To be` and `continued`, and the final-block
+ * test above sees only the second. That ending scores nothing.
  *
- * Three review rounds went into the two halves of this, and both halves came
- * out the same way: **read the labels, not a proxy for them.**
+ * This PR carried a reconstruction that joined the trailing blocks to put such a
+ * label back together, and it was withdrawn after four review findings against
+ * it — three of them false positives. The last is the one that settles it:
+ * `<p>She wanted to be</p><p>continued through the next trial.</p>` is two
+ * ordinary paragraphs of prose, and joining them *synthesises* the label out of
+ * words that were never a label. That is the same defect the `continued` entry
+ * was removed for, arriving by a different route, and it is worse than the gap
+ * it was added to close.
  *
- * *How far back to look* is `MOST_BLOCKS_ONE_LABEL_CAN_SPAN` above, from the
- * labels' own word counts, rather than a walk that stopped at the first block
- * long enough to look like prose. A fragment may carry text of its own, so
- * length never distinguished the two.
+ * It cannot be fixed at this level. The join is only ever safe across a `<br>`,
+ * and by the time the blocks reach here the splitter has erased which boundary
+ * was which — a `<p>` break and a `<br>` break are the same `\n\n`. Recovering
+ * that means giving `splitStoryIntoTextBlocks` a notion of boundary provenance,
+ * which every scanner in the repository reads and which is a change of its own.
  *
- * *What counts as a reconstruction* is that the last fragment is load-bearing:
- * the join carries a label, and the join without its final piece does not. Two
- * weaker rules let a label describe an ending it was not part of — judging by
- * block length let `<p>The chapter was a cliffhanger.</p><p>She ran</p>` score
- * on a label wholly inside the previous paragraph, and requiring the match to
- * be in no single block still let `<p>To</p><p>be continued</p><p>She ran</p>`
- * through, where the label genuinely is split and genuinely is in none of them
- * alone. Both miss that a closing label is not merely *near* the end, it *is*
- * the end. A label that survives dropping the ending was never the ending's,
- * and that subsumes the second rule rather than joining it.
- *
- * Known limit, in the safe direction: an unrelated earlier label defeats the
- * drop test, so `<p>The cliffhanger was real.</p><p>To</p><p>be continued</p>`
- * reports nothing. That is a missed signal rather than a false one, which is
- * the error an advisory scan should prefer.
+ * So the gap stands, deliberately: a `<br>`-split label is a **missed** signal,
+ * which is the direction an advisory scan should err in. A synthesised one is a
+ * score too high on prose that announces nothing, which is what this dimension
+ * was being repaired for in the first place.
  */
-function hasReconstructedCliffhangerLabel(paragraphs: readonly string[]): boolean {
-  const fragments = paragraphs
-    .slice(-MOST_BLOCKS_ONE_LABEL_CAN_SPAN)
-    .map(block => collapseWhitespace(block).toLowerCase());
-
-  if (fragments.length < 2 || !EXPLICIT_CLIFFHANGER_PATTERN.test(fragments.join(' '))) {
-    return false;
-  }
-
-  return !EXPLICIT_CLIFFHANGER_PATTERN.test(fragments.slice(0, -1).join(' '));
-}
 
 /**
  * Score the ending, reading the final paragraph the way every other dimension
@@ -261,12 +226,9 @@ function hasReconstructedCliffhangerLabel(paragraphs: readonly string[]): boolea
  * `UNRESOLVED_QUESTION_PATTERN` names. It was masked until now by the `continued`
  * entry removed above, which matched either way for the wrong reason.
  *
- * The label test reads the final block as it always did, and falls back to
- * `hasReconstructedCliffhangerLabel` for the other way a label comes apart: a
- * `<br>`, which is a boundary *between* blocks that no amount of collapsing
- * inside one can reach. The two punctuation-and-hook tests stay on the final
- * block alone: those are about how the last thing the reader reads ends, and
- * neither can be split the way a phrase can.
+ * All three tests read the final block. A label a `<br>` broke across blocks is
+ * not recognised — see the note on `EXPLICIT_CLIFFHANGER_PATTERN` for why that
+ * gap is left open rather than closed by joining blocks.
  */
 function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): DimensionDraft {
   const finalParagraph = collapseWhitespace(
@@ -279,10 +241,7 @@ function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): Dimen
   if (UNRESOLVED_HOOK_WORD_PATTERN.test(finalParagraph)) {
     signals.push('Ending contains an unresolved hook word.');
   }
-  if (
-    EXPLICIT_CLIFFHANGER_PATTERN.test(finalParagraph)
-    || hasReconstructedCliffhangerLabel(paragraphs)
-  ) {
+  if (EXPLICIT_CLIFFHANGER_PATTERN.test(finalParagraph)) {
     signals.push('Ending uses explicit cliffhanger language.');
   }
 
