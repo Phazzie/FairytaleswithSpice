@@ -19,6 +19,16 @@ export interface TropeSubversionOptions {
 }
 
 export class TropeSubversionService {
+  /**
+   * How many tropes one story is asked to subvert.
+   *
+   * `StoryService.selectTropeSubversions` — the only caller in the app — passed
+   * its own `randomInt(2, 4)` as `tropeCount` on every call, so this range and
+   * the `getRandomTropeCount` below it had no reachable reader and could be
+   * retuned without changing a single generated story. The caller omits the
+   * count now, which is what makes these two numbers the range rather than a
+   * note beside it.
+   */
   private readonly minTropes = 2;
   private readonly maxTropes = 3;
 
