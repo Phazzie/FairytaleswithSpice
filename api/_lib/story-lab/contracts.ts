@@ -67,11 +67,14 @@ export type {
 } from '../../../story-generator/src/app/contracts';
 
 export {
+  CHAPTER_BATCH_SIZES,
   CREATURE_ARCHETYPES,
   HEAT_INTIMACY_BOUNDARIES,
   HEAT_TENSION_MODES,
   NARRATIVE_TONES,
-  STORY_LAB_LIBRARY_SORTS
+  SPICY_LEVELS,
+  STORY_LAB_LIBRARY_SORTS,
+  WORD_BUDGETS
 } from '../../../story-generator/src/app/contracts';
 
 export type ApiResponse<T> = import('../../../story-generator/src/app/contracts').ApiResponse<T>;

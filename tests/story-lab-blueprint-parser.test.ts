@@ -11,6 +11,7 @@ import {
   STORY_BLUEPRINT_LIMITS
 } from '../shared/storyBlueprintLimits';
 import { STORY_LAB_THEME_SEEDS } from '../shared/storyLabThemeSeeds';
+import { CREATURE_ARCHETYPES } from '../api/_lib/story-lab/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -18,18 +19,10 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
-const allCreatures: CreatureType[] = [
-  'vampire',
-  'werewolf',
-  'fairy',
-  'siren',
-  'djinn',
-  'witch',
-  'dragon',
-  'demon',
-  'angel',
-  'mermaid'
-];
+// The contract's own table rather than a copy: a creature added to the union
+// and not to this list would otherwise leave the loop below silently covering
+// nine of ten.
+const allCreatures: readonly CreatureType[] = CREATURE_ARCHETYPES;
 
 function bodyForCreature(creature: CreatureType) {
   return {

@@ -2,14 +2,14 @@
 
 import { Injectable } from '@angular/core';
 import {
-  ChapterBatchSize,
-  CreatureArchetype,
-  HeatIntimacyBoundary,
-  HeatTensionMode,
-  NarrativeTone,
-  SpicyLevel,
+  CHAPTER_BATCH_SIZES,
+  CREATURE_ARCHETYPES,
+  HEAT_INTIMACY_BOUNDARIES,
+  HEAT_TENSION_MODES,
+  NARRATIVE_TONES,
+  SPICY_LEVELS,
   StoryGenerationSeam,
-  WordBudget
+  WORD_BUDGETS
 } from './contracts';
 import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 
@@ -30,24 +30,28 @@ export type BlueprintValidationField =
 
 export type BlueprintValidationErrors = Partial<Record<BlueprintValidationField, string>>;
 
-const VALID_CREATURES = new Set<CreatureArchetype>([
-  'vampire',
-  'werewolf',
-  'fairy',
-  'siren',
-  'djinn',
-  'witch',
-  'dragon',
-  'demon',
-  'angel',
-  'mermaid'
-]);
-const VALID_TONES = new Set<NarrativeTone>(['romance', 'dark_romance', 'mystery', 'adventure', 'comedy', 'tragedy']);
-const VALID_SPICY_LEVELS = new Set<SpicyLevel>([1, 2, 3, 4, 5]);
-const VALID_WORD_BUDGETS = new Set<WordBudget>([600, 900, 1200, 1500]);
-const VALID_BATCH_SIZES = new Set<ChapterBatchSize>([1, 2, 3]);
-const VALID_HEAT_TENSION_MODES = new Set<HeatTensionMode>(['slow_burn', 'dangerous_proximity', 'playful_banter', 'devotional_longing']);
-const VALID_HEAT_BOUNDARIES = new Set<HeatIntimacyBoundary>(['fade_to_black', 'closed_door', 'literary_on_page']);
+/**
+ * What this form accepts, read from the contract's own tables.
+ *
+ * All seven vocabularies were written out here, and again in
+ * `parseStoryLabBlueprint` in the API tree, which checks the blueprint this
+ * form has just approved. That is the arrangement this class exists to prevent
+ * one field at a time — see `maxCharacterNameLength` below, where the form
+ * accepted a name the route refuses and the reader found out by pressing
+ * generate — held on the vocabularies themselves. Four of the seven already had
+ * a table beside their type in `contracts.ts` that neither copy read; the other
+ * three now do.
+ *
+ * Sets rather than the arrays themselves, because the check below is a
+ * membership test and reads as one.
+ */
+const VALID_CREATURES = new Set<string>(CREATURE_ARCHETYPES);
+const VALID_TONES = new Set<string>(NARRATIVE_TONES);
+const VALID_SPICY_LEVELS = new Set<number>(SPICY_LEVELS);
+const VALID_WORD_BUDGETS = new Set<number>(WORD_BUDGETS);
+const VALID_BATCH_SIZES = new Set<number>(CHAPTER_BATCH_SIZES);
+const VALID_HEAT_TENSION_MODES = new Set<string>(HEAT_TENSION_MODES);
+const VALID_HEAT_BOUNDARIES = new Set<string>(HEAT_INTIMACY_BOUNDARIES);
 
 /**
  * The length the API will measure this free-text field at.
@@ -140,7 +144,7 @@ export class FormValidationService {
       errors.logline = `Keep the logline under ${this.maxLoglineLength} characters.`;
     }
 
-    if (!VALID_SPICY_LEVELS.has(spicyLevel as SpicyLevel)) {
+    if (!VALID_SPICY_LEVELS.has(spicyLevel)) {
       errors.spicyLevel = 'Spicy level must be between 1 and 5.';
     }
 
@@ -155,11 +159,11 @@ export class FormValidationService {
       errors.heatContractNoGoContent = `Keep no-go content under ${this.maxNoGoContentLength} characters.`;
     }
 
-    if (!VALID_WORD_BUDGETS.has(desiredWordBudget as WordBudget)) {
+    if (!VALID_WORD_BUDGETS.has(desiredWordBudget)) {
       errors.desiredWordBudget = 'Choose a supported word budget.';
     }
 
-    if (!VALID_BATCH_SIZES.has(chapterBatchSize as ChapterBatchSize)) {
+    if (!VALID_BATCH_SIZES.has(chapterBatchSize)) {
       errors.chapterBatchSize = 'Choose 1, 2, or 3 chapters per batch.';
     }
 
