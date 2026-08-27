@@ -16,8 +16,21 @@ export const MAX_REQUEST_CORRELATION_ID_LENGTH = 128;
  */
 const REQUEST_CORRELATION_ID_PATTERN = /^[A-Za-z0-9._:+=/-]+$/;
 
+/**
+ * The header the settled id is echoed back on, named once.
+ *
+ * `corsPolicy` lists the same name twice — once as a request header a caller
+ * may send, once as a response header a browser is allowed to read back — and
+ * a route that spelled it a fourth time could disagree with all three.
+ */
+export const REQUEST_CORRELATION_ID_HEADER = 'X-Request-ID';
+
 interface RequestWithHeaders {
   headers?: Record<string, string | string[] | undefined>;
+}
+
+interface ResponseWithHeaders {
+  setHeader(name: string, value: string): void;
 }
 
 /**
@@ -62,4 +75,30 @@ export function readRequestCorrelationId(req: RequestWithHeaders | undefined): s
   }
 
   return `req_${randomUUID()}`;
+}
+
+/**
+ * Settle this request's correlation id and echo it to the caller.
+ *
+ * Reading the id and writing it back are one step, not two: an id that is not
+ * echoed names nothing the caller can quote, and a header written from a value
+ * read anywhere but here is a header that does not obey the rules above. This
+ * was the opening pair of lines inside `beginPostRoute` and reachable only
+ * through it, which made a correlation id something a route could have *only*
+ * by also adopting POST-only method dispatch — so `/api/story-lab/jobs` and
+ * `/api/story-lab/account`, which each serve more than `POST`, had no id at
+ * all. Splitting the id out of the method rules is what lets those two settle
+ * one without pretending to be paid POST routes.
+ *
+ * Call it before anything else the route does, including its CORS branch, so
+ * that a preflight answer carries the id too and every line the request writes
+ * — the method refusal included — can be stamped with it.
+ */
+export function settleRequestCorrelationId(
+  req: RequestWithHeaders | undefined,
+  res: ResponseWithHeaders
+): string {
+  const requestId = readRequestCorrelationId(req);
+  res.setHeader(REQUEST_CORRELATION_ID_HEADER, requestId);
+  return requestId;
 }

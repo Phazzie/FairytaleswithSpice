@@ -18,6 +18,7 @@ import type {
 } from '../contracts';
 import { applyCorsPolicy } from '../../http/corsPolicy';
 import { sendMethodNotAllowed } from '../../http/methodNotAllowed';
+import { settleRequestCorrelationId } from '../../http/requestCorrelationId';
 import { createDefaultStoryLabProfilePreferences } from '../profile/profileDefaults';
 import {
   createDefaultStoryLabUserProfile,
@@ -115,6 +116,15 @@ async function handleStoryLabAccountRouteWithContext(
   req: RequestLike,
   res: ResponseLike
 ): Promise<void> {
+  // Every path in this file is reached through here, on both deployments, so
+  // this is the one place the id is settled — before the preflight branch, so
+  // an `OPTIONS` answer carries it too. The return value is deliberately not
+  // bound: this file writes no log lines today, and the id's whole job here is
+  // to be the value a caller quotes for a request the platform's own logs
+  // recorded. The first log line added to this file should take it from here
+  // rather than reading the header again.
+  settleRequestCorrelationId(req, res);
+
   const cors = applyCorsPolicy(req, res, {
     methods: ACCOUNT_ROUTE_CORS_METHODS,
     credentials: true

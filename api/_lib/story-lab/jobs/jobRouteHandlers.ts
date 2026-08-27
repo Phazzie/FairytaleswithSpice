@@ -20,6 +20,7 @@ import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort } from '../auth/configuredAuthPort';
 import { applyCorsPolicy } from '../../http/corsPolicy';
 import { sendMethodNotAllowed } from '../../http/methodNotAllowed';
+import { settleRequestCorrelationId } from '../../http/requestCorrelationId';
 import { endSseStream, writeSseFrame, type SseResponseLike } from '../../http/sseStream';
 import { RATE_LIMITS } from '../../constants';
 import { enforceApiAccessControl, withEventStreamAuth } from '../../middleware/apiAccessControl';
@@ -130,6 +131,19 @@ async function handleStoryLabJobsRouteWithContext(
   req: RequestLike,
   res: ResponseLike
 ): Promise<void> {
+  // Settled here, once, and handed down rather than settled again below.
+  // Every request that arrives at this route file arrives here: `vercel.json`
+  // rewrites `/api/story-lab/jobs/:jobId[/events]` onto this one file, and
+  // `API_ROUTES` mounts all three of those paths on this same handler. A
+  // sub-handler settling its own would mint a *second* id for the same request
+  // — the ids are minted, not derived, so the two differ whenever the caller
+  // supplied none — and overwrite the header with one the log lines below do
+  // not use. The three handlers exported beside this one settle their own,
+  // because each is the entry point when it is called directly.
+  //
+  // Before the preflight branch, so an `OPTIONS` answer carries the id too.
+  const requestId = settleRequestCorrelationId(req, res);
+
   // A preflight names the method it is asking about in
   // `Access-Control-Request-Method`, not in its own, so an `OPTIONS` fell past
   // the `POST` branch and was answered by the GET handler — which advertises
@@ -147,26 +161,32 @@ async function handleStoryLabJobsRouteWithContext(
   }
 
   if ((req.method ?? '').toUpperCase() === 'POST') {
-    await handleCreateStoryLabJobWithContext(context, req, res);
+    await handleCreateStoryLabJobWithContext(context, req, res, requestId);
     return;
   }
 
   if (isEventsRequest(req)) {
-    await handleStreamStoryLabJobEventsWithContext(context, req, res);
+    await handleStreamStoryLabJobEventsWithContext(context, req, res, requestId);
     return;
   }
 
-  await handleGetStoryLabJobWithContext(context, req, res);
+  await handleGetStoryLabJobWithContext(context, req, res, requestId);
 }
 
 export async function handleCreateStoryLabJob(req: RequestLike, res: ResponseLike): Promise<void> {
-  await handleCreateStoryLabJobWithContext(createDefaultJobRouteContext(), req, res);
+  await handleCreateStoryLabJobWithContext(
+    createDefaultJobRouteContext(),
+    req,
+    res,
+    settleRequestCorrelationId(req, res)
+  );
 }
 
 async function handleCreateStoryLabJobWithContext(
   context: StoryLabJobRouteContext,
   req: RequestLike,
-  res: ResponseLike
+  res: ResponseLike,
+  requestId: string
 ): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: STORY_LAB_JOB_CREATE_METHODS,
@@ -205,12 +225,12 @@ async function handleCreateStoryLabJobWithContext(
   }
 
   if (request.kind === 'genesis') {
-    await createGenesisJob(context, request, req, res);
+    await createGenesisJob(context, request, req, res, requestId);
     return;
   }
 
   if (request.kind === 'continuation') {
-    await createContinuationJob(context, request, req, res);
+    await createContinuationJob(context, request, req, res, requestId);
     return;
   }
 
@@ -218,13 +238,19 @@ async function handleCreateStoryLabJobWithContext(
 }
 
 export async function handleGetStoryLabJob(req: RequestLike, res: ResponseLike): Promise<void> {
-  await handleGetStoryLabJobWithContext(createDefaultJobRouteContext(), req, res);
+  await handleGetStoryLabJobWithContext(
+    createDefaultJobRouteContext(),
+    req,
+    res,
+    settleRequestCorrelationId(req, res)
+  );
 }
 
 async function handleGetStoryLabJobWithContext(
   context: StoryLabJobRouteContext,
   req: RequestLike,
-  res: ResponseLike
+  res: ResponseLike,
+  requestId: string
 ): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: ['GET', 'OPTIONS'],
@@ -239,7 +265,7 @@ async function handleGetStoryLabJobWithContext(
     return;
   }
 
-  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res, requestId);
   if (!resolvedStore) {
     return;
   }
@@ -264,13 +290,19 @@ async function handleGetStoryLabJobWithContext(
 }
 
 export async function handleStreamStoryLabJobEvents(req: RequestLike, res: ResponseLike): Promise<void> {
-  await handleStreamStoryLabJobEventsWithContext(createDefaultJobRouteContext(), req, res);
+  await handleStreamStoryLabJobEventsWithContext(
+    createDefaultJobRouteContext(),
+    req,
+    res,
+    settleRequestCorrelationId(req, res)
+  );
 }
 
 async function handleStreamStoryLabJobEventsWithContext(
   context: StoryLabJobRouteContext,
   req: RequestLike,
-  res: ResponseLike
+  res: ResponseLike,
+  requestId: string
 ): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
     methods: ['GET', 'OPTIONS'],
@@ -300,7 +332,7 @@ async function handleStreamStoryLabJobEventsWithContext(
     return;
   }
 
-  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res, requestId);
   if (!resolvedStore) {
     return;
   }
@@ -353,7 +385,8 @@ async function createGenesisJob(
   context: StoryLabJobRouteContext,
   request: Extract<StoryLabJobCreationRequest, { kind: 'genesis' }>,
   req: RequestLike,
-  res: ResponseLike
+  res: ResponseLike,
+  requestId: string
 ): Promise<void> {
   const parsed = parseStoryLabBlueprintFromBody(request.blueprint);
   if (parsed.error) {
@@ -370,7 +403,7 @@ async function createGenesisJob(
     return;
   }
 
-  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res, requestId);
   if (!resolvedStore) {
     return;
   }
@@ -415,7 +448,8 @@ async function createGenesisJob(
   const result = await runJobWork(
     () => context.generateGenesis(genesisInput),
     'genesis',
-    job.job.jobId
+    job.job.jobId,
+    requestId
   );
   const finishedResult = await tryJobStoreOperation(res, () => finishJob(store, ownerUserId, job.job.jobId, result));
   if (!finishedResult.ok) {
@@ -435,7 +469,8 @@ async function createContinuationJob(
   context: StoryLabJobRouteContext,
   request: Extract<StoryLabJobCreationRequest, { kind: 'continuation' }>,
   req: RequestLike,
-  res: ResponseLike
+  res: ResponseLike,
+  requestId: string
 ): Promise<void> {
   const normalized = normalizeContinuationInput(request.continuation);
   if (!normalized) {
@@ -446,7 +481,7 @@ async function createContinuationJob(
     return;
   }
 
-  const resolvedStore = await resolveJobStoreOrRespond(context, req, res);
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res, requestId);
   if (!resolvedStore) {
     return;
   }
@@ -491,7 +526,8 @@ async function createContinuationJob(
   const result = await runJobWork(
     () => context.continueStory(continuationInput),
     'continuation',
-    job.job.jobId
+    job.job.jobId,
+    requestId
   );
   const finishedResult = await tryJobStoreOperation(res, () => finishJob(store, ownerUserId, job.job.jobId, result));
   if (!finishedResult.ok) {
@@ -539,12 +575,14 @@ function formatDeferredJobKindList(): string {
 async function runJobWork<TPublicResult extends JobResult>(
   work: () => Promise<ApiResponse<TPublicResult>>,
   kind: StoryLabGenerationJobKind,
-  jobId: string
+  jobId: string,
+  requestId: string
 ): Promise<ApiResponse<TPublicResult>> {
   try {
     return await work();
   } catch (error) {
     logError(`Story Lab ${kind} job work threw`, error, {
+      requestId,
       endpoint: '/api/story-lab/jobs'
     }, { jobId, kind });
 
@@ -607,11 +645,12 @@ async function tryJobStoreOperation<T>(
 async function resolveJobStoreOrRespond(
   context: StoryLabJobRouteContext,
   req: RequestLike,
-  res: ResponseLike
+  res: ResponseLike,
+  requestId: string
 ): Promise<ResolvedJobStore | null> {
   const config = context.createJobStoreConfig();
   if (!config.store || !config.isConfigured()) {
-    sendJson(res, 503, jobStoreUnavailable(config));
+    sendJson(res, 503, jobStoreUnavailable(config, requestId));
     return null;
   }
 
@@ -846,7 +885,7 @@ function jobNotFound(): ApiResponse<never> {
   };
 }
 
-function jobStoreUnavailable(config: StoryLabJobStoreConfig): ApiResponse<never> {
+function jobStoreUnavailable(config: StoryLabJobStoreConfig, requestId: string): ApiResponse<never> {
   const routeAuthRequired = Boolean(config.store?.durable);
   const durableMisconfigured = config.mode === 'postgres' && (!config.databaseUrlConfigured || !config.executorConfigured);
   const message = config.mode === 'unsupported'
@@ -857,6 +896,7 @@ function jobStoreUnavailable(config: StoryLabJobStoreConfig): ApiResponse<never>
       ? 'Durable Story Lab job storage requires owner-scoped route auth before it can be enabled.'
       : 'Story Lab job storage is not configured.';
   logWarn('Story Lab job store unavailable', {
+    requestId,
     endpoint: '/api/story-lab/jobs',
     statusCode: 503
   }, {
