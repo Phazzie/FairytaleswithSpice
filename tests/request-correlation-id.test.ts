@@ -6,6 +6,8 @@ import {
   readRequestCorrelationId
 } from '../api/_lib/http/requestCorrelationId';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
+import { createStoryLabAccountRouteHandler } from '../api/_lib/story-lab/account/accountRouteHandlers';
+import { createClerkAuthPort } from '../api/_lib/story-lab/auth/clerkAuthPort';
 import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 import { logger } from '../api/_lib/utils/logger';
 import exportSaveHandler from '../api/export/save';
@@ -164,6 +166,7 @@ async function main(): Promise<void> {
   await testTheEnvelopeReportsTheIdTheHeaderCarries();
   await testTheRoutesThatServeMoreThanPostEchoItToo();
   await testTheJobsRouteLogsUnderTheIdItEchoed();
+  await testTheAuthPortWarnsUnderTheIdTheRouteEchoed();
 
   console.log('Request correlation id tests passed');
 }
@@ -299,6 +302,70 @@ async function testTheJobsRouteLogsUnderTheIdItEchoed(): Promise<void> {
     `the store-unavailable warning should be filed under the echoed id, got ${
       JSON.stringify(warning.context?.requestId)
     }`
+  );
+}
+
+/**
+ * A reader who re-reads the id off the request gets the settled one.
+ *
+ * Not every line written for a request is written by the route that settled the
+ * id, and not every writer is handed it as an argument.
+ * `clerkAuthPort.warnAuthVerificationFailure` calls `readRequestCorrelationId`
+ * on the request it was given, and it is the **only** line an auth failure
+ * writes — on the account route, and on the jobs route whenever the job store
+ * is durable and `requireUser` runs. Echoing the id to the caller without
+ * writing it back left that line minting a second `req_<uuid>` of its own
+ * whenever the caller supplied none, which is the common case here: no client
+ * in this repository sends `x-request-id`. So the header a caller was told to
+ * quote named the one diagnostic they would come back asking about, and finding
+ * it was impossible.
+ *
+ * Driven with **no** `x-request-id` at all, because a supplied id was never
+ * affected — both reads return the same trimmed value — and the minted case is
+ * the one that drifts silently. The Clerk verifier is a stub that throws, so
+ * this proves the provider-failure seam without a provider: the throw is what
+ * `requireUser` turns into the warning.
+ */
+async function testTheAuthPortWarnsUnderTheIdTheRouteEchoed(): Promise<void> {
+  const handler = createStoryLabAccountRouteHandler({
+    authPort: createClerkAuthPort({
+      verifySessionToken: async () => {
+        throw new Error('clerk is unreachable');
+      }
+    })
+  });
+
+  logger.clearLogs();
+
+  const response = new FakeResponse();
+  await handler(
+    {
+      method: 'GET',
+      // Deliberately no `x-request-id`: this is the case that minted one.
+      headers: { authorization: 'Bearer stub-session-token' },
+      query: { resource: 'profile' }
+    } as any,
+    response as any
+  );
+
+  const echoed = response.headers['X-Request-ID'] ?? '';
+  assert(
+    GENERATED_ID_PATTERN.test(echoed),
+    `the account route should mint an id when the caller sends none, got ${JSON.stringify(echoed)}`
+  );
+
+  const warning = logger
+    .getRecentLogs(50, 'warn')
+    .find(entry => entry.message === 'Clerk session verification failed.');
+  assert(
+    warning,
+    'a Clerk verification failure should have been warned about'
+  );
+  assert(
+    warning.context?.requestId === echoed,
+    `the auth failure warning should be filed under the id the caller was echoed (${
+      echoed
+    }), got ${JSON.stringify(warning.context?.requestId)}`
   );
 }
 
