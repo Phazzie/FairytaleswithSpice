@@ -214,6 +214,136 @@ function testOverlongParagraphsAreReportedNotJustPenalised(): void {
 }
 
 /**
+ * The "explicit cliffhanger language" signal has to fire on the language and
+ * not on the prose.
+ *
+ * Both entries of the lexicon it read named ordinary narrative vocabulary, and
+ * between them they inverted the signal. `cliff` could not match `cliffhanger`
+ * at all — `hanger` is not an inflection, so the boundary at the end of the
+ * alternation rejected the compound — which left the rock face as the only
+ * thing it ever matched, in a genre that writes coastlines. And `continued` is
+ * one of the commonest verbs in this prose, so `he continued down the hall`
+ * collected the signal in full; the phrase `to be continued` beside it already
+ * covered the idiom the entry was there for.
+ *
+ * The signal is worth sixteen points of a dimension that is one seventh of the
+ * `overallScore` two prompt variants are compared by in the Proving Grounds.
+ */
+function testExplicitCliffhangerLanguageReadsTheIdiomNotTheProse(): void {
+  const scan = (storyContent: string) => buildStoryQualityHeuristicReport({
+    storyContent,
+    configuration: { creature: 'siren', themes: [], spicyLevel: 3, wordCount: 900 }
+  })
+    .dimensions
+    .find(dimension => dimension.id === 'cliffhanger_quality');
+
+  const EXPLICIT = 'Ending uses explicit cliffhanger language.';
+
+  const verb = scan('<p>She opened the door.</p><p>He continued down the hall</p>');
+  assert(
+    !verb?.signals.includes(EXPLICIT),
+    `an ordinary "continued" is not a cliffhanger announcement (signals=${JSON.stringify(verb?.signals)})`
+  );
+
+  const rockFace = scan('<p>She opened the door.</p><p>They stood on the cliff</p>');
+  assert(
+    !rockFace?.signals.includes(EXPLICIT),
+    `a literal cliff is not a cliffhanger (signals=${JSON.stringify(rockFace?.signals)})`
+  );
+
+  const named = scan('<p>She opened the door.</p><p>The chapter ends on a cliffhanger</p>');
+  assert(
+    named?.signals.includes(EXPLICIT),
+    `the word itself is explicit cliffhanger language (signals=${JSON.stringify(named?.signals)})`
+  );
+
+  const idiom = scan('<p>She opened the door.</p><p>To be continued</p>');
+  assert(
+    idiom?.signals.includes(EXPLICIT),
+    `the idiom the entry existed for still scores (signals=${JSON.stringify(idiom?.signals)})`
+  );
+}
+
+/**
+ * The ending is read with its whitespace collapsed, like every other dimension's
+ * text.
+ *
+ * The final paragraph came straight out of `splitStoryIntoTextBlocks`, whose
+ * blocks keep whatever whitespace the generator wrote inside them — so this was
+ * the one scanning dimension of the seven that had never been through
+ * `collapseWhitespace`, and the inconsistency was inside the one function: the
+ * fallback for a story with no blocks used the collapsed text, and the branch
+ * every real story takes did not.
+ *
+ * `to be continued` is escaped literally, single spaces and all, so an ending
+ * the generator wrapped between the words was invisible to the pattern named
+ * for it. Both spellings are asserted together because the point is that they
+ * are the same ending.
+ */
+function testTheEndingIsScannedWithItsWhitespaceCollapsed(): void {
+  const scan = (storyContent: string) => buildStoryQualityHeuristicReport({
+    storyContent,
+    configuration: { creature: 'siren', themes: [], spicyLevel: 3, wordCount: 900 }
+  })
+    .dimensions
+    .find(dimension => dimension.id === 'cliffhanger_quality');
+
+  const EXPLICIT = 'Ending uses explicit cliffhanger language.';
+
+  const wrapped = scan('The door opened.\n\nTo be\ncontinued');
+  const inline = scan('The door opened.\n\nTo be continued');
+
+  assert(
+    inline?.signals.includes(EXPLICIT),
+    `the phrase on one line should score (signals=${JSON.stringify(inline?.signals)})`
+  );
+  assert(
+    wrapped?.signals.includes(EXPLICIT),
+    `the same phrase wrapped between its words is the same ending (signals=${JSON.stringify(wrapped?.signals)})`
+  );
+  assert(
+    wrapped?.score === inline?.score,
+    `where the line breaks should not change the score (wrapped=${wrapped?.score}, inline=${inline?.score})`
+  );
+}
+
+/**
+ * Every theme the contract names has to be reachable by the dimension that
+ * reports it.
+ *
+ * A theme id is split on its separators, and the filter on the pieces exists to
+ * drop the connective the split exposes — the `to` in `enemies_to_lovers`,
+ * which appears in every story ever written. The floor was one letter above
+ * every connective in either vocabulary, and `sin` is exactly three letters, so
+ * it was filtered out of its own word list and `[].some(…)` is `false`: a story
+ * of sin, sinners, and damnation could never echo the theme it was configured
+ * with, and lost the twelve points a matched theme is worth on the one
+ * dimension that exists to say the story kept its configuration's promise.
+ */
+function testEveryConfiguredThemeCanBeEchoed(): void {
+  const scan = (storyContent: string, themes: string[]) => buildStoryQualityHeuristicReport({
+    storyContent,
+    configuration: { creature: 'siren', themes, spicyLevel: 3, wordCount: 900 }
+  })
+    .dimensions
+    .find(dimension => dimension.id === 'continuity');
+
+  const sin = scan('<p>She confessed her sin to the priest, and the sinners went on singing.</p>', ['sin']);
+  assert(
+    sin?.signals.includes('Theme echo appears: sin'),
+    `the shortest classic theme is still a theme (signals=${JSON.stringify(sin?.signals)})`
+  );
+
+  // The connective the filter exists for: a story naming neither enemies nor
+  // lovers must not echo the theme on its `to`.
+  const connective = scan('<p>She walked to the door and listened to the rain.</p>', ['enemies_to_lovers']);
+  assert(
+    !connective?.signals.some(signal => signal.startsWith('Theme echo')),
+    `"to" is a joint between a theme's words, not the theme (signals=${JSON.stringify(connective?.signals)})`
+  );
+}
+
+/**
  * The two identity-shaped dimensions have to be able to say "no".
  *
  * Both used to answer yes to everything. `\b[A-Z][a-z]+\b` matches the first
@@ -717,6 +847,9 @@ async function main(): Promise<void> {
   testActivationMatchingReadsNonLatinThreads();
   testDialogueSpeakersCountAsCast();
   testBoundaryRulesRejectOnlyTheBoundary();
+  testExplicitCliffhangerLanguageReadsTheIdiomNotTheProse();
+  testTheEndingIsScannedWithItsWhitespaceCollapsed();
+  testEveryConfiguredThemeCanBeEchoed();
 
   const heuristicReport = buildStoryQualityHeuristicReport({
     storyContent: [
