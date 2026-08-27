@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** StoryService content-analysis heuristics — pure string logic trapped in a 2,200-line god class, tested only through `as any` casts (August 27, 2026)
+
+- `api/_lib/services/storyService.ts` was the largest file in the repo: a
+  `StoryService` class mixing AI orchestration, prompt building, mock-content
+  generation, and a cluster of content-analysis heuristics
+  (`extractCharacterNames`, `extractPlotThreads`, `analyzeEmotionalTone`,
+  `extractThemesFromContent`, `extractSpicyLevelFromContent`,
+  `extractLastChapterSummary`, and more) that infer metadata from
+  previously-generated prose to feed the next continuation prompt — all as
+  private methods on one class, alongside a live XAI client, cliffhanger
+  service, and trope service.
+- Those exact heuristics are what the last several "quick wins" PRs patched one
+  bug at a time (#258 spicy level misread out of "hearth"/"gloves", #259 five
+  emotions misread out of "danger"/"reached", #261 "witch" read out of
+  "switch"). The tests proved the design was wrong: `tests/story-service-improved.test.ts`
+  and `tests/story-service-prompt-guards.test.ts` reached into these private
+  methods via `(service as any).extractLastChapterSummary(...)` casts and a
+  hand-redeclared `analyzeEmotionalTone` interface, just to call a pure
+  string-to-string function.
+- Extracted every state-free content-analysis/formatting method into a new
+  module, `api/_lib/services/storyContentAnalysis.ts`, as plain exported
+  functions with unchanged behavior. `StoryService` now imports and calls
+  them; `storyService.ts` shrank from 2,219 to 1,682 lines. `detectCliffhanger`
+  stayed on the class since it delegates to `this.cliffhangerService`.
+- Added `tests/story-content-analysis.test.ts`, which imports the new module
+  directly — no `as any`, no class instantiation, no API key — and gives
+  `extractCharacterNames`, `extractPlotThreads`, `extractChapterTitleAndBody`,
+  `createContextExcerpt`, `getCreatureDisplayName`, `getSpicyLabel`, and
+  `formatChapterContent` their first dedicated tests; previously they were
+  reachable only through the full `generateStory`/`continueChapter` pipeline.
+  Cleaned up the `as any` reach-ins and the hand-rolled interface in the two
+  existing test files, which now import the module directly as well.
+- Pure extraction and test cleanup — no behavior change. Verified with
+  `tsc --noEmit` over the API layer and the Angular app/specs, and the full
+  `npm run test:all` backend suite (all green).
+
 ### 🐛 Three Quick Wins — a witch read out of "switch", a reset instant fifty thousand years out, an evaluation refusal reported as an outage (August 26, 2026)
 
 #### Three story-quality dimensions still reading substrings
