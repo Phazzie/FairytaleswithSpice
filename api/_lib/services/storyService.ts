@@ -30,7 +30,11 @@ import {
 import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService, hasIdentifiedCliffhangerType } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
-import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
+// `logger` itself is no longer imported: its only two uses here were the
+// `logger.generateRequestId()` calls that opened `generateStory` and
+// `continueChapter`, both of which now resolve the route's correlation id
+// instead. The named helpers below are the whole of this file's logging.
+import { logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 import { estimateReadTimeMinutes } from '../utils/readTime';
 import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
 import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
