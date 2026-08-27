@@ -174,13 +174,20 @@ const BLOCK_BOUNDARY_PATTERN = boundaryPattern(`${PARAGRAPH_LEVEL_TAG_NAMES}|br`
  * Whether a tag the pass above matched is the one kind that does *not* start a
  * new paragraph.
  *
- * Deliberately not global: `.test()` on a `g` pattern advances `lastIndex` and
- * so answers differently on the same input from one call to the next, which in
- * a classifier is a defect waiting for its second caller. It is asked only
- * about a whole tag the pass above already matched, so there is nothing else in
- * the string for an unanchored test to find.
+ * Reads the tag's **own leading name** and nothing else. Searching the matched
+ * text for a `<br>` anywhere in it is not the same question and gets a different
+ * answer: `[^>]*` stops at the first `>`, so a quoted attribute containing a tag
+ * hands this a truncated match — `<div title="Use <br>` — in which an
+ * unanchored search finds the attribute's `<br>` and calls the `<div>` a line
+ * wrap. Two rendered paragraphs then merge into one group and a consumer joins
+ * across a real block boundary, which is the one thing the grouping exists to
+ * prevent.
+ *
+ * Deliberately not global either: `.test()` on a `g` pattern advances
+ * `lastIndex` and so answers differently on the same input from one call to the
+ * next, which in a classifier is a defect waiting for its second caller.
  */
-const LINE_BREAK_TAG_PATTERN = boundaryPattern('br', 'i');
+const LINE_BREAK_TAG_PATTERN = /^<\s*\/?br\b/i;
 
 /**
  * How a line wrap is carried from the boundary pass to the split below.

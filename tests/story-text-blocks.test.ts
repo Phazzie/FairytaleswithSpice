@@ -120,6 +120,36 @@ for (const [wrapped, inline] of [
   );
 }
 
+// Which kind of boundary a tag is depends on the tag's own name and on nothing
+// in its attributes. Caught by Codex on this PR: `[^>]*` stops at the first
+// `>`, so a quoted attribute carrying a tag hands the classifier a truncated
+// match — `<div title="Use <br>` — and a classifier that searched it found the
+// attribute's `<br>` and called the `<div>` a line wrap. Two rendered
+// paragraphs then merged into one group, which is a consumer joining across a
+// real block boundary: the one thing the grouping exists to prevent.
+//
+// Asserted as the rule rather than as the example, by comparing the *shape* of
+// the grouping — how many blocks in how many groups — against the same markup
+// with a bare tag. The text differs, because the truncated attribute leaves a
+// remnant; the structure must not.
+const groupingShape = (storyContent: string) =>
+  JSON.stringify(splitStoryIntoRenderedParagraphs(storyContent).map(group => group.length));
+
+for (const [withAttribute, bare] of [
+  // A paragraph-level tag stays one however much its attributes look otherwise.
+  ['Prelude<div title="Use <br> here">A</div>', 'Prelude<div>A</div>'],
+  ['<p>One</p><p title="a <br> b">Two</p>', '<p>One</p><p>Two</p>'],
+  // And the mirror: a real `<br>` stays a line wrap with a `<p>` in its
+  // attributes, which is the same mistake pointing the other way.
+  ['A<br title="<p>">B', 'A<br>B'],
+  ['<p>To be<br title="</p>">continued</p>', '<p>To be<br>continued</p>']
+]) {
+  assert(
+    groupingShape(withAttribute) === groupingShape(bare),
+    `a tag's attributes must not change what kind of boundary it is (${JSON.stringify(withAttribute)} grouped ${groupingShape(withAttribute)}, bare grouped ${groupingShape(bare)})`
+  );
+}
+
 // A `\0` cannot appear in rendered prose and is how a line wrap is carried
 // internally, so one arriving from a caller must not be able to forge a
 // boundary inside a paragraph.
