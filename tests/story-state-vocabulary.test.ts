@@ -176,6 +176,76 @@ assert(
   withStrangers.characters[0]?.spiceCompatibilities.join() === '3',
   'a spice level outside the scale is dropped, leaving the middle-of-the-scale default'
 );
+
+// ==================== Dropping the bad value does not take the good state ====================
+//
+// Refusing an unrecognised value is only half of it. The other half is what the
+// refusal costs, and for the two array fields it used to cost the state: an
+// array whose entries were *all* refused satisfied `Array.isArray`, filtered
+// down to nothing, and the empty list was stored — so a model answering the one
+// edge `relationship: "mentor"` cleared a `lover` edge the story had actually
+// established. That is this file's whole thesis failing one level up, and the
+// fixtures below are the case that proves it rather than the shape of it.
+
+function stateWithRelationship(): StoryStateSnapshot {
+  return {
+    ...emptyState(),
+    characters: [{
+      id: 'character-1',
+      displayName: 'Mira',
+      archetype: 'protagonist',
+      summary: 'Anchors the story.',
+      currentGoal: 'Keep the oath.',
+      internalConflict: 'Desire against duty.',
+      externalConflict: 'The court refuses her.',
+      secrets: [],
+      relationships: [{ characterId: 'character-2', relationship: 'lover', notes: 'bound by oath' }],
+      spiceCompatibilities: [3]
+    }]
+  };
+}
+
+function mergedRelationships(relationships: unknown): string {
+  const merged = mergeAiContinuity(stateWithRelationship(), {
+    characters: [{
+      id: 'character-1',
+      displayName: 'Mira',
+      ...(relationships === undefined ? {} : { relationships: relationships as never })
+    }]
+  }, now);
+
+  return JSON.stringify(merged.characters[0]?.relationships);
+}
+
+const establishedEdge = JSON.stringify([{ characterId: 'character-2', relationship: 'lover', notes: 'bound by oath' }]);
+
+assert(
+  mergedRelationships([{ characterId: 'character-2', relationship: 'mentor' }]) === establishedEdge,
+  'an edge whose kind is outside the table must not clear the relationships the story established'
+);
+assert(
+  mergedRelationships([null, 'character-2', {}]) === establishedEdge,
+  'entries that are not edges at all must not clear the relationships the story established'
+);
+assert(
+  mergedRelationships(undefined) === establishedEdge,
+  'omitting relationships leaves the established ones alone'
+);
+
+// The distinction the fallback turns on, asserted in both directions: an array
+// that arrives empty is the model reporting that this character has no
+// relationships, which it is allowed to say, and that still clears.
+assert(
+  mergedRelationships([]) === '[]',
+  'an empty array is a report of no relationships and still clears them'
+);
+assert(
+  mergedRelationships([
+    { characterId: 'character-2', relationship: 'mentor' },
+    { characterId: 'character-3', relationship: 'rival', notes: 'n' }
+  ]) === JSON.stringify([{ characterId: 'character-3', relationship: 'rival', notes: 'n' }]),
+  'a partly valid array keeps what survived rather than falling back to the previous edges'
+);
 assert(
   withStrangers.threads[0]?.status === 'active',
   'a thread status outside the table falls back to the default rather than being stored'

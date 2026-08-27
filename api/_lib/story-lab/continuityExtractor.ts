@@ -395,6 +395,21 @@ function isNonEmptyString(value: unknown): value is string {
  * `"mentor"` is proposing a kind this app has no reading for; `notes` is
  * required by the type and defaults to empty rather than being left `undefined`
  * under a declaration that says it is a string.
+ *
+ * An array whose entries are *all* refused falls back rather than storing the
+ * empty list the filter produced. Dropping the bad edge is right; letting the
+ * drop take the character's real relationships with it is not, and that is what
+ * happened: a model answering the single edge `{characterId, relationship:
+ * "mentor"}` cleared a `lover` edge the story had actually established, because
+ * `Array.isArray` was satisfied and nothing survived the filter. `spiceLevels`
+ * below already reads this way and its note says why; this is the same rule for
+ * the array beside it.
+ *
+ * An array that arrives *empty* still clears, and the difference is the point.
+ * `[]` is the model saying this character has no relationships, which is a fact
+ * it is allowed to report; an array with entries in it is the model trying to
+ * report relationships and getting the vocabulary wrong, which is not a reason
+ * to believe the ones already recorded are gone.
  */
 function relationshipEdges(
   candidate: unknown,
@@ -404,7 +419,7 @@ function relationshipEdges(
     return fallback ?? [];
   }
 
-  return candidate.flatMap(entry => {
+  const edges = candidate.flatMap(entry => {
     if (!entry || typeof entry !== 'object') {
       return [];
     }
@@ -420,6 +435,8 @@ function relationshipEdges(
       notes: typeof edge.notes === 'string' ? edge.notes.trim() : ''
     }];
   });
+
+  return edges.length || candidate.length === 0 ? edges : fallback ?? [];
 }
 
 /**
