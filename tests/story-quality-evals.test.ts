@@ -360,6 +360,22 @@ function testTheEndingIsScannedWithItsWhitespaceCollapsed(): void {
     `a label broken into three blocks is still the ending (signals=${JSON.stringify(thirds?.signals)})`
   );
 
+  // A fragment may carry text of its own, so how long a block is never said
+  // whether it was a piece of a label. Caught by Codex on this PR: under a
+  // length rule the final piece here reads as prose, the walk stopped at it,
+  // and the split spelling scored nothing while the identical inline sentence
+  // scored. Both spellings are the same sentence to a reader.
+  const longTail = scan('<p>To be<br>continued in Chapter Two</p>');
+  const longTailInline = scan('<p>To be continued in Chapter Two</p>');
+  assert(
+    longTailInline?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `the inline spelling scores (signals=${JSON.stringify(longTailInline?.signals)})`
+  );
+  assert(
+    longTail?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a <br> before a long remainder is still the same label (signals=${JSON.stringify(longTail?.signals)})`
+  );
+
   // The reconstruction must not cost the ordinary case either: a label with
   // prose after it, inside one block, is still the block's own match.
   const trailing = scan('<p>The door opened.</p><p>To be continued, she thought.</p>');

@@ -174,17 +174,27 @@ const UNRESOLVED_HOOK_WORD_PATTERN = wordFormAlternationPattern([
  * through a lexicon entry rather than through a substring match: a word that
  * means something else, credited as the signal.
  */
-const EXPLICIT_CLIFFHANGER_PATTERN = wordFormAlternationPattern([
-  'cliffhanger', 'to be continued'
-]);
+const EXPLICIT_CLIFFHANGER_LABELS = ['cliffhanger', 'to be continued'] as const;
+
+const EXPLICIT_CLIFFHANGER_PATTERN = wordFormAlternationPattern([...EXPLICIT_CLIFFHANGER_LABELS]);
 
 /**
- * The longest label the pattern above can match, in characters.
+ * How many blocks one label can be spread across, read off the labels
+ * themselves.
  *
- * Used as the measure of "too short to be a paragraph" below, because a block
- * that could not even hold the whole label is not prose — it is a piece of one.
+ * A boundary can only fall *between* words, so a label of three words survives
+ * at most three pieces — and that, rather than any measure of how long a block
+ * is, is what bounds the reconstruction below. The distinction is the whole of
+ * the fourth review finding on this PR: block length is a proxy for "this is a
+ * fragment, not prose", and a fragment is free to carry text of its own.
+ * `<p>To be<br>continued in Chapter Two</p>` leaves `continued in Chapter Two`
+ * as the final piece, which is long enough to read as a paragraph under any
+ * length rule — so the walk stopped there and never reached `To be`, and the
+ * split spelling scored nothing where the identical inline sentence scored.
  */
-const LONGEST_EXPLICIT_CLIFFHANGER_LABEL = 'to be continued'.length;
+const MOST_BLOCKS_ONE_LABEL_CAN_SPAN = Math.max(
+  ...EXPLICIT_CLIFFHANGER_LABELS.map(label => label.split(' ').length)
+);
 
 /**
  * Whether a label the markup tore in half is sitting at the end of the story.
@@ -196,34 +206,34 @@ const LONGEST_EXPLICIT_CLIFFHANGER_LABEL = 'to be continued'.length;
  * see. Collapsing whitespace does not reach that: the break is *between* blocks,
  * not inside one. What the reader sees is one label either way.
  *
- * The reconstruction has to be exactly that and nothing more, and it took two
- * rounds of review to state the condition that makes it so. Two weaker rules
- * both let a label describe an ending it is not part of:
+ * Three review rounds went into the two halves of this, and both halves came
+ * out the same way: **read the labels, not a proxy for them.**
  *
- * - **Judging the join by block length.** `<p>The chapter was a
- *   cliffhanger.</p><p>She ran</p>` scored, on a label wholly inside the
- *   *previous* paragraph and an ending that announces nothing.
- * - **Requiring the match to be in no single block.** Closes the case above but
- *   not `<p>To</p><p>be continued</p><p>She ran</p>`, where the label really is
- *   split across blocks, really is in none of them alone — and still stops one
- *   block short of the ending.
+ * *How far back to look* is `MOST_BLOCKS_ONE_LABEL_CAN_SPAN` above, from the
+ * labels' own word counts, rather than a walk that stopped at the first block
+ * long enough to look like prose. A fragment may carry text of its own, so
+ * length never distinguished the two.
  *
- * What both miss is that a closing label is not merely *near* the end, it *is*
- * the end. So the condition is that the last fragment is load-bearing: the join
- * carries a label, and the join without its final piece does not. A label that
- * survives dropping the ending was never the ending's. That subsumes the second
- * rule — a label wholly inside an earlier block survives the drop — so it is the
- * only test here rather than a third condition stacked on two.
+ * *What counts as a reconstruction* is that the last fragment is load-bearing:
+ * the join carries a label, and the join without its final piece does not. Two
+ * weaker rules let a label describe an ending it was not part of — judging by
+ * block length let `<p>The chapter was a cliffhanger.</p><p>She ran</p>` score
+ * on a label wholly inside the previous paragraph, and requiring the match to
+ * be in no single block still let `<p>To</p><p>be continued</p><p>She ran</p>`
+ * through, where the label genuinely is split and genuinely is in none of them
+ * alone. Both miss that a closing label is not merely *near* the end, it *is*
+ * the end. A label that survives dropping the ending was never the ending's,
+ * and that subsumes the second rule rather than joining it.
+ *
+ * Known limit, in the safe direction: an unrelated earlier label defeats the
+ * drop test, so `<p>The cliffhanger was real.</p><p>To</p><p>be continued</p>`
+ * reports nothing. That is a missed signal rather than a false one, which is
+ * the error an advisory scan should prefer.
  */
 function hasReconstructedCliffhangerLabel(paragraphs: readonly string[]): boolean {
-  const fragments: string[] = [];
-  for (let index = paragraphs.length - 1; index >= 0; index -= 1) {
-    const block = collapseWhitespace(paragraphs[index]).toLowerCase();
-    fragments.unshift(block);
-    if (block.length >= LONGEST_EXPLICIT_CLIFFHANGER_LABEL) {
-      break;
-    }
-  }
+  const fragments = paragraphs
+    .slice(-MOST_BLOCKS_ONE_LABEL_CAN_SPAN)
+    .map(block => collapseWhitespace(block).toLowerCase());
 
   if (fragments.length < 2 || !EXPLICIT_CLIFFHANGER_PATTERN.test(fragments.join(' '))) {
     return false;
