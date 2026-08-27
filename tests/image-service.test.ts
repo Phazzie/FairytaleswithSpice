@@ -602,6 +602,72 @@ async function testTheRequestIdReachesTheEnvelopeAndTheLog(): Promise<void> {
   }
 }
 
+/**
+ * The response body may carry only a message written for the caller.
+ *
+ * `generateImage`'s catch block ended `message: error.message || 'Failed to
+ * generate image'`, so anything thrown under it decided what
+ * `/api/image/generate` told the reader. `runJobWork` states the rule for the
+ * same situation — "The thrown detail goes to the log rather than into the job,
+ * which is read by the caller and should not carry whatever a provider error
+ * says" — and `ExportService.saveAndExport` follows it; this catch was the
+ * exception.
+ *
+ * Both halves are asserted, because either one alone is satisfiable by the
+ * wrong fix: a raw failure must not reach the envelope, and the sentence
+ * `callGrokImageAI` deliberately writes for the reader must still reach it.
+ * A raw axios rejection is the realistic case — the network error a client
+ * raises before any HTTP status exists names the provider's host.
+ */
+async function testOnlyCallerFacingMessagesReachTheEnvelope(): Promise<void> {
+  const originalPost = axios.post;
+  const originalKey = process.env['XAI_API_KEY'];
+  process.env['XAI_API_KEY'] = 'test-key';
+
+  try {
+    (axios as { post: unknown }).post = async () => {
+      throw new Error('getaddrinfo ENOTFOUND api.x.ai');
+    };
+    const providerFailure = await new ImageService().generateImage(createInput());
+
+    assert(!providerFailure.success, 'a provider failure should not be reported as a success');
+    assert(
+      providerFailure.error?.message === 'AI image service temporarily unavailable',
+      `a provider failure should answer the sentence written for the reader (got ${providerFailure.error?.message})`
+    );
+    assert(
+      !providerFailure.error?.message.includes('api.x.ai'),
+      'the provider host should not reach the response body'
+    );
+
+    // A throw from anywhere else under `generateImage` — the shape of failure
+    // `validateImageInput`'s own docblock describes, reaching the reader as
+    // `input.themes.map is not a function`. Raised here from the prompt builder
+    // by a themes array that passes validation and then breaks on `.map`.
+    const brokenThemes = createInput();
+    (brokenThemes.themes as unknown as { map: unknown }).map = () => {
+      throw new TypeError('internal detail the caller must not be shown');
+    };
+    (axios as { post: unknown }).post = async () => ({
+      data: { data: [{ url: 'https://images.example/story.png' }] }
+    });
+    const internalFailure = await new ImageService().generateImage(brokenThemes);
+
+    assert(!internalFailure.success, 'an internal failure should not be reported as a success');
+    assert(
+      internalFailure.error?.message === 'Failed to generate image',
+      `an internal failure should answer the fixed sentence (got ${internalFailure.error?.message})`
+    );
+  } finally {
+    (axios as { post: unknown }).post = originalPost;
+    if (originalKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalKey;
+    }
+  }
+}
+
 async function main(): Promise<void> {
   await testEveryCreatureArchetypeReachesThePrompt();
   await testEveryThemeTheAppOffersReachesThePrompt();
@@ -615,6 +681,7 @@ async function main(): Promise<void> {
   testProviderResponsesWithoutAUrlAreRefused();
   await testTheServiceRefusesAProviderResponseWithoutAUrl();
   await testProviderFailuresNeverPrintTheApiKey();
+  await testOnlyCallerFacingMessagesReachTheEnvelope();
   await testTheRequestIdReachesTheEnvelopeAndTheLog();
 
   console.log('Image service tests passed');
