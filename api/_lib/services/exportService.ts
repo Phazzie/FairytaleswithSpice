@@ -3,10 +3,15 @@ import { SaveExportSeam, ApiResponse, EXPORT_FORMATS, ExportFormat } from '../ty
 import {
   escapeHtml,
   escapePdfText,
+  escapeXmlText,
   sanitizeStoryHtmlForExport,
   stripStoryHtmlForExport
 } from './exportSanitizer';
 import { buildZipArchive, ZipEntry } from './zipArchive';
+import { estimateReadTimeMinutes } from '../utils/readTime';
+import { readStoryLabThemeLabel, titleCaseIdentifier } from '../../../shared/storyLabThemeSeeds';
+import { logError } from '../utils/logger';
+import { toLoggableExportFormat, toLoggableStoryId } from '../utils/loggableRequestParameters';
 
 // US Letter, in the points a PDF's default user space is measured in.
 const PDF_PAGE_WIDTH = 612;
@@ -142,16 +147,74 @@ function trimTrailingSeparators(stem: string): string {
 }
 
 interface ExportMetadata {
+  /** ISO 8601, because this is the machine field. See `formatGeneratedAt`. */
   generatedAt: string;
   wordCount: number;
+  /** Whole minutes. See `formatReadTime` for how it is written out. */
   readTime: number;
   creature: string;
   themes: string[];
 }
 
+/**
+ * Write the "Story Information" block's three derived values the way a reader
+ * reads them.
+ *
+ * That block is not a log line or a debug view: it is the head of the `.html`
+ * and `.txt` documents the export button hands the reader to keep, and it was
+ * written as if it were. `readStoryLabThemeLabel` and `titleCaseIdentifier`
+ * were added to it for exactly this reason — the themes and the creature were
+ * being printed as the wire values `enemies_to_lovers` and `vampire` — and the
+ * two lines above them were left as they were:
+ *
+ * - **The timestamp was the wire form.** `new Date().toISOString()` went
+ *   straight onto the page, so a reader opening their own story found
+ *   `Generated: 2026-08-26T23:52:14.472Z` under the title — a format chosen for
+ *   sorting and parsing, carrying milliseconds nothing about a story needs, in
+ *   a timezone that is nobody's. The field stays ISO on `ExportMetadata`
+ *   because that is what a machine reading the record wants; only what is
+ *   printed changes.
+ * - **The read time was always plural.** `${metadata.readTime} minutes` reads
+ *   "1 minutes" for every story under two hundred words, which is most of a
+ *   single chapter at the smallest word budget the form offers.
+ *
+ * UTC is named rather than resolved to a local zone: the export is rendered on
+ * a serverless function whose timezone is the deployment's, not the reader's,
+ * so a "local" time here would be a stranger's local time presented as theirs.
+ * Saying `UTC` is the honest version of the same instant.
+ */
+function formatGeneratedAt(isoTimestamp: string): string {
+  const parsed = new Date(isoTimestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return isoTimestamp;
+  }
+
+  const date = parsed.toISOString().slice(0, 10);
+  const time = parsed.toISOString().slice(11, 16);
+
+  return `${date} at ${time} UTC`;
+}
+
+function formatReadTime(minutes: number): string {
+  return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+}
+
 export class ExportService {
-  async saveAndExport(input: SaveExportSeam['input']): Promise<ApiResponse<SaveExportSeam['output']>> {
+  /**
+   * @param requestId The route's correlation id — the value it echoed as
+   *   `X-Request-ID` and stamps into every log line it writes. See
+   *   `resolveRequestId` for why it is an argument rather than something this
+   *   service mints for itself.
+   */
+  async saveAndExport(
+    input: SaveExportSeam['input'],
+    requestId?: string
+  ): Promise<ApiResponse<SaveExportSeam['output']>> {
     const startTime = Date.now();
+    // Once, at the top, so every branch below reports the same id. It used to be
+    // `this.generateRequestId()` called separately in each of the three, which
+    // is three ids per method for a response that carries one.
+    const correlationId = this.resolveRequestId(requestId);
 
     try {
       // Validate input
@@ -161,7 +224,7 @@ export class ExportService {
           success: false,
           error: validationError,
           metadata: {
-            requestId: this.generateRequestId(),
+            requestId: correlationId,
             processingTime: Date.now() - startTime
           }
         };
@@ -195,13 +258,41 @@ export class ExportService {
         success: true,
         data: output,
         metadata: {
-          requestId: this.generateRequestId(),
+          requestId: correlationId,
           processingTime: Date.now() - startTime
         }
       };
 
-    } catch {
-      console.error('Export failed');
+    } catch (error) {
+      // `catch {}` with `console.error('Export failed')` inside it, which is
+      // where this started. The binding is the fix: an unbound catch discards
+      // the only object that says what went wrong, so the five renderers behind
+      // this method — a PDF assembler that measures its own byte offsets, two
+      // zip containers, two string templates — failed into a single unqualified
+      // sentence with no name, no message, no code, and no stack anywhere. The
+      // route's own catch did the same thing one level up, so a 500 from
+      // `/api/export/save` left nothing at all behind to diagnose it with.
+      //
+      // `logError` names the fields it keeps — `name`, `message`, `stack`,
+      // `code`, `response.status`, `response.data` — and runs them through
+      // `redactSensitiveLogData`, which is what makes it safe to keep the error
+      // from a method whose input is the reader's whole story: the prose is not
+      // among those fields, and the strings that are still pass through token
+      // redaction. `ImageService` and `XaiTextClient` have logged their failures
+      // this way since the logger was written; this was the last service on this
+      // surface still writing to the console.
+      //
+      // The format and the story id go through the same allow-lists the route's
+      // own log lines put them through: both are caller text, and the id that is
+      // not id-shaped is reduced rather than printed.
+      logError('Export failed', error, {
+        requestId: correlationId,
+        endpoint: '/api/export/save',
+        method: 'POST'
+      }, {
+        storyId: toLoggableStoryId(input.storyId),
+        format: toLoggableExportFormat(input.format)
+      });
 
       return {
         success: false,
@@ -210,7 +301,7 @@ export class ExportService {
           message: 'Failed to export story'
         },
         metadata: {
-          requestId: this.generateRequestId(),
+          requestId: correlationId,
           processingTime: Date.now() - startTime
         }
       };
@@ -225,24 +316,53 @@ export class ExportService {
    * way to assert on what an export actually contains.
    */
   async generateExportContent(input: SaveExportSeam['input']): Promise<Buffer> {
-    const sanitizedHtml = sanitizeStoryHtmlForExport(input.content);
-    const plainText = stripStoryHtmlForExport(input.content);
-    const metadata = this.generateMetadata(plainText, input);
-
+    // Each branch takes only the readings its own document is built from. All
+    // three used to run for every format, and two of them are whole-story scans
+    // on the one route that caps its body at 500KB *because* the story is large:
+    //
+    // - `sanitizeStoryHtmlForExport` walks the markup tag by tag, and only the
+    //   `.html` document contains any markup — the other four are built from the
+    //   plain text. Four of the five formats were paying for a sanitize pass
+    //   whose result nothing in their output reads.
+    // - `generateMetadata` splits the whole story on whitespace to count its
+    //   words, and only the `.html` and `.txt` documents print the "Story
+    //   Information" block it fills in. The PDF, EPUB, and DOCX renderers never
+    //   receive it.
+    //
+    // That is the same reading `generateMetadata` already applies one level
+    // down, where it counts the words once rather than once for the count and
+    // again for the read time derived from it. The documents themselves are
+    // unchanged: every branch is handed exactly what it was handed before.
     switch (input.format) {
       case 'pdf':
-        return Buffer.from(this.generatePDFContent(plainText, input), 'utf8');
-      case 'html':
-        return Buffer.from(this.generateHTMLContent(sanitizedHtml, metadata, input), 'utf8');
-      case 'txt':
-        return Buffer.from(this.generateTextContent(plainText, metadata, input), 'utf8');
+        return Buffer.from(this.generatePDFContent(this.toPlainText(input), input), 'utf8');
+      case 'html': {
+        const plainText = this.toPlainText(input);
+        return Buffer.from(
+          this.generateHTMLContent(sanitizeStoryHtmlForExport(input.content), this.generateMetadata(plainText, input), input),
+          'utf8'
+        );
+      }
+      case 'txt': {
+        const plainText = this.toPlainText(input);
+        return Buffer.from(this.generateTextContent(plainText, this.generateMetadata(plainText, input), input), 'utf8');
+      }
       case 'epub':
-        return this.generateEPUBContent(plainText, input);
+        return this.generateEPUBContent(this.toPlainText(input), input);
       case 'docx':
-        return this.generateDOCXContent(plainText, input);
+        return this.generateDOCXContent(this.toPlainText(input), input);
       default:
         throw new Error(`Unsupported format: ${input.format}`);
     }
+  }
+
+  /**
+   * The story with its markup resolved to text — what every format but `.html`
+   * is rendered from, and what the word count is measured over for the two that
+   * print one.
+   */
+  private toPlainText(input: SaveExportSeam['input']): string {
+    return stripStoryHtmlForExport(input.content);
   }
 
   /**
@@ -310,10 +430,17 @@ export class ExportService {
 /Kids [${pages.map((_page, index) => `${pageObjectNumber(index)} 0 R`).join(' ')}]
 /Count ${pages.length}
 >>`,
+      // `/Encoding` is not optional here. Without it a base font is read in
+      // StandardEncoding, which has no accented letter anywhere in it and puts
+      // the quotation marks at bytes WinAnsi uses for something else — so the
+      // bytes `escapePdfText` writes would name the wrong glyphs, which is the
+      // half of the mojibake a reader could never have worked around. See
+      // `escapePdfText` for the other half.
       `<<
 /Type /Font
 /Subtype /Type1
 /BaseFont /Helvetica
+/Encoding /WinAnsiEncoding
 >>`
     ];
 
@@ -415,7 +542,7 @@ ${xrefOffset}
   private generateHTMLContent(content: string, metadata: ExportMetadata, input: SaveExportSeam['input']): string {
     const includeMetadata = input.includeMetadata !== false;
     const title = escapeHtml(input.title);
-    const generatedAt = escapeHtml(metadata.generatedAt);
+    const generatedAt = escapeHtml(formatGeneratedAt(metadata.generatedAt));
     const creature = escapeHtml(metadata.creature);
     const themes = metadata.themes.map(theme => escapeHtml(theme)).join(', ');
 
@@ -440,7 +567,7 @@ ${xrefOffset}
         <h3>Story Information</h3>
         <p><strong>Generated:</strong> ${generatedAt}</p>
         <p><strong>Word Count:</strong> ${metadata.wordCount}</p>
-        <p><strong>Estimated Read Time:</strong> ${metadata.readTime} minutes</p>
+        <p><strong>Estimated Read Time:</strong> ${formatReadTime(metadata.readTime)}</p>
         <p><strong>Creature:</strong> ${creature}</p>
         <p><strong>Themes:</strong> ${themes}</p>
     </div>
@@ -461,9 +588,9 @@ ${xrefOffset}
 
     if (includeMetadata) {
       text += `Story Information:\n`;
-      text += `Generated: ${metadata.generatedAt}\n`;
+      text += `Generated: ${formatGeneratedAt(metadata.generatedAt)}\n`;
       text += `Word Count: ${metadata.wordCount}\n`;
-      text += `Estimated Read Time: ${metadata.readTime} minutes\n`;
+      text += `Estimated Read Time: ${formatReadTime(metadata.readTime)}\n`;
       text += `Creature: ${metadata.creature}\n`;
       text += `Themes: ${metadata.themes.join(', ')}\n\n`;
       text += `---\n\n`;
@@ -482,13 +609,16 @@ ${xrefOffset}
    * version referenced a `chapter1.xhtml` it never wrote.
    */
   private generateEPUBContent(plainText: string, input: SaveExportSeam['input']): Buffer {
-    const title = escapeHtml(input.title);
+    // Every value interpolated below lands in XML rather than in HTML, so it
+    // goes through `escapeXmlText`: a control character an XML parser must
+    // refuse is what makes an otherwise-correct `.epub` unopenable.
+    const title = escapeXmlText(input.title);
     // Derived from the story being exported rather than a fresh `randomUUID()`
     // per call: the same story exported twice should produce the same book
     // identifier, and a real UUID would make otherwise-identical output
     // (including the copy this method itself hands back for verification)
     // vary from one call to the next.
-    const bookId = `urn:x-fairytales-with-spice:${escapeHtml(input.storyId)}`;
+    const bookId = `urn:x-fairytales-with-spice:${escapeXmlText(input.storyId)}`;
     const chapterXhtml = this.toXhtmlBody(plainText);
 
     const containerXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -569,7 +699,10 @@ ${chapterXhtml}
 
     const paragraphs = [input.title, ...plainText.split('\n').map(line => line.trim())]
       .filter(Boolean)
-      .map(line => `<w:p><w:r><w:t xml:space="preserve">${escapeHtml(line)}</w:t></w:r></w:p>`)
+      // `escapeXmlText` rather than `escapeHtml`, for the reason the EPUB body
+      // uses it: a `.docx` is XML in a zip, and Word refuses the whole package
+      // over one character XML does not admit.
+      .map(line => `<w:p><w:r><w:t xml:space="preserve">${escapeXmlText(line)}</w:t></w:r></w:p>`)
       .join('\n    ');
 
     const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -600,7 +733,7 @@ ${chapterXhtml}
       .split('\n')
       .map(line => line.trim())
       .filter(Boolean)
-      .map(line => `<p>${escapeHtml(line)}</p>`)
+      .map(line => `<p>${escapeXmlText(line)}</p>`)
       .join('\n');
   }
 
@@ -633,13 +766,42 @@ ${chapterXhtml}
     return null;
   }
 
+  /**
+   * Describe the story for the "Story Information" block of an export.
+   *
+   * `creature` and `themes` arrive as the wire values the request carried, and
+   * this is the one place in the app that shows them to a reader rather than
+   * matching on them: they are written into a document the reader downloads and
+   * keeps. `app.ts` sends `theme.id`, so the block read `Themes:
+   * enemies_to_lovers, secret_identity` for two seeds the picker beside it calls
+   * "Enemies to Lovers" and "Secret Identity", and `Creature: vampire` for the
+   * archetype the form calls "Vampire".
+   *
+   * `readStoryLabThemeLabel` is the picker's own naming, read from the shared
+   * seed list so a renamed seed is renamed here too; the creature is titled from
+   * its id, which is all these ids need. Neither changes what a caller may send
+   * — the seams still take the classic `ThemeType` vocabulary, and an id from
+   * outside the seed list is titled rather than dropped.
+   */
   private generateMetadata(content: string, input: SaveExportSeam['input']): ExportMetadata {
+    // The words are counted once. It was counted twice — the same scan of the
+    // whole story run for the word count and again for the read time derived
+    // from it — on a route that already has a body-size cap because the story
+    // can be several hundred kilobytes.
+    //
+    // `estimateReadTimeMinutes` is where this estimate is made, for this
+    // document and for the `estimatedReadTime` the generation routes report on
+    // the same story. Reading `READING_SPEED.WORDS_PER_MINUTE` here directly
+    // gave the constant one reader and left `StoryService`'s two copies of
+    // `200` alone; see that function for what the two of them disagreed about.
+    const wordCount = this.countWords(content);
+
     return {
       generatedAt: new Date().toISOString(),
-      wordCount: this.countWords(content),
-      readTime: Math.ceil(this.countWords(content) / 200),
-      creature: input.creature ?? 'unknown',
-      themes: input.themes ?? []
+      wordCount,
+      readTime: estimateReadTimeMinutes(wordCount),
+      creature: input.creature ? titleCaseIdentifier(input.creature) : 'unknown',
+      themes: (input.themes ?? []).map(readStoryLabThemeLabel)
     };
   }
 
@@ -695,7 +857,24 @@ ${chapterXhtml}
     return `export_${randomUUID()}`;
   }
 
-  private generateRequestId(): string {
-    return `req_${randomUUID()}`;
+  /**
+   * The id this export is known by, in the envelope and in the log alike.
+   *
+   * It used to be `req_${randomUUID()}` unconditionally, minted inside this
+   * method and written into `metadata.requestId` — an id that exists in exactly
+   * one place, the response body, and appears in no log line anywhere. The
+   * route above had a correlation id the whole time: `beginPostRoute` reads
+   * `X-Request-ID` or mints one, echoes it back as a header, and stamps it into
+   * every line the handler writes. So a caller reporting a failed export quoted
+   * the id the body handed them and it matched nothing, while the id that would
+   * have found the request was in a header they were never told to keep.
+   *
+   * Taking the route's id makes the envelope, the response header, the handler's
+   * lines, and this service's own failure line all name the same request.
+   * Minting one is kept for the caller that has none — `generateExportContent`'s
+   * callers, a test, a future job runner — so the field is never empty.
+   */
+  private resolveRequestId(requestId?: string): string {
+    return requestId && requestId.trim() ? requestId.trim() : `req_${randomUUID()}`;
   }
 }

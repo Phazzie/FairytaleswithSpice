@@ -2,21 +2,80 @@
 // These contracts are derived directly from UI interactions and data flows
 // Each seam represents a boundary where data crosses between components
 
+import { CREATURE_ARCHETYPES, type CreatureArchetype } from '../../../shared/creatureVocabulary';
+import { CLASSIC_STORY_THEMES, type ClassicStoryTheme } from '../../../shared/themeVocabulary';
+import { CHAPTER_BATCH_SIZES, type ChapterBatchSize } from '../../../shared/chapterBatchVocabulary';
+import { SPICY_LEVELS, type SpicyLevel } from '../../../shared/spiceLevelVocabulary';
+import type { XaiReasoningEffort } from '../../../shared/reasoningEffortVocabulary';
+import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
+
+export { CREATURE_ARCHETYPES, CLASSIC_STORY_THEMES, CHAPTER_BATCH_SIZES, SPICY_LEVELS };
+export type { CreatureArchetype, ClassicStoryTheme, ChapterBatchSize, SpicyLevel };
+
 // ==================== TYPE DEFINITIONS ====================
-export type CreatureType =
-  | 'vampire'
-  | 'werewolf'
-  | 'fairy'
-  | 'siren'
-  | 'djinn'
-  | 'witch'
-  | 'dragon'
-  | 'demon'
-  | 'angel'
-  | 'mermaid';
-export type ThemeType = 'betrayal' | 'obsession' | 'power_dynamics' | 'forbidden_love' | 'revenge' | 'manipulation' | 'seduction' | 'dark_secrets' | 'corruption' | 'dominance' | 'submission' | 'jealousy' | 'temptation' | 'sin' | 'desire' | 'passion' | 'lust' | 'deceit';
-export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
-export type WordCount = 600 | 700 | 900 | 1200 | 1500;
+// `CreatureType` is this contract's name for the ten creatures, which are now
+// one table in `shared/creatureVocabulary` rather than seven hand-written
+// copies — see the note there for what the other six were and what each of
+// them broke on its own. The alias is kept because the whole API tree spells
+// the type this way; the values behind it are no longer restated here.
+export type CreatureType = CreatureArchetype;
+// `ThemeType` is this contract's name for the eighteen classic themes, which
+// are now one table in `shared/themeVocabulary` rather than four hand-written
+// copies — see the note there for what the other three were and what each of
+// them broke on its own. The alias is kept because the whole API tree spells
+// the type this way; the values behind it are no longer restated here.
+export type ThemeType = ClassicStoryTheme;
+// The five heat levels are `shared/spiceLevelVocabulary` for the same reason,
+// after `VALIDATION_RULES.spicyLevel` below was found stating the scale a third
+// time as the bare `{ min: 1, max: 5 }` the classic seam validates against. See
+// that module for what the range check could not say that membership can.
+/**
+ * The word counts the classic generator accepts, as a value rather than only as
+ * a type.
+ *
+ * This ladder was the last closed set in this file with no table behind it. It
+ * was written twice — as a union here, and as the bare literal
+ * `[600, 700, 900, 1200, 1500]` in `VALIDATION_RULES.wordCount.allowedValues`
+ * three hundred lines below — with nothing tying the two together, while both
+ * of its neighbours in that same object read their tables
+ * (`themes.allowedValues` is `CLASSIC_STORY_THEMES`, `imageStyle.allowedValues`
+ * is `IMAGE_STYLES`). The cast at the one reader said so out loud:
+ * `StoryService.validateStoryInput` widened the literal to `readonly number[]`
+ * before asking whether a caller's `wordCount` was in it, because the tuple's
+ * own type had no relationship to `WordCount` to check against.
+ *
+ * The two could therefore drift in either direction, and each direction fails
+ * silently in its own way. A budget added to the union alone is one the type
+ * says is legal and the validator answers `INVALID_INPUT` for — a value the
+ * app can request and the service refuses. A budget added to the literal alone
+ * is one the validator waves through and every `WordCount`-keyed reader is
+ * unaware of. This repository has already had that exact drift once on this
+ * exact ladder, in the other direction: the transcribed production prompt named
+ * 700, 900, and 1200 words while the Story Lab picker offered 600, 900, 1200,
+ * and 1500, which is what `getProductionUserPrompt` reading the shared prompt
+ * module was written to end.
+ *
+ * Derived rather than declared-and-`satisfies`-checked, for the reason
+ * `IMAGE_STYLES` gives above: a `satisfies` clause catches a *wrong* entry, and
+ * a copy of this list could only ever go wrong by being short one.
+ *
+ * `700` is deliberately here and deliberately absent from the Angular
+ * `WORD_BUDGETS`. That list is the Story Lab picker's four choices and is a
+ * *subset* of this one: the classic route accepts everything the picker offers
+ * and one budget besides. `tests/word-count-ladder.test.ts` asserts the
+ * containment, because the expensive direction of that drift — a picker
+ * offering a budget this route refuses — is a blueprint refused only after the
+ * reader presses generate.
+ */
+export const WORD_COUNTS = [600, 700, 900, 1200, 1500] as const;
+export type WordCount = typeof WORD_COUNTS[number];
+
+/** Membership, for the callers that check a value they were handed. */
+const WORD_COUNT_SET: ReadonlySet<number> = new Set<number>(WORD_COUNTS);
+
+export function isSupportedWordCount(value: unknown): value is WordCount {
+  return typeof value === 'number' && WORD_COUNT_SET.has(value);
+}
 export type NarrativeTone = 'romance' | 'dark_romance' | 'mystery' | 'adventure' | 'comedy' | 'tragedy';
 export type GenerationSource = 'classic_generator' | 'story_lab';
 export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_banter' | 'devotional_longing';
@@ -46,15 +105,6 @@ export interface StoryGenerationContext {
   heatContract?: HeatContractIntent;
   themeSeeds?: GenerationThemeSeed[];
 }
-export type VoiceType = 'female' | 'male' | 'neutral';
-export type CharacterVoiceType = 
-  | 'vampire_male' | 'vampire_female' 
-  | 'werewolf_male' | 'werewolf_female'
-  | 'fairy_male' | 'fairy_female'
-  | 'human_male' | 'human_female'
-  | 'narrator';
-export type AudioSpeed = 0.5 | 0.75 | 1.0 | 1.25 | 1.5;
-export type AudioFormat = 'mp3' | 'wav' | 'aac';
 export type ExportFormat = 'pdf' | 'txt' | 'html' | 'epub' | 'docx';
 
 /**
@@ -82,7 +132,72 @@ export const EXPORT_FORMATS = [
   'epub',
   'docx'
 ] as const satisfies readonly ExportFormat[];
-export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
+/**
+ * The image styles, as a value the type is read from rather than the other way
+ * round.
+ *
+ * Five style names were written out by hand in six places: this union, the
+ * Angular contract's own copy of it, `IMAGE_STYLES` beside that one for the
+ * picker, `VALIDATION_RULES.imageStyle.allowedValues` below, `SUPPORTED_STYLES`
+ * in `ImageService`, and — twice more — the `styleMap` and `grokStyleMap`
+ * lookups that turn a style into prompt text and into the provider's own style
+ * parameter. Nothing tied any of them to any other, which is the arrangement
+ * `EXPORT_FORMATS` above was written to end after the picker restated the
+ * export formats and lost `html`.
+ *
+ * The two lookups are why this is `as const` with the type derived, rather than
+ * a union with a list `satisfies`-checked against it: a `satisfies` clause
+ * catches a *wrong* entry, and every one of these copies could only ever go
+ * wrong by being short one. A style missing from `styleMap` falls through to
+ * `'artistic style'` and one missing from `grokStyleMap` to `'natural'`, so a
+ * sixth style added to the union alone would have been generated in the wrong
+ * look, silently, with no error anywhere. Derived from the table, they are
+ * `Record<ImageStyle, string>` and a missing entry does not compile.
+ *
+ * `VALIDATION_RULES.imageStyle.allowedValues` is the copy that mattered most
+ * for being right: `toLoggableImageStyle` reads it to decide whether the
+ * `style` a caller sent is one of ours, and a value that is not is replaced
+ * with `[UNRECOGNIZED]` rather than written to the log as the caller wrote it.
+ */
+export const IMAGE_STYLES = [
+  'artistic',
+  'photorealistic',
+  'fantasy',
+  'dark',
+  'romantic'
+] as const;
+export type ImageStyle = typeof IMAGE_STYLES[number];
+/**
+ * The aspect ratios an image request may name, as a value the type is read from.
+ *
+ * Four ratios were written out in four places: the inline union on
+ * `ImageGenerationSeam['input']['aspectRatio']`, `VALIDATION_RULES.aspectRatio
+ * .allowedValues` below, the keys of `ASPECT_RATIO_SPECS` in `ImageService`, and
+ * `SUPPORTED_ASPECT_RATIOS` beside it — plus a fifth spelling of the default,
+ * `input.aspectRatio || '16:9'`, in the provider call.
+ *
+ * `ASPECT_RATIO_SPECS`' own docblock is the argument for this one. It says the
+ * three lookups this ratio decides "were three separate lookups, each with its
+ * own `|| '1792x1024'`-style fallback, so an unsupported ratio was silently
+ * served as 16:9 while the response still echoed the ratio the caller asked
+ * for", and that one table means "a ratio is either supported everywhere or
+ * rejected". That change made the *specs* one table and left the *list* spelled
+ * out three more times, one of which — the validation rule — no longer had a
+ * reader at all and so could not have been caught by anything failing.
+ *
+ * `SUPPORTED_ASPECT_RATIOS` stays derived from `ASPECT_RATIO_SPECS` rather than
+ * from this list, because that is the stronger of the two guarantees: the specs
+ * are a `Record<AspectRatio, AspectRatioSpec>`, so a ratio named here and missing
+ * a spec does not compile, and the closed-set check keeps answering with exactly
+ * the ratios the lookups can actually serve.
+ */
+export const ASPECT_RATIOS = [
+  '1:1',
+  '16:9',
+  '9:16',
+  '4:3'
+] as const;
+export type AspectRatio = typeof ASPECT_RATIOS[number];
 export type CliffhangerType =
   | 'romantic_tension'
   | 'plot_twist'
@@ -122,13 +237,6 @@ export interface ChapterFailure {
   errorCode?: string;
 }
 
-export interface AudioProgress {
-  percentage: number; // 0-100
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  message: string;
-  estimatedTimeRemaining?: number; // in seconds
-}
-
 // ==================== SEAM 1: USER INPUT → STORY GENERATOR ====================
 export interface StoryGenerationSeam {
   seamName: "User Input → Story Generator";
@@ -140,7 +248,12 @@ export interface StoryGenerationSeam {
     userInput: string; // Optional custom ideas
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
-    requestedChapterCount?: 1 | 2 | 3;
+    // `ChapterBatchSize`, not a fourth spelling of `1 | 2 | 3`: this field and
+    // the Story Lab's `chapterBatchSize` are one value — `storyLabEngine`
+    // passes that straight into this one — so they read one table. See
+    // `shared/chapterBatchVocabulary` for the six copies this replaces and
+    // what a fourth size cost each of them.
+    requestedChapterCount?: ChapterBatchSize;
     generationContext?: StoryGenerationContext;
   };
 
@@ -205,7 +318,8 @@ export interface ChapterContinuationSeam {
     userInput?: string; // Optional continuation hints
     maintainTone: boolean; // Keep same spicy level and themes
     tropeMetadata?: string; // Optional invisible generation metadata from original story
-    requestedChapterCount?: 1 | 2 | 3;
+    // The same table the genesis seam above reads.
+    requestedChapterCount?: ChapterBatchSize;
     generationContext?: StoryGenerationContext;
   };
 
@@ -244,121 +358,6 @@ export interface ChapterContinuationSeam {
       message: string;
       maxChapters: number;
       currentChapters: number;
-    };
-  };
-}
-
-// ==================== SEAM 2.5: REAL-TIME STORY GENERATION ====================
-export interface StreamingStoryGenerationSeam {
-  seamName: "Real-Time Story Generation";
-  description: "Provides real-time updates during story generation for better UX";
-
-  input: {
-    // Same as StoryGenerationSeam input
-    creature: CreatureType;
-    themes: ThemeType[];
-    userInput: string;
-    spicyLevel: SpicyLevel;
-    wordCount: WordCount;
-    requestedChapterCount?: 1 | 2 | 3;
-  };
-
-  progressUpdate: {
-    streamId: string;
-    storyId?: string; // Generated after stream starts
-    type: 'connected' | 'progress' | 'chunk' | 'complete' | 'error';
-    content?: string; // Accumulated content so far
-    isComplete: boolean;
-    metadata: {
-      wordsGenerated: number;
-      totalWordsTarget: number;
-      estimatedWordsRemaining: number;
-      generationSpeed: number; // words per second
-      percentage: number; // 0-100
-      estimatedTimeRemaining?: number; // seconds
-    };
-  };
-
-  finalOutput: {
-    // Same as StoryGenerationSeam output
-    storyId: string;
-    title: string;
-    content: string;
-    rawContent?: string;
-    creature: CreatureType;
-    themes: ThemeType[];
-    spicyLevel: SpicyLevel;
-    actualWordCount: number;
-    estimatedReadTime: number;
-    hasCliffhanger: boolean;
-    generatedAt: Date;
-    tropeMetadata?: string;
-    chapters?: Chapter[];
-    totalWordCount?: number;
-    nextChapterHint?: string;
-    appendedToStory?: string;
-    failedChapters?: ChapterFailure[];
-  };
-
-  errors: {
-    STREAMING_CONNECTION_FAILED: {
-      code: "STREAMING_CONNECTION_FAILED";
-      message: string;
-      retryable: boolean;
-    };
-    STREAM_INTERRUPTED: {
-      code: "STREAM_INTERRUPTED";
-      message: string;
-      recoveryOptions: string[];
-      partialContent?: string;
-    };
-    // Inherits all errors from StoryGenerationSeam
-  };
-}
-
-// ==================== SEAM 3: STORY TEXT → AUDIO CONVERTER ====================
-export interface AudioConversionSeam {
-  seamName: "Story Text → Audio Converter";
-  description: "Converts story text to audio format with progress tracking";
-
-  input: {
-    storyId: string;
-    content: string; // Full story HTML content
-    voice?: VoiceType;
-    speed?: AudioSpeed;
-    format?: AudioFormat;
-  };
-
-  output: {
-    audioId: string;
-    storyId: string;
-    audioUrl: string; // Download URL for UI
-    duration: number; // in seconds
-    fileSize: number; // in bytes
-    format: AudioFormat;
-    voice: VoiceType;
-    speed: AudioSpeed;
-    progress: AudioProgress; // For real-time UI updates
-    completedAt: Date;
-  };
-
-  errors: {
-    CONVERSION_FAILED: {
-      code: "CONVERSION_FAILED";
-      message: string;
-      retryable: boolean;
-      stage: "text_processing" | "audio_generation" | "file_creation";
-    };
-    UNSUPPORTED_CONTENT: {
-      code: "UNSUPPORTED_CONTENT";
-      message: string;
-      unsupportedElements: string[];
-    };
-    AUDIO_QUOTA_EXCEEDED: {
-      code: "AUDIO_QUOTA_EXCEEDED";
-      message: string;
-      quotaRemaining: number;
-      resetTime: Date;
     };
   };
 }
@@ -410,18 +409,48 @@ export interface SaveExportSeam {
 }
 
 // ==================== SEAM 5: STORY → IMAGE GENERATION ====================
+/**
+ * The image seam, in the one place it is declared.
+ *
+ * It was declared twice — here and in the Angular contract — and the two had
+ * drifted into describing different seams:
+ *
+ * - **`themes` was `ThemeType[]` here and `string[]` there, and the client was
+ *   right.** The Story Lab sends its own theme seed ids, which the classic
+ *   eighteen-name vocabulary does not contain. Both readers downstream already
+ *   know that: `ImageService.mapThemeToVisualElement` takes a `string` and
+ *   answers for either vocabulary, and `ALLOWED_THEMES` in
+ *   `loggableRequestParameters` had to be widened with
+ *   `STORY_LAB_THEME_SEED_IDS` for the same reason. Only this line still
+ *   claimed the route receives a closed set it does not.
+ * - **`creature` was `CreatureType` here and `CreatureArchetype` there** — the
+ *   same ten names under two names. It stays `CreatureType` because this is
+ *   the classic contract; the client's `CreatureArchetype` is structurally the
+ *   same union and assigns to it.
+ * - **`seamName` and `description` are literal types**, and the two spellings
+ *   of `description` differed, so the two interfaces were not assignable to
+ *   each other in either direction. Nothing crossed that boundary because
+ *   nothing could.
+ *
+ * The Angular contract re-exports this one now, the way it already re-exports
+ * `SaveExportSeam` and `ExportFormat`.
+ */
 export interface ImageGenerationSeam {
   seamName: "Story → Image Generation";
-  description: "Generates images based on story content using Grok-2-Image";
+  description: "Generates a scene image from story content using Grok-2-Image.";
 
   input: {
     storyId: string;
     content: string; // Story content or specific scene
     imagePrompt?: string; // Optional custom prompt
     creature: CreatureType;
-    themes: ThemeType[];
+    /**
+     * Classic `ThemeType` ids or Story Lab theme seed ids — the route takes
+     * both, and every reader of this field is written for both.
+     */
+    themes: string[];
     style: ImageStyle;
-    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3';
+    aspectRatio?: AspectRatio;
   };
 
   output: {
@@ -466,25 +495,74 @@ export const VALIDATION_RULES = {
     allowedHtml: false
   },
   themes: {
-    maxCount: 5,
-    allowedValues: ['betrayal', 'obsession', 'power_dynamics', 'forbidden_love', 'revenge', 'manipulation', 'seduction', 'dark_secrets', 'corruption', 'dominance', 'submission', 'jealousy', 'temptation', 'sin', 'desire', 'passion', 'lust', 'deceit']
+    /**
+     * How many themes one story may weave, read from the shared limit rather
+     * than restated here.
+     *
+     * `STORY_BLUEPRINT_LIMITS.maxThemes` is the number the Story Lab enforces —
+     * `parseStoryLabBlueprint` refuses a blueprint past it and
+     * `FormValidationService` refuses one before the reader presses generate —
+     * and this rule is the number the classic route enforces on the array that
+     * *same blueprint* becomes. `STORY_EVALUATION_LIMITS.maxThemes` beside it
+     * in the shared module already reads it, and says why: these fields "name
+     * the same things".
+     *
+     * They could therefore drift, and each direction fails silently in its own
+     * way. Raise the shared limit alone and the picker offers a sixth seed, the
+     * form accepts it, `parseStoryLabBlueprint` accepts it, and
+     * `toClassicThemes` — which now reads the same number — hands this rule an
+     * array it refuses, so a blueprint the app assembled for itself comes back
+     * `INVALID_INPUT` after the reader pressed generate. Lower it alone and the
+     * refusal is worse for being invisible: the sixth theme is dropped on the
+     * way to the generator and the story is written without it, with nothing in
+     * the response saying a choice went missing.
+     */
+    maxCount: STORY_BLUEPRINT_LIMITS.maxThemes,
+    // Read from the table rather than restated here, for the reason
+    // `imageStyle.allowedValues` below reads `IMAGE_STYLES`: this copy is what
+    // decides whether a caller's theme reaches the log or is written as
+    // `[UNRECOGNIZED]`, so a theme in the union and missing here is a theme the
+    // app can request and cannot report.
+    allowedValues: CLASSIC_STORY_THEMES
   },
   spicyLevel: {
-    min: 1,
-    max: 5
+    /**
+     * Read from the table rather than restated here, the way every rule around
+     * it now reads its own.
+     *
+     * This one was stated as `{ min: 1, max: 5 }` — the only rule in this object
+     * that described its closed set as a range instead of naming it — and
+     * `StoryService.validateStoryInput` checked it as one, pairing the two
+     * numbers with a `Number.isInteger` guard that is doing the other half of
+     * what membership would answer on its own. See `spiceLevelVocabulary` for
+     * what a range cannot say once the table it stands in for changes.
+     */
+    allowedValues: SPICY_LEVELS
   },
   wordCount: {
-    allowedValues: [600, 700, 900, 1200, 1500]
+    // Read from the table rather than restated here, for the reason the two
+    // rules above it read theirs. `StoryService.validateStoryInput` asks
+    // `isSupportedWordCount` rather than reading this rule directly — the guard
+    // is what narrows to `WordCount`, which the widening cast this replaced
+    // could not — but both answer for the same array, so this rule states the
+    // ladder for anything that reads the rules object and cannot drift from
+    // what the validator enforces.
+    allowedValues: WORD_COUNTS
   },
   audioSpeed: {
     min: 0.5,
     max: 1.5
   },
   imageStyle: {
-    allowedValues: ['artistic', 'photorealistic', 'fantasy', 'dark', 'romantic']
+    allowedValues: IMAGE_STYLES
   },
   aspectRatio: {
-    allowedValues: ['1:1', '16:9', '9:16', '4:3']
+    // Read from the table, for the reason `imageStyle.allowedValues` above
+    // reads `IMAGE_STYLES`. This rule has no reader today — `ImageService`
+    // checks the ratio against `SUPPORTED_ASPECT_RATIOS`, which is the keys of
+    // its own spec table — so restating the list here was a fourth copy that
+    // nothing would ever have failed on.
+    allowedValues: ASPECT_RATIOS
   }
 } as const;
 
@@ -511,14 +589,22 @@ export interface ApiResponseMetadata {
   chaptersGenerated?: number;
   partialFailures?: ChapterFailure[];
   model?: string;
-  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+  // The union from `shared/reasoningEffortVocabulary`, not a second spelling of
+  // it: this field reports what `getXaiReasoningEffortForModel` chose, and the
+  // two were written out separately with nothing tying them together.
+  reasoningEffort?: XaiReasoningEffort;
   fallbackFromModel?: string;
 }
 
 export interface ApiErrorPayload {
   code: string;
   message: string;
-  details?: any;
+  // `unknown` rather than `any`: this is provider or store text a handler
+  // attaches, and every reader of it — `toJobError` is the only one — passes it
+  // along rather than reaching into it. It was `any` here and `unknown` in the
+  // Angular declaration this replaces, which is the looser of two spellings of
+  // one field winning by being the one the API tree read.
+  details?: unknown;
 }
 
 export type ApiResponse<T> = {

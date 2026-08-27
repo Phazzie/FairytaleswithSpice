@@ -2,7 +2,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
-import { ProvingGroundsTestResult } from '../contracts';
+import {
+  CHAPTER_BATCH_SIZES,
+  CREATURE_ARCHETYPES,
+  ProvingGroundsTestResult,
+  SPICY_LEVELS,
+  WORD_BUDGETS
+} from '../contracts';
 import { ProvingGroundsComponent } from './proving-grounds';
 import { STORY_BLUEPRINT_LIMITS } from '../../../../shared/storyBlueprintLimits';
 import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
@@ -244,6 +250,58 @@ describe('ProvingGroundsComponent', () => {
   // app never builds.
   it('offers exactly the thematic seeds the app picker offers', () => {
     expect(component.themeOptions).toEqual(STORY_LAB_THEME_SEEDS.map(seed => ({ ...seed })));
+  });
+
+  // The same argument as the seeds above, held on the four closed vocabularies
+  // beside them. A picker that writes its own list is a second declaration of
+  // what the values are, and the way it fails is silent: a creature or a word
+  // budget added to the table is accepted by the parser, by the form, and by
+  // both prompt builders, and simply never appears on the one screen built for
+  // comparing prompts.
+  it('offers exactly the vocabularies the blueprint routes accept', () => {
+    expect(component.creatureOptions).toEqual(CREATURE_ARCHETYPES);
+    expect(component.wordCountOptions).toEqual(WORD_BUDGETS);
+    expect(component.chapterBatchOptions).toEqual(CHAPTER_BATCH_SIZES);
+  });
+
+  it('bounds the spice slider by the ladder rather than by a number in the markup', () => {
+    expect(component.minSpicyLevel).toBe(Math.min(...SPICY_LEVELS));
+    expect(component.maxSpicyLevel).toBe(Math.max(...SPICY_LEVELS));
+
+    const slider: HTMLInputElement = fixture.nativeElement.querySelector('#pg-spice');
+    expect(slider.min).toBe(String(component.minSpicyLevel));
+    expect(slider.max).toBe(String(component.maxSpicyLevel));
+  });
+
+  // `title` and `summary` are model prose, and the preview document was built
+  // by interpolating them into markup. A chapter called `<The Reckoning>` lost
+  // its own name to an unknown element and took the paragraph after it into an
+  // unclosed tag, so a comparison reported on prose that had been generated and
+  // never shown.
+  it('escapes a chapter title and summary into the preview document', () => {
+    const rendered = component['renderChapters']([
+      {
+        chapterId: 'chapter-1',
+        chapterNumber: 1,
+        title: '<The Reckoning> & Roses',
+        htmlContent: '<p>She counted the tide.</p>',
+        summary: 'A bargain is struck & a door <closes>.',
+        wordCount: 4,
+        hasCliffhanger: false,
+        delta: {
+          introducedCharacters: [],
+          resolvedThreads: [],
+          escalatedThreads: [],
+          foreshadowedArtifacts: [],
+          continuityFlags: []
+        }
+      }
+    ]);
+
+    expect(rendered).toContain('<h3>&lt;The Reckoning&gt; &amp; Roses</h3>');
+    expect(rendered).toContain('A bargain is struck &amp; a door &lt;closes&gt;.');
+    // The chapter body is markup by contract and is sanitized where it renders.
+    expect(rendered).toContain('<p>She counted the tide.</p>');
   });
 
   it('lets a test carry as many seeds as the blueprint route accepts', () => {

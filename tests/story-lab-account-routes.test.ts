@@ -11,10 +11,12 @@ import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/
 import { createNonDurableInMemoryStoryProjectStore } from '../api/_lib/story-lab/storage/inMemoryStoryProjectStore';
 import { createPostgresStoryLabProfileStore } from '../api/_lib/story-lab/profile/postgresStoryLabProfileStore';
 import { createPostgresStoryProjectStore } from '../api/_lib/story-lab/storage/postgresStoryProjectStore';
+import { STORY_LAB_LIBRARY_MAX_ITEMS } from '../api/_lib/story-lab/storage/storyProjectStore';
+import { STORY_LAB_PROFILE_LIMITS } from '../shared/storyBlueprintLimits';
 import type {
   StoredStoryProjectRecord,
   StoryProjectDeleteReceipt,
-  StoryProjectListItem,
+  StoryProjectListPage,
   StoryProjectStore,
   StoryProjectStoreResult
 } from '../api/_lib/story-lab/storage/storyProjectStore';
@@ -89,8 +91,12 @@ async function main() {
   await testMalformedProjectIdFailsClosed();
   await testInvalidProjectIdsFailClosedBeforeStoreAccess();
   await testInvalidProjectBodyFailsClosedBeforeStoreAccess();
+  await testProjectSaveChecksTheFieldsItUsedToCast();
   await testInjectedStoreErrorMessageIsSanitized();
   await testInvalidRouteAndMethodResponses();
+  await testLibrarySortPreferenceOrdersTheProjectList();
+  await testLibraryListingCapIsAppliedAfterTheReadersSort();
+  await testProfileFreeTextIsMeasuredBeforeItIsStored();
 
   console.log('Story Lab account route tests passed');
 }
@@ -491,6 +497,127 @@ async function testInvalidProjectBodyFailsClosedBeforeStoreAccess() {
   );
 }
 
+/**
+ * The five fields the save route used to take on trust.
+ *
+ * `readProjectFromBody` checked eight fields and wrote the last five down as
+ * casts: `chapters` got as far as `Array.isArray` and its entries were never
+ * looked at, and `telemetry`, `continuityExtraction`, `pinnedMemoryCardDraftIds`
+ * and `acceptedMemoryCards` were not looked at at all.
+ *
+ * The cost is not hypothetical. `toStoryProjectListItem` computes
+ * `acceptedMemoryCardCount` as `acceptedMemoryCards?.length ?? 0`, so a project
+ * saved with the string `"none"` in that field was a library card announcing
+ * **four** memory cards for a story with none — `.length` of a string, counted
+ * and rendered. Meanwhile the Angular tree had already written
+ * `normalizeAcceptedMemoryCards` and `normalizePinnedMemoryCardDraftIds` over
+ * `unknown` for two of those five fields, defending itself on load against data
+ * its own server let in without looking.
+ */
+async function testProjectSaveChecksTheFieldsItUsedToCast() {
+  const handler = createTestHandler(owner);
+  // Named rather than repeated: each id is written at the save and again at the
+  // read that checks what the save stored.
+  const junkAnnotationsProjectId = 'project-account-junk-annotations';
+  const partialCardsProjectId = 'project-account-partial-cards';
+  const brokenChapterProjectId = 'project-account-broken-chapter';
+
+  const junkAnnotationsResponse = new FakeResponse();
+  await handler(createRequest('POST', 'projects', {
+    project: {
+      ...createProject(),
+      id: junkAnnotationsProjectId,
+      telemetry: 'not-telemetry',
+      continuityExtraction: 'not-a-receipt',
+      pinnedMemoryCardDraftIds: 'memory-card-character-avery',
+      acceptedMemoryCards: 'none'
+    }
+  }), junkAnnotationsResponse);
+  assert(
+    junkAnnotationsResponse.statusCode === 200,
+    'a malformed annotation should not lose the story it annotates'
+  );
+
+  const listResponse = new FakeResponse();
+  await handler(createRequest('GET', 'projects'), listResponse);
+  const listed = (listResponse.body as any).data.projects
+    .find((item: any) => item.projectId === junkAnnotationsProjectId);
+  assert(Boolean(listed), 'the saved project should be listed');
+  assert(
+    listed.acceptedMemoryCardCount === 0,
+    `the library card should report no memory cards, not the length of a string (got ${listed.acceptedMemoryCardCount})`
+  );
+
+  const loadResponse = new FakeResponse();
+  await handler(createRequest('GET', 'project', undefined, junkAnnotationsProjectId), loadResponse);
+  const loaded = (loadResponse.body as any).data.project;
+  assert(
+    loaded.acceptedMemoryCards === undefined,
+    'a non-array memory-card field should be stored as absent rather than as itself'
+  );
+  assert(
+    loaded.pinnedMemoryCardDraftIds === undefined,
+    'a non-array pinned-id field should be stored as absent rather than as itself'
+  );
+  assert(
+    loaded.telemetry === undefined && loaded.continuityExtraction === undefined,
+    'a receipt that is not an object should be dropped rather than stored as a string'
+  );
+
+  // An array with entries in it is the caller trying to report annotations and
+  // getting the shape wrong: what survives is kept, and only what survives is
+  // counted. Same rule, entry by entry, as the client's own normalizers.
+  const partialCardsResponse = new FakeResponse();
+  const [realCard] = createProject().acceptedMemoryCards!;
+  await handler(createRequest('POST', 'projects', {
+    project: {
+      ...createProject(),
+      id: partialCardsProjectId,
+      pinnedMemoryCardDraftIds: ['draft-1', '', 42, null],
+      acceptedMemoryCards: [realCard, { id: 'no-other-fields' }, null, 'card']
+    }
+  }), partialCardsResponse);
+  assert(partialCardsResponse.statusCode === 200, 'a partly readable annotation list should still save');
+
+  const partialLoad = new FakeResponse();
+  await handler(createRequest('GET', 'project', undefined, partialCardsProjectId), partialLoad);
+  const partial = (partialLoad.body as any).data.project;
+  assert(
+    partial.acceptedMemoryCards.length === 1 && partial.acceptedMemoryCards[0].title === 'Avery',
+    'the readable memory card should survive and the unreadable ones should not'
+  );
+  assert(
+    partial.pinnedMemoryCardDraftIds.length === 1 && partial.pinnedMemoryCardDraftIds[0] === 'draft-1',
+    'a blank or non-string pinned id should be dropped, the way the client drops it on load'
+  );
+
+  // The story itself is the other rule: refused, not repaired. Storing the
+  // chapters that passed would lose a chapter the caller believed they saved.
+  const brokenChapterResponse = new FakeResponse();
+  await handler(createRequest('POST', 'projects', {
+    project: {
+      ...createProject(),
+      id: brokenChapterProjectId,
+      chapters: [...createProject().chapters, { chapterNumber: 2 }]
+    }
+  }), brokenChapterResponse);
+  assert(
+    brokenChapterResponse.statusCode === 400,
+    'a chapter list holding something that is not a chapter should be refused, not truncated'
+  );
+  assert(
+    (brokenChapterResponse.body as any).error.code === 'INVALID_REQUEST',
+    'an unreadable chapter should use the invalid request code'
+  );
+
+  const missingProjectResponse = new FakeResponse();
+  await handler(createRequest('GET', 'project', undefined, brokenChapterProjectId), missingProjectResponse);
+  assert(
+    missingProjectResponse.statusCode === 404,
+    'a refused save should store nothing at all'
+  );
+}
+
 async function testInjectedStoreErrorMessageIsSanitized() {
   const profileStore = createNonDurableInMemoryStoryLabProfileStore({ now: () => now });
   const handler = createHandlerFor(owner, profileStore, createLeakyProjectStore());
@@ -517,6 +644,359 @@ async function testInvalidRouteAndMethodResponses() {
   await handler(createRequest('POST', 'profile'), methodResponse);
   assert(methodResponse.statusCode === 405, 'unsupported account method should return 405');
   assert((methodResponse.body as any).error.code === 'METHOD_NOT_ALLOWED', 'unsupported account method should use method code');
+  // RFC 9110 §15.5.6 requires the header, and it is the only part of this
+  // answer a caller that does not know this envelope can read. It names the
+  // target resource's methods, so the profile resource answers its own three
+  // rather than the five the route file declares to CORS.
+  assert(
+    methodResponse.headers['Allow'] === 'GET, PUT, OPTIONS',
+    `profile 405 should send Allow: GET, PUT, OPTIONS, got ${JSON.stringify(methodResponse.headers['Allow'])}`
+  );
+
+  const projectsMethodResponse = new FakeResponse();
+  await handler(createRequest('PUT', 'projects'), projectsMethodResponse);
+  assert(projectsMethodResponse.statusCode === 405, 'unsupported project collection method should return 405');
+  assert(
+    projectsMethodResponse.headers['Allow'] === 'GET, POST, OPTIONS',
+    `project collection 405 should send Allow: GET, POST, OPTIONS, got ${JSON.stringify(projectsMethodResponse.headers['Allow'])}`
+  );
+
+  const projectMethodResponse = new FakeResponse();
+  await handler(createRequest('PUT', 'project', undefined, 'project-1'), projectMethodResponse);
+  assert(projectMethodResponse.statusCode === 405, 'unsupported project item method should return 405');
+  assert(
+    projectMethodResponse.headers['Allow'] === 'GET, DELETE, OPTIONS',
+    `project item 405 should send Allow: GET, DELETE, OPTIONS, got ${JSON.stringify(projectMethodResponse.headers['Allow'])}`
+  );
+}
+
+/**
+ * `preferences.librarySort` is validated, stored, and echoed back by the
+ * profile route, and until now nothing read it: the project stores order their
+ * list newest-updated-first and the route passed that order straight through,
+ * so a reader who saved `title_asc` or `created_desc` got the same library back
+ * either way. The preference is only reachable through this route, so this is
+ * where it has to be proved.
+ *
+ * The three projects are arranged so that no two of the three orderings agree
+ * by accident: `Zephyr Court` is created first and updated last, which puts it
+ * at opposite ends of `created_desc` and `updated_desc`, and the titles run in
+ * a third order again.
+ */
+async function testLibrarySortPreferenceOrdersTheProjectList() {
+  let tick = 0;
+  const advancingNow = () => `2026-06-08T09:${String(tick++).padStart(2, '0')}:00.000Z`;
+  const profileStore = createNonDurableInMemoryStoryLabProfileStore({ now: advancingNow });
+  const projectStore = createNonDurableInMemoryStoryProjectStore({ now: advancingNow });
+  const handler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore,
+    projectStore,
+    now: advancingNow
+  });
+
+  // `createdAt` is the caller's on a first save and the stored record's on
+  // every one after it, so it is set here rather than taken from the clock.
+  const saveProject = async (id: string, title: string, createdAt: string): Promise<void> => {
+    const saveResponse = new FakeResponse();
+    await handler(createRequest('POST', 'projects', {
+      project: { ...createProject(), id, storyId: `story-${id}`, title, createdAt }
+    }), saveResponse);
+    assert(saveResponse.statusCode === 200, `saving ${id} should succeed`);
+  };
+
+  await saveProject('project-zephyr', 'Zephyr Court', '2026-06-08T08:00:00.000Z');
+  await saveProject('project-ashen', 'Ashen Vow', '2026-06-08T08:01:00.000Z');
+  await saveProject('project-moonlit', 'Moonlit Debt', '2026-06-08T08:02:00.000Z');
+  // Re-saving keeps `createdAt` and moves `updatedAt`, which is what separates
+  // the two timestamp orderings from each other.
+  await saveProject('project-zephyr', 'Zephyr Court', '2026-06-08T08:00:00.000Z');
+
+  const titlesFor = async (): Promise<string> => {
+    const listResponse = new FakeResponse();
+    await handler(createRequest('GET', 'projects'), listResponse);
+    assert(listResponse.statusCode === 200, 'listing projects should succeed');
+    return ((listResponse.body as any).data.projects as { title: string }[])
+      .map(project => project.title)
+      .join(',');
+  };
+
+  const saveSort = async (librarySort: string): Promise<void> => {
+    const profileResponse = new FakeResponse();
+    await handler(createRequest('PUT', 'profile', {
+      profile: {
+        userId: owner.userId,
+        displayName: 'Avery',
+        preferences: { librarySort }
+      }
+    }), profileResponse);
+    assert(profileResponse.statusCode === 200, `saving librarySort=${librarySort} should succeed`);
+    assert(
+      (profileResponse.body as any).data.preferences.librarySort === librarySort,
+      `the profile route should keep librarySort=${librarySort}`
+    );
+  };
+
+  // The default, and the order both stores already answer in.
+  const defaultOrder = await titlesFor();
+  assert(
+    defaultOrder === 'Zephyr Court,Moonlit Debt,Ashen Vow',
+    `the default library sort is newest-updated-first (got ${defaultOrder})`
+  );
+
+  await saveSort('title_asc');
+  const alphabetical = await titlesFor();
+  assert(
+    alphabetical === 'Ashen Vow,Moonlit Debt,Zephyr Court',
+    `title_asc should order the library by title (got ${alphabetical})`
+  );
+
+  await saveSort('created_desc');
+  const newestCreated = await titlesFor();
+  assert(
+    newestCreated === 'Moonlit Debt,Ashen Vow,Zephyr Court',
+    `created_desc should order the library by creation (got ${newestCreated})`
+  );
+
+  await saveSort('updated_desc');
+  const newestUpdated = await titlesFor();
+  assert(
+    newestUpdated === defaultOrder,
+    `updated_desc should return the default order (got ${newestUpdated})`
+  );
+
+  // A profile store that cannot be read is not a reason to refuse the library:
+  // the projects are the answer and the ordering is a preference about them.
+  const brokenProfileStore = {
+    ...profileStore,
+    async loadProfile() {
+      throw new Error(privateStoryText);
+    }
+  } as unknown as ReturnType<typeof createNonDurableInMemoryStoryLabProfileStore>;
+  const resilientHandler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore: brokenProfileStore,
+    projectStore,
+    now: advancingNow
+  });
+  const resilientResponse = new FakeResponse();
+  await resilientHandler(createRequest('GET', 'projects'), resilientResponse);
+  assert(resilientResponse.statusCode === 200, 'an unreadable profile should not turn a working library into an error');
+  assert(
+    !JSON.stringify(resilientResponse.body).includes(privateStoryText),
+    'a profile store failure should not reach the project list response'
+  );
+}
+
+/**
+ * A capped listing has to be capped by the ordering the reader chose.
+ *
+ * The Postgres adapter carried the cap in its own SQL, as `order by updated_at
+ * desc limit 50`, and the route then sorted whatever came back. So the fifty
+ * items were always the fifty most recently updated ones and `librarySort` only
+ * rearranged them: a reader on `title_asc` was shown the alphabetical order of
+ * the fifty most recently touched projects, not the first fifty by title, and
+ * the project that should have been at the very top of their library was
+ * missing with nothing in the response to say so. The in-memory adapter applied
+ * no cap at all, so the two disagreed about what the library contained.
+ *
+ * The ordering now travels *down* to the store as part of the query, so the
+ * cap can stay where the rows are without choosing them under an ordering
+ * nobody asked for. This is the end-to-end proof of that: what the reader gets
+ * back is the front of their own order, however the adapter beneath produced
+ * it.
+ *
+ * `Aardvark Oath` is the test's whole point: it sorts first by title and last
+ * by update, so it is exactly the item the old ordering dropped and the new one
+ * must keep.
+ */
+async function testLibraryListingCapIsAppliedAfterTheReadersSort() {
+  let tick = 0;
+  const advancingNow = () => `2026-06-08T09:${String(tick++).padStart(2, '0')}:00.000Z`;
+  const profileStore = createNonDurableInMemoryStoryLabProfileStore({ now: advancingNow });
+  const projectStore = createNonDurableInMemoryStoryProjectStore({ now: advancingNow });
+  const handler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore,
+    projectStore,
+    now: advancingNow
+  });
+
+  const saveProject = async (id: string, title: string): Promise<void> => {
+    const saveResponse = new FakeResponse();
+    await handler(createRequest('POST', 'projects', {
+      project: { ...createProject(), id, storyId: `story-${id}`, title }
+    }), saveResponse);
+    assert(saveResponse.statusCode === 200, `saving ${id} should succeed`);
+  };
+
+  // Saved first, so it is the least recently updated of the set.
+  await saveProject('project-aardvark', 'Aardvark Oath');
+  const overflow = STORY_LAB_LIBRARY_MAX_ITEMS + 4;
+  for (let index = 0; index < overflow; index += 1) {
+    await saveProject(`project-${index}`, `Zephyr Court ${String(index).padStart(3, '0')}`);
+  }
+
+  const profileResponse = new FakeResponse();
+  await handler(createRequest('PUT', 'profile', {
+    profile: {
+      userId: owner.userId,
+      displayName: 'Avery',
+      preferences: { librarySort: 'title_asc' }
+    }
+  }), profileResponse);
+  assert(profileResponse.statusCode === 200, 'saving librarySort=title_asc should succeed');
+
+  const listResponse = new FakeResponse();
+  await handler(createRequest('GET', 'projects'), listResponse);
+  assert(listResponse.statusCode === 200, 'listing projects should succeed');
+
+  const list = (listResponse.body as any).data as {
+    projects: { title: string }[];
+    totalProjectCount: number;
+  };
+
+  assert(
+    list.projects.length === STORY_LAB_LIBRARY_MAX_ITEMS,
+    `an over-full library lists at most ${STORY_LAB_LIBRARY_MAX_ITEMS} projects (got ${list.projects.length})`
+  );
+  assert(
+    list.totalProjectCount === overflow + 1,
+    `a capped listing reports the untruncated count (got ${list.totalProjectCount}, expected ${overflow + 1})`
+  );
+  assert(
+    list.projects[0].title === 'Aardvark Oath',
+    'the cap keeps the front of the reader\'s own ordering, not of the storage\'s ' +
+      `(got ${JSON.stringify(list.projects[0].title)})`
+  );
+
+  // The count is the owner's, not the page's, so a library inside the cap must
+  // not start reporting a number that disagrees with what it carries.
+  const smallLibraryStore = createNonDurableInMemoryStoryProjectStore({ now: advancingNow });
+  const smallLibraryHandler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore: createNonDurableInMemoryStoryLabProfileStore({ now: advancingNow }),
+    projectStore: smallLibraryStore,
+    now: advancingNow
+  });
+  const smallSaveResponse = new FakeResponse();
+  await smallLibraryHandler(createRequest('POST', 'projects', { project: createProject() }), smallSaveResponse);
+  assert(smallSaveResponse.statusCode === 200, 'saving one project should succeed');
+
+  const smallListResponse = new FakeResponse();
+  await smallLibraryHandler(createRequest('GET', 'projects'), smallListResponse);
+  const smallList = (smallListResponse.body as any).data as {
+    projects: unknown[];
+    totalProjectCount: number;
+  };
+  assert(
+    smallList.projects.length === 1 && smallList.totalProjectCount === 1,
+    'an uncapped listing reports exactly what it carries ' +
+      `(got ${smallList.projects.length} of ${smallList.totalProjectCount})`
+  );
+}
+
+/**
+ * The profile is the one thing this API stores durably on a caller's word, and
+ * its three free-text fields were the last ones in the repository that nothing
+ * measured. `normalizeStoryLabProfilePreferences` checks every closed field on
+ * the same object against its allowed set and reads these three through a
+ * helper that asks only whether the value is a string, so an authenticated
+ * caller could park as much prose per account as a request body carries and
+ * have this route hand it back on every read afterwards.
+ *
+ * `noGoContent` is the sharp end: `parseStoryLabBlueprint` refuses that field
+ * past `maxNoGoContentLength` on the generation routes, so the *default* for a
+ * field was accepted at any length while the per-story value of it was capped.
+ *
+ * Refusal rather than truncation is the behaviour under test. These fields say
+ * what a reader does not want written; a silently shortened one is a shortened
+ * set of constraints they cannot see the end of.
+ */
+async function testProfileFreeTextIsMeasuredBeforeItIsStored() {
+  const profileStore = createNonDurableInMemoryStoryLabProfileStore({ now: () => now });
+  const handler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore,
+    projectStore: createNonDurableInMemoryStoryProjectStore({ now: () => now }),
+    now: () => now
+  });
+
+  const putProfile = async (preferences: unknown, displayName = 'Avery'): Promise<FakeResponse> => {
+    const response = new FakeResponse();
+    await handler(createRequest('PUT', 'profile', {
+      profile: { userId: owner.userId, displayName, preferences }
+    }), response);
+    return response;
+  };
+
+  const oversized: Array<{ label: string; field: string; response: Promise<FakeResponse> }> = [
+    {
+      label: 'displayName',
+      field: 'displayName',
+      response: putProfile({}, 'A'.repeat(STORY_LAB_PROFILE_LIMITS.maxDisplayNameLength + 1))
+    },
+    {
+      label: 'contentBoundaries',
+      field: 'preferences.contentBoundaries',
+      response: putProfile({
+        contentBoundaries: 'B'.repeat(STORY_LAB_PROFILE_LIMITS.maxContentBoundariesLength + 1)
+      })
+    },
+    {
+      label: 'noGoContent',
+      field: 'preferences.defaultHeatContract.noGoContent',
+      response: putProfile({
+        defaultHeatContract: {
+          noGoContent: 'C'.repeat(STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength + 1)
+        }
+      })
+    }
+  ];
+
+  for (const candidate of oversized) {
+    const response = await candidate.response;
+    assert(
+      response.statusCode === 400,
+      `an oversized ${candidate.label} should be refused, not stored (got ${response.statusCode})`
+    );
+    const body = response.body as any;
+    assert(
+      body.error.code === 'INVALID_REQUEST',
+      `an oversized ${candidate.label} should answer INVALID_REQUEST (got ${JSON.stringify(body.error.code)})`
+    );
+    assert(
+      typeof body.error.message === 'string' && body.error.message.startsWith(candidate.field),
+      `the refusal should name the field to shorten (got ${JSON.stringify(body.error.message)})`
+    );
+  }
+
+  // Nothing was written: a refused PUT must not have left the oversized value
+  // in the store for the next GET to hand back.
+  const afterRefusals = new FakeResponse();
+  await handler(createRequest('GET', 'profile'), afterRefusals);
+  assert(afterRefusals.statusCode === 200, 'reading the profile after a refused write should succeed');
+  assert(
+    !JSON.stringify(afterRefusals.body).includes('BBBBBBBBBB'),
+    'a refused profile write should leave nothing behind'
+  );
+
+  // Exactly at the cap is accepted: the limit is inclusive, the way every other
+  // limit in `STORY_BLUEPRINT_LIMITS` is read.
+  const atTheCap = await putProfile({
+    contentBoundaries: 'B'.repeat(STORY_LAB_PROFILE_LIMITS.maxContentBoundariesLength),
+    defaultHeatContract: {
+      noGoContent: 'C'.repeat(STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength)
+    }
+  }, 'A'.repeat(STORY_LAB_PROFILE_LIMITS.maxDisplayNameLength));
+  assert(atTheCap.statusCode === 200, `a profile exactly at the caps should be stored (got ${atTheCap.statusCode})`);
+
+  const stored = (atTheCap.body as any).data.preferences;
+  assert(
+    stored.contentBoundaries.length === STORY_LAB_PROFILE_LIMITS.maxContentBoundariesLength
+      && stored.defaultHeatContract.noGoContent.length === STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength,
+    'an accepted profile keeps its free text whole rather than truncating it'
+  );
 }
 
 function createTestHandler(user: AuthUser) {
@@ -633,7 +1113,7 @@ function createLeakyProjectStore(): StoryProjectStore {
     async loadProject(): Promise<StoryProjectStoreResult<StoredStoryProjectRecord | null>> {
       return leakResult();
     },
-    async listProjects(): Promise<StoryProjectStoreResult<StoryProjectListItem[]>> {
+    async listProjects(): Promise<StoryProjectStoreResult<StoryProjectListPage>> {
       return leakResult();
     },
     async deleteProject(): Promise<StoryProjectStoreResult<StoryProjectDeleteReceipt>> {

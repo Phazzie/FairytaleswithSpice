@@ -12,23 +12,43 @@ import type {
   CloudStoryProjectStorageMode,
   CloudStoryProjectSaveReceipt,
   SavedStoryProject,
-  StoryLabUserProfile
+  StoryLabLibrarySort,
+  StoryLabUserProfile,
+  StoryMemoryCard
 } from '../contracts';
 import { applyCorsPolicy } from '../../http/corsPolicy';
+import { sendMethodNotAllowed } from '../../http/methodNotAllowed';
+import { createDefaultStoryLabProfilePreferences } from '../profile/profileDefaults';
 import {
   createDefaultStoryLabUserProfile,
+  describeOversizedStoryLabProfileField,
   normalizeStoryLabProfilePreferences,
   StoryLabProfileStore,
   StoryLabProfileStoreError
 } from '../profile/storyLabProfileStore';
 import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
 import {
+  sortStoryProjectListItems,
+  STORY_LAB_LIBRARY_MAX_ITEMS,
   StoryProjectDeleteReceipt,
   StoryProjectListItem,
   StoryProjectStore,
   StoryProjectStoreError,
   StoredStoryProjectRecord
 } from '../storage/storyProjectStore';
+
+/**
+ * What each resource behind this route file serves.
+ *
+ * One CORS policy covers the whole file — a preflight is answered before the
+ * path is even read — but `Allow` is the *target resource*'s list, and these
+ * three resources do not serve the same methods. `OPTIONS` is on every one of
+ * them because `applyCorsPolicy` really does answer it for every path here.
+ */
+const ACCOUNT_ROUTE_CORS_METHODS = ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'];
+const PROFILE_ROUTE_METHODS = ['GET', 'PUT', 'OPTIONS'];
+const PROJECT_COLLECTION_ROUTE_METHODS = ['GET', 'POST', 'OPTIONS'];
+const PROJECT_ITEM_ROUTE_METHODS = ['GET', 'DELETE', 'OPTIONS'];
 
 type RequestValue = string | string[] | undefined;
 
@@ -96,7 +116,7 @@ async function handleStoryLabAccountRouteWithContext(
   res: ResponseLike
 ): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
-    methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
+    methods: ACCOUNT_ROUTE_CORS_METHODS,
     credentials: true
   });
   if (cors.handled) {
@@ -161,6 +181,16 @@ async function handleProfileRoute(
       return;
     }
 
+    // The profile's free text is the only caller text this route stores
+    // durably, and nothing measured it. Answered before the store is reached,
+    // naming the field, so the caller is told what to shorten rather than
+    // having a boundary they wrote silently kept at whatever length it arrived.
+    const oversizedField = describeOversizedStoryLabProfileField(profile);
+    if (oversizedField) {
+      sendJson(res, 400, invalidRequest(oversizedField));
+      return;
+    }
+
     const saveResult = await context.profileStore.saveProfile(user, profile);
     if (saveResult.success === false) {
       sendJson(res, saveResult.error.statusCode, profileStoreErrorResponse(saveResult.error));
@@ -174,7 +204,7 @@ async function handleProfileRoute(
     return;
   }
 
-  sendJson(res, 405, methodNotAllowed('Profile routes support GET and PUT.'));
+  sendMethodNotAllowed(res, PROFILE_ROUTE_METHODS, 'Profile routes support GET and PUT.');
 }
 
 async function handleProjectsRoute(
@@ -186,7 +216,17 @@ async function handleProjectsRoute(
   const method = normalizeMethod(req.method);
 
   if (method === 'GET') {
-    const listResult = await context.projectStore.listProjects(user);
+    // The ordering is the reader's and it goes *down* to the store, because the
+    // cap belongs with the rows and a cap can only be applied under an
+    // ordering. The Postgres adapter used to carry `order by updated_at desc
+    // limit 50` in its own SQL while this route sorted whatever came back, so a
+    // reader on `title_asc` was shown the alphabetical order of the fifty most
+    // recently *updated* projects.
+    const librarySort = await readLibrarySort(context, user);
+    const listResult = await context.projectStore.listProjects(user, {
+      sort: librarySort,
+      limit: STORY_LAB_LIBRARY_MAX_ITEMS
+    });
     if (listResult.success === false) {
       sendJson(res, listResult.error.statusCode, projectStoreErrorResponse(listResult.error));
       return;
@@ -194,7 +234,17 @@ async function handleProjectsRoute(
 
     sendJson(res, 200, {
       success: true,
-      data: toCloudProjectList(context, user, listResult.data)
+      data: toCloudProjectList(
+        context,
+        user,
+        // Re-sorted here, over at most `STORY_LAB_LIBRARY_MAX_ITEMS` items, so
+        // that the order a caller sees is always `sortStoryProjectListItems`'s
+        // — SQL collation and `localeCompare` do not agree about accented
+        // titles, and the store's clause decides only which rows the page
+        // holds.
+        sortStoryProjectListItems(listResult.data.items, librarySort),
+        listResult.data.totalCount
+      )
     });
     return;
   }
@@ -219,7 +269,37 @@ async function handleProjectsRoute(
     return;
   }
 
-  sendJson(res, 405, methodNotAllowed('Project collection routes support GET and POST.'));
+  sendMethodNotAllowed(res, PROJECT_COLLECTION_ROUTE_METHODS, 'Project collection routes support GET and POST.');
+}
+
+/**
+ * The order this caller has asked their library to come back in.
+ *
+ * The preference lives on the profile rather than in the request, so the list
+ * route has to read it — the client sends no sort and never has. A caller with
+ * no saved profile gets the default the profile route would have answered them
+ * with, which is the order the list already came back in.
+ *
+ * A profile store failure is not a list failure. The projects are the answer
+ * here and the ordering is a preference about them, so a store that cannot be
+ * read falls back to the default rather than turning a working library into a
+ * `503` — the opposite of how `listProjects` above treats its own store, and
+ * deliberately so.
+ */
+async function readLibrarySort(
+  context: StoryLabAccountRouteContext,
+  user: AuthUser
+): Promise<StoryLabLibrarySort> {
+  const defaultSort = createDefaultStoryLabProfilePreferences().librarySort;
+
+  try {
+    const loadResult = await context.profileStore.loadProfile(user);
+    return loadResult.success === true
+      ? loadResult.data?.profile.preferences.librarySort ?? defaultSort
+      : defaultSort;
+  } catch {
+    return defaultSort;
+  }
 }
 
 async function handleProjectRoute(
@@ -270,7 +350,7 @@ async function handleProjectRoute(
     return;
   }
 
-  sendJson(res, 405, methodNotAllowed('Project item routes support GET and DELETE.'));
+  sendMethodNotAllowed(res, PROJECT_ITEM_ROUTE_METHODS, 'Project item routes support GET and DELETE.');
 }
 
 async function requireAccountUser(authPort: AuthPort, req: RequestLike, res: ResponseLike): Promise<AuthUser | null> {
@@ -392,6 +472,43 @@ function readProfileFromBody(body: unknown): StoryLabUserProfile | null {
   };
 }
 
+/**
+ * The project a save request is asking this account to store.
+ *
+ * Eight fields were checked here and the last five were written down as casts.
+ * `chapters` got as far as `Array.isArray` and its entries were taken on trust;
+ * `telemetry`, `continuityExtraction`, `pinnedMemoryCardDraftIds`, and
+ * `acceptedMemoryCards` were not looked at at all. A cast is not a check, and
+ * these arrive over the wire from whatever posted them.
+ *
+ * The Angular tree already knows this. `normalizePinnedMemoryCardDraftIds` and
+ * `normalizeAcceptedMemoryCards` in `app.ts` are both declared over `unknown`
+ * and both filter entry by entry — written for exactly two of the five fields
+ * this route was casting, and run on the way *out* of a project this route let
+ * in without looking. So the client defends itself against data its own server
+ * accepted, which is the wrong half of the seam to be doing it on, and the one
+ * reader that is not the Angular tree is not defended at all:
+ * `toStoryProjectListItem` computes `acceptedMemoryCardCount` as
+ * `acceptedMemoryCards?.length ?? 0`, so a project saved with
+ * `"acceptedMemoryCards": "none"` is a library card reporting **four** memory
+ * cards for a story that has none — `.length` of a string, counted and shown.
+ *
+ * Two rules, and the split is deliberate:
+ *
+ * - The story is refused, not repaired. `chapters` joins `summary`, `state`,
+ *   and `blueprint`: a save whose chapter list holds something that is not a
+ *   chapter is a `400`, because the alternative is storing the chapters that
+ *   passed and silently dropping the ones that did not — and losing a chapter
+ *   the caller believed they saved is worse than making them send it again.
+ * - The annotations are filtered, not refused. The two memory-card fields and
+ *   the two receipts are things said *about* the story, and refusing an entire
+ *   novel over one malformed memory card would lose the story to save a note
+ *   about it. A list keeps the entries that can be read and drops the rest,
+ *   entry by entry, on the client's own rule; a value that is not a list at all
+ *   is stored as absent, which is a state the field already has and every
+ *   reader already handles — and which the client's normalizers turn back into
+ *   `[]` on load, so the two sides agree where it shows.
+ */
 function readProjectFromBody(body: unknown): SavedStoryProject | null {
   if (!isObjectRecord(body)) {
     return null;
@@ -406,6 +523,7 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
   const synopsis = readOptionalString(candidate['synopsis']);
   const createdAt = readOptionalString(candidate['createdAt']);
   const updatedAt = readOptionalString(candidate['updatedAt']);
+  const chapters = readChapters(candidate['chapters']);
   if (
     !projectId ||
     !isNonBlankString(candidate['storyId']) ||
@@ -416,7 +534,7 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
     !isObjectRecord(candidate['summary']) ||
     !isObjectRecord(candidate['state']) ||
     !isObjectRecord(candidate['blueprint']) ||
-    !Array.isArray(candidate['chapters'])
+    chapters === null
   ) {
     return null;
   }
@@ -429,14 +547,95 @@ function readProjectFromBody(body: unknown): SavedStoryProject | null {
     blueprint: candidate['blueprint'] as unknown as SavedStoryProject['blueprint'],
     summary: candidate['summary'] as unknown as SavedStoryProject['summary'],
     state: candidate['state'] as unknown as SavedStoryProject['state'],
-    chapters: candidate['chapters'] as SavedStoryProject['chapters'],
-    telemetry: candidate['telemetry'] as SavedStoryProject['telemetry'],
-    continuityExtraction: candidate['continuityExtraction'] as SavedStoryProject['continuityExtraction'],
-    pinnedMemoryCardDraftIds: candidate['pinnedMemoryCardDraftIds'] as SavedStoryProject['pinnedMemoryCardDraftIds'],
-    acceptedMemoryCards: candidate['acceptedMemoryCards'] as SavedStoryProject['acceptedMemoryCards'],
+    chapters,
+    telemetry: readObjectRecordOrUndefined(candidate['telemetry']) as unknown as SavedStoryProject['telemetry'],
+    continuityExtraction: readObjectRecordOrUndefined(
+      candidate['continuityExtraction']
+    ) as unknown as SavedStoryProject['continuityExtraction'],
+    pinnedMemoryCardDraftIds: readMemoryCardDraftIds(candidate['pinnedMemoryCardDraftIds']),
+    acceptedMemoryCards: readAcceptedMemoryCards(candidate['acceptedMemoryCards']),
     createdAt: createdAt ?? '',
     updatedAt: updatedAt ?? ''
   };
+}
+
+/**
+ * The chapter list, or `null` when it is not one.
+ *
+ * The fields required are the ones readers dereference rather than every field
+ * `GeneratedChapter` declares: `chapterId` selects the chapter in the Angular
+ * tree, `chapterNumber` orders it, and `title` and `htmlContent` are what a
+ * reader or an export is shown. Demanding all eight would refuse projects saved
+ * by an earlier client over a field nothing reads, which is a worse trade than
+ * the one this check exists to make.
+ *
+ * `null` rather than a filtered list: see `readProjectFromBody`. A chapter that
+ * cannot be read is a refused save, not a shorter story.
+ */
+function readChapters(value: unknown): SavedStoryProject['chapters'] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const readable = value.every(chapter =>
+    isObjectRecord(chapter)
+    && isNonBlankString(chapter['chapterId'])
+    && typeof chapter['chapterNumber'] === 'number'
+    && typeof chapter['title'] === 'string'
+    && typeof chapter['htmlContent'] === 'string');
+
+  return readable ? (value as SavedStoryProject['chapters']) : null;
+}
+
+/**
+ * An optional receipt: the object it claims to be, or nothing.
+ *
+ * `telemetry` and `continuityExtraction` are both optional on the project, so a
+ * value that is not an object record is dropped to `undefined` — which is what
+ * the field already means when the caller omits it, and what every reader of
+ * either one already handles.
+ */
+function readObjectRecordOrUndefined(value: unknown): Record<string, unknown> | undefined {
+  return isObjectRecord(value) ? value : undefined;
+}
+
+/**
+ * The pinned draft ids, filtered the way the client filters them on load.
+ *
+ * Deliberately the same rule as `normalizePinnedMemoryCardDraftIds` in `app.ts`
+ * — non-blank strings, everything else dropped — because a save and the load
+ * that follows it disagreeing about which ids are real is the one outcome
+ * neither side can detect.
+ */
+function readMemoryCardDraftIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.filter((id): id is string => isNonBlankString(id));
+}
+
+/**
+ * The accepted memory cards, filtered the way the client filters them on load.
+ *
+ * The six required fields are `normalizeAcceptedMemoryCards`'s six in `app.ts`,
+ * for the same reason as the ids above. This is also the field
+ * `toStoryProjectListItem` counts with a bare `.length`, so what survives here
+ * is what the library card reports.
+ */
+function readAcceptedMemoryCards(value: unknown): SavedStoryProject['acceptedMemoryCards'] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.filter((card): card is StoryMemoryCard =>
+    isObjectRecord(card)
+    && typeof card['id'] === 'string'
+    && typeof card['label'] === 'string'
+    && typeof card['title'] === 'string'
+    && typeof card['detail'] === 'string'
+    && typeof card['triggerLabel'] === 'string'
+    && typeof card['acceptedAt'] === 'string');
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -480,12 +679,14 @@ function normalizeProjectId(projectId: unknown): string | null {
 function toCloudProjectList(
   context: StoryLabAccountRouteContext,
   user: AuthUser,
-  projects: StoryProjectListItem[]
+  projects: StoryProjectListItem[],
+  totalProjectCount: number
 ): CloudStoryProjectList {
   return {
     ownerUserId: user.userId,
     storageMode: toCloudStorageMode(context.projectStore),
-    projects
+    projects,
+    totalProjectCount
   };
 }
 
@@ -600,7 +801,21 @@ function profileStorePublicMessage(error: StoryLabProfileStoreError): string {
   }
 }
 
-function sendJson<T>(res: ResponseLike, statusCode: number, body: T): void {
+/**
+ * Every answer this route file sends, typed as the envelope it is.
+ *
+ * The parameter was a bare `T`, so nothing checked that a body handed to it was
+ * an `ApiResponse` at all — which is the one property every caller of this API
+ * relies on and the one a changed response shape can quietly lose. Adding a
+ * required field to `CloudStoryProjectList` is exactly that kind of change:
+ * the literal below builds the payload by hand, and an unconstrained `T`
+ * accepts whatever it happens to be.
+ *
+ * Constraining the helper rather than annotating one call site is what makes it
+ * a rule about this file's answers instead of a note on the one that was
+ * changed last.
+ */
+function sendJson<T>(res: ResponseLike, statusCode: number, body: ApiResponse<T>): void {
   res.status(statusCode).json(body);
 }
 
@@ -610,16 +825,6 @@ function readQueryValue(value: string | string[] | undefined): string | undefine
 
 function normalizeMethod(method: string | undefined): string {
   return (method ?? '').toUpperCase();
-}
-
-function methodNotAllowed(message: string): ApiResponse<never> {
-  return {
-    success: false,
-    error: {
-      code: 'METHOD_NOT_ALLOWED',
-      message
-    }
-  };
 }
 
 function invalidRequest(message: string): ApiResponse<never> {

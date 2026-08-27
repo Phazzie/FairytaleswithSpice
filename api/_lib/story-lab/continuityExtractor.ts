@@ -9,11 +9,19 @@ import type {
   StoryStateSnapshot,
   StorySummary
 } from './contracts';
+import { SPICY_LEVELS } from './contracts';
+import {
+  CHARACTER_ARCHETYPES,
+  PLOT_THREAD_STATUSES,
+  RELATIONSHIP_KINDS,
+  STORY_MEMORY_LIFETIMES,
+  isVocabularyMember
+} from '../../../shared/storyStateVocabulary';
 import { XaiTextClient } from '../services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../config/xaiConfig';
 import { STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS } from './continuityBudget';
 import { stripMarkdownJsonFence } from '../utils/modelJsonPayload';
-import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
+import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary } from '../utils/textExcerpt';
 
 /**
@@ -158,6 +166,27 @@ export function buildContinuityPrompt(input: ContinuityExtractionInput): string 
       suggestedNarrativeVoice: 'short description',
       confidence: 'number from 0 to 1'
     },
+    // The four closed fields of those objects, named to the model that is being
+    // asked to fill them.
+    //
+    // `mergeAiContinuity` checks each of these against its vocabulary and
+    // *drops* a value that is not in it, keeping whatever the state already
+    // held — so a model answering `archetype: "love_interest"`, `status:
+    // "open"`, `lifetime: "arc"`, or `relationship: "mentor"` has its
+    // continuity fact discarded in silence, and the reader sees a character
+    // whose archetype never changed and a thread whose status never moved.
+    // Nothing in this prompt had ever told it otherwise: `requiredJsonShape`
+    // named the object types and stopped, and `existingState` below shows
+    // values only for the entities the story already has. Sending the tables
+    // costs a few dozen tokens and is read from the same lists the merge checks
+    // against, so the two cannot disagree.
+    allowedValues: {
+      'characters[].archetype': CHARACTER_ARCHETYPES,
+      'characters[].spiceCompatibilities[]': SPICY_LEVELS,
+      'characters[].relationships[].relationship': RELATIONSHIP_KINDS,
+      'threads[].status': PLOT_THREAD_STATUSES,
+      'threads[].lifetime and artifacts[].lifetime': STORY_MEMORY_LIFETIMES
+    },
     existingState: {
       characters: input.currentState.characters,
       threads: input.currentState.threads,
@@ -247,8 +276,8 @@ function mergeCharacters(existing: CharacterProfile[], incoming: Partial<Charact
       internalConflict: stringOr(candidate.internalConflict, previous?.internalConflict, 'Desire conflicts with self-protection.'),
       externalConflict: stringOr(candidate.externalConflict, previous?.externalConflict, 'The supernatural world resists easy resolution.'),
       secrets: arrayOfStrings(candidate.secrets, previous?.secrets),
-      relationships: Array.isArray(candidate.relationships) ? candidate.relationships as CharacterProfile['relationships'] : previous?.relationships ?? [],
-      spiceCompatibilities: Array.isArray(candidate.spiceCompatibilities) ? candidate.spiceCompatibilities as CharacterProfile['spiceCompatibilities'] : previous?.spiceCompatibilities ?? [3]
+      relationships: relationshipEdges(candidate.relationships, previous?.relationships),
+      spiceCompatibilities: spiceLevels(candidate.spiceCompatibilities, previous?.spiceCompatibilities)
     });
   }
 
@@ -310,35 +339,169 @@ function mergeArtifacts(existing: LoreArtifact[], incoming: Partial<LoreArtifact
 }
 
 function normalizeArchetype(value: unknown): CharacterProfile['archetype'] | undefined {
-  return value === 'protagonist' || value === 'antagonist' || value === 'supporting' || value === 'narrator'
-    ? value
-    : undefined;
+  return isVocabularyMember(CHARACTER_ARCHETYPES, value) ? value : undefined;
 }
 
 function normalizeThreadStatus(value: unknown): PlotThread['status'] | undefined {
-  return value === 'active' || value === 'escalating' || value === 'resolved' || value === 'dormant'
-    ? value
-    : undefined;
+  return isVocabularyMember(PLOT_THREAD_STATUSES, value) ? value : undefined;
 }
 
 function normalizeStoryMemoryLifetime(value: unknown): PlotThread['lifetime'] | undefined {
-  return value === 'scene' || value === 'chapter' || value === 'series'
-    ? value
-    : undefined;
+  return isVocabularyMember(STORY_MEMORY_LIFETIMES, value) ? value : undefined;
 }
 
 function stringOr(candidate: unknown, fallback: string | undefined, defaultValue: string): string {
   return isNonEmptyString(candidate) ? candidate.trim() : fallback ?? defaultValue;
 }
 
+/**
+ * Read a list of free-text facts a model proposed — a character's secrets, a
+ * thread's foreshadowed devices.
+ *
+ * `relationshipEdges` and `spiceLevels` below both distinguish an array that
+ * arrives *empty* from an array whose entries were all refused, and their notes
+ * say why: the first is the model reporting that there is nothing here, which is
+ * a fact it is allowed to report; the second is the model trying to report
+ * something and getting the shape wrong, which is not a reason to believe what
+ * was already recorded is gone. This function is the third array reader in the
+ * merge and it was the one still storing the empty list the filter produced.
+ *
+ * Nothing here refuses a plain string, so the case looks unreachable until you
+ * remember what these entries actually are. `secrets` and `foreshadowedDevices`
+ * are lists of short prose, and a model asked for them answers in the shape it
+ * finds natural: `[{"secret": "She was there that night"}]`, `[["the pact"]]`,
+ * or a single `null` where it had nothing for one slot. Every one of those
+ * satisfies `Array.isArray`, survives nothing, and cleared the character's real
+ * secrets — the extraction that was supposed to add a fact deleted several, and
+ * the next continuation prompt was built from a character who had never kept
+ * anything from anyone.
+ *
+ * The same rule as its two siblings, then: entries that arrive and are all
+ * refused fall back; `[]` still clears.
+ */
 function arrayOfStrings(candidate: unknown, fallback: string[] | undefined): string[] {
-  return Array.isArray(candidate)
-    ? uniqueStrings(candidate.filter(isNonEmptyString).map(item => item.trim()))
-    : fallback ?? [];
+  if (!Array.isArray(candidate)) {
+    return fallback ?? [];
+  }
+
+  const values = uniqueStrings(candidate.filter(isNonEmptyString).map(item => item.trim()));
+
+  return values.length || candidate.length === 0 ? values : fallback ?? [];
 }
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
+ * Read the relationship edges a model proposed for a character.
+ *
+ * Every other field on the merged profile is normalized — `normalizeArchetype`
+ * for the archetype, `stringOr` for the prose, `arrayOfStrings` for the secrets
+ * — and these two arrays were asserted instead: `candidate.relationships as
+ * CharacterProfile['relationships']`. `Array.isArray` was the whole check, so
+ * the array's *contents* were whatever the model wrote. A cast is not a
+ * validation, and this is model output arriving through `JSON.parse`: the entry
+ * can be `null`, a bare name string, or an object missing the fields the type
+ * says are there, and every one of those is stored in the story state and
+ * handed to both trees that read it.
+ *
+ * The API tree already knows this. `getCharacterRelationships` in
+ * `continuationGuidance.ts` re-filters the same array on every read — object,
+ * string `characterId`, string `relationship` — which is a guard that only
+ * needs to exist because what it reads was never checked. The Angular tree has
+ * no such guard: `buildContinuityRelationshipPreviewItem` in `app.ts` iterates
+ * `character.relationships` and reads `relationship.characterId` straight off
+ * each entry, so a `null` in the array is a `TypeError` thrown while rendering
+ * the continuity panel, and a plain string is an edge that silently matches no
+ * character and vanishes from the preview.
+ *
+ * Checking it once here is what makes the stored state match its own type, so
+ * neither reader has to re-derive the guarantee — and the reader that never did
+ * stops being the one that pays for it. `relationship` is checked against the
+ * five kinds the contract lists rather than against `typeof === 'string'`,
+ * because the union is what the type promises and a model that answers
+ * `"mentor"` is proposing a kind this app has no reading for; `notes` is
+ * required by the type and defaults to empty rather than being left `undefined`
+ * under a declaration that says it is a string.
+ *
+ * An array whose entries are *all* refused falls back rather than storing the
+ * empty list the filter produced. Dropping the bad edge is right; letting the
+ * drop take the character's real relationships with it is not, and that is what
+ * happened: a model answering the single edge `{characterId, relationship:
+ * "mentor"}` cleared a `lover` edge the story had actually established, because
+ * `Array.isArray` was satisfied and nothing survived the filter. `spiceLevels`
+ * below already reads this way and its note says why; this is the same rule for
+ * the array beside it.
+ *
+ * An array that arrives *empty* still clears, and the difference is the point.
+ * `[]` is the model saying this character has no relationships, which is a fact
+ * it is allowed to report; an array with entries in it is the model trying to
+ * report relationships and getting the vocabulary wrong, which is not a reason
+ * to believe the ones already recorded are gone.
+ */
+function relationshipEdges(
+  candidate: unknown,
+  fallback: CharacterProfile['relationships'] | undefined
+): CharacterProfile['relationships'] {
+  if (!Array.isArray(candidate)) {
+    return fallback ?? [];
+  }
+
+  const edges = candidate.flatMap(entry => {
+    if (!entry || typeof entry !== 'object') {
+      return [];
+    }
+
+    const edge = entry as Partial<CharacterProfile['relationships'][number]>;
+    if (!isNonEmptyString(edge.characterId) || !isVocabularyMember(RELATIONSHIP_KINDS, edge.relationship)) {
+      return [];
+    }
+
+    return [{
+      characterId: edge.characterId.trim(),
+      relationship: edge.relationship,
+      notes: typeof edge.notes === 'string' ? edge.notes.trim() : ''
+    }];
+  });
+
+  return edges.length || candidate.length === 0 ? edges : fallback ?? [];
+}
+
+/**
+ * Read the spice levels a model proposed a character is written for.
+ *
+ * The same cast as above, over a `SpicyLevel[]` — the `1 | 2 | 3 | 4 | 5` union
+ * the whole app is dialled in. `[0]`, `[9]`, and `["3"]` all satisfied
+ * `Array.isArray` and were stored as levels, under a declaration saying they
+ * cannot be. Levels outside the union are dropped rather than clamped: a model
+ * that answers `9` has not said "5", it has said something this scale does not
+ * express, and inventing the nearest legal value would record a compatibility
+ * the extraction never claimed.
+ *
+ * The `[3]` default is unchanged — the middle of the scale, for a character the
+ * model gave no compatibility for at all — but it now also answers an array
+ * that held nothing usable, which previously stored an empty list where the
+ * type says there is at least a default.
+ */
+function spiceLevels(
+  candidate: unknown,
+  fallback: CharacterProfile['spiceCompatibilities'] | undefined
+): CharacterProfile['spiceCompatibilities'] {
+  if (!Array.isArray(candidate)) {
+    return fallback ?? [3];
+  }
+
+  // `SPICY_LEVELS` rather than a sixth spelling of `1 | 2 | 3 | 4 | 5`: the
+  // scale has had a table since the blueprint pickers were given one, and this
+  // was the last reader in the repository still comparing against the numbers
+  // by hand.
+  const levels = Array.from(new Set(
+    candidate.filter((level): level is CharacterProfile['spiceCompatibilities'][number] =>
+      (SPICY_LEVELS as readonly number[]).includes(level))
+  ));
+
+  return levels.length ? levels : fallback ?? [3];
 }
 
 /**

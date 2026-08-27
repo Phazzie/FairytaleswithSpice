@@ -1,5 +1,6 @@
 import axios from 'axios';
 import {
+  getRemainingRequestBudgetMs,
   getXaiFastModel,
   getXaiFastTimeoutMs,
   getXaiReasoningEffortForModel,
@@ -8,6 +9,13 @@ import {
   type XaiReasoningEffort
 } from '../config/xaiConfig';
 import { logApiError, logInfo, logPerformance, logWarn, LogContext } from '../utils/logger';
+
+/**
+ * The shortest window worth starting a fast-profile retry in. Below it the
+ * retry is certain to be cut off by the invocation's own deadline, so the
+ * caller is better served by the failure it can still be told about.
+ */
+export const MIN_XAI_FALLBACK_TIMEOUT_MS = 5000;
 
 export type XaiTextOperation = 'genesis' | 'continuation' | 'continuity_extraction' | 'evaluation' | 'smoke';
 export type XaiModelPreference = 'primary' | 'fast';
@@ -70,6 +78,7 @@ export class XaiTextClient {
       throw new Error('XAI_API_KEY is required for live Grok generation.');
     }
 
+    const startedAtMs = Date.now();
     const preferredModel = request.modelPreference === 'fast'
       ? getXaiFastModel()
       : getXaiStoryModel();
@@ -81,7 +90,7 @@ export class XaiTextClient {
       const fastModel = getXaiFastModel();
       const preferredReasoningEffort = getXaiReasoningEffortForModel(preferredModel, request.modelPreference ?? 'primary');
       const fastReasoningEffort = getXaiReasoningEffortForModel(fastModel, 'fast');
-      const fallbackTimeoutMs = request.fallbackTimeoutMs ?? getXaiFastTimeoutMs();
+      const requestedFallbackTimeoutMs = request.fallbackTimeoutMs ?? getXaiFastTimeoutMs();
 
       if (this.shouldAttemptFastProfileFallback({
         allowFallback,
@@ -91,14 +100,36 @@ export class XaiTextClient {
         preferredReasoningEffort,
         fastReasoningEffort,
         primaryTimeoutMs: request.timeoutMs,
-        fallbackTimeoutMs
+        fallbackTimeoutMs: requestedFallbackTimeoutMs
       })) {
+        // What the retry may spend, rather than what it asked for: see
+        // `resolveFallbackTimeoutMs` for the invocation deadline the two of them
+        // together used to run past.
+        const fallbackTimeoutMs = this.resolveFallbackTimeoutMs(requestedFallbackTimeoutMs, startedAtMs);
+
+        if (fallbackTimeoutMs === 0) {
+          logWarn('Primary xAI profile attempt did not finish and the invocation has no room left for a fast profile retry.', request.context, {
+            operation: request.operation,
+            primaryModel: preferredModel,
+            fallbackModel: fastModel,
+            primaryTimeoutMs: request.timeoutMs,
+            requestedFallbackTimeoutMs,
+            remainingBudgetMs: getRemainingRequestBudgetMs(startedAtMs),
+            status: error.response?.status,
+            errorCode: error.code
+          });
+
+          this.logProviderFailure(error, request, preferredModel);
+          throw this.toUnavailableError(error);
+        }
+
         logWarn('Primary xAI profile attempt did not finish in the live request window; retrying with fast profile.', request.context, {
           operation: request.operation,
           primaryModel: preferredModel,
           fallbackModel: fastModel,
           primaryReasoningEffort: preferredReasoningEffort,
           fastReasoningEffort,
+          fallbackTimeoutMs,
           status: error.response?.status,
           errorCode: error.code
         });
@@ -124,6 +155,46 @@ export class XaiTextClient {
       this.logProviderFailure(error, request, preferredModel);
       throw this.toUnavailableError(error);
     }
+  }
+
+  /**
+   * How long the fast-profile retry may run, given what the primary attempt
+   * already spent.
+   *
+   * The retry used to be given `fallbackTimeoutMs` whatever the primary attempt
+   * had cost, and the two defaults are 40 seconds each against an invocation the
+   * platform kills at 60. A deployment that points `XAI_FAST_MODEL` at a
+   * different model from `XAI_STORY_MODEL` — which is what the fallback is for,
+   * and the only configuration `shouldAttemptFastProfileFallback` does not
+   * already refuse on the timeouts alone — therefore had a primary timeout and a
+   * retry that could not both fit: the primary attempt timed out at 40 seconds,
+   * the retry was handed another 40, and the function was terminated at 60 with
+   * the retry still in flight. The caller got the platform's timeout instead of
+   * the `AI_UNAVAILABLE` envelope this client exists to produce, the reader got
+   * a generic failure page in place of "Grok is temporarily unavailable, try
+   * again in a minute", and nothing downstream ran at all — including the
+   * continuity extraction that measures itself against this same window.
+   *
+   * So the retry is given what is actually left. Below
+   * `MIN_XAI_FALLBACK_TIMEOUT_MS` there is no point starting one: a generation
+   * cannot finish in it, and spending the remainder of the window on a call that
+   * will be cut off costs the honest answer the caller could have had at once.
+   *
+   * The elapsed time is measured from this call rather than from the start of
+   * the request, so it under-counts whatever the route spent before reaching
+   * here. That still bounds the failure this exists to prevent — one attempt
+   * plus one retry can no longer exceed the window on their own — and it errs
+   * toward attempting the retry, which is the direction that keeps a story
+   * being generated.
+   */
+  private resolveFallbackTimeoutMs(requestedTimeoutMs: number, startedAtMs: number): number {
+    const remainingMs = getRemainingRequestBudgetMs(startedAtMs);
+
+    if (remainingMs < MIN_XAI_FALLBACK_TIMEOUT_MS) {
+      return 0;
+    }
+
+    return Math.min(requestedTimeoutMs, remainingMs);
   }
 
   private shouldAttemptFastProfileFallback(input: {

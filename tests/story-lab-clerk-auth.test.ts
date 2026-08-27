@@ -6,6 +6,7 @@ import {
   createClerkAuthPort,
   readClerkSessionToken
 } from '../api/_lib/story-lab/auth/clerkAuthPort';
+import { logger } from '../api/_lib/utils/logger';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -19,6 +20,7 @@ async function main() {
   await testClerkAuthReadsSessionCookie();
   await testClerkAuthIgnoresMalformedRuntimeHeaders();
   await testClerkAuthRejectsInvalidSessionWithoutLeakingToken();
+  await testClerkAuthVerificationFailureLogsThroughStructuredLogger();
 
   console.log('Story Lab Clerk auth tests passed');
 }
@@ -113,6 +115,48 @@ async function testClerkAuthRejectsInvalidSessionWithoutLeakingToken() {
     assert(isAuthError(error), 'invalid Clerk session should throw AuthError');
     assert(!error.message.includes('invalid-session-token'), 'invalid token should not appear in auth errors');
   }
+}
+
+// The raw `console.warn(..., { errorName })` this used to be never reached the
+// shared recent-log buffer the Error Display panel reads and carried no
+// request correlation. This asserts the failure now lands there, tagged with
+// the request's own correlation id, and that the verifier's thrown error
+// (which could carry a session token in its message) never reaches the log.
+async function testClerkAuthVerificationFailureLogsThroughStructuredLogger() {
+  const auth = createClerkAuthPort({
+    verifySessionToken: async () => {
+      throw new Error('upstream Clerk session-token-abc123 lookup timed out');
+    }
+  });
+
+  const original = { log: console.log, warn: console.warn, error: console.error };
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  logger.clearLogs();
+
+  try {
+    await auth.requireUser({
+      headers: {
+        authorization: 'Bearer session-token-abc123',
+        'x-request-id': 'req-clerk-test-1'
+      }
+    });
+    throw new Error('a verifier that throws should still fail the request');
+  } catch (error) {
+    assert(isAuthError(error), 'verifier failures should surface as AuthError');
+  } finally {
+    console.log = original.log;
+    console.warn = original.warn;
+    console.error = original.error;
+  }
+
+  const warnings = logger.getRecentLogs(50, 'warn');
+  assert(warnings.length === 1, 'a verifier failure should emit exactly one structured warning');
+  const [entry] = warnings;
+  assert(entry.context?.requestId === 'req-clerk-test-1', 'the warning should carry the request correlation id');
+  assert(entry.context?.endpoint === 'clerkAuthPort.requireUser', 'the warning should identify the failing port method');
+  assert(!JSON.stringify(entry).includes('session-token-abc123'), 'the verifier error message should not reach the log');
 }
 
 main().catch(error => {

@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 
 import { CliffhangerService, hasIdentifiedCliffhangerType } from '../api/_lib/services/cliffhangerService';
+import type { CliffhangerType } from '../api/_lib/types/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -219,3 +220,116 @@ assert(
 );
 
 console.log('Cliffhanger service tests passed');
+
+// ==================== WHOLE-WORD HOOK MATCHING ====================
+// The hook lists were matched with `String.prototype.includes`, and the words
+// this genre writes constantly sit inside longer words that mean something
+// else — or the opposite thing. Each case below is one such collision: the
+// prose carries no hook of the named type at all, so the type must not win.
+
+const substringCollisions: Array<{ label: string; markup: string; wrongType: CliffhangerType }> = [
+  // `understood` is inside `misunderstood`: a register credited by the word
+  // that denies it.
+  {
+    label: 'misunderstood/understood',
+    markup: '<p>She had misunderstood him from the first night.</p>'
+      + '<p>He had misunderstood her just as badly.</p>',
+    wrongType: 'character_revelation'
+  },
+  // `decision` is inside `indecision`, and `price` inside `priceless` — the
+  // exact collision the continuation pressure scans were fixed for.
+  {
+    label: 'indecision/decision and priceless/price',
+    markup: '<p>Her indecision held the room still.</p>'
+      + '<p>The priceless crown sat between them, and her indecision held.</p>',
+    wrongType: 'emotional_conflict'
+  },
+  // `trapped` is inside `strapped`, `shadow` inside `overshadowed`.
+  {
+    label: 'strapped/trapped and overshadowed/shadow',
+    markup: '<p>He was strapped into the chair, overshadowed by the lamp.</p>'
+      + '<p>She left him strapped there, overshadowed and alone.</p>',
+    wrongType: 'danger'
+  },
+  // `revealed` is inside `unrevealed`.
+  {
+    label: 'unrevealed/revealed',
+    markup: '<p>The letter stayed unrevealed on the table.</p>'
+      + '<p>It stayed unrevealed until morning.</p>',
+    wrongType: 'plot_twist'
+  }
+];
+
+for (const collision of substringCollisions) {
+  const analysis = service.analyze(collision.markup);
+
+  assert(
+    analysis.cliffhangerType !== collision.wrongType || !hasIdentifiedCliffhangerType(analysis),
+    `"${collision.label}" must not classify as ${collision.wrongType}: the longer word is not the hook ` +
+      `(got ${JSON.stringify(analysis.cliffhangerType)} with strength ${analysis.cliffhangerStrength})`
+  );
+}
+
+// `secret` is inside `secretary`, `truth` inside `untruth`. Both are worth a
+// `mystery` hit in the closing paragraph, where a hit counts three times over.
+const secretaryUntruth = service.analyze(
+  '<p>The lamps guttered.</p><p>The secretary repeated the untruth once more.</p>'
+);
+
+assert(
+  !hasIdentifiedCliffhangerType(secretaryUntruth),
+  'a secretary repeating an untruth carries no identified hook ' +
+    `(got ${JSON.stringify(secretaryUntruth.cliffhangerType)})`
+);
+
+// The repair must not cost the scan the matches it got right: the inflections
+// the substring form picked up for free are still hooks.
+const inflections: Array<{ markup: string; type: CliffhangerType }> = [
+  { markup: '<p>Quiet.</p><p>The dangerous thing was still threatening her.</p>', type: 'danger' },
+  { markup: '<p>Quiet.</p><p>She secretly counted the questions she could not ask.</p>', type: 'mystery' },
+  { markup: '<p>Quiet.</p><p>The choices and their consequences waited.</p>', type: 'emotional_conflict' }
+];
+
+for (const inflection of inflections) {
+  const analysis = service.analyze(inflection.markup);
+
+  assert(
+    analysis.cliffhangerType === inflection.type && hasIdentifiedCliffhangerType(analysis),
+    `an inflected hook is still a hook: expected ${inflection.type} ` +
+      `(got ${JSON.stringify(analysis.cliffhangerType)} for ${JSON.stringify(inflection.markup)})`
+  );
+}
+
+// A hook counts once however many of its spellings the chapter uses, which is
+// how the substring scan behaved when one needle was a substring of both. Two
+// spellings of one hook must not outscore a chapter carrying two real hooks.
+const oneHookTwiceSpelled = service.analyze('<p>Quiet.</p><p>The danger was dangerous.</p>');
+const twoDistinctHooks = service.analyze('<p>Quiet.</p><p>Footsteps, and a shadow.</p>');
+
+assert(
+  twoDistinctHooks.cliffhangerStrength > oneHookTwiceSpelled.cliffhangerStrength,
+  'two distinct hooks should outscore one hook spelled two ways ' +
+    `(got ${twoDistinctHooks.cliffhangerStrength} vs ${oneHookTwiceSpelled.cliffhangerStrength})`
+);
+
+// A hook phrase is one space wide, and the generator wraps lines inside a
+// paragraph. Collapsing the scanned copy's whitespace is what keeps the phrase
+// visible; the reported hook text stays the paragraph the reader sees.
+const wrappedPhrase = service.analyze('<p>Quiet.</p><p>Her blood\n   froze at the sound.</p>');
+
+assert(
+  wrappedPhrase.cliffhangerType === 'danger' && hasIdentifiedCliffhangerType(wrappedPhrase),
+  `a hook phrase wrapped across a line is still the phrase (got ${JSON.stringify(wrappedPhrase.cliffhangerType)})`
+);
+
+// The boundary between two paragraphs is not a space, so a phrase cannot be
+// assembled out of the end of one paragraph and the start of the next.
+const phraseAcrossParagraphs = service.analyze('<p>Her blood</p><p>froze at the sound.</p>');
+
+assert(
+  !hasIdentifiedCliffhangerType(phraseAcrossParagraphs),
+  'a phrase split across two paragraphs is not that phrase ' +
+    `(got ${JSON.stringify(phraseAcrossParagraphs.cliffhangerType)})`
+);
+
+console.log('Cliffhanger whole-word hook matching tests passed');

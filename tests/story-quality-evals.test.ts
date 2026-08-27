@@ -498,9 +498,218 @@ function testActivationMatchingReadsNonLatinThreads(): void {
   );
 }
 
+/**
+ * The emotional-variety dimension has to be able to say "no".
+ *
+ * It matched its emotion words as substrings, and every one of the five
+ * registers has a common word of this genre sitting on top of it: `anger` is
+ * inside `danger` and `stranger`, `rage` inside `courage`, `ache` inside
+ * `reached`, `loss` inside `gloss`, and — worst — `hope` inside `hopeless`,
+ * `fear` inside `fearless`, and `trust` inside `distrust`, so three registers
+ * were credited by the negations that deny them.
+ *
+ * The prose below is built entirely from those decoys and contains no emotional
+ * statement at all; it used to score four of the five registers. Five at twelve
+ * points on a base of 48 clamps to 100, so the leak did not just inflate the
+ * number, it pinned the dimension near its ceiling for ordinary prose and took
+ * the `overallScore` it is one seventh of with it.
+ */
+function testEmotionalVarietyReadsWordsNotSubstrings(): void {
+  const configuration = {
+    creature: 'vampire',
+    themes: [],
+    spicyLevel: 3,
+    wordCount: 900
+  };
+
+  const emotionalVariety = (storyContent: string) => {
+    const report = buildStoryQualityHeuristicReport({ storyContent, configuration });
+    const found = report.dimensions.find(entry => entry.id === 'emotional_variety');
+    assert(found, 'report should include the emotional_variety dimension');
+    return found;
+  };
+
+  const decoys = emotionalVariety(
+    '<p>She reached for the door. A dangerous stranger waited in the hall, hopeless '
+      + 'and fearless at once, his courage a gloss over an old distrust.</p>'
+  );
+  assert(
+    decoys.signals.length === 0,
+    `words that merely contain an emotion word should score nothing (signals=${JSON.stringify(decoys.signals)})`
+  );
+  assert(
+    decoys.score === 48,
+    `prose with no emotional statement should sit at the dimension's base (score=${decoys.score})`
+  );
+
+  // The inflections the substring form picked up for free are listed rather than
+  // lost, so the repair does not cost the scan the matches it did get right.
+  const real = emotionalVariety(
+    '<p>She wanted him and hungered for the bargain. She dreaded the reef and was afraid. '
+      + 'Her anger raged. The loss ached. She hoped, and trusted him with the vow.</p>'
+  );
+  for (const family of ['want', 'fear', 'anger', 'grief', 'hope']) {
+    assert(
+      real.signals.includes(`Emotion family: ${family}`),
+      `the ${family} register should still be detected (signals=${JSON.stringify(real.signals)})`
+    );
+  }
+  assert(
+    real.score > decoys.score,
+    `real emotional range should outscore decoys (real=${real.score}, decoys=${decoys.score})`
+  );
+
+  // A whole-word boundary written as `\b` is defined against `[A-Za-z0-9_]`, so
+  // it finds a boundary between an ASCII term and the non-ASCII letter beside
+  // it and reports a word that is part of a longer one in another script.
+  const embedded = emotionalVariety('<p>Мира said the word angerё and nothing else.</p>');
+  assert(
+    embedded.signals.length === 0,
+    `an emotion word inside a non-ASCII word is not that word (signals=${JSON.stringify(embedded.signals)})`
+  );
+}
+
+// Named rather than repeated, the way the state-store and field-check tests
+// name theirs: a dimension id or a theme seed spelled out at four call sites is
+// four places to mistype it, and a typo here reads as a passing assertion about
+// a dimension that does not exist.
+const CONTINUITY_DIMENSION = 'continuity';
+const CLIFFHANGER_DIMENSION = 'cliffhanger_quality';
+const TROPE_FRESHNESS_DIMENSION = 'trope_freshness';
+const FORBIDDEN_LOVE_SEED = 'forbidden_love';
+const SLOW_BURN_SEED = 'slow_burn';
+const BLOOD_OATHS_SEED = 'blood_oaths';
+/** The three seeds the whole-word decoy and its positive twin are both built on. */
+const WORD_FORM_THEME_SEEDS = [FORBIDDEN_LOVE_SEED, SLOW_BURN_SEED, BLOOD_OATHS_SEED];
+/** A creature the case is not about, for the dimensions that ignore it. */
+const UNUSED_CREATURE = 'siren';
+
+function testConfiguredAnchorsAndHookWordsReadWordsNotSubstrings(): void {
+  const dimension = (
+    id: string,
+    storyContent: string,
+    configuration: { creature: string; themes: string[] }
+  ) => {
+    const report = buildStoryQualityHeuristicReport({
+      storyContent,
+      configuration: { ...configuration, spicyLevel: 3, wordCount: 900 }
+    });
+    const found = report.dimensions.find(entry => entry.id === id);
+    assert(found, `report should include the ${id} dimension`);
+    return found;
+  };
+
+  // `fairy` is inside `fairytale`, `witch` inside `switch`, `love` inside
+  // `gloves`, `burn` inside `burnished`, and `oath` inside `loathing`. Every one
+  // of them is a word this genre writes constantly, and none of them is the
+  // configured anchor the continuity dimension is claiming to have found.
+  const decoyContinuity = dimension(
+    CONTINUITY_DIMENSION,
+    '<p>She switched off the lamp in the burnished hall, pulled on her gloves, and read '
+      + 'the fairytale again with a clover pressed between its pages, loathing every line.</p>',
+    { creature: 'witch', themes: WORD_FORM_THEME_SEEDS }
+  );
+  assert(
+    decoyContinuity.signals.length === 0,
+    `words that merely contain a configured anchor should score nothing (signals=${JSON.stringify(decoyContinuity.signals)})`
+  );
+
+  // The inflections the substring reading picked up for free are kept: a story
+  // that says `witches`, `loved`, `burning`, and `oaths` is a story that says
+  // those words.
+  const realContinuity = dimension(
+    CONTINUITY_DIMENSION,
+    '<p>The witches had loved each other for a year of burning silence, and the oaths '
+      + 'between them were still owed.</p>',
+    { creature: 'witch', themes: WORD_FORM_THEME_SEEDS }
+  );
+  assert(
+    realContinuity.signals.includes('Creature appears: witch'),
+    `a plural creature is still the creature (signals=${JSON.stringify(realContinuity.signals)})`
+  );
+  for (const theme of WORD_FORM_THEME_SEEDS) {
+    assert(
+      realContinuity.signals.includes(`Theme echo appears: ${theme}`),
+      `an inflected theme word is still a theme echo (signals=${JSON.stringify(realContinuity.signals)})`
+    );
+  }
+  assert(
+    realContinuity.score > decoyContinuity.score,
+    `real anchors should outscore decoys (real=${realContinuity.score}, decoys=${decoyContinuity.score})`
+  );
+
+  // `fairy` inside `fairytale` deserves its own case: it is the word this app is
+  // named for, so it appears in prose about anything.
+  const fairytaleDecoy = dimension(
+    CONTINUITY_DIMENSION,
+    '<p>He told her a fairytale about a dragonfly and demonstrated nothing at all.</p>',
+    { creature: 'fairy', themes: [] }
+  );
+  assert(
+    fairytaleDecoy.signals.length === 0,
+    `a fairytale is not a fairy (signals=${JSON.stringify(fairytaleDecoy.signals)})`
+  );
+  const fairiesReal = dimension(
+    CONTINUITY_DIMENSION,
+    '<p>Two fairies argued over the last of the light.</p>',
+    { creature: 'fairy', themes: [] }
+  );
+  assert(
+    fairiesReal.signals.includes('Creature appears: fairy'),
+    `an irregular plural is still the creature (signals=${JSON.stringify(fairiesReal.signals)})`
+  );
+
+  // `door` is inside `doorway`, `price` inside `priceless`, `blood` inside
+  // `bloodless`, and `name` inside `nameless` — four of the eight hook words the
+  // cliffhanger dimension credits an ending for, matched by words that negate
+  // or merely contain them.
+  const decoyEnding = dimension(
+    CLIFFHANGER_DIMENSION,
+    '<p>An opening line, for the paragraph split.</p>'
+      + '<p>She stood in the doorway, bloodless and nameless, holding something priceless.</p>',
+    { creature: UNUSED_CREATURE, themes: [] }
+  );
+  assert(
+    decoyEnding.signals.length === 0,
+    `an ending that merely contains hook letters is not a hook (signals=${JSON.stringify(decoyEnding.signals)})`
+  );
+  const realEnding = dimension(
+    CLIFFHANGER_DIMENSION,
+    '<p>An opening line, for the paragraph split.</p>'
+      + '<p>She stood at the door and said his name, and the price was already paid.</p>',
+    { creature: UNUSED_CREATURE, themes: [] }
+  );
+  assert(
+    realEnding.signals.includes('Ending contains an unresolved hook word.'),
+    `a real hook word should still be found (signals=${JSON.stringify(realEnding.signals)})`
+  );
+
+  // `cost` is inside `costume`, in a genre that writes masquerades.
+  const costumeDecoy = dimension(
+    TROPE_FRESHNESS_DIMENSION,
+    '<p>Her costume was finished by midnight.</p>',
+    { creature: UNUSED_CREATURE, themes: [] }
+  );
+  assert(
+    costumeDecoy.signals.length === 0,
+    `a costume is not a cost (signals=${JSON.stringify(costumeDecoy.signals)})`
+  );
+  const costReal = dimension(
+    TROPE_FRESHNESS_DIMENSION,
+    '<p>The bargain had costs she had not counted.</p>',
+    { creature: UNUSED_CREATURE, themes: [] }
+  );
+  assert(
+    costReal.signals.includes('Freshness signal: cost'),
+    `an inflected freshness signal should still be found (signals=${JSON.stringify(costReal.signals)})`
+  );
+}
+
 async function main(): Promise<void> {
   testHtmlStoriesAreScoredOnTheirProse();
   testOverlongParagraphsAreReportedNotJustPenalised();
+  testEmotionalVarietyReadsWordsNotSubstrings();
+  testConfiguredAnchorsAndHookWordsReadWordsNotSubstrings();
   testAnonymousProseScoresAsAnonymous();
   testNamedProseStillScores();
   testNonAsciiNamesAreReadAsNames();

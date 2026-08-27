@@ -213,12 +213,10 @@
             [attr.aria-invalid]="hasFieldError('tone')"
             [attr.aria-describedby]="hasFieldError('tone') ? 'tone-error' : null"
           >
-            <option value="romance">Romance</option>
-            <option value="dark_romance">Dark Romance</option>
-            <option value="mystery">Mystery</option>
-            <option value="adventure">Adventure</option>
-            <option value="comedy">Comedy</option>
-            <option value="tragedy">Tragedy</option>
+            <option
+              *ngFor="let option of toneOptions; trackBy: trackChoiceOption"
+              [value]="option.id"
+            >{{ option.label }}</option>
           </select>
           <span class="field-error" id="tone-error" *ngIf="hasFieldError('tone')" role="alert">
             {{ getFieldError('tone') }}
@@ -234,10 +232,10 @@
             [attr.aria-invalid]="hasFieldError('desiredWordBudget')"
             [attr.aria-describedby]="hasFieldError('desiredWordBudget') ? 'word-budget-error' : null"
           >
-            <option [ngValue]="600">Short</option>
-            <option [ngValue]="900">Medium</option>
-            <option [ngValue]="1200">Long</option>
-            <option [ngValue]="1500">Lush</option>
+            <option
+              *ngFor="let option of wordBudgetOptions; trackBy: trackChoiceOption"
+              [ngValue]="option.id"
+            >{{ option.label }}</option>
           </select>
           <span class="field-error" id="word-budget-error" *ngIf="hasFieldError('desiredWordBudget')" role="alert">
             {{ getFieldError('desiredWordBudget') }}
@@ -253,9 +251,10 @@
             [attr.aria-invalid]="hasFieldError('chapterBatchSize')"
             [attr.aria-describedby]="hasFieldError('chapterBatchSize') ? 'chapter-batch-error' : null"
           >
-            <option [ngValue]="1">1 chapter</option>
-            <option [ngValue]="2">2 chapters</option>
-            <option [ngValue]="3">3 chapters</option>
+            <option
+              *ngFor="let option of chapterBatchOptions; trackBy: trackChoiceOption"
+              [ngValue]="option.id"
+            >{{ option.label }}</option>
           </select>
           <span class="field-error" id="chapter-batch-error" *ngIf="hasFieldError('chapterBatchSize')" role="alert">
             {{ getFieldError('chapterBatchSize') }}
@@ -273,7 +272,12 @@
               type="text"
               [ngModel]="blueprint().protagonistName"
               (ngModelChange)="updateBlueprint('protagonistName', $event)"
+              [attr.aria-invalid]="hasFieldError('protagonistName')"
+              [attr.aria-describedby]="hasFieldError('protagonistName') ? 'protagonist-name-error' : null"
             />
+            <span class="field-error" id="protagonist-name-error" *ngIf="hasFieldError('protagonistName')" role="alert">
+              {{ getFieldError('protagonistName') }}
+            </span>
           </label>
           <label>
             Love interest or troublemaker
@@ -282,7 +286,12 @@
               type="text"
               [ngModel]="blueprint().antagonistName"
               (ngModelChange)="updateBlueprint('antagonistName', $event)"
+              [attr.aria-invalid]="hasFieldError('antagonistName')"
+              [attr.aria-describedby]="hasFieldError('antagonistName') ? 'antagonist-name-error' : null"
             />
+            <span class="field-error" id="antagonist-name-error" *ngIf="hasFieldError('antagonistName')" role="alert">
+              {{ getFieldError('antagonistName') }}
+            </span>
           </label>
         </div>
 
@@ -342,7 +351,6 @@
 
       <section
         class="job-status-panel"
-        [class.job-status-panel--recovering]="jobStatusPanel().tone === 'recovering'"
         data-testid="job-status-panel"
         *ngIf="jobStatusPanel().visible"
         aria-live="polite"
@@ -880,4 +888,7 @@
   </main>
 </div>
 
-<app-debug-panel data-testid="story-lab-debug-panel" *ngIf="showDebugPanel()"></app-debug-panel>
+@defer (when showDebugPanel()) {
+  <app-debug-panel data-testid="story-lab-debug-panel"></app-debug-panel>
+  <app-error-display data-testid="story-lab-error-display"></app-error-display>
+}

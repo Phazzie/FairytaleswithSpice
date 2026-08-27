@@ -1,9 +1,14 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-24 18:05 UTC
 
+import { inspect } from 'node:util';
 import { ExportService } from '../api/_lib/services/exportService';
 import { readZipEntries, ZipEntry } from '../api/_lib/services/zipArchive';
 import { EXPORT_FORMATS, SaveExportSeam } from '../api/_lib/types/contracts';
+import { READING_SPEED } from '../api/_lib/constants';
+import { estimateReadTimeMinutes } from '../api/_lib/utils/readTime';
+import { logger } from '../api/_lib/utils/logger';
+import { STORY_LAB_THEME_SEEDS } from '../shared/storyLabThemeSeeds';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -234,6 +239,62 @@ async function testEpubIsARealZipContainerWithItsChapter(): Promise<void> {
   assert(chapter.includes('Élodie smiled'), 'the chapter should contain the real story content');
 }
 
+/**
+ * Every entry of every archive this service writes has to name a date that
+ * exists.
+ *
+ * The MS-DOS date field packs `((year - 1980) << 9) | (month << 5) | day` with
+ * the month and day counted from one, and both timestamp fields were written as
+ * `0` — so every entry of every `.epub` and `.docx` claimed month 0, day 0.
+ * `unzip -l` printed `1980-00-00 00:00`; Java's lenient calendar rolled the
+ * same bits back to November 1979; Python's `zipfile` handed out a tuple
+ * `datetime` refuses.
+ *
+ * Asserted through `readZipEntries` rather than by decoding two `u16`s at
+ * hand-counted offsets, which is the reason that reader exists.
+ */
+async function testArchiveEntriesCarryADateThatExists(): Promise<void> {
+  for (const format of ['epub', 'docx'] as const) {
+    const document = await new ExportService().generateExportContent(createInput({ format }));
+    const entries = readZipEntries(document);
+
+    assert(entries.length > 0, `a ${format} should hold at least one entry`);
+    for (const entry of entries) {
+      const { modifiedAt } = entry;
+      assert(
+        modifiedAt.month >= 1 && modifiedAt.month <= 12,
+        `${format} entry "${entry.path}" should name a real month (got ${modifiedAt.month})`
+      );
+      assert(
+        modifiedAt.day >= 1 && modifiedAt.day <= 31,
+        `${format} entry "${entry.path}" should name a real day (got ${modifiedAt.day})`
+      );
+      assert(
+        modifiedAt.year >= 1980,
+        `${format} entry "${entry.path}" should not predate the DOS epoch (got ${modifiedAt.year})`
+      );
+    }
+  }
+}
+
+/**
+ * The same story exported twice has to produce the same bytes.
+ *
+ * `generateEPUBContent` derives the book identifier from the story rather than
+ * minting a UUID precisely so this holds, and the archive writer is the other
+ * half of it: stamping a real clock into the modification fields — the obvious
+ * way to give them a valid date — would make two exports of one story differ.
+ */
+async function testArchivesAreAFunctionOfTheirInput(): Promise<void> {
+  for (const format of ['epub', 'docx'] as const) {
+    const service = new ExportService();
+    const first = await service.generateExportContent(createInput({ format }));
+    const second = await service.generateExportContent(createInput({ format }));
+
+    assert(first.equals(second), `two ${format} exports of one story should be byte-identical`);
+  }
+}
+
 // The DOCX used to be literal text made to *look* like a zip's local-file-header
 // strings, concatenated with escaped plain text — not a valid archive. This
 // confirms the required OOXML package parts exist and the document body holds
@@ -258,6 +319,104 @@ async function testDocxIsARealZipContainerWithItsDocument(): Promise<void> {
   const documentXml = byPath.get('word/document.xml')!.data.toString('utf8');
   assert(documentXml.includes('Midnight Bargain'), 'the document body should include the title');
   assert(documentXml.includes('Élodie smiled'), 'the document body should include the real story content');
+}
+
+// A PDF string is bytes, and the font decides which glyph each byte names.
+// The document is written out as UTF-8 and declared Helvetica with no
+// `/Encoding`, so every character above ASCII went in as two or three UTF-8
+// bytes that Helvetica then read as a glyph each: `don’t` reached the reader as
+// `donâ€™t`, `—` as `â€"`, and `café` as `cafÃ©`. A model writes curly quotes
+// and em dashes in ordinary prose, so this was every story.
+async function testPdfWritesStoryPunctuationInTheFontsEncoding(): Promise<void> {
+  const rightSingleQuote = String.fromCharCode(0x2019);
+  const leftDoubleQuote = String.fromCharCode(0x201c);
+  const rightDoubleQuote = String.fromCharCode(0x201d);
+  const emDash = String.fromCharCode(0x2014);
+  const document = await new ExportService().generateExportContent(
+    createInput({
+      format: 'pdf',
+      title: `The Vampire${rightSingleQuote}s Bargain`,
+      content: `<p>${leftDoubleQuote}Don${rightSingleQuote}t${rightDoubleQuote} ${emDash} she said, and the café went 🐉 quiet.</p>`
+    })
+  );
+
+  const text = document.toString('latin1');
+  assert(
+    text.includes('/Encoding /WinAnsiEncoding'),
+    'the font should declare the encoding its bytes are written in, or a base font is read in StandardEncoding'
+  );
+
+  // Every byte of the document is ASCII: the WinAnsi bytes are written as octal
+  // escapes, so writing the document out as UTF-8 cannot re-encode them and the
+  // stream's `/Length` counts exactly the bytes a reader will read.
+  assert(
+    document.every(byte => byte <= 0x7e),
+    'the PDF should contain no byte a UTF-8 encode would have expanded'
+  );
+
+  const stream = extractPdfStreamBody(text);
+  for (const [character, escape] of [
+    [rightSingleQuote, String.raw`\222`],
+    [leftDoubleQuote, String.raw`\223`],
+    [rightDoubleQuote, String.raw`\224`],
+    [emDash, String.raw`\227`],
+    ['é', String.raw`\351`]
+  ] as const) {
+    assert(
+      stream.includes(escape),
+      `the PDF should write ${JSON.stringify(character)} as its WinAnsi byte ${escape} (stream=${JSON.stringify(stream)})`
+    );
+  }
+
+  // A base font has no glyph for an emoji and WinAnsi has no byte for one, so
+  // it becomes `?` rather than the several bytes of mojibake it used to be.
+  assert(stream.includes('? quiet'), 'a character WinAnsi cannot write should become a single question mark');
+}
+
+// XML 1.0 admits no C0 control character but tab, newline, and carriage
+// return, and a conforming parser must refuse a document holding one. The
+// `.epub` and `.docx` exports are XML in a zip, and both interpolated story
+// text and the title straight in: one such character produced a file that
+// downloaded under the right name and then would not open.
+async function testXmlExportsCarryNoCharacterXmlForbids(): Promise<void> {
+  const bell = String.fromCharCode(0x07);
+  const substitute = String.fromCharCode(0x1a);
+  const exportService = new ExportService();
+  const input = createInput({
+    title: `Midnight${bell} Bargain`,
+    content: `<p>She reached the door${bell} and stopped${substitute}.</p>`
+  });
+
+  for (const [format, parts] of [
+    ['epub', ['OEBPS/content.opf', 'OEBPS/nav.xhtml', 'OEBPS/chapter1.xhtml']],
+    ['docx', ['word/document.xml']]
+  ] as const) {
+    const document = await exportService.generateExportContent({ ...input, format });
+    const byPath = readAsRealZipContainer(document, format);
+
+    for (const part of parts) {
+      const xml = byPath.get(part)?.data.toString('utf8');
+      assert(xml, `a ${format} should contain ${part}`);
+
+      const forbidden = Array.from(xml).filter(character => {
+        const codePoint = character.codePointAt(0) ?? 0;
+        return codePoint <= 0x1f && codePoint !== 0x09 && codePoint !== 0x0a && codePoint !== 0x0d;
+      });
+      assert(
+        forbidden.length === 0,
+        `${part} should hold no character XML forbids (found ${JSON.stringify(forbidden)})`
+      );
+    }
+
+    const body = byPath.get(parts[parts.length - 1])!.data.toString('utf8');
+    // Replaced with a space rather than deleted, the way the PDF path has
+    // always read a control character: dropping one welds the words it sat
+    // between.
+    assert(
+      body.includes('door  and stopped'),
+      `a ${format} should keep the words a control character sat between apart (body=${JSON.stringify(body)})`
+    );
+  }
 }
 
 // A reader resolves an object by seeking to the byte offset the xref table
@@ -418,10 +577,10 @@ async function testMetadataReflectsTheActualStory(): Promise<void> {
   }));
   const text = withMetadata.toString('utf8');
 
-  assert(text.includes('Creature: werewolf'), `export should carry the passed creature (got ${JSON.stringify(text)})`);
-  assert(text.includes('Themes: mystery, adventure'), `export should carry the passed themes (got ${JSON.stringify(text)})`);
-  assert(!text.includes('vampire'), 'export should not fall back to the old hardcoded creature');
-  assert(!text.includes('romance, dark'), 'export should not fall back to the old hardcoded themes');
+  assert(text.includes('Creature: Werewolf'), `export should carry the passed creature (got ${JSON.stringify(text)})`);
+  assert(text.includes('Themes: Mystery, Adventure'), `export should carry the passed themes (got ${JSON.stringify(text)})`);
+  assert(!text.toLowerCase().includes('vampire'), 'export should not fall back to the old hardcoded creature');
+  assert(!text.toLowerCase().includes('romance, dark'), 'export should not fall back to the old hardcoded themes');
 
   const withoutMetadataInput = await exportService.generateExportContent(createInput({
     format: 'txt',
@@ -430,6 +589,183 @@ async function testMetadataReflectsTheActualStory(): Promise<void> {
   assert(
     withoutMetadataInput.toString('utf8').includes('Creature: unknown'),
     'an export with no creature supplied should say so honestly rather than guessing one'
+  );
+}
+
+/**
+ * The "Story Information" block is the one place in this app that shows a
+ * theme id to a reader rather than matching on it, and it showed the raw one.
+ *
+ * `app.ts` builds its picker from `STORY_LAB_THEME_SEEDS` and sends
+ * `theme.id` to `/api/export/save`, so the block a reader downloads and keeps
+ * read `Themes: enemies_to_lovers, secret_identity` for two seeds the picker
+ * beside it calls "Enemies to Lovers" and "Secret Identity". This is the third
+ * reader of these ids written against a vocabulary that is not the picker's,
+ * after the image service's visual-element table and the request logger's
+ * theme list, and the reason the seed list moved into `shared/`.
+ */
+async function testExportMetadataNamesThemesTheWayThePickerDoes(): Promise<void> {
+  const exportService = new ExportService();
+
+  const [firstSeed, secondSeed] = STORY_LAB_THEME_SEEDS;
+  const seededExport = await exportService.generateExportContent(createInput({
+    format: 'txt',
+    includeMetadata: true,
+    creature: 'vampire',
+    themes: [firstSeed.id, secondSeed.id]
+  }));
+  const seededText = seededExport.toString('utf8');
+
+  assert(
+    seededText.includes(`Themes: ${firstSeed.label}, ${secondSeed.label}`),
+    `the export should name seeds the way the picker does (got ${JSON.stringify(seededText)})`
+  );
+  assert(
+    !seededText.includes(firstSeed.id),
+    `the wire id should not reach the reader's document (got ${JSON.stringify(seededText)})`
+  );
+  assert(
+    seededText.includes('Creature: Vampire'),
+    `the creature should be named rather than spelled as its id (got ${JSON.stringify(seededText)})`
+  );
+
+  // The seams still accept the classic `ThemeType` vocabulary from a caller that
+  // sends it, and the export route takes whatever `themes` a body carries. An id
+  // from outside the seed list is titled from its own text rather than replaced
+  // by a placeholder, so it stays legible instead of being asserted a name it
+  // does not have.
+  const classicExport = await exportService.generateExportContent(createInput({
+    format: 'html',
+    includeMetadata: true,
+    creature: 'werewolf',
+    themes: ['power_dynamics']
+  }));
+  assert(
+    classicExport.toString('utf8').includes('Power Dynamics'),
+    'a classic ThemeType id should still be readable in the export metadata'
+  );
+}
+
+/**
+ * The two lines of the "Story Information" block that were still written for a
+ * machine rather than for the reader holding the document.
+ *
+ * The themes and the creature beside them were fixed when the seed list moved
+ * into `shared/`; these were not. The timestamp went out as
+ * `new Date().toISOString()` — `2026-08-26T23:52:14.472Z`, milliseconds and
+ * all — at the head of the file a reader downloads and keeps. And the read
+ * time was suffixed `minutes` unconditionally, so every story under
+ * `READING_SPEED.WORDS_PER_MINUTE` words, which is most of one chapter at the
+ * 600-word budget the form offers, read "1 minutes".
+ *
+ * Both `.html` and `.txt` render this block, and both are checked: they are
+ * separate string templates, and the theme fix had to be made in both.
+ */
+async function testStoryInformationIsWrittenForAReader(): Promise<void> {
+  const exportService = new ExportService();
+
+  // Comfortably under one minute of reading at the shared rate, which is what
+  // makes the singular reachable at all.
+  const shortStory = '<p>She opened the door and the bargain came due.</p>';
+
+  for (const format of ['txt', 'html'] as const) {
+    const rendered = (await exportService.generateExportContent(createInput({
+      format,
+      includeMetadata: true,
+      content: shortStory
+    }))).toString('utf8');
+
+    assert(
+      rendered.includes('1 minute') && !rendered.includes('1 minutes'),
+      `a story of a few words should read "1 minute", not "1 minutes" (${format}: ${JSON.stringify(rendered.slice(0, 400))})`
+    );
+    assert(
+      !/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(rendered),
+      `the ISO wire timestamp should not reach the reader's document (${format}: ${JSON.stringify(rendered.slice(0, 400))})`
+    );
+    assert(
+      /Generated:<\/strong> \d{4}-\d{2}-\d{2} at \d{2}:\d{2} UTC|Generated: \d{4}-\d{2}-\d{2} at \d{2}:\d{2} UTC/.test(rendered),
+      `the generated instant should still be named, in a form a reader reads (${format}: ${JSON.stringify(rendered.slice(0, 400))})`
+    );
+  }
+
+  // Plural is still plural: the fix is a rule about the number, not a blanket
+  // rename of the word.
+  const longStory = `<p>${'word '.repeat(READING_SPEED.WORDS_PER_MINUTE * 3)}</p>`;
+  const longRendered = (await exportService.generateExportContent(createInput({
+    format: 'txt',
+    includeMetadata: true,
+    content: longStory
+  }))).toString('utf8');
+
+  assert(
+    longRendered.includes('Estimated Read Time: 3 minutes'),
+    `a three-minute story should still read "minutes" (got ${JSON.stringify(longRendered.slice(0, 400))})`
+  );
+}
+
+/**
+ * The read time in the downloaded document and the `estimatedReadTime` the
+ * generation routes report are the same claim about the same story, and they
+ * were computed by three separate expressions: the export read
+ * `READING_SPEED.WORDS_PER_MINUTE`, while `StoryService.generateStory` and
+ * `StoryService.continueChapter` each spelled `200` inline.
+ *
+ * The three agree today, so this is not a counterfactual test — it cannot fail
+ * against the old code, and it is not claimed to. It pins the coupling instead:
+ * the document's read time is asserted against `estimateReadTimeMinutes`, the
+ * function all three sites now go through, so a later change that retunes the
+ * rate moves both together and one that reintroduces a local copy here is
+ * caught by the mismatch it creates.
+ *
+ * The word counts span every boundary in the estimate — one word, one short of
+ * a minute, exactly a minute, one past it — so the assertion is about the whole
+ * curve rather than one convenient point.
+ */
+async function testExportedReadTimeIsTheSharedEstimate(): Promise<void> {
+  const exportService = new ExportService();
+
+  for (const words of [1, READING_SPEED.WORDS_PER_MINUTE - 1, READING_SPEED.WORDS_PER_MINUTE, READING_SPEED.WORDS_PER_MINUTE + 1]) {
+    const rendered = (await exportService.generateExportContent(createInput({
+      format: 'txt',
+      includeMetadata: true,
+      content: `<p>${'word '.repeat(words).trim()}</p>`
+    }))).toString('utf8');
+
+    const reported = /Estimated Read Time: (\d+) minutes?/.exec(rendered)?.[1];
+    assert(
+      reported !== undefined,
+      `the document should state a read time (${words} words: ${JSON.stringify(rendered.slice(0, 200))})`
+    );
+    // `countWords` reads the story markup, so the `<p>` wrapper welds onto the
+    // first and last word and the count is not exactly `words`. The estimate is
+    // therefore compared against the count the document itself reports, which is
+    // what makes this an assertion about the arithmetic rather than about how
+    // the fixture happens to tokenize.
+    const documentWordCount = Number(/Word Count: (\d+)/.exec(rendered)?.[1]);
+    assert(
+      Number.isInteger(documentWordCount),
+      `the document should state a word count (${words} words)`
+    );
+    assert(
+      Number(reported) === estimateReadTimeMinutes(documentWordCount),
+      `a ${documentWordCount}-word story should be written as the shared estimate says (`
+        + `document ${reported}, estimate ${estimateReadTimeMinutes(documentWordCount)})`
+    );
+  }
+
+  // The floor is about prose that exists, and `/api/export/save` refuses a body
+  // whose `content` is not a non-empty string, so no export reaches the reader
+  // claiming its story takes no time at all.
+  const shortest = (await exportService.generateExportContent(createInput({
+    format: 'txt',
+    includeMetadata: true,
+    content: '<p>Word.</p>'
+  }))).toString('utf8');
+
+  assert(
+    !shortest.includes('Estimated Read Time: 0'),
+    `a story with prose in it should never be written as a zero-minute read (got ${JSON.stringify(shortest.slice(0, 300))})`
   );
 }
 
@@ -466,6 +802,149 @@ async function testEveryDeclaredFormatRenders(): Promise<void> {
 
 function escapeForAssertion(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+/**
+ * Run `body` with the console captured, and hand back everything it wrote.
+ *
+ * The logger writes through `console`, so this is what "reaches the deployment
+ * log" means here — the same reading `tests/image-service.test.ts` takes of the
+ * same question, and the only one that can assert something is *absent* from
+ * the log rather than merely absent from a structured entry.
+ */
+async function captureConsole(body: () => Promise<void>): Promise<string> {
+  const written: string[] = [];
+  const captured = { log: console.log, warn: console.warn, error: console.error };
+  const record = (...args: unknown[]) => {
+    written.push(args.map(argument => inspect(argument, { depth: 8 })).join(' '));
+  };
+
+  console.log = record;
+  console.warn = record;
+  console.error = record;
+  try {
+    await body();
+  } finally {
+    console.log = captured.log;
+    console.warn = captured.warn;
+    console.error = captured.error;
+  }
+
+  return written.join('\n');
+}
+
+/**
+ * A failed export has to leave behind what failed.
+ *
+ * This method's catch was `catch { console.error('Export failed'); }` — unbound,
+ * so the one object that says what went wrong was discarded, and the sentence
+ * that replaced it names nothing. Five renderers sit behind it: a PDF assembler
+ * that measures its own cross-reference offsets, two zip containers, and two
+ * string templates. Any of them failing produced that same sentence, with no
+ * name, no message, no code, and no stack — and the route's own catch did the
+ * same thing one level up, so a 500 from `/api/export/save` was the one failure
+ * on this surface that could not be diagnosed at all.
+ *
+ * Driven by making the renderer throw, because that is what the catch is for:
+ * every input that reaches it has already passed `validateExportInput`, so a
+ * bad request cannot get here.
+ *
+ * The second half is what may *not* be written. This method's input is the
+ * reader's whole story, so the test carries a marker through the content and the
+ * title and requires it in neither the log nor the error entry: keeping the
+ * error is only safe because `logError` names the fields it keeps and runs them
+ * through the redactor.
+ */
+async function testAFailedExportSaysWhatFailed(): Promise<void> {
+  const service = new ExportService();
+  const rendererFailure = new Error('cross-reference table ran past the last object');
+  (service as unknown as { generateExportContent: unknown }).generateExportContent = async () => {
+    throw rendererFailure;
+  };
+
+  const storyMarker = 'ELODIE-BLED-ONTO-THE-CONTRACT';
+  logger.clearLogs();
+
+  let result!: Awaited<ReturnType<ExportService['saveAndExport']>>;
+  const written = await captureConsole(async () => {
+    result = await service.saveAndExport(
+      createInput({ content: `<p>${storyMarker}</p>`, title: storyMarker }),
+      'trace-export-failure'
+    );
+  });
+
+  assert(!result.success, 'a renderer that throws should not be reported as a success');
+  assert(
+    !result.success && result.error?.code === 'EXPORT_FAILED',
+    'a renderer failure should still answer EXPORT_FAILED'
+  );
+
+  const errors = logger.getRecentLogs(50, 'error');
+  const entry = errors.find(log => log.message === 'Export failed');
+  assert(entry, `a failed export should be logged as an error (got ${JSON.stringify(errors.map(e => e.message))})`);
+  assert(
+    entry.error?.message === rendererFailure.message,
+    `the failure's own message should survive (got ${JSON.stringify(entry.error?.message)})`
+  );
+  assert(
+    typeof entry.error?.stack === 'string' && entry.error.stack.length > 0,
+    'the failure should be logged with the stack that produced it'
+  );
+  assert(
+    entry.context?.requestId === 'trace-export-failure',
+    `the failure should be logged under the request's own id (got ${JSON.stringify(entry.context?.requestId)})`
+  );
+
+  assert(written.includes(rendererFailure.message), 'the failure should reach the log, not only the buffer');
+  assert(
+    !written.includes(storyMarker),
+    'no log line may carry the story text or the title an export was asked for'
+  );
+  assert(
+    !JSON.stringify(errors).includes(storyMarker),
+    'no buffered log entry may carry the story text or the title an export was asked for'
+  );
+}
+
+/**
+ * The id in the envelope has to be an id something logged.
+ *
+ * `metadata.requestId` was `req_${randomUUID()}`, minted inside this method —
+ * three separate times, once per branch, for a response that carries one — and
+ * written into the response body and nowhere else. The route above had a
+ * correlation id the whole time: `beginPostRoute` reads `X-Request-ID` or mints
+ * one, echoes it back, and stamps it into every line it writes. So a caller
+ * quoting the id their failed export came back with was quoting a value that
+ * matched nothing anywhere.
+ */
+async function testTheEnvelopeCarriesTheRoutesRequestId(): Promise<void> {
+  const service = new ExportService();
+
+  const succeeded = await service.saveAndExport(createInput(), 'trace-export-ok');
+  assert(succeeded.success, 'a valid export should succeed');
+  assert(
+    succeeded.metadata?.requestId === 'trace-export-ok',
+    `a successful export should report the route's id (got ${JSON.stringify(succeeded.metadata?.requestId)})`
+  );
+
+  // The refusal branch too: it is the branch a caller actually has an id to
+  // quote from, and it was minting its own.
+  const refused = await service.saveAndExport(
+    createInput({ format: 'rtf' as SaveExportSeam['input']['format'] }),
+    'trace-export-refused'
+  );
+  assert(!refused.success, 'an unsupported format should still be refused');
+  assert(
+    refused.metadata?.requestId === 'trace-export-refused',
+    `a refused export should report the route's id (got ${JSON.stringify(refused.metadata?.requestId)})`
+  );
+
+  // A caller with no id still gets one, so the field is never empty.
+  const unattributed = await service.saveAndExport(createInput());
+  assert(
+    /^req_[0-9a-f-]{36}$/.test(unattributed.metadata?.requestId ?? ''),
+    `an export with no correlation id should still be given one (got ${JSON.stringify(unattributed.metadata?.requestId)})`
+  );
 }
 
 /**
@@ -516,10 +995,19 @@ async function main(): Promise<void> {
   await testPdfCarriesTheWholeStoryAcrossPages();
   await testPdfLinesBreakOnCharacterBoundaries();
   await testPdfShowsTheTitleAReaderWouldRead();
+  await testPdfWritesStoryPunctuationInTheFontsEncoding();
+  await testXmlExportsCarryNoCharacterXmlForbids();
   await testEpubIsARealZipContainerWithItsChapter();
   await testDocxIsARealZipContainerWithItsDocument();
+  await testArchiveEntriesCarryADateThatExists();
+  await testArchivesAreAFunctionOfTheirInput();
   await testMetadataReflectsTheActualStory();
+  await testExportMetadataNamesThemesTheWayThePickerDoes();
+  await testStoryInformationIsWrittenForAReader();
+  await testExportedReadTimeIsTheSharedEstimate();
   await testEveryDeclaredFormatRenders();
+  await testAFailedExportSaysWhatFailed();
+  await testTheEnvelopeCarriesTheRoutesRequestId();
 
   console.log('Export service tests passed');
 }

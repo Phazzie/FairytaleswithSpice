@@ -10,6 +10,8 @@ import {
   describeNarrativeDirectivesOverflow,
   STORY_BLUEPRINT_LIMITS
 } from '../shared/storyBlueprintLimits';
+import { STORY_LAB_THEME_SEEDS } from '../shared/storyLabThemeSeeds';
+import { CREATURE_ARCHETYPES } from '../api/_lib/story-lab/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -17,18 +19,10 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
-const allCreatures: CreatureType[] = [
-  'vampire',
-  'werewolf',
-  'fairy',
-  'siren',
-  'djinn',
-  'witch',
-  'dragon',
-  'demon',
-  'angel',
-  'mermaid'
-];
+// The contract's own table rather than a copy: a creature added to the union
+// and not to this list would otherwise leave the loop below silently covering
+// nine of ten.
+const allCreatures: readonly CreatureType[] = CREATURE_ARCHETYPES;
 
 function bodyForCreature(creature: CreatureType) {
   return {
@@ -106,6 +100,8 @@ const atTheLimit = parseStoryLabBlueprintFromBody({
   logline: longText(STORY_BLUEPRINT_LIMITS.maxLoglineLength),
   worldDetails: longText(STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength),
   narrativeDirectives: longText(STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength),
+  protagonistName: longText(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength),
+  antagonistName: longText(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength),
   heatContract: {
     ...bodyForCreature('dragon').heatContract,
     noGoContent: longText(STORY_BLUEPRINT_LIMITS.maxNoGoContentLength)
@@ -130,6 +126,39 @@ assert(
   'the refusal should name the limit the caller has to write under'
 );
 
+// The two free-text fields the parser used to read straight into the returned
+// blueprint without measuring. `buildContinuityPrompt` stringifies both into the
+// continuity model call exactly as they arrived, so an unbounded field named for
+// one person is a paid model call billed by the token — the failure the shared
+// limits object exists to prevent, on the two fields it did not cover.
+for (const field of ['protagonistName', 'antagonistName'] as const) {
+  const overLongName = parseStoryLabBlueprintFromBody({
+    ...bodyForCreature('dragon'),
+    [field]: longText(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength + 1)
+  });
+  assert(
+    overLongName.error?.invalidFields.includes(field),
+    `an over-long ${field} should be reported as invalid`
+  );
+  assert(
+    overLongName.error?.message.includes(String(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength)),
+    `the ${field} refusal should name the limit the caller has to write under`
+  );
+}
+
+// The query-string genesis stream takes the same blueprint, and is the path a
+// caller reaches without the app's form in front of it.
+const overLongNameFromQuery = parseStoryLabBlueprintFromQuery({
+  ...bodyForCreature('dragon'),
+  themes: JSON.stringify(bodyForCreature('dragon').themes),
+  heatContract: JSON.stringify(bodyForCreature('dragon').heatContract),
+  protagonistName: longText(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength + 1)
+} as Record<string, string | number>);
+assert(
+  overLongNameFromQuery.error?.invalidFields.includes('protagonistName'),
+  'the query-string genesis stream should refuse an over-long protagonistName too'
+);
+
 const tooManyThemes = parseStoryLabBlueprintFromBody({
   ...bodyForCreature('dragon'),
   themes: Array.from({ length: STORY_BLUEPRINT_LIMITS.maxThemes + 1 }, (_unused, index) => ({
@@ -140,63 +169,78 @@ const tooManyThemes = parseStoryLabBlueprintFromBody({
 });
 assert(tooManyThemes.error?.invalidFields.includes('themes'), 'more themes than the cap should be reported as invalid');
 
-// Counting the seeds was the whole of what `themes` was checked for. Each seed
-// is three free-text fields that reach the continuity prompt — and, through the
-// engine's initial plot threads, the persisted story state every later
-// continuation re-sends — so a seed the caller writes a paragraph into is billed
-// once per continuation for as long as the serial runs. One case per field,
-// because the three caps differ and the refusal has to name the right one.
-const themeSeedFieldCaps = [
-  { field: 'id', limit: STORY_BLUEPRINT_LIMITS.maxThemeIdLength },
-  { field: 'label', limit: STORY_BLUEPRINT_LIMITS.maxThemeLabelLength },
-  { field: 'description', limit: STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength }
-] as const;
+// How many seeds arrive was measured; how large one is was not. Every seed's
+// `label` reaches the continuity model call through `buildContinuityPrompt`,
+// and both `label` and `description` are written into a stored `PlotThread` by
+// `buildInitialThreads`, so an unbounded seed is billed by the token and then
+// kept.
+const overLongThemeLabel = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  themes: [{
+    id: 'forbidden_love',
+    label: longText(STORY_BLUEPRINT_LIMITS.maxThemeLabelLength + 1),
+    description: 'A dangerous bond.'
+  }]
+});
+assert(
+  overLongThemeLabel.error?.invalidFields.includes('themes'),
+  'a theme seed label past the cap should be reported as an invalid theme'
+);
+assert(
+  overLongThemeLabel.error?.message.includes('themes[0].label'),
+  'the refusal should name which seed and which field has to be fixed'
+);
 
-for (const { field, limit } of themeSeedFieldCaps) {
-  const seedAtTheCap = {
+const overLongThemeDescription = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  themes: [{
     id: 'forbidden_love',
     label: 'Forbidden Love',
-    description: 'Desire has consequences.',
-    [field]: longText(limit)
-  };
+    description: longText(STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength + 1)
+  }]
+});
+assert(
+  overLongThemeDescription.error?.invalidFields.includes('themes'),
+  'a theme seed description past the cap should be reported as an invalid theme'
+);
 
-  assert(
-    !parseStoryLabBlueprintFromBody({ ...bodyForCreature('dragon'), themes: [seedAtTheCap] }).error,
-    `a theme seed whose ${field} is exactly at the cap should be accepted`
-  );
-
-  const overCap = parseStoryLabBlueprintFromBody({
-    ...bodyForCreature('dragon'),
-    themes: [{ ...seedAtTheCap, [field]: longText(limit + 1) }]
-  });
-
-  assert(
-    overCap.error?.invalidFields.includes('themes'),
-    `a theme seed whose ${field} is past the cap should be reported as an invalid themes field`
-  );
-  assert(
-    overCap.error?.message.includes(field) && overCap.error.message.includes(String(limit)),
-    `the refusal should name themes[].${field} and the limit the caller has to write under`
-  );
-}
-
-// The query form carries the same seeds as a JSON string, and the genesis event
-// stream is the route that reads it. A cap enforced on the POST body alone would
-// leave the paid streaming route — the one an `EventSource` opens and holds for
-// a whole generation — taking what the other refuses.
-const overLongSeedInQuery = parseStoryLabBlueprintFromQuery({
+// The query-string genesis stream takes the same blueprint, so it takes the
+// same caps — it is the path with no form in front of it.
+const overLongThemeFromQuery = parseStoryLabBlueprintFromQuery({
   ...bodyForCreature('dragon'),
   themes: JSON.stringify([{
     id: 'forbidden_love',
     label: longText(STORY_BLUEPRINT_LIMITS.maxThemeLabelLength + 1),
-    description: 'Desire has consequences.'
+    description: 'A dangerous bond.'
   }]),
   heatContract: JSON.stringify(bodyForCreature('dragon').heatContract)
-});
+} as Record<string, string | number>);
 assert(
-  overLongSeedInQuery.error?.invalidFields.includes('themes'),
-  'an oversized theme seed should be refused on the query form the genesis stream parses'
+  overLongThemeFromQuery.error?.invalidFields.includes('themes'),
+  'the query-string genesis stream should refuse an over-long theme seed too'
 );
+
+// A seed exactly at both caps is a seed the routes accept, so the caps and the
+// prompt boundary in `StoryService` cannot disagree about it.
+const themeAtTheLimit = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('dragon'),
+  themes: [{
+    id: 'forbidden_love',
+    label: longText(STORY_BLUEPRINT_LIMITS.maxThemeLabelLength),
+    description: longText(STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength)
+  }]
+});
+assert(!themeAtTheLimit.error, 'a theme seed exactly at both caps should be accepted');
+
+// The twelve seeds the picker actually offers have to clear the caps they are
+// measured against, or the app cannot generate with its own list.
+for (const seed of STORY_LAB_THEME_SEEDS) {
+  assert(
+    seed.label.length <= STORY_BLUEPRINT_LIMITS.maxThemeLabelLength
+      && seed.description.length <= STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength,
+    `the offered theme seed "${seed.id}" should clear the blueprint caps`
+  );
+}
 
 const overLongNoGoContent = parseStoryLabBlueprintFromBody({
   ...bodyForCreature('dragon'),
@@ -289,5 +333,78 @@ assert(
     && paddedFreeText.blueprint.worldDetails?.length === STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength,
   'the parsed blueprint should carry the trimmed value it was measured as'
 );
+
+// A body field wrapped in an array is refused, not thrown on.
+//
+// `getString` reads the repeated-value form a query string carries — `value[0]`
+// — and handed the entry back typed `string` without checking it. On the body
+// path a JSON array holds whatever the caller put in it, so `{"logline": [42]}`
+// reached `getString(...)?.trim()` as a number and threw a `TypeError` out of
+// the parser entirely. The route's own catch answers `500 INTERNAL_ERROR` for
+// that — the service failed, try again — on a body only the caller can fix, and
+// on the exact field this parser exists to refuse by name. Every field read
+// through this helper had the same hole.
+for (const field of ['logline', 'worldDetails', 'narrativeDirectives', 'protagonistName', 'antagonistName']) {
+  for (const wrapped of [[42], [{ nested: true }], [['deeper']], [null]]) {
+    let result: ReturnType<typeof parseStoryLabBlueprintFromBody>;
+    try {
+      result = parseStoryLabBlueprintFromBody({ ...bodyForCreature('vampire'), [field]: wrapped });
+    } catch (error) {
+      throw new Error(`${field}: ${JSON.stringify(wrapped)} threw instead of being answered: ${(error as Error).message}`);
+    }
+
+    const isSpellableScalar = typeof wrapped[0] === 'number' || typeof wrapped[0] === 'boolean';
+    if (isSpellableScalar) {
+      // Read under the same rule a bare value already was: `logline: 42` has
+      // always parsed as `"42"`, so wrapping it changes nothing.
+      assert(!result.error, `${field}: ${JSON.stringify(wrapped)} should parse the way a bare scalar does`);
+      continue;
+    }
+
+    if (field === 'logline') {
+      assert(
+        result.error?.invalidFields.includes('logline'),
+        `a logline wrapped in ${JSON.stringify(wrapped)} should be reported as an invalid field, not crash the parser`
+      );
+    } else {
+      // The optional fields are absent rather than invalid when they are not a
+      // string, which is what `optionalString` already answers for every other
+      // shape that is not one.
+      assert(!result.error, `${field}: ${JSON.stringify(wrapped)} should leave the blueprint parseable`);
+      assert(
+        result.blueprint[field as 'worldDetails'] === undefined,
+        `${field}: a non-string value should read as absent rather than as text`
+      );
+    }
+  }
+}
+
+// The Heat Contract is read through the same helper on the query path, where a
+// wrapped non-string reached `JSON.parse`.
+const wrappedHeatContract = parseStoryLabBlueprintFromQuery({
+  ...bodyForCreature('vampire'),
+  heatContract: [{ adultOnlyConfirmed: true }] as unknown as string[]
+});
+assert(
+  wrappedHeatContract.error?.invalidFields.includes('heatContract'),
+  'a heat contract that is not a string on the query path should be refused, not crash the parser'
+);
+
+// The reading a repeated query parameter actually needs is unchanged, and a
+// number or boolean wrapped in an array is spelled out the same way a bare one
+// already was.
+const repeatedLogline = parseStoryLabBlueprintFromBody({
+  ...bodyForCreature('vampire'),
+  logline: ['The first value wins.', 'The second is the stale tab.']
+});
+assert(!repeatedLogline.error, 'a repeated string value should still parse');
+assert(
+  repeatedLogline.blueprint.logline === 'The first value wins.',
+  `the first entry is the one the client-facing hop sent (got ${JSON.stringify(repeatedLogline.blueprint?.logline)})`
+);
+
+const wrappedSpicyLevel = parseStoryLabBlueprintFromBody({ ...bodyForCreature('vampire'), spicyLevel: [4] });
+assert(!wrappedSpicyLevel.error, 'a numeric field wrapped in an array should still parse');
+assert(wrappedSpicyLevel.blueprint.spicyLevel === 4, 'a wrapped number should read as the number it is');
 
 console.log('Story Lab shared blueprint parser tests passed');

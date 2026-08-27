@@ -2,7 +2,7 @@
 
 import type { AuthUser } from '../auth/authPort';
 import type { ProjectAccessRecord } from '../auth/authorizeProjectAccess';
-import type { SavedStoryProject } from '../contracts';
+import type { SavedStoryProject, StoryLabLibrarySort } from '../contracts';
 
 export type StoryProjectStorageMode = 'non_durable_memory' | 'postgres';
 
@@ -45,6 +45,42 @@ export interface StoryProjectListItem {
   createdAt: string;
 }
 
+/**
+ * What a listing asks for: an order, and how many of it to answer with.
+ *
+ * `listProjects` used to take neither and hand back the owner's whole library,
+ * because the ordering and the cap both lived above it — the ordering
+ * deliberately, at the route, and the cap accidentally, in the Postgres
+ * adapter's own SQL under an ordering nobody had chosen. Removing that `limit`
+ * fixed the second problem by creating a third: the durable query then read and
+ * parsed every row of a library, `project_json` and all, so a request's
+ * transfer, memory, and CPU scaled with everything the owner had ever saved,
+ * and only the route threw the excess away.
+ *
+ * Passing the ordering *down* is what lets the bound live where the rows are.
+ * The route still decides what the order is — it reads `librarySort` off the
+ * profile, and re-applies `sortStoryProjectListItems` to the page it gets back,
+ * so the order a caller sees is always that one comparator's — and the store
+ * decides only which rows are worth sending under it.
+ */
+export interface StoryProjectListQuery {
+  sort: StoryLabLibrarySort;
+  limit: number;
+}
+
+/**
+ * One page of a library, and the size of the library it came from.
+ *
+ * `totalCount` is the owner's whole count, not the page's: a page that reports
+ * only its own length is indistinguishable from a complete library, which is
+ * the difference between "the story I saved is gone" and "it is past the cap".
+ * It travels to the caller as `CloudStoryProjectList.totalProjectCount`.
+ */
+export interface StoryProjectListPage {
+  items: StoryProjectListItem[];
+  totalCount: number;
+}
+
 export interface StoryProjectDeleteReceipt {
   projectId: string;
   deleted: boolean;
@@ -56,7 +92,7 @@ export interface StoryProjectStore {
   isConfigured(): boolean;
   saveProject(user: AuthUser, project: SavedStoryProject): Promise<StoryProjectStoreResult<StoredStoryProjectRecord>>;
   loadProject(user: AuthUser, projectId: string): Promise<StoryProjectStoreResult<StoredStoryProjectRecord | null>>;
-  listProjects(user: AuthUser): Promise<StoryProjectStoreResult<StoryProjectListItem[]>>;
+  listProjects(user: AuthUser, query: StoryProjectListQuery): Promise<StoryProjectStoreResult<StoryProjectListPage>>;
   deleteProject(user: AuthUser, projectId: string): Promise<StoryProjectStoreResult<StoryProjectDeleteReceipt>>;
 }
 
@@ -122,6 +158,81 @@ export function toStoryProjectListItem(record: StoredStoryProjectRecord): StoryP
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };
+}
+
+/**
+ * The most projects one library listing carries.
+ *
+ * The number is the Postgres adapter's old `limit 50`, moved here from the SQL
+ * because a cap and an ordering are one decision: whichever ordering picks the
+ * items decides which ones are kept, and the ordering is the reader's
+ * `librarySort`, applied by `sortStoryProjectListItems` at the route. Capping
+ * in the query meant `updated_at desc` chose the fifty and the reader's sort
+ * then only rearranged them, so a `title_asc` library was the alphabetical
+ * order of the fifty most recently touched projects rather than the first fifty
+ * by title — and the in-memory adapter, which had no limit at all, disagreed
+ * with it about what the library even contained.
+ *
+ * Applied after the sort, by both adapters, it is the same cap on the same
+ * answer. `CloudStoryProjectList.totalProjectCount` reports what the owner
+ * actually has, so a truncated listing says that it is one.
+ */
+export const STORY_LAB_LIBRARY_MAX_ITEMS = 50;
+
+/**
+ * Order a cloud library the way its owner asked for it.
+ *
+ * `StoryLabProfilePreferences.librarySort` is a three-value closed set —
+ * `updated_desc`, `created_desc`, `title_asc` — declared in the shared
+ * contracts, defaulted by `createDefaultStoryLabProfilePreferences`, validated
+ * against `STORY_LAB_LIBRARY_SORTS` by `normalizeStoryLabProfilePreferences`,
+ * written to both profile stores, and handed back by
+ * `GET /api/story-lab/account/profile`. Nothing read it. Both project stores
+ * order their own list newest-updated-first and hand it straight to the route,
+ * so two of the three values a reader could save were settings with no effect:
+ * the preference round-tripped through the API intact and the library came back
+ * in the same order whatever it said.
+ *
+ * The ordering is applied here rather than pushed into the stores because it is
+ * a property of the answer, not of the storage: the Postgres store's
+ * `LIST_PROJECTS_SQL` and the in-memory store's comparator would otherwise both
+ * have to learn the same three orderings and be kept agreeing about them, and
+ * the list item already carries all three fields the orderings read.
+ *
+ * `Date.parse` answers `NaN` for a timestamp it cannot read, and a comparator
+ * that answers `NaN` is read as *equal* — `Array.prototype.sort` coerces it to
+ * `+0` — so one unreadable entry would compare equal to every other and pin the
+ * list in whatever order it arrived in. That is the failure
+ * `byNewestUpdateFirst` in `story-workspace-storage.service.ts` was fixed for on
+ * the local library, and this is the same reading: an unreadable timestamp sorts
+ * as older than any real one, using a finite floor so that two of them compare
+ * equal to each other rather than subtracting to `NaN` again.
+ *
+ * Titles are compared with `localeCompare` so that `Élise` files with the `E`s
+ * rather than after `Z`, and the project id breaks every tie so that one library
+ * always comes back in one order.
+ */
+export function sortStoryProjectListItems(
+  items: readonly StoryProjectListItem[],
+  sort: StoryLabLibrarySort
+): StoryProjectListItem[] {
+  const ordered = [...items];
+
+  if (sort === 'title_asc') {
+    return ordered.sort((first, second) =>
+      first.title.localeCompare(second.title) || first.projectId.localeCompare(second.projectId));
+  }
+
+  const field = sort === 'created_desc' ? 'createdAt' : 'updatedAt';
+
+  return ordered.sort((first, second) =>
+    toSortableTimestamp(second[field]) - toSortableTimestamp(first[field])
+      || first.projectId.localeCompare(second.projectId));
+}
+
+function toSortableTimestamp(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? Number.MIN_SAFE_INTEGER : parsed;
 }
 
 export function projectAccessRecordFromStoredProject(record: StoredStoryProjectRecord): ProjectAccessRecord {

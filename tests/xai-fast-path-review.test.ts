@@ -3,14 +3,21 @@
 import assert from 'node:assert/strict';
 import axios from 'axios';
 import {
+  FUNCTION_BUDGET_RESERVE_MS,
+  getFunctionBudgetMs,
   getXaiFastTimeoutMs,
   getXaiFastReasoningEffort,
+  getXaiPrimaryTimeoutMs,
   getXaiReasoningEffortForModel,
   supportsXaiReasoningParameter
 } from '../api/_lib/config/xaiConfig';
 import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
 import { StoryService } from '../api/_lib/services/storyService';
-import { XaiTextClient, type XaiTextRequest } from '../api/_lib/services/xaiTextClient';
+import {
+  MIN_XAI_FALLBACK_TIMEOUT_MS,
+  XaiTextClient,
+  type XaiTextRequest
+} from '../api/_lib/services/xaiTextClient';
 
 type CapturedPost = {
   payload: Record<string, unknown>;
@@ -455,6 +462,162 @@ async function assertStoryLabContinuityBudgetUsesRemainingRequestWindow(): Promi
   }
 }
 
+/**
+ * The fast-profile retry used to be given `fallbackTimeoutMs` whatever the
+ * primary attempt had already spent, and both timeouts default to 40 seconds
+ * against an invocation the platform kills at 60. So a deployment with a
+ * distinct `XAI_FAST_MODEL` — the configuration the fallback exists for — could
+ * spend 40 seconds on the primary attempt and start another 40-second call: the
+ * function was terminated with the retry still in flight, and the caller got
+ * the platform's timeout instead of the `AI_UNAVAILABLE` envelope this client
+ * exists to produce.
+ *
+ * The budget is driven through the environment rather than through a clock,
+ * because it is the same reading `getStoryLabContinuityTimeoutMs` uses and
+ * `FUNCTION_BUDGET_MS` is how a deployment states it.
+ */
+async function assertFastProfileRetryFitsInsideTheInvocationBudget(): Promise<void> {
+  const originalApiKey = process.env['XAI_API_KEY'];
+  const originalApiUrl = process.env['XAI_RESPONSES_API_URL'];
+  const originalStoryModel = process.env['XAI_STORY_MODEL'];
+  const originalFastModel = process.env['XAI_FAST_MODEL'];
+  const originalFunctionBudget = process.env['STORY_LAB_FUNCTION_BUDGET_MS'];
+  const originalFallbackFunctionBudget = process.env['FUNCTION_BUDGET_MS'];
+  const originalPost = axios.post;
+  const capturedPosts: CapturedPost[] = [];
+
+  try {
+    process.env['XAI_API_KEY'] = 'test-xai-key';
+    process.env['XAI_RESPONSES_API_URL'] = 'https://example.invalid/v1/responses';
+    process.env['XAI_STORY_MODEL'] = 'grok-4.20-multi-agent';
+    process.env['XAI_FAST_MODEL'] = 'grok-4.3';
+    delete process.env['STORY_LAB_FUNCTION_BUDGET_MS'];
+
+    let failPrimaryAttempt = true;
+    (axios as unknown as { post: typeof axios.post }).post = (async (_url: string, payload: unknown, config: unknown) => {
+      capturedPosts.push({
+        payload: payload as Record<string, unknown>,
+        config: config as CapturedPost['config']
+      });
+
+      if (failPrimaryAttempt) {
+        failPrimaryAttempt = false;
+        const error = new Error('timeout') as Error & { code?: string };
+        error.code = 'ETIMEDOUT';
+        throw error;
+      }
+
+      return { data: { output_text: 'bounded fallback result' } };
+    }) as typeof axios.post;
+
+    // A window with room to spare leaves the requested fallback timeout alone.
+    process.env['FUNCTION_BUDGET_MS'] = '60000';
+    const roomyClient = new XaiTextClient();
+    await captureConsoleWarn(() => roomyClient.generateText(buildRequest(undefined, true)));
+    assert.equal(capturedPosts.length, 2, 'a request with budget to spare should still retry on the fast profile');
+    assert.equal(capturedPosts[1].config.timeout, 5678, 'a retry that fits should keep the timeout it asked for');
+
+    // A window smaller than the requested retry shortens it rather than
+    // overrunning the invocation.
+    capturedPosts.length = 0;
+    failPrimaryAttempt = true;
+    // 10500 leaves 5500ms once the finalization reserve is held back: room for
+    // a retry, but less than the 5678 the request asks for.
+    process.env['FUNCTION_BUDGET_MS'] = '10500';
+    const tightClient = new XaiTextClient();
+    await captureConsoleWarn(() => tightClient.generateText(buildRequest(undefined, true)));
+    assert.equal(capturedPosts.length, 2, 'a shortened retry should still be attempted');
+    const shortenedTimeout = capturedPosts[1].config.timeout;
+    assert(
+      shortenedTimeout !== undefined && shortenedTimeout > 5000 && shortenedTimeout <= 5500,
+      `a retry should be cut to what the invocation has left (got ${shortenedTimeout})`
+    );
+
+    // A window with nothing usable left skips the retry and reports the failure
+    // the caller can still be told about.
+    capturedPosts.length = 0;
+    failPrimaryAttempt = true;
+    process.env['FUNCTION_BUDGET_MS'] = '5000';
+    const exhaustedClient = new XaiTextClient();
+    const exhausted = await captureConsoleWarn(async () => {
+      await assert.rejects(
+        () => exhaustedClient.generateText(buildRequest(undefined, true)),
+        /xAI service temporarily unavailable/,
+        'an exhausted invocation window should answer with the provider failure rather than starting a doomed retry'
+      );
+    });
+    assert.equal(capturedPosts.length, 1, 'an exhausted invocation window should not make a second provider call');
+    assert(
+      JSON.stringify(exhausted.calls).includes('no room left'),
+      'skipping the retry for want of budget should say so'
+    );
+  } finally {
+    (axios as unknown as { post: typeof axios.post }).post = originalPost;
+
+    for (const [name, value] of [
+      ['XAI_API_KEY', originalApiKey],
+      ['XAI_RESPONSES_API_URL', originalApiUrl],
+      ['XAI_STORY_MODEL', originalStoryModel],
+      ['XAI_FAST_MODEL', originalFastModel],
+      ['STORY_LAB_FUNCTION_BUDGET_MS', originalFunctionBudget],
+      ['FUNCTION_BUDGET_MS', originalFallbackFunctionBudget]
+    ] as const) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  }
+}
+
+/**
+ * The shipped defaults have to leave room for the retry they allow.
+ *
+ * The runtime clamp above makes an overrun impossible whatever the numbers say,
+ * but it can only shorten a retry or refuse one — so a primary timeout raised
+ * past what the window can hold would quietly turn the fallback off rather than
+ * fail anywhere visible. Issue #167 asks for exactly this guard: that the two
+ * defaults cannot drift beyond the configured max duration unnoticed. Stated as
+ * the property rather than as the arithmetic, so it holds if any of the three
+ * numbers moves.
+ */
+function assertShippedTimeoutDefaultsLeaveRoomForTheRetry(): void {
+  const originalEnv = [
+    'XAI_STORY_PRIMARY_TIMEOUT_MS',
+    'XAI_PRIMARY_TIMEOUT_MS',
+    'XAI_STORY_FAST_TIMEOUT_MS',
+    'XAI_FAST_TIMEOUT_MS',
+    'STORY_LAB_FUNCTION_BUDGET_MS',
+    'FUNCTION_BUDGET_MS'
+  ].map(name => [name, process.env[name]] as const);
+
+  try {
+    for (const [name] of originalEnv) {
+      delete process.env[name];
+    }
+
+    const usableWindowMs = getFunctionBudgetMs() - FUNCTION_BUDGET_RESERVE_MS;
+
+    assert(
+      getXaiPrimaryTimeoutMs() + MIN_XAI_FALLBACK_TIMEOUT_MS <= usableWindowMs,
+      `the default primary timeout (${getXaiPrimaryTimeoutMs()}ms) should leave room for a usable retry inside the ${usableWindowMs}ms window`
+    );
+    assert(
+      getXaiFastTimeoutMs() <= usableWindowMs,
+      `the default fast timeout (${getXaiFastTimeoutMs()}ms) should fit inside the ${usableWindowMs}ms window on its own, since a fast-preference request spends it as its only attempt`
+    );
+  } finally {
+    for (const [name, value] of originalEnv) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  }
+}
+
 async function main(): Promise<void> {
   await assertContinuityFastTimeoutUsesConfiguredBudget();
   await assertContinuityHeuristicWarningPriority();
@@ -462,6 +625,8 @@ async function main(): Promise<void> {
   await assertXaiClientPayloads();
   assertAiMetadataMerge();
   await assertStoryLabContinuityBudgetUsesRemainingRequestWindow();
+  await assertFastProfileRetryFitsInsideTheInvocationBudget();
+  assertShippedTimeoutDefaultsLeaveRoomForTheRetry();
 
   console.log('xAI fast path review regression tests passed');
 }

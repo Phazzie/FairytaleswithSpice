@@ -4,7 +4,6 @@ import healthHandler from '../../health';
 import exportSaveHandler from '../../export/save';
 import imageGenerateHandler from '../../image/generate';
 import storyLabEvaluateHandler from '../../story-lab/evaluate';
-import storyLabStreamGenesisHandler from '../../story-lab/stream/genesis';
 import { createStoryLabGenesisHandler } from '../../story-lab/stories';
 import { createStoryLabContinuationHandler } from '../../story-lab/stories/[storyId]/continue';
 import { handleStoryLabAccountRoute } from '../story-lab/account/accountRouteHandlers';
@@ -17,8 +16,8 @@ import { handleStoryLabJobsRoute } from '../story-lab/jobs/jobRouteHandlers';
  * `/api/health`, `/api/story/generate`, `/api/story/continue`, and
  * `/api/export/save` — and nothing else. The Angular app does not call any of
  * them: `StoryService` talks to `/api/story-lab/...` for every request it
- * makes, from genesis and continuation to jobs, the account library, the
- * evaluation route, and the genesis event stream. None of those paths was
+ * makes, from genesis and continuation to jobs, the account library, and the
+ * evaluation route. None of those paths was
  * registered, so each one fell past the API routes into `express.static` and
  * then the Angular SSR handler, which answers with the rendered index page —
  * `200 OK`, `text/html`. `HttpClient` then failed to parse a page as JSON and
@@ -96,7 +95,6 @@ export const API_ROUTES: readonly ApiRouteDefinition[] = [
     // it only in `req.params`.
     query: params => ({ storyId: params['storyId'] })
   },
-  { path: '/api/story-lab/stream/genesis', handler: storyLabStreamGenesisHandler },
   { path: '/api/story-lab/evaluate', handler: storyLabEvaluateHandler },
   { path: '/api/story-lab/jobs', handler: handleStoryLabJobsRoute },
   {

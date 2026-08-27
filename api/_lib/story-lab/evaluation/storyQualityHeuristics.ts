@@ -2,7 +2,10 @@ import type {
   StoryQualityDimensionScore,
   StoryQualityHeuristicReport
 } from '../contracts';
-import { splitStoryIntoTextBlocks } from '../../utils/storyTextBlocks';
+import { splitStoryIntoTextBlocks } from '../../../../shared/storyTextBlocks';
+import { collapseWhitespace } from '../../utils/whitespace';
+import { escapeRegExp } from '../../utils/regexEscape';
+import { wholeWordAlternationPattern, wholeWordPattern } from '../../utils/wholeWord';
 
 export interface StoryQualityHeuristicInput {
   storyContent: string;
@@ -17,6 +20,25 @@ export interface StoryQualityHeuristicInput {
 type DimensionDraft = Omit<StoryQualityDimensionScore, 'score'> & {
   score: number;
 };
+
+/**
+ * The endings a keyword may pick up and still be the same word.
+ *
+ * `EMOTION_FAMILIES` and `extractSensoryTextures` answer this by listing every
+ * inflection they accept, which works because each of them is a fixed lexicon
+ * written beside its own matcher. The three dimensions below are not: the
+ * continuity scan matches the creature and the theme words a *request* carried,
+ * so there is no list to extend — the words arrive from the blueprint.
+ *
+ * `d` and `ed` are both here because English spells the past tense both ways
+ * depending on whether the stem already ends in `e` (`loved`, `burned`), and
+ * `r`/`rs` because an agent noun is the form this genre actually writes for
+ * several of these stems (`lover`, `lovers` for a `forbidden_love` seed).
+ * Endings that build a *different* word are deliberately absent: `less` is what
+ * makes `priceless` out of `price` and `bloodless` out of `blood`, and `ly`
+ * what makes `secretly` out of `secret`.
+ */
+const WORD_INFLECTION_SUFFIXES = String.raw`(?:s|es|d|ed|ing|r|rs)?`;
 
 export function buildStoryQualityHeuristicReport(input: StoryQualityHeuristicInput): StoryQualityHeuristicReport {
   // Stories reach this scan as the HTML the generator produces: paragraphs are
@@ -58,18 +80,30 @@ export function buildStoryQualityHeuristicReport(input: StoryQualityHeuristicInp
   };
 }
 
+/**
+ * The words that say a continuity promise is being repeated.
+ *
+ * A fixed list, so it is compiled with the module rather than word by word on
+ * every scan — see `wordFormAlternationPattern`. The two words the scan above it
+ * looks for are not fixed: the creature and the theme words arrive on the
+ * request, so those stay per-call, which is what `containsWordForm` is for.
+ */
+const CONTINUITY_PROMISE_PATTERN = wordFormAlternationPattern([
+  'oath', 'vow', 'bargain', 'debt', 'secret'
+]);
+
 function scoreContinuity(storyText: string, configuration: StoryQualityHeuristicInput['configuration']): DimensionDraft {
   const signals: string[] = [];
-  if (configuration.creature && storyText.includes(configuration.creature.toLowerCase())) {
+  if (configuration.creature && containsWordForm(storyText, configuration.creature.toLowerCase())) {
     signals.push(`Creature appears: ${configuration.creature}`);
   }
   for (const theme of configuration.themes) {
     const themeWords = theme.split(/[_\s-]+/).filter(word => word.length > 3);
-    if (themeWords.some(word => storyText.includes(word.toLowerCase()))) {
+    if (themeWords.some(word => containsWordForm(storyText, word.toLowerCase()))) {
       signals.push(`Theme echo appears: ${theme}`);
     }
   }
-  if (containsAny(storyText, ['oath', 'vow', 'bargain', 'debt', 'secret'])) {
+  if (CONTINUITY_PROMISE_PATTERN.test(storyText)) {
     signals.push('Continuity object or promise is repeated.');
   }
 
@@ -82,6 +116,14 @@ function scoreContinuity(storyText: string, configuration: StoryQualityHeuristic
   };
 }
 
+/** The two fixed lists the ending is read against, compiled with the module. */
+const UNRESOLVED_HOOK_WORD_PATTERN = wordFormAlternationPattern([
+  'choose', 'secret', 'reveal', 'blood', 'price', 'door', 'name', 'truth'
+]);
+const EXPLICIT_CLIFFHANGER_PATTERN = wordFormAlternationPattern([
+  'cliff', 'continued', 'to be continued'
+]);
+
 function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): DimensionDraft {
   let finalParagraph = storyText;
   for (const paragraph of paragraphs) {
@@ -92,10 +134,10 @@ function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): Dimen
   if (/[?!]\s*$/.test(finalParagraph)) {
     signals.push('Ending closes on a question or exclamation.');
   }
-  if (containsAny(finalParagraph, ['choose', 'secret', 'reveal', 'blood', 'price', 'door', 'name', 'truth'])) {
+  if (UNRESOLVED_HOOK_WORD_PATTERN.test(finalParagraph)) {
     signals.push('Ending contains an unresolved hook word.');
   }
-  if (containsAny(finalParagraph, ['cliff', 'continued', 'to be continued'])) {
+  if (EXPLICIT_CLIFFHANGER_PATTERN.test(finalParagraph)) {
     signals.push('Ending uses explicit cliffhanger language.');
   }
 
@@ -108,10 +150,33 @@ function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): Dimen
   };
 }
 
+/**
+ * The phrases and words this dimension names in its signals, each with its own
+ * compiled pattern.
+ *
+ * One pattern per entry rather than one per list, because this scan reports
+ * *which* entries it found — the alternation the two dimensions above use
+ * answers "any of these", which is all they need. Compiled with the module
+ * either way.
+ *
+ * The stale entries are phrases, and the boundary is still only asked about
+ * their ends: `chosen ones` is the same phrase as `chosen one`, and nothing in
+ * English attaches to the front of `damsel in distress`.
+ */
+const STALE_TROPE_SIGNALS = withWordFormPatterns([
+  'damsel in distress', 'it was all a dream', 'love at first sight', 'chosen one'
+]);
+const FRESHNESS_SIGNALS = withWordFormPatterns([
+  'cost', 'bargain', 'choice', 'consequence', 'leverage'
+]);
+
 function scoreTropeFreshness(storyText: string): DimensionDraft {
-  const staleSignals = ['damsel in distress', 'it was all a dream', 'love at first sight', 'chosen one'];
-  const staleHits = staleSignals.filter(signal => storyText.includes(signal));
-  const freshSignals = ['cost', 'bargain', 'choice', 'consequence', 'leverage'].filter(signal => storyText.includes(signal));
+  const staleHits = STALE_TROPE_SIGNALS
+    .filter(signal => signal.pattern.test(storyText))
+    .map(signal => signal.phrase);
+  const freshSignals = FRESHNESS_SIGNALS
+    .filter(signal => signal.pattern.test(storyText))
+    .map(signal => signal.phrase);
   return {
     id: 'trope_freshness',
     label: 'Trope freshness',
@@ -121,21 +186,75 @@ function scoreTropeFreshness(storyText: string): DimensionDraft {
   };
 }
 
+/**
+ * The five emotional registers this dimension looks for, and the words that
+ * count as each one.
+ *
+ * The groups were bare word lists matched with `String.prototype.includes`, and
+ * the failure is the one `StoryService.extractSpicyLevelFromContent` was fixed
+ * for a commit ago: a short emotion word sits inside longer words that mean
+ * something else, or the opposite thing, and this app writes those words
+ * constantly.
+ *
+ * - `anger` is inside `danger` and `stranger`. A dark-romance chapter about a
+ *   dangerous stranger scored the rage register without a single angry beat in
+ *   it, and `rage` is inside `courage`, so the same register was scored twice
+ *   over by a word for the opposite disposition.
+ * - `ache` is inside `reached` — an ordinary verb of motion, in almost every
+ *   chapter this app produces — so the grief register was effectively always
+ *   on, and `loss` is inside `blossom` and `gloss`.
+ * - `hope` is inside `hopeless`, `fear` inside `fearless`, and `trust` inside
+ *   `distrust` and `mistrust`. Three registers credited by the negations that
+ *   deny them.
+ *
+ * Five groups at twelve points each on a base of 48 tops out at 108, clamped to
+ * 100, so a scan this leaky did not merely inflate the number — it took
+ * `emotional_variety` to its maximum for nearly any prose, which makes the
+ * dimension unable to distinguish anything and pulls the `overallScore` it is
+ * one seventh of along with it.
+ *
+ * Whole words, then, with the inflections the substring form picked up for free
+ * listed rather than lost: `wanted` for `want`, `desires` for `desire`,
+ * `losses` for `loss`. What is deliberately not carried over is the rest of
+ * what the substrings caught — `danger` is not `anger`, `reached` is not
+ * `ache`, `hopeless` is not `hope`. Those are the defect, not coverage. The
+ * shape is `extractSensoryTextures`'s below, which has matched whole words
+ * since it was written; the label each group reports is unchanged.
+ */
+const EMOTION_FAMILIES: ReadonlyArray<{ label: string; terms: readonly string[] }> = [
+  { label: 'want', terms: ['want', 'wanted', 'wanting', 'wants', 'desire', 'desired', 'desires', 'desiring', 'hunger', 'hungered', 'hungering', 'hungers'] },
+  { label: 'fear', terms: ['fear', 'feared', 'fearing', 'fears', 'dread', 'dreaded', 'dreading', 'dreads', 'afraid'] },
+  { label: 'anger', terms: ['anger', 'angered', 'angering', 'angers', 'rage', 'raged', 'rages', 'fury'] },
+  { label: 'grief', terms: ['grief', 'ache', 'ached', 'aches', 'loss', 'losses'] },
+  { label: 'hope', terms: ['hope', 'hoped', 'hopes', 'trust', 'trusted', 'trusting', 'trusts', 'mercy'] }
+];
+
+/**
+ * One pattern per family, compiled with the table rather than per term on every
+ * scan.
+ *
+ * `wholeWordAlternationPattern` is the helper for exactly this — "compiled once
+ * per table by the callers that scan repeatedly, never per call" — and asking
+ * `containsWholeWord` term by term is the per-call form: it builds a `RegExp`
+ * for each of the forty-five terms below, and again for the twenty-four in
+ * `extractSensoryTextures`, every time a story is scored. The boundary the
+ * alternation puts at its ends is the boundary each term carried on its own, so
+ * what a story matches is unchanged.
+ */
+const EMOTION_FAMILY_PATTERNS: ReadonlyArray<{ label: string; pattern: RegExp }> =
+  EMOTION_FAMILIES.map(family => ({
+    label: family.label,
+    pattern: wholeWordAlternationPattern(family.terms)
+  }));
+
 function scoreEmotionalVariety(storyText: string): DimensionDraft {
-  const emotionGroups = [
-    ['want', 'desire', 'hunger'],
-    ['fear', 'dread', 'afraid'],
-    ['anger', 'rage', 'fury'],
-    ['grief', 'ache', 'loss'],
-    ['hope', 'trust', 'mercy']
-  ];
-  const matchedGroups = emotionGroups.filter(group => group.some(word => storyText.includes(word)));
+  const matchedFamilies = EMOTION_FAMILY_PATTERNS.filter(family => family.pattern.test(storyText));
   return {
     id: 'emotional_variety',
     label: 'Emotional variety',
-    score: 48 + matchedGroups.length * 12,
-    rationale: matchedGroups.length > 1 ? 'Multiple emotional registers are present.' : 'Emotional range looks narrow in the deterministic scan.',
-    signals: matchedGroups.map(group => `Emotion family: ${group[0]}`)
+    score: 48 + matchedFamilies.length * 12,
+    rationale: matchedFamilies.length > 1 ? 'Multiple emotional registers are present.' : 'Emotional range looks narrow in the deterministic scan.',
+    signals: matchedFamilies.map(family => `Emotion family: ${family.label}`)
   };
 }
 
@@ -251,12 +370,36 @@ function clampScore(score: number): number {
   return Math.max(0, Math.min(100, score));
 }
 
-function containsAny(value: string, needles: readonly string[]): boolean {
-  return needles.some(needle => value.includes(needle));
+/**
+ * One pattern matching any word form of any of `words`, compiled once.
+ *
+ * This is `containsAny` — "whether any of these appears as a word rather than as
+ * a run of letters inside another one" — asked of a table instead of asked word
+ * by word. The old form ran `containsWordForm` per needle per call, and
+ * `containsWordForm` builds a `RegExp` per spelling, so the three fixed lists
+ * above it were recompiled on every story scored: sixteen words, thirty-two
+ * patterns, for prose the scan reads once.
+ *
+ * `wholeWordAlternationPattern` is the same idea for a table of plain keywords;
+ * this is its counterpart for the tolerant reading, so the two dimensions that
+ * need inflections get the boundary at the ends of the alternation exactly as
+ * the emotion families do.
+ */
+function wordFormAlternationPattern(words: readonly string[]): RegExp {
+  return wholeWordPattern(
+    words
+      .flatMap(wordSpellings)
+      .map(spelling => `${escapeRegExp(spelling)}${WORD_INFLECTION_SUFFIXES}`)
+      .join('|')
+  );
 }
 
-function collapseWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
+/**
+ * The same, one pattern per entry, for the scan that reports *which* of its
+ * phrases it found rather than whether any of them appeared.
+ */
+function withWordFormPatterns(phrases: readonly string[]): ReadonlyArray<{ phrase: string; pattern: RegExp }> {
+  return phrases.map(phrase => ({ phrase, pattern: wordFormAlternationPattern([phrase]) }));
 }
 
 function extractDialogueSpeakers(dialogueLines: string[]): string[] {
@@ -484,8 +627,80 @@ function normalizeProseForScanning(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+/**
+ * Whether `text` contains `keyword` as a whole word. Both sides are already
+ * lowercased by the caller.
+ *
+ * The boundaries are stated as lookarounds rather than as `\b`, for the reason
+ * `NAMED_CHARACTER_RUN_PATTERN` and the agency scan above both give: `\b` is
+ * defined against `[A-Za-z0-9_]`, so it finds a boundary between an ASCII
+ * keyword and the non-ASCII letter beside it and reports a word that is really
+ * part of a longer one in another script. The keywords themselves are the
+ * lexicons' own ASCII words; it is the prose around them that is not
+ * guaranteed to be.
+ *
+ * That reading is now `api/_lib/utils/wholeWord.ts`'s, which is what the three
+ * scans that still spelled the boundary `\b` — the content analysis, the
+ * pressure keywords, and the cliffhanger hooks — were moved onto. This one was
+ * already right; what changes is that it is no longer the only one.
+ */
+
+
+/**
+ * The spellings of `word` this scan will accept before suffixes are considered.
+ *
+ * Two English plurals are not suffixes at all — they replace the last letter —
+ * and both of them land on the creature archetypes the blueprint contract
+ * names: `fairy` becomes `fairies` and `werewolf` becomes `werewolves`. Every
+ * other archetype in that list of ten pluralizes by suffix, so those two are
+ * the whole of the irregularity worth spelling out here.
+ */
+function wordSpellings(word: string): string[] {
+  const spellings = [word];
+
+  if (/[^aeiou]y$/.test(word)) {
+    spellings.push(`${word.slice(0, -1)}ie`);
+  }
+  if (/f$/.test(word)) {
+    spellings.push(`${word.slice(0, -1)}ve`);
+  }
+
+  return spellings;
+}
+
+/**
+ * Whether `text` contains `word` — or an inflection of it — as a whole word.
+ *
+ * This is `containsWholeWord` with the tolerance the three dimensions above
+ * need and the emotion families do not: their terms are listed with their
+ * inflections already, these arrive from a request.
+ *
+ * The boundary is the point. Every one of these scans read `String.prototype
+ * .includes` before this, and the words they look for are short ones this genre
+ * writes longer words around:
+ *
+ * - `oath` is inside `loathe` and `loathing`, so a chapter about loathing
+ *   someone was credited with repeating a continuity promise.
+ * - A `forbidden_love` seed looks for `love`, which is inside `gloves` and
+ *   `clover`; a `slow_burn` seed looks for `burn`, inside `burnished`.
+ * - `fairy` is inside `fairytale` — the word this app is named for — and
+ *   `witch` inside `switch`, `dragon` inside `dragonfly`, and `demon` inside
+ *   `demonstrate`, so "she switched off the lamp" reported `Creature appears:
+ *   witch` for a story with no witch in it.
+ * - `cost` is inside `costume`, in a genre that writes masquerades.
+ * - `door` is inside `doorway`, `price` inside `priceless`, `blood` inside
+ *   `bloodless`, and `name` inside `nameless` — three of the eight hook words
+ *   the cliffhanger dimension credits an ending for, matched by the words that
+ *   negate them.
+ *
+ * The tolerance is what keeps the fix from costing what the substrings were
+ * really buying: `loved`, `lovers`, `burning`, `oaths`, `secrets`, `bargained`
+ * all still count, because they are the same word.
+ */
+function containsWordForm(text: string, word: string): boolean {
+  return wordSpellings(word).some(spelling =>
+    wholeWordPattern(`${escapeRegExp(spelling)}${WORD_INFLECTION_SUFFIXES}`).test(text)
+  );
 }
 
 function extractConcreteAnchors(storyContent: string): string[] {
@@ -583,19 +798,23 @@ function extractConcreteAnchors(storyContent: string): string[] {
   return anchors;
 }
 
+// The same whole-word reading the emotion families use, and — since this table
+// was a function-local literal rebuilt on every scan — compiled the same way.
+// See `EMOTION_FAMILY_PATTERNS`.
+const SENSORY_TEXTURE_PATTERNS: ReadonlyArray<{ label: string; pattern: RegExp }> = [
+  { label: 'glow', terms: ['glow', 'glowed', 'glowing', 'bright', 'shimmer', 'shimmered'] },
+  { label: 'salt', terms: ['salt', 'salty'] },
+  { label: 'sting', terms: ['sting', 'stung', 'stinging'] },
+  { label: 'cold', terms: ['cold', 'chill', 'chilled'] },
+  { label: 'heat', terms: ['heat', 'hot', 'warm'] },
+  { label: 'scent', terms: ['scent', 'smell', 'perfume', 'smoke'] },
+  { label: 'sound', terms: ['sound', 'sang', 'whisper', 'rang'] }
+].map(entry => ({ label: entry.label, pattern: wholeWordAlternationPattern(entry.terms) }));
+
 function extractSensoryTextures(storyContent: string): string[] {
   const normalized = storyContent.toLowerCase();
-  const sensoryLexicon: Array<{ label: string; terms: readonly string[] }> = [
-    { label: 'glow', terms: ['glow', 'glowed', 'glowing', 'bright', 'shimmer', 'shimmered'] },
-    { label: 'salt', terms: ['salt', 'salty'] },
-    { label: 'sting', terms: ['sting', 'stung', 'stinging'] },
-    { label: 'cold', terms: ['cold', 'chill', 'chilled'] },
-    { label: 'heat', terms: ['heat', 'hot', 'warm'] },
-    { label: 'scent', terms: ['scent', 'smell', 'perfume', 'smoke'] },
-    { label: 'sound', terms: ['sound', 'sang', 'whisper', 'rang'] }
-  ];
 
-  return sensoryLexicon
-    .filter(entry => entry.terms.some(term => new RegExp(String.raw`\b${escapeRegExp(term)}\b`).test(normalized)))
+  return SENSORY_TEXTURE_PATTERNS
+    .filter(entry => entry.pattern.test(normalized))
     .map(entry => entry.label);
 }

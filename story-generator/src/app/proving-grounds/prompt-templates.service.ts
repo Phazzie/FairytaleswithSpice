@@ -1,5 +1,16 @@
 // Created: 2025-10-31 06:43
 import { Injectable } from '@angular/core';
+import { readCreatureDisplayName } from '../../../../shared/creatureVocabulary';
+import { readSpiceLevelPromptLabel } from '../../../../shared/spiceLevelPromptLadder';
+import {
+  buildProductionSystemPrompt,
+  buildProductionUserPrompt,
+  formatChekhovLedger
+} from '../../../../shared/productionStoryPrompt';
+import {
+  STORY_CHEKHOV_ELEMENTS,
+  STORY_CHEKHOV_ELEMENTS_PER_STORY
+} from '../../../../shared/storyPromptTables';
 import { CreatureArchetype, PromptTemplate, SpicyLevel, ThemeSeed, WordBudget } from '../contracts';
 
 export interface PromptVariables {
@@ -10,75 +21,49 @@ export interface PromptVariables {
   userInput?: string;
 }
 
+/**
+ * The reader's own idea, on the line and under the heading production gives it.
+ *
+ * The copy this page used to carry sent that text under no heading at all — a
+ * bare line between the spice level and the story requirements — while every
+ * story the app generates labels it `CREATIVE DIRECTION:`. The whole line is one
+ * token because production drops the heading with the text when there is none,
+ * and a template can only do that by replacing both together.
+ */
+const CREATIVE_DIRECTION_TOKEN = 'CREATIVE DIRECTION: {{USER_INPUT}}';
+
+/**
+ * The two elements this run plants, drawn when the template is filled.
+ *
+ * Production draws two per generation and names them in the prompt; the copy
+ * this replaces had no Chekhov ledger at all, so a variant was compared against
+ * a prompt that asked for no planting. Drawn at fill time rather than at
+ * template time for the same reason production draws per story: a page that
+ * showed the same two elements for every run would be describing one run.
+ */
+const CHEKHOV_LEDGER_TOKEN = '{{CHEKHOV_LEDGER}}';
+
 @Injectable({
   providedIn: 'root'
 })
 export class PromptTemplatesService {
 
-  private readonly productionSystemPrompt = `You are an audio-first dark-romance architect producing supernatural vignettes optimized for multi-voice narration.
-Your sole purpose is to fabricate episodes that sound cinematic when read aloud and end on a cliff-hook that guarantees listener return.
-
-PROSE ENGINE (MANDATORY):
-BANNED WORDS/PHRASES (hard-fail unless inside dialogue for character voice):
-"suddenly", "very", "she felt", "he felt", "it was [emotion]",
-"he was [adj]", "she was [adj]", "there was", "began to", "started to"
-
-NO PURPLE PROSE / NO FILLER:
-Every line must move plot, reveal character, or raise tension.
-Vary sentence length for audio rhythm. Keep paragraphs 1-4 lines.
-
-SHOW DON'T TELL EXAMPLES:
-BAD: "She was scared" → GOOD: "[Narrator]: Her pulse throbbed against her throat, fingers slick on the hilt"
-BAD: "He was attractive" → GOOD: "[Narrator]: Candlelight caught the curve of his grin, making it wicked"
-BAD: "She was attracted to him" → GOOD: "[Narrator]: Her breath caught as his thumb traced her wrist, pulse jumping beneath his touch"
-
-CHARACTER MANDATE:
-Core Desire Template: "[Narrator]: <Name> wants <X> because <Y> but <Z>."
-Every protagonist needs: driving WANT (revenge, freedom, power), visible flaws, emotional vulnerability shown through action.
-Distinct dialogue patterns: sentence length, formality, emotional triggers.
-
-CONSENT & CHEMISTRY BLOCK:
-INTIMATE SCENES MUST:
-- Show enthusiastic consent through action/dialogue ("Yes," "Please," "Don't stop")
-- Build emotional connection alongside physical escalation
-- Use anticipation and denial to heighten tension
-- Never rush to physical without emotional stakes
-
-SPICE LEVELS (match exactly):
-Level 1: Yearning looks, accidental touches, sweet anticipation
-Level 2: First kisses, heated arguments, sensual tension
-Level 3: Clothes stay on, hands don't, steamy fade-to-black
-Level 4: Explicit but emotional, detailed physical intimacy
-Level 5: Nothing left to imagination, graphic yet sophisticated
-
-AUDIO FORMAT (NON-NEGOTIABLE):
-- [Character Name]: "dialogue" for ALL speech
-- [Narrator]: for ALL descriptions/scene-setting
-- [Character, emotion]: "dialogue" for emotional context
-- HTML: <h3> titles, <p> paragraphs, <em> emphasis
-
-VOICE METADATA FOR AUDIO NARRATION (CRITICAL):
-For EACH major character's FIRST appearance, include voice characteristics:
-FORMAT: [CharacterName, voice: 4-word description]: "dialogue"
-
-USE CREATIVE, UNCONVENTIONAL VOICE DESCRIPTORS:
-✅ velvet-smoke, starlight-tinkling, thunder-low, whiskey-rough, moonlight-pale
-✅ Mix textures + emotions + synesthetic descriptions
-❌ NO generic words (nice, good, normal)
-❌ NO repeating descriptors across characters
-
-SERIALIZATION HOOKS - ENGINEERED ADDICTION:
-End with ONE of these cliffhanger types:
-1. REVELATION CLIFFHANGER - Truth bomb drops in last sentence
-2. DANGER ESCALATION - Threat level jumps exponentially
-3. BETRAYAL CLIFFHANGER - Trusted ally revealed as enemy
-4. IMPOSSIBLE CHOICE - Must decide between two disasters
-5. IDENTITY CRISIS - Everything they knew about themselves is wrong
-6. LOST CONTROL - Character's power/beast takes over
-7. ARRIVAL CLIFFHANGER - Someone/something arrives to change everything
-8. DEADLINE SLAM - Time runs out, consequences immediate
-
-Your goal: Create episodes that make listeners desperate for "Continue Chapter."`;
+  /**
+   * The system prompt this page presents as "Current Production".
+   *
+   * Read from `shared/productionStoryPrompt` rather than transcribed here. The
+   * transcription this replaces had lost the midpoint moral dilemma, the eight
+   * cliffhanger types' examples, the hook-placement and serialization-promise
+   * rules, the fourth show-don't-tell example, and the whole four-thousand-character
+   * enhanced voice system — so a variant measured against it was measured against
+   * a prompt no story was ever generated from. See the note on that module.
+   *
+   * The two per-run sections are passed as nothing, which drops them: the author
+   * styles are drawn per generation from the creature's bank, and the beat
+   * structure per story. Proving Grounds previews both in its own panel, which
+   * reads the same tables `StoryService` draws from.
+   */
+  private readonly productionSystemPrompt = buildProductionSystemPrompt();
 
   getTemplates(): PromptTemplate[] {
     return [
@@ -141,7 +126,13 @@ Your goal: Create episodes that make listeners desperate for "Continue Chapter."
     const themesText = variables.themes.map(theme => theme.label).join(', ');
     const spicyLabel = this.getSpicyLabel(variables.spicyLevel);
 
+    const creativeDirection = variables.userInput?.trim() ?? '';
+
     return userPromptTemplate
+      // Before `{{USER_INPUT}}`, because this token contains it: an absent idea
+      // takes the `CREATIVE DIRECTION:` heading with it, as production does.
+      .replaceAll(CREATIVE_DIRECTION_TOKEN, creativeDirection ? `CREATIVE DIRECTION: ${creativeDirection}` : '')
+      .replaceAll(CHEKHOV_LEDGER_TOKEN, formatChekhovLedger(this.drawChekhovElements()))
       .replaceAll('{{WORD_COUNT}}', variables.wordCount.toString())
       .replaceAll('{{CREATURE}}', creatureName)
       .replaceAll('{{THEMES}}', themesText)
@@ -151,47 +142,47 @@ Your goal: Create episodes that make listeners desperate for "Continue Chapter."
   }
 
   /**
+   * Draw the elements this run plants, from the same table the generator draws
+   * from — Fisher-Yates over a copy, as `StoryService.generateChekovElements`
+   * does, so every pair is as likely as every other.
+   */
+  private drawChekhovElements(): readonly string[] {
+    const shuffled = [...STORY_CHEKHOV_ELEMENTS];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const swapWith = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[swapWith]] = [shuffled[swapWith], shuffled[index]];
+    }
+    return shuffled.slice(0, STORY_CHEKHOV_ELEMENTS_PER_STORY);
+  }
+
+  /**
    * The user prompt this page presents as "Current Production".
    *
    * Its whole claim is that it is what the app sends, so a variant tested
-   * against it is tested against the real thing. The pacing block had stopped
-   * being that: it named 700, 900, and 1200 words, while `wordCountOptions`
-   * offers 600, 900, 1200, and 1500 and `StoryService.buildUserPrompt` lists all
-   * five. So two of the four budgets a reader can choose here — 600 and 1500 —
-   * reached the model under a heading that describes neither, and 700, which no
-   * picker in this repository offers, was one of the three that did. A prompt
-   * comparison run at either of those budgets was measuring the drift rather
-   * than the variant.
+   * against it is tested against the real thing. It was a transcription, and
+   * the transcription had been repaired in place twice — once for the pacing
+   * block, which named 700, 900, and 1200 words while the picker offers 600,
+   * 900, 1200, and 1500, and once for the spice ladder.
+   *
+   * It is now read from `shared/productionStoryPrompt` with this page's tokens
+   * in the caller-specific slots, which is what ends the repairs. What the
+   * transcription was still missing: the Chekhov ledger, the two story
+   * requirements naming the author-style bank and the beat structure, the voice
+   * metadata reminder, the `[Character, emotion]` formatting line, the closing
+   * instruction to pay the planted elements off at the midpoint, and the
+   * `CREATIVE DIRECTION:` heading over the reader's own idea.
    */
   private getProductionUserPrompt(): string {
-    return `Write a {{WORD_COUNT}}-word spicy supernatural romance story optimized for audio narration:
-
-PROTAGONIST: {{CREATURE}} with complex motivations and hidden depths
-THEMES TO WEAVE: {{THEMES}}
-SPICE LEVEL: {{SPICY_LABEL}} (Level {{SPICY_LEVEL}}/5) - maintain this intensity throughout
-{{USER_INPUT}}
-
-STORY REQUIREMENTS:
-- Create characters with secrets that could destroy everything
-- Build sexual/romantic tension through obstacles, not just attraction
-- Use banned word avoidance and show-don't-tell mastery
-- Include realistic dialogue with subtext and emotional charge
-- Layer multiple senses in every scene description
-
-WORD COUNT PACING:
-- 600 words: Compressed hook, immediate tension, clean payoff
-- 700 words: Fast, tense, sharp progression
-- 900 words: Character depth with tight focus
-- 1200 words: Layered, immersive with complex tension
-- 1500 words: Multi-scene escalation with richer reversals and payoff
-
-MANDATORY FORMATTING FOR AUDIO:
-- [Character Name, voice: 4-word description]: "dialogue" for FIRST appearance of each major character
-- [Character Name]: "dialogue" for ALL subsequent speech
-- [Narrator]: for ALL scene descriptions and non-dialogue text
-- HTML structure: <h3> for title, <p> for paragraphs, <em> for emphasis
-
-Create a complete story that feels like it could continue but is satisfying on its own. Make every word count toward character development, world-building, or advancing romantic/sexual tension.`;
+    return buildProductionUserPrompt({
+      wordCount: '{{WORD_COUNT}}',
+      creature: '{{CREATURE}}',
+      themes: '{{THEMES}}',
+      spicyLabel: '{{SPICY_LABEL}}',
+      spicyLevel: '{{SPICY_LEVEL}}',
+      creativeDirectionLine: CREATIVE_DIRECTION_TOKEN,
+      storyLabContextLine: '',
+      chekhovLedger: CHEKHOV_LEDGER_TOKEN
+    });
   }
 
   private getConciseSystemPrompt(): string {
@@ -329,30 +320,20 @@ Dialogue-driven storytelling:
 Let characters drive the story through their interactions.`;
   }
 
+  /**
+   * Both slots this page fills are now read from the same modules the
+   * production prompt reads them from, so the preview names the protagonist and
+   * the spice level the way the run would.
+   *
+   * `getSpicyLabel` here used to hold five labels of its own, none of which
+   * `StoryService` has ever sent; see `shared/spiceLevelPromptLadder` for what
+   * they were and what a comparison run against them was measuring.
+   */
   private getCreatureDisplayName(creature: CreatureArchetype): string {
-    const names: Record<CreatureArchetype, string> = {
-      'vampire': 'Vampire',
-      'werewolf': 'Werewolf',
-      'fairy': 'Fairy',
-      'siren': 'Siren',
-      'djinn': 'Djinn',
-      'witch': 'Witch',
-      'dragon': 'Dragon',
-      'demon': 'Demon',
-      'angel': 'Angel',
-      'mermaid': 'Mermaid'
-    };
-    return names[creature];
+    return readCreatureDisplayName(creature);
   }
 
   private getSpicyLabel(level: SpicyLevel): string {
-    const labels: Record<SpicyLevel, string> = {
-      1: 'Sweet & Sensual',
-      2: 'Warm & Steamy',
-      3: 'Hot & Intense',
-      4: 'Scorching & Explicit',
-      5: 'Inferno & Graphic'
-    };
-    return labels[level];
+    return readSpiceLevelPromptLabel(level);
   }
 }

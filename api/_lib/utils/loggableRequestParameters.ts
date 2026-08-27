@@ -1,7 +1,8 @@
 // Created: 2026-08-25 05:20 UTC
 
+import { CREATURE_ARCHETYPES } from '../../../shared/creatureVocabulary';
 import { STORY_LAB_THEME_SEED_IDS } from '../../../shared/storyLabThemeSeeds';
-import { VALIDATION_RULES } from '../types/contracts';
+import { EXPORT_FORMATS, VALIDATION_RULES } from '../types/contracts';
 
 /**
  * The theme ids a log line may repeat, which is both vocabularies the seams
@@ -44,23 +45,19 @@ const ALLOWED_IMAGE_STYLES: readonly string[] = VALIDATION_RULES.imageStyle.allo
 
 /**
  * The creatures `CreatureType` names, listed so a value can be checked at run
- * time. `validateStoryInput` has its own copy and rejects anything outside it —
- * but it runs after the request line is written, and the route checks that
- * reach the log first test only that the field is present, so `creature` is
- * caller text at the moment it would be logged.
+ * time. `validateStoryInput` reads the same table and rejects anything outside
+ * it — but that runs after the request line is written, and the route checks
+ * that reach the log first test only that the field is present, so `creature`
+ * is caller text at the moment it would be logged.
+ *
+ * This was the copy the comment on `ALLOWED_IMAGE_STYLES` above already
+ * described it as having: a hand-written list of ten names rather than the
+ * table. An eleventh creature added to the vocabulary would have been logged as
+ * `[UNRECOGNIZED]` — the marker that exists to say "the caller sent something
+ * that is not a creature", written about the app's own picker value, which is
+ * exactly the bug `ALLOWED_THEMES` above was widened to end.
  */
-const ALLOWED_CREATURES: readonly string[] = [
-  'vampire',
-  'werewolf',
-  'fairy',
-  'siren',
-  'djinn',
-  'witch',
-  'dragon',
-  'demon',
-  'angel',
-  'mermaid'
-];
+const ALLOWED_CREATURES: readonly string[] = CREATURE_ARCHETYPES;
 
 /** What is written in place of a value that is not on its allow-list. */
 export const UNRECOGNIZED_PARAMETER = '[UNRECOGNIZED]';
@@ -98,6 +95,21 @@ export function toLoggableCreature(creature: unknown): string {
 export function toLoggableImageStyle(style: unknown): string {
   return typeof style === 'string' && ALLOWED_IMAGE_STYLES.includes(style)
     ? style
+    : UNRECOGNIZED_PARAMETER;
+}
+
+/**
+ * Log an export format only when it is one.
+ *
+ * The same reading `toLoggableImageStyle` gets above, for the same position in
+ * the same kind of route: `/api/export/save` checks `format` for presence and
+ * leaves the closed-set check to `ExportService.validateExportInput`, which runs
+ * after the request line would be written. `EXPORT_FORMATS` is five values, so
+ * every export the app itself makes is logged exactly as it was.
+ */
+export function toLoggableExportFormat(format: unknown): string {
+  return typeof format === 'string' && (EXPORT_FORMATS as readonly string[]).includes(format)
+    ? format
     : UNRECOGNIZED_PARAMETER;
 }
 
@@ -172,6 +184,18 @@ export const IMAGE_GENERATION_REQUEST_FIELDS: readonly string[] = [
   'themes',
   'style',
   'aspectRatio'
+];
+
+/** `SaveExportSeam['input']`, for `/api/export/save`'s refusal line. */
+export const EXPORT_REQUEST_FIELDS: readonly string[] = [
+  'storyId',
+  'content',
+  'title',
+  'format',
+  'includeMetadata',
+  'includeChapters',
+  'creature',
+  'themes'
 ];
 
 export interface LoggableFieldNames {

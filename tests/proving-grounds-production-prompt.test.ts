@@ -1,27 +1,40 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-26 UTC
-
-/**
- * Proving Grounds offers one template called "Current Production", described as
- * "The current production prompt used in the main app". Every other template on
- * that page is measured against it, so the claim is the page's whole basis for
- * comparison — and nothing was checking it.
- *
- * The pacing block had drifted. It named 700, 900, and 1200 words while
- * `wordCountOptions` offers 600, 900, 1200, and 1500, so two of the four budgets
- * a reader can select here reached the model under a heading that describes
- * neither of them, and 700 — which no picker in this repository offers — was one
- * of the three that were described. A comparison run at 600 or 1500 was
- * measuring the drift rather than the variant under test.
- *
- * Read as source text rather than by importing the service: the file is an
- * Angular `@Injectable` and the root test runner has no `@angular/core`, the
- * same arrangement `story-generator-route-splitting` and the component style
- * budget test use.
- */
+// Rewritten: 2026-08-27 UTC, when the prompt stopped being transcribed.
+//
+// Proving Grounds offers one template called "Current Production", described as
+// "The current production prompt used in the main app". Every other template on
+// that page is measured against it, so the claim is the page's whole basis for
+// comparison — and it was a hand-copy of a prompt that had moved on. The copy
+// was repaired in place twice, once for the word-count pacing block and once for
+// the spice ladder, and was still missing the midpoint moral dilemma, the eight
+// cliffhanger examples, the hook-placement and serialization rules, the whole
+// enhanced voice system, and the Chekhov ledger.
+//
+// `shared/productionStoryPrompt.ts` is the text now, and both sides build from
+// it. What this file asserts is that neither side has started transcribing it
+// again, and that every budget the picker offers is still paced.
+//
+// The Proving Grounds service is read as source text rather than imported: the
+// file is an Angular `@Injectable` and the root test runner has no
+// `@angular/core`, the same arrangement `story-generator-route-splitting` and
+// the component style budget test use.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  PRODUCTION_AUDIO_AND_VOICE_BLOCK,
+  PRODUCTION_PROSE_ENGINE_BLOCK,
+  PRODUCTION_SERIALIZATION_BLOCK,
+  PRODUCTION_SYSTEM_PROMPT_GOAL,
+  PRODUCTION_SYSTEM_PROMPT_OPENING,
+  buildProductionSystemPrompt,
+  buildProductionUserPrompt,
+  formatChekhovLedger
+} from '../shared/productionStoryPrompt';
+import { SPICE_LEVEL_PROMPT_BLOCK } from '../shared/spiceLevelPromptLadder';
+import { WORD_BUDGETS } from '../api/_lib/story-lab/contracts';
+import { StoryService } from '../api/_lib/services/storyService';
 import { assert } from './assert';
 
 const repoRoot = process.cwd();
@@ -37,6 +50,107 @@ const provingGroundsSource = readFileSync(
   join(repoRoot, 'story-generator/src/app/proving-grounds/proving-grounds.ts'),
   'utf8'
 );
+
+/** The blocks the shared module is assembled from, by the heading each opens with. */
+const SHARED_BLOCKS: readonly [string, string][] = [
+  ['the opening', PRODUCTION_SYSTEM_PROMPT_OPENING],
+  ['the prose engine', PRODUCTION_PROSE_ENGINE_BLOCK],
+  ['the spice ladder', SPICE_LEVEL_PROMPT_BLOCK],
+  ['the serialization hooks', PRODUCTION_SERIALIZATION_BLOCK],
+  ['the audio and voice system', PRODUCTION_AUDIO_AND_VOICE_BLOCK],
+  ['the closing goal', PRODUCTION_SYSTEM_PROMPT_GOAL]
+];
+
+// ==================== NEITHER SIDE TRANSCRIBES THE PROMPT ====================
+// A heading in either file is a copy starting again. Both build from the module.
+
+const TRANSCRIPTION_MARKERS: readonly string[] = [
+  'PROSE ENGINE (MANDATORY):',
+  'SERIALIZATION HOOKS - ENGINEERED ADDICTION:',
+  'AUDIO FORMAT (NON-NEGOTIABLE):',
+  'WORD COUNT PACING:',
+  'CHEKHOV LEDGER'
+];
+
+for (const marker of TRANSCRIPTION_MARKERS) {
+  assert(
+    !storyServiceSource.includes(marker),
+    `storyService.ts should build "${marker}" from shared/productionStoryPrompt, not restate it`
+  );
+  assert(
+    !promptTemplatesSource.includes(marker),
+    `the Proving Grounds template should build "${marker}" from shared/productionStoryPrompt, not restate it`
+  );
+}
+
+assert(
+  promptTemplatesSource.includes('buildProductionSystemPrompt()'),
+  'the "Current Production" system prompt should be the shared builder\'s answer'
+);
+assert(
+  promptTemplatesSource.includes('buildProductionUserPrompt({'),
+  'the "Current Production" user prompt should be built by the shared builder'
+);
+
+// ==================== PRODUCTION SENDS THE SHARED TEXT ====================
+// `buildSystemPrompt` and `buildUserPrompt` are private, so these go through the
+// same door the other prompt tests use. One instance, because the constructor
+// logs a warning about the absent API key it does not need to build a prompt.
+const storyService = new StoryService() as any;
+
+const storyInput = {
+  creature: 'vampire',
+  themes: ['betrayal'],
+  userInput: 'A duel at the winter court.',
+  spicyLevel: 3,
+  wordCount: 900
+};
+
+const productionSystemPrompt: string = storyService.buildSystemPrompt(storyInput);
+const productionUserPrompt: string = storyService.buildUserPrompt(storyInput);
+
+for (const [label, block] of SHARED_BLOCKS) {
+  assert(
+    productionSystemPrompt.includes(block),
+    `the production system prompt should carry ${label} as the shared module writes it`
+  );
+}
+
+// The two per-run sections are the only thing the Proving Grounds copy omits,
+// and they are the two that cannot be a constant.
+assert(
+  productionSystemPrompt.includes('DYNAMIC STYLE SELECTION FOR THIS STORY:'),
+  'a generated story should still name the author styles drawn for its creature'
+);
+assert(
+  productionSystemPrompt.includes('SELECTED STRUCTURE:'),
+  'a generated story should still name the beat structure drawn for it'
+);
+
+const provingGroundsSystemPrompt = buildProductionSystemPrompt();
+assert(
+  !provingGroundsSystemPrompt.includes('DYNAMIC STYLE SELECTION FOR THIS STORY:'),
+  'the heading for the drawn author styles should go when there are none to list'
+);
+for (const [label, block] of SHARED_BLOCKS) {
+  assert(
+    provingGroundsSystemPrompt.includes(block),
+    `the Proving Grounds system prompt should carry ${label}`
+  );
+}
+
+// The reader's own idea reaches the model under production's heading.
+assert(
+  productionUserPrompt.includes(`CREATIVE DIRECTION: ${storyInput.userInput}`),
+  'the production user prompt should label the reader\'s idea'
+);
+const withoutDirection: string = storyService.buildUserPrompt({ ...storyInput, userInput: '' });
+assert(
+  !withoutDirection.includes('CREATIVE DIRECTION:'),
+  'a request with no idea of its own should carry no heading for one'
+);
+
+// ==================== EVERY BUDGET A READER CAN PICK IS PACED ====================
 
 /**
  * The `WORD COUNT PACING:` heading and the bulleted lines under it, which run
@@ -69,56 +183,55 @@ function readPacedWordCounts(block: string[], label: string): number[] {
   });
 }
 
-/** The budgets the Proving Grounds picker actually offers. */
+/**
+ * The budgets the Proving Grounds picker actually offers.
+ *
+ * This used to scrape the literal array out of `proving-grounds.ts`, because
+ * that is where the four numbers were written. They are `WORD_BUDGETS` now —
+ * the contract's own table, which the picker maps over and the blueprint parser
+ * refuses a request against — so the question this asks is unchanged and it
+ * asks it of the declaration rather than of one screen's copy of it.
+ */
 function readWordCountOptions(): number[] {
-  const match = /wordCountOptions:\s*WordBudget\[\]\s*=\s*\[([^\]]*)\]/.exec(provingGroundsSource);
-  assert(match, 'proving-grounds.ts should declare wordCountOptions');
-
-  const options = match[1]!
-    .split(',')
-    .map(entry => entry.trim())
-    .filter(Boolean)
-    .map(Number);
-
   assert(
-    options.length > 0 && options.every(Number.isFinite),
-    `wordCountOptions should be a list of numbers, got ${JSON.stringify(match[1])}`
+    provingGroundsSource.includes('WORD_BUDGETS'),
+    'the Proving Grounds word-count picker should read WORD_BUDGETS'
   );
-  return options;
+
+  return [...WORD_BUDGETS];
 }
 
-const templateBlock = readWordCountPacingBlock(promptTemplatesSource, 'the Proving Grounds template');
-const productionBlock = readWordCountPacingBlock(storyServiceSource, 'the production prompt');
-const templateCounts = readPacedWordCounts(templateBlock, 'the Proving Grounds template');
-const productionCounts = readPacedWordCounts(productionBlock, 'the production prompt');
-const wordCountOptions = readWordCountOptions();
-
-// ==================== EVERY BUDGET A READER CAN PICK IS PACED ====================
-for (const budget of wordCountOptions) {
-  assert(
-    templateCounts.includes(budget),
-    `the "Current Production" template should pace ${budget} words, which the picker offers; it paces ${JSON.stringify(templateCounts)}`
-  );
-  assert(
-    productionCounts.includes(budget),
-    `the production prompt should pace ${budget} words; it paces ${JSON.stringify(productionCounts)}`
-  );
-}
-
-// ==================== THE TEMPLATE IS THE PRODUCTION PROMPT ====================
-// The page's claim is that this template is what the app sends, so the block has
-// to be the production one line for line rather than merely covering the same
-// budgets.
-assert(
-  templateBlock.length === productionBlock.length,
-  `the template should pace the same number of budgets as production: ${templateBlock.length} vs ${productionBlock.length}`
+const pacedCounts = readPacedWordCounts(
+  readWordCountPacingBlock(productionUserPrompt, 'the production prompt'),
+  'the production prompt'
 );
 
-for (let index = 0; index < productionBlock.length; index += 1) {
+for (const budget of readWordCountOptions()) {
   assert(
-    templateBlock[index] === productionBlock[index],
-    `pacing line ${index + 1} has drifted from production:\n  template:   ${templateBlock[index]}\n  production: ${productionBlock[index]}`
+    pacedCounts.includes(budget),
+    `the prompt should pace ${budget} words, which the picker offers; it paces ${JSON.stringify(pacedCounts)}`
   );
 }
+
+// ==================== THE PLANTED ELEMENTS ARE NAMED ====================
+// Production plants two per story and the page's copy planted none, so a variant
+// was measured against a prompt that asked for no planting at all.
+assert(
+  productionUserPrompt.includes('[Chekhov1]:') && productionUserPrompt.includes('[Chekhov2]:'),
+  'the production user prompt should name the two elements this run plants'
+);
+assert(
+  buildProductionUserPrompt({
+    wordCount: '900',
+    creature: 'Vampire',
+    themes: 'betrayal',
+    spicyLabel: 'Spicy',
+    spicyLevel: '3',
+    creativeDirectionLine: '',
+    storyLabContextLine: '',
+    chekhovLedger: formatChekhovLedger(['a first element', 'a second element'])
+  }).includes('[Chekhov2]: a second element'),
+  'the shared ledger format should be what the prompt carries'
+);
 
 console.log('Proving Grounds production prompt tests passed');

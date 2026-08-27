@@ -2,6 +2,7 @@
 // Created: 2026-06-08 07:58 EDT
 
 import type { AuthUser } from '../api/_lib/story-lab/auth/authPort';
+import { logger } from '../api/_lib/utils/logger';
 import { createNonDurableInMemoryStoryLabProfileStore } from '../api/_lib/story-lab/profile/inMemoryStoryLabProfileStore';
 import {
   createDefaultStoryLabUserProfile,
@@ -27,13 +28,23 @@ interface CapturedQuery {
 class FakePostgresExecutor implements PostgresProfileQueryExecutor {
   readonly queries: CapturedQuery[] = [];
   private readonly queuedRows: unknown[][] = [];
+  private queuedError: Error | null = null;
 
   enqueueRows(rows: unknown[]): void {
     this.queuedRows.push(rows);
   }
 
+  forceNextQueryError(error: Error): void {
+    this.queuedError = error;
+  }
+
   async query<T = unknown>(sql: string, params: readonly unknown[]): Promise<{ rows: T[] }> {
     this.queries.push({ sql, params });
+    if (this.queuedError) {
+      const error = this.queuedError;
+      this.queuedError = null;
+      throw error;
+    }
     return {
       rows: (this.queuedRows.shift() ?? []) as T[]
     };
@@ -63,6 +74,7 @@ async function main() {
   await testPostgresProfileStoreReadiness();
   await testPostgresProfileStoreExecutorPath();
   await testPostgresProfileStoreMalformedRowsFailClosed();
+  await testPostgresProfileStoreFailuresLogThroughStructuredLogger();
 
   console.log('Story Lab profile store tests passed');
 }
@@ -223,13 +235,50 @@ async function testPostgresProfileStoreMalformedRowsFailClosed() {
       preferences_json: '{not valid json'
     }
   ]);
-  const { result: loadResult, warnings } = await captureWarnings(() => store.loadProfile(owner));
+  const { result: loadResult, entries } = await captureRecentLogs(() => store.loadProfile(owner));
   assert(!loadResult.success, 'malformed profile JSON should fail closed on load');
   assert(loadResult.error.code === 'STORY_LAB_PROFILE_STORAGE_ERROR', 'malformed profile should return storage error');
   assert(!loadResult.error.message.includes(owner.email ?? ''), 'malformed profile error should not leak user email');
-  assert(warnings.length === 1, 'malformed profile load should emit one redacted diagnostic warning');
-  assert(JSON.stringify(warnings).includes('STORY_LAB_PROFILE_STORAGE_ERROR') === false, 'diagnostic warning should not include typed storage payloads');
-  assert(!JSON.stringify(warnings).includes(owner.email ?? ''), 'diagnostic warning should not leak user email');
+  assert(entries.length === 1, 'malformed profile load should emit one structured diagnostic warning');
+  assert(JSON.stringify(entries).includes('STORY_LAB_PROFILE_STORAGE_ERROR') === false, 'diagnostic warning should not include typed storage payloads');
+  assert(!JSON.stringify(entries).includes(owner.email ?? ''), 'diagnostic warning should not leak user email');
+}
+
+// The last two `console.warn` call sites in the backend were this store's save/load failure
+// paths and `clerkAuthPort`'s session-verification failure — every sibling service migrated to
+// the structured logger already, which redacts, correlates, and lands the entry in the buffer
+// `getRecentLogs()` (and the Error Display panel) actually reads. This asserts the migration
+// landed: a save/load failure reaches the buffer as a `warn` entry naming the failing user and
+// operation, not just some console output.
+async function testPostgresProfileStoreFailuresLogThroughStructuredLogger() {
+  const executor = new FakePostgresExecutor();
+  const store = createPostgresStoryLabProfileStore({
+    databaseUrl: 'postgres://example.invalid/story_lab',
+    executor,
+    now: () => now
+  });
+  const profile = createDefaultStoryLabUserProfile(owner, { displayName: 'Avery', now });
+
+  executor.enqueueRows([]);
+  const { result: saveResult, entries: saveEntries } = await captureRecentLogs(() => store.saveProfile(owner, profile));
+  assert(!saveResult.success, 'a save with no returned row should fail');
+  assert(saveEntries.length === 0, 'a forbidden save result should not itself log a storage warning');
+
+  executor.forceNextQueryError(new Error('connection reset'));
+  const { result: failedSave, entries: failedSaveEntries } = await captureRecentLogs(() => store.saveProfile(owner, profile));
+  assert(!failedSave.success, 'a Postgres error should fail the save');
+  const saveWarning = failedSaveEntries[0];
+  assert(saveWarning?.level === 'warn', 'a save failure should log at warn level');
+  assert(saveWarning?.context?.userId === owner.userId, 'a save failure should carry the acting user id for correlation');
+  assert(saveWarning?.context?.endpoint === 'postgresStoryLabProfileStore.save', 'a save failure should identify the failing operation');
+  assert(!JSON.stringify(saveWarning).includes('connection reset'), 'the raw driver error message should not be logged verbatim');
+
+  executor.forceNextQueryError(new Error('connection reset'));
+  const { result: failedLoad, entries: failedLoadEntries } = await captureRecentLogs(() => store.loadProfile(owner));
+  assert(!failedLoad.success, 'a Postgres error should fail the load');
+  const loadWarning = failedLoadEntries[0];
+  assert(loadWarning?.context?.userId === owner.userId, 'a load failure should carry the acting user id for correlation');
+  assert(loadWarning?.context?.endpoint === 'postgresStoryLabProfileStore.load', 'a load failure should identify the failing operation');
 }
 
 function createProfileRow(profile: ReturnType<typeof createDefaultStoryLabUserProfile>) {
@@ -242,20 +291,23 @@ function createProfileRow(profile: ReturnType<typeof createDefaultStoryLabUserPr
   };
 }
 
-async function captureWarnings<T>(fn: () => Promise<T>): Promise<{ result: T; warnings: unknown[][] }> {
-  const originalWarn = console.warn;
-  const warnings: unknown[][] = [];
-  console.warn = (...args: unknown[]) => {
-    warnings.push(args);
-  };
+// The structured logger writes every buffered entry to the console as well, so
+// silence it while capturing to keep the test run readable; nothing here
+// asserts on raw console output.
+async function captureRecentLogs<T>(fn: () => Promise<T>): Promise<{ result: T; entries: ReturnType<typeof logger.getRecentLogs> }> {
+  const original = { log: console.log, warn: console.warn, error: console.error };
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  logger.clearLogs();
 
   try {
-    return {
-      result: await fn(),
-      warnings
-    };
+    const result = await fn();
+    return { result, entries: logger.getRecentLogs() };
   } finally {
-    console.warn = originalWarn;
+    console.log = original.log;
+    console.warn = original.warn;
+    console.error = original.error;
   }
 }
 

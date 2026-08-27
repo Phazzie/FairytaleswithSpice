@@ -4,9 +4,13 @@
 
 import axios from 'axios';
 import { randomUUID } from 'node:crypto';
-import { ImageGenerationSeam, ApiResponse, CreatureType } from '../types/contracts.js';
-import { stripStoryHtmlToText } from '../utils/storyTextBlocks';
+import { ImageGenerationSeam, ApiResponse, CreatureType, ImageStyle, IMAGE_STYLES, ThemeType } from '../types/contracts.js';
+import { isClassicStoryTheme } from '../../../shared/themeVocabulary';
+import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary } from '../utils/textExcerpt';
+import { logApiError, logError } from '../utils/logger';
+import { toLoggableStoryId } from '../utils/loggableRequestParameters';
+import { IMAGE_GENERATION_LIMITS } from '../../../shared/storyBlueprintLimits';
 
 type SupportedAspectRatio = NonNullable<ImageGenerationSeam['input']['aspectRatio']>;
 
@@ -17,6 +21,42 @@ interface AspectRatioSpec {
 }
 
 const DEFAULT_ASPECT_RATIO: SupportedAspectRatio = '16:9';
+
+/**
+ * What the image model is asked to draw for each Story Lab theme seed, as
+ * `app.ts` offers them. Keyed by `string`: the seam accepts any seed id.
+ */
+const STORY_LAB_SEED_VISUAL_ELEMENTS: Record<string, string> = {
+  court_intrigue: 'candlelit halls and watching courtiers',
+  blood_oaths: 'cut palms and binding sigils',
+  slow_burn: 'held distance and charged glances',
+  enemies_to_lovers: 'drawn weapons lowered mid-reach',
+  magical_bargain: 'outstretched hands and glowing terms',
+  secret_identity: 'half-shadowed faces and shed disguises',
+  forced_proximity: 'a narrow room and no way past each other'
+};
+
+/** The same, for the eighteen classic `ThemeType` values. See `mapThemeToVisualElement`. */
+const CLASSIC_THEME_VISUAL_ELEMENTS: Record<ThemeType, string> = {
+  betrayal: 'shadows and daggers',
+  obsession: 'intense gazes and mirrors',
+  power_dynamics: 'thrones and chains',
+  forbidden_love: 'roses and thorns',
+  revenge: 'fire and darkness',
+  manipulation: 'puppet strings and masks',
+  seduction: 'silk and candlelight',
+  dark_secrets: 'locked doors and keys',
+  corruption: 'wilting flowers and decay',
+  dominance: 'crowns and submission poses',
+  submission: 'kneeling figures and restraints',
+  jealousy: 'green eyes and broken hearts',
+  temptation: 'apples and serpents',
+  sin: 'fallen angels and shadows',
+  desire: 'reaching hands and longing looks',
+  passion: 'fire and embraces',
+  lust: 'revealing clothing and desire',
+  deceit: 'masks and false smiles'
+};
 
 /**
  * The requested ratio decides three things at once: the size asked of the
@@ -36,13 +76,13 @@ const ASPECT_RATIO_SPECS: Record<SupportedAspectRatio, AspectRatioSpec> = {
 };
 
 const SUPPORTED_ASPECT_RATIOS = Object.keys(ASPECT_RATIO_SPECS) as SupportedAspectRatio[];
-const SUPPORTED_STYLES: ImageGenerationSeam['input']['style'][] = [
-  'artistic',
-  'photorealistic',
-  'fantasy',
-  'dark',
-  'romantic'
-];
+/**
+ * Read from the contract's table rather than restated here, the way
+ * `SUPPORTED_ASPECT_RATIOS` above is read off `ASPECT_RATIO_SPECS`. This is the
+ * closed-set check that answers `UNSUPPORTED_STYLE`, so a style the type names
+ * and this list did not was a style the route refused.
+ */
+const SUPPORTED_STYLES: readonly ImageStyle[] = IMAGE_STYLES;
 
 /**
  * Read the image URL out of a provider response, or refuse the response.
@@ -131,6 +171,45 @@ export function buildSceneDescriptionFromStory(content: string): string {
   return capAtWordBoundary(opening, IMAGE_SCENE_DESCRIPTION_MAX_LENGTH);
 }
 
+/**
+ * A failure whose message was written to be read by the caller.
+ *
+ * `generateImage`'s catch block ends `message: error.message || 'Failed to
+ * generate image'`, so whatever was thrown anywhere under it decides what the
+ * `/api/image/generate` response says. That is the same argument the comment in
+ * that catch block makes about the log line it replaced — "the axios error is
+ * caught and replaced one method below today, so what reaches here is currently
+ * the plain `Error` that replaced it; that is a property of the call below
+ * rather than of this line, and it is the kind of property a later change
+ * silently removes" — applied to the one field of the response a reader
+ * actually sees.
+ *
+ * The rule this repository already states for the same situation is in
+ * `runJobWork`: "The thrown detail goes to the log rather than into the job,
+ * which is read by the caller and should not carry whatever a provider error
+ * says." `ExportService.saveAndExport` follows it — it logs the bound error and
+ * answers a fixed `'Failed to export story'`. This catch is the exception, and
+ * the messages it can forward are not hypothetical: a `TypeError` from a body
+ * shape `validateImageInput` does not cover reaches the reader as
+ * `input.themes.map is not a function` (the failure that validator's own
+ * docblock describes), and a DNS or TLS failure reaching this level as
+ * `getaddrinfo ENOTFOUND api.x.ai` names the provider and the host to an
+ * unauthenticated caller.
+ *
+ * Marking the one message that *was* written for the caller is what keeps the
+ * fix from costing it. `callGrokImageAI` deliberately replaces the provider
+ * error with "AI image service temporarily unavailable" — a sentence about what
+ * the reader should do, chosen after the real error has been logged — so that
+ * one is thrown as this type and still forwarded, and everything else falls to
+ * the fixed sentence.
+ */
+class CallerFacingImageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CallerFacingImageError';
+  }
+}
+
 export class ImageService {
   private grokApiKey: string | undefined;
   private grokApiUrl: string;
@@ -143,8 +222,15 @@ export class ImageService {
   /**
    * Generates an image based on story content using Grok-2-Image
    */
-  async generateImage(input: ImageGenerationSeam['input']): Promise<ApiResponse<ImageGenerationSeam['output']>> {
+  async generateImage(
+    input: ImageGenerationSeam['input'],
+    requestId?: string
+  ): Promise<ApiResponse<ImageGenerationSeam['output']>> {
     const startTime = Date.now();
+    // Once, at the top, so the envelope, this method's failure line, and the
+    // provider line one method below all name the same request. See
+    // `resolveRequestId`.
+    const correlationId = this.resolveRequestId(requestId);
 
     try {
       // Validate input
@@ -154,14 +240,14 @@ export class ImageService {
           success: false,
           error: validationError,
           metadata: {
-            requestId: this.generateRequestId(),
+            requestId: correlationId,
             processingTime: Date.now() - startTime
           }
         };
       }
 
       // Generate image using Grok-2-Image
-      const imageUrl = await this.callGrokImageAI(input);
+      const imageUrl = await this.callGrokImageAI(input, correlationId);
 
       // Create response
       const aspectRatio = input.aspectRatio ?? DEFAULT_ASPECT_RATIO;
@@ -183,28 +269,59 @@ export class ImageService {
         success: true,
         data: output,
         metadata: {
-          requestId: this.generateRequestId(),
+          requestId: correlationId,
           processingTime: Date.now() - startTime
         }
       };
 
     } catch (error: any) {
-      console.error('Image generation error:', error);
+      // Through the logger rather than `console.error(..., error)`, which is
+      // what this was and what every other paid service on this surface stopped
+      // doing. `console.error` formats an object with `util.inspect`, so an
+      // error carrying an HTTP client's request config prints that config —
+      // including `config.headers.Authorization`, which on this path is
+      // `Bearer ${XAI_API_KEY}` — straight into the deployment log. The axios
+      // error is caught and replaced one method below today, so what reaches
+      // here is currently the plain `Error` that replaced it; that is a
+      // property of the call below rather than of this line, and it is the kind
+      // of property a later change silently removes. `logError` names the
+      // fields it keeps and runs them through `redactSensitiveLogData`, so the
+      // guarantee belongs to the log call instead of to whatever happens to be
+      // thrown at it.
+      //
+      // It is also what puts the failure in the shared recent-log buffer with
+      // the story it failed on identified. `StoryService` has logged its own
+      // failures this way since the logger was written; this service and the
+      // evaluate route were the two places still writing to the console.
+      //
+      // The story id goes through the same allow-list the route's own log lines
+      // put it through: it is caller text, and an id that is not id-shaped is
+      // reduced rather than printed.
+      logError('Image generation failed', error, {
+        requestId: correlationId,
+        endpoint: '/api/image/generate',
+        method: 'POST'
+      }, { storyId: toLoggableStoryId(input.storyId) });
       return {
         success: false,
         error: {
           code: 'IMAGE_GENERATION_FAILED',
-          message: error.message || 'Failed to generate image'
+          // Only a message written for the caller is forwarded; see
+          // `CallerFacingImageError`. Everything else is in the log line above,
+          // named by the correlation id this envelope also carries.
+          message: error instanceof CallerFacingImageError
+            ? error.message
+            : 'Failed to generate image'
         },
         metadata: {
-          requestId: this.generateRequestId(),
+          requestId: correlationId,
           processingTime: Date.now() - startTime
         }
       };
     }
   }
 
-  private async callGrokImageAI(input: ImageGenerationSeam['input']): Promise<string> {
+  private async callGrokImageAI(input: ImageGenerationSeam['input'], requestId: string): Promise<string> {
     if (!this.grokApiKey) {
       // Return mock image URL if no API key
       return this.generateMockImageUrl(input);
@@ -217,7 +334,14 @@ export class ImageService {
         model: 'grok-2-image',
         prompt: prompt,
         n: 1, // Generate 1 image
-        size: this.mapAspectRatioToSize(input.aspectRatio || '16:9'),
+        // `DEFAULT_ASPECT_RATIO`, not a fifth spelling of `'16:9'`. This was the
+        // one hand-written fallback the `ASPECT_RATIO_SPECS` consolidation left
+        // behind, and it is the one that decides what the provider is actually
+        // asked to draw: every other reader of an absent ratio — the `width` and
+        // `height` the response reports, and the mock URL's dimensions — takes
+        // the constant, so retuning the default would have moved the reported
+        // size of a picture without moving the picture.
+        size: this.mapAspectRatioToSize(input.aspectRatio ?? DEFAULT_ASPECT_RATIO),
         response_format: 'url',
         style: this.mapStyleToGrokStyle(input.style)
       }, {
@@ -231,8 +355,24 @@ export class ImageService {
       return readGeneratedImageUrl(response.data);
 
     } catch (error: any) {
-      console.error('Grok Image API error:', error.response?.data || error.message);
-      throw new Error('AI image service temporarily unavailable');
+      // `logApiError` is the reading `XaiTextClient` gives the text half of the
+      // same provider: it keeps the status and the response body under
+      // `apiResponse`, where `redactSensitiveLogData` reduces the keys that
+      // must not be printed. Writing `error.response?.data` to the console
+      // instead put the provider's answer into the log unredacted and with
+      // nothing identifying the request it belonged to — this route's own
+      // handler logs a `requestId` on every other line it writes, and the one
+      // line describing why the image failed had none.
+      logApiError('Grok Image API', error, {
+        requestId,
+        endpoint: '/api/image/generate',
+        method: 'POST'
+      });
+      // Caller-facing by construction: the real error has just been logged, and
+      // this sentence is what the reader is told instead. See
+      // `CallerFacingImageError` for why the distinction is marked on the throw
+      // rather than assumed by the catch block that forwards it.
+      throw new CallerFacingImageError('AI image service temporarily unavailable');
     }
   }
 
@@ -312,61 +452,52 @@ export class ImageService {
    * entries stay for a caller that sends them; the seed ids are added beside
    * them, worded from the same seed descriptions the story prompt is built
    * from, so the picture and the prose are asked for the same thing.
+   *
+   * The two vocabularies are two tables rather than one, so the classic half
+   * can be typed `Record<ThemeType, string>` the way `getCreatureContext` above
+   * is typed on its own vocabulary: a nineteenth theme added to
+   * `CLASSIC_STORY_THEMES` is a compile error here rather than an image that
+   * silently asks for `mysterious elements`. The seed half stays keyed by
+   * `string` because the seam accepts any seed id, including one a future
+   * picker adds.
    */
   private mapThemeToVisualElement(theme: string): string {
-    const visualMap: Record<string, string> = {
-      // Story Lab theme seeds, as `app.ts` offers them.
-      court_intrigue: 'candlelit halls and watching courtiers',
-      blood_oaths: 'cut palms and binding sigils',
-      slow_burn: 'held distance and charged glances',
-      enemies_to_lovers: 'drawn weapons lowered mid-reach',
-      magical_bargain: 'outstretched hands and glowing terms',
-      secret_identity: 'half-shadowed faces and shed disguises',
-      forced_proximity: 'a narrow room and no way past each other',
-      // Classic `ThemeType` values, for a caller that sends those instead.
-      betrayal: 'shadows and daggers',
-      obsession: 'intense gazes and mirrors',
-      power_dynamics: 'thrones and chains',
-      forbidden_love: 'roses and thorns',
-      revenge: 'fire and darkness',
-      manipulation: 'puppet strings and masks',
-      seduction: 'silk and candlelight',
-      dark_secrets: 'locked doors and keys',
-      corruption: 'wilting flowers and decay',
-      dominance: 'crowns and submission poses',
-      submission: 'kneeling figures and restraints',
-      jealousy: 'green eyes and broken hearts',
-      temptation: 'apples and serpents',
-      sin: 'fallen angels and shadows',
-      desire: 'reaching hands and longing looks',
-      passion: 'fire and embraces',
-      lust: 'revealing clothing and desire',
-      deceit: 'masks and false smiles'
-    };
-    return visualMap[theme] || 'mysterious elements';
+    return STORY_LAB_SEED_VISUAL_ELEMENTS[theme]
+      ?? (isClassicStoryTheme(theme) ? CLASSIC_THEME_VISUAL_ELEMENTS[theme] : undefined)
+      ?? 'mysterious elements';
   }
 
+  /**
+   * The look each style asks the provider for.
+   *
+   * `Record<ImageStyle, string>`, not an untyped literal indexed by a cast: the
+   * fallback below is reached only by a value that is not a style at all — a
+   * caller's string on a path that has not validated yet — and a style named by
+   * the contract but missing here would have taken it too. That is the one
+   * failure a picture cannot show you: the image comes back, it is simply not
+   * in the style that was asked for. See `IMAGE_STYLES` in the contract.
+   */
   private getStyleModifier(style: string): string {
-    const styleMap = {
+    const styleMap: Record<ImageStyle, string> = {
       artistic: 'painted in an artistic, impressionistic style',
       photorealistic: 'hyper-realistic, photographic quality',
       fantasy: 'fantastical, magical realism with vibrant colors',
       dark: 'dark, moody, gothic atmosphere with deep shadows',
       romantic: 'romantic, soft lighting, dreamy atmosphere'
     };
-    return styleMap[style as keyof typeof styleMap] || 'artistic style';
+    return styleMap[style as ImageStyle] || 'artistic style';
   }
 
+  /** Map our internal style to Grok's style parameters. Keyed as above. */
   private mapStyleToGrokStyle(style: string): string {
-    // Map our internal style to Grok's style parameters
-    const grokStyleMap = {
+    const grokStyleMap: Record<ImageStyle, string> = {
       artistic: 'vivid',
       photorealistic: 'natural',
       fantasy: 'vivid',
       dark: 'natural',
       romantic: 'vivid'
     };
-    return grokStyleMap[style as keyof typeof grokStyleMap] || 'natural';
+    return grokStyleMap[style as ImageStyle] || 'natural';
   }
 
   private mapAspectRatioToSize(aspectRatio: string): string {
@@ -417,11 +548,46 @@ export class ImageService {
     if (!Array.isArray(input.themes) || input.themes.length === 0) {
       return { code: 'INVALID_INPUT', message: 'Themes are required and must be a non-empty array' };
     }
+    // The count, not just the shape. `enhancePromptWithStyle` maps every entry
+    // into the `grok-2-image` prompt, and this was the field that decided how
+    // long that prompt is: `imagePrompt` beside it is capped at one sentence's
+    // worth while `themes` took as many as a body could carry. See
+    // `IMAGE_GENERATION_LIMITS.maxThemes`, which is the same number
+    // `validateStoryInput` has always enforced on `/api/story/generate`.
+    if (input.themes.length > IMAGE_GENERATION_LIMITS.maxThemes) {
+      return {
+        code: 'INVALID_INPUT',
+        message: `Too many themes (max ${IMAGE_GENERATION_LIMITS.maxThemes})`
+      };
+    }
     if (!input.themes.every(theme => typeof theme === 'string' && theme.trim().length > 0)) {
       return { code: 'INVALID_INPUT', message: 'Every theme must be a non-empty string' };
     }
     if (!input.style || !SUPPORTED_STYLES.includes(input.style)) {
       return { code: 'UNSUPPORTED_STYLE', message: 'Invalid image style provided' };
+    }
+    // `imagePrompt` is optional and, when it is sent, it *replaces* the scene
+    // description — so it is the text that reaches `grok-2-image` verbatim, and
+    // it was the one field on this route that nothing measured. See
+    // `IMAGE_GENERATION_LIMITS` for why the number is what it is. The type check
+    // comes first for the reason the `themes` one above does: the field is
+    // whatever JSON the caller wrote, and `buildImagePrompt` treats any truthy
+    // value as a prompt, so a number or an object reached the provider request
+    // as `[object Object]` rather than as the caller error it is.
+    // Read as `unknown` because the contract types it as a string and the wire
+    // does not: the checks below are about the values the type says cannot
+    // arrive, which is the only reason they are worth writing.
+    const imagePrompt: unknown = input.imagePrompt;
+    if (imagePrompt !== undefined && imagePrompt !== null) {
+      if (typeof imagePrompt !== 'string') {
+        return { code: 'INVALID_INPUT', message: 'imagePrompt must be a string when provided' };
+      }
+      if (imagePrompt.length > IMAGE_GENERATION_LIMITS.maxImagePromptLength) {
+        return {
+          code: 'INVALID_INPUT',
+          message: `imagePrompt must be ${IMAGE_GENERATION_LIMITS.maxImagePromptLength} characters or fewer`
+        };
+      }
     }
     // An unsupported ratio used to fall back to 16:9 in the provider request
     // and in the dimensions, while the response echoed the ratio that was
@@ -437,8 +603,27 @@ export class ImageService {
     return null;
   }
 
-  private generateRequestId(): string {
-    return `img-req-${randomUUID()}`;
+  /**
+   * The id this generation is known by, in the envelope and in the log alike.
+   *
+   * It used to be `img-req-${randomUUID()}`, minted here and written into
+   * `metadata.requestId` — an id that exists in exactly one place, the response
+   * body, and appears in no log line anywhere. The two log calls on this
+   * service's failure paths carried no `requestId` at all, which is the very
+   * thing the comment beside the one below names as the defect it was written
+   * to fix: "this route's own handler logs a `requestId` on every other line it
+   * writes, and the one line describing why the image failed had none". Moving
+   * those calls onto the logger did not give them one, because the service had
+   * no id to give: the route's correlation id stopped at the route.
+   *
+   * `beginPostRoute` reads `X-Request-ID` or mints one, echoes it back as a
+   * header, and stamps it into every line the handler writes; taking it here
+   * makes the envelope, the header, the handler's lines, this method's failure
+   * line, and the provider's own error line all name the same request. Minting
+   * one is kept for a caller that has none, so the field is never empty.
+   */
+  private resolveRequestId(requestId?: string): string {
+    return requestId && requestId.trim() ? requestId.trim() : `img-req-${randomUUID()}`;
   }
 
   private generateImageId(): string {

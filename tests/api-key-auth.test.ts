@@ -1,7 +1,11 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-24 13:58 UTC
 
-import { authenticateRequest } from '../api/_lib/middleware/security';
+import {
+  authenticateRequest,
+  resetApiKeyConfigurationWarningForTests
+} from '../api/_lib/middleware/security';
+import { logger } from '../api/_lib/utils/logger';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -22,6 +26,72 @@ async function userIdFor(apiKey: string): Promise<string> {
   assert(result.authenticated, 'a configured key should authenticate');
   assert(result.userId, 'an authenticated request should carry a user id');
   return result.userId;
+}
+
+/**
+ * "No API keys configured" is a fact about the deployment, not an event.
+ *
+ * It was a bare `console.warn` on the unconfigured branch, and that branch is
+ * read again on every call: `enforceApiAccessControl` runs this function once
+ * per request on every paid route, and `API_KEYS` is unset by default, so an
+ * ordinary deployment wrote that line for every story generation, continuation,
+ * export, image, evaluation, and job request it ever served. A line repeated at
+ * request rate is the bulk of the log rather than a warning in it — it costs
+ * money on a platform billed by ingested log volume, and it buries the entries
+ * that describe something that happened once.
+ *
+ * Both directions are asserted. Once per configuration, however many requests
+ * arrive; and again when the configuration itself changes, because a process
+ * that goes from configured to unconfigured has something new to say. Counting
+ * the buffered entries rather than the console lines is what makes "how many
+ * times" answerable at all — the console form was one unstructured string with
+ * nothing to filter on.
+ */
+async function testTheUnconfiguredWarningIsWrittenOncePerConfiguration(): Promise<void> {
+  const captured = { warn: console.warn };
+  console.warn = () => {};
+
+  try {
+    delete process.env['API_KEYS'];
+    resetApiKeyConfigurationWarningForTests();
+    logger.clearLogs();
+
+    for (let request = 0; request < 5; request += 1) {
+      const result = await authenticateRequest({ method: 'POST', headers: {}, body: {} });
+      assert(result.authenticated, 'an unconfigured deployment should still serve the request');
+    }
+
+    assert(
+      countUnconfiguredWarnings() === 1,
+      `five requests against one configuration should warn once (warned ${countUnconfiguredWarnings()} times)`
+    );
+
+    // A configured deployment has nothing to warn about.
+    process.env['API_KEYS'] = 'key-one';
+    await authenticateRequest({ method: 'POST', headers: { 'x-api-key': 'key-one' }, body: {} });
+    assert(
+      countUnconfiguredWarnings() === 1,
+      'a configured deployment should add no warning of its own'
+    );
+
+    // Losing the configuration is new information, so it is said again.
+    delete process.env['API_KEYS'];
+    await authenticateRequest({ method: 'POST', headers: {}, body: {} });
+    assert(
+      countUnconfiguredWarnings() === 2,
+      `a configuration that changes should be warned about again (warned ${countUnconfiguredWarnings()} times)`
+    );
+  } finally {
+    console.warn = captured.warn;
+    resetApiKeyConfigurationWarningForTests();
+  }
+}
+
+function countUnconfiguredWarnings(): number {
+  return logger
+    .getRecentLogs(100, 'warn')
+    .filter(entry => entry.message.includes('No API keys are configured'))
+    .length;
 }
 
 async function main(): Promise<void> {
@@ -171,6 +241,8 @@ async function main(): Promise<void> {
     body: {}
   });
   assert(unconfigured.authenticated, 'requests should still pass through when no keys are configured');
+
+  await testTheUnconfiguredWarningIsWrittenOncePerConfiguration();
 
   console.log('API key auth tests passed');
 }

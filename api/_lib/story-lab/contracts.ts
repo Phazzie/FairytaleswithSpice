@@ -28,6 +28,7 @@ export type {
   ContinuityExtractionSource,
   ContinuityExtractionReceipt,
   StoryIterationPayload,
+  StoryMemoryCard,
   SavedStoryProject,
   StoryLabLibrarySort,
   StoryLabProfilePreferences,
@@ -50,7 +51,10 @@ export type {
   StoryLabJobDurability,
   StoryLabJobError,
   StoryLabJobEvent,
+  StoryLabDeferredJobKind,
+  StoryLabGenerationJobKind,
   StoryLabJobKind,
+  StoryLabJobStep,
   StoryLabJobPaths,
   StoryLabJobStatus,
   EvaluationCriteria,
@@ -67,12 +71,28 @@ export type {
 } from '../../../story-generator/src/app/contracts';
 
 export {
+  CHAPTER_BATCH_SIZES,
   CREATURE_ARCHETYPES,
   HEAT_INTIMACY_BOUNDARIES,
   HEAT_TENSION_MODES,
   NARRATIVE_TONES,
-  STORY_LAB_LIBRARY_SORTS
+  SPICY_LEVELS,
+  STORY_LAB_DEFERRED_JOB_KINDS,
+  STORY_LAB_GENERATION_JOB_KINDS,
+  STORY_LAB_JOB_STEPS,
+  STORY_LAB_JOB_STEP_LABELS,
+  STORY_LAB_LIBRARY_SORTS,
+  STORY_LAB_TERMINAL_JOB_STATUSES,
+  WORD_BUDGETS,
+  formatChapterBatchSizeList,
+  isChapterBatchSize,
+  isDeferredStoryLabJobKind,
+  isStoryLabJobStep,
+  isTerminalStoryLabJobStatus
 } from '../../../story-generator/src/app/contracts';
 
-export type ApiResponse<T> = import('../../../story-generator/src/app/contracts').ApiResponse<T>;
+// Taken from the API's own contract rather than through the Angular one, which
+// now re-exports it from here: the envelope is the backend's, and the Story Lab
+// routes answer with exactly the envelope the classic routes do.
+export type ApiResponse<T> = import('../types/contracts').ApiResponse<T>;
 export type ApiEnvelope<T> = ApiResponse<T>;

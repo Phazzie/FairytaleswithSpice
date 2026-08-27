@@ -5,6 +5,7 @@ import {
   MAX_REQUEST_CORRELATION_ID_LENGTH,
   readRequestCorrelationId
 } from '../api/_lib/http/requestCorrelationId';
+import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import exportSaveHandler from '../api/export/save';
 import imageGenerateHandler from '../api/image/generate';
 import storyLabGenesisHandler from '../api/story-lab/stories';
@@ -156,7 +157,79 @@ async function main(): Promise<void> {
     );
   }
 
+  await testTheEnvelopeReportsTheIdTheHeaderCarries();
+
   console.log('Request correlation id tests passed');
+}
+
+/**
+ * The id in the response body has to be the id in the response header.
+ *
+ * Echoing `X-Request-ID` is only half of a correlation id. `/api/export/save`
+ * and `/api/image/generate` both answer an `ApiResponse` envelope whose
+ * `metadata.requestId` was minted inside the service — `req_<uuid>` in
+ * `ExportService`, `img-req-<uuid>` in `ImageService` — and written into the
+ * response body and nowhere else. So the two ids a caller can see disagreed,
+ * and the one that is easiest to find (it is in the body, beside the error) was
+ * the one that matched no log line anywhere: quoting it found nothing, while
+ * the id that would have found the request was in a header nobody was told to
+ * keep.
+ *
+ * Driven with a body each route refuses, because a refusal is when a caller
+ * actually goes looking for the id, and neither refusal spends a provider call.
+ */
+async function testTheEnvelopeReportsTheIdTheHeaderCarries(): Promise<void> {
+  resetRateLimitsForTests();
+
+  const cases: Array<{ path: string; handler: (req: any, res: any) => unknown; body: unknown }> = [
+    // A format the renderer does not support: refused by the service, so the
+    // answer is the service's own envelope rather than the route's 400.
+    {
+      path: '/api/export/save',
+      handler: exportSaveHandler,
+      body: {
+        storyId: 'story_correlation_regression',
+        title: 'Midnight Bargain',
+        content: '<p>She signed it in blood.</p>',
+        format: 'rtf'
+      }
+    },
+    // A style outside the five the contract names, refused by `ImageService`
+    // for the same reason and answered the same way.
+    {
+      path: '/api/image/generate',
+      handler: imageGenerateHandler,
+      body: {
+        storyId: 'story_correlation_regression',
+        content: '<p>She signed it in blood.</p>',
+        creature: 'vampire',
+        themes: ['betrayal'],
+        style: 'watercolour'
+      }
+    }
+  ];
+
+  for (const route of cases) {
+    const response = new FakeResponse();
+    await route.handler(
+      { method: 'POST', headers: { 'x-request-id': 'trace-envelope-1' }, body: route.body },
+      response
+    );
+
+    const envelope = response.body as { success?: boolean; metadata?: { requestId?: string } };
+    assert(
+      envelope?.success === false,
+      `${route.path} should refuse this body (got ${JSON.stringify(response.body).slice(0, 200)})`
+    );
+    assert(
+      response.headers['X-Request-ID'] === 'trace-envelope-1',
+      `${route.path} should echo the correlation id as a header`
+    );
+    assert(
+      envelope.metadata?.requestId === 'trace-envelope-1',
+      `${route.path} should report the same id in the envelope, got ${JSON.stringify(envelope.metadata?.requestId)}`
+    );
+  }
 }
 
 main().catch(error => {

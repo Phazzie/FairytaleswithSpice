@@ -72,6 +72,44 @@ describe('PromptEvaluationService', () => {
     const result = await evaluationPromise;
 
     expect(result.isMockEvaluation).toBeTrue();
+    expect(result.mockEvaluationReason).toBe('no evaluator configured');
+  });
+
+  // The route refuses an oversized story, an unauthenticated caller, and one
+  // past its budget, each with a sentence the reader can act on. Dropping it
+  // left the page reporting all three as "the evaluation API was unavailable".
+  it('carries the refusal message from a non-2xx answer onto the placeholder', async () => {
+    const evaluationPromise = service.evaluateStory(request);
+
+    httpMock.expectOne('/api/story-lab/evaluate').flush(
+      {
+        success: false,
+        error: {
+          code: 'INVALID_EVALUATION_REQUEST',
+          message: 'storyContent must be 60000 characters or fewer.'
+        }
+      },
+      { status: 400, statusText: 'Bad Request' }
+    );
+
+    const result = await evaluationPromise;
+
+    expect(result.isMockEvaluation).toBeTrue();
+    expect(result.mockEvaluationReason).toBe('storyContent must be 60000 characters or fewer.');
+  });
+
+  // A request that never reached the API has nothing to quote, and inventing a
+  // reason would be the same failure in the other direction.
+  it('leaves the reason absent when the call never reached the API', async () => {
+    const evaluationPromise = service.evaluateStory(request);
+
+    httpMock.expectOne('/api/story-lab/evaluate')
+      .error(new ProgressEvent('network error'), { status: 0, statusText: 'Unknown Error' });
+
+    const result = await evaluationPromise;
+
+    expect(result.isMockEvaluation).toBeTrue();
+    expect(result.mockEvaluationReason).toBeUndefined();
   });
 
   it('falls back to a clearly-marked mock evaluation when the API reports success but omits data', async () => {

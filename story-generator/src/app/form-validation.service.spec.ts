@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { FormValidationService } from './form-validation.service';
 import { StoryGenerationSeam } from './contracts';
+import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 
 function createBlueprint(overrides: Partial<StoryGenerationSeam['input']> = {}): StoryGenerationSeam['input'] {
   return {
@@ -117,6 +118,38 @@ describe('FormValidationService', () => {
     expect(errors.logline).toContain('logline');
     expect(errors.worldDetails).toContain('world details');
     expect(errors.narrativeDirectives).toContain('narrative directives');
+  });
+
+  // The two blueprint fields the form had no cap and no error slot for, while
+  // `parseStoryLabBlueprint` refused them with `400 INVALID_BLUEPRINT`. The
+  // defect this kills is the round trip: a name pasted past the cap generating a
+  // paid request that can only come back refused, naming a field by its wire
+  // name, on inputs that never said there was a limit.
+  it('measures the two character-name fields the route caps', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      protagonistName: 'p'.repeat(service.maxCharacterNameLength + 1),
+      antagonistName: 'a'.repeat(service.maxCharacterNameLength + 1)
+    }));
+
+    expect(service.isValid(errors)).toBeFalse();
+    expect(errors.protagonistName).toContain('main character');
+    expect(errors.antagonistName).toContain('love interest');
+  });
+
+  it('reads the character-name cap from the shared blueprint limits', () => {
+    expect(service.maxCharacterNameLength).toBe(STORY_BLUEPRINT_LIMITS.maxCharacterNameLength);
+  });
+
+  // The parser reads both names through a helper that trims before it measures,
+  // so a name whose surrounding whitespace is what pushes it over is one the
+  // route accepts. Refusing it here would be the drift running the wrong way.
+  it('accepts a character name that only exceeds the cap through surrounding whitespace', () => {
+    const errors = service.validateBlueprint(createBlueprint({
+      protagonistName: `  ${'p'.repeat(service.maxCharacterNameLength)}  `,
+      antagonistName: `\n${'a'.repeat(service.maxCharacterNameLength)}\n`
+    }));
+
+    expect(service.isValid(errors)).withContext(service.getFirstError(errors) ?? '').toBeTrue();
   });
 
   it('rejects unsupported Heat Contract intimacy boundary', () => {

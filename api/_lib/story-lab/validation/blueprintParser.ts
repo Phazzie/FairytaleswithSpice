@@ -1,14 +1,18 @@
 // Created: 2026-06-04 00:00 EDT
 
 import type {
-  ChapterBatchSize,
-  CreatureArchetype,
   HeatContract,
-  NarrativeTone,
-  SpicyLevel,
   StoryGenerationSeam,
-  ThemeSeed,
-  WordBudget
+  ThemeSeed
+} from '../contracts';
+import {
+  CHAPTER_BATCH_SIZES,
+  CREATURE_ARCHETYPES,
+  HEAT_INTIMACY_BOUNDARIES,
+  HEAT_TENSION_MODES,
+  NARRATIVE_TONES,
+  SPICY_LEVELS,
+  WORD_BUDGETS
 } from '../contracts';
 import { STORY_BLUEPRINT_LIMITS } from '../../../../shared/storyBlueprintLimits';
 
@@ -25,22 +29,22 @@ export type StoryLabBlueprintParseResult =
   | { blueprint: StoryGenerationSeam['input']; error?: undefined }
   | { blueprint?: undefined; error: StoryLabBlueprintParseError };
 
-const VALID_CREATURES: readonly CreatureArchetype[] = [
-  'vampire',
-  'werewolf',
-  'fairy',
-  'siren',
-  'djinn',
-  'witch',
-  'dragon',
-  'demon',
-  'angel',
-  'mermaid'
-];
-const VALID_TONES: readonly NarrativeTone[] = ['romance', 'dark_romance', 'mystery', 'adventure', 'comedy', 'tragedy'];
-const VALID_SPICY_LEVELS: readonly SpicyLevel[] = [1, 2, 3, 4, 5];
-const VALID_WORD_BUDGETS: readonly WordBudget[] = [600, 900, 1200, 1500];
-const VALID_BATCH_SIZES: readonly ChapterBatchSize[] = [1, 2, 3];
+/**
+ * What a blueprint may say, read from the contract rather than restated here.
+ *
+ * These five lists were written out again in this file and a third time in
+ * `FormValidationService`, which validates the same blueprint in the browser
+ * before it is sent. Two hand-kept copies of the same vocabulary is the
+ * arrangement where the form accepts a value the route refuses, and the reader
+ * learns which by pressing generate and being answered `400 INVALID_BLUEPRINT`
+ * naming a field by its wire name. The contract's tables are the ones the
+ * profile store already validates against; this is the same reading.
+ */
+const VALID_CREATURES = CREATURE_ARCHETYPES;
+const VALID_TONES = NARRATIVE_TONES;
+const VALID_SPICY_LEVELS = SPICY_LEVELS;
+const VALID_WORD_BUDGETS = WORD_BUDGETS;
+const VALID_BATCH_SIZES = CHAPTER_BATCH_SIZES;
 
 export function parseStoryLabBlueprintFromBody(body: unknown): StoryLabBlueprintParseResult {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -75,19 +79,19 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
   const spicyLevel = parseOneOf(VALID_SPICY_LEVELS, parseNumber(source['spicyLevel']));
   if (!spicyLevel) {
     invalidFields.push('spicyLevel');
-    messages.push('spicyLevel must be between 1 and 5.');
+    messages.push(`spicyLevel must be one of: ${VALID_SPICY_LEVELS.join(', ')}.`);
   }
 
   const desiredWordBudget = parseOneOf(VALID_WORD_BUDGETS, parseNumber(source['desiredWordBudget']));
   if (!desiredWordBudget) {
     invalidFields.push('desiredWordBudget');
-    messages.push('desiredWordBudget must be 600, 900, 1200, or 1500.');
+    messages.push(`desiredWordBudget must be one of: ${VALID_WORD_BUDGETS.join(', ')}.`);
   }
 
   const chapterBatchSize = parseOneOf(VALID_BATCH_SIZES, parseNumber(source['chapterBatchSize']));
   if (!chapterBatchSize) {
     invalidFields.push('chapterBatchSize');
-    messages.push('chapterBatchSize must be 1, 2, or 3.');
+    messages.push(`chapterBatchSize must be one of: ${VALID_BATCH_SIZES.join(', ')}.`);
   }
 
   const logline = getString(source['logline'])?.trim() ?? '';
@@ -106,6 +110,15 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
   } else if (themes.value.length > STORY_BLUEPRINT_LIMITS.maxThemes) {
     invalidFields.push('themes');
     messages.push(`themes must include no more than ${STORY_BLUEPRINT_LIMITS.maxThemes} theme seeds.`);
+  } else {
+    // How many seeds arrived was measured; how large one is was not. See
+    // `maxThemeLabelLength` for where an uncapped seed ends up — the continuity
+    // model call, and a plot thread stored with the project.
+    const oversized = describeOversizedThemeSeed(themes.value);
+    if (oversized) {
+      invalidFields.push('themes');
+      messages.push(oversized);
+    }
   }
 
   // The optional free-text fields are read here rather than at the point they
@@ -122,6 +135,26 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
   if (isLongerThan(worldDetails, STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength)) {
     invalidFields.push('worldDetails');
     messages.push(`worldDetails must be ${STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength} characters or fewer.`);
+  }
+
+  // The two free-text fields that were read straight into the returned
+  // blueprint without ever being measured, while the four above them were. The
+  // cap is the point of the shared limits object: `buildContinuityPrompt`
+  // stringifies both of these into the continuity model call exactly as they
+  // arrived, so a caller that skips the form — the query-string genesis stream
+  // takes the same blueprint — could put a megabyte of prose in a field named
+  // for one person and have it billed by the token, then stored in the story
+  // state the response carries back.
+  const protagonistName = optionalString(source['protagonistName']);
+  if (isLongerThan(protagonistName, STORY_BLUEPRINT_LIMITS.maxCharacterNameLength)) {
+    invalidFields.push('protagonistName');
+    messages.push(`protagonistName must be ${STORY_BLUEPRINT_LIMITS.maxCharacterNameLength} characters or fewer.`);
+  }
+
+  const antagonistName = optionalString(source['antagonistName']);
+  if (isLongerThan(antagonistName, STORY_BLUEPRINT_LIMITS.maxCharacterNameLength)) {
+    invalidFields.push('antagonistName');
+    messages.push(`antagonistName must be ${STORY_BLUEPRINT_LIMITS.maxCharacterNameLength} characters or fewer.`);
   }
 
   // The blueprint contract types `heatContract` as required, and the engine
@@ -160,11 +193,36 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
       themes: themes.value,
       heatContract: heatContract.value!,
       narrativeDirectives,
-      protagonistName: optionalString(source['protagonistName']),
-      antagonistName: optionalString(source['antagonistName']),
+      protagonistName,
+      antagonistName,
       worldDetails
     }
   };
+}
+
+/**
+ * Name the first theme seed whose own text is past its cap, or `null`.
+ *
+ * One message for the whole array rather than one per seed, because `themes`
+ * is a single invalid field either way and the caller fixes the array. The
+ * index is in it so the caller knows which seed, and the field name so they
+ * know which half of it.
+ */
+function describeOversizedThemeSeed(themes: readonly ThemeSeed[]): string | null {
+  const caps = [
+    { field: 'label', limit: STORY_BLUEPRINT_LIMITS.maxThemeLabelLength },
+    { field: 'description', limit: STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength }
+  ] as const;
+
+  for (const [index, theme] of themes.entries()) {
+    for (const { field, limit } of caps) {
+      if (theme[field].length > limit) {
+        return `themes[${index}].${field} must be ${limit} characters or fewer.`;
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -200,36 +258,10 @@ function parseThemes(value: QueryValue, mode: 'body' | 'query'): { value: ThemeS
     return { value: [], error: 'themes must include id, label, and description strings.' };
   }
 
-  // Shape is not size. Each of these three strings is free text that reaches the
-  // continuity prompt — and, through `buildInitialThreads`, the persisted story
-  // state that every later continuation re-sends — so a seed past its cap is
-  // refused here rather than truncated at the prompt builder, where the caller
-  // would never learn their seed was cut. See `STORY_BLUEPRINT_LIMITS`.
-  const oversizedField = parsed.map(findOversizedThemeSeedField).find(Boolean);
-  if (oversizedField) {
-    return { value: [], error: oversizedField };
-  }
-
+  // Size is measured by `describeOversizedThemeSeed` at the caller, where the
+  // seed's index is in scope and the message can name which of the array's
+  // entries has to be shortened.
   return { value: parsed };
-}
-
-/**
- * Name the first theme-seed field past its cap, or `undefined` when the seed
- * fits. One message per field rather than a shared one: the caller has to know
- * which of the three to shorten, and the numbers differ.
- */
-function findOversizedThemeSeedField(seed: ThemeSeed): string | undefined {
-  const fields = [
-    { name: 'id', value: seed.id, limit: STORY_BLUEPRINT_LIMITS.maxThemeIdLength },
-    { name: 'label', value: seed.label, limit: STORY_BLUEPRINT_LIMITS.maxThemeLabelLength },
-    { name: 'description', value: seed.description, limit: STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength }
-  ];
-
-  const oversized = fields.find(field => field.value.length > field.limit);
-
-  return oversized
-    ? `themes[].${oversized.name} must be ${oversized.limit} characters or fewer.`
-    : undefined;
 }
 
 function parseHeatContract(
@@ -261,15 +293,43 @@ function parseJsonValue(value: QueryValue): unknown {
   }
 }
 
+/**
+ * Read one blueprint field as a string, or answer that it is not one.
+ *
+ * The repeated-value form is read first because a query string carries one for
+ * every parameter sent twice — and `value[0]` was handed straight back, typed
+ * `string` on the strength of the `QueryValue` union rather than checked. On
+ * the query path that holds: a runtime parses `?logline=a&logline=b` into an
+ * array of strings. On the *body* path it does not. `parseStoryLabBlueprintFromBody`
+ * casts a parsed JSON object to `QuerySource`, so an array field there holds
+ * whatever the caller put in it, and `{"logline": [42]}` handed a `number` to
+ * every caller that had been promised a string:
+ * `getString(source['logline'])?.trim()` is a `TypeError`, `?.` being no help
+ * against a value that is present and merely of the wrong type.
+ *
+ * That throw leaves this parser entirely. The route's own catch answers `500
+ * INTERNAL_ERROR` — the service failed, try again — for a body only the caller
+ * can fix, on the one field the parser exists to refuse with `400
+ * INVALID_BLUEPRINT` and a message naming it. It is the same failure
+ * `readJsonObjectBody` was written for one layer up, arriving through a field
+ * rather than through the body itself: `logline`, `worldDetails`,
+ * `narrativeDirectives`, `protagonistName`, `antagonistName`, and
+ * `heatContract` are all read through this helper and a trim, so any one of
+ * them wrapped in an array is a 500.
+ *
+ * So the first entry is read under the same rules as a bare value: a string is
+ * itself, a number or a boolean is spelled out, and anything else — an object,
+ * a nested array, `null` — is not a string and is reported as the missing or
+ * invalid field it is.
+ */
 function getString(value: QueryValue): string | undefined {
-  if (Array.isArray(value)) {
-    return value[0];
+  const scalar = Array.isArray(value) ? value[0] : value;
+
+  if (typeof scalar === 'string') {
+    return scalar;
   }
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
+  if (typeof scalar === 'number' || typeof scalar === 'boolean') {
+    return String(scalar);
   }
   return undefined;
 }
@@ -313,7 +373,7 @@ function isHeatContract(value: unknown): value is HeatContract {
 
   const candidate = value as Record<string, unknown>;
   return typeof candidate['adultOnlyConfirmed'] === 'boolean'
-    && parseOneOf(['slow_burn', 'dangerous_proximity', 'playful_banter', 'devotional_longing'] as const, candidate['tensionMode']) !== undefined
-    && parseOneOf(['fade_to_black', 'closed_door', 'literary_on_page'] as const, candidate['intimacyBoundary']) !== undefined
+    && parseOneOf(HEAT_TENSION_MODES, candidate['tensionMode']) !== undefined
+    && parseOneOf(HEAT_INTIMACY_BOUNDARIES, candidate['intimacyBoundary']) !== undefined
     && (candidate['noGoContent'] === undefined || typeof candidate['noGoContent'] === 'string');
 }

@@ -5,11 +5,10 @@
  *
  * An earlier version of this module was retired along with the duplicate
  * `/api/story/stream` implementations it was extracted for, correctly: nothing
- * live was left using it. Two live routes still frame SSE, though —
- * `/api/story-lab/stream/genesis` and the Story Lab job event stream — and both
- * were writing their own frames and writing them unconditionally. The two
- * things they need are the two things below, and neither is worth getting
- * wrong twice.
+ * live was left using it. One live route still frames SSE — the Story Lab job
+ * event stream — and was writing its own frames and writing them
+ * unconditionally. The two things it needs are the two things below, and
+ * neither is worth getting wrong twice.
  */
 
 /**

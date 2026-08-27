@@ -4,14 +4,22 @@ import type {
   ApiResponse,
   StoryContinuationSeam,
   StoryIterationPayload,
+  StoryLabGenerationJobKind,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
   StoryLabJobError
+} from '../contracts';
+import {
+  STORY_LAB_DEFERRED_JOB_KINDS,
+  formatChapterBatchSizeList,
+  isChapterBatchSize,
+  isDeferredStoryLabJobKind
 } from '../contracts';
 import type { AuthPort, AuthUser } from '../auth/authPort';
 import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort } from '../auth/configuredAuthPort';
 import { applyCorsPolicy } from '../../http/corsPolicy';
+import { sendMethodNotAllowed } from '../../http/methodNotAllowed';
 import { endSseStream, writeSseFrame, type SseResponseLike } from '../../http/sseStream';
 import { RATE_LIMITS } from '../../constants';
 import { enforceApiAccessControl, withEventStreamAuth } from '../../middleware/apiAccessControl';
@@ -29,6 +37,9 @@ import {
   createStoryLabJobStoreConfig,
   type StoryLabJobStoreConfig
 } from './storyLabJobStoreConfig';
+import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
+import type { StoryLabProfileStore } from '../profile/storyLabProfileStore';
+import type { HeatContract } from '../contracts';
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 type JobResult = StoryIterationPayload | ContinuationJobResult;
@@ -56,6 +67,7 @@ interface ResponseLike extends SseResponseLike {
 
 export interface StoryLabJobRouteDependencies {
   authPort?: AuthPort;
+  profileStore?: StoryLabProfileStore;
   createJobStoreConfig?: () => StoryLabJobStoreConfig;
   generateGenesis?: typeof generateStoryLabGenesis;
   continueStory?: typeof continueStoryLab;
@@ -63,6 +75,7 @@ export interface StoryLabJobRouteDependencies {
 
 interface StoryLabJobRouteContext {
   authPort: AuthPort;
+  profileStore: StoryLabProfileStore;
   createJobStoreConfig: () => StoryLabJobStoreConfig;
   generateGenesis: typeof generateStoryLabGenesis;
   continueStory: typeof continueStoryLab;
@@ -82,6 +95,7 @@ export function createStoryLabJobsRouteHandler(
 ): (req: RequestLike, res: ResponseLike) => Promise<void> {
   const context: StoryLabJobRouteContext = {
     authPort: dependencies.authPort ?? configuredAuthPort,
+    profileStore: dependencies.profileStore ?? createStoryLabCloudStorage().profileStore,
     createJobStoreConfig: dependencies.createJobStoreConfig ?? (() => createStoryLabJobStoreConfig()),
     generateGenesis: dependencies.generateGenesis ?? generateStoryLabGenesis,
     continueStory: dependencies.continueStory ?? continueStoryLab
@@ -101,6 +115,15 @@ export const handleStoryLabJobsRoute = createStoryLabJobsRouteHandler();
  * route rather than about a handler.
  */
 const STORY_LAB_JOBS_ROUTE_METHODS = ['GET', 'POST', 'OPTIONS'];
+
+/**
+ * And the per-handler lists, which are what `Allow` reports: the header names
+ * the target resource's methods, so creating a job answers `POST, OPTIONS`
+ * while reading one answers `GET, OPTIONS`, even though the route as a whole
+ * serves both.
+ */
+const STORY_LAB_JOB_CREATE_METHODS = ['POST', 'OPTIONS'];
+const STORY_LAB_JOB_READ_METHODS = ['GET', 'OPTIONS'];
 
 async function handleStoryLabJobsRouteWithContext(
   context: StoryLabJobRouteContext,
@@ -146,7 +169,7 @@ async function handleCreateStoryLabJobWithContext(
   res: ResponseLike
 ): Promise<void> {
   const cors = applyCorsPolicy(req, res, {
-    methods: ['POST', 'OPTIONS'],
+    methods: STORY_LAB_JOB_CREATE_METHODS,
     credentials: true
   });
   if (cors.handled) {
@@ -154,7 +177,7 @@ async function handleCreateStoryLabJobWithContext(
   }
 
   if ((req.method ?? '').toUpperCase() !== 'POST') {
-    sendJson(res, 405, methodNotAllowed('Only POST requests are supported.'));
+    sendMethodNotAllowed(res, STORY_LAB_JOB_CREATE_METHODS, 'Only POST requests are supported.');
     return;
   }
 
@@ -170,12 +193,12 @@ async function handleCreateStoryLabJobWithContext(
 
   const request = req.body as StoryLabJobCreationRequest;
 
-  if (request.kind === 'export' || request.kind === 'audio') {
+  if (isDeferredStoryLabJobKind(request.kind)) {
     sendJson(res, 400, {
       success: false,
       error: {
         code: 'UNSUPPORTED_JOB_KIND',
-        message: 'Export and audio jobs are reserved for the durable job runner and are not supported by this non-durable scaffold.'
+        message: `${formatDeferredJobKindList()} jobs are reserved for the durable job runner and are not supported by this non-durable scaffold.`
       }
     });
     return;
@@ -384,8 +407,13 @@ async function createGenesisJob(
     return;
   }
 
+  const contentBoundaries = await loadAuthenticatedContentBoundaries(context, req);
+  const genesisInput = contentBoundaries
+    ? { ...parsed.blueprint, heatContract: withMergedContentBoundaries(parsed.blueprint.heatContract, contentBoundaries) }
+    : parsed.blueprint;
+
   const result = await runJobWork(
-    () => context.generateGenesis(parsed.blueprint),
+    () => context.generateGenesis(genesisInput),
     'genesis',
     job.job.jobId
   );
@@ -412,7 +440,8 @@ async function createContinuationJob(
   const normalized = normalizeContinuationInput(request.continuation);
   if (!normalized) {
     sendJson(res, 400, invalidRequest(
-      'Continuation jobs require storyId, storyState or transient snapshot, previous chapters or transient snapshot, and a chapterBatchSize of 1-3.'
+      'Continuation jobs require storyId, storyState or transient snapshot, previous chapters or transient snapshot, '
+      + `and a chapterBatchSize of ${formatChapterBatchSizeList()}.`
     ));
     return;
   }
@@ -454,8 +483,13 @@ async function createContinuationJob(
     return;
   }
 
+  const contentBoundaries = await loadAuthenticatedContentBoundaries(context, req);
+  const continuationInput = contentBoundaries && normalized.heatContract
+    ? { ...normalized, heatContract: withMergedContentBoundaries(normalized.heatContract, contentBoundaries) }
+    : normalized;
+
   const result = await runJobWork(
-    () => context.continueStory(normalized),
+    () => context.continueStory(continuationInput),
     'continuation',
     job.job.jobId
   );
@@ -474,6 +508,22 @@ async function createContinuationJob(
 }
 
 /**
+ * The deferred kinds as the refusal names them, read from the table it checks.
+ *
+ * The message used to say "Export and audio" in prose beside a branch that
+ * matched the two literals, so a third deferred kind would have been refused
+ * and not mentioned. Capitalised only at the front, the way the sentence was.
+ */
+function formatDeferredJobKindList(): string {
+  const kinds: readonly string[] = STORY_LAB_DEFERRED_JOB_KINDS;
+  const sentence = kinds.length > 1
+    ? `${kinds.slice(0, -1).join(', ')} and ${kinds[kinds.length - 1]}`
+    : kinds.join('');
+
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/**
  * Run the engine for a job that is already recorded as `running`.
  *
  * The engine reports its own failures as an unsuccessful envelope, but it can
@@ -488,7 +538,7 @@ async function createContinuationJob(
  */
 async function runJobWork<TPublicResult extends JobResult>(
   work: () => Promise<ApiResponse<TPublicResult>>,
-  kind: 'genesis' | 'continuation',
+  kind: StoryLabGenerationJobKind,
   jobId: string
 ): Promise<ApiResponse<TPublicResult>> {
   try {
@@ -585,9 +635,70 @@ async function resolveJobStoreOrRespond(
 function createDefaultJobRouteContext(): StoryLabJobRouteContext {
   return {
     authPort: configuredAuthPort,
+    profileStore: createStoryLabCloudStorage().profileStore,
     createJobStoreConfig: () => createStoryLabJobStoreConfig(),
     generateGenesis: generateStoryLabGenesis,
     continueStory: continueStoryLab
+  };
+}
+
+/**
+ * A signed-in caller's content boundaries, folded into generation.
+ *
+ * `StoryLabProfilePreferences.contentBoundaries` is validated and persisted by
+ * the account routes, but nothing has ever read it back — a reader who wrote
+ * "no humiliation" into their profile got no different a story than one who
+ * left it blank. This never requires auth (`requireUser`) the way the account
+ * routes do; a caller with no signed-in identity, which is every caller today
+ * since no `STORY_LAB_AUTH_PROVIDER` is configured, simply gets no boundaries
+ * to fold in, and generation proceeds exactly as it does now. Any failure
+ * along the way — no user, no profile, a store error — is silently treated as
+ * "nothing to add"; a reader's boundary is a courtesy layered onto generation,
+ * not a gate that should ever turn a working request into a failed one.
+ */
+async function loadAuthenticatedContentBoundaries(
+  context: StoryLabJobRouteContext,
+  req: RequestLike
+): Promise<string | undefined> {
+  try {
+    const user = await context.authPort.getCurrentUser(req);
+    if (!user) {
+      return undefined;
+    }
+
+    const loadResult = await context.profileStore.loadProfile(user);
+    return loadResult.success === true
+      ? loadResult.data?.profile.preferences.contentBoundaries
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Folds a profile's content boundaries into an already-accepted Heat Contract.
+ *
+ * Never called on an absent contract, and never changes `adultOnlyConfirmed`
+ * or any other field: `heatContractPolicyError` treats any *present* contract
+ * whose `adultOnlyConfirmed` is not `true` as a policy violation, required or
+ * not, so manufacturing a contract here for a continuation that supplied none
+ * would turn a request that used to succeed into one that fails the adult-
+ * reader gate it never actually asked for. Only `noGoContent` — the free-text
+ * field this is the profile-wide counterpart of — is touched, joined onto
+ * whatever the request itself already carried rather than replacing it.
+ */
+function withMergedContentBoundaries(
+  heatContract: HeatContract,
+  contentBoundaries: string | undefined
+): HeatContract {
+  if (!contentBoundaries) {
+    return heatContract;
+  }
+
+  const existing = heatContract.noGoContent?.trim();
+  return {
+    ...heatContract,
+    noGoContent: existing ? `${existing}\n${contentBoundaries}` : contentBoundaries
   };
 }
 
@@ -636,7 +747,7 @@ function normalizeContinuationInput(input: unknown): StoryContinuationSeam['inpu
     !storyId ||
     !storyState ||
     !previouslyGeneratedChapters ||
-    !isValidBatchSize(batchSizeNumber)
+    !isChapterBatchSize(batchSizeNumber)
   ) {
     return null;
   }
@@ -653,13 +764,10 @@ function normalizeContinuationInput(input: unknown): StoryContinuationSeam['inpu
   };
 }
 
-function isValidBatchSize(size: number): size is StoryContinuationSeam['input']['chapterBatchSize'] {
-  return [1, 2, 3].includes(size);
-}
 
 function readValidJobIdOrRespond(req: RequestLike, res: ResponseLike): string | null {
   if ((req.method ?? '').toUpperCase() !== 'GET') {
-    sendJson(res, 405, methodNotAllowed('Only GET requests are supported.'));
+    sendMethodNotAllowed(res, STORY_LAB_JOB_READ_METHODS, 'Only GET requests are supported.');
     return null;
   }
 
@@ -706,16 +814,6 @@ function readJobId(req: RequestLike): string | null {
 
 function sendJson<T>(res: ResponseLike, statusCode: number, body: T): void {
   res.status(statusCode).json(body);
-}
-
-function methodNotAllowed(message: string): ApiResponse<never> {
-  return {
-    success: false,
-    error: {
-      code: 'METHOD_NOT_ALLOWED',
-      message
-    }
-  };
 }
 
 function invalidRequest(message: string): ApiResponse<never> {

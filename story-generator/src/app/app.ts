@@ -5,20 +5,30 @@ import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subscription, map } from 'rxjs';
-import { splitStoryIntoTextBlocks } from '../../../api/_lib/utils/storyTextBlocks';
 import {
   createBrowserHtmlDownloadHost,
   dataUriToBlob,
   downloadBlob,
   downloadHtmlDocument
 } from '../../../shared/htmlDocumentDownload';
+import {
+  formatThreadDebtLabel,
+  normalizeActivationText,
+  scoreActivationCandidates
+} from '../../../shared/continuityActivation';
 import { buildStoryDownloadFilename } from '../../../shared/storyDownloadFilename';
 import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
+import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
+import { isVocabularyMember } from '../../../shared/storyStateVocabulary';
+import { buildStoryHtmlDocument } from './story-html-exporter';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
+import { CREATURE_ARCHETYPES, readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import {
   BatchProgressState,
+  CHAPTER_BATCH_SIZES,
   ChapterBatchSize,
   ChapterTimelineEntry,
+  CharacterProfile,
   CloudLibrarySyncState,
   CloudStoryProjectListItem,
   ContinuityPanelViewModel,
@@ -26,28 +36,43 @@ import {
   EXPORT_FORMATS,
   ExportFormat,
   GeneratedChapter,
+  HEAT_INTIMACY_BOUNDARIES,
+  HEAT_TENSION_MODES,
   HeatContract,
   HeatIntimacyBoundary,
   HeatTensionMode,
   IMAGE_STYLES,
   ImageGenerationSeam,
   ImageStyle,
+  NARRATIVE_TONES,
+  NarrativeTone,
   PlotThread,
+  RELATIONSHIP_KINDS,
+  RelationshipEdge,
+  RelationshipKind,
+  SPICY_LEVELS,
   SavedStoryProject,
   SpicyLevel,
   StoryMemoryLifetime,
   StoryMemoryCard,
   StoryBlueprint,
   StoryIterationPayload,
+  StoryLabGenerationJobKind,
   StoryLabJob,
   StoryLabJobStatus,
+  STORY_LAB_JOB_STEP_LABELS,
   StoryWorkbenchSession,
-  ThemeSeed
+  ThemeSeed,
+  WORD_BUDGETS,
+  WordBudget,
+  isStoryLabJobStep,
+  isTerminalStoryLabJobStatus
 } from './contracts';
 import { StoryService } from './story.service';
 import { StoryWorkspaceStorageService } from './story-workspace-storage.service';
 import { ErrorLoggingService } from './error-logging';
 import { DebugPanel } from './debug-panel/debug-panel';
+import { ErrorDisplayComponent } from './error-display/error-display';
 import { NotificationService } from './notification.service';
 import { NotificationsComponent } from './notifications.component';
 
@@ -91,6 +116,100 @@ type HeatContractOption<T extends string> = {
 type ContinuationDirection = {
   label: string;
   brief: string;
+};
+
+type ChoiceOption<TId extends string | number> = {
+  id: TId;
+  label: string;
+};
+
+/**
+ * The words this form puts in front of the reader for each value of a closed
+ * vocabulary — and nothing else.
+ *
+ * Every picker below used to be a hand-written array of `{ id, label,
+ * description }`, which made the array two things at once: the copy that says
+ * what a `vampire` is called, and a second declaration of *which* creatures
+ * there are. The second one is the problem. `CREATURE_ARCHETYPES`,
+ * `NARRATIVE_TONES`, `SPICY_LEVELS`, `WORD_BUDGETS`, `CHAPTER_BATCH_SIZES`,
+ * `HEAT_TENSION_MODES`, and `HEAT_INTIMACY_BOUNDARIES` are the vocabularies the
+ * API's parser refuses a blueprint against and `FormValidationService` checks
+ * this form's own state against — `shared/creatureVocabulary` and the tables in
+ * `contracts.ts` exist precisely so those two readers cannot disagree — and the
+ * screen that decides what a reader can actually send was not one of the
+ * readers.
+ *
+ * A value added to a vocabulary therefore reached the type, the validator, the
+ * route, the prompt builders, and the log filter, and stopped at the picker:
+ * the new creature, tone, or word budget is accepted everywhere and offered
+ * nowhere, with nothing to fail and nothing on the page to say it is missing.
+ * Typing the copy as a total `Record` over the vocabulary is what turns that
+ * into a compile error — TypeScript refuses a record missing a key — and
+ * mapping the picker over the table rather than over the record's own keys is
+ * what keeps the offered order the vocabulary's.
+ *
+ * The `label`s below are the ones this form already showed, transcribed
+ * unchanged; the creature labels are dropped entirely in favour of
+ * `readCreatureDisplayName`, which is the title-cased id every one of them
+ * already was.
+ */
+const CREATURE_DESCRIPTIONS: Record<CreatureArchetype, string> = {
+  vampire: 'Immortal desire, old secrets, dangerous elegance.',
+  werewolf: 'Pack bonds, moonlit hunger, protective intensity.',
+  fairy: 'Fae bargains, beautiful traps, glittering menace.',
+  siren: 'Songs, saltwater vows, temptation with teeth.',
+  djinn: 'Wishes, bargains, heat shimmer magic.',
+  witch: 'Spellwork, grimoires, familiar old power.',
+  dragon: 'Treasure, pride, scale-deep obsession.',
+  demon: 'Temptation, contracts, wicked devotion.',
+  angel: 'Forbidden grace, falling, sacred desire.',
+  mermaid: 'Tides, curses, pearl-lit longing.'
+};
+
+const SPICE_LEVEL_COPY: Record<SpicyLevel, { label: string; description: string }> = {
+  1: { label: 'Storybook Romance', description: 'Longing, flirtation, no explicit detail.' },
+  2: { label: 'Warm', description: 'Kissing, sensual tension, restrained heat.' },
+  3: { label: 'Spicy', description: 'Adult heat, literary, fade-to-black before graphic detail.' },
+  4: { label: 'Very Spicy', description: 'Explicit consensual intimacy with emotional stakes.' },
+  5: { label: 'Inferno', description: 'Maximum explicit consensual adult fantasy.' }
+};
+
+const HEAT_TENSION_COPY: Record<HeatTensionMode, { label: string; description: string }> = {
+  slow_burn: { label: 'Slow burn', description: 'Longing, restraint, charged pauses.' },
+  dangerous_proximity: { label: 'Danger close', description: 'Threat, protection, forced proximity.' },
+  playful_banter: { label: 'Banter', description: 'Teasing, challenge, mischief.' },
+  devotional_longing: { label: 'Devotion', description: 'Reverence, sacrifice, tenderness.' }
+};
+
+const HEAT_BOUNDARY_COPY: Record<HeatIntimacyBoundary, { label: string; description: string }> = {
+  fade_to_black: { label: 'Fade to black', description: 'Build heat, close the door early.' },
+  closed_door: { label: 'Closed door', description: 'Romance stays implied off-page.' },
+  literary_on_page: { label: 'Literary on-page', description: 'Consensual heat with polished language.' }
+};
+
+const NARRATIVE_TONE_LABELS: Record<NarrativeTone, string> = {
+  romance: 'Romance',
+  dark_romance: 'Dark Romance',
+  mystery: 'Mystery',
+  adventure: 'Adventure',
+  comedy: 'Comedy',
+  tragedy: 'Tragedy'
+};
+
+/**
+ * The four word budgets under the names the "Chapter length" picker gives them.
+ *
+ * These were `<option [ngValue]="600">Short</option>` and three more like it,
+ * written straight into the template — the copy `contracts.ts` names in the
+ * note on `WORD_BUDGETS` ("restated ... a fourth in the template's `<option>`
+ * values") and the one that change did not reach, because a template is not a
+ * reader a `satisfies` clause can check.
+ */
+const WORD_BUDGET_LABELS: Record<WordBudget, string> = {
+  600: 'Short',
+  900: 'Medium',
+  1200: 'Long',
+  1500: 'Lush'
 };
 
 type NarrativeDialId = 'villain-pressure' | 'chapter-payload' | 'pacing' | 'ending-bet';
@@ -205,20 +324,97 @@ function isBatchProgressStatus(status: unknown): status is BatchProgressState['s
   return typeof status === 'string' && Object.prototype.hasOwnProperty.call(BATCH_STATUS_LABELS, status);
 }
 
-type ActiveStoryLabJobState = {
-  jobId: string;
-  kind: 'genesis' | 'continuation';
-  batchId: string;
-  batchSize: ChapterBatchSize;
-  statusPath: string;
-  startedAt: string;
-  storyId?: string;
+/**
+ * How long a thread or artifact is expected to matter, as the continuity panel
+ * says it. Total over `STORY_MEMORY_LIFETIMES` — see
+ * `formatStoryMemoryLifetimeLabel`.
+ */
+const STORY_MEMORY_LIFETIME_LABELS: Record<StoryMemoryLifetime, string> = {
+  scene: 'Scene memory',
+  chapter: 'Chapter memory',
+  series: 'Series memory'
 };
+
+/**
+ * What each relationship kind asks of the next scene, for an edge the model
+ * wrote no note on. Total over `RELATIONSHIP_KINDS` — see
+ * `formatRelationshipPreviewDetail`.
+ */
+const RELATIONSHIP_PRESSURE_DETAILS: Record<RelationshipKind, string> = {
+  lover: 'Want has a cost in the next scene.',
+  rival: 'Opposition should change what someone risks.',
+  ally: 'Trust should require an action.',
+  family: 'Loyalty should complicate the next choice.',
+  unknown: 'This connection should change the next scene.'
+};
+
+/** The devices a thread planted, read the way the guidance builder reads them. */
+function readThreadForeshadowedDevices(thread: PlotThread): string[] {
+  const devices = (thread as Partial<PlotThread>).foreshadowedDevices;
+  return Array.isArray(devices)
+    ? devices.filter((device): device is string => typeof device === 'string' && device.trim().length > 0)
+    : [];
+}
+
+/**
+ * Read a character's relationship edges before the panel dereferences them.
+ *
+ * `CharacterProfile.relationships` is typed `RelationshipEdge[]`, and the
+ * extractor now checks each entry against that type before storing it — but the
+ * type is a promise about new state, not about state that already exists.
+ * `mergeCharacters` asserted the model's array into the type for as long as this
+ * app has had a continuity panel, so a saved project or a cloud-stored snapshot
+ * written before that fix can still hand this component an array holding `null`,
+ * a bare name string, or an object with no `characterId` on it.
+ *
+ * `buildContinuityRelationshipPreviewItem` reads `relationship.characterId` off
+ * every entry, so a `null` among them is a `TypeError` thrown while rendering —
+ * not a missing preview line but a continuity panel that does not draw, on a
+ * story the reader can still see the chapters of. The API tree has read the same
+ * array through a filter for exactly this reason: `getCharacterRelationships` in
+ * `continuationGuidance.ts` re-checks object, `characterId`, and `relationship`
+ * on every read. This is that guard, on the reader that did not have one.
+ *
+ * The kind is checked against `RELATIONSHIP_KINDS` rather than against `typeof
+ * === 'string'`, which is what both readers were doing and what the writer
+ * stopped doing when the vocabulary got a table. That split had a cost of its
+ * own: `edge.relationship` was *declared* `RelationshipKind` and could hold any
+ * string at all, so `formatRelationshipPreviewDetail` below — which switches on
+ * exactly the five the union lists — received `"mentor"` from a snapshot written
+ * before the writer's check and had a total table's worth of nothing to say
+ * about it. TypeScript reports none of it, because the assertion this guard is
+ * written with is the thing that made the promise.
+ *
+ * An unrecognised kind normalizes to `'unknown'` rather than dropping the edge,
+ * which is what that member of the vocabulary is for. A model that answered
+ * `"mentor"` still named two characters and wrote a note about them; the kind is
+ * the part it got wrong, and discarding the pair along with it would lose a
+ * relationship the story really has from a panel whose whole job is to show
+ * them.
+ */
+function readRelationshipEdges(character: CharacterProfile): RelationshipEdge[] {
+  const relationships = (character as Partial<CharacterProfile>).relationships;
+  if (!Array.isArray(relationships)) {
+    return [];
+  }
+
+  return relationships.flatMap(edge => {
+    if (!edge || typeof edge !== 'object' || typeof edge.characterId !== 'string') {
+      return [];
+    }
+
+    return [{
+      characterId: edge.characterId,
+      relationship: isVocabularyMember(RELATIONSHIP_KINDS, edge.relationship) ? edge.relationship : 'unknown',
+      notes: typeof edge.notes === 'string' ? edge.notes : ''
+    }];
+  });
+}
 
 type JobStatusPanelState = {
   visible: boolean;
-  kind: ActiveStoryLabJobState['kind'];
-  tone: 'starting' | 'running' | 'recovering';
+  kind: StoryLabGenerationJobKind;
+  tone: 'starting' | 'running';
   label: string;
   title: string;
   description: string;
@@ -232,10 +428,53 @@ type JobStatusPanelState = {
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 
+/**
+ * The copy that told genesis and continuation apart in what used to be three
+ * pairs of near-identical methods (`handle{Genesis,Continuation}JobSnapshot`,
+ * `open{Genesis,Continuation}JobEventStream`, `fail{Genesis,Continuation}Job`).
+ * Collecting it here is what let those six methods become two, parameterized
+ * by `kind` — every other line between the genesis and continuation versions
+ * was already identical.
+ */
+const JOB_KIND_COPY: Record<
+  StoryLabGenerationJobKind,
+  {
+    incompletePayloadMessage: string;
+    completedStatusMessage: string;
+    completedNotificationTitle: string;
+    completedNotificationMessage: (chapterCount: number) => string;
+    defaultFailedMessage: string;
+    cancelledMessage: string;
+    streamErrorMessage: string;
+    failedNotificationTitle: string;
+  }
+> = {
+  genesis: {
+    incompletePayloadMessage: 'Story generation finished without a story payload. Please try again.',
+    completedStatusMessage: 'Your first chapter is ready. Choose where the story goes next.',
+    completedNotificationTitle: 'Genesis complete',
+    completedNotificationMessage: chapterCount => `Generated ${chapterCount} chapter${chapterCount === 1 ? '' : 's'}.`,
+    defaultFailedMessage: 'Story generation failed. Please try again in a moment.',
+    cancelledMessage: 'Story generation was cancelled before it finished.',
+    streamErrorMessage: 'Story generation updates stopped. Please try again in a moment.',
+    failedNotificationTitle: 'Generation failed'
+  },
+  continuation: {
+    incompletePayloadMessage: 'Continuation finished without a valid story payload. Please try again.',
+    completedStatusMessage: 'Continuation batch ready. Select a chapter to explore.',
+    completedNotificationTitle: 'Continuation ready',
+    completedNotificationMessage: chapterCount => `Added ${chapterCount} chapter${chapterCount === 1 ? '' : 's'} to the saga.`,
+    defaultFailedMessage: 'Continuation failed. Your existing chapters are still available.',
+    cancelledMessage: 'Continuation was cancelled before it finished.',
+    streamErrorMessage: 'Continuation updates stopped. Your existing chapters are still available.',
+    failedNotificationTitle: 'Continuation failed'
+  }
+};
+
 @Component({
   selector: 'app-story-lab',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, NotificationsComponent, DebugPanel],
+  imports: [CommonModule, FormsModule, RouterLink, NotificationsComponent, DebugPanel, ErrorDisplayComponent],
   templateUrl: './app.html',
   styleUrls: ['./app.css', './app-reader-library.css']
 })
@@ -249,7 +488,6 @@ export class App implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private batchIdSequence = 0;
   private readonly skinStorageKey = 'fairytales_story_lab_skin_v1';
-  private readonly activeJobStorageKey = 'fairytales_story_lab_active_job_v1';
   private progressTimer: ReturnType<typeof setInterval> | null = null;
   private progressStartedAt = 0;
   private jobDrivenProgress = false;
@@ -262,18 +500,13 @@ export class App implements OnDestroy {
     { id: 'writing-desk', label: 'Cozy Witchy Writing Desk', mood: 'Intimate, earthy, creative' }
   ];
 
-  readonly creatureOptions: CreatureOption[] = [
-    { id: 'vampire', label: 'Vampire', description: 'Immortal desire, old secrets, dangerous elegance.' },
-    { id: 'werewolf', label: 'Werewolf', description: 'Pack bonds, moonlit hunger, protective intensity.' },
-    { id: 'fairy', label: 'Fairy', description: 'Fae bargains, beautiful traps, glittering menace.' },
-    { id: 'siren', label: 'Siren', description: 'Songs, saltwater vows, temptation with teeth.' },
-    { id: 'djinn', label: 'Djinn', description: 'Wishes, bargains, heat shimmer magic.' },
-    { id: 'witch', label: 'Witch', description: 'Spellwork, grimoires, familiar old power.' },
-    { id: 'dragon', label: 'Dragon', description: 'Treasure, pride, scale-deep obsession.' },
-    { id: 'demon', label: 'Demon', description: 'Temptation, contracts, wicked devotion.' },
-    { id: 'angel', label: 'Angel', description: 'Forbidden grace, falling, sacred desire.' },
-    { id: 'mermaid', label: 'Mermaid', description: 'Tides, curses, pearl-lit longing.' }
-  ];
+  // Built from the vocabulary tables rather than restated — see the copy
+  // records above for what a picker that declares its own vocabulary costs.
+  readonly creatureOptions: CreatureOption[] = CREATURE_ARCHETYPES.map(id => ({
+    id,
+    label: readCreatureDisplayName(id),
+    description: CREATURE_DESCRIPTIONS[id]
+  }));
 
   // Read from the shared seed list rather than restated here. These ids do not
   // stay in the browser: they travel to `/api/image/generate`, `/api/export/save`,
@@ -283,26 +516,47 @@ export class App implements OnDestroy {
   // reader on the other side of the seam could see it.
   readonly availableThemes: ThemeSeed[] = STORY_LAB_THEME_SEEDS.map(seed => ({ ...seed }));
 
-  readonly spiceOptions: SpiceOption[] = [
-    { level: 1, label: 'Storybook Romance', description: 'Longing, flirtation, no explicit detail.' },
-    { level: 2, label: 'Warm', description: 'Kissing, sensual tension, restrained heat.' },
-    { level: 3, label: 'Spicy', description: 'Adult heat, literary, fade-to-black before graphic detail.' },
-    { level: 4, label: 'Very Spicy', description: 'Explicit consensual intimacy with emotional stakes.' },
-    { level: 5, label: 'Inferno', description: 'Maximum explicit consensual adult fantasy.' }
-  ];
+  readonly spiceOptions: SpiceOption[] = SPICY_LEVELS.map(level => ({
+    level,
+    ...SPICE_LEVEL_COPY[level]
+  }));
 
-  readonly heatTensionOptions: HeatContractOption<HeatTensionMode>[] = [
-    { id: 'slow_burn', label: 'Slow burn', description: 'Longing, restraint, charged pauses.' },
-    { id: 'dangerous_proximity', label: 'Danger close', description: 'Threat, protection, forced proximity.' },
-    { id: 'playful_banter', label: 'Banter', description: 'Teasing, challenge, mischief.' },
-    { id: 'devotional_longing', label: 'Devotion', description: 'Reverence, sacrifice, tenderness.' }
-  ];
+  readonly heatTensionOptions: HeatContractOption<HeatTensionMode>[] = HEAT_TENSION_MODES.map(id => ({
+    id,
+    ...HEAT_TENSION_COPY[id]
+  }));
 
-  readonly heatBoundaryOptions: HeatContractOption<HeatIntimacyBoundary>[] = [
-    { id: 'fade_to_black', label: 'Fade to black', description: 'Build heat, close the door early.' },
-    { id: 'closed_door', label: 'Closed door', description: 'Romance stays implied off-page.' },
-    { id: 'literary_on_page', label: 'Literary on-page', description: 'Consensual heat with polished language.' }
-  ];
+  readonly heatBoundaryOptions: HeatContractOption<HeatIntimacyBoundary>[] = HEAT_INTIMACY_BOUNDARIES.map(id => ({
+    id,
+    ...HEAT_BOUNDARY_COPY[id]
+  }));
+
+  /**
+   * The three vocabularies the template used to write out as `<option>`s.
+   *
+   * A `<select>`'s options are the whole of what a reader may choose, so these
+   * were the same second declaration the arrays above were, one layer further
+   * from anything that could check them: a tone added to `NARRATIVE_TONES` is
+   * accepted by the parser and by `FormValidationService`, and a form built out
+   * of six hand-written `<option>` elements would never offer it.
+   *
+   * The batch sizes need no copy table — "1 chapter", "2 chapters" is the
+   * number and a plural — so their labels are built from the value itself.
+   */
+  readonly toneOptions: ChoiceOption<NarrativeTone>[] = NARRATIVE_TONES.map(id => ({
+    id,
+    label: NARRATIVE_TONE_LABELS[id]
+  }));
+
+  readonly wordBudgetOptions: ChoiceOption<WordBudget>[] = WORD_BUDGETS.map(id => ({
+    id,
+    label: WORD_BUDGET_LABELS[id]
+  }));
+
+  readonly chapterBatchOptions: ChoiceOption<ChapterBatchSize>[] = CHAPTER_BATCH_SIZES.map(id => ({
+    id,
+    label: `${id} chapter${id === 1 ? '' : 's'}`
+  }));
 
   readonly continuationDirections: ContinuationDirection[] = [
     { label: 'Deepen the romance', brief: 'Deepen the romantic tension and make the emotional stakes more intimate.' },
@@ -509,13 +763,17 @@ export class App implements OnDestroy {
 
   readonly continuityPreviewItems = computed<ContinuityPreviewItem[]>(() => {
     const continuity = this.continuityPanel();
-    const activationSource = this.normalizePreviewActivationText(
-      this.withStoryMemoryCardBriefs(this.customContinuationBrief()) ?? ''
+    const activationSource = normalizeActivationText(
+      this.withStoryMemoryCardBriefs(this.customContinuationBrief())
     );
     const threadSelections = this.selectContinuityPreviewMatches(
       continuity.activeThreads,
       2,
-      thread => [thread.label, thread.description],
+      // The same three the guidance builder recognises a thread by. The
+      // foreshadowed devices were missing here, so a brief that named the
+      // planted device and nothing else activated the thread in the prompt and
+      // not in the preview of it.
+      thread => [thread.label, thread.description, ...readThreadForeshadowedDevices(thread)],
       activationSource
     );
     const artifactSelections = this.selectContinuityPreviewMatches(
@@ -534,7 +792,7 @@ export class App implements OnDestroy {
     return [
       ...threadSelections.map(({ item: thread, matched }) => ({
         id: `thread-${thread.id}`,
-        label: this.formatContinuityThreadPreviewLabel(thread.status),
+        label: formatThreadDebtLabel(thread.status),
         title: thread.label,
         detail: thread.description,
         sourceReason: this.formatContinuityPreviewSourceReason(matched, 'Active story thread'),
@@ -632,18 +890,19 @@ export class App implements OnDestroy {
     return alias === trimmedTitle.toLowerCase() ? null : alias;
   }
 
+  /**
+   * How long a thread or artifact is expected to matter, named for the reader.
+   *
+   * Read from `STORY_MEMORY_LIFETIME_LABELS` rather than the three `if`s this
+   * replaces, for the reason `formatThreadDebtLabel` gives: an `if` ladder over
+   * a closed vocabulary is a table with no one checking it is complete, and the
+   * chapter memory line is the only thing that would have said a fourth lifetime
+   * had been added — by not appearing. `undefined` stays the answer for an
+   * absent lifetime, which is the field being optional rather than a value this
+   * has no name for.
+   */
   private formatStoryMemoryLifetimeLabel(lifetime: StoryMemoryLifetime | undefined): string | undefined {
-    if (lifetime === 'scene') {
-      return 'Scene memory';
-    }
-    if (lifetime === 'chapter') {
-      return 'Chapter memory';
-    }
-    if (lifetime === 'series') {
-      return 'Series memory';
-    }
-
-    return undefined;
+    return lifetime ? STORY_MEMORY_LIFETIME_LABELS[lifetime] : undefined;
   }
 
   private buildContinuityRelationshipPreviewItem(
@@ -653,7 +912,7 @@ export class App implements OnDestroy {
     const relationshipItems: Array<ContinuityPreviewItem & { activationScore: number; sourceIndex: number }> = [];
     let sourceIndex = 0;
     for (const character of characters) {
-      for (const relationship of character.relationships) {
+      for (const relationship of readRelationshipEdges(character)) {
         const target = characters.find(candidate => candidate.id === relationship.characterId);
         if (target) {
           relationshipItems.push({
@@ -717,65 +976,47 @@ export class App implements OnDestroy {
     return matched ? 'Matched continuation guidance' : fallback;
   }
 
-  private formatContinuityThreadPreviewLabel(status: PlotThread['status']): string {
-    if (status === 'escalating') {
-      return 'Pressure rising';
-    }
-
-    if (status === 'dormant') {
-      return 'Quiet promise';
-    }
-
-    return 'Open promise';
-  }
-
+  /**
+   * How strongly the reader's brief names one continuity item, as the guidance
+   * builder scores it.
+   *
+   * This panel used to score it a third way of its own — best candidate rather
+   * than the sum of them, a three-character token floor rather than four, and an
+   * apostrophe the guidance's normalizer removes — so `Matched continuation
+   * guidance` was this component's judgement rather than the one the run makes.
+   * A thread called `Broken vow` was reported as matched against a brief that
+   * mentions a vow, while the guidance scored it zero and ordered it by story
+   * position; and a thread matched weakly three times ranked below one matched
+   * strongly once here, and above it in the prompt. The scorer moved to
+   * `shared/continuityActivation.ts`, which both now read.
+   *
+   * The panel still lists fewer items than the courtroom carries — two threads
+   * to its three, one artifact to its two, one warning to its two — because this
+   * is a preview beside a form rather than the prompt itself. What changes is
+   * that the items it lists are now the head of the same ordering, and its
+   * `Matched` label means what the guidance means by it.
+   */
   private scorePreviewActivationMatch(
     activationSource: string,
     candidates: Array<string | undefined>
   ): number {
-    if (!activationSource) {
-      return 0;
-    }
-
-    return candidates.reduce((highestScore, candidate) => {
-      const normalizedCandidate = this.normalizePreviewActivationText(candidate ?? '');
-      if (!normalizedCandidate) {
-        return highestScore;
-      }
-
-      if (activationSource.includes(normalizedCandidate)) {
-        return Math.max(highestScore, normalizedCandidate.split(' ').length + 5);
-      }
-
-      const wordScore = normalizedCandidate
-        .split(' ')
-        .filter(word => word.length > 2 && activationSource.includes(word))
-        .length;
-      return Math.max(highestScore, wordScore);
-    }, 0);
+    return scoreActivationCandidates(candidates, activationSource);
   }
 
-  private normalizePreviewActivationText(value: string): string {
-    return (value.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []).join(' ');
-  }
-
-  private formatRelationshipPreviewDetail(
-    relationship: ContinuityPanelViewModel['characters'][number]['relationships'][number]['relationship']
-  ): string {
-    if (relationship === 'lover') {
-      return 'Want has a cost in the next scene.';
-    }
-    if (relationship === 'rival') {
-      return 'Opposition should change what someone risks.';
-    }
-    if (relationship === 'ally') {
-      return 'Trust should require an action.';
-    }
-    if (relationship === 'family') {
-      return 'Loyalty should complicate the next choice.';
-    }
-
-    return 'This connection should change the next scene.';
+  /**
+   * The pressure line the preview shows for an edge the model wrote no note on.
+   *
+   * Read from `RELATIONSHIP_PRESSURE_DETAILS` rather than the four `if`s this
+   * replaces. `RELATIONSHIP_KINDS` has five members and the ladder named four,
+   * so `unknown` — the kind `readRelationshipEdges` now normalizes an
+   * unrecognised value *to* — arrived at a fallback that was doing two jobs at
+   * once: the honest line for a connection nobody has characterized, and the
+   * line a sixth kind would silently inherit on the day one is added. Keyed by
+   * the union, `unknown` has that line because it was written for it and a sixth
+   * kind has to be given its own.
+   */
+  private formatRelationshipPreviewDetail(relationship: RelationshipKind): string {
+    return RELATIONSHIP_PRESSURE_DETAILS[relationship];
   }
 
   readonly selectedChapter = computed(() => {
@@ -966,7 +1207,6 @@ export class App implements OnDestroy {
   constructor() {
     this.restoreSkin();
     this.restoreLatestProject();
-    this.restoreActiveStoryLabJob();
   }
 
   ngOnDestroy() {
@@ -1051,33 +1291,23 @@ export class App implements OnDestroy {
       next: response => {
         if (!response.success || !response.data) {
           const message = this.formatApiError(response.error, 'Unknown error while generating story.');
-          this.failGenesisJob(batchId, message);
+          this.failJob('genesis', batchId, message);
           return;
         }
 
-        const isTerminal = this.handleGenesisJobSnapshot(
+        this.handleJobSnapshot(
+          'genesis',
           response.data.job,
           batchId,
           blueprint.chapterBatchSize,
           response.data.durability.warning
         );
-        if (!isTerminal) {
-          this.storeActiveStoryLabJob({
-            jobId: response.data.job.jobId,
-            kind: 'genesis',
-            batchId,
-            batchSize: blueprint.chapterBatchSize,
-            statusPath: response.data.paths.statusPath,
-            startedAt: response.data.job.createdAt
-          });
-          this.openGenesisJobEventStream(response.data.job.jobId, batchId, blueprint.chapterBatchSize);
-        }
       },
       error: error => {
         this.jobCreationSubscription = null;
         this.errorLogging.logError(error, 'App.startGenesis');
         const message = this.formatHttpError(error, 'Story generation failed. Please try again in a moment.');
-        this.failGenesisJob(batchId, message);
+        this.failJob('genesis', batchId, message);
       },
       complete: () => {
         this.jobCreationSubscription = null;
@@ -1135,34 +1365,23 @@ export class App implements OnDestroy {
       next: response => {
         if (!response.success || !response.data) {
           const message = this.formatApiError(response.error, 'Continuation request failed.');
-          this.failContinuationJob(batchId, message);
+          this.failJob('continuation', batchId, message);
           return;
         }
 
-        const isTerminal = this.handleContinuationJobSnapshot(
+        this.handleJobSnapshot(
+          'continuation',
           response.data.job,
           batchId,
           request.chapterBatchSize,
           response.data.durability.warning
         );
-        if (!isTerminal) {
-          this.storeActiveStoryLabJob({
-            jobId: response.data.job.jobId,
-            kind: 'continuation',
-            batchId,
-            batchSize: request.chapterBatchSize,
-            statusPath: response.data.paths.statusPath,
-            startedAt: response.data.job.createdAt,
-            storyId: request.storyId
-          });
-          this.openContinuationJobEventStream(response.data.job.jobId, batchId, request.chapterBatchSize);
-        }
       },
       error: error => {
         this.jobCreationSubscription = null;
         this.errorLogging.logError(error, 'App.continueSaga');
         const message = this.formatHttpError(error, 'Continuation failed. Your existing chapters are still available.');
-        this.failContinuationJob(batchId, message);
+        this.failJob('continuation', batchId, message);
       },
       complete: () => {
         this.jobCreationSubscription = null;
@@ -1362,7 +1581,6 @@ export class App implements OnDestroy {
   }
 
   resetWorkbench() {
-    this.clearActiveStoryLabJob();
     this.pinnedMemoryCardDraftIds.set(new Set());
     this.acceptedMemoryCards.set([]);
     this.cancelAcceptedMemoryCardEdit();
@@ -1404,7 +1622,7 @@ export class App implements OnDestroy {
     }
 
     const { session, story } = exportable;
-    const html = this.buildStoryHtmlDocument(session);
+    const html = buildStoryHtmlDocument(session.story!, session.chapterHistory, html => this.getSafeHtml(html));
     downloadHtmlDocument(
       html,
       buildStoryDownloadFilename(story.title),
@@ -1430,34 +1648,6 @@ export class App implements OnDestroy {
     return { session, story: session.story };
   }
 
-  private buildStoryHtmlDocument(session: StoryWorkbenchSession): string {
-    const story = session.story!;
-    const chapters = session.chapterHistory
-      .map(chapter => {
-        const body = this.getSafeHtml(chapter.htmlContent);
-        return `<section><h2>Chapter ${chapter.chapterNumber}: ${this.escapeHtml(chapter.title)}</h2>${body}</section>`;
-      })
-      .join('\n');
-
-    return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>${this.escapeHtml(story.title)}</title>
-<style>
-body{font-family:Georgia,serif;line-height:1.65;max-width:760px;margin:40px auto;padding:0 20px;color:#251914;background:#fff8ee}
-h1,h2{line-height:1.15}hr{border:0;border-top:1px solid #d8c5aa;margin:28px 0}
-</style>
-</head>
-<body>
-<h1>${this.escapeHtml(story.title)}</h1>
-<p>${this.escapeHtml(story.synopsis)}</p>
-<hr>
-${chapters}
-</body>
-</html>`;
-  }
-
   exportStory() {
     if (this.isExporting()) {
       return;
@@ -1477,7 +1667,7 @@ ${chapters}
       .exportStory({
         storyId: story.storyId,
         title: story.title,
-        content: this.buildStoryHtmlDocument(session),
+        content: buildStoryHtmlDocument(session.story!, session.chapterHistory, html => this.getSafeHtml(html)),
         format,
         includeMetadata: true,
         creature: this.blueprint().creature,
@@ -1643,10 +1833,18 @@ ${chapters}
         }
 
         this.cloudProjects.set(response.data.projects);
+        // The listing is capped, so "12 cloud projects loaded" is only the
+        // whole story while the reader has twelve. `totalProjectCount` is what
+        // they actually have, and saying both is the difference between a
+        // library that is short and one that has silently lost a story.
+        const loaded = this.describeCloudProjectsLoaded(
+          response.data.projects.length,
+          response.data.totalProjectCount
+        );
         if (response.data.storageMode === 'non_durable_memory') {
           this.cloudLibrarySyncState.set({
             mode: 'cloud_unavailable',
-            message: `Cloud library is using non-durable account storage. ${response.data.projects.length} project${response.data.projects.length === 1 ? '' : 's'} loaded for inspection.`
+            message: `Cloud library is using non-durable account storage. ${loaded} loaded for inspection.`
           });
           return;
         }
@@ -1654,7 +1852,7 @@ ${chapters}
         this.cloudLibrarySyncState.set({
           mode: 'cloud_synced',
           lastSyncedAt: new Date().toISOString(),
-          message: `${response.data.projects.length} cloud project${response.data.projects.length === 1 ? '' : 's'} loaded.`
+          message: `${loaded} loaded.`
         });
       },
       error: error => {
@@ -1669,6 +1867,34 @@ ${chapters}
         this.isCloudLibraryBusy.set(false);
       }
     });
+  }
+
+  /**
+   * How many cloud projects this listing carries, and — when the listing is
+   * capped — how many the account holds.
+   *
+   * A total larger than the page is not an error state and does not get its own
+   * banner: the reader has more stories than one listing shows, which is
+   * ordinary. What it must not do is go unsaid, because a page that reports only
+   * its own length reads exactly like a complete library.
+   *
+   * A total *smaller* than the page cannot happen, and is not asserted against
+   * either: the count comes from the same request as the items, so the honest
+   * thing for an unexpected pair is to report the items, which is what the
+   * reader is looking at.
+   *
+   * The noun agrees with the last number before it — `totalCount` in the
+   * "1 of 61" form, `loadedCount` otherwise — so a single project out of
+   * sixty-one reads as "1 of 61 cloud projects" rather than "1 of 61 cloud
+   * project".
+   */
+  private describeCloudProjectsLoaded(loadedCount: number, totalCount: number): string {
+    const isCapped = totalCount > loadedCount;
+    const noun = `cloud project${(isCapped ? totalCount : loadedCount) === 1 ? '' : 's'}`;
+
+    return isCapped
+      ? `${loadedCount} of ${totalCount} ${noun}`
+      : `${loadedCount} ${noun}`;
   }
 
   showCloudAccountSetupStatus() {
@@ -1887,38 +2113,48 @@ ${chapters}
     }
   }
 
-  private handleGenesisJobSnapshot(
-    job: StoryLabJob<StoryIterationPayload>,
+  /**
+   * Handle one job snapshot for either a genesis or a continuation run.
+   *
+   * `T` is bounded by `StoryIterationPayload` rather than fixed to it:
+   * `ContinuationJobResult` is `StoryIterationPayload & { appendedChapterNumbers }`,
+   * so the genesis caller's `StoryLabJob<StoryIterationPayload>` and the
+   * continuation caller's `StoryLabJob<ContinuationJobResult>` both satisfy it
+   * without a cast, and `applyIteration`/`hasRenderableIterationPayload` below
+   * only ever read the fields the bound guarantees.
+   */
+  private handleJobSnapshot<T extends StoryIterationPayload>(
+    kind: StoryLabGenerationJobKind,
+    job: StoryLabJob<T>,
     batchId: string,
     batchSize: ChapterBatchSize,
     durabilityWarning?: string
   ): boolean {
+    const copy = JOB_KIND_COPY[kind];
     this.updateProgressFromJob(job);
     this.updateJobStatusFromJob(job, durabilityWarning);
 
     if (job.status === 'completed') {
-      // The same guard the continuation twin below uses, rather than a bare
-      // `!job.result`. `applyIteration` reads `payload.batch.chapters` and
+      // `hasRenderableIterationPayload` rather than a bare `!job.result`:
+      // `applyIteration` reads `payload.batch.chapters` and
       // `payload.summary.storyId` straight through, so a completed job carrying
       // a result that is merely *present* — a stored job row from an older
       // payload shape, a durable store that answered a partial record — threw a
       // `TypeError` inside the job event stream's `next` callback. That is not a
       // path with a handler on it: the batch stays "in progress" forever, the
-      // progress timer keeps running, and the reader is told nothing at all,
-      // where the continuation path answers the message below.
+      // progress timer keeps running, and the reader is told nothing at all.
       if (!this.hasRenderableIterationPayload(job.result)) {
-        this.failGenesisJob(batchId, 'Story generation finished without a story payload. Please try again.');
+        this.failJob(kind, batchId, copy.incompletePayloadMessage);
         return true;
       }
 
       this.applyIteration(job.result, batchSize, batchId);
-      this.statusMessage.set('Your first chapter is ready. Choose where the story goes next.');
+      this.statusMessage.set(copy.completedStatusMessage);
       this.notificationService.success(
-        'Genesis complete',
-        `Generated ${job.result.batch.chapters.length} chapter${job.result.batch.chapters.length === 1 ? '' : 's'}.`
+        copy.completedNotificationTitle,
+        copy.completedNotificationMessage(job.result.batch.chapters.length)
       );
       this.isGenerating.set(false);
-      this.clearActiveStoryLabJob();
       this.clearJobStatusPanel();
       this.closeJobEventSubscription();
       this.stopProgress();
@@ -1926,105 +2162,27 @@ ${chapters}
     }
 
     if (job.status === 'failed') {
-      this.failGenesisJob(
-        batchId,
-        this.formatApiError(job.error, 'Story generation failed. Please try again in a moment.')
-      );
+      this.failJob(kind, batchId, this.formatApiError(job.error, copy.defaultFailedMessage));
       return true;
     }
 
     if (job.status === 'cancelled') {
-      this.failGenesisJob(batchId, 'Story generation was cancelled before it finished.');
+      this.failJob(kind, batchId, copy.cancelledMessage);
+      return true;
+    }
+
+    // A terminal status without a branch above must not read as "still
+    // running". Returning `false` here is what keeps the progress timer turning
+    // and the batch queued: nothing else in this component ever revisits the
+    // job, because the stream that would have delivered the next snapshot has
+    // already closed on the same status. See `STORY_LAB_TERMINAL_JOB_STATUSES`
+    // for the three places this set is read and why none of them may guess.
+    if (isTerminalStoryLabJobStatus(job.status)) {
+      this.failJob(kind, batchId, copy.defaultFailedMessage);
       return true;
     }
 
     return false;
-  }
-
-  private openGenesisJobEventStream(jobId: string, batchId: string, batchSize: ChapterBatchSize) {
-    this.closeJobEventSubscription();
-    this.jobEventSubscription = this.storyService.streamStoryLabJobEvents<StoryIterationPayload>(
-      jobId,
-      () => undefined
-    ).subscribe({
-      next: event => {
-        this.handleGenesisJobSnapshot(event.job, batchId, batchSize);
-      },
-      error: error => {
-        this.errorLogging.logError(error, 'App.openGenesisJobEventStream');
-        const message = this.formatHttpError(error, 'Story generation updates stopped. Please try again in a moment.');
-        this.failGenesisJob(batchId, message);
-      },
-      complete: () => {
-        this.jobEventSubscription = null;
-      }
-    });
-  }
-
-  private handleContinuationJobSnapshot(
-    job: StoryLabJob<ContinuationJobResult>,
-    batchId: string,
-    batchSize: ChapterBatchSize,
-    durabilityWarning?: string
-  ): boolean {
-    this.updateProgressFromJob(job);
-    this.updateJobStatusFromJob(job, durabilityWarning);
-
-    if (job.status === 'completed') {
-      if (!this.hasRenderableIterationPayload(job.result)) {
-        this.failContinuationJob(batchId, 'Continuation finished without a valid story payload. Please try again.');
-        return true;
-      }
-
-      this.applyIteration(job.result, batchSize, batchId);
-      this.statusMessage.set('Continuation batch ready. Select a chapter to explore.');
-      this.notificationService.success(
-        'Continuation ready',
-        `Added ${job.result.batch.chapters.length} chapter${job.result.batch.chapters.length === 1 ? '' : 's'} to the saga.`
-      );
-      this.isGenerating.set(false);
-      this.clearActiveStoryLabJob();
-      this.clearJobStatusPanel();
-      this.closeJobEventSubscription();
-      this.stopProgress();
-      return true;
-    }
-
-    if (job.status === 'failed') {
-      this.failContinuationJob(
-        batchId,
-        this.formatApiError(job.error, 'Continuation failed. Your existing chapters are still available.')
-      );
-      return true;
-    }
-
-    if (job.status === 'cancelled') {
-      this.failContinuationJob(batchId, 'Continuation was cancelled before it finished.');
-      return true;
-    }
-
-    return false;
-  }
-
-  private openContinuationJobEventStream(jobId: string, batchId: string, batchSize: ChapterBatchSize) {
-    this.closeJobEventSubscription();
-    const jobEventSubscription = this.storyService.streamStoryLabJobEvents<ContinuationJobResult>(
-      jobId,
-      () => undefined
-    ).subscribe({
-      next: event => {
-        this.handleContinuationJobSnapshot(event.job, batchId, batchSize);
-      },
-      error: error => {
-        this.errorLogging.logError(error, 'App.openContinuationJobEventStream');
-        const message = this.formatHttpError(error, 'Continuation updates stopped. Your existing chapters are still available.');
-        this.failContinuationJob(batchId, message);
-      },
-      complete: () => {
-        this.jobEventSubscription = null;
-      }
-    });
-    this.jobEventSubscription = jobEventSubscription.closed ? null : jobEventSubscription;
   }
 
   private updateProgressFromJob(job: StoryLabJob<unknown>) {
@@ -2040,13 +2198,12 @@ ${chapters}
     }));
   }
 
-  private failGenesisJob(batchId: string, message: string) {
-    this.clearActiveStoryLabJob();
+  private failJob(kind: StoryLabGenerationJobKind, batchId: string, message: string) {
     this.clearJobStatusPanel();
     this.closeJobSubscriptions();
     this.statusMessage.set(message);
     this.markBatchFailed(batchId, message);
-    this.notificationService.error('Generation failed', message);
+    this.notificationService.error(JOB_KIND_COPY[kind].failedNotificationTitle, message);
     this.isGenerating.set(false);
     this.stopProgress();
   }
@@ -2065,53 +2222,6 @@ ${chapters}
       && typeof payload?.summary?.storyId === 'string';
   }
 
-  private failContinuationJob(batchId: string, message: string) {
-    this.clearActiveStoryLabJob();
-    this.clearJobStatusPanel();
-    this.closeJobSubscriptions();
-    this.statusMessage.set(message);
-    this.markBatchFailed(batchId, message);
-    this.notificationService.error('Continuation failed', message);
-    this.isGenerating.set(false);
-    this.stopProgress();
-  }
-
-  private failRecoveredStoryLabJob(kind: ActiveStoryLabJobState['kind'], batchId: string, message: string) {
-    this.clearActiveStoryLabJob();
-    this.clearJobStatusPanel();
-    this.closeJobSubscriptions();
-    this.statusMessage.set(message);
-    this.markBatchFailed(batchId, message);
-    this.notificationService.warning(
-      kind === 'genesis' ? 'Story job not restored' : 'Continuation not restored',
-      message
-    );
-    this.isGenerating.set(false);
-    this.stopProgress();
-  }
-
-  private formatRecoveredJobUnavailableMessage(
-    kind: ActiveStoryLabJobState['kind'],
-    detailMessage: string
-  ): string {
-    const jobLabel = kind === 'genesis' ? 'story job' : 'continuation job';
-    const detail = detailMessage ? ` ${detailMessage}` : '';
-    return `That ${jobLabel} could not be restored because its in-memory job state is no longer available.${detail}`;
-  }
-
-  private formatRecoveredRestoreFailureMessage(
-    kind: ActiveStoryLabJobState['kind'],
-    detailMessage: string,
-    errorCode?: string
-  ): string {
-    if (errorCode === 'JOB_NOT_FOUND' || errorCode === 'STORY_LAB_JOB_NOT_FOUND') {
-      return this.formatRecoveredJobUnavailableMessage(kind, detailMessage);
-    }
-
-    const jobLabel = kind === 'genesis' ? 'story job' : 'continuation job';
-    return detailMessage || `That ${jobLabel} could not be restored right now. Please try again.`;
-  }
-
   private closeJobEventSubscription() {
     if (this.jobEventSubscription) {
       this.jobEventSubscription.unsubscribe();
@@ -2128,250 +2238,36 @@ ${chapters}
     this.closeJobEventSubscription();
   }
 
-  private restoreActiveStoryLabJob() {
-    const activeJob = this.readActiveStoryLabJob();
-    if (!activeJob) {
-      return;
-    }
-
-    this.isGenerating.set(true);
-    this.statusMessage.set(activeJob.kind === 'genesis'
-      ? 'Restoring your story job...'
-      : 'Restoring your continuation job...');
-    this.startProgress(activeJob.kind);
-    this.ensureRecoveredBatch(activeJob);
-    this.showRecoveringJobStatus(activeJob);
-
-    if (activeJob.kind === 'continuation') {
-      this.restoreActiveContinuationJob(activeJob);
-      return;
-    }
-
-    const jobCreationSubscription = this.storyService.getStoryLabJob<StoryIterationPayload>(activeJob.jobId).subscribe({
-      next: response => {
-        if (!response.success || !response.data) {
-          const message = this.formatRecoveredRestoreFailureMessage(
-            activeJob.kind,
-            this.formatApiError(response.error, ''),
-            response.error?.code
-          );
-          this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
-          return;
-        }
-
-        const isTerminal = this.handleGenesisJobSnapshot(
-          response.data.job,
-          activeJob.batchId,
-          activeJob.batchSize,
-          response.data.durability.warning
-        );
-        if (!isTerminal) {
-          this.openGenesisJobEventStream(activeJob.jobId, activeJob.batchId, activeJob.batchSize);
-        }
-      },
-      error: error => {
-        this.jobCreationSubscription = null;
-        this.errorLogging.logError(error, 'App.restoreActiveStoryLabJob');
-        const message = this.formatRecoveredRestoreFailureMessage(
-          activeJob.kind,
-          this.formatHttpError(error, '')
-        );
-        this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
-      },
-      complete: () => {
-        this.jobCreationSubscription = null;
-      }
-    });
-    this.jobCreationSubscription = jobCreationSubscription.closed ? null : jobCreationSubscription;
-  }
-
-  private restoreActiveContinuationJob(activeJob: ActiveStoryLabJobState) {
-    if (activeJob.storyId && this.workbench().story?.storyId !== activeJob.storyId) {
-      const matchingProject = this.findSavedProjectByStoryId(activeJob.storyId);
-      if (matchingProject) {
-        this.hydrateSavedProject(matchingProject, false);
-      }
-    }
-
-    const session = this.workbench();
-    if (!session.story || !session.state || session.story.storyId !== activeJob.storyId) {
-      const message = 'That continuation job needs a saved story before it can be restored.';
-      this.statusMessage.set(message);
-      this.markBatchFailed(activeJob.batchId, message);
-      this.notificationService.warning('Continuation not restored', message);
-      this.clearActiveStoryLabJob();
-      this.clearJobStatusPanel();
-      this.isGenerating.set(false);
-      this.stopProgress();
-      return;
-    }
-
-    const jobCreationSubscription = this.storyService.getStoryLabJob<ContinuationJobResult>(activeJob.jobId).subscribe({
-      next: response => {
-        if (!response.success || !response.data) {
-          const message = this.formatRecoveredRestoreFailureMessage(
-            activeJob.kind,
-            this.formatApiError(response.error, ''),
-            response.error?.code
-          );
-          this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
-          return;
-        }
-
-        const isTerminal = this.handleContinuationJobSnapshot(
-          response.data.job,
-          activeJob.batchId,
-          activeJob.batchSize,
-          response.data.durability.warning
-        );
-        if (!isTerminal) {
-          this.openContinuationJobEventStream(activeJob.jobId, activeJob.batchId, activeJob.batchSize);
-        }
-      },
-      error: error => {
-        this.jobCreationSubscription = null;
-        this.errorLogging.logError(error, 'App.restoreActiveContinuationJob');
-        const message = this.formatRecoveredRestoreFailureMessage(
-          activeJob.kind,
-          this.formatHttpError(error, '')
-        );
-        this.failRecoveredStoryLabJob(activeJob.kind, activeJob.batchId, message);
-      },
-      complete: () => {
-        this.jobCreationSubscription = null;
-      }
-    });
-    this.jobCreationSubscription = jobCreationSubscription.closed ? null : jobCreationSubscription;
-  }
-
-  private ensureRecoveredBatch(activeJob: ActiveStoryLabJobState) {
-    if (this.activeBatchQueue().some(item => item.id === activeJob.batchId)) {
-      return;
-    }
-
-    this.setBatchQueue([
-      ...this.activeBatchQueue(),
-      {
-        id: activeJob.batchId,
-        label: activeJob.kind === 'genesis' ? 'Genesis' : 'Continuation',
-        batchSize: activeJob.batchSize,
-        status: 'in_progress',
-        chaptersGenerated: 0,
-        totalChapters: activeJob.batchSize,
-        submittedAt: activeJob.startedAt
-      }
-    ]);
-  }
-
-  private storeActiveStoryLabJob(activeJob: ActiveStoryLabJobState) {
-    const storage = this.getActiveJobStorage();
-    if (!storage) {
-      return;
-    }
-
-    try {
-      storage.setItem(this.activeJobStorageKey, JSON.stringify(activeJob));
-    } catch {
-      this.workspaceSaveStatus.set('Story job progress will last until this tab closes.');
-    }
-  }
-
-  private readActiveStoryLabJob(): ActiveStoryLabJobState | null {
-    const storage = this.getActiveJobStorage();
-    if (!storage) {
-      return null;
-    }
-
-    let rawJob: string | null = null;
-    try {
-      rawJob = storage.getItem(this.activeJobStorageKey);
-      if (!rawJob) {
-        return null;
-      }
-
-      const parsed = JSON.parse(rawJob) as unknown;
-      if (!parsed || typeof parsed !== 'object') {
-        this.clearActiveStoryLabJob();
-        return null;
-      }
-
-      const activeJob = parsed as Partial<ActiveStoryLabJobState>;
-      if (
-        typeof activeJob.jobId === 'string'
-        && (activeJob.kind === 'genesis' || activeJob.kind === 'continuation')
-        && typeof activeJob.batchId === 'string'
-        && this.isChapterBatchSize(activeJob.batchSize)
-        && typeof activeJob.statusPath === 'string'
-        && typeof activeJob.startedAt === 'string'
-        && (activeJob.kind === 'genesis' || typeof activeJob.storyId === 'string')
-      ) {
-        return {
-          jobId: activeJob.jobId,
-          kind: activeJob.kind,
-          batchId: activeJob.batchId,
-          batchSize: activeJob.batchSize,
-          statusPath: activeJob.statusPath,
-          startedAt: activeJob.startedAt,
-          storyId: activeJob.kind === 'continuation' ? activeJob.storyId : undefined
-        };
-      }
-    } catch {
-      this.clearActiveStoryLabJob();
-      return null;
-    }
-
-    this.clearActiveStoryLabJob();
-    return null;
-  }
-
-  private clearActiveStoryLabJob() {
-    const storage = this.getActiveJobStorage();
-    if (!storage) {
-      return;
-    }
-
-    try {
-      storage.removeItem(this.activeJobStorageKey);
-    } catch {
-      // Ignore storage cleanup failures; the job state is only a reload hint.
-    }
-  }
-
-  private getActiveJobStorage(): Storage | null {
-    try {
-      return globalThis.sessionStorage ?? null;
-    } catch {
-      return null;
-    }
-  }
-
-  private isChapterBatchSize(value: unknown): value is ChapterBatchSize {
-    return value === 1 || value === 2 || value === 3;
-  }
-
+  /**
+   * The sentence the reader watches while a job runs.
+   *
+   * The five step cases were a `switch` over string literals with
+   * `humanizeIdentifier` under them, and that fallback is the reason this is
+   * worth changing. It cannot fail visibly: it takes any identifier and makes it
+   * presentable, so a sixth step added on the API side would have arrived here,
+   * missed all five cases, and rendered as its own title-cased wire name — the
+   * reader shown "Extracting continuity." where a written sentence belonged,
+   * with nothing to report that one was missing. Both sides typed `currentStep`
+   * as `string`, so there was nothing for TypeScript to compare either.
+   *
+   * `STORY_LAB_JOB_STEP_LABELS` is total over `StoryLabJobStep`, so a sixth step
+   * added to the table is a compile error here instead. The fallback stays,
+   * because `currentStep` still arrives off the wire and a durable row written
+   * by an older deployment may name a step this build has retired — but it is
+   * now only for that, rather than for the app's own vocabulary.
+   */
   private formatJobStage(currentStep: string, status: StoryLabJobStatus): string {
     if (status === 'queued') {
-      return 'Story job queued.';
+      return STORY_LAB_JOB_STEP_LABELS.queued;
     }
 
     if (status === 'waiting_for_review') {
       return 'Story job is waiting for review.';
     }
 
-    switch (currentStep) {
-      case 'queued':
-        return 'Story job queued.';
-      case 'generating_story':
-        return 'Grok is writing your first chapter.';
-      case 'continuing_story':
-        return 'Grok is continuing the saga.';
-      case 'completed':
-        return 'Binding the pages.';
-      case 'failed':
-        return 'Generation failed.';
-      default:
-        return this.humanizeIdentifier(currentStep);
-    }
+    return isStoryLabJobStep(currentStep)
+      ? STORY_LAB_JOB_STEP_LABELS[currentStep]
+      : this.humanizeIdentifier(currentStep);
   }
 
   private createHiddenJobStatusPanel(): JobStatusPanelState {
@@ -2387,7 +2283,7 @@ ${chapters}
     };
   }
 
-  private showStartingJobStatus(kind: ActiveStoryLabJobState['kind']) {
+  private showStartingJobStatus(kind: StoryLabGenerationJobKind) {
     this.setJobStatusPanel({
       kind,
       tone: 'starting',
@@ -2397,22 +2293,15 @@ ${chapters}
     });
   }
 
-  private showRecoveringJobStatus(activeJob: ActiveStoryLabJobState) {
-    this.setJobStatusPanel({
-      kind: activeJob.kind,
-      tone: 'recovering',
-      progressPercent: this.generationProgress().percent || 8,
-      stage: this.generationProgress().stage,
-      jobId: this.formatShortJobId(activeJob.jobId),
-      statusPath: activeJob.statusPath,
-      startedAt: activeJob.startedAt
-    });
-  }
-
   private updateJobStatusFromJob(job: StoryLabJob<unknown>, durabilityWarning?: string) {
-    const kind: ActiveStoryLabJobState['kind'] = job.kind === 'continuation' ? 'continuation' : 'genesis';
+    // `job.kind` is the wire's four-member `StoryLabJobKind`; the panel speaks
+    // only the two this client creates. The narrowing is correct because the
+    // route refuses the deferred kinds outright, so no `export` or `audio` job
+    // exists for this client to be polling — but it is a narrowing, and it used
+    // to be hidden by a local `StoryLabJobKind` shadowing the contract's own.
+    const kind: StoryLabGenerationJobKind = job.kind === 'continuation' ? 'continuation' : 'genesis';
     const current = this.jobStatusPanel();
-    const tone = current.visible && current.tone === 'recovering' ? 'recovering' : 'running';
+    const tone = 'running';
     const stage = this.formatJobStage(job.currentStep, job.status);
     const progressPercent = this.normalizeJobProgressPercent(job.progressPercent);
 
@@ -2441,23 +2330,11 @@ ${chapters}
     });
   }
 
-  private formatJobStatusLabel(kind: ActiveStoryLabJobState['kind'], tone: JobStatusPanelState['tone']): string {
-    if (tone === 'recovering') {
-      return 'Recovered job';
-    }
-
+  private formatJobStatusLabel(kind: StoryLabGenerationJobKind, tone: JobStatusPanelState['tone']): string {
     return kind === 'genesis' ? 'Story generation' : 'Story continuation';
   }
 
-  private formatJobStatusTitle(kind: ActiveStoryLabJobState['kind'], tone: JobStatusPanelState['tone']): string {
-    if (tone === 'recovering') {
-      if (kind === 'genesis') {
-        return 'First chapter job recovered';
-      }
-
-      return 'Continuation job recovered';
-    }
-
+  private formatJobStatusTitle(kind: StoryLabGenerationJobKind, tone: JobStatusPanelState['tone']): string {
     if (tone === 'starting') {
       if (kind === 'genesis') {
         return 'First chapter job starting';
@@ -2473,15 +2350,7 @@ ${chapters}
     return 'Continuation job running';
   }
 
-  private formatJobStatusDescription(kind: ActiveStoryLabJobState['kind'], tone: JobStatusPanelState['tone']): string {
-    if (tone === 'recovering') {
-      if (kind === 'genesis') {
-        return 'Resumed from this browser. Story Lab is reconnecting to the first chapter job.';
-      }
-
-      return 'Resumed from this browser. Story Lab found the saved story and reconnected to the continuation job.';
-    }
-
+  private formatJobStatusDescription(kind: StoryLabGenerationJobKind, tone: JobStatusPanelState['tone']): string {
     if (kind === 'genesis') {
       if (tone === 'starting') {
         return 'Story Lab is creating a background job for the opening batch.';
@@ -2727,59 +2596,10 @@ ${chapters}
     }
 
     const chapters = session.chapterHistory
-      .map(chapter => `Chapter ${chapter.chapterNumber}: ${chapter.title}\n\n${this.stripHtml(chapter.htmlContent)}`)
+      .map(chapter => `Chapter ${chapter.chapterNumber}: ${chapter.title}\n\n${stripStoryHtmlToText(chapter.htmlContent)}`)
       .join('\n\n---\n\n');
 
     return `${session.story.title}\n\n${session.story.synopsis}\n\n${chapters}`;
-  }
-
-  /**
-   * Render a chapter's markup as the text a reader sees, for the clipboard.
-   *
-   * Deleting the tags and collapsing every whitespace run is not that. A
-   * chapter is a sequence of `<p>` elements, so the collapse turned the whole
-   * story into a single unbroken line — the reader who copied it to paste
-   * somewhere else got a wall of text with no paragraphs anywhere in it — and
-   * nothing decoded the character references the generator writes, so `&amp;`
-   * and `&quot;` were pasted as that literal entity text rather than as the
-   * punctuation they stand for.
-   *
-   * `splitStoryIntoTextBlocks` is the rendering the cliffhanger, image,
-   * continuity, and story-quality scanners already read: a block-level tag puts
-   * a paragraph break where the markup put one, and the basic entities are
-   * decoded. Joining the blocks with a blank line gives the plain-text shape a
-   * story has everywhere else it leaves this app.
-   */
-  private stripHtml(html: string): string {
-    return splitStoryIntoTextBlocks(html).join('\n\n');
-  }
-
-  private escapeHtml(value: string): string {
-    let escaped = '';
-
-    for (const char of value) {
-      switch (char) {
-        case '&':
-          escaped += '&amp;';
-          break;
-        case '<':
-          escaped += '&lt;';
-          break;
-        case '>':
-          escaped += '&gt;';
-          break;
-        case '"':
-          escaped += '&quot;';
-          break;
-        case '\'':
-          escaped += '&#39;';
-          break;
-        default:
-          escaped += char;
-      }
-    }
-
-    return escaped;
   }
 
   private normalizeInlineWhitespace(value: string): string {
@@ -3080,6 +2900,11 @@ ${chapters}
 
   trackContinuationDirection(index: number, direction: ContinuationDirection) {
     return direction.label;
+  }
+
+  /** One `trackBy` for the three `<select>` vocabularies, which share a shape. */
+  trackChoiceOption(index: number, option: ChoiceOption<string | number>) {
+    return option.id;
   }
 
   getFieldError(field: BlueprintValidationField): string | undefined {

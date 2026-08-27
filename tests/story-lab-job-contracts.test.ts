@@ -9,7 +9,18 @@ import {
   StoryLabJob,
   StoryLabJobCreationRequest
 } from '../api/_lib/story-lab/jobs/jobContracts';
-import type { StoryGenerationSeam } from '../api/_lib/story-lab/contracts';
+import type { StoryGenerationSeam, StoryLabJobKind, StoryLabJobStatus } from '../api/_lib/story-lab/contracts';
+import {
+  STORY_LAB_DEFERRED_JOB_KINDS,
+  STORY_LAB_GENERATION_JOB_KINDS,
+  STORY_LAB_JOB_STEPS,
+  STORY_LAB_JOB_STEP_LABELS,
+  STORY_LAB_TERMINAL_JOB_STATUSES,
+  isDeferredStoryLabJobKind,
+  isStoryLabJobStep,
+  isTerminalStoryLabJobStatus
+} from '../api/_lib/story-lab/contracts';
+import { readFileSync } from 'node:fs';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -103,5 +114,177 @@ assert(job.kind === 'genesis', 'job contract should carry the job kind');
 assert(job.status === 'queued', 'job contract should carry the job status');
 assert(NON_DURABLE_STORY_LAB_JOB_DURABILITY.mode === 'non_durable_memory', 'job scaffold should be explicitly non-durable');
 assert(!NON_DURABLE_STORY_LAB_JOB_DURABILITY.durable, 'job scaffold should not claim durable storage');
+
+// ==================== terminal statuses ====================
+// The set of statuses a job does not leave was decided in three places at once
+// — the event stream's close, the workbench's "is this over", and the SQL that
+// stamps `completed_at` — each with its own copy of the same three names beside
+// a union of six. Each assertion below is one of those three readers proving it
+// reads the list rather than a copy.
+
+assert(
+  isTerminalStoryLabJobStatus('completed')
+    && isTerminalStoryLabJobStatus('failed')
+    && isTerminalStoryLabJobStatus('cancelled'),
+  'a finished job should read as finished however it finished'
+);
+assert(
+  !isTerminalStoryLabJobStatus('queued')
+    && !isTerminalStoryLabJobStatus('running')
+    && !isTerminalStoryLabJobStatus('waiting_for_review'),
+  'a job still in flight should not read as finished'
+);
+
+// `waiting_for_review` is the status that makes this worth asserting: it is the
+// one of the six that arrived after the other five, and the one a fourth
+// terminal status would arrive the same way as.
+const everyStatus: StoryLabJobStatus[] = [
+  'queued',
+  'running',
+  'waiting_for_review',
+  'completed',
+  'failed',
+  'cancelled'
+];
+assert(
+  everyStatus.filter(isTerminalStoryLabJobStatus).length === STORY_LAB_TERMINAL_JOB_STATUSES.length,
+  'the terminal list should name terminal statuses and nothing else'
+);
+
+// The SQL is the third reader, and the only one a type cannot check: it is a
+// string. So it is asserted here that the statement quotes the list rather than
+// restating it, which is the whole reason `TERMINAL_JOB_STATUS_SQL_LIST` exists.
+const postgresJobStoreSource = readFileSync(
+  new URL('../api/_lib/story-lab/jobs/postgresStoryLabJobStore.ts', import.meta.url),
+  'utf8'
+);
+assert(
+  postgresJobStoreSource.includes('${TERMINAL_JOB_STATUS_SQL_LIST}'),
+  'the update statement should take its terminal statuses from the shared list'
+);
+for (const status of STORY_LAB_TERMINAL_JOB_STATUSES) {
+  assert(
+    !postgresJobStoreSource.includes(`in ('${status}'`),
+    `the update statement should not restate ${status} by hand`
+  );
+}
+
+// ==================== the kinds this scaffold runs, and the ones it defers ====================
+// `StoryLabJobKind` has four members and these routes serve two: `POST
+// /api/story-lab/jobs` answers `export` and `audio` with `UNSUPPORTED_JOB_KIND`
+// and reserves them for the durable runner. That split is the vocabulary the
+// code actually works in, and it had no name — so the pair was written out by
+// hand in three places, the worst of them a local `type StoryLabJobKind =
+// 'genesis' | 'continuation'` in `AppComponent` shadowing the contract's own
+// four-member union for that whole file. A narrower union is assignable to a
+// wider one, so nothing reported it.
+
+const everyJobKind: StoryLabJobKind[] = ['genesis', 'continuation', 'export', 'audio'];
+
+assert(
+  everyJobKind.filter(isDeferredStoryLabJobKind).length === STORY_LAB_DEFERRED_JOB_KINDS.length,
+  'the deferred list should name deferred kinds and nothing else'
+);
+assert(
+  everyJobKind.length === STORY_LAB_GENERATION_JOB_KINDS.length + STORY_LAB_DEFERRED_JOB_KINDS.length,
+  'every job kind should be either one these routes run or one they defer — a fifth needs a home'
+);
+for (const kind of STORY_LAB_GENERATION_JOB_KINDS) {
+  assert(
+    !isDeferredStoryLabJobKind(kind),
+    `${kind} is a kind these routes run and should not read as deferred`
+  );
+}
+
+// The Angular component is the reader a type could not check while it was
+// declaring the name it imports. Read as text for the reason
+// `story-lab-picker-vocabulary` gives: it is a component, and the root test
+// runner has no `@angular/core`.
+const appComponentSource = readFileSync(
+  new URL('../story-generator/src/app/app.ts', import.meta.url),
+  'utf8'
+);
+assert(
+  !/type\s+StoryLabJobKind\s*=/.test(appComponentSource),
+  'the component should read the contract\'s job-kind vocabulary rather than declare one over it'
+);
+
+// And the route's refusal, which named the deferred kinds in prose beside a
+// branch that matched them as two literals.
+const jobRouteHandlersSource = readFileSync(
+  new URL('../api/_lib/story-lab/jobs/jobRouteHandlers.ts', import.meta.url),
+  'utf8'
+);
+for (const kind of STORY_LAB_DEFERRED_JOB_KINDS) {
+  assert(
+    !jobRouteHandlersSource.includes(`request.kind === '${kind}'`),
+    `the route should refuse ${kind} by reading the deferred list, not by matching it`
+  );
+}
+
+// `currentStep` was the job's last open vocabulary: `string` on the job, on the
+// store's create input, and on its update input, for a set with exactly five
+// members written out by hand at every place the route moves a job along.
+//
+// The reader is where that cost. `formatJobStage` switched on the five literals
+// with `humanizeIdentifier` beneath, and that fallback cannot fail visibly — it
+// makes any identifier presentable, so a sixth step would have reached the
+// reader as its own title-cased wire name with a written sentence missing and
+// nothing to say so.
+assert(
+  STORY_LAB_JOB_STEPS.length === Object.keys(STORY_LAB_JOB_STEP_LABELS).length,
+  'every step in the table should have a label and the labels should name no step the table does not'
+);
+
+const stepLabels = new Set<string>();
+for (const step of STORY_LAB_JOB_STEPS) {
+  const label = STORY_LAB_JOB_STEP_LABELS[step];
+  assert(Boolean(label?.trim()), `${step} should have a label written for it`);
+  assert(!stepLabels.has(label), `${step} shares its label with another step; each names its own moment`);
+  stepLabels.add(label);
+  assert(isStoryLabJobStep(step), `${step} is in the table and should read as a step`);
+}
+
+for (const rejected of ['extracting_continuity', 'QUEUED', '', 7, null, undefined]) {
+  assert(
+    !isStoryLabJobStep(rejected),
+    `${String(rejected)} is not a step this app writes and should not read as one`
+  );
+}
+
+// The writers, which is what makes the set closed: every step the route stamps
+// has to be one the reader has a sentence for. `UpdateStoryLabJobInput.currentStep`
+// is typed `StoryLabJobStep`, so this is a compile-time guarantee — asserted
+// here as text because the literals are what a future edit would add to.
+for (const step of jobRouteHandlersSource.matchAll(/currentStep:\s*'([a-z_]+)'/g)) {
+  assert(
+    isStoryLabJobStep(step[1]),
+    `the route writes the step '${step[1]}', which the reader has no sentence for`
+  );
+}
+
+// And the reader, which should no longer name the five steps itself.
+assert(
+  appComponentSource.includes('STORY_LAB_JOB_STEP_LABELS'),
+  'the component should read the step labels from the table'
+);
+assert(
+  !appComponentSource.includes("case 'generating_story'"),
+  'the component lists the job steps again; there should be one table'
+);
+
+// `StoryLabJobCreationRequest`'s deferred variant was the fifth hand-spelling of
+// the pair `STORY_LAB_DEFERRED_JOB_KINDS` names, and the last one left.
+const contractsSource = readFileSync(
+  new URL('../story-generator/src/app/contracts.ts', import.meta.url),
+  'utf8'
+);
+// The declaration, not a mention: the docblock above the table quotes the old
+// spelling to say what it replaced, which is the same distinction the creature
+// and tone assertions in `story-lab-blueprint-vocabulary` draw.
+assert(
+  !/^\s*kind:\s*'export'\s*\|\s*'audio'/m.test(contractsSource),
+  'the creation request should take the deferred kinds from the table rather than respell them'
+);
 
 console.log('Story Lab job contract tests passed');

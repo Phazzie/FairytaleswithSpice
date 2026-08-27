@@ -7,6 +7,11 @@ import {
   createPostgresStoryProjectStore,
   PostgresQueryExecutor
 } from '../api/_lib/story-lab/storage/postgresStoryProjectStore';
+import {
+  sortStoryProjectListItems,
+  STORY_LAB_LIBRARY_MAX_ITEMS,
+  type StoryProjectListItem
+} from '../api/_lib/story-lab/storage/storyProjectStore';
 import type { SavedStoryProject } from '../story-generator/src/app/contracts';
 import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 
@@ -42,7 +47,18 @@ class FakePostgresExecutor implements PostgresQueryExecutor {
     assert(query, 'expected a captured Postgres query');
     return query;
   }
+
+  // `listProjects` issues two statements — the bounded page and the owner's
+  // count — so "the last query" no longer names the one under test.
+  queryContaining(fragment: string): CapturedQuery {
+    const query = this.queries.find(captured => captured.sql.includes(fragment));
+    assert(query, `expected a captured Postgres query containing ${JSON.stringify(fragment)}`);
+    return query;
+  }
 }
+
+/** The listing every test that is not about paging asks for. */
+const wholeLibraryQuery = { sort: 'updated_desc', limit: STORY_LAB_LIBRARY_MAX_ITEMS } as const;
 
 const owner: AuthUser = {
   userId: 'user-owner',
@@ -62,6 +78,7 @@ async function main() {
   await testPostgresStoreExecutorPath();
   await testPostgresStoreOwnerConflict();
   await testPostgresStoreMalformedRowsFailClosed();
+  testLibrarySortOrdersTheList();
 
   console.log('Story Lab storage port tests passed');
 }
@@ -99,15 +116,17 @@ async function testNonDurableMemoryStore() {
   assert(!otherSave.success, 'cross-owner overwrite should fail');
   assert(otherSave.error.code === 'STORY_LAB_PROJECT_FORBIDDEN', 'cross-owner overwrite should be forbidden');
 
-  const ownerList = await store.listProjects(owner);
+  const ownerList = await store.listProjects(owner, wholeLibraryQuery);
   assert(ownerList.success, 'owner list should succeed');
-  assert(ownerList.data.length === 1, 'owner should see exactly one project');
-  assert(ownerList.data[0]?.chapterCount === 1, 'list item should expose chapter count');
-  assert(ownerList.data[0]?.acceptedMemoryCardCount === 1, 'list item should expose accepted memory card count without full card text');
+  assert(ownerList.data.items.length === 1, 'owner should see exactly one project');
+  assert(ownerList.data.totalCount === 1, 'owner count should be the owner\'s own rows');
+  assert(ownerList.data.items[0]?.chapterCount === 1, 'list item should expose chapter count');
+  assert(ownerList.data.items[0]?.acceptedMemoryCardCount === 1, 'list item should expose accepted memory card count without full card text');
 
-  const otherList = await store.listProjects(otherUser);
+  const otherList = await store.listProjects(otherUser, wholeLibraryQuery);
   assert(otherList.success, 'other user list should succeed');
-  assert(otherList.data.length === 0, 'other user should not see owner projects');
+  assert(otherList.data.items.length === 0, 'other user should not see owner projects');
+  assert(otherList.data.totalCount === 0, 'another owner\'s count must not include these projects');
 
   const otherDelete = await store.deleteProject(otherUser, 'project-1');
   assert(!otherDelete.success, 'cross-owner delete should fail');
@@ -160,11 +179,11 @@ async function testMissingProjectMetadataFallbacks() {
   assert(saveResult.data.project.title === 'Untitled Story Lab Project', 'missing project title should use safe fallback');
   assert(saveResult.data.project.synopsis === '', 'missing synopsis should use safe fallback');
 
-  const listResult = await store.listProjects(owner);
+  const listResult = await store.listProjects(owner, wholeLibraryQuery);
   assert(listResult.success, 'store should list project snapshots with missing derived metadata');
-  assert(listResult.data[0]?.title === 'Untitled Story Lab Project', 'list should use normalized title fallback');
-  assert(listResult.data[0]?.chapterCount === 0, 'missing chapter array should list as zero chapters');
-  assert(listResult.data[0]?.acceptedMemoryCardCount === 0, 'missing accepted memory array should list as zero memory cards');
+  assert(listResult.data.items[0]?.title === 'Untitled Story Lab Project', 'list should use normalized title fallback');
+  assert(listResult.data.items[0]?.chapterCount === 0, 'missing chapter array should list as zero chapters');
+  assert(listResult.data.items[0]?.acceptedMemoryCardCount === 0, 'missing accepted memory array should list as zero memory cards');
 }
 
 async function testPostgresStoreMalformedRowsFailClosed() {
@@ -192,7 +211,8 @@ async function testPostgresStoreMalformedRowsFailClosed() {
       project_json: null
     }
   ]);
-  const listResult = await store.listProjects(owner);
+  executor.enqueueRows([{ total: 1 }]);
+  const listResult = await store.listProjects(owner, wholeLibraryQuery);
   assert(!listResult.success, 'empty Postgres project JSON should fail closed on list');
   assert(listResult.error.code === 'STORY_LAB_STORAGE_ERROR', 'malformed list should return storage error');
 }
@@ -230,13 +250,52 @@ async function testPostgresStoreExecutorPath() {
   assert(loadQuery.params[1] === owner.userId, 'load params should scope by owner id');
 
   executor.enqueueRows([createProjectRow(project)]);
-  const listResult = await store.listProjects(owner);
+  executor.enqueueRows([{ total: 7 }]);
+  const listResult = await store.listProjects(owner, wholeLibraryQuery);
   assert(listResult.success, 'configured Postgres list should succeed');
-  assert(listResult.data.length === 1, 'configured Postgres list should map rows');
-  assert(listResult.data[0]?.projectId === project.id, 'list item should include project id');
-  assert(listResult.data[0]?.acceptedMemoryCardCount === 1, 'Postgres list item should include accepted memory card count');
-  const listQuery = executor.latestQuery();
+  assert(listResult.data.items.length === 1, 'configured Postgres list should map rows');
+  assert(listResult.data.items[0]?.projectId === project.id, 'list item should include project id');
+  assert(listResult.data.items[0]?.acceptedMemoryCardCount === 1, 'Postgres list item should include accepted memory card count');
+  // The count is the owner's, not the page's: a page that reports only its own
+  // length is indistinguishable from a complete library.
+  assert(
+    listResult.data.totalCount === 7,
+    `list should report the owner's untruncated count (got ${listResult.data.totalCount})`
+  );
+
+  const listQuery = executor.queryContaining('limit $2');
   assert(listQuery.sql.includes('where owner_user_id = $1'), 'list SQL should scope by owner id');
+  // The cap has to be applied under the ordering the reader asked for, and both
+  // have to be in the query: capping above it means reading and parsing every
+  // row of the library — `project_json` and all — to throw most of it away,
+  // and ordering above a query-level cap means `updated_at desc` chooses which
+  // rows survive whatever the reader picked.
+  assert(
+    listQuery.params[1] === STORY_LAB_LIBRARY_MAX_ITEMS,
+    `list SQL should be bounded by the requested limit (got ${JSON.stringify(listQuery.params[1])})`
+  );
+  const countQuery = executor.queryContaining('count(*)');
+  assert(
+    countQuery.params[0] === owner.userId && !/\blimit\b/i.test(countQuery.sql),
+    'the count query is owner-scoped and unbounded, or it is not a count of the library'
+  );
+
+  // The ordering reaches the database as a clause from a closed table rather
+  // than as the caller's string: `librarySort` comes off a stored profile, and
+  // an `order by` is not a place to discover that a validator was skipped.
+  for (const sort of ['updated_desc', 'created_desc', 'title_asc'] as const) {
+    executor.enqueueRows([createProjectRow(project)]);
+    executor.enqueueRows([{ total: 1 }]);
+    const sortedResult = await store.listProjects(owner, { sort, limit: STORY_LAB_LIBRARY_MAX_ITEMS });
+    assert(sortedResult.success, `configured Postgres list should succeed for ${sort}`);
+    const sortedQuery = executor.queryContaining('limit $2');
+    const expectedColumn = { updated_desc: 'updated_at desc', created_desc: 'created_at desc', title_asc: 'lower(title) asc' }[sort];
+    assert(
+      executor.queries.some(captured => captured.sql.includes(expectedColumn) && captured.sql.includes('limit $2')),
+      `${sort} should order the bounded page by ${expectedColumn}`
+    );
+    assert(sortedQuery.sql.includes('order by'), 'the bounded page is ordered in the query');
+  }
 
   executor.enqueueRows([{ id: project.id }]);
   const deleteResult = await store.deleteProject(owner, project.id);
@@ -311,6 +370,75 @@ function createProjectWithMissingMetadata(): SavedStoryProject {
     chapters: undefined,
     acceptedMemoryCards: undefined
   } as unknown as SavedStoryProject;
+}
+
+/**
+ * `librarySort` is a three-value closed set the profile stores have persisted
+ * and the account route has echoed back since it was introduced, and nothing
+ * read it: both project stores order their list newest-updated-first, so two of
+ * its three values were settings with no effect.
+ */
+function testLibrarySortOrdersTheList(): void {
+  const item = (
+    projectId: string,
+    title: string,
+    createdAt: string,
+    updatedAt: string
+  ): StoryProjectListItem => ({
+    projectId,
+    storyId: `story-${projectId}`,
+    title,
+    synopsis: '',
+    chapterCount: 1,
+    acceptedMemoryCardCount: 0,
+    createdAt,
+    updatedAt
+  });
+
+  const items = [
+    item('a', 'Zephyr Court', '2026-01-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z'),
+    item('b', 'Ashen Vow', '2026-02-01T00:00:00.000Z', '2026-01-15T00:00:00.000Z'),
+    item('c', 'Moonlit Debt', '2026-01-15T00:00:00.000Z', '2026-02-01T00:00:00.000Z')
+  ];
+
+  const ids = (sort: Parameters<typeof sortStoryProjectListItems>[1]) =>
+    sortStoryProjectListItems(items, sort).map(entry => entry.projectId).join(',');
+
+  assert(ids('updated_desc') === 'a,c,b', `updated_desc should order by last update (got ${ids('updated_desc')})`);
+  assert(ids('created_desc') === 'b,c,a', `created_desc should order by creation (got ${ids('created_desc')})`);
+  assert(ids('title_asc') === 'b,c,a', `title_asc should order by title (got ${ids('title_asc')})`);
+
+  assert(
+    items.map(entry => entry.projectId).join(',') === 'a,b,c',
+    'sorting should not reorder the caller\'s array in place'
+  );
+
+  // `Date.parse` answers `NaN` for a timestamp it cannot read, and a comparator
+  // that answers `NaN` is read as *equal* — so one unreadable entry would
+  // otherwise compare equal to every other and pin the whole list in the order
+  // it arrived in. This is the failure `byNewestUpdateFirst` was fixed for on
+  // the local library.
+  const withCorruptTimestamp = [
+    item('x', 'Corrupt', 'not-a-date', 'not-a-date'),
+    ...items
+  ];
+  const corruptOrder = sortStoryProjectListItems(withCorruptTimestamp, 'updated_desc')
+    .map(entry => entry.projectId)
+    .join(',');
+  assert(
+    corruptOrder === 'a,c,b,x',
+    `an unreadable timestamp should sort last, not stop the sort (got ${corruptOrder})`
+  );
+
+  const twoCorrupt = sortStoryProjectListItems([
+    item('y', 'Second corrupt', '', ''),
+    item('x', 'Corrupt', 'not-a-date', 'not-a-date'),
+    ...items
+  ], 'updated_desc').map(entry => entry.projectId).join(',');
+  assert(
+    twoCorrupt === 'a,c,b,x,y',
+    `two unreadable timestamps should compare equal to each other, not to NaN (got ${twoCorrupt})`
+  );
 }
 
 main().catch(error => {

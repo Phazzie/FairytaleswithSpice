@@ -1,8 +1,14 @@
 #!/usr/bin/env tsx
 
-import { TropeSubversionService } from '../api/_lib/services/tropeSubversionService';
+import {
+  TropeSubversionService,
+  type TropeSelection,
+  type TropeSubversionOptions
+} from '../api/_lib/services/tropeSubversionService';
 import { TROPE_DATABASE } from '../api/_lib/data/tropeDatabase';
 import { CREATURE_ARCHETYPES } from '../api/_lib/story-lab/contracts';
+import { StoryService } from '../api/_lib/services/storyService';
+import type { StoryGenerationSeam } from '../api/_lib/types/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -124,5 +130,61 @@ for (const creature of Object.keys(TROPE_DATABASE) as Array<keyof typeof TROPE_D
     );
   }
 }
+
+// The count the service draws when the caller names none. `StoryService` named
+// one on every call — its own `randomInt(2, 4)`, the same range written out
+// again — so the service's `minTropes`/`maxTropes` had no reachable reader and
+// this default was never exercised by the app. Drawn repeatedly because the
+// count is random: one call proves the default returns *a* count, and only a
+// run of them proves it stays inside the range the service declares.
+for (const creature of Object.keys(TROPE_DATABASE) as Array<keyof typeof TROPE_DATABASE>) {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const selection = service.selectTropesForSubversion({ creature });
+    const count = selection.selectedTropes.length;
+
+    assert(
+      count >= 2 && count <= 3,
+      `${creature}: an unspecified trope count should stay inside the service's own range (got ${count})`
+    );
+    assert(
+      new Set(selection.selectedTropeIds).size === count,
+      `${creature}: a default-count selection should still be distinct`
+    );
+    assert(
+      selection.subversionInstructions.length === count,
+      `${creature}: every selected trope should contribute the instruction the prompt carries`
+    );
+  }
+}
+
+// And the app asks for that default rather than drawing its own. `StoryService`
+// is the service's only caller; it passed `tropeCount: randomInt(2, 4)` on every
+// call, which is why the range above had no reader. Asserting on the options the
+// seam receives is what catches a caller reintroducing its own count — the
+// counts agree today, so nothing about the selection itself could.
+const storyService = new StoryService() as unknown as {
+  tropeService: { selectTropesForSubversion(options: TropeSubversionOptions): TropeSelection };
+  selectTropeSubversions(input: StoryGenerationSeam['input']): TropeSelection | undefined;
+};
+const observedOptions: TropeSubversionOptions[] = [];
+const realSelect = storyService.tropeService.selectTropesForSubversion.bind(storyService.tropeService);
+storyService.tropeService.selectTropesForSubversion = options => {
+  observedOptions.push(options);
+  return realSelect(options);
+};
+
+const selected = storyService.selectTropeSubversions({
+  creature: 'vampire',
+  themes: ['forbidden_love'],
+  spicyLevel: 3,
+  wordCount: 900
+} as unknown as StoryGenerationSeam['input']);
+
+assert(selected !== undefined, 'a supported creature should still get a trope selection');
+assert(observedOptions.length === 1, 'the service should be asked exactly once');
+assert(
+  observedOptions[0].tropeCount === undefined,
+  'the app should let the service draw the count from its own range, not name one'
+);
 
 console.log('Trope subversion service tests passed');

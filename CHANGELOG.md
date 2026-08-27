@@ -7,67 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 🐛 Three Quick Wins — a theme seed counted but never measured, a stream that quotes its own crash, a title only four exports agree on (August 26, 2026)
-
-#### `themes` was the one blueprint field checked for shape and not for size
-
-- `STORY_BLUEPRINT_LIMITS` exists because every free-text field on a blueprint is
-  interpolated straight into a paid Grok prompt, and its own comment names the
-  fields it bounds: the logline, the world details, the narrative directives, the
-  Heat Contract's no-go list. `themes` was not among them. The parser checked that
-  the array held no more than `maxThemes` entries and that each carried `id`,
-  `label`, and `description` strings — and then accepted a megabyte under any of
-  the three.
-- Where those strings go is worse than the other four. `buildContinuityPrompt`
-  interpolates `themes.map(theme => theme.label)` with no cap, beside
-  `existingState.threads` — whose `label` and `description` `buildInitialThreads`
-  seeds from these same strings. An oversized seed is therefore not spent once on
-  the genesis call: it is written into the story state, persisted with it, and
-  re-sent on every continuation of that story for as long as the serial runs. The
-  chapter prose beside it in that prompt is capped at 2,200 code points precisely
-  because prompt size is billed and bounded.
-- `maxThemeIdLength` (80), `maxThemeLabelLength` (80), and
-  `maxThemeDescriptionLength` (280) are now on `STORY_BLUEPRINT_LIMITS`, and
-  `parseThemes` refuses a seed past any of them, naming the field and its limit.
-  The numbers are the ones the repository had already chosen: 80 and 280 are
-  `StoryService`'s own `STORY_LAB_THEME_LABEL_MAX_LENGTH` and
-  `STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH`, which it silently truncates seeds to
-  before building a prompt, and 80 is what `STORY_EVALUATION_LIMITS` already calls
-  "one theme id or creature name, not a paragraph wearing the field's name".
-  Refusing at the route what the prompt builder would quietly cut is the
-  difference between a caller being told their seed is too long and a caller being
-  billed for a story generated from a seed they cannot see the end of.
-- Enforced in the parser, so both routes that take a blueprint get it: the POST
-  body at `/api/story-lab/stories` and the query string the genesis event stream
-  reads.
-
-#### The genesis stream sent its own exception to the browser and logged nothing
-
-- `/api/story-lab/stream/genesis` answered a thrown generation with
-  `error.message` verbatim inside its SSE `error` frame. Nothing between the
-  engine and that frame narrows the text, so a provider client's
-  `connect ECONNREFUSED 10.x.x.x:5432`, an `axios` error naming the upstream URL,
-  or a driver quoting the failing statement went straight out to the browser —
-  where `StoryService` turns it into `observer.error(new Error(chunk.error.message))`
-  and the Angular app puts it in front of the reader. `redactSensitiveLogData`
-  blanks this class of text on the way into the *log*; nothing was blanking it on
-  the way to the *client*.
-- And the route logged nothing at all for that branch, so the operator was the one
-  party who never saw it: a generation that threw produced one frame in a browser
-  nobody keeps and no line anywhere.
-- Its own POST twin, `/api/story-lab/stories` — the same blueprint through the
-  same engine — has had both right all along, answering a fixed
-  `'Story Lab request failed unexpectedly.'` and handing the real error to
-  `logError`. The stream now does the same.
-- The branch was unreachable from a test while the engine was imported and called
-  directly: a blueprint that parses is one the mock engine generates a story for,
-  so no input could make the real call reject. The route now exports
-  `createStoryLabGenesisStreamHandler(generateGenesis = generateStoryLabGenesis)`,
-  the factory shape `createStoryLabGenesisHandler` and
-  `createStoryLabContinuationHandler` already use, with the default export
-  unchanged for both deployments.
-
-#### The `.pdf` export was the only one that showed a title's markup to the reader
+### 🐛 The `.pdf` export was the only one that showed a title's markup to the reader (August 27, 2026)
 
 - `generatePDFContent` receives the story body already through
   `stripStoryHtmlForExport` and put the raw `title` field above it: one page whose
@@ -87,13 +27,397 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Validation
 
 - `npm test` (full suite) passes.
-- `npx tsc -p story-generator/tsconfig.json --noEmit` clean — that graph type-checks
-  `shared/` and, through the Node server's route table, the `api/` tree.
-- `scripts/recovery/check-vercel-function-count.sh`: 9/12, unchanged (no route files
-  added or retired).
-- Semantic counterfactuals run and reverted, one per fix: weakening the theme-seed
-  comparison, restoring `error.message` on the stream's error frame, and restoring
-  the raw `input.title` in the PDF each made the matching new assertion fail.
+- `npx tsc -p story-generator/tsconfig.json --noEmit` clean.
+- Semantic counterfactual run and reverted: restoring the raw `input.title` in the
+  PDF made the new assertion fail.
+
+### ***WORST TO BEST*** Story Lab Auth & Profile Storage failure logging (`clerkAuthPort.ts`, `postgresStoryLabProfileStore.ts`) — the last two `console.warn` call sites in the backend, on the two failure paths that decide whether a signed-in user's session and profile data are trustworthy (August 27, 2026)
+
+- Every sibling paid-surface service (`imageService.ts`, `exportService.ts`, `security.ts`'s
+  `authenticateRequest`, `api/story-lab/evaluate.ts`) had already been migrated off bare
+  `console.warn`/`console.error` onto the structured `logWarn`/`logError` in
+  `api/_lib/utils/logger.ts`. `clerkAuthPort.ts`'s session-verification failure and
+  `postgresStoryLabProfileStore.ts`'s save/load failures were the two call sites left behind —
+  and they guard the paths that matter most for account integrity: whether a signed-in user's
+  session is real, and whether their profile data actually got saved or loaded. A bare
+  `console.warn` here carried no request/user correlation, skipped `redactSensitiveLogData`, and
+  never reached the shared `logBuffer` the Error Display panel reads via `getRecentLogs()` — an
+  operator watching that panel during a production auth or profile incident would have seen
+  nothing.
+- `clerkAuthPort.ts`'s `requireUser` now logs a verification failure through `logWarn` with the
+  request's own correlation id (`readRequestCorrelationId(req)`, the same helper every route
+  already uses) and an `endpoint` tag, instead of a structureless `console.warn`.
+- `postgresStoryLabProfileStore.ts`'s `saveProfile`/`loadProfile` now log a storage failure
+  through `logWarn` with the acting user's id and an `endpoint` tag naming the failing operation
+  (`postgresStoryLabProfileStore.save`/`.load`), instead of `console.warn`.
+- No behavior change to any success path, no contract changes.
+- Added regression coverage in `tests/story-lab-clerk-auth.test.ts` and
+  `tests/story-lab-profile-store.test.ts` asserting the failures land in the structured log
+  buffer with the expected correlation context, and updated the existing malformed-profile test
+  (previously spying on raw `console.warn`) to read `logger.getRecentLogs()` instead, since a
+  single `logWarn` call now produces more than one `console.warn` line.
+
+### ***WORST TO BEST*** Story Lab's mock generation engine (`mockData.ts`) — the actual runtime path for every keyless deployment, local dev session, and CI run, discarding nearly all of its own input (August 27, 2026)
+
+- `mockData.ts` is what every local dev session, CI run, and any deployment without
+  `XAI_API_KEY` actually generates from — `shouldUseMockStoryLab()` returns true whenever the
+  runtime isn't production and no key is configured. `buildGenesisResponse` used to read only
+  `input.logline` and `input.chapterBatchSize` off the blueprint; `creature`, `themes`,
+  `spicyLevel`, `tone`, `protagonistName`, `antagonistName`, and `worldDetails` were all accepted
+  and silently discarded. Every mock story was "Selene of the Velvet Court" against "Marcellus
+  Nightbloom" in a vampire-coded court, regardless of whether the reader picked werewolf, siren,
+  or dragon — so testing "does the creature picker do anything" locally had no signal either way.
+- Added a `CREATURE_FLAVORS` table (one entry per `CreatureArchetype`, the same pattern
+  `imageService.ts`'s `getCreatureContext` already reads) so the protagonist, love interest,
+  rival, court setting, thread, and both lore artifacts all vary by the creature actually
+  requested. The vampire entry keeps its original names byte-for-byte, since
+  `tests/story-lab-state.test.ts` already asserts on `'Crimson Signet Ring'`/`'Broken Oath
+  Scroll'` for a vampire fixture.
+- `protagonistName`/`antagonistName` now override the flavor's default cast names when supplied;
+  `tone`/`spicyLevel` now flow into the generated `StorySummary` instead of a hardcoded
+  `dark_romance`/`3`; a supplied `worldDetails` sentence is now appended to the opening chapter
+  instead of being dropped. A `NARRATIVE_TONE_MOOD`/`NARRATIVE_TONE_CHAPTER_TITLE` table gives
+  chapter text and titles their own tone-driven variation (`dark_romance` keeps the original
+  "Midnight Reverie" title).
+- Removed the two module-level `let` counters (`storyRevisionCounter`, `chapterIdCounter`) that
+  incremented forever across a warm process's lifetime with no reset — unlike `stateStore.ts`'s
+  `resetTransientStorySnapshots()`, built for exactly this kind of isolation. A fresh story's
+  `state.revision` is now always `1`; chapter ids are now `chapter-${randomUUID()}`. Two stories
+  generated in the same process can no longer get arbitrary, order-dependent starting revisions.
+- A continuation's input carries the story's ongoing state and summary rather than the original
+  blueprint, so it has no `creature` to look a flavor up by; its chapter text now reuses the
+  `narrativeVoice` and `tone` the genesis already established instead of always emitting the
+  same hardcoded phrasing, while character/artifact names introduced mid-continuation (possible
+  when a genesis with `chapterBatchSize: 1` makes chapter 2 land inside a continuation call) keep
+  falling back to the vampire cast, exactly as this module always named them — no contract change
+  was in scope for this pass.
+- Added `tests/story-lab-mock-data.test.ts`: this module's first direct unit coverage. Creature-
+  driven character/artifact/voice variation, name overrides, tone/spicyLevel flowing into the
+  summary instead of being hardcoded, `worldDetails` reaching the opening chapter, revision
+  determinism across repeated genesis calls in one process, chapter id uniqueness, and a
+  continuation carrying its established tone/voice forward.
+
+### ***WORST TO BEST*** Story Continuity State Tracking (`storyStateBuilder.ts`) — the state-merge module every genesis/continuation request is built from, shipped with zero unit tests and a real resolved-thread bug (August 27, 2026)
+
+- `storyStateBuilder.ts` builds/merges the `StoryStateSnapshot` (characters, plot threads, world
+  artifacts, beats, deltas) every Story Lab genesis and continuation request is built from and
+  read back against. It was extracted out of `storyLabEngine.ts` in a prior worst-to-best pass
+  specifically because that file's worst flaw was "zero unit tests" on its most complex logic —
+  but the extraction gave the sibling `continuationGuidance.ts` module a direct test file and
+  left this one with none. It was reachable only indirectly through the full-engine integration
+  test.
+- Found a real bug while adding coverage: `mergeThreads()` only ever applied
+  `status: 'escalating'` to threads named in a chapter's `delta.escalatedThreads` — it never
+  applied `status: 'resolved'` to threads named in the same chapter's `delta.resolvedThreads`,
+  even though `buildStateDelta()` in the same file already computes and reports
+  `resolvedThreads` in the outgoing delta right next to it. The delta a client sees claimed a
+  thread got resolved; the persisted `StoryStateSnapshot.threads` array never reflected it.
+- Not cosmetic: `continuationGuidance.ts`'s `isUnresolvedThread()` (`status !== 'resolved'`)
+  drives which threads get surfaced to the AI as "unresolved" in the Continuity Courtroom brief,
+  ending-pressure selection, and continuation-pressure scoring — all reading `thread.status`
+  directly. In the non-AI/heuristic continuity path this bug was unconditional: a resolved
+  thread never left the "unresolved" pool. `mockData.ts`'s `applyChapterDeltas` already merges
+  resolution correctly — this ports that same, already-proven pattern into the real engine's
+  state builder instead of inventing a new one.
+- Added `tests/story-lab-state-builder.test.ts`: first direct unit coverage for
+  `buildStateSnapshot` (genesis vs. continuation paths, revision increments), initial
+  character/thread construction, world-artifact name derivation (its three regex patterns and
+  the empty-input fallback), the thread-resolution fix (including resolution taking priority
+  over escalation for the same thread id), `buildChapterDelta`'s batch-boundary flagging, and
+  `buildStateDelta`'s revision/summary tracking.
+- Fixed `mergeThreads` to apply `status: 'resolved'` for resolved thread ids, mirroring the
+  existing escalation branch. No other behavior change.
+
+### ***WORST TO BEST*** Real-Time Story Streaming (`StreamingStoryComponent`) — a fake-progress demo left live after its predecessor's cleanup, retired (August 27, 2026)
+
+- A prior PR retired a *duplicate* SSE route and left `api/story-lab/stream/genesis.ts` live;
+  a follow-up found wiring `StreamingStoryComponent` into nav leaked the reader's free-text
+  logline/character names/world details into the `EventSource` query string (server access
+  logs, proxies, browser history) and reverted only the nav link, leaving the component, its
+  `StoryService.streamStoryGeneration` method, and the route in place "for a future fix that
+  never came." Two more cosmetic bugfixes landed on the unreachable component since.
+- It never actually streamed: `stream/genesis.ts` `await`ed the entire `generateStoryLabGenesis()`
+  batch — however long real generation took — with zero progress frames sent during the wait,
+  then replayed the already-finished chapters back through fixed `setTimeout`s (500ms apart) as
+  fabricated per-chapter "progress." A canned animation over a blocking call, not real-time
+  generation.
+- It was a hardcoded demo, literally labeled so in its own header comment ("Streaming Story
+  Component Example"): a fixed vampire/dark-romance/900-word blueprint, ignoring whatever the
+  reader actually built in the form.
+- It duplicated a feature that already ships and works: `AppComponent`'s job-based progress UI
+  (`openJobEventStream`) is the real, production progress path — genuine per-chapter SSE
+  snapshots against the job system, wired into the main generation flow. This component was a
+  second, parallel "live progress" implementation that was fake, unreachable, and
+  privacy-unsafe, sitting next to the one that's real.
+- Deleted `story-generator/src/app/streaming-story/` (component + spec),
+  `StoryService.streamStoryGeneration` and its test coverage, `api/story-lab/stream/genesis.ts`
+  and its route registration/rate-limit tier/dedicated tests
+  (`story-lab-stream-genesis.test.ts`, `story-lab-stream-parse.test.ts`), and repointed the
+  `EventSource` query-parameter-auth coverage in `api-access-control.test.ts` onto the
+  surviving job event stream route it was always meant to protect. Confirmed zero remaining
+  references before and after.
+- No behavior change to any reachable path: the job-based generation/progress flow this app
+  actually serves is untouched.
+
+### ***WORST TO BEST*** storyLabEngine — five concerns in one 1,726-line file, a 700-line prompt-guidance subsystem with zero unit tests, and a whitespace helper hand-rolled three different ways (August 27, 2026)
+
+- `api/_lib/story-lab/storyLabEngine.ts` was the largest file in the repo and
+  had never had a structural pass — only three narrow one-line bugfixes had
+  touched it (#239, #250, #256). It mixed five unrelated concerns with zero
+  internal module boundaries: route orchestration
+  (`generateStoryLabGenesis`/`continueStoryLab`), a hand-rolled
+  prompt-engineering subsystem (three independent "brief builders" —
+  Continuity Courtroom, Chapter Ending Stress Test, Cliché Alarm — with their
+  own activation-scoring math and budget-trimming, ~700 of the file's 1,726
+  lines), state-merge logic, response-shaping, and a set of generic string
+  utilities.
+- Concrete duplication: `collapseWhitespace` was hand-rolled as a
+  character-by-character loop, while the exact same job already existed as a
+  one-line regex in `storyQualityHeuristics.ts` and, differently shaped again,
+  in `storyContentAnalysis.ts` (extracted from `StoryService` in the prior
+  worst-to-best PR). Three implementations of one function.
+- The ~700-line prompt-guidance subsystem — the part with the most branching
+  logic (activation scoring, ending-pressure selection, cliché-path selection)
+  — had zero unit tests of its own; it was only reachable indirectly through
+  `story-lab-real-engine.test.ts`/`story-lab-continuity-merge.test.ts`/
+  `story-lab-continuity-prompt.test.ts`, exercised only through the two route
+  entry points.
+- Extracted the prompt-guidance/"Continuity Courtroom" subsystem into a new
+  module, `api/_lib/story-lab/continuationGuidance.ts`, as pure exported
+  functions (unchanged behavior).
+- Extracted the state-merge/snapshot logic (`buildStateSnapshot`,
+  `buildInitialCharacters`, `buildInitialThreads`, `buildWorldArtifact`,
+  `mergeThreads`, `mergeUniqueById`, `buildStateDelta`, `buildChapterDelta`)
+  into a new module, `api/_lib/story-lab/storyStateBuilder.ts`.
+- Added `api/_lib/utils/whitespace.ts`, one canonical `collapseWhitespace`,
+  and repointed `storyLabEngine.ts` and `storyQualityHeuristics.ts` at it
+  instead of their own copies.
+- `storyLabEngine.ts` now holds only route orchestration and response-shaping:
+  1,726 → 676 lines.
+- Added `tests/story-lab-continuation-guidance.test.ts` — direct, no-AI,
+  no-service-instantiation coverage for activation scoring (including a
+  non-Latin-script regression case), unresolved-thread priority fallback,
+  resolved-thread exclusion, chapter-ending pressure selection, cliché-alarm
+  path selection, and the memory-card-stripping helper — all previously
+  untested at the unit level.
+
+### ***WORST TO BEST*** StoryService content-analysis heuristics — pure string logic trapped in a 2,200-line god class, tested only through `as any` casts (August 27, 2026)
+
+- `api/_lib/services/storyService.ts` was the largest file in the repo: a
+  `StoryService` class mixing AI orchestration, prompt building, mock-content
+  generation, and a cluster of content-analysis heuristics
+  (`extractCharacterNames`, `extractPlotThreads`, `analyzeEmotionalTone`,
+  `extractThemesFromContent`, `extractSpicyLevelFromContent`,
+  `extractLastChapterSummary`, and more) that infer metadata from
+  previously-generated prose to feed the next continuation prompt — all as
+  private methods on one class, alongside a live XAI client, cliffhanger
+  service, and trope service.
+- Those exact heuristics are what the last several "quick wins" PRs patched one
+  bug at a time (#258 spicy level misread out of "hearth"/"gloves", #259 five
+  emotions misread out of "danger"/"reached", #261 "witch" read out of
+  "switch"). The tests proved the design was wrong: `tests/story-service-improved.test.ts`
+  and `tests/story-service-prompt-guards.test.ts` reached into these private
+  methods via `(service as any).extractLastChapterSummary(...)` casts and a
+  hand-redeclared `analyzeEmotionalTone` interface, just to call a pure
+  string-to-string function.
+- Extracted every state-free content-analysis/formatting method into a new
+  module, `api/_lib/services/storyContentAnalysis.ts`, as plain exported
+  functions with unchanged behavior. `StoryService` now imports and calls
+  them; `storyService.ts` shrank from 2,219 to 1,682 lines. `detectCliffhanger`
+  stayed on the class since it delegates to `this.cliffhangerService`.
+- Added `tests/story-content-analysis.test.ts`, which imports the new module
+  directly — no `as any`, no class instantiation, no API key — and gives
+  `extractCharacterNames`, `extractPlotThreads`, `extractChapterTitleAndBody`,
+  `createContextExcerpt`, `getCreatureDisplayName`, `getSpicyLabel`, and
+  `formatChapterContent` their first dedicated tests; previously they were
+  reachable only through the full `generateStory`/`continueChapter` pipeline.
+  Cleaned up the `as any` reach-ins and the hand-rolled interface in the two
+  existing test files, which now import the module directly as well.
+- Pure extraction and test cleanup — no behavior change. Verified with
+  `tsc --noEmit` over the API layer and the Angular app/specs, and the full
+  `npm run test:all` backend suite (all green).
+
+### 🐛 Three Quick Wins — a witch read out of "switch", a reset instant fifty thousand years out, an evaluation refusal reported as an outage (August 26, 2026)
+
+#### Three story-quality dimensions still reading substrings
+
+- `scoreEmotionalVariety` and `extractSensoryTextures` were moved onto whole-word
+  matching one slice ago; the three dimensions beside them in the same file —
+  `scoreContinuity`, `scoreCliffhangerQuality`, and `scoreTropeFreshness` — were
+  left on `String.prototype.includes`, and they look for exactly the kind of
+  short word this genre writes longer words around.
+- `oath` is inside `loathe` and `loathing`, so a chapter about loathing someone
+  was credited with repeating a continuity promise. A `forbidden_love` seed looks
+  for `love`, which is inside `gloves` and `clover`; a `slow_burn` seed looks for
+  `burn`, inside `burnished`. The creature check was the worst of them: `fairy`
+  is inside `fairytale` — the word this app is named for — `witch` inside
+  `switch`, `dragon` inside `dragonfly`, and `demon` inside `demonstrate`, so
+  "she switched off the lamp" reported `Creature appears: witch` for a story with
+  no witch in it. `cost` is inside `costume`, in a genre that writes masquerades,
+  and `door`/`price`/`blood`/`name` are inside `doorway`/`priceless`/`bloodless`/
+  `nameless` — four of the eight hook words the cliffhanger dimension credits an
+  ending for, matched by the words that negate them.
+- These three dimensions cannot list their inflections the way the emotion
+  families do, because the words arrive from the request rather than from a fixed
+  lexicon: the creature and the theme words are whatever blueprint was sent. So
+  the new `containsWordForm` states the same Unicode-lookaround boundary the
+  other scans use and allows the endings that keep a word the same word
+  (`loved`, `lovers`, `burning`, `oaths`, `costs`), plus the two irregular
+  plurals that land on the contract's own archetypes (`fairies`, `werewolves`).
+  Endings that build a *different* word — the `less` of `priceless`, the `ly` of
+  `secretly` — are deliberately absent.
+
+#### A rate-limit reset instant no client can read
+
+- `enforceApiAccessControl` put `checkRateLimit`'s reset instant onto
+  `X-RateLimit-Reset` unconverted — `Date.now()` milliseconds, e.g.
+  `1787012345678`. Read as the header is defined everywhere it is read (GitHub,
+  Stripe, every generated client that knows the name treat it as a UTC epoch in
+  seconds), that is a date some fifty thousand years out: a client backing off
+  until the reset never came back, and one merely displaying it showed the reader
+  a seven-digit year. No convention anywhere uses milliseconds here. This is the
+  same reading `Retry-After` already got, and the reason that header was added.
+- `X-RateLimit-Limit` was missing entirely, so `X-RateLimit-Remaining: 3` could
+  not be read as a fraction — the budget is per route and per tier, and nothing
+  in the response said what this route's was.
+  `SECURITY_FIXES_QUICK_REFERENCE.md` has documented all three headers at this
+  call site since it was written.
+- Both are now sent, and `X-RateLimit-Limit` was added to `EXPOSED_HEADERS` in
+  the CORS policy: a header a cross-origin page cannot read is a header that was
+  not sent, which is the reason the rest of that list exists.
+  `error.resetTime` in the 429 body is unchanged and still milliseconds — it is
+  this API's own field, read by this app.
+
+#### An evaluation refusal reported as an outage
+
+- `PromptEvaluationService.evaluateStory` answers a fixed placeholder whenever
+  the evaluate call does not come back successful, and Proving Grounds marks it
+  honestly — a badge, a "🔁 Retry Evaluation" button, and a notice reading
+  "the evaluation API was unavailable". But the fallback was reached for every
+  unsuccessful call alike, and the reasons are not alike:
+  `/api/story-lab/evaluate` refuses a `storyContent` past its 60,000-character
+  cap with `400 INVALID_EVALUATION_REQUEST` naming the field, a caller with no
+  API key with `401`, and a caller past its budget with `429`. Each of those is
+  something the reader can act on, and each was reported as an outage — the one
+  thing none of them is. The API answered; it said no, and said why.
+- The refusal message is now carried onto the placeholder as
+  `mockEvaluationReason` — read out of either shape it arrives in, the parsed
+  body of a `success: false` answer or `HttpErrorResponse.error` for a non-2xx
+  one, which is the reading `readApiErrorMessage` already gives a failed
+  generation on the same page — and printed under the notice and in the status
+  line. A call that never reached the API has nothing to quote and says nothing,
+  so the outage wording still stands where it is true.
+- The component's `catch` around the evaluation claimed "mock scoring remains
+  available when the API is unavailable", describing a fallback that had already
+  happened one line above it, and the service never rejects, so it was
+  unreachable besides. It now reports only what it can know.
+
+### ***WORST TO BEST*** Backend Seam Contracts — 120 dead lines describing features that were never built (August 26, 2026)
+
+- `api/_lib/types/contracts.ts` is the canonical "seam contract" reference every
+  story/export/cliffhanger service imports from — the one file a reader goes to
+  in order to learn what the app's boundaries actually are. About a quarter of
+  its 534 lines described two seams nothing implements: `StreamingStoryGenerationSeam`,
+  a pre-SSE "real-time generation" contract superseded by the real streaming
+  route, and `AudioConversionSeam` (plus its supporting `VoiceType`,
+  `CharacterVoiceType`, `AudioSpeed`, `AudioFormat`, `AudioProgress` types), a
+  fully-specified audio-conversion contract with its own error codes even
+  though audio generation is explicitly deferred and out of scope. Neither had
+  a single import anywhere in the repo.
+- Removed both interfaces and their now-unused supporting types (534 → 403
+  lines). Pure deletion — verified with a repo-wide grep for every removed
+  symbol, `tsc --noEmit` over the API layer and the Angular app/specs, the full
+  `npm run test:all` backend suite, and the Angular test suite, all clean.
+  Recorded here so the removal reads as deliberate cleanup rather than an
+  accidental drop of a real seam.
+
+### 🐛 Three Quick Wins — a words-per-second with no clock in it, an image prompt nothing measures, a continuation numbered NaN (August 26, 2026)
+
+#### A generation speed that was not a speed
+
+- The streaming panel reported `generationSpeed` as
+  `Math.max(Math.floor(wordsGenerated / 20), 1)` — the word count divided by a
+  constant — and rendered it as `words/sec` beside a `~Ns remaining` computed by
+  dividing the remaining words by that same number. The two readings cancel, so
+  the estimate collapsed onto a figure that depends only on how far through the
+  story the stream is: halfway through any story it said twenty seconds, on a fast
+  connection and on a slow one alike.
+- The `Math.max(…, 1)` floor made it worse at the one moment it mattered. A
+  generation that had stalled completely still reported `1 word/sec` and counted
+  down as though it were working, because a floor of one cannot express "nothing
+  is arriving".
+- Added `shared/streamingProgressEstimate.ts`, which takes the elapsed
+  milliseconds the caller has and answers the words seen per second actually
+  spent, plus the seconds remaining at that rate — or `null` when nothing has been
+  measured yet, so the panel can say nothing rather than say zero. The percentage
+  and the word budget are read defensively, since one arrives from the server and
+  the other from a form.
+- `StreamingStoryComponent` stamps the stream's start time and reads both numbers
+  from the shared module; the `~Ns remaining` span renders only once a speed
+  exists. New `tests/streaming-progress-estimate.test.ts`, wired into `test:all`.
+
+#### The one free-text field on the image route that nothing measured
+
+- `ImageService.buildImagePrompt` takes `imagePrompt` in preference to the story
+  when it is present, so it is the text that reaches `grok-2-image` verbatim — and
+  nothing bounded it. A caller could send a megabyte of prose under that name and
+  have it billed by the token and given the function's whole time budget: the same
+  failure `STORY_BLUEPRINT_LIMITS` and `STORY_EVALUATION_LIMITS` were written for,
+  on the last route that did not have it.
+- The other branch of the same method has been capped at 200 characters
+  (`IMAGE_SCENE_DESCRIPTION_MAX_LENGTH`) all along, so the two ways of describing
+  one picture disagreed by however much the caller felt like sending.
+- Added `IMAGE_GENERATION_LIMITS.maxImagePromptLength` (1200, matching
+  `maxNarrativeDirectivesLength`) and checked it in `validateImageInput`, beside
+  the creature, theme, style, and aspect-ratio checks — so an oversized prompt is
+  `INVALID_INPUT` naming the field rather than `IMAGE_GENERATION_FAILED` after the
+  request has been sent. A non-string `imagePrompt` is refused there too: the
+  contract types it as a string and the wire does not, and `buildImagePrompt`
+  treated any truthy value as a prompt.
+
+#### A paid continuation numbered NaN
+
+- `previouslyGeneratedChapters` arrives in the request body, and the routes that
+  reach `continueStoryLab` check that it is an array and nothing about what is in
+  it. Both of the engine's readings of that array are `Math.max` over
+  `chapter.chapterNumber`, which answers `NaN` for a single entry carrying no
+  number — a chapter saved by an older shape of the record, a hand-written body, a
+  client that sent its own summaries.
+- `NaN` then travelled the whole way through a paid generation without throwing.
+  `currentChapterCount: NaN` reached `StoryService.continueChapter`, which numbers
+  what it writes `currentChapterCount + 1`, so the model was asked to continue from
+  chapter `NaN`; `toStoryLabChapters` numbered every chapter it handed back `NaN`
+  too, since `NaN` is falsy and its `||` fallback is `NaN + index`. The response
+  serialized those as `null`: chapters titled `Chapter NaN`, `chapterId`s of
+  `…-chapter-NaN`, and an `appendedChapterNumbers` of `[null]` for the client to
+  append to a project by.
+- `continueStoryLab` now refuses such a batch with the same `INVALID_REQUEST` the
+  neighbouring check gives, naming the offending entry's index and nothing of its
+  text, and does so before the generation is billed. The guard lives in the engine
+  rather than in one route, so the job route reaches it too.
+
+### 🔌 Error Logging & Display: a built and tested panel that was never plugged in (August 26, 2026)
+
+- `ErrorDisplayComponent` (component, template, CSS, 4 passing unit tests) subscribed
+  to the real, actively-used `ErrorLoggingService` but was never mounted anywhere in
+  the app — not in `app.html`, not routed, not referenced outside its own directory.
+  100% dead code from a user's perspective.
+- There was also no Angular `ErrorHandler` override, so an uncaught exception never
+  reached `ErrorLoggingService` in the first place — the wire was missing on both
+  ends of the pipe.
+- Added `GlobalErrorHandler` (`src/app/global-error-handler.ts`), which forwards
+  uncaught errors to `ErrorLoggingService.logCritical` and still delegates to
+  Angular's default `ErrorHandler` so existing console output doesn't regress.
+  Provided via `{ provide: ErrorHandler, useClass: GlobalErrorHandler }` in
+  `app.config.ts`.
+- Mounted `<app-error-display>` next to the existing `<app-debug-panel>`, gated by
+  the same `?debug=1` signal — matching the panel's own self-description
+  (":bug: Debug Errors") and the existing convention for debug-only surfaces,
+  rather than shipping it to every reader.
+- Wrapped both debug-only panels in an `@defer (when showDebugPanel())` block so
+  neither component's code ships in the initial bundle for the vast majority of
+  readers who never pass `?debug=1` — a bonus fix over just wiring the panel in,
+  since mounting it eagerly pushed the initial bundle over its 500kB budget.
 
 ### 🐛 Three Quick Wins — a preflight nobody may cache, an export that fails without saying so, a cut between the halves of a character (August 26, 2026)
 

@@ -1,6 +1,8 @@
 // Created: 2026-06-08 10:40 EDT
 
 import { AuthError, type AuthPort, type AuthRequestLike, type AuthUser } from './authPort';
+import { readRequestCorrelationId } from '../../http/requestCorrelationId';
+import { logWarn } from '../../utils/logger';
 
 export interface VerifiedClerkSession {
   userId: string;
@@ -51,7 +53,7 @@ export function createClerkAuthPort(options: ClerkAuthPortOptions = {}): AuthPor
         if (error instanceof AuthError) {
           throw error;
         }
-        warnAuthVerificationFailure(error);
+        warnAuthVerificationFailure(error, req);
         throw new AuthError('Clerk session could not be verified.');
       }
     }
@@ -132,9 +134,13 @@ function findFirstWhitespaceIndex(value: string): number {
   return -1;
 }
 
-function warnAuthVerificationFailure(error: unknown): void {
+function warnAuthVerificationFailure(error: unknown, req: AuthRequestLike): void {
   const errorName = error instanceof Error ? error.name : typeof error;
-  console.warn('Clerk session verification failed.', { errorName });
+  logWarn(
+    'Clerk session verification failed.',
+    { requestId: readRequestCorrelationId(req), endpoint: 'clerkAuthPort.requireUser' },
+    { errorName }
+  );
 }
 
 function toAuthUser(session: VerifiedClerkSession): AuthUser {

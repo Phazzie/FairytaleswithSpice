@@ -4,10 +4,9 @@
       <span class="error-icon">🐛</span>
       <span>Debug Errors</span>
       <span class="error-counts">
-        <span *ngIf="getErrorCounts().critical > 0" class="count critical">{{getErrorCounts().critical}}🔴</span>
-        <span *ngIf="getErrorCounts().error > 0" class="count error">{{getErrorCounts().error}}❌</span>
-        <span *ngIf="getErrorCounts().warning > 0" class="count warning">{{getErrorCounts().warning}}⚠️</span>
-        <span *ngIf="getErrorCounts().info > 0" class="count info">{{getErrorCounts().info}}ℹ️</span>
+        <ng-container *ngFor="let entry of severityCounts; trackBy: trackBySeverity">
+          <span *ngIf="entry.count > 0" [class]="'count ' + entry.severity">{{entry.count}}{{entry.icon}}</span>
+        </ng-container>
       </span>
     </div>
     <div class="error-actions">

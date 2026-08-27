@@ -6,21 +6,52 @@ import {
   ChapterContinuationSeam,
   ApiResponse,
   VALIDATION_RULES,
-  SpicyLevel,
   Chapter,
   ChapterFailure,
   CliffhangerType,
-  CreatureType,
-  ThemeType
+  isSupportedWordCount
 } from '../types/contracts';
+import { isCreatureArchetype } from '../../../shared/creatureVocabulary';
+import {
+  CHAPTER_BATCH_SIZES,
+  clampToChapterBatchSize,
+  formatChapterBatchSizeList,
+  isChapterBatchSize,
+  type ChapterBatchSize
+} from '../../../shared/chapterBatchVocabulary';
+import { formatSpicyLevelList, isSpicyLevel } from '../../../shared/spiceLevelVocabulary';
+import { isClassicStoryTheme } from '../../../shared/themeVocabulary';
+import {
+  buildProductionChapterScopeBlock,
+  buildProductionSystemPrompt,
+  buildProductionUserPrompt,
+  formatChekhovLedger
+} from '../../../shared/productionStoryPrompt';
 import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService, hasIdentifiedCliffhangerType } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
+import { estimateReadTimeMinutes } from '../utils/readTime';
 import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
 import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
-import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../utils/storyTextBlocks';
-import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
+import {
+  analyzeEmotionalTone,
+  countWords,
+  createContextExcerpt,
+  extractCharacterNames,
+  extractChapterTitleAndBody,
+  extractLastChapterSummary,
+  extractPlotThreads,
+  extractSpicyLevelFromContent,
+  extractThemesFromContent,
+  formatChapterContent,
+  formatStoryContent,
+  generateNextChapterHint,
+  getCreatureDisplayName,
+  getSpicyLabel,
+  stripHtml,
+  stripSpeakerTagsForDisplay
+} from './storyContentAnalysis';
 import {
   UNRECOGNIZED_PARAMETER,
   toLoggableBoolean,
@@ -28,6 +59,14 @@ import {
   toLoggableNumber,
   toLoggableThemes
 } from '../utils/loggableRequestParameters';
+import { STORY_BLUEPRINT_LIMITS, STORY_EVALUATION_LIMITS } from '../../../shared/storyBlueprintLimits';
+import { capAtWordBoundaryWithinCodeUnits } from '../utils/textExcerpt';
+import { collapseWhitespace } from '../utils/whitespace';
+import {
+  STORY_BEAT_STRUCTURES,
+  STORY_CHEKHOV_ELEMENTS,
+  STORY_CHEKHOV_ELEMENTS_PER_STORY
+} from '../../../shared/storyPromptTables';
 
 interface AiCallMetadata {
   model?: string;
@@ -55,22 +94,56 @@ interface GeneratedChaptersResult {
   aiMetadata?: AiCallMetadata;
 }
 
-/**
- * The longest `nextChapterHint`, in code points. Unchanged from the 200 the
- * `slice(0, 197)` it replaces measured against — the length is not what was
- * wrong with it; the ellipsis is still counted against the same total.
- */
-const NEXT_CHAPTER_HINT_MAX_LENGTH = 200;
 const EXTRA_BATCH_CHAPTER_TIMEOUT_MS = 9000;
 const MOCK_CONTINUATION_TARGET_BODY_WORDS = 450;
-const STORY_LAB_THEME_SEED_LIMIT = 5;
-const STORY_LAB_THEME_LABEL_MAX_LENGTH = 80;
-const STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH = 280;
-const STORY_LAB_CONTEXT_VALUE_MAX_LENGTH = 320;
-const STORY_LAB_NO_GO_CONTENT_MAX_LENGTH = STORY_LAB_CONTEXT_VALUE_MAX_LENGTH;
-// How much of the closing passage the continuation prompt is shown as "what
-// just happened", in words.
-const SUMMARY_WORD_LIMIT = 150;
+// The prompt boundary's own reading of a theme seed, taken from the shared
+// blueprint limits rather than restated here. The routes now refuse a seed
+// larger than this, and a cap the routes enforce and a cap the prompt applies
+// have to be the same number or the guarantee is only as good as whichever is
+// looser.
+const STORY_LAB_THEME_SEED_LIMIT = STORY_BLUEPRINT_LIMITS.maxThemes;
+const STORY_LAB_THEME_LABEL_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxThemeLabelLength;
+const STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxThemeDescriptionLength;
+/**
+ * The rest of the blueprint's free-text fields, each at its own field's cap.
+ *
+ * The two seed caps above were moved onto the shared limits with the note that
+ * "a cap the routes enforce and a cap the prompt applies have to be the same
+ * number or the guarantee is only as good as whichever is looser". The six
+ * fields below were left on one shared `320`, which is the same defect running
+ * the other way: not looser than the route, but *tighter*, and silently.
+ *
+ * `parseStoryLabBlueprint` accepts a 420-character logline, 600 characters of
+ * world details, and 1200 of narrative directives, and the form built on
+ * `STORY_BLUEPRINT_LIMITS` tells the reader those are the limits — the logline
+ * counter counts down from 420. Every one of them then arrived here and was cut
+ * to 320 before the model ever saw it. Narrative directives lost three-quarters
+ * of an accepted field; world details lost nearly half; a logline written to the
+ * limit the form states lost its last hundred characters. The block those lines
+ * are written into ends `- Treat these blueprint fields as binding story intent,
+ * not as optional flavor`, and nothing in the response said a quarter of that
+ * intent had been dropped.
+ *
+ * The cap itself is not removable, and that is why these are numbers rather than
+ * nothing: `/api/story/generate` takes a `generationContext` too, and
+ * `validateStoryInput` does not measure its fields, so this is the only boundary
+ * on that path. It just has to be the boundary the blueprint routes already
+ * publish for each field, one field at a time, rather than one number that
+ * happens to be the smallest of them.
+ *
+ * `noGoContent` keeps `320` — it was always this field's own cap, which is what
+ * `STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength` reads it as too. `tone` takes
+ * the evaluation limits' configuration-value cap, which is documented for
+ * exactly this shape of field: "one theme id or creature name, not a paragraph
+ * wearing the field's name". The blueprint parser checks `tone` against
+ * `NARRATIVE_TONES`, so only the classic route can deliver anything else here.
+ */
+const STORY_LAB_LOGLINE_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxLoglineLength;
+const STORY_LAB_TONE_MAX_LENGTH = STORY_EVALUATION_LIMITS.maxConfigurationValueLength;
+const STORY_LAB_CHARACTER_NAME_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxCharacterNameLength;
+const STORY_LAB_WORLD_DETAILS_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength;
+const STORY_LAB_NARRATIVE_DIRECTIVES_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength;
+const STORY_LAB_NO_GO_CONTENT_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxNoGoContentLength;
 
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
@@ -114,14 +187,35 @@ export class StoryService {
     );
   }
 
+  /**
+   * How many tropes one story is asked to subvert, decided where the range is
+   * declared.
+   *
+   * `TropeSubversionService` owns that range — `minTropes` and `maxTropes`, with
+   * `getRandomTropeCount` drawing from it, and `selectTropesForSubversion`
+   * falling back to it when the caller names no count. This is that service's
+   * only caller in the app, and it named a count every time: `randomInt(2, 4)`,
+   * which is the same two-or-three drawn the same way, written out again on the
+   * other side of the seam.
+   *
+   * So the two fields and the method they feed had no reachable reader at all —
+   * a named range nothing consults is not a range, it is a note, which is the
+   * argument `estimateReadTimeMinutes` was extracted under for
+   * `READING_SPEED.WORDS_PER_MINUTE`. And it is the arrangement where retuning
+   * the range does nothing: widening `maxTropes` to four would leave every
+   * generated story on two or three, because the caller decides.
+   *
+   * Omitting the count is what gives the declaration back its reader. The draw
+   * is unchanged — `getRandomTropeCount` is `randomInt(this.minTropes,
+   * this.maxTropes + 1)`, which is `randomInt(2, 4)`.
+   */
   private selectTropeSubversions(input: StoryGenerationSeam['input']): TropeSelection | undefined {
     if (!this.tropeService.supportsCreature(input.creature)) {
       return undefined;
     }
 
     return this.tropeService.selectTropesForSubversion({
-      creature: input.creature,
-      tropeCount: randomInt(2, 4)
+      creature: input.creature
     });
   }
 
@@ -212,7 +306,7 @@ export class StoryService {
         themes: sanitizedInput.themes,
         spicyLevel: sanitizedInput.spicyLevel,
         actualWordCount: totalWordCount,
-        estimatedReadTime: Math.max(1, Math.ceil(totalWordCount / 200)),
+        estimatedReadTime: estimateReadTimeMinutes(totalWordCount),
         hasCliffhanger: Boolean(lastChapter.cliffhangerEnding),
         generatedAt: new Date(),
         tropeMetadata: tropeSelection ? this.tropeService.serializeTropeSelection(tropeSelection) : undefined,
@@ -307,8 +401,8 @@ export class StoryService {
         );
         aiMetadata = this.mergeAiMetadata(aiMetadata, generatedText.aiMetadata);
         const rawChapterContent = generatedText.content;
-        const displayContent = this.stripSpeakerTagsForDisplay(rawChapterContent);
-        const { title, body } = this.extractChapterTitleAndBody(displayContent, chapterNumber);
+        const displayContent = stripSpeakerTagsForDisplay(rawChapterContent);
+        const { title, body } = extractChapterTitleAndBody(displayContent, chapterNumber);
         const chapterContent = body || displayContent;
         const cliffhanger = this.detectCliffhanger(chapterContent);
         const chapter: Chapter = {
@@ -317,11 +411,11 @@ export class StoryService {
           title,
           content: chapterContent,
           rawContent: rawChapterContent,
-          wordCount: this.countWords(chapterContent),
+          wordCount: countWords(chapterContent),
           generatedAt: new Date(),
           hasAudio: false,
           cliffhangerEnding: cliffhanger,
-          nextChapterHint: this.generateNextChapterHint(chapterContent)
+          nextChapterHint: generateNextChapterHint(chapterContent)
         };
 
         chapters.push(chapter);
@@ -385,16 +479,13 @@ export class StoryService {
 
     try {
       if (!this.isValidRequestedChapterCount(input.requestedChapterCount)) {
+        const { code, message, ...refusalDetails } = this.chapterCountRefusal(input.requestedChapterCount);
         return {
           success: false,
           error: {
-            code: 'INVALID_INPUT',
-            message: 'requestedChapterCount must be 1, 2, or 3',
-            details: {
-              field: 'requestedChapterCount',
-              providedValue: input.requestedChapterCount,
-              expectedType: '1 | 2 | 3'
-            }
+            code,
+            message,
+            details: refusalDetails
           },
           metadata: {
             requestId,
@@ -449,8 +540,8 @@ export class StoryService {
           );
           aiMetadata = this.mergeAiMetadata(aiMetadata, generatedText.aiMetadata);
           const rawChapterContent = generatedText.content;
-          const displayContent = this.stripSpeakerTagsForDisplay(rawChapterContent);
-          const { title, body } = this.extractChapterTitleAndBody(displayContent, chapterNumber);
+          const displayContent = stripSpeakerTagsForDisplay(rawChapterContent);
+          const { title, body } = extractChapterTitleAndBody(displayContent, chapterNumber);
           const chapterContent = body || displayContent;
           const cliffhangerAnalysis = this.cliffhangerService.analyze(chapterContent, previousCliffhangers);
           lastCliffhangerAnalysis = cliffhangerAnalysis;
@@ -464,11 +555,11 @@ export class StoryService {
             title,
             content: chapterContent,
             rawContent: rawChapterContent,
-            wordCount: this.countWords(chapterContent),
+            wordCount: countWords(chapterContent),
             generatedAt: new Date(),
             hasAudio: false,
             cliffhangerEnding: cliffhangerAnalysis.cliffhangerDetected,
-            nextChapterHint: this.generateNextChapterHint(chapterContent)
+            nextChapterHint: generateNextChapterHint(chapterContent)
           };
 
           chapters.push(chapter);
@@ -513,7 +604,7 @@ export class StoryService {
 
       const firstChapter = chapters[0];
       const lastChapter = chapters[chapters.length - 1];
-      const totalWordCount = this.countWords(aggregatedHtml);
+      const totalWordCount = countWords(aggregatedHtml);
 
       // Create response
       const output: ChapterContinuationSeam['output'] = {
@@ -523,14 +614,14 @@ export class StoryService {
         content: firstChapter.content,
         wordCount: firstChapter.wordCount,
         cliffhangerEnding: Boolean(lastChapter.cliffhangerEnding),
-        themesContinued: this.extractThemesFromContent(aggregatedHtml),
-        spicyLevelMaintained: this.extractSpicyLevelFromContent(aggregatedHtml),
+        themesContinued: extractThemesFromContent(aggregatedHtml),
+        spicyLevelMaintained: extractSpicyLevelFromContent(aggregatedHtml),
         appendedToStory: aggregatedHtml,
         tropeMetadata: sanitizedInput.tropeMetadata,
         cliffhangerAnalysis: lastCliffhangerAnalysis,
         chapters,
         totalWordCount,
-        estimatedReadTime: Math.max(1, Math.ceil(totalWordCount / 200)),
+        estimatedReadTime: estimateReadTimeMinutes(totalWordCount),
         nextChapterHint: lastChapter.nextChapterHint,
         failedChapters: failedChapters.length ? failedChapters : undefined
       };
@@ -651,7 +742,7 @@ export class StoryService {
       });
 
       return {
-        content: this.formatStoryContent(response.text),
+        content: formatStoryContent(response.text),
         aiMetadata: this.toAiCallMetadata(response)
       };
 
@@ -722,7 +813,7 @@ export class StoryService {
       });
 
       return {
-        content: this.formatChapterContent(response.text),
+        content: formatChapterContent(response.text),
         aiMetadata: this.toAiCallMetadata(response)
       };
 
@@ -757,134 +848,31 @@ export class StoryService {
     };
   }
 
-  private getRandomBeatStructure(input: StoryGenerationSeam['input']): string {
-    // EXPANDED: 20 beat structures with avoid warnings for quality control
-    const structures = [
-      {
-        name: "TEMPTATION CASCADE",
-        beats: "Forbidden Glimpse → Growing Obsession → Point of No Return → Consequences Unfold → Deeper Temptation",
-        spiceIntegration: "Each beat escalates physical/emotional intimacy. Perfect for Level 3-5 stories.",
-        avoid: "Repetitive seduction scenes with no emotional progression, instant capitulation without internal conflict"
-      },
-      {
-        name: "POWER EXCHANGE",
-        beats: "Challenge Issued → Resistance Tested → Control Shifts → Surrender Moment → New Dynamic",
-        spiceIntegration: "Power dynamics drive intimacy. Works for all themes, spice level determines explicitness.",
-        avoid: "Non-consensual power plays, one-sided dominance, no mutual respect underneath the dynamic"
-      },
-      {
-        name: "SEDUCTION TRAP",
-        beats: "Innocent Encounter → Hidden Agenda Revealed → Manipulation vs Genuine Feeling → Truth Exposed → Choice Made",
-        spiceIntegration: "Seduction builds throughout. Mystery themes enhance psychological tension.",
-        avoid: "Villain without nuance, manipulation without genuine feelings bleeding through, easy forgiveness"
-      },
-      {
-        name: "RITUAL BINDING",
-        beats: "Ancient Secret → Ritual Requirement → Intimate Ceremony → Magical Consequence → Eternal Bond",
-        spiceIntegration: "Supernatural themes with ritual intimacy. Spice level affects ritual explicitness.",
-        avoid: "Magic solves everything, no cost to the ritual, bond accepted instantly without conflict"
-      },
-      {
-        name: "VULNERABILITY SPIRAL",
-        beats: "Perfect Facade → Crack in Armor → Emotional Exposure → Intimate Healing → Transformed Identity",
-        spiceIntegration: "Emotional vulnerability leads to physical intimacy. Romance themes amplify connection.",
-        avoid: "Trauma magically healed by love, no lasting scars, instant emotional breakthroughs"
-      },
-      {
-        name: "HUNT AND CLAIM",
-        beats: "Predator Marks Prey → Chase Begins → Prey Fights Back → Tables Turn → Mutual Claiming",
-        spiceIntegration: "Primal pursuit with escalating tension. Adventure themes add physical stakes.",
-        avoid: "Prey with no agency or power, stalking romanticized without consequences, one-way claiming"
-      },
-      {
-        name: "BARGAIN'S PRICE",
-        beats: "Desperate Need → Deal Struck → Payment Due → Cost Revealed → Price Accepted",
-        spiceIntegration: "Supernatural bargains with intimate payments. Dark themes heighten moral conflict.",
-        avoid: "Loopholes that negate the price, convenient escapes, bargain forgotten after payment"
-      },
-      {
-        name: "MEMORY FRACTURE",
-        beats: "Lost Memory → Familiar Stranger → Fragments Return → Truth Reconstructed → Choice to Remember",
-        spiceIntegration: "Past intimacy bleeding through amnesia. Mystery themes create psychological tension.",
-        avoid: "Convenient amnesia, memories return all at once, no emotional fallout from truth"
-      },
-      {
-        name: "TRANSFORMATION HUNGER",
-        beats: "Change Begins → New Appetites → Mentor Appears → Appetite Satisfied → Evolution Complete",
-        spiceIntegration: "Physical transformation creates new desires. Comedy themes can subvert expectations.",
-        avoid: "Easy control of new form, mentor appears exactly when needed, no cost to transformation"
-      },
-      {
-        name: "MIRROR SOULS",
-        beats: "Perfect Opposite → Magnetic Pull → Resistance Breaks → Soul Recognition → Unity/Destruction",
-        spiceIntegration: "Opposite personalities creating explosive chemistry. All themes supported, spice determines intensity.",
-        avoid: "Opposites attract without friction, perfect compatibility solves conflict, no sacrifice required"
-      },
-      {
-        name: "FORBIDDEN TERRITORY DANCE",
-        beats: "Trespass → Discovery → Risk Escalation → Claimed Space",
-        spiceIntegration: "Cross enemy lines, stolen moments in forbidden spaces. Spice level determines intimacy of encounters.",
-        avoid: "Repetitive 'sneaking around' scenes, predictable guards, no real danger of discovery"
-      },
-      {
-        name: "SACRIFICE NEGOTIATION",
-        beats: "Demand → Counter-offer → Stakes Raise → Blood Price Paid",
-        spiceIntegration: "What will you give up for what you desire? Supernatural costs escalate with spice level.",
-        avoid: "Easy sacrifices, no real loss, immediate rewards, sacrifice undone later"
-      },
-      {
-        name: "JEALOUSY IGNITION",
-        beats: "Rival Appears → Tension Spikes → Possessive Display → Claim Solidified",
-        spiceIntegration: "Third party interference, possessive claims, territorial marking. Perfect for pack/clan dynamics.",
-        avoid: "Love triangle clichés, unnecessary drama, weak rival threats, toxic possessiveness"
-      },
-      {
-        name: "TRUST SHATTERING REVEAL",
-        beats: "Hint of Deception → Clues Accumulate → Revelation Hits → Rebuild Begins",
-        spiceIntegration: "Secret exposed, betrayal discovered, foundation crumbles. Intimacy becomes weapon or healing.",
-        avoid: "Convenient misunderstandings, easy forgiveness, no lasting consequences, immediate trust restoration"
-      },
-      {
-        name: "PROTECTOR INSTINCT TRIGGER",
-        beats: "Danger Looms → Instinct Overrides → Fierce Protection → Aftermath Intimacy",
-        spiceIntegration: "Threat emerges, protective fury unleashed, vulnerable moment follows. Violence into tenderness.",
-        avoid: "Damsel in distress tropes, victim with no agency, protector never vulnerable"
-      },
-      {
-        name: "ANCIENT ENEMY RESURFACES",
-        beats: "Warning Signs → Threat Materializes → Old Trauma Surfaces → Stand Together",
-        spiceIntegration: "Old wounds reopened, past threatens present, united front. Shared danger forges bonds.",
-        avoid: "Convenient villain timing, no backstory weight, easy defeat, enemy without real threat"
-      },
-      {
-        name: "MATE BOND AWAKENING",
-        beats: "Attraction Intensifies → Bond Manifests → Fight Connection → Surrender",
-        spiceIntegration: "Supernatural connection snaps into place, resistance futile. Biology meets choice.",
-        avoid: "Instant acceptance, no conflict about loss of choice, magic solves all relationship issues"
-      },
-      {
-        name: "BLOOD OATH CONSEQUENCES",
-        beats: "Oath Sworn → Consequences Revealed → Loophole Sought → Price Paid",
-        spiceIntegration: "Words have power, vows bind, magic enforces promises. Spice level affects payment type.",
-        avoid: "Convenient escapes, no real magical binding, oath forgotten, loophole negates consequences"
-      },
-      {
-        name: "SANCTUARY INVASION",
-        beats: "Haven Established → Warning Breach → Invasion → Defend or Flee",
-        spiceIntegration: "Safe space violated, nowhere to hide, forced confrontation. Intimacy in crisis.",
-        avoid: "Easy victory defending sanctuary, no lasting damage, rebuilt overnight"
-      },
-      {
-        name: "ECLIPSE OF CONTROL",
-        beats: "Control Frays → Transformation Begins → Beast Emerges → Aftermath Reckoning",
-        spiceIntegration: "Monster takes over, humanity slips, beast claims dominance. Spice level affects beast's actions.",
-        avoid: "No consequences from loss of control, easy regain of composure, victim unaffected or trauma ignored"
-      }
-    ];
-
+  /**
+   * One of the twenty beat structures, drawn uniformly.
+   *
+   * The table moved to `shared/storyPromptTables`, where the Proving Grounds
+   * preview reads it too: it had kept a character-for-character copy, which is
+   * the arrangement that had already let the author banks drift apart.
+   *
+   * This took the whole blueprint as a parameter and read nothing out of it.
+   * That is not a harmless extra argument on a private method: every structure
+   * in that table carries a `spiceIntegration` line naming the spice levels and
+   * themes it suits — "Perfect for Level 3-5 stories", "Mystery themes enhance
+   * psychological tension", "Comedy themes can subvert expectations" — so a
+   * signature taking the blueprint reads, from the one call site, as the
+   * selection weighing them. It does not, and has not; a Level 1 story is as
+   * likely to be told to write TEMPTATION CASCADE as a Level 5 one.
+   *
+   * Dropping the parameter is not a decision that the draw should stay
+   * uniform. It states that it currently is, so a later change that wants the
+   * blueprint to matter has to add the argument and thread it into the choice,
+   * rather than finding it already there and assuming it is already read.
+   */
+  private getRandomBeatStructure(): string {
     // Select random structure
-    const selectedStructure = structures[randomInt(structures.length)];
-    
+    const selectedStructure = STORY_BEAT_STRUCTURES[randomInt(STORY_BEAT_STRUCTURES.length)];
+
     return `SELECTED STRUCTURE: ${selectedStructure.name}
 BEATS: ${selectedStructure.beats}
 SPICE INTEGRATION: ${selectedStructure.spiceIntegration}
@@ -892,41 +880,15 @@ AVOID: ${selectedStructure.avoid}`;
   }
 
   private generateChekovElements(): string {
-    // ENHANCED: 20 specific, actionable Chekhov's gun elements for serialized payoff
-    const elements = [
-      "Cursed relic with three uses, each more dangerous than the last",
-      "Sealed chamber that opens only under blood moon, contains ancestral secrets",
-      "Stranger knows protagonist's real name, disappears before questioned",
-      "Prophecy has dual interpretation, one path leads to salvation, other to doom",
-      "Contract has hidden clause activated by first kiss/blood/betrayal",
-      "Debt collects in three parts: memory, power, then firstborn/soul",
-      "Weakness is also their greatest strength under specific moon phase",
-      "Enemy shares same bloodline, mirror image of protagonist's dark side",
-      "Ritual bonds two souls, cannot be undone except by mutual death",
-      "True identity revealed only when protagonist speaks their real name aloud",
-      "Mirror that shows true desires, protagonist avoids looking until crisis forces confrontation",
-      "Three drop blood vial, each drop grants one wish but extracts equivalent payment",
-      "Tattoo that moves, shifts location based on danger proximity, bleeds when enemy near",
-      "Song that compels truth, melody hummed innocently early, later breaks through lies/glamour",
-      "Key without a lock, lock reveals itself at moment of greatest need",
-      "Shadow with its own will, later revealed as tether to dark realm",
-      "Clock that runs backwards, counts down to unknown event, speeds up with dangerous choices",
-      "Flower that blooms at death, rare plant blooms only when someone nearby will die",
-      "Name that cannot be spoken, saying it thrice summons ancient being",
-      "Scar that burns, old wound aches in presence of specific person, reveals hidden connection"
-    ];
-
     // Select 2 random elements for this story using Fisher-Yates for uniform distribution.
-    const shuffled = [...elements];
+    const shuffled = [...STORY_CHEKHOV_ELEMENTS];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = randomInt(i + 1);
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
-    const selected = shuffled.slice(0, 2);
-    
-    return `[Chekhov1]: ${selected[0]}
-[Chekhov2]: ${selected[1]}
-(These elements MUST be planted naturally in the story and will pay off in future chapters. They should feel organic, not forced.)`;
+    const selected = shuffled.slice(0, STORY_CHEKHOV_ELEMENTS_PER_STORY);
+
+    return formatChekhovLedger(selected);
   }
 
   private buildSystemPrompt(
@@ -936,166 +898,17 @@ AVOID: ${selectedStructure.avoid}`;
   ): string {
     // Get random author style selections for this generation
     const selectedStyles = selectRandomAuthorStyles(input.creature);
-    const selectedBeatStructure = this.getRandomBeatStructure(input);
+    const selectedBeatStructure = this.getRandomBeatStructure();
     
-    const prompt = `You are an audio-first dark-romance architect producing supernatural vignettes optimized for multi-voice narration.
-Your sole purpose is to fabricate episodes that sound cinematic when read aloud and end on a cliff-hook that guarantees listener return.
-
-DYNAMIC STYLE SELECTION FOR THIS STORY:
-${selectedStyles.map(style => `${style.author}: "${style.voiceSample}" | ${style.trait}`).join('\n')}
-
-${selectedBeatStructure}
-
-PROSE ENGINE (MANDATORY):
-BANNED WORDS/PHRASES (hard-fail unless inside dialogue for character voice):
-"suddenly", "very", "she felt", "he felt", "it was [emotion]", 
-"he was [adj]", "she was [adj]", "there was", "began to", "started to"
-
-NO PURPLE PROSE / NO FILLER:
-Every line must move plot, reveal character, or raise tension.
-Vary sentence length for audio rhythm. Keep paragraphs 1-4 lines.
-
-SHOW DON'T TELL EXAMPLES:
-BAD: "She was scared" → GOOD: "[Narrator]: Her pulse throbbed against her throat, fingers slick on the hilt"
-BAD: "He was attractive" → GOOD: "[Narrator]: Candlelight caught the curve of his grin, making it wicked"  
-BAD: "She was attracted to him" → GOOD: "[Narrator]: Her breath caught as his thumb traced her wrist, pulse jumping beneath his touch"
-BAD: "They kissed passionately" → GOOD: "[Narrator]: Her breath hitched as he dragged her closer, their mouths colliding hard enough to make the table shudder"
-
-CHARACTER MANDATE:
-Core Desire Template: "[Narrator]: <Name> wants <X> because <Y> but <Z>."
-Every protagonist needs: driving WANT (revenge, freedom, power), visible flaws, emotional vulnerability shown through action.
-Distinct dialogue patterns: sentence length, formality, emotional triggers.
-
-CONSENT & CHEMISTRY BLOCK:
-INTIMATE SCENES MUST:
-- Show enthusiastic consent through action/dialogue ("Yes," "Please," "Don't stop")
-- Build emotional connection alongside physical escalation
-- Use anticipation and denial to heighten tension
-- Never rush to physical without emotional stakes
-
-SPICE LEVELS (match exactly and do not exceed the requested level):
-Level 1 - Storybook romance: longing, flirtation, charged glances, accidental touches, no explicit anatomy, no on-page sexual acts.
-Level 2 - Warm: kissing, sensual tension, heated arguments, suggestive desire, no explicit sex and no graphic anatomical detail.
-Level 3 - Spicy: clear adult heat, hands and bodies can be described, keep language literary, fade to black before graphic sex.
-Level 4 - Very spicy: explicit consensual adult intimacy is allowed, direct language is allowed, keep emotional stakes and avoid crude shock value.
-Level 5 - Inferno: maximum explicit consensual adult fantasy the app allows, graphic but sophisticated, no coercion, no minors, no non-consensual framing.
-
-MORAL DILEMMA TRIGGER:
-At midpoint (≈50% word count), protagonist faces desire-vs-principle choice that drives the remainder and influences the cliffhanger.
-
-SERIALIZATION HOOKS - ENGINEERED ADDICTION:
-End with ONE of these 8 cliffhanger types:
-1. REVELATION CLIFFHANGER - Truth bomb drops in last sentence
-   Example: "She turned, and he saw the bite marks. Old ones."
-2. DANGER ESCALATION - Threat level jumps exponentially
-   Example: "The howls weren't coming from outside. They were in the walls."
-3. BETRAYAL CLIFFHANGER - Trusted ally revealed as enemy
-   Example: "He smiled, fangs extended. 'Did you really think I loved you?'"
-4. IMPOSSIBLE CHOICE - Must decide between two disasters
-   Example: "Save him or save yourself. Choose. Now."
-5. IDENTITY CRISIS - Everything they knew about themselves is wrong
-   Example: "The prophecy didn't mean her enemy. It meant her."
-6. LOST CONTROL - Character's power/beast takes over
-   Example: "She felt her bones break and reform. The wolf was done waiting."
-7. ARRIVAL CLIFFHANGER - Someone/something arrives to change everything
-   Example: "The door exploded inward. Her maker had found her."
-8. DEADLINE SLAM - Time runs out, consequences immediate
-   Example: "The moon reached its peak. The curse was permanent now."
-
-HOOK PLACEMENT:
-- Mid-Point Twist: Subvert expectation, new complication emerges at ~50% mark
-- Closing Hook: Use one of the 8 cliffhanger types above in final paragraph
-- Emotional Hook: Leave character in vulnerable/intense emotional state
-
-SERIALIZATION PROMISE:
-- Answer 1 question and raise 2 new ones
-- Foreshadow future conflict within current resolution
-- Plant mystery elements for later chapters
-
-${chapterOptions ? `CHAPTER SCOPE:
-- Deliver Chapter ${chapterOptions.chapterNumber} of ${chapterOptions.totalChapters}.
-- Maintain internal continuity while teeing up the next installment.
-- Ensure the closing hook invites Chapter ${chapterOptions.chapterNumber + 1} even if that chapter is not written yet.
-` : ''}
-AUDIO FORMAT (NON-NEGOTIABLE):
-- [Character Name]: "dialogue" for ALL speech
-- [Narrator]: for ALL descriptions/scene-setting  
-- [Character, emotion]: "dialogue" for emotional context
-- HTML: <h3> titles, <p> paragraphs, <em> emphasis
-
-VOICE METADATA FOR AUDIO NARRATION (CRITICAL):
-For EACH major character's FIRST appearance, include voice characteristics:
-FORMAT: [CharacterName, voice: 4-word description]: "dialogue"
-
-ENHANCED VOICE SYSTEM - ACCENT + EMOTION + TEXTURE:
-You can now include ACCENT markers for richer character voices:
-
-ACCENT OPTIONS (Choose fitting accents for characters):
-• Celtic-lilt (Irish fairy energy)
-• Edinburgh-burr (Scottish werewolf growl)
-• Parisian-silk (French vampire seduction)
-• Transylvanian-depth (Classic vampire authority)
-• Louisiana-drawl (Southern Gothic vampire charm)
-• Moscow-ice (Russian vampire coldness)
-• Tokyo-precision (Japanese formality + supernatural edge)
-• Cockney-rasp (London street werewolf)
-• Outback-rough (Australian werewolf wildness)
-• Icelandic-mystery (Nordic fae otherworldliness)
-• Spanish-passion (Mediterranean vampire intensity)
-• Welsh-melody (Celtic fairy musicality)
-• Bavarian-strength (German werewolf power)
-• Canadian-friendly-threat (Polite but dangerous)
-• Bronx-attitude (New York vampire street smart)
-• Texas-authority (Southern alpha werewolf command)
-• Oxford-refinement (British academic vampire)
-• Mumbai-musical (Indian fae lyrical quality)
-• Seoul-modern (K-drama vampire sophistication)
-• Jamaican-rhythm (Caribbean werewolf vitality)
-
-EMOTION STATES (Per Scene):
-Amused-dangerous, furious-controlled, tender-guarded, seductive-threatening, 
-playful-deadly, vulnerable-fierce, mocking-affectionate, cold-passionate, wild-precise
-
-VOICE CREATIVITY RULES:
-✅ Use UNCONVENTIONAL, VIVID, SPECIFIC descriptors (velvet-smoke, starlight-tinkling, thunder-low)
-✅ Mix unexpected combinations for uniqueness (whiskey-rough hypnotic, dewdrop-delicate mischievous)
-✅ Use synesthetic descriptions - sounds like colors/textures (moonlight-pale, crimson-rich, frost-kiss)
-✅ VARY vocabulary across characters - NO REPEATED WORDS!
-✅ Optional: Include accent for extra flavor (Moscow-ice velvet-smoke, Celtic-lilt starlight-bright)
-❌ NO generic words (nice, good, normal)
-❌ NO repeating descriptors across characters
-❌ NO only common adjectives
-
-VOICE VOCABULARY CATEGORIES:
-• TEXTURES: velvet, silk, gravel, smoke, honey, mercury, glass, steel, wine, cream, frost, ember
-• EMOTIONS: haunting, intoxicating, devastating, mesmerizing, electrifying, soul-piercing
-• SYNESTHETIC: moonlight-pale, twilight-dark, crimson-rich, midnight-blue, thunder-low, whisper-soft
-• MUSICAL: staccato, crescendo, harmonious, dissonant, rhythmic, melodic
-• MYSTICAL: ethereal, spectral, celestial, infernal, arcane, otherworldly
-• MOVEMENT: cascading, rippling, pulsing, trembling, undulating, flowing
-• PRECIOUS: diamond-cut, pearl-smooth, obsidian-dark, amber-warm, jade-cool, ruby-rich
-
-CREATIVE EXAMPLES (vary for each character):
-Vampire: "velvet-smoke whiskey-rough hypnotic" OR "Moscow-ice midnight-silk knife-sharp" OR "Parisian-silk intoxicating amused-dangerous"
-Werewolf: "thunder-low earth-raw moonlit" OR "Edinburgh-burr gravel-deep fierce" OR "Texas-authority commanding wild-precise"
-Fairy: "starlight-tinkling dewdrop-delicate mischievous" OR "Celtic-lilt windchime-bright playful" OR "Icelandic-mystery ethereal cold-passionate"
-Human: "autumn-rich coffee-warm hopeful" OR "Bronx-attitude steel-core resilient" OR "Louisiana-drawl honey-smooth tender-guarded"
-
-VOICE VARIETY ENFORCEMENT:
-- 3-5 major characters per story
-- EACH gets COMPLETELY DIFFERENT descriptors
-- NO WORD appears twice across all character voices
-- Mix 2+ categories per character (texture + emotion, musical + mystical)
-- Prioritize SURPRISING combinations over expected ones
-
-EXAMPLE STORY START:
-<p>[Lord Damien, voice: velvet-smoke whiskey-rough hypnotic]: "Welcome to my domain."</p>
-<p>[Princess Elena, voice: autumn-rich steel-core fierce-gentle]: "I'm not afraid of you."</p>
-<p>[Alpha Marcus, voice: thunder-low earth-raw moonlit]: "Both of you. Explain. Now."</p>
-
-NOTE: After first appearance, use simple [CharacterName]: format for subsequent dialogue.
-
-Your goal: Create episodes that make listeners desperate for "Continue Chapter."`;
+    const prompt = buildProductionSystemPrompt({
+      dynamicStyleSelection: selectedStyles
+        .map(style => `${style.author}: "${style.voiceSample}" | ${style.trait}`)
+        .join('\n'),
+      beatStructure: selectedBeatStructure,
+      chapterScope: chapterOptions
+        ? buildProductionChapterScopeBlock(chapterOptions.chapterNumber, chapterOptions.totalChapters)
+        : undefined
+    });
 
     return tropeSelection
       ? this.tropeService.enhancePromptWithSubversions(prompt, tropeSelection)
@@ -1103,55 +916,22 @@ Your goal: Create episodes that make listeners desperate for "Continue Chapter."
   }
 
   private buildUserPrompt(input: StoryGenerationSeam['input']): string {
-    const creatureName = this.getCreatureDisplayName(input.creature);
+    const creatureName = getCreatureDisplayName(input.creature);
     const themesText = this.formatThemeContext(input);
-    const spicyLabel = this.getSpicyLabel(input.spicyLevel);
+    const spicyLabel = getSpicyLabel(input.spicyLevel);
     const chekovElements = this.generateChekovElements();
     const storyLabContext = this.formatStoryLabContext(input);
 
-    return `Write a ${input.wordCount}-word spicy supernatural romance story optimized for audio narration:
-
-PROTAGONIST: ${creatureName} with complex motivations and hidden depths
-THEMES TO WEAVE: ${themesText}
-SPICE LEVEL: ${spicyLabel} (Level ${input.spicyLevel}/5) - maintain this intensity throughout
-${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
-${storyLabContext}
-
-CHEKHOV LEDGER (plant these elements for future payoff):
-${chekovElements}
-
-STORY REQUIREMENTS:
-- Select 2-3 contrasting author styles (voice samples + traits) from your creature's bank
-- Create characters with secrets that could destroy everything
-- Build sexual/romantic tension through obstacles, not just attraction
-- Use banned word avoidance and show-don't-tell mastery
-- Include realistic dialogue with subtext and emotional charge
-- Layer multiple senses in every scene description
-- Follow the selected beat structure precisely
-
-WORD COUNT PACING:
-- 600 words: Compressed hook, immediate tension, clean payoff
-- 700 words: Fast, tense, sharp progression
-- 900 words: Character depth with tight focus  
-- 1200 words: Layered, immersive with complex tension
-- 1500 words: Multi-scene escalation with richer reversals and payoff
-
-MANDATORY FORMATTING FOR AUDIO:
-- [Character Name, voice: 4-word description]: "dialogue" for FIRST appearance of each major character
-- [Character Name]: "dialogue" for ALL subsequent speech (no exceptions)
-- [Narrator]: for ALL scene descriptions and non-dialogue text
-- [Character, emotion]: "dialogue" when emotional context is crucial
-- HTML structure: <h3> for title, <p> for paragraphs, <em> for emphasis
-
-VOICE METADATA REMINDER:
-First appearance: [Lord Damien, voice: velvet-smoke whiskey-rough hypnotic]: "dialogue"
-Subsequent: [Lord Damien]: "dialogue"
-
-USE CREATIVE, UNCONVENTIONAL VOICE DESCRIPTORS - NO REPEATED WORDS ACROSS CHARACTERS!
-
-Create a complete story that feels like it could continue but is satisfying on its own. Make every word count toward character development, world-building, or advancing romantic/sexual tension.
-
-Plant your Chekhov elements naturally and ensure the moral dilemma occurs at midpoint. End with a cliffhanger that creates genuine desire for continuation.`;
+    return buildProductionUserPrompt({
+      wordCount: String(input.wordCount),
+      creature: creatureName,
+      themes: themesText,
+      spicyLabel,
+      spicyLevel: String(input.spicyLevel),
+      creativeDirectionLine: input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : '',
+      storyLabContextLine: storyLabContext,
+      chekhovLedger: chekovElements
+    });
   }
 
   private formatThemeContext(input: StoryGenerationSeam['input']): string {
@@ -1180,32 +960,32 @@ Plant your Chekhov elements naturally and ensure the moral dilemma occurs at mid
       'STORY LAB BLUEPRINT - FIRST-CLASS CREATIVE CONSTRAINTS:'
     ];
 
-    const logline = this.limitStoryLabPromptText(context.logline, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const logline = this.limitStoryLabPromptText(context.logline, STORY_LAB_LOGLINE_MAX_LENGTH);
     if (logline) {
       lines.push(`- Logline: ${logline}`);
     }
-    const tone = this.limitStoryLabPromptText(context.tone, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const tone = this.limitStoryLabPromptText(context.tone, STORY_LAB_TONE_MAX_LENGTH);
     if (tone) {
-      lines.push(`- Narrative tone: ${tone.split('_').join(' ')}`);
+      lines.push(`- Narrative tone: ${this.formatBlueprintIdLabel(tone)}`);
     }
-    const protagonistName = this.limitStoryLabPromptText(context.protagonistName, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const protagonistName = this.limitStoryLabPromptText(context.protagonistName, STORY_LAB_CHARACTER_NAME_MAX_LENGTH);
     if (protagonistName) {
       lines.push(`- Protagonist name: ${protagonistName}`);
     }
-    const antagonistName = this.limitStoryLabPromptText(context.antagonistName, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const antagonistName = this.limitStoryLabPromptText(context.antagonistName, STORY_LAB_CHARACTER_NAME_MAX_LENGTH);
     if (antagonistName) {
       lines.push(`- Antagonist name or opposing force: ${antagonistName}`);
     }
-    const worldDetails = this.limitStoryLabPromptText(context.worldDetails, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const worldDetails = this.limitStoryLabPromptText(context.worldDetails, STORY_LAB_WORLD_DETAILS_MAX_LENGTH);
     if (worldDetails) {
       lines.push(`- World details: ${worldDetails}`);
     }
-    const narrativeDirectives = this.limitStoryLabPromptText(context.narrativeDirectives, STORY_LAB_CONTEXT_VALUE_MAX_LENGTH);
+    const narrativeDirectives = this.limitStoryLabPromptText(context.narrativeDirectives, STORY_LAB_NARRATIVE_DIRECTIVES_MAX_LENGTH);
     if (narrativeDirectives) {
       lines.push(`- Narrative directives: ${narrativeDirectives}`);
     }
     if (context.heatContract) {
-      lines.push(`- Heat contract: adult readers only confirmed; tension mode ${this.formatHeatContractLabel(context.heatContract.tensionMode)}; boundary ${this.formatHeatContractLabel(context.heatContract.intimacyBoundary)}.`);
+      lines.push(`- Heat contract: adult readers only confirmed; tension mode ${this.formatBlueprintIdLabel(context.heatContract.tensionMode)}; boundary ${this.formatBlueprintIdLabel(context.heatContract.intimacyBoundary)}.`);
       const noGoContent = this.limitStoryLabPromptText(context.heatContract.noGoContent, STORY_LAB_NO_GO_CONTENT_MAX_LENGTH);
       if (noGoContent) {
         lines.push(`- No-go content: ${noGoContent}`);
@@ -1244,22 +1024,63 @@ Plant your Chekhov elements naturally and ensure the moral dilemma occurs at mid
       .slice(0, STORY_LAB_THEME_SEED_LIMIT);
   }
 
+  /**
+   * Read one blueprint free-text field down to what the prompt will carry.
+   *
+   * Every Story Lab field that reaches a prompt goes through here — the
+   * logline, the tone, both character names, the world details, the narrative
+   * directives, the Heat Contract's no-go list, and each theme seed's label and
+   * description — so the cut this makes is the cut the model sees, on nine
+   * fields at once.
+   *
+   * It was `compacted.slice(0, maxLength)`, which is the defect `textExcerpt`
+   * was written for and names three earlier instances of: "Three places still
+   * cut with `String.prototype.slice` and a number, and all three feed a model
+   * rather than a screen." This is the fourth, and it is the widest of them.
+   * `slice` counts UTF-16 code units, so a cut landing between the halves of a
+   * surrogate pair leaves a lone surrogate in the prompt — nothing throws,
+   * because `JSON.stringify` escapes it rather than refusing it, so the request
+   * simply carries a character the reader never typed in place of the emoji or
+   * astral-script character that was there. And a cut at an arbitrary offset
+   * ends mid-word, so a world-detail field is handed to the model as a
+   * fragment.
+   *
+   * `capAtWordBoundaryWithinCodeUnits` rather than `capAtWordBoundary` because
+   * the caps these are measured against are the route's, and the route measures
+   * them with `.length`: `parseStoryLabBlueprint` refuses a `logline` whose
+   * `.length` is past 420. Cutting in code points here would let a field of
+   * astral characters pass the route and be measured differently at the prompt,
+   * which is the drift the shared limits exist to prevent. A code point is
+   * still never split — an astral character costs two units and is taken whole
+   * or not at all.
+   *
+   * `collapseWhitespace` is the same operation the trim-and-`\s+` this replaces
+   * performed, read from the module that already holds it rather than spelled
+   * out a fifth time.
+   */
   private limitStoryLabPromptText(value: unknown, maxLength: number): string | undefined {
     if (typeof value !== 'string') {
       return undefined;
     }
 
-    const compacted = value.trim().replace(/\s+/g, ' ');
+    const compacted = collapseWhitespace(value);
     if (!compacted) {
       return undefined;
     }
 
-    return compacted.length > maxLength
-      ? compacted.slice(0, maxLength).trim()
-      : compacted;
+    return capAtWordBoundaryWithinCodeUnits(compacted, maxLength);
   }
 
-  private formatHeatContractLabel(value: string): string {
+  /**
+   * Write a blueprint id the way the prompt reads it: `slow_burn` becomes
+   * `slow burn`.
+   *
+   * Named for the Heat Contract when the two contract fields were its only
+   * callers, and the narrative tone one line above spelled the same
+   * `split('_').join(' ')` out again rather than asking for it. Three fields
+   * from three closed vocabularies, one reading.
+   */
+  private formatBlueprintIdLabel(value: string): string {
     return value.split('_').join(' ');
   }
 
@@ -1271,7 +1092,7 @@ Plant your Chekhov elements naturally and ensure the moral dilemma occurs at mid
     const basePrompt = this.buildUserPrompt(input);
     const [, ...restLines] = basePrompt.split('\n');
     const contextExcerpt = options.existingContent
-      ? `PREVIOUS CHAPTER EXCERPT (for continuity, do not repeat verbatim):\n${this.createContextExcerpt(options.existingContent)}\n\n`
+      ? `PREVIOUS CHAPTER EXCERPT (for continuity, do not repeat verbatim):\n${createContextExcerpt(options.existingContent)}\n\n`
       : '';
 
     return `Write Chapter ${options.chapterNumber} of ${options.totalChapters} continuing the same supernatural romance saga.
@@ -1287,10 +1108,10 @@ ${contextExcerpt}${restLines.join('\n')}`;
   ): string {
     // Extract intelligent context from previous chapters
     const existingContent = existingContentOverride || input.existingContent;
-    const characterNames = this.extractCharacterNames(existingContent);
-    const lastChapterSummary = this.extractLastChapterSummary(existingContent);
-    const activePlotThreads = this.extractPlotThreads(existingContent);
-    const emotionalTone = this.analyzeEmotionalTone(existingContent);
+    const characterNames = extractCharacterNames(existingContent);
+    const lastChapterSummary = extractLastChapterSummary(existingContent);
+    const activePlotThreads = extractPlotThreads(existingContent);
+    const emotionalTone = analyzeEmotionalTone(existingContent);
     
     const prompt = `Continue this story as Chapter ${chapterNumber}.
 
@@ -1321,7 +1142,7 @@ ${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
 ${this.formatContinuationStoryLabContext(input.generationContext)}
 
 PREVIOUS CHAPTER(S) FOR CONTINUITY:
-${this.createContextExcerpt(existingContent)}
+${createContextExcerpt(existingContent)}
 
 Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for paragraphs, <em> for emphasis.`;
 
@@ -1343,7 +1164,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     const lines = [
       '',
       'STORY LAB HEAT CONTRACT - CONTINUATION CONSTRAINTS:',
-      `- Adult readers only confirmed; tension mode ${this.formatHeatContractLabel(context.heatContract.tensionMode)}; boundary ${this.formatHeatContractLabel(context.heatContract.intimacyBoundary)}.`
+      `- Adult readers only confirmed; tension mode ${this.formatBlueprintIdLabel(context.heatContract.tensionMode)}; boundary ${this.formatBlueprintIdLabel(context.heatContract.intimacyBoundary)}.`
     ];
 
     if (context.heatContract.noGoContent?.trim()) {
@@ -1352,105 +1173,6 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
 
     lines.push('- Keep continuation intimacy consensual and do not exceed the original Heat Contract boundary.');
     return lines.join('\n');
-  }
-
-  /**
-   * Extract character names from story content
-   */
-  private extractCharacterNames(content: string): string[] {
-    const speakerMatches = content.match(/\[([^\],]+)(?:,\s*[^\]]+)?\]:/g) || [];
-    const names = speakerMatches
-      .map(match => match.replace(/\[([^\],]+).*/, '$1').trim())
-      .filter(name => name !== 'Narrator');
-    
-    // Deduplicate and return
-    return [...new Set(names)];
-  }
-
-  /**
-   * Extract summary of last chapter/section
-   */
-  private extractLastChapterSummary(content: string): string {
-    // Stories arrive as generator HTML, where a paragraph is a `<p>` element
-    // rather than a run of text between blank lines. Splitting the stripped
-    // text on blank lines therefore found exactly one paragraph — the whole
-    // story — and "the last three paragraphs, truncated to 150 words" became
-    // "the story's opening 150 words". That summary is what the continuation
-    // prompt is told just happened, so a chapter continued from the beginning.
-    const paragraphs = splitStoryIntoTextBlocks(content);
-
-    if (paragraphs.length === 0) return 'Story beginning';
-    
-    // Get last 2-3 paragraphs as summary
-    const lastParagraphs = paragraphs.slice(-3).join(' ');
-
-    // Truncate to ~150 words
-    const words = lastParagraphs.split(/\s+/);
-    const summary = words.slice(0, SUMMARY_WORD_LIMIT).join(' ');
-
-    // Whether the cut happened is a question about the words, not about the
-    // lengths of two strings. Joining on single spaces is itself shortening —
-    // any line break or double space inside the paragraphs comes back as one
-    // character — so comparing lengths reported a truncation for a summary that
-    // holds the whole passage. The marker is what tells the continuation prompt
-    // that the chapter it is being handed stops mid-thought, and the model is
-    // then prompted to resume from a sentence that had in fact already ended.
-    return words.length > SUMMARY_WORD_LIMIT ? summary + '...' : summary;
-  }
-
-  /**
-   * Extract active plot threads and unresolved elements
-   */
-  private extractPlotThreads(content: string): string[] {
-    const threads: string[] = [];
-    const lowerContent = content.toLowerCase();
-
-    // Check for common plot thread indicators
-    if (lowerContent.includes('secret') || lowerContent.includes('mystery')) {
-      threads.push('Unresolved mystery or secret');
-    }
-    if (lowerContent.includes('danger') || lowerContent.includes('threat')) {
-      threads.push('Active threat or danger');
-    }
-    if (lowerContent.includes('forbidden') || lowerContent.includes('impossible')) {
-      threads.push('Forbidden relationship tension');
-    }
-    if (lowerContent.includes('power') || lowerContent.includes('control')) {
-      threads.push('Power dynamics in play');
-    }
-    if (lowerContent.match(/\bwhat\s+(if|would|could)\b/)) {
-      threads.push('Unresolved questions');
-    }
-    
-    return threads.length > 0 ? threads : ['Character development', 'Relationship progression'];
-  }
-
-  /**
-   * Analyze emotional tone of existing content
-   *
-   * `dominan` was a word stem left behind from a substring scan, and every
-   * keyword here is matched as a whole word. Nothing in English is spelled
-   * `dominan`, so the alternative could never fire: the one register the
-   * `intense` tone exists to name — a chapter written about dominance — was
-   * recognised only if it also happened to say `power`, `control`, or
-   * `command`, and a scene that says `dominant` and nothing else was reported
-   * to the continuation prompt as `romantic with building tension`. The
-   * inflections the stem stood for are spelled out instead, which is the same
-   * repair `extractThemesFromContent` made when it moved to whole-word
-   * matching.
-   */
-  private analyzeEmotionalTone(content: string): string {
-    const lowerContent = content.toLowerCase();
-    const tones: string[] = [];
-
-    // Emotional indicators
-    if (lowerContent.match(/\b(desire|passion|want|need|crave)\b/)) tones.push('passionate');
-    if (lowerContent.match(/\b(dark|shadow|danger|fear|threat)\b/)) tones.push('dark/suspenseful');
-    if (lowerContent.match(/\b(tease|playful|smile|grin|laugh)\b/)) tones.push('playful');
-    if (lowerContent.match(/\b(pain|ache|hurt|wound|scar)\b/)) tones.push('angsty');
-    if (lowerContent.match(/\b(power|control|dominant|dominance|dominated|command)\b/)) tones.push('intense');
-
-    return tones.length > 0 ? tones.join(', ') : 'romantic with building tension';
   }
 
   /**
@@ -1482,19 +1204,10 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
    * rule is about.
    */
   private validateStoryInput(input: StoryGenerationSeam['input']): any {
-    const supportedCreatures: readonly CreatureType[] = [
-      'vampire',
-      'werewolf',
-      'fairy',
-      'siren',
-      'djinn',
-      'witch',
-      'dragon',
-      'demon',
-      'angel',
-      'mermaid'
-    ];
-    if (!input.creature || !supportedCreatures.includes(input.creature)) {
+    // The vocabulary itself is `shared/creatureVocabulary`, so the list this
+    // route refuses a request against is the list the picker offers rather than
+    // a copy of it that a new creature would have to be added to twice.
+    if (!input.creature || !isCreatureArchetype(input.creature)) {
       return {
         code: 'INVALID_INPUT',
         message: 'Invalid creature type',
@@ -1514,21 +1227,80 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
       };
     }
 
-    if (
-      !Number.isInteger(input.spicyLevel) ||
-      input.spicyLevel < VALIDATION_RULES.spicyLevel.min ||
-      input.spicyLevel > VALIDATION_RULES.spicyLevel.max
-    ) {
+    /**
+     * The contents of the array, not only how many of them there are.
+     *
+     * This rule counted the themes and stopped, and the log line above the
+     * generation says so — "the number of themes but not their contents, so the
+     * array can hold [...]". `creature` two checks up is measured against its
+     * closed set by `isCreatureArchetype`, and `themes` is typed as the same
+     * kind of closed set: the eighteen `ThemeType` ids that
+     * `VALIDATION_RULES.themes.allowedValues` names in this file's own rules
+     * object. Nothing read that list on the way in.
+     *
+     * This is not a live hole, and the note is here so nobody later reads it as
+     * one. The only caller of `generateStory` is `generateStoryLabGenesis`, and
+     * it arrives through `toClassicGenerationInput`, which filters the
+     * blueprint's seed ids through `isClassicStoryTheme` and substitutes
+     * `DEFAULT_CLASSIC_THEME` when a batch names none of them — so the array
+     * this method is handed today has already been made valid by its one
+     * caller, and no request the app can assemble is refused by this rule. What
+     * the rule changes is where the guarantee lives: a validator that declares
+     * a closed set and checks only the length of it is trusting a filter three
+     * modules away that nothing states it depends on.
+     *
+     * What it would cost to be wrong is why it is worth stating here rather
+     * than left to that filter. `formatThemeContext` is where an unchecked
+     * value lands: it keeps every non-empty string in the array and joins them
+     * into the `THEMES` line of the Grok prompt, at whatever length arrived. So
+     * a second caller — a restored classic route, a job runner, a test harness
+     * driving the service directly — that passed a caller's array through would
+     * put arbitrary caller text into a paid model call, and nothing between
+     * here and the provider would notice. The evidence that this is the failure
+     * mode rather than a hypothetical is in this repository's own fixtures:
+     * `tests/story-service-improved.test.ts` had been generating stories with
+     * `themes: ['romance', 'dark']` since it was written — two narrative
+     * *tones*, neither of them one of the eighteen — and reached the prompt
+     * builder every time with nothing to say so.
+     *
+     * A closed set needs no length cap: an id is either one of the eighteen or
+     * it is not, so membership bounds the field more tightly than a number
+     * could. `toLoggableThemes` — which the count rule above already uses, and
+     * which reduces an unrecognised id to a count rather than printing caller
+     * prose — is what reports the refusal, so the answer names the field
+     * without quoting what was sent.
+     */
+    if (!input.themes.every(isClassicStoryTheme)) {
       return {
         code: 'INVALID_INPUT',
-        message: `Invalid spicy level (${VALIDATION_RULES.spicyLevel.min}-${VALIDATION_RULES.spicyLevel.max})`,
+        message: 'Invalid theme',
+        field: 'themes',
+        providedValue: toLoggableThemes(input.themes),
+        expectedType: 'ThemeType[]'
+      };
+    }
+
+    // Through the table's own guard rather than the integer-plus-range check
+    // this replaces, for the reason the word-count rule below reads its table:
+    // a level is either one of the five or it is not, and membership says that
+    // without depending on the scale staying contiguous and whole-numbered.
+    // The refusal names the levels it checked rather than the ends of a range,
+    // the way `formatChapterBatchSizeList` does for the batch sizes.
+    if (!isSpicyLevel(input.spicyLevel)) {
+      return {
+        code: 'INVALID_INPUT',
+        message: `Invalid spicy level (must be ${formatSpicyLevelList()})`,
         field: 'spicyLevel',
         providedValue: toLoggableNumber(input.spicyLevel),
         expectedType: 'SpicyLevel'
       };
     }
 
-    if (!(VALIDATION_RULES.wordCount.allowedValues as readonly number[]).includes(input.wordCount)) {
+    // Through the table's own guard rather than `allowedValues as readonly
+    // number[]`. The cast was there because the restated literal had no
+    // relationship to the `WordCount` union to check against; the list and the
+    // union are one table now, so the guard narrows instead of widening.
+    if (!isSupportedWordCount(input.wordCount)) {
       return {
         code: 'INVALID_INPUT',
         message: 'Invalid word count',
@@ -1569,51 +1341,38 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     }
 
     if (!this.isValidRequestedChapterCount(input.requestedChapterCount)) {
-      return {
-        code: 'INVALID_INPUT',
-        message: 'requestedChapterCount must be 1, 2, or 3',
-        field: 'requestedChapterCount',
-        providedValue: toLoggableNumber(input.requestedChapterCount),
-        expectedType: '1 | 2 | 3'
-      };
+      return this.chapterCountRefusal(toLoggableNumber(input.requestedChapterCount));
     }
 
     return null;
   }
 
+  /**
+   * Whether a caller named a batch this service runs, checked against the table
+   * rather than against a literal list written out here.
+   *
+   * `Number(count)` is kept because this seam takes a `number | undefined` and
+   * a query-string caller can still arrive with a numeric string; the table
+   * holds numbers, so the coercion has to happen before the membership test and
+   * not inside it.
+   */
   private isValidRequestedChapterCount(count?: number): boolean {
-    return count === undefined || [1, 2, 3].includes(Number(count));
+    return count === undefined || isChapterBatchSize(Number(count));
   }
 
-  private normalizeChapterCount(count?: number): 1 | 2 | 3 {
-    const numeric = Number(count ?? 1);
-
-    if (numeric <= 1) {
-      return 1;
-    }
-
-    if (numeric >= 3) {
-      return 3;
-    }
-
-    return 2;
+  private normalizeChapterCount(count?: number): ChapterBatchSize {
+    return clampToChapterBatchSize(count);
   }
 
-  private extractChapterTitleAndBody(content: string, chapterNumber: number): { title: string; body: string } {
-    const headingMatch = content.match(/<h3[^>]*>(.*?)<\/h3>/i);
-    let title = headingMatch ? this.stripHtml(headingMatch[1]).trim() : '';
-
-    if (title.toLowerCase().startsWith(`chapter ${chapterNumber}`)) {
-      title = title.slice(`chapter ${chapterNumber}`.length).replace(/^\s*:?/, '').trim();
-    }
-
-    if (!title) {
-      title = `Untitled Chapter ${chapterNumber}`;
-    }
-
-    const body = headingMatch ? content.replace(headingMatch[0], '').trim() : content.trim();
-
-    return { title, body };
+  /** The batch sizes as a refusal names them, and as it types them. */
+  private chapterCountRefusal(providedValue: unknown) {
+    return {
+      code: 'INVALID_INPUT' as const,
+      message: `requestedChapterCount must be ${formatChapterBatchSizeList()}`,
+      field: 'requestedChapterCount',
+      providedValue,
+      expectedType: CHAPTER_BATCH_SIZES.join(' | ')
+    };
   }
 
   private renderChapterForAppend(chapter: Pick<Chapter, 'chapterNumber' | 'title' | 'content'>): string {
@@ -1640,46 +1399,9 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     return `${existing.trim()}\n\n<hr>\n\n${trimmedAddition}`;
   }
 
-  /**
-   * The last sentence of a chapter, as the hint for what comes next.
-   *
-   * Measured and cut in code points. `candidate.slice(0, 197)` counted UTF-16
-   * code units, so a hint whose 197th unit fell between the halves of a
-   * surrogate pair ended on a lone surrogate — and the story this app writes is
-   * one whose prose carries the occasional astral character. The cut also landed
-   * mid-word wherever it landed, which is what `capAtWordBoundary` is for.
-   */
-  private generateNextChapterHint(content: string): string {
-    const text = this.stripHtml(content).replace(/\s+/g, ' ').trim();
-    if (!text) {
-      return '';
-    }
-
-    const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-    const candidate = (sentences[sentences.length - 1] || text).trim();
-
-    return Array.from(candidate).length > NEXT_CHAPTER_HINT_MAX_LENGTH
-      ? `${capAtWordBoundary(candidate, NEXT_CHAPTER_HINT_MAX_LENGTH - 3)}...`
-      : candidate;
-  }
-
-  /**
-   * The tail of everything written so far, shown to the model as
-   * `PREVIOUS CHAPTER EXCERPT` when it continues the story.
-   *
-   * `text.slice(-maxLength)` cut at the front, in code units, so the excerpt
-   * could begin on the second half of a surrogate pair — and began mid-word
-   * whatever it began on, which is the first thing the model reads.
-   */
-  private createContextExcerpt(html: string, maxLength: number = 1200): string {
-    const text = this.stripHtml(html || '').replace(/\s+/g, ' ').trim();
-
-    return tailAtWordBoundary(text, maxLength);
-  }
-
   private generateMockStory(input: StoryGenerationSeam['input'], _tropeSelection?: TropeSelection): string {
-    const creatureName = this.getCreatureDisplayName(input.creature);
-    const spicyLabel = this.getSpicyLabel(input.spicyLevel);
+    const creatureName = getCreatureDisplayName(input.creature);
+    const spicyLabel = getSpicyLabel(input.spicyLevel);
     const targetBodyWords = Math.max(200, Math.floor(input.wordCount * 0.9));
     const paragraphs = [
       `In the shadowed alleys of Victorian London, Lady Arabella Worthington found herself drawn to the mysterious stranger who haunted her dreams. His eyes, crimson as fresh-spilled wine, held secrets that both terrified and exhilarated her.`,
@@ -1711,7 +1433,7 @@ ${renderBody()}
   }
 
   private generateMockInitialChapter(input: StoryGenerationSeam['input'], chapterNumber: number, targetWordCount: number): string {
-    const creatureName = this.getCreatureDisplayName(input.creature);
+    const creatureName = getCreatureDisplayName(input.creature);
     const baseTitle = chapterNumber === 1
       ? `The ${creatureName}'s Forbidden Passion`
       : `Secrets of the ${creatureName} - Part ${chapterNumber}`;
@@ -1766,7 +1488,7 @@ ${renderBody()}`;
       paragraphs,
       expansionBeats,
       MOCK_CONTINUATION_TARGET_BODY_WORDS,
-      this.countWords(renderBody())
+      countWords(renderBody())
     );
 
     return `<h3>Chapter ${nextNumber}: The Deeper Shadows</h3>
@@ -1778,12 +1500,12 @@ ${renderBody()}`;
     paragraphs: string[],
     expansionBeats: string[],
     targetBodyWords: number,
-    initialWordCount = this.countWords(paragraphs.join(' '))
+    initialWordCount = countWords(paragraphs.join(' '))
   ): void {
     const countedExpansionBeats = expansionBeats
       .map(beat => ({
         beat,
-        wordCount: this.countWords(beat)
+        wordCount: countWords(beat)
       }))
       .filter(({ wordCount }) => wordCount > 0);
     let bodyWordCount = initialWordCount;
@@ -1797,35 +1519,8 @@ ${renderBody()}`;
     }
   }
 
-  private getCreatureDisplayName(creature: string): string {
-    const names: Record<string, string> = {
-      'vampire': 'Vampire',
-      'werewolf': 'Werewolf',
-      'fairy': 'Fairy',
-      'siren': 'Siren',
-      'djinn': 'Djinn',
-      'witch': 'Witch',
-      'dragon': 'Dragon',
-      'demon': 'Demon',
-      'angel': 'Angel',
-      'mermaid': 'Mermaid'
-    };
-    return names[creature] || 'Creature';
-  }
-
-  private getSpicyLabel(level: number): string {
-    const labels = [
-      'Storybook romance',
-      'Warm',
-      'Spicy',
-      'Very spicy',
-      'Inferno'
-    ];
-    return labels[level - 1] || 'Spicy';
-  }
-
   private generateTitle(input: StoryGenerationSeam['input']): string {
-    const creatureName = this.getCreatureDisplayName(input.creature);
+    const creatureName = getCreatureDisplayName(input.creature);
     return `The ${creatureName}'s Forbidden Passion`;
   }
 
@@ -1833,297 +1528,8 @@ ${renderBody()}`;
     return 'The Deeper Shadows';
   }
 
-  /**
-   * Count the words a reader would count.
-   *
-   * The count is reported to the client as `actualWordCount` and drives the
-   * streaming progress percentage, so it has to match the rendered story rather
-   * than the markup. Stripping tags in place merged the words on either side of
-   * every paragraph break into one, which cost one word per boundary — a
-   * chapter of forty `<p>` elements with no whitespace between them reported
-   * thirty-nine fewer words than it has, and `<p>one</p><p>two</p>` reported a
-   * single word.
-   */
-  private countWords(content: string): number {
-    return stripStoryHtmlToText(content).split(/\s+/).filter(word => word.length > 0).length;
-  }
-
   private detectCliffhanger(content: string): boolean {
     return this.cliffhangerService.analyze(content).cliffhangerDetected;
-  }
-
-  /**
-   * Report which of the reader's themes the new chapters carried on.
-   *
-   * The result is returned to the caller as `themesContinued`, which the
-   * contract types as `ThemeType[]` — the same closed set of eighteen ids the
-   * form offers and `VALIDATION_RULES.themes.allowedValues` lists. Two things
-   * kept it from being one:
-   *
-   * - When nothing matched, the answer was `['romance', 'fantasy']`. Neither is
-   *   a theme: no chapter can be generated with either, no theme picker can
-   *   render either, and a caller mapping the ids back to labels gets nothing
-   *   for both. It is also not the honest answer — "no configured theme was
-   *   detected" is — and because a scan this coarse usually matches something,
-   *   the case it fired in was the one where the scan had found nothing to say.
-   * - Six of the eighteen themes had no keywords at all, so `dominance`,
-   *   `submission`, `temptation`, `sin`, `lust`, and `deceit` could never be
-   *   reported however plainly a chapter carried them: a scene naming all six
-   *   came back as `power_dynamics, desire`. `lust` was worse than absent — it
-   *   sat in `desire`'s keyword list, so the word was credited to a theme the
-   *   reader may not have chosen while its own theme stayed unreachable.
-   *
-   * Keying the table by `ThemeType` is what stops the second from returning: a
-   * theme added to the contract without keywords here is now a compile error
-   * rather than a silent blind spot. The declared return type does the same for
-   * the first.
-   *
-   * The scan reads the rendered text rather than the markup, like every other
-   * scanner here — the multi-word keywords (`secret love`, `star-crossed`,
-   * `false promise`) are the ones a welded `door.</p><p>Blood` boundary hides.
-   *
-   * Keywords are matched as whole words rather than as substrings, which is
-   * what makes the six new entries safe to state plainly: `sin` as a substring
-   * is in `rising`, `using`, and `singing`, and `lust` is in `lustre`, so under
-   * the old matching the only way to add those themes would have been to spell
-   * them as something other than their own names. The inflections the substring
-   * form used to pick up for free — `secrets` for `secret`, `powerful` for
-   * `power` — are listed instead. `used` is gone from `manipulation`: an
-   * ordinary "she used the key" is not a story about being used, and it was the
-   * loosest keyword in the table.
-   */
-  private extractThemesFromContent(content: string): ThemeType[] {
-    const lowerContent = this.stripHtml(content).toLowerCase();
-
-    // Ordered as `VALIDATION_RULES.themes.allowedValues` orders them, so the
-    // same chapter always reports the same list in the same order.
-    const themeKeywords: Record<ThemeType, readonly string[]> = {
-      betrayal: ['betrayed', 'betrayal', 'deceived', 'backstabbed', 'treachery', 'double-crossed'],
-      obsession: ['obsessed', 'obsession', 'possessed', 'consumed', 'fixated', 'addicted'],
-      power_dynamics: ['power', 'powers', 'powerful', 'control', 'authority', 'command', 'leverage'],
-      forbidden_love: ['forbidden', 'secret love', 'star-crossed', 'illicit', 'taboo'],
-      revenge: ['revenge', 'vengeance', 'retribution', 'payback', 'avenge', 'avenged'],
-      manipulation: ['manipulated', 'manipulation', 'controlled', 'exploited', 'influenced'],
-      seduction: ['seduced', 'seduction', 'allured', 'enticed', 'charmed', 'coaxed'],
-      dark_secrets: ['secret', 'secrets', 'hidden', 'mysterious', 'concealed', 'buried'],
-      corruption: ['corrupted', 'corruption', 'tainted', 'fallen', 'darkness', 'evil'],
-      dominance: ['dominance', 'dominant', 'dominated', 'dominion', 'mastery'],
-      submission: ['submission', 'submitted', 'submissive', 'yielded', 'knelt', 'obeyed'],
-      jealousy: ['jealous', 'jealousy', 'envious', 'possessive', 'resentful', 'covetous'],
-      temptation: ['tempted', 'temptation', 'tempting', 'lured', 'beckoned'],
-      sin: ['sin', 'sins', 'sinful', 'sinner', 'damnation', 'damned', 'penance'],
-      desire: ['desire', 'desires', 'yearning', 'craving', 'longing', 'wanting'],
-      passion: ['passionate', 'passion', 'intense', 'burning', 'fiery', 'ardent'],
-      lust: ['lust', 'lustful', 'lusted', 'carnal', 'ravenous'],
-      deceit: ['deceit', 'deceitful', 'lied', 'lying', 'false promise']
-    };
-
-    const detectedThemes: ThemeType[] = [];
-    for (const [theme, keywords] of Object.entries(themeKeywords) as Array<[ThemeType, readonly string[]]>) {
-      if (keywords.some(keyword => containsWholeWord(lowerContent, keyword))) {
-        detectedThemes.push(theme);
-      }
-    }
-
-    return detectedThemes;
-  }
-
-  private extractSpicyLevelFromContent(content: string): SpicyLevel {
-    const lowerContent = content.toLowerCase();
-    
-    // Level 5 - Very Explicit
-    const level5Keywords = ['explicit', 'graphic', 'intense passion', 'climax', 'ecstasy'];
-    if (level5Keywords.some(keyword => lowerContent.includes(keyword))) {
-      return 5 as SpicyLevel;
-    }
-    
-    // Level 4 - Passionate
-    const level4Keywords = ['passionate', 'breathless', 'desire', 'yearning', 'heat'];
-    if (level4Keywords.some(keyword => lowerContent.includes(keyword))) {
-      return 4 as SpicyLevel;
-    }
-    
-    // Level 3 - Romantic with Heat
-    const level3Keywords = ['kiss', 'embrace', 'caress', 'touch', 'intimate'];
-    if (level3Keywords.some(keyword => lowerContent.includes(keyword))) {
-      return 3 as SpicyLevel;
-    }
-    
-    // Level 2 - Sweet Romance
-    const level2Keywords = ['love', 'affection', 'tender', 'gentle', 'heart'];
-    if (level2Keywords.some(keyword => lowerContent.includes(keyword))) {
-      return 2 as SpicyLevel;
-    }
-    
-    // Default to Level 1 - Mild
-    return 1 as SpicyLevel;
-  }
-
-  private formatStoryContent(content: string): string {
-    // Enhanced formatting for better readability
-    let formatted = content;
-
-    // If no HTML formatting exists, apply smart formatting
-    if (!content.includes('<h3>') && !content.includes('<p>')) {
-      // Extract title if present (first line typically).
-      //
-      // Only the blank lines *before* the title are dropped. Dropping all of
-      // them — `split('\n').filter(line => line.trim())` — took out the very
-      // separators the paragraph split below looks for, so rejoining the
-      // remainder produced a body with no blank line left anywhere in it and
-      // `split('\n\n')` returned the whole story as one block. Every paragraph
-      // the model wrote was then welded into a single `<p>`, and only for a
-      // story that opens with a title line: the same story without one kept its
-      // paragraphs, because that branch never touched the lines. This is the
-      // path a plain-text answer from the provider takes on its way to the
-      // reader, so what the reader saw was the chapter as one unbroken wall.
-      const lines = content.split('\n');
-      const titleIndex = lines.findIndex(line => line.trim());
-      const firstLine = titleIndex === -1 ? undefined : lines[titleIndex]?.trim();
-
-      // Check if first line looks like a title (short, no punctuation except colon)
-      const isTitle = firstLine && firstLine.length < 80 && !firstLine.endsWith('.') && !firstLine.startsWith('[');
-
-      if (isTitle) {
-        formatted = `<h3>${firstLine}</h3>\n\n` + lines.slice(titleIndex + 1).join('\n');
-      }
-
-      // Split into paragraphs based on multiple newlines or speaker changes
-      formatted = formatted
-        .replace(/\n\s*\n/g, '\n\n') // Normalize line breaks
-        .split('\n\n')
-        .filter(para => para.trim())
-        .map(para => para.trim())
-        .map(para => {
-          // Skip if already has HTML tags
-          if (para.includes('<')) return para;
-          
-          // Wrap in paragraph tags
-          return `<p>${para}</p>`;
-        })
-        .join('\n\n');
-    }
-
-    return formatted;
-  }
-
-  private formatChapterContent(content: string): string {
-    // Enhanced chapter formatting to match story formatting
-    let formatted = content;
-
-    // If no HTML formatting exists, apply smart formatting
-    if (!content.includes('<h3>') && !content.includes('<p>')) {
-      // Split into paragraphs based on multiple newlines
-      formatted = formatted
-        .replace(/\n\s*\n/g, '\n\n') // Normalize line breaks
-        .split('\n\n')
-        .filter(para => para.trim())
-        .map(para => para.trim())
-        .map(para => {
-          // Skip if already has HTML tags
-          if (para.includes('<')) return para;
-          
-          // Wrap in paragraph tags
-          return `<p>${para}</p>`;
-        })
-        .join('\n\n');
-    }
-
-    return formatted;
-  }
-
-  /**
-   * Reduce story markup to the text a reader sees.
-   *
-   * Deleting the tags and nothing else closed the gap they held open, so the
-   * last word of one paragraph and the first word of the next were read as one
-   * token: `<p>She opened the door.</p><p>Blood pooled…</p>` became
-   * `door.Blood`. Every caller here is looking for something the reader can
-   * point at — a chapter title, a summary of what just happened, the sentence a
-   * continuation has to follow on from — and each of them was handed welded
-   * text instead. Sentence splitting suffered worst: with no space after the
-   * full stop there was nothing for `/(?<=[.!?])\s+/` to split on, so the whole
-   * chapter came back as its own final sentence.
-   */
-  private stripHtml(content: string): string {
-    return stripStoryHtmlToText(content);
-  }
-
-  private stripSpeakerTagsForDisplay(content: string): string {
-    // Enhanced speaker tag removal with better text formatting
-    let displayContent = content;
-
-    // Remove speaker tags but preserve structure
-    displayContent = displayContent
-      .replace(/\[([^\]]+?)\]:\s*/g, '') // Remove speaker tags like [Narrator]: [Character, emotion]:
-      .replace(/\n\s*\n/g, '\n\n') // Normalize multiple newlines
-      .trim();
-
-    // Smart paragraph creation based on content structure.
-    //
-    // The blank lines have to survive the split. Filtering them out here left
-    // the branch below — the one that reads a blank line as the paragraph break
-    // it is — unreachable, so the only breaks this method could ever make were
-    // the ones the dialogue and narrative-shift heuristics guessed at. A model
-    // that separated its paragraphs the ordinary way, with a blank line and no
-    // opening quote or `Suddenly` to give itself away, had every one of them
-    // welded into a single `<p>`: the reader was shown the chapter as one
-    // unbroken block, and the paragraph structure the generator had actually
-    // written was thrown away before anything downstream could read it.
-    const lines = displayContent.split('\n');
-    const paragraphs = [];
-    let currentParagraph = '';
-
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-
-      // Empty line indicates paragraph break
-      if (!trimmedLine) {
-        if (currentParagraph) {
-          paragraphs.push(currentParagraph.trim());
-          currentParagraph = '';
-        }
-        continue;
-      }
-
-      // Start new paragraph for dialogue or narrative shifts
-      const isDialogue = trimmedLine.startsWith('"') || trimmedLine.includes('"');
-      const isNarrativeShift = trimmedLine.length < 50 && (
-        trimmedLine.includes('Later') || 
-        trimmedLine.includes('Meanwhile') || 
-        trimmedLine.includes('Suddenly') ||
-        trimmedLine.includes('Then') ||
-        /^(The|As|But|However|Still)/i.test(trimmedLine)
-      );
-
-      if (currentParagraph && (isNarrativeShift || (isDialogue && !currentParagraph.includes('"')))) {
-        paragraphs.push(currentParagraph.trim());
-        currentParagraph = trimmedLine;
-      } else {
-        currentParagraph += (currentParagraph ? ' ' : '') + trimmedLine;
-      }
-    }
-
-    // Add final paragraph
-    if (currentParagraph) {
-      paragraphs.push(currentParagraph.trim());
-    }
-
-    // Format paragraphs with proper HTML
-    const formattedParagraphs = paragraphs
-      .filter(para => para.length > 0)
-      .map(para => {
-        // Clean up any extra spacing
-        para = para.replace(/\s+/g, ' ').trim();
-        
-        // Wrap in paragraph tags if not already formatted
-        if (!para.startsWith('<') && !para.includes('<p>')) {
-          return `<p>${para}</p>`;
-        }
-        return para;
-      });
-
-    return formattedParagraphs.join('\n\n');
   }
 
   private generateStoryId(): string {
@@ -2137,21 +1543,4 @@ ${renderBody()}`;
   private generateRequestId(): string {
     return `req_${randomUUID()}`;
   }
-}
-
-/**
- * Whether `text` contains `keyword` as a whole word or whole phrase.
- *
- * Both sides are already lowercased by the caller. The `\b` at each end is what
- * separates a theme keyword from the longer word it happens to sit inside, and
- * a hyphenated keyword such as `star-crossed` is unaffected: `-` is a
- * non-word character, so the boundaries fall at the ends of the phrase rather
- * than around each half.
- */
-function containsWholeWord(text: string, keyword: string): boolean {
-  return new RegExp(String.raw`\b${escapeRegExp(keyword)}\b`).test(text);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
