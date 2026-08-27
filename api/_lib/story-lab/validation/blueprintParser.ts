@@ -1,14 +1,18 @@
 // Created: 2026-06-04 00:00 EDT
 
 import type {
-  ChapterBatchSize,
-  CreatureArchetype,
   HeatContract,
-  NarrativeTone,
-  SpicyLevel,
   StoryGenerationSeam,
-  ThemeSeed,
-  WordBudget
+  ThemeSeed
+} from '../contracts';
+import {
+  CHAPTER_BATCH_SIZES,
+  CREATURE_ARCHETYPES,
+  HEAT_INTIMACY_BOUNDARIES,
+  HEAT_TENSION_MODES,
+  NARRATIVE_TONES,
+  SPICY_LEVELS,
+  WORD_BUDGETS
 } from '../contracts';
 import { STORY_BLUEPRINT_LIMITS } from '../../../../shared/storyBlueprintLimits';
 
@@ -25,22 +29,22 @@ export type StoryLabBlueprintParseResult =
   | { blueprint: StoryGenerationSeam['input']; error?: undefined }
   | { blueprint?: undefined; error: StoryLabBlueprintParseError };
 
-const VALID_CREATURES: readonly CreatureArchetype[] = [
-  'vampire',
-  'werewolf',
-  'fairy',
-  'siren',
-  'djinn',
-  'witch',
-  'dragon',
-  'demon',
-  'angel',
-  'mermaid'
-];
-const VALID_TONES: readonly NarrativeTone[] = ['romance', 'dark_romance', 'mystery', 'adventure', 'comedy', 'tragedy'];
-const VALID_SPICY_LEVELS: readonly SpicyLevel[] = [1, 2, 3, 4, 5];
-const VALID_WORD_BUDGETS: readonly WordBudget[] = [600, 900, 1200, 1500];
-const VALID_BATCH_SIZES: readonly ChapterBatchSize[] = [1, 2, 3];
+/**
+ * What a blueprint may say, read from the contract rather than restated here.
+ *
+ * These five lists were written out again in this file and a third time in
+ * `FormValidationService`, which validates the same blueprint in the browser
+ * before it is sent. Two hand-kept copies of the same vocabulary is the
+ * arrangement where the form accepts a value the route refuses, and the reader
+ * learns which by pressing generate and being answered `400 INVALID_BLUEPRINT`
+ * naming a field by its wire name. The contract's tables are the ones the
+ * profile store already validates against; this is the same reading.
+ */
+const VALID_CREATURES = CREATURE_ARCHETYPES;
+const VALID_TONES = NARRATIVE_TONES;
+const VALID_SPICY_LEVELS = SPICY_LEVELS;
+const VALID_WORD_BUDGETS = WORD_BUDGETS;
+const VALID_BATCH_SIZES = CHAPTER_BATCH_SIZES;
 
 export function parseStoryLabBlueprintFromBody(body: unknown): StoryLabBlueprintParseResult {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -75,19 +79,19 @@ function parseStoryLabBlueprint(source: QuerySource, mode: 'body' | 'query'): St
   const spicyLevel = parseOneOf(VALID_SPICY_LEVELS, parseNumber(source['spicyLevel']));
   if (!spicyLevel) {
     invalidFields.push('spicyLevel');
-    messages.push('spicyLevel must be between 1 and 5.');
+    messages.push(`spicyLevel must be one of: ${VALID_SPICY_LEVELS.join(', ')}.`);
   }
 
   const desiredWordBudget = parseOneOf(VALID_WORD_BUDGETS, parseNumber(source['desiredWordBudget']));
   if (!desiredWordBudget) {
     invalidFields.push('desiredWordBudget');
-    messages.push('desiredWordBudget must be 600, 900, 1200, or 1500.');
+    messages.push(`desiredWordBudget must be one of: ${VALID_WORD_BUDGETS.join(', ')}.`);
   }
 
   const chapterBatchSize = parseOneOf(VALID_BATCH_SIZES, parseNumber(source['chapterBatchSize']));
   if (!chapterBatchSize) {
     invalidFields.push('chapterBatchSize');
-    messages.push('chapterBatchSize must be 1, 2, or 3.');
+    messages.push(`chapterBatchSize must be one of: ${VALID_BATCH_SIZES.join(', ')}.`);
   }
 
   const logline = getString(source['logline'])?.trim() ?? '';
@@ -366,7 +370,7 @@ function isHeatContract(value: unknown): value is HeatContract {
 
   const candidate = value as Record<string, unknown>;
   return typeof candidate['adultOnlyConfirmed'] === 'boolean'
-    && parseOneOf(['slow_burn', 'dangerous_proximity', 'playful_banter', 'devotional_longing'] as const, candidate['tensionMode']) !== undefined
-    && parseOneOf(['fade_to_black', 'closed_door', 'literary_on_page'] as const, candidate['intimacyBoundary']) !== undefined
+    && parseOneOf(HEAT_TENSION_MODES, candidate['tensionMode']) !== undefined
+    && parseOneOf(HEAT_INTIMACY_BOUNDARIES, candidate['intimacyBoundary']) !== undefined
     && (candidate['noGoContent'] === undefined || typeof candidate['noGoContent'] === 'string');
 }

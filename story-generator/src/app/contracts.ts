@@ -83,6 +83,31 @@ export const HEAT_INTIMACY_BOUNDARIES = [
   'literary_on_page'
 ] as const satisfies readonly HeatIntimacyBoundary[];
 
+/**
+ * The three numeric blueprint vocabularies, which had no runtime list at all.
+ *
+ * The four tables above each exist because a type is not something a route can
+ * check a request against: `parseStoryLabBlueprint` has to compare the value it
+ * was sent to a list of the values it accepts, and `FormValidationService` has
+ * to compare the same value to the same list before the reader presses
+ * generate. Those two lists have to be the one list, or the form accepts what
+ * the route refuses and the refusal arrives after the request, naming a field
+ * by its wire name, on a form that never said there was a limit — which is the
+ * failure `maxCharacterNameLength` in the shared blueprint limits was added to
+ * end for the free-text fields.
+ *
+ * Spicy level, word budget, and batch size were the three vocabularies with no
+ * table to read, so both sides wrote their own out — twice each, in a parser
+ * and in a form, with the word budgets restated a third time in the parser's
+ * error message and a fourth in the template's `<option>` values. These are the
+ * list; everything that checks one of these fields reads it.
+ */
+export const SPICY_LEVELS = [1, 2, 3, 4, 5] as const satisfies readonly SpicyLevel[];
+
+export const WORD_BUDGETS = [600, 900, 1200, 1500] as const satisfies readonly WordBudget[];
+
+export const CHAPTER_BATCH_SIZES = [1, 2, 3] as const satisfies readonly ChapterBatchSize[];
+
 export interface ThemeSeed {
   id: string;
   label: string;

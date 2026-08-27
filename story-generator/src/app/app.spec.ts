@@ -1736,6 +1736,73 @@ describe('App', () => {
     expect(previewText).toContain('Matched continuation guidance');
   });
 
+  // The panel used to score activation with a formula of its own: three
+  // characters rather than the guidance builder's four, so any short word the
+  // brief and a thread label happened to share was reported as a match. `vow`
+  // is three characters, and the words a story's promises are named with are
+  // mostly this short — vow, oath, key, debt. The guidance scores this brief
+  // against this thread at zero and orders it by story position like everything
+  // else, so `Matched continuation guidance` was the panel's judgement rather
+  // than the run's.
+  it('does not claim a continuity match the guidance builder would not make', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        threads: [{
+          id: 'broken-vow',
+          label: 'Broken vow',
+          status: 'active',
+          description: 'Someone will have to answer for it.',
+          foreshadowedDevices: []
+        }]
+      })
+    });
+    component.customContinuationBrief.set('Honour the vow she made.');
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    expect(previewText).toContain('Broken vow');
+    expect(previewText).toContain('Active story thread');
+    expect(previewText).not.toContain('Matched continuation guidance');
+  });
+
+  // The other half of the same disagreement. The guidance adds up what a
+  // thread's label, description, and foreshadowed devices each contribute; the
+  // panel took the best single one of them and did not read the devices at all.
+  // So a thread the brief echoes three times over ranked below one it echoes
+  // twice in a single label — the prompt carries the first, and the panel put
+  // the second above it.
+  it('ranks continuity the way the guidance builder ranks it', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        threads: [
+          {
+            id: 'ledger-debt',
+            label: 'Ledger debt',
+            status: 'active',
+            description: 'A crown waits.',
+            foreshadowedDevices: ['Harbor bells']
+          },
+          {
+            id: 'dawn-trial',
+            label: 'Trial at dawn',
+            status: 'active',
+            description: 'Nothing else matters.',
+            foreshadowedDevices: []
+          }
+        ]
+      })
+    });
+    component.customContinuationBrief.set(
+      'Bring the ledger, the crown, and the harbor. The dawn will not wait, and the trial cannot.'
+    );
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    expect(previewText).toContain('Ledger debt');
+    expect(previewText).toContain('Trial at dawn');
+    expect(previewText.indexOf('Ledger debt')).toBeLessThan(previewText.indexOf('Trial at dawn'));
+  });
+
   it('pins a memory card draft in the current session', () => {
     seedMaraMemoryCardWorkbench();
 

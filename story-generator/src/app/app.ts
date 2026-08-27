@@ -11,6 +11,11 @@ import {
   downloadBlob,
   downloadHtmlDocument
 } from '../../../shared/htmlDocumentDownload';
+import {
+  formatThreadDebtLabel,
+  normalizeActivationText,
+  scoreActivationCandidates
+} from '../../../shared/continuityActivation';
 import { buildStoryDownloadFilename } from '../../../shared/storyDownloadFilename';
 import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
@@ -228,6 +233,13 @@ function isBatchProgressStatus(status: unknown): status is BatchProgressState['s
  * `continuationGuidance.ts` re-checks object, `characterId`, and `relationship`
  * on every read. This is that guard, on the reader that did not have one.
  */
+function readThreadForeshadowedDevices(thread: PlotThread): string[] {
+  const devices = (thread as Partial<PlotThread>).foreshadowedDevices;
+  return Array.isArray(devices)
+    ? devices.filter((device): device is string => typeof device === 'string' && device.trim().length > 0)
+    : [];
+}
+
 function readRelationshipEdges(character: CharacterProfile): RelationshipEdge[] {
   const relationships = (character as Partial<CharacterProfile>).relationships;
   if (!Array.isArray(relationships)) {
@@ -590,13 +602,17 @@ export class App implements OnDestroy {
 
   readonly continuityPreviewItems = computed<ContinuityPreviewItem[]>(() => {
     const continuity = this.continuityPanel();
-    const activationSource = this.normalizePreviewActivationText(
-      this.withStoryMemoryCardBriefs(this.customContinuationBrief()) ?? ''
+    const activationSource = normalizeActivationText(
+      this.withStoryMemoryCardBriefs(this.customContinuationBrief())
     );
     const threadSelections = this.selectContinuityPreviewMatches(
       continuity.activeThreads,
       2,
-      thread => [thread.label, thread.description],
+      // The same three the guidance builder recognises a thread by. The
+      // foreshadowed devices were missing here, so a brief that named the
+      // planted device and nothing else activated the thread in the prompt and
+      // not in the preview of it.
+      thread => [thread.label, thread.description, ...readThreadForeshadowedDevices(thread)],
       activationSource
     );
     const artifactSelections = this.selectContinuityPreviewMatches(
@@ -615,7 +631,7 @@ export class App implements OnDestroy {
     return [
       ...threadSelections.map(({ item: thread, matched }) => ({
         id: `thread-${thread.id}`,
-        label: this.formatContinuityThreadPreviewLabel(thread.status),
+        label: formatThreadDebtLabel(thread.status),
         title: thread.label,
         detail: thread.description,
         sourceReason: this.formatContinuityPreviewSourceReason(matched, 'Active story thread'),
@@ -798,46 +814,31 @@ export class App implements OnDestroy {
     return matched ? 'Matched continuation guidance' : fallback;
   }
 
-  private formatContinuityThreadPreviewLabel(status: PlotThread['status']): string {
-    if (status === 'escalating') {
-      return 'Pressure rising';
-    }
-
-    if (status === 'dormant') {
-      return 'Quiet promise';
-    }
-
-    return 'Open promise';
-  }
-
+  /**
+   * How strongly the reader's brief names one continuity item, as the guidance
+   * builder scores it.
+   *
+   * This panel used to score it a third way of its own — best candidate rather
+   * than the sum of them, a three-character token floor rather than four, and an
+   * apostrophe the guidance's normalizer removes — so `Matched continuation
+   * guidance` was this component's judgement rather than the one the run makes.
+   * A thread called `Broken vow` was reported as matched against a brief that
+   * mentions a vow, while the guidance scored it zero and ordered it by story
+   * position; and a thread matched weakly three times ranked below one matched
+   * strongly once here, and above it in the prompt. The scorer moved to
+   * `shared/continuityActivation.ts`, which both now read.
+   *
+   * The panel still lists fewer items than the courtroom carries — two threads
+   * to its three, one artifact to its two, one warning to its two — because this
+   * is a preview beside a form rather than the prompt itself. What changes is
+   * that the items it lists are now the head of the same ordering, and its
+   * `Matched` label means what the guidance means by it.
+   */
   private scorePreviewActivationMatch(
     activationSource: string,
     candidates: Array<string | undefined>
   ): number {
-    if (!activationSource) {
-      return 0;
-    }
-
-    return candidates.reduce((highestScore, candidate) => {
-      const normalizedCandidate = this.normalizePreviewActivationText(candidate ?? '');
-      if (!normalizedCandidate) {
-        return highestScore;
-      }
-
-      if (activationSource.includes(normalizedCandidate)) {
-        return Math.max(highestScore, normalizedCandidate.split(' ').length + 5);
-      }
-
-      const wordScore = normalizedCandidate
-        .split(' ')
-        .filter(word => word.length > 2 && activationSource.includes(word))
-        .length;
-      return Math.max(highestScore, wordScore);
-    }, 0);
-  }
-
-  private normalizePreviewActivationText(value: string): string {
-    return (value.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []).join(' ');
+    return scoreActivationCandidates(candidates, activationSource);
   }
 
   private formatRelationshipPreviewDetail(
