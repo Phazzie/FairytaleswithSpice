@@ -217,6 +217,110 @@ function testExplicitIdsAndRepeatedNamesStillMerge(): void {
   );
 }
 
+/**
+ * `relationships` and `spiceCompatibilities` were cast rather than checked, so
+ * `Array.isArray` was the whole guard and the array's contents were whatever
+ * the model wrote. The Angular continuity panel iterates the stored edges and
+ * reads `relationship.characterId` off each one with no guard of its own, so a
+ * `null` in that array is a `TypeError` thrown while rendering it.
+ */
+function testMalformedRelationshipEdgesAreDropped(): void {
+  const state = mergeNames({
+    characters: [
+      {
+        displayName: 'Mira',
+        relationships: [
+          null,
+          'Dorian',
+          { characterId: 'character-dorian' },
+          { characterId: 'character-dorian', relationship: 'mentor' },
+          { characterId: '   ', relationship: 'lover', notes: 'blank id' },
+          { characterId: ' character-dorian ', relationship: 'lover', notes: '  Sworn enemies.  ' }
+        ] as never
+      }
+    ]
+  });
+
+  const [character] = state.characters;
+  assert(
+    character.relationships.length === 1,
+    `only the well-formed edge should survive (got ${JSON.stringify(character.relationships)})`
+  );
+  assert(
+    character.relationships[0].characterId === 'character-dorian'
+      && character.relationships[0].relationship === 'lover'
+      && character.relationships[0].notes === 'Sworn enemies.',
+    `the surviving edge should be trimmed and typed (got ${JSON.stringify(character.relationships[0])})`
+  );
+  assert(
+    character.relationships.every(edge => edge && typeof edge === 'object'),
+    'no entry that a panel would dereference should be null'
+  );
+}
+
+/**
+ * `spiceCompatibilities` is a `SpicyLevel[]` — the `1 | 2 | 3 | 4 | 5` union the
+ * whole app is dialled in. `[0]`, `[9]`, and `["3"]` all satisfied the old
+ * `Array.isArray` cast and were stored as levels under a type saying they
+ * cannot be.
+ */
+function testSpiceCompatibilitiesStayInsideTheScale(): void {
+  const state = mergeNames({
+    characters: [
+      { displayName: 'Mira', spiceCompatibilities: [0, 3, '4', 9, 5, 3] as never },
+      { displayName: 'Dorian', spiceCompatibilities: ['hot', null] as never },
+      { displayName: 'Elena' }
+    ]
+  });
+
+  const byName = new Map(state.characters.map(character => [character.displayName, character]));
+  assert(
+    JSON.stringify(byName.get('Mira')?.spiceCompatibilities) === JSON.stringify([3, 5]),
+    `out-of-scale levels should be dropped and duplicates collapsed (got ${JSON.stringify(byName.get('Mira')?.spiceCompatibilities)})`
+  );
+  assert(
+    JSON.stringify(byName.get('Dorian')?.spiceCompatibilities) === JSON.stringify([3]),
+    `an array holding no usable level should fall back to the default (got ${JSON.stringify(byName.get('Dorian')?.spiceCompatibilities)})`
+  );
+  assert(
+    JSON.stringify(byName.get('Elena')?.spiceCompatibilities) === JSON.stringify([3]),
+    'a character the model gave no compatibility for should keep the default'
+  );
+}
+
+/**
+ * The fallback path has to stay intact: a continuation whose model output says
+ * nothing about a character's edges must not erase the edges already stored.
+ */
+function testExistingEdgesSurviveASilentUpdate(): void {
+  const first = mergeNames({
+    characters: [
+      {
+        id: 'character-mira',
+        displayName: 'Mira',
+        relationships: [{ characterId: 'character-dorian', relationship: 'rival', notes: 'Court debt.' }],
+        spiceCompatibilities: [4, 5]
+      }
+    ]
+  });
+
+  const second = mergeAiContinuity(
+    first,
+    { characters: [{ id: 'character-mira', displayName: 'Mira', currentGoal: 'Break the oath.' }] },
+    NOW
+  );
+
+  const [character] = second.characters;
+  assert(
+    character.relationships.length === 1 && character.relationships[0].relationship === 'rival',
+    `stored edges should survive an update that does not mention them (got ${JSON.stringify(character.relationships)})`
+  );
+  assert(
+    JSON.stringify(character.spiceCompatibilities) === JSON.stringify([4, 5]),
+    `stored spice levels should survive the same way (got ${JSON.stringify(character.spiceCompatibilities)})`
+  );
+}
+
 function main(): void {
   testNonAsciiNamesStayDistinct();
   testThreadsAndArtifactsStayDistinct();
@@ -226,6 +330,9 @@ function main(): void {
   testEquivalentSpellingsOfOneNameMerge();
   testMarkOnlyNamesStillReachTheDigest();
   testExplicitIdsAndRepeatedNamesStillMerge();
+  testMalformedRelationshipEdgesAreDropped();
+  testSpiceCompatibilitiesStayInsideTheScale();
+  testExistingEdgesSurviveASilentUpdate();
 
   console.log('Story Lab continuity merge tests passed');
 }

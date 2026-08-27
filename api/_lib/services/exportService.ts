@@ -8,7 +8,7 @@ import {
   stripStoryHtmlForExport
 } from './exportSanitizer';
 import { buildZipArchive, ZipEntry } from './zipArchive';
-import { READING_SPEED } from '../constants';
+import { estimateReadTimeMinutes } from '../utils/readTime';
 import { readStoryLabThemeLabel, titleCaseIdentifier } from '../../../shared/storyLabThemeSeeds';
 import { logError } from '../utils/logger';
 import { toLoggableExportFormat, toLoggableStoryId } from '../utils/loggableRequestParameters';
@@ -773,19 +773,17 @@ ${chapterXhtml}
     // from it — on a route that already has a body-size cap because the story
     // can be several hundred kilobytes.
     //
-    // `READING_SPEED.WORDS_PER_MINUTE` is where this number is stated. It has
-    // been in `constants.ts` since that file was written, described as
-    // "Average reading speed for time estimation", with no reader anywhere in
-    // the repository — the one place that estimates a reading time spelled
-    // `200` inline instead. A named constant nothing reads is not a constant;
-    // it is a note, and the next change to it would have silently missed the
-    // only line it was written for.
+    // `estimateReadTimeMinutes` is where this estimate is made, for this
+    // document and for the `estimatedReadTime` the generation routes report on
+    // the same story. Reading `READING_SPEED.WORDS_PER_MINUTE` here directly
+    // gave the constant one reader and left `StoryService`'s two copies of
+    // `200` alone; see that function for what the two of them disagreed about.
     const wordCount = this.countWords(content);
 
     return {
       generatedAt: new Date().toISOString(),
       wordCount,
-      readTime: Math.ceil(wordCount / READING_SPEED.WORDS_PER_MINUTE),
+      readTime: estimateReadTimeMinutes(wordCount),
       creature: input.creature ? titleCaseIdentifier(input.creature) : 'unknown',
       themes: (input.themes ?? []).map(readStoryLabThemeLabel)
     };

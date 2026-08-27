@@ -6,6 +6,7 @@ import { ExportService } from '../api/_lib/services/exportService';
 import { readZipEntries, ZipEntry } from '../api/_lib/services/zipArchive';
 import { EXPORT_FORMATS, SaveExportSeam } from '../api/_lib/types/contracts';
 import { READING_SPEED } from '../api/_lib/constants';
+import { estimateReadTimeMinutes } from '../api/_lib/utils/readTime';
 import { logger } from '../api/_lib/utils/logger';
 import { STORY_LAB_THEME_SEEDS } from '../shared/storyLabThemeSeeds';
 
@@ -704,6 +705,71 @@ async function testStoryInformationIsWrittenForAReader(): Promise<void> {
 }
 
 /**
+ * The read time in the downloaded document and the `estimatedReadTime` the
+ * generation routes report are the same claim about the same story, and they
+ * were computed by three separate expressions: the export read
+ * `READING_SPEED.WORDS_PER_MINUTE`, while `StoryService.generateStory` and
+ * `StoryService.continueChapter` each spelled `200` inline.
+ *
+ * The three agree today, so this is not a counterfactual test — it cannot fail
+ * against the old code, and it is not claimed to. It pins the coupling instead:
+ * the document's read time is asserted against `estimateReadTimeMinutes`, the
+ * function all three sites now go through, so a later change that retunes the
+ * rate moves both together and one that reintroduces a local copy here is
+ * caught by the mismatch it creates.
+ *
+ * The word counts span every boundary in the estimate — one word, one short of
+ * a minute, exactly a minute, one past it — so the assertion is about the whole
+ * curve rather than one convenient point.
+ */
+async function testExportedReadTimeIsTheSharedEstimate(): Promise<void> {
+  const exportService = new ExportService();
+
+  for (const words of [1, READING_SPEED.WORDS_PER_MINUTE - 1, READING_SPEED.WORDS_PER_MINUTE, READING_SPEED.WORDS_PER_MINUTE + 1]) {
+    const rendered = (await exportService.generateExportContent(createInput({
+      format: 'txt',
+      includeMetadata: true,
+      content: `<p>${'word '.repeat(words).trim()}</p>`
+    }))).toString('utf8');
+
+    const reported = /Estimated Read Time: (\d+) minutes?/.exec(rendered)?.[1];
+    assert(
+      reported !== undefined,
+      `the document should state a read time (${words} words: ${JSON.stringify(rendered.slice(0, 200))})`
+    );
+    // `countWords` reads the story markup, so the `<p>` wrapper welds onto the
+    // first and last word and the count is not exactly `words`. The estimate is
+    // therefore compared against the count the document itself reports, which is
+    // what makes this an assertion about the arithmetic rather than about how
+    // the fixture happens to tokenize.
+    const documentWordCount = Number(/Word Count: (\d+)/.exec(rendered)?.[1]);
+    assert(
+      Number.isInteger(documentWordCount),
+      `the document should state a word count (${words} words)`
+    );
+    assert(
+      Number(reported) === estimateReadTimeMinutes(documentWordCount),
+      `a ${documentWordCount}-word story should be written as the shared estimate says (`
+        + `document ${reported}, estimate ${estimateReadTimeMinutes(documentWordCount)})`
+    );
+  }
+
+  // The floor is about prose that exists, and `/api/export/save` refuses a body
+  // whose `content` is not a non-empty string, so no export reaches the reader
+  // claiming its story takes no time at all.
+  const shortest = (await exportService.generateExportContent(createInput({
+    format: 'txt',
+    includeMetadata: true,
+    content: '<p>Word.</p>'
+  }))).toString('utf8');
+
+  assert(
+    !shortest.includes('Estimated Read Time: 0'),
+    `a story with prose in it should never be written as a zero-minute read (got ${JSON.stringify(shortest.slice(0, 300))})`
+  );
+}
+
+/**
  * The export format list has three readers — the service's own guard, the
  * renderer's switch, and the Angular picker — and the picker's hand-written
  * copy had lost `html`, so the one format nobody could choose was the one whose
@@ -899,6 +965,7 @@ async function main(): Promise<void> {
   await testMetadataReflectsTheActualStory();
   await testExportMetadataNamesThemesTheWayThePickerDoes();
   await testStoryInformationIsWrittenForAReader();
+  await testExportedReadTimeIsTheSharedEstimate();
   await testEveryDeclaredFormatRenders();
   await testAFailedExportSaysWhatFailed();
   await testTheEnvelopeCarriesTheRoutesRequestId();
