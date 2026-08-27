@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** storyLabEngine — five concerns in one 1,726-line file, a 700-line prompt-guidance subsystem with zero unit tests, and a whitespace helper hand-rolled three different ways (August 27, 2026)
+
+- `api/_lib/story-lab/storyLabEngine.ts` was the largest file in the repo and
+  had never had a structural pass — only three narrow one-line bugfixes had
+  touched it (#239, #250, #256). It mixed five unrelated concerns with zero
+  internal module boundaries: route orchestration
+  (`generateStoryLabGenesis`/`continueStoryLab`), a hand-rolled
+  prompt-engineering subsystem (three independent "brief builders" —
+  Continuity Courtroom, Chapter Ending Stress Test, Cliché Alarm — with their
+  own activation-scoring math and budget-trimming, ~700 of the file's 1,726
+  lines), state-merge logic, response-shaping, and a set of generic string
+  utilities.
+- Concrete duplication: `collapseWhitespace` was hand-rolled as a
+  character-by-character loop, while the exact same job already existed as a
+  one-line regex in `storyQualityHeuristics.ts` and, differently shaped again,
+  in `storyContentAnalysis.ts` (extracted from `StoryService` in the prior
+  worst-to-best PR). Three implementations of one function.
+- The ~700-line prompt-guidance subsystem — the part with the most branching
+  logic (activation scoring, ending-pressure selection, cliché-path selection)
+  — had zero unit tests of its own; it was only reachable indirectly through
+  `story-lab-real-engine.test.ts`/`story-lab-continuity-merge.test.ts`/
+  `story-lab-continuity-prompt.test.ts`, exercised only through the two route
+  entry points.
+- Extracted the prompt-guidance/"Continuity Courtroom" subsystem into a new
+  module, `api/_lib/story-lab/continuationGuidance.ts`, as pure exported
+  functions (unchanged behavior).
+- Extracted the state-merge/snapshot logic (`buildStateSnapshot`,
+  `buildInitialCharacters`, `buildInitialThreads`, `buildWorldArtifact`,
+  `mergeThreads`, `mergeUniqueById`, `buildStateDelta`, `buildChapterDelta`)
+  into a new module, `api/_lib/story-lab/storyStateBuilder.ts`.
+- Added `api/_lib/utils/whitespace.ts`, one canonical `collapseWhitespace`,
+  and repointed `storyLabEngine.ts` and `storyQualityHeuristics.ts` at it
+  instead of their own copies.
+- `storyLabEngine.ts` now holds only route orchestration and response-shaping:
+  1,726 → 676 lines.
+- Added `tests/story-lab-continuation-guidance.test.ts` — direct, no-AI,
+  no-service-instantiation coverage for activation scoring (including a
+  non-Latin-script regression case), unresolved-thread priority fallback,
+  resolved-thread exclusion, chapter-ending pressure selection, cliché-alarm
+  path selection, and the memory-card-stripping helper — all previously
+  untested at the unit level.
+
 ### ***WORST TO BEST*** StoryService content-analysis heuristics — pure string logic trapped in a 2,200-line god class, tested only through `as any` casts (August 27, 2026)
 
 - `api/_lib/services/storyService.ts` was the largest file in the repo: a

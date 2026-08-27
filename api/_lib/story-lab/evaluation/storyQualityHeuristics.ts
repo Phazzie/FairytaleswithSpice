@@ -3,6 +3,7 @@ import type {
   StoryQualityHeuristicReport
 } from '../contracts';
 import { splitStoryIntoTextBlocks } from '../../../../shared/storyTextBlocks';
+import { collapseWhitespace } from '../../utils/whitespace';
 
 export interface StoryQualityHeuristicInput {
   storyContent: string;
@@ -300,10 +301,6 @@ function clampScore(score: number): number {
  */
 function containsAny(value: string, needles: readonly string[]): boolean {
   return needles.some(needle => containsWordForm(value, needle));
-}
-
-function collapseWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
 }
 
 function extractDialogueSpeakers(dialogueLines: string[]): string[] {
