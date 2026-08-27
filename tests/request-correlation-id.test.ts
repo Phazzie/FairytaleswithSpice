@@ -7,12 +7,24 @@ import {
 } from '../api/_lib/http/requestCorrelationId';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { StoryService } from '../api/_lib/services/storyService';
+import { XaiTextClient } from '../api/_lib/services/xaiTextClient';
+import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
 import exportSaveHandler from '../api/export/save';
 import imageGenerateHandler from '../api/image/generate';
 import storyLabGenesisHandler, { createStoryLabGenesisHandler } from '../api/story-lab/stories';
 import storyLabContinuationHandler, {
   createStoryLabContinuationHandler
 } from '../api/story-lab/stories/[storyId]/continue';
+
+// `StoryService.continueChapter` validates nothing: unlike `generateStory`, it
+// has no input check to refuse a malformed request at, so it goes straight into
+// generation for whatever it is handed. With `XAI_API_KEY` set — a developer's
+// shell, or CI with provider credentials — that is a real, billable call to the
+// provider, and this file would wait through its timeouts and fail on its
+// network. `XaiTextClient` reads the key in a field initializer, so clearing it
+// here, before any service is constructed, is what pins every path below to
+// mock generation. Same reason and same placement as `tests/image-service.test.ts`.
+delete process.env['XAI_API_KEY'];
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -163,6 +175,7 @@ async function main(): Promise<void> {
   await testTheEnvelopeReportsTheIdTheHeaderCarries();
   await testTheStoryLabRoutesHandTheirIdToTheGeneration();
   await testTheStoryServiceHonoursTheIdItIsGiven();
+  await testTheContinuityCallCarriesTheSameId();
 
   console.log('Request correlation id tests passed');
 }
@@ -253,9 +266,17 @@ async function testTheStoryLabRoutesHandTheirIdToTheGeneration(): Promise<void> 
  * none.
  *
  * The other half of the same defect: the argument is worth nothing if the
- * service ignores it. Driven through the input-validation refusal, which is the
- * service's earliest return and spends no provider call, so what is asserted is
- * the id in the envelope rather than anything about generation.
+ * service ignores it. What is asserted is the id in the envelope, not anything
+ * about generation.
+ *
+ * The two entry points reach that envelope by different routes, and the
+ * difference is worth stating rather than glossing. `generateStory` refuses a
+ * malformed input at `validateStoryInput` and returns before any generation, so
+ * its two cases are genuinely pre-provider. `continueChapter` has **no input
+ * validation at all** — there is no early return to drive it to — so it runs a
+ * whole generation for whatever it is handed. That is why the key is cleared at
+ * the top of this file: without it the continuation case is a mock generation,
+ * and with it that same line would be a paid provider call.
  */
 async function testTheStoryServiceHonoursTheIdItIsGiven(): Promise<void> {
   const service = new StoryService();
@@ -286,6 +307,85 @@ async function testTheStoryServiceHonoursTheIdItIsGiven(): Promise<void> {
     GENERATED_ID_PATTERN.test(minted.metadata?.requestId ?? ''),
     `a caller with no id should still get one, got ${JSON.stringify(minted.metadata?.requestId)}`
   );
+}
+
+/**
+ * The continuity call is the second paid call of one request, and it answers to
+ * the same id.
+ *
+ * A successful Story Lab generation makes two provider calls: the chapters, and
+ * then `extractContinuity`. Giving `StoryService` the correlation id correlated
+ * the first and left the second exactly as it was — `XaiTextClient` logs every
+ * call's start, latency and failure through `request.context`, and this one
+ * passed none. So the timeout or provider error that most often degrades a
+ * batch was recorded under no request at all, on a generation whose chapters
+ * were correlated correctly.
+ *
+ * Driven against a stubbed client rather than a real one: what is asserted is
+ * the context handed to `generateText`, which is the whole of the fix, and
+ * stubbing is what keeps a test about logging from needing a provider.
+ */
+async function testTheContinuityCallCarriesTheSameId(): Promise<void> {
+  const realGenerateText = XaiTextClient.prototype.generateText;
+  const realHasApiKey = XaiTextClient.prototype.hasApiKey;
+
+  let seenContext: any;
+  XaiTextClient.prototype.hasApiKey = function hasApiKey(): boolean {
+    return true;
+  };
+  XaiTextClient.prototype.generateText = async function generateText(request: any) {
+    seenContext = request.context;
+    return { text: '{}' } as any;
+  };
+
+  try {
+    await extractContinuity({
+      storyId: 'story-continuity-correlation',
+      currentState: continuityState(),
+      chapters: [],
+      summary: continuitySummary(),
+      useAi: true,
+      timeoutMs: 30_000,
+      requestId: 'trace-continuity-1'
+    });
+  } finally {
+    XaiTextClient.prototype.generateText = realGenerateText;
+    XaiTextClient.prototype.hasApiKey = realHasApiKey;
+  }
+
+  assert(
+    seenContext?.requestId === 'trace-continuity-1',
+    `the continuity provider call should carry the request's own id, got ${JSON.stringify(seenContext?.requestId)}`
+  );
+  assert(
+    seenContext?.endpoint === 'story-lab/continuity-extraction',
+    `the continuity call should name itself, so it is tellable from the chapter calls under the same id, ` +
+      `got ${JSON.stringify(seenContext?.endpoint)}`
+  );
+}
+
+function continuityState() {
+  return {
+    storyId: 'story-continuity-correlation',
+    revision: 1,
+    characters: [],
+    threads: [],
+    artifacts: [],
+    narrativeVoice: 'tense romantic fantasy',
+    continuityWarnings: [],
+    lastUpdatedAt: new Date().toISOString()
+  } as any;
+}
+
+function continuitySummary() {
+  return {
+    storyId: 'story-continuity-correlation',
+    title: 'Continuity correlation',
+    creature: 'siren',
+    themes: [],
+    spicyLevel: 3,
+    chapterCount: 1
+  } as any;
 }
 
 function genesisBlueprint() {

@@ -234,7 +234,8 @@ export async function generateStoryLabGenesis(
     buildStoryLabPayloadFromGeneratedStory(input, result.data, result.metadata),
     input,
     !options.serviceFactory,
-    requestStartedAtMs
+    requestStartedAtMs,
+    options.requestId
   );
   payload.persistence = persistStoryIteration(payload);
 
@@ -339,7 +340,8 @@ export async function continueStoryLab(
     buildStoryLabPayloadFromContinuation(input, result.data, storyState, existingSummary, previousChapters, result.metadata),
     undefined,
     !options.serviceFactory,
-    requestStartedAtMs
+    requestStartedAtMs,
+    options.requestId
   );
   payload.persistence = persistStoryIteration(payload, previousChapters);
 
@@ -544,7 +546,8 @@ async function enrichContinuity<T extends StoryIterationPayload>(
   payload: T,
   blueprint: LabGenerationSeam['input'] | undefined,
   useAi: boolean,
-  requestStartedAtMs: number
+  requestStartedAtMs: number,
+  requestId?: string
 ): Promise<T> {
   const extraction = await extractContinuity({
     storyId: payload.summary.storyId,
@@ -553,7 +556,10 @@ async function enrichContinuity<T extends StoryIterationPayload>(
     summary: payload.summary,
     blueprint,
     useAi,
-    timeoutMs: getStoryLabContinuityTimeoutMs(requestStartedAtMs)
+    timeoutMs: getStoryLabContinuityTimeoutMs(requestStartedAtMs),
+    // The same id the chapters were generated under: this is the second paid
+    // call of one request, and both belong to it.
+    requestId
   });
 
   return {
