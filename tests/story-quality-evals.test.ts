@@ -341,6 +341,25 @@ function testTheEndingIsScannedWithItsWhitespaceCollapsed(): void {
     `a label in the paragraph before the ending is not this ending's (signals=${JSON.stringify(labelBefore?.signals)})`
   );
 
+  // And here the label really is split across blocks and really is in none of
+  // them alone — it just stops one block short of the ending. Caught by Codex
+  // on this PR: a closing label is not merely near the end, it is the end, so
+  // the last fragment has to be load-bearing.
+  const shortOfTheEnd = scan('<p>The door opened.</p><p>To</p><p>be continued</p><p>She ran</p>');
+  assert(
+    !shortOfTheEnd?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label that survives dropping the ending was never the ending's (signals=${JSON.stringify(shortOfTheEnd?.signals)})`
+  );
+
+  // The same rule has to keep a label the markup broke into more than two
+  // pieces, which is the case it would be easiest to lose while excluding the
+  // one above.
+  const thirds = scan('<p>The door opened.</p><p>To</p><p>be</p><p>continued</p>');
+  assert(
+    thirds?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
+    `a label broken into three blocks is still the ending (signals=${JSON.stringify(thirds?.signals)})`
+  );
+
   // The reconstruction must not cost the ordinary case either: a label with
   // prose after it, inside one block, is still the block's own match.
   const trailing = scan('<p>The door opened.</p><p>To be continued, she thought.</p>');

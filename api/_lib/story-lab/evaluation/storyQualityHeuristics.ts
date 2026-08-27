@@ -196,18 +196,24 @@ const LONGEST_EXPLICIT_CLIFFHANGER_LABEL = 'to be continued'.length;
  * see. Collapsing whitespace does not reach that: the break is *between* blocks,
  * not inside one. What the reader sees is one label either way.
  *
- * The reconstruction has to be exactly that and nothing more. Judging the join
- * by block length alone — "the final block is too short to be prose, so read the
- * one before it too" — buys the split label at the price of a false positive
- * Codex caught on this PR: `<p>The chapter was a cliffhanger.</p><p>She ran</p>`
- * has its label wholly inside the *previous* paragraph and an ending that
- * announces nothing, and it scored the signal and its sixteen points.
+ * The reconstruction has to be exactly that and nothing more, and it took two
+ * rounds of review to state the condition that makes it so. Two weaker rules
+ * both let a label describe an ending it is not part of:
  *
- * So the join is only ever read for what no single block already says. A label
- * that fits inside one block is that block's business — the final block's test
- * above reports it when it is the ending, and does not when it is not — and only
- * a match that exists in the joined text and in none of the blocks it was joined
- * from can be a label a boundary broke apart.
+ * - **Judging the join by block length.** `<p>The chapter was a
+ *   cliffhanger.</p><p>She ran</p>` scored, on a label wholly inside the
+ *   *previous* paragraph and an ending that announces nothing.
+ * - **Requiring the match to be in no single block.** Closes the case above but
+ *   not `<p>To</p><p>be continued</p><p>She ran</p>`, where the label really is
+ *   split across blocks, really is in none of them alone — and still stops one
+ *   block short of the ending.
+ *
+ * What both miss is that a closing label is not merely *near* the end, it *is*
+ * the end. So the condition is that the last fragment is load-bearing: the join
+ * carries a label, and the join without its final piece does not. A label that
+ * survives dropping the ending was never the ending's. That subsumes the second
+ * rule — a label wholly inside an earlier block survives the drop — so it is the
+ * only test here rather than a third condition stacked on two.
  */
 function hasReconstructedCliffhangerLabel(paragraphs: readonly string[]): boolean {
   const fragments: string[] = [];
@@ -223,7 +229,7 @@ function hasReconstructedCliffhangerLabel(paragraphs: readonly string[]): boolea
     return false;
   }
 
-  return !fragments.some(fragment => EXPLICIT_CLIFFHANGER_PATTERN.test(fragment));
+  return !EXPLICIT_CLIFFHANGER_PATTERN.test(fragments.slice(0, -1).join(' '));
 }
 
 /**
