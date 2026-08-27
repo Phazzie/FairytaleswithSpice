@@ -214,6 +214,12 @@ function testOverlongParagraphsAreReportedNotJustPenalised(): void {
 }
 
 /**
+ * The signal both cliffhanger-lexicon tests below assert on, named once so the
+ * two of them cannot drift apart on the wording.
+ */
+const EXPLICIT_CLIFFHANGER_SIGNAL = 'Ending uses explicit cliffhanger language.';
+
+/**
  * The "explicit cliffhanger language" signal has to fire on the language and
  * not on the prose.
  *
@@ -237,29 +243,27 @@ function testExplicitCliffhangerLanguageReadsTheIdiomNotTheProse(): void {
     .dimensions
     .find(dimension => dimension.id === 'cliffhanger_quality');
 
-  const EXPLICIT = 'Ending uses explicit cliffhanger language.';
-
   const verb = scan('<p>She opened the door.</p><p>He continued down the hall</p>');
   assert(
-    !verb?.signals.includes(EXPLICIT),
+    !verb?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
     `an ordinary "continued" is not a cliffhanger announcement (signals=${JSON.stringify(verb?.signals)})`
   );
 
   const rockFace = scan('<p>She opened the door.</p><p>They stood on the cliff</p>');
   assert(
-    !rockFace?.signals.includes(EXPLICIT),
+    !rockFace?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
     `a literal cliff is not a cliffhanger (signals=${JSON.stringify(rockFace?.signals)})`
   );
 
   const named = scan('<p>She opened the door.</p><p>The chapter ends on a cliffhanger</p>');
   assert(
-    named?.signals.includes(EXPLICIT),
+    named?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
     `the word itself is explicit cliffhanger language (signals=${JSON.stringify(named?.signals)})`
   );
 
   const idiom = scan('<p>She opened the door.</p><p>To be continued</p>');
   assert(
-    idiom?.signals.includes(EXPLICIT),
+    idiom?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
     `the idiom the entry existed for still scores (signals=${JSON.stringify(idiom?.signals)})`
   );
 }
@@ -288,17 +292,15 @@ function testTheEndingIsScannedWithItsWhitespaceCollapsed(): void {
     .dimensions
     .find(dimension => dimension.id === 'cliffhanger_quality');
 
-  const EXPLICIT = 'Ending uses explicit cliffhanger language.';
-
   const wrapped = scan('The door opened.\n\nTo be\ncontinued');
   const inline = scan('The door opened.\n\nTo be continued');
 
   assert(
-    inline?.signals.includes(EXPLICIT),
+    inline?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
     `the phrase on one line should score (signals=${JSON.stringify(inline?.signals)})`
   );
   assert(
-    wrapped?.signals.includes(EXPLICIT),
+    wrapped?.signals.includes(EXPLICIT_CLIFFHANGER_SIGNAL),
     `the same phrase wrapped between its words is the same ending (signals=${JSON.stringify(wrapped?.signals)})`
   );
   assert(
