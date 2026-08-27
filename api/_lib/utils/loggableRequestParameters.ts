@@ -1,7 +1,7 @@
 // Created: 2026-08-25 05:20 UTC
 
 import { STORY_LAB_THEME_SEED_IDS } from '../../../shared/storyLabThemeSeeds';
-import { VALIDATION_RULES } from '../types/contracts';
+import { EXPORT_FORMATS, VALIDATION_RULES } from '../types/contracts';
 
 /**
  * The theme ids a log line may repeat, which is both vocabularies the seams
@@ -102,6 +102,21 @@ export function toLoggableImageStyle(style: unknown): string {
 }
 
 /**
+ * Log an export format only when it is one.
+ *
+ * The same reading `toLoggableImageStyle` gets above, for the same position in
+ * the same kind of route: `/api/export/save` checks `format` for presence and
+ * leaves the closed-set check to `ExportService.validateExportInput`, which runs
+ * after the request line would be written. `EXPORT_FORMATS` is five values, so
+ * every export the app itself makes is logged exactly as it was.
+ */
+export function toLoggableExportFormat(format: unknown): string {
+  return typeof format === 'string' && (EXPORT_FORMATS as readonly string[]).includes(format)
+    ? format
+    : UNRECOGNIZED_PARAMETER;
+}
+
+/**
  * The shape of an identifier this repository would have minted.
  *
  * Two weaker rules were tried first and both let prose through:
@@ -172,6 +187,18 @@ export const IMAGE_GENERATION_REQUEST_FIELDS: readonly string[] = [
   'themes',
   'style',
   'aspectRatio'
+];
+
+/** `SaveExportSeam['input']`, for `/api/export/save`'s refusal line. */
+export const EXPORT_REQUEST_FIELDS: readonly string[] = [
+  'storyId',
+  'content',
+  'title',
+  'format',
+  'includeMetadata',
+  'includeChapters',
+  'creature',
+  'themes'
 ];
 
 export interface LoggableFieldNames {

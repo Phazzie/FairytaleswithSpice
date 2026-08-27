@@ -1,10 +1,12 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-24 18:05 UTC
 
+import { inspect } from 'node:util';
 import { ExportService } from '../api/_lib/services/exportService';
 import { readZipEntries, ZipEntry } from '../api/_lib/services/zipArchive';
 import { EXPORT_FORMATS, SaveExportSeam } from '../api/_lib/types/contracts';
 import { READING_SPEED } from '../api/_lib/constants';
+import { logger } from '../api/_lib/utils/logger';
 import { STORY_LAB_THEME_SEEDS } from '../shared/storyLabThemeSeeds';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -680,6 +682,149 @@ function escapeForAssertion(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
+/**
+ * Run `body` with the console captured, and hand back everything it wrote.
+ *
+ * The logger writes through `console`, so this is what "reaches the deployment
+ * log" means here — the same reading `tests/image-service.test.ts` takes of the
+ * same question, and the only one that can assert something is *absent* from
+ * the log rather than merely absent from a structured entry.
+ */
+async function captureConsole(body: () => Promise<void>): Promise<string> {
+  const written: string[] = [];
+  const captured = { log: console.log, warn: console.warn, error: console.error };
+  const record = (...args: unknown[]) => {
+    written.push(args.map(argument => inspect(argument, { depth: 8 })).join(' '));
+  };
+
+  console.log = record;
+  console.warn = record;
+  console.error = record;
+  try {
+    await body();
+  } finally {
+    console.log = captured.log;
+    console.warn = captured.warn;
+    console.error = captured.error;
+  }
+
+  return written.join('\n');
+}
+
+/**
+ * A failed export has to leave behind what failed.
+ *
+ * This method's catch was `catch { console.error('Export failed'); }` — unbound,
+ * so the one object that says what went wrong was discarded, and the sentence
+ * that replaced it names nothing. Five renderers sit behind it: a PDF assembler
+ * that measures its own cross-reference offsets, two zip containers, and two
+ * string templates. Any of them failing produced that same sentence, with no
+ * name, no message, no code, and no stack — and the route's own catch did the
+ * same thing one level up, so a 500 from `/api/export/save` was the one failure
+ * on this surface that could not be diagnosed at all.
+ *
+ * Driven by making the renderer throw, because that is what the catch is for:
+ * every input that reaches it has already passed `validateExportInput`, so a
+ * bad request cannot get here.
+ *
+ * The second half is what may *not* be written. This method's input is the
+ * reader's whole story, so the test carries a marker through the content and the
+ * title and requires it in neither the log nor the error entry: keeping the
+ * error is only safe because `logError` names the fields it keeps and runs them
+ * through the redactor.
+ */
+async function testAFailedExportSaysWhatFailed(): Promise<void> {
+  const service = new ExportService();
+  const rendererFailure = new Error('cross-reference table ran past the last object');
+  (service as unknown as { generateExportContent: unknown }).generateExportContent = async () => {
+    throw rendererFailure;
+  };
+
+  const storyMarker = 'ELODIE-BLED-ONTO-THE-CONTRACT';
+  logger.clearLogs();
+
+  let result!: Awaited<ReturnType<ExportService['saveAndExport']>>;
+  const written = await captureConsole(async () => {
+    result = await service.saveAndExport(
+      createInput({ content: `<p>${storyMarker}</p>`, title: storyMarker }),
+      'trace-export-failure'
+    );
+  });
+
+  assert(!result.success, 'a renderer that throws should not be reported as a success');
+  assert(
+    !result.success && result.error?.code === 'EXPORT_FAILED',
+    'a renderer failure should still answer EXPORT_FAILED'
+  );
+
+  const errors = logger.getRecentLogs(50, 'error');
+  const entry = errors.find(log => log.message === 'Export failed');
+  assert(entry, `a failed export should be logged as an error (got ${JSON.stringify(errors.map(e => e.message))})`);
+  assert(
+    entry.error?.message === rendererFailure.message,
+    `the failure's own message should survive (got ${JSON.stringify(entry.error?.message)})`
+  );
+  assert(
+    typeof entry.error?.stack === 'string' && entry.error.stack.length > 0,
+    'the failure should be logged with the stack that produced it'
+  );
+  assert(
+    entry.context?.requestId === 'trace-export-failure',
+    `the failure should be logged under the request's own id (got ${JSON.stringify(entry.context?.requestId)})`
+  );
+
+  assert(written.includes(rendererFailure.message), 'the failure should reach the log, not only the buffer');
+  assert(
+    !written.includes(storyMarker),
+    'no log line may carry the story text or the title an export was asked for'
+  );
+  assert(
+    !JSON.stringify(errors).includes(storyMarker),
+    'no buffered log entry may carry the story text or the title an export was asked for'
+  );
+}
+
+/**
+ * The id in the envelope has to be an id something logged.
+ *
+ * `metadata.requestId` was `req_${randomUUID()}`, minted inside this method —
+ * three separate times, once per branch, for a response that carries one — and
+ * written into the response body and nowhere else. The route above had a
+ * correlation id the whole time: `beginPostRoute` reads `X-Request-ID` or mints
+ * one, echoes it back, and stamps it into every line it writes. So a caller
+ * quoting the id their failed export came back with was quoting a value that
+ * matched nothing anywhere.
+ */
+async function testTheEnvelopeCarriesTheRoutesRequestId(): Promise<void> {
+  const service = new ExportService();
+
+  const succeeded = await service.saveAndExport(createInput(), 'trace-export-ok');
+  assert(succeeded.success, 'a valid export should succeed');
+  assert(
+    succeeded.metadata?.requestId === 'trace-export-ok',
+    `a successful export should report the route's id (got ${JSON.stringify(succeeded.metadata?.requestId)})`
+  );
+
+  // The refusal branch too: it is the branch a caller actually has an id to
+  // quote from, and it was minting its own.
+  const refused = await service.saveAndExport(
+    createInput({ format: 'rtf' as SaveExportSeam['input']['format'] }),
+    'trace-export-refused'
+  );
+  assert(!refused.success, 'an unsupported format should still be refused');
+  assert(
+    refused.metadata?.requestId === 'trace-export-refused',
+    `a refused export should report the route's id (got ${JSON.stringify(refused.metadata?.requestId)})`
+  );
+
+  // A caller with no id still gets one, so the field is never empty.
+  const unattributed = await service.saveAndExport(createInput());
+  assert(
+    /^req_[0-9a-f-]{36}$/.test(unattributed.metadata?.requestId ?? ''),
+    `an export with no correlation id should still be given one (got ${JSON.stringify(unattributed.metadata?.requestId)})`
+  );
+}
+
 async function main(): Promise<void> {
   await testPlainTextExportKeepsEveryBlockBreak();
   await testFilenamesStayReadableAndPortable();
@@ -697,6 +842,8 @@ async function main(): Promise<void> {
   await testExportMetadataNamesThemesTheWayThePickerDoes();
   await testStoryInformationIsWrittenForAReader();
   await testEveryDeclaredFormatRenders();
+  await testAFailedExportSaysWhatFailed();
+  await testTheEnvelopeCarriesTheRoutesRequestId();
 
   console.log('Export service tests passed');
 }

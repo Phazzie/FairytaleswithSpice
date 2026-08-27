@@ -10,6 +10,8 @@ import {
 import { buildZipArchive, ZipEntry } from './zipArchive';
 import { READING_SPEED } from '../constants';
 import { readStoryLabThemeLabel, titleCaseIdentifier } from '../../../shared/storyLabThemeSeeds';
+import { logError } from '../utils/logger';
+import { toLoggableExportFormat, toLoggableStoryId } from '../utils/loggableRequestParameters';
 
 // US Letter, in the points a PDF's default user space is measured in.
 const PDF_PAGE_WIDTH = 612;
@@ -198,8 +200,21 @@ function formatReadTime(minutes: number): string {
 }
 
 export class ExportService {
-  async saveAndExport(input: SaveExportSeam['input']): Promise<ApiResponse<SaveExportSeam['output']>> {
+  /**
+   * @param requestId The route's correlation id — the value it echoed as
+   *   `X-Request-ID` and stamps into every log line it writes. See
+   *   `resolveRequestId` for why it is an argument rather than something this
+   *   service mints for itself.
+   */
+  async saveAndExport(
+    input: SaveExportSeam['input'],
+    requestId?: string
+  ): Promise<ApiResponse<SaveExportSeam['output']>> {
     const startTime = Date.now();
+    // Once, at the top, so every branch below reports the same id. It used to be
+    // `this.generateRequestId()` called separately in each of the three, which
+    // is three ids per method for a response that carries one.
+    const correlationId = this.resolveRequestId(requestId);
 
     try {
       // Validate input
@@ -209,7 +224,7 @@ export class ExportService {
           success: false,
           error: validationError,
           metadata: {
-            requestId: this.generateRequestId(),
+            requestId: correlationId,
             processingTime: Date.now() - startTime
           }
         };
@@ -243,13 +258,41 @@ export class ExportService {
         success: true,
         data: output,
         metadata: {
-          requestId: this.generateRequestId(),
+          requestId: correlationId,
           processingTime: Date.now() - startTime
         }
       };
 
-    } catch {
-      console.error('Export failed');
+    } catch (error) {
+      // `catch {}` with `console.error('Export failed')` inside it, which is
+      // where this started. The binding is the fix: an unbound catch discards
+      // the only object that says what went wrong, so the five renderers behind
+      // this method — a PDF assembler that measures its own byte offsets, two
+      // zip containers, two string templates — failed into a single unqualified
+      // sentence with no name, no message, no code, and no stack anywhere. The
+      // route's own catch did the same thing one level up, so a 500 from
+      // `/api/export/save` left nothing at all behind to diagnose it with.
+      //
+      // `logError` names the fields it keeps — `name`, `message`, `stack`,
+      // `code`, `response.status`, `response.data` — and runs them through
+      // `redactSensitiveLogData`, which is what makes it safe to keep the error
+      // from a method whose input is the reader's whole story: the prose is not
+      // among those fields, and the strings that are still pass through token
+      // redaction. `ImageService` and `XaiTextClient` have logged their failures
+      // this way since the logger was written; this was the last service on this
+      // surface still writing to the console.
+      //
+      // The format and the story id go through the same allow-lists the route's
+      // own log lines put them through: both are caller text, and the id that is
+      // not id-shaped is reduced rather than printed.
+      logError('Export failed', error, {
+        requestId: correlationId,
+        endpoint: '/api/export/save',
+        method: 'POST'
+      }, {
+        storyId: toLoggableStoryId(input.storyId),
+        format: toLoggableExportFormat(input.format)
+      });
 
       return {
         success: false,
@@ -258,7 +301,7 @@ export class ExportService {
           message: 'Failed to export story'
         },
         metadata: {
-          requestId: this.generateRequestId(),
+          requestId: correlationId,
           processingTime: Date.now() - startTime
         }
       };
@@ -771,7 +814,24 @@ ${chapterXhtml}
     return `export_${randomUUID()}`;
   }
 
-  private generateRequestId(): string {
-    return `req_${randomUUID()}`;
+  /**
+   * The id this export is known by, in the envelope and in the log alike.
+   *
+   * It used to be `req_${randomUUID()}` unconditionally, minted inside this
+   * method and written into `metadata.requestId` — an id that exists in exactly
+   * one place, the response body, and appears in no log line anywhere. The
+   * route above had a correlation id the whole time: `beginPostRoute` reads
+   * `X-Request-ID` or mints one, echoes it back as a header, and stamps it into
+   * every line the handler writes. So a caller reporting a failed export quoted
+   * the id the body handed them and it matched nothing, while the id that would
+   * have found the request was in a header they were never told to keep.
+   *
+   * Taking the route's id makes the envelope, the response header, the handler's
+   * lines, and this service's own failure line all name the same request.
+   * Minting one is kept for the caller that has none — `generateExportContent`'s
+   * callers, a test, a future job runner — so the field is never empty.
+   */
+  private resolveRequestId(requestId?: string): string {
+    return requestId && requestId.trim() ? requestId.trim() : `req_${randomUUID()}`;
   }
 }
