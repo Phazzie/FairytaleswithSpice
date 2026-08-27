@@ -33,6 +33,7 @@ import {
   formatChekhovLedger
 } from '../shared/productionStoryPrompt';
 import { SPICE_LEVEL_PROMPT_BLOCK } from '../shared/spiceLevelPromptLadder';
+import { WORD_BUDGETS } from '../api/_lib/story-lab/contracts';
 import { StoryService } from '../api/_lib/services/storyService';
 import { assert } from './assert';
 
@@ -182,22 +183,22 @@ function readPacedWordCounts(block: string[], label: string): number[] {
   });
 }
 
-/** The budgets the Proving Grounds picker actually offers. */
+/**
+ * The budgets the Proving Grounds picker actually offers.
+ *
+ * This used to scrape the literal array out of `proving-grounds.ts`, because
+ * that is where the four numbers were written. They are `WORD_BUDGETS` now —
+ * the contract's own table, which the picker maps over and the blueprint parser
+ * refuses a request against — so the question this asks is unchanged and it
+ * asks it of the declaration rather than of one screen's copy of it.
+ */
 function readWordCountOptions(): number[] {
-  const match = /wordCountOptions:\s*WordBudget\[\]\s*=\s*\[([^\]]*)\]/.exec(provingGroundsSource);
-  assert(match, 'proving-grounds.ts should declare wordCountOptions');
-
-  const options = match[1]!
-    .split(',')
-    .map(entry => entry.trim())
-    .filter(Boolean)
-    .map(Number);
-
   assert(
-    options.length > 0 && options.every(Number.isFinite),
-    `wordCountOptions should be a list of numbers, got ${JSON.stringify(match[1])}`
+    provingGroundsSource.includes('WORD_BUDGETS'),
+    'the Proving Grounds word-count picker should read WORD_BUDGETS'
   );
-  return options;
+
+  return [...WORD_BUDGETS];
 }
 
 const pacedCounts = readPacedWordCounts(

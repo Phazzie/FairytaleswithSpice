@@ -21,8 +21,10 @@ import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { buildStoryHtmlDocument } from './story-html-exporter';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
+import { CREATURE_ARCHETYPES, readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import {
   BatchProgressState,
+  CHAPTER_BATCH_SIZES,
   ChapterBatchSize,
   ChapterTimelineEntry,
   CharacterProfile,
@@ -33,14 +35,19 @@ import {
   EXPORT_FORMATS,
   ExportFormat,
   GeneratedChapter,
+  HEAT_INTIMACY_BOUNDARIES,
+  HEAT_TENSION_MODES,
   HeatContract,
   HeatIntimacyBoundary,
   HeatTensionMode,
   IMAGE_STYLES,
   ImageGenerationSeam,
   ImageStyle,
+  NARRATIVE_TONES,
+  NarrativeTone,
   PlotThread,
   RelationshipEdge,
+  SPICY_LEVELS,
   SavedStoryProject,
   SpicyLevel,
   StoryMemoryLifetime,
@@ -51,6 +58,8 @@ import {
   StoryLabJobStatus,
   StoryWorkbenchSession,
   ThemeSeed,
+  WORD_BUDGETS,
+  WordBudget,
   isTerminalStoryLabJobStatus
 } from './contracts';
 import { StoryService } from './story.service';
@@ -101,6 +110,100 @@ type HeatContractOption<T extends string> = {
 type ContinuationDirection = {
   label: string;
   brief: string;
+};
+
+type ChoiceOption<TId extends string | number> = {
+  id: TId;
+  label: string;
+};
+
+/**
+ * The words this form puts in front of the reader for each value of a closed
+ * vocabulary — and nothing else.
+ *
+ * Every picker below used to be a hand-written array of `{ id, label,
+ * description }`, which made the array two things at once: the copy that says
+ * what a `vampire` is called, and a second declaration of *which* creatures
+ * there are. The second one is the problem. `CREATURE_ARCHETYPES`,
+ * `NARRATIVE_TONES`, `SPICY_LEVELS`, `WORD_BUDGETS`, `CHAPTER_BATCH_SIZES`,
+ * `HEAT_TENSION_MODES`, and `HEAT_INTIMACY_BOUNDARIES` are the vocabularies the
+ * API's parser refuses a blueprint against and `FormValidationService` checks
+ * this form's own state against — `shared/creatureVocabulary` and the tables in
+ * `contracts.ts` exist precisely so those two readers cannot disagree — and the
+ * screen that decides what a reader can actually send was not one of the
+ * readers.
+ *
+ * A value added to a vocabulary therefore reached the type, the validator, the
+ * route, the prompt builders, and the log filter, and stopped at the picker:
+ * the new creature, tone, or word budget is accepted everywhere and offered
+ * nowhere, with nothing to fail and nothing on the page to say it is missing.
+ * Typing the copy as a total `Record` over the vocabulary is what turns that
+ * into a compile error — TypeScript refuses a record missing a key — and
+ * mapping the picker over the table rather than over the record's own keys is
+ * what keeps the offered order the vocabulary's.
+ *
+ * The `label`s below are the ones this form already showed, transcribed
+ * unchanged; the creature labels are dropped entirely in favour of
+ * `readCreatureDisplayName`, which is the title-cased id every one of them
+ * already was.
+ */
+const CREATURE_DESCRIPTIONS: Record<CreatureArchetype, string> = {
+  vampire: 'Immortal desire, old secrets, dangerous elegance.',
+  werewolf: 'Pack bonds, moonlit hunger, protective intensity.',
+  fairy: 'Fae bargains, beautiful traps, glittering menace.',
+  siren: 'Songs, saltwater vows, temptation with teeth.',
+  djinn: 'Wishes, bargains, heat shimmer magic.',
+  witch: 'Spellwork, grimoires, familiar old power.',
+  dragon: 'Treasure, pride, scale-deep obsession.',
+  demon: 'Temptation, contracts, wicked devotion.',
+  angel: 'Forbidden grace, falling, sacred desire.',
+  mermaid: 'Tides, curses, pearl-lit longing.'
+};
+
+const SPICE_LEVEL_COPY: Record<SpicyLevel, { label: string; description: string }> = {
+  1: { label: 'Storybook Romance', description: 'Longing, flirtation, no explicit detail.' },
+  2: { label: 'Warm', description: 'Kissing, sensual tension, restrained heat.' },
+  3: { label: 'Spicy', description: 'Adult heat, literary, fade-to-black before graphic detail.' },
+  4: { label: 'Very Spicy', description: 'Explicit consensual intimacy with emotional stakes.' },
+  5: { label: 'Inferno', description: 'Maximum explicit consensual adult fantasy.' }
+};
+
+const HEAT_TENSION_COPY: Record<HeatTensionMode, { label: string; description: string }> = {
+  slow_burn: { label: 'Slow burn', description: 'Longing, restraint, charged pauses.' },
+  dangerous_proximity: { label: 'Danger close', description: 'Threat, protection, forced proximity.' },
+  playful_banter: { label: 'Banter', description: 'Teasing, challenge, mischief.' },
+  devotional_longing: { label: 'Devotion', description: 'Reverence, sacrifice, tenderness.' }
+};
+
+const HEAT_BOUNDARY_COPY: Record<HeatIntimacyBoundary, { label: string; description: string }> = {
+  fade_to_black: { label: 'Fade to black', description: 'Build heat, close the door early.' },
+  closed_door: { label: 'Closed door', description: 'Romance stays implied off-page.' },
+  literary_on_page: { label: 'Literary on-page', description: 'Consensual heat with polished language.' }
+};
+
+const NARRATIVE_TONE_LABELS: Record<NarrativeTone, string> = {
+  romance: 'Romance',
+  dark_romance: 'Dark Romance',
+  mystery: 'Mystery',
+  adventure: 'Adventure',
+  comedy: 'Comedy',
+  tragedy: 'Tragedy'
+};
+
+/**
+ * The four word budgets under the names the "Chapter length" picker gives them.
+ *
+ * These were `<option [ngValue]="600">Short</option>` and three more like it,
+ * written straight into the template — the copy `contracts.ts` names in the
+ * note on `WORD_BUDGETS` ("restated ... a fourth in the template's `<option>`
+ * values") and the one that change did not reach, because a template is not a
+ * reader a `satisfies` clause can check.
+ */
+const WORD_BUDGET_LABELS: Record<WordBudget, string> = {
+  600: 'Short',
+  900: 'Medium',
+  1200: 'Long',
+  1500: 'Lush'
 };
 
 type NarrativeDialId = 'villain-pressure' | 'chapter-payload' | 'pacing' | 'ending-bet';
@@ -356,18 +459,13 @@ export class App implements OnDestroy {
     { id: 'writing-desk', label: 'Cozy Witchy Writing Desk', mood: 'Intimate, earthy, creative' }
   ];
 
-  readonly creatureOptions: CreatureOption[] = [
-    { id: 'vampire', label: 'Vampire', description: 'Immortal desire, old secrets, dangerous elegance.' },
-    { id: 'werewolf', label: 'Werewolf', description: 'Pack bonds, moonlit hunger, protective intensity.' },
-    { id: 'fairy', label: 'Fairy', description: 'Fae bargains, beautiful traps, glittering menace.' },
-    { id: 'siren', label: 'Siren', description: 'Songs, saltwater vows, temptation with teeth.' },
-    { id: 'djinn', label: 'Djinn', description: 'Wishes, bargains, heat shimmer magic.' },
-    { id: 'witch', label: 'Witch', description: 'Spellwork, grimoires, familiar old power.' },
-    { id: 'dragon', label: 'Dragon', description: 'Treasure, pride, scale-deep obsession.' },
-    { id: 'demon', label: 'Demon', description: 'Temptation, contracts, wicked devotion.' },
-    { id: 'angel', label: 'Angel', description: 'Forbidden grace, falling, sacred desire.' },
-    { id: 'mermaid', label: 'Mermaid', description: 'Tides, curses, pearl-lit longing.' }
-  ];
+  // Built from the vocabulary tables rather than restated — see the copy
+  // records above for what a picker that declares its own vocabulary costs.
+  readonly creatureOptions: CreatureOption[] = CREATURE_ARCHETYPES.map(id => ({
+    id,
+    label: readCreatureDisplayName(id),
+    description: CREATURE_DESCRIPTIONS[id]
+  }));
 
   // Read from the shared seed list rather than restated here. These ids do not
   // stay in the browser: they travel to `/api/image/generate`, `/api/export/save`,
@@ -377,26 +475,47 @@ export class App implements OnDestroy {
   // reader on the other side of the seam could see it.
   readonly availableThemes: ThemeSeed[] = STORY_LAB_THEME_SEEDS.map(seed => ({ ...seed }));
 
-  readonly spiceOptions: SpiceOption[] = [
-    { level: 1, label: 'Storybook Romance', description: 'Longing, flirtation, no explicit detail.' },
-    { level: 2, label: 'Warm', description: 'Kissing, sensual tension, restrained heat.' },
-    { level: 3, label: 'Spicy', description: 'Adult heat, literary, fade-to-black before graphic detail.' },
-    { level: 4, label: 'Very Spicy', description: 'Explicit consensual intimacy with emotional stakes.' },
-    { level: 5, label: 'Inferno', description: 'Maximum explicit consensual adult fantasy.' }
-  ];
+  readonly spiceOptions: SpiceOption[] = SPICY_LEVELS.map(level => ({
+    level,
+    ...SPICE_LEVEL_COPY[level]
+  }));
 
-  readonly heatTensionOptions: HeatContractOption<HeatTensionMode>[] = [
-    { id: 'slow_burn', label: 'Slow burn', description: 'Longing, restraint, charged pauses.' },
-    { id: 'dangerous_proximity', label: 'Danger close', description: 'Threat, protection, forced proximity.' },
-    { id: 'playful_banter', label: 'Banter', description: 'Teasing, challenge, mischief.' },
-    { id: 'devotional_longing', label: 'Devotion', description: 'Reverence, sacrifice, tenderness.' }
-  ];
+  readonly heatTensionOptions: HeatContractOption<HeatTensionMode>[] = HEAT_TENSION_MODES.map(id => ({
+    id,
+    ...HEAT_TENSION_COPY[id]
+  }));
 
-  readonly heatBoundaryOptions: HeatContractOption<HeatIntimacyBoundary>[] = [
-    { id: 'fade_to_black', label: 'Fade to black', description: 'Build heat, close the door early.' },
-    { id: 'closed_door', label: 'Closed door', description: 'Romance stays implied off-page.' },
-    { id: 'literary_on_page', label: 'Literary on-page', description: 'Consensual heat with polished language.' }
-  ];
+  readonly heatBoundaryOptions: HeatContractOption<HeatIntimacyBoundary>[] = HEAT_INTIMACY_BOUNDARIES.map(id => ({
+    id,
+    ...HEAT_BOUNDARY_COPY[id]
+  }));
+
+  /**
+   * The three vocabularies the template used to write out as `<option>`s.
+   *
+   * A `<select>`'s options are the whole of what a reader may choose, so these
+   * were the same second declaration the arrays above were, one layer further
+   * from anything that could check them: a tone added to `NARRATIVE_TONES` is
+   * accepted by the parser and by `FormValidationService`, and a form built out
+   * of six hand-written `<option>` elements would never offer it.
+   *
+   * The batch sizes need no copy table — "1 chapter", "2 chapters" is the
+   * number and a plural — so their labels are built from the value itself.
+   */
+  readonly toneOptions: ChoiceOption<NarrativeTone>[] = NARRATIVE_TONES.map(id => ({
+    id,
+    label: NARRATIVE_TONE_LABELS[id]
+  }));
+
+  readonly wordBudgetOptions: ChoiceOption<WordBudget>[] = WORD_BUDGETS.map(id => ({
+    id,
+    label: WORD_BUDGET_LABELS[id]
+  }));
+
+  readonly chapterBatchOptions: ChoiceOption<ChapterBatchSize>[] = CHAPTER_BATCH_SIZES.map(id => ({
+    id,
+    label: `${id} chapter${id === 1 ? '' : 's'}`
+  }));
 
   readonly continuationDirections: ContinuationDirection[] = [
     { label: 'Deepen the romance', brief: 'Deepen the romantic tension and make the emotional stakes more intimate.' },
@@ -3075,6 +3194,11 @@ export class App implements OnDestroy {
 
   trackContinuationDirection(index: number, direction: ContinuationDirection) {
     return direction.label;
+  }
+
+  /** One `trackBy` for the three `<select>` vocabularies, which share a shape. */
+  trackChoiceOption(index: number, option: ChoiceOption<string | number>) {
+    return option.id;
   }
 
   getFieldError(field: BlueprintValidationField): string | undefined {

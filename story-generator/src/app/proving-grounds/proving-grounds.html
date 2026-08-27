@@ -61,13 +61,13 @@
 
         <!-- Spicy Level -->
         <div class="form-group">
-          <label for="pg-spice">Spice Level: {{ spicyLevel }}/5</label>
+          <label for="pg-spice">Spice Level: {{ spicyLevel }}/{{ maxSpicyLevel }}</label>
           <input
             id="pg-spice"
             type="range"
             [(ngModel)]="spicyLevel"
-            min="1"
-            max="5"
+            [min]="minSpicyLevel"
+            [max]="maxSpicyLevel"
             step="1"
             class="form-control-range">
           <div class="spice-labels">
@@ -283,7 +283,7 @@
                   <p><strong>Template:</strong> {{ test.configuration.promptTemplate.name }}</p>
                   <p><strong>Creature:</strong> {{ test.configuration.creature | titlecase }}</p>
                   <p><strong>Themes:</strong> {{ themeSummary(test.configuration.themes) }}</p>
-                  <p><strong>Spice:</strong> {{ test.configuration.spicyLevel }}/5</p>
+                  <p><strong>Spice:</strong> {{ test.configuration.spicyLevel }}/{{ maxSpicyLevel }}</p>
                   <p><strong>Generation Time:</strong> {{ test.generationTime }}ms</p>
                   <p><strong>Words:</strong> {{ test.totalWordCount }} across {{ test.chapterCount }} chapter{{ test.chapterCount === 1 ? '' : 's' }}</p>
                 </div>
@@ -460,7 +460,7 @@
               <p><strong>Template:</strong> {{ currentTest()!.configuration.promptTemplate.name }}</p>
               <p><strong>Creature:</strong> {{ currentTest()!.configuration.creature | titlecase }}</p>
               <p><strong>Themes:</strong> {{ themeSummary(currentTest()!.configuration.themes) }}</p>
-              <p><strong>Spice Level:</strong> {{ currentTest()!.configuration.spicyLevel }}/5</p>
+              <p><strong>Spice Level:</strong> {{ currentTest()!.configuration.spicyLevel }}/{{ maxSpicyLevel }}</p>
               <p><strong>Word Count:</strong> {{ currentTest()!.configuration.wordCount }}</p>
               @if (currentTest()!.configuration.userInput) {
                 <p><strong>User Input:</strong> {{ currentTest()!.configuration.userInput }}</p>
