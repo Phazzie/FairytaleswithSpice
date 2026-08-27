@@ -9,6 +9,7 @@ import type {
   StoryLabJobKind,
   StoryLabJobStatus
 } from '../contracts';
+import { STORY_LAB_TERMINAL_JOB_STATUSES } from '../contracts';
 import type { StoryLabCloudQueryExecutor } from '../storage/storyLabCloudStorageConfig';
 import {
   assertOpaqueStoryLabJobId,
@@ -77,6 +78,20 @@ insert into story_lab_jobs (
 ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
 `;
 
+/**
+ * The terminal statuses as a SQL list, built from
+ * `STORY_LAB_TERMINAL_JOB_STATUSES` rather than written out in the statement.
+ *
+ * The values are the contract's own literals — no caller string reaches this —
+ * and quoting them here is what lets the one list decide when `completed_at` is
+ * stamped, the same way it decides when the event stream closes and when the
+ * workbench stops waiting. See that constant for what the three separate copies
+ * of this set could not do.
+ */
+const TERMINAL_JOB_STATUS_SQL_LIST = STORY_LAB_TERMINAL_JOB_STATUSES
+  .map(status => `'${status}'`)
+  .join(', ');
+
 const UPDATE_JOB_SQL = `
 update story_lab_jobs
 set
@@ -86,7 +101,7 @@ set
   result_json = $6::jsonb,
   error_json = $7::jsonb,
   updated_at = $8,
-  completed_at = case when $3 in ('completed', 'failed', 'cancelled') then $8 else completed_at end
+  completed_at = case when $3 in (${TERMINAL_JOB_STATUS_SQL_LIST}) then $8 else completed_at end
 where job_id = $1
   and owner_user_id = $2
 returning job_id, owner_user_id, kind, status, current_step, progress_percent, created_at, updated_at, result_json, error_json

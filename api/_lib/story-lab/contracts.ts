@@ -74,7 +74,9 @@ export {
   NARRATIVE_TONES,
   SPICY_LEVELS,
   STORY_LAB_LIBRARY_SORTS,
-  WORD_BUDGETS
+  STORY_LAB_TERMINAL_JOB_STATUSES,
+  WORD_BUDGETS,
+  isTerminalStoryLabJobStatus
 } from '../../../story-generator/src/app/contracts';
 
 export type ApiResponse<T> = import('../../../story-generator/src/app/contracts').ApiResponse<T>;

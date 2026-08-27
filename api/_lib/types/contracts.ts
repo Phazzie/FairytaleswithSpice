@@ -73,7 +73,41 @@ export const EXPORT_FORMATS = [
   'epub',
   'docx'
 ] as const satisfies readonly ExportFormat[];
-export type ImageStyle = 'artistic' | 'photorealistic' | 'fantasy' | 'dark' | 'romantic';
+/**
+ * The image styles, as a value the type is read from rather than the other way
+ * round.
+ *
+ * Five style names were written out by hand in six places: this union, the
+ * Angular contract's own copy of it, `IMAGE_STYLES` beside that one for the
+ * picker, `VALIDATION_RULES.imageStyle.allowedValues` below, `SUPPORTED_STYLES`
+ * in `ImageService`, and — twice more — the `styleMap` and `grokStyleMap`
+ * lookups that turn a style into prompt text and into the provider's own style
+ * parameter. Nothing tied any of them to any other, which is the arrangement
+ * `EXPORT_FORMATS` above was written to end after the picker restated the
+ * export formats and lost `html`.
+ *
+ * The two lookups are why this is `as const` with the type derived, rather than
+ * a union with a list `satisfies`-checked against it: a `satisfies` clause
+ * catches a *wrong* entry, and every one of these copies could only ever go
+ * wrong by being short one. A style missing from `styleMap` falls through to
+ * `'artistic style'` and one missing from `grokStyleMap` to `'natural'`, so a
+ * sixth style added to the union alone would have been generated in the wrong
+ * look, silently, with no error anywhere. Derived from the table, they are
+ * `Record<ImageStyle, string>` and a missing entry does not compile.
+ *
+ * `VALIDATION_RULES.imageStyle.allowedValues` is the copy that mattered most
+ * for being right: `toLoggableImageStyle` reads it to decide whether the
+ * `style` a caller sent is one of ours, and a value that is not is replaced
+ * with `[UNRECOGNIZED]` rather than written to the log as the caller wrote it.
+ */
+export const IMAGE_STYLES = [
+  'artistic',
+  'photorealistic',
+  'fantasy',
+  'dark',
+  'romantic'
+] as const;
+export type ImageStyle = typeof IMAGE_STYLES[number];
 export type CliffhangerType =
   | 'romantic_tension'
   | 'plot_twist'
@@ -279,16 +313,46 @@ export interface SaveExportSeam {
 }
 
 // ==================== SEAM 5: STORY → IMAGE GENERATION ====================
+/**
+ * The image seam, in the one place it is declared.
+ *
+ * It was declared twice — here and in the Angular contract — and the two had
+ * drifted into describing different seams:
+ *
+ * - **`themes` was `ThemeType[]` here and `string[]` there, and the client was
+ *   right.** The Story Lab sends its own theme seed ids, which the classic
+ *   eighteen-name vocabulary does not contain. Both readers downstream already
+ *   know that: `ImageService.mapThemeToVisualElement` takes a `string` and
+ *   answers for either vocabulary, and `ALLOWED_THEMES` in
+ *   `loggableRequestParameters` had to be widened with
+ *   `STORY_LAB_THEME_SEED_IDS` for the same reason. Only this line still
+ *   claimed the route receives a closed set it does not.
+ * - **`creature` was `CreatureType` here and `CreatureArchetype` there** — the
+ *   same ten names under two names. It stays `CreatureType` because this is
+ *   the classic contract; the client's `CreatureArchetype` is structurally the
+ *   same union and assigns to it.
+ * - **`seamName` and `description` are literal types**, and the two spellings
+ *   of `description` differed, so the two interfaces were not assignable to
+ *   each other in either direction. Nothing crossed that boundary because
+ *   nothing could.
+ *
+ * The Angular contract re-exports this one now, the way it already re-exports
+ * `SaveExportSeam` and `ExportFormat`.
+ */
 export interface ImageGenerationSeam {
   seamName: "Story → Image Generation";
-  description: "Generates images based on story content using Grok-2-Image";
+  description: "Generates a scene image from story content using Grok-2-Image.";
 
   input: {
     storyId: string;
     content: string; // Story content or specific scene
     imagePrompt?: string; // Optional custom prompt
     creature: CreatureType;
-    themes: ThemeType[];
+    /**
+     * Classic `ThemeType` ids or Story Lab theme seed ids — the route takes
+     * both, and every reader of this field is written for both.
+     */
+    themes: string[];
     style: ImageStyle;
     aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3';
   };
@@ -350,7 +414,7 @@ export const VALIDATION_RULES = {
     max: 1.5
   },
   imageStyle: {
-    allowedValues: ['artistic', 'photorealistic', 'fantasy', 'dark', 'romantic']
+    allowedValues: IMAGE_STYLES
   },
   aspectRatio: {
     allowedValues: ['1:1', '16:9', '9:16', '4:3']

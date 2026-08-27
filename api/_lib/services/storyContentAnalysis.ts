@@ -12,7 +12,7 @@
 import { SpicyLevel, ThemeType } from '../types/contracts';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
-import { escapeRegExp } from '../utils/regexEscape';
+import { containsWholeWord, wholeWordPattern } from '../utils/wholeWord';
 
 /** The longest `nextChapterHint`, in code points. */
 export const NEXT_CHAPTER_HINT_MAX_LENGTH = 200;
@@ -123,6 +123,17 @@ export function extractLastChapterSummary(content: string): string {
  * `secret`, `dangerous` for `danger`, `threatening` for `threat`, `powerful`
  * for `power`, `controlled` for `control` — are listed rather than lost.
  */
+/**
+ * The open question this scan reads as a thread the chapter left standing.
+ *
+ * Built through `wholeWordPattern` like the plain keywords beside it rather
+ * than carrying its own `\b`, so the phrase asks the same boundary question
+ * they do — see `WORD_CHARACTERS` for what `\b` was answering wrong. `\s+`
+ * because the two words are separated by whatever whitespace the generator
+ * wrote, and the group is non-capturing because nothing reads the match.
+ */
+const UNRESOLVED_QUESTION_PATTERN = wholeWordPattern(String.raw`what\s+(?:if|would|could)`);
+
 export function extractPlotThreads(content: string): string[] {
   const threads: string[] = [];
   const lowerContent = stripHtml(content).toLowerCase();
@@ -146,7 +157,7 @@ export function extractPlotThreads(content: string): string[] {
   if (mentions('power', 'powers', 'powerful', 'control', 'controls', 'controlled', 'controlling')) {
     threads.push('Power dynamics in play');
   }
-  if (lowerContent.match(/\bwhat\s+(if|would|could)\b/)) {
+  if (UNRESOLVED_QUESTION_PATTERN.test(lowerContent)) {
     threads.push('Unresolved questions');
   }
 
@@ -338,18 +349,6 @@ export function getSpicyLabel(level: number): string {
   return labels[level - 1] || 'Spicy';
 }
 
-/**
- * Whether `text` contains `keyword` as a whole word or whole phrase.
- *
- * Both sides are already lowercased by the caller. The `\b` at each end is what
- * separates a theme keyword from the longer word it happens to sit inside, and
- * a hyphenated keyword such as `star-crossed` is unaffected: `-` is a
- * non-word character, so the boundaries fall at the ends of the phrase rather
- * than around each half.
- */
-function containsWholeWord(text: string, keyword: string): boolean {
-  return new RegExp(String.raw`\b${escapeRegExp(keyword)}\b`).test(text);
-}
 
 /**
  * Report which of the reader's themes the new chapters carried on.

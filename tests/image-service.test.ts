@@ -9,7 +9,7 @@ import {
   buildSceneDescriptionFromStory,
   readGeneratedImageUrl
 } from '../api/_lib/services/imageService';
-import { CreatureType, ImageGenerationSeam, VALIDATION_RULES } from '../api/_lib/types/contracts';
+import { CreatureType, IMAGE_STYLES, ImageGenerationSeam, VALIDATION_RULES } from '../api/_lib/types/contracts';
 import { logger } from '../api/_lib/utils/logger';
 import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
 import { IMAGE_GENERATION_LIMITS } from '../shared/storyBlueprintLimits';
@@ -710,8 +710,50 @@ async function testOnlyCallerFacingMessagesReachTheEnvelope(): Promise<void> {
   }
 }
 
+// Every style the contract names is accepted by the route and asks the provider
+// for a look of its own.
+//
+// The five style names used to be written out by hand in six places — this
+// union, the Angular contract's copy of it, the picker's `IMAGE_STYLES`,
+// `VALIDATION_RULES.imageStyle.allowedValues`, `SUPPORTED_STYLES`, and the two
+// lookups that turn a style into prompt text and into the provider's style
+// parameter — with nothing tying any of them to any other. Both halves of this
+// test are the failures that arrangement allowed and neither of which shows up
+// as an error: a style missing from `SUPPORTED_STYLES` is refused with
+// `UNSUPPORTED_STYLE` for being exactly what the contract says it is, and a
+// style missing from `styleMap` is generated in a look nobody asked for.
+async function testEveryImageStyleIsAcceptedAndDescribedAsItself(): Promise<void> {
+  const modifiers = new Set<string>();
+
+  for (const style of IMAGE_STYLES) {
+    const result = await new ImageService().generateImage(createInput({ style }));
+    assert(result.success, `mock image generation should succeed for ${style}`);
+
+    const prompt = (result.data as ImageGenerationSeam['output']).prompt;
+    assert(
+      !prompt.includes('. artistic style.'),
+      `${style} is a named style, so it should not fall back to the generic modifier (got: ${prompt})`
+    );
+    modifiers.add(prompt);
+  }
+
+  assert(
+    modifiers.size === IMAGE_STYLES.length,
+    `each style should reach the provider as its own look (got ${modifiers.size} distinct prompts for ${IMAGE_STYLES.length} styles)`
+  );
+
+  // The run-time allow-list `toLoggableImageStyle` checks a caller's `style`
+  // against is the same table, so a style the app itself sends can never be
+  // logged as `[UNRECOGNIZED]`.
+  assert(
+    VALIDATION_RULES.imageStyle.allowedValues === IMAGE_STYLES,
+    'the validation allow-list should be the contract table itself, not a copy of it'
+  );
+}
+
 async function main(): Promise<void> {
   await testEveryCreatureArchetypeReachesThePrompt();
+  await testEveryImageStyleIsAcceptedAndDescribedAsItself();
   await testEveryThemeTheAppOffersReachesThePrompt();
   await testSceneDescriptionReadsAsProse();
   testTheOpeningSentencesAreReadAsSentences();

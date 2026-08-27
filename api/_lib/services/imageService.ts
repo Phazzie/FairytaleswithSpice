@@ -4,7 +4,7 @@
 
 import axios from 'axios';
 import { randomUUID } from 'node:crypto';
-import { ImageGenerationSeam, ApiResponse, CreatureType } from '../types/contracts.js';
+import { ImageGenerationSeam, ApiResponse, CreatureType, ImageStyle, IMAGE_STYLES } from '../types/contracts.js';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary } from '../utils/textExcerpt';
 import { logApiError, logError } from '../utils/logger';
@@ -39,13 +39,13 @@ const ASPECT_RATIO_SPECS: Record<SupportedAspectRatio, AspectRatioSpec> = {
 };
 
 const SUPPORTED_ASPECT_RATIOS = Object.keys(ASPECT_RATIO_SPECS) as SupportedAspectRatio[];
-const SUPPORTED_STYLES: ImageGenerationSeam['input']['style'][] = [
-  'artistic',
-  'photorealistic',
-  'fantasy',
-  'dark',
-  'romantic'
-];
+/**
+ * Read from the contract's table rather than restated here, the way
+ * `SUPPORTED_ASPECT_RATIOS` above is read off `ASPECT_RATIO_SPECS`. This is the
+ * closed-set check that answers `UNSUPPORTED_STYLE`, so a style the type names
+ * and this list did not was a style the route refused.
+ */
+const SUPPORTED_STYLES: readonly ImageStyle[] = IMAGE_STYLES;
 
 /**
  * Read the image URL out of a provider response, or refuse the response.
@@ -442,27 +442,37 @@ export class ImageService {
     return visualMap[theme] || 'mysterious elements';
   }
 
+  /**
+   * The look each style asks the provider for.
+   *
+   * `Record<ImageStyle, string>`, not an untyped literal indexed by a cast: the
+   * fallback below is reached only by a value that is not a style at all — a
+   * caller's string on a path that has not validated yet — and a style named by
+   * the contract but missing here would have taken it too. That is the one
+   * failure a picture cannot show you: the image comes back, it is simply not
+   * in the style that was asked for. See `IMAGE_STYLES` in the contract.
+   */
   private getStyleModifier(style: string): string {
-    const styleMap = {
+    const styleMap: Record<ImageStyle, string> = {
       artistic: 'painted in an artistic, impressionistic style',
       photorealistic: 'hyper-realistic, photographic quality',
       fantasy: 'fantastical, magical realism with vibrant colors',
       dark: 'dark, moody, gothic atmosphere with deep shadows',
       romantic: 'romantic, soft lighting, dreamy atmosphere'
     };
-    return styleMap[style as keyof typeof styleMap] || 'artistic style';
+    return styleMap[style as ImageStyle] || 'artistic style';
   }
 
+  /** Map our internal style to Grok's style parameters. Keyed as above. */
   private mapStyleToGrokStyle(style: string): string {
-    // Map our internal style to Grok's style parameters
-    const grokStyleMap = {
+    const grokStyleMap: Record<ImageStyle, string> = {
       artistic: 'vivid',
       photorealistic: 'natural',
       fantasy: 'vivid',
       dark: 'natural',
       romantic: 'vivid'
     };
-    return grokStyleMap[style as keyof typeof grokStyleMap] || 'natural';
+    return grokStyleMap[style as ImageStyle] || 'natural';
   }
 
   private mapAspectRatioToSize(aspectRatio: string): string {

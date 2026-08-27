@@ -17,7 +17,8 @@ import {
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
   StoryLabJobEvent,
-  StoryLabUserProfile
+  StoryLabUserProfile,
+  isTerminalStoryLabJobStatus
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
 import { readEventStreamErrorAction } from '../../../shared/eventStreamRetry';
@@ -212,7 +213,7 @@ export class StoryService {
           onEvent(jobEvent);
           observer.next(jobEvent);
 
-          if (['completed', 'failed', 'cancelled'].includes(jobEvent.job.status)) {
+          if (isTerminalStoryLabJobStatus(jobEvent.job.status)) {
             observer.complete();
             eventSource.close();
           }

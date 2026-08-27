@@ -20,6 +20,7 @@ import type {
 } from './contracts';
 import { collapseWhitespace } from '../utils/whitespace';
 import { capAtWordBoundaryWithinCodeUnits } from '../utils/textExcerpt';
+import { wholeWordAlternationPattern } from '../utils/wholeWord';
 import {
   formatThreadDebtLabel,
   normalizeActivationText,
@@ -807,10 +808,15 @@ type PressureKeyword = keyof typeof PRESSURE_KEYWORD_FORMS;
  * source is already lowercased by `buildContinuationPressureSource`, so no
  * case-insensitive flag is needed — the same arrangement `containsWholeWord`
  * relies on.
+ *
+ * The boundary itself is `wholeWordAlternationPattern`'s, which is where the
+ * repository's one answer to "is this the word or is it inside a longer one"
+ * now lives. The `\b(?:…)\b` this replaces was ASCII-only, so `court` was
+ * credited by `courté` and `blood` by `bloodé` — see `WORD_CHARACTERS` there.
  */
 const PRESSURE_KEYWORD_PATTERNS = new Map<PressureKeyword, RegExp>(
   (Object.entries(PRESSURE_KEYWORD_FORMS) as Array<[PressureKeyword, readonly string[]]>)
-    .map(([keyword, forms]) => [keyword, new RegExp(String.raw`\b(?:${forms.join('|')})\b`)])
+    .map(([keyword, forms]) => [keyword, wholeWordAlternationPattern(forms)])
 );
 
 function containsAny(value: string, needles: readonly PressureKeyword[]): boolean {
