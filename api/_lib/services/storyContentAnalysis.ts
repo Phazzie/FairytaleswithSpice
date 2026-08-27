@@ -10,6 +10,8 @@
 // instead of calling the logic directly.
 
 import { SpicyLevel, ThemeType } from '../types/contracts';
+import { readCreatureDisplayName } from '../../../shared/creatureVocabulary';
+import { readSpiceLevelPromptLabel } from '../../../shared/spiceLevelPromptLadder';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
 import { containsWholeWord, wholeWordPattern } from '../utils/wholeWord';
@@ -322,31 +324,27 @@ export function createContextExcerpt(html: string, maxLength: number = 1200): st
   return tailAtWordBoundary(text, maxLength);
 }
 
+/**
+ * Name the creature to the model, as `PROTAGONIST: …`.
+ *
+ * The ten-entry map this used to hold is now `shared/creatureVocabulary`, which
+ * the request validator and the Proving Grounds preview of this same prompt
+ * slot also read. Behaviour is unchanged, `'Creature'` fallback included.
+ */
 export function getCreatureDisplayName(creature: string): string {
-  const names: Record<string, string> = {
-    'vampire': 'Vampire',
-    'werewolf': 'Werewolf',
-    'fairy': 'Fairy',
-    'siren': 'Siren',
-    'djinn': 'Djinn',
-    'witch': 'Witch',
-    'dragon': 'Dragon',
-    'demon': 'Demon',
-    'angel': 'Angel',
-    'mermaid': 'Mermaid'
-  };
-  return names[creature] || 'Creature';
+  return readCreatureDisplayName(creature);
 }
 
+/**
+ * Name the spice level to the model, as `SPICE LEVEL: … (Level n/5)`.
+ *
+ * The five labels are now `shared/spiceLevelPromptLadder`, beside the
+ * system-prompt block that defines what each of them permits — and read by the
+ * Proving Grounds, whose own copy named all five levels something else. See
+ * that module.
+ */
 export function getSpicyLabel(level: number): string {
-  const labels = [
-    'Storybook romance',
-    'Warm',
-    'Spicy',
-    'Very spicy',
-    'Inferno'
-  ];
-  return labels[level - 1] || 'Spicy';
+  return readSpiceLevelPromptLabel(level);
 }
 
 

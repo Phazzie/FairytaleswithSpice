@@ -1,5 +1,10 @@
 // Created: 2025-10-31 06:43
 import { Injectable } from '@angular/core';
+import { readCreatureDisplayName } from '../../../../shared/creatureVocabulary';
+import {
+  SPICE_LEVEL_PROMPT_BLOCK,
+  readSpiceLevelPromptLabel
+} from '../../../../shared/spiceLevelPromptLadder';
 import { CreatureArchetype, PromptTemplate, SpicyLevel, ThemeSeed, WordBudget } from '../contracts';
 
 export interface PromptVariables {
@@ -44,12 +49,7 @@ INTIMATE SCENES MUST:
 - Use anticipation and denial to heighten tension
 - Never rush to physical without emotional stakes
 
-SPICE LEVELS (match exactly):
-Level 1: Yearning looks, accidental touches, sweet anticipation
-Level 2: First kisses, heated arguments, sensual tension
-Level 3: Clothes stay on, hands don't, steamy fade-to-black
-Level 4: Explicit but emotional, detailed physical intimacy
-Level 5: Nothing left to imagination, graphic yet sophisticated
+${SPICE_LEVEL_PROMPT_BLOCK}
 
 AUDIO FORMAT (NON-NEGOTIABLE):
 - [Character Name]: "dialogue" for ALL speech
@@ -329,30 +329,20 @@ Dialogue-driven storytelling:
 Let characters drive the story through their interactions.`;
   }
 
+  /**
+   * Both slots this page fills are now read from the same modules the
+   * production prompt reads them from, so the preview names the protagonist and
+   * the spice level the way the run would.
+   *
+   * `getSpicyLabel` here used to hold five labels of its own, none of which
+   * `StoryService` has ever sent; see `shared/spiceLevelPromptLadder` for what
+   * they were and what a comparison run against them was measuring.
+   */
   private getCreatureDisplayName(creature: CreatureArchetype): string {
-    const names: Record<CreatureArchetype, string> = {
-      'vampire': 'Vampire',
-      'werewolf': 'Werewolf',
-      'fairy': 'Fairy',
-      'siren': 'Siren',
-      'djinn': 'Djinn',
-      'witch': 'Witch',
-      'dragon': 'Dragon',
-      'demon': 'Demon',
-      'angel': 'Angel',
-      'mermaid': 'Mermaid'
-    };
-    return names[creature];
+    return readCreatureDisplayName(creature);
   }
 
   private getSpicyLabel(level: SpicyLevel): string {
-    const labels: Record<SpicyLevel, string> = {
-      1: 'Sweet & Sensual',
-      2: 'Warm & Steamy',
-      3: 'Hot & Intense',
-      4: 'Scorching & Explicit',
-      5: 'Inferno & Graphic'
-    };
-    return labels[level];
+    return readSpiceLevelPromptLabel(level);
   }
 }

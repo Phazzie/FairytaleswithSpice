@@ -8,9 +8,10 @@ import {
   VALIDATION_RULES,
   Chapter,
   ChapterFailure,
-  CliffhangerType,
-  CreatureType
+  CliffhangerType
 } from '../types/contracts';
+import { isCreatureArchetype } from '../../../shared/creatureVocabulary';
+import { SPICE_LEVEL_PROMPT_BLOCK } from '../../../shared/spiceLevelPromptLadder';
 import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService, hasIdentifiedCliffhangerType } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
@@ -863,12 +864,7 @@ INTIMATE SCENES MUST:
 - Use anticipation and denial to heighten tension
 - Never rush to physical without emotional stakes
 
-SPICE LEVELS (match exactly and do not exceed the requested level):
-Level 1 - Storybook romance: longing, flirtation, charged glances, accidental touches, no explicit anatomy, no on-page sexual acts.
-Level 2 - Warm: kissing, sensual tension, heated arguments, suggestive desire, no explicit sex and no graphic anatomical detail.
-Level 3 - Spicy: clear adult heat, hands and bodies can be described, keep language literary, fade to black before graphic sex.
-Level 4 - Very spicy: explicit consensual adult intimacy is allowed, direct language is allowed, keep emotional stakes and avoid crude shock value.
-Level 5 - Inferno: maximum explicit consensual adult fantasy the app allows, graphic but sophisticated, no coercion, no minors, no non-consensual framing.
+${SPICE_LEVEL_PROMPT_BLOCK}
 
 MORAL DILEMMA TRIGGER:
 At midpoint (≈50% word count), protagonist faces desire-vs-principle choice that drives the remainder and influences the cliffhanger.
@@ -1273,19 +1269,10 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
    * rule is about.
    */
   private validateStoryInput(input: StoryGenerationSeam['input']): any {
-    const supportedCreatures: readonly CreatureType[] = [
-      'vampire',
-      'werewolf',
-      'fairy',
-      'siren',
-      'djinn',
-      'witch',
-      'dragon',
-      'demon',
-      'angel',
-      'mermaid'
-    ];
-    if (!input.creature || !supportedCreatures.includes(input.creature)) {
+    // The vocabulary itself is `shared/creatureVocabulary`, so the list this
+    // route refuses a request against is the list the picker offers rather than
+    // a copy of it that a new creature would have to be added to twice.
+    if (!input.creature || !isCreatureArchetype(input.creature)) {
       return {
         code: 'INVALID_INPUT',
         message: 'Invalid creature type',
