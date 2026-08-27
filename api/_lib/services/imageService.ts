@@ -334,7 +334,14 @@ export class ImageService {
         model: 'grok-2-image',
         prompt: prompt,
         n: 1, // Generate 1 image
-        size: this.mapAspectRatioToSize(input.aspectRatio || '16:9'),
+        // `DEFAULT_ASPECT_RATIO`, not a fifth spelling of `'16:9'`. This was the
+        // one hand-written fallback the `ASPECT_RATIO_SPECS` consolidation left
+        // behind, and it is the one that decides what the provider is actually
+        // asked to draw: every other reader of an absent ratio — the `width` and
+        // `height` the response reports, and the mock URL's dimensions — takes
+        // the constant, so retuning the default would have moved the reported
+        // size of a picture without moving the picture.
+        size: this.mapAspectRatioToSize(input.aspectRatio ?? DEFAULT_ASPECT_RATIO),
         response_format: 'url',
         style: this.mapStyleToGrokStyle(input.style)
       }, {

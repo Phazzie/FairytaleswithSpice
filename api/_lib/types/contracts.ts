@@ -22,7 +22,53 @@ export type CreatureType = CreatureArchetype;
 // the type this way; the values behind it are no longer restated here.
 export type ThemeType = ClassicStoryTheme;
 export type SpicyLevel = 1 | 2 | 3 | 4 | 5;
-export type WordCount = 600 | 700 | 900 | 1200 | 1500;
+/**
+ * The word counts the classic generator accepts, as a value rather than only as
+ * a type.
+ *
+ * This ladder was the last closed set in this file with no table behind it. It
+ * was written twice — as a union here, and as the bare literal
+ * `[600, 700, 900, 1200, 1500]` in `VALIDATION_RULES.wordCount.allowedValues`
+ * three hundred lines below — with nothing tying the two together, while both
+ * of its neighbours in that same object read their tables
+ * (`themes.allowedValues` is `CLASSIC_STORY_THEMES`, `imageStyle.allowedValues`
+ * is `IMAGE_STYLES`). The cast at the one reader said so out loud:
+ * `StoryService.validateStoryInput` widened the literal to `readonly number[]`
+ * before asking whether a caller's `wordCount` was in it, because the tuple's
+ * own type had no relationship to `WordCount` to check against.
+ *
+ * The two could therefore drift in either direction, and each direction fails
+ * silently in its own way. A budget added to the union alone is one the type
+ * says is legal and the validator answers `INVALID_INPUT` for — a value the
+ * app can request and the service refuses. A budget added to the literal alone
+ * is one the validator waves through and every `WordCount`-keyed reader is
+ * unaware of. This repository has already had that exact drift once on this
+ * exact ladder, in the other direction: the transcribed production prompt named
+ * 700, 900, and 1200 words while the Story Lab picker offered 600, 900, 1200,
+ * and 1500, which is what `getProductionUserPrompt` reading the shared prompt
+ * module was written to end.
+ *
+ * Derived rather than declared-and-`satisfies`-checked, for the reason
+ * `IMAGE_STYLES` gives above: a `satisfies` clause catches a *wrong* entry, and
+ * a copy of this list could only ever go wrong by being short one.
+ *
+ * `700` is deliberately here and deliberately absent from the Angular
+ * `WORD_BUDGETS`. That list is the Story Lab picker's four choices and is a
+ * *subset* of this one: the classic route accepts everything the picker offers
+ * and one budget besides. `tests/word-count-ladder.test.ts` asserts the
+ * containment, because the expensive direction of that drift — a picker
+ * offering a budget this route refuses — is a blueprint refused only after the
+ * reader presses generate.
+ */
+export const WORD_COUNTS = [600, 700, 900, 1200, 1500] as const;
+export type WordCount = typeof WORD_COUNTS[number];
+
+/** Membership, for the callers that check a value they were handed. */
+const WORD_COUNT_SET: ReadonlySet<number> = new Set<number>(WORD_COUNTS);
+
+export function isSupportedWordCount(value: unknown): value is WordCount {
+  return typeof value === 'number' && WORD_COUNT_SET.has(value);
+}
 export type NarrativeTone = 'romance' | 'dark_romance' | 'mystery' | 'adventure' | 'comedy' | 'tragedy';
 export type GenerationSource = 'classic_generator' | 'story_lab';
 export type HeatTensionMode = 'slow_burn' | 'dangerous_proximity' | 'playful_banter' | 'devotional_longing';
@@ -114,6 +160,37 @@ export const IMAGE_STYLES = [
   'romantic'
 ] as const;
 export type ImageStyle = typeof IMAGE_STYLES[number];
+/**
+ * The aspect ratios an image request may name, as a value the type is read from.
+ *
+ * Four ratios were written out in four places: the inline union on
+ * `ImageGenerationSeam['input']['aspectRatio']`, `VALIDATION_RULES.aspectRatio
+ * .allowedValues` below, the keys of `ASPECT_RATIO_SPECS` in `ImageService`, and
+ * `SUPPORTED_ASPECT_RATIOS` beside it — plus a fifth spelling of the default,
+ * `input.aspectRatio || '16:9'`, in the provider call.
+ *
+ * `ASPECT_RATIO_SPECS`' own docblock is the argument for this one. It says the
+ * three lookups this ratio decides "were three separate lookups, each with its
+ * own `|| '1792x1024'`-style fallback, so an unsupported ratio was silently
+ * served as 16:9 while the response still echoed the ratio the caller asked
+ * for", and that one table means "a ratio is either supported everywhere or
+ * rejected". That change made the *specs* one table and left the *list* spelled
+ * out three more times, one of which — the validation rule — no longer had a
+ * reader at all and so could not have been caught by anything failing.
+ *
+ * `SUPPORTED_ASPECT_RATIOS` stays derived from `ASPECT_RATIO_SPECS` rather than
+ * from this list, because that is the stronger of the two guarantees: the specs
+ * are a `Record<AspectRatio, AspectRatioSpec>`, so a ratio named here and missing
+ * a spec does not compile, and the closed-set check keeps answering with exactly
+ * the ratios the lookups can actually serve.
+ */
+export const ASPECT_RATIOS = [
+  '1:1',
+  '16:9',
+  '9:16',
+  '4:3'
+] as const;
+export type AspectRatio = typeof ASPECT_RATIOS[number];
 export type CliffhangerType =
   | 'romantic_tension'
   | 'plot_twist'
@@ -360,7 +437,7 @@ export interface ImageGenerationSeam {
      */
     themes: string[];
     style: ImageStyle;
-    aspectRatio?: '1:1' | '16:9' | '9:16' | '4:3';
+    aspectRatio?: AspectRatio;
   };
 
   output: {
@@ -418,7 +495,14 @@ export const VALIDATION_RULES = {
     max: 5
   },
   wordCount: {
-    allowedValues: [600, 700, 900, 1200, 1500]
+    // Read from the table rather than restated here, for the reason the two
+    // rules above it read theirs. `StoryService.validateStoryInput` asks
+    // `isSupportedWordCount` rather than reading this rule directly — the guard
+    // is what narrows to `WordCount`, which the widening cast this replaced
+    // could not — but both answer for the same array, so this rule states the
+    // ladder for anything that reads the rules object and cannot drift from
+    // what the validator enforces.
+    allowedValues: WORD_COUNTS
   },
   audioSpeed: {
     min: 0.5,
@@ -428,7 +512,12 @@ export const VALIDATION_RULES = {
     allowedValues: IMAGE_STYLES
   },
   aspectRatio: {
-    allowedValues: ['1:1', '16:9', '9:16', '4:3']
+    // Read from the table, for the reason `imageStyle.allowedValues` above
+    // reads `IMAGE_STYLES`. This rule has no reader today — `ImageService`
+    // checks the ratio against `SUPPORTED_ASPECT_RATIOS`, which is the keys of
+    // its own spec table — so restating the list here was a fourth copy that
+    // nothing would ever have failed on.
+    allowedValues: ASPECT_RATIOS
   }
 } as const;
 

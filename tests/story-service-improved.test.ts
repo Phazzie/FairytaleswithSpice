@@ -147,7 +147,7 @@ const testSuite = {
     const service = new StoryService();
     const input: StoryGenerationSeam['input'] = {
       creature: 'vampire',
-      themes: ['romance', 'dark'],
+      themes: ['forbidden_love', 'dark_secrets'],
       userInput: 'A vampire lord meets a mortal librarian',
       spicyLevel: 3,
       wordCount: 700
@@ -202,7 +202,7 @@ const testSuite = {
       
       const input: StoryGenerationSeam['input'] = {
         creature,
-        themes: ['romance'],
+        themes: ['forbidden_love'],
         userInput: `A ${creature} story`,
         spicyLevel: 2,
         wordCount: 700
@@ -232,7 +232,7 @@ const testSuite = {
       
       const input: StoryGenerationSeam['input'] = {
         creature: 'vampire',
-        themes: ['romance'],
+        themes: ['forbidden_love'],
         userInput: 'Test story',
         spicyLevel: level,
         wordCount: 700
@@ -262,7 +262,7 @@ const testSuite = {
 
         const input: StoryGenerationSeam['input'] = {
           creature: 'vampire',
-          themes: ['romance'],
+          themes: ['forbidden_love'],
           userInput: 'Test story',
           spicyLevel: 2,
           wordCount
@@ -296,7 +296,7 @@ const testSuite = {
     
     // Test missing creature
     const invalidInput1 = {
-      themes: ['romance'],
+      themes: ['forbidden_love'],
       userInput: 'Test',
       spicyLevel: 3,
       wordCount: 700
@@ -309,7 +309,7 @@ const testSuite = {
     // Test invalid spicy level
     const invalidInput2: StoryGenerationSeam['input'] = {
       creature: 'vampire',
-      themes: ['romance'],
+      themes: ['forbidden_love'],
       userInput: 'Test',
       spicyLevel: 10 as any,
       wordCount: 700
@@ -322,7 +322,7 @@ const testSuite = {
     // Test invalid requested chapter count
     const invalidInput3: StoryGenerationSeam['input'] = {
       creature: 'vampire',
-      themes: ['romance'],
+      themes: ['forbidden_love'],
       userInput: 'Test',
       spicyLevel: 3,
       wordCount: 700,
@@ -341,7 +341,7 @@ const testSuite = {
     // First generate a story
     const storyInput: StoryGenerationSeam['input'] = {
       creature: 'vampire',
-      themes: ['romance'],
+      themes: ['forbidden_love'],
       userInput: 'Initial story',
       spicyLevel: 3,
       wordCount: 700
@@ -466,7 +466,7 @@ const testSuite = {
       
       const input: StoryGenerationSeam['input'] = {
         creature: 'vampire',
-        themes: ['romance'],
+        themes: ['forbidden_love'],
         userInput: `Performance test ${i + 1}`,
         spicyLevel: 2,
         wordCount: 700
