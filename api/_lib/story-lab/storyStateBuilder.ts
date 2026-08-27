@@ -227,13 +227,26 @@ export function buildStateDelta(
   };
 }
 
+/**
+ * `buildStateDelta` (below) already reports `resolvedThreads` straight from
+ * each chapter's own delta — this is where that same signal needs to land in
+ * the persisted snapshot, so a thread the delta calls resolved doesn't keep
+ * reading as unresolved (`continuationGuidance.ts`'s `isUnresolvedThread`)
+ * forever after. `mockData.ts`'s `applyChapterDeltas` already merges this
+ * exact way; this mirrors it rather than inventing a second shape.
+ */
 function mergeThreads(existingThreads: PlotThread[], chapters: GeneratedChapter[]): PlotThread[] {
   const escalatedThreadIds = new Set(chapters.flatMap(chapter => chapter.delta.escalatedThreads));
-  return existingThreads.map(thread =>
-    escalatedThreadIds.has(thread.id) && thread.status !== 'resolved'
-      ? { ...thread, status: 'escalating' as const }
-      : thread
-  );
+  const resolvedThreadIds = new Set(chapters.flatMap(chapter => chapter.delta.resolvedThreads));
+  return existingThreads.map(thread => {
+    if (resolvedThreadIds.has(thread.id)) {
+      return { ...thread, status: 'resolved' as const };
+    }
+    if (escalatedThreadIds.has(thread.id) && thread.status !== 'resolved') {
+      return { ...thread, status: 'escalating' as const };
+    }
+    return thread;
+  });
 }
 
 function mergeUniqueById<T extends { id: string }>(existing: T[], additions: T[]): T[] {

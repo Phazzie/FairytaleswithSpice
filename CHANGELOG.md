@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Story Continuity State Tracking (`storyStateBuilder.ts`) — the state-merge module every genesis/continuation request is built from, shipped with zero unit tests and a real resolved-thread bug (August 27, 2026)
+
+- `storyStateBuilder.ts` builds/merges the `StoryStateSnapshot` (characters, plot threads, world
+  artifacts, beats, deltas) every Story Lab genesis and continuation request is built from and
+  read back against. It was extracted out of `storyLabEngine.ts` in a prior worst-to-best pass
+  specifically because that file's worst flaw was "zero unit tests" on its most complex logic —
+  but the extraction gave the sibling `continuationGuidance.ts` module a direct test file and
+  left this one with none. It was reachable only indirectly through the full-engine integration
+  test.
+- Found a real bug while adding coverage: `mergeThreads()` only ever applied
+  `status: 'escalating'` to threads named in a chapter's `delta.escalatedThreads` — it never
+  applied `status: 'resolved'` to threads named in the same chapter's `delta.resolvedThreads`,
+  even though `buildStateDelta()` in the same file already computes and reports
+  `resolvedThreads` in the outgoing delta right next to it. The delta a client sees claimed a
+  thread got resolved; the persisted `StoryStateSnapshot.threads` array never reflected it.
+- Not cosmetic: `continuationGuidance.ts`'s `isUnresolvedThread()` (`status !== 'resolved'`)
+  drives which threads get surfaced to the AI as "unresolved" in the Continuity Courtroom brief,
+  ending-pressure selection, and continuation-pressure scoring — all reading `thread.status`
+  directly. In the non-AI/heuristic continuity path this bug was unconditional: a resolved
+  thread never left the "unresolved" pool. `mockData.ts`'s `applyChapterDeltas` already merges
+  resolution correctly — this ports that same, already-proven pattern into the real engine's
+  state builder instead of inventing a new one.
+- Added `tests/story-lab-state-builder.test.ts`: first direct unit coverage for
+  `buildStateSnapshot` (genesis vs. continuation paths, revision increments), initial
+  character/thread construction, world-artifact name derivation (its three regex patterns and
+  the empty-input fallback), the thread-resolution fix (including resolution taking priority
+  over escalation for the same thread id), `buildChapterDelta`'s batch-boundary flagging, and
+  `buildStateDelta`'s revision/summary tracking.
+- Fixed `mergeThreads` to apply `status: 'resolved'` for resolved thread ids, mirroring the
+  existing escalation branch. No other behavior change.
+
 ### ***WORST TO BEST*** Real-Time Story Streaming (`StreamingStoryComponent`) — a fake-progress demo left live after its predecessor's cleanup, retired (August 27, 2026)
 
 - A prior PR retired a *duplicate* SSE route and left `api/story-lab/stream/genesis.ts` live;
