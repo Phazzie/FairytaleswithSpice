@@ -12,6 +12,13 @@ import {
   isSupportedWordCount
 } from '../types/contracts';
 import { isCreatureArchetype } from '../../../shared/creatureVocabulary';
+import {
+  CHAPTER_BATCH_SIZES,
+  clampToChapterBatchSize,
+  formatChapterBatchSizeList,
+  isChapterBatchSize,
+  type ChapterBatchSize
+} from '../../../shared/chapterBatchVocabulary';
 import { isClassicStoryTheme } from '../../../shared/themeVocabulary';
 import {
   buildProductionChapterScopeBlock,
@@ -410,16 +417,13 @@ export class StoryService {
 
     try {
       if (!this.isValidRequestedChapterCount(input.requestedChapterCount)) {
+        const { code, message, ...refusalDetails } = this.chapterCountRefusal(input.requestedChapterCount);
         return {
           success: false,
           error: {
-            code: 'INVALID_INPUT',
-            message: 'requestedChapterCount must be 1, 2, or 3',
-            details: {
-              field: 'requestedChapterCount',
-              providedValue: input.requestedChapterCount,
-              expectedType: '1 | 2 | 3'
-            }
+            code,
+            message,
+            details: refusalDetails
           },
           metadata: {
             requestId,
@@ -1232,34 +1236,38 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
     }
 
     if (!this.isValidRequestedChapterCount(input.requestedChapterCount)) {
-      return {
-        code: 'INVALID_INPUT',
-        message: 'requestedChapterCount must be 1, 2, or 3',
-        field: 'requestedChapterCount',
-        providedValue: toLoggableNumber(input.requestedChapterCount),
-        expectedType: '1 | 2 | 3'
-      };
+      return this.chapterCountRefusal(toLoggableNumber(input.requestedChapterCount));
     }
 
     return null;
   }
 
+  /**
+   * Whether a caller named a batch this service runs, checked against the table
+   * rather than against a literal list written out here.
+   *
+   * `Number(count)` is kept because this seam takes a `number | undefined` and
+   * a query-string caller can still arrive with a numeric string; the table
+   * holds numbers, so the coercion has to happen before the membership test and
+   * not inside it.
+   */
   private isValidRequestedChapterCount(count?: number): boolean {
-    return count === undefined || [1, 2, 3].includes(Number(count));
+    return count === undefined || isChapterBatchSize(Number(count));
   }
 
-  private normalizeChapterCount(count?: number): 1 | 2 | 3 {
-    const numeric = Number(count ?? 1);
+  private normalizeChapterCount(count?: number): ChapterBatchSize {
+    return clampToChapterBatchSize(count);
+  }
 
-    if (numeric <= 1) {
-      return 1;
-    }
-
-    if (numeric >= 3) {
-      return 3;
-    }
-
-    return 2;
+  /** The batch sizes as a refusal names them, and as it types them. */
+  private chapterCountRefusal(providedValue: unknown) {
+    return {
+      code: 'INVALID_INPUT' as const,
+      message: `requestedChapterCount must be ${formatChapterBatchSizeList()}`,
+      field: 'requestedChapterCount',
+      providedValue,
+      expectedType: CHAPTER_BATCH_SIZES.join(' | ')
+    };
   }
 
   private renderChapterForAppend(chapter: Pick<Chapter, 'chapterNumber' | 'title' | 'content'>): string {

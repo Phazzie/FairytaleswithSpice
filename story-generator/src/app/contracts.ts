@@ -23,6 +23,7 @@ import type {
   NarrativeTone,
   SpicyLevel
 } from '../../../api/_lib/types/contracts';
+import type { ChapterBatchSize } from '../../../shared/chapterBatchVocabulary';
 
 // `CreatureArchetype` and its table come from `shared/creatureVocabulary`,
 // which sits below both trees: the union used to be written out here and again
@@ -64,7 +65,13 @@ export {
 // `ImageStyle` below already are, with the runtime tables that go with them
 // kept here, where the picker and `FormValidationService` read them.
 export type { HeatIntimacyBoundary, HeatTensionMode, NarrativeTone, SpicyLevel };
-export type ChapterBatchSize = 1 | 2 | 3;
+// `ChapterBatchSize` and its table come from `shared/chapterBatchVocabulary`,
+// which sits below both trees. The union used to be written out here, and the
+// same bound six more times inside the classic seam the Story Lab hands this
+// field to — `storyLabEngine` passes `chapterBatchSize` straight into
+// `requestedChapterCount`, so they are one value. See that module for what each
+// copy cost.
+export type { ChapterBatchSize };
 export type WordBudget = 600 | 900 | 1200 | 1500;
 // `ExportFormat` and `SaveExportSeam` are re-exported from the backend's own
 // contract rather than redeclared here: the export pipeline runs entirely in
@@ -129,46 +136,23 @@ export const SPICY_LEVELS = [1, 2, 3, 4, 5] as const satisfies readonly SpicyLev
 
 export const WORD_BUDGETS = [600, 900, 1200, 1500] as const satisfies readonly WordBudget[];
 
-export const CHAPTER_BATCH_SIZES = [1, 2, 3] as const satisfies readonly ChapterBatchSize[];
-
 /**
- * Whether `value` is a batch size this app runs, checked against the table.
+ * Batch size, and the three readings of it, from the module below both trees.
  *
- * The docblock above claims that everything checking one of these three fields
- * reads the list, and for spicy level and word budget it was true. Batch size
- * had a second checker the blueprint parser never sees: a continuation does not
- * arrive through `parseStoryLabBlueprint`, it arrives at
- * `POST /stories/:storyId/continue` or at the continuation half of
- * `POST /jobs`, and **both of those wrote the bound out by hand** as
- * `[1, 2, 3].includes(size)` inside their own local `isValidBatchSize`. Two
- * identical copies in two files, neither reading the table beside them, and the
- * refusal each sends says "a chapterBatchSize of 1-3" in prose — a third and
- * fourth spelling of the same bound, in the sentence that explains it.
- *
- * A fourth batch size is the failure that costs: the picker offers it because
- * the picker reads the table, genesis accepts it because the parser reads the
- * table, and the reader's *next* chapter request is refused by a route insisting
- * on a range nobody told it had moved. The same story would generate and then
- * be unable to continue at the size it was generated at.
+ * The table was declared here and the checkers beside it, which was enough for
+ * everything on the Story Lab side — the picker, the parser, and both
+ * continuation routes read it — and reached nothing on the classic side, where
+ * the same bound was written out six more times inside the seam the Story Lab
+ * hands its blueprint to. `shared/chapterBatchVocabulary` is what lets
+ * `api/_lib/types/contracts` read this list too; see it for what each of those
+ * copies broke on its own.
  */
-export function isChapterBatchSize(value: unknown): value is ChapterBatchSize {
-  return (CHAPTER_BATCH_SIZES as readonly unknown[]).includes(value);
-}
-
-/**
- * The batch sizes as a refusal names them, read from the table it checks.
- *
- * Rendered as a list rather than the `1-3` range the two messages used, because
- * a range is only honest while the table is contiguous and a list is honest
- * either way. Today it reads `1, 2, or 3`.
- */
-export function formatChapterBatchSizeList(): string {
-  const sizes: readonly number[] = CHAPTER_BATCH_SIZES;
-
-  return sizes.length > 1
-    ? `${sizes.slice(0, -1).join(', ')}, or ${sizes[sizes.length - 1]}`
-    : sizes.join('');
-}
+export {
+  CHAPTER_BATCH_SIZES,
+  clampToChapterBatchSize,
+  formatChapterBatchSizeList,
+  isChapterBatchSize
+} from '../../../shared/chapterBatchVocabulary';
 
 export interface ThemeSeed {
   id: string;
