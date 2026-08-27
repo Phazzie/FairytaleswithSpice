@@ -5,11 +5,21 @@ import jobHandler from '../api/story-lab/jobs';
 import type { AuthPort, AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import { AuthError } from '../api/_lib/story-lab/auth/authPort';
 import type {
+  HeatContract,
+  StoryContinuationSeam,
   StoryGenerationSeam,
   StoryLabJobCreationRequest,
-  StoryLabJobCreationResponse
+  StoryLabJobCreationResponse,
+  StoryLabUserProfile
 } from '../api/_lib/story-lab/contracts';
 import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
+import {
+  generateStoryLabGenesis as realGenerateStoryLabGenesis,
+  continueStoryLab as realContinueStoryLab
+} from '../api/_lib/story-lab/storyLabEngine';
+import type { StoryLabProfileStore } from '../api/_lib/story-lab/profile/storyLabProfileStore';
+import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
+import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { NonDurableStoryLabJobStore, nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
 import { StoryLabJobStoreError } from '../api/_lib/story-lab/jobs/postgresStoryLabJobStore';
@@ -590,6 +600,129 @@ async function testThrownEngineFailureFinishesTheJob(): Promise<void> {
   assert(statusBody.data.job.status === 'failed', 'the stored job should read as failed, not running');
 }
 
+async function testGenesisJobFoldsAuthenticatedProfileContentBoundariesIntoHeatContract(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  const profile = createDefaultStoryLabUserProfile(owner, {
+    preferences: { contentBoundaries: 'No humiliation.' }
+  });
+  let capturedInput: StoryGenerationSeam['input'] | null = null;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore: createStubProfileStore(profile),
+    generateGenesis: async input => {
+      capturedInput = input;
+      return realGenerateStoryLabGenesis(input);
+    }
+  });
+
+  const response = new FakeResponse();
+  await handler(createRequest('POST', createGenesisJobRequest()), response);
+
+  assert(response.statusCode === 200, 'genesis job with a profile should still succeed');
+  assert(capturedInput !== null, 'the engine should have been called');
+  assert(
+    capturedInput!.heatContract.noGoContent === 'No coercion.\nNo humiliation.',
+    `profile content boundaries should be appended to the request's own noGoContent, got ${JSON.stringify(capturedInput!.heatContract.noGoContent)}`
+  );
+}
+
+async function testGenesisJobLeavesHeatContractUnchangedWithNoAuthenticatedUser(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  let capturedInput: StoryGenerationSeam['input'] | null = null;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createRejectingAuthPort(),
+    profileStore: createStubProfileStore(
+      createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: 'Should never be read.' } })
+    ),
+    generateGenesis: async input => {
+      capturedInput = input;
+      return realGenerateStoryLabGenesis(input);
+    }
+  });
+
+  const response = new FakeResponse();
+  await handler(createRequest('POST', createGenesisJobRequest()), response);
+
+  assert(response.statusCode === 200, 'genesis job with no authenticated user should still succeed');
+  assert(
+    capturedInput!.heatContract.noGoContent === 'No coercion.',
+    'with no authenticated caller, the request heat contract should reach the engine unchanged'
+  );
+}
+
+async function testContinuationJobFoldsContentBoundariesWhenHeatContractProvided(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  const profile = createDefaultStoryLabUserProfile(owner, {
+    preferences: { contentBoundaries: 'Keep the danger emotional.' }
+  });
+  let capturedInput: StoryContinuationSeam['input'] | null = null;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore: createStubProfileStore(profile),
+    continueStory: async input => {
+      capturedInput = input;
+      return realContinueStoryLab(input);
+    }
+  });
+
+  const response = new FakeResponse();
+  await handler(
+    createRequest('POST', createContinuationJobRequest({
+      adultOnlyConfirmed: true,
+      tensionMode: 'slow_burn',
+      intimacyBoundary: 'closed_door',
+      noGoContent: 'No permanent injury.'
+    })),
+    response
+  );
+
+  assert(response.statusCode === 200, 'continuation job with a profile should still succeed');
+  assert(
+    capturedInput!.heatContract?.noGoContent === 'No permanent injury.\nKeep the danger emotional.',
+    `profile content boundaries should be appended to the continuation's own noGoContent, got ${JSON.stringify(capturedInput!.heatContract?.noGoContent)}`
+  );
+}
+
+/**
+ * A continuation that supplies no Heat Contract at all must stay that way even
+ * when a profile has content boundaries to offer. `heatContractPolicyError`
+ * treats any *present* contract as needing `adultOnlyConfirmed: true` — so
+ * manufacturing one here (to carry nothing but the boundary text) would reject
+ * a continuation that used to succeed, over a confirmation it never asked for.
+ */
+async function testContinuationJobSkipsContentBoundariesWithNoRequestHeatContract(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  const profile = createDefaultStoryLabUserProfile(owner, {
+    preferences: { contentBoundaries: 'Keep the danger emotional.' }
+  });
+  let capturedInput: StoryContinuationSeam['input'] | null = null;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore: createStubProfileStore(profile),
+    continueStory: async input => {
+      capturedInput = input;
+      return realContinueStoryLab(input);
+    }
+  });
+
+  const response = new FakeResponse();
+  await handler(createRequest('POST', createContinuationJobRequest(undefined)), response);
+
+  assert(response.statusCode === 200, 'continuation job with no request heat contract should still succeed');
+  assert(
+    capturedInput!.heatContract === undefined,
+    'a continuation that supplied no heat contract must not gain one just because a profile has content boundaries'
+  );
+}
+
 async function run(): Promise<void> {
   await testGenesisJobCompletesInMockMode();
   await testEventsReplaySnapshotsAndClose();
@@ -609,6 +742,10 @@ async function run(): Promise<void> {
   testStoreEvictsOldestJobs();
   await testProductionMissingProviderCreatesFailedJob();
   await testThrownEngineFailureFinishesTheJob();
+  await testGenesisJobFoldsAuthenticatedProfileContentBoundariesIntoHeatContract();
+  await testGenesisJobLeavesHeatContractUnchangedWithNoAuthenticatedUser();
+  await testContinuationJobFoldsContentBoundariesWhenHeatContractProvided();
+  await testContinuationJobSkipsContentBoundariesWithNoRequestHeatContract();
 
   console.log('Story Lab job route tests passed');
 }
@@ -739,5 +876,58 @@ function createRejectingAuthPort(): AuthPort {
     async requireUser() {
       throw new AuthError('Account authentication is required.');
     }
+  };
+}
+
+function createStubProfileStore(profile: StoryLabUserProfile | null): StoryLabProfileStore {
+  return {
+    mode: 'non_durable_memory',
+    durable: false,
+    isConfigured: () => true,
+    async saveProfile(user, savedProfile) {
+      return {
+        success: true,
+        data: {
+          userId: user.userId,
+          profile: savedProfile,
+          createdAt: savedProfile.createdAt,
+          updatedAt: savedProfile.updatedAt,
+          storageMode: 'non_durable_memory'
+        }
+      };
+    },
+    async loadProfile(user) {
+      return {
+        success: true,
+        data: profile
+          ? {
+              userId: user.userId,
+              profile,
+              createdAt: profile.createdAt,
+              updatedAt: profile.updatedAt,
+              storageMode: 'non_durable_memory'
+            }
+          : null
+      };
+    }
+  };
+}
+
+function createContinuationJobRequest(heatContract?: HeatContract): StoryLabJobCreationRequest {
+  const fixture = createSavedStoryProjectFixture({ storyId: 'story_continuation' });
+  const continuation: StoryContinuationSeam['input'] = {
+    storyId: fixture.storyId,
+    storyState: fixture.state,
+    previouslyGeneratedChapters: fixture.chapters,
+    existingSummary: fixture.summary,
+    chapterBatchSize: 1,
+    heatContract
+  };
+
+  return {
+    kind: 'continuation',
+    continuation,
+    projectId: 'project_private',
+    storyId: fixture.storyId
   };
 }
