@@ -1,17 +1,15 @@
 import type { ApiResponse, EvaluationCriteria, EvaluationRequest } from '../_lib/story-lab/contracts';
-import { applyCorsPolicy } from '../_lib/http/corsPolicy';
 import { RATE_LIMITS } from '../_lib/constants';
-import { enforceApiAccessControl } from '../_lib/middleware/apiAccessControl';
+import { beginPostRoute } from '../_lib/http/postRoutePreamble';
 import { XaiTextClient } from '../_lib/services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
 import { buildStoryQualityHeuristicReport } from '../_lib/story-lab/evaluation/storyQualityHeuristics';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
-import { sendMethodNotAllowed } from '../_lib/http/methodNotAllowed';
 import { stripMarkdownJsonFence } from '../_lib/utils/modelJsonPayload';
+import { logError, logWarn } from '../_lib/utils/logger';
 import { STORY_EVALUATION_LIMITS } from '../../shared/storyBlueprintLimits';
 
-/** What this route serves, for CORS and for `Allow` alike. */
-const EVALUATE_ROUTE_METHODS = ['POST', 'OPTIONS'];
+const ENDPOINT = '/api/story-lab/evaluate';
 
 interface NormalizedEvaluationRequest {
   storyContent: string;
@@ -276,27 +274,41 @@ function normalizeEvaluationRequest(
   };
 }
 
+/**
+ * Correlation id, `X-Request-ID`, CORS, method, and access control, in the one
+ * place the other paid POST routes already state them.
+ *
+ * This route spelled the sequence out by hand — the fifth copy of the four
+ * `beginPostRoute` was extracted from, and the only one that was never
+ * migrated. Two things came of writing it out rather than calling it. It never
+ * minted a correlation id, so it was the one paid POST route that answered
+ * without an `X-Request-ID`: a caller had no id to quote and the log lines
+ * below had none to carry, which is precisely what `readRequestCorrelationId`
+ * exists to guarantee. And its own failures went to `console.warn` with the
+ * raw error beside them, bypassing the redacting logger every other route on
+ * this surface uses — so a provider error object's `config.headers.
+ * Authorization`, which is `Bearer ${XAI_API_KEY}`, was one `console.warn(...,
+ * error)` away from the deployment log. `logError` extracts the named fields
+ * and runs them through `redactSensitiveLogData` instead.
+ *
+ * The `Allow` header and the CORS preflight answer come from the preamble's own
+ * `['POST', 'OPTIONS']`, which is the list this route already declared.
+ */
 export default async function handler(req: any, res: any) {
-  const cors = applyCorsPolicy(req, res, {
-    methods: EVALUATE_ROUTE_METHODS,
-    credentials: true
-  });
-  if (cors.handled) {
+  const start = await beginPostRoute(req, res, 'story-lab/evaluate', RATE_LIMITS.STORY_LAB_EVALUATE);
+  if (!start) {
     return;
   }
 
-  if (req.method !== 'POST') {
-    sendMethodNotAllowed(res, EVALUATE_ROUTE_METHODS, 'Only POST requests are supported.');
-    return;
-  }
-
-  const access = await enforceApiAccessControl(req, res, 'story-lab/evaluate', RATE_LIMITS.STORY_LAB_EVALUATE);
-  if (!access.allowed) {
-    return;
-  }
+  const requestId = start.requestId;
+  const context = { requestId, endpoint: ENDPOINT, method: 'POST' };
 
   const normalized = normalizeEvaluationRequest(req.body);
   if ('message' in normalized) {
+    // The message is this route's own prose about which field is wrong — never
+    // caller text — so it is safe to log verbatim, the way the genesis route
+    // logs the parser's `invalidFields`.
+    logWarn('Story Lab evaluation request rejected', context, { reason: normalized.message });
     res.status(400).json({
       success: false,
       error: {
@@ -329,7 +341,12 @@ export default async function handler(req: any, res: any) {
       topP: 0.9,
       timeoutMs: getXaiFastTimeoutMs(),
       modelPreference: 'fast',
-      allowFallback: false
+      allowFallback: false,
+      // The client writes its own `logApiError` for a provider failure, and
+      // without this it wrote it with no request id and no endpoint on it —
+      // `StoryService` has passed its context through for both of its calls
+      // since the client was written.
+      context
     });
 
     const responsePayload: ApiResponse<EvaluationCriteria> = {
@@ -341,7 +358,7 @@ export default async function handler(req: any, res: any) {
     };
     res.status(200).json(responsePayload);
   } catch (error) {
-    console.warn('Story Lab evaluation failed.', error);
+    logError('Story Lab evaluation failed', error, context);
     const failurePayload: ApiResponse<never> = {
       success: false,
       error: {

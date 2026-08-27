@@ -1,7 +1,8 @@
 #!/usr/bin/env tsx
 // Created: 2026-08-24 23:40 UTC
 
-import axios from 'axios';
+import { inspect } from 'node:util';
+import axios, { AxiosError } from 'axios';
 import {
   IMAGE_SCENE_DESCRIPTION_MAX_LENGTH,
   ImageService,
@@ -290,6 +291,93 @@ async function testTheServiceRefusesAProviderResponseWithoutAUrl(): Promise<void
 }
 
 /**
+ * Nothing this service writes about a provider failure may carry the key it
+ * authenticated with.
+ *
+ * Both of its failure paths used to write to the console with the error object
+ * or the provider's response body beside them. `console.error` formats an
+ * object with `util.inspect`, and an HTTP client's error carries the request
+ * config it failed on — `config.headers.Authorization`, which on this path is
+ * `Bearer ${XAI_API_KEY}`. The redacting logger every other paid service on
+ * this surface uses names the fields it keeps (`name`, `message`, `stack`,
+ * `code`, `response.status`, `response.data`) and never reaches `config` at
+ * all, so the guarantee belongs to the log call rather than to whichever error
+ * happens to be thrown at it.
+ *
+ * The response body is the second half. It is the provider's text, logged
+ * verbatim before, and it goes through `redactSensitiveLogData` now — which is
+ * what reduces an echoed `api_key` in it rather than printing it.
+ *
+ * Driven with a real `AxiosError` rather than a hand-built object, because the
+ * shape that carries the credential is the client's, not this repository's.
+ */
+async function testProviderFailuresNeverPrintTheApiKey(): Promise<void> {
+  const originalPost = axios.post;
+  const originalKey = process.env['XAI_API_KEY'];
+  const secretKey = 'xai-test-key-must-never-be-logged';
+  process.env['XAI_API_KEY'] = secretKey;
+
+  const written: string[] = [];
+  const captured = { log: console.log, warn: console.warn, error: console.error };
+  const record = (...args: unknown[]) => {
+    written.push(args.map(argument => inspect(argument, { depth: 8 })).join(' '));
+  };
+
+  try {
+    (axios as { post: unknown }).post = async (url: string, body: unknown, config: any) => {
+      // The error an HTTP client raises for a refused request, carrying the
+      // config it sent — which is where the credential lives.
+      throw new AxiosError(
+        'Request failed with status code 401',
+        'ERR_BAD_REQUEST',
+        { url, data: body, headers: config?.headers } as any,
+        {},
+        {
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: {},
+          config: { url, headers: config?.headers } as any,
+          data: { error: { message: 'invalid api key', api_key: secretKey } }
+        } as any
+      );
+    };
+
+    console.log = record;
+    console.warn = record;
+    console.error = record;
+
+    const result = await new ImageService().generateImage(createInput());
+
+    console.log = captured.log;
+    console.warn = captured.warn;
+    console.error = captured.error;
+
+    assert(!result.success, 'a refused provider request should not be reported as a success');
+
+    const output = written.join('\n');
+    assert(written.length > 0, 'a provider failure should still be logged');
+    assert(
+      !output.includes(secretKey),
+      'no log line may carry the provider API key'
+    );
+    assert(
+      output.includes('Grok Image API') && output.includes('Image generation failed'),
+      `both failure lines should still be written (got: ${output.slice(0, 400)})`
+    );
+  } finally {
+    console.log = captured.log;
+    console.warn = captured.warn;
+    console.error = captured.error;
+    (axios as { post: unknown }).post = originalPost;
+    if (originalKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalKey;
+    }
+  }
+}
+
+/**
  * The creature is the one blueprint setting that most decides what an image
  * looks like. The context map covered three of the ten archetypes `CreatureType`
  * names, so the other seven were illustrated as an unspecified `supernatural
@@ -432,6 +520,7 @@ async function main(): Promise<void> {
   await testCustomImagePromptsAreBounded();
   testProviderResponsesWithoutAUrlAreRefused();
   await testTheServiceRefusesAProviderResponseWithoutAUrl();
+  await testProviderFailuresNeverPrintTheApiKey();
 
   console.log('Image service tests passed');
 }

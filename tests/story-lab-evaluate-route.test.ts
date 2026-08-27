@@ -345,6 +345,48 @@ async function main(): Promise<void> {
     );
   }
 
+  // ==================== CORRELATION ID ====================
+  // This was the fifth paid POST route and the only one that spelled its own
+  // preamble out instead of calling `beginPostRoute`. It never minted a
+  // correlation id, so it answered without the `X-Request-ID` header the other
+  // four send, and the log lines it writes had no id to carry — a caller
+  // reporting a failed evaluation had nothing to quote, and nothing in the log
+  // could be tied back to the request that produced it.
+  const correlated = new FakeResponse();
+  await withEnv({ XAI_API_KEY: undefined }, async () => {
+    resetRateLimitsForTests();
+    await handler(
+      { method: 'POST', body: { storyContent: STORY_HTML }, headers: { 'x-request-id': 'trace-from-the-caller' } },
+      correlated
+    );
+  });
+  assert(
+    correlated.headers['X-Request-ID'] === 'trace-from-the-caller',
+    `a caller's correlation id should be echoed back, got ${JSON.stringify(correlated.headers['X-Request-ID'])}`
+  );
+
+  const minted = await post({ storyContent: STORY_HTML });
+  assert(
+    typeof minted.headers['X-Request-ID'] === 'string' && minted.headers['X-Request-ID'].startsWith('req_'),
+    `a request with no correlation id should be given one, got ${JSON.stringify(minted.headers['X-Request-ID'])}`
+  );
+
+  // A method this route does not serve is answered by the shared preamble, so
+  // it carries the `Allow` header and the correlation id like every other paid
+  // POST route.
+  const wrongMethod = new FakeResponse();
+  resetRateLimitsForTests();
+  await handler({ method: 'GET', body: undefined, headers: {} }, wrongMethod);
+  assert(wrongMethod.statusCode === 405, `an unsupported method should be refused, got ${wrongMethod.statusCode}`);
+  assert(
+    wrongMethod.headers['Allow'] === 'POST, OPTIONS',
+    `a 405 should say which methods this resource serves, got ${JSON.stringify(wrongMethod.headers['Allow'])}`
+  );
+  assert(
+    typeof wrongMethod.headers['X-Request-ID'] === 'string',
+    'a refused method should still be answered with a correlation id'
+  );
+
   console.log('Story Lab evaluate route tests passed');
 }
 

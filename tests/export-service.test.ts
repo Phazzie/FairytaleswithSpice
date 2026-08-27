@@ -4,6 +4,7 @@
 import { ExportService } from '../api/_lib/services/exportService';
 import { readZipEntries, ZipEntry } from '../api/_lib/services/zipArchive';
 import { EXPORT_FORMATS, SaveExportSeam } from '../api/_lib/types/contracts';
+import { READING_SPEED } from '../api/_lib/constants';
 import { STORY_LAB_THEME_SEEDS } from '../shared/storyLabThemeSeeds';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -587,6 +588,64 @@ async function testExportMetadataNamesThemesTheWayThePickerDoes(): Promise<void>
 }
 
 /**
+ * The two lines of the "Story Information" block that were still written for a
+ * machine rather than for the reader holding the document.
+ *
+ * The themes and the creature beside them were fixed when the seed list moved
+ * into `shared/`; these were not. The timestamp went out as
+ * `new Date().toISOString()` — `2026-08-26T23:52:14.472Z`, milliseconds and
+ * all — at the head of the file a reader downloads and keeps. And the read
+ * time was suffixed `minutes` unconditionally, so every story under
+ * `READING_SPEED.WORDS_PER_MINUTE` words, which is most of one chapter at the
+ * 600-word budget the form offers, read "1 minutes".
+ *
+ * Both `.html` and `.txt` render this block, and both are checked: they are
+ * separate string templates, and the theme fix had to be made in both.
+ */
+async function testStoryInformationIsWrittenForAReader(): Promise<void> {
+  const exportService = new ExportService();
+
+  // Comfortably under one minute of reading at the shared rate, which is what
+  // makes the singular reachable at all.
+  const shortStory = '<p>She opened the door and the bargain came due.</p>';
+
+  for (const format of ['txt', 'html'] as const) {
+    const rendered = (await exportService.generateExportContent(createInput({
+      format,
+      includeMetadata: true,
+      content: shortStory
+    }))).toString('utf8');
+
+    assert(
+      rendered.includes('1 minute') && !rendered.includes('1 minutes'),
+      `a story of a few words should read "1 minute", not "1 minutes" (${format}: ${JSON.stringify(rendered.slice(0, 400))})`
+    );
+    assert(
+      !/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(rendered),
+      `the ISO wire timestamp should not reach the reader's document (${format}: ${JSON.stringify(rendered.slice(0, 400))})`
+    );
+    assert(
+      /Generated:<\/strong> \d{4}-\d{2}-\d{2} at \d{2}:\d{2} UTC|Generated: \d{4}-\d{2}-\d{2} at \d{2}:\d{2} UTC/.test(rendered),
+      `the generated instant should still be named, in a form a reader reads (${format}: ${JSON.stringify(rendered.slice(0, 400))})`
+    );
+  }
+
+  // Plural is still plural: the fix is a rule about the number, not a blanket
+  // rename of the word.
+  const longStory = `<p>${'word '.repeat(READING_SPEED.WORDS_PER_MINUTE * 3)}</p>`;
+  const longRendered = (await exportService.generateExportContent(createInput({
+    format: 'txt',
+    includeMetadata: true,
+    content: longStory
+  }))).toString('utf8');
+
+  assert(
+    longRendered.includes('Estimated Read Time: 3 minutes'),
+    `a three-minute story should still read "minutes" (got ${JSON.stringify(longRendered.slice(0, 400))})`
+  );
+}
+
+/**
  * The export format list has three readers — the service's own guard, the
  * renderer's switch, and the Angular picker — and the picker's hand-written
  * copy had lost `html`, so the one format nobody could choose was the one whose
@@ -636,6 +695,7 @@ async function main(): Promise<void> {
   await testDocxIsARealZipContainerWithItsDocument();
   await testMetadataReflectsTheActualStory();
   await testExportMetadataNamesThemesTheWayThePickerDoes();
+  await testStoryInformationIsWrittenForAReader();
   await testEveryDeclaredFormatRenders();
 
   console.log('Export service tests passed');

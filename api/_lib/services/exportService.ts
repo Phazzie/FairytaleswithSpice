@@ -8,6 +8,7 @@ import {
   stripStoryHtmlForExport
 } from './exportSanitizer';
 import { buildZipArchive, ZipEntry } from './zipArchive';
+import { READING_SPEED } from '../constants';
 import { readStoryLabThemeLabel, titleCaseIdentifier } from '../../../shared/storyLabThemeSeeds';
 
 // US Letter, in the points a PDF's default user space is measured in.
@@ -144,11 +145,56 @@ function trimTrailingSeparators(stem: string): string {
 }
 
 interface ExportMetadata {
+  /** ISO 8601, because this is the machine field. See `formatGeneratedAt`. */
   generatedAt: string;
   wordCount: number;
+  /** Whole minutes. See `formatReadTime` for how it is written out. */
   readTime: number;
   creature: string;
   themes: string[];
+}
+
+/**
+ * Write the "Story Information" block's three derived values the way a reader
+ * reads them.
+ *
+ * That block is not a log line or a debug view: it is the head of the `.html`
+ * and `.txt` documents the export button hands the reader to keep, and it was
+ * written as if it were. `readStoryLabThemeLabel` and `titleCaseIdentifier`
+ * were added to it for exactly this reason — the themes and the creature were
+ * being printed as the wire values `enemies_to_lovers` and `vampire` — and the
+ * two lines above them were left as they were:
+ *
+ * - **The timestamp was the wire form.** `new Date().toISOString()` went
+ *   straight onto the page, so a reader opening their own story found
+ *   `Generated: 2026-08-26T23:52:14.472Z` under the title — a format chosen for
+ *   sorting and parsing, carrying milliseconds nothing about a story needs, in
+ *   a timezone that is nobody's. The field stays ISO on `ExportMetadata`
+ *   because that is what a machine reading the record wants; only what is
+ *   printed changes.
+ * - **The read time was always plural.** `${metadata.readTime} minutes` reads
+ *   "1 minutes" for every story under two hundred words, which is most of a
+ *   single chapter at the smallest word budget the form offers.
+ *
+ * UTC is named rather than resolved to a local zone: the export is rendered on
+ * a serverless function whose timezone is the deployment's, not the reader's,
+ * so a "local" time here would be a stranger's local time presented as theirs.
+ * Saying `UTC` is the honest version of the same instant.
+ */
+function formatGeneratedAt(isoTimestamp: string): string {
+  const parsed = new Date(isoTimestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return isoTimestamp;
+  }
+
+  const date = parsed.toISOString().slice(0, 10);
+  const time = parsed.toISOString().slice(11, 16);
+
+  return `${date} at ${time} UTC`;
+}
+
+function formatReadTime(minutes: number): string {
+  return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
 }
 
 export class ExportService {
@@ -408,7 +454,7 @@ ${xrefOffset}
   private generateHTMLContent(content: string, metadata: ExportMetadata, input: SaveExportSeam['input']): string {
     const includeMetadata = input.includeMetadata !== false;
     const title = escapeHtml(input.title);
-    const generatedAt = escapeHtml(metadata.generatedAt);
+    const generatedAt = escapeHtml(formatGeneratedAt(metadata.generatedAt));
     const creature = escapeHtml(metadata.creature);
     const themes = metadata.themes.map(theme => escapeHtml(theme)).join(', ');
 
@@ -433,7 +479,7 @@ ${xrefOffset}
         <h3>Story Information</h3>
         <p><strong>Generated:</strong> ${generatedAt}</p>
         <p><strong>Word Count:</strong> ${metadata.wordCount}</p>
-        <p><strong>Estimated Read Time:</strong> ${metadata.readTime} minutes</p>
+        <p><strong>Estimated Read Time:</strong> ${formatReadTime(metadata.readTime)}</p>
         <p><strong>Creature:</strong> ${creature}</p>
         <p><strong>Themes:</strong> ${themes}</p>
     </div>
@@ -454,9 +500,9 @@ ${xrefOffset}
 
     if (includeMetadata) {
       text += `Story Information:\n`;
-      text += `Generated: ${metadata.generatedAt}\n`;
+      text += `Generated: ${formatGeneratedAt(metadata.generatedAt)}\n`;
       text += `Word Count: ${metadata.wordCount}\n`;
-      text += `Estimated Read Time: ${metadata.readTime} minutes\n`;
+      text += `Estimated Read Time: ${formatReadTime(metadata.readTime)}\n`;
       text += `Creature: ${metadata.creature}\n`;
       text += `Themes: ${metadata.themes.join(', ')}\n\n`;
       text += `---\n\n`;
@@ -650,10 +696,24 @@ ${chapterXhtml}
    * outside the seed list is titled rather than dropped.
    */
   private generateMetadata(content: string, input: SaveExportSeam['input']): ExportMetadata {
+    // The words are counted once. It was counted twice — the same scan of the
+    // whole story run for the word count and again for the read time derived
+    // from it — on a route that already has a body-size cap because the story
+    // can be several hundred kilobytes.
+    //
+    // `READING_SPEED.WORDS_PER_MINUTE` is where this number is stated. It has
+    // been in `constants.ts` since that file was written, described as
+    // "Average reading speed for time estimation", with no reader anywhere in
+    // the repository — the one place that estimates a reading time spelled
+    // `200` inline instead. A named constant nothing reads is not a constant;
+    // it is a note, and the next change to it would have silently missed the
+    // only line it was written for.
+    const wordCount = this.countWords(content);
+
     return {
       generatedAt: new Date().toISOString(),
-      wordCount: this.countWords(content),
-      readTime: Math.ceil(this.countWords(content) / 200),
+      wordCount,
+      readTime: Math.ceil(wordCount / READING_SPEED.WORDS_PER_MINUTE),
       creature: input.creature ? titleCaseIdentifier(input.creature) : 'unknown',
       themes: (input.themes ?? []).map(readStoryLabThemeLabel)
     };
