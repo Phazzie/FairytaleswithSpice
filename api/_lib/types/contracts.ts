@@ -4,9 +4,11 @@
 
 import { CREATURE_ARCHETYPES, type CreatureArchetype } from '../../../shared/creatureVocabulary';
 import { CLASSIC_STORY_THEMES, type ClassicStoryTheme } from '../../../shared/themeVocabulary';
+import { CHAPTER_BATCH_SIZES, type ChapterBatchSize } from '../../../shared/chapterBatchVocabulary';
+import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 
-export { CREATURE_ARCHETYPES, CLASSIC_STORY_THEMES };
-export type { CreatureArchetype, ClassicStoryTheme };
+export { CREATURE_ARCHETYPES, CLASSIC_STORY_THEMES, CHAPTER_BATCH_SIZES };
+export type { CreatureArchetype, ClassicStoryTheme, ChapterBatchSize };
 
 // ==================== TYPE DEFINITIONS ====================
 // `CreatureType` is this contract's name for the ten creatures, which are now
@@ -241,7 +243,12 @@ export interface StoryGenerationSeam {
     userInput: string; // Optional custom ideas
     spicyLevel: SpicyLevel;
     wordCount: WordCount;
-    requestedChapterCount?: 1 | 2 | 3;
+    // `ChapterBatchSize`, not a fourth spelling of `1 | 2 | 3`: this field and
+    // the Story Lab's `chapterBatchSize` are one value — `storyLabEngine`
+    // passes that straight into this one — so they read one table. See
+    // `shared/chapterBatchVocabulary` for the six copies this replaces and
+    // what a fourth size cost each of them.
+    requestedChapterCount?: ChapterBatchSize;
     generationContext?: StoryGenerationContext;
   };
 
@@ -306,7 +313,8 @@ export interface ChapterContinuationSeam {
     userInput?: string; // Optional continuation hints
     maintainTone: boolean; // Keep same spicy level and themes
     tropeMetadata?: string; // Optional invisible generation metadata from original story
-    requestedChapterCount?: 1 | 2 | 3;
+    // The same table the genesis seam above reads.
+    requestedChapterCount?: ChapterBatchSize;
     generationContext?: StoryGenerationContext;
   };
 
@@ -482,7 +490,29 @@ export const VALIDATION_RULES = {
     allowedHtml: false
   },
   themes: {
-    maxCount: 5,
+    /**
+     * How many themes one story may weave, read from the shared limit rather
+     * than restated here.
+     *
+     * `STORY_BLUEPRINT_LIMITS.maxThemes` is the number the Story Lab enforces —
+     * `parseStoryLabBlueprint` refuses a blueprint past it and
+     * `FormValidationService` refuses one before the reader presses generate —
+     * and this rule is the number the classic route enforces on the array that
+     * *same blueprint* becomes. `STORY_EVALUATION_LIMITS.maxThemes` beside it
+     * in the shared module already reads it, and says why: these fields "name
+     * the same things".
+     *
+     * They could therefore drift, and each direction fails silently in its own
+     * way. Raise the shared limit alone and the picker offers a sixth seed, the
+     * form accepts it, `parseStoryLabBlueprint` accepts it, and
+     * `toClassicThemes` — which now reads the same number — hands this rule an
+     * array it refuses, so a blueprint the app assembled for itself comes back
+     * `INVALID_INPUT` after the reader pressed generate. Lower it alone and the
+     * refusal is worse for being invisible: the sixth theme is dropped on the
+     * way to the generator and the story is written without it, with nothing in
+     * the response saying a choice went missing.
+     */
+    maxCount: STORY_BLUEPRINT_LIMITS.maxThemes,
     // Read from the table rather than restated here, for the reason
     // `imageStyle.allowedValues` below reads `IMAGE_STYLES`: this copy is what
     // decides whether a caller's theme reaches the log or is written as

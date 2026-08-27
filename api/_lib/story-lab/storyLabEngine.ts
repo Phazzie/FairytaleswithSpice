@@ -29,6 +29,8 @@ import { getStoryLabContinuityTimeoutMs } from './continuityBudget';
 import { withContinuationStrategyBrief, stripStoryMemoryCardSections } from './continuationGuidance';
 import { buildChapterDelta, buildStateDelta, buildStateSnapshot } from './storyStateBuilder';
 import { collapseWhitespace } from '../utils/whitespace';
+import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
+import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 
 export { getStoryLabContinuityTimeoutMs } from './continuityBudget';
 export {
@@ -140,11 +142,24 @@ function validateHeatContract(input: LabGenerationSeam['input']): StoryLabErrorR
   return heatContractPolicyError(input.heatContract, { required: true });
 }
 
+/**
+ * The blueprint's seeds as the classic generator's themes.
+ *
+ * The cap is `STORY_BLUEPRINT_LIMITS.maxThemes` rather than the bare `5` it
+ * was, because this is the seam where the two numbers meet: the blueprint that
+ * reaches here has already been bounded by that limit at the form and at
+ * `parseStoryLabBlueprint`, and the array this returns is bounded again by
+ * `VALIDATION_RULES.themes.maxCount` at `validateStoryInput` — which now reads
+ * the same limit. Written as a literal, this line was the one place a raised
+ * limit would have been silently un-raised: five themes reaching the generator
+ * out of the six the reader had chosen and the two validators either side had
+ * accepted, with nothing in the response saying which one was dropped.
+ */
 function toClassicThemes(themeIds: string[]): ThemeType[] {
   const classicThemes = themeIds
     .map(themeId => themeId.split('-').join('_'))
     .filter(isClassicStoryTheme)
-    .slice(0, 5);
+    .slice(0, STORY_BLUEPRINT_LIMITS.maxThemes);
 
   return classicThemes.length ? classicThemes : [DEFAULT_CLASSIC_THEME];
 }
@@ -591,9 +606,13 @@ function normalizeChapterTitle(title: string | undefined, chapterNumber: number)
   return title.replace(/^Chapter\s+\d+:\s*/i, '').trim() || `Chapter ${chapterNumber}`;
 }
 
+/** How much of a chapter its library and workbench excerpt shows. */
+const CHAPTER_SUMMARY_MAX_WORDS = 28;
+
 function summarizeHtml(html: string): string {
   const words = wordsFromHtml(html);
-  return `${words.slice(0, 28).join(' ')}${words.length > 28 ? '...' : ''}`;
+  const excerpt = words.slice(0, CHAPTER_SUMMARY_MAX_WORDS).join(' ');
+  return `${excerpt}${words.length > CHAPTER_SUMMARY_MAX_WORDS ? '...' : ''}`;
 }
 
 function countWords(html: string): number {
@@ -605,35 +624,42 @@ function wordsFromHtml(html: string): string[] {
   return text ? text.split(' ') : [];
 }
 
+/**
+ * Render a chapter's markup as the text a reader sees, then drop its speaker
+ * tags.
+ *
+ * The markup half was a hand-rolled `stripMarkupTags` loop here — the last
+ * private HTML stripper in the repository, and the one `shared/storyTextBlocks`
+ * was written for. It differed from that module in the way that is hardest to
+ * see from the code and easiest to see in the product: it decoded no entities.
+ * `&nbsp;`, `&quot;`, `&#39;`, `&amp;` and `&lt;`/`&gt;` all survived it as
+ * their literal source text, and both of this file's readers hand that straight
+ * to the reader.
+ *
+ * - `countWords` is every Story Lab chapter's `wordCount`. A generator that
+ *   spaced a phrase as `intense&nbsp;passion` — one of the two ways it can
+ *   write a non-breaking space, and the one this repository has already been
+ *   bitten by in `extractSpicyLevelFromContent` — produced a single token
+ *   there, so the chapter was reported a word short for each one. The count
+ *   is what the batch progress and the word-budget report are read against.
+ * - `summarizeHtml` is the chapter excerpt shown in the library and the
+ *   workbench, cut to its first 28 words. A chapter whose opening line is
+ *   `she said &quot;no&quot;` was previewed with the entities showing, and
+ *   `&quot;no&quot;` spent two of those 28 words on markup.
+ *
+ * `stripStoryHtmlToText` also puts a paragraph break where the markup put one
+ * rather than a bare space, which is the `door.Blood` welding that module
+ * exists to prevent — the old loop happened to avoid it by emitting a space for
+ * every `<` and `>`, but only because every boundary it could not name got the
+ * same treatment as every one it could.
+ *
+ * The speaker-tag pass stays here: `[Narrator]:` is this app's own convention
+ * rather than markup, and the shared module deliberately knows nothing about
+ * it.
+ */
 function stripHtml(html: string): string {
-  const withoutTags = stripMarkupTags(html);
-  const withoutSpeakerTags = stripSpeakerTags(withoutTags);
-  return collapseWhitespace(withoutSpeakerTags).trim();
-}
-
-function stripMarkupTags(value: string): string {
-  let result = '';
-  let insideTag = false;
-
-  for (const char of value) {
-    if (char === '<') {
-      insideTag = true;
-      result += ' ';
-      continue;
-    }
-
-    if (insideTag) {
-      if (char === '>') {
-        insideTag = false;
-        result += ' ';
-      }
-      continue;
-    }
-
-    result += char;
-  }
-
-  return result;
+  const readerText = stripStoryHtmlToText(html);
+  return collapseWhitespace(stripSpeakerTags(readerText));
 }
 
 function stripSpeakerTags(value: string): string {

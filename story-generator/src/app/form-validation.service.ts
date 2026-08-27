@@ -9,7 +9,8 @@ import {
   NARRATIVE_TONES,
   SPICY_LEVELS,
   StoryGenerationSeam,
-  WORD_BUDGETS
+  WORD_BUDGETS,
+  formatChapterBatchSizeList
 } from './contracts';
 import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 
@@ -145,7 +146,7 @@ export class FormValidationService {
     }
 
     if (!VALID_SPICY_LEVELS.has(spicyLevel)) {
-      errors.spicyLevel = 'Spicy level must be between 1 and 5.';
+      errors.spicyLevel = `Spicy level must be between ${SPICY_LEVELS[0]} and ${SPICY_LEVELS[SPICY_LEVELS.length - 1]}.`;
     }
 
     const heatContract = input.heatContract;
@@ -164,7 +165,12 @@ export class FormValidationService {
     }
 
     if (!VALID_BATCH_SIZES.has(chapterBatchSize)) {
-      errors.chapterBatchSize = 'Choose 1, 2, or 3 chapters per batch.';
+      // Named from the table this line checks, not from memory. Both refusals
+      // above and below already read their numbers; these two were the last
+      // messages here stating a vocabulary they did not consult, and a message
+      // that lists the accepted values is the one place drift is guaranteed to
+      // reach the reader as a lie rather than as a silence.
+      errors.chapterBatchSize = `Choose ${formatChapterBatchSizeList()} chapters per batch.`;
     }
 
     if (measuredLength(input.protagonistName) > this.maxCharacterNameLength) {
