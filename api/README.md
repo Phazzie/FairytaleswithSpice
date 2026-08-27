@@ -24,8 +24,7 @@ api/
 │   ├── stories.ts         # Story Lab mock genesis (POST /api/story-lab/stories)
 │   ├── stories/[storyId]/continue.ts
 │   │                         # Story Lab continuation (POST /api/story-lab/stories/:storyId/continue)
-│   ├── evaluate.ts        # Prompt/story evaluation (POST /api/story-lab/evaluate)
-│   └── stream/genesis.ts  # Story Lab mock streaming (GET /api/story-lab/stream/genesis)
+│   └── evaluate.ts        # Prompt/story evaluation (POST /api/story-lab/evaluate)
 ├── export/
 │   └── save.ts            # Save/export stories (POST /api/export/save)
 ├── image/
@@ -136,7 +135,6 @@ The API is automatically deployed to Vercel when changes are pushed to the main 
 - `/api/story-lab/jobs/:jobId` → rewritten by `vercel.json` to `/api/story-lab/jobs.ts`
 - `/api/story-lab/jobs/:jobId/events` → rewritten by `vercel.json` to `/api/story-lab/jobs.ts`
 - `/api/story-lab/evaluate` → `/api/story-lab/evaluate.ts`
-- `/api/story-lab/stream/genesis` → `/api/story-lab/stream/genesis.ts`
 - `/api/export/save` → `/api/export/save.ts`
 - `/api/image/generate` → `/api/image/generate.ts`
 - `/api/health` → `/api/health.ts`
@@ -147,10 +145,19 @@ Retired route files:
   deployment in `story-generator/src/story-stream-route.ts`; the Node copy only ever registered
   `POST`, which `EventSource` cannot issue, so it was unreachable from any browser, and no
   frontend code called either copy — see `git log` on this file for the resulting bug-fix churn
-  on code nobody could exercise. Real-time generation progress is served by
-  `/api/story-lab/stream/genesis` and `/api/story-lab/jobs.ts` instead.)
+  on code nobody could exercise. Generation progress is served by `/api/story-lab/jobs.ts`'s job
+  event stream instead.)
 - `/api/story/stream-demo`
 - `/api/story-lab/health`
+- `/api/story-lab/stream/genesis` (a second, parallel "live progress" SSE route: unlike the job
+  event stream above, it `await`ed the *entire* generation before replaying the already-finished
+  chapters back through fixed `setTimeout`s as fabricated per-chapter "progress" — a canned
+  animation over a blocking call, not real-time generation. Its only frontend caller,
+  `StreamingStoryComponent`, was a hardcoded demo (fixed vampire/dark-romance/900-word blueprint)
+  never mounted in any route or nav link — a prior attempt to wire it in leaked the reader's
+  free-text logline/character names/world details into the `EventSource` query string and was
+  reverted. Deleted along with `StoryService.streamStoryGeneration` and the component; the job
+  event stream already provides genuine per-chapter progress against the real generation.)
 - `/api/story/generate`, `/api/story/continue` (classic, non-Story-Lab story generation and
   continuation handlers. Dead since the app only ever called `/api/story-lab/...` — see
   `expressApiRoutes.ts`'s own doc comment, which said as much before either file was removed — and

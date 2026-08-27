@@ -25,7 +25,6 @@ const EXPECTED_ROUTE_PATHS = [
   '/api/image/generate',
   '/api/story-lab/stories',
   '/api/story-lab/stories/:storyId/continue',
-  '/api/story-lab/stream/genesis',
   '/api/story-lab/evaluate',
   '/api/story-lab/jobs',
   '/api/story-lab/jobs/:jobId/events',
@@ -83,7 +82,6 @@ const CLIENT_REQUEST_PATHS = [
   '/api/story-lab/account/profile',
   '/api/story-lab/account/projects',
   '/api/story-lab/account/projects/project-1',
-  '/api/story-lab/stream/genesis',
   '/api/story-lab/evaluate',
   '/api/health'
 ];
@@ -200,7 +198,7 @@ assert.deepEqual(seenRequest.body, { kind: 'genesis' }, 'body should still read 
 assert.equal(
   typeof seenRequest.socket?.on,
   'function',
-  'the socket the genesis stream watches for a departed reader should still read through'
+  'the socket the job event stream watches for a departed reader should still read through'
 );
 
 // An undefined parameter is left off rather than written as the string

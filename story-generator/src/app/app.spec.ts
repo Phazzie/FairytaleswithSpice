@@ -340,7 +340,6 @@ describe('App', () => {
       'createStoryLabJob',
       'getStoryLabJob',
       'streamStoryLabJobEvents',
-      'streamStoryGeneration',
       'listCloudStoryProjects',
       'saveCloudStoryProject',
       'loadCloudStoryProject',
