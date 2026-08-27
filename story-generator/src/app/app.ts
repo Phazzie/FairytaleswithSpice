@@ -20,6 +20,7 @@ import {
   BatchProgressState,
   ChapterBatchSize,
   ChapterTimelineEntry,
+  CharacterProfile,
   CloudLibrarySyncState,
   CloudStoryProjectListItem,
   ContinuityPanelViewModel,
@@ -34,6 +35,7 @@ import {
   ImageGenerationSeam,
   ImageStyle,
   PlotThread,
+  RelationshipEdge,
   SavedStoryProject,
   SpicyLevel,
   StoryMemoryLifetime,
@@ -205,6 +207,38 @@ const BATCH_STATUS_LABELS: Record<BatchProgressState['status'], string> = {
 
 function isBatchProgressStatus(status: unknown): status is BatchProgressState['status'] {
   return typeof status === 'string' && Object.prototype.hasOwnProperty.call(BATCH_STATUS_LABELS, status);
+}
+
+/**
+ * Read a character's relationship edges before the panel dereferences them.
+ *
+ * `CharacterProfile.relationships` is typed `RelationshipEdge[]`, and the
+ * extractor now checks each entry against that type before storing it — but the
+ * type is a promise about new state, not about state that already exists.
+ * `mergeCharacters` asserted the model's array into the type for as long as this
+ * app has had a continuity panel, so a saved project or a cloud-stored snapshot
+ * written before that fix can still hand this component an array holding `null`,
+ * a bare name string, or an object with no `characterId` on it.
+ *
+ * `buildContinuityRelationshipPreviewItem` reads `relationship.characterId` off
+ * every entry, so a `null` among them is a `TypeError` thrown while rendering —
+ * not a missing preview line but a continuity panel that does not draw, on a
+ * story the reader can still see the chapters of. The API tree has read the same
+ * array through a filter for exactly this reason: `getCharacterRelationships` in
+ * `continuationGuidance.ts` re-checks object, `characterId`, and `relationship`
+ * on every read. This is that guard, on the reader that did not have one.
+ */
+function readRelationshipEdges(character: CharacterProfile): RelationshipEdge[] {
+  const relationships = (character as Partial<CharacterProfile>).relationships;
+  if (!Array.isArray(relationships)) {
+    return [];
+  }
+
+  return relationships.filter((edge): edge is RelationshipEdge =>
+    Boolean(edge)
+    && typeof edge === 'object'
+    && typeof edge.characterId === 'string'
+    && typeof edge.relationship === 'string');
 }
 
 type ActiveStoryLabJobState = {
@@ -700,7 +734,7 @@ export class App implements OnDestroy {
     const relationshipItems: Array<ContinuityPreviewItem & { activationScore: number; sourceIndex: number }> = [];
     let sourceIndex = 0;
     for (const character of characters) {
-      for (const relationship of character.relationships) {
+      for (const relationship of readRelationshipEdges(character)) {
         const target = characters.find(candidate => candidate.id === relationship.characterId);
         if (target) {
           relationshipItems.push({

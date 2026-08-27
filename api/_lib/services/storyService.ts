@@ -15,6 +15,7 @@ import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService, hasIdentifiedCliffhangerType } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
+import { estimateReadTimeMinutes } from '../utils/readTime';
 import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
 import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
 import {
@@ -223,7 +224,7 @@ export class StoryService {
         themes: sanitizedInput.themes,
         spicyLevel: sanitizedInput.spicyLevel,
         actualWordCount: totalWordCount,
-        estimatedReadTime: Math.max(1, Math.ceil(totalWordCount / 200)),
+        estimatedReadTime: estimateReadTimeMinutes(totalWordCount),
         hasCliffhanger: Boolean(lastChapter.cliffhangerEnding),
         generatedAt: new Date(),
         tropeMetadata: tropeSelection ? this.tropeService.serializeTropeSelection(tropeSelection) : undefined,
@@ -541,7 +542,7 @@ export class StoryService {
         cliffhangerAnalysis: lastCliffhangerAnalysis,
         chapters,
         totalWordCount,
-        estimatedReadTime: Math.max(1, Math.ceil(totalWordCount / 200)),
+        estimatedReadTime: estimateReadTimeMinutes(totalWordCount),
         nextChapterHint: lastChapter.nextChapterHint,
         failedChapters: failedChapters.length ? failedChapters : undefined
       };
@@ -768,7 +769,24 @@ export class StoryService {
     };
   }
 
-  private getRandomBeatStructure(input: StoryGenerationSeam['input']): string {
+  /**
+   * One of the twenty beat structures, drawn uniformly.
+   *
+   * This took the whole blueprint as a parameter and read nothing out of it.
+   * That is not a harmless extra argument on a private method: every structure
+   * below carries a `spiceIntegration` line naming the spice levels and themes
+   * it suits — "Perfect for Level 3-5 stories", "Mystery themes enhance
+   * psychological tension", "Comedy themes can subvert expectations" — so a
+   * signature taking the blueprint reads, from the one call site, as the
+   * selection weighing them. It does not, and has not; a Level 1 story is as
+   * likely to be told to write TEMPTATION CASCADE as a Level 5 one.
+   *
+   * Dropping the parameter is not a decision that the draw should stay
+   * uniform. It states that it currently is, so a later change that wants the
+   * blueprint to matter has to add the argument and thread it into the choice,
+   * rather than finding it already there and assuming it is already read.
+   */
+  private getRandomBeatStructure(): string {
     // EXPANDED: 20 beat structures with avoid warnings for quality control
     const structures = [
       {
@@ -947,7 +965,7 @@ AVOID: ${selectedStructure.avoid}`;
   ): string {
     // Get random author style selections for this generation
     const selectedStyles = selectRandomAuthorStyles(input.creature);
-    const selectedBeatStructure = this.getRandomBeatStructure(input);
+    const selectedBeatStructure = this.getRandomBeatStructure();
     
     const prompt = `You are an audio-first dark-romance architect producing supernatural vignettes optimized for multi-voice narration.
 Your sole purpose is to fabricate episodes that sound cinematic when read aloud and end on a cliff-hook that guarantees listener return.

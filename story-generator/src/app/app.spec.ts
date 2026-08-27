@@ -1483,6 +1483,65 @@ describe('App', () => {
     expect(previewText).toContain('Continuity note to honor');
   });
 
+  // `mergeCharacters` in the continuity extractor asserted the model's
+  // `relationships` array into `RelationshipEdge[]` rather than checking it, so
+  // state stored before that was fixed can still hold `null`, a bare name
+  // string, or an object with no `characterId`. This component read
+  // `relationship.characterId` off every entry, so one `null` among them threw
+  // while rendering and the panel did not draw at all — for a story whose
+  // chapters the reader can still see. The API tree has always read the same
+  // array through a filter; this is that guard on the reader that lacked one.
+  it('renders the Continuity Preview around malformed stored relationship edges', () => {
+    seedWorkbenchForContinuation({
+      state: createState({
+        characters: [
+          {
+            id: 'mara',
+            displayName: 'Mara',
+            archetype: 'protagonist',
+            summary: 'A siren archivist guarding a forbidden oath.',
+            currentGoal: 'Keep the moonlit bargain from consuming her archive.',
+            internalConflict: 'She wants the duke and fears the cost.',
+            externalConflict: 'Duke Vale wants the same vow.',
+            secrets: [],
+            relationships: [
+              null,
+              'Duke Vale',
+              { relationship: 'rival', notes: 'No character id at all.' },
+              {
+                characterId: 'duke-vale',
+                relationship: 'rival',
+                notes: 'Duke Vale can turn the vow into leverage.'
+              }
+            ] as never,
+            spiceCompatibilities: [3]
+          },
+          {
+            id: 'duke-vale',
+            displayName: 'Duke Vale',
+            archetype: 'antagonist',
+            summary: 'A moonlit duke with a claim on the reef archive.',
+            currentGoal: 'Turn Mara toward the court bargain.',
+            internalConflict: 'His desire compromises his strategy.',
+            externalConflict: 'Mara can refuse him in public.',
+            secrets: [],
+            relationships: [],
+            spiceCompatibilities: [3]
+          }
+        ],
+        continuityWarnings: []
+      })
+    });
+
+    const previewText = renderedContinuityPreviewText() ?? '';
+
+    // The panel draws at all, which is the part the throw took away.
+    expect(previewText).toContain('Continuity Preview');
+    // And the one well-formed edge among the malformed entries is still read.
+    expect(previewText).toContain('Relationship pressure');
+    expect(previewText).toContain('Mara and Duke Vale');
+  });
+
   it('prioritizes custom-brief matches in the Continuity Preview', () => {
     seedWorkbenchForContinuation({
       state: createState({
