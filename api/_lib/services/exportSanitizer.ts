@@ -515,7 +515,7 @@ function removeNonStoryHtml(html: string): string {
     }
 
     if (skippedBlockTag) {
-      if (parsed.tagName === skippedBlockTag && !parsed.isClosing && !parsed.isSelfClosing) {
+      if (parsed.tagName === skippedBlockTag && !parsed.isClosing && !closesItself(parsed)) {
         skippedBlockDepth += 1;
       }
 
@@ -530,7 +530,7 @@ function removeNonStoryHtml(html: string): string {
     }
 
     if (DROPPED_TAGS.has(parsed.tagName)) {
-      if (!parsed.isClosing && DROPPED_BLOCK_TAGS.has(parsed.tagName) && !parsed.isSelfClosing) {
+      if (!parsed.isClosing && DROPPED_BLOCK_TAGS.has(parsed.tagName) && !closesItself(parsed)) {
         skippedBlockTag = parsed.tagName;
         skippedBlockDepth = 1;
       }
@@ -559,6 +559,27 @@ function sanitizeStoryTag(token: string): string {
   }
 
   return parsed.isClosing ? `</${parsed.tagName}>` : `<${parsed.tagName}>`;
+}
+
+/**
+ * The dropped elements a trailing `/` really does close.
+ *
+ * `<svg/>` closes itself because SVG and MathML are foreign content, where the
+ * self-closing slash is part of the syntax. **In HTML it is not.** A parser
+ * ignores it on `<script/>`, `<style/>`, `<iframe/>` and the rest, so their
+ * contents run to the matching closing tag exactly as if the slash were absent.
+ *
+ * Honouring it on those would put the element's contents into the export as
+ * story text: `<script data-x="a>b"/>stealPrivateStory()</script>` never enters
+ * block-skipping, and the script body is read as prose. This mattered only once
+ * the tokenizer began reading such a tag whole — before that the truncation lost
+ * the `/` and the block was skipped by accident.
+ */
+const SELF_CLOSING_DROPPED_TAGS = new Set(['svg', 'math', 'embed']);
+
+/** Whether this tag's trailing `/` actually closes it. */
+function closesItself(parsed: ParsedHtmlTag): boolean {
+  return parsed.isSelfClosing && SELF_CLOSING_DROPPED_TAGS.has(parsed.tagName);
 }
 
 function replaceEvery(value: string, searchValue: string, replacement: string): string {
@@ -640,26 +661,34 @@ function tokenizeHtml(value: string): string[] {
  * Returns `-1` when no `>` closes the tag at all.
  */
 function findTagEnd(value: string, tagStart: number): number {
-  // Only scan as a tag what could be one. `parseHtmlTag` already refuses a `<`
-  // that no tag name follows, and the two have to agree: `<=">a">` is a `<` in
-  // the prose, not markup, and reading a quoted value out of it lets the run
-  // reach the story text after it. Anything else gets the older reading.
   const attributesStart = findAttributesStart(value, tagStart);
-  if (attributesStart === -1) {
-    return value.indexOf('>', tagStart + 1);
-  }
+  const wellFormedEnd = attributesStart === -1 ? -1 : scanAttributesToTagEnd(value, attributesStart);
 
+  // No well-formed reading: answer exactly as the older scan did.
+  return wellFormedEnd === -1 ? value.indexOf('>', tagStart + 1) : wellFormedEnd;
+}
+
+/**
+ * Where an attribute list starting at `index` ends, or `-1` if it has no
+ * well-formed end.
+ *
+ * A four-state walk, because whether a quote delimits a value depends entirely
+ * on where in the attribute list it appears:
+ *
+ * - `beforeAttributeName` — an `=` here has no name to assign to. HTML makes it
+ *   the attribute's *name*, so `<v =">openedx">` ends at the first `>`.
+ * - `attributeName` — an `=` here is an assignment.
+ * - `beforeValue` — a quote here opens a quoted value. Anything else begins an
+ *   unquoted one.
+ * - `unquotedValue` — runs to whitespace or the tag's `>`. Quotes and `=` inside
+ *   it are characters, not delimiters, which is what `<p data-x=a="b>` turns on:
+ *   without this state the second `=` reads as a fresh assignment and the quote
+ *   after it opens a run that swallows the sentence.
+ */
+function scanAttributesToTagEnd(value: string, attributesStart: number): number {
   let index = attributesStart;
-  // A quoted value can only begin where a value is expected: directly after the
-  // `=` of an assignment, whitespace aside. A quote anywhere else is a character
-  // inside an unquoted value, not a delimiter — `<p data-x=a"b>` is one such,
-  // and treating its `"` as an opening quote sends the scan looking for a
-  // partner in the story text after the tag.
-  let valueExpected = false;
-  // An `=` is only an assignment when an attribute name precedes it. A bare one
-  // is not: HTML reads the `=` of `<v =">openedx">` as the attribute's *name*
-  // and ends the tag at the first `>`, which is what the older scan does too.
-  let attributeNameSeen = false;
+  let state: 'beforeAttributeName' | 'attributeName' | 'beforeValue' | 'unquotedValue' =
+    'beforeAttributeName';
 
   while (index < value.length) {
     const character = value[index];
@@ -670,44 +699,47 @@ function findTagEnd(value: string, tagStart: number): number {
 
     // The next tag starts here, so this one has no well-formed end.
     if (character === '<') {
-      break;
+      return -1;
     }
 
-    if (character === '=' && attributeNameSeen) {
-      valueExpected = true;
-      attributeNameSeen = false;
-      index += 1;
-      continue;
-    }
-
-    if (valueExpected && (character === '"' || character === "'")) {
+    if (state === 'beforeValue' && (character === '"' || character === "'")) {
       const valueEnd = findAttributeValueEnd(value, index);
       if (valueEnd === -1) {
-        break;
+        return -1;
       }
 
       index = valueEnd + 1;
-      valueExpected = false;
-      attributeNameSeen = false;
+      state = 'beforeAttributeName';
       continue;
     }
 
-    if (isWhitespace(character)) {
-      // Whitespace ends an attribute name, but between `=` and its value it is
-      // still the value's position.
-      attributeNameSeen = false;
-    } else {
-      // Any other character is an attribute name, or an unquoted value — either
-      // way the next quote is a character in it rather than a delimiter.
-      attributeNameSeen = true;
-      valueExpected = false;
-    }
-
+    state = nextAttributeState(state, character);
     index += 1;
   }
 
-  // No well-formed reading: answer exactly as the older scan did.
-  return value.indexOf('>', tagStart + 1);
+  return -1;
+}
+
+/** The walk's transitions, for every character that is not `>`, `<`, or a quote opening a value. */
+function nextAttributeState(
+  state: 'beforeAttributeName' | 'attributeName' | 'beforeValue' | 'unquotedValue',
+  character: string
+): 'beforeAttributeName' | 'attributeName' | 'beforeValue' | 'unquotedValue' {
+  if (isWhitespace(character)) {
+    // Whitespace ends a name and ends an unquoted value, but between `=` and its
+    // value it is still the value's position.
+    return state === 'beforeValue' ? 'beforeValue' : 'beforeAttributeName';
+  }
+
+  if (state === 'unquotedValue') {
+    return 'unquotedValue';
+  }
+
+  if (character === '=') {
+    return state === 'attributeName' ? 'beforeValue' : 'attributeName';
+  }
+
+  return state === 'beforeValue' ? 'unquotedValue' : 'attributeName';
 }
 
 /**
@@ -755,9 +787,16 @@ function findAttributeValueEnd(value: string, quoteStart: number): number {
  * quoted value and swallow the sentence. HTML reads that `=` as more tag name
  * and ends the tag at the first `>`, which is what the older scan already did.
  *
- * A `<` that no tag name follows — `<=">a">`, a `<` in the prose rather than
- * markup — skips nothing and starts at the character after it, where the same
- * "an `=` needs a name before it" rule in `findTagEnd` refuses it too.
+ * Answers `-1` where a tag name is absent, so this agrees with `parseHtmlTag`
+ * about what is markup at all. That one requirement covers both constructs it
+ * has to refuse, since neither can begin with a tag-name character: a `<` in the
+ * prose (`< =a="b>…`) and a declaration or processing instruction (`<!x a="b>…`,
+ * `<?…`).
+ *
+ * Neither can be left to the attribute walk. `< =a="b>Visible text">After.`
+ * reaches `a` as an attribute name, then `=`, then opens a quoted value that
+ * pairs with the quote in the sentence and swallows it — so a `<` the reader
+ * typed would delete the words after it.
  */
 function findAttributesStart(value: string, tagStart: number): number {
   let index = tagStart + 1;
@@ -771,6 +810,10 @@ function findAttributesStart(value: string, tagStart: number): number {
     while (isWhitespace(value[index])) {
       index += 1;
     }
+  }
+
+  if (!isTagNameCharacter(value[index])) {
+    return -1;
   }
 
   while (isTagNameCharacter(value[index])) {

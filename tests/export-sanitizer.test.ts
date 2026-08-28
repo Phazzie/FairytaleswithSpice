@@ -274,7 +274,19 @@ const notAnAttributeValue: Array<{ label: string; html: string }> = [
   { label: 'quote inside an unquoted value', html: '<p data-x=a"b>Visible text">After.</p>' },
   // An `=` with no attribute name before it is not an assignment: HTML reads it
   // as the attribute's name and ends the tag at the first `>`.
-  { label: 'an `=` with no attribute name', html: '<v =">Visible text">After.</p>' }
+  { label: 'an `=` with no attribute name', html: '<v =">Visible text">After.</p>' },
+  // Inside an unquoted value, `=` and quotes are characters. Without a state for
+  // that, the second `=` reads as a fresh assignment and the quote after it
+  // opens a run that reaches the sentence.
+  { label: 'an `=` embedded in an unquoted value', html: '<p data-x=a="b>Visible text">After.</p>' },
+  // The same shape one `=` deeper, which is what actually needs the unquoted
+  // state: with only "an `=` needs a name", `a` `=` `b` walks back to a name and
+  // the second `=` is taken for an assignment.
+  { label: 'two `=` inside one unquoted value', html: '<p data-x=a=b="c>Visible text">After.</p>' },
+  // A construct `parseHtmlTag` rejects has no attribute list to walk. Both of
+  // these reach `a` as an attribute name and then swallow the sentence.
+  { label: 'a `<` with no tag name', html: '< =a="b>Visible text">After.' },
+  { label: 'a declaration rather than a tag', html: '<!x a="b>Visible text">After.' }
 ];
 
 for (const sample of notAnAttributeValue) {
@@ -299,6 +311,49 @@ assert(
   !stripStoryHtmlForExport('<script foo="a>b">stealPrivateStory()</script><p>Story survives.</p>')
     .includes('stealPrivateStory'),
   'a script carrying a quoted `>` must still be dropped with its contents'
+);
+
+// The slash is the case reading a tag whole newly exposed, and it is the one
+// with teeth. `<svg/>` closes itself because SVG is foreign content; in HTML the
+// slash is ignored, so `<script/>` does *not* close the element and its contents
+// run to `</script>`. Honouring it there stops `removeNonStoryHtml` entering
+// block-skipping and puts the script body into every export as story text —
+// which the old truncation prevented only by accident, having eaten the slash.
+for (const container of ['script', 'style', 'iframe']) {
+  const html = `<${container} data-x="a>b"/>stealPrivateStory()</${container}><p>Story survives.</p>`;
+  const text = stripStoryHtmlForExport(html);
+  assert(
+    !text.includes('stealPrivateStory'),
+    `a self-closing <${container}> must still take its contents with it (got ${JSON.stringify(text)})`
+  );
+  assert(
+    text.includes('Story survives.'),
+    `the story after a self-closing <${container}> must survive (got ${JSON.stringify(text)})`
+  );
+  assert(
+    !sanitizeStoryHtmlForExport(html).includes('stealPrivateStory'),
+    `the HTML export must drop a self-closing <${container}>'s contents too`
+  );
+}
+
+// The cost of that rule, stated rather than left to be rediscovered: a dangerous
+// container written self-closing and never closed now takes the rest of the
+// document with it, where the older reading kept it. That is what a browser does
+// too — the slash is ignored, so the element's contents run to a `</iframe>`
+// that never arrives — and it is the safe direction for a sanitizer. The
+// alternative is the leak asserted above.
+assert(
+  stripStoryHtmlForExport('<iframe/>Story text.') === '',
+  'an unclosed self-closing dangerous container takes the rest with it, as a browser does'
+);
+
+// The other side of that rule, and why it is a list rather than a blanket:
+// foreign content really does self-close, so `<svg .../>` must not start a skip
+// that swallows the rest of the story. This is the silent half of the headline
+// defect and it stays fixed.
+assert(
+  stripStoryHtmlForExport('<p>Before.</p><svg data-x="1>2"/><p>After.</p>') === 'Before.\nAfter.',
+  'a self-closing <svg> closes itself and must not swallow the story after it'
 );
 
 // ==================== BLOCK BOUNDARIES ====================
