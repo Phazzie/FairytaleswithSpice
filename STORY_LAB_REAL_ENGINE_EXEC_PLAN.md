@@ -269,6 +269,17 @@ The one direction not covered: a candidate token of `oaths` is not matched by a
 brief saying `oath`. The substring reading did not do that either, so this is the
 behaviour it had rather than a narrowing of it.
 
+Residual, stated rather than left to be found: the allowance is "token plus one
+ending", and a few unrelated words are spelled exactly that way. `cove` + `r` is
+`cover`; `grove` + `r` is `grover`. Those still activate. It is coverage not yet
+bought rather than a regression — the substring reading hit them too, and it hit
+`loathing`, `impact` and `courtesy` besides — and it is pinned by an assertion so
+the day it changes it is deliberate. Buying it means dropping `r`/`rs` from the
+shared set, which would cost `lover` and `lovers` for `love`, the form this genre
+actually writes and the reason those endings are in the set. That trade belongs
+to whoever owns the shared set, across all of its readers, rather than to this
+slice.
+
 Validation: `tests/continuity-activation.test.ts`, in `test:all`. The three
 collisions are asserted as zeros, the matches the substring reading got right are
 asserted as unchanged (a phrase stated in full still scores whole and by each of

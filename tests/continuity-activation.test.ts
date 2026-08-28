@@ -176,6 +176,18 @@ assert(
   '`less` is not an ending this set carries, so `nameless` is not the `name`'
 );
 
+// The residual, pinned rather than left to be discovered. The allowance is
+// "token plus one ending", and a handful of unrelated words are spelled exactly
+// that way -- `cove` + `r` is `cover`, `grove` + `r` is `grover`. These still
+// activate, as they did under the substring reading, so this is coverage not yet
+// bought rather than a regression. Removing the `r`/`rs` endings would buy it and
+// would cost `lover`/`lovers` for `love`, which is the form this genre actually
+// writes; that trade belongs to whoever decides the shared set, not here.
+assert(
+  scoreActivationCandidates(['The cove'], normalizeActivationText('Take cover behind the rocks.')) === 1,
+  '`cover` still activates `cove` -- a known residual of the `r` ending, unchanged from the substring reading'
+);
+
 // The set is read two ways -- as a list here, and as a regex alternation that
 // `storyQualityHeuristics` interpolates after an escaped keyword. That second
 // reading is only safe while every ending is plain lowercase letters, which is a

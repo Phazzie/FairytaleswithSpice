@@ -45,6 +45,7 @@ Not claimed:
 
 - **No evidence any of the three happens in production output.** All three need input the generator is not known to emit: a brief containing a word that merely contains a thread's, `touché` in banter, or a decomposed accent. Worth fixing because all three are silent — a mis-ordered continuity list, a score that cannot tell a character who acted from one who made a joke, and a paragraph break that moves with the encoding.
 - **This does not argue the sweep is now complete.** These three were found by grepping for the shapes the sweep replaced; a reader that spells the same mistake some other way would not turn up that way.
+- **The activation repair narrows the collisions rather than ending them.** The allowance is "token plus one ending", and a few unrelated words are spelled exactly that way — `cove` + `r` is `cover`, `grove` + `r` is `grover` — so those still activate. Residual, not regression: the substring reading hit them too, along with `loathing`, `impact` and `courtesy` which it no longer does. Found by a self-review pass run because Sourcery was rate-limited and CodeRabbit skipped this PR, so no bot round would have found it; pinned by an assertion.
 
 ## 2026-08-28 UTC - The Two Chapter-Heading Readers Call the Scanner (rows 1 and 2 of #296)
 
