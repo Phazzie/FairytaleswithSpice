@@ -219,8 +219,25 @@ export class StoryService {
     });
   }
 
-  async generateStory(input: StoryGenerationSeam['input']): Promise<ApiResponse<StoryGenerationSeam['output']>> {
-    const startTime = Date.now();
+  /**
+   * `requestStartedAtMs` defaults to "now" for any caller with nothing earlier
+   * to give it, but the Story Lab job routes reach this well after the
+   * invocation actually began — job-store creation, an owner lookup, and
+   * content-boundary loading all run first (see `jobRouteHandlers.ts`). The
+   * Story Lab engine (`generateStoryLabGenesis`) already captures its own
+   * `requestStartedAtMs` ahead of those, the same one it feeds continuity
+   * extraction's budget, and passes it through here so the chapter loop below
+   * measures against that earlier point instead of resetting the clock. The
+   * gap between the true Vercel invocation start and the engine's own
+   * timestamp — the job-store work in `jobRouteHandlers.ts` — is not closed by
+   * this; see the PR discussion for why threading it further is a larger,
+   * separate change.
+   */
+  async generateStory(
+    input: StoryGenerationSeam['input'],
+    requestStartedAtMs: number = Date.now()
+  ): Promise<ApiResponse<StoryGenerationSeam['output']>> {
+    const startTime = requestStartedAtMs;
     const requestId = logger.generateRequestId();
     const requestedChapterCount = this.normalizeChapterCount(input.requestedChapterCount);
     const sanitizedInput: StoryGenerationSeam['input'] = {
@@ -473,8 +490,12 @@ export class StoryService {
     };
   }
 
-  async continueChapter(input: ChapterContinuationSeam['input']): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
-    const startTime = Date.now();
+  /** See `generateStory`'s note on `requestStartedAtMs`; `continueStoryLab` passes the same kind of engine-level timestamp here. */
+  async continueChapter(
+    input: ChapterContinuationSeam['input'],
+    requestStartedAtMs: number = Date.now()
+  ): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
+    const startTime = requestStartedAtMs;
     const requestId = logger.generateRequestId();
     const requestedChapterCount = this.normalizeChapterCount(input.requestedChapterCount);
     const sanitizedInput: ChapterContinuationSeam['input'] = {

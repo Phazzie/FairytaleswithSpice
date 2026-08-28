@@ -27,6 +27,8 @@
 import assert from 'node:assert/strict';
 import { StoryService } from '../api/_lib/services/storyService';
 import { XaiTextClient, type XaiTextRequest, type XaiTextResponse } from '../api/_lib/services/xaiTextClient';
+import { continueStoryLab, generateStoryLabGenesis } from '../api/_lib/story-lab/storyLabEngine';
+import type { StoryGenerationSeam as LabGenerationSeam } from '../api/_lib/story-lab/contracts';
 
 function withFakeClock<T>(fn: (advance: (ms: number) => void) => Promise<T>): Promise<T> {
   const originalDateNow = Date.now;
@@ -294,12 +296,113 @@ async function assertFirstChapterTimeoutIsCappedByTightBudget(): Promise<void> {
   });
 }
 
+const storyLabBlueprint: LabGenerationSeam['input'] = {
+  creature: 'siren',
+  themes: [
+    { id: 'forbidden_love', label: 'Forbidden Love', description: 'A relationship that breaks supernatural law.' }
+  ],
+  logline: 'A siren diplomat must betray her court to save a forbidden lover.',
+  spicyLevel: 3,
+  tone: 'dark_romance',
+  desiredWordBudget: 700,
+  chapterBatchSize: 1,
+  heatContract: {
+    adultOnlyConfirmed: true,
+    tensionMode: 'dangerous_proximity',
+    intimacyBoundary: 'fade_to_black',
+    noGoContent: 'No coercion and no humiliation.'
+  },
+  protagonistName: 'Mira',
+  antagonistName: 'Lord Brine',
+  worldDetails: 'A moonlit reef court ruled by vow-binding songs.',
+  narrativeDirectives: 'Keep the prose lush but tense.'
+};
+
+/**
+ * `generateStoryLabGenesis`/`continueStoryLab` capture their own
+ * `requestStartedAtMs` before ever reaching `StoryService`, and it is that
+ * timestamp — not one `StoryService` resets on its own — that has to drive the
+ * budget check above, or a Story Lab job route's own pre-call overhead (job
+ * creation, an owner lookup, content-boundary loading; see
+ * `jobRouteHandlers.ts`) would be invisible to it. This proves the engine
+ * actually passes its timestamp through rather than `StoryService` silently
+ * keeping its own.
+ */
+async function assertEngineThreadsItsOwnStartTimeIntoStoryService(): Promise<void> {
+  await withEnv({ XAI_API_KEY: 'test-xai-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
+    const beforeCall = Date.now();
+    let capturedGenesisStart: number | undefined;
+    let capturedContinuationStart: number | undefined;
+
+    const genesisResponse = await generateStoryLabGenesis(storyLabBlueprint, {
+      serviceFactory: () => ({
+        generateStory: async (_input: unknown, requestStartedAtMs?: number) => {
+          capturedGenesisStart = requestStartedAtMs;
+          return {
+            success: false,
+            error: { code: 'GENERATION_FAILED', message: 'stubbed for this test' }
+          } as const;
+        },
+        continueChapter: async () => {
+          throw new Error('continueChapter should not be called by the genesis path');
+        }
+      })
+    });
+    const afterCall = Date.now();
+
+    assert.equal(genesisResponse.success, false, 'the stub deliberately fails so the test only checks what it was called with');
+    assert.equal(typeof capturedGenesisStart, 'number', 'generateStoryLabGenesis should pass its own requestStartedAtMs to StoryService.generateStory');
+    assert(
+      capturedGenesisStart! >= beforeCall && capturedGenesisStart! <= afterCall,
+      `the timestamp passed through should be the engine's own call-time clock, not left undefined (got ${capturedGenesisStart})`
+    );
+
+    const continuationResponse = await continueStoryLab({
+      storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+      chapterBatchSize: 1,
+      continuationBrief: 'Keep going.',
+      previouslyGeneratedChapters: [{
+        chapterNumber: 1,
+        htmlContent: '<p>She opened the door.</p>',
+        rawContent: '<p>She opened the door.</p>'
+      }],
+      storyState: {
+        storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+        revision: 1,
+        characters: [],
+        threads: [],
+        artifacts: [],
+        continuityWarnings: [],
+        narrativeVoice: '',
+        lastUpdatedAt: new Date().toISOString()
+      }
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by the continuation path');
+        },
+        continueChapter: async (_input: unknown, requestStartedAtMs?: number) => {
+          capturedContinuationStart = requestStartedAtMs;
+          return {
+            success: false,
+            error: { code: 'CONTINUATION_FAILED', message: 'stubbed for this test' }
+          } as const;
+        }
+      })
+    });
+
+    assert.equal(continuationResponse.success, false, 'the stub deliberately fails so the test only checks what it was called with');
+    assert.equal(typeof capturedContinuationStart, 'number', 'continueStoryLab should pass its own requestStartedAtMs to StoryService.continueChapter');
+  });
+}
+
 async function main(): Promise<void> {
   await assertGenesisSkipsChaptersItCannotFinish();
   await assertContinuationSkipsChaptersItCannotFinish();
   await assertBatchChapterTimeoutIsCappedByRemainingBudget();
   await assertFirstChapterRefusesWhenBudgetIsAlreadyExhausted();
   await assertFirstChapterTimeoutIsCappedByTightBudget();
+  await assertEngineThreadsItsOwnStartTimeIntoStoryService();
 
   console.log('Story service batch chapter budget tests passed');
 }
