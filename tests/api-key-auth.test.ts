@@ -2,6 +2,7 @@
 // Created: 2026-08-24 13:58 UTC
 
 import {
+  API_KEY_MINIMUM_LENGTH,
   authenticateRequest,
   resetApiKeyConfigurationWarningForTests
 } from '../api/_lib/middleware/security';
@@ -67,8 +68,8 @@ async function testTheUnconfiguredWarningIsWrittenOncePerConfiguration(): Promis
     );
 
     // A configured deployment has nothing to warn about.
-    process.env['API_KEYS'] = 'key-one';
-    await authenticateRequest({ method: 'POST', headers: { 'x-api-key': 'key-one' }, body: {} });
+    process.env['API_KEYS'] = 'sk-test-first-key-value';
+    await authenticateRequest({ method: 'POST', headers: { 'x-api-key': 'sk-test-first-key-value' }, body: {} });
     assert(
       countUnconfiguredWarnings() === 1,
       'a configured deployment should add no warning of its own'
@@ -94,47 +95,178 @@ function countUnconfiguredWarnings(): number {
     .length;
 }
 
+/**
+ * Drive one request against one `API_KEYS` configuration.
+ *
+ * The warning state is process-wide and gated on the raw `API_KEYS` value, so
+ * each case resets it: otherwise a configuration that happens to repeat an
+ * earlier one would log nothing and the log assertions below would be reading
+ * the previous case's entries.
+ */
+async function authenticateWith(configuredKeys: string, presentedKey: string) {
+  const previous = process.env['API_KEYS'];
+  process.env['API_KEYS'] = configuredKeys;
+  resetApiKeyConfigurationWarningForTests();
+  logger.clearLogs();
+
+  try {
+    return await authenticateRequest({
+      method: 'POST',
+      headers: { 'x-api-key': presentedKey },
+      body: {}
+    });
+  } finally {
+    if (previous === undefined) {
+      delete process.env['API_KEYS'];
+    } else {
+      process.env['API_KEYS'] = previous;
+    }
+    resetApiKeyConfigurationWarningForTests();
+  }
+}
+
+/**
+ * An `API_KEYS` entry has to look like a credential to be used as one.
+ *
+ * Every entry used to be trusted on the single condition that it was non-empty,
+ * so `abcdef`, `test`, and the four characters left behind by an unfinished
+ * paste were live credentials for routes that spend real money — and the
+ * deployment could not tell, because nothing refused them and nothing said so.
+ *
+ * The defect each case kills is named in its message. The one that matters most
+ * is the third: the plausible way to write this rule is to drop unusable entries
+ * and let the existing `length === 0` check take over, which routes a
+ * misconfiguration straight into development mode and serves every caller as
+ * `development_user`. That is strictly worse than the hole being closed, so it
+ * is asserted directly rather than left to follow from the others.
+ */
+async function testTheConfiguredKeyContract(): Promise<void> {
+  const usable = 'sk-test-first-key-value';
+  const tooShort = 'abcdef';
+
+  const short = await authenticateWith(tooShort, tooShort);
+  assert(
+    !short.authenticated,
+    'a configured key below the minimum length should not authenticate'
+  );
+
+  // Entries are comma-split and trimmed, so what survives to here with a space
+  // or a quote in it came from a shell that kept the quoting, not a generator.
+  const malformed = 'a key with spaces that is long enough';
+  const outsideAlphabet = await authenticateWith(malformed, malformed);
+  assert(
+    !outsideAlphabet.authenticated,
+    'a configured key outside the credential alphabet should not authenticate'
+  );
+
+  // The one that must never regress: a configuration that is entirely unusable
+  // is a *refusal*, not an absence. Reaching the development-mode branch here
+  // would turn one typo in `API_KEYS` into an app with no authentication at all.
+  assert(
+    short.error?.code === 'API_KEY_CONFIGURATION_INVALID',
+    `an unusable configuration should be reported as misconfigured, got ${short.error?.code}`
+  );
+  assert(
+    short.userId !== 'development_user',
+    'an unusable configuration must not fall back to unconfigured development mode'
+  );
+  const noKeyPresented = await authenticateWith(tooShort, '');
+  assert(
+    !noKeyPresented.authenticated && noKeyPresented.userId !== 'development_user',
+    'an unusable configuration should refuse a request that presents no key at all'
+  );
+
+  // A rejected entry must not take its usable neighbours down with it.
+  const alongside = await authenticateWith(`${tooShort},${usable}`, usable);
+  assert(
+    alongside.authenticated,
+    'a usable key should still authenticate when configured alongside a rejected one'
+  );
+  const rejectedNeighbour = await authenticateWith(`${tooShort},${usable}`, tooShort);
+  assert(
+    !rejectedNeighbour.authenticated,
+    'a rejected key should not authenticate even when a usable key is configured beside it'
+  );
+
+  // The boundary, asserted against the contract rather than a copy of the number.
+  const atMinimum = 'k'.repeat(API_KEY_MINIMUM_LENGTH);
+  const belowMinimum = 'k'.repeat(API_KEY_MINIMUM_LENGTH - 1);
+  assert(
+    (await authenticateWith(atMinimum, atMinimum)).authenticated,
+    `a key of exactly ${API_KEY_MINIMUM_LENGTH} characters should authenticate`
+  );
+  assert(
+    !(await authenticateWith(belowMinimum, belowMinimum)).authenticated,
+    `a key one character below ${API_KEY_MINIMUM_LENGTH} should not authenticate`
+  );
+}
+
+/**
+ * A rejected entry is still whatever the operator believed was a credential —
+ * quite possibly a real one that is merely too short. The report that it was
+ * refused must therefore count entries rather than name them, or the hardening
+ * would write secrets into the log as the price of refusing them.
+ */
+async function testRejectedKeysAreNeverWrittenToTheLog(): Promise<void> {
+  const secretButTooShort = 'hunter2';
+  const usable = 'sk-test-first-key-value';
+
+  for (const configuration of [secretButTooShort, `${secretButTooShort},${usable}`]) {
+    await authenticateWith(configuration, usable);
+
+    const written = JSON.stringify(logger.getRecentLogs(200));
+    assert(
+      !written.includes(secretButTooShort),
+      `a rejected key value must not reach the log (configuration: ${configuration.length} chars)`
+    );
+    assert(
+      written.includes('unusable'),
+      'a rejected key should still be reported, by count'
+    );
+  }
+}
+
 async function main(): Promise<void> {
-  process.env['API_KEYS'] = 'key-one, key-two ,key-three';
+  process.env['API_KEYS'] = 'sk-test-first-key-value, sk-test-second-key-value ,sk-test-third-key-value';
 
   const spacedKey = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'key-two' },
+    headers: { 'x-api-key': 'sk-test-second-key-value' },
     body: {}
   });
   assert(spacedKey.authenticated, 'keys configured with surrounding spaces should still authenticate');
 
   const lastKey = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'key-three' },
+    headers: { 'x-api-key': 'sk-test-third-key-value' },
     body: {}
   });
   assert(lastKey.authenticated, 'every configured key should authenticate');
 
   const bearer = await authenticateRequest({
     method: 'POST',
-    headers: { authorization: 'Bearer key-one' },
+    headers: { authorization: 'Bearer sk-test-first-key-value' },
     body: {}
   });
   assert(bearer.authenticated, 'a Bearer authorization header should authenticate');
 
   const lowercaseBearer = await authenticateRequest({
     method: 'POST',
-    headers: { authorization: 'bearer key-one' },
+    headers: { authorization: 'bearer sk-test-first-key-value' },
     body: {}
   });
   assert(lowercaseBearer.authenticated, 'the Bearer scheme should be matched case-insensitively');
 
   const tabSeparatedBearer = await authenticateRequest({
     method: 'POST',
-    headers: { authorization: 'Bearer\tkey-one' },
+    headers: { authorization: 'Bearer\tsk-test-first-key-value' },
     body: {}
   });
   assert(tabSeparatedBearer.authenticated, 'any whitespace may separate the scheme from the credentials');
 
   const bearerLookalike = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'bearerkey-one' },
+    headers: { 'x-api-key': 'bearersk-test-first-key-value' },
     body: {}
   });
   assert(!bearerLookalike.authenticated, 'a key merely starting with "bearer" should not have a prefix stripped');
@@ -161,14 +293,14 @@ async function main(): Promise<void> {
 
   const repeatedHeader = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': ['key-one', 'key-two'] },
+    headers: { 'x-api-key': ['sk-test-first-key-value', 'sk-test-second-key-value'] },
     body: {}
   });
   assert(repeatedHeader.authenticated, 'a repeated header delivered as an array should authenticate');
 
   const embeddedBearer = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'not Bearer key-one' },
+    headers: { 'x-api-key': 'not Bearer sk-test-first-key-value' },
     body: {}
   });
   assert(!embeddedBearer.authenticated, 'the Bearer prefix should only be stripped from the start of the value');
@@ -176,7 +308,7 @@ async function main(): Promise<void> {
 
   const canonicalCaseApiKeyHeader = await authenticateRequest({
     method: 'POST',
-    headers: { 'X-API-Key': 'key-one' },
+    headers: { 'X-API-Key': 'sk-test-first-key-value' },
     body: {}
   });
   assert(
@@ -186,7 +318,7 @@ async function main(): Promise<void> {
 
   const canonicalCaseAuthorizationHeader = await authenticateRequest({
     method: 'POST',
-    headers: { Authorization: 'Bearer key-three' },
+    headers: { Authorization: 'Bearer sk-test-third-key-value' },
     body: {}
   });
   assert(
@@ -196,7 +328,7 @@ async function main(): Promise<void> {
 
   const wrongKey = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'key-onex' },
+    headers: { 'x-api-key': 'sk-test-first-key-valuex' },
     body: {}
   });
   assert(!wrongKey.authenticated, 'a key that is not configured should be rejected');
@@ -243,6 +375,8 @@ async function main(): Promise<void> {
   assert(unconfigured.authenticated, 'requests should still pass through when no keys are configured');
 
   await testTheUnconfiguredWarningIsWrittenOncePerConfiguration();
+  await testTheConfiguredKeyContract();
+  await testRejectedKeysAreNeverWrittenToTheLog();
 
   console.log('API key auth tests passed');
 }

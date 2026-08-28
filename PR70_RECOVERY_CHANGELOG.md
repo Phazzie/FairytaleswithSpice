@@ -4,6 +4,79 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-28 UTC - `API_KEYS` accepted any non-empty string as a credential
+
+Closes the first of the two directions #314 records. `authenticateRequest` built
+`validKeys` by splitting `API_KEYS` on commas and keeping anything non-empty —
+no length rule, no alphabet rule — so `abcdef`, `test`, `changeme`, and the four
+characters left behind by an unfinished paste were all live credentials for
+every route that spends real money on the xAI API. Nothing refused them and
+nothing said so.
+
+Actions:
+
+- **Added a credential contract to `api/_lib/middleware/security.ts`.** A
+  configured entry is usable only if it is at least `API_KEY_MINIMUM_LENGTH`
+  (16) characters drawn from RFC 6750's `b64token` alphabet
+  (`A-Z a-z 0-9 . _ ~ + / = -`). Sixteen is where an API key's floor usually
+  sits, and it is well above the eight-character values a person types by hand;
+  the alphabet rule is well-formedness rather than entropy, catching the entry
+  that kept its shell quoting or its trailing newline — which could never have
+  authenticated anything, and until now failed as an unexplained 401. It has one
+  real behaviour change in it: a passphrase-style entry with an interior space
+  worked through `X-API-Key` and is now refused. That is intended — a space ends
+  the credential in the `Authorization: Bearer` scheme, so such a value was only
+  ever half a key, working on one documented transport and silently failing on
+  the other.
+- **Split "unconfigured" from "misconfigured", which is the point of the slice.**
+  The development-mode fallback now keys on *no entries configured at all*. A
+  deployment that configured entries and had every one of them refused fails
+  closed: 401 `API_KEY_CONFIGURATION_INVALID`, never `development_user`. The
+  plausible way to write this rule — drop the unusable entries and let the
+  existing `length === 0` check take over — routes a typo in `API_KEYS` straight
+  into an app with no authentication at all, which is strictly worse than the
+  hole being closed.
+- **The rejection report counts entries rather than naming them.** A refused
+  entry is still whatever the operator believed was a credential, quite possibly
+  a real one that is merely too short, and the logger's own redaction does not
+  recognise an arbitrary short string as a secret. Partial rejection warns;
+  total rejection logs an error, because nothing is being served. Both reuse the
+  existing once-per-configuration gate, so neither repeats at request rate.
+- **Updated `SECURITY_IMPLEMENTATION_GUIDE.md`**, which is the active setup doc
+  and whose `API_KEYS=key1,key2,key3` example would now fail closed if an
+  operator copied it. Same for the example in `authenticateRequest`'s own
+  docblock. `SECURITY_FIXES_QUICK_REFERENCE.md` is historical prescriptive
+  content against an old `api/lib/` path and is deliberately untouched; its
+  example values happen to satisfy the contract already.
+- **Existing fixtures in `tests/api-key-auth.test.ts` had to become
+  credential-shaped.** `key-one`/`key-two`/`key-three` are 7-9 characters — they
+  were standing in for credentials and are exactly what the contract now
+  refuses. `tests/api-access-control.test.ts` needed no change: its
+  `sk-live-real-key` fixture is 16 characters exactly.
+
+Validation:
+
+- `npm run test:all` exits 0 (79 chained scripts).
+- **Counterfactual mutations: 5 applied, 5 killed.** Removing the length rule;
+  removing the alphabet rule; letting rejected entries still match a presented
+  key; making an entirely unusable configuration fall into development mode; and
+  putting the configured value into the rejection report's metadata — each fails
+  `tests/api-key-auth.test.ts`. None is committed.
+- No new suite; these belong to the file that already proves this surface.
+
+Not claimed: this is a change to what a deployment may configure, not evidence
+that any deployment had configured a weak key. It is a **breaking configuration
+change** — a deployment running on a short key today will start refusing
+requests, loudly and with a named error code, which is the intended direction of
+failure for an auth contract.
+
+Deliberately not in this slice: the readability half of #314. Making
+`redactBearerTokens` spare the ordinary word after `bearer` is still not sound,
+because a bearer token in a log line may be a *provider* credential (xAI,
+ElevenLabs, Clerk) that `API_KEYS` says nothing about, so a contract covering
+this app's own keys does not license a shape check over every bearer token. #314
+stays open with that narrowed.
+
 ## 2026-08-28 UTC - The three readers the whole-word sweep missed
 
 The sweep that moved this repository's keyword scans off substrings and off `\b`
