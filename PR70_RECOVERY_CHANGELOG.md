@@ -6,8 +6,9 @@ This is the chronological work log for the PR #70 recovery. It should capture co
 
 ## 2026-08-28 UTC - The block splitter read a comment's body as story prose
 
-The last open row of #296. `shared/storyTextBlocks.ts` had a reading for tags —
-#308 moved it onto `shared/htmlTagScanner` — and no reading at all for comments.
+The last open row of #296. `shared/storyTextBlocks.ts` had a reading for
+tags — #308 moved it onto `shared/htmlTagScanner` — and no reading at all for
+comments.
 A comment is not a tag, so `findWellFormedTagEnd` refused it and `<[^<>]*>`
 answered: a pattern that ends at the first `>` and cannot cross a `<`, neither of
 which a comment body is obliged to avoid.
