@@ -249,13 +249,40 @@ inflection table passes the "no false positives" half of this repair and quietly
 costs the scan its real signal — the lesson `continuationGuidance` recorded when
 it made the same move. The substring reading picked up `oaths` for `oath` and
 `pacts` for `pact` for free, and those are matches it got *right*; dropping them
-would trade one silent mis-ordering for another. A brief's word therefore
-activates a token when it *begins* with that token and finishes it with one of
-the seven endings in `shared/wordInflections.ts`, which is the half of the
-substring reading that was sound. That set is now the one declaration for both
-readers: `storyQualityHeuristics.ts` builds its regex alternation from it, and
-this module reads it as a list, because it matches by string comparison and
-cannot see that file.
+would trade one silent mis-ordering for another.
+
+`inflectedWordForms` in `shared/wordInflections.ts` generates the spellings a
+brief may really contain, and a candidate activates when the brief names any of
+them as whole words. It has two halves, and the first draft of this slice had
+only one:
+
+- **The endings appended.** `oath` → `oaths`, `pact` → `pacts`, `caress` →
+  `caressed`.
+- **The doubled final consonant**, before the endings that begin with a vowel.
+  `plan` → `planning`, `plot` → `plotting`, `commit` → `committed`. Appending
+  alone gives `planed`, `ploted` and `commited`, which nobody writes, so a brief
+  saying `planning` scored the thread it names **zero** — the exact failure this
+  repair exists to stop, arriving from the other direction. Doubling is applied
+  to the last character rather than to a stress-tested consonant-vowel-consonant
+  stem: the forms are only ever looked up, so a spelling English would not write
+  simply never occurs in a brief, and that avoids putting a syllable model in a
+  module that compares words.
+
+**The same allowance applies to the whole-candidate score, not only to the
+tokens.** A phrase is its words with single spaces between them, so an ending on
+the phrase is an ending on its final word: `Blood pact` is named whole by
+`settle the blood pacts tonight`. Restricting the six-point phrase score to the
+exact spelling cost most of the signal on a brief that names a thread in the
+plural — 8 points to 2 — and the courtroom keeps three entries, so that is a
+demotion out of the prompt and the preview, not a rounding difference.
+
+The set is now the one declaration for both readers: `storyQualityHeuristics.ts`
+builds its regex alternation from `WORD_INFLECTION_SUFFIX_PATTERN`, and this
+module reads the forms, because it matches by string comparison and cannot see
+that file. Note that the heuristics' pattern form covers only the appended
+endings — a keyword there still does not match its doubled-consonant inflection.
+That is pre-existing and untouched here; closing it means changing what those
+scans match, which is a separate slice.
 
 The collisions stay refused under that rule for a reason worth stating rather
 than testing for: `loathing` does not begin with `oath`, `impact` does not begin

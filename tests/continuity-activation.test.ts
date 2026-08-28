@@ -28,7 +28,7 @@ import {
   normalizeActivationText,
   scoreActivationCandidates
 } from '../shared/continuityActivation';
-import { WORD_INFLECTION_SUFFIXES, WORD_INFLECTION_SUFFIX_PATTERN } from '../shared/wordInflections';
+import { WORD_INFLECTION_SUFFIXES, WORD_INFLECTION_SUFFIX_PATTERN, inflectedWordForms } from '../shared/wordInflections';
 
 const repoRoot = process.cwd();
 
@@ -174,6 +174,51 @@ assert(
 assert(
   scoreActivationCandidates(['A name'], normalizeActivationText('She was nameless by then.')) === 0,
   '`less` is not an ending this set carries, so `nameless` is not the `name`'
+);
+
+// ==================== Codex review round: two false negatives ====================
+// The first pass of this repair allowed the endings only as a literal append to
+// a single token. That was half the job, and both halves it missed score a
+// thread the brief explicitly names *lower* rather than higher -- which is worse
+// than the collisions the repair is for, because `selectScoredCourtroomThreads`
+// keeps three entries and a demoted thread leaves the prompt and the preview
+// entirely.
+
+// P1a: a phrase whose final word the brief inflects. The whole-candidate score
+// is six of the eight points here, so losing it is most of the signal: this
+// scored 8 under the substring reading and 2 after the first pass.
+assert(
+  scoreActivationCandidates(['Blood pact'], normalizeActivationText('Settle the blood pacts tonight.'))
+    === ACTIVATION_WHOLE_CANDIDATE_SCORE + 2,
+  'an inflected final word still scores the whole phrase, not just its tokens'
+);
+assert(
+  scoreActivationCandidates(['Blood pact'], normalizeActivationText('Settle the blood pact tonight.'))
+    === ACTIVATION_WHOLE_CANDIDATE_SCORE + 2,
+  'the singular phrase is unchanged, so the two spellings agree'
+);
+
+// P1b: the endings English doubles a final consonant before. Appending alone
+// gives `planed`, `ploted`, `commited` -- spellings nobody writes -- so all
+// three of these scored 0 after the first pass where the substring reading
+// scored 7.
+for (const [candidate, brief] of [
+  ['Plan', 'Keep planning the escape.'],
+  ['Plot', 'Continue plotting the coup.'],
+  ['Commit', 'He committed to the bargain.']
+] as const) {
+  assert(
+    scoreActivationCandidates([candidate], normalizeActivationText(brief))
+      === ACTIVATION_WHOLE_CANDIDATE_SCORE + 1,
+    `a doubled-consonant inflection still names \`${candidate}\``
+  );
+}
+
+// Doubling is generative, so it has to not re-open the collisions above. It does
+// not: `court` doubles to `courtted`/`courtting`, never to `courtesy`.
+assert(
+  scoreActivationCandidates(['The reef court'], normalizeActivationText('She answered with courtesy.')) === 0,
+  'doubling does not re-open the `courtesy` collision'
 );
 
 // The residual, pinned rather than left to be discovered. The allowance is

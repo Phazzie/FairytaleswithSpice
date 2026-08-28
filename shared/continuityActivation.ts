@@ -1,7 +1,7 @@
 // Created: 2026-08-27 UTC
 
 import type { PlotThreadStatus } from './storyStateVocabulary';
-import { WORD_INFLECTION_SUFFIXES } from './wordInflections';
+import { inflectedWordForms } from './wordInflections';
 
 /**
  * How a continuation brief decides which continuity the next batch is shown.
@@ -166,12 +166,8 @@ function namesWholeWords(source: string, phrase: string): boolean {
  * matched by a brief saying `oath`. The substring reading did not do that
  * either, so this is the behaviour it had, not a narrowing of it.
  */
-function namesWord(source: string, token: string): boolean {
-  if (namesWholeWords(source, token)) {
-    return true;
-  }
-
-  return WORD_INFLECTION_SUFFIXES.some(suffix => namesWholeWords(source, `${token}${suffix}`));
+function namesWord(source: string, wordOrPhrase: string): boolean {
+  return inflectedWordForms(wordOrPhrase).some(form => namesWholeWords(source, form));
 }
 
 /**
@@ -193,7 +189,7 @@ export function scoreActivationCandidates(candidates: readonly unknown[], source
   let score = 0;
 
   for (const candidate of normalizedCandidates) {
-    if (namesWholeWords(source, candidate)) {
+    if (namesWord(source, candidate)) {
       score += ACTIVATION_WHOLE_CANDIDATE_SCORE;
     }
 
