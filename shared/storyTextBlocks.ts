@@ -1,6 +1,6 @@
 // Created: 2026-08-24 21:10 UTC
 
-import { findWellFormedTagEnd } from './htmlTagScanner';
+import { findCommentEnd, findWellFormedTagEnd } from './htmlTagScanner';
 
 /**
  * Split story content into the blocks a reader sees as paragraphs.
@@ -102,15 +102,11 @@ export function stripStoryHtmlToText(storyContent: string): string {
  * still be found — and is why the last `>` is located once, above the loop,
  * rather than searched for at every `<`.
  *
- * **Comments do not move.** `tokenizeHtml` drops a comment whole, which is what
- * a browser does and is better than what this module does — but it still ends
- * one only at `-->`, and the other three endings HTML allows are #307's row of
- * #296, unmerged. Adopting it today would take `<h3>Visible <!--> Title</h3>`
- * down to `Visible`, a regression `tests/chapter-heading-reader.test.ts`
- * catches. A comment has no well-formed tag reading, so it falls to
- * `<[^<>]*>` exactly as before, and `<!-- note: a > b -->` still leaks `b -->`
- * as a visible block. That stays #296's to settle; once #307 lands this module
- * can call `tokenizeHtml` and inherit the whole comment reading.
+ * **Comments are read by `findCommentEnd`, which is the last row of #296.**
+ * They used to have no reading of their own here: a comment is not a tag, so
+ * the scanner refused it and `<[^<>]*>` answered — a pattern that cannot cross
+ * the `<` or `>` a comment body is free to contain, and that has no idea a
+ * comment body is not prose. `rewriteTags` records what that cost.
  *
  * **And the two passes stay two passes, in their original order.** Marking
  * boundaries runs over the whole story, because a block tag always could span
@@ -143,6 +139,45 @@ function stripRemainingTags(block: string): string {
 /**
  * Walk `value`, replacing each tag with whatever `replaceTag` returns for it
  * and passing the text between tags through untouched.
+ *
+ * **A comment is dropped whole, before `replaceTag` is consulted at all**, and
+ * that exception is the last row of #296. It is not a tag, so
+ * `findWellFormedTagEnd` refuses it and it used to fall to `<[^<>]*>` — a
+ * pattern that stops at the first `>` and cannot cross a `<`, neither of which
+ * a comment body is obliged to avoid. Four separate reader-visible faults came
+ * out of that, all of them measured against `main` rather than reasoned about:
+ *
+ * - **A comment's contents were read as story prose.**
+ *   `<!-- <p>Hidden.</p> -->` came back as the three blocks `<!--`, `Hidden.`
+ *   and `-->` — the commented-out paragraph counted as words, and its `<p>`
+ *   taken as a paragraph break. This is the one that matters, because it is
+ *   text the author deliberately hid reaching every measure in the repository.
+ * - **A comment containing a blank line split the story.** `<!-- a\n\nb -->`
+ *   became `<!-- a` and `b -->`, moving every measure that reads the last
+ *   paragraph. This is why the drop cannot be left to `replaceTag`: the
+ *   boundary pass returns a non-boundary tag *as text* for the second pass to
+ *   remove, and the split between the two passes happens in between. A tag can
+ *   wait; a comment carrying a blank line cannot.
+ * - `<!-- note: a > b -->` leaked `b -->` as a visible block.
+ * - `<!-- note: a < b -->` leaked `<!-- note: a` as a visible block.
+ *
+ * `findCommentEnd` is `shared/htmlTagScanner`'s, so the four spellings that
+ * close a comment — `-->`, `<!-->`, `<!--->` and `--!>` — are read here exactly
+ * as the export sanitizer and the chapter-heading reader read them. That is the
+ * point of taking this row at all: the disagreement between two readers about
+ * where a comment ends is the defect #307 repaired one level down.
+ *
+ * **An unterminated comment is left exactly as it was**, which is a deliberate
+ * divergence from `tokenizeHtml` and the one policy decision in this change.
+ * `tokenizeHtml` abandons the scan, dropping the remainder of the input — right
+ * for an export, because a browser hides that text too. It is the wrong trade
+ * here. This module is not a rendering path; it is what `countStoryWords`, the
+ * cliffhanger scan, the image-prompt scene sentence and the next chapter's
+ * continuity excerpt all read. Silently losing the tail of a story from those
+ * costs more than the leaked `<!-- unterminated` that not losing it keeps, and
+ * the module's stated policy on markup it cannot read is already to keep the
+ * reader's words rather than guess. So `-1` falls through to the patterns
+ * below, and every input with no comment ending answers as it did before.
  */
 function rewriteTags(
   value: string,
@@ -159,6 +194,23 @@ function rewriteTags(
   // measured 260ms at 200,000 characters and 994ms at 400,000.
   const lastGreaterThan = value.lastIndexOf('>');
 
+  // Once one comment open has no ending, no later one has either, so the search
+  // is run at most once per string. Without this the reading is *quadratic* on
+  // `<!--<!--<!--…>`: every open re-scans to the end of the input looking for a
+  // terminator that is not there. Measured before it was added — 505ms at 5,000
+  // repeats, 1,980ms at 10,000 and 8,132ms at 20,000, against 7ms on `main` — so
+  // an 80KB story could spend eight seconds here. It is the same fault the
+  // `lastGreaterThan` hoist above exists for, one reader further in.
+  //
+  // Sound because a `<!--` open at `q` carries its own `--` at `q + 2`. Any
+  // earlier failed search began at `p + 4 <= q`, so it already passed over that
+  // `--` and rejected what followed it; a later search covers a suffix of what
+  // the first one covered and can find nothing new. Proved by construction, and
+  // the invariant checked directly against `findCommentEnd` over every input in
+  // the differential harness — 382 later-open pairs after a failed search, 0
+  // violations.
+  let commentEndSearchFailed = false;
+
   while (index < value.length) {
     const tagStart = value.indexOf('<', index);
     if (tagStart === -1) {
@@ -173,6 +225,22 @@ function rewriteTags(
     if (tagStart >= lastGreaterThan) {
       pieces.push(value.slice(tagStart));
       break;
+    }
+
+    // Dropped rather than handed to `replaceTag`, per the note above: a comment
+    // is never reader-visible text in either pass, and one carrying a blank line
+    // would be split by the pass boundary if it were left for the second.
+    if (!commentEndSearchFailed && value.startsWith('<!--', tagStart)) {
+      const commentEnd = findCommentEnd(value, tagStart);
+      if (commentEnd !== -1) {
+        index = commentEnd;
+        continue;
+      }
+
+      // Nothing closes it. Fall through, so the patterns answer as they always
+      // did rather than the rest of the story being dropped — and never ask
+      // again, which is what keeps this linear. See the note on the flag.
+      commentEndSearchFailed = true;
     }
 
     const tag = readTagAt(value, tagStart);
