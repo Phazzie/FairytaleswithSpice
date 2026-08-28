@@ -229,9 +229,10 @@ assert(
 
 // The other limit that keeps a malformed quote inside its own tag: a quoted run
 // stops at `<`, because that is where the next tag starts. Without it the run
-// above reaches the `title="x"` of the *following* paragraph, closes there, and
-// swallows `Alpha.` along with the markup between them.
-const runAcrossTags = '<p class="unterminated>Alpha.</p><p title="x">Beta.</p>';
+// above reaches the *following* paragraph, finds a quote there that a space
+// follows — so the follow-set accepts it — and swallows `Alpha.` along with the
+// markup between them.
+const runAcrossTags = '<p class="unterminated>Alpha.</p><p title=x" >Beta.</p>';
 assert(
   stripStoryHtmlForExport(runAcrossTags) === 'Alpha.\nBeta.',
   `a quoted run must not reach into the next tag (got ${JSON.stringify(stripStoryHtmlForExport(runAcrossTags))})`
@@ -243,10 +244,52 @@ assert(
 // module already loses the span between a literal `<` and the next `>` — that is
 // unchanged from before this fix, and both readings drop `< Beta` here — but the
 // scan must not carry on past `Epsilon.` and take that with it.
-const strayAngleBracket = '<p>Alpha < Beta "gamma>delta" Epsilon.</p>';
+const strayAngleBracket = "<p title='>' She wept for him<em>then left</em>";
 assert(
-  stripStoryHtmlForExport(strayAngleBracket).endsWith('Epsilon.'),
-  `a stray \`<\` must not delete the prose after the next tag (got ${JSON.stringify(stripStoryHtmlForExport(strayAngleBracket))})`
+  stripStoryHtmlForExport(strayAngleBracket).includes('She wept for him'),
+  `the scan must not run into the next tag and take the prose with it (got ${JSON.stringify(stripStoryHtmlForExport(strayAngleBracket))})`
+);
+
+// The pre-existing limit this module already documents, asserted so the change
+// above is on the record as not having moved it: a story containing a literal
+// `<` still loses the span between it and the next `>`, exactly as before.
+const literalAngleBracket = '<p>Alpha < Beta "gamma>delta" Epsilon.</p>';
+assert(
+  stripStoryHtmlForExport(literalAngleBracket).endsWith('Epsilon.'),
+  `a literal \`<\` must not delete the prose after the next tag (got ${JSON.stringify(stripStoryHtmlForExport(literalAngleBracket))})`
+);
+
+// Reading a quoted value at all depends on there being an assignment to read it
+// from, and the three shapes below are the ones where there is not. Each was a
+// regression found in review: the scanner opened a "value" on a quote that was
+// not a delimiter, hunted for its partner, and found one in the story text —
+// losing prose that the older first-`>` reading kept. The rule in every case is
+// that markup HTML itself would not read as an attribute must fall back.
+const notAnAttributeValue: Array<{ label: string; html: string }> = [
+  // A real closing quote followed by the next attribute with no space between.
+  // The quote is genuine, but the follow-set cannot accept it, and scanning on
+  // for a later quote reaches the one in the prose.
+  { label: 'no whitespace between attributes', html: '<p title="a>b"class=x>Visible " prose > after</p>' },
+  // A quote *inside* an unquoted value is a character, not a delimiter.
+  { label: 'quote inside an unquoted value', html: '<p data-x=a"b>Visible text">After.</p>' },
+  // An `=` with no attribute name before it is not an assignment: HTML reads it
+  // as the attribute's name and ends the tag at the first `>`.
+  { label: 'an `=` with no attribute name', html: '<v =">Visible text">After.</p>' }
+];
+
+for (const sample of notAnAttributeValue) {
+  const text = stripStoryHtmlForExport(sample.html);
+  assert(
+    text.includes('Visible text') || text.includes('Visible " prose'),
+    `${sample.label}: the reader's words must survive markup that is not an attribute (got ${JSON.stringify(text)})`
+  );
+}
+
+// The same rule stated where it is least obvious, because the `=` *is* part of
+// the tag name rather than an attribute: `<e=">…">` has no attribute at all.
+assert(
+  stripStoryHtmlForExport('<e=">Visible text">After.</p>').includes('Visible text'),
+  'an `=` welded to the tag name does not open an attribute value'
 );
 
 // The dropped-tag lists are read from the tag name, which sits before any
