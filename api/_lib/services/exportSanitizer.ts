@@ -356,8 +356,24 @@ export function stripStoryHtmlForExport(html: string): string {
  * spaces every dropped inline tag leaves behind.
  */
 function endsWithLineBreak(text: string): boolean {
-  const trimmed = text.replace(/[^\S\n]+$/, '');
-  return trimmed.length === 0 || trimmed.endsWith('\n');
+  // Walked backwards rather than trimmed. This is asked once per block tag, and
+  // trimming builds a copy of everything written so far each time — quadratic in
+  // the length of a story, which is the one input this module is for. Reading
+  // back over the trailing spaces costs only those spaces.
+  for (let index = text.length - 1; index >= 0; index -= 1) {
+    const character = text[index];
+    if (character === '\n') {
+      return true;
+    }
+
+    if (!isInlineWhitespace(character)) {
+      return false;
+    }
+  }
+
+  // Nothing but the spaces dropped tags leave behind, so there is no story text
+  // yet for a break to separate from.
+  return true;
 }
 
 /**
