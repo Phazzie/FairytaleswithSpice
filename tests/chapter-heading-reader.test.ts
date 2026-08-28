@@ -405,6 +405,25 @@ assertEqual(
   'only a leading heading is stripped'
 );
 
+// A second `<h3>` before the first is closed does not restart the heading. HTML
+// has no nesting here, and the lazy `.*?` this replaces began at the first
+// `<h3>` and ran on to the same `</h3>` — so the heading region is the whole
+// span, and both words are the title rather than the second one alone. Pinned
+// because "the first opening tag wins" is a one-character difference in the
+// reader (`??=` against `=`) that nothing else here would catch.
+{
+  const content = '<h3>First<h3>Second</h3><p>Body prose.</p>';
+  const { title, body } = extractChapterTitleAndBody(content, 4);
+
+  assertEqual(title, 'First\n\nSecond', 'the heading opens at the first `<h3>`, not the last');
+  assertEqual(body, '<p>Body prose.</p>', 'and the whole span is removed from the body, not just the second heading');
+  assertEqual(
+    content.match(/<h3[^>]*>(.*?)<\/h3>/i)?.[1] ?? '',
+    'First<h3>Second',
+    'which is the span the pattern being replaced also took'
+  );
+}
+
 // An `<h3>` inside a comment is markup, not a heading. The `>` before it is
 // what makes this discriminate: without skipping the comment whole, the walk
 // ends a token at that `>`, resumes inside the comment body, and reads the
@@ -437,30 +456,37 @@ let patternAgrees = 0;
 let scannerWorse = 0;
 let scannerBetter = 0;
 
+function measureInterior(interior: string): void {
+  const content = `<h3${interior}>Real Title</h3>`;
+  const reference = referenceTagEnd(content, 0);
+
+  // A browser emits no tag here, so there is nothing to agree or disagree about.
+  if (reference === -1) {
+    return;
+  }
+
+  enumerated += 1;
+
+  const scanner = findTagEnd(content, 0) === reference;
+  const pattern = firstCloseAngle(content, 0) === reference;
+
+  if (scanner) {
+    scannerAgrees += 1;
+  }
+  if (pattern) {
+    patternAgrees += 1;
+  }
+  if (pattern && !scanner) {
+    scannerWorse += 1;
+  }
+  if (scanner && !pattern) {
+    scannerBetter += 1;
+  }
+}
+
 function walkInteriors(prefix: string): void {
   if (prefix.length > 0) {
-    const content = `<h3${prefix}>Real Title</h3>`;
-    const reference = referenceTagEnd(content, 0);
-
-    if (reference !== -1) {
-      enumerated += 1;
-
-      const scanner = findTagEnd(content, 0) === reference;
-      const pattern = firstCloseAngle(content, 0) === reference;
-
-      if (scanner) {
-        scannerAgrees += 1;
-      }
-      if (pattern) {
-        patternAgrees += 1;
-      }
-      if (pattern && !scanner) {
-        scannerWorse += 1;
-      }
-      if (scanner && !pattern) {
-        scannerBetter += 1;
-      }
-    }
+    measureInterior(prefix);
   }
 
   if (prefix.length === MAX_INTERIOR_LENGTH) {

@@ -345,15 +345,30 @@ interface ChapterHeading {
   inner: string;
 }
 
-function findChapterHeading(content: string): ChapterHeading | null {
-  let index = 0;
-  let start = -1;
-  let innerStart = -1;
+interface HeadingTag {
+  /** Index of the tag's `<`. */
+  start: number;
+  /** Index just past the tag's `>`. */
+  end: number;
+  isClosing: boolean;
+}
 
-  while (index < content.length) {
-    const tagStart = content.indexOf('<', index);
+/**
+ * The next `<h3>` or `</h3>` at or after `index`, or `null` where the markup
+ * runs out before one.
+ *
+ * Every tag is read to its end even when it is not a heading, because that is
+ * what decides where the *next* one starts: ending `<p class="a>b">` at the
+ * first `>` would resume the walk inside an attribute value and read whatever
+ * follows as markup.
+ */
+function nextHeadingTag(content: string, index: number): HeadingTag | null {
+  let cursor = index;
+
+  while (cursor < content.length) {
+    const tagStart = content.indexOf('<', cursor);
     if (tagStart === -1) {
-      break;
+      return null;
     }
 
     // A comment's body is markup, not prose, and an `<h3>` inside one is not a
@@ -361,36 +376,41 @@ function findChapterHeading(content: string): ChapterHeading | null {
     if (content.startsWith('<!--', tagStart)) {
       const commentEnd = content.indexOf('-->', tagStart + 4);
       if (commentEnd === -1) {
-        break;
+        return null;
       }
 
-      index = commentEnd + 3;
+      cursor = commentEnd + 3;
       continue;
     }
 
     const tagEnd = findTagEnd(content, tagStart);
     if (tagEnd === -1) {
-      break;
+      return null;
     }
 
-    const parsed = parseHtmlTag(content.slice(tagStart, tagEnd + 1));
-    index = tagEnd + 1;
+    cursor = tagEnd + 1;
 
-    if (!parsed || parsed.tagName !== 'h3') {
+    const parsed = parseHtmlTag(content.slice(tagStart, cursor));
+    if (parsed?.tagName === 'h3') {
+      return { start: tagStart, end: cursor, isClosing: parsed.isClosing };
+    }
+  }
+
+  return null;
+}
+
+function findChapterHeading(content: string): ChapterHeading | null {
+  let opening: HeadingTag | null = null;
+
+  for (let tag = nextHeadingTag(content, 0); tag !== null; tag = nextHeadingTag(content, tag.end)) {
+    if (!tag.isClosing) {
+      // The *first* opening tag, so a second one does not restart the heading.
+      opening ??= tag;
       continue;
     }
 
-    if (parsed.isClosing) {
-      if (start !== -1) {
-        return { start, end: index, inner: content.slice(innerStart, tagStart) };
-      }
-
-      continue;
-    }
-
-    if (start === -1) {
-      start = tagStart;
-      innerStart = index;
+    if (opening !== null) {
+      return { start: opening.start, end: tag.end, inner: content.slice(opening.end, tag.start) };
     }
   }
 
