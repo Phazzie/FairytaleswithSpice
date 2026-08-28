@@ -453,6 +453,31 @@ const RAW_TEXT_TAG_NAMES = new Set([
   'noscript'
 ]);
 
+/**
+ * The elements whose subtrees are *not* HTML.
+ *
+ * HTML's raw-text rules stop applying inside one. `<svg><title/></svg>` closes
+ * that title immediately — foreign content honours a self-closing `/`, where
+ * HTML ignores it — so entering raw-text mode there hunts for a `</title>` that
+ * will never come and abandons the scan. `script` and `desc` have the same
+ * problem, being SVG element names too.
+ *
+ * Tracking the namespace rather than honouring `isSelfClosing` everywhere is
+ * what keeps the *HTML* reading right: a bare `<title/>` in HTML really does
+ * open a raw-text element that runs to the end, and a browser shows no heading
+ * after it. The two answers are opposite, and only the namespace separates them.
+ */
+const FOREIGN_CONTENT_TAG_NAMES = new Set(['svg', 'math']);
+
+/** Depth after this `<svg>`/`<math>` tag; a self-closing one opens nothing. */
+function nextForeignDepth(depth: number, parsed: ParsedHtmlTag): number {
+  if (parsed.isClosing) {
+    return Math.max(0, depth - 1);
+  }
+
+  return parsed.isSelfClosing ? depth : depth + 1;
+}
+
 /** What may follow a closing tag's name: whitespace, `/`, or its own `>`. */
 function endsTagName(character: string | undefined): boolean {
   return (
@@ -597,11 +622,17 @@ function isHeadingBoundary(content: string, tag: ScannedTag): boolean {
  */
 function nextHeadingTag(content: string, index: number): HeadingTag | null {
   let cursor = index;
+  let foreignDepth = 0;
 
   for (let tag = nextTag(content, cursor); tag !== null; tag = nextTag(content, cursor)) {
     cursor = tag.end;
 
-    if (!tag.parsed.isClosing && RAW_TEXT_TAG_NAMES.has(tag.parsed.tagName)) {
+    if (FOREIGN_CONTENT_TAG_NAMES.has(tag.parsed.tagName)) {
+      foreignDepth = nextForeignDepth(foreignDepth, tag.parsed);
+      continue;
+    }
+
+    if (foreignDepth === 0 && !tag.parsed.isClosing && RAW_TEXT_TAG_NAMES.has(tag.parsed.tagName)) {
       const rawTextEnd = findRawTextEnd(content, tag.parsed.tagName, cursor);
       if (rawTextEnd === -1) {
         return null;

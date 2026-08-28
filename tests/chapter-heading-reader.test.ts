@@ -565,6 +565,59 @@ for (const { label, content, title } of RAW_TEXT_CASES) {
   assertEqual(extractChapterTitleAndBody(content, 4).title, title, label);
 }
 
+// HTML's raw-text rules stop applying inside foreign content, where a
+// self-closing `/` is honoured. The two readings are opposite and only the
+// namespace separates them, which is why the reader tracks that rather than
+// honouring `isSelfClosing` everywhere.
+const FOREIGN_CONTENT_CASES: ReadonlyArray<{ label: string; content: string; title: string }> = [
+  {
+    label: 'an SVG `<title/>` closes itself and opens no raw text',
+    content: '<h3><svg><title/></svg>Real Title</h3><p>Body.</p>',
+    title: 'Real Title'
+  },
+  {
+    label: 'and an SVG `<script/>`, which is an SVG element name too',
+    content: '<h3><svg><script/></svg>Real Title</h3><p>Body.</p>',
+    title: 'Real Title'
+  },
+  {
+    label: 'a self-closing `<svg/>` opens no foreign content to leave',
+    content: '<h3><svg/>Real Title</h3><p>Body.</p>',
+    title: 'Real Title'
+  },
+  {
+    label: 'and the namespace nests',
+    content: '<h3><svg><svg><title/></svg></svg>Real Title</h3>',
+    title: 'Real Title'
+  },
+  {
+    label: 'but in HTML the `/` is ignored, so a bare `<title/>` really does open raw text',
+    content: '<title/>Real Title<h3>Heading</h3>',
+    title: 'Untitled Chapter 4'
+  },
+  // The two below are what actually discriminate the depth arithmetic, and both
+  // needed an *unclosed* raw-text element to do it: a `<title>` that never
+  // closes runs to the end for a browser, so the heading after it is not one.
+  // Get the depth wrong and the reader leaves raw-text mode off, walks into
+  // that text, and reports `Heading`. The obvious cases — `<svg/>` and nested
+  // `<svg>` around a `<title/>` — pass either way, which is why they are not
+  // the assertions this rests on.
+  {
+    label: 'a self-closing `<svg/>` leaves us in HTML, where the next `<title>` is raw text',
+    content: '<svg/><title>unclosed<h3>Heading</h3>',
+    title: 'Untitled Chapter 4'
+  },
+  {
+    label: 'and a closing `</svg>` returns to HTML, where the same holds',
+    content: '<svg></svg><title>unclosed<h3>Heading</h3>',
+    title: 'Untitled Chapter 4'
+  }
+];
+
+for (const { label, content, title } of FOREIGN_CONTENT_CASES) {
+  assertEqual(extractChapterTitleAndBody(content, 4).title, title, label);
+}
+
 // A closing tag decides where the chapter's own prose resumes, so it may not
 // sit on `findTagEnd`'s fallback boundary: accepting one emits the markup
 // between that `>` and the tag's real end into the body as visible prose. The
