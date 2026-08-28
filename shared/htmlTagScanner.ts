@@ -108,11 +108,29 @@ export function tokenizeHtml(value: string): string[] {
  * Returns `-1` when no `>` closes the tag at all.
  */
 export function findTagEnd(value: string, tagStart: number): number {
-  const attributesStart = findAttributesStart(value, tagStart);
-  const wellFormedEnd = attributesStart === -1 ? -1 : scanAttributesToTagEnd(value, attributesStart);
+  const wellFormedEnd = findWellFormedTagEnd(value, tagStart);
 
   // No well-formed reading: answer exactly as the older scan did.
   return wellFormedEnd === -1 ? value.indexOf('>', tagStart + 1) : wellFormedEnd;
+}
+
+/**
+ * Where the tag opening at `tagStart` ends *by the attribute grammar alone*, or
+ * `-1` where it has no such reading — the half of `findTagEnd` above the
+ * fallback.
+ *
+ * Named separately because `-1` here is information a caller may need rather
+ * than a failure. `findTagEnd`'s fallback answers with the first `>`, which is
+ * a boundary chosen for compatibility with the older scan rather than one this
+ * module can vouch for; a caller deciding where reader-visible text *resumes*
+ * has to know the difference, or it emits the markup between that `>` and the
+ * tag's real end as prose. Where a caller only needs a boundary and would
+ * rather have the old answer than none, `findTagEnd` is still the one to call.
+ */
+export function findWellFormedTagEnd(value: string, tagStart: number): number {
+  const attributesStart = findAttributesStart(value, tagStart);
+
+  return attributesStart === -1 ? -1 : scanAttributesToTagEnd(value, attributesStart);
 }
 
 /**

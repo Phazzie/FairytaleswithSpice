@@ -519,6 +519,80 @@ for (const { label, content, title } of COMMENT_CASES) {
   assert(elapsed < 2_000, `40,000 stray \`<\` took ${elapsed}ms — the walk is not linear in them`);
 }
 
+// ==================== Where markup is not markup ====================
+//
+// Two further regressions review found, both about reading something as markup
+// that a browser reads as text.
+
+// Inside a raw-text or RCDATA element nothing is a tag and nothing is a
+// comment. Walking into one read its text as markup, and a `<!--` in there
+// looked like a comment that never ends — which abandoned the scan and lost the
+// real heading after it.
+const RAW_TEXT_CASES: ReadonlyArray<{ label: string; content: string; title: string }> = [
+  {
+    label: 'a `<!--` inside `<script>` is script text, not a comment',
+    content: '<script><!-- legacy script\n</script><h3>Real Title</h3><p>Body prose.</p>',
+    title: 'Real Title'
+  },
+  {
+    label: 'and inside `<textarea>`',
+    content: '<textarea><!--</textarea><h3>Real Title</h3><p>Body prose.</p>',
+    title: 'Real Title'
+  },
+  {
+    label: 'an `<h3>` inside `<textarea>` is text a reader sees, not the title',
+    content: '<textarea><h3>Not a title</h3></textarea><h3>Real Title</h3>',
+    title: 'Real Title'
+  },
+  {
+    label: 'an unclosed raw-text element runs to the end, as a browser reads it',
+    content: '<script>x<h3>Real Title</h3>',
+    title: 'Untitled Chapter 4'
+  },
+  {
+    label: 'the closing tag that ends it is matched case-insensitively, as HTML matches it',
+    content: '<SCRIPT><!-- legacy\n</SCRIPT><h3>Real Title</h3><p>Body prose.</p>',
+    title: 'Real Title'
+  },
+  {
+    label: 'but only its own name ends it — `</scriptx>` is more script text',
+    content: '<script>a</scriptx><h3>Not in script</h3>',
+    title: 'Untitled Chapter 4'
+  }
+];
+
+for (const { label, content, title } of RAW_TEXT_CASES) {
+  assertEqual(extractChapterTitleAndBody(content, 4).title, title, label);
+}
+
+// A closing tag decides where the chapter's own prose resumes, so it may not
+// sit on `findTagEnd`'s fallback boundary: accepting one emits the markup
+// between that `>` and the tag's real end into the body as visible prose. The
+// pattern this replaces required a literal `</h3>` and never produced that.
+{
+  const content = '<h3>Real Title</h3 data-x="a>b"class=x><p>Body prose.</p>';
+  const { title, body } = extractChapterTitleAndBody(content, 4);
+
+  assertEqual(title, 'Untitled Chapter 4', 'a closing tag with no well-formed reading is not a boundary');
+  assertEqual(body, content, 'so nothing is cut from the body');
+  // The failure shape was the body *beginning* at the fallback boundary, which
+  // puts the rest of the opening tag at the front of the chapter's prose.
+  assert(!body.startsWith('b"'), 'and the chapter does not begin on the tail of a truncated tag');
+  assertEqual(
+    stripLeadingChapterHeading(content),
+    content,
+    'and the append path does not emit it either'
+  );
+}
+
+// The rule is about the *fallback*, not about attributes on a closing tag. One
+// with a well-formed reading is still a boundary, `>` in a quoted value and all.
+assertEqual(
+  extractChapterTitleAndBody('<h3>Real Title</h3 data-x="a>b"><p>Body prose.</p>', 4).body,
+  '<p>Body prose.</p>',
+  'a well-formed closing tag still closes the heading'
+);
+
 // ==================== The differential ====================
 //
 // Every tag interior over an alphabet built from the characters the six defects

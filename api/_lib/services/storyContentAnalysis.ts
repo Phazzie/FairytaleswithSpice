@@ -12,7 +12,7 @@
 import { SpicyLevel, ThemeType } from '../types/contracts';
 import { readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import { readSpiceLevelPromptLabel } from '../../../shared/spiceLevelPromptLadder';
-import { findTagEnd, parseHtmlTag } from '../../../shared/htmlTagScanner';
+import { ParsedHtmlTag, findTagEnd, findWellFormedTagEnd, parseHtmlTag } from '../../../shared/htmlTagScanner';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
 import { wholeWordAlternationPattern, wholeWordPattern } from '../utils/wholeWord';
@@ -427,15 +427,104 @@ function findCommentEnd(content: string, tagStart: number): number {
 }
 
 /**
- * The next `<h3>` or `</h3>` at or after `index`, or `null` where the markup
- * runs out before one.
+ * Elements whose contents are text rather than markup.
  *
- * Every tag is read to its end even when it is not a heading, because that is
- * what decides where the *next* one starts: ending `<p class="a>b">` at the
- * first `>` would resume the walk inside an attribute value and read whatever
- * follows as markup.
+ * Inside one of these nothing is a tag and nothing is a comment until its own
+ * closing tag: `<script><!-- legacy\n</script>` carries no comment, and
+ * `<textarea><h3>x</h3></textarea>` carries no heading — a browser shows those
+ * characters to the reader. Walking into them reads their text as markup, and
+ * the `<!--` in the first one then looks like a comment that never ends, which
+ * abandons the scan and loses the real heading after it.
+ *
+ * The raw-text and RCDATA sets together, `noscript` included, which is raw text
+ * wherever scripting is enabled. None of these belong in generated story
+ * markup; the list is here so that markup which has one is read the way a
+ * browser reads it rather than half-parsed.
  */
-function nextHeadingTag(content: string, index: number): HeadingTag | null {
+const RAW_TEXT_TAG_NAMES = new Set([
+  'script',
+  'style',
+  'textarea',
+  'title',
+  'xmp',
+  'iframe',
+  'noembed',
+  'noframes',
+  'noscript'
+]);
+
+/** What may follow a closing tag's name: whitespace, `/`, or its own `>`. */
+function endsTagName(character: string | undefined): boolean {
+  return (
+    character === undefined ||
+    character === ' ' ||
+    character === '\n' ||
+    character === '\t' ||
+    character === '\r' ||
+    character === '\f' ||
+    character === '/' ||
+    character === '>'
+  );
+}
+
+/**
+ * Where the raw-text element opened by `tagName` ends, or `-1` if nothing
+ * closes it — in which case it runs to the end of the content, exactly as a
+ * browser reads it, and there is no heading after it to find.
+ *
+ * Only that element's own closing tag ends it. Every other `<` inside is one of
+ * its characters, which is why this looks for one name rather than tokenizing.
+ */
+function findRawTextEnd(content: string, tagName: string, index: number): number {
+  let cursor = index;
+
+  while (cursor < content.length) {
+    const candidate = content.indexOf('<', cursor);
+    if (candidate === -1) {
+      return -1;
+    }
+
+    const nameStart = candidate + 2;
+    const isItsClosingTag =
+      content[candidate + 1] === '/' &&
+      content.slice(nameStart, nameStart + tagName.length).toLowerCase() === tagName &&
+      endsTagName(content[nameStart + tagName.length]);
+
+    if (isItsClosingTag) {
+      const tagEnd = findTagEnd(content, candidate);
+
+      return tagEnd === -1 ? -1 : tagEnd + 1;
+    }
+
+    cursor = candidate + 1;
+  }
+
+  return -1;
+}
+
+/** A tag the walk found, with where it sits and what it says it is. */
+interface ScannedTag {
+  /** Index of the tag's `<`. */
+  start: number;
+  /** Index just past the tag's `>`. */
+  end: number;
+  parsed: ParsedHtmlTag;
+}
+
+/**
+ * The next tag at or after `index`, or `null` where the markup runs out.
+ *
+ * "Tag" is decided here and nowhere else, so the three things that look like
+ * one and are not — a comment, a `<` a reader typed, and a construct
+ * `parseHtmlTag` refuses — are skipped in one place rather than being three
+ * cases the heading walk has to remember.
+ *
+ * Every tag is read to its end even when it is not the one being looked for,
+ * because that is what decides where the *next* one starts: ending
+ * `<p class="a>b">` at the first `>` would resume the walk inside an attribute
+ * value and read whatever follows as markup.
+ */
+function nextTag(content: string, index: number): ScannedTag | null {
   let cursor = index;
 
   while (cursor < content.length) {
@@ -444,8 +533,8 @@ function nextHeadingTag(content: string, index: number): HeadingTag | null {
       return null;
     }
 
-    // A comment's body is markup, not prose, and an `<h3>` inside one is not a
-    // heading, so it is skipped whole.
+    // A comment's body is markup, not prose, so it is skipped whole. One that
+    // never closes runs to the end of the content, as a browser reads it.
     if (content.startsWith('<!--', tagStart)) {
       const commentEnd = findCommentEnd(content, tagStart);
       if (commentEnd === -1) {
@@ -470,8 +559,60 @@ function nextHeadingTag(content: string, index: number): HeadingTag | null {
     cursor = tagEnd + 1;
 
     const parsed = parseHtmlTag(content.slice(tagStart, cursor));
-    if (parsed?.tagName === 'h3') {
-      return { start: tagStart, end: cursor, isClosing: parsed.isClosing };
+    if (parsed) {
+      return { start: tagStart, end: cursor, parsed };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Whether this tag is a heading boundary the readers may cut on.
+ *
+ * A *closing* tag decides where the chapter's own prose resumes, so it may not
+ * sit on `findTagEnd`'s fallback boundary. `</h3 data-x="a>b"class=x>` has no
+ * well-formed reading — the closing quote is followed by a word character — so
+ * the fallback ends the tag at the `>` inside the quoted value, and cutting
+ * there puts `b"class=x>` at the front of the chapter as visible prose. The
+ * pattern this replaces required a literal `</h3>` and so never produced that
+ * fragment; declining the boundary answers as it did.
+ *
+ * The opening tag is deliberately not held to the same rule. There the fallback
+ * decides only where the *title* starts, and it reproduces exactly what
+ * `[^>]*>` did — a recovery class this reader forgoes, rather than a regression
+ * it introduces.
+ */
+function isHeadingBoundary(content: string, tag: ScannedTag): boolean {
+  if (tag.parsed.tagName !== 'h3') {
+    return false;
+  }
+
+  return !tag.parsed.isClosing || findWellFormedTagEnd(content, tag.start) === tag.end - 1;
+}
+
+/**
+ * The next `<h3>` or `</h3>` at or after `index`, or `null` where the markup
+ * runs out before one.
+ */
+function nextHeadingTag(content: string, index: number): HeadingTag | null {
+  let cursor = index;
+
+  for (let tag = nextTag(content, cursor); tag !== null; tag = nextTag(content, cursor)) {
+    cursor = tag.end;
+
+    if (!tag.parsed.isClosing && RAW_TEXT_TAG_NAMES.has(tag.parsed.tagName)) {
+      const rawTextEnd = findRawTextEnd(content, tag.parsed.tagName, cursor);
+      if (rawTextEnd === -1) {
+        return null;
+      }
+
+      cursor = rawTextEnd;
+      continue;
+    }
+
+    if (isHeadingBoundary(content, tag)) {
+      return { start: tag.start, end: tag.end, isClosing: tag.parsed.isClosing };
     }
   }
 
