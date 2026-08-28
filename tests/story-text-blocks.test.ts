@@ -112,6 +112,17 @@ assert(
   'a `<` that closes nothing should stay as text'
 );
 
+// ...and the same `<` must survive a *later* real tag, which is the harder
+// case. A first-`>` reading runs from the `<` a reader typed to the `>` of the
+// `<em>` and swallows ` < Beta <em>` whole, leaving `Alpha Gamma`. Deleting
+// words the reader wrote is the one outcome worse than the fragment this
+// change removes.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('Alpha < Beta <em>Gamma</em>')) ===
+    JSON.stringify(['Alpha < Beta Gamma']),
+  'a literal `<` before a later real tag should not swallow the prose between them'
+);
+
 // --- classification, unchanged from the pattern it replaces ---
 
 // The tag name is matched case-insensitively, as the old `i` flag did.
@@ -149,12 +160,57 @@ for (const name of [
   );
 }
 
-// The old pattern used `\b` so that `<paragraph>` was not a `<p>`. The name set
-// requires the whole name, which is the same answer by a different route.
+// --- classification comes from the original pattern, not from the scanner ---
+//
+// The scanner says where a tag ends; the pattern says what it is. Deriving the
+// name from the scanner instead drifts in both directions, and both directions
+// move reader-visible text.
+
+// `parseHtmlTag` ends a name only at whitespace, `/` or `>`, so it reads
+// `</ p>` as a `p`. HTML reads `</` followed by a space as a bogus comment and
+// the block pattern matched nothing, so there is no paragraph break here.
 assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>One.</p><paragraph>Two.')) ===
-    JSON.stringify(['One.', 'Two.']),
+  JSON.stringify(splitStoryIntoTextBlocks('One.</ p>Two.')) === JSON.stringify(['One.Two.']),
+  'a malformed closing tag should not become a paragraph break'
+);
+
+// The other direction: `\b` ends a name at any non-word character, so each of
+// these *was* a break and has to stay one. Deriving the name from the scanner
+// made them `p"`, `p<` and `p=`, matching nothing — 894 welded paragraphs
+// across the fragment enumeration.
+for (const markup of ['<p">', '<p<>', '<p=>']) {
+  assert(
+    JSON.stringify(splitStoryIntoTextBlocks(`One.${markup}Two.`)) ===
+      JSON.stringify(['One.', 'Two.']),
+    `${markup} should still be a block boundary`
+  );
+}
+
+// `\b` is what keeps `<paragraph>` from being a `<p>`. Standing alone with no
+// other tag to supply the break, so that losing the word boundary shows up as
+// a break that should not be there.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('One.<paragraph>Two.')) ===
+    JSON.stringify(['One.Two.']),
   'a longer tag name starting with a block name should not be a boundary'
+);
+
+// ...while a real name that merely starts with another one still is.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('One.<pre>Two.')) ===
+    JSON.stringify(['One.', 'Two.']),
+  '<pre> should be a boundary even though `p` is also a block name'
+);
+
+// The block pattern's `[^>]*` may cross a `<`, unlike the inline pattern's
+// `[^<>]*`, so this has always been one boundary spanning to the `>` rather
+// than a `<` left in the prose. The scanner refuses it — an attribute list
+// cannot contain a `<` — so it is the block fallback that has to answer, and
+// this is the assertion that says so.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('One.<p a<b>Two.')) ===
+    JSON.stringify(['One.', 'Two.']),
+  'a block tag whose attributes contain a `<` should still be one boundary'
 );
 
 // Table cells each get their own boundary, or `OneTwo` comes back as one token.

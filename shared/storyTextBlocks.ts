@@ -1,6 +1,6 @@
 // Created: 2026-08-24 21:10 UTC
 
-import { findTagEnd, parseHtmlTag } from './htmlTagScanner';
+import { findWellFormedTagEnd } from './htmlTagScanner';
 
 /**
  * Split story content into the blocks a reader sees as paragraphs.
@@ -67,22 +67,62 @@ export function stripStoryHtmlToText(storyContent: string): string {
  * them deleting text a reader wrote. A scanner consumes each character once and
  * cannot have the fault at all.
  *
- * **Only the tag boundary changes.** `findTagEnd` is called rather than
- * `tokenizeHtml`, and the difference is comments. `tokenizeHtml` drops a
- * comment whole, which is what a browser does and is better than what this
- * module does — but it also still ends one only at `-->`, and the other three
- * endings HTML allows are #307's row of #296, unmerged. Adopting it today would
- * take `<h3>Visible <!--> Title</h3>` down to `Visible`, a regression
- * `tests/chapter-heading-reader.test.ts` catches. `findTagEnd` has no comment
- * rule at all: it hands back the first `>` for anything it cannot read as a
- * tag, which is exactly what the two patterns did. So `<!-- note: a > b -->`
- * still leaks `b -->` as a visible block here, unchanged and still #296's to
- * settle. Once #307 lands this module can call `tokenizeHtml` and inherit the
- * whole comment reading, which is the move this one sets up.
+ * **Only the well-formed reading changes; everything else answers as before.**
+ * `findWellFormedTagEnd` is the half of `findTagEnd` above its fallback, and it
+ * returns `-1` rather than a boundary wherever the attribute grammar cannot
+ * read the markup. That distinction is the whole of this function's shape, and
+ * it is load-bearing twice over.
+ *
+ * Where there is a well-formed reading, its `>` ends the tag. That is the
+ * repair, and it is the only thing the scanner is asked for — `readTagAt`
+ * explains why the *name* still comes from the pattern.
+ *
+ * Where there is not, the two original patterns are asked, in their original
+ * order, and they decide — so every input without a well-formed reading is
+ * answered exactly as it was before this change. Taking `findTagEnd`'s
+ * first-`>` fallback instead looks equivalent and is not, in two ways that both
+ * cost reader-visible text:
+ *
+ * - **`Alpha < Beta <em>Gamma</em>`.** The first-`>` fallback runs from the `<`
+ *   a reader typed to the `>` of the *later, real* `<em>`, swallowing
+ *   ` < Beta <em>` whole and leaving `Alpha Gamma`. `<[^<>]*>` stops at the
+ *   next `<`, so it never matches here and the prose survives. Deleting words
+ *   the reader wrote is the one outcome worse than the fragment this change
+ *   removes, and it is the fault #295 and #302 hit three times between them.
+ * - **`One.</ p>Two.`.** HTML reads `</` followed by a space as a bogus
+ *   comment, not a `</p>`, and so did the block pattern — it allows whitespace
+ *   *before* the slash, never between the slash and the name, so the space
+ *   sits where the name has to be and nothing matches. `parseHtmlTag` skips
+ *   whitespace after the slash and answers `p`, which would insert a paragraph
+ *   break a browser does not, and move every measure that reads the last
+ *   paragraph.
+ *
+ * A `<` that none of the three readings accepts is emitted as the character it
+ * is and the scan resumes one past it, which is what lets the real tag after it
+ * still be found — and is why the last `>` is located once, above the loop,
+ * rather than searched for at every `<`.
+ *
+ * **Comments do not move.** `tokenizeHtml` drops a comment whole, which is what
+ * a browser does and is better than what this module does — but it still ends
+ * one only at `-->`, and the other three endings HTML allows are #307's row of
+ * #296, unmerged. Adopting it today would take `<h3>Visible <!--> Title</h3>`
+ * down to `Visible`, a regression `tests/chapter-heading-reader.test.ts`
+ * catches. A comment has no well-formed tag reading, so it falls to
+ * `<[^<>]*>` exactly as before, and `<!-- note: a > b -->` still leaks `b -->`
+ * as a visible block. That stays #296's to settle; once #307 lands this module
+ * can call `tokenizeHtml` and inherit the whole comment reading.
  */
 function markBlockBoundaries(storyContent: string): string {
   const pieces: string[] = [];
   let index = 0;
+
+  // Every reading needs a `>` after the `<` to match at all, so past the last
+  // one in the input there is nothing but text. Found once, because asking
+  // `indexOf('>', tagStart)` per `<` is quadratic on the shape that asks it
+  // most — `<<<<<…>`, where each `<` is rejected, the scan resumes one
+  // character on, and the search runs to the same distant `>` every time. That
+  // measured 260ms at 200,000 characters and 994ms at 400,000.
+  const lastGreaterThan = storyContent.lastIndexOf('>');
 
   while (index < storyContent.length) {
     const tagStart = storyContent.indexOf('<', index);
@@ -95,28 +135,87 @@ function markBlockBoundaries(storyContent: string): string {
       pieces.push(storyContent.slice(index, tagStart));
     }
 
-    // A `<` with no `>` after it anywhere closes no tag, so it is text the
-    // reader typed. The old pass kept it for the same reason — neither pattern
-    // could match without a `>` — and so does this.
-    const tagEnd = findTagEnd(storyContent, tagStart);
-    if (tagEnd === -1) {
+    if (tagStart >= lastGreaterThan) {
       pieces.push(storyContent.slice(tagStart));
       break;
     }
 
-    // A tag the scanner will not name is a comment, a declaration, a processing
-    // instruction, or a `<` the reader typed that happens to close. None of
-    // them is a paragraph break, and all of them were dropped in place before,
-    // so they still are.
-    const tag = parseHtmlTag(storyContent.slice(tagStart, tagEnd + 1));
-    if (tag !== null && BLOCK_LEVEL_TAG_NAMES.has(tag.tagName)) {
+    const tag = readTagAt(storyContent, tagStart);
+    if (tag === null) {
+      pieces.push('<');
+      index = tagStart + 1;
+      continue;
+    }
+
+    if (tag.isBlockBoundary) {
       pieces.push('\n\n');
     }
 
-    index = tagEnd + 1;
+    index = tag.end + 1;
   }
 
   return pieces.join('');
+}
+
+interface ReadTag {
+  /** Index of the `>` that ends it. */
+  end: number;
+  isBlockBoundary: boolean;
+}
+
+/**
+ * Read the tag opening at `tagStart`, or `null` where nothing here is markup.
+ *
+ * **The scanner decides where the tag ends; the original patterns decide what
+ * it means.** Separating the two is the whole correction, because the defect
+ * was only ever in the span. Classification was right — and every attempt to
+ * re-derive it from the scanner drifted, in both directions:
+ *
+ * - `parseHtmlTag` is *more* permissive about what ends a tag name. It stops
+ *   only at whitespace, `/` or `>`, so it reads `</ p>` as a `p` and inserts a
+ *   paragraph break where HTML has a bogus comment and the block pattern had
+ *   nothing.
+ * - It is also *less* permissive, because `\b` ends a name at any non-word
+ *   character. `<p">`, `<p=>` and `<p<>` were all paragraph breaks under the
+ *   block pattern and became names like `p"` that match nothing — 894 lost
+ *   breaks across the fragment enumeration, each one welding two paragraphs.
+ *
+ * So the name test stays exactly the pattern it always was, and only the extent
+ * of the tag comes from the scanner. Where the scanner has a well-formed
+ * reading its `>` is used, which is the repair; the prefix is asked separately
+ * whether that tag is a boundary. Where it has none, the two original patterns
+ * answer in their original order and this module behaves precisely as it did.
+ */
+function readTagAt(value: string, tagStart: number): ReadTag | null {
+  // The prefix alone settles the name: given a `>` somewhere after it — and
+  // `wellFormedEnd` is one — the pattern's own `[^>]*>` tail cannot fail.
+  const wellFormedEnd = findWellFormedTagEnd(value, tagStart);
+  if (wellFormedEnd !== -1) {
+    return {
+      end: wellFormedEnd,
+      isBlockBoundary: matchAt(LEGACY_BLOCK_TAG_PREFIX_PATTERN, value, tagStart) !== null
+    };
+  }
+
+  const legacyBlockTag = matchAt(LEGACY_BLOCK_TAG_PATTERN, value, tagStart);
+  if (legacyBlockTag !== null) {
+    return { end: tagStart + legacyBlockTag.length - 1, isBlockBoundary: true };
+  }
+
+  const legacyAnyTag = matchAt(LEGACY_ANY_TAG_PATTERN, value, tagStart);
+  if (legacyAnyTag !== null) {
+    return { end: tagStart + legacyAnyTag.length - 1, isBlockBoundary: false };
+  }
+
+  return null;
+}
+
+/** The text a sticky pattern matches starting exactly at `index`, or `null`. */
+function matchAt(pattern: RegExp, value: string, index: number): string | null {
+  pattern.lastIndex = index;
+  const match = pattern.exec(value);
+
+  return match === null ? null : match[0];
 }
 
 /**
@@ -172,6 +271,45 @@ const BLOCK_LEVEL_TAG_NAMES = new Set([
   'td',
   'th'
 ]);
+
+/**
+ * The two original patterns, unchanged except for being anchored.
+ *
+ * They are kept verbatim on purpose. Their job is no longer to find tags — the
+ * scanner does that — but to answer for the markup the scanner refuses, and the
+ * only way to be sure that answer is the one this module has always given is
+ * for it to be given by the same expressions. Rewriting them as a walk would
+ * make the fallback a reimplementation to be tested rather than the original to
+ * be preserved.
+ *
+ * Sticky rather than anchored with `^` so that each is tried at one position
+ * against the whole string, never against a slice: slicing at every `<` is what
+ * would make this quadratic.
+ *
+ * The two differ in one character class, and that difference is the reason
+ * `Alpha < Beta <em>` keeps its prose: `[^>]*` may cross a `<`, `[^<>]*` may
+ * not. They are asked in this order because the block pass ran first.
+ */
+const LEGACY_BLOCK_TAG_NAMES_PATTERN = [...BLOCK_LEVEL_TAG_NAMES].join('|');
+const LEGACY_BLOCK_TAG_PATTERN = new RegExp(
+  String.raw`<\s*/?(?:${LEGACY_BLOCK_TAG_NAMES_PATTERN})\b[^>]*>`,
+  'iy'
+);
+const LEGACY_ANY_TAG_PATTERN = /<[^<>]*>/y;
+
+/**
+ * The block pattern with its `[^>]*>` tail removed — the half that names the
+ * element, for use where the scanner has already found the tag's `>`.
+ *
+ * Splitting it this way rather than re-deriving the name is what keeps the
+ * classification bit-identical: `\b` is doing real work here, ending the name
+ * at `"`, `=` or `<` as well as at whitespace, and it is the reason
+ * `<paragraph>` is not a `<p>` and `<p">` is.
+ */
+const LEGACY_BLOCK_TAG_PREFIX_PATTERN = new RegExp(
+  String.raw`<\s*/?(?:${LEGACY_BLOCK_TAG_NAMES_PATTERN})\b`,
+  'iy'
+);
 
 function decodeBasicEntities(value: string): string {
   return value
