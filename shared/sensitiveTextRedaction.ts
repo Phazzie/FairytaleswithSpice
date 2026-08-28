@@ -76,16 +76,35 @@ function redactBearerTokens(value: string): string {
 }
 
 /**
- * Characters that put `bearer` in a *header, JSON, or query* position rather
- * than in a sentence: the value side of `Authorization: Bearer x`,
- * `Authorization=Bearer x`, `"Authorization": "Bearer x"`, and the encoded
- * payloads that reach a log through a provider's echoed request.
+ * Characters that put `bearer` in a *header* position rather than in a
+ * sentence: the value side of `Authorization: Bearer x` and
+ * `Authorization=Bearer x`.
  *
- * Sentence punctuation -- `.`, `,`, `;`, `!`, `?`, `-` -- is deliberately
- * absent. `news. Bearer of the seal walked in` is prose, and admitting `.`
- * here would destroy the word after every sentence break.
+ * Deliberately two, and the set is the delicate part of this module. What
+ * this app logs is story content -- HTML (`<p>Bearer of the seal</p>`), quoted
+ * dialogue (`"Bearer of bad news," she said`), parentheticals, markdown tables
+ * -- so `>`, `"`, `'`, `(`, `[`, `{` and `|` all sit immediately before an
+ * ordinary capitalized noun far more often than before a credential. Admitting
+ * any of them reintroduces exactly the defect this function exists to avoid,
+ * on the most common shape story text takes. Sentence punctuation (`.` `,` `;`
+ * `!` `?` `-`) is absent for the same reason.
+ *
+ * Nothing is lost by keeping the set small: a credential that appears after a
+ * quote or a tag is still redacted by {@link isCredentialShapedBearerToken},
+ * which is the arm that carries the general case. This one exists only to catch
+ * a credential too short and too alphabetic to have a shape -- and such a value
+ * cannot be a configured `API_KEYS` entry, whose token body must reach
+ * `API_KEY_MINIMUM_LENGTH` (16), nor a provider token, which carries `-`, `_`
+ * or `.` and is long.
+ *
+ * `&` is deliberately *not* here even though `?auth=1&bearer=xyz` is a real
+ * credential position: the scheme must be followed by whitespace to be read at
+ * all (see the caller), and a query parameter has `=` there instead. Adding it
+ * would be dead configuration that reads as coverage. That query-string form is
+ * unredacted before this change and after it; a full URL is redacted whole by
+ * {@link redactUrls}, and closing the bare fragment is a separate change.
  */
-const BEARER_CREDENTIAL_INTRODUCERS = new Set([':', '=', '"', '\'', '(', '[', '{', '/', '+', '&', '|', '>', '\\']);
+const BEARER_CREDENTIAL_INTRODUCERS = new Set([':', '=']);
 
 /**
  * The shortest run that is taken for a credential on its length alone.
@@ -103,6 +122,10 @@ const BEARER_CREDENTIAL_MIN_LENGTH = 8;
  * same as `Authorization:Bearer x`. The start of the string is *not* an
  * introducer -- `Bearer of the seal walked in` is a sentence that happens to
  * open on the word.
+ *
+ * Only the character immediately before the keyword is consulted, so a colon
+ * earlier in the line does not reach it: `context: The bearer of bad news` has
+ * `The` in front of the keyword and is prose.
  */
 function isIntroducedAsCredential(value: string, index: number): boolean {
   let cursor = index - 1;

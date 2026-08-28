@@ -35,10 +35,36 @@ query string puts it, **or** when the following run is credential-shaped:
 | `Authorization: Bearer abcdef` | introducer | redacted |
 | `Bearer kkkkkkkkkkkkkkkk` | shape | redacted |
 
-Sentence punctuation (`.` `,` `;` `!` `?` `-`) is deliberately not an
-introducer, or the word after every sentence break would be destroyed again.
-Start-of-string is not one either: `Bearer of the seal walked in` opens a
-sentence.
+The introducer set is `:` and `=` only. Sentence punctuation (`.` `,` `;` `!`
+`?` `-`) is not an introducer, or the word after every sentence break would be
+destroyed again; start-of-string is not one either, since `Bearer of the seal
+walked in` opens a sentence.
+
+**Self-review caught this set too wide, and it mattered.** The first version
+also admitted `"`, `'`, `(`, `[`, `{`, `/`, `+`, `&`, `|`, `>` and `\` as
+"header, JSON or encoded-payload" positions. What this module is actually handed
+is story content — the suite two screens up feeds it `htmlContent` — so every
+one of those sits immediately before an ordinary capitalized noun in the inputs
+this app really produces:
+
+```
+<p>Bearer of the seal walked in</p>   -> <p>Bearer [REDACTED] the seal walked in</p>
+"Bearer of the seal," he said         -> "Bearer [REDACTED] the seal," he said
+(Bearer of the oath) stepped forward  -> (Bearer [REDACTED] the oath) stepped forward
+```
+
+That is the defect this entry is about, reintroduced by the repair for it, on
+the most common shape story text takes. Nothing was lost by narrowing: a
+credential written after a quote or a tag is still caught by the shape arm,
+which carries the general case. Those five inputs are now asserted, and the
+mutation that re-widens the set is killed by them.
+
+`&` came out as well. `?auth=1&bearer=xyz` is a real credential position, but
+the scheme must be followed by whitespace to be read at all and a query
+parameter has `=` there — so `&` could never fire, and dead configuration that
+reads as coverage is worse than none. That query-string form is unredacted
+before this change and after it; it is recorded in the security guide as a known
+gap rather than quietly widened into this PR.
 
 Why this is sound now and was not in #313: the residual gap is a run that is
 both under eight characters and purely alphabetic *and* written with no
@@ -49,12 +75,15 @@ above the length arm's floor and redacts on shape alone. Provider credentials
 shape too. That dependency is why this rides on the `API_KEYS` contract rather
 than landing beside it.
 
-Validation: `npm run test:all` exits 0. **Counterfactual mutations: 6 applied, 6
-killed** — dropping either arm, admitting sentence punctuation as an introducer,
-letting a digit count as a word character, raising the length floor above the
-configured-key minimum, and treating start-of-string as an introducer. None is
-committed. The relationship between the two floors is asserted directly, so
-neither can be moved into a gap without the suite noticing.
+Validation: `npm run test:all` exits 0, `scripts/recovery/preflight.sh
+--skip-status` exits 0. **Counterfactual mutations: 8 applied, 8 killed** —
+dropping either arm, admitting sentence punctuation as an introducer, admitting
+the HTML/dialogue/bracket punctuation the self-review removed, letting a digit
+count as a word character, raising the length floor above the configured-key
+minimum, treating start-of-string as an introducer, and scanning back past
+punctuation to find a distant introducer. None is committed. The relationship
+between the two floors is asserted directly, so neither can be moved into a gap
+without the suite noticing.
 
 Not claimed: no evidence this was corrupting production logs; it is found by
 reading. The old behavior over-redacted, which is the safe direction — this

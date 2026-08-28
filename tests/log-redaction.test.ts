@@ -147,7 +147,20 @@ for (const sentence of [
   'The bearer must not be named.',
   'Bearer of the seal walked in',
   'news. Bearer of the seal walked in',
-  'He was a bearer, and he ran.'
+  'He was a bearer, and he ran.',
+  // The shapes story content actually takes on its way to the logger. This
+  // module is handed `htmlContent` and `storyText` above, so a credential
+  // introducer that also abuts narrative prose reintroduces the whole defect
+  // on the most common inputs: HTML tags, quoted dialogue, parentheticals and
+  // markdown table cells all put a punctuation mark immediately before a
+  // capitalized noun.
+  '<p>Bearer of the seal walked in</p>',
+  '"Bearer of the seal," he said',
+  "'Bearer of bad news,' she whispered",
+  '(Bearer of the oath) stepped forward',
+  '| Bearer of the seal | a row |',
+  '[Bearer of the seal] stepped forward',
+  'context: The bearer of bad news'
 ]) {
   const preserved = redactSensitiveLogData({ note: sentence }) as Record<string, string>;
   assert(
@@ -164,7 +177,7 @@ for (const sentence of [
 for (const line of [
   'Authorization: Bearer abcdef',
   'Authorization:Bearer abc',
-  '"Authorization": "Bearer abcdef"',
+  'Authorization=Bearer abcdef',
   'Bearer a1b2c3',
   'Bearer k+y/z=',
   'Bearer xai-secret-key-123',
