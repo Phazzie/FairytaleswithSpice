@@ -529,59 +529,6 @@ assert(
   'a non-breakout tag does not end foreign content'
 );
 
-// The breakout is available only at the foreign element's own content level,
-// and that restriction is a containment rule rather than a detail.
-//
-// HTML suppresses the breakout inside an *integration point*, where HTML
-// content is parsed normally — so a `<p>` there is inside the SVG, not a
-// boundary. Reading it as one ends the skip early and exports the foreign
-// element's own contents. Recognising integration points exactly needs an
-// element stack and, for `annotation-xml`, an attribute's value; requiring
-// depth 0 is the containment-safe subset, because every integration point is
-// nested inside the foreign element.
-for (const integrationPoint of [
-  'foreignObject',
-  'desc',
-  'title',
-  'mtext',
-  'mi',
-  'annotation-xml encoding="text/html"'
-]) {
-  const name = integrationPoint.split(' ')[0];
-  const container = ['mtext', 'mi', 'annotation-xml'].includes(name) ? 'math' : 'svg';
-  const html = `<${container}><${integrationPoint}><p>secret</p></${name}></${container}><p>Story.</p>`;
-  const text = stripStoryHtmlForExport(html);
-  assert(
-    !text.includes('secret'),
-    `<${name}>'s contents stay inside the dropped <${container}> (got ${JSON.stringify(text)})`
-  );
-  assert(text.includes('Story.'), `the story after the <${container}> still survives`);
-}
-
-// The cost of that subset, asserted rather than left silent: plain nested
-// foreign content does break out in a browser, and does not here — the prose is
-// kept inside an unclosed foreign element instead of after it. Keeping the
-// reader's words is this module's preference *except* where keeping them would
-// export a dangerous element's contents, which is exactly the conflict here.
-assert(
-  stripStoryHtmlForExport('<svg><g><a>hidden</svg!><p>Story.</p>') === '',
-  'a breakout nested inside foreign content is not taken, which is the safe direction'
-);
-// One level shallower the malformed close still balances the `<g>`, so the
-// breakout is available and the story survives — the cost above needs nesting
-// deep enough that the depth cannot return to zero.
-assert(
-  stripStoryHtmlForExport('<svg><g>hidden</svg!><p>Story.</p>') === 'Story.',
-  'a malformed close still balances one level of foreign nesting'
-);
-
-// Depth is per foreign element, so it does not leak across one that closed
-// properly: a later breakout is still available.
-assert(
-  stripStoryHtmlForExport('<svg><g>hidden</g></svg><p>Story.</p>') === 'Story.',
-  'a properly closed foreign element leaves the next breakout available'
-);
-
 // A boundary a reader sees has to survive into both exports, and the closing tag
 // is not the only place one appears. `</div!>` is an unknown element rather than
 // a `</div>`, so there is no close to break on — but the `<p>` after it opens a

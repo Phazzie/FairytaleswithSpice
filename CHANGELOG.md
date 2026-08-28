@@ -57,18 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `iframe` are raw text, where `<p>` is three characters rather than a tag, and a
   malformed `</script!>` still does not end the skip — breaking out there would
   export the script body as story text.
-- That breakout is available only at the foreign element's own content level.
-  HTML parses HTML content normally inside an integration point — `foreignObject`,
-  `desc` and `title` in SVG, `mtext`, `mi` and the rest in MathML — so a `<p>`
-  there is inside the SVG rather than a boundary, and treating it as one ended
-  the skip early and exported the element's contents:
-  `<svg><foreignObject><p>secret</p></foreignObject></svg>` leaked `secret` into
-  every format. Requiring depth 0 is the containment-safe subset of HTML's rule,
-  since every integration point is nested inside the foreign element. It costs
-  the breakout on plain nested foreign content, where the prose is kept inside an
-  unclosed foreign element rather than after it — the direction this module
-  already commits to when keeping a reader's words would mean exporting a
-  dangerous element's contents.
 
 ### 🐛 The `.pdf` export was the only one that showed a title's markup to the reader (August 27, 2026)
 
