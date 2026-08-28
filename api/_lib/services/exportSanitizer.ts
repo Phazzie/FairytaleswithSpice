@@ -873,11 +873,24 @@ function findAttributesStart(value: string, tagStart: number): number {
   // attributes at all. Ending the name at the `=` instead hands the walk an
   // attribute list that was never there, and its second `=` opens a quoted value
   // that reaches into the sentence.
-  while (index < value.length && !isWhitespace(value[index]) && value[index] !== '/' && value[index] !== '>') {
+  while (index < value.length && !endsTagName(value[index])) {
     index += 1;
   }
 
   return index;
+}
+
+/**
+ * Where a tag name stops, per HTML: whitespace, `/`, or the tag's own `>`.
+ *
+ * Named once because two readers depend on giving the same answer.
+ * `findAttributesStart` uses it to decide where attributes begin, and
+ * `parseHtmlTag` uses it to decide which element this is. When they disagreed,
+ * `<script!/>` was an attribute list to one and a `script` to the other, and the
+ * export lost the whole document.
+ */
+function endsTagName(character: string | undefined): boolean {
+  return character === undefined || isWhitespace(character) || character === '/' || character === '>';
 }
 
 /** What may follow an attribute value's closing quote. Never a word character. */
@@ -920,7 +933,7 @@ function parseHtmlTag(token: string): ParsedHtmlTag | null {
   // element as a dangerous container: `<script!/>Visible.` would take the whole
   // document into block-skipping. `findAttributesStart` reads the name the same
   // way, and the two have to agree about where it stops.
-  while (index < token.length && !isWhitespace(token[index]) && token[index] !== '/' && token[index] !== '>') {
+  while (index < token.length && !endsTagName(token[index])) {
     index += 1;
   }
 
