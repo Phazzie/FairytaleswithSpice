@@ -6,11 +6,17 @@ import {
   readRequestCorrelationId
 } from '../api/_lib/http/requestCorrelationId';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
+import { createStoryLabAccountRouteHandler } from '../api/_lib/story-lab/account/accountRouteHandlers';
+import { createClerkAuthPort } from '../api/_lib/story-lab/auth/clerkAuthPort';
+import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
+import { logger } from '../api/_lib/utils/logger';
 import { StoryService } from '../api/_lib/services/storyService';
 import { XaiTextClient } from '../api/_lib/services/xaiTextClient';
 import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
 import exportSaveHandler from '../api/export/save';
 import imageGenerateHandler from '../api/image/generate';
+import storyLabAccountHandler from '../api/story-lab/account';
+import storyLabJobsHandler from '../api/story-lab/jobs';
 import storyLabGenesisHandler, { createStoryLabGenesisHandler } from '../api/story-lab/stories';
 import storyLabContinuationHandler, {
   createStoryLabContinuationHandler
@@ -185,6 +191,9 @@ async function main(): Promise<void> {
   await testTheStoryLabRoutesHandTheirIdToTheGeneration();
   await testTheStoryServiceHonoursTheIdItIsGiven();
   await testTheContinuityCallCarriesTheSameId();
+  await testTheRoutesThatServeMoreThanPostEchoItToo();
+  await testTheJobsRouteLogsUnderTheIdItEchoed();
+  await testTheAuthPortWarnsUnderTheIdTheRouteEchoed();
 
   console.log('Request correlation id tests passed');
 }
@@ -446,6 +455,204 @@ function continuationBody() {
     }],
     continuationBrief: 'Raise the danger.'
   };
+}
+
+/**
+ * `/api/story-lab/jobs` and `/api/story-lab/account` echo it as well.
+ *
+ * These two settled no id at all. Every other route in `api/` gets one from
+ * `beginPostRoute`, which is POST-only by construction — it answers `405` for
+ * anything else and pairs `Allow` with the preflight list — and these two serve
+ * more than `POST` (the jobs route serves a `GET` event stream), so adopting it
+ * unchanged would have changed what they serve. The id-settling half is now
+ * `settleRequestCorrelationId`, which carries no method dispatch, and both call
+ * it.
+ *
+ * Driven through each route's own pre-auth, pre-store refusal — a jobs `GET`
+ * with no job id, an account `GET` naming no resource — because that is the
+ * shortest path that still reaches the echo and it touches no store, no auth
+ * port, and no provider.
+ */
+async function testTheRoutesThatServeMoreThanPostEchoItToo(): Promise<void> {
+  const routes: Array<{ path: string; handler: (req: any, res: any) => unknown; code: string }> = [
+    { path: '/api/story-lab/jobs', handler: storyLabJobsHandler, code: 'INVALID_JOB_ID' },
+    { path: '/api/story-lab/account', handler: storyLabAccountHandler, code: 'ACCOUNT_ROUTE_NOT_FOUND' }
+  ];
+
+  for (const route of routes) {
+    const honouredResponse = new FakeResponse();
+    await route.handler(
+      { method: 'GET', headers: { 'x-request-id': 'trace-123' }, query: {} },
+      honouredResponse
+    );
+    assert(
+      honouredResponse.headers['X-Request-ID'] === 'trace-123',
+      `${route.path} should echo a real correlation id back to the caller`
+    );
+    // The refusal it was driven through, named — so a route that starts
+    // answering this request some other way (an auth challenge, a store error,
+    // a provider call) fails here rather than quietly proving the echo on a
+    // path this test did not intend to exercise.
+    assert(
+      (honouredResponse.body as any)?.error?.code === route.code,
+      `${route.path} should refuse this request with ${route.code}, got ${
+        JSON.stringify(honouredResponse.body).slice(0, 200)
+      }`
+    );
+
+    const replacedResponse = new FakeResponse();
+    await route.handler(
+      { method: 'GET', headers: { 'x-request-id': 'x'.repeat(4096) }, query: {} },
+      replacedResponse
+    );
+    assert(
+      GENERATED_ID_PATTERN.test(replacedResponse.headers['X-Request-ID'] ?? ''),
+      `${route.path} should not echo an unbounded correlation id, got ${
+        (replacedResponse.headers['X-Request-ID'] ?? '').length
+      } characters`
+    );
+  }
+
+  // The jobs route answers the preflight from a branch of its own, before it
+  // dispatches on method — that branch exists so the preflight describes the
+  // whole route rather than one of its handlers — and the id is settled above
+  // it, so an `OPTIONS` carries the header too.
+  const preflightResponse = new FakeResponse();
+  await storyLabJobsHandler(
+    { method: 'OPTIONS', headers: { 'x-request-id': 'trace-preflight' }, query: {} } as any,
+    preflightResponse as any
+  );
+  assert(
+    preflightResponse.headers['X-Request-ID'] === 'trace-preflight',
+    'the jobs route preflight should carry the correlation id as well'
+  );
+}
+
+/**
+ * The echoed id has to be the id the log lines are filed under.
+ *
+ * A header a caller is told to quote, over logs that were written under nothing,
+ * is worse than no header: it reads as a trace and finds none. The jobs route
+ * writes two lines — the store-unavailable warning and the throw from job work
+ * — and neither had a `requestId` in scope to be stamped with.
+ *
+ * Driven through the store-unavailable branch, which is reached with an
+ * injected config rather than by unsetting environment: `503` is the answer a
+ * reader most often comes back asking about on this route, and the branch runs
+ * before any store, auth port, or provider is touched.
+ */
+async function testTheJobsRouteLogsUnderTheIdItEchoed(): Promise<void> {
+  const handler = createStoryLabJobsRouteHandler({
+    createJobStoreConfig: () => ({
+      requestedMode: 'unsupported',
+      mode: 'unsupported',
+      databaseUrlConfigured: false,
+      executorConfigured: false,
+      store: null,
+      isConfigured: () => false
+    })
+  });
+
+  logger.clearLogs();
+
+  const response = new FakeResponse();
+  await handler(
+    {
+      method: 'GET',
+      headers: { 'x-request-id': 'trace-job-store' },
+      query: { jobId: 'job_3f2b6a1e-6a1f-4f0e-9d3e-2b1c4d5e6f70' }
+    } as any,
+    response as any
+  );
+
+  assert(
+    (response.body as any)?.error?.code === 'JOB_STORE_UNAVAILABLE',
+    `the jobs route should answer an unconfigured store with JOB_STORE_UNAVAILABLE, got ${
+      JSON.stringify(response.body).slice(0, 200)
+    }`
+  );
+  assert(
+    response.headers['X-Request-ID'] === 'trace-job-store',
+    'the jobs route should echo the correlation id on a store failure'
+  );
+
+  const warning = logger
+    .getRecentLogs(50, 'warn')
+    .find(entry => entry.message === 'Story Lab job store unavailable');
+  assert(
+    warning,
+    'the store-unavailable warning should have been written'
+  );
+  assert(
+    warning.context?.requestId === 'trace-job-store',
+    `the store-unavailable warning should be filed under the echoed id, got ${
+      JSON.stringify(warning.context?.requestId)
+    }`
+  );
+}
+
+/**
+ * A reader who re-reads the id off the request gets the settled one.
+ *
+ * Not every line written for a request is written by the route that settled the
+ * id, and not every writer is handed it as an argument.
+ * `clerkAuthPort.warnAuthVerificationFailure` calls `readRequestCorrelationId`
+ * on the request it was given, and it is the **only** line an auth failure
+ * writes — on the account route, and on the jobs route whenever the job store
+ * is durable and `requireUser` runs. Echoing the id to the caller without
+ * writing it back left that line minting a second `req_<uuid>` of its own
+ * whenever the caller supplied none, which is the common case here: no client
+ * in this repository sends `x-request-id`. So the header a caller was told to
+ * quote named the one diagnostic they would come back asking about, and finding
+ * it was impossible.
+ *
+ * Driven with **no** `x-request-id` at all, because a supplied id was never
+ * affected — both reads return the same trimmed value — and the minted case is
+ * the one that drifts silently. The Clerk verifier is a stub that throws, so
+ * this proves the provider-failure seam without a provider: the throw is what
+ * `requireUser` turns into the warning.
+ */
+async function testTheAuthPortWarnsUnderTheIdTheRouteEchoed(): Promise<void> {
+  const handler = createStoryLabAccountRouteHandler({
+    authPort: createClerkAuthPort({
+      verifySessionToken: async () => {
+        throw new Error('clerk is unreachable');
+      }
+    })
+  });
+
+  logger.clearLogs();
+
+  const response = new FakeResponse();
+  await handler(
+    {
+      method: 'GET',
+      // Deliberately no `x-request-id`: this is the case that minted one.
+      headers: { authorization: 'Bearer stub-session-token' },
+      query: { resource: 'profile' }
+    } as any,
+    response as any
+  );
+
+  const echoed = response.headers['X-Request-ID'] ?? '';
+  assert(
+    GENERATED_ID_PATTERN.test(echoed),
+    `the account route should mint an id when the caller sends none, got ${JSON.stringify(echoed)}`
+  );
+
+  const warning = logger
+    .getRecentLogs(50, 'warn')
+    .find(entry => entry.message === 'Clerk session verification failed.');
+  assert(
+    warning,
+    'a Clerk verification failure should have been warned about'
+  );
+  assert(
+    warning.context?.requestId === echoed,
+    `the auth failure warning should be filed under the id the caller was echoed (${
+      echoed
+    }), got ${JSON.stringify(warning.context?.requestId)}`
+  );
 }
 
 /**
