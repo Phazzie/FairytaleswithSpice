@@ -122,15 +122,32 @@ assert(
   'nor at the next quotation mark'
 );
 
-// A quote only opens an attribute value when it follows `=`. A stray quote
-// loose in a tag is not attribute syntax at all, so it may not open a run that
-// crosses the `>` — otherwise the same prose-eating returns by a route the
-// closing-quote rule cannot see, because that rule only governs where a run
-// ends. Both the browser and the older reading end this tag at its first `>`.
+// Only markup that parses as a whole well-formed tag is read past its first
+// `>`. Everything else falls to the reading this module has always used, so
+// there is one answer for every malformed shape rather than one per shape.
+// These are the shapes that each defeated an earlier, narrower rule: a stray
+// quote with no `=`, a tag name run into punctuation, an `=` with no attribute
+// name, and a second `=` inside a bare value. None is a tag, so on all four the
+// answer is the older reading's — which is also the browser's.
+for (const [shape, markup] of [
+  ['a stray quote with no `=`', 'Before.<p ">Visible" >After.'],
+  ['a tag name run into punctuation', 'Before.<p.foo="oops>Visible" >After.'],
+  ['an `=` with no attribute name', 'Before.<p ="oops>Visible" >After.'],
+  ['a second `=` inside a bare value', 'Before.<p x=y="oops>Visible" >After.']
+] as [string, string][]) {
+  assert(
+    JSON.stringify(splitStoryIntoTextBlocks(markup)) ===
+      JSON.stringify(['Before.', 'Visible" >After.']),
+    `${shape} is not a tag, so its prose should survive`
+  );
+}
+
+// The same, one level in: the inline reader must refuse it too, or the prose is
+// deleted after the block reader has already declined to see a boundary.
 assert(
-  JSON.stringify(splitStoryIntoTextBlocks('Before.<p ">Visible" >After.')) ===
-    JSON.stringify(['Before.', 'Visible" >After.']),
-  'a stray quote with no `=` before it should not open an attribute value'
+  JSON.stringify(splitStoryIntoTextBlocks('Before.<em.foo="oops>Visible" >After.')) ===
+    JSON.stringify(['Before.Visible" >After.']),
+  'the inline reader should refuse a malformed tag as well'
 );
 
 // The other side of that line, stated so it is a decision rather than a

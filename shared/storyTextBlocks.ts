@@ -84,7 +84,7 @@ const BLOCK_LEVEL_TAG_NAMES = [
   'th'
 ].join('|');
 /**
- * Match the rest of a tag once its name has been read, attributes and all.
+ * Match the attributes of a tag whose name has already been read.
  *
  * A tag does not end at the first `>` — it ends at the first `>` that is not
  * inside a quoted attribute value. Reading it as `[^>]*>` stops early on
@@ -95,68 +95,59 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * through `stripStoryHtmlForExport` instead, which has its own copy of this
  * defect and is not fixed here.)
  *
- * This is the unrolled form of "unquoted runs separated by quoted attribute
- * values". The unquoted run, the `=`, and the two quoted alternatives can never
- * start on the same character, so each position is still decided once and no
- * input has two ways to match.
+ * **This describes a whole well-formed tag, and that shape is the point.** Only
+ * markup that parses as one is read this way; everything else falls to the
+ * `[^>]*>` reading the module has always used. So the question a reader of this
+ * module should ask — "what happens to malformed markup?" — has one answer for
+ * every malformed shape rather than one per shape: it is answered exactly as it
+ * was before attributes were understood at all.
  *
- * Three rules keep a quoted run from reaching into prose, and each closes a
- * hole the previous two left open. A run may only *open* after an `=`, because
- * a stray quote loose in a tag is not attribute syntax and must not be allowed
- * to cross the `>`. It may only *close* where `ATTRIBUTE_VALUE_MUST_END_AT`
- * says an attribute value may end. And it stops at `<` either way, because an
- * unterminated quote must not swallow the story's own dialogue looking for a
- * partner: `<` is where the next tag starts, and that bounds the damage to the
- * markup it began in.
+ * That property is worth more than it looks, because the alternative was tried
+ * first and did not hold. The earlier form matched the *inside* of a tag and
+ * added a rule for each way prose could be mistaken for it — the value must
+ * open after `=`, must close before whitespace, must not cross `<`. Each rule
+ * was correct HTML and each closed a real hole, and review kept finding another
+ * shape that satisfied all of them and still swallowed a sentence:
+ * `<p ">…`, `<p.foo="…`, `<p ="…`, `<p x=y="…`. Enumerating what malformed
+ * markup looks like does not terminate. Describing what well-formed markup
+ * looks like does, and everything else is the fallback by construction.
  *
- * **Known limit, and the reason it is priced this way.** That bound also means
- * an attribute value legitimately containing `<` — `<p title="1 < 2 and 3 > 2">`
- * — is not read whole; it falls to the older reading and keeps the remnant,
- * exactly as it did before this module learned about attributes, so it is an
- * unfixed case rather than a new one. Lifting the bound was measured rather
- * than guessed: on a corpus seeded with unterminated quotes, contractions and
- * dialogue it takes the inputs where a word a reader would notice is dropped
- * from roughly 30 per 300,000 to 49, and the new losses reach *across* tags
- * instead of staying inside the one they began in. The generator emits `<p>`,
- * `<em>` and `<h3>` with at most a class, so an attribute carrying a literal
- * `<` is not a shape it produces, while a truncated tag is. Bounded damage on
- * markup that happens is worth more than a repair for markup that does not.
+ * The pieces are ordinary HTML: a tag is a run of attributes, each a name with
+ * an optional `=` and a value, quoted or bare, ending in an optional `/` and
+ * the `>`. Every piece excludes `<`, because a well-formed tag never contains
+ * one — which also bounds an unterminated quote to the markup it began in
+ * rather than letting it hunt through the story's dialogue for a partner.
+ *
+ * Each position is still decided once: `\s+` and the name characters are
+ * disjoint, so there is never a choice about where one attribute ends and the
+ * next begins, and every iteration consumes at least two characters.
+ *
+ * **Known limit.** An attribute value legitimately containing `<` —
+ * `<p title="1 < 2 and 3 > 2">` — is therefore not read whole; it falls to the
+ * older reading and keeps the remnant, exactly as it did before, so it is an
+ * unfixed case rather than a new one. Admitting `<` was measured rather than
+ * guessed, and it costs more than it repairs: it lets a run reach *across*
+ * tags, which is the failure this module most needs not to have. The generator
+ * emits `<p>`, `<em>` and `<h3>` with at most a class, so an attribute carrying
+ * a literal `<` is not a shape it produces, while a truncated tag is.
  */
-function tagAttributesPattern(unquotedRun: string): string {
-  return `${unquotedRun}*(?:=(?:(?:"[^"<]*"|'[^'<]*')${ATTRIBUTE_VALUE_MUST_END_AT})?${unquotedRun}*)*`;
-}
+/**
+ * What a name may be built from, in a tag or an attribute.
+ *
+ * Excludes the characters that end or delimit a name — whitespace, `/`, `>`,
+ * `=` and both quotes — and `<`, which cannot appear inside a well-formed tag
+ * at all.
+ */
+const TAG_NAME_CHARACTER = String.raw`[^\s/<>"'=]`;
 
 /**
- * What may follow an attribute value's closing quote.
- *
- * Stopping the quoted run at `<` is not enough on its own, because prose is
- * full of apostrophes and quotation marks. Given
- * `<p title='unclosed>It's dangerous >After.`, the run opened by the malformed
- * attribute finds its partner in the apostrophe of `It's`, and everything up to
- * the next `>` is read as part of the tag — deleting `It's dangerous` from the
- * story rather than merely leaving a fragment in it. That is the worse of the
- * two failures: the defect this module is fixing leaves visible junk behind,
- * and over-reading silently removes text the reader wrote and the next
- * continuation prompt is built from.
- *
- * What separates the two is HTML's own syntax rather than a guess about
- * content: an attribute value's closing quote is always followed by whitespace,
- * a `/`, or the `>` that ends the tag — never by another word character. In the
- * example above the candidate closing quote is followed by `s`, so there is no
- * well-formed reading and the older `[^>]*>` fallback answers instead, exactly
- * as it did before this module learned about attributes.
+ * An attribute's value: quoted, where it may contain the `>` this whole change
+ * is about, or bare, where it may not contain anything that would end the tag.
  */
-const ATTRIBUTE_VALUE_MUST_END_AT = String.raw`(?=[\s/>])`;
+const ATTRIBUTE_VALUE = String.raw`"[^"<]*"|'[^'<]*'|${TAG_NAME_CHARACTER}+`;
 
-/**
- * What each reader may cross while it is not inside a quoted attribute value.
- *
- * The two differ in one character, and the difference is the inline reader's
- * existing protection against a run of `<`, kept here rather than dropped: see
- * `stripInlineTags` below for why it excludes `<` and the block reader does not.
- */
-const BLOCK_TAG_UNQUOTED_RUN = "[^>\"'=]";
-const INLINE_TAG_UNQUOTED_RUN = "[^<>\"'=]";
+const WELL_FORMED_TAG_ATTRIBUTES =
+  String.raw`(?:\s+${TAG_NAME_CHARACTER}+(?:=(?:${ATTRIBUTE_VALUE}))?)*\s*/?`;
 
 /**
  * Match an opening or closing block-level tag, with or without attributes.
@@ -176,7 +167,7 @@ const INLINE_TAG_UNQUOTED_RUN = "[^<>\"'=]";
  * boundary there and leaving the raw tag in the text.
  */
 const BLOCK_BOUNDARY_PATTERN = new RegExp(
-  String.raw`<\s*/?(?:${BLOCK_LEVEL_TAG_NAMES})\b(?:${tagAttributesPattern(BLOCK_TAG_UNQUOTED_RUN)}>|[^>]*>)`,
+  String.raw`<\s*/?(?:${BLOCK_LEVEL_TAG_NAMES})\b(?:${WELL_FORMED_TAG_ATTRIBUTES}>|[^>]*>)`,
   'gi'
 );
 
@@ -192,18 +183,22 @@ const BLOCK_BOUNDARY_PATTERN = new RegExp(
  *
  * An inline tag ends where a block-level one does — past its quoted attribute
  * values, not at the first `>` inside one — so `<em title="a>b">` leaves no
- * `b">` behind either. That reading is offered only to a `<` that begins a tag
- * name, because prose is where this runs: `Price < 5. "x > y."` is not markup,
- * and letting a quoted run reach across it would delete more of the sentence
- * than the older reading did. Tag-shaped or not, the `[^<>]*>` alternative
- * still answers exactly as before.
+ * `b">` behind either. It has to be read here as well as in the boundary
+ * pattern: a malformed tag the block reader declines to see is left for this
+ * one, so a reading either of them gets wrong deletes the same prose.
+ *
+ * The well-formed reading is offered only to a `<` that begins a tag name,
+ * because prose is where this runs: `Price < 5. "x > y."` is not markup, and
+ * letting a quoted value reach across it would delete more of the sentence than
+ * the older reading did. Tag-shaped or not, the `[^<>]*>` alternative still
+ * answers exactly as before.
  */
 function stripInlineTags(value: string): string {
   return value.replace(INLINE_TAG_PATTERN, '');
 }
 
 const INLINE_TAG_PATTERN = new RegExp(
-  String.raw`<\s*/?[a-zA-Z]${tagAttributesPattern(INLINE_TAG_UNQUOTED_RUN)}>|<[^<>]*>`,
+  String.raw`<\s*/?[a-zA-Z]${TAG_NAME_CHARACTER}*${WELL_FORMED_TAG_ATTRIBUTES}>|<[^<>]*>`,
   'g'
 );
 
