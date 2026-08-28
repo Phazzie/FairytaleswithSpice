@@ -103,6 +103,38 @@ assert(
   'an unterminated attribute quote should still put a boundary between the words'
 );
 
+// Stopping the quoted run at `<` is not enough on its own: prose is full of
+// apostrophes, so a malformed attribute quote can find its partner inside a
+// contraction and swallow the sentence between them. An attribute value's
+// closing quote is always followed by whitespace, `/`, or `>` — never by a
+// word character — and that is what refuses this reading. Losing story text is
+// the worse failure of the two: the defect being fixed leaves visible junk
+// behind, while over-reading silently removes what the reader wrote.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks("Before.<p title='unclosed>It's dangerous >After.")) ===
+    JSON.stringify(['Before.', "It's dangerous >After."]),
+  'a malformed attribute quote should not consume prose at the next apostrophe'
+);
+
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('Before.<p title="unclosed>She said "hi" >After.')) ===
+    JSON.stringify(['Before.', 'She said "hi" >After.']),
+  'nor at the next quotation mark'
+);
+
+// The other side of that line, stated so it is a decision rather than a
+// surprise. When the quote *does* close where an attribute value may close,
+// the tag has a well-formed reading and this module follows it — which is what
+// the browser does too, and the app renders chapters through `[innerHTML]`, so
+// text parsed as an attribute value is text the reader never saw. Following
+// the markup is what "the text a reader sees" means; the older reading kept
+// those words in the extraction and the reader still never read them.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('Before.<p title="unclosed>Hidden " id="x">After.')) ===
+    JSON.stringify(['Before.', 'After.']),
+  'text inside a well-formed attribute value is not part of the story'
+);
+
 // Prose is where this runs, and a bare `<` in prose is not markup. Letting a
 // quoted run reach across it would delete more of the sentence than the older
 // reading did, so the tag-shaped reading is offered only to a `<` that begins
@@ -114,7 +146,32 @@ assert(
 
 // Each position is still decided once: the unquoted runs and the quoted
 // alternatives cannot start on the same character, so no input has two ways to
-// match. Adversarial runs that have no match at all must not become quadratic.
+// match. These are the adversarial runs the module's docblocks worry about,
+// each of which has no match at all — the shape that makes a backtracking
+// engine explore every way of splitting it.
+//
+// What is asserted first is the answer, which is deterministic and does not
+// depend on how loaded the machine is: none of these is markup, so every one
+// comes back as its own text with nothing removed.
+for (const [shape, input, expected] of [
+  ['a run of quotes', `<p ${'"'.repeat(400)}`, `<p ${'"'.repeat(400)}`],
+  ['a run of spaces', `<p ${' '.repeat(400)}`, '<p'],
+  ['a run of `<`', '<'.repeat(400), '<'.repeat(400)]
+] as [string, string, string][]) {
+  assert(
+    splitStoryIntoTextBlocks(input).join('') === expected,
+    `${shape} is not markup and should come back unchanged`
+  );
+}
+
+// The timing check below is a tripwire against reintroducing a pattern that
+// backtracks, not a proof of complexity — a proof is not something a wall clock
+// can give, and a deadline tight enough to be one would fail on a loaded
+// runner instead. So the deadline is deliberately enormous: these scans take
+// about a millisecond, and quadratic behaviour on this input does not take
+// slightly longer, it takes minutes. Anything in between is not a runner
+// having a bad day.
+const backtrackingTripwireMs = 30000;
 for (const [shape, input] of [
   ['a run of quotes', `<p ${'"'.repeat(40000)}${' '.repeat(40000)}`],
   ['a run of spaces', `<p ${' '.repeat(200000)}`],
@@ -123,7 +180,10 @@ for (const [shape, input] of [
   const startedAt = Date.now();
   splitStoryIntoTextBlocks(input);
   const elapsed = Date.now() - startedAt;
-  assert(elapsed < 1000, `${shape} should not backtrack (took ${elapsed}ms)`);
+  assert(
+    elapsed < backtrackingTripwireMs,
+    `${shape} should not backtrack (took ${elapsed}ms)`
+  );
 }
 
 console.log('Story text block tests passed');

@@ -101,8 +101,30 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * in.
  */
 function tagAttributesPattern(unquotedRun: string): string {
-  return `${unquotedRun}*(?:(?:"[^"<]*"|'[^'<]*')${unquotedRun}*)*`;
+  return String.raw`${unquotedRun}*(?:(?:"[^"<]*"|'[^'<]*')${ATTRIBUTE_VALUE_MUST_END_AT}${unquotedRun}*)*`;
 }
+
+/**
+ * What may follow an attribute value's closing quote.
+ *
+ * Stopping the quoted run at `<` is not enough on its own, because prose is
+ * full of apostrophes and quotation marks. Given
+ * `<p title='unclosed>It's dangerous >After.`, the run opened by the malformed
+ * attribute finds its partner in the apostrophe of `It's`, and everything up to
+ * the next `>` is read as part of the tag — deleting `It's dangerous` from the
+ * story rather than merely leaving a fragment in it. That is the worse of the
+ * two failures: the defect this module is fixing leaves visible junk behind,
+ * and over-reading silently removes text the reader wrote and the next
+ * continuation prompt is built from.
+ *
+ * What separates the two is HTML's own syntax rather than a guess about
+ * content: an attribute value's closing quote is always followed by whitespace,
+ * a `/`, or the `>` that ends the tag — never by another word character. In the
+ * example above the candidate closing quote is followed by `s`, so there is no
+ * well-formed reading and the older `[^>]*>` fallback answers instead, exactly
+ * as it did before this module learned about attributes.
+ */
+const ATTRIBUTE_VALUE_MUST_END_AT = String.raw`(?=[\s/>])`;
 
 /**
  * What each reader may cross while it is not inside a quoted attribute value.
