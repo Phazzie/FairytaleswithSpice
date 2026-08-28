@@ -31,6 +31,7 @@ This work must run on a new branch based on the current Story Lab branch. Do not
 
 ## Surprises & Discoveries
 
+- **2026-08-28: the export tokenizer ended a comment only at `-->`, and dropped the rest of the story wherever HTML ends one somewhere else.** `tokenizeHtml` searched for `-->` alone and abandoned the scan when it found none, so `<p>Alpha.</p><!--><p>Beta.</p>` exported as `Alpha.`. HTML closes a comment in four places, not one: `-->`, the abrupt closing of an empty comment (`<!-->` and `<!--->`, ending at that `>`), and the comment-end-bang `--!>`. Three of the four were read as a comment that never ends. Every format is affected — `.txt`, `.pdf`, `.epub` and `.docx` reach it through `stripStoryHtmlForExport` and `ExportService.toPlainText`, and `.html` through `sanitizeStoryHtmlForExport` — and the loss is silent, since the document is well-formed and merely short. Repaired by moving `findCommentEnd` from `storyContentAnalysis.ts`, which had already grown it for the chapter-heading reader in #306, into `shared/htmlTagScanner.ts` beside the tag reading, so the tokenizer and that reader answer from one function rather than disagreeing. Only a genuine `eof-in-comment` now drops the remainder, which is what a browser shows too.
 - CORS is repeated in many routes and one demo stream still writes `Access-Control-Allow-Origin: *` during `writeHead`.
 - Story Lab genesis stream still parses sensitive blueprint fields from `req.query`; this must be replaced by POST-created opaque job ids before account data or private story text enters streaming.
 - Existing export service is mock storage, but it still interpolates title/content/metadata into generated artifacts. Sanitizer work is useful now even before Vercel Blob or email export exists.
@@ -47,6 +48,12 @@ This work must run on a new branch based on the current Story Lab branch. Do not
   Rationale: Existing files mention both `ALLOWED_ORIGINS` and `FRONTEND_URL`; a future account-specific env can be introduced without breaking current deployments.
 - Decision: Export sanitizer is implemented as a conservative allow-list with no attributes, not as a broad "strip bad things" pass.
   Rationale: Without a DOM parser dependency, the least risky no-dependency choice is preserving only known story-structure tags and escaping titles/metadata separately.
+- Decision (2026-08-28): the comment reading is *moved* into `shared/htmlTagScanner.ts` rather than spelled a second time in the tokenizer.
+  Rationale: the defect was precisely that two readers in adjacent files disagreed about where a comment ends — the chapter reader knew all four terminators and the tokenizer beside it knew one. A second spelling is what created the gap; one function is what closes it, and it is the same argument that moved the tag reading here in #306.
+- Decision (2026-08-28): a comment that reaches the end of the input still takes the rest of the document with it.
+  Rationale: that is `eof-in-comment`, and a browser hides the remainder too, so there is no story after it to keep. It is the one reading where dropping the rest is right, and it is asserted rather than left implicit.
+- Decision (2026-08-28): HTML's four `<!--`-inside-a-comment states are not spelled out in `findCommentEnd`.
+  Rationale: each of them reconsumes in the comment-end state that the `--` already reaches, so the scan needs no separate case. That is a claim about the spec rather than a convenience, so it is measured: the enumeration in `tests/export-sanitizer.test.ts` includes `<` and `!` in its alphabet and the two readings agree on every body.
 - Decision: Job-id streaming is implemented as contracts/helpers/tests only in this slice; no job API routes are added.
   Rationale: The route guard is already `12/12`, and adding `/api/story-lab/jobs/*` would violate the function-count constraint.
 - Decision: Retention and deletion rules are documented now; cloud persistence remains blocked until a provider, schema, owner-scope checks, and deletion/export controls are selected.
