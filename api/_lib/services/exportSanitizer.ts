@@ -562,6 +562,11 @@ function removeNonStoryHtml(html: string): string[] {
   const kept: string[] = [];
   let skippedBlockTag: string | null = null;
   let skippedBlockDepth = 0;
+  // How deep inside a skipped `svg`/`math` the scan currently is, counting
+  // elements other than the foreign element itself. Only content at depth 0 —
+  // the foreign element's own children — may break out. See
+  // `breaksOutOfForeignContent`.
+  let foreignChildDepth = 0;
 
   for (const token of tokenizeHtml(html)) {
     if (!token.startsWith('<') || !token.endsWith('>')) {
@@ -577,7 +582,7 @@ function removeNonStoryHtml(html: string): string[] {
     }
 
     if (skippedBlockTag) {
-      if (breaksOutOfForeignContent(skippedBlockTag, parsed)) {
+      if (foreignChildDepth === 0 && breaksOutOfForeignContent(skippedBlockTag, parsed)) {
         skippedBlockTag = null;
         skippedBlockDepth = 0;
         // Fall through: this tag is HTML, and is read as if the foreign
@@ -596,6 +601,16 @@ function removeNonStoryHtml(html: string): string[] {
           skippedBlockDepth -= 1;
           if (skippedBlockDepth <= 0) {
             skippedBlockTag = null;
+            foreignChildDepth = 0;
+          }
+        } else if (FOREIGN_CONTENT_TAGS.has(skippedBlockTag) && !closesItself(parsed)) {
+          // Track how deep inside the foreign element the scan has gone. A
+          // closing tag for something never opened cannot take the depth
+          // negative, so a malformed `</svg!>` leaves the breakout available.
+          if (parsed.isClosing) {
+            foreignChildDepth = Math.max(0, foreignChildDepth - 1);
+          } else {
+            foreignChildDepth += 1;
           }
         }
 
@@ -730,6 +745,27 @@ const FOREIGN_CONTENT_BREAKOUT_TAGS = new Set([
  *
  * Only a start tag breaks out; `</p>` inside an `<svg>` is ignored by a parser
  * rather than treated as a boundary.
+ *
+ * The caller additionally requires the tag to sit at the foreign element's own
+ * content level, and **that restriction is a containment rule, not a detail.**
+ * HTML suppresses the breakout inside an *integration point* — `foreignObject`,
+ * `desc` and `title` in SVG; `mtext`, `mi`, `mo`, `mn`, `ms` and an
+ * `annotation-xml` whose `encoding` is HTML in MathML — because HTML content is
+ * parsed normally there, so a `<p>` inside one stays *inside* the SVG. Reading
+ * it as a breakout ends the skip early and exports the foreign element's own
+ * contents: `<svg><foreignObject><p>secret</p></foreignObject></svg>` leaked
+ * `secret` into every format, which is exactly what dropping `<svg>` exists to
+ * prevent.
+ *
+ * Recognising integration points exactly needs an element stack and, for
+ * `annotation-xml`, the value of an attribute — a parser, which this module is
+ * not. Requiring depth 0 is the containment-safe subset of the same rule:
+ * every integration point is nested inside the foreign element, so no breakout
+ * can ever fire inside one. It costs the breakout on plain nested foreign
+ * content (`<svg><g>…<p>`), where a browser does pop out — prose kept as an
+ * unclosed foreign element instead. That is the direction this module's policy
+ * already commits to when the two conflict: keep the reader's words *except*
+ * where keeping them would export a dangerous element's contents.
  */
 function breaksOutOfForeignContent(skippedBlockTag: string, parsed: ParsedHtmlTag): boolean {
   return FOREIGN_CONTENT_TAGS.has(skippedBlockTag)
