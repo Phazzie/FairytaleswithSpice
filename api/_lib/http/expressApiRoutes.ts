@@ -1,5 +1,7 @@
 // Created: 2026-08-25 12:10 UTC
 
+import { logCritical } from '../utils/logger';
+import { readRequestCorrelationId } from './requestCorrelationId';
 import healthHandler from '../../health';
 import exportSaveHandler from '../../export/save';
 import imageGenerateHandler from '../../image/generate';
@@ -185,13 +187,21 @@ export function apiNotFoundHandler(_req: any, res: any): void {
  * else is this service failing and is reported as `500` with no detail beyond
  * the code, because the detail is what the stack trace was leaking.
  *
+ * That "anything else" branch is also the one place a genuinely unanticipated
+ * bug in any route surfaces, and it used to discard the same information the
+ * response now withholds instead of routing it to this app's own structured,
+ * redaction-safe logger — so `logCritical` is called here with the request's
+ * correlation id before the generic envelope is sent. The logger redacts the
+ * raw error itself, the same way every other `logCritical`/`logError` call site
+ * in this codebase relies on it to.
+ *
  * Express recognises an error handler by its four declared parameters, so `next`
  * has to stay in the signature even though a response that is already streaming
  * is the only case that uses it.
  */
 export function apiErrorHandler(
   error: any,
-  _req: any,
+  req: any,
   res: any,
   next: (error?: unknown) => void
 ): void {
@@ -211,6 +221,12 @@ export function apiErrorHandler(
     return;
   }
 
+  logCritical('Unhandled API route failure', error, {
+    requestId: readRequestCorrelationId(req),
+    endpoint: readRequestPath(req),
+    method: typeof req?.method === 'string' ? req.method : undefined
+  });
+
   sendApiEnvelope(res, 500, {
     success: false,
     error: {
@@ -218,6 +234,19 @@ export function apiErrorHandler(
       message: 'The API failed to handle this request.'
     }
   });
+}
+
+/**
+ * The path to log alongside a route failure, read the way `apiNotFoundHandler`
+ * above reads it and for the same reason `originalUrl` is not put in the
+ * response: a log line is not a browser and does not content-sniff, so it can
+ * carry the raw path safely, but the value can still be caller-controlled and
+ * arbitrarily long, so it is not read from anywhere the sender does not fully
+ * control it either.
+ */
+function readRequestPath(req: any): string | undefined {
+  const path = req?.originalUrl ?? req?.url;
+  return typeof path === 'string' ? path : undefined;
 }
 
 /**
