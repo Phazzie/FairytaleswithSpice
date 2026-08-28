@@ -848,6 +848,7 @@ export class StoryService {
           : Math.min(getXaiFastTimeoutMs(), remainingBudgetMs),
         modelPreference,
         allowFallback: !chapterOptions?.preferFastModel,
+        requestStartedAtMs,
         context
       });
 
@@ -931,9 +932,10 @@ export class StoryService {
           : Math.min(getXaiFastTimeoutMs(), remainingBudgetMs),
         modelPreference,
         allowFallback: !chapterOptions?.preferFastModel,
+        requestStartedAtMs,
         context
       });
-      
+
       logPerformance('Grok API continuation call', response.latencyMs, {
         ...context,
         promptTokens: response.usage?.inputTokens,

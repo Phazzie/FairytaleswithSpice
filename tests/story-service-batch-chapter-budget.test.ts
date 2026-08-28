@@ -25,6 +25,7 @@
  */
 
 import assert from 'node:assert/strict';
+import axios from 'axios';
 import { StoryService } from '../api/_lib/services/storyService';
 import { XaiTextClient, type XaiTextRequest, type XaiTextResponse } from '../api/_lib/services/xaiTextClient';
 import { continueStoryLab, generateStoryLabGenesis } from '../api/_lib/story-lab/storyLabEngine';
@@ -296,6 +297,93 @@ async function assertFirstChapterTimeoutIsCappedByTightBudget(): Promise<void> {
   });
 }
 
+/**
+ * `resolveFallbackTimeoutMs` (in `xaiTextClient.ts`) measured elapsed time
+ * from `generateText`'s own call-local `startedAtMs`, not the true request
+ * clock — so it under-counted whatever ran *before this specific call*, not
+ * just before the whole invocation. `StoryService` already caps the primary
+ * attempt's own `timeoutMs` to the true remaining budget, but if that
+ * (correctly capped, still nonzero) primary attempt spends its whole allotted
+ * timeout failing, the true remaining budget afterward can hit zero while
+ * `resolveFallbackTimeoutMs`'s own local clock — freshly started at this
+ * call's own entry — still believes most of a fresh 60-second window is
+ * available, and would grant a retry the true deadline has no room for at
+ * all. Passing the caller's true `requestStartedAtMs` through
+ * `XaiTextRequest` closes that: the retry's own budget check now measures
+ * against the same clock the primary attempt's timeout was capped against.
+ */
+async function assertFallbackRetryIsSkippedWhenTheTrueBudgetIsAlreadyGone(): Promise<void> {
+  const originalApiKey = process.env['XAI_API_KEY'];
+  const originalStoryModel = process.env['XAI_STORY_MODEL'];
+  const originalFastModel = process.env['XAI_FAST_MODEL'];
+  const originalFunctionBudget = process.env['FUNCTION_BUDGET_MS'];
+  const originalPost = axios.post;
+
+  try {
+    process.env['XAI_API_KEY'] = 'test-xai-key';
+    process.env['XAI_STORY_MODEL'] = 'grok-4.20-multi-agent';
+    process.env['XAI_FAST_MODEL'] = 'grok-4.3';
+    delete process.env['FUNCTION_BUDGET_MS'];
+
+    await withFakeClock(async advance => {
+      // The true request began here. By the time this provider call is
+      // actually made, 50 of the 60-second budget are already gone --
+      // whether from earlier batch chapters or route-level overhead is
+      // immaterial to this test; what matters is that it happened *before*
+      // this call, which is exactly what a call-local clock cannot see.
+      const trueRequestStartedAtMs = Date.now();
+      advance(50000);
+
+      let capturedPostCount = 0;
+      (axios as unknown as { post: typeof axios.post }).post = (async () => {
+        capturedPostCount += 1;
+        // The primary attempt spends its own (already correctly capped)
+        // timeout before failing -- a realistic, not a pathological, case.
+        advance(5000);
+        const error = new Error('timeout') as Error & { code?: string };
+        error.code = 'ETIMEDOUT';
+        throw error;
+      }) as typeof axios.post;
+
+      const client = new XaiTextClient();
+      await assert.rejects(
+        () => client.generateText({
+          operation: 'genesis',
+          system: 'system',
+          user: 'user',
+          maxOutputTokens: 100,
+          temperature: 0.8,
+          topP: 0.95,
+          // Already correctly capped by the caller to the ~5000ms truly left
+          // at call time (60000 - 50000 - 5000 reserve).
+          timeoutMs: 5000,
+          fallbackTimeoutMs: 5000,
+          allowFallback: true,
+          requestStartedAtMs: trueRequestStartedAtMs
+        }),
+        /xAI service temporarily unavailable/,
+        'a primary attempt that exhausts the true remaining budget should not be followed by a retry'
+      );
+
+      assert.equal(capturedPostCount, 1, 'no fallback retry should be attempted once the true budget is gone, even though a call-local clock would see room for one');
+    });
+  } finally {
+    (axios as unknown as { post: typeof axios.post }).post = originalPost;
+    for (const [name, value] of [
+      ['XAI_API_KEY', originalApiKey],
+      ['XAI_STORY_MODEL', originalStoryModel],
+      ['XAI_FAST_MODEL', originalFastModel],
+      ['FUNCTION_BUDGET_MS', originalFunctionBudget]
+    ] as const) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  }
+}
+
 const storyLabBlueprint: LabGenerationSeam['input'] = {
   creature: 'siren',
   themes: [
@@ -403,6 +491,7 @@ async function main(): Promise<void> {
   await assertFirstChapterRefusesWhenBudgetIsAlreadyExhausted();
   await assertFirstChapterTimeoutIsCappedByTightBudget();
   await assertEngineThreadsItsOwnStartTimeIntoStoryService();
+  await assertFallbackRetryIsSkippedWhenTheTrueBudgetIsAlreadyGone();
 
   console.log('Story service batch chapter budget tests passed');
 }
