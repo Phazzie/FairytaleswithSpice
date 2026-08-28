@@ -44,7 +44,7 @@ export function capAtWordBoundary(value: string, maxCodePoints: number): string 
     return value;
   }
 
-  return backUpToWordBoundary(characters.slice(0, maxCodePoints).join(''));
+  return endAtWordBoundary(characters.slice(0, maxCodePoints).join(''), characters[maxCodePoints]);
 }
 
 /**
@@ -77,7 +77,31 @@ export function capAtWordBoundaryWithinCodeUnits(value: string, maxCodeUnits: nu
     capped += character;
   }
 
-  return backUpToWordBoundary(capped);
+  // The cut is measured in code units here, so the character it stopped before
+  // starts at that many units into the value. Whitespace is one unit wide in
+  // UTF-16, so reading a single one is enough to recognise it.
+  return endAtWordBoundary(capped, value[capped.length]);
+}
+
+/**
+ * Finish a cut at a word boundary, giving back only what the cut actually broke.
+ *
+ * `nextCharacter` is the one the cut stopped before — the first character of
+ * the remainder, or `undefined` when there is none. **Backing up without
+ * consulting it was a defect**: a cut that lands exactly where a word ends has
+ * broken nothing, and backing up anyway discards a whole intact word for no
+ * reason. `capAtWordBoundary('alpha beta gamma', 10)` answered `'alpha'`, not
+ * `'alpha beta'` — a hint that stops a word earlier than it needed to, and a
+ * continuity excerpt that spends a word of its budget on nothing. The module's
+ * own claim is that backing up "costs at most one word"; it was costing one
+ * that had not been cut.
+ *
+ * So the boundary is recognised rather than assumed. Whitespace after the cut
+ * means the last word inside it is whole, and the only thing to give back is
+ * trailing whitespace the cut may have included.
+ */
+function endAtWordBoundary(capped: string, nextCharacter: string | undefined): string {
+  return isWhitespace(nextCharacter) ? capped.trimEnd() : backUpToWordBoundary(capped);
 }
 
 /**
@@ -87,12 +111,17 @@ export function capAtWordBoundaryWithinCodeUnits(value: string, maxCodeUnits: nu
  */
 function backUpToWordBoundary(capped: string): string {
   for (let index = capped.length - 1; index >= 0; index -= 1) {
-    if (/\s/.test(capped[index])) {
+    if (isWhitespace(capped[index])) {
       return capped.slice(0, index).trimEnd();
     }
   }
 
   return capped;
+}
+
+/** Whether a character exists and is whitespace; `undefined` is the end of the string. */
+function isWhitespace(character: string | undefined): boolean {
+  return character !== undefined && /\s/.test(character);
 }
 
 /**
@@ -111,9 +140,19 @@ export function tailAtWordBoundary(value: string, maxCodePoints: number): string
     return value;
   }
 
-  const tail = characters.slice(characters.length - maxCodePoints).join('');
+  const start = characters.length - maxCodePoints;
+  const tail = characters.slice(start).join('');
+
+  // The mirror of the cap's boundary check: a tail that starts just after
+  // whitespace starts on a whole word, so moving forward would drop one the cut
+  // never broke. `tailAtWordBoundary('alpha beta gamma', 10)` answered
+  // `'gamma'` where `'beta gamma'` was intact.
+  if (isWhitespace(characters[start - 1])) {
+    return tail.trimStart();
+  }
+
   for (let index = 0; index < tail.length; index += 1) {
-    if (/\s/.test(tail[index])) {
+    if (isWhitespace(tail[index])) {
       return tail.slice(index).trimStart();
     }
   }

@@ -66,6 +66,53 @@ assert(
   'an apostrophe should separate rather than delete the letters around it'
 );
 
+// A combining mark is not a letter, so keeping only `\p{L}\p{N}` read every one
+// of them as a separator and cut the word apart at each: `मेरी कहानी` came back
+// as `म र कह न`. Both sides shatter alike, so nothing looked broken — but every
+// fragment is now below ACTIVATION_TOKEN_MIN_LENGTH, which silently costs these
+// scripts the per-word score entirely.
+assert(
+  normalizeActivationText('मेरी कहानी') === 'मेरी कहानी',
+  'a Devanagari label should keep its vowel marks rather than being cut apart at them'
+);
+assert(
+  normalizeActivationText('เรื่องของฉัน') === 'เรื่องของฉัน',
+  'a Thai label should keep its vowel and tone marks'
+);
+
+// The marks are kept either way, so keeping them is not enough on its own: `é`
+// and `e` + U+0301 are different strings, and a brief typed one way would never
+// match a label stored the other. This is the docblock's own `José` example.
+assert(
+  normalizeActivationText('José'.normalize('NFD')) === normalizeActivationText('José'.normalize('NFC')),
+  'the same name typed decomposed or precomposed should normalize to one string'
+);
+assert(
+  scoreActivationCandidates(
+    ['José'.normalize('NFC') + ' pact'],
+    normalizeActivationText('José'.normalize('NFD') + ' made a pact')
+  ) === scoreActivationCandidates(
+    ['José'.normalize('NFC') + ' pact'],
+    normalizeActivationText('José'.normalize('NFC') + ' made a pact')
+  ),
+  'a brief should activate a candidate the same whichever spelling of a name it was typed in'
+);
+
+// Retaining marks is right for a mark attached to a letter and wrong for one
+// left on its own: the variation selector after an emoji is `\p{M}`, and on its
+// own it would become an invisible word in the comparison.
+assert(
+  normalizeActivationText('❤️ pact') === 'pact',
+  'a mark with no letter beside it is not a word and should be dropped'
+);
+
+// Every part an ASCII input produces already holds a letter or a number, so the
+// scoring these fixes reach is unchanged for text that never needed them.
+assert(
+  normalizeActivationText('  The  Moonlit   Oath. ') === 'the moonlit oath',
+  'ASCII text normalizes exactly as it did before marks were retained'
+);
+
 // ==================== Scoring ====================
 
 const brief = normalizeActivationText('Pay off the moonlit oath before the reef court sits again.');

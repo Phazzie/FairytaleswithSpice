@@ -4,6 +4,41 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-28 UTC - Three cuts that took more than they were cutting
+
+Three separate readers each removed something the caller still had: a whole
+word, the word after `bearer`, and the vowel marks that hold a word together.
+None of them fails loudly, all three are found by reading, and each has a
+measurement before the change, a fix, and a counterfactual.
+
+Actions:
+
+- **`textExcerpt.ts` backed up past a word the cut had not broken.** `capAtWordBoundary`, `capAtWordBoundaryWithinCodeUnits`, and `tailAtWordBoundary` all backed up to the nearest whitespace unconditionally, without asking whether the cut had actually landed inside a word. A cut that falls exactly where a word ends has broken nothing, so the back-up threw away an intact word for no reason. The three now read the character the cut stopped before (or, for the tail, the one it started after) and give back only what was really broken.
+- **`redactBearerTokens` (`shared/sensitiveTextRedaction.ts`) took the word after any standalone `bearer`.** `hasBearerBoundaryBefore` settles whether `bearer` is a word of its own — that is what keeps `forbearer` and `torchbearer` intact — and the code then took whatever followed it as a credential with no floor of any kind. So ordinary prose lost its next word, in this genre's own vocabulary. A following run is now read as a credential only when it is at least eight characters (`redactApiKeys`'s own floor, next door in the same file, now a shared `MIN_CREDENTIAL_TOKEN_LENGTH`) or carries something an English word does not.
+- **`normalizeActivationText` (`shared/continuityActivation.ts`) read every combining mark as a separator.** The #310 entry above moved this module's *matching* to whole words and left its *normalizer* keeping only `\p{L}\p{N}`. A mark is not a letter, so the class cut each word apart at every vowel sign. The retained class now includes `\p{M}` and the input is `NFC`-normalized first, which is the pairing `shared/storyDownloadFilename.ts` already states at length; parts holding no letter or number are dropped so a mark with nothing beside it does not become an invisible word.
+- Extended `tests/text-excerpt.test.ts`, `tests/log-redaction.test.ts`, and `tests/continuity-activation.test.ts`. No new suite: each defect belongs to a family one of those three files already exists for.
+
+The three defects, measured before changing anything:
+
+- **Excerpts.** `capAtWordBoundary('alpha beta gamma', 10)` answered `'alpha'` — the cut fell exactly where `beta` ends, so `beta` was whole and was discarded anyway. `tailAtWordBoundary('alpha beta gamma', 10)` answered `'gamma'` for the same reason from the other side. Both now keep the word. The readers are `generateNextChapterHint` (shown to the reader as what happens next), `createContextExcerpt` (`PREVIOUS CHAPTER EXCERPT` in the continuation prompt), the continuity prompt's per-chapter cut, and the scene sentence an image prompt is built from.
+- **Redaction.** `a standard bearer led the march` came back as `a standard Bearer [REDACTED] the march`; `the bearer of bad news` as `the Bearer [REDACTED] bad news`. Both halves of that are damage — the word is gone, and `[REDACTED]` claims a credential was there — on the line an operator is reading precisely because something went wrong. Both are now untouched, while `Bearer abc123def456`, `Bearer a1b2c3`, and a JWT are all still redacted.
+- **Activation.** `मेरी कहानी` normalized to `म र कह न` and `เรื่องของฉัน` to `เร องของฉ น`. Both sides of the comparison shatter the same way, so the whole-candidate match survived and nothing looked broken — but every fragment is then shorter than `ACTIVATION_TOKEN_MIN_LENGTH`, so the per-word score beneath it is silently zero for those scripts. A brief naming one word of a thread's label — the ordinary case that score exists for — scored **0**; it now scores 1. `José` typed decomposed and precomposed normalized to two different strings, `jose` and `josé`, so a brief typed one way never matched a label stored the other; the docblock's own worked example failed.
+
+Decisions:
+
+- **The bearer rule states what a credential is, not what a word is.** A denylist of English words would be endless and would still be wrong for the next language. RFC 6750's `b64token` allows digits and `-._~+/=`, none of which an English word contains, and eight characters is the floor this file already applied to API keys — so "long, or not a plain word" is one rule covering both, rather than a second number invented here.
+- **The residue is named rather than hidden.** A letters-only word of eight or more characters after a standalone `bearer` — `the bearer possessed it` — is still redacted. That is the direction to err in, and it is a far narrower net than "every word that follows".
+- **`\p{M}` and `NFC` are both needed, and neither alone.** Devanagari, Thai, and Arabic marks do not compose away under `NFC`, so retaining them is what keeps those words whole; and the marks are kept either way, so `é` and `e` + U+0301 stay two strings until `NFC` makes them one. This is the same argument `storyDownloadFilename.ts` makes, applied to the reader that was left out of it.
+- **The excerpt fix is a boundary check, not a rewrite of the back-up.** The loop that gives a broken word back is unchanged and still right; what was missing was the question of whether anything had been broken.
+
+Self-review:
+
+- `npm run test:all` exits 0 (79 chained scripts, 82 distinct test files) before and after.
+- **Counterfactual mutations: 5 applied, 5 killed.** Reverting the excerpt boundary check, the bearer credential shape, the retained `\p{M}`, the `NFC` normalize, and the empty-part filter each fails the suite that covers it. Every mutation was reverted immediately; none is committed.
+- **The astral case is asserted rather than assumed.** `capAtWordBoundaryWithinCodeUnits` reads a single code unit to recognise whitespace, which is sound because whitespace is one unit wide in UTF-16 — but the character *after* a cut may be half of a surrogate pair, and half a character is not a word boundary. `capAtWordBoundaryWithinCodeUnits('alpha beta🗝 gamma', 10)` must still answer `'alpha'`, and the test says so.
+- **The redaction fix is asserted in both directions in the same loop shape,** so sparing prose cannot quietly be bought by sparing credentials: four sentences that must survive intact, four credential spellings that must not.
+- **One claim in the activation docblock was true only for the scripts that did not need it.** It said matching on the Unicode properties "keeps those words whole" — which held for Cyrillic and Han and not for any script written with combining marks. The docblock now says which half it had.
+
 ## 2026-08-28 UTC - The three readers the whole-word sweep missed
 
 The sweep that moved this repository's keyword scans off substrings and off `\b`

@@ -4,6 +4,17 @@ export const REDACTED_SENSITIVE_TEXT = '[REDACTED]';
 
 const API_KEY_PREFIXES = ['xai-', 'xai_', 'sk-', 'sk_', 'api-', 'api_'];
 
+/**
+ * The shortest run this file is willing to read as a credential.
+ *
+ * `redactApiKeys` has always required eight characters after the prefix, on the
+ * reasoning that a shorter run is something else that happened to start with
+ * `sk-`. `redactBearerTokens` required nothing at all, and that asymmetry is the
+ * defect below. Named once so the two rules answer the same question with the
+ * same number rather than one of them answering it by accident.
+ */
+const MIN_CREDENTIAL_TOKEN_LENGTH = 8;
+
 export function redactSensitiveTextTokens(value: string): string {
   return redactUrls(redactEmailAddresses(redactApiKeys(redactBearerTokens(value))));
 }
@@ -49,7 +60,7 @@ function redactBearerTokens(value: string): string {
       cursor += 1;
     }
 
-    if (cursor === tokenStart) {
+    if (cursor === tokenStart || !isCredentialShapedToken(value.slice(tokenStart, cursor))) {
       redacted += value.slice(found, cursor);
       index = cursor;
       continue;
@@ -80,7 +91,7 @@ function redactApiKeys(value: string): string {
     }
 
     const tokenTailLength = cursor - index - prefix.length;
-    if (tokenTailLength >= 8 && hasApiTokenBoundaryAfter(value, cursor)) {
+    if (tokenTailLength >= MIN_CREDENTIAL_TOKEN_LENGTH && hasApiTokenBoundaryAfter(value, cursor)) {
       redacted += REDACTED_SENSITIVE_TEXT;
       index = cursor;
       continue;
@@ -166,6 +177,50 @@ function findApiKeyPrefix(value: string, index: number): string | undefined {
 // characters and leave those credentials in the clear.
 function hasBearerBoundaryBefore(value: string, index: number): boolean {
   return index === 0 || !isAsciiLetterOrDigit(value[index - 1] ?? '');
+}
+
+/**
+ * Whether the run after `Bearer` could be a credential rather than the next
+ * word of a sentence.
+ *
+ * **The scheme guard above is only half the question, and the missing half was
+ * a defect.** `hasBearerBoundaryBefore` settles whether `bearer` is a word of
+ * its own — it keeps `forbearer` and `torchbearer` intact — and the code then
+ * took whatever followed that word as a credential, with no floor of any kind.
+ * So an ordinary sentence lost its next word, and the line an operator is
+ * reading precisely because something went wrong came back mangled:
+ *
+ * - `a standard bearer led the march` → `a standard Bearer [REDACTED] the march`
+ * - `the bearer of bad news` → `the Bearer [REDACTED] bad news`
+ * - `The bearer must not be named.` → `The Bearer [REDACTED] not be named.`
+ *
+ * That is this genre's own vocabulary — a bearer of a seal, an oath, or bad
+ * news — reaching the logger through a prompt, a story excerpt, or an error
+ * message, and it is destructive in both directions: the word is gone, and
+ * `[REDACTED]` claims a credential was there. Redaction that cries wolf is
+ * redaction an operator learns to read past.
+ *
+ * A credential is either long or not a plain word, so that is what is asked.
+ * Eight characters is `redactApiKeys`'s own floor, next door in this file; the
+ * `-`, `_`, `.`, `~`, `+`, `/`, `=` and digits that RFC 6750's `b64token`
+ * allows are none of them things an English word contains, so a short token
+ * carrying any of them is still redacted (`Bearer a1b2c3`), while a short run
+ * of nothing but letters is left as the prose it is.
+ *
+ * The residue is named rather than hidden: a letters-only word of eight or more
+ * characters after a standalone `bearer` — `the bearer possessed it` — is still
+ * redacted. Erring that way is the right side to err on, and it is a far
+ * narrower net than "every word that follows".
+ */
+function isCredentialShapedToken(token: string): boolean {
+  return token.length >= MIN_CREDENTIAL_TOKEN_LENGTH || !isAsciiLettersOnly(token);
+}
+
+function isAsciiLettersOnly(token: string): boolean {
+  return Array.from(token).every(char => {
+    const code = char.codePointAt(0) ?? 0;
+    return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+  });
 }
 
 function hasApiTokenBoundaryBefore(value: string, index: number): boolean {

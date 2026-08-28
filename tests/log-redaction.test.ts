@@ -119,6 +119,45 @@ assert(
   'a real Bearer credential should still be redacted'
 );
 
+// The word-boundary guard above settles whether `bearer` is a word of its own.
+// It does not settle whether what *follows* it is a credential, and taking the
+// next word unconditionally ate ordinary sentences — in this genre's own
+// vocabulary, no less, where a bearer carries a seal, an oath, or bad news. The
+// operator reading the line is reading it because something went wrong, and
+// both halves of the damage land on them: the word is gone and `[REDACTED]`
+// claims a credential was there.
+for (const sentence of [
+  'a standard bearer led the march',
+  'the bearer of bad news',
+  'The bearer must not be named.',
+  'Bearer of the seal walked in'
+]) {
+  const proseAfterScheme = redactSensitiveLogData({ note: sentence }) as Record<string, string>;
+  assert(
+    proseAfterScheme.note === sentence,
+    `a sentence using "bearer" as a word must survive redaction intact, got ${JSON.stringify(proseAfterScheme.note)}`
+  );
+}
+
+// The other side of that rule, so sparing prose cannot be bought by sparing
+// credentials: a token is a credential when it is long, or when it carries
+// anything an English word does not. RFC 6750's `b64token` allows digits and
+// `-._~+/=`, and none of those is a letter.
+for (const credential of [
+  'abcdefgh',
+  'a1b2c3',
+  'k+y/z=',
+  'eyJhbGciOiJIUzI1NiJ9.eyJhIjoxfQ.sig'
+]) {
+  const carried = redactSensitiveLogData({
+    note: `sent Bearer ${credential} upstream`
+  }) as Record<string, string>;
+  assert(
+    !carried.note.includes(credential),
+    `a Bearer credential spelled ${JSON.stringify(credential)} must still be redacted, got ${JSON.stringify(carried.note)}`
+  );
+}
+
 // The word-boundary guard must not treat the delimiters that actually precede
 // a credential as word characters. `=`, `/` and `+` are all valid bearer-token
 // characters, so keying the guard off the token grammar would leak these.

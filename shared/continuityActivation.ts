@@ -75,6 +75,9 @@ export const ACTIVATION_TOKEN_MIN_LENGTH = 4;
  */
 export type { PlotThreadStatus };
 
+/** What a part has to contain to be a word rather than a stray mark. */
+const ACTIVATION_PART_HAS_WORD_CHARACTER = /[\p{L}\p{N}]/u;
+
 /**
  * Reduce a continuation brief, or one thread label, artifact name, or
  * continuity warning, to the lowercase words `scoreActivationCandidates`
@@ -97,16 +100,48 @@ export type { PlotThreadStatus };
  * `jos` that matches nothing a reader would type.
  *
  * Matching on the Unicode properties keeps those words whole. Every retained
- * character is still a letter or a number, so the scoring is unchanged for text
- * that was already ASCII: the separator run each unsupported character used to
+ * character is still part of a word, so the scoring is unchanged for text that
+ * was already ASCII: the separator run each unsupported character used to
  * become is exactly the separator run it becomes now.
+ *
+ * **`\p{L}\p{N}` alone did not finish that job, and the half it left out is the
+ * half the scripts that need it most depend on.** A combining mark is not a
+ * letter, so `[^\p{L}\p{N} ]` read every one of them as a separator and cut the
+ * word it belongs to apart at each: `मेरी कहानी` normalized to `म र कह न` and
+ * `เรื่องของฉัน` to `เร องของฉ น`. Both sides of the comparison shatter the
+ * same way, so the whole-candidate match survives — but the per-word score
+ * beneath it does not, because every fragment is now shorter than
+ * `ACTIVATION_TOKEN_MIN_LENGTH`. A brief that names one word of a thread's
+ * label, which is the ordinary case that score exists for, scores exactly zero
+ * for those scripts, and the courtroom falls back to story order for the same
+ * reason it used to before non-Latin text was retained at all. It is the class
+ * `shared/storyDownloadFilename.ts` states at length and keeps `\p{M}` for; this
+ * module is the reader that was left out of it.
+ *
+ * Normalizing is the other half of that same repair, and for the reason the
+ * filename stem gives: the marks are kept either way, but `é` and `e` + U+0301
+ * are different strings. The docblock's own `José` example fails across them —
+ * a brief typed one way and a thread label stored the other never match, on a
+ * name both plainly carry. `NFC` makes the two spellings one string; marks that
+ * do not compose away, which is most of Devanagari, Thai, and Arabic, are what
+ * `\p{M}` is for. Neither alone is enough.
+ *
+ * The parts are filtered rather than the finished string, so a mark left with
+ * no letter beside it — a variation selector after an emoji is one, and it is
+ * `\p{M}` — is dropped instead of becoming an invisible word. Stating it as the
+ * property a word needs is what makes it hold for whatever else punctuation,
+ * symbols, and marks combine into; every part an ASCII input produces contains
+ * a letter or a number already, so nothing that scored before scores
+ * differently now.
  */
 export function normalizeActivationText(value: unknown): string {
   return (typeof value === 'string' ? value : '')
+    .normalize('NFC')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N} ]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/[^\p{L}\p{N}\p{M} ]+/gu, ' ')
+    .split(/\s+/)
+    .filter(part => ACTIVATION_PART_HAS_WORD_CHARACTER.test(part))
+    .join(' ');
 }
 
 /**
