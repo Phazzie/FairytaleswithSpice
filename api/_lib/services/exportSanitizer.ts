@@ -685,10 +685,11 @@ function findTagEnd(value: string, tagStart: number): number {
  *   without this state the second `=` reads as a fresh assignment and the quote
  *   after it opens a run that swallows the sentence.
  */
+type AttributeScanState = 'beforeAttributeName' | 'attributeName' | 'beforeValue' | 'unquotedValue';
+
 function scanAttributesToTagEnd(value: string, attributesStart: number): number {
   let index = attributesStart;
-  let state: 'beforeAttributeName' | 'attributeName' | 'beforeValue' | 'unquotedValue' =
-    'beforeAttributeName';
+  let state: AttributeScanState = 'beforeAttributeName';
 
   while (index < value.length) {
     const character = value[index];
@@ -721,10 +722,7 @@ function scanAttributesToTagEnd(value: string, attributesStart: number): number 
 }
 
 /** The walk's transitions, for every character that is not `>`, `<`, or a quote opening a value. */
-function nextAttributeState(
-  state: 'beforeAttributeName' | 'attributeName' | 'beforeValue' | 'unquotedValue',
-  character: string
-): 'beforeAttributeName' | 'attributeName' | 'beforeValue' | 'unquotedValue' {
+function nextAttributeState(state: AttributeScanState, character: string): AttributeScanState {
   if (isWhitespace(character)) {
     // Whitespace ends a name and ends an unquoted value, but between `=` and its
     // value it is still the value's position.
@@ -863,8 +861,68 @@ function parseHtmlTag(token: string): ParsedHtmlTag | null {
   return {
     tagName: token.slice(tagNameStart, index).toLowerCase(),
     isClosing,
-    isSelfClosing: token.slice(0, -1).trimEnd().endsWith('/')
+    isSelfClosing: closesWithASelfClosingSlash(token)
   };
+}
+
+/**
+ * Whether the token's trailing `/` is actually a self-closing marker.
+ *
+ * The suffix reading this replaces — "the last non-whitespace character before
+ * `>` is a `/`" — is true of two tags that are **not** self-closing, and HTML
+ * keeps their contents:
+ *
+ * - `<svg title="a>b" data-x=y/>` — the `/` is the last character of the
+ *   unquoted value `y/`. Nothing ends an unquoted value but whitespace or `>`.
+ * - `<svg title="a>b"/ >` — a self-closing marker is the two characters `/>`.
+ *   Whitespace between them makes the `/` a stray, not a marker.
+ *
+ * Both matter because `svg` is dropped *with its contents*: reading either as
+ * self-closing means no block-skipping and the element's text exported as story
+ * prose. As with the `<script/>` case, the older tokenizer was safe here only
+ * because its truncation removed the `/` before this ever saw it.
+ *
+ * So the slash is located by walking the attributes rather than by looking at
+ * the end of the string: it closes the tag only if it sits immediately before
+ * the `>` and outside an attribute value. Markup the walk cannot read keeps the
+ * older suffix reading, which is what the rest of the module falls back to.
+ */
+function closesWithASelfClosingSlash(token: string): boolean {
+  const attributesStart = findAttributesStart(token, 0);
+  if (attributesStart === -1) {
+    return false;
+  }
+
+  let index = attributesStart;
+  let state: AttributeScanState = 'beforeAttributeName';
+  let slashClosesTag = false;
+
+  while (index < token.length) {
+    const character = token[index];
+
+    if (character === '>') {
+      return slashClosesTag;
+    }
+
+    if (state === 'beforeValue' && (character === '"' || character === "'")) {
+      const valueEnd = findAttributeValueEnd(token, index);
+      if (valueEnd === -1) {
+        break;
+      }
+
+      index = valueEnd + 1;
+      state = 'beforeAttributeName';
+      slashClosesTag = false;
+      continue;
+    }
+
+    // A `/` inside an unquoted value is one of its characters, not a marker.
+    slashClosesTag = character === '/' && state !== 'unquotedValue';
+    state = nextAttributeState(state, character);
+    index += 1;
+  }
+
+  return token.slice(0, -1).trimEnd().endsWith('/');
 }
 
 /**

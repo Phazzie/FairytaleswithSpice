@@ -336,6 +336,31 @@ for (const container of ['script', 'style', 'iframe']) {
   );
 }
 
+// Reading a `/` as a self-closing marker depends on where it sits, exactly as a
+// quote does. Two tags end on a `/` without being self-closing at all, and HTML
+// keeps the contents of both — so treating them as closed means no
+// block-skipping and the element's text exported as story prose.
+const notSelfClosing: Array<{ label: string; html: string }> = [
+  // The `/` is the last character of the unquoted value `y/`. Nothing ends an
+  // unquoted value but whitespace or `>`.
+  { label: 'a `/` inside an unquoted value', html: '<svg title="a>b" data-x=y/>secret</svg><p>Story.</p>' },
+  // A self-closing marker is the two characters `/>`. Whitespace between them
+  // makes the `/` a stray.
+  { label: 'whitespace between `/` and `>`', html: '<svg title="a>b"/ >secret</svg><p>Story.</p>' }
+];
+
+for (const sample of notSelfClosing) {
+  const text = stripStoryHtmlForExport(sample.html);
+  assert(
+    !text.includes('secret'),
+    `${sample.label}: the element is not closed, so its contents must not be exported (got ${JSON.stringify(text)})`
+  );
+  assert(
+    text.includes('Story.'),
+    `${sample.label}: the story after it must survive (got ${JSON.stringify(text)})`
+  );
+}
+
 // The cost of that rule, stated rather than left to be rediscovered: a dangerous
 // container written self-closing and never closed now takes the rest of the
 // document with it, where the older reading kept it. That is what a browser does
