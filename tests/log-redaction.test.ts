@@ -161,6 +161,12 @@ for (const sentence of [
   '| Bearer of the seal | a row |',
   '[Bearer of the seal] stepped forward',
   'context: The bearer of bad news',
+  // The lookback past `header` is exactly one word and only past that suffix.
+  // An unbounded scan for an auth field name anywhere before the separator
+  // would destroy these.
+  'The authorization ceremony: Bearer of the seal',
+  'token of my esteem: Bearer of bad news',
+  'header: Bearer of the seal',
   // Eight letters is not enough to make a word a credential. These are the
   // verbs that actually follow the noun in story prose, and an eight-character
   // floor destroyed every one of them.
@@ -198,6 +204,15 @@ for (const line of [
   '{"authorization": "Bearer abcdef"}',
   'x-api-key: Bearer abcdef',
   'AUTHORIZATION:Bearer abcdef',
+  // A provider's error text labels the header in words rather than naming it,
+  // and an error message often carries a JSON payload that has already been
+  // escaped once. Both put explicit authorization context around the
+  // credential, and both reached the logger in the clear until the walk
+  // learned to read past `header` and past `\`.
+  'Invalid Authorization header: Bearer abcdef',
+  'Invalid authorization-header: Bearer abcdef',
+  'rejected the Authorization headers: Bearer abcdef',
+  'payload="{\\"authorization\\":\\"Bearer abcdef\\"}"',
   'Bearer a1b2c3',
   'Bearer k+y/z=',
   'Bearer xai-secret-key-123',

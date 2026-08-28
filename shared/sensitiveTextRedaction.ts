@@ -148,6 +148,13 @@ const BEARER_CREDENTIAL_FIELD_NAMES = new Set([
 ]);
 
 /**
+ * Nouns that a human-readable label ends in, where the field name is the word
+ * before them: `Invalid Authorization header: Bearer …`. Never sufficient
+ * alone -- `header: Bearer of the seal` carries no field name and stays prose.
+ */
+const BEARER_CREDENTIAL_FIELD_SUFFIXES = new Set(['header', 'headers']);
+
+/**
  * Is the scheme keyword introduced the way a header introduces it -- an
  * authorization field name, then `:` or `=`, then the scheme?
  *
@@ -162,26 +169,66 @@ const BEARER_CREDENTIAL_FIELD_NAMES = new Set([
  * further back than the label, so `context: The bearer of bad news` is prose.
  */
 function isIntroducedAsCredential(value: string, index: number): boolean {
-  let cursor = skipBackOverSeparatorPadding(value, index - 1);
-  if (cursor < 0 || !BEARER_CREDENTIAL_INTRODUCERS.has(value[cursor] ?? '')) {
+  const separator = skipBackOverSeparatorPadding(value, index - 1);
+  if (separator < 0 || !BEARER_CREDENTIAL_INTRODUCERS.has(value[separator] ?? '')) {
     return false;
   }
 
-  cursor = skipBackOverSeparatorPadding(value, cursor - 1);
-  const fieldNameEnd = cursor + 1;
+  const label = readFieldNameBefore(value, separator - 1);
+  if (isCredentialFieldName(label.name)) {
+    return true;
+  }
+
+  // A human-readable label ends in the noun: `Invalid Authorization header:
+  // Bearer abcdef` is a provider's error text, and the field name is the word
+  // before `header` rather than the label's last word. Exactly one word of
+  // lookback, and only past this suffix -- an unbounded scan would match `The
+  // authorization ceremony: Bearer of the seal`, which is prose.
+  return BEARER_CREDENTIAL_FIELD_SUFFIXES.has(label.name)
+    && isCredentialFieldName(readFieldNameBefore(value, label.start - 1).name);
+}
+
+function isCredentialFieldName(name: string): boolean {
+  if (BEARER_CREDENTIAL_FIELD_NAMES.has(name)) {
+    return true;
+  }
+  // The same descriptive suffix written as one token: `authorization-header`.
+  const hyphenIndex = Math.max(name.lastIndexOf('-'), name.lastIndexOf('_'));
+  return hyphenIndex > 0
+    && BEARER_CREDENTIAL_FIELD_SUFFIXES.has(name.slice(hyphenIndex + 1))
+    && BEARER_CREDENTIAL_FIELD_NAMES.has(name.slice(0, hyphenIndex));
+}
+
+function readFieldNameBefore(value: string, from: number): { name: string; start: number } {
+  let cursor = skipBackOverSeparatorPadding(value, from);
+  const end = cursor + 1;
   while (cursor >= 0 && isFieldNameChar(value[cursor] ?? '')) {
     cursor -= 1;
   }
-
-  return BEARER_CREDENTIAL_FIELD_NAMES.has(value.slice(cursor + 1, fieldNameEnd).toLowerCase());
+  return { name: value.slice(cursor + 1, end).toLowerCase(), start: cursor + 1 };
 }
 
+/**
+ * Whitespace, quotes and the backslashes that escape them all belong to the
+ * serialization rather than to either side of it.
+ *
+ * The backslash matters because an error message often carries a JSON payload
+ * that has already been escaped once -- `payload="{\"authorization\":\"Bearer
+ * abcdef\"}"`. Stopping at the escape leaves the walk short of the colon, so
+ * the field name is never reached and a credential with explicit authorization
+ * context around it is logged in the clear. Skipping it cannot loosen the rule
+ * on its own: a field name and a separator are still both required.
+ */
 function skipBackOverSeparatorPadding(value: string, from: number): number {
   let cursor = from;
-  while (cursor >= 0 && (isWhitespace(value[cursor] ?? '') || isQuote(value[cursor] ?? ''))) {
+  while (cursor >= 0 && isSeparatorPadding(value[cursor] ?? '')) {
     cursor -= 1;
   }
   return cursor;
+}
+
+function isSeparatorPadding(char: string): boolean {
+  return isWhitespace(char) || isQuote(char) || char === '\\';
 }
 
 function isQuote(char: string): boolean {

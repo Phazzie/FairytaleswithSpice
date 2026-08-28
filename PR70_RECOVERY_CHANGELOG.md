@@ -112,21 +112,38 @@ so `{"authorization": "Bearer abcdef"}` is covered — recovering the JSON shape
 that the earlier narrowing had dropped — while `He said: "Bearer of the seal"`
 reaches the label `said` and is left alone.
 
-**Mutation result worth recording rather than padding.** Ten applied, eight
-killed. The two survivors are the separator set and the quote-skip set:
-widening either now changes behavior only on serializations like `auth, Bearer
-abcdef`, because the field-name gate already refuses everything else. Those two
-guards are no longer load-bearing for prose protection — the gate is — and the
-suite deliberately does not pin an obscure case it is not clear should redact,
-rather than adding an assertion to kill an unimportant mutant.
+**Review round 3, on the gate itself, found two ways it was too strict** — both
+regressions from the old unconditional redaction, and both in text carrying
+explicit authorization context, so neither is the accepted residual:
+
+```
+Invalid Authorization header: Bearer abcdef        the label's last word is `header`
+payload="{\"authorization\":\"Bearer abcdef\"}"    the walk stopped at the escape `\`
+```
+
+The first is a provider's error text labelling the header in words; the walk now
+looks back exactly one word past `header`/`headers`, and past a `-header`
+suffix written as one token. Exactly one word, on purpose: an unbounded scan for
+a field name anywhere before the separator would destroy `The authorization
+ceremony: Bearer of the seal`, which is asserted alongside `token of my esteem:
+Bearer of bad news` and a bare `header: Bearer of the seal`. The second is an
+error message carrying a JSON payload already escaped once; backslashes are now
+skipped with the quotes they escape, which cannot loosen anything on its own
+because a field name and a separator are both still required.
+
+**Mutation result.** Ten applied, ten killed after round 3, including one for
+each finding above: dropping the descriptive-label suffix, and no longer
+skipping escape backslashes. The two mutants that survived round 2 — widening
+the separator set and the quote-skip set — are now killed, because the label
+cases give both something to bite on.
 
 Validation: `npm run test:all` exits 0, `scripts/recovery/preflight.sh
---skip-status` exits 0. **Counterfactual mutations: 10 applied, 8 killed**, the
-two survivors being the ones described above — dropping either arm, dropping the
-field-name gate, admitting a prose label (`title`, `role`) as a credential
-field, reverting the alphabetic floor to eight, raising it above the
-configured-key minimum, letting a digit count as a word character, and treating
-start-of-string as an introducer. None is committed. The equality of the two
+--skip-status` exits 0. **Counterfactual mutations: 10 applied, 10 killed** —
+dropping either arm, dropping the field-name gate, admitting a prose label
+(`title`, `role`) as a credential field, making the label lookback unbounded,
+dropping the `header` suffix, no longer skipping escape backslashes, reverting
+the alphabetic floor to eight, raising it above the configured-key minimum, and
+letting a digit count as a word character. None is committed. The equality of the two
 floors is asserted directly, so neither can be moved into a gap without the
 suite noticing.
 
