@@ -55,11 +55,77 @@ function redactBearerTokens(value: string): string {
       continue;
     }
 
+    // A standalone `bearer` is the scheme keyword *and* an ordinary English
+    // noun, so the word alone does not settle which one this is. Only redact
+    // when something beyond the keyword says "credential" -- otherwise this is
+    // prose and the next word is left alone. See the two arms below.
+    if (
+      !isIntroducedAsCredential(value, found) &&
+      !isCredentialShapedBearerToken(value.slice(tokenStart, cursor))
+    ) {
+      redacted += value.slice(found, cursor);
+      index = cursor;
+      continue;
+    }
+
     redacted += `Bearer ${REDACTED_SENSITIVE_TEXT}`;
     index = cursor;
   }
 
   return redacted;
+}
+
+/**
+ * Characters that put `bearer` in a *header, JSON, or query* position rather
+ * than in a sentence: the value side of `Authorization: Bearer x`,
+ * `Authorization=Bearer x`, `"Authorization": "Bearer x"`, and the encoded
+ * payloads that reach a log through a provider's echoed request.
+ *
+ * Sentence punctuation -- `.`, `,`, `;`, `!`, `?`, `-` -- is deliberately
+ * absent. `news. Bearer of the seal walked in` is prose, and admitting `.`
+ * here would destroy the word after every sentence break.
+ */
+const BEARER_CREDENTIAL_INTRODUCERS = new Set([':', '=', '"', '\'', '(', '[', '{', '/', '+', '&', '|', '>', '\\']);
+
+/**
+ * The shortest run that is taken for a credential on its length alone.
+ * Deliberately the same floor `redactApiKeys` uses next door, and well above
+ * the short function words -- `of`, `led`, `must`, `and` -- that follow the
+ * noun `bearer` in prose.
+ */
+const BEARER_CREDENTIAL_MIN_LENGTH = 8;
+
+/**
+ * Is the scheme keyword introduced the way a header introduces it?
+ *
+ * Whitespace between the introducer and the keyword belongs to the header, not
+ * to either side of it, so it is skipped: `Authorization:  Bearer x` reads the
+ * same as `Authorization:Bearer x`. The start of the string is *not* an
+ * introducer -- `Bearer of the seal walked in` is a sentence that happens to
+ * open on the word.
+ */
+function isIntroducedAsCredential(value: string, index: number): boolean {
+  let cursor = index - 1;
+  while (cursor >= 0 && isWhitespace(value[cursor] ?? '')) {
+    cursor -= 1;
+  }
+  return cursor >= 0 && BEARER_CREDENTIAL_INTRODUCERS.has(value[cursor] ?? '');
+}
+
+/**
+ * Does the run after the scheme look like a credential rather than a word?
+ *
+ * Two ways to qualify, either alone being enough: it is at least
+ * {@link BEARER_CREDENTIAL_MIN_LENGTH} characters, or it carries a character
+ * an English word cannot -- a digit, or one of the `._~+/=-` that RFC 6750's
+ * `b64token` allows. A JWT, `xai-secret-key-123`, `a1b2c3` and `k+y/z=` each
+ * qualify; `of`, `led`, `must` and `bad` each do not.
+ */
+function isCredentialShapedBearerToken(token: string): boolean {
+  if (token.length >= BEARER_CREDENTIAL_MIN_LENGTH) {
+    return true;
+  }
+  return Array.from(token).some(char => !isAsciiLetter(char));
 }
 
 function redactApiKeys(value: string): string {
@@ -308,4 +374,9 @@ function isWhitespace(char: string): boolean {
 function isAsciiLetterOrDigit(char: string): boolean {
   const code = char.codePointAt(0) ?? 0;
   return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isAsciiLetter(char: string): boolean {
+  const code = char.codePointAt(0) ?? 0;
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }

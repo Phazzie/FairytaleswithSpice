@@ -10,6 +10,8 @@ import {
   toLoggableThemes
 } from '../api/_lib/utils/loggableRequestParameters';
 import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
+import { REDACTED_SENSITIVE_TEXT } from '../shared/sensitiveTextRedaction';
+import { API_KEY_MINIMUM_LENGTH } from '../api/_lib/middleware/security';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -131,6 +133,66 @@ for (const delimiter of ['=', ':', '/', '+', '"', ',', '(']) {
     `a Bearer credential introduced by "${delimiter}" should be redacted`
   );
 }
+
+// `bearer` is the scheme keyword and an ordinary noun, and this is a
+// dark-fantasy story generator: a bearer of a seal, an oath, or bad news
+// reaches the logger through prompts, story excerpts and error messages. The
+// scheme keyword alone used to be enough to swallow the following word AND
+// rewrite the noun to `Bearer`, so the operator reading a failed generation
+// lost the word and was told a credential had been there instead. Redaction
+// that cries wolf is redaction an operator learns to read past.
+for (const sentence of [
+  'a standard bearer led the march',
+  'the bearer of bad news',
+  'The bearer must not be named.',
+  'Bearer of the seal walked in',
+  'news. Bearer of the seal walked in',
+  'He was a bearer, and he ran.'
+]) {
+  const preserved = redactSensitiveLogData({ note: sentence }) as Record<string, string>;
+  assert(
+    preserved.note === sentence,
+    `prose using "bearer" as a word must survive redaction unchanged: ${sentence}`
+  );
+}
+
+// The other arm, and the one that keeps the repair fail-closed. A credential
+// short enough AND alphabetic enough to pass for a word is still redacted when
+// it sits where a header puts it -- which is the counterexample that withdrew
+// the first attempt at this repair in #313, where a `Bearer abcdef` accepted by
+// `authenticateRequest` survived a shape check in the clear.
+for (const line of [
+  'Authorization: Bearer abcdef',
+  'Authorization:Bearer abc',
+  '"Authorization": "Bearer abcdef"',
+  'Bearer a1b2c3',
+  'Bearer k+y/z=',
+  'Bearer xai-secret-key-123',
+  'Bearer eyJhbGciOiJIUzI1NiJ9.eyJhIjoxfQ.sig',
+  `Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH)}`
+]) {
+  const hidden = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    hidden.note.includes(REDACTED_SENSITIVE_TEXT),
+    `a Bearer credential must be redacted, not read as prose: ${line}`
+  );
+}
+
+// The boundary the two arms meet at, asserted in both directions so neither can
+// be widened without the suite noticing. `API_KEY_MINIMUM_LENGTH` characters of
+// credential is above the length arm's floor and is redacted on length alone,
+// with no introducer in sight; a bare word below that floor is not.
+const floorCredential = redactSensitiveLogData({
+  note: `sent Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH)} upstream`
+}) as Record<string, string>;
+assert(
+  !floorCredential.note.includes('k'.repeat(API_KEY_MINIMUM_LENGTH)),
+  'a configured-length key is redacted on its length alone, with no introducer present'
+);
+assert(
+  API_KEY_MINIMUM_LENGTH > 8,
+  'the configured key floor must stay above the length arm, or a valid key could pass for a word'
+);
 
 // A URL is usually written into a sentence, and the mark that closes the
 // sentence has no whitespace before it — so the run that redacted the URL took

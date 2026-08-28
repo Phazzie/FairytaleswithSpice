@@ -4,6 +4,62 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-28 UTC - `redactBearerTokens` took the word after any standalone `bearer`
+
+Closes the second and last direction #314 records, and the one #313 wrote,
+reviewed and withdrew. `hasBearerBoundaryBefore` settled whether `bearer` was a
+word of its own — right, and worth keeping — and then whatever followed it was
+taken as a credential with no further test at all. So `a standard bearer led the
+march` logged as `a standard Bearer [REDACTED] the march`: the word destroyed,
+and `[REDACTED]` asserting a credential had been there when none was, on a line
+an operator is reading precisely because something went wrong.
+
+#313's repair tested the *shape* of the following run. Codex found the hole and
+it was real: `Authorization: Bearer abcdef` was a live credential in a
+deployment that had configured `API_KEYS=abcdef`, and a shape check spared
+exactly that shape. #314 then recorded preceding context as a failed
+discriminator too, because the suite asserts `sent Bearer abc123def456 upstream`
+is redacted with a plain word in front of the keyword.
+
+The finding here is that both are true of each test **alone** and neither is
+true of their union. Redact when the keyword sits where a header, JSON body or
+query string puts it, **or** when the following run is credential-shaped:
+
+| line | arm that fires | result |
+| --- | --- | --- |
+| `a standard bearer led the march` | neither | preserved |
+| `the bearer of bad news` | neither | preserved |
+| `Bearer of the seal walked in` | neither | preserved |
+| `news. Bearer of the seal walked in` | neither | preserved |
+| `sent Bearer abc123def456 upstream` | shape | redacted |
+| `Authorization: Bearer abcdef` | introducer | redacted |
+| `Bearer kkkkkkkkkkkkkkkk` | shape | redacted |
+
+Sentence punctuation (`.` `,` `;` `!` `?` `-`) is deliberately not an
+introducer, or the word after every sentence break would be destroyed again.
+Start-of-string is not one either: `Bearer of the seal walked in` opens a
+sentence.
+
+Why this is sound now and was not in #313: the residual gap is a run that is
+both under eight characters and purely alphabetic *and* written with no
+introducer in front of it. For this app's own keys that shape is no longer
+configurable — the entry above requires a 16-character `b64token` body, which is
+above the length arm's floor and redacts on shape alone. Provider credentials
+(xAI, ElevenLabs, Clerk) carry `-`, `_` or `.` and are long, so they redact on
+shape too. That dependency is why this rides on the `API_KEYS` contract rather
+than landing beside it.
+
+Validation: `npm run test:all` exits 0. **Counterfactual mutations: 6 applied, 6
+killed** — dropping either arm, admitting sentence punctuation as an introducer,
+letting a digit count as a word character, raising the length floor above the
+configured-key minimum, and treating start-of-string as an introducer. None is
+committed. The relationship between the two floors is asserted directly, so
+neither can be moved into a gap without the suite noticing.
+
+Not claimed: no evidence this was corrupting production logs; it is found by
+reading. The old behavior over-redacted, which is the safe direction — this
+trades that for a narrower rule whose fail-closed edge is now pinned by tests.
+
 ## 2026-08-28 UTC - `API_KEYS` accepted any non-empty string as a credential
 
 Closes the first of the two directions #314 records. `authenticateRequest` built
