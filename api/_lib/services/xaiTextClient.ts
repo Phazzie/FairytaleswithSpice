@@ -32,6 +32,23 @@ export interface XaiTextRequest {
   operation: XaiTextOperation;
   modelPreference?: XaiModelPreference;
   allowFallback?: boolean;
+  /**
+   * The true request-level clock the fallback retry's own remaining-budget
+   * check should measure against, when the caller has one.
+   *
+   * Without it, `resolveFallbackTimeoutMs` measures elapsed time from this
+   * call's own start rather than the request's, so it under-counts whatever
+   * ran before this call — not just before the whole invocation, but before
+   * *this* provider call specifically. A caller whose own pre-call work
+   * (earlier chapters in a batch, route-level overhead) already spent most of
+   * the true window still has that window measured as if it started fresh
+   * here, so a primary attempt that spends its own (correctly capped) timeout
+   * failing can still be followed by a retry the true deadline has no room
+   * for at all. Passing the caller's own request start closes that gap;
+   * omitting it keeps today's under-counting behavior for callers with
+   * nothing better to give it.
+   */
+  requestStartedAtMs?: number;
 }
 
 export interface XaiTextResponse {
@@ -78,7 +95,9 @@ export class XaiTextClient {
       throw new Error('XAI_API_KEY is required for live Grok generation.');
     }
 
-    const startedAtMs = Date.now();
+    // Falls back to this call's own start when the caller has no earlier
+    // clock to give it — see `XaiTextRequest.requestStartedAtMs`.
+    const startedAtMs = request.requestStartedAtMs ?? Date.now();
     const preferredModel = request.modelPreference === 'fast'
       ? getXaiFastModel()
       : getXaiStoryModel();
@@ -180,12 +199,15 @@ export class XaiTextClient {
    * cannot finish in it, and spending the remainder of the window on a call that
    * will be cut off costs the honest answer the caller could have had at once.
    *
-   * The elapsed time is measured from this call rather than from the start of
-   * the request, so it under-counts whatever the route spent before reaching
-   * here. That still bounds the failure this exists to prevent — one attempt
-   * plus one retry can no longer exceed the window on their own — and it errs
-   * toward attempting the retry, which is the direction that keeps a story
-   * being generated.
+   * `startedAtMs` is the caller's own `requestStartedAtMs` when it supplied
+   * one, so this measures elapsed time against the true request clock rather
+   * than this call's own start — a caller with pre-call work of its own
+   * (earlier batch chapters, route-level overhead) has that work counted
+   * here too, not just the time this specific attempt spent. A caller with
+   * nothing earlier to give falls back to this call's own start, which
+   * under-counts whatever ran before it the way this always has; that
+   * remaining gap still errs toward attempting the retry, which is the
+   * direction that keeps a story being generated.
    */
   private resolveFallbackTimeoutMs(requestedTimeoutMs: number, startedAtMs: number): number {
     const remainingMs = getRemainingRequestBudgetMs(startedAtMs);

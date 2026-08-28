@@ -215,7 +215,7 @@ export async function generateStoryLabGenesis(
   }
 
   const service = options.serviceFactory?.() ?? new StoryService();
-  const result = await service.generateStory(toClassicGenerationInput(input), options.requestId);
+  const result = await service.generateStory(toClassicGenerationInput(input), options.requestId, requestStartedAtMs);
 
   if (!result.success) {
     return storyLabErrorResponse(result.error, 'GENERATION_FAILED');
@@ -321,7 +321,7 @@ export async function continueStoryLab(
       source: 'story_lab',
       heatContract: input.heatContract
     } : undefined
-  }, options.requestId);
+  }, options.requestId, requestStartedAtMs);
 
   if (!result.success) {
     return storyLabErrorResponse(result.error, 'CONTINUATION_FAILED');
