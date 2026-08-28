@@ -183,7 +183,7 @@ export function sanitizeStoryHtmlForExport(html: string): string {
   // single break a reader sees rather than one per tag.
   let blockBreakPending = false;
 
-  for (const token of tokenizeHtml(removeNonStoryHtml(html))) {
+  for (const token of removeNonStoryHtml(html)) {
     if (!token) {
       continue;
     }
@@ -306,25 +306,9 @@ function escapeStoryText(value: string): string {
 export function stripStoryHtmlForExport(html: string): string {
   let text = '';
 
-  for (const token of tokenizeHtml(removeNonStoryHtml(html))) {
+  for (const token of removeNonStoryHtml(html)) {
     if (token.startsWith('<') && token.endsWith('>')) {
-      const parsed = parseHtmlTag(token);
-      if (!parsed) {
-        text += ' ';
-        continue;
-      }
-
-      if (VOID_BREAK_TAGS.has(parsed.tagName) && !parsed.isClosing) {
-        text += '\n';
-        continue;
-      }
-
-      if (parsed.isClosing && BLOCK_BREAK_TAGS.has(parsed.tagName)) {
-        text += '\n';
-        continue;
-      }
-
-      text += ' ';
+      text += plainTextForTag(parseHtmlTag(token), text);
       continue;
     }
 
@@ -332,6 +316,68 @@ export function stripStoryHtmlForExport(html: string): string {
   }
 
   return decodeBasicEntities(normalizePlainText(text));
+}
+
+/**
+ * What a tag contributes to the plain-text export: a line break where a reader
+ * sees a boundary, and otherwise the single space that keeps the words on either
+ * side of a dropped inline tag apart.
+ *
+ * Named rather than spelled inline, so this reader has the shape the HTML one
+ * already has — a loop over tokens, and one place that decides what each token
+ * means. The boundary rules are the interesting part and they are all here:
+ *
+ * - A void break element (`<br>`, `<hr>`) has no closing tag, so its own tag is
+ *   the boundary.
+ * - A block's close is a boundary.
+ * - So is a block's **open**, but only where a break is not already there.
+ *   `BLOCK_BREAK_TAGS` requires every boundary a reader sees to survive into
+ *   both documents, and the HTML export counts both ends; breaking on the close
+ *   alone was only ever sufficient while every closing tag was recognised.
+ */
+function plainTextForTag(parsed: ParsedHtmlTag | null, textSoFar: string): string {
+  if (!parsed) {
+    return ' ';
+  }
+
+  if (VOID_BREAK_TAGS.has(parsed.tagName) && !parsed.isClosing) {
+    return '\n';
+  }
+
+  if (!BLOCK_BREAK_TAGS.has(parsed.tagName)) {
+    return ' ';
+  }
+
+  if (parsed.isClosing) {
+    return '\n';
+  }
+
+  return endsWithLineBreak(textSoFar) ? ' ' : '\n';
+}
+
+/**
+ * Whether the plain text so far already ends on a line break, ignoring the
+ * spaces every dropped inline tag leaves behind.
+ */
+function endsWithLineBreak(text: string): boolean {
+  // Walked backwards rather than trimmed. This is asked once per block tag, and
+  // trimming builds a copy of everything written so far each time — quadratic in
+  // the length of a story, which is the one input this module is for. Reading
+  // back over the trailing spaces costs only those spaces.
+  for (let index = text.length - 1; index >= 0; index -= 1) {
+    const character = text[index];
+    if (character === '\n') {
+      return true;
+    }
+
+    if (!isInlineWhitespace(character)) {
+      return false;
+    }
+  }
+
+  // Nothing but the spaces dropped tags leave behind, so there is no story text
+  // yet for a break to separate from.
+  return true;
 }
 
 /**
@@ -496,15 +542,30 @@ function replaceXmlForbiddenCharacters(value: string): string {
   return sanitized;
 }
 
-function removeNonStoryHtml(html: string): string {
-  let output = '';
-  let skippedBlockTag: string | null = null;
-  let skippedBlockDepth = 0;
+/**
+ * The tokens of `html` that are part of the story, with the dropped elements and
+ * their contents removed.
+ *
+ * Returns the surviving **tokens** rather than a rejoined string, and the
+ * callers iterate them directly. Rejoining and re-tokenizing is not a no-op: the
+ * survivors of a fallback reading can sit next to each other in a way the
+ * original markup never did, and the second pass then reads that seam as
+ * markup. `<p x=">"<> Visible > After.</p>` tokenizes to `<p x=">`, `"`, `<>`
+ * and prose; drop the `<>` and the rejoined string is `<p x=">" Visible >
+ * After.</p>`, in which the quote and the sentence now look like an attribute
+ * list — so the sentence is read as part of a tag and never reaches the reader.
+ *
+ * Handing the tokens straight through means text a recovery pass preserved
+ * cannot be re-read as markup on a second look.
+ */
+function removeNonStoryHtml(html: string): string[] {
+  const kept: string[] = [];
+  const skip: SkipState = { tag: null, depth: 0, integrationPointDepth: 0 };
 
   for (const token of tokenizeHtml(html)) {
     if (!token.startsWith('<') || !token.endsWith('>')) {
-      if (!skippedBlockTag) {
-        output += token;
+      if (!skip.tag) {
+        kept.push(token);
       }
       continue;
     }
@@ -514,34 +575,106 @@ function removeNonStoryHtml(html: string): string {
       continue;
     }
 
-    if (skippedBlockTag) {
-      if (parsed.tagName === skippedBlockTag && !parsed.isClosing && !parsed.isSelfClosing) {
-        skippedBlockDepth += 1;
-      }
-
-      if (parsed.tagName === skippedBlockTag && parsed.isClosing) {
-        skippedBlockDepth -= 1;
-        if (skippedBlockDepth <= 0) {
-          skippedBlockTag = null;
-        }
-      }
-
+    // A tag met inside a skip is consumed by it, unless it is the HTML tag that
+    // ends the skip — which is then read below as if the element had closed.
+    if (skip.tag && advanceSkip(skip, parsed)) {
       continue;
     }
 
     if (DROPPED_TAGS.has(parsed.tagName)) {
-      if (!parsed.isClosing && DROPPED_BLOCK_TAGS.has(parsed.tagName) && !parsed.isSelfClosing) {
-        skippedBlockTag = parsed.tagName;
-        skippedBlockDepth = 1;
-      }
-
+      openSkipIfBlock(skip, parsed);
       continue;
     }
 
-    output += token;
+    kept.push(token);
   }
 
-  return output;
+  return kept;
+}
+
+/**
+ * The element currently being skipped, and how deep the reader is inside it.
+ *
+ * `integrationPointDepth` counts the integration points open within a foreign
+ * element. Inside one, HTML tags are ordinary content and do not break out.
+ */
+interface SkipState {
+  tag: string | null;
+  depth: number;
+  integrationPointDepth: number;
+}
+
+/**
+ * Advance the skip past one tag.
+ *
+ * Returns whether the skip consumed the tag. `false` means the skip has just
+ * ended on this tag and the caller should read it as HTML — which happens only
+ * on a foreign-content breakout, since a closing tag ends the skip *after*
+ * itself and is consumed.
+ */
+function advanceSkip(skip: SkipState, parsed: ParsedHtmlTag): boolean {
+  const skippedBlockTag = skip.tag as string;
+
+  if (skip.integrationPointDepth === 0 && breaksOutOfForeignContent(skippedBlockTag, parsed)) {
+    skip.tag = null;
+    skip.depth = 0;
+    return false;
+  }
+
+  countIntegrationPoint(skip, skippedBlockTag, parsed);
+  countSkippedBlock(skip, skippedBlockTag, parsed);
+  return true;
+}
+
+/** Track entry to and exit from an integration point of the skipped element. */
+function countIntegrationPoint(skip: SkipState, skippedBlockTag: string, parsed: ParsedHtmlTag): void {
+  if (!isIntegrationPoint(skippedBlockTag, parsed)) {
+    return;
+  }
+
+  if (parsed.isClosing) {
+    // Never below zero: a stray closing tag must not leave the count negative,
+    // where a later opener would read as depth 0 and let a breakout fire inside
+    // the element it had just entered.
+    skip.integrationPointDepth = Math.max(0, skip.integrationPointDepth - 1);
+  } else if (!parsed.isSelfClosing) {
+    // A self-closing `<desc/>` opens nothing, so counting it would hold the
+    // skip open for the rest of the container.
+    skip.integrationPointDepth += 1;
+  }
+}
+
+/** Track nesting of the skipped element itself, ending the skip when it closes. */
+function countSkippedBlock(skip: SkipState, skippedBlockTag: string, parsed: ParsedHtmlTag): void {
+  if (parsed.tagName !== skippedBlockTag) {
+    return;
+  }
+
+  if (parsed.isClosing) {
+    skip.depth -= 1;
+    if (skip.depth <= 0) {
+      skip.tag = null;
+      skip.integrationPointDepth = 0;
+    }
+    return;
+  }
+
+  if (!closesItself(parsed) && !NON_NESTING_DROPPED_TAGS.has(skippedBlockTag)) {
+    skip.depth += 1;
+  }
+}
+
+/** Begin skipping a dropped element that takes its contents with it. */
+function openSkipIfBlock(skip: SkipState, parsed: ParsedHtmlTag): void {
+  if (parsed.isClosing || !DROPPED_BLOCK_TAGS.has(parsed.tagName) || closesItself(parsed)) {
+    return;
+  }
+
+  skip.tag = parsed.tagName;
+  skip.depth = 1;
+  // `integrationPointDepth` is already 0 here and is not reset again: a skip
+  // ends either on its own closing tag, which resets it, or on a breakout,
+  // which can only fire at 0. A reset here would be a guard no test could fail.
 }
 
 function sanitizeStoryTag(token: string): string {
@@ -559,6 +692,158 @@ function sanitizeStoryTag(token: string): string {
   }
 
   return parsed.isClosing ? `</${parsed.tagName}>` : `<${parsed.tagName}>`;
+}
+
+/**
+ * The dropped elements a trailing `/` really does close.
+ *
+ * `<svg/>` closes itself because SVG and MathML are foreign content, where the
+ * self-closing slash is part of the syntax. **In HTML it is not.** A parser
+ * ignores it on `<script/>`, `<style/>`, `<iframe/>` and the rest, so their
+ * contents run to the matching closing tag exactly as if the slash were absent.
+ *
+ * Honouring it on those would put the element's contents into the export as
+ * story text: `<script data-x="a>b"/>stealPrivateStory()</script>` never enters
+ * block-skipping, and the script body is read as prose. This mattered only once
+ * the tokenizer began reading such a tag whole — before that the truncation lost
+ * the `/` and the block was skipped by accident.
+ */
+const SELF_CLOSING_DROPPED_TAGS = new Set(['svg', 'math', 'embed']);
+
+/**
+ * The dropped elements whose contents are text rather than markup, so they
+ * cannot nest.
+ *
+ * `script`, `style` and `iframe` are parsed by HTML's generic raw-text
+ * algorithm, and `textarea` and `title` by the escapable-raw-text one: everything between the tags is character data
+ * until the matching close, and a `<script/>` written *inside* a script is a
+ * string, not a tag. Counting it as one leaves the skip depth stuck above zero
+ * and the closing tag then only gets it back to one — so
+ * `<script>const t = "<script/>";</script>` swallows the rest of the story.
+ *
+ * `form`, `button` and `select` are here for a different reason with the same
+ * effect. HTML ignores a `<form>` start tag while a form is open; a nested
+ * `<button>` closes the button already in scope; a nested `<select>` closes the
+ * active one. In all three a second opener never leaves an extra element for the
+ * closing tag to account for.
+ *
+ * The other dropped containers really can nest — `<svg><svg></svg></svg>` is two
+ * elements — which is why this is a list and not a blanket rule. Only the
+ * *opening* side is affected: `</script>` inside a string does end a script
+ * element, in this reader as in a browser.
+ */
+const NON_NESTING_DROPPED_TAGS = new Set([
+  'script',
+  'style',
+  'iframe',
+  'textarea',
+  'title',
+  'form',
+  'button',
+  'select'
+]);
+
+/** Whether this tag's trailing `/` actually closes it. */
+function closesItself(parsed: ParsedHtmlTag): boolean {
+  return parsed.isSelfClosing && SELF_CLOSING_DROPPED_TAGS.has(parsed.tagName);
+}
+
+/**
+ * The dropped elements whose contents are parsed as markup in another language.
+ *
+ * `svg` and `math` are the two foreign-content integration points, and they are
+ * the only skipped elements a *following HTML tag* can end. Everything else on
+ * `DROPPED_BLOCK_TAGS` is either raw text — where `<p>` is characters, not a tag
+ * — or ordinary HTML, where an unmatched opener really does run to EOF.
+ */
+const FOREIGN_CONTENT_TAGS = new Set(['svg', 'math']);
+
+/**
+ * The HTML start tags that end foreign content wherever they appear inside it.
+ *
+ * HTML's tree construction has no way to nest these in SVG or MathML: on
+ * meeting one, the parser pops every foreign element and reads the tag as HTML.
+ * So `<svg>hidden</svg!><p>Story.</p>` puts the paragraph *outside* the SVG —
+ * the malformed `</svg!>` never has to be understood for the story to survive
+ * it, because the `<p>` breaks out on its own.
+ *
+ * Without this, classifying a tag by its whole name (which is right, and is what
+ * keeps `</script!>` from ending a script early) made a near-miss closing tag
+ * unmatchable, and the skip then ran to the end of the document taking the rest
+ * of the story with it. That was a regression against the first-`>` reader this
+ * module replaced, which stopped at `</svg!>` by accident of truncation.
+ *
+ * Spec list, minus `font` — which breaks out only when it carries `color`,
+ * `face` or `size`, and which this module has no reason to treat as a boundary.
+ */
+const FOREIGN_CONTENT_BREAKOUT_TAGS = new Set([
+  'b', 'big', 'blockquote', 'body', 'br', 'center', 'code', 'dd', 'div', 'dl',
+  'dt', 'em', 'embed', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'hr', 'i',
+  'img', 'li', 'listing', 'menu', 'meta', 'nobr', 'ol', 'p', 'pre', 'ruby', 's',
+  'small', 'span', 'strong', 'strike', 'sub', 'sup', 'table', 'tt', 'u', 'ul',
+  'var'
+]);
+
+/**
+ * Whether this tag ends the foreign element currently being skipped.
+ *
+ * Only a start tag breaks out; `</p>` inside an `<svg>` is ignored by a parser
+ * rather than treated as a boundary.
+ */
+function breaksOutOfForeignContent(skippedBlockTag: string, parsed: ParsedHtmlTag): boolean {
+  return FOREIGN_CONTENT_TAGS.has(skippedBlockTag)
+    && !parsed.isClosing
+    && FOREIGN_CONTENT_BREAKOUT_TAGS.has(parsed.tagName);
+}
+
+/**
+ * The elements inside foreign content whose own children are parsed as HTML.
+ *
+ * This is the exception the breakout list has to be read against. `<p>` pops
+ * every foreign element *when it is a child of the foreign element itself* — so
+ * `<svg><p>text</p></svg>` really does put the paragraph outside the SVG, which
+ * is why breaking out is right. Inside an integration point it does not: the
+ * children of `<foreignObject>`, of SVG's `<desc>` and `<title>`, and of
+ * MathML's text integration points are HTML *within* the foreign subtree, and a
+ * parser stays inside it.
+ *
+ * Skipping is a containment decision, so the difference is reader-visible.
+ * `<svg><foreignObject><p>secret</p></foreignObject></svg>` exported `secret`
+ * in all five formats: the `<p>` ended the skip, and everything after it —
+ * still SVG content — was kept as story. `main` dropped it, so it was a
+ * containment regression against the reader this module replaces, not a
+ * pre-existing limit.
+ *
+ * Nesting is counted rather than flagged, because these elements nest: an
+ * `<svg>` inside a `<foreignObject>` may carry another `<foreignObject>`, and a
+ * single flag cleared on the first closing tag would break out inside the outer
+ * one.
+ *
+ * `annotation-xml` is included unconditionally, which is the deliberately
+ * cautious reading of a case this module cannot decide. It is an HTML
+ * integration point only when its `encoding` is `text/html` or
+ * `application/xhtml+xml` — an attribute, and this reader knows tag names only.
+ * The two spellings want opposite answers:
+ *
+ * - carrying that encoding, its children are HTML *inside* the MathML, and
+ *   breaking out on them exports MathML content that `main` drops. A
+ *   containment regression.
+ * - unadorned, its children really are outside, and holding the skip open
+ *   drops text a browser shows — but `main` drops that text too, so nothing
+ *   regresses; only an improvement is forgone.
+ *
+ * One spelling costs containment against `main`, the other costs an
+ * improvement over it. This module drops `math` for containment, so it takes
+ * the second. Both directions are asserted.
+ */
+const FOREIGN_CONTENT_INTEGRATION_POINTS: Record<string, Set<string>> = {
+  svg: new Set(['foreignobject', 'desc', 'title']),
+  math: new Set(['mi', 'mo', 'mn', 'ms', 'mtext', 'annotation-xml'])
+};
+
+/** Whether this tag opens or closes an integration point of the skipped element. */
+function isIntegrationPoint(skippedBlockTag: string, parsed: ParsedHtmlTag): boolean {
+  return FOREIGN_CONTENT_INTEGRATION_POINTS[skippedBlockTag]?.has(parsed.tagName) ?? false;
 }
 
 function replaceEvery(value: string, searchValue: string, replacement: string): string {
@@ -592,7 +877,7 @@ function tokenizeHtml(value: string): string[] {
       continue;
     }
 
-    const tagEnd = value.indexOf('>', tagStart + 1);
+    const tagEnd = findTagEnd(value, tagStart);
     if (tagEnd === -1) {
       tokens.push(value.slice(tagStart));
       break;
@@ -603,6 +888,260 @@ function tokenizeHtml(value: string): string[] {
   }
 
   return tokens;
+}
+
+/**
+ * Where the tag opening at `tagStart` ends.
+ *
+ * A tag does not end at the first `>` — it ends at the first `>` that is not
+ * inside a quoted attribute value. Reading `<p class="a>b">Hello.</p>` with the
+ * first `>` splits the tag mid-attribute, and the remainder (`b">Hello.`) is
+ * then read as prose. That fragment reaches every export: `stripStoryHtmlForExport`
+ * feeds `ExportService.toPlainText`, which `.txt`, `.pdf`, `.epub` and `.docx`
+ * all go through, and `sanitizeStoryHtmlForExport` carries it into `.html`.
+ *
+ * The truncation also costs the trailing `/` of a self-closing tag, which is
+ * worse than a visible fragment because it is silent: `<svg data-x="1>2"/>`
+ * parsed as a plain opening tag puts `removeNonStoryHtml` into block-skipping
+ * for an element that never closes, and every word after it is dropped from the
+ * export.
+ *
+ * Prose is what this runs on, so widening what a match may cross is the risk to
+ * weigh against the fragment. Two limits keep the scan inside the markup it
+ * began in, and a fallback keeps malformed markup reading exactly as it did
+ * before:
+ *
+ * 1. A quoted run stops at `<`, which is where the next tag starts.
+ * 2. An attribute value's closing quote must be followed by whitespace, `/` or
+ *    `>` — HTML's own syntax, never a word character. Without this,
+ *    `<p class='unterminated>It's dangerous > here.</p>` finds the malformed
+ *    attribute's partner in the apostrophe of `It's`, runs on to the `>` after
+ *    `dangerous`, and deletes the words between them. Losing prose the reader
+ *    wrote is worse than the fragment this function exists to remove.
+ *
+ * Where neither reading applies the caller falls back to the older first-`>`
+ * scan, so markup with no well-formed reading is tokenized exactly as before.
+ *
+ * Returns `-1` when no `>` closes the tag at all.
+ */
+function findTagEnd(value: string, tagStart: number): number {
+  const attributesStart = findAttributesStart(value, tagStart);
+  const wellFormedEnd = attributesStart === -1 ? -1 : scanAttributesToTagEnd(value, attributesStart);
+
+  // No well-formed reading: answer exactly as the older scan did.
+  return wellFormedEnd === -1 ? value.indexOf('>', tagStart + 1) : wellFormedEnd;
+}
+
+/**
+ * Where an attribute list starting at `index` ends, or `-1` if it has no
+ * well-formed end.
+ *
+ * A four-state walk, because whether a quote delimits a value depends entirely
+ * on where in the attribute list it appears:
+ *
+ * - `beforeAttributeName` — an `=` here has no name to assign to. HTML makes it
+ *   the attribute's *name*, so `<v =">openedx">` ends at the first `>`.
+ * - `attributeName` — an `=` here is an assignment.
+ * - `beforeValue` — a quote here opens a quoted value. Anything else begins an
+ *   unquoted one.
+ * - `unquotedValue` — runs to whitespace or the tag's `>`. Quotes and `=` inside
+ *   it are characters, not delimiters, which is what `<p data-x=a="b>` turns on:
+ *   without this state the second `=` reads as a fresh assignment and the quote
+ *   after it opens a run that swallows the sentence.
+ */
+type AttributeScanState =
+  | 'beforeAttributeName'
+  | 'attributeName'
+  | 'afterAttributeName'
+  | 'beforeValue'
+  | 'unquotedValue';
+
+function scanAttributesToTagEnd(value: string, attributesStart: number): number {
+  let index = attributesStart;
+  let state: AttributeScanState = 'beforeAttributeName';
+
+  while (index < value.length) {
+    const character = value[index];
+
+    if (character === '>') {
+      return index;
+    }
+
+    // The next tag starts here, so this one has no well-formed end.
+    if (character === '<') {
+      return -1;
+    }
+
+    if (state === 'beforeValue' && (character === '"' || character === "'")) {
+      const valueEnd = findAttributeValueEnd(value, index);
+      if (valueEnd === -1) {
+        return -1;
+      }
+
+      index = valueEnd + 1;
+      state = 'beforeAttributeName';
+      continue;
+    }
+
+    state = nextAttributeState(state, character);
+    index += 1;
+  }
+
+  return -1;
+}
+
+/**
+ * The walk's transitions, for every character that is not `>`, `<`, or a quote
+ * opening a value.
+ *
+ * The order of these tests is the whole of the logic, and it follows HTML's own
+ * start-tag states rather than a set of special cases:
+ *
+ * 1. **Whitespace** ends a name and ends an unquoted value — but it does not
+ *    throw a name away (`y = z` is a spelling of `y=z`), and between `=` and its
+ *    value it is still the value's position.
+ * 2. **An unquoted value** absorbs everything until whitespace or `>`. Quotes
+ *    and `=` inside one are characters.
+ * 3. **A value's first character** starts an unquoted value whatever it is,
+ *    `=` included: `x==y` gives `x` the value `=y`. This test has to come before
+ *    the one below, or an `=` here reads as another assignment.
+ * 4. **A `/`** is never part of a name. HTML sends it to the self-closing-start
+ *    state and, when no `>` follows, resumes before the next attribute — so it
+ *    leaves the walk exactly where it was rather than becoming one.
+ * 5. **An `=`** is an assignment after a name, and is otherwise the name itself.
+ */
+function nextAttributeState(state: AttributeScanState, character: string): AttributeScanState {
+  if (isWhitespace(character)) {
+    if (state === 'beforeValue') {
+      return 'beforeValue';
+    }
+
+    return state === 'attributeName' || state === 'afterAttributeName'
+      ? 'afterAttributeName'
+      : 'beforeAttributeName';
+  }
+
+  if (state === 'unquotedValue') {
+    return 'unquotedValue';
+  }
+
+  if (state === 'beforeValue') {
+    return 'unquotedValue';
+  }
+
+  if (character === '/') {
+    return 'beforeAttributeName';
+  }
+
+  if (character === '=') {
+    return state === 'attributeName' || state === 'afterAttributeName' ? 'beforeValue' : 'attributeName';
+  }
+
+  return 'attributeName';
+}
+
+/**
+ * Where the quoted attribute value opening at `quoteStart` closes, or `-1`.
+ *
+ * Bounded at `<` and at the follow-set described on `findTagEnd`, which are the
+ * two rules that stop an unterminated quote reaching across the story text after
+ * it.
+ */
+function findAttributeValueEnd(value: string, quoteStart: number): number {
+  const quote = value[quoteStart];
+  let index = quoteStart + 1;
+
+  while (index < value.length) {
+    const character = value[index];
+
+    if (character === '<') {
+      return -1;
+    }
+
+    // The first candidate decides. A quote that the follow-set rejects means
+    // this value has no well-formed end — not that the end is somewhere further
+    // on, because "further on" is where the story text is. Hunting for a later
+    // quote is what walks into the prose: `<p title="a>b"class=x>` has a real
+    // closing quote followed by `c`, and scanning past it reaches the quote in
+    // the sentence after the tag and swallows everything between.
+    if (character === quote) {
+      return mayEndAttributeValue(value[index + 1]) ? index : -1;
+    }
+
+    index += 1;
+  }
+
+  return -1;
+}
+
+/**
+ * Where this tag's attributes begin: just past the tag name, read exactly as
+ * `parseHtmlTag` reads it — optional whitespace, an optional `/`, then the
+ * tag-name characters.
+ *
+ * Skipping the name is what makes the `=` in `<e=">openedx">` not an
+ * assignment. Scanning from the `<` instead would let the name's own `e` count
+ * as the attribute name before it, so the scanner would read `">openedx"` as a
+ * quoted value and swallow the sentence. HTML reads that `=` as more tag name
+ * and ends the tag at the first `>`, which is what the older scan already did.
+ *
+ * Answers `-1` where a tag name is absent, so this agrees with `parseHtmlTag`
+ * about what is markup at all. That one requirement covers both constructs it
+ * has to refuse, since neither can begin with a tag-name character: a `<` in the
+ * prose (`< =a="b>…`) and a declaration or processing instruction (`<!x a="b>…`,
+ * `<?…`).
+ *
+ * Neither can be left to the attribute walk. `< =a="b>Visible text">After.`
+ * reaches `a` as an attribute name, then `=`, then opens a quoted value that
+ * pairs with the quote in the sentence and swallows it — so a `<` the reader
+ * typed would delete the words after it.
+ */
+function findAttributesStart(value: string, tagStart: number): number {
+  let index = tagStart + 1;
+
+  // A start-tag name begins *immediately* after the `<`, and a closing one
+  // immediately after the `/`. HTML has no whitespace there — `< p>` is literal
+  // text a reader typed, not a paragraph — so skipping over it would let the
+  // widened scan read an attribute list out of prose and pair its first quote
+  // with one in the sentence.
+  if (value[index] === '/') {
+    index += 1;
+  }
+
+  if (!isTagNameStartCharacter(value[index])) {
+    return -1;
+  }
+
+  // The name has to *begin* with a tag-name character — that is the test above,
+  // and it is what separates markup from a `<` in the prose. But it does not end
+  // at the first character outside that set: HTML's tag-name state runs to
+  // whitespace, `/` or `>`, so `<p=x=">` has the one name `p=x="` and no
+  // attributes at all. Ending the name at the `=` instead hands the walk an
+  // attribute list that was never there, and its second `=` opens a quoted value
+  // that reaches into the sentence.
+  while (index < value.length && !endsTagName(value[index])) {
+    index += 1;
+  }
+
+  return index;
+}
+
+/**
+ * Where a tag name stops, per HTML: whitespace, `/`, or the tag's own `>`.
+ *
+ * Named once because two readers depend on giving the same answer.
+ * `findAttributesStart` uses it to decide where attributes begin, and
+ * `parseHtmlTag` uses it to decide which element this is. When they disagreed,
+ * `<script!/>` was an attribute list to one and a `script` to the other, and the
+ * export lost the whole document.
+ */
+function endsTagName(character: string | undefined): boolean {
+  return character === undefined || isWhitespace(character) || character === '/' || character === '>';
+}
+
+/** What may follow an attribute value's closing quote. Never a word character. */
+function mayEndAttributeValue(character: string | undefined): boolean {
+  return character === undefined || isWhitespace(character) || character === '/' || character === '>';
 }
 
 function parseHtmlTag(token: string): ParsedHtmlTag | null {
@@ -629,19 +1168,89 @@ function parseHtmlTag(token: string): ParsedHtmlTag | null {
   }
 
   const tagNameStart = index;
-  while (isTagNameCharacter(token[index])) {
-    index += 1;
+  if (!isTagNameStartCharacter(token[index])) {
+    return null;
   }
 
-  if (index === tagNameStart) {
-    return null;
+  // The name has to *begin* with a tag-name character, but it ends where HTML
+  // ends it — at whitespace, `/` or `>` — not at the first character outside
+  // that set. Truncating instead would classify `<script!>` as a `script`, and
+  // every list this name is matched against would then treat an ordinary unknown
+  // element as a dangerous container: `<script!/>Visible.` would take the whole
+  // document into block-skipping. `findAttributesStart` reads the name the same
+  // way, and the two have to agree about where it stops.
+  while (index < token.length && !endsTagName(token[index])) {
+    index += 1;
   }
 
   return {
     tagName: token.slice(tagNameStart, index).toLowerCase(),
     isClosing,
-    isSelfClosing: token.slice(0, -1).trimEnd().endsWith('/')
+    isSelfClosing: closesWithASelfClosingSlash(token)
   };
+}
+
+/**
+ * Whether the token's trailing `/` is actually a self-closing marker.
+ *
+ * The suffix reading this replaces — "the last non-whitespace character before
+ * `>` is a `/`" — is true of two tags that are **not** self-closing, and HTML
+ * keeps their contents:
+ *
+ * - `<svg title="a>b" data-x=y/>` — the `/` is the last character of the
+ *   unquoted value `y/`. Nothing ends an unquoted value but whitespace or `>`.
+ * - `<svg title="a>b"/ >` — a self-closing marker is the two characters `/>`.
+ *   Whitespace between them makes the `/` a stray, not a marker.
+ *
+ * Both matter because `svg` is dropped *with its contents*: reading either as
+ * self-closing means no block-skipping and the element's text exported as story
+ * prose. As with the `<script/>` case, the older tokenizer was safe here only
+ * because its truncation removed the `/` before this ever saw it.
+ *
+ * So the slash is located by walking the attributes rather than by looking at
+ * the end of the string: it closes the tag only if it sits immediately before
+ * the `>` and outside an attribute value. Markup the walk cannot read keeps the
+ * older suffix reading, which is what the rest of the module falls back to.
+ */
+function closesWithASelfClosingSlash(token: string): boolean {
+  const attributesStart = findAttributesStart(token, 0);
+  if (attributesStart === -1) {
+    return false;
+  }
+
+  let index = attributesStart;
+  let state: AttributeScanState = 'beforeAttributeName';
+  let slashClosesTag = false;
+
+  while (index < token.length) {
+    const character = token[index];
+
+    if (character === '>') {
+      return slashClosesTag;
+    }
+
+    if (state === 'beforeValue' && (character === '"' || character === "'")) {
+      const valueEnd = findAttributeValueEnd(token, index);
+      if (valueEnd === -1) {
+        break;
+      }
+
+      index = valueEnd + 1;
+      state = 'beforeAttributeName';
+      slashClosesTag = false;
+      continue;
+    }
+
+    // A `/` is a marker only where a value is not expected. Inside an unquoted
+    // value it is one of its characters, and directly after an `=` it *begins*
+    // one — `<svg data-x=/>` gives `data-x` the value `/` and leaves the element
+    // open, contents and all.
+    slashClosesTag = character === '/' && state !== 'unquotedValue' && state !== 'beforeValue';
+    state = nextAttributeState(state, character);
+    index += 1;
+  }
+
+  return token.slice(0, -1).trimEnd().endsWith('/');
 }
 
 /**
@@ -706,6 +1315,23 @@ function normalizePlainText(value: string): string {
   }
 
   return normalized.trim();
+}
+
+/**
+ * Whether a character can *begin* a start-tag name.
+ *
+ * Narrower than `isTagNameCharacter`, which is the set a name may continue
+ * with: HTML requires an ASCII letter here, so `<1 x="a>` is prose a reader
+ * typed rather than a tag. Accepting a digit let the attribute scan read an
+ * attribute list out of that prose and pair its quote with one in the sentence.
+ */
+function isTagNameStartCharacter(character: string | undefined): boolean {
+  if (!character) {
+    return false;
+  }
+
+  const codePoint = character.codePointAt(0) ?? 0;
+  return (codePoint >= 65 && codePoint <= 90) || (codePoint >= 97 && codePoint <= 122);
 }
 
 function isTagNameCharacter(character: string | undefined): boolean {
