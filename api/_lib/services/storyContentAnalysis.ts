@@ -12,7 +12,13 @@
 import { SpicyLevel, ThemeType } from '../types/contracts';
 import { readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import { readSpiceLevelPromptLabel } from '../../../shared/spiceLevelPromptLadder';
-import { ParsedHtmlTag, findTagEnd, findWellFormedTagEnd, parseHtmlTag } from '../../../shared/htmlTagScanner';
+import {
+  ParsedHtmlTag,
+  findCommentEnd,
+  findTagEnd,
+  findWellFormedTagEnd,
+  parseHtmlTag
+} from '../../../shared/htmlTagScanner';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
 import { wholeWordAlternationPattern, wholeWordPattern } from '../utils/wholeWord';
@@ -376,54 +382,6 @@ function opensATag(content: string, index: number): boolean {
   const codePoint = content.codePointAt(nameStart) ?? 0;
 
   return (codePoint >= 65 && codePoint <= 90) || (codePoint >= 97 && codePoint <= 122);
-}
-
-/**
- * Where the comment opening at `tagStart` ends, or `-1` if nothing closes it.
- *
- * Three spellings close a comment, not one. `-->` is the ordinary terminator;
- * `<!-->` and `<!--->` are HTML's *abrupt closing of an empty comment*, ending
- * at that `>`; and `--!>` is the comment-end-bang state. Searching only for
- * `-->` reads `<h3>Visible <!--> Title</h3>` as a comment that never ends, and
- * abandons the heading — so a chapter whose title happens to contain `<!-->`
- * loses its title and keeps the raw `<h3>` in its body.
- *
- * The shared tokenizer still reads `-->` alone. That is a separate defect with
- * a worse blast radius — it drops the rest of the story from every export —
- * and it is recorded on #296 rather than repaired here, since it is neither
- * caused nor touched by this change.
- */
-function findCommentEnd(content: string, tagStart: number): number {
-  const bodyStart = tagStart + 4;
-
-  if (content[bodyStart] === '>') {
-    return bodyStart + 1;
-  }
-
-  if (content.startsWith('->', bodyStart)) {
-    return bodyStart + 2;
-  }
-
-  let index = bodyStart;
-
-  while (index < content.length) {
-    const dashes = content.indexOf('--', index);
-    if (dashes === -1) {
-      return -1;
-    }
-
-    if (content[dashes + 2] === '>') {
-      return dashes + 3;
-    }
-
-    if (content.startsWith('!>', dashes + 2)) {
-      return dashes + 4;
-    }
-
-    index = dashes + 1;
-  }
-
-  return -1;
 }
 
 /**

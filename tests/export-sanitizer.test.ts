@@ -8,6 +8,7 @@ import {
   sanitizeStoryHtmlForExport,
   stripStoryHtmlForExport
 } from '../api/_lib/services/exportSanitizer';
+import { findCommentEnd } from '../shared/htmlTagScanner';
 import { SaveExportSeam } from '../api/_lib/types/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -142,6 +143,272 @@ assert(
   sanitizeStoryHtmlForExport('<p>Kept.</p><!-- unterminated note <p>dropped</p>') === '<p>Kept.</p>',
   'an unterminated comment should swallow the rest of the document rather than leaking it'
 );
+
+// ==================== COMMENT TERMINATORS ====================
+// A comment does not end only at `-->`. HTML closes one at four places, and the
+// tokenizer knew one of them: everything after `<!-->`, `<!--->` or `--!>` was
+// read as still being inside a comment that never ends, and the scan is
+// abandoned there — so the rest of the story was dropped from *every* export
+// format. `stripStoryHtmlForExport` feeds `ExportService.toPlainText`, which
+// `.txt`, `.pdf`, `.epub` and `.docx` all go through, and
+// `sanitizeStoryHtmlForExport` carries the same reading into `.html`.
+//
+// This is the same first-`>`-style defect as the tag boundaries below — a
+// reader stopping where HTML does not — but it loses the remainder of the
+// document rather than one fragment of one tag.
+const commentTerminatorSamples: Array<{ label: string; html: string }> = [
+  {
+    label: 'abrupt closing of an empty comment',
+    html: '<p>Elena waited.</p><!--><p>Dawn broke.</p>'
+  },
+  {
+    label: 'abrupt closing after the comment-start dash',
+    html: '<p>Elena waited.</p><!---><p>Dawn broke.</p>'
+  },
+  {
+    label: 'comment-end-bang',
+    html: '<p>Elena waited.</p><!-- editor note --!><p>Dawn broke.</p>'
+  },
+  {
+    label: 'ordinary terminator',
+    html: '<p>Elena waited.</p><!-- editor note --><p>Dawn broke.</p>'
+  }
+];
+
+for (const { label, html } of commentTerminatorSamples) {
+  assert(
+    sanitizeStoryHtmlForExport(html) === '<p>Elena waited.</p><p>Dawn broke.</p>',
+    `HTML export should keep the story after a comment closed by ${label}`
+  );
+
+  const stripped = stripStoryHtmlForExport(html);
+  assert(
+    stripped === 'Elena waited.\nDawn broke.',
+    `plain export should keep the story after a comment closed by ${label}`
+  );
+  assert(
+    !stripped.includes('editor note'),
+    `plain export should still drop the body of a comment closed by ${label}`
+  );
+}
+
+// The comment body is markup rather than prose whichever spelling closes it, so
+// nothing inside one may reach a reader — the reason comments are dropped whole
+// in the first place.
+const hiddenScriptComment = '<p>Elena waited.</p><!--<script>stealPrivateStory()</script>--!><p>Dawn broke.</p>';
+assert(
+  !stripStoryHtmlForExport(hiddenScriptComment).includes('stealPrivateStory'),
+  'a comment-end-bang comment should not leak the script body hidden inside it'
+);
+assert(
+  stripStoryHtmlForExport(hiddenScriptComment) === 'Elena waited.\nDawn broke.',
+  'a comment-end-bang comment should drop its body and keep the story on both sides'
+);
+
+/**
+ * Where HTML ends the comment that `value` opens at index 0 — the index just
+ * past it — or `-1` where it reaches the end of the input still inside one.
+ *
+ * Transcribed from the WHATWG tokenizer's comment states rather than from
+ * `findCommentEnd`, so agreement between the two is evidence rather than a
+ * restatement. Written as a plain character-at-a-time walk over the named
+ * states, where the implementation is an `indexOf` scan: the same answer
+ * reached two different ways.
+ *
+ * Reaching the end of the input inside a comment is `-1` here because that is
+ * `eof-in-comment` — a browser emits the comment and shows nothing after it, so
+ * there is no story left for the tokenizer to keep.
+ */
+function referenceCommentEnd(value: string): number {
+  type CommentState =
+    | 'commentStart'
+    | 'commentStartDash'
+    | 'comment'
+    | 'lessThanSign'
+    | 'lessThanSignBang'
+    | 'lessThanSignBangDash'
+    | 'lessThanSignBangDashDash'
+    | 'commentEndDash'
+    | 'commentEnd'
+    | 'commentEndBang';
+
+  let state: CommentState = 'commentStart';
+  // `<!--` is consumed by the markup-declaration-open step before the comment
+  // states begin.
+  let index = 4;
+
+  while (index < value.length) {
+    const character = value[index];
+
+    switch (state) {
+      case 'commentStart':
+        if (character === '-') {
+          state = 'commentStartDash';
+        } else if (character === '>') {
+          return index + 1;
+        } else {
+          state = 'comment';
+          continue;
+        }
+        break;
+      case 'commentStartDash':
+        if (character === '-') {
+          state = 'commentEnd';
+        } else if (character === '>') {
+          return index + 1;
+        } else {
+          state = 'comment';
+          continue;
+        }
+        break;
+      case 'comment':
+        if (character === '<') {
+          state = 'lessThanSign';
+        } else if (character === '-') {
+          state = 'commentEndDash';
+        }
+        break;
+      case 'lessThanSign':
+        if (character === '!') {
+          state = 'lessThanSignBang';
+        } else if (character !== '<') {
+          state = 'comment';
+          continue;
+        }
+        break;
+      case 'lessThanSignBang':
+        if (character === '-') {
+          state = 'lessThanSignBangDash';
+        } else {
+          state = 'comment';
+          continue;
+        }
+        break;
+      case 'lessThanSignBangDash':
+        if (character === '-') {
+          state = 'lessThanSignBangDashDash';
+        } else {
+          state = 'commentEndDash';
+          continue;
+        }
+        break;
+      case 'lessThanSignBangDashDash':
+        // Every character reconsumes in the comment-end state, `>` and a
+        // nested-comment parse error alike.
+        state = 'commentEnd';
+        continue;
+      case 'commentEndDash':
+        if (character === '-') {
+          state = 'commentEnd';
+        } else {
+          state = 'comment';
+          continue;
+        }
+        break;
+      case 'commentEnd':
+        if (character === '>') {
+          return index + 1;
+        }
+
+        if (character === '!') {
+          state = 'commentEndBang';
+        } else if (character !== '-') {
+          state = 'comment';
+          continue;
+        }
+        break;
+      case 'commentEndBang':
+        if (character === '-') {
+          state = 'commentEndDash';
+        } else if (character === '>') {
+          return index + 1;
+        } else {
+          state = 'comment';
+          continue;
+        }
+        break;
+    }
+
+    index += 1;
+  }
+
+  return -1;
+}
+
+/**
+ * Every comment body of length 0..6 over the characters the comment states turn
+ * on, read against that reference.
+ *
+ * `<` and `!` are in the alphabet because HTML has four states for a `<!--`
+ * written *inside* a comment, and none of them are spelled out in the
+ * implementation — the claim being tested is that they need not be, since each
+ * one reconsumes in the comment-end state that its `--` already reaches. An
+ * enumeration is what makes that a measurement rather than an argument.
+ */
+const commentBodyAlphabet = ['-', '!', '>', '<', 'a'];
+let comparedComments = 0;
+let earlierReading = 0;
+
+function assertCommentReading(body: string): void {
+  const html = `<!--${body}`;
+  const expected = referenceCommentEnd(html);
+  const actual = findCommentEnd(html, 0);
+
+  assert(
+    actual === expected,
+    `comment reading should end \`${html}\` where HTML does: expected ${expected}, got ${actual}`
+  );
+
+  comparedComments += 1;
+
+  // The reading this replaces searched for `-->` alone, so anything else was an
+  // unterminated comment to it and the rest of the document went with it. It is
+  // never right where the two differ, which is the direction of the fix.
+  const priorReading = html.indexOf('-->', 4);
+  if (expected !== (priorReading === -1 ? -1 : priorReading + 3)) {
+    earlierReading += 1;
+  }
+}
+
+for (let length = 0; length <= 6; length += 1) {
+  const total = commentBodyAlphabet.length ** length;
+
+  for (let ordinal = 0; ordinal < total; ordinal += 1) {
+    let body = '';
+    let remaining = ordinal;
+
+    for (let position = 0; position < length; position += 1) {
+      body = commentBodyAlphabet[remaining % commentBodyAlphabet.length] + body;
+      remaining = Math.floor(remaining / commentBodyAlphabet.length);
+    }
+
+    assertCommentReading(body);
+  }
+}
+
+assert(comparedComments === 19531, `comment enumeration should cover every body of length 0..6, covered ${comparedComments}`);
+assert(
+  earlierReading > 0,
+  'the enumeration should contain bodies the `-->`-only reading got wrong, or it is not exercising the defect'
+);
+
+// The scan restarts one character past each `--` rather than past the pair, so
+// a body that is mostly dashes is the shape to hold to a time. `indexOf` never
+// re-reads a region twice, since the cursor only moves forward — but that is
+// the property being asserted rather than assumed, given how much of this
+// issue's history is a reader that was quadratic or worse on its own input.
+for (const [label, body] of [
+  ['dashes', '-'.repeat(40_000)],
+  ['dash pairs', '--'.repeat(20_000)],
+  ['comment-end-bangs', '--!'.repeat(20_000)],
+  ['nested comment opens', '<!--'.repeat(20_000)]
+] as const) {
+  const startedAt = Date.now();
+  stripStoryHtmlForExport(`<p>Elena waited.</p><!--${body}<p>Dawn broke.</p>`);
+  const elapsed = Date.now() - startedAt;
+
+  assert(elapsed < 2_000, `${label}: a 40,000-character comment body took ${elapsed}ms — the scan is not linear`);
+}
 
 // ==================== TAG BOUNDARIES ====================
 // A tag ends at the first `>` that is not inside a quoted attribute value.
