@@ -52,6 +52,20 @@ const VOWEL_INITIAL_INFLECTION_SUFFIXES = WORD_INFLECTION_SUFFIXES.filter(suffix
 const DOUBLING_CONSONANT = /[bcdfgklmnprstvz]$/;
 
 /**
+ * What a stem's final consonant is repeated *as*.
+ *
+ * Almost always itself, and `c` is the exception English spells differently: a
+ * stem ending in `c` takes a `k`, so `panic` becomes `panicked` and `mimic`
+ * `mimicking`. Doubling the letter instead produces `panicced`, which is not a
+ * word and therefore matches nothing — the same silent zero the doubling rule
+ * was added to remove, surviving in the one letter it spells another way.
+ *
+ * Written as a map from the final letter rather than as a branch, so a second
+ * exception is a row rather than another `if`.
+ */
+const DOUBLED_CONSONANT_SPELLING: Readonly<Record<string, string>> = { c: 'k' };
+
+/**
  * Every spelling of `word` that is still the same word.
  *
  * A matcher that compares strings needs the forms themselves, where a matcher
@@ -74,6 +88,11 @@ const DOUBLING_CONSONANT = /[bcdfgklmnprstvz]$/;
  * brief, and costs one failed string comparison. What that buys is not having a
  * syllable model in a module that compares words.
  *
+ * That licence covers a form too many, never a form too few, which is why the
+ * `c` exception in `DOUBLED_CONSONANT_SPELLING` is not the same kind of
+ * simplification: `panicced` is inert, but writing it *instead of* `panicked`
+ * loses the only spelling a brief would actually carry.
+ *
  * The word itself is first, so the common case is the first comparison.
  */
 export function inflectedWordForms(word: string): readonly string[] {
@@ -81,7 +100,8 @@ export function inflectedWordForms(word: string): readonly string[] {
   const finalCharacter = word.slice(-1);
 
   if (DOUBLING_CONSONANT.test(word)) {
-    forms.push(...VOWEL_INITIAL_INFLECTION_SUFFIXES.map(suffix => `${word}${finalCharacter}${suffix}`));
+    const repeated = DOUBLED_CONSONANT_SPELLING[finalCharacter] ?? finalCharacter;
+    forms.push(...VOWEL_INITIAL_INFLECTION_SUFFIXES.map(suffix => `${word}${repeated}${suffix}`));
   }
 
   return forms;

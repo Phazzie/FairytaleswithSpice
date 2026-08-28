@@ -221,6 +221,25 @@ assert(
   'doubling does not re-open the `courtesy` collision'
 );
 
+// Codex round 2: a stem ending in `c` repeats as `k`, not as a second `c`.
+// `panicced` is not a word and matches nothing, so the doubling rule's own
+// silent zero survived in the one letter English spells another way.
+for (const [candidate, brief] of [
+  ['Panic', 'She panicked at dawn.'],
+  ['Mimic', 'He was mimicking her voice.'],
+  ['Picnic', 'They picnicked by the reef.']
+] as const) {
+  assert(
+    scoreActivationCandidates([candidate], normalizeActivationText(brief))
+      === ACTIVATION_WHOLE_CANDIDATE_SCORE + 1,
+    `a \`-ck\` inflection still names \`${candidate}\``
+  );
+}
+assert(
+  inflectedWordForms('panic').includes('panicked') && !inflectedWordForms('panic').includes('panicced'),
+  'a final `c` generates the `k` spelling and not the doubled one'
+);
+
 // The residual, pinned rather than left to be discovered. The allowance is
 // "token plus one ending", and a handful of unrelated words are spelled exactly
 // that way -- `cove` + `r` is `cover`, `grove` + `r` is `grover`. These still
