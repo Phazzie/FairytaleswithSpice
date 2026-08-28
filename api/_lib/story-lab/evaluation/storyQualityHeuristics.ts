@@ -3,6 +3,7 @@ import type {
   StoryQualityHeuristicReport
 } from '../contracts';
 import { splitStoryIntoTextBlocks } from '../../../../shared/storyTextBlocks';
+import { WORD_INFLECTION_SUFFIX_PATTERN } from '../../../../shared/wordInflections';
 import { collapseWhitespace } from '../../utils/whitespace';
 import { escapeRegExp } from '../../utils/regexEscape';
 import { wholeWordAlternationPattern, wholeWordPattern } from '../../utils/wholeWord';
@@ -22,7 +23,8 @@ type DimensionDraft = Omit<StoryQualityDimensionScore, 'score'> & {
 };
 
 /**
- * The endings a keyword may pick up and still be the same word.
+ * The endings a keyword may pick up and still be the same word, as the optional
+ * alternation the scans below interpolate after an escaped keyword.
  *
  * `EMOTION_FAMILIES` and `extractSensoryTextures` answer this by listing every
  * inflection they accept, which works because each of them is a fixed lexicon
@@ -30,15 +32,13 @@ type DimensionDraft = Omit<StoryQualityDimensionScore, 'score'> & {
  * continuity scan matches the creature and the theme words a *request* carried,
  * so there is no list to extend — the words arrive from the blueprint.
  *
- * `d` and `ed` are both here because English spells the past tense both ways
- * depending on whether the stem already ends in `e` (`loved`, `burned`), and
- * `r`/`rs` because an agent noun is the form this genre actually writes for
- * several of these stems (`lover`, `lovers` for a `forbidden_love` seed).
- * Endings that build a *different* word are deliberately absent: `less` is what
- * makes `priceless` out of `price` and `bloodless` out of `blood`, and `ly`
- * what makes `secretly` out of `secret`.
+ * The set itself now lives in `shared/wordInflections.ts`, because
+ * `scoreActivationCandidates` needs the same endings and cannot see this file:
+ * it sits in `shared/`, below both trees, and asks the question by string
+ * comparison rather than by pattern. Kept as a local name so the call sites
+ * below read exactly as they did.
  */
-const WORD_INFLECTION_SUFFIXES = String.raw`(?:s|es|d|ed|ing|r|rs)?`;
+const WORD_INFLECTION_SUFFIXES = WORD_INFLECTION_SUFFIX_PATTERN;
 
 export function buildStoryQualityHeuristicReport(input: StoryQualityHeuristicInput): StoryQualityHeuristicReport {
   // Stories reach this scan as the HTML the generator produces: paragraphs are
@@ -680,13 +680,29 @@ function extractAgencyActions(storyContent: string, namedCharacters: readonly st
   for (const entry of agencyLexicon) {
     const termPattern = entry.terms.map(escapeRegExp).join('|');
     const hasNamedAction = lowerNames.some(name => {
-      // The name's own boundaries are stated as lookarounds rather than as
-      // `\b`, for the reason `NAMED_CHARACTER_RUN_PATTERN` is: `\b` is defined
-      // against `[A-Za-z0-9_]`, so `\bмира\b` has no boundary to sit on and
-      // matches nothing. The verbs are the lexicon's own ASCII words and keep
-      // the `\b` they were always written with.
+      // Both boundaries are stated as lookarounds rather than as `\b`, for the
+      // reason `NAMED_CHARACTER_RUN_PATTERN` is: `\b` is defined against
+      // `[A-Za-z0-9_]`, so `\bмира\b` has no boundary to sit on and matches
+      // nothing.
+      //
+      // The verb's closing boundary was left as `\b` on the reasoning that the
+      // lexicon's own words are ASCII, and that is the wrong half to look at: a
+      // boundary is a claim about the character *after* the word. `\b` finds one
+      // between an ASCII letter and an accented one, so `touché` — fencing
+      // banter, and this repository's own standing example of the collision, in
+      // `tests/whole-word-matching.test.ts` — ended the verb `touch` and
+      // credited the named character with having touched something. "The lock
+      // broke and Mira only said touché" scored identically to "…and Mira
+      // touched the seal": same `Agency actions: touched` signal, same 63.
+      // `caressé` and `pressé` land the same way on `press`, and a decomposed
+      // spelling does it without any visible accent at all.
+      //
+      // The class is `[\p{L}\p{M}]` rather than `wholeWordPattern`'s
+      // `[\p{L}\p{N}\p{M}]` to match the name's own lookaheads in this same
+      // pattern; the two are equivalent on this input, because
+      // `normalizeProseForScanning` has already removed every digit.
       const pattern = new RegExp(
-        String.raw`(?<![\p{L}\p{M}])${escapeRegExp(name)}(?![\p{L}\p{M}])(?:\s+[\p{L}\p{M}']+){0,4}\s+(${termPattern})\b`,
+        String.raw`(?<![\p{L}\p{M}])${escapeRegExp(name)}(?![\p{L}\p{M}])(?:\s+[\p{L}\p{M}']+){0,4}\s+(${termPattern})(?![\p{L}\p{M}])`,
         'u'
       );
       return pattern.test(normalized);

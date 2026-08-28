@@ -28,6 +28,7 @@ import {
   normalizeActivationText,
   scoreActivationCandidates
 } from '../shared/continuityActivation';
+import { WORD_INFLECTION_SUFFIXES, WORD_INFLECTION_SUFFIX_PATTERN } from '../shared/wordInflections';
 
 const repoRoot = process.cwd();
 
@@ -107,6 +108,97 @@ assert(
 assert(
   scoreActivationCandidates(['The glass key'], normalizeActivationText('The duke and the ledger.')) === 0,
   'the words every brief contains should not activate anything'
+);
+
+// ==================== The word, not the substring ====================
+// The floor above bounds how short a token may be; it says nothing about where
+// one ends. `includes` was the reading, and these needles are exactly the length
+// that collides: `oath` is inside `loathing`, `pact` inside `impact`, `court`
+// inside `courtesy`. This is the last door of the substring family
+// `extractThemesFromContent`, `extractSpicyLevelFromContent`, and `containsAny`
+// were each moved off, and the one that orders the whole selection — so a
+// collision here does not merely mis-score an item, it puts a thread the brief
+// never named in front of the model and drops the one it did.
+
+assert(
+  scoreActivationCandidates(['Broken oath'], normalizeActivationText('I want more about the loathing between them.')) === 0,
+  '`loathing` does not name the `oath` a thread is called after'
+);
+assert(
+  scoreActivationCandidates(['Blood pact'], normalizeActivationText('Show me the impact of her choice.')) === 0,
+  '`impact` does not name a `pact`'
+);
+assert(
+  scoreActivationCandidates(['The reef court'], normalizeActivationText('She answered with courtesy.')) === 0,
+  '`courtesy` does not name the `court`'
+);
+
+// The whole-candidate score is the same question asked of a phrase, and it was
+// the same `includes`: a phrase has to sit on word boundaries at both ends.
+assert(
+  scoreActivationCandidates(['Oath'], normalizeActivationText('She began loathing him.')) === 0,
+  'a one-word candidate is not named whole by a word that merely contains it'
+);
+// `moonlit` really is in this brief, so the candidate keeps that one point; what
+// it must not keep is the whole-phrase score, which `oathkeeper` used to supply.
+assert(
+  scoreActivationCandidates(['Moonlit oath'], normalizeActivationText('The moonlit oathkeeper waited.')) === 1,
+  'a phrase is not named whole by a longer word its last token merely starts'
+);
+
+// A whole-word matcher with no inflection table passes the "no false positives"
+// half of this repair and quietly costs the scan its real signal, which is the
+// lesson `continuationGuidance` recorded when it made the same move. `oaths` and
+// `pacts` are matches the substring reading got right, and they survive.
+assert(
+  scoreActivationCandidates(['Broken oath'], normalizeActivationText('Honour the oaths she made.')) === 1,
+  'a plural of the token still activates the candidate'
+);
+assert(
+  scoreActivationCandidates(['Blood pact'], normalizeActivationText('Settle the pacts between them.')) === 1,
+  'a plural still activates where the bare substring reading would have'
+);
+assert(
+  scoreActivationCandidates(['A caress'], normalizeActivationText('She caressed the hilt.')) === 1,
+  'a past tense still activates'
+);
+// Only the endings, and only at the end: the brief's word has to begin with the
+// token. This is the half of the substring reading that was sound, and it is
+// what keeps the three collisions above refused while the three matches here
+// are kept -- `courtesy` begins with `court` and continues `esy`, which is not
+// an ending a word keeps its meaning across.
+assert(
+  scoreActivationCandidates(['The reef court'], normalizeActivationText('The courts sat again.')) === 1,
+  '`courts` is the `court`, where `courtesy` is not'
+);
+assert(
+  scoreActivationCandidates(['A name'], normalizeActivationText('She was nameless by then.')) === 0,
+  '`less` is not an ending this set carries, so `nameless` is not the `name`'
+);
+
+// The set is read two ways -- as a list here, and as a regex alternation that
+// `storyQualityHeuristics` interpolates after an escaped keyword. That second
+// reading is only safe while every ending is plain lowercase letters, which is a
+// property of the list rather than of the line that joins it.
+assert(
+  WORD_INFLECTION_SUFFIXES.every(suffix => /^[a-z]+$/.test(suffix)),
+  'every inflection ending is plain lowercase letters, so the alternation needs no escaping'
+);
+assert(
+  WORD_INFLECTION_SUFFIX_PATTERN === '(?:s|es|d|ed|ing|r|rs)?',
+  'the shared alternation is the one storyQualityHeuristics used to spell inline'
+);
+
+// The matches the substring reading got right are still matches: an exact word,
+// a phrase sitting on its own boundaries, and a word at either end of the brief.
+assert(
+  scoreActivationCandidates(['Moonlit oath'], normalizeActivationText('Pay off the moonlit oath.'))
+    === ACTIVATION_WHOLE_CANDIDATE_SCORE + 2,
+  'a phrase the brief states in full still scores whole and by each of its words'
+);
+assert(
+  scoreActivationCandidates(['Oath'], normalizeActivationText('oath')) === ACTIVATION_WHOLE_CANDIDATE_SCORE + 1,
+  'a brief that is nothing but the candidate still activates it at both ends of the string'
 );
 
 // ==================== The thread label ====================

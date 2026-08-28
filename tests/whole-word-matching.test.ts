@@ -16,7 +16,8 @@ import {
   analyzeEmotionalTone,
   extractPlotThreads,
   extractSpicyLevelFromContent,
-  extractThemesFromContent
+  extractThemesFromContent,
+  stripSpeakerTagsForDisplay
 } from '../api/_lib/services/storyContentAnalysis';
 import { previewStoryLabContinuationGuidance } from '../api/_lib/story-lab/continuationGuidance';
 import { buildStoryQualityHeuristicReport } from '../api/_lib/story-lab/evaluation/storyQualityHeuristics';
@@ -176,8 +177,14 @@ assert(
 );
 
 // ==================== storyQualityHeuristics ====================
-// This scan already read the boundary this way; the assertion is here so the
-// one that was right cannot regress onto `\b` with the three that were not.
+// The continuity scan already read the boundary this way; the assertion is here
+// so the one that was right cannot regress onto `\b` with the three that were
+// not.
+//
+// "This module reads it correctly" was too broad a claim, and the agency
+// assertions below are what it missed: the same file's `extractAgencyActions`
+// was still ending its verb on `\b`, one lookaround away from the name it had
+// just bounded properly.
 
 const heuristicReport = buildStoryQualityHeuristicReport({
   storyContent: '<p>She switched off the lamp and climbed the stair.</p>',
@@ -189,5 +196,59 @@ assert(
     ?.signals.some(signal => signal.includes('Creature appears')),
   '`switched` does not report `Creature appears: witch`.'
 );
+
+// ==================== extractAgencyActions ====================
+// `Agency actions` is advisory, but it is also worth five points a piece in
+// `character_consistency`, so a verb credited from inside another word reports a
+// character as having acted and scores them for it. The name is written
+// mid-sentence in each case because a sentence-initial capital is explained by
+// its position rather than by being a name.
+
+function agencySignals(storyContent: string): string[] {
+  return buildStoryQualityHeuristicReport({
+    storyContent,
+    configuration: { creature: 'vampire', themes: [], spicyLevel: 3, wordCount: 900 }
+  }).dimensions
+    .find(dimension => dimension.id === 'character_consistency')
+    ?.signals.filter(signal => signal.startsWith('Agency actions')) ?? [];
+}
+
+assert(
+  agencySignals('<p>The lock broke and Mira only said touché.</p>').length === 0,
+  '`touché` is not the verb `touch`, so banter is not an agency action.'
+);
+assert(
+  agencySignals('<p>The lock broke and Mira touched the seal.</p>').join() === 'Agency actions: touched',
+  'A real `touched` is still credited to the named character.'
+);
+// The two scored identically before the boundary was fixed -- same signal, same
+// 63 -- which is the whole of the defect: the dimension could not tell a
+// character who acted from one who made a joke.
+assert(
+  agencySignals('<p>The lock broke and Mira only said pressé.</p>').length === 0,
+  'A decomposed `pressé` is not the verb `press`.'
+);
+
+// ==================== narrative shift openers ====================
+// `stripSpeakerTagsForDisplay` starts a new paragraph on a short line that opens
+// with one of these words. `\b` found a boundary between the ASCII letters of
+// `the` and the combining acute after them, so the same word split one way
+// precomposed and another way decomposed -- a paragraph break that depended on
+// how the model happened to encode one character.
+
+function paragraphCount(line: string): number {
+  return stripSpeakerTagsForDisplay(`She turned the key.\n${line}\nHe followed her in.`)
+    .split(/\n\s*\n/).length;
+}
+
+assert(
+  paragraphCount('Théatre lights died.') === paragraphCount('Théatre lights died.'),
+  'A decomposed `Théatre` opens no beat that its precomposed spelling does not.'
+);
+assert(
+  paragraphCount('Théatre lights died.') === 1,
+  '`Théatre` is not the opener `the`.'
+);
+assert(paragraphCount('Then the lights died.') === 2, 'A real opener still starts a beat.');
 
 console.log('Whole-word matching tests passed');
