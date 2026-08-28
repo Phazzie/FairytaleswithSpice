@@ -259,10 +259,44 @@ function isFieldNameChar(char: string): boolean {
  * `of`, `led`, `must`, `announced` and `whispered` qualify under neither.
  */
 function isCredentialShapedBearerToken(token: string): boolean {
-  if (Array.from(token).some(char => !isAsciiLetter(char))) {
+  if (!isWordLikeRun(token)) {
     return true;
   }
   return token.length >= BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH;
+}
+
+/**
+ * Could this run be an English word rather than a credential?
+ *
+ * Letters, joined by interior single hyphens. The hyphen is here because
+ * `re-entered`, `self-appointed`, `half-turned` and `well-known` are ordinary
+ * words that follow the noun `bearer` in prose, and reading every non-letter as
+ * proof of a credential destroyed all of them -- the same defect this function
+ * exists to avoid, in a class the earlier rounds had not looked at.
+ *
+ * Everything else still qualifies as a credential at any length, and that is
+ * where the work happens: a digit, `_`, `.`, `+`, `/`, `=`, a leading or
+ * trailing hyphen, or two hyphens in a row. Every provider token this app holds
+ * fails this test and is caught regardless of length -- `xai-secret-key-123`
+ * and `a1b2c3` on their digits, `sk_live_…` on its underscore, a JWT on its
+ * dots.
+ */
+function isWordLikeRun(token: string): boolean {
+  let previousWasHyphen = true; // a leading hyphen is not a word
+  for (const char of token) {
+    if (char === '-') {
+      if (previousWasHyphen) {
+        return false;
+      }
+      previousWasHyphen = true;
+      continue;
+    }
+    if (!isAsciiLetter(char)) {
+      return false;
+    }
+    previousWasHyphen = false;
+  }
+  return !previousWasHyphen; // a trailing hyphen is not a word either
 }
 
 function redactApiKeys(value: string): string {

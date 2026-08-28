@@ -131,14 +131,45 @@ error message carrying a JSON payload already escaped once; backslashes are now
 skipped with the quotes they escape, which cannot loosen anything on its own
 because a field name and a separator are both still required.
 
-**Mutation result.** Ten applied, ten killed after round 3, including one for
+**Review round 4 found one more prose class, and two the owner should rule on.**
+Codex: a hyphen is ordinary English, and reading every non-letter as proof of a
+credential destroyed `the bearer re-entered the chamber`, `self-appointed`,
+`half-turned`, `well-known`. That is this entry's own defect in a class none of
+the earlier rounds had looked at, so it is fixed: a run of letters joined by
+interior single hyphens is word-shaped and takes the alphabetic floor. A
+leading, trailing or doubled hyphen is not, nor is a digit, `_`, `.`, `+`, `/`
+or `=` — so every provider token still fails the word test and is caught at any
+length (`xai-secret-key-123` and `a1b2c3` on digits, `sk_live_…` on its
+underscore, a JWT on its dots), all asserted.
+
+**The other two are not being patched, and that is a deliberate stop.** Codex
+also asked for `Invalid Authorization request header:` (a longer descriptive
+label than round 3's `header`) and for `{"authorization":["Bearer a","Bearer
+b"]}` (a stringified array). Both are the same class as round 3: the walk cannot
+reach the field name through some new arrangement of natural-language label or
+serialization. That space is unbounded — each round has produced a longer
+example — and four rounds of enumerating it is the design telling us something.
+
+Two things bound the exposure, and they are why stopping is defensible rather
+than lazy. The credential in both examples is `abcdef`: a short purely
+alphabetic run, which #315's contract makes unconfigurable and which no provider
+issues, so these are reachable only with a credential shape this app cannot
+produce — the same bound as the accepted residual, not a new hole. And the
+*structured* form of the array case never reaches this function at all:
+`SENSITIVE_KEY_PATTERNS` in `logger.ts` blanks an `authorization` key wholesale,
+array value included, before any text redaction runs. Only an
+already-stringified payload gets here.
+
+**Mutation result.** Fourteen applied, fourteen killed after round 4, including one for
 each finding above: dropping the descriptive-label suffix, and no longer
 skipping escape backslashes. The two mutants that survived round 2 — widening
 the separator set and the quote-skip set — are now killed, because the label
 cases give both something to bite on.
 
 Validation: `npm run test:all` exits 0, `scripts/recovery/preflight.sh
---skip-status` exits 0. **Counterfactual mutations: 10 applied, 10 killed** —
+--skip-status` exits 0. **Counterfactual mutations: 14 applied, 14 killed** —
+reverting to "any non-letter is a credential", allowing leading, trailing or
+doubled hyphens as a word shape, letting digits count as word characters,
 dropping either arm, dropping the field-name gate, admitting a prose label
 (`title`, `role`) as a credential field, making the label lookback unbounded,
 dropping the `header` suffix, no longer skipping escape backslashes, reverting
