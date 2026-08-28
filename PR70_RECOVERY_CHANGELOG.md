@@ -97,15 +97,38 @@ Codex's third premise was checked and does not hold: `warnAuthVerificationFailur
 logs only `errorName`, never the Clerk token, and a Clerk session token is a JWT
 that the non-letter clause catches regardless.
 
+**A fourth finding, on the self-review commit, was the same mistake a third
+time.** Codex: a separator is not a header. `Title: Bearer of the seal`,
+`Chapter 3: Bearer of the Oath` and `role=bearer of bad news` each put `:` or
+`=` immediately before the noun — a story title, a chapter heading this app
+generates, and ordinary structured prose. Having already narrowed the set once
+for HTML and dialogue, I had still left the arm meaning "a punctuation mark
+preceded this".
+
+It now means "a header carried this": an authorization field name
+(`authorization`, `x-api-key`, `token`, `access_token`, …), then `:` or `=`,
+then the scheme. Requiring the name is also what lets quotes be skipped again,
+so `{"authorization": "Bearer abcdef"}` is covered — recovering the JSON shape
+that the earlier narrowing had dropped — while `He said: "Bearer of the seal"`
+reaches the label `said` and is left alone.
+
+**Mutation result worth recording rather than padding.** Ten applied, eight
+killed. The two survivors are the separator set and the quote-skip set:
+widening either now changes behavior only on serializations like `auth, Bearer
+abcdef`, because the field-name gate already refuses everything else. Those two
+guards are no longer load-bearing for prose protection — the gate is — and the
+suite deliberately does not pin an obscure case it is not clear should redact,
+rather than adding an assertion to kill an unimportant mutant.
+
 Validation: `npm run test:all` exits 0, `scripts/recovery/preflight.sh
---skip-status` exits 0. **Counterfactual mutations: 9 applied, 9 killed** —
-dropping either arm, admitting sentence punctuation as an introducer, admitting
-the HTML/dialogue/bracket punctuation the self-review removed, reverting the
-alphabetic floor to eight, raising it above the configured-key minimum, letting
-a digit count as a word character, treating start-of-string as an introducer,
-and scanning back past punctuation to find a distant introducer. None is
-committed. The equality of the two floors is asserted directly, so neither can
-be moved into a gap without the suite noticing.
+--skip-status` exits 0. **Counterfactual mutations: 10 applied, 8 killed**, the
+two survivors being the ones described above — dropping either arm, dropping the
+field-name gate, admitting a prose label (`title`, `role`) as a credential
+field, reverting the alphabetic floor to eight, raising it above the
+configured-key minimum, letting a digit count as a word character, and treating
+start-of-string as an introducer. None is committed. The equality of the two
+floors is asserted directly, so neither can be moved into a gap without the
+suite noticing.
 
 Not claimed: no evidence this was corrupting production logs; it is found by
 reading. The old behavior over-redacted, which is the safe direction — this

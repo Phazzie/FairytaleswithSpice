@@ -128,24 +128,68 @@ const BEARER_CREDENTIAL_INTRODUCERS = new Set([':', '=']);
 const BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH = 16;
 
 /**
- * Is the scheme keyword introduced the way a header introduces it?
+ * The field names that make a `:` or `=` an authorization header rather than a
+ * label. Compared case-insensitively against the word before the separator.
  *
- * Whitespace between the introducer and the keyword belongs to the header, not
- * to either side of it, so it is skipped: `Authorization:  Bearer x` reads the
- * same as `Authorization:Bearer x`. The start of the string is *not* an
- * introducer -- `Bearer of the seal walked in` is a sentence that happens to
- * open on the word.
+ * A separator alone is not enough, and assuming it was is the second way this
+ * function got the same class of thing wrong: `Title: Bearer of the seal` and
+ * `Chapter 3: Bearer of the Oath` are a story title and a chapter heading that
+ * this app generates, and `role=bearer of bad news` is ordinary structured
+ * prose. Each put a `:` or `=` immediately before the noun. Requiring the label
+ * as well as the separator is what makes this arm mean "a header carried this"
+ * instead of "a punctuation mark preceded this".
+ */
+const BEARER_CREDENTIAL_FIELD_NAMES = new Set([
+  'authorization', 'auth', 'proxy-authorization',
+  'apikey', 'api-key', 'api_key', 'x-api-key', 'xapikey',
+  'token', 'accesstoken', 'access-token', 'access_token',
+  'idtoken', 'id-token', 'id_token', 'sessiontoken', 'session-token', 'session_token',
+  'credential', 'credentials'
+]);
+
+/**
+ * Is the scheme keyword introduced the way a header introduces it -- an
+ * authorization field name, then `:` or `=`, then the scheme?
  *
- * Only the character immediately before the keyword is consulted, so a colon
- * earlier in the line does not reach it: `context: The bearer of bad news` has
- * `The` in front of the keyword and is prose.
+ * Whitespace and quotes between the parts belong to the serialization rather
+ * than to either side, so they are skipped: `Authorization:  Bearer x`,
+ * `Authorization=Bearer x` and `{"authorization": "Bearer x"}` all read alike.
+ * Skipping quotes is safe *because* the field name is checked -- `He said:
+ * "Bearer of the seal"` reaches the label `said` and is left alone.
+ *
+ * The start of the string is not an introducer: `Bearer of the seal walked in`
+ * is a sentence that happens to open on the word. Neither is a separator
+ * further back than the label, so `context: The bearer of bad news` is prose.
  */
 function isIntroducedAsCredential(value: string, index: number): boolean {
-  let cursor = index - 1;
-  while (cursor >= 0 && isWhitespace(value[cursor] ?? '')) {
+  let cursor = skipBackOverSeparatorPadding(value, index - 1);
+  if (cursor < 0 || !BEARER_CREDENTIAL_INTRODUCERS.has(value[cursor] ?? '')) {
+    return false;
+  }
+
+  cursor = skipBackOverSeparatorPadding(value, cursor - 1);
+  const fieldNameEnd = cursor + 1;
+  while (cursor >= 0 && isFieldNameChar(value[cursor] ?? '')) {
     cursor -= 1;
   }
-  return cursor >= 0 && BEARER_CREDENTIAL_INTRODUCERS.has(value[cursor] ?? '');
+
+  return BEARER_CREDENTIAL_FIELD_NAMES.has(value.slice(cursor + 1, fieldNameEnd).toLowerCase());
+}
+
+function skipBackOverSeparatorPadding(value: string, from: number): number {
+  let cursor = from;
+  while (cursor >= 0 && (isWhitespace(value[cursor] ?? '') || isQuote(value[cursor] ?? ''))) {
+    cursor -= 1;
+  }
+  return cursor;
+}
+
+function isQuote(char: string): boolean {
+  return char === '"' || char === '\'' || char === '`';
+}
+
+function isFieldNameChar(char: string): boolean {
+  return isAsciiLetterOrDigit(char) || char === '-' || char === '_';
 }
 
 /**

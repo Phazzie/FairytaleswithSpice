@@ -168,7 +168,16 @@ for (const sentence of [
   'the bearer delivered the news',
   'the bearer whispered a warning',
   'the bearer returned at dawn',
-  'the bearer answered plainly'
+  'the bearer answered plainly',
+  // A separator is not a header. These are a story title, a chapter heading
+  // this app generates, and ordinary structured prose -- each puts `:` or `=`
+  // immediately before the noun, and each was destroyed until the field name
+  // was required as well as the separator.
+  'Title: Bearer of the seal',
+  'Chapter 3: Bearer of the Oath',
+  'role=bearer of bad news',
+  'He said: "Bearer of the seal"',
+  'note: bearer of bad news'
 ]) {
   const preserved = redactSensitiveLogData({ note: sentence }) as Record<string, string>;
   assert(
@@ -186,6 +195,9 @@ for (const line of [
   'Authorization: Bearer abcdef',
   'Authorization:Bearer abc',
   'Authorization=Bearer abcdef',
+  '{"authorization": "Bearer abcdef"}',
+  'x-api-key: Bearer abcdef',
+  'AUTHORIZATION:Bearer abcdef',
   'Bearer a1b2c3',
   'Bearer k+y/z=',
   'Bearer xai-secret-key-123',
