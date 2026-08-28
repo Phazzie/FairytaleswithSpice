@@ -144,7 +144,7 @@ const TAG_NAME_CHARACTER = String.raw`[^\s/<>"'=]`;
  * An attribute's value: quoted, where it may contain the `>` this whole change
  * is about, or bare, where it may not contain anything that would end the tag.
  */
-const ATTRIBUTE_VALUE = String.raw`"[^"<]*"|'[^'<]*'|${TAG_NAME_CHARACTER}+`;
+const ATTRIBUTE_VALUE = `"[^"<]*"|'[^'<]*'|${TAG_NAME_CHARACTER}+`;
 
 const WELL_FORMED_TAG_ATTRIBUTES =
   String.raw`(?:\s+${TAG_NAME_CHARACTER}+(?:=(?:${ATTRIBUTE_VALUE}))?)*\s*/?`;
