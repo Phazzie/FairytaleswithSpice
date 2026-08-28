@@ -183,7 +183,7 @@ export function sanitizeStoryHtmlForExport(html: string): string {
   // single break a reader sees rather than one per tag.
   let blockBreakPending = false;
 
-  for (const token of tokenizeHtml(removeNonStoryHtml(html))) {
+  for (const token of removeNonStoryHtml(html)) {
     if (!token) {
       continue;
     }
@@ -306,7 +306,7 @@ function escapeStoryText(value: string): string {
 export function stripStoryHtmlForExport(html: string): string {
   let text = '';
 
-  for (const token of tokenizeHtml(removeNonStoryHtml(html))) {
+  for (const token of removeNonStoryHtml(html)) {
     if (token.startsWith('<') && token.endsWith('>')) {
       const parsed = parseHtmlTag(token);
       if (!parsed) {
@@ -496,15 +496,31 @@ function replaceXmlForbiddenCharacters(value: string): string {
   return sanitized;
 }
 
-function removeNonStoryHtml(html: string): string {
-  let output = '';
+/**
+ * The tokens of `html` that are part of the story, with the dropped elements and
+ * their contents removed.
+ *
+ * Returns the surviving **tokens** rather than a rejoined string, and the
+ * callers iterate them directly. Rejoining and re-tokenizing is not a no-op: the
+ * survivors of a fallback reading can sit next to each other in a way the
+ * original markup never did, and the second pass then reads that seam as
+ * markup. `<p x=">"<> Visible > After.</p>` tokenizes to `<p x=">`, `"`, `<>`
+ * and prose; drop the `<>` and the rejoined string is `<p x=">" Visible >
+ * After.</p>`, in which the quote and the sentence now look like an attribute
+ * list — so the sentence is read as part of a tag and never reaches the reader.
+ *
+ * Handing the tokens straight through means text a recovery pass preserved
+ * cannot be re-read as markup on a second look.
+ */
+function removeNonStoryHtml(html: string): string[] {
+  const kept: string[] = [];
   let skippedBlockTag: string | null = null;
   let skippedBlockDepth = 0;
 
   for (const token of tokenizeHtml(html)) {
     if (!token.startsWith('<') || !token.endsWith('>')) {
       if (!skippedBlockTag) {
-        output += token;
+        kept.push(token);
       }
       continue;
     }
@@ -538,10 +554,10 @@ function removeNonStoryHtml(html: string): string {
       continue;
     }
 
-    output += token;
+    kept.push(token);
   }
 
-  return output;
+  return kept;
 }
 
 function sanitizeStoryTag(token: string): string {
@@ -893,12 +909,19 @@ function parseHtmlTag(token: string): ParsedHtmlTag | null {
   }
 
   const tagNameStart = index;
-  while (isTagNameCharacter(token[index])) {
-    index += 1;
+  if (!isTagNameCharacter(token[index])) {
+    return null;
   }
 
-  if (index === tagNameStart) {
-    return null;
+  // The name has to *begin* with a tag-name character, but it ends where HTML
+  // ends it — at whitespace, `/` or `>` — not at the first character outside
+  // that set. Truncating instead would classify `<script!>` as a `script`, and
+  // every list this name is matched against would then treat an ordinary unknown
+  // element as a dangerous container: `<script!/>Visible.` would take the whole
+  // document into block-skipping. `findAttributesStart` reads the name the same
+  // way, and the two have to agree about where it stops.
+  while (index < token.length && !isWhitespace(token[index]) && token[index] !== '/' && token[index] !== '>') {
+    index += 1;
   }
 
   return {

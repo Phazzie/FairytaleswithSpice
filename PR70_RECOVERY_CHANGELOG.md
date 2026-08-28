@@ -81,6 +81,22 @@ Fifth review round (Codex, on `d4b1d94`) — three P2s, all real, all the same c
 - The oracle is not added to `test:all`: it needs Playwright and a browser binary, and that suite is hermetic. It is a validation instrument, recorded here with its method so it can be re-run rather than re-invented. (It also needed `executablePath` pointed at the preinstalled Chromium, since the repo pins a newer Playwright than the image carries.)
 - Counterfactual table now **eighteen mutations, all eighteen failing.**
 
+Sixth review round (Codex, on `a0c42a8`) — two P2s, both real, and both showing the *oracle* had a gap of its own:
+
+- **A name that merely starts with a dangerous one is not that element.** `parseHtmlTag` truncated the tag name at the first character outside the tag-name set, so `<script!/>` was classified as `script` and block-skipping deleted the whole document. HTML ends a tag name at whitespace, `/` or `>`, which makes `script!` an ordinary unknown element whose contents are story text. `findAttributesStart` already read the name that way after the previous round; the two now agree, which is what the finding was really about.
+- **Dropping an element must not let its neighbours become markup.** `removeNonStoryHtml` rejoined the surviving tokens into a string that the caller then tokenized *again*. That second pass can read a seam the original markup never had: `<p x=">"<>` tokenizes to `<p x=">`, `"`, `<>`, and dropping the `<>` leaves `<p x=">" Visible > After.`, in which the quote and the sentence look like an attribute list. It now returns the surviving **tokens** and the callers consume them directly, so a recovery pass cannot have its output re-read as markup. That removes the class rather than the case.
+- **Why the browser oracle missed both, which is the part worth keeping.** Its corpus only ever emitted `<p` — no dangerous names, no near-miss names, and no markup that survives `removeNonStoryHtml` differently from how it went in. An oracle is only as good as the inputs put through it, and mine had been built to answer the previous round's question. Extended to mix safe, dangerous and near-miss tag names.
+- **Two further measurement errors, one of them a repeat.** Ground truth was `textContent`, which includes `<script>` and `<style>` bodies no reader ever sees — so the sanitizer's correct removals scored as prose drops (2,517 of them, all spurious). Switched to `innerText` on a rendered node. And the harness again placed the secret *after* a tag that turned out to be self-closing, exactly the trap identified two rounds earlier; the fix is to let the browser arbitrate what is contained rather than the generator's assumption about where it put the text.
+- Corrected numbers, 6,000 inputs against Chromium's `innerText`:
+
+  | | `main` | this branch |
+  | --- | --- | --- |
+  | drops a prose word the browser shows (2,815 inputs with no dangerous container) | 121 | **0** |
+  | exports text the browser hides | 1,483 | **71** |
+  | of those, not also hidden by `main` | — | 2 |
+
+- The 2 are the documented policy, not a containment failure: minimised, they are `<g -="><math=>stealPrivateStory`, where an unterminated quote makes the browser swallow everything and `main` block-skips only because its truncation misreads `math=` as `math`. By the browser's own reading `math=` is not a math element, so the text is not inside a dangerous container by anyone's account — it is text an unterminated quote would otherwise eat, which this module deliberately keeps. Changing it means matching the browser on unterminated quotes, which is precisely the trade Sourcery's open finding is about and is deferred to #296.
+
 ## 2026-08-28 UTC - Story Lab Multi-Chapter Batch Generation Vs. The 60-Second Function Budget
 
 Actions:

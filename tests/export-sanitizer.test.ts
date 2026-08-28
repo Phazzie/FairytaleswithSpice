@@ -397,6 +397,33 @@ assert(
   'an unclosed self-closing dangerous container takes the rest with it, as a browser does'
 );
 
+// A name that merely *starts* with a dangerous one is not that element. HTML
+// ends a tag name at whitespace, `/` or `>`, so `script!` is an ordinary unknown
+// element and its contents are story text. Classifying it as `script` sent the
+// whole document into block-skipping — the costliest possible reading of a
+// harmless tag.
+const nearMissName = '<script!/>Visible.<p>After.</p>';
+assert(
+  stripStoryHtmlForExport(nearMissName).includes('Visible.')
+    && stripStoryHtmlForExport(nearMissName).includes('After.'),
+  `a tag name that only starts with a dangerous name is not dangerous (got ${JSON.stringify(stripStoryHtmlForExport(nearMissName))})`
+);
+assert(
+  !stripStoryHtmlForExport('<script/>secret()</script><p>Story.</p>').includes('secret'),
+  'the exact dangerous name still takes its contents with it'
+);
+
+// Dropping an element must not let its neighbours become markup. The survivors
+// are handed on as tokens rather than rejoined into a string and read again:
+// `<p x=">"<>` tokenizes to `<p x=">`, `"`, `<>`, and dropping the `<>` would
+// otherwise leave `<p x=">" Visible > After.` — in which the quote and the
+// sentence look like an attribute list, so the sentence never reaches the reader.
+const reconstructed = '<p x=">"<> Visible > After.</p>';
+assert(
+  stripStoryHtmlForExport(reconstructed).includes('Visible'),
+  `a recovery pass must not turn visible text into attributes (got ${JSON.stringify(stripStoryHtmlForExport(reconstructed))})`
+);
+
 // The other side of that rule, and why it is a list rather than a blanket:
 // foreign content really does self-close, so `<svg .../>` must not start a skip
 // that swallows the rest of the story. This is the silent half of the headline
