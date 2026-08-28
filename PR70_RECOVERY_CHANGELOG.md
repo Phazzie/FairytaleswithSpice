@@ -103,6 +103,17 @@ Seventh review round (Codex, on `f5a9c65`) — one P2, real, and a regression fr
 - The list is deliberate rather than a blanket: `<svg>a<svg>b</svg>c</svg>` really is two elements, and treating it as one leaks the outer element's tail. Both directions are pinned.
 - Third finding in this PR of the form "the security fix removed an accident `main` was relying on". The first two were the `>` and the `/`; this is the third face of the same change, and it is the reason a containment fix needs its own adversarial pass rather than a spot check.
 
+Eighth review round (Codex, on `b385ec7`) — two P2s, both real, both fixed, and **the round where I stopped expanding this PR**:
+
+- **`form` does not nest either.** HTML ignores a `<form>` start tag while a form is open, so `<form>hidden<form/></form>` never opens a second element and the single close ends the outer one. Added to `NON_NESTING_DROPPED_TAGS`. This is a direct consequence of the previous round's fix: that list existed but `form` was not on it.
+- **A start-tag name begins immediately after the `<`.** `findAttributesStart` skipped whitespace, so `< p x=">…` was read as a paragraph with an attribute list and its quote paired with one in the sentence. HTML has no whitespace there — `< p>` is literal text a reader typed — so the skip is gone and such markup falls back to the older reading.
+
+**Why this is the last round of malformed-markup fixes here.** Fifteen findings across eight rounds, and the shape is now unmistakable: each fix to the reader's malformed-markup behaviour draws another divergence from a browser, and several rounds were caused by the fix before them (round 7 by round 2's `closesItself`; this round's `form` case by round 7's list). That is the non-converging pattern, and it is being driven by an ambition the module explicitly disclaims — its own non-claim is that **malformed markup is not claimed to match a browser**.
+
+What is actually settled is the thing this slice set out to do, and it is measured rather than argued: on well-formed markup the reader is exactly Chromium (4,000 of 4,000), it drops no prose word a browser shows across 8,000 compared inputs, and it leaks dangerous content 20× less often than `main`. Every further finding has been about adversarial markup no generator produces, where the module's stated policy is to keep the reader's words rather than to imitate a parser.
+
+So the remaining divergences belong with the other open malformed-markup decisions in #296 — which already holds Sourcery's declined finding and the `<`-in-value limit — rather than in an indefinitely growing PR. Recorded there rather than fixed here.
+
 ## 2026-08-28 UTC - Story Lab Multi-Chapter Batch Generation Vs. The 60-Second Function Budget
 
 Actions:

@@ -286,6 +286,9 @@ const notAnAttributeValue: Array<{ label: string; html: string }> = [
   // A construct `parseHtmlTag` rejects has no attribute list to walk. Both of
   // these reach `a` as an attribute name and then swallow the sentence.
   { label: 'a `<` with no tag name', html: '< =a="b>Visible text">After.' },
+  // A start-tag name begins *immediately* after the `<`. HTML has no whitespace
+  // there, so `< p …>` is a `<` the reader typed, not a paragraph.
+  { label: 'whitespace between `<` and the name', html: '< p x=">Visible text">After.' },
   { label: 'a declaration rather than a tag', html: '<!x a="b>Visible text">After.' },
   // A tag name begins with a tag-name character but does not end at the first
   // one outside that set: HTML's tag-name state runs to whitespace, `/` or `>`,
@@ -411,6 +414,14 @@ for (const container of ['script', 'style']) {
   );
   assert(!text.includes('const t'), `the <${container}> body itself is still dropped`);
 }
+
+// `form` is on the same list for a different reason with the same effect: HTML
+// ignores a `<form>` start tag while a form is already open, so a second one
+// never opens an element for the single close to leave behind.
+assert(
+  stripStoryHtmlForExport('<form>hidden<form/></form><p>Story.</p>') === 'Story.',
+  'a nested form opener does not deepen the skip'
+);
 
 // The other side, and why that is a list rather than a blanket: containers that
 // really do nest must still be counted, or the inner close ends the outer skip

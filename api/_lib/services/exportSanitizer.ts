@@ -609,12 +609,16 @@ const SELF_CLOSING_DROPPED_TAGS = new Set(['svg', 'math', 'embed']);
  * and the closing tag then only gets it back to one — so
  * `<script>const t = "<script/>";</script>` swallows the rest of the story.
  *
+ * `form` is here for a different reason with the same effect: HTML ignores a
+ * `<form>` start tag while a form is open, so a second one never opens an
+ * element to close.
+ *
  * The other dropped containers really can nest — `<svg><svg></svg></svg>` is two
  * elements — which is why this is a list and not a blanket rule. Only the
  * *opening* side is affected: `</script>` inside a string does end a script
  * element, in this reader as in a browser.
  */
-const NON_NESTING_DROPPED_TAGS = new Set(['script', 'style', 'textarea', 'title']);
+const NON_NESTING_DROPPED_TAGS = new Set(['script', 'style', 'textarea', 'title', 'form']);
 
 /** Whether this tag's trailing `/` actually closes it. */
 function closesItself(parsed: ParsedHtmlTag): boolean {
@@ -874,15 +878,13 @@ function findAttributeValueEnd(value: string, quoteStart: number): number {
 function findAttributesStart(value: string, tagStart: number): number {
   let index = tagStart + 1;
 
-  while (isWhitespace(value[index])) {
-    index += 1;
-  }
-
+  // A start-tag name begins *immediately* after the `<`, and a closing one
+  // immediately after the `/`. HTML has no whitespace there — `< p>` is literal
+  // text a reader typed, not a paragraph — so skipping over it would let the
+  // widened scan read an attribute list out of prose and pair its first quote
+  // with one in the sentence.
   if (value[index] === '/') {
     index += 1;
-    while (isWhitespace(value[index])) {
-      index += 1;
-    }
   }
 
   if (!isTagNameCharacter(value[index])) {
