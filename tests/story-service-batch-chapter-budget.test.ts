@@ -219,10 +219,87 @@ async function assertBatchChapterTimeoutIsCappedByRemainingBudget(): Promise<voi
   );
 }
 
+/**
+ * The batch-chapter guard above only ever ran for chapters after the first —
+ * the first chapter's own primary call was handed `getXaiPrimaryTimeoutMs()`
+ * unconditionally, with no check that the invocation actually had that much
+ * window left. A deployment configuring a smaller function budget (or any
+ * meaningful delay before this call, such as validation or trope selection)
+ * left that first call exposed to the exact platform SIGKILL this whole fix
+ * exists to prevent. Below the floor needed to attempt any call at all, the
+ * request should refuse cleanly rather than ever reaching the provider with a
+ * timeout of `0` — which axios reads as "no timeout" rather than "expired".
+ */
+async function assertFirstChapterRefusesWhenBudgetIsAlreadyExhausted(): Promise<void> {
+  const originalGenerateText = XaiTextClient.prototype.generateText;
+  let calls = 0;
+
+  await withEnv({
+    XAI_API_KEY: 'test-xai-key',
+    // Leaves max(0, 4000 - 0 - 5000) = 0ms of budget: below the floor needed
+    // to attempt even the first chapter.
+    STORY_LAB_FUNCTION_BUDGET_MS: '4000',
+    FUNCTION_BUDGET_MS: undefined
+  }, async () => {
+    XaiTextClient.prototype.generateText = async function (): Promise<XaiTextResponse> {
+      calls += 1;
+      return { text: 'should never be reached', model: 'grok-4.3', latencyMs: 0 };
+    };
+
+    try {
+      const result = await new StoryService().generateStory(storyInput(1));
+
+      assert.equal(calls, 0, 'the provider should never be called once the request budget is already gone');
+      assert.equal(result.success, false, 'a request with no safe window left should fail cleanly');
+      assert.equal(result.data, undefined, 'a refused request should carry no story data');
+    } finally {
+      XaiTextClient.prototype.generateText = originalGenerateText;
+    }
+  });
+}
+
+/**
+ * Between the floor and the full default, the first chapter's timeout should
+ * track the actual remaining budget rather than always spending the static
+ * 40-second default the invocation cannot necessarily afford.
+ */
+async function assertFirstChapterTimeoutIsCappedByTightBudget(): Promise<void> {
+  const originalGenerateText = XaiTextClient.prototype.generateText;
+  const capturedTimeouts: number[] = [];
+
+  await withEnv({
+    XAI_API_KEY: 'test-xai-key',
+    // Leaves max(0, 20000 - 0 - 5000) = 15000ms: above the floor, but well
+    // below the 40000ms default primary timeout.
+    STORY_LAB_FUNCTION_BUDGET_MS: '20000',
+    FUNCTION_BUDGET_MS: undefined
+  }, async () => {
+    XaiTextClient.prototype.generateText = async function (request: XaiTextRequest): Promise<XaiTextResponse> {
+      capturedTimeouts.push(request.timeoutMs);
+      return { text: 'Chapter 1\n\nSomething happened.', model: 'grok-4.3', latencyMs: 0 };
+    };
+
+    try {
+      const result = await new StoryService().generateStory(storyInput(1));
+
+      assert.equal(result.success, true, 'a tight but sufficient budget should still let the first chapter run');
+      assert.equal(capturedTimeouts.length, 1, 'the first chapter should be attempted exactly once');
+      assert(
+        capturedTimeouts[0] > 5000 && capturedTimeouts[0] <= 15000,
+        `the first chapter's timeout should be capped to the ~15000ms remaining budget rather than the 40000ms default (got ${capturedTimeouts[0]})`
+      );
+    } finally {
+      XaiTextClient.prototype.generateText = originalGenerateText;
+    }
+  });
+}
+
 async function main(): Promise<void> {
   await assertGenesisSkipsChaptersItCannotFinish();
   await assertContinuationSkipsChaptersItCannotFinish();
   await assertBatchChapterTimeoutIsCappedByRemainingBudget();
+  await assertFirstChapterRefusesWhenBudgetIsAlreadyExhausted();
+  await assertFirstChapterTimeoutIsCappedByTightBudget();
 
   console.log('Story service batch chapter budget tests passed');
 }

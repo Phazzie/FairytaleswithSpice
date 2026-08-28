@@ -122,12 +122,15 @@ console.log('-'.repeat(80));
 const configHasPrimaryTimeout = configContent.includes(`DEFAULT_XAI_PRIMARY_TIMEOUT_MS = ${DEFAULT_XAI_PRIMARY_TIMEOUT_MS}`);
 const configHasFastTimeout = configContent.includes(`DEFAULT_XAI_FAST_TIMEOUT_MS = ${DEFAULT_XAI_FAST_TIMEOUT_MS}`);
 const configHasFastModel = configContent.includes(`DEFAULT_XAI_FAST_MODEL = '${DEFAULT_XAI_FAST_MODEL}'`);
-// Matches both a direct `timeoutMs: getXaiPrimaryTimeoutMs()` assignment and
-// the `chapterOptions?.preferFastModel ? ... : getXaiPrimaryTimeoutMs()`
-// ternary the live call sites use: the primary-path branch always reads
-// `: getXaiPrimaryTimeoutMs()` regardless of which form wraps it.
-const apiUsesPrimaryTimeoutHelper = apiContent.includes(': getXaiPrimaryTimeoutMs()');
-const apiUsesFastFallbackTimeoutHelper = apiContent.includes('fallbackTimeoutMs: getXaiFastTimeoutMs()');
+// The primary-path branch now caps `getXaiPrimaryTimeoutMs()` (and the fast
+// fallback timeout it hands to the retry) to whatever is actually left of the
+// invocation's own budget, rather than spending the static helper value
+// unconditionally — see the worst-to-best fix for the batch chapter loops
+// ignoring the 60s function budget. Matching `getXaiPrimaryTimeoutMs(),
+// remainingBudgetMs)` and `getXaiFastTimeoutMs(), remainingBudgetMs)` proves
+// both helpers are still read and still feed the request, budget-capped.
+const apiUsesPrimaryTimeoutHelper = apiContent.includes('getXaiPrimaryTimeoutMs(), remainingBudgetMs)');
+const apiUsesFastFallbackTimeoutHelper = apiContent.includes('getXaiFastTimeoutMs(), remainingBudgetMs)');
 const apiBudgetsExtraGenesisChapters = apiContent.includes('preferFastModel: chapterNumber > 1');
 const apiBudgetsExtraContinuationChapters = apiContent.includes('preferFastModel: offset > 1');
 const xaiClientHasRetryableFallback = xaiClientContent.includes('isRetryableProviderError')

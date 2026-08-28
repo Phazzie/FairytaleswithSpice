@@ -84,13 +84,6 @@ interface ChapterGenerationOptions {
   totalChapters: number;
   existingContent?: string;
   preferFastModel?: boolean;
-  /**
-   * What is left of the invocation's own window, for a batch chapter's timeout
-   * to fit inside rather than assume it has the full static allowance. Absent
-   * for the batch's first chapter, which always gets the full primary timeout
-   * this cap would otherwise shrink.
-   */
-  remainingBudgetMs?: number;
 }
 
 interface GeneratedChaptersResult {
@@ -413,6 +406,7 @@ export class StoryService {
       try {
         const generatedText = await this.callGrokAI(
           input,
+          requestStartedAtMs,
           context,
           tropeSelection,
           requestedChapterCount > 1
@@ -420,8 +414,7 @@ export class StoryService {
                 chapterNumber,
                 totalChapters: requestedChapterCount,
                 existingContent: aggregatedRawHtml,
-                preferFastModel: chapterNumber > 1,
-                remainingBudgetMs: chapterNumber > 1 ? getRemainingRequestBudgetMs(requestStartedAtMs) : undefined
+                preferFastModel: chapterNumber > 1
               }
             : undefined
         );
@@ -572,13 +565,13 @@ export class StoryService {
         try {
           const generatedText = await this.callGrokAIForContinuation(
             { ...sanitizedInput, currentChapterCount: workingChapterCount },
+            startTime,
             context,
             {
               chapterNumber,
               totalChapters: requestedChapterCount,
               existingContent: aggregatedRawHtml,
-              preferFastModel: offset > 1,
-              remainingBudgetMs: offset > 1 ? getRemainingRequestBudgetMs(startTime) : undefined
+              preferFastModel: offset > 1
             }
           );
           aiMetadata = this.mergeAiMetadata(aiMetadata, generatedText.aiMetadata);
@@ -723,16 +716,10 @@ export class StoryService {
   /**
    * A batch chapter's own timeout has to fit inside what the invocation
    * actually has left, not just the static floor `EXTRA_BATCH_CHAPTER_TIMEOUT_MS`
-   * assumed was always available. `remainingBudgetMs` is undefined for the
-   * batch's first chapter (which is never budget-capped this way), so the
-   * static floor is the answer whenever there is nothing narrower to apply.
+   * assumed was always available.
    */
-  private resolveBatchChapterTimeoutMs(remainingBudgetMs: number | undefined): number {
-    const cappedByFastTimeout = Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS);
-
-    return remainingBudgetMs === undefined
-      ? cappedByFastTimeout
-      : Math.min(cappedByFastTimeout, remainingBudgetMs);
+  private resolveBatchChapterTimeoutMs(remainingBudgetMs: number): number {
+    return Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS, remainingBudgetMs);
   }
 
   /**
@@ -770,6 +757,7 @@ export class StoryService {
 
   private async callGrokAI(
     input: StoryGenerationSeam['input'],
+    requestStartedAtMs: number,
     context?: LogContext,
     tropeSelection?: TropeSelection,
     chapterOptions?: ChapterGenerationOptions
@@ -790,6 +778,19 @@ export class StoryService {
           ? this.generateMockInitialChapter(input, chapterOptions.chapterNumber, targetWordCount)
           : this.generateMockStory(input, tropeSelection)
       };
+    }
+
+    // Not just the batch chapters: this call's own primary attempt is exposed
+    // to the same platform SIGKILL if enough of the invocation's window is
+    // already gone by the time it starts — a slow validation/setup step ahead
+    // of it, or a deployment configuring a smaller `STORY_LAB_FUNCTION_BUDGET_MS`,
+    // both leave less than `getXaiPrimaryTimeoutMs()` actually safe to spend.
+    // Refusing here, the same way `xaiTextClient` refuses a fallback retry it
+    // has no room for, keeps a doomed call from ever reaching axios with a
+    // timeout of `0` — which axios reads as "no timeout" rather than "expired".
+    const remainingBudgetMs = getRemainingRequestBudgetMs(requestStartedAtMs);
+    if (remainingBudgetMs < MIN_XAI_FALLBACK_TIMEOUT_MS) {
+      throw new Error('Insufficient time remaining in the request budget to safely generate this chapter');
     }
 
     const systemPrompt = this.buildSystemPrompt(input, tropeSelection, chapterOptions);
@@ -813,9 +814,11 @@ export class StoryService {
         temperature: 0.8,
         topP: 0.95,
         timeoutMs: chapterOptions?.preferFastModel
-          ? this.resolveBatchChapterTimeoutMs(chapterOptions.remainingBudgetMs)
-          : getXaiPrimaryTimeoutMs(),
-        fallbackTimeoutMs: getXaiFastTimeoutMs(),
+          ? this.resolveBatchChapterTimeoutMs(remainingBudgetMs)
+          : Math.min(getXaiPrimaryTimeoutMs(), remainingBudgetMs),
+        fallbackTimeoutMs: chapterOptions?.preferFastModel
+          ? getXaiFastTimeoutMs()
+          : Math.min(getXaiFastTimeoutMs(), remainingBudgetMs),
         modelPreference,
         allowFallback: !chapterOptions?.preferFastModel,
         context
@@ -851,6 +854,7 @@ export class StoryService {
 
   private async callGrokAIForContinuation(
     input: ChapterContinuationSeam['input'],
+    requestStartedAtMs: number,
     context?: LogContext,
     chapterOptions?: ChapterGenerationOptions
   ): Promise<GeneratedTextResult> {
@@ -863,6 +867,15 @@ export class StoryService {
       return {
         content: this.generateMockChapter(input, chapterOptions?.chapterNumber)
       };
+    }
+
+    // See the matching check in `callGrokAI`: this call's own primary attempt
+    // is exposed to the same platform SIGKILL as a batch chapter's, and a
+    // refusal here keeps a doomed call from reaching axios with a timeout of
+    // `0` — which axios reads as "no timeout" rather than "expired".
+    const remainingBudgetMs = getRemainingRequestBudgetMs(requestStartedAtMs);
+    if (remainingBudgetMs < MIN_XAI_FALLBACK_TIMEOUT_MS) {
+      throw new Error('Insufficient time remaining in the request budget to safely generate this chapter');
     }
 
     const chapterNumber = chapterOptions?.chapterNumber ?? input.currentChapterCount + 1;
@@ -884,9 +897,11 @@ export class StoryService {
         temperature: 0.8,
         topP: 0.95,
         timeoutMs: chapterOptions?.preferFastModel
-          ? this.resolveBatchChapterTimeoutMs(chapterOptions.remainingBudgetMs)
-          : getXaiPrimaryTimeoutMs(),
-        fallbackTimeoutMs: getXaiFastTimeoutMs(),
+          ? this.resolveBatchChapterTimeoutMs(remainingBudgetMs)
+          : Math.min(getXaiPrimaryTimeoutMs(), remainingBudgetMs),
+        fallbackTimeoutMs: chapterOptions?.preferFastModel
+          ? getXaiFastTimeoutMs()
+          : Math.min(getXaiFastTimeoutMs(), remainingBudgetMs),
         modelPreference,
         allowFallback: !chapterOptions?.preferFastModel,
         context
