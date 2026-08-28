@@ -122,6 +122,17 @@ assert(
   'nor at the next quotation mark'
 );
 
+// A quote only opens an attribute value when it follows `=`. A stray quote
+// loose in a tag is not attribute syntax at all, so it may not open a run that
+// crosses the `>` — otherwise the same prose-eating returns by a route the
+// closing-quote rule cannot see, because that rule only governs where a run
+// ends. Both the browser and the older reading end this tag at its first `>`.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('Before.<p ">Visible" >After.')) ===
+    JSON.stringify(['Before.', 'Visible" >After.']),
+  'a stray quote with no `=` before it should not open an attribute value'
+);
+
 // The other side of that line, stated so it is a decision rather than a
 // surprise. When the quote *does* close where an attribute value may close,
 // the tag has a well-formed reading and this module follows it — which is what

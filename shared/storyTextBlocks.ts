@@ -95,13 +95,19 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * through `stripStoryHtmlForExport` instead, which has its own copy of this
  * defect and is not fixed here.)
  *
- * This is the unrolled form of "unquoted runs separated by quoted ones". The
- * unquoted run and the two quoted alternatives can never start on the same
- * character, so each position is still decided once and no input has two ways
- * to match. A quoted run stops at `<` because an unterminated quote must not
- * be allowed to swallow the story's own dialogue looking for a partner: `<` is
- * where the next tag starts, and that bounds the damage to the markup it began
- * in.
+ * This is the unrolled form of "unquoted runs separated by quoted attribute
+ * values". The unquoted run, the `=`, and the two quoted alternatives can never
+ * start on the same character, so each position is still decided once and no
+ * input has two ways to match.
+ *
+ * Three rules keep a quoted run from reaching into prose, and each closes a
+ * hole the previous two left open. A run may only *open* after an `=`, because
+ * a stray quote loose in a tag is not attribute syntax and must not be allowed
+ * to cross the `>`. It may only *close* where `ATTRIBUTE_VALUE_MUST_END_AT`
+ * says an attribute value may end. And it stops at `<` either way, because an
+ * unterminated quote must not swallow the story's own dialogue looking for a
+ * partner: `<` is where the next tag starts, and that bounds the damage to the
+ * markup it began in.
  *
  * **Known limit, and the reason it is priced this way.** That bound also means
  * an attribute value legitimately containing `<` — `<p title="1 < 2 and 3 > 2">`
@@ -117,7 +123,7 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * markup that happens is worth more than a repair for markup that does not.
  */
 function tagAttributesPattern(unquotedRun: string): string {
-  return String.raw`${unquotedRun}*(?:(?:"[^"<]*"|'[^'<]*')${ATTRIBUTE_VALUE_MUST_END_AT}${unquotedRun}*)*`;
+  return String.raw`${unquotedRun}*(?:=(?:(?:"[^"<]*"|'[^'<]*')${ATTRIBUTE_VALUE_MUST_END_AT})?${unquotedRun}*)*`;
 }
 
 /**
@@ -149,8 +155,8 @@ const ATTRIBUTE_VALUE_MUST_END_AT = String.raw`(?=[\s/>])`;
  * existing protection against a run of `<`, kept here rather than dropped: see
  * `stripInlineTags` below for why it excludes `<` and the block reader does not.
  */
-const BLOCK_TAG_UNQUOTED_RUN = "[^>\"']";
-const INLINE_TAG_UNQUOTED_RUN = "[^<>\"']";
+const BLOCK_TAG_UNQUOTED_RUN = "[^>\"'=]";
+const INLINE_TAG_UNQUOTED_RUN = "[^<>\"'=]";
 
 /**
  * Match an opening or closing block-level tag, with or without attributes.
