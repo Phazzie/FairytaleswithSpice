@@ -12,6 +12,7 @@
 import { SpicyLevel, ThemeType } from '../types/contracts';
 import { readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import { readSpiceLevelPromptLabel } from '../../../shared/spiceLevelPromptLadder';
+import { findTagEnd, parseHtmlTag } from '../../../shared/htmlTagScanner';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
 import { wholeWordAlternationPattern, wholeWordPattern } from '../utils/wholeWord';
@@ -304,9 +305,101 @@ export function analyzeEmotionalTone(content: string): string {
   return tones.length > 0 ? tones.join(', ') : 'romantic with building tension';
 }
 
+/**
+ * Where the chapter heading is, read the way a browser reads it.
+ *
+ * The two callers below each used to spell this as `<h3[^>]*>(.*?)</h3>`, and
+ * that spelling gets two things wrong for the same reason — it decides where
+ * the opening tag ends by looking for a character rather than by reading the
+ * tag:
+ *
+ * 1. **It ends the tag at the first `>`**, even one inside a quoted attribute
+ *    value. `<h3 data-x="a>b">Real Title</h3>` leaves `b">Real Title` as the
+ *    captured group, and `stripHtml` cannot clean that up afterwards because
+ *    the truncation leaves no tag in it to strip. It reaches the reader as the
+ *    chapter's title, and it is what feeds the `Untitled Chapter N` fallback
+ *    and the `chapter N` prefix-stripping beside it.
+ * 2. **`.` cannot cross a newline**, so a heading with a line break past the
+ *    truncation point matches nothing at all. That is the actual defect behind
+ *    #296's second row, which had been filed as the same cause as the first:
+ *    the strip below then leaves the heading in place and the chapter ships
+ *    carrying two of them.
+ *
+ * `findTagEnd` answers the first question by walking HTML's own start-tag
+ * states, so a `>` inside a quoted value is a character rather than the end of
+ * the tag, and index arithmetic answers the second by not involving `.` at all.
+ * Issue #296 records the two attempts to repair this with a better pattern
+ * instead, and why a scanner is the answer rather than a fifth pattern.
+ *
+ * The reading is otherwise deliberately the one the pattern had: the first
+ * `<h3>`, then the first `</h3>` after it. A second `<h3>` in between does not
+ * open a nested heading — HTML has no nesting here, and the lazy `.*?` this
+ * replaces ran on to the same `</h3>`.
+ */
+interface ChapterHeading {
+  /** Index of the opening tag's `<`. */
+  start: number;
+  /** Index just past the closing tag's `>`. */
+  end: number;
+  /** The markup between the two tags. */
+  inner: string;
+}
+
+function findChapterHeading(content: string): ChapterHeading | null {
+  let index = 0;
+  let start = -1;
+  let innerStart = -1;
+
+  while (index < content.length) {
+    const tagStart = content.indexOf('<', index);
+    if (tagStart === -1) {
+      break;
+    }
+
+    // A comment's body is markup, not prose, and an `<h3>` inside one is not a
+    // heading. Skipped whole, exactly as the shared tokenizer skips it.
+    if (content.startsWith('<!--', tagStart)) {
+      const commentEnd = content.indexOf('-->', tagStart + 4);
+      if (commentEnd === -1) {
+        break;
+      }
+
+      index = commentEnd + 3;
+      continue;
+    }
+
+    const tagEnd = findTagEnd(content, tagStart);
+    if (tagEnd === -1) {
+      break;
+    }
+
+    const parsed = parseHtmlTag(content.slice(tagStart, tagEnd + 1));
+    index = tagEnd + 1;
+
+    if (!parsed || parsed.tagName !== 'h3') {
+      continue;
+    }
+
+    if (parsed.isClosing) {
+      if (start !== -1) {
+        return { start, end: index, inner: content.slice(innerStart, tagStart) };
+      }
+
+      continue;
+    }
+
+    if (start === -1) {
+      start = tagStart;
+      innerStart = index;
+    }
+  }
+
+  return null;
+}
+
 export function extractChapterTitleAndBody(content: string, chapterNumber: number): { title: string; body: string } {
-  const headingMatch = content.match(/<h3[^>]*>(.*?)<\/h3>/i);
-  let title = headingMatch ? stripHtml(headingMatch[1]).trim() : '';
+  const heading = findChapterHeading(content);
+  let title = heading ? stripHtml(heading.inner).trim() : '';
 
   if (title.toLowerCase().startsWith(`chapter ${chapterNumber}`)) {
     title = title.slice(`chapter ${chapterNumber}`.length).replace(/^\s*:?/, '').trim();
@@ -316,9 +409,35 @@ export function extractChapterTitleAndBody(content: string, chapterNumber: numbe
     title = `Untitled Chapter ${chapterNumber}`;
   }
 
-  const body = headingMatch ? content.replace(headingMatch[0], '').trim() : content.trim();
+  // Cut by index rather than `content.replace(match[0], '')`: the heading is
+  // located here, so the body is what sits either side of it, and no second
+  // search can land somewhere the first did not.
+  const body = heading
+    ? `${content.slice(0, heading.start)}${content.slice(heading.end)}`.trim()
+    : content.trim();
 
   return { title, body };
+}
+
+/**
+ * Drop the heading a chapter opens with, so the caller can write its own.
+ *
+ * Lives here, beside the reader above, rather than in `StoryService` where it
+ * was a private method reachable only through a model call — which is why the
+ * newline defect described above went unnoticed in it: nothing could call it
+ * with a heading to strip without generating a story first.
+ *
+ * Only a *leading* heading is dropped. Anything but whitespace before it means
+ * the chapter's own prose starts first, and then the heading is part of the
+ * chapter rather than the title being replaced.
+ */
+export function stripLeadingChapterHeading(content: string): string {
+  const heading = findChapterHeading(content);
+  if (!heading || content.slice(0, heading.start).trim() !== '') {
+    return content.trim();
+  }
+
+  return content.slice(heading.end).trim();
 }
 
 /**

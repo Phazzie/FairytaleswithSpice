@@ -4,6 +4,39 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-28 UTC - The Two Chapter-Heading Readers Call the Scanner (rows 1 and 2 of #296)
+
+Actions:
+
+- Moved the tag reading out of `exportSanitizer.ts` into `shared/htmlTagScanner.ts` — `tokenizeHtml`, `findTagEnd`, `parseHtmlTag` and their helpers, unchanged, with `exportSanitizer.ts` importing them back. A pure move: `tests/export-sanitizer.test.ts` and `tests/export-service.test.ts` pass untouched, which is the point of moving rather than respelling. That test file is the evidence for this reading and it stays pointed at the same lines.
+- `extractChapterTitleAndBody` (`storyContentAnalysis.ts`) and `renderChapterForAppend`'s heading strip (`storyService.ts`) now locate the heading with that scanner instead of `<h3[^>]*>(.*?)</h3>`. One private `findChapterHeading` serves both, so there is one reading rather than two spellings of one.
+- Moved the strip out of `StoryService` into `storyContentAnalysis.ts` as `stripLeadingChapterHeading`, beside the reader it shares its logic with. It had been a private method reachable only through a model call, which is why its defect went unnoticed: nothing could call it with a heading to strip without generating a story first. #296 asked for this move specifically.
+- Added `tests/chapter-heading-reader.test.ts` and its `test:chapter-heading-reader` entry in `test:all`.
+
+The two defects repaired:
+
+- **Row 1, as filed.** `<h3 data-x="a>b">Real Title</h3>` gave the title `b">Real Title`. `stripHtml` cannot clean that up — the truncation leaves no tag in it to strip — so it reached the reader as `Chapter.title` and fed the `Untitled Chapter N` fallback and the `chapter N` prefix-stripping beside it.
+- **Row 2, with the premise as #302 corrected it.** The strip does not fail "for the same reason". Its lazy `.*?` runs on to the real `</h3>` and strips correctly; it fails when a **newline** falls between the truncation point and the `</h3>`, because `.` cannot cross one. Nothing matches, and the chapter ships carrying two headings. `<h3>Chapter 4: Real\nTitle</h3>` reproduces it with no attribute at all.
+
+Decisions:
+
+- **A scanner, not a fifth pattern.** #295 and #302 each tried to repair this with a better regex and each withdrew. Between them: six defects, every one two constructs able to consume the same characters — three exponential-backtracking blowups and three that deleted text a reader wrote. The argument for stopping was never that the last pattern was wrong; it was that there is no method for proving a regex unambiguous, only for testing shapes someone thought of, and the shapes missed something in every round. A left-to-right scanner consumes each character once and cannot have the fault, which is a property of its shape rather than of how hard it was tested.
+- **The oracle is a browser, not the pattern being replaced.** #302's metric — "never worse than `[^>]*>`" — scores a *deleted* prefix as a remnant correctly removed, so it scored a live data-loss defect clean for three rounds. `tests/chapter-heading-reader.test.ts` carries an independent transcription of the WHATWG start-tag states, written from the spec rather than from `findTagEnd`, so agreement between the two is evidence rather than a tautology.
+- **Scope held to rows 1 and 2.** `splitStoryIntoTextBlocks`/`stripInlineTags` in `shared/storyTextBlocks.ts` has the same truncation and is left alone; it is a separate row on #296, it is the row #295 attempted and withdrew from, and it is read by every quality scanner in the repository rather than by two chapter readers. The scanner now sits in `shared/`, where that row can call it without a further move.
+- **A recovery class is deliberately declined, and asserted.** `<h3 a="b>c"d="e>f">` has a closing quote followed by a word character. `findTagEnd` refuses that rather than hunt for a later partner in the prose, so there is no well-formed reading and the fallback answers exactly as `[^>]*>` always did. A browser recovers and reads on, so this is coverage forgone — never prose deleted — and it has its own test saying so, so nobody later reads it as a defect.
+
+Self-review:
+
+- Differential against the browser reference over every tag interior of length 1..6 on `{a = " ' > space /}`: **134,008** interiors emitting a tag. The scanner ends the tag where a browser does in **134,008** of them, `[^>]*>` in 133,992. Cases where the scanner is **worse than `[^>]*>`: 0**; better: 16. The direction is the assertion, not the percentage.
+- Linearity pinned rather than hoped for, on the six shapes that blew up on the two patterns — bare `=`, whitespace around `=`, an unterminated quoted value, a slash after an assignment, bare names, and a quote inside an unquoted value — at 20,000 repeats each with no closing `>`. These are the shapes where 2^n was 275ms at 32 repeats and two seconds at 36.
+- Counterfactual mutations run and reverted: the first-`>` boundary restored (row 1 fails), the leading-only guard dropped (a mid-chapter heading is wrongly stripped), the comment skip dropped (an `<h3>` inside a comment is read as the title).
+- **The comment-skip counterfactual survived the first draft of its test**, so that assertion was not discriminating. `<!-- <h3>Not a title</h3> -->` does not separate the two readings: `parseHtmlTag` rejects the `<!--` token either way, and the stray `</h3>` inside the comment is ignored for want of an opening. It takes a `>` inside the comment *before* the heading — `<!-- 4 > 3, so: <h3>…` — to end a token there, resume inside the comment body, and read that heading as the title. The test now uses that input. Same failure mode as the export tokenizer's round above, where two of five counterfactuals passed against tests that were not discriminating: a mutation surviving is evidence about the test, not about the mutation.
+- `npm run test:all` exits 0; API function typecheck clean under preflight's exact command; Vercel function count 8/12 unchanged; `git diff --check` clean.
+
+Not claimed:
+
+- No evidence this was happening in production output. The generator is prompted to emit bare `<h3>Chapter N: Title</h3>`, and a `>` inside an attribute needs the model to emit an attribute at all. Worth fixing because the failure is silent and reader-visible, not because it is common — and the newline half of row 2 needs no attribute.
+
 ## 2026-08-28 UTC - The Export Tokenizer's Tag Boundary (the `exportSanitizer.ts` row of #296)
 
 Actions:
