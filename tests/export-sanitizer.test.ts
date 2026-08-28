@@ -502,6 +502,99 @@ for (const container of ['svg', 'math']) {
   );
 }
 
+// Breaking out is right for a *child* of the foreign element — a browser really
+// does put `<svg><p>text</p></svg>`'s paragraph outside the SVG. It is wrong
+// inside an integration point, whose children are HTML *within* the foreign
+// subtree. Ending the skip there exported the container's own content.
+const integrationPoints: Array<[string, string]> = [
+  ['svg', 'foreignObject'],
+  ['svg', 'desc'],
+  ['svg', 'title'],
+  ['math', 'mtext'],
+  ['math', 'mi'],
+  ['math', 'ms']
+];
+for (const [container, point] of integrationPoints) {
+  const html = `<${container}><${point}><p>secret</p></${point}></${container}><p>Story.</p>`;
+  const stripped = stripStoryHtmlForExport(html);
+  assert(
+    !stripped.includes('secret'),
+    `<${point}> inside <${container}> must not export its children (got ${JSON.stringify(stripped)})`
+  );
+  assert(
+    stripped === 'Story.',
+    `the story after <${container}> must survive an integration point (got ${JSON.stringify(stripped)})`
+  );
+  assert(
+    !sanitizeStoryHtmlForExport(html).includes('secret'),
+    `<${point}> inside <${container}> must not reach the .html export`
+  );
+}
+
+// The exception does not swallow the rule: a breakout tag that is a direct
+// child of the foreign element still ends the skip.
+assert(
+  stripStoryHtmlForExport('<svg><desc>hidden</desc><p>Story.</p>') === 'Story.',
+  `a breakout after a closed integration point still ends the skip (got ${JSON.stringify(stripStoryHtmlForExport('<svg><desc>hidden</desc><p>Story.</p>'))})`
+);
+
+// Integration points nest, so the depth is counted rather than flagged. A
+// single flag cleared on the first `</desc>` would break out while still inside
+// the outer one.
+const nested = '<svg><foreignObject><svg><desc>inner</desc></svg><p>secret</p></foreignObject></svg><p>Story.</p>';
+assert(
+  !stripStoryHtmlForExport(nested).includes('secret'),
+  `nested integration points must not break out early (got ${JSON.stringify(stripStoryHtmlForExport(nested))})`
+);
+
+// A self-closing integration point opens nothing, so it must not leave the
+// depth stuck above zero and suppress every later breakout.
+assert(
+  stripStoryHtmlForExport('<svg><desc/><p>Story.</p>') === 'Story.',
+  `a self-closing integration point must not hold the skip open (got ${JSON.stringify(stripStoryHtmlForExport('<svg><desc/><p>Story.</p>'))})`
+);
+
+// A stray closing tag must not drive the count negative, where the next opener
+// would read as depth 0 and let a breakout fire inside the element it just
+// entered. `</desc>` with nothing open, then a real `<desc>` holding a secret.
+const strayClose = '<svg></desc><desc><p>secret</p></desc></svg><p>Story.</p>';
+assert(
+  !stripStoryHtmlForExport(strayClose).includes('secret'),
+  `a stray integration-point close must not push the depth negative (got ${JSON.stringify(stripStoryHtmlForExport(strayClose))})`
+);
+
+// The count still must not survive its own skip. This passes on the invariant
+// rather than on a reset — a skip ends on its own closing tag, which zeroes the
+// count, or on a breakout, which can only fire at zero — so it is kept as a
+// statement of that invariant, not as a guard's counterfactual.
+const carriedDepth = '<svg><desc></svg><svg><p>Story.</p>';
+assert(
+  stripStoryHtmlForExport(carriedDepth) === 'Story.',
+  `integration-point depth must not survive its own skip (got ${JSON.stringify(stripStoryHtmlForExport(carriedDepth))})`
+);
+
+// `annotation-xml` is an integration point only when its `encoding` says so,
+// which this module cannot read. Both spellings are asserted, because the two
+// want opposite answers and the choice between them is the interesting part.
+//
+// With that encoding, the paragraph is inside the MathML and a browser keeps it
+// there. Breaking out would export it — a containment regression against `main`,
+// which drops it. Held.
+const encodedAnnotation = '<math><annotation-xml encoding="text/html"><p>secret</p></annotation-xml></math><p>Story.</p>';
+assert(
+  stripStoryHtmlForExport(encodedAnnotation) === 'Story.',
+  `an encoded <annotation-xml> must not export MathML content (got ${JSON.stringify(stripStoryHtmlForExport(encodedAnnotation))})`
+);
+// Unadorned, the paragraph really is outside the MathML and a browser shows it.
+// Holding the skip drops it — but `main` drops it too, so this forgoes an
+// improvement rather than causing a regression. The accepted cost of the line
+// above, asserted so it is a decision on the record and not a silent one.
+const bareAnnotation = '<math><annotation-xml><p>visible</p></annotation-xml></math><p>Story.</p>';
+assert(
+  stripStoryHtmlForExport(bareAnnotation) === 'Story.',
+  `the accepted cost: an unadorned <annotation-xml> holds the skip (got ${JSON.stringify(stripStoryHtmlForExport(bareAnnotation))})`
+);
+
 // The rule is foreign content's alone. `script`, `style` and `iframe` are
 // raw text: inside them `<p>` is three characters, not a tag, so a browser keeps
 // the element open to EOF and nothing after it is rendered. Breaking out there

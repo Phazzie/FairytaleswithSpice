@@ -562,6 +562,9 @@ function removeNonStoryHtml(html: string): string[] {
   const kept: string[] = [];
   let skippedBlockTag: string | null = null;
   let skippedBlockDepth = 0;
+  // How many integration points are open inside the foreign element being
+  // skipped. Inside one, HTML tags are ordinary content and do not break out.
+  let integrationPointDepth = 0;
 
   for (const token of tokenizeHtml(html)) {
     if (!token.startsWith('<') || !token.endsWith('>')) {
@@ -577,12 +580,25 @@ function removeNonStoryHtml(html: string): string[] {
     }
 
     if (skippedBlockTag) {
-      if (breaksOutOfForeignContent(skippedBlockTag, parsed)) {
+      if (integrationPointDepth === 0 && breaksOutOfForeignContent(skippedBlockTag, parsed)) {
         skippedBlockTag = null;
         skippedBlockDepth = 0;
         // Fall through: this tag is HTML, and is read as if the foreign
         // element had been closed before it.
       } else {
+        if (isIntegrationPoint(skippedBlockTag, parsed)) {
+          if (parsed.isClosing) {
+            // Never below zero: a stray closing tag must not leave the count
+            // negative, where a later opener would read as depth 0 and let a
+            // breakout fire inside the element it had just entered.
+            integrationPointDepth = Math.max(0, integrationPointDepth - 1);
+          } else if (!parsed.isSelfClosing) {
+            // A self-closing `<desc/>` opens nothing, so counting it would hold
+            // the skip open for the rest of the container.
+            integrationPointDepth += 1;
+          }
+        }
+
         if (
           parsed.tagName === skippedBlockTag
           && !parsed.isClosing
@@ -596,6 +612,7 @@ function removeNonStoryHtml(html: string): string[] {
           skippedBlockDepth -= 1;
           if (skippedBlockDepth <= 0) {
             skippedBlockTag = null;
+            integrationPointDepth = 0;
           }
         }
 
@@ -607,6 +624,10 @@ function removeNonStoryHtml(html: string): string[] {
       if (!parsed.isClosing && DROPPED_BLOCK_TAGS.has(parsed.tagName) && !closesItself(parsed)) {
         skippedBlockTag = parsed.tagName;
         skippedBlockDepth = 1;
+        // `integrationPointDepth` is already 0 here and is not reset again: a
+        // skip ends either on its own closing tag, which resets it, or on a
+        // breakout, which can only fire at 0. A reset here would be a guard no
+        // test could fail.
       }
 
       continue;
@@ -735,6 +756,56 @@ function breaksOutOfForeignContent(skippedBlockTag: string, parsed: ParsedHtmlTa
   return FOREIGN_CONTENT_TAGS.has(skippedBlockTag)
     && !parsed.isClosing
     && FOREIGN_CONTENT_BREAKOUT_TAGS.has(parsed.tagName);
+}
+
+/**
+ * The elements inside foreign content whose own children are parsed as HTML.
+ *
+ * This is the exception the breakout list has to be read against. `<p>` pops
+ * every foreign element *when it is a child of the foreign element itself* — so
+ * `<svg><p>text</p></svg>` really does put the paragraph outside the SVG, which
+ * is why breaking out is right. Inside an integration point it does not: the
+ * children of `<foreignObject>`, of SVG's `<desc>` and `<title>`, and of
+ * MathML's text integration points are HTML *within* the foreign subtree, and a
+ * parser stays inside it.
+ *
+ * Skipping is a containment decision, so the difference is reader-visible.
+ * `<svg><foreignObject><p>secret</p></foreignObject></svg>` exported `secret`
+ * in all five formats: the `<p>` ended the skip, and everything after it —
+ * still SVG content — was kept as story. `main` dropped it, so it was a
+ * containment regression against the reader this module replaces, not a
+ * pre-existing limit.
+ *
+ * Nesting is counted rather than flagged, because these elements nest: an
+ * `<svg>` inside a `<foreignObject>` may carry another `<foreignObject>`, and a
+ * single flag cleared on the first closing tag would break out inside the outer
+ * one.
+ *
+ * `annotation-xml` is included unconditionally, which is the deliberately
+ * cautious reading of a case this module cannot decide. It is an HTML
+ * integration point only when its `encoding` is `text/html` or
+ * `application/xhtml+xml` — an attribute, and this reader knows tag names only.
+ * The two spellings want opposite answers:
+ *
+ * - carrying that encoding, its children are HTML *inside* the MathML, and
+ *   breaking out on them exports MathML content that `main` drops. A
+ *   containment regression.
+ * - unadorned, its children really are outside, and holding the skip open
+ *   drops text a browser shows — but `main` drops that text too, so nothing
+ *   regresses; only an improvement is forgone.
+ *
+ * One spelling costs containment against `main`, the other costs an
+ * improvement over it. This module drops `math` for containment, so it takes
+ * the second. Both directions are asserted.
+ */
+const FOREIGN_CONTENT_INTEGRATION_POINTS: Record<string, Set<string>> = {
+  svg: new Set(['foreignobject', 'desc', 'title']),
+  math: new Set(['mi', 'mo', 'mn', 'ms', 'mtext', 'annotation-xml'])
+};
+
+/** Whether this tag opens or closes an integration point of the skipped element. */
+function isIntegrationPoint(skippedBlockTag: string, parsed: ParsedHtmlTag): boolean {
+  return FOREIGN_CONTENT_INTEGRATION_POINTS[skippedBlockTag]?.has(parsed.tagName) ?? false;
 }
 
 function replaceEvery(value: string, searchValue: string, replacement: string): string {
