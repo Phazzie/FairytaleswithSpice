@@ -16,6 +16,7 @@ import {
   runApiRoute,
   type ApiRouteDefinition
 } from '../api/_lib/http/expressApiRoutes';
+import { logger } from '../api/_lib/utils/logger';
 
 // ==================== the routes that must exist ====================
 
@@ -359,10 +360,13 @@ for (const testCase of bodyParserCases) {
 
 // Anything else is this service failing. The stack trace Express's default
 // handler prints into the body outside `NODE_ENV=production` is exactly what
-// must not reach the browser.
+// must not reach the browser — but it still has to reach this app's own log,
+// which is the one place an unanticipated failure can actually be debugged
+// from.
+logger.clearLogs();
 const failed = new RecordingResponse();
 const leaky = new Error('connect ECONNREFUSED 10.0.0.4:5432');
-apiErrorHandler(leaky, fakeRequest(), failed, error => {
+apiErrorHandler(leaky, fakeRequest({ headers: { 'x-request-id': 'trace-500' } }), failed, error => {
   assert.fail(`a handler failure should be answered here: ${String(error)}`);
 });
 assert.equal(failed.statusCode, 500);
@@ -371,6 +375,20 @@ assert.ok(
   !JSON.stringify(failed.body).includes('ECONNREFUSED'),
   'the failure envelope should not carry the underlying error text'
 );
+
+const critical = logger
+  .getRecentLogs(50, 'critical')
+  .find(entry => entry.message === 'Unhandled API route failure');
+assert.ok(
+  critical,
+  'a route failure that reaches the generic 500 branch should be logged at critical severity'
+);
+assert.equal(
+  critical?.context?.requestId,
+  'trace-500',
+  'the critical log should carry the request\'s own correlation id'
+);
+assert.equal(critical?.error?.message, 'connect ECONNREFUSED 10.0.0.4:5432');
 
 // A route that already started writing — an SSE stream — cannot be given a
 // status and a body now, so the failure goes on to Express to close the socket.

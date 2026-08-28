@@ -12,6 +12,7 @@ import {
   apiNotFoundHandler,
   registerApiRoutes
 } from '../../api/_lib/http/expressApiRoutes';
+import { logUnhandledProcessFailure } from '../../api/_lib/http/unhandledProcessFailureLogger';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -96,6 +97,23 @@ app.use('/api', apiErrorHandler);
  * The server listens on the port defined by the `PORT` environment variable, or defaults to 8080.
  */
 if (isMainModule(import.meta.url)) {
+  // Registered only for the standalone, long-running server — not when this
+  // module is merely imported for its `reqHandler` export by another host
+  // (Firebase Functions, say), which manages its own process lifecycle.
+  //
+  // `uncaughtException` logs and exits: Node's own guidance is that the
+  // process is in an undefined state past that point, and continuing risks
+  // acting on corrupted state rather than a clean restart. `unhandledRejection`
+  // logs without forcing an exit — the same "recoverable" treatment
+  // `runApiRoute` already gives a route handler's rejected promise.
+  process.on('uncaughtException', error => {
+    logUnhandledProcessFailure('uncaughtException', error);
+    process.exit(1);
+  });
+  process.on('unhandledRejection', error => {
+    logUnhandledProcessFailure('unhandledRejection', error);
+  });
+
   const port = process.env['PORT'] || 8080;
   app.listen(port, () => {
     console.log(`
