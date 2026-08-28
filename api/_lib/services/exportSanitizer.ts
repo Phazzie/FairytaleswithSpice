@@ -308,40 +308,7 @@ export function stripStoryHtmlForExport(html: string): string {
 
   for (const token of removeNonStoryHtml(html)) {
     if (token.startsWith('<') && token.endsWith('>')) {
-      const parsed = parseHtmlTag(token);
-      if (!parsed) {
-        text += ' ';
-        continue;
-      }
-
-      if (VOID_BREAK_TAGS.has(parsed.tagName) && !parsed.isClosing) {
-        text += '\n';
-        continue;
-      }
-
-      if (parsed.isClosing && BLOCK_BREAK_TAGS.has(parsed.tagName)) {
-        text += '\n';
-        continue;
-      }
-
-      // A block's *opening* is a boundary a reader sees too, and this export has
-      // to agree with the HTML one about where boundaries are —
-      // `isStrippedBlockBoundary` already counts both ends there, and
-      // `BLOCK_BREAK_TAGS` says every boundary a reader sees must survive into
-      // both documents.
-      //
-      // Breaking on the closing tag alone was enough while every closing tag was
-      // recognised. It stops being enough when one is not: `<div>Visible.</div!>
-      // <p>After.</p>` has no `</div>` to break on, so the two paragraphs ran
-      // together in the plain-text export while the HTML export still separated
-      // them. Only written where a break is not already there, so well-formed
-      // markup — which breaks on the close — is unchanged.
-      if (!parsed.isClosing && BLOCK_BREAK_TAGS.has(parsed.tagName) && !endsWithLineBreak(text)) {
-        text += '\n';
-        continue;
-      }
-
-      text += ' ';
+      text += plainTextForTag(parseHtmlTag(token), text);
       continue;
     }
 
@@ -349,6 +316,43 @@ export function stripStoryHtmlForExport(html: string): string {
   }
 
   return decodeBasicEntities(normalizePlainText(text));
+}
+
+/**
+ * What a tag contributes to the plain-text export: a line break where a reader
+ * sees a boundary, and otherwise the single space that keeps the words on either
+ * side of a dropped inline tag apart.
+ *
+ * Named rather than spelled inline, so this reader has the shape the HTML one
+ * already has — a loop over tokens, and one place that decides what each token
+ * means. The boundary rules are the interesting part and they are all here:
+ *
+ * - A void break element (`<br>`, `<hr>`) has no closing tag, so its own tag is
+ *   the boundary.
+ * - A block's close is a boundary.
+ * - So is a block's **open**, but only where a break is not already there.
+ *   `BLOCK_BREAK_TAGS` requires every boundary a reader sees to survive into
+ *   both documents, and the HTML export counts both ends; breaking on the close
+ *   alone was only ever sufficient while every closing tag was recognised.
+ */
+function plainTextForTag(parsed: ParsedHtmlTag | null, textSoFar: string): string {
+  if (!parsed) {
+    return ' ';
+  }
+
+  if (VOID_BREAK_TAGS.has(parsed.tagName) && !parsed.isClosing) {
+    return '\n';
+  }
+
+  if (!BLOCK_BREAK_TAGS.has(parsed.tagName)) {
+    return ' ';
+  }
+
+  if (parsed.isClosing) {
+    return '\n';
+  }
+
+  return endsWithLineBreak(textSoFar) ? ' ' : '\n';
 }
 
 /**
