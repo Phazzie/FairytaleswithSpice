@@ -64,6 +64,23 @@ Fourth review round (Codex, on `1fd7b92`) — two P2s, both real, and both in th
 - Re-fuzzed at 500,000 inputs with `=` spacing (`=`, ` = `, ` =`, `= `) and a bare `/` value added to the generator: **0 new leaks, 0 prose losses**, 3,557 leaks here against `main`'s 77,020, every one of them a leak `main` has too.
 - Counterfactual harness rebuilt as well. The shell version was interpolating patterns containing quotes and newlines, so several mutations silently failed to apply and reported "not pinned" when nothing had been mutated. Rewritten as a Python table; **all fifteen mutations now apply and all fifteen fail.**
 
+Fifth review round (Codex, on `d4b1d94`) — three P2s, all real, all the same class again, and **the round where the class was closed by measurement rather than by another patch**:
+
+- **A tag name does not end at the first character outside the tag-name set.** HTML's tag-name state runs to whitespace, `/` or `>`, so `<p=x=">` is one name with no attributes; ending it at the `=` handed the walk an attribute list that was never there. The name must still *begin* with a tag-name character — that is what separates markup from a `<` in the prose — but it ends where HTML ends it.
+- **A `/` is never part of an attribute name.** HTML sends it to the self-closing-start state and, when no `>` follows, resumes before the next attribute. `<p / =">` was making the `/` a name, the space an after-name, and the `=` an assignment.
+- **A value's first character starts an unquoted value whatever it is, `=` included.** `x==y` gives `x` the value `=y`; the `=` test was running before the `beforeValue` test and stealing it.
+- **Five rounds, eleven findings, and more than half of them one defect:** a position in the tag that the walk did not model. Each round I fixed the position and said the class looked closed; each round it was not. What ended it was not another fix but an oracle — **Playwright's Chromium, parsing the same inputs**, which is the authority on the only question every one of these findings asked.
+- The numbers, over 8,000 generated tags compared against Chromium's own parse (`div.innerHTML` then `textContent`):
+
+  | corpus | `main` matches the browser exactly | this branch | drops a prose word the browser shows |
+  | --- | --- | --- | --- |
+  | 4,000 well-formed | 1,525 | **4,000** | **0** |
+  | 4,000 adversarial | 3,399 | 3,673 | **0** |
+
+  So on well-formed markup the reader is now the browser, exactly, where the older one agreed 38% of the time; and on malformed markup it never drops a word the browser shows — all 327 divergences keep *extra* text, which is the direction this module's policy commits to.
+- The oracle is not added to `test:all`: it needs Playwright and a browser binary, and that suite is hermetic. It is a validation instrument, recorded here with its method so it can be re-run rather than re-invented. (It also needed `executablePath` pointed at the preinstalled Chromium, since the repo pins a newer Playwright than the image carries.)
+- Counterfactual table now **eighteen mutations, all eighteen failing.**
+
 ## 2026-08-28 UTC - Story Lab Multi-Chapter Batch Generation Vs. The 60-Second Function Budget
 
 Actions:

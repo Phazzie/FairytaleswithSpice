@@ -726,13 +726,28 @@ function scanAttributesToTagEnd(value: string, attributesStart: number): number 
   return -1;
 }
 
-/** The walk's transitions, for every character that is not `>`, `<`, or a quote opening a value. */
+/**
+ * The walk's transitions, for every character that is not `>`, `<`, or a quote
+ * opening a value.
+ *
+ * The order of these tests is the whole of the logic, and it follows HTML's own
+ * start-tag states rather than a set of special cases:
+ *
+ * 1. **Whitespace** ends a name and ends an unquoted value — but it does not
+ *    throw a name away (`y = z` is a spelling of `y=z`), and between `=` and its
+ *    value it is still the value's position.
+ * 2. **An unquoted value** absorbs everything until whitespace or `>`. Quotes
+ *    and `=` inside one are characters.
+ * 3. **A value's first character** starts an unquoted value whatever it is,
+ *    `=` included: `x==y` gives `x` the value `=y`. This test has to come before
+ *    the one below, or an `=` here reads as another assignment.
+ * 4. **A `/`** is never part of a name. HTML sends it to the self-closing-start
+ *    state and, when no `>` follows, resumes before the next attribute — so it
+ *    leaves the walk exactly where it was rather than becoming one.
+ * 5. **An `=`** is an assignment after a name, and is otherwise the name itself.
+ */
 function nextAttributeState(state: AttributeScanState, character: string): AttributeScanState {
   if (isWhitespace(character)) {
-    // Whitespace ends a name, but it does not throw the name away: `y = z` is a
-    // legal spelling of `y=z`, so an `=` after the space is still that name's
-    // assignment. Between `=` and its value the whitespace is the value's own
-    // position, and an unquoted value ends here.
     if (state === 'beforeValue') {
       return 'beforeValue';
     }
@@ -746,11 +761,19 @@ function nextAttributeState(state: AttributeScanState, character: string): Attri
     return 'unquotedValue';
   }
 
+  if (state === 'beforeValue') {
+    return 'unquotedValue';
+  }
+
+  if (character === '/') {
+    return 'beforeAttributeName';
+  }
+
   if (character === '=') {
     return state === 'attributeName' || state === 'afterAttributeName' ? 'beforeValue' : 'attributeName';
   }
 
-  return state === 'beforeValue' ? 'unquotedValue' : 'attributeName';
+  return 'attributeName';
 }
 
 /**
@@ -827,7 +850,14 @@ function findAttributesStart(value: string, tagStart: number): number {
     return -1;
   }
 
-  while (isTagNameCharacter(value[index])) {
+  // The name has to *begin* with a tag-name character — that is the test above,
+  // and it is what separates markup from a `<` in the prose. But it does not end
+  // at the first character outside that set: HTML's tag-name state runs to
+  // whitespace, `/` or `>`, so `<p=x=">` has the one name `p=x="` and no
+  // attributes at all. Ending the name at the `=` instead hands the walk an
+  // attribute list that was never there, and its second `=` opens a quoted value
+  // that reaches into the sentence.
+  while (index < value.length && !isWhitespace(value[index]) && value[index] !== '/' && value[index] !== '>') {
     index += 1;
   }
 

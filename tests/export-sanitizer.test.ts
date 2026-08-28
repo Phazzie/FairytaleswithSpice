@@ -286,7 +286,18 @@ const notAnAttributeValue: Array<{ label: string; html: string }> = [
   // A construct `parseHtmlTag` rejects has no attribute list to walk. Both of
   // these reach `a` as an attribute name and then swallow the sentence.
   { label: 'a `<` with no tag name', html: '< =a="b>Visible text">After.' },
-  { label: 'a declaration rather than a tag', html: '<!x a="b>Visible text">After.' }
+  { label: 'a declaration rather than a tag', html: '<!x a="b>Visible text">After.' },
+  // A tag name begins with a tag-name character but does not end at the first
+  // one outside that set: HTML's tag-name state runs to whitespace, `/` or `>`,
+  // so `<p=x=">` is one name and has no attributes at all.
+  { label: 'an `=` welded into the tag name', html: '<p=x=">Visible text">After.</p>' },
+  // A `/` is never part of a name. HTML sends it to the self-closing-start
+  // state and, when no `>` follows, resumes before the next attribute — so the
+  // `=` after it has no name to assign to.
+  { label: 'a `/` that whitespace rejects as a marker', html: '<p / =">Visible text">After.</p>' },
+  // A value's first character starts an unquoted value whatever it is, `=`
+  // included: `x==y` gives `x` the value `=y`.
+  { label: 'a value whose first character is `=`', html: '<p x==y=">Visible text">After.</p>' }
 ];
 
 for (const sample of notAnAttributeValue) {
