@@ -602,8 +602,8 @@ const SELF_CLOSING_DROPPED_TAGS = new Set(['svg', 'math', 'embed']);
  * The dropped elements whose contents are text rather than markup, so they
  * cannot nest.
  *
- * `script` and `style` are HTML's raw-text elements and `textarea` and `title`
- * its escapable-raw-text ones: everything between the tags is character data
+ * `script`, `style` and `iframe` are parsed by HTML's generic raw-text
+ * algorithm, and `textarea` and `title` by the escapable-raw-text one: everything between the tags is character data
  * until the matching close, and a `<script/>` written *inside* a script is a
  * string, not a tag. Counting it as one leaves the skip depth stuck above zero
  * and the closing tag then only gets it back to one — so
@@ -618,7 +618,7 @@ const SELF_CLOSING_DROPPED_TAGS = new Set(['svg', 'math', 'embed']);
  * *opening* side is affected: `</script>` inside a string does end a script
  * element, in this reader as in a browser.
  */
-const NON_NESTING_DROPPED_TAGS = new Set(['script', 'style', 'textarea', 'title', 'form']);
+const NON_NESTING_DROPPED_TAGS = new Set(['script', 'style', 'iframe', 'textarea', 'title', 'form']);
 
 /** Whether this tag's trailing `/` actually closes it. */
 function closesItself(parsed: ParsedHtmlTag): boolean {
@@ -887,7 +887,7 @@ function findAttributesStart(value: string, tagStart: number): number {
     index += 1;
   }
 
-  if (!isTagNameCharacter(value[index])) {
+  if (!isTagNameStartCharacter(value[index])) {
     return -1;
   }
 
@@ -947,7 +947,7 @@ function parseHtmlTag(token: string): ParsedHtmlTag | null {
   }
 
   const tagNameStart = index;
-  if (!isTagNameCharacter(token[index])) {
+  if (!isTagNameStartCharacter(token[index])) {
     return null;
   }
 
@@ -1094,6 +1094,23 @@ function normalizePlainText(value: string): string {
   }
 
   return normalized.trim();
+}
+
+/**
+ * Whether a character can *begin* a start-tag name.
+ *
+ * Narrower than `isTagNameCharacter`, which is the set a name may continue
+ * with: HTML requires an ASCII letter here, so `<1 x="a>` is prose a reader
+ * typed rather than a tag. Accepting a digit let the attribute scan read an
+ * attribute list out of that prose and pair its quote with one in the sentence.
+ */
+function isTagNameStartCharacter(character: string | undefined): boolean {
+  if (!character) {
+    return false;
+  }
+
+  const codePoint = character.codePointAt(0) ?? 0;
+  return (codePoint >= 65 && codePoint <= 90) || (codePoint >= 97 && codePoint <= 122);
 }
 
 function isTagNameCharacter(character: string | undefined): boolean {

@@ -114,6 +114,13 @@ What is actually settled is the thing this slice set out to do, and it is measur
 
 So the remaining divergences belong with the other open malformed-markup decisions in #296 — which already holds Sourcery's declined finding and the `<`-in-value limit — rather than in an indefinitely growing PR. Recorded there rather than fixed here.
 
+Ninth review round (Codex, on `d064b72`) — two P2s, both real, and both **completions of lists this slice itself introduced** rather than the policy question parked above:
+
+- **A start-tag name must begin with an ASCII letter**, which is narrower than the set a name may continue with. `isTagNameCharacter` accepts digits, so `<1 x="a>…` was read as a tag and its quote paired with one in the sentence. `isTagNameStartCharacter` now gates the first character in both readers.
+- **`iframe` belongs with the raw-text containers.** HTML parses it with the generic raw-text algorithm, so an opener-shaped string inside one is text and cannot deepen a skip. It was simply missing from `NON_NESTING_DROPPED_TAGS`.
+
+Both are in scope despite the previous round's stopping point, and the distinction is worth keeping: **parking the malformed-markup *policy* is not the same as leaving an enumeration half-finished.** The two lists here — which characters may start a name, which containers cannot nest — are HTML facts this slice already committed to modelling, and an incomplete list is a defect in that commitment rather than a new question about it. The parked item remains what it was: whether the reader should imitate a browser on markup that has no well-formed reading at all.
+
 ## 2026-08-28 UTC - Story Lab Multi-Chapter Batch Generation Vs. The 60-Second Function Budget
 
 Actions:

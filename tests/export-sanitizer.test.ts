@@ -289,6 +289,9 @@ const notAnAttributeValue: Array<{ label: string; html: string }> = [
   // A start-tag name begins *immediately* after the `<`. HTML has no whitespace
   // there, so `< p …>` is a `<` the reader typed, not a paragraph.
   { label: 'whitespace between `<` and the name', html: '< p x=">Visible text">After.' },
+  // A start-tag name must begin with an ASCII *letter* — narrower than the set a
+  // name may continue with — so `<1 …>` is prose, not a tag.
+  { label: 'a digit where a tag name should start', html: '<1 x="a>Visible text">After.' },
   { label: 'a declaration rather than a tag', html: '<!x a="b>Visible text">After.' },
   // A tag name begins with a tag-name character but does not end at the first
   // one outside that set: HTML's tag-name state runs to whitespace, `/` or `>`,
@@ -405,7 +408,7 @@ assert(
 // must not deepen the skip, or the closing tag only gets the depth back to one
 // and the rest of the story is swallowed. The closing side is unaffected:
 // `</script>` inside a string does end the element, here as in a browser.
-for (const container of ['script', 'style']) {
+for (const container of ['script', 'style', 'iframe']) {
   const html = `<${container}>const t = "<${container}/>";</${container}><p>Story survives.</p>`;
   const text = stripStoryHtmlForExport(html);
   assert(
