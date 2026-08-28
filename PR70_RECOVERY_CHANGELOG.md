@@ -56,6 +56,14 @@ Third review round (Codex, on `631f43a`) — one P2, real, and the **same contai
 - Re-fuzzed at 500,000 inputs with every tag-ending spelling (`>`, `/>`, `/ >`, ` />`) and a `/`-terminated unquoted value added to the generator: **0 new leaks introduced and 0 prose losses**, with 2,383 leaks here against `main`'s 49,667 — every remaining one is a leak `main` has too, i.e. pre-existing and outside this slice.
 - A third measurement trap, same family as the other two: the first run reported 1,573 new leaks, all from the generator appending a secret body *after* a genuinely self-closing `<svg … />`, where the text is not inside the element at all. Corrected by giving dangerous containers a plain `>` so they actually open.
 
+Fourth review round (Codex, on `1fd7b92`) — two P2s, both real, and both in the walk added two rounds earlier:
+
+- **A `/` directly after `=` is the value, not a marker.** `<svg title="a>b" data-x=/>secret</svg>` set `slashClosesTag` while the scan was still in `beforeValue`, one character before `nextAttributeState` would have moved it to `unquotedValue`. HTML gives `data-x` the value `/` and leaves the element open, so the SVG's contents leaked into the export. The marker test now excludes `beforeValue` as well as `unquotedValue`: a `/` is a marker only where a value is *not* expected.
+- **Whitespace before `=` was throwing the attribute name away.** `y = z` is a legal spelling of `y=z`, but the walk mapped whitespace straight to `beforeAttributeName`, so the `=` became a fresh name, the *next* `=` became an assignment, and its quote opened a run into the prose — `<p x="a>b" y = z=">Visible " > After.</p>` lost `Visible " > After.` Added an `afterAttributeName` state, which is what HTML's own tokenizer has for exactly this. The assertion compares against the browser's rendering rather than against `main`, because `main` leaks an attribute fragment alongside the right text and this reader should not.
+- Both are the same lesson as the tag boundary itself, one level down: **the meaning of a character is decided by the position it occupies, and every position the walk did not model was a place it guessed.** Four of the eight findings on this PR have now been a missing position — `unquotedValue`, `afterAttributeName`, and the two `/` cases.
+- Re-fuzzed at 500,000 inputs with `=` spacing (`=`, ` = `, ` =`, `= `) and a bare `/` value added to the generator: **0 new leaks, 0 prose losses**, 3,557 leaks here against `main`'s 77,020, every one of them a leak `main` has too.
+- Counterfactual harness rebuilt as well. The shell version was interpolating patterns containing quotes and newlines, so several mutations silently failed to apply and reported "not pinned" when nothing had been mutated. Rewritten as a Python table; **all fifteen mutations now apply and all fifteen fail.**
+
 ## 2026-08-28 UTC - Story Lab Multi-Chapter Batch Generation Vs. The 60-Second Function Budget
 
 Actions:

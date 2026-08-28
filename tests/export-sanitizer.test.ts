@@ -304,6 +304,17 @@ assert(
   'an `=` welded to the tag name does not open an attribute value'
 );
 
+// Whitespace before `=` is legal and does not throw the name away: `y = z` is a
+// spelling of `y=z`, so that `=` is still `y`'s assignment and `z="` is its
+// unquoted value. Reading the space as ending the attribute instead makes the
+// `=` a fresh name, the *next* `=` an assignment, and its quote opens a run that
+// swallows the sentence. The expected text is exactly what a browser renders.
+const spacedAssignment = '<p x="a>b" y = z=">Visible " > After.</p>';
+assert(
+  stripStoryHtmlForExport(spacedAssignment) === 'Visible " > After.',
+  `whitespace before \`=\` must not discard the attribute name (got ${JSON.stringify(stripStoryHtmlForExport(spacedAssignment))})`
+);
+
 // The dropped-tag lists are read from the tag name, which sits before any
 // attribute, so the truncation never let a dangerous element through. Asserted
 // so the boundary change above is on the record as not having moved it.
@@ -344,6 +355,9 @@ const notSelfClosing: Array<{ label: string; html: string }> = [
   // The `/` is the last character of the unquoted value `y/`. Nothing ends an
   // unquoted value but whitespace or `>`.
   { label: 'a `/` inside an unquoted value', html: '<svg title="a>b" data-x=y/>secret</svg><p>Story.</p>' },
+  // A `/` directly after `=` does not close the tag either — it *begins* the
+  // unquoted value, so `data-x` is `/` and the element is still open.
+  { label: 'a `/` that is the whole unquoted value', html: '<svg title="a>b" data-x=/>secret</svg><p>Story.</p>' },
   // A self-closing marker is the two characters `/>`. Whitespace between them
   // makes the `/` a stray.
   { label: 'whitespace between `/` and `>`', html: '<svg title="a>b"/ >secret</svg><p>Story.</p>' }

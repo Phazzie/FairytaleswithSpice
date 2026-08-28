@@ -685,7 +685,12 @@ function findTagEnd(value: string, tagStart: number): number {
  *   without this state the second `=` reads as a fresh assignment and the quote
  *   after it opens a run that swallows the sentence.
  */
-type AttributeScanState = 'beforeAttributeName' | 'attributeName' | 'beforeValue' | 'unquotedValue';
+type AttributeScanState =
+  | 'beforeAttributeName'
+  | 'attributeName'
+  | 'afterAttributeName'
+  | 'beforeValue'
+  | 'unquotedValue';
 
 function scanAttributesToTagEnd(value: string, attributesStart: number): number {
   let index = attributesStart;
@@ -724,9 +729,17 @@ function scanAttributesToTagEnd(value: string, attributesStart: number): number 
 /** The walk's transitions, for every character that is not `>`, `<`, or a quote opening a value. */
 function nextAttributeState(state: AttributeScanState, character: string): AttributeScanState {
   if (isWhitespace(character)) {
-    // Whitespace ends a name and ends an unquoted value, but between `=` and its
-    // value it is still the value's position.
-    return state === 'beforeValue' ? 'beforeValue' : 'beforeAttributeName';
+    // Whitespace ends a name, but it does not throw the name away: `y = z` is a
+    // legal spelling of `y=z`, so an `=` after the space is still that name's
+    // assignment. Between `=` and its value the whitespace is the value's own
+    // position, and an unquoted value ends here.
+    if (state === 'beforeValue') {
+      return 'beforeValue';
+    }
+
+    return state === 'attributeName' || state === 'afterAttributeName'
+      ? 'afterAttributeName'
+      : 'beforeAttributeName';
   }
 
   if (state === 'unquotedValue') {
@@ -734,7 +747,7 @@ function nextAttributeState(state: AttributeScanState, character: string): Attri
   }
 
   if (character === '=') {
-    return state === 'attributeName' ? 'beforeValue' : 'attributeName';
+    return state === 'attributeName' || state === 'afterAttributeName' ? 'beforeValue' : 'attributeName';
   }
 
   return state === 'beforeValue' ? 'unquotedValue' : 'attributeName';
@@ -916,8 +929,11 @@ function closesWithASelfClosingSlash(token: string): boolean {
       continue;
     }
 
-    // A `/` inside an unquoted value is one of its characters, not a marker.
-    slashClosesTag = character === '/' && state !== 'unquotedValue';
+    // A `/` is a marker only where a value is not expected. Inside an unquoted
+    // value it is one of its characters, and directly after an `=` it *begins*
+    // one — `<svg data-x=/>` gives `data-x` the value `/` and leaves the element
+    // open, contents and all.
+    slashClosesTag = character === '/' && state !== 'unquotedValue' && state !== 'beforeValue';
     state = nextAttributeState(state, character);
     index += 1;
   }
