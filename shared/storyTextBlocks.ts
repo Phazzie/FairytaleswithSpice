@@ -101,8 +101,18 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * in.
  */
 function tagAttributesPattern(unquotedRun: string): string {
-  return String.raw`${unquotedRun}*(?:(?:"[^"<]*"|'[^'<]*')${unquotedRun}*)*`;
+  return `${unquotedRun}*(?:(?:"[^"<]*"|'[^'<]*')${unquotedRun}*)*`;
 }
+
+/**
+ * What each reader may cross while it is not inside a quoted attribute value.
+ *
+ * The two differ in one character, and the difference is the inline reader's
+ * existing protection against a run of `<`, kept here rather than dropped: see
+ * `stripInlineTags` below for why it excludes `<` and the block reader does not.
+ */
+const BLOCK_TAG_UNQUOTED_RUN = "[^>\"']";
+const INLINE_TAG_UNQUOTED_RUN = "[^<>\"']";
 
 /**
  * Match an opening or closing block-level tag, with or without attributes.
@@ -122,7 +132,7 @@ function tagAttributesPattern(unquotedRun: string): string {
  * boundary there and leaving the raw tag in the text.
  */
 const BLOCK_BOUNDARY_PATTERN = new RegExp(
-  String.raw`<\s*/?(?:${BLOCK_LEVEL_TAG_NAMES})\b(?:${tagAttributesPattern(String.raw`[^>"']`)}>|[^>]*>)`,
+  String.raw`<\s*/?(?:${BLOCK_LEVEL_TAG_NAMES})\b(?:${tagAttributesPattern(BLOCK_TAG_UNQUOTED_RUN)}>|[^>]*>)`,
   'gi'
 );
 
@@ -149,7 +159,7 @@ function stripInlineTags(value: string): string {
 }
 
 const INLINE_TAG_PATTERN = new RegExp(
-  String.raw`<\s*/?[a-zA-Z]${tagAttributesPattern(String.raw`[^<>"']`)}>|<[^<>]*>`,
+  String.raw`<\s*/?[a-zA-Z]${tagAttributesPattern(INLINE_TAG_UNQUOTED_RUN)}>|<[^<>]*>`,
   'g'
 );
 

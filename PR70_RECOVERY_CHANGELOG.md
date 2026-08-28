@@ -24,6 +24,13 @@ Self-review:
 - Non-claim: this does not make the module an HTML parser. Unquoted attribute values, comments, CDATA and `<script>` bodies are all still read as they were; the one rule added is that a quoted attribute value may contain `>`.
 - Known gap, deliberately not fixed here: `extractChapterTitleAndBody` (`api/_lib/services/storyContentAnalysis.ts`) and `renderChapterForAppend` (`api/_lib/services/storyService.ts`) both match `<h3[^>]*>` and have the same defect one level up — a `<h3 title="a>b">` yields the chapter title `b">Real Title`. Neither reads this module, so neither is fixed by it, and giving them the shared reading is a slice of its own with the chapter-title contract to consider. Filed as an issue rather than folded in.
 
+Review round — SonarCloud quality gate, `C Maintainability Rating on New Code` (required `A`), five code smells all in the new code and all correct:
+
+- Three × "using `String.raw` is unnecessary as the string does not contain any `\`" and two × "refactor this code to not use nested template literals", on the two inner `` String.raw`[^>"']` `` arguments and on `tagAttributesPattern`'s return. All five were the same habit — reaching for `String.raw` on strings that have nothing to escape — and the two inner ones were also templates nested inside the template they were being interpolated into.
+- Fixed by naming the two character classes as plain string constants (`BLOCK_TAG_UNQUOTED_RUN`, `INLINE_TAG_UNQUOTED_RUN`) and dropping `String.raw` from `tagAttributesPattern`. The two surviving `String.raw` calls are the two that genuinely carry `\s`, `\b` and `\/`.
+- Proved a pure refactor rather than assumed one: differential fuzzing of the refactored module against the committed one over 300,000 inputs — corpus including every attribute-carrying, unterminated-quote and bare-`<` shape the slice is about — reports **0 differences**. `test:all` exits `0`, API typecheck clean, function count 8/12, `git diff --check` clean.
+- Worth recording how the finding was read at all: `sonarcloud.io` is blocked by this environment's egress proxy, and the previous slice (#293) had to stand down on a Sonar count it could not open. The rule text and line numbers are available without it — a **failed** check run carries annotations, which `GET /repos/{owner}/{repo}/check-runs/{id}/annotations` returns through the GitHub API. That works for any failing Sonar gate and is the way to read one from here.
+
 ## 2026-08-27 UTC - A Title Only Four Exports Agree On (rebase of the 2026-08-26 three-quick-wins slice)
 
 Actions:
