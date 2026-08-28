@@ -182,6 +182,12 @@ for (const sentence of [
   'the bearer half-turned away',
   'the bearer well-known to us',
   'the bearer mother-in-law arrived',
+  // A slash joins two halves of one expression exactly as a hyphen does. Adding
+  // the hyphen fixed the instance and left the class, and a later review found
+  // the rest of it.
+  'the bearer and/or recipient must sign',
+  'the bearer his/her representative appointed',
+  'the bearer either/or clause applies',
   // A separator is not a header. These are a story title, a chapter heading
   // this app generates, and ordinary structured prose -- each puts `:` or `=`
   // immediately before the noun, and each was destroyed until the field name
@@ -282,7 +288,8 @@ assert(
 for (const shortButShaped of [
   'Bearer a1b2c3', 'Bearer k+y/z=', 'Bearer ab.cd',
   'Bearer xai-secret-key-123', 'Bearer sk_live_abcdef',
-  'Bearer -abcdef', 'Bearer ab--cd', 'Bearer abcdef-'
+  'Bearer -abcdef', 'Bearer ab--cd', 'Bearer abcdef-',
+  'Bearer /abcdef', 'Bearer ab//cd', 'Bearer abcdef/'
 ]) {
   const shaped = redactSensitiveLogData({ note: shortButShaped }) as Record<string, string>;
   assert(

@@ -487,35 +487,52 @@ function isCredentialShapedBearerToken(token: string): boolean {
 /**
  * Could this run be an English word rather than a credential?
  *
- * Letters, joined by interior single hyphens. The hyphen is here because
- * `re-entered`, `self-appointed`, `half-turned` and `well-known` are ordinary
- * words that follow the noun `bearer` in prose, and reading every non-letter as
- * proof of a credential destroyed all of them -- the same defect this function
- * exists to avoid, in a class the earlier rounds had not looked at.
+ * Letters, joined by interior single hyphens **or slashes**. Both are here for
+ * the same reason and were found the same way: `re-entered`, `self-appointed`,
+ * `half-turned`, `well-known` and then `and/or`, `his/her`, `either/or` are
+ * ordinary words and phrases that follow the noun `bearer` in prose, and
+ * reading every non-letter as proof of a credential destroyed all of them --
+ * the defect this function exists to avoid.
+ *
+ * The slash was missed when the hyphen was added, which is the honest reading
+ * of it: the rule was fixed for the instance rather than for the class, and a
+ * later review found the class. Both are joiners inside an English word; a
+ * credential is not spelled that way.
  *
  * Everything else still qualifies as a credential at any length, and that is
- * where the work happens: a digit, `_`, `.`, `+`, `/`, `=`, a leading or
- * trailing hyphen, or two hyphens in a row. Every provider token this app holds
- * fails this test and is caught regardless of length -- `xai-secret-key-123`
- * and `a1b2c3` on their digits, `sk_live_…` on its underscore, a JWT on its
- * dots.
+ * where the work happens: a digit, `_`, `.`, `+`, `=`, or a leading, trailing
+ * or doubled joiner. Every provider token this app holds fails this test and is
+ * caught regardless of length -- `xai-secret-key-123` and `a1b2c3` on their
+ * digits, `sk_live_…` on its underscore, a JWT on its dots.
+ *
+ * What this costs, stated rather than left implied: a run of letters joined by
+ * a single slash is no longer a credential on shape alone, so a purely
+ * alphabetic `abc/def` under 16 characters is preserved. That is the same band
+ * as the residual in `SECURITY_IMPLEMENTATION_GUIDE.md` Note 7 and is bounded
+ * the same way -- #315's contract makes such a value unconfigurable, and no
+ * provider issues one.
  */
 function isWordLikeRun(token: string): boolean {
-  let previousWasHyphen = true; // a leading hyphen is not a word
+  let previousWasJoiner = true; // a leading joiner is not a word
   for (const char of token) {
-    if (char === '-') {
-      if (previousWasHyphen) {
+    if (isWordJoiner(char)) {
+      if (previousWasJoiner) {
         return false;
       }
-      previousWasHyphen = true;
+      previousWasJoiner = true;
       continue;
     }
     if (!isAsciiLetter(char)) {
       return false;
     }
-    previousWasHyphen = false;
+    previousWasJoiner = false;
   }
-  return !previousWasHyphen; // a trailing hyphen is not a word either
+  return !previousWasJoiner; // a trailing joiner is not a word either
+}
+
+/** The marks that join two halves of one English word: `well-known`, `and/or`. */
+function isWordJoiner(char: string): boolean {
+  return char === '-' || char === '/';
 }
 
 function redactApiKeys(value: string): string {

@@ -288,6 +288,63 @@ reading in both cases, and where both are wrong it over-covers rather than
 under-covers — which is the fail-closed direction actually argued for, this
 time by construction rather than by assertion.
 
+**Review round 9: one fixed, two escalated, and the escalation is the point.**
+Codex returned three findings. The third is fixed here; the first two are
+**deliberately not fixed**, and this entry exists mainly to explain why.
+
+**Fixed — a slash joins an English word exactly as a hyphen does.**
+
+```
+the bearer and/or recipient must sign        -> the Bearer [REDACTED] recipient must sign
+the bearer his/her representative appointed  -> the Bearer [REDACTED] representative appointed
+```
+
+Round 4 added the hyphen to `isWordLikeRun` after `re-entered` and
+`self-appointed` were destroyed. That fixed the instances and left the class:
+`/` joins two halves of one expression the same way. Both are now joiners, with
+leading, trailing and doubled ones still refused, so `/abcdef`, `ab//cd` and
+`abcdef/` remain credentials. The cost is stated rather than implied: a purely
+alphabetic `abc/def` under 16 characters is now preserved — the same band as
+the Note 7 residual and bounded the same way. Mutations: 2 applied, 2 killed.
+
+**Not fixed — the two findings inside the credential-array scanner**, which is
+where the fifth round of defects in one function has now landed:
+
+```
+{"authorization":"Bearer abcdef, Bearer ghijkl"}
+    -> `ghijkl` in the clear; the walk stops at the comma inside one quoted value
+{"authorization":["path=C:\\","Bearer abcdef"]} and the bearer announced victory
+    -> `and the Bearer [REDACTED] victory`; an element ending in `\\` has a
+       closing quote after two backslashes, no reading closes the array, and the
+       span runs to the end of the log
+```
+
+Both are real and both were reproduced. The second is the **third** time this
+scanner has destroyed prose after an array, which is the defect the entire PR
+exists to fix.
+
+**Why this stops here rather than taking a fifth patch.** Rounds 5–8 each fixed
+this function and each was followed by a new defect in it — two leaks and two
+prose destructions — and twice the error was in a stated *safety property*
+rather than in code. The pattern is no longer about the individual cases: a
+forward span computed by scanning a serialization this module cannot actually
+parse has a worst case of "swallow the rest of the log", and every round has
+found another way to reach it.
+
+**The recommendation, for the owner to rule on.** Replace the forward span with
+a **backward walk**: let `isIntroducedAsCredential` cross `,`, `[` and complete
+preceding elements on its way back to a field name. That is strictly better in
+the way that matters — a backward walk that fails simply returns false for one
+keyword, so the "runs to the end of the log" failure becomes *structurally
+impossible* rather than fixed-again — and it also answers the comma finding,
+which the span design cannot reach at all. The alternative is to revert the
+array feature to its pre-round-5 state, which returns a bounded leak and
+removes the prose risk.
+
+Not taken unilaterally because it is a redesign of a security path, and the
+judgement that would pick it is the same judgement that has been wrong three
+rounds running.
+
 **Review round 8 found both halves of round 7's trade were wrong.** Codex
 returned two findings on the same function, in opposite directions:
 
