@@ -23,7 +23,7 @@ import { findWellFormedTagEnd } from './htmlTagScanner';
 export function splitStoryIntoTextBlocks(storyContent: string): string[] {
   return markBlockBoundaries(storyContent)
     .split(/\n\s*\n/)
-    .map(block => decodeBasicEntities(block).trim())
+    .map(block => decodeBasicEntities(stripRemainingTags(block)).trim())
     .filter(Boolean);
 }
 
@@ -111,8 +111,43 @@ export function stripStoryHtmlToText(storyContent: string): string {
  * `<[^<>]*>` exactly as before, and `<!-- note: a > b -->` still leaks `b -->`
  * as a visible block. That stays #296's to settle; once #307 lands this module
  * can call `tokenizeHtml` and inherit the whole comment reading.
+ *
+ * **And the two passes stay two passes, in their original order.** Marking
+ * boundaries runs over the whole story, because a block tag always could span
+ * a blank line; removing what is left runs per block, after the split, because
+ * an inline one never could. Merging them into a single pass over the whole
+ * string looks like a simplification and deletes paragraphs:
+ * `Alpha <\n\nBeta > Gamma` gives `<[^<>]*>` a match reaching across the blank
+ * line, so the whole of ` <\n\nBeta >` disappears and two blocks become
+ * `Alpha  Gamma`. Splitting first is what kept that fallback inside one
+ * paragraph, and that is a property of the pipeline's shape rather than of
+ * either pattern.
  */
 function markBlockBoundaries(storyContent: string): string {
+  // Every other tag is left exactly where it is, for `stripRemainingTags` to
+  // remove once the split has bounded it.
+  return rewriteTags(storyContent, (text, isBlockBoundary) => (isBlockBoundary ? '\n\n' : text));
+}
+
+/**
+ * Drop what is left of the markup once the block boundaries are marked.
+ *
+ * Runs on one block at a time, which is the bound that matters: the fallback
+ * this ends up using for markup the scanner refuses is `<[^<>]*>`, and a block
+ * is precisely as far as it was ever allowed to reach.
+ */
+function stripRemainingTags(block: string): string {
+  return rewriteTags(block, () => '');
+}
+
+/**
+ * Walk `value`, replacing each tag with whatever `replaceTag` returns for it
+ * and passing the text between tags through untouched.
+ */
+function rewriteTags(
+  value: string,
+  replaceTag: (text: string, isBlockBoundary: boolean) => string
+): string {
   const pieces: string[] = [];
   let index = 0;
 
@@ -122,35 +157,32 @@ function markBlockBoundaries(storyContent: string): string {
   // most — `<<<<<…>`, where each `<` is rejected, the scan resumes one
   // character on, and the search runs to the same distant `>` every time. That
   // measured 260ms at 200,000 characters and 994ms at 400,000.
-  const lastGreaterThan = storyContent.lastIndexOf('>');
+  const lastGreaterThan = value.lastIndexOf('>');
 
-  while (index < storyContent.length) {
-    const tagStart = storyContent.indexOf('<', index);
+  while (index < value.length) {
+    const tagStart = value.indexOf('<', index);
     if (tagStart === -1) {
-      pieces.push(storyContent.slice(index));
+      pieces.push(value.slice(index));
       break;
     }
 
     if (tagStart > index) {
-      pieces.push(storyContent.slice(index, tagStart));
+      pieces.push(value.slice(index, tagStart));
     }
 
     if (tagStart >= lastGreaterThan) {
-      pieces.push(storyContent.slice(tagStart));
+      pieces.push(value.slice(tagStart));
       break;
     }
 
-    const tag = readTagAt(storyContent, tagStart);
+    const tag = readTagAt(value, tagStart);
     if (tag === null) {
       pieces.push('<');
       index = tagStart + 1;
       continue;
     }
 
-    if (tag.isBlockBoundary) {
-      pieces.push('\n\n');
-    }
-
+    pieces.push(replaceTag(value.slice(tagStart, tag.end + 1), tag.isBlockBoundary));
     index = tag.end + 1;
   }
 

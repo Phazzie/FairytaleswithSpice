@@ -112,6 +112,18 @@ assert(
   'a `<` that closes nothing should stay as text'
 );
 
+// ...and a tag-shaped span must not reach across a blank line to find its `>`.
+// Marking boundaries runs over the whole story, because a block tag can span
+// one; removing what is left runs per block, after the split, because
+// `<[^<>]*>` never could. Doing both in one pass over the whole string lets
+// this match from the `<` to the `>` two paragraphs later and deletes the
+// paragraph between them.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('Alpha <\n\nBeta > Gamma')) ===
+    JSON.stringify(['Alpha <', 'Beta > Gamma']),
+  'a malformed tag-shaped span should not consume across a blank line'
+);
+
 // ...and the same `<` must survive a *later* real tag, which is the harder
 // case. A first-`>` reading runs from the `<` a reader typed to the `>` of the
 // `<em>` and swallows ` < Beta <em>` whole, leaving `Alpha Gamma`. Deleting

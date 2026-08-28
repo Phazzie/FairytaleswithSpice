@@ -11,7 +11,7 @@ Actions:
 - `shared/storyTextBlocks.ts` takes the *extent* of each tag from `shared/htmlTagScanner` instead of from its two patterns, which both ended a tag at the *first* `>` rather than at the first one outside a quoted attribute value. This was the fourth and last reader carrying that fault; #297 fixed the export tokenizer, #306 the two chapter-heading readers, and the entry above left this one open by name.
 - The two patterns stay, verbatim, as the reading for markup the scanner refuses and as the test for whether a tag names a block. Only the span moves. See the review round below for why that division is the whole of the change.
 - `BLOCK_LEVEL_TAG_NAMES` becomes a `Set` of names, with `h[1-6]` spelled out as six entries; the block pattern is now built from that set, so there is one list rather than two.
-- Extended `tests/story-text-blocks.test.ts` from 6 assertions to 60.
+- Extended `tests/story-text-blocks.test.ts` from 6 assertions to 61.
 
 The defects repaired, all three reader-visible:
 
@@ -46,10 +46,23 @@ Review round 1 (Codex on `a04ed44`) — **three defects, two of them reported an
 - **Why the first round's numbers did not catch any of this.** 549,024 inputs, "0 worse", and every one of them wrong about the question. The harness varied only tag *interiors* — the inside of a well-formed tag — and neither a stray `<` in prose nor `</ p>` nor `<p">` can be written that way. It also scored against `parse5` with text nodes joined by a space, which fabricates a boundary neither implementation emits, so real disagreements read as agreement. **The blind spot moved from length (#306's) to carrier.** An enumeration is evidence about the shapes it can generate and nothing else, and the way to find that out is not to enumerate harder.
 - **Two mutations survived the second draft of the tests, for the same reason as the first round's one.** `<paragraph>` was asserted as `<p>One.</p><paragraph>Two.`, where the adjacent `<p>` supplies the break; and no assertion reached the block-pattern fallback at all. Both now stand alone. Three of the eleven test-masking failures in this issue's history have been an adjacent `<p>` hiding a missing boundary.
 
+Review round 2 (Codex on `eeef5bd`) — **one more, of the same family, and the enumeration was still missing an alphabet**:
+
+- **P1, a whole paragraph deleted.** `Alpha <\n\nBeta > Gamma` → `Alpha  Gamma`. Not a pattern defect and not a scanner defect: a **pipeline-order** defect. The original ran `<[^<>]*>` *after* the split, per block, so it could never reach across a blank line. Folding the boundary marking and the tag removal into one pass over the whole story — which reads as a simplification — hands that fallback a match from a `<` in one paragraph to a `>` in the next, and everything between is deleted.
+- **The fix restores the order rather than patching the pattern.** `markBlockBoundaries` runs over the whole story, because a block tag always could span a blank line, and leaves every non-block tag exactly where it is. `stripRemainingTags` then runs per block, after the split, because an inline one never could. Both share one walk; only what they do with a tag differs. The bound is a property of the pipeline's shape, not of either expression, which is why it disappeared the moment the shape changed.
+- **The alphabet was the blind spot this time.** Round 1's rebuilt harness enumerated `{< > / p a " space =}` and **contained no blank line**, so not one of its 2.47M inputs could express this defect. Round 1's blind spot was the carrier; this one was the alphabet. Third distinct blind spot in three rounds, and the pattern across them is that an enumeration proves nothing about a dimension it does not vary. Re-run with `\n\n` in the alphabet: **1,793,610 inputs, 0 worse, 0 boundaries moved, 502,279 repaired.**
+- **Counterfactual mutations 14 → 15**, the new one being the two passes merged into a single whole-string pass. All 15 killed.
+
+Cost, measured rather than assumed:
+
+- **Linear**, confirmed on sixteen shapes at 200,000 → 400,000 characters and by per-character cost across 200k → 6.4M on the worst of them, where new and old drift together (allocation, not algorithm).
+- **A real constant-factor slowdown**, though: a hand-written two-pass walk against two native regex replaces. On inline-tag-heavy synthetic input it is 5–8× the old cost. On realistic generator output — `<p>` paragraphs with `<em>`/`<strong>` and entities — it is about 1.8×: **0.53ms against 0.35ms at 5,000 words, 1.89ms against 1.06ms at 20,000**. These scanners run a few times per generation, not in a loop, so this is reported rather than optimised.
+
 Not claimed:
 
 - **No evidence this happens in production output.** The generator is not prompted to emit attributes on story markup at all, so a `>` inside one needs the model to volunteer both. Worth fixing because the corruption is silent and reaches measurements rather than because it has been observed — the same standing as the three rows before it.
-- **The residual disagreement with `parse5` is unchanged, not fixed.** New still leaks or deletes characters on 1,004,730 of the 2.47M fragments; the remainder is this module doing what it is documented to do — deleting the span between a `<` and a `>` in prose — and old does the same on every one of them.
+- **The residual disagreement with `parse5` is unchanged, not fixed.** New still leaks or deletes characters on 401,379 of the 1.79M blank-line fragments; the remainder is this module doing what it is documented to do — deleting the span between a `<` and a `>` in prose — and old does the same on every one of them and on 502,279 more.
+- **Three review rounds have each found a defect the round before called impossible.** Nothing here says the fourth would find none; what it says is that each round's evidence was scoped to shapes the previous round had thought of, and the current numbers are worth exactly the dimensions the enumeration varies: carrier, alphabet, and length.
 
 ## 2026-08-28 UTC - The Two Chapter-Heading Readers Call the Scanner (rows 1 and 2 of #296)
 
