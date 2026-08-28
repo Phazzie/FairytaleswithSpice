@@ -653,6 +653,20 @@ export class App implements OnDestroy {
     triggerLabel: ''
   });
   readonly isGenerating = signal(false);
+  /**
+   * Whether the creature/spice/heat-contract-detail/mood/length/batch-size
+   * controls are shown.
+   *
+   * Those seven controls all ship with a valid default (`FormValidationService`
+   * never blocks generation on any of them) and were shown with the same visual
+   * weight as the three fields that actually gate generation — the logline, the
+   * theme picker, and the Heat Contract's adult-confirmation checkbox. Collapsed
+   * by default here, the same way `<details class="story-details">` already
+   * collapses the fully-optional name/world/special-request fields; this closes
+   * the gap left when that pattern was applied to one group of optional fields
+   * and not the other.
+   */
+  readonly advancedControlsExpanded = signal(false);
   readonly imageStyles = IMAGE_STYLES;
   readonly selectedImageStyle = signal<ImageStyle>('artistic');
   readonly isGeneratingImage = signal(false);
@@ -1243,6 +1257,10 @@ export class App implements OnDestroy {
       : [...current.themes, theme];
 
     this.blueprint.set({ ...current, themes: updatedThemes });
+  }
+
+  toggleAdvancedControls() {
+    this.advancedControlsExpanded.update(expanded => !expanded);
   }
 
   selectSkin(skinId: StorySkinId) {

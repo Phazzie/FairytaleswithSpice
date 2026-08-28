@@ -43,97 +43,47 @@
         <h2>Tell us what you want to read</h2>
       </div>
 
-      <label class="story-idea">
-        Story idea
-        <textarea
-          data-testid="blueprint-logline"
-          rows="5"
-          placeholder="A witch with a guarded heart opens her door to a charming alchemist. Sparks fly. So do boundaries."
-          [ngModel]="blueprint().logline"
-          (ngModelChange)="updateBlueprint('logline', $event)"
-          [attr.aria-invalid]="hasFieldError('logline')"
-          [attr.aria-describedby]="hasFieldError('logline') ? 'logline-error' : null"
-        ></textarea>
-        <span class="field-error" id="logline-error" *ngIf="hasFieldError('logline')" role="alert">
-          {{ getFieldError('logline') }}
-        </span>
-      </label>
+      <div class="creation-focus" data-testid="creation-empty-state">
+        <label class="story-idea">
+          Story idea
+          <textarea
+            data-testid="blueprint-logline"
+            rows="5"
+            placeholder="A witch with a guarded heart opens her door to a charming alchemist. Sparks fly. So do boundaries."
+            [ngModel]="blueprint().logline"
+            (ngModelChange)="updateBlueprint('logline', $event)"
+            [attr.aria-invalid]="hasFieldError('logline')"
+            [attr.aria-describedby]="hasFieldError('logline') ? 'logline-error' : null"
+          ></textarea>
+          <span class="field-error" id="logline-error" *ngIf="hasFieldError('logline')" role="alert">
+            {{ getFieldError('logline') }}
+          </span>
+        </label>
 
-      <section class="choice-block">
-        <div class="section-heading compact-heading">
-          <p class="eyebrow">Creature</p>
-          <h3>{{ blueprint().creature | titlecase }}</h3>
-        </div>
-        <div class="creature-grid">
-          <button
-            type="button"
-            class="creature-card"
-            data-testid="creature-card"
-            [attr.data-creature-id]="creature.id"
-            *ngFor="let creature of creatureOptions; trackBy: trackCreature"
-            [class.creature-card--active]="blueprint().creature === creature.id"
-            [attr.aria-pressed]="blueprint().creature === creature.id"
-            (click)="updateBlueprint('creature', creature.id)"
-          >
-            <span>{{ creature.label }}</span>
-            <small>{{ creature.description }}</small>
-          </button>
-        </div>
-      </section>
-
-      <section class="choice-block">
-        <div class="section-heading compact-heading">
-          <p class="eyebrow">Story elements</p>
-          <h3>{{ selectedThemes }}</h3>
-        </div>
-        <p class="field-error" id="themes-error" *ngIf="hasFieldError('themes')" role="alert">
-          {{ getFieldError('themes') }}
-        </p>
-        <div class="theme-grid" [attr.aria-invalid]="hasFieldError('themes')">
-          <button
-            type="button"
-            class="theme-chip"
-            data-testid="theme-chip"
-            [attr.data-theme-id]="theme.id"
-            [class.theme-chip--active]="isThemeSelected(theme)"
-            [attr.aria-pressed]="isThemeSelected(theme)"
-            (click)="toggleTheme(theme)"
-            *ngFor="let theme of availableThemes; trackBy: trackTheme"
-          >
-            <span class="theme-label">{{ theme.label }}</span>
-            <span class="theme-description">{{ theme.description }}</span>
-          </button>
-        </div>
-      </section>
-
-      <section class="choice-block">
-        <div class="section-heading compact-heading">
-          <p class="eyebrow">Spice level</p>
-          <h3>{{ activeSpiceOption().label }}</h3>
-        </div>
-        <div class="spice-grid">
-          <button
-            type="button"
-            class="spice-card"
-            data-testid="spice-card"
-            [attr.data-spice-level]="spice.level"
-            *ngFor="let spice of spiceOptions; trackBy: trackSpice"
-            [class.spice-card--active]="blueprint().spicyLevel === spice.level"
-            [attr.aria-pressed]="blueprint().spicyLevel === spice.level"
-            (click)="updateBlueprint('spicyLevel', spice.level)"
-          >
-            <span>Level {{ spice.level }}</span>
-            <strong>{{ spice.label }}</strong>
-            <small>{{ spice.description }}</small>
-          </button>
-        </div>
-      </section>
-
-      <section class="choice-block heat-contract" data-testid="heat-contract">
-        <div class="section-heading compact-heading">
-          <p class="eyebrow">Heat contract</p>
-          <h3>{{ activeHeatContract().intimacyBoundary.split('_').join(' ') | titlecase }}</h3>
-        </div>
+        <section class="choice-block">
+          <div class="section-heading compact-heading">
+            <p class="eyebrow">Story elements</p>
+            <h3>{{ selectedThemes }}</h3>
+          </div>
+          <p class="field-error" id="themes-error" *ngIf="hasFieldError('themes')" role="alert">
+            {{ getFieldError('themes') }}
+          </p>
+          <div class="theme-grid" [attr.aria-invalid]="hasFieldError('themes')">
+            <button
+              type="button"
+              class="theme-chip"
+              data-testid="theme-chip"
+              [attr.data-theme-id]="theme.id"
+              [class.theme-chip--active]="isThemeSelected(theme)"
+              [attr.aria-pressed]="isThemeSelected(theme)"
+              (click)="toggleTheme(theme)"
+              *ngFor="let theme of availableThemes; trackBy: trackTheme"
+            >
+              <span class="theme-label">{{ theme.label }}</span>
+              <span class="theme-description">{{ theme.description }}</span>
+            </button>
+          </div>
+        </section>
 
         <label class="contract-check">
           <input
@@ -147,63 +97,126 @@
         <span class="field-error" *ngIf="hasFieldError('heatContract')" role="alert">
           {{ getFieldError('heatContract') }}
         </span>
+      </div>
 
-        <div class="heat-option-group">
-          <span>Tension mode</span>
-          <div class="heat-option-grid">
+      <button
+        type="button"
+        class="ghost advanced-controls-toggle"
+        data-testid="advanced-controls-toggle"
+        [attr.aria-expanded]="advancedControlsExpanded()"
+        (click)="toggleAdvancedControls()"
+      >
+        {{ advancedControlsExpanded() ? 'Hide advanced options' : 'Advanced options (creature, spice, heat detail, mood, length)' }}
+      </button>
+
+      <div data-testid="advanced-controls" [hidden]="!advancedControlsExpanded()">
+        <section class="choice-block">
+          <div class="section-heading compact-heading">
+            <p class="eyebrow">Creature</p>
+            <h3>{{ blueprint().creature | titlecase }}</h3>
+          </div>
+          <div class="creature-grid">
             <button
               type="button"
-              class="heat-option"
-              data-testid="heat-tension-option"
-              [attr.data-heat-tension]="option.id"
-              *ngFor="let option of heatTensionOptions; trackBy: trackHeatTensionOption"
-              [class.heat-option--active]="activeHeatContract().tensionMode === option.id"
-              [attr.aria-pressed]="activeHeatContract().tensionMode === option.id"
-              (click)="updateHeatContract('tensionMode', option.id)"
+              class="creature-card"
+              data-testid="creature-card"
+              [attr.data-creature-id]="creature.id"
+              *ngFor="let creature of creatureOptions; trackBy: trackCreature"
+              [class.creature-card--active]="blueprint().creature === creature.id"
+              [attr.aria-pressed]="blueprint().creature === creature.id"
+              (click)="updateBlueprint('creature', creature.id)"
             >
-              <strong>{{ option.label }}</strong>
-              <small>{{ option.description }}</small>
+              <span>{{ creature.label }}</span>
+              <small>{{ creature.description }}</small>
             </button>
           </div>
-        </div>
+        </section>
 
-        <div class="heat-option-group">
-          <span>Boundary</span>
-          <div class="heat-option-grid">
+        <section class="choice-block">
+          <div class="section-heading compact-heading">
+            <p class="eyebrow">Spice level</p>
+            <h3>{{ activeSpiceOption().label }}</h3>
+          </div>
+          <div class="spice-grid">
             <button
               type="button"
-              class="heat-option"
-              data-testid="heat-boundary-option"
-              [attr.data-heat-boundary]="option.id"
-              *ngFor="let option of heatBoundaryOptions; trackBy: trackHeatBoundaryOption"
-              [class.heat-option--active]="activeHeatContract().intimacyBoundary === option.id"
-              [attr.aria-pressed]="activeHeatContract().intimacyBoundary === option.id"
-              (click)="updateHeatContract('intimacyBoundary', option.id)"
+              class="spice-card"
+              data-testid="spice-card"
+              [attr.data-spice-level]="spice.level"
+              *ngFor="let spice of spiceOptions; trackBy: trackSpice"
+              [class.spice-card--active]="blueprint().spicyLevel === spice.level"
+              [attr.aria-pressed]="blueprint().spicyLevel === spice.level"
+              (click)="updateBlueprint('spicyLevel', spice.level)"
             >
-              <strong>{{ option.label }}</strong>
-              <small>{{ option.description }}</small>
+              <span>Level {{ spice.level }}</span>
+              <strong>{{ spice.label }}</strong>
+              <small>{{ spice.description }}</small>
             </button>
           </div>
-        </div>
+        </section>
 
-        <label>
-          No-go content
-          <textarea
-            data-testid="heat-contract-no-go"
-            rows="2"
-            placeholder="No coercion, no humiliation, no body horror."
-            [ngModel]="activeHeatContract().noGoContent"
-            (ngModelChange)="updateHeatContract('noGoContent', $event)"
-            [attr.aria-invalid]="hasFieldError('heatContractNoGoContent')"
-            [attr.aria-describedby]="hasFieldError('heatContractNoGoContent') ? 'heat-contract-no-go-error' : null"
-          ></textarea>
-          <span class="field-error" id="heat-contract-no-go-error" *ngIf="hasFieldError('heatContractNoGoContent')" role="alert">
-            {{ getFieldError('heatContractNoGoContent') }}
-          </span>
-        </label>
-      </section>
+        <section class="choice-block heat-contract" data-testid="heat-contract">
+          <div class="section-heading compact-heading">
+            <p class="eyebrow">Heat contract detail</p>
+            <h3>{{ activeHeatContract().intimacyBoundary.split('_').join(' ') | titlecase }}</h3>
+          </div>
 
-      <div class="form-grid">
+          <div class="heat-option-group">
+            <span>Tension mode</span>
+            <div class="heat-option-grid">
+              <button
+                type="button"
+                class="heat-option"
+                data-testid="heat-tension-option"
+                [attr.data-heat-tension]="option.id"
+                *ngFor="let option of heatTensionOptions; trackBy: trackHeatTensionOption"
+                [class.heat-option--active]="activeHeatContract().tensionMode === option.id"
+                [attr.aria-pressed]="activeHeatContract().tensionMode === option.id"
+                (click)="updateHeatContract('tensionMode', option.id)"
+              >
+                <strong>{{ option.label }}</strong>
+                <small>{{ option.description }}</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="heat-option-group">
+            <span>Boundary</span>
+            <div class="heat-option-grid">
+              <button
+                type="button"
+                class="heat-option"
+                data-testid="heat-boundary-option"
+                [attr.data-heat-boundary]="option.id"
+                *ngFor="let option of heatBoundaryOptions; trackBy: trackHeatBoundaryOption"
+                [class.heat-option--active]="activeHeatContract().intimacyBoundary === option.id"
+                [attr.aria-pressed]="activeHeatContract().intimacyBoundary === option.id"
+                (click)="updateHeatContract('intimacyBoundary', option.id)"
+              >
+                <strong>{{ option.label }}</strong>
+                <small>{{ option.description }}</small>
+              </button>
+            </div>
+          </div>
+
+          <label>
+            No-go content
+            <textarea
+              data-testid="heat-contract-no-go"
+              rows="2"
+              placeholder="No coercion, no humiliation, no body horror."
+              [ngModel]="activeHeatContract().noGoContent"
+              (ngModelChange)="updateHeatContract('noGoContent', $event)"
+              [attr.aria-invalid]="hasFieldError('heatContractNoGoContent')"
+              [attr.aria-describedby]="hasFieldError('heatContractNoGoContent') ? 'heat-contract-no-go-error' : null"
+            ></textarea>
+            <span class="field-error" id="heat-contract-no-go-error" *ngIf="hasFieldError('heatContractNoGoContent')" role="alert">
+              {{ getFieldError('heatContractNoGoContent') }}
+            </span>
+          </label>
+        </section>
+
+        <div class="form-grid">
         <label>
           Mood
           <select
@@ -260,6 +273,7 @@
             {{ getFieldError('chapterBatchSize') }}
           </span>
         </label>
+      </div>
       </div>
 
       <details class="story-details">
