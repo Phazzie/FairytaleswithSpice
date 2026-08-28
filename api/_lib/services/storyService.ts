@@ -64,7 +64,11 @@ import {
   toLoggableNumber,
   toLoggableThemes
 } from '../utils/loggableRequestParameters';
-import { STORY_BLUEPRINT_LIMITS, STORY_EVALUATION_LIMITS } from '../../../shared/storyBlueprintLimits';
+import {
+  STORY_BLUEPRINT_LIMITS,
+  STORY_EVALUATION_LIMITS,
+  STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH
+} from '../../../shared/storyBlueprintLimits';
 import { capAtWordBoundaryWithinCodeUnits } from '../utils/textExcerpt';
 import { collapseWhitespace } from '../utils/whitespace';
 import {
@@ -136,8 +140,19 @@ const STORY_LAB_THEME_DESCRIPTION_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxThemeDe
  * publish for each field, one field at a time, rather than one number that
  * happens to be the smallest of them.
  *
- * `noGoContent` keeps `320` — it was always this field's own cap, which is what
- * `STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength` reads it as too. `tone` takes
+ * `noGoContent` is the one field here whose prompt-side bound is not its own
+ * cap, and it is the same argument rather than an exception to it. It kept
+ * `320` — "it was always this field's own cap, which is what
+ * `STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength` reads it as too" — but that
+ * is the cap on one *source*, and `withMergedContentBoundaries` puts two in
+ * this field: a reader's profile-wide `contentBoundaries`, joined onto the
+ * request's own no-go list with a newline. So a request already at its cap
+ * merged to 641 characters and was cut back to 320, which is the request's half
+ * and none of the profile's — the reader's standing boundaries deleted in full,
+ * here, after the profile route had deliberately refused rather than shorten
+ * them. `STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH` is the sum of the two caps
+ * and the separator, so both halves survive and the field is still bounded.
+ * `tone` takes
  * the evaluation limits' configuration-value cap, which is documented for
  * exactly this shape of field: "one theme id or creature name, not a paragraph
  * wearing the field's name". The blueprint parser checks `tone` against
@@ -148,7 +163,6 @@ const STORY_LAB_TONE_MAX_LENGTH = STORY_EVALUATION_LIMITS.maxConfigurationValueL
 const STORY_LAB_CHARACTER_NAME_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxCharacterNameLength;
 const STORY_LAB_WORLD_DETAILS_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength;
 const STORY_LAB_NARRATIVE_DIRECTIVES_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength;
-const STORY_LAB_NO_GO_CONTENT_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxNoGoContentLength;
 
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
@@ -1122,7 +1136,7 @@ AVOID: ${selectedStructure.avoid}`;
     }
     if (context.heatContract) {
       lines.push(`- Heat contract: adult readers only confirmed; tension mode ${this.formatBlueprintIdLabel(context.heatContract.tensionMode)}; boundary ${this.formatBlueprintIdLabel(context.heatContract.intimacyBoundary)}.`);
-      const noGoContent = this.limitStoryLabPromptText(context.heatContract.noGoContent, STORY_LAB_NO_GO_CONTENT_MAX_LENGTH);
+      const noGoContent = this.limitStoryLabPromptText(context.heatContract.noGoContent, STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH);
       if (noGoContent) {
         lines.push(`- No-go content: ${noGoContent}`);
       }
@@ -1303,8 +1317,38 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
       `- Adult readers only confirmed; tension mode ${this.formatBlueprintIdLabel(context.heatContract.tensionMode)}; boundary ${this.formatBlueprintIdLabel(context.heatContract.intimacyBoundary)}.`
     ];
 
-    if (context.heatContract.noGoContent?.trim()) {
-      lines.push(`- No-go content: ${context.heatContract.noGoContent.trim()}`);
+    // Read through the same boundary as the genesis builder's copy of this
+    // line, twelve lines up, rather than with a bare `.trim()`.
+    //
+    // `limitStoryLabPromptText`'s own docblock states the rule this was the one
+    // exception to: "Every Story Lab field that reaches a prompt goes through
+    // here — the logline, the tone, both character names, the world details,
+    // the narrative directives, the Heat Contract's no-go list, and each theme
+    // seed's label and description". That was true of the no-go list on the
+    // genesis path and false on this one, and this is the path that writes
+    // every chapter after the first.
+    //
+    // Both halves of the helper matter here, and neither is hypothetical:
+    //
+    // - **The cap.** `parseStoryLabBlueprint` refuses a `noGoContent` past
+    //   `maxNoGoContentLength`, but no continuation route parses a blueprint —
+    //   `createStoryLabContinuationHandler` spreads the request body and
+    //   `normalizeContinuationInput` ends `heatContract: partial.heatContract`
+    //   — so this was the only bound on the field, and there wasn't one. A
+    //   50,000-character no-go list reached the model in full.
+    // - **The whitespace collapse**, which is what keeps the value on the line
+    //   it was written into. `withMergedContentBoundaries` joins a reader's
+    //   profile-wide boundaries onto the request's own with `\n`, so a newline
+    //   in this field is the ordinary case and not a malformed one. Written
+    //   raw, the second boundary landed as a bare line inside a block of `- `
+    //   bullets — no longer part of the no-go item, and indistinguishable from
+    //   one of the app's own constraints.
+    const noGoContent = this.limitStoryLabPromptText(
+      context.heatContract.noGoContent,
+      STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH
+    );
+    if (noGoContent) {
+      lines.push(`- No-go content: ${noGoContent}`);
     }
 
     lines.push('- Keep continuation intimacy consensual and do not exceed the original Heat Contract boundary.');
