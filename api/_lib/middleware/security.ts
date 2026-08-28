@@ -47,16 +47,23 @@ export interface AuthResult {
 export const API_KEY_MINIMUM_LENGTH = 16;
 
 /**
- * The characters an `API_KEYS` entry may be built from: RFC 6750's `b64token`
- * alphabet, which is what a bearer credential is allowed to contain on the wire.
+ * The shape an `API_KEYS` entry may take: RFC 6750's `b64token` grammar, which
+ * is what a bearer credential is allowed to look like on the wire.
  *
- * This is a well-formedness rule, not an entropy one. An entry carrying a quote,
- * a newline, or a control character did not come from a key generator — it came
- * from a shell that kept the quoting or a value pasted with its line ending —
- * and it could never have authenticated anything, because a header cannot carry
- * a raw newline and {@link readHeader} trims the rest. Refusing it by name is
- * the difference between an operator seeing why their key does not work and
- * seeing only unexplained 401s.
+ * Note that this is the *grammar*, not merely the alphabet. `=` is padding, and
+ * padding is only ever trailing, after at least one character of actual token —
+ * which is why the body and the padding are separate terms here rather than one
+ * character class. Spelling it as a flat class was a real hole rather than a
+ * pedantic one: `================` is sixteen characters drawn entirely from the
+ * alphabet, so it satisfied a flat class *and* the length floor below while
+ * carrying no credential at all, and it authenticated. See
+ * {@link credentialBodyOf} for the other half of that repair.
+ *
+ * An entry carrying a quote, an interior newline, or a control character did not
+ * come from a key generator — it came from a shell that kept the quoting or a
+ * value pasted with its line ending. Refusing it by name is the difference
+ * between an operator seeing why their key does not work and seeing only
+ * unexplained 401s.
  *
  * One real behaviour change rather than a clarification: a passphrase-style
  * entry with an interior space (`correct horse battery staple`) was usable
@@ -64,18 +71,53 @@ export const API_KEY_MINIMUM_LENGTH = 16;
  * be sent through the `Authorization: Bearer` scheme at all — a space ends the
  * credential — so it was only ever half a key, working on one of the two
  * documented transports and failing on the other for reasons nothing explained.
+ *
+ * What this does *not* govern is whitespace around an entry. `API_KEYS` is a
+ * comma-separated list and `key-one, key-two` is the ordinary way to write one,
+ * so the whitespace between a comma and an entry belongs to the *list*, not to
+ * the entry: it is stripped before an entry reaches this grammar, and a value
+ * configured as `sk-…-value\n` is the same credential as `sk-…-value`. That
+ * matches {@link readHeader}, which trims a presented key for the same reason.
  */
-const API_KEY_CREDENTIAL_ALPHABET = /^[A-Za-z0-9._~+/=-]+$/;
+const API_KEY_CREDENTIAL_GRAMMAR = /^[A-Za-z0-9._~+/-]+=*$/;
+
+/**
+ * The part of an entry that is credential rather than padding.
+ *
+ * The minimum length is a claim about how much *secret* a value carries, and
+ * base64 padding is not secret — it is a length artefact, at most two characters
+ * on a real token. Measuring the whole string let padding stand in for the
+ * entropy the floor exists to require: `a===============` is sixteen characters
+ * and one character of credential, and it cleared a floor set at sixteen.
+ */
+function credentialBodyOf(entry: string): string {
+  return entry.replace(/=+$/, '');
+}
+
+/**
+ * Whether `API_KEYS` says nothing at all, as opposed to saying something that
+ * turns out to hold no key.
+ *
+ * The empty string counts as nothing: `API_KEYS=` is how a `.env` file spells
+ * an absent value, and the deployment docs have always described that as the
+ * development-mode trigger. Anything with content in it does not count, however
+ * little of it survives parsing — see the branch in `authenticateRequest`.
+ */
+function isUnsetApiKeysValue(rawApiKeys: string | undefined): boolean {
+  return rawApiKeys === undefined || rawApiKeys === '';
+}
 
 /** Why one configured entry cannot be used. Counted, never logged with values. */
-type ApiKeyRejection = 'below-minimum-length' | 'outside-credential-alphabet';
+type ApiKeyRejection = 'below-minimum-length' | 'outside-credential-grammar';
 
 function rejectionFor(entry: string): ApiKeyRejection | undefined {
-  if (entry.length < API_KEY_MINIMUM_LENGTH) {
-    return 'below-minimum-length';
+  // Grammar first: the length below is measured on the token body, which only
+  // means anything once the value is known to be a well-formed token at all.
+  if (!API_KEY_CREDENTIAL_GRAMMAR.test(entry)) {
+    return 'outside-credential-grammar';
   }
-  if (!API_KEY_CREDENTIAL_ALPHABET.test(entry)) {
-    return 'outside-credential-alphabet';
+  if (credentialBodyOf(entry).length < API_KEY_MINIMUM_LENGTH) {
+    return 'below-minimum-length';
   }
   return undefined;
 }
@@ -145,7 +187,17 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
 
   noteApiKeyConfiguration(rawApiKeys, configuredEntries.length, usableKeys.length, rejections);
 
-  if (configuredEntries.length === 0) {
+  // Nothing was written at all: the variable is absent, or is the empty string
+  // that `API_KEYS=` in a `.env` file produces, which is the idiomatic way to
+  // spell "unset" and is what the deployment docs have always meant by it.
+  //
+  // A value with content in it that yields no entry -- `API_KEYS=" "` from a
+  // secret substitution that silently produced nothing, or `API_KEYS=","` --
+  // is a different thing: someone wrote something and got it wrong. That falls
+  // through to the fail-closed branch below rather than being read as "unset",
+  // because a blank secret is exactly the case where reading it as "unset"
+  // turns a broken deploy into an app with no authentication at all.
+  if (configuredEntries.length === 0 && isUnsetApiKeysValue(rawApiKeys)) {
     // No API keys configured - allow request in development mode
     return {
       authenticated: true,
@@ -236,7 +288,7 @@ function noteApiKeyConfiguration(
 
   lastObservedApiKeysValue = { raw: rawApiKeys };
 
-  if (configuredCount === 0) {
+  if (configuredCount === 0 && isUnsetApiKeysValue(rawApiKeys)) {
     // Through the logger rather than the console, for the reason every other
     // warning on this surface goes through it: the console line carried no
     // structure, never reached the recent-log buffer an operator reads a failure
@@ -246,6 +298,21 @@ function noteApiKeyConfiguration(
       'No API keys are configured; every request is being served as the development user.',
       { endpoint: 'authenticateRequest' },
       { environmentVariable: 'API_KEYS' }
+    );
+    return;
+  }
+
+  if (configuredCount === 0) {
+    // Set to something that holds no key: a secret substitution that produced
+    // whitespace, or separators with nothing between them. Named separately
+    // from both neighbours because the operator's mistake is a different one —
+    // the value is not missing, it is empty of keys — and because unlike the
+    // warning above, this deployment is serving nothing.
+    logError(
+      'API_KEYS is set but contains no key; all authenticated routes are refusing every request.',
+      undefined,
+      { endpoint: 'authenticateRequest' },
+      { environmentVariable: 'API_KEYS', configuredCount: 0, usableCount: 0 }
     );
     return;
   }
@@ -263,7 +330,7 @@ function noteApiKeyConfiguration(
     usableCount,
     rejectedCount: rejections.length,
     belowMinimumLength: rejections.filter(reason => reason === 'below-minimum-length').length,
-    outsideCredentialAlphabet: rejections.filter(reason => reason === 'outside-credential-alphabet').length,
+    outsideCredentialGrammar: rejections.filter(reason => reason === 'outside-credential-grammar').length,
     minimumLength: API_KEY_MINIMUM_LENGTH
   };
 

@@ -80,11 +80,18 @@ private validateStoryInput(input: StoryGenerationSeam['input']): any {
 **Features:**
 - API key validation via X-API-Key header or Authorization Bearer token
 - Environment variable configuration (`API_KEYS`)
-- A credential contract on each configured entry: at least 16 characters
-  (`API_KEY_MINIMUM_LENGTH`), drawn from RFC 6750's `b64token` alphabet
-  (`A-Z a-z 0-9 . _ ~ + / = -`). An entry that does not qualify is refused
-  rather than trusted, so a placeholder, a truncated paste, or a value that
-  kept its shell quoting cannot become a live credential for a paid route
+- A credential contract on each configured entry: it must match RFC 6750's
+  `b64token` grammar — a body of `A-Z a-z 0-9 . _ ~ + / -` followed only by
+  optional trailing `=` padding — and its body, excluding that padding, must be
+  at least 16 characters (`API_KEY_MINIMUM_LENGTH`). An entry that does not
+  qualify is refused rather than trusted, so a placeholder, a truncated paste,
+  or a value that kept its shell quoting cannot become a live credential for a
+  paid route. Padding is measured out of the length deliberately: it is a
+  base64 length artefact, not secret, and counting it would let
+  `a===============` clear a sixteen-character floor
+- Whitespace *around* an entry belongs to the comma-separated list rather than
+  to the entry (`key-one, key-two`), so it is stripped before the entry is
+  validated. A newline *inside* an entry is part of the entry and is refused
 - Development mode fallback (when no keys configured) — this checks whether
   any keys are configured *before* requiring the caller to have sent one, so
   a request with no key at all is allowed through when `API_KEYS` is unset,
@@ -93,7 +100,10 @@ private validateStoryInput(input: StoryGenerationSeam['input']): any {
   set but *every* entry fails the contract, the deployment fails closed —
   it refuses every request with `API_KEY_CONFIGURATION_INVALID` rather than
   falling back to the development mode above. Collapsing the two would turn
-  one typo into an app serving every caller as `development_user`
+  one typo into an app serving every caller as `development_user`. The same
+  applies to a value that holds no entry at all: `API_KEYS=" "` (a secret
+  substitution that produced nothing) or `API_KEYS=","` fails closed. Only an
+  absent variable and the empty string `API_KEYS=` count as unconfigured
 - Per-key user ID mapping
 - Wired into every route that spends money on the xAI/Grok API or handles a
   resource-costing request: `api/story/generate.ts`, `api/story/continue.ts`,
@@ -110,10 +120,12 @@ private validateStoryInput(input: StoryGenerationSeam['input']): any {
 
 **Setup:**
 
-1. Set environment variable. Each comma-separated entry must be at least 16
-   characters drawn from `A-Z a-z 0-9 . _ ~ + / = -`; generate them, do not
-   type them (`openssl rand -hex 24`). Entries that fail the contract are
-   refused, and a deployment whose entries *all* fail refuses every request:
+1. Set environment variable. Each comma-separated entry must match the
+   `b64token` grammar and carry at least 16 characters of token body (padding
+   excluded); generate them, do not type them (`openssl rand -hex 24`). Entries
+   that fail the contract are refused, and a deployment whose entries *all*
+   fail — or which sets `API_KEYS` to something holding no entry — refuses
+   every request:
 ```bash
 API_KEYS=sk-live-9f3c2a71b40e,sk-live-2d81ff60ac95
 ```
@@ -237,7 +249,7 @@ export async function checkRateLimitRedis(
 
 Before deploying to production:
 
-- [ ] Set `API_KEYS` environment variable with secure keys — until this is set, every route stays in fail-open development mode (see the Notes below). Each entry must clear the credential contract (≥ 16 characters, `b64token` alphabet); a value that does not is refused, and a deployment whose entries all fail returns 401 `API_KEY_CONFIGURATION_INVALID` to everything rather than reverting to development mode
+- [ ] Set `API_KEYS` environment variable with secure keys — until this is set, every route stays in fail-open development mode (see the Notes below). Each entry must clear the credential contract (`b64token` grammar, ≥ 16 characters of token body excluding padding); a value that does not is refused, and a deployment whose entries all fail — or which sets `API_KEYS` to whitespace or bare commas — returns 401 `API_KEY_CONFIGURATION_INVALID` to everything rather than reverting to development mode
 - [x] Test authentication with valid and invalid keys — `tests/api-key-auth.test.ts`, `tests/api-access-control.test.ts`
 - [x] Test rate limiting with automated requests — `tests/api-access-control.test.ts`
 - [ ] Update frontend to send an API key once `API_KEYS` is configured (it currently sends none, which relies on the fail-open path)
@@ -265,7 +277,7 @@ Before deploying to production:
 
 1. **Development Mode**: When `API_KEYS` is not set, authentication allows all requests for development convenience — this now applies to a request that sends no key at all, not only to one that happens to send some key anyway (the fix in this revision; see `authenticateRequest` in `security.ts`). Always set `API_KEYS` in production if you want the key check enforced. Note that "not set" means *no usable entry was configured at all*: a value that is set but entirely unusable is a misconfiguration, and reaches the fail-closed branch instead (Note 6).
 
-6. **Rejected `API_KEYS` entries.** An entry shorter than `API_KEY_MINIMUM_LENGTH` (16) or carrying a character outside `A-Z a-z 0-9 . _ ~ + / = -` cannot authenticate a request. If some entries qualify, the deployment runs on those and logs a warning naming how many were refused and why. If none qualify, every request is refused with 401 `API_KEY_CONFIGURATION_INVALID` and an error is logged. Both reports count the rejected entries rather than printing them: a refused entry is still whatever the operator believed was a credential, and the logger's own redaction does not recognise an arbitrary short string as one.
+6. **Rejected `API_KEYS` entries.** An entry whose token body is shorter than `API_KEY_MINIMUM_LENGTH` (16) or which does not match the `b64token` grammar (`A-Z a-z 0-9 . _ ~ + / -`, then optional trailing `=` padding) cannot authenticate a request. If some entries qualify, the deployment runs on those and logs a warning naming how many were refused and why. If none qualify, every request is refused with 401 `API_KEY_CONFIGURATION_INVALID` and an error is logged. Both reports count the rejected entries rather than printing them: a refused entry is still whatever the operator believed was a credential, and the logger's own redaction does not recognise an arbitrary short string as one.
 
 2. **Rate Limiting Storage**: Current implementation uses in-memory storage suitable for single-instance deployments. For production with multiple instances, upgrade to Redis. It applies regardless of whether `API_KEYS` is set — an unconfigured deployment's unauthenticated callers still share one budget per endpoint.
 

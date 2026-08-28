@@ -202,6 +202,98 @@ async function testTheConfiguredKeyContract(): Promise<void> {
 }
 
 /**
+ * `=` is base64 padding, and padding is not secret.
+ *
+ * Both halves of this were live holes found in review. A flat character class
+ * accepted `=` anywhere, so `================` — sixteen characters of pure
+ * padding and no credential whatsoever — satisfied both the alphabet and the
+ * length floor and authenticated. And measuring the floor over the whole string
+ * let padding stand in for the entropy the floor exists to require, so
+ * `a===============` cleared a sixteen-character minimum carrying one character
+ * of key. The grammar now demands a token body before any padding, and the
+ * length is measured on that body.
+ */
+async function testPaddingCannotStandInForCredential(): Promise<void> {
+  const allPadding = '='.repeat(API_KEY_MINIMUM_LENGTH);
+  assert(
+    !(await authenticateWith(allPadding, allPadding)).authenticated,
+    'a value of nothing but padding should not authenticate'
+  );
+
+  const oneCharacterAndPadding = `a${'='.repeat(API_KEY_MINIMUM_LENGTH - 1)}`;
+  assert(
+    !(await authenticateWith(oneCharacterAndPadding, oneCharacterAndPadding)).authenticated,
+    'padding should not count toward the minimum length'
+  );
+
+  const leadingPadding = `=${'k'.repeat(API_KEY_MINIMUM_LENGTH)}`;
+  assert(
+    !(await authenticateWith(leadingPadding, leadingPadding)).authenticated,
+    'padding is only ever trailing, so a leading `=` is not a well-formed token'
+  );
+
+  // A real base64 token carries at most two padding characters, and stays valid.
+  const paddedRealToken = `${'k'.repeat(API_KEY_MINIMUM_LENGTH)}==`;
+  assert(
+    (await authenticateWith(paddedRealToken, paddedRealToken)).authenticated,
+    'a genuine base64 token with trailing padding should still authenticate'
+  );
+}
+
+/**
+ * `API_KEYS` set to something that holds no key is a misconfiguration, not an
+ * absence.
+ *
+ * A secret substitution that silently produces whitespace is the exact case
+ * where reading the value as "unset" is worst: the operator asked for
+ * authentication, the deploy pipeline gave them nothing, and treating that as
+ * development mode would serve every caller as `development_user`. The empty
+ * string is the one spelling that still counts as absent, because `API_KEYS=`
+ * is how a `.env` file writes an unset variable and the deployment docs have
+ * always described it that way.
+ */
+async function testABlankConfigurationFailsClosed(): Promise<void> {
+  for (const blank of [' ', '   ', ',', ' , ', ',,,']) {
+    const result = await authenticateWith(blank, 'anything');
+    assert(
+      !result.authenticated,
+      `API_KEYS=${JSON.stringify(blank)} holds no key and should refuse every request`
+    );
+    assert(
+      result.userId !== 'development_user',
+      `API_KEYS=${JSON.stringify(blank)} must not be read as an unset variable`
+    );
+  }
+
+  const emptyString = await authenticateWith('', 'anything');
+  assert(
+    emptyString.authenticated && emptyString.userId === 'development_user',
+    'API_KEYS="" is how a .env file spells unset and should stay in development mode'
+  );
+}
+
+/**
+ * Whitespace around an entry belongs to the comma-separated list, not to the
+ * entry, so it is stripped before the grammar sees it.
+ *
+ * Pinned because the grammar's docblock claims it, and because the first draft
+ * of that docblock claimed the opposite — that a value configured with a
+ * trailing newline was refused. It is not: it is the same credential as the
+ * value without one, which is also how `readHeader` reads a presented key.
+ */
+async function testSeparatorWhitespaceIsNotPartOfTheEntry(): Promise<void> {
+  const key = 'sk-test-first-key-value';
+  assert(
+    (await authenticateWith(`${key}\n`, key)).authenticated,
+    'a trailing newline is separator whitespace and should not change the credential'
+  );
+  assert(
+    !(await authenticateWith(`sk-test-first\nkey-value`, 'sk-test-first\nkey-value')).authenticated,
+    'a newline inside an entry is part of the entry and should be refused'
+  );
+}
+
+/**
  * A rejected entry is still whatever the operator believed was a credential —
  * quite possibly a real one that is merely too short. The report that it was
  * refused must therefore count entries rather than name them, or the hardening
@@ -376,6 +468,9 @@ async function main(): Promise<void> {
 
   await testTheUnconfiguredWarningIsWrittenOncePerConfiguration();
   await testTheConfiguredKeyContract();
+  await testPaddingCannotStandInForCredential();
+  await testABlankConfigurationFailsClosed();
+  await testSeparatorWhitespaceIsNotPartOfTheEntry();
   await testRejectedKeysAreNeverWrittenToTheLog();
 
   console.log('API key auth tests passed');

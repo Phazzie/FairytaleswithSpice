@@ -70,6 +70,44 @@ change** — a deployment running on a short key today will start refusing
 requests, loudly and with a named error code, which is the intended direction of
 failure for an auth contract.
 
+Review round 1 (Codex and CodeRabbit on `f8ee3c7`) — **four findings, all
+valid, all fixed.** Two of them defeated the contract's own stated rationale,
+and my self-review pass had disclosed one of the four while defending it:
+
+- **`================` authenticated.** Sixteen characters of pure base64
+  padding satisfied a flat `[A-Za-z0-9._~+/=-]` class *and* the sixteen-character
+  floor while carrying no credential at all. `=` is padding and padding is only
+  ever trailing, after at least one character of real token, so the rule is now
+  RFC 6750's actual `b64token` **grammar** rather than its alphabet:
+  `/^[A-Za-z0-9._~+/-]+=*$/`.
+- **`a===============` authenticated.** The same defect from the other side:
+  measuring the floor over the whole string let padding stand in for the entropy
+  the floor exists to require. The length is now measured on the token body with
+  trailing padding removed. A genuine base64 token carries at most two padding
+  characters and is unaffected.
+- **`API_KEYS=" "` and `API_KEYS=","` served every caller as `development_user`.**
+  My self-review had named this and argued for keeping it, on the grounds that
+  `API_KEYS=""` is how a `.env` file spells "unset" and failing closed on it
+  would turn a blank template variable into an outage. Both reviewers pushed
+  back and they are right — the distinction I needed was *absent* versus
+  *present-but-empty of keys*, which is available and which I did not take.
+  Only `undefined` and `''` are now read as unconfigured; anything with content
+  in it that yields no entry fails closed. A secret substitution that silently
+  produces whitespace is precisely the case where reading it as "unset" is
+  worst.
+- **The grammar docblock claimed something false.** It said an entry carrying a
+  trailing newline was refused. It is not: entries are trimmed first, because
+  `key-one, key-two` is the ordinary way to write a comma-separated list, so
+  whitespace around an entry belongs to the *list*. That is correct behaviour
+  and matches how `readHeader` reads a presented key — the documentation was
+  wrong, not the code. Corrected and pinned with an assertion, alongside one
+  showing a newline *inside* an entry is still refused.
+
+Three further counterfactual mutations for the repairs, all killed: flattening
+the grammar back to a plain alphabet class; measuring the minimum over padding;
+and reading a blank-but-present `API_KEYS` as unset. Total for the slice: 8
+applied, 8 killed, none committed.
+
 Deliberately not in this slice: the readability half of #314. Making
 `redactBearerTokens` spare the ordinary word after `bearer` is still not sound,
 because a bearer token in a log line may be a *provider* credential (xAI,
