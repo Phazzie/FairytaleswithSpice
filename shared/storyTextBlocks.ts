@@ -123,7 +123,7 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * markup that happens is worth more than a repair for markup that does not.
  */
 function tagAttributesPattern(unquotedRun: string): string {
-  return String.raw`${unquotedRun}*(?:=(?:(?:"[^"<]*"|'[^'<]*')${ATTRIBUTE_VALUE_MUST_END_AT})?${unquotedRun}*)*`;
+  return `${unquotedRun}*(?:=(?:(?:"[^"<]*"|'[^'<]*')${ATTRIBUTE_VALUE_MUST_END_AT})?${unquotedRun}*)*`;
 }
 
 /**
