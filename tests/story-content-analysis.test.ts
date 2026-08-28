@@ -172,6 +172,19 @@ assert(
   );
 }
 
+// The same rule with the quote in the middle of the value rather than at its
+// end. Kept as a separate case because it is the shape the review reported, and
+// because the two exercise different positions: an unquoted value may not
+// *begin* with a quote but may carry one anywhere after that, so a repair that
+// excluded quotes only from the last character would pass the case above.
+{
+  const { title } = extractChapterTitleAndBody('<h3 data-x=foo"bar>baz">Chapter 4: Real Title</h3>', 4);
+  assert(
+    title === 'baz">Chapter 4: Real Title',
+    `a quote mid-way through an unquoted value must not consume reader-visible text, got ${JSON.stringify(title)}`
+  );
+}
+
 // A quoted run stops at `<`, so it cannot reach into the next tag. This is the
 // documented cost of that bound: a value containing a literal `<` has no
 // well-formed reading and takes the fallback, leaving the remnant the fallback
