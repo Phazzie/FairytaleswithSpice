@@ -12,6 +12,7 @@
 import { SpicyLevel, ThemeType } from '../types/contracts';
 import { readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import { readSpiceLevelPromptLabel } from '../../../shared/spiceLevelPromptLadder';
+import { ParsedHtmlTag, findTagEnd, findWellFormedTagEnd, parseHtmlTag } from '../../../shared/htmlTagScanner';
 import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
 import { wholeWordAlternationPattern, wholeWordPattern } from '../utils/wholeWord';
@@ -304,9 +305,372 @@ export function analyzeEmotionalTone(content: string): string {
   return tones.length > 0 ? tones.join(', ') : 'romantic with building tension';
 }
 
+/**
+ * Where the chapter heading is, read the way a browser reads it.
+ *
+ * The two callers below each used to spell this as `<h3[^>]*>(.*?)</h3>`, and
+ * that spelling gets two things wrong for the same reason — it decides where
+ * the opening tag ends by looking for a character rather than by reading the
+ * tag:
+ *
+ * 1. **It ends the tag at the first `>`**, even one inside a quoted attribute
+ *    value. `<h3 data-x="a>b">Real Title</h3>` leaves `b">Real Title` as the
+ *    captured group, and `stripHtml` cannot clean that up afterwards because
+ *    the truncation leaves no tag in it to strip. It reaches the reader as the
+ *    chapter's title, and it is what feeds the `Untitled Chapter N` fallback
+ *    and the `chapter N` prefix-stripping beside it.
+ * 2. **`.` cannot cross a newline**, so a heading with a line break past the
+ *    truncation point matches nothing at all. That is the actual defect behind
+ *    #296's second row, which had been filed as the same cause as the first:
+ *    the strip below then leaves the heading in place and the chapter ships
+ *    carrying two of them.
+ *
+ * `findTagEnd` answers the first question by walking HTML's own start-tag
+ * states, so a `>` inside a quoted value is a character rather than the end of
+ * the tag, and index arithmetic answers the second by not involving `.` at all.
+ * Issue #296 records the two attempts to repair this with a better pattern
+ * instead, and why a scanner is the answer rather than a fifth pattern.
+ *
+ * The reading is otherwise deliberately the one the pattern had: the first
+ * `<h3>`, then the first `</h3>` after it. A second `<h3>` in between does not
+ * open a nested heading — HTML has no nesting here, and the lazy `.*?` this
+ * replaces ran on to the same `</h3>`.
+ */
+interface ChapterHeading {
+  /** Index of the opening tag's `<`. */
+  start: number;
+  /** Index just past the closing tag's `>`. */
+  end: number;
+  /** The markup between the two tags. */
+  inner: string;
+}
+
+interface HeadingTag {
+  /** Index of the tag's `<`. */
+  start: number;
+  /** Index just past the tag's `>`. */
+  end: number;
+  isClosing: boolean;
+}
+
+/**
+ * Whether the `<` at `index` opens a tag at all.
+ *
+ * HTML's tag-open state: an optional `/`, then an ASCII letter. Anything else
+ * is text a reader typed, and `2 < 3` in a story is exactly that.
+ *
+ * Asking this *before* reading a tag is what keeps a stray `<` from consuming
+ * the markup after it. `findTagEnd` has no well-formed reading for `< 3`, so it
+ * falls back to the first `>` — which is the `>` of the real `<h3>` further on
+ * — and a walk that advanced past that end would step over the heading it was
+ * looking for. It also settles `< h3>`, which `parseHtmlTag` would otherwise
+ * accept by skipping the space: a browser shows those five characters to the
+ * reader, so treating them as a heading deletes prose.
+ *
+ * Deciding it here rather than from the parse also keeps the walk linear. A run
+ * of stray `<` costs one character each, instead of a scan to the next `>` per
+ * `<`.
+ */
+function opensATag(content: string, index: number): boolean {
+  const nameStart = content[index + 1] === '/' ? index + 2 : index + 1;
+  const codePoint = content.codePointAt(nameStart) ?? 0;
+
+  return (codePoint >= 65 && codePoint <= 90) || (codePoint >= 97 && codePoint <= 122);
+}
+
+/**
+ * Where the comment opening at `tagStart` ends, or `-1` if nothing closes it.
+ *
+ * Three spellings close a comment, not one. `-->` is the ordinary terminator;
+ * `<!-->` and `<!--->` are HTML's *abrupt closing of an empty comment*, ending
+ * at that `>`; and `--!>` is the comment-end-bang state. Searching only for
+ * `-->` reads `<h3>Visible <!--> Title</h3>` as a comment that never ends, and
+ * abandons the heading — so a chapter whose title happens to contain `<!-->`
+ * loses its title and keeps the raw `<h3>` in its body.
+ *
+ * The shared tokenizer still reads `-->` alone. That is a separate defect with
+ * a worse blast radius — it drops the rest of the story from every export —
+ * and it is recorded on #296 rather than repaired here, since it is neither
+ * caused nor touched by this change.
+ */
+function findCommentEnd(content: string, tagStart: number): number {
+  const bodyStart = tagStart + 4;
+
+  if (content[bodyStart] === '>') {
+    return bodyStart + 1;
+  }
+
+  if (content.startsWith('->', bodyStart)) {
+    return bodyStart + 2;
+  }
+
+  let index = bodyStart;
+
+  while (index < content.length) {
+    const dashes = content.indexOf('--', index);
+    if (dashes === -1) {
+      return -1;
+    }
+
+    if (content[dashes + 2] === '>') {
+      return dashes + 3;
+    }
+
+    if (content.startsWith('!>', dashes + 2)) {
+      return dashes + 4;
+    }
+
+    index = dashes + 1;
+  }
+
+  return -1;
+}
+
+/**
+ * Elements whose contents are text rather than markup.
+ *
+ * Inside one of these nothing is a tag and nothing is a comment until its own
+ * closing tag: `<script><!-- legacy\n</script>` carries no comment, and
+ * `<textarea><h3>x</h3></textarea>` carries no heading — a browser shows those
+ * characters to the reader. Walking into them reads their text as markup, and
+ * the `<!--` in the first one then looks like a comment that never ends, which
+ * abandons the scan and loses the real heading after it.
+ *
+ * The raw-text and RCDATA sets together, `noscript` included, which is raw text
+ * wherever scripting is enabled. None of these belong in generated story
+ * markup; the list is here so that markup which has one is read the way a
+ * browser reads it rather than half-parsed.
+ */
+const RAW_TEXT_TAG_NAMES = new Set([
+  'script',
+  'style',
+  'textarea',
+  'title',
+  'xmp',
+  'iframe',
+  'noembed',
+  'noframes',
+  'noscript'
+]);
+
+/**
+ * The elements whose subtrees are *not* HTML.
+ *
+ * HTML's raw-text rules stop applying inside one. `<svg><title/></svg>` closes
+ * that title immediately — foreign content honours a self-closing `/`, where
+ * HTML ignores it — so entering raw-text mode there hunts for a `</title>` that
+ * will never come and abandons the scan. `script` and `desc` have the same
+ * problem, being SVG element names too.
+ *
+ * Tracking the namespace rather than honouring `isSelfClosing` everywhere is
+ * what keeps the *HTML* reading right: a bare `<title/>` in HTML really does
+ * open a raw-text element that runs to the end, and a browser shows no heading
+ * after it. The two answers are opposite, and only the namespace separates them.
+ */
+const FOREIGN_CONTENT_TAG_NAMES = new Set(['svg', 'math']);
+
+/** Depth after this `<svg>`/`<math>` tag; a self-closing one opens nothing. */
+function nextForeignDepth(depth: number, parsed: ParsedHtmlTag): number {
+  if (parsed.isClosing) {
+    return Math.max(0, depth - 1);
+  }
+
+  return parsed.isSelfClosing ? depth : depth + 1;
+}
+
+/** What may follow a closing tag's name: whitespace, `/`, or its own `>`. */
+function endsTagName(character: string | undefined): boolean {
+  return (
+    character === undefined ||
+    character === ' ' ||
+    character === '\n' ||
+    character === '\t' ||
+    character === '\r' ||
+    character === '\f' ||
+    character === '/' ||
+    character === '>'
+  );
+}
+
+/**
+ * Where the raw-text element opened by `tagName` ends, or `-1` if nothing
+ * closes it — in which case it runs to the end of the content, exactly as a
+ * browser reads it, and there is no heading after it to find.
+ *
+ * Only that element's own closing tag ends it. Every other `<` inside is one of
+ * its characters, which is why this looks for one name rather than tokenizing.
+ */
+function findRawTextEnd(content: string, tagName: string, index: number): number {
+  let cursor = index;
+
+  while (cursor < content.length) {
+    const candidate = content.indexOf('<', cursor);
+    if (candidate === -1) {
+      return -1;
+    }
+
+    const nameStart = candidate + 2;
+    const isItsClosingTag =
+      content[candidate + 1] === '/' &&
+      content.slice(nameStart, nameStart + tagName.length).toLowerCase() === tagName &&
+      endsTagName(content[nameStart + tagName.length]);
+
+    if (isItsClosingTag) {
+      const tagEnd = findTagEnd(content, candidate);
+
+      return tagEnd === -1 ? -1 : tagEnd + 1;
+    }
+
+    cursor = candidate + 1;
+  }
+
+  return -1;
+}
+
+/** A tag the walk found, with where it sits and what it says it is. */
+interface ScannedTag {
+  /** Index of the tag's `<`. */
+  start: number;
+  /** Index just past the tag's `>`. */
+  end: number;
+  parsed: ParsedHtmlTag;
+}
+
+/**
+ * The next tag at or after `index`, or `null` where the markup runs out.
+ *
+ * "Tag" is decided here and nowhere else, so the three things that look like
+ * one and are not — a comment, a `<` a reader typed, and a construct
+ * `parseHtmlTag` refuses — are skipped in one place rather than being three
+ * cases the heading walk has to remember.
+ *
+ * Every tag is read to its end even when it is not the one being looked for,
+ * because that is what decides where the *next* one starts: ending
+ * `<p class="a>b">` at the first `>` would resume the walk inside an attribute
+ * value and read whatever follows as markup.
+ */
+function nextTag(content: string, index: number): ScannedTag | null {
+  let cursor = index;
+
+  while (cursor < content.length) {
+    const tagStart = content.indexOf('<', cursor);
+    if (tagStart === -1) {
+      return null;
+    }
+
+    // A comment's body is markup, not prose, so it is skipped whole. One that
+    // never closes runs to the end of the content, as a browser reads it.
+    if (content.startsWith('<!--', tagStart)) {
+      const commentEnd = findCommentEnd(content, tagStart);
+      if (commentEnd === -1) {
+        return null;
+      }
+
+      cursor = commentEnd;
+      continue;
+    }
+
+    // Text a reader typed, not markup. One character, and on to the next `<`.
+    if (!opensATag(content, tagStart)) {
+      cursor = tagStart + 1;
+      continue;
+    }
+
+    const tagEnd = findTagEnd(content, tagStart);
+    if (tagEnd === -1) {
+      return null;
+    }
+
+    cursor = tagEnd + 1;
+
+    const parsed = parseHtmlTag(content.slice(tagStart, cursor));
+    if (parsed) {
+      return { start: tagStart, end: cursor, parsed };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Whether this tag is a heading boundary the readers may cut on.
+ *
+ * A *closing* tag decides where the chapter's own prose resumes, so it may not
+ * sit on `findTagEnd`'s fallback boundary. `</h3 data-x="a>b"class=x>` has no
+ * well-formed reading — the closing quote is followed by a word character — so
+ * the fallback ends the tag at the `>` inside the quoted value, and cutting
+ * there puts `b"class=x>` at the front of the chapter as visible prose. The
+ * pattern this replaces required a literal `</h3>` and so never produced that
+ * fragment; declining the boundary answers as it did.
+ *
+ * The opening tag is deliberately not held to the same rule. There the fallback
+ * decides only where the *title* starts, and it reproduces exactly what
+ * `[^>]*>` did — a recovery class this reader forgoes, rather than a regression
+ * it introduces.
+ */
+function isHeadingBoundary(content: string, tag: ScannedTag): boolean {
+  if (tag.parsed.tagName !== 'h3') {
+    return false;
+  }
+
+  return !tag.parsed.isClosing || findWellFormedTagEnd(content, tag.start) === tag.end - 1;
+}
+
+/**
+ * The next `<h3>` or `</h3>` at or after `index`, or `null` where the markup
+ * runs out before one.
+ */
+function nextHeadingTag(content: string, index: number): HeadingTag | null {
+  let cursor = index;
+  let foreignDepth = 0;
+
+  for (let tag = nextTag(content, cursor); tag !== null; tag = nextTag(content, cursor)) {
+    cursor = tag.end;
+
+    if (FOREIGN_CONTENT_TAG_NAMES.has(tag.parsed.tagName)) {
+      foreignDepth = nextForeignDepth(foreignDepth, tag.parsed);
+      continue;
+    }
+
+    if (foreignDepth === 0 && !tag.parsed.isClosing && RAW_TEXT_TAG_NAMES.has(tag.parsed.tagName)) {
+      const rawTextEnd = findRawTextEnd(content, tag.parsed.tagName, cursor);
+      if (rawTextEnd === -1) {
+        return null;
+      }
+
+      cursor = rawTextEnd;
+      continue;
+    }
+
+    if (isHeadingBoundary(content, tag)) {
+      return { start: tag.start, end: tag.end, isClosing: tag.parsed.isClosing };
+    }
+  }
+
+  return null;
+}
+
+function findChapterHeading(content: string): ChapterHeading | null {
+  let opening: HeadingTag | null = null;
+
+  for (let tag = nextHeadingTag(content, 0); tag !== null; tag = nextHeadingTag(content, tag.end)) {
+    if (!tag.isClosing) {
+      // The *first* opening tag, so a second one does not restart the heading.
+      opening ??= tag;
+      continue;
+    }
+
+    if (opening !== null) {
+      return { start: opening.start, end: tag.end, inner: content.slice(opening.end, tag.start) };
+    }
+  }
+
+  return null;
+}
+
 export function extractChapterTitleAndBody(content: string, chapterNumber: number): { title: string; body: string } {
-  const headingMatch = content.match(/<h3[^>]*>(.*?)<\/h3>/i);
-  let title = headingMatch ? stripHtml(headingMatch[1]).trim() : '';
+  const heading = findChapterHeading(content);
+  let title = heading ? stripHtml(heading.inner).trim() : '';
 
   if (title.toLowerCase().startsWith(`chapter ${chapterNumber}`)) {
     title = title.slice(`chapter ${chapterNumber}`.length).replace(/^\s*:?/, '').trim();
@@ -316,9 +680,35 @@ export function extractChapterTitleAndBody(content: string, chapterNumber: numbe
     title = `Untitled Chapter ${chapterNumber}`;
   }
 
-  const body = headingMatch ? content.replace(headingMatch[0], '').trim() : content.trim();
+  // Cut by index rather than `content.replace(match[0], '')`: the heading is
+  // located here, so the body is what sits either side of it, and no second
+  // search can land somewhere the first did not.
+  const body = heading
+    ? `${content.slice(0, heading.start)}${content.slice(heading.end)}`.trim()
+    : content.trim();
 
   return { title, body };
+}
+
+/**
+ * Drop the heading a chapter opens with, so the caller can write its own.
+ *
+ * Lives here, beside the reader above, rather than in `StoryService` where it
+ * was a private method reachable only through a model call — which is why the
+ * newline defect described above went unnoticed in it: nothing could call it
+ * with a heading to strip without generating a story first.
+ *
+ * Only a *leading* heading is dropped. Anything but whitespace before it means
+ * the chapter's own prose starts first, and then the heading is part of the
+ * chapter rather than the title being replaced.
+ */
+export function stripLeadingChapterHeading(content: string): string {
+  const heading = findChapterHeading(content);
+  if (!heading || content.slice(0, heading.start).trim() !== '') {
+    return content.trim();
+  }
+
+  return content.slice(heading.end).trim();
 }
 
 /**

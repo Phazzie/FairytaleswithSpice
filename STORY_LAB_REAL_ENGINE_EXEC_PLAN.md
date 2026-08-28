@@ -168,3 +168,44 @@ verified to fail against the pre-fix implementation. `npm run test:all` passes.
 Non-claim: this corrects the context supplied to continuation. It is not
 evidence about continuation quality, which needs the live provider and remains
 the open work Phase 2 describes.
+
+## Continuation append: the heading strip read a heading that was not there
+
+`renderChapterForAppend` writes each chapter's `<h3>Chapter N: Title</h3>` and
+strips whatever heading the model already emitted, so the appended story carries
+one heading per chapter rather than two. It read that heading with
+`^\s*<h3[^>]*>.*?</h3>\s*`, and the `.` in `.*?` cannot cross a newline. A
+heading the model wrapped over two lines therefore matched nothing, the strip
+was a no-op, and the chapter went into the combined story carrying both its own
+heading and the one written for it. `<h3>Chapter 4: Real\nTitle</h3>` is enough
+to reproduce it; no attribute is needed.
+
+Filed as row 2 of #296 with the wrong cause — as the same first-`>` truncation
+as the title reader — and corrected in the course of #302. Both are real, and
+they are different defects: the truncation alone still strips, because the lazy
+`.*?` runs on to the real `</h3>`.
+
+The strip now goes through the scanner in `shared/htmlTagScanner.ts`, which is
+the reading `exportSanitizer.ts` already uses, and it has moved out of
+`StoryService` into `storyContentAnalysis.ts` as `stripLeadingChapterHeading`,
+beside `extractChapterTitleAndBody`, which reads the same heading for the
+chapter *title*. It had been a private method reachable only through a model
+call, which is why the defect went unnoticed: nothing could call it with a
+heading to strip without generating a story first.
+
+What is unchanged: the heading this writes, the `<h3>Chapter N: Title</h3>`
+shape, the prompt, the request shape and the model contract. Only which
+characters count as the model's own heading changes, and only in the direction
+of removing a heading that a browser would show as one.
+
+Validation: `tests/chapter-heading-reader.test.ts`, in `test:all`. The reader is
+compared against an independent transcription of the WHATWG start-tag states
+over every tag interior of length 1..6 on `{a = " ' > space /}` — 134,008
+emitting a tag — and ends the tag where a browser does in all of them, against
+133,992 for the pattern it replaces, with 0 cases where it is worse. Eight
+counterfactual mutations each fail a suite.
+
+Non-claim: no evidence this was happening in production output. The generator is
+prompted to emit a bare `<h3>Chapter N: Title</h3>` on one line. This is found by
+reading, and it is worth repairing because a doubled heading is silent and
+reader-visible, not because it has been observed.
