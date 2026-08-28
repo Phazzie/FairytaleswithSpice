@@ -89,8 +89,11 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * A tag does not end at the first `>` — it ends at the first `>` that is not
  * inside a quoted attribute value. Reading it as `[^>]*>` stops early on
  * `<p title="a>b">`, so the tag's own remaining text (`b">`) was left behind as
- * prose and reached the reader: through `stripStoryHtmlToText` that is what
- * gets exported and pasted into the next continuation prompt.
+ * prose and reached the reader: through `stripStoryHtmlToText` that is what the
+ * client's plain-text download renders, and what the continuity excerpts and
+ * the next continuation prompt are built from. (The server's own exports go
+ * through `stripStoryHtmlForExport` instead, which has its own copy of this
+ * defect and is not fixed here.)
  *
  * This is the unrolled form of "unquoted runs separated by quoted ones". The
  * unquoted run and the two quoted alternatives can never start on the same
@@ -99,6 +102,19 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * be allowed to swallow the story's own dialogue looking for a partner: `<` is
  * where the next tag starts, and that bounds the damage to the markup it began
  * in.
+ *
+ * **Known limit, and the reason it is priced this way.** That bound also means
+ * an attribute value legitimately containing `<` — `<p title="1 < 2 and 3 > 2">`
+ * — is not read whole; it falls to the older reading and keeps the remnant,
+ * exactly as it did before this module learned about attributes, so it is an
+ * unfixed case rather than a new one. Lifting the bound was measured rather
+ * than guessed: on a corpus seeded with unterminated quotes, contractions and
+ * dialogue it takes the inputs where a word a reader would notice is dropped
+ * from roughly 30 per 300,000 to 49, and the new losses reach *across* tags
+ * instead of staying inside the one they began in. The generator emits `<p>`,
+ * `<em>` and `<h3>` with at most a class, so an attribute carrying a literal
+ * `<` is not a shape it produces, while a truncated tag is. Bounded damage on
+ * markup that happens is worth more than a repair for markup that does not.
  */
 function tagAttributesPattern(unquotedRun: string): string {
   return String.raw`${unquotedRun}*(?:(?:"[^"<]*"|'[^'<]*')${ATTRIBUTE_VALUE_MUST_END_AT}${unquotedRun}*)*`;
