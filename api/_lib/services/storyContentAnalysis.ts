@@ -354,6 +354,79 @@ interface HeadingTag {
 }
 
 /**
+ * Whether the `<` at `index` opens a tag at all.
+ *
+ * HTML's tag-open state: an optional `/`, then an ASCII letter. Anything else
+ * is text a reader typed, and `2 < 3` in a story is exactly that.
+ *
+ * Asking this *before* reading a tag is what keeps a stray `<` from consuming
+ * the markup after it. `findTagEnd` has no well-formed reading for `< 3`, so it
+ * falls back to the first `>` — which is the `>` of the real `<h3>` further on
+ * — and a walk that advanced past that end would step over the heading it was
+ * looking for. It also settles `< h3>`, which `parseHtmlTag` would otherwise
+ * accept by skipping the space: a browser shows those five characters to the
+ * reader, so treating them as a heading deletes prose.
+ *
+ * Deciding it here rather than from the parse also keeps the walk linear. A run
+ * of stray `<` costs one character each, instead of a scan to the next `>` per
+ * `<`.
+ */
+function opensATag(content: string, index: number): boolean {
+  const nameStart = content[index + 1] === '/' ? index + 2 : index + 1;
+  const codePoint = content.codePointAt(nameStart) ?? 0;
+
+  return (codePoint >= 65 && codePoint <= 90) || (codePoint >= 97 && codePoint <= 122);
+}
+
+/**
+ * Where the comment opening at `tagStart` ends, or `-1` if nothing closes it.
+ *
+ * Three spellings close a comment, not one. `-->` is the ordinary terminator;
+ * `<!-->` and `<!--->` are HTML's *abrupt closing of an empty comment*, ending
+ * at that `>`; and `--!>` is the comment-end-bang state. Searching only for
+ * `-->` reads `<h3>Visible <!--> Title</h3>` as a comment that never ends, and
+ * abandons the heading — so a chapter whose title happens to contain `<!-->`
+ * loses its title and keeps the raw `<h3>` in its body.
+ *
+ * The shared tokenizer still reads `-->` alone. That is a separate defect with
+ * a worse blast radius — it drops the rest of the story from every export —
+ * and it is recorded on #296 rather than repaired here, since it is neither
+ * caused nor touched by this change.
+ */
+function findCommentEnd(content: string, tagStart: number): number {
+  const bodyStart = tagStart + 4;
+
+  if (content[bodyStart] === '>') {
+    return bodyStart + 1;
+  }
+
+  if (content.startsWith('->', bodyStart)) {
+    return bodyStart + 2;
+  }
+
+  let index = bodyStart;
+
+  while (index < content.length) {
+    const dashes = content.indexOf('--', index);
+    if (dashes === -1) {
+      return -1;
+    }
+
+    if (content[dashes + 2] === '>') {
+      return dashes + 3;
+    }
+
+    if (content.startsWith('!>', dashes + 2)) {
+      return dashes + 4;
+    }
+
+    index = dashes + 1;
+  }
+
+  return -1;
+}
+
+/**
  * The next `<h3>` or `</h3>` at or after `index`, or `null` where the markup
  * runs out before one.
  *
@@ -372,14 +445,20 @@ function nextHeadingTag(content: string, index: number): HeadingTag | null {
     }
 
     // A comment's body is markup, not prose, and an `<h3>` inside one is not a
-    // heading. Skipped whole, exactly as the shared tokenizer skips it.
+    // heading, so it is skipped whole.
     if (content.startsWith('<!--', tagStart)) {
-      const commentEnd = content.indexOf('-->', tagStart + 4);
+      const commentEnd = findCommentEnd(content, tagStart);
       if (commentEnd === -1) {
         return null;
       }
 
-      cursor = commentEnd + 3;
+      cursor = commentEnd;
+      continue;
+    }
+
+    // Text a reader typed, not markup. One character, and on to the next `<`.
+    if (!opensATag(content, tagStart)) {
+      cursor = tagStart + 1;
       continue;
     }
 

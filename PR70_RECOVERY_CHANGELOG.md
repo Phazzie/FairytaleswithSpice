@@ -37,6 +37,17 @@ Not claimed:
 
 - No evidence this was happening in production output. The generator is prompted to emit bare `<h3>Chapter N: Title</h3>`, and a `>` inside an attribute needs the model to emit an attribute at all. Worth fixing because the failure is silent and reader-visible, not because it is common — and the newline half of row 2 needs no attribute.
 
+Review round (Codex on `690ea68`) — **three real regressions found, all one fault, and a documentation route missed**:
+
+- **All three were the same mistake**: the walk asked `findTagEnd` where a tag *ended* before asking whether a tag *started* there at all. `findTagEnd` falls back to the first `>` when it has no well-formed reading, and that `>` can belong to markup further on — so the walk stepped over the heading it was looking for.
+  - `2 < 3\n<h3>Real Title</h3>` — no reading for `< 3`, fallback to the `>` of the real `<h3>`, walk resumes past it. The title became `Untitled Chapter 4` and the raw `<h3>` stayed in the body. The pattern being replaced found the heading.
+  - `< h3>Visible prose</h3>` — `parseHtmlTag` accepts it by skipping the space, so the reader took five characters a browser *shows* for a heading and **deleted the prose**. The data-loss family again, one level up from the pattern; the pattern correctly matched nothing here.
+  - `<h3>Visible <!--> Title</h3>` — only `-->` was searched for, so HTML's abrupt closing of an empty comment (`<!-->`, `<!--->`) and the comment-end-bang (`--!>`) read as comments that never end, abandoning the scan.
+- Fixed by `opensATag` — HTML's tag-open state, an optional `/` then an ASCII letter — asked *before* reading a tag, and by `findCommentEnd` covering all three closing spellings. Deciding "is this a tag at all" first also keeps the walk linear in stray `<`: one character each rather than a scan to the next `>` per `<`. 40,000 of them in 6ms, pinned.
+- **The counterfactual sweep is now eight**, all failing a suite: the first-`>` boundary, the tag-open check, the `/` skip inside it, each of the three comment closings, first-opening-wins, and the leading-only guard.
+- **A documentation route was missed and is now taken.** `renderChapterForAppend` is continuation behaviour, which `AGENTS.md` routes to `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md`; recording the slice only here left that plan stale. Added there with the behaviour change, what is unchanged about the prompt and model contract, the validation, and the non-claim.
+- **The same comment defect is live in `tokenizeHtml`, and is worse.** `stripStoryHtmlForExport('<p>Alpha.</p><!--><p>Beta.</p>')` returns `Alpha.` — the rest of the story dropped from every export. Not caused or touched by this slice, so it is recorded on #296 as a further row rather than repaired here.
+
 Review round (SonarCloud on `690ea68`) — **the findings were read this time, not guessed at**:
 
 - SonarCloud's quality gate passed with 3 new issues, 0 hotspots, 0 duplication. `sonarcloud.io` is denied by this environment's network policy, confirmed from the proxy's own status endpoint (`connect_rejected`, "gateway answered 403 to CONNECT", `sonarcloud.io:443`) — and this time no SonarCloud check run was posted at all, so `output.text` was not even available as a fallback. #297's round guessed in this situation and got it wrong.

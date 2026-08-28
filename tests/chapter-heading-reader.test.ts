@@ -436,6 +436,89 @@ assertEqual(
   'a heading inside a comment is skipped'
 );
 
+// ==================== Where a `<` is not a tag ====================
+//
+// Three regressions review found in the first draft of this reader, all one
+// fault: it asked `findTagEnd` where a tag ended before asking whether a tag
+// started there at all. `findTagEnd` falls back to the first `>` when it has no
+// well-formed reading, and that `>` can belong to markup further on — so the
+// walk stepped over the very heading it was looking for.
+
+// A literal `<` in prose. `findTagEnd` has no reading for `< 3`, falls back to
+// the `>` of the real `<h3>`, and the walk resumed past it.
+{
+  const content = '2 < 3\n<h3>Real Title</h3><p>Body prose.</p>';
+  const { title, body } = extractChapterTitleAndBody(content, 4);
+
+  assertEqual(title, 'Real Title', 'a `<` in the prose does not hide the heading after it');
+  assertEqual(body, '2 < 3\n<p>Body prose.</p>', 'and the prose containing it is kept');
+}
+
+// `< h3>` is five characters a browser shows. `parseHtmlTag` accepts it by
+// skipping the space, so the reader took it for a heading and *deleted* the
+// prose — the data-loss family, reintroduced one level up from the pattern.
+{
+  const content = '< h3>Visible prose</h3><p>Body prose.</p>';
+
+  assertEqual(
+    extractChapterTitleAndBody(content, 4).title,
+    'Untitled Chapter 4',
+    'a whitespace-prefixed pseudo-tag is not a heading'
+  );
+  assertEqual(
+    extractChapterTitleAndBody(content, 4).body,
+    content,
+    'and none of it is removed from the body'
+  );
+  assertEqual(
+    stripLeadingChapterHeading(content),
+    content,
+    'nor dropped by the append path, which is where it would vanish silently'
+  );
+  assert(referenceTitle(content) === null, 'a browser reads no tag there either');
+}
+
+// Three spellings close a comment, not one: `-->`, the abrupt closing of an
+// empty comment (`<!-->` and `<!--->`), and the comment-end-bang `--!>`.
+// Searching only for `-->` read an unterminated comment and abandoned the scan.
+const COMMENT_CASES: ReadonlyArray<{ label: string; content: string; title: string }> = [
+  {
+    label: 'an abrupt empty comment inside the heading',
+    content: '<h3>Visible <!--> Title</h3><p>Body prose.</p>',
+    title: 'Visible  Title'
+  },
+  {
+    label: '`<!--->` before the heading',
+    content: '<!---><h3>Real Title</h3><p>Body prose.</p>',
+    title: 'Real Title'
+  },
+  {
+    label: 'comment-end-bang before the heading',
+    content: '<!-- x --!><h3>Real Title</h3><p>Body prose.</p>',
+    title: 'Real Title'
+  },
+  {
+    label: 'an ordinary comment still ends where it always did',
+    content: '<!-- x --><h3>Real Title</h3><p>Body prose.</p>',
+    title: 'Real Title'
+  }
+];
+
+for (const { label, content, title } of COMMENT_CASES) {
+  assertEqual(extractChapterTitleAndBody(content, 4).title, title, `${label}: the heading is still found`);
+}
+
+// A run of stray `<` costs one character each, not a scan to the next `>` per
+// `<`. Deciding "is this a tag at all" before reading one is what buys this;
+// asking `findTagEnd` first would make it quadratic.
+{
+  const startedAt = Date.now();
+  extractChapterTitleAndBody(`${'<'.repeat(40_000)}>`, 4);
+  const elapsed = Date.now() - startedAt;
+
+  assert(elapsed < 2_000, `40,000 stray \`<\` took ${elapsed}ms — the walk is not linear in them`);
+}
+
 // ==================== The differential ====================
 //
 // Every tag interior over an alphabet built from the characters the six defects
