@@ -65,6 +65,27 @@ export const ACTIVATION_WHOLE_CANDIDATE_SCORE = 6;
 export const ACTIVATION_TOKEN_MIN_LENGTH = 4;
 
 /**
+ * How long a token is *as a word*, which is not the same as how long it is.
+ *
+ * The floor above is a claim about how much word a token has to be before it
+ * carries signal, and it was measured with `.length` — which was the same thing
+ * only while the normalizer kept letters and numbers alone. Once marks are
+ * retained, `.length` counts them too, and a mark is not a letter: the Arabic
+ * preposition `مِنْ` is two letters wearing two marks, so it measures four and
+ * clears a floor built to exclude exactly this — `the`, `and`, `of`, the words
+ * every brief and every label contains. Letting stopwords through is how the
+ * ordering flattens, which is the failure the floor exists to prevent, so a
+ * repair that retains marks has to say what it is retaining them *for*: they
+ * hold a word together for the comparison, and they are not more of the word
+ * for the measurement.
+ *
+ * Nothing changes for text that was already ASCII, which has no marks to count.
+ */
+function wordCharacterCount(token: string): number {
+  return Array.from(token).filter(character => ACTIVATION_PART_HAS_WORD_CHARACTER.test(character)).length;
+}
+
+/**
  * What a plot thread's `status` may be, as both trees' `PlotThread` declares it.
  *
  * Re-exported from `storyStateVocabulary` rather than declared here: this was a
@@ -126,13 +147,33 @@ const ACTIVATION_PART_HAS_WORD_CHARACTER = /[\p{L}\p{N}]/u;
  * do not compose away, which is most of Devanagari, Thai, and Arabic, are what
  * `\p{M}` is for. Neither alone is enough.
  *
- * The parts are filtered rather than the finished string, so a mark left with
- * no letter beside it — a variation selector after an emoji is one, and it is
- * `\p{M}` — is dropped instead of becoming an invisible word. Stating it as the
- * property a word needs is what makes it hold for whatever else punctuation,
- * symbols, and marks combine into; every part an ASCII input produces contains
- * a letter or a number already, so nothing that scored before scores
- * differently now.
+ * **A mark is only a word's mark when a base character precedes it, and asking
+ * that per *part* rather than per mark was not enough.** A mark belongs to the
+ * character before it, so the replacement above — which turns every removed
+ * character into a space — leaves an orphan wherever the base it was attached
+ * to has just been removed. `❤️pact` is the case: the heart is a symbol and
+ * becomes a space, its variation selector is `\p{M}` and stays, and the part
+ * that results is `️pact`, which *does* contain a letter and so survived a
+ * whole-part test. That candidate then scored **0** against a brief plainly
+ * saying `pact`, where before this module retained marks at all it scored 7 —
+ * a regression introduced by the repair itself, and an invisible one in the
+ * most literal sense.
+ *
+ * So each part drops the marks at its front, which is exactly where an orphan
+ * can be: the replacement has already put a space wherever a base character was
+ * removed, so a mark that survives with nothing before it inside its own part
+ * had its base taken away. What is left of a part that was nothing but marks is
+ * the empty string, which is not a word and is dropped with the rest.
+ *
+ * Dropping the empty parts is therefore the whole of the filter, and that is a
+ * consequence worth stating rather than a shortcut: the replacement leaves only
+ * letters, numbers, marks and spaces; the split consumes the spaces; the strip
+ * removes every leading mark. So a part that survives non-empty must begin with
+ * a letter or a number — "this part is a word" is an invariant the two steps
+ * above establish, not a condition to re-test here. A first draft tested it
+ * anyway, and the test could not fail; `tests/continuity-activation.test.ts`
+ * asserts the invariant across the adversarial inputs instead, where weakening
+ * either step is what breaks it.
  */
 export function normalizeActivationText(value: unknown): string {
   return (typeof value === 'string' ? value : '')
@@ -140,9 +181,17 @@ export function normalizeActivationText(value: unknown): string {
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\p{M} ]+/gu, ' ')
     .split(/\s+/)
-    .filter(part => ACTIVATION_PART_HAS_WORD_CHARACTER.test(part))
+    .map(part => part.replace(ORPHANED_LEADING_MARKS, ''))
+    .filter(part => part.length > 0)
     .join(' ');
 }
+
+/**
+ * The marks at the front of a part, which are the ones whose base character the
+ * replacement above removed. A mark anywhere else in the part follows a
+ * character that survived, and belongs to it.
+ */
+const ORPHANED_LEADING_MARKS = /^\p{M}+/u;
 
 /**
  * Whether `source` names `phrase` as whole words rather than as a substring.
@@ -228,7 +277,7 @@ export function scoreActivationCandidates(candidates: readonly unknown[], source
       score += ACTIVATION_WHOLE_CANDIDATE_SCORE;
     }
 
-    for (const token of candidate.split(' ').filter(value => value.length >= ACTIVATION_TOKEN_MIN_LENGTH)) {
+    for (const token of candidate.split(' ').filter(value => wordCharacterCount(value) >= ACTIVATION_TOKEN_MIN_LENGTH)) {
       if (namesWord(source, token)) {
         score += 1;
       }
