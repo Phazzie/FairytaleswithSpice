@@ -577,23 +577,30 @@ function removeNonStoryHtml(html: string): string[] {
     }
 
     if (skippedBlockTag) {
-      if (
-        parsed.tagName === skippedBlockTag
-        && !parsed.isClosing
-        && !closesItself(parsed)
-        && !NON_NESTING_DROPPED_TAGS.has(skippedBlockTag)
-      ) {
-        skippedBlockDepth += 1;
-      }
-
-      if (parsed.tagName === skippedBlockTag && parsed.isClosing) {
-        skippedBlockDepth -= 1;
-        if (skippedBlockDepth <= 0) {
-          skippedBlockTag = null;
+      if (breaksOutOfForeignContent(skippedBlockTag, parsed)) {
+        skippedBlockTag = null;
+        skippedBlockDepth = 0;
+        // Fall through: this tag is HTML, and is read as if the foreign
+        // element had been closed before it.
+      } else {
+        if (
+          parsed.tagName === skippedBlockTag
+          && !parsed.isClosing
+          && !closesItself(parsed)
+          && !NON_NESTING_DROPPED_TAGS.has(skippedBlockTag)
+        ) {
+          skippedBlockDepth += 1;
         }
-      }
 
-      continue;
+        if (parsed.tagName === skippedBlockTag && parsed.isClosing) {
+          skippedBlockDepth -= 1;
+          if (skippedBlockDepth <= 0) {
+            skippedBlockTag = null;
+          }
+        }
+
+        continue;
+      }
     }
 
     if (DROPPED_TAGS.has(parsed.tagName)) {
@@ -680,6 +687,54 @@ const NON_NESTING_DROPPED_TAGS = new Set([
 /** Whether this tag's trailing `/` actually closes it. */
 function closesItself(parsed: ParsedHtmlTag): boolean {
   return parsed.isSelfClosing && SELF_CLOSING_DROPPED_TAGS.has(parsed.tagName);
+}
+
+/**
+ * The dropped elements whose contents are parsed as markup in another language.
+ *
+ * `svg` and `math` are the two foreign-content integration points, and they are
+ * the only skipped elements a *following HTML tag* can end. Everything else on
+ * `DROPPED_BLOCK_TAGS` is either raw text — where `<p>` is characters, not a tag
+ * — or ordinary HTML, where an unmatched opener really does run to EOF.
+ */
+const FOREIGN_CONTENT_TAGS = new Set(['svg', 'math']);
+
+/**
+ * The HTML start tags that end foreign content wherever they appear inside it.
+ *
+ * HTML's tree construction has no way to nest these in SVG or MathML: on
+ * meeting one, the parser pops every foreign element and reads the tag as HTML.
+ * So `<svg>hidden</svg!><p>Story.</p>` puts the paragraph *outside* the SVG —
+ * the malformed `</svg!>` never has to be understood for the story to survive
+ * it, because the `<p>` breaks out on its own.
+ *
+ * Without this, classifying a tag by its whole name (which is right, and is what
+ * keeps `</script!>` from ending a script early) made a near-miss closing tag
+ * unmatchable, and the skip then ran to the end of the document taking the rest
+ * of the story with it. That was a regression against the first-`>` reader this
+ * module replaced, which stopped at `</svg!>` by accident of truncation.
+ *
+ * Spec list, minus `font` — which breaks out only when it carries `color`,
+ * `face` or `size`, and which this module has no reason to treat as a boundary.
+ */
+const FOREIGN_CONTENT_BREAKOUT_TAGS = new Set([
+  'b', 'big', 'blockquote', 'body', 'br', 'center', 'code', 'dd', 'div', 'dl',
+  'dt', 'em', 'embed', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'hr', 'i',
+  'img', 'li', 'listing', 'menu', 'meta', 'nobr', 'ol', 'p', 'pre', 'ruby', 's',
+  'small', 'span', 'strong', 'strike', 'sub', 'sup', 'table', 'tt', 'u', 'ul',
+  'var'
+]);
+
+/**
+ * Whether this tag ends the foreign element currently being skipped.
+ *
+ * Only a start tag breaks out; `</p>` inside an `<svg>` is ignored by a parser
+ * rather than treated as a boundary.
+ */
+function breaksOutOfForeignContent(skippedBlockTag: string, parsed: ParsedHtmlTag): boolean {
+  return FOREIGN_CONTENT_TAGS.has(skippedBlockTag)
+    && !parsed.isClosing
+    && FOREIGN_CONTENT_BREAKOUT_TAGS.has(parsed.tagName);
 }
 
 function replaceEvery(value: string, searchValue: string, replacement: string): string {

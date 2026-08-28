@@ -46,6 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Five semantic counterfactuals run and reverted; none is committed. Two of them
   passed against the first draft of the tests, which means those assertions were
   not pinning their claims, and both were replaced by ones that do.
+- An HTML tag now ends the skip of an `<svg>` or `<math>` whose own closing tag
+  was malformed or missing. Reading a tag by its whole name — which is what keeps
+  `</script!>` from ending a script early — made `</svg!>` unmatchable, so the
+  skip ran to the end of the document: `<svg>hidden</svg!><p>Story.</p>` exported
+  nothing where the previous reader exported `Story.` SVG and MathML are foreign
+  content, and an HTML start tag such as `<p>` pops every foreign element on
+  sight, so a browser puts that paragraph outside the SVG whether or not anything
+  closed it. The breakout is foreign content's alone: `script`, `style` and
+  `iframe` are raw text, where `<p>` is three characters rather than a tag, and a
+  malformed `</script!>` still does not end the skip — breaking out there would
+  export the script body as story text.
 
 ### 🐛 The `.pdf` export was the only one that showed a title's markup to the reader (August 27, 2026)
 

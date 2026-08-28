@@ -473,6 +473,62 @@ assert(
   'a self-closing <svg> closes itself and must not swallow the story after it'
 );
 
+// Classifying a tag by its whole name is right, and it made a near-miss closing
+// tag unmatchable: `</svg!>` is not `</svg>`, so the skip ran to the end of the
+// document and took the story with it. That was a regression against the
+// first-`>` reader this module replaces, which stopped there by accident of
+// truncation.
+//
+// A browser never needs to understand `</svg!>` for the story to survive it.
+// SVG and MathML are foreign content, and an HTML start tag such as `<p>` pops
+// every foreign element on sight — so the paragraph is parsed *outside* the SVG
+// whether or not anything closed it.
+for (const container of ['svg', 'math']) {
+  const nearMissClose = `<${container}>hidden</${container}!><p>Story.</p>`;
+  assert(
+    stripStoryHtmlForExport(nearMissClose) === 'Story.',
+    `an HTML tag breaks out of <${container}> whose closing tag was malformed (got ${JSON.stringify(stripStoryHtmlForExport(nearMissClose))})`
+  );
+  // The breakout does not depend on a closing tag existing at all.
+  const neverClosed = `<${container}>hidden<p>Story.</p>`;
+  assert(
+    stripStoryHtmlForExport(neverClosed) === 'Story.',
+    `an HTML tag breaks out of an unclosed <${container}> (got ${JSON.stringify(stripStoryHtmlForExport(neverClosed))})`
+  );
+  // And it does not leak the foreign element's own text.
+  assert(
+    !stripStoryHtmlForExport(nearMissClose).includes('hidden'),
+    `breaking out of <${container}> must not export its contents`
+  );
+}
+
+// The rule is foreign content's alone. `script`, `style` and `iframe` are
+// raw text: inside them `<p>` is three characters, not a tag, so a browser keeps
+// the element open to EOF and nothing after it is rendered. Breaking out there
+// would export the script body as prose — the leak this module exists to
+// prevent — so the near-miss closing tag must *not* end the skip.
+for (const rawText of ['script', 'style', 'iframe']) {
+  const html = `<${rawText}>stealPrivateStory()</${rawText}!><p>Story.</p>`;
+  assert(
+    !stripStoryHtmlForExport(html).includes('stealPrivateStory'),
+    `a malformed </${rawText}!> must not end a raw-text skip (got ${JSON.stringify(stripStoryHtmlForExport(html))})`
+  );
+}
+
+// Only a start tag breaks out; a stray end tag inside foreign content is
+// ignored by a parser rather than treated as a boundary.
+assert(
+  !stripStoryHtmlForExport('<svg>hidden</p><p>Story.</p>').includes('hidden'),
+  'a closing tag does not break out of foreign content'
+);
+
+// A tag that is not in HTML's breakout set leaves the foreign element open, as
+// a browser does.
+assert(
+  !stripStoryHtmlForExport('<svg>hidden</svg!><section>Story.</section>').includes('hidden'),
+  'a non-breakout tag does not end foreign content'
+);
+
 // A boundary a reader sees has to survive into both exports, and the closing tag
 // is not the only place one appears. `</div!>` is an unknown element rather than
 // a `</div>`, so there is no close to break on — but the `<p>` after it opens a

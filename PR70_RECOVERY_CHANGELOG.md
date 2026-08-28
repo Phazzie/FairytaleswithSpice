@@ -135,6 +135,27 @@ Eleventh review round (Codex, on `84586a4`) — one P2, fixed, and **in scope fo
 - So the fix is not "match a browser on malformed markup"; it is "make the plain-text export honour a rule this module already states and the HTML export already follows". The plain-text reader now breaks at a block's *opening* as well as its close, written only where a break is not already there — so well-formed markup, which breaks on the close, is byte-identical.
 - Worth recording as a refinement of the scope test rather than an exception to it. "Does the code already claim this?" has a second reading beyond a list being incomplete: **an invariant the code states about itself can be violated by a change without any list being wrong.** Breaking on the closing tag alone was sufficient only while every closing tag was recognised, and correct name parsing removed that guarantee silently.
 
+Twelfth review round — **reversing the tenth round's decline, because the argument I declined it with was factually wrong.**
+
+The tenth round above declined Codex's foreign-content breakout finding. That decline rested on one empirical claim, stated there as settled: that `<svg>hidden<p>Story.</p>` is an unclosed dropped container taking the rest of the document with it, that *"a browser does the same"*, and that the case was therefore already covered by the asserted `<iframe/>Story text.` cost. I checked the claim against `parse5` instead of reasoning from the analogy:
+
+| input | a browser renders | `main` | branch before this fix |
+| --- | --- | --- | --- |
+| `<svg>hidden<p>Story.</p>` | **`Story.`** | `''` | `''` |
+| `<svg>hidden</svg!><p>Story.</p>` | **`Story.`** | **`Story.`** | `''` |
+| `<iframe/>Story text.` | `''` | `''` | `''` |
+| `<script>hidden<p>Story.</p>` | `''` | `''` | `''` |
+
+**The analogy runs backwards.** `iframe`, `script` and `style` are raw text, where a browser really does swallow to EOF — that is why the `<iframe/>` cost is correct and stays asserted. `svg` and `math` are foreign content, where an HTML start tag such as `<p>` pops every foreign element on sight. So the two rows the decline treated as the same case are the two rows that behave oppositely, and the sentence *"a browser does the same"* was true of the element it was tested on and false of the element it was applied to.
+
+That makes row 2 a **prose-losing regression against `main`**, not an existing cost reached correctly: `main` exports `Story.`, this branch exported nothing. It is the one category this log has repeatedly said is never acceptable here — *"it drops no prose word a browser shows"* — and it had been argued away rather than measured.
+
+- Fixed by `breaksOutOfForeignContent`: while skipping `svg` or `math`, an HTML start tag on `FOREIGN_CONTENT_BREAKOUT_TAGS` ends the skip and is then read normally. Only a start tag breaks out; a stray `</p>` inside foreign content is ignored by a parser and is ignored here.
+- **It does not apply to raw text, which is the whole point.** `<script>stealPrivateStory()</script!><p>Story.</p>` still exports nothing — breaking out there would put the script body into the export as prose, which is the leak this module exists to prevent. Both directions are pinned, for `svg`/`math` and for `script`/`style`/`iframe`.
+- Measured, 1,584 generated inputs against `parse5`: exact agreement **86.68% → 90.72%** (`main`: 63.45%), with **156 stories recovered** that the pre-fix branch dropped. Separately, 1,980 adversarial containment inputs: **0 new leaks introduced, 0 prose losses against either `main` or the pre-fix branch** — the fixed reader leaks in 0 cases, as did both predecessors.
+- On the scope test the tenth round introduced, this passes on its own terms and I applied it wrongly there. The decline called breakout *"a parser feature, not a list"*; it is a fixed list from the spec, the same shape as `NON_NESTING_DROPPED_TAGS` and `SELF_CLOSING_DROPPED_TAGS`, both of which that same round accepted as in scope. The module had **already** committed to distinguishing foreign content from HTML — `SELF_CLOSING_DROPPED_TAGS` exists precisely because `svg` and `math` self-close and HTML containers do not. This is that same commitment, half-finished.
+- **The lesson is the one this log keeps recording, arriving one level up.** Eleven rounds of findings were "a position the reader did not model"; this one was *a position the reviewer did not model* — me. I declined a real defect by reasoning from a neighbouring case instead of running the oracle I had already built and had already been burned twice for not running. A decline needs the same evidence a fix does, and this one shipped with none.
+
 ## 2026-08-28 UTC - Story Lab Multi-Chapter Batch Generation Vs. The 60-Second Function Budget
 
 Actions:
