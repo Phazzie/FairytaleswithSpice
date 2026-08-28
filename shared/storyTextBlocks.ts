@@ -113,11 +113,22 @@ const BLOCK_BOUNDARY_PATTERN = new RegExp(
  *   →  'b">Real Title'      // the attribute remnant becomes the chapter title
  * ```
  *
- * The shape is the unrolled loop: runs of ordinary characters separated by
- * quoted runs. `[^>"'<]*` and the quote characters that begin each alternative
- * are disjoint, and a quoted run is never empty, so the engine never has two
- * ways to divide the same input and each position is decided once — the same
- * reason `BLOCK_BOUNDARY_PATTERN` above is written the way it is.
+ * The shape is HTML's own attribute grammar rather than "quoted runs anywhere":
+ * a list of names, each optionally followed by `=` and a value, then the `>`.
+ * **A quote is a delimiter only where an assignment puts one.** Pairing quotes
+ * wherever they appear is the mistake this pattern was first written with, and
+ * it loses prose that `[^>]*>` keeps:
+ *
+ * ```
+ * '<h3 a=b">c">Real Title</h3>'
+ *   [^>]*>          →  'c">Real Title'   // the tag ends at the first `>`
+ *   quotes anywhere →  'Real Title'      // `b"` and `c"` pair; `c">` is eaten
+ * ```
+ *
+ * `b"` is an unquoted value that happens to contain a quote, and HTML ends the
+ * tag at the very next `>`. Reading it as a delimiter reaches past that `>` and
+ * deletes text a reader can see. So a value opens a quoted run only directly
+ * after its `=`; a quote anywhere else is an ordinary character.
  *
  * Two bounds keep a scan inside the markup it began in, and one fallback keeps
  * the reader's words when there is no well-formed reading at all:
@@ -125,20 +136,47 @@ const BLOCK_BOUNDARY_PATTERN = new RegExp(
  * - **A quoted run stops at `<`.** Without that bound an unterminated quote
  *   searches forward until it finds a quote somewhere in the story text and
  *   swallows every word in between.
- * - **The unquoted runs stop at `<` too**, so a malformed tag ends where the
+ * - **An unquoted value stops at `<` too**, so a malformed tag ends where the
  *   next one starts, which is what a reader sees.
  * - **Markup with no well-formed reading falls back to `[^>]*>`**, the older
- *   scan. So a tag whose quote never closes is read exactly as it was before,
- *   and this pattern is never worse than the one it replaces — it either reads
- *   the tag whole or answers identically.
+ *   scan. This is what makes the pattern never worse than the one it replaces:
+ *   it either reads the tag whole or answers identically.
+ *
+ * Whitespace is spelled out rather than left to `\s`, because JavaScript's `\s`
+ * matches NBSP and HTML's tag whitespace does not. An NBSP between attributes
+ * is an ordinary attribute-name character to a browser, and `\s` would accept
+ * it as a separator instead.
  *
  * The bounds have a cost, and it is the documented one: a quoted value that
  * itself contains a literal `<` has no well-formed reading here and takes the
  * fallback, leaving the attribute remnant that the fallback always left. That
  * is unchanged from `[^>]*>` rather than introduced by this pattern.
  */
+const TAG_WHITESPACE = String.raw`[ \t\n\f\r]`;
+const ATTRIBUTE_NAME = String.raw`[^ \t\n\f\r>/="'<]+`;
+// The three forms are mutually exclusive by first character, and that is what
+// keeps the attribute loop linear. An unquoted value admits quotes after its
+// first character — `b"` is exactly what HTML calls that value — but may not
+// *begin* with one. Letting it begin with a quote gave `a="b"` two readings,
+// one per branch, and a tag that never closes then has 2^n ways to be divided:
+// twenty-two such attributes took 196ms and each further four multiplied it by
+// sixteen. Excluding the quote from the first character alone removes the
+// overlap without changing what any well-formed value reads as.
+const ATTRIBUTE_VALUE = String.raw`(?:"[^"<]*"|'[^'<]*'|[^ \t\n\f\r></"'][^ \t\n\f\r></]*)`;
+
+// The separator is `+`, not `*`, and that is load-bearing rather than tidy.
+// With `*` the loop body can begin by consuming nothing, so an attribute name
+// of n characters can be divided into attributes in exponentially many ways —
+// `aaa` as one name, or two, or three — and a tag that ultimately fails to
+// close makes the engine try all of them. A 1,600-attribute input did not
+// finish in two minutes. Requiring a separator gives each name exactly one
+// reading. The cost is that `a="b"c="d"`, which a browser recovers by starting
+// a new attribute at `c`, has no reading here and takes the fallback below —
+// the same answer `[^>]*>` gives, so it costs coverage and not correctness.
+const ATTRIBUTE_SEPARATOR = String.raw`(?:${TAG_WHITESPACE}|/)`;
+
 export const TAG_ATTRIBUTES_PATTERN =
-  String.raw`(?:[^>"'<]*(?:(?:"[^"<]*"|'[^'<]*')[^>"'<]*)*>|[^>]*>)`;
+  String.raw`(?:(?:${ATTRIBUTE_SEPARATOR}+${ATTRIBUTE_NAME}(?:${TAG_WHITESPACE}*=${TAG_WHITESPACE}*${ATTRIBUTE_VALUE}?)?)*${ATTRIBUTE_SEPARATOR}*>|[^>]*>)`;
 
 /**
  * Drop what is left of the markup once the block boundaries are marked.

@@ -158,6 +158,20 @@ assert(
   assert(title === 'Real Title', `an unterminated attribute quote must not consume prose, got ${JSON.stringify(title)}`);
 }
 
+// A quote that is not a delimiter must not pair with a later one across the
+// tag's own `>`. `b"` is an unquoted value containing a quote, so HTML ends the
+// tag at the very next `>` and the reader sees `c">Chapter 4: Real Title`. An
+// earlier form of this fix paired quotes wherever they appeared and returned
+// `Real Title`, deleting text `[^>]*>` had kept — a regression against `main`,
+// not merely a missed improvement.
+{
+  const { title } = extractChapterTitleAndBody('<h3 a=b">c">Chapter 4: Real Title</h3>', 4);
+  assert(
+    title === 'c">Chapter 4: Real Title',
+    `a quote in an unquoted value must not consume reader-visible text, got ${JSON.stringify(title)}`
+  );
+}
+
 // A quoted run stops at `<`, so it cannot reach into the next tag. This is the
 // documented cost of that bound: a value containing a literal `<` has no
 // well-formed reading and takes the fallback, leaving the remnant the fallback

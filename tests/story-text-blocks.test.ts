@@ -110,6 +110,76 @@ assert(
   'a quote inside an unquoted value should not open a quoted run'
 );
 
+// The same rule with a `>` between the two quotes, which is the case that
+// discriminates. An earlier form of this pattern paired quote characters
+// wherever they appeared, so `b"` and `c"` became a quoted run, the tag was
+// read past its own `>`, and `c">` — text a browser shows the reader —
+// disappeared from the title. HTML ends this tag at the first `>`, because
+// `b"` is an unquoted value that merely contains a quote.
+assert(
+  readTag('<h3 a=b">c">Title</h3>') === '<h3 a=b">',
+  'a quote inside an unquoted value must not pair with a later quote across the tag end'
+);
+
+assert(
+  readTag("<h3 a=b'>c'>Title</h3>") === "<h3 a=b'>",
+  'the same holds for single quotes'
+);
+
+// An unquoted value may still contain a quote after its first character, which
+// is what lets the tag above end in the right place rather than fall back.
+assert(
+  readTag('<h3 a=b" c="d>e">Title</h3>') === '<h3 a=b" c="d>e">',
+  'an unquoted value carrying a quote should not stop a later quoted value being read whole'
+);
+
+// The attribute loop must not backtrack exponentially. Two separate mistakes
+// made it do so, both on a tag that never closes: an optional separator between
+// attributes let an n-character name be divided into attributes in 2^n ways,
+// and an unquoted value permitted to *begin* with a quote gave `a="b"` one
+// reading per alternation branch.
+//
+// Twenty-four attributes is deliberately small. It is a blowup detector, not a
+// throughput measure: the current pattern reads them in ~0.01ms, while either
+// mistake takes ~1.6s — so a regression fails this in under two seconds rather
+// than hanging a CI run, which a length chosen for realism would do. At 80,000
+// attributes the current pattern is still linear, at ~14ms.
+{
+  const unclosed = '<h3' + ' a="b"'.repeat(24);
+  const startedAt = Date.now();
+  new RegExp(String.raw`<h3${TAG_ATTRIBUTES_PATTERN}`, 'i').test(unclosed);
+  const elapsedMs = Date.now() - startedAt;
+  assert(elapsedMs < 250, `reading an unclosed tag's attributes should not backtrack exponentially, took ${elapsedMs}ms`);
+}
+
+// The other half of the same guard, which the input above does not reach: it
+// supplies a separator before every attribute, so it cannot detect a separator
+// that has become optional. One long name and no `>` does — 0.01ms here
+// against 1.5s once the separator may match nothing.
+{
+  const unclosedLongName = '<h3 ' + 'a'.repeat(28);
+  const startedAt = Date.now();
+  new RegExp(String.raw`<h3${TAG_ATTRIBUTES_PATTERN}`, 'i').test(unclosedLongName);
+  const elapsedMs = Date.now() - startedAt;
+  assert(elapsedMs < 250, `one long attribute name should not be divisible exponentially, took ${elapsedMs}ms`);
+}
+
+// Tag whitespace is space, tab, LF, FF and CR — not everything JavaScript's
+// `\s` accepts. An NBSP between two attributes is an ordinary attribute-name
+// character to a browser, not a separator, so this markup is the "missing
+// whitespace between attributes" recovery case and has no well-formed reading
+// here; it takes the fallback and answers exactly as `[^>]*>` does.
+//
+// Pinned because `\s` would instead read the tag whole. That is not obviously
+// wrong — a browser does end this tag at the last `>` — but it means treating
+// a character HTML does not call whitespace as a separator, which is how #295
+// deleted reader-visible text. The conservative reading is chosen deliberately,
+// and it is never worse than `main`.
+assert(
+  readTag('<h3 a="b>c" d="e>f">Title</h3>') === '<h3 a="b>',
+  'an NBSP between attributes is not tag whitespace and should take the fallback'
+);
+
 // A tag with no `>` at all is not a tag.
 assert(readTag('<h3 data-x=a') === null, 'a tag with no `>` should not match');
 
