@@ -421,10 +421,13 @@ for (const container of ['script', 'style', 'iframe']) {
 // `form` is on the same list for a different reason with the same effect: HTML
 // ignores a `<form>` start tag while a form is already open, so a second one
 // never opens an element for the single close to leave behind.
-assert(
-  stripStoryHtmlForExport('<form>hidden<form/></form><p>Story.</p>') === 'Story.',
-  'a nested form opener does not deepen the skip'
-);
+for (const control of ['form', 'button', 'select']) {
+  const html = `<${control}>hidden<${control}/></${control}><p>Story.</p>`;
+  assert(
+    stripStoryHtmlForExport(html) === 'Story.',
+    `a nested <${control}> opener does not deepen the skip (got ${JSON.stringify(stripStoryHtmlForExport(html))})`
+  );
+}
 
 // The other side, and why that is a list rather than a blanket: containers that
 // really do nest must still be counted, or the inner close ends the outer skip

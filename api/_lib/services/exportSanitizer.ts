@@ -609,16 +609,27 @@ const SELF_CLOSING_DROPPED_TAGS = new Set(['svg', 'math', 'embed']);
  * and the closing tag then only gets it back to one — so
  * `<script>const t = "<script/>";</script>` swallows the rest of the story.
  *
- * `form` is here for a different reason with the same effect: HTML ignores a
- * `<form>` start tag while a form is open, so a second one never opens an
- * element to close.
+ * `form`, `button` and `select` are here for a different reason with the same
+ * effect. HTML ignores a `<form>` start tag while a form is open; a nested
+ * `<button>` closes the button already in scope; a nested `<select>` closes the
+ * active one. In all three a second opener never leaves an extra element for the
+ * closing tag to account for.
  *
  * The other dropped containers really can nest — `<svg><svg></svg></svg>` is two
  * elements — which is why this is a list and not a blanket rule. Only the
  * *opening* side is affected: `</script>` inside a string does end a script
  * element, in this reader as in a browser.
  */
-const NON_NESTING_DROPPED_TAGS = new Set(['script', 'style', 'iframe', 'textarea', 'title', 'form']);
+const NON_NESTING_DROPPED_TAGS = new Set([
+  'script',
+  'style',
+  'iframe',
+  'textarea',
+  'title',
+  'form',
+  'button',
+  'select'
+]);
 
 /** Whether this tag's trailing `/` actually closes it. */
 function closesItself(parsed: ParsedHtmlTag): boolean {

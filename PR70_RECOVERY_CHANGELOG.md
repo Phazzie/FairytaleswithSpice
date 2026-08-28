@@ -121,6 +121,13 @@ Ninth review round (Codex, on `d064b72`) — two P2s, both real, and both **comp
 
 Both are in scope despite the previous round's stopping point, and the distinction is worth keeping: **parking the malformed-markup *policy* is not the same as leaving an enumeration half-finished.** The two lists here — which characters may start a name, which containers cannot nest — are HTML facts this slice already committed to modelling, and an incomplete list is a defect in that commitment rather than a new question about it. The parked item remains what it was: whether the reader should imitate a browser on markup that has no well-formed reading at all.
 
+Tenth review round (Codex, on `ca8ea74`) — two P2s, **one fixed and one declined**, which is the first time the scope test above did real work:
+
+- **Fixed: `button` and `select` do not nest either.** A nested `<button>` closes the button already in scope and a nested `<select>` closes the active one, so neither leaves an extra element for the closing tag to account for. Same list, same class of HTML fact as `form` — an incomplete enumeration, in scope.
+- **Declined: foreign-content breakout on a near-miss closing tag.** `<svg>hidden</svg!><p>Story.</p>` swallows the paragraph here, where `main` keeps it. The finding asks the reader to model HTML's rule that certain elements pop out of foreign content — a behaviour this module has never claimed and which is a parser feature, not a list.
+
+  The declined one is worth stating carefully, because it *is* a change against `main`. `</svg!>` is not a close for `svg`, so the element is unclosed, and **an unclosed dropped container taking the rest of the document with it is this module's asserted, deliberate cost** — already pinned by `<iframe/>Story text.` and shared with `main`, which answers `''` for a genuinely unclosed `<svg>hidden<p>Story.</p>` exactly as this reader does. What changed is only that `main` reached the other answer by mis-parsing `</svg!>` as `</svg>`; correct parsing routes the same input to the cost that was already documented. So this is not a new behaviour, it is an existing one reached correctly — and whether that cost should be paid at all is the question parked on #296.
+
 ## 2026-08-28 UTC - Story Lab Multi-Chapter Batch Generation Vs. The 60-Second Function Budget
 
 Actions:
