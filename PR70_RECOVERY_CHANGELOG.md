@@ -4,6 +4,41 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-28 UTC - The Block Splitter Calls the Scanner (the last reader on #296)
+
+Actions:
+
+- `shared/storyTextBlocks.ts` locates tags with `shared/htmlTagScanner` instead of its two patterns, `<\s*/?(block)\b[^>]*>` and `<[^<>]*>`. Both ended a tag at the *first* `>` rather than at the first one outside a quoted attribute value. This was the fourth and last reader carrying that fault; #297 fixed the export tokenizer, #306 the two chapter-heading readers, and the entry above left this one open by name.
+- `BLOCK_LEVEL_TAG_NAMES` becomes a `Set` of names, with `h[1-6]` spelled out as six entries, now that `parseHtmlTag` hands back an element name instead of a matched span. It has already lowercased it, which is what the old `i` flag did.
+- Extended `tests/story-text-blocks.test.ts` from 6 assertions to 53.
+
+The defects repaired, all three reader-visible:
+
+- **A block tag.** `<p title="a>b">Alpha.</p>` came back as the block `b">Alpha.` — the attribute remnant opening the paragraph.
+- **An inline tag.** `<p>He was <em title="x>y">certain</em> of it.</p>` welded `y">certain` into the middle of the sentence. This is the one that moves a number: the weld is a single token to anything that counts words or splits on `[.!?]\s`.
+- **A self-closing tag.** The truncation also took the `/`, so `<br data-x="1>2"/>` lost its paragraph break *and* left `2"/>Two.`
+
+Why this reader matters more than its three lines suggest: it is not an export path. It is what every quality scanner in the repository reads, so the same fragment reached `countStoryWords`, the last-paragraph cliffhanger scan, the scene sentence `imageService` builds a prompt from, the excerpt `continuityExtractor` carries into the next chapter's prompt, and the text `app.ts` copies to the clipboard.
+
+Decisions:
+
+- **`findTagEnd`, not `tokenizeHtml`, and the difference is comments.** `tokenizeHtml` drops a comment whole, which is what a browser does and is strictly better than what this module does — but it still ends one only at `-->`, which is #307's row of #296 and unmerged. Adopting it today regresses `<h3>Visible <!--> Title</h3>` to `Visible`; the first draft of this change did exactly that and `tests/chapter-heading-reader.test.ts` caught it. `findTagEnd` has no comment rule at all — it returns the first `>` for anything it cannot read as a tag, which is precisely what the two patterns did — so comment handling does not move. `<!-- note: a > b -->` still leaks `b -->` as a visible block, unchanged. Once #307 lands, this module can call `tokenizeHtml` and inherit the whole comment reading; this change is what makes that a one-line move.
+- **The known limitation is pinned by a test, not just noted.** The `b -->` leak has an assertion asserting it, so the day that behaviour changes it is a deliberate edit rather than an incidental one.
+- **No new pattern.** Same reasoning as the entry below: #295 and #302 produced six defects between them trying to spell this reading as a regex, three of them exponential and three deleting reader text.
+
+Self-review:
+
+- **Differential against `parse5`**, a real HTML parser, rather than against the patterns being replaced — the oracle error #302 recorded. Every tag interior of length 1..6 over `{a " > space / = '}` in four templates (block attrs, inline attrs, self-closing `<br>`, nested block): **549,024 inputs**. Outputs differ from the old implementation in **704** of them; in **704** the new reading agrees with `parse5` and the old does not; **worse: 0**. Every other input is byte-identical to before, so the change is 704 repairs and no behavioural drift.
+- **Counterfactual mutations: 10 applied, 10 killed.** The first-`>` boundary restored; `br`, `h3`, `td` each removed from the name set; the unclosed-`<` tail dropped instead of kept; every named tag made a boundary; no tag made a boundary; the first-`>` fallback removed; entity decoding removed; blank-block filtering removed.
+- **One mutation survived the first draft of the tests** — removing `h3` from the name set. The heading assertion was `<h3>Title</h3><p>Body.</p>`, where the adjacent `<p>` supplies the break and hides the missing heading name entirely. Every boundary assertion now stands alone as `One.<tag>Two.`, and all 29 names are checked rather than a sample. As the entry below says: a mutation surviving is evidence about the test, not about the mutation.
+- **Linearity** measured at 200,000 and 400,000 characters, median of 7, over eleven shapes — including the two the deleted comments called out by name, a run of `<` with no `>` and a run of `<` closed once far away. Worst ratio for 2× input: **2.12×**. The stray-`<` shape read 3.08× on a first noisy measurement and was re-measured across 200k→3.2M, where cost per character is flat at 2.4µs/1k over a 16× range.
+- `npm run test:all` exits 0; `scripts/recovery/preflight.sh --skip-status` exits 0 (Angular typecheck, build, function count 8/12).
+
+Not claimed:
+
+- **No evidence this happens in production output.** The generator is not prompted to emit attributes on story markup at all, so a `>` inside one needs the model to volunteer both. Worth fixing because the corruption is silent and reaches measurements rather than because it has been observed — the same standing as the three rows before it.
+- **The residual disagreement with `parse5` is unchanged, not fixed.** Both implementations agree with the parser on about 94% of that enumeration; the remainder is this module doing what it is documented to do — deleting the span between a `<` and a `>` in prose — and it is identical before and after.
+
 ## 2026-08-28 UTC - The Two Chapter-Heading Readers Call the Scanner (rows 1 and 2 of #296)
 
 Actions:
