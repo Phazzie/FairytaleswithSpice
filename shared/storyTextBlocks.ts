@@ -191,8 +191,21 @@ const ATTRIBUTE_VALUE = String.raw`(?:"[^"<]*"|'[^'<]*'|[^ \t\n\f\r><"'][^ \t\n\
 // whose trailing slash is no longer a separator, both fall back.
 const ATTRIBUTE_SEPARATOR = TAG_WHITESPACE;
 
+// No whitespace is permitted between `=` and the value, and that asymmetry —
+// whitespace allowed *before* the `=` but not after — is the fourth ambiguity
+// removed from this pattern, all of the same kind.
+//
+// With `WS*` on both sides, the value could begin past the separator and
+// consume the next attribute's name, so ` a= a=` reads either as one attribute
+// whose value is `a` or as two attributes with no values. A tag that never
+// closes then has 2^n partitions: 32 repeats took 275ms and 36 took 2.0s.
+//
+// The cost is narrow and measured: `a = "b>c"` and `a= "b>c"` — whitespace
+// between the `=` and an opening quote — now have no reading here and take the
+// fallback. `a ="b>c"` is unaffected, because the whitespace before `=` is
+// still allowed. As always the fallback answers exactly as `[^>]*>` does.
 export const TAG_ATTRIBUTES_PATTERN =
-  String.raw`(?:(?:${ATTRIBUTE_SEPARATOR}+${ATTRIBUTE_NAME}(?:${TAG_WHITESPACE}*=${TAG_WHITESPACE}*${ATTRIBUTE_VALUE}?)?)*${ATTRIBUTE_SEPARATOR}*>|[^>]*>)`;
+  String.raw`(?:(?:${ATTRIBUTE_SEPARATOR}+${ATTRIBUTE_NAME}(?:${TAG_WHITESPACE}*=${ATTRIBUTE_VALUE}?)?)*${ATTRIBUTE_SEPARATOR}*>|[^>]*>)`;
 
 /**
  * Drop what is left of the markup once the block boundaries are marked.

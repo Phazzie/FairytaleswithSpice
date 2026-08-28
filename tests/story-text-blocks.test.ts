@@ -188,6 +188,34 @@ assert(
   assert(elapsedMs < 250, `one long attribute name should not be divisible exponentially, took ${elapsedMs}ms`);
 }
 
+// The third shape, and the fourth ambiguity of this kind: an attribute whose
+// value is missing. With whitespace permitted after the `=`, a value could
+// begin past the separator and consume the next attribute's name, so ` a= a=`
+// reads either as one attribute valued `a` or as two valueless ones — 2^n
+// partitions once the tag never closes. 32 repeats took 275ms, 36 took 2.0s.
+{
+  const unclosedMissingValues = '<h3' + ' a='.repeat(32);
+  const startedAt = Date.now();
+  new RegExp(String.raw`<h3${TAG_ATTRIBUTES_PATTERN}`, 'i').test(unclosedMissingValues);
+  const elapsedMs = Date.now() - startedAt;
+  assert(elapsedMs < 250, `attributes with missing values should not be divisible exponentially, took ${elapsedMs}ms`);
+}
+
+// The narrow, deliberate cost of that disambiguation: whitespace between the
+// `=` and an opening quote leaves the markup with no reading here, so it takes
+// the fallback and answers as `[^>]*>` does.
+assert(
+  readTag('<h3 a = "b>c">Title</h3>') === '<h3 a = "b>',
+  'whitespace between `=` and an opening quote should take the fallback'
+);
+
+// Whitespace *before* the `=` is still read, so the asymmetry is real and not
+// a blanket refusal of spacing around the assignment.
+assert(
+  readTag('<h3 a ="b>c">Title</h3>') === '<h3 a ="b>c">',
+  'whitespace before `=` should still be read'
+);
+
 // Tag whitespace is space, tab, LF, FF and CR — not everything JavaScript's
 // `\s` accepts. An NBSP between two attributes is an ordinary attribute-name
 // character to a browser, not a separator, so this markup is the "missing
