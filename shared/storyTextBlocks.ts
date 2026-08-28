@@ -162,18 +162,34 @@ const ATTRIBUTE_NAME = String.raw`[^ \t\n\f\r>/="'<]+`;
 // twenty-two such attributes took 196ms and each further four multiplied it by
 // sixteen. Excluding the quote from the first character alone removes the
 // overlap without changing what any well-formed value reads as.
-const ATTRIBUTE_VALUE = String.raw`(?:"[^"<]*"|'[^'<]*'|[^ \t\n\f\r></"'][^ \t\n\f\r></]*)`;
+//
+// A `/` is an ordinary character here. HTML only gives the slash a meaning in
+// the state *before* an attribute name; once a value has begun it is content
+// like any other, so `a=//b="c` is one unquoted value and the tag ends at the
+// very next `>`. Excluding it from the value and accepting it as a separator
+// instead — which is what this pattern did first — reads `b="c>d"` as a second
+// attribute, runs through the second `>`, and deletes the `d">` a reader sees.
+const ATTRIBUTE_VALUE = String.raw`(?:"[^"<]*"|'[^'<]*'|[^ \t\n\f\r><"'][^ \t\n\f\r><]*)`;
 
-// The separator is `+`, not `*`, and that is load-bearing rather than tidy.
-// With `*` the loop body can begin by consuming nothing, so an attribute name
-// of n characters can be divided into attributes in exponentially many ways —
-// `aaa` as one name, or two, or three — and a tag that ultimately fails to
-// close makes the engine try all of them. A 1,600-attribute input did not
-// finish in two minutes. Requiring a separator gives each name exactly one
-// reading. The cost is that `a="b"c="d"`, which a browser recovers by starting
-// a new attribute at `c`, has no reading here and takes the fallback below —
-// the same answer `[^>]*>` gives, so it costs coverage and not correctness.
-const ATTRIBUTE_SEPARATOR = String.raw`(?:${TAG_WHITESPACE}|/)`;
+// Whitespace only, and both halves of that are load-bearing.
+//
+// `+` rather than `*`: with `*` the loop body can begin by consuming nothing,
+// so an attribute name of n characters can be divided into attributes in
+// exponentially many ways — `aaa` as one name, or two, or three — and a tag
+// that never closes makes the engine try all of them. A 1,600-attribute input
+// did not finish in two minutes.
+//
+// Whitespace and not also `/`: the slash belongs to the value, per the note
+// above, and it cannot be in both places without giving `a=b/c` two readings.
+// Between them these keep every construct's boundary decided by a character
+// class the neighbouring construct excludes, which is what makes the loop
+// linear rather than merely fast on the inputs tested.
+//
+// The cost is coverage, never correctness, because everything unmatched here
+// takes the fallback and so answers exactly as `[^>]*>` does: `a="b"c="d"`,
+// which a browser recovers by starting a new attribute at `c`, and `<h3 a="b"/>`,
+// whose trailing slash is no longer a separator, both fall back.
+const ATTRIBUTE_SEPARATOR = TAG_WHITESPACE;
 
 export const TAG_ATTRIBUTES_PATTERN =
   String.raw`(?:(?:${ATTRIBUTE_SEPARATOR}+${ATTRIBUTE_NAME}(?:${TAG_WHITESPACE}*=${TAG_WHITESPACE}*${ATTRIBUTE_VALUE}?)?)*${ATTRIBUTE_SEPARATOR}*>|[^>]*>)`;

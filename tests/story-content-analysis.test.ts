@@ -185,6 +185,18 @@ assert(
   );
 }
 
+// A slash after an assignment is part of the value, not a separator. HTML only
+// gives the slash a meaning before an attribute name, so `//b="c` is the
+// unquoted value of `a` and the tag ends at the next `>`. Reading the slash as
+// a separator made `b="c>d"` a second attribute and deleted the `d">` prefix.
+{
+  const { title } = extractChapterTitleAndBody('<h3 a=//b="c>d">Chapter 4: Real Title</h3>', 4);
+  assert(
+    title === 'd">Chapter 4: Real Title',
+    `a slash after an assignment must not act as an attribute separator, got ${JSON.stringify(title)}`
+  );
+}
+
 // A quoted run stops at `<`, so it cannot reach into the next tag. This is the
 // documented cost of that bound: a value containing a literal `<` has no
 // well-formed reading and takes the fallback, leaving the remnant the fallback

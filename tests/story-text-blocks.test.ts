@@ -133,6 +133,30 @@ assert(
   'an unquoted value carrying a quote should not stop a later quoted value being read whole'
 );
 
+// A `/` inside a value is an ordinary character. HTML gives the slash a meaning
+// only in the state *before* an attribute name, so once a value has begun,
+// `//b="c` is all one unquoted value and the tag ends at the very next `>`.
+// Treating the slash as an attribute separator instead — which this pattern did
+// first — read `b="c>d"` as a second attribute, ran through the second `>`, and
+// deleted the `d">` a reader sees.
+assert(
+  readTag('<h3 a=//b="c>d">Title</h3>') === '<h3 a=//b="c>',
+  'a slash after an assignment belongs to the value, not to the separator'
+);
+
+assert(
+  readTag('<h3 a=b/c>Title</h3>') === '<h3 a=b/c>',
+  'a slash inside an unquoted value should not split it into two attributes'
+);
+
+// The corresponding cost, taken deliberately: a slash that a browser *would*
+// treat as a separator no longer is one, so this markup has no reading here and
+// falls back — the same answer `[^>]*>` gives. Coverage, not correctness.
+assert(
+  readTag('<h3 a="b>c"/>Title</h3>') === '<h3 a="b>',
+  'a trailing self-closing slash is no longer a separator and should fall back'
+);
+
 // The attribute loop must not backtrack exponentially. Two separate mistakes
 // made it do so, both on a tag that never closes: an optional separator between
 // attributes let an n-character name be divided into attributes in 2^n ways,
