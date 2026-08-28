@@ -131,6 +131,7 @@ const BLOCK_LEVEL_TAG_NAMES = [
  * emits `<p>`, `<em>` and `<h3>` with at most a class, so an attribute carrying
  * a literal `<` is not a shape it produces, while a truncated tag is.
  */
+
 /**
  * What a name may be built from, in a tag or an attribute.
  *
