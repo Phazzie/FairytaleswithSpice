@@ -108,6 +108,7 @@ Do not leave status only in chat. Update the narrowest durable document that mat
 | `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` | Auth, profile, cloud library APIs/UI, signed-in save/load/list/delete behavior, or provider-backed claims change. |
 | `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md` | Storage ports, in-memory/Postgres adapters, schema, durability wording, owner-scoped behavior, or cloud-vs-local status changes. |
 | `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` | Job routes, job store, SSE events, progress/reload behavior, Workflow claims, or non-durable job wording changes. |
+| `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md` | Living Book reader-first layout status, transactional-outbox/idempotency/Cron-dispatch job durability status, or scope changes to either. |
 | `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md` | Vercel-facing route files are added, retired, consolidated, renamed, or documented. |
 | `STORY_LAB_PRIVACY_STREAMING_GATES_EXEC_PLAN.md` | CORS, account-boundary headers, export sanitization, retention/deletion policy, opaque job ids, or streaming privacy changes. |
 | `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md` | Story generation semantics, real-engine bridging, prompt contracts, continuation behavior, or model request shape changes. |
@@ -289,6 +290,8 @@ The active Story Lab auth/profile/cloud-library checklist is `STORY_LAB_AUTH_PRO
 The active Story Lab route-budget plan is `STORY_LAB_ROUTE_BUDGET_EXEC_PLAN.md`. Use it before retiring, adding, consolidating, or documenting Vercel-facing route files for Story Lab capacity work.
 
 The active Story Lab job-route scaffold plan is `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md`. Use it before changing the non-durable Story Lab job routes, job store, job event stream, or Angular job client seam.
+
+The active Story Lab Living Book and durable-jobs plan is `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`. Use it before changing the reader-first Living Book layout (creation-first empty state, progressive disclosure, reader-dominant reflow, Director's Room/batch-queue panel positioning), or before adding transactional-outbox writes, idempotency-key enforcement, or Vercel Queue/Cron job dispatch to the Story Lab job store.
 
 For broad PR-recovery archaeology only, the old recovery path was:
 
