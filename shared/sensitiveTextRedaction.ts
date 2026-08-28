@@ -210,11 +210,17 @@ function isIntroducedAsCredential(value: string, index: number): boolean {
  * this cannot loosen the rule: `Title: ["Bearer of the seal"]` reaches the
  * label `title`, matches no field name, and stays prose.
  *
- * The span ends at the first `]`, without matching nested brackets: a header
- * array holds strings, and a bearer credential cannot contain `]` -- it is not
- * a `b64token` character. Skipping a `[` already inside a span keeps this
- * linear on input like `[[[[[...`, since that bracket's own span would be
- * contained in the one already recorded.
+ * The span ends at the first `]` **that is not inside a quoted element** (see
+ * {@link findArrayEnd}). Ending at the first `]` full stop was wrong for the
+ * reason the rest of this module keeps being wrong: the credential cannot
+ * contain a `]`, since it is not a `b64token` character, but a *sibling
+ * element* is under no such obligation. `{"authorization":["Digest
+ * roles=[admin]","Bearer abcdef"]}` closed the span inside element one and
+ * emitted the credential in element two in the clear.
+ *
+ * Skipping a `[` already inside a span keeps this linear on input like
+ * `[[[[[...`, since that bracket's own span would be contained in the one
+ * already recorded.
  *
  * An array left unterminated by a truncated log runs to the end of the string,
  * which is the fail-closed reading and the opposite of what `shared/
@@ -229,8 +235,7 @@ function findCredentialArraySpans(value: string): Array<{ start: number; end: nu
 
   while (bracket >= 0) {
     if (isIntroducedAsCredential(value, bracket)) {
-      const close = value.indexOf(']', bracket + 1);
-      const end = close < 0 ? value.length : close;
+      const end = findArrayEnd(value, bracket);
       spans.push({ start: bracket, end });
       bracket = value.indexOf('[', end + 1);
       continue;
@@ -239,6 +244,53 @@ function findCredentialArraySpans(value: string): Array<{ start: number; end: nu
   }
 
   return spans;
+}
+
+/**
+ * Where does the array opened at `bracket` close?
+ *
+ * At the first `]` that is not inside a quoted element. An element is a string
+ * and may hold anything, `]` included -- `"Digest roles=[admin]"` is a real
+ * header value -- so a `]` only closes the array when no quote is open.
+ *
+ * A quote is closed only by **the same character that opened it**, which is
+ * what lets `"it's fine"` keep its apostrophe instead of ending the element on
+ * it. Backslashes are deliberately *not* read as escapes: in the already-escaped
+ * payload of round 3 (`payload="{\"authorization\":[\"Bearer x\"]}"`) the `\"`
+ * pairs *are* the element delimiters, so treating the backslash as an escape
+ * would leave the scan permanently outside a string there.
+ *
+ * The residual that trade leaves, stated rather than implied: an element
+ * carrying a genuinely escaped quote (`"say \"hi\""`) desynchronises the
+ * tracking, since this cannot tell that spelling from the escaped-payload one.
+ * The scan re-synchronises on the next quote, and the failure is normally to
+ * carry a string open too long, which extends the span and over-redacts. That
+ * is the fail-closed direction, and it is why the ambiguity is tolerable.
+ *
+ * An array the log truncated never closes, so the scan runs off the end and the
+ * span covers the remainder -- fail-closed, as the caller's docblock explains.
+ */
+function findArrayEnd(value: string, bracket: number): number {
+  let openQuote = '';
+
+  for (let cursor = bracket + 1; cursor < value.length; cursor += 1) {
+    const char = value[cursor] ?? '';
+    if (openQuote) {
+      if (char === openQuote) {
+        openQuote = '';
+      }
+      continue;
+    }
+    if (isQuote(char)) {
+      openQuote = char;
+      continue;
+    }
+    if (char === ']') {
+      return cursor;
+    }
+  }
+
+  return value.length;
 }
 
 /**

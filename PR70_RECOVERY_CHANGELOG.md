@@ -228,7 +228,44 @@ serialized header dump looks like, and testing every recorded span per scheme
 keyword is quadratic on it — measured at 953ms against 584ms for 20,000 elements
 before the cursor replaced the scan. Both shapes are held to a time.
 
-**Mutation result: 6 applied, 4 killed, 2 equivalent.** Killed: dropping the
+**Review round 6 found the assumption round 5 flagged as most likely wrong.**
+Asking for the review named three assumptions in descending order of worry, and
+Codex went straight to the third: the span ended at the first `]`, justified on
+the grounds that a credential cannot contain one. True, and beside the point —
+the *credential* cannot, but a **sibling element** is under no such obligation,
+and `Digest roles=[admin]` is a real header value:
+
+```
+{"authorization":["Digest roles=[admin]","Bearer abcdef"]}
+    -> span closed inside element one; the credential emitted in the clear
+{"authorization":["Bearer abcdef","Digest roles=[admin]","Bearer ghijkl"]}
+    -> `abcdef` redacted, `ghijkl` in the clear -- everything after the bracket lost
+```
+
+This is the module's recurring mistake in a sixth costume: reasoning about the
+token and forgetting the text around it. The array now ends at the first `]`
+with no quote open, and a quote is closed only by **the character that opened
+it**, so `"it's fine"` keeps its apostrophe instead of ending there.
+
+Backslashes are deliberately not read as escapes, because round 3's escaped
+payload uses `\"` pairs *as* the delimiters — treating them as escapes would
+leave the scan permanently outside a string there. The residual is recorded
+rather than implied: an element carrying a genuinely escaped quote
+desynchronises the tracking, since the two spellings are indistinguishable
+here. The scan re-synchronises on the next quote, and the failure carries a
+string open too long, which extends the span and over-redacts — fail-closed,
+which is why the ambiguity is tolerable.
+
+**Mutation result for round 6: 4 applied, 4 killed.** Reverting to the first
+`]`, removing quote tracking, letting any quote close any other, and abandoning
+an unterminated array. The third is the one worth noting: the apostrophe case
+could not kill it, because that mutation fails by making the span *too long*,
+which still redacts. It is killed instead by prose *after* the array —
+`{"authorization":["it's fine","Bearer abcdef"]} and the bearer announced
+victory` — where an over-long span destroys the sentence. That is the same
+defect this entire PR exists to fix, reachable through the new code.
+
+**Mutation result for round 5: 6 applied, 4 killed, 2 equivalent.** Killed: dropping the
 array clause, opening a span on any bracket without the gate, abandoning an
 unterminated array, and collapsing a span's end onto its start. The two
 survivors are reported as survivors because they are unfalsifiable rather than

@@ -300,7 +300,19 @@ for (const shortButShaped of [
 for (const serialized of [
   '{"authorization":["Bearer abcdef","Bearer ghijkl"]}',
   '{"authorization": ["Bearer abcdef", "Bearer ghijkl"]}',
-  '{"authorization":["Basic xyz","Bearer abcdef","Bearer ghijkl"]}'
+  '{"authorization":["Basic xyz","Bearer abcdef","Bearer ghijkl"]}',
+  // A sibling element may hold a `]` -- `Digest roles=[admin]` is a real header
+  // value. Ending the array at the first `]` closed the span inside element one
+  // and emitted everything after it in the clear. The credential cannot carry a
+  // `]`, which is what made the first reading look safe; the element around it
+  // can.
+  '{"authorization":["Digest roles=[admin]","Bearer abcdef","Bearer ghijkl"]}',
+  '{"authorization":["Bearer abcdef","Digest roles=[admin]","Bearer ghijkl"]}',
+  // A quote is closed only by the same character that opened it, so an
+  // apostrophe inside a double-quoted element does not end it, and a
+  // single-quoted serialization is read the same way as a double-quoted one.
+  '{"authorization":["it\'s fine","Bearer abcdef","Bearer ghijkl"]}',
+  "{'authorization': ['Digest roles=[admin]', 'Bearer abcdef', 'Bearer ghijkl']}"
 ]) {
   const hidden = redactSensitiveLogData({ note: serialized }) as Record<string, string>;
   assert(
@@ -308,6 +320,25 @@ for (const serialized of [
     `every credential in a serialized header array must be redacted: ${serialized} -> ${hidden.note}`
   );
 }
+
+// Matching the opening quote is what stops the span from swallowing the rest of
+// the line. An apostrophe inside a double-quoted element does not close it, so
+// the array still ends at its own `]` and the prose after it is untouched.
+// Reading any quote as closing any other desynchronises the scan, leaves a
+// string open across the `]`, and runs the span to the end of the log line --
+// which destroys the sentence that follows, the very defect this whole PR is
+// about.
+const afterArray = redactSensitiveLogData({
+  note: '{"authorization":["it\'s fine","Bearer abcdef"]} and the bearer announced victory'
+}) as Record<string, string>;
+assert(
+  afterArray.note.endsWith('} and the bearer announced victory'),
+  `prose after a credential array must survive: ${afterArray.note}`
+);
+assert(
+  !afterArray.note.includes('abcdef'),
+  `the credential inside that array must still be redacted: ${afterArray.note}`
+);
 
 // An array left unterminated by a truncated log is read to the end of the
 // string rather than abandoned, which is the fail-closed direction for a
