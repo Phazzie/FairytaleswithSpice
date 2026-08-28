@@ -55,4 +55,212 @@ assert(
   'stripStoryHtmlToText should join blocks with a blank line'
 );
 
+// --- #296, row 3: a tag ends at the first `>` outside a quoted value ---
+//
+// The two patterns this module used to read markup with both ended a tag at the
+// first `>`, wherever it was. Every case below came back carrying the rest of
+// the attribute as reader-visible prose, and this module is what every quality
+// scanner in the repository reads — so the fragment reached word counts, the
+// last-paragraph cliffhanger scan, image prompts, continuity excerpts and the
+// text the app copies to the clipboard.
+
+// A block-level tag: the remnant used to open the block, as `b">Alpha.`.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('<p title="a>b">Alpha.</p><p>Beta.</p>')) ===
+    JSON.stringify(['Alpha.', 'Beta.']),
+  'a quoted `>` in a block tag attribute should not leak into the block'
+);
+
+// An inline tag: the remnant used to weld into the middle of a sentence, as
+// `He was y">certain of it.` — one that then miscounts and mis-splits.
+assert(
+  splitStoryIntoTextBlocks('<p>He was <em title="x>y">certain</em> of it.</p>')[0] ===
+    'He was certain of it.',
+  'a quoted `>` in an inline tag attribute should not weld into the sentence'
+);
+
+// A self-closing tag: the truncation cost the `/` as well, so the remnant
+// arrived as `2"/>Two.`
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('<p>One.<br data-x="1>2"/>Two.</p>')) ===
+    JSON.stringify(['One.', 'Two.']),
+  'a quoted `>` in a self-closing tag should leave neither remnant nor missing break'
+);
+
+// Single quotes delimit a value too.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks("<p title='a>b'>Alpha.</p>")) ===
+    JSON.stringify(['Alpha.']),
+  "a quoted `>` in a single-quoted attribute should not leak into the block"
+);
+
+// --- the rules that keep the widened scan from eating prose ---
+
+// An unterminated quote must not pair with an apostrophe in the sentence and
+// delete the words between them. Losing prose the reader wrote would be worse
+// than the fragment this change removes.
+assert(
+  splitStoryIntoTextBlocks("<p class='unterminated>It's dangerous > here.</p>")[0] ===
+    "It's dangerous > here.",
+  'an unterminated attribute quote should not swallow the sentence after it'
+);
+
+// A `<` with no `>` after it anywhere closes no tag, so it is text the reader
+// typed and stays visible.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('Alpha < Beta')) === JSON.stringify(['Alpha < Beta']),
+  'a `<` that closes nothing should stay as text'
+);
+
+// ...and a tag-shaped span must not reach across a blank line to find its `>`.
+// Marking boundaries runs over the whole story, because a block tag can span
+// one; removing what is left runs per block, after the split, because
+// `<[^<>]*>` never could. Doing both in one pass over the whole string lets
+// this match from the `<` to the `>` two paragraphs later and deletes the
+// paragraph between them.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('Alpha <\n\nBeta > Gamma')) ===
+    JSON.stringify(['Alpha <', 'Beta > Gamma']),
+  'a malformed tag-shaped span should not consume across a blank line'
+);
+
+// ...and the same `<` must survive a *later* real tag, which is the harder
+// case. A first-`>` reading runs from the `<` a reader typed to the `>` of the
+// `<em>` and swallows ` < Beta <em>` whole, leaving `Alpha Gamma`. Deleting
+// words the reader wrote is the one outcome worse than the fragment this
+// change removes.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('Alpha < Beta <em>Gamma</em>')) ===
+    JSON.stringify(['Alpha < Beta Gamma']),
+  'a literal `<` before a later real tag should not swallow the prose between them'
+);
+
+// --- classification, unchanged from the pattern it replaces ---
+
+// The tag name is matched case-insensitively, as the old `i` flag did.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('<P>One.</P><P>Two.</P>')) ===
+    JSON.stringify(['One.', 'Two.']),
+  'block tag names should still match regardless of case'
+);
+
+// `h1`..`h6` are a boundary. They were the one `h[1-6]` alternative in the
+// pattern and are six separate entries in the name set now, so each level is
+// checked — and checked with no other tag to supply the break, or a `<p>`
+// beside it hides a missing heading name entirely.
+for (let level = 1; level <= 6; level += 1) {
+  assert(
+    JSON.stringify(splitStoryIntoTextBlocks(`<h${level}>Title</h${level}>Body.`)) ===
+      JSON.stringify(['Title', 'Body.']),
+    `<h${level}> should be a block boundary`
+  );
+}
+
+// Every name in the set, each with no other tag beside it to supply the break.
+// Losing any one of them welds two paragraphs into a single token, which is the
+// `door.Blood` fault this module exists to prevent.
+for (const name of [
+  'br', 'p', 'div', 'section', 'article', 'aside', 'header', 'footer', 'main',
+  'nav', 'blockquote', 'pre', 'hr', 'li', 'ul', 'ol', 'dl', 'dt', 'dd',
+  'figure', 'figcaption', 'table', 'thead', 'tbody', 'tfoot', 'caption',
+  'tr', 'td', 'th'
+]) {
+  assert(
+    JSON.stringify(splitStoryIntoTextBlocks(`One.<${name}>Two.`)) ===
+      JSON.stringify(['One.', 'Two.']),
+    `<${name}> should be a block boundary`
+  );
+}
+
+// --- classification comes from the original pattern, not from the scanner ---
+//
+// The scanner says where a tag ends; the pattern says what it is. Deriving the
+// name from the scanner instead drifts in both directions, and both directions
+// move reader-visible text.
+
+// `parseHtmlTag` ends a name only at whitespace, `/` or `>`, so it reads
+// `</ p>` as a `p`. HTML reads `</` followed by a space as a bogus comment and
+// the block pattern matched nothing, so there is no paragraph break here.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('One.</ p>Two.')) === JSON.stringify(['One.Two.']),
+  'a malformed closing tag should not become a paragraph break'
+);
+
+// The other direction: `\b` ends a name at any non-word character, so each of
+// these *was* a break and has to stay one. Deriving the name from the scanner
+// made them `p"`, `p<` and `p=`, matching nothing — 894 welded paragraphs
+// across the fragment enumeration.
+for (const markup of ['<p">', '<p<>', '<p=>']) {
+  assert(
+    JSON.stringify(splitStoryIntoTextBlocks(`One.${markup}Two.`)) ===
+      JSON.stringify(['One.', 'Two.']),
+    `${markup} should still be a block boundary`
+  );
+}
+
+// `\b` is what keeps `<paragraph>` from being a `<p>`. Standing alone with no
+// other tag to supply the break, so that losing the word boundary shows up as
+// a break that should not be there.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('One.<paragraph>Two.')) ===
+    JSON.stringify(['One.Two.']),
+  'a longer tag name starting with a block name should not be a boundary'
+);
+
+// ...while a real name that merely starts with another one still is.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('One.<pre>Two.')) ===
+    JSON.stringify(['One.', 'Two.']),
+  '<pre> should be a boundary even though `p` is also a block name'
+);
+
+// The block pattern's `[^>]*` may cross a `<`, unlike the inline pattern's
+// `[^<>]*`, so this has always been one boundary spanning to the `>` rather
+// than a `<` left in the prose. The scanner refuses it — an attribute list
+// cannot contain a `<` — so it is the block fallback that has to answer, and
+// this is the assertion that says so.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('One.<p a<b>Two.')) ===
+    JSON.stringify(['One.', 'Two.']),
+  'a block tag whose attributes contain a `<` should still be one boundary'
+);
+
+// Table cells each get their own boundary, or `OneTwo` comes back as one token.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('<table><tr><td>One</td><td>Two</td></tr></table>')) ===
+    JSON.stringify(['One', 'Two']),
+  'table cells should each be their own block'
+);
+
+// --- comments: unchanged, and deliberately so ---
+//
+// `findTagEnd` is called rather than `tokenizeHtml` precisely so that comment
+// handling does not move in this change. A comment still ends at its first `>`,
+// so this one still leaks `b -->` as a visible block. That is #296's remaining
+// row and #307's fix; pinning it here means the day this module moves to
+// `tokenizeHtml` the change is deliberate rather than incidental.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- note: a > b --><p>Beta.</p>')) ===
+    JSON.stringify(['Alpha.', 'b -->', 'Beta.']),
+  'comment handling should be unchanged by the tag-boundary fix'
+);
+
+// A comment with no `>` in it is still dropped whole, as it always was.
+assert(
+  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- plain --><p>Beta.</p>')) ===
+    JSON.stringify(['Alpha.', 'Beta.']),
+  'an ordinary comment should still be dropped'
+);
+
+// --- the downstream measure this defect actually corrupted ---
+//
+// A welded remnant is one token to anything that counts words or splits
+// sentences, which is how a reader-invisible attribute changed a word count.
+assert(
+  stripStoryHtmlToText('<p>He was <em title="x>y">certain</em> of it.</p>')
+    .split(/\s+/)
+    .filter(Boolean).length === 5,
+  'a quoted `>` in an attribute should not change the word count'
+);
+
 console.log('Story text block tests passed');
