@@ -164,6 +164,63 @@ assert(
   mergedNoGo.includes(profileHalf),
   'the profile half of a merged no-go list should reach the prompt whole'
 );
+
+// The merged bound is the sum of two caps, so it is the right number only if
+// neither source can be wider than the cap it is the sum of — and both can.
+// The request's half is capped by nothing on the continuation path, and a
+// stored profile may predate its own cap, which
+// `normalizeStoryLabProfilePreferences` deliberately keeps loading. Either one
+// spends the other's share and the bound then deletes a whole half, which is
+// the defect the bound exists to stop, one source further up. `capNoGoSource`
+// holds each to its own cap while they are still separate.
+for (const [label, requestLength, profileLength] of [
+  ['a request half past every cap', 700, STORY_LAB_PROFILE_LIMITS.maxContentBoundariesLength],
+  ['a stored profile predating its cap', STORY_BLUEPRINT_LIMITS.maxNoGoContentLength, 700],
+  ['both halves oversized', 900, 900]
+] as Array<[string, number, number]>) {
+  const oversizedMerge = withMergedContentBoundaries(
+    { ...baseGenerationContext.heatContract, noGoContent: 'R'.repeat(requestLength) } as HeatContract,
+    'P'.repeat(profileLength)
+  ).noGoContent!;
+  assert(
+    oversizedMerge.length <= STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH,
+    `${label} should merge within the bound, got ${oversizedMerge.length}`
+  );
+  for (const [builder, block] of [
+    ['genesis', service.formatStoryLabContext(buildInput({
+      heatContract: { ...baseGenerationContext.heatContract, noGoContent: oversizedMerge }
+    }))],
+    ['continuation', continuationBlock(oversizedMerge)]
+  ] as Array<[string, string]>) {
+    const line = block.split('\n').find(candidate => candidate.startsWith('- No-go content:')) ?? '';
+    assert(
+      line.includes('R'.repeat(STORY_BLUEPRINT_LIMITS.maxNoGoContentLength)),
+      `${label} should keep a full request half in the ${builder} prompt`
+    );
+    assert(
+      line.includes('P'.repeat(STORY_LAB_PROFILE_LIMITS.maxContentBoundariesLength)),
+      `${label} should keep a full profile half in the ${builder} prompt`
+    );
+  }
+}
+
+// And the merge stays a no-op where it always was: nothing to add leaves the
+// contract alone, and a request that carried no no-go list of its own takes the
+// profile's without a stray separator in front of it.
+assert(
+  withMergedContentBoundaries(
+    { ...baseGenerationContext.heatContract, noGoContent: 'Keep me.' } as HeatContract,
+    undefined
+  ).noGoContent === 'Keep me.',
+  'a merge with no boundaries to add should leave the contract alone'
+);
+assert(
+  withMergedContentBoundaries(
+    { ...baseGenerationContext.heatContract, noGoContent: '' } as HeatContract,
+    'Only mine.'
+  ).noGoContent === 'Only mine.',
+  'a merge onto an empty no-go list should not leave a separator'
+);
 assert(!storyLabContext.includes('undefined'), 'malformed prompt context should not render undefined');
 
 // The continuation builder writes the same Heat Contract into the same shape of

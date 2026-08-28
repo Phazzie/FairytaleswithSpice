@@ -39,6 +39,8 @@ import {
   type StoryLabJobStoreConfig
 } from './storyLabJobStoreConfig';
 import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
+import { capAtWordBoundaryWithinCodeUnits } from '../../utils/textExcerpt';
+import { STORY_LAB_PROFILE_LIMITS } from '../../../../shared/storyBlueprintLimits';
 import type { StoryLabProfileStore } from '../profile/storyLabProfileStore';
 import type { HeatContract } from '../contracts';
 
@@ -731,20 +733,69 @@ async function loadAuthenticatedContentBoundaries(
  * produces is what the prompt's bound on that field is measured against, and
  * reconstructing the join in a test would prove the bound against a string this
  * function does not build.
+ *
+ * **Each half is held to its own cap before the join, which is what makes the
+ * merge safe to bound at the sum of them.**
+ * `STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH` is that sum, and it is only the
+ * right number if neither source can be wider than the cap it is the sum of.
+ * Both can:
+ *
+ * - **The request's half is capped by nothing on this path.**
+ *   `parseStoryLabBlueprint` refuses a `noGoContent` past
+ *   `maxNoGoContentLength`, and no continuation route parses a blueprint. So a
+ *   continuation job supplying 700 characters produced a 1,021-character merge,
+ *   which the prompt's bound then cut to 641 — the request's half, and **none**
+ *   of the profile's. That is exactly the deletion the merged bound was
+ *   introduced to stop, reappearing one source further up.
+ * - **The profile's half can predate its cap.** `describeOversizedStoryLabProfileField`
+ *   refuses an oversized `contentBoundaries` on `PUT`, but
+ *   `normalizeStoryLabProfilePreferences` deliberately does not, because it
+ *   "runs on every *read* as well as every write — a profile that predates this
+ *   cap has to keep loading". A stored profile wider than the cap is therefore
+ *   a shape this function must expect rather than assume away.
+ *
+ * Capping here rather than at the prompt is what keeps both halves: the two
+ * sources are still separate at this point, so each can be held to its own
+ * limit, and neither can spend the other's share. By the time the prompt reads
+ * the field it is one string, and any bound on it has to choose a half to lose.
+ *
+ * This is a floor, not the boundary these fields should have. The honest
+ * answer for the request's half is a route that refuses it the way genesis
+ * does, and that is the open follow-up recorded with `continuationBrief`;
+ * until it exists, truncating here is strictly better than deleting the
+ * reader's standing boundaries.
  */
 export function withMergedContentBoundaries(
   heatContract: HeatContract,
   contentBoundaries: string | undefined
 ): HeatContract {
-  if (!contentBoundaries) {
+  const boundaries = capNoGoSource(contentBoundaries);
+  if (!boundaries) {
     return heatContract;
   }
 
-  const existing = heatContract.noGoContent?.trim();
+  const existing = capNoGoSource(heatContract.noGoContent);
   return {
     ...heatContract,
-    noGoContent: existing ? `${existing}\n${contentBoundaries}` : contentBoundaries
+    noGoContent: existing ? `${existing}\n${boundaries}` : boundaries
   };
+}
+
+/**
+ * One no-go source, trimmed and held to the cap published for it.
+ *
+ * Measured in UTF-16 code units and cut at a word boundary, which is how
+ * `limitStoryLabPromptText` reads the same field: the routes measure these caps
+ * with `.length`, so cutting in code points here would disagree with the
+ * refusal the genesis route gives.
+ */
+function capNoGoSource(value: string | undefined): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return capAtWordBoundaryWithinCodeUnits(trimmed, STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength);
 }
 
 async function requireJobRouteUser(authPort: AuthPort, req: RequestLike, res: ResponseLike): Promise<AuthUser | null> {
