@@ -324,6 +324,23 @@ export function stripStoryHtmlForExport(html: string): string {
         continue;
       }
 
+      // A block's *opening* is a boundary a reader sees too, and this export has
+      // to agree with the HTML one about where boundaries are —
+      // `isStrippedBlockBoundary` already counts both ends there, and
+      // `BLOCK_BREAK_TAGS` says every boundary a reader sees must survive into
+      // both documents.
+      //
+      // Breaking on the closing tag alone was enough while every closing tag was
+      // recognised. It stops being enough when one is not: `<div>Visible.</div!>
+      // <p>After.</p>` has no `</div>` to break on, so the two paragraphs ran
+      // together in the plain-text export while the HTML export still separated
+      // them. Only written where a break is not already there, so well-formed
+      // markup — which breaks on the close — is unchanged.
+      if (!parsed.isClosing && BLOCK_BREAK_TAGS.has(parsed.tagName) && !endsWithLineBreak(text)) {
+        text += '\n';
+        continue;
+      }
+
       text += ' ';
       continue;
     }
@@ -332,6 +349,15 @@ export function stripStoryHtmlForExport(html: string): string {
   }
 
   return decodeBasicEntities(normalizePlainText(text));
+}
+
+/**
+ * Whether the plain text so far already ends on a line break, ignoring the
+ * spaces every dropped inline tag leaves behind.
+ */
+function endsWithLineBreak(text: string): boolean {
+  const trimmed = text.replace(/[^\S\n]+$/, '');
+  return trimmed.length === 0 || trimmed.endsWith('\n');
 }
 
 /**

@@ -473,6 +473,25 @@ assert(
   'a self-closing <svg> closes itself and must not swallow the story after it'
 );
 
+// A boundary a reader sees has to survive into both exports, and the closing tag
+// is not the only place one appears. `</div!>` is an unknown element rather than
+// a `</div>`, so there is no close to break on — but the `<p>` after it opens a
+// block, and the HTML export already separates them. The plain-text export ran
+// the two paragraphs into one line until it counted the opening side too.
+const nearMissClose = '<div>Visible.</div!><p>After.</p>';
+assert(
+  stripStoryHtmlForExport(nearMissClose) === 'Visible.\nAfter.',
+  `an unrecognised closing tag must not weld two blocks together (got ${JSON.stringify(stripStoryHtmlForExport(nearMissClose))})`
+);
+
+// And the reason it is written only where a break is not already there: ordinary
+// story markup breaks on the close, and must not gain a second break from the
+// next block's open.
+assert(
+  stripStoryHtmlForExport('<p>A</p><p>B</p>') === 'A\nB',
+  'well-formed paragraphs still produce one break between them'
+);
+
 // ==================== BLOCK BOUNDARIES ====================
 // A tag outside the allowed set is replaced with nothing, so a block-level one
 // welded the words on either side of it: `<h4>The Vault</h4><div>She opened the

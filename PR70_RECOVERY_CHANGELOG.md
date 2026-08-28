@@ -128,6 +128,13 @@ Tenth review round (Codex, on `ca8ea74`) — two P2s, **one fixed and one declin
 
   The declined one is worth stating carefully, because it *is* a change against `main`. `</svg!>` is not a close for `svg`, so the element is unclosed, and **an unclosed dropped container taking the rest of the document with it is this module's asserted, deliberate cost** — already pinned by `<iframe/>Story text.` and shared with `main`, which answers `''` for a genuinely unclosed `<svg>hidden<p>Story.</p>` exactly as this reader does. What changed is only that `main` reached the other answer by mis-parsing `</svg!>` as `</svg>`; correct parsing routes the same input to the cost that was already documented. So this is not a new behaviour, it is an existing one reached correctly — and whether that cost should be paid at all is the question parked on #296.
 
+Eleventh review round (Codex, on `84586a4`) — one P2, fixed, and **in scope for a reason the finding did not name**:
+
+- `<div>Visible.</div!><p>After.</p>` exported as one line where `main` and a browser both give two. `</div!>` is an unknown element rather than a `</div>`, so complete-name classification left the plain-text reader with no closing tag to break on.
+- The finding reads as another malformed-markup divergence, and by the scope test it would be parked. It is not, because **the two exports disagreed with each other.** The HTML export still separated the paragraphs — `isStrippedBlockBoundary` counts both ends of a block — while the plain-text export welded them. `BLOCK_BREAK_TAGS`'s own docblock states the invariant being broken: *every boundary a reader sees has to survive into both documents*.
+- So the fix is not "match a browser on malformed markup"; it is "make the plain-text export honour a rule this module already states and the HTML export already follows". The plain-text reader now breaks at a block's *opening* as well as its close, written only where a break is not already there — so well-formed markup, which breaks on the close, is byte-identical.
+- Worth recording as a refinement of the scope test rather than an exception to it. "Does the code already claim this?" has a second reading beyond a list being incomplete: **an invariant the code states about itself can be violated by a change without any list being wrong.** Breaking on the closing tag alone was sufficient only while every closing tag was recognised, and correct name parsing removed that guarantee silently.
+
 ## 2026-08-28 UTC - Story Lab Multi-Chapter Batch Generation Vs. The 60-Second Function Budget
 
 Actions:
