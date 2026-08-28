@@ -210,6 +210,90 @@ prompted to emit a bare `<h3>Chapter N: Title</h3>` on one line. This is found b
 reading, and it is worth repairing because a doubled heading is silent and
 reader-visible, not because it has been observed.
 
+## Continuation Heat Contract: what reaches the prompt, and what the seam refuses
+
+Recorded 2026-08-28 UTC. The continuation request carries a `HeatContract`, and
+all three of the fields it puts in front of the model were read differently from
+the way the genesis path reads the same object. The contract this seam now
+enforces:
+
+**A continuation is refused when its Heat Contract names a tension mode or
+intimacy boundary the app does not have.** Every genesis route reaches the engine
+through `parseStoryLabBlueprint`, whose `isHeatContract` reads both fields with
+`parseOneOf` against `HEAT_TENSION_MODES` and `HEAT_INTIMACY_BOUNDARIES`.
+Neither continuation route parses a blueprint — the story route spreads the
+request body, and `normalizeContinuationInput` on the job route ends
+`heatContract: partial.heatContract` — so both arrived as whatever the body
+held, and `formatContinuationStoryLabContext` wrote them into the constraint
+block through `formatBlueprintIdLabel`, a bare `split('_').join(' ')`. A tension
+mode carrying a newline rendered as its own `- ` line among the app's own
+bullets; a non-string threw `value.split is not a function` out of the prompt
+builder. `heatContractVocabularyError` in `continueStoryLab` answers both with
+`INVALID_REQUEST` naming the field, before any prompt is built.
+
+This is the half left open by the `adultOnlyConfirmed` gate beside it, whose own
+comment named these two fields as reaching "the prompt through
+`generationContext`" and then closed only the flag. Refused rather than
+defaulted, the way genesis refuses: these fields decide how explicit the chapter
+is, and choosing a value for a caller who named one the app does not have is
+choosing that on their behalf.
+
+**The no-go list is bounded and whitespace-collapsed on the continuation path,
+as it already was on genesis.** It was read with a bare `.trim()`, which is the
+one exception to the rule `limitStoryLabPromptText` states for itself — that
+every Story Lab field reaching a prompt goes through it, "the Heat Contract's
+no-go list" named among them. With no continuation route capping the field, that
+was its only bound, so 50,000 characters reached the model whole; and with no
+collapse, the newline `withMergedContentBoundaries` deliberately writes put the
+reader's profile-wide boundaries on a bare line inside a block of `- ` bullets,
+where nothing distinguished them from one of the app's own constraints.
+
+**Both sources of that list survive to the prompt.** The field carries two: a
+request's own `noGoContent` and the reader's profile-wide `contentBoundaries`,
+joined by `withMergedContentBoundaries`. Bounding the merged value at one
+source's cap deleted the other — a request at its own cap kept 320 of its 320
+characters and 0 of the profile's 320. `STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH`
+is the sum of the two caps and the separator, and each source is now held to its
+own cap *before* the join, which is what makes that sum a bound by construction:
+by the time the prompt reads the field it is one string, and any bound applied
+there has to choose a half to lose.
+
+What is unchanged: the prompt's shape, the request shape, and the model
+contract. The `STORY LAB HEAT CONTRACT - CONTINUATION CONSTRAINTS` block still
+carries the same lines in the same order; only which characters reach them
+changes, and the vocabulary gate refuses requests that were previously served
+with unreadable values in that block.
+
+Validation: `tests/story-service-prompt-guards.test.ts` and
+`tests/story-lab-real-engine.test.ts`, both in `test:all`. Four counterfactual
+mutations — removing the continuation boundary, the merged bound, the vocabulary
+gate, and the per-source cap — each fail a suite; the last with the
+1,021-character merge that a Codex review round found in this slice's own first
+draft. `npm run test:all` exits 0 and
+`scripts/recovery/preflight.sh --skip-status` completes.
+
+Tradeoff, stated rather than buried: **capping a source is a floor, not the
+boundary these fields should have.** `describeOversizedStoryLabProfileField`
+argues the opposite for the same fields at the profile route — they "say what a
+reader does not want written", so an oversized value is refused rather than
+shortened, because a reader has no way to see that the end of theirs was
+dropped. The honest answer for the request's half is a continuation route that
+refuses it the way genesis does; until that exists, truncating at the merge is
+strictly better than deleting the profile's half outright, but it is still a
+truncation of a constraint list.
+
+Open, and wanting the same route-side refusal: `continuationBrief` is unbounded
+end to end. No route measures it, `STORY_BLUEPRINT_LIMITS` has no number for it,
+and it reaches the prompt as `userInput` composed with the engine's own hidden
+guidance (itself bounded at 860). Bounding it means choosing a limit and
+publishing it at the form and both routes.
+
+Non-claim: no evidence any of this happens in production output. The Angular
+form sends both id fields from closed-set pickers and caps the no-go text, so
+reaching any of it needs a request the app does not make. It is worth repairing
+because the form is not the enforcement point — the route is — and because two
+of the three are silent: a deleted boundary and a truncated one look identical
+to a caller.
 ## Continuation continuity: the activation scorer matched substrings
 
 `buildContinuationGuidance` scores every unresolved thread, artifact,
