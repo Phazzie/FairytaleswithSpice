@@ -10,6 +10,7 @@ export function redactSensitiveTextTokens(value: string): string {
 
 function redactBearerTokens(value: string): string {
   const marker = 'bearer';
+  const credentialArrays = new CredentialArrayCursor(findCredentialArraySpans(value));
   let redacted = '';
   let index = 0;
 
@@ -61,6 +62,7 @@ function redactBearerTokens(value: string): string {
     // prose and the next word is left alone. See the two arms below.
     if (
       !isIntroducedAsCredential(value, found) &&
+      !credentialArrays.contains(found) &&
       !isCredentialShapedBearerToken(value.slice(tokenStart, cursor))
     ) {
       redacted += value.slice(found, cursor);
@@ -186,6 +188,82 @@ function isIntroducedAsCredential(value: string, index: number): boolean {
   // authorization ceremony: Bearer of the seal`, which is prose.
   return BEARER_CREDENTIAL_FIELD_SUFFIXES.has(label.name)
     && isCredentialFieldName(readFieldNameBefore(value, label.start - 1).name);
+}
+
+/**
+ * The spans of every array whose *field* is an authorization field:
+ * `{"authorization":["Bearer abcdef","Bearer ghijkl"]}`.
+ *
+ * A repeated header is a `string[]` in this repository's own request contracts,
+ * so this is a shape a serialized error really carries. Element two defeats
+ * {@link isIntroducedAsCredential} on its own: the walk back from the scheme
+ * reaches the `,` between elements rather than the field's `:`, and element one
+ * reaches the `[`. The field context belongs to the whole array, so it is
+ * established once here and applied to every element, rather than each element
+ * trying to walk back to a field name past the elements before it.
+ *
+ * **This is not a third entry in a suffix set.** An array is closed grammar --
+ * `[`, `,`, `]` and nothing else -- where a human-readable label is open-ended
+ * English, which is why that enumeration was stopped and this one is not.
+ *
+ * The gate is the same one, applied to the `[` instead of to the scheme, so
+ * this cannot loosen the rule: `Title: ["Bearer of the seal"]` reaches the
+ * label `title`, matches no field name, and stays prose.
+ *
+ * The span ends at the first `]`, without matching nested brackets: a header
+ * array holds strings, and a bearer credential cannot contain `]` -- it is not
+ * a `b64token` character. Skipping a `[` already inside a span keeps this
+ * linear on input like `[[[[[...`, since that bracket's own span would be
+ * contained in the one already recorded.
+ *
+ * An array left unterminated by a truncated log runs to the end of the string,
+ * which is the fail-closed reading and the opposite of what `shared/
+ * storyTextBlocks.ts` does with an unterminated comment. The two differ because
+ * the trades differ: there, dropping the tail loses a story from the word
+ * count; here, keeping it only over-redacts inside text the writer labelled an
+ * authorization value.
+ */
+function findCredentialArraySpans(value: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  let bracket = value.indexOf('[');
+
+  while (bracket >= 0) {
+    if (isIntroducedAsCredential(value, bracket)) {
+      const close = value.indexOf(']', bracket + 1);
+      const end = close < 0 ? value.length : close;
+      spans.push({ start: bracket, end });
+      bracket = value.indexOf('[', end + 1);
+      continue;
+    }
+    bracket = value.indexOf('[', bracket + 1);
+  }
+
+  return spans;
+}
+
+/**
+ * Is this index inside one of the spans, given that the caller asks about
+ * ascending indices?
+ *
+ * The spans are disjoint and in order -- {@link findCredentialArraySpans}
+ * restarts past each one it records, which is what earns both properties -- and
+ * the scheme keywords are visited left to right, so the search is a cursor that
+ * only moves forward rather than a scan of the whole list per keyword. Scanning
+ * would be quadratic on the shape that has one array and one credential per
+ * element, which is exactly what a serialized header dump looks like.
+ */
+class CredentialArrayCursor {
+  private position = 0;
+
+  constructor(private readonly spans: Array<{ start: number; end: number }>) {}
+
+  contains(index: number): boolean {
+    while (this.position < this.spans.length && (this.spans[this.position]?.end ?? 0) <= index) {
+      this.position += 1;
+    }
+    const span = this.spans[this.position];
+    return span !== undefined && index > span.start && index < span.end;
+  }
 }
 
 function isCredentialFieldName(name: string): boolean {

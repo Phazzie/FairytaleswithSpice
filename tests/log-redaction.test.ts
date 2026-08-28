@@ -190,7 +190,14 @@ for (const sentence of [
   'Chapter 3: Bearer of the Oath',
   'role=bearer of bad news',
   'He said: "Bearer of the seal"',
-  'note: bearer of bad news'
+  'note: bearer of bad news',
+  // Reading a serialized array's field context does not make the bracket
+  // sufficient on its own. Each of these puts the noun inside `[...]`, and the
+  // gate that reads the field name is the same one, so each stays prose.
+  'Title: ["Bearer of the seal", "Bearer of bad news"]',
+  'Chapter 3: ["Bearer of the Oath"]',
+  'The authorization ceremony: ["Bearer of the seal"]',
+  'header: ["Bearer of the seal"]'
 ]) {
   const preserved = redactSensitiveLogData({ note: sentence }) as Record<string, string>;
   assert(
@@ -220,6 +227,12 @@ for (const line of [
   'Invalid authorization-header: Bearer abcdef',
   'rejected the Authorization headers: Bearer abcdef',
   'payload="{\\"authorization\\":\\"Bearer abcdef\\"}"',
+  // A repeated header serializes as `string[]` -- the request contracts in this
+  // repository type it that way -- and the walk back from the scheme reaches
+  // the `[` or the `,` between elements rather than the field's `:`.
+  '{"authorization":["Bearer abcdef"]}',
+  '{"x-api-key":["Bearer abcdef"]}',
+  'payload="{\\"authorization\\":[\\"Bearer abcdef\\"]}"',
   'Bearer a1b2c3',
   'Bearer k+y/z=',
   'Bearer xai-secret-key-123',
@@ -276,6 +289,58 @@ for (const shortButShaped of [
     shaped.note.includes(REDACTED_SENSITIVE_TEXT),
     `a short run carrying a non-letter is a credential at any length: ${shortButShaped}`
   );
+}
+
+// Every element of a repeated header, not just the one the walk can reach. The
+// loop above asserts only that a redaction happened somewhere in the line, so
+// an array whose first element was hidden and whose second was logged in the
+// clear would pass it -- which is exactly the shape this repair is about. The
+// field context belongs to the array, so each element must lose its credential,
+// whatever position it sits in.
+for (const serialized of [
+  '{"authorization":["Bearer abcdef","Bearer ghijkl"]}',
+  '{"authorization": ["Bearer abcdef", "Bearer ghijkl"]}',
+  '{"authorization":["Basic xyz","Bearer abcdef","Bearer ghijkl"]}'
+]) {
+  const hidden = redactSensitiveLogData({ note: serialized }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef') && !hidden.note.includes('ghijkl'),
+    `every credential in a serialized header array must be redacted: ${serialized} -> ${hidden.note}`
+  );
+}
+
+// An array left unterminated by a truncated log is read to the end of the
+// string rather than abandoned, which is the fail-closed direction for a
+// redactor and the deliberate opposite of how `shared/storyTextBlocks.ts`
+// treats an unterminated comment.
+const truncated = redactSensitiveLogData({
+  note: '{"authorization":["Bearer abcdef'
+}) as Record<string, string>;
+assert(
+  !truncated.note.includes('abcdef'),
+  'a credential inside an unterminated header array is still redacted'
+);
+
+// Reading the arrays costs a pass of its own, so the shapes that pass is worst
+// on are held to a time: a bracket per field name, and a credential per array.
+// The second is the one that matters — the membership test is a cursor that
+// only moves forward precisely because a scan of every recorded span per
+// scheme keyword is quadratic on that shape, and a serialized header dump is
+// exactly one array and one credential per element.
+//
+// This bounds the pass; it does not pin every line of it. The restart past a
+// recorded span, and the `<=` the cursor advances on, are both unobservable
+// here — no input distinguishes them, only a stopwatch on inputs far larger
+// than a log line — so they are cheap insurance rather than asserted behaviour.
+for (const [label, note] of [
+  ['labelled bracket run', 'authorization:['.repeat(20_000)],
+  ['credential per element', '{"authorization":["Bearer abcdef"]},'.repeat(20_000)]
+] as const) {
+  const startedAt = Date.now();
+  redactSensitiveLogData({ note });
+  const elapsed = Date.now() - startedAt;
+
+  assert(elapsed < 4_000, `${label}: 20,000 arrays took ${elapsed}ms — the array pass is not linear`);
 }
 
 // A URL is usually written into a sentence, and the mark that closes the

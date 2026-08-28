@@ -142,7 +142,9 @@ or `=` — so every provider token still fails the word test and is caught at an
 length (`xai-secret-key-123` and `a1b2c3` on digits, `sk_live_…` on its
 underscore, a JWT on its dots), all asserted.
 
-**The other two are not being patched, and that is a deliberate stop.** Codex
+**The other two are not being patched, and that is a deliberate stop.** (Round 5
+below revisits the array half of this and fixes it. The stop on the *label* half
+stands.) Codex
 also asked for `Invalid Authorization request header:` (a longer descriptive
 label than round 3's `header`) and for `{"authorization":["Bearer a","Bearer
 b"]}` (a stringified array). Both are the same class as round 3: the walk cannot
@@ -181,6 +183,62 @@ suite noticing.
 Not claimed: no evidence this was corrupting production logs; it is found by
 reading. The old behavior over-redacted, which is the safe direction — this
 trades that for a narrower rule whose fail-closed edge is now pinned by tests.
+
+**Review round 5 reverses half of round 4's stop, and the reasoning for the
+reversal is the useful part.** Round 4 refused the serialized array alongside
+the multiword label, on the grounds that both were "the walk cannot reach the
+field name through some new arrangement". Re-reading that with the array in
+hand, the two are not the same class at all, and grouping them was the error:
+
+| | multiword label | serialized array |
+| --- | --- | --- |
+| what defeats the walk | `request`, and the next word after it | `[` and `,` |
+| the space to cover | English qualifiers | three characters |
+| does a fix end? | no — each round produced a longer label | yes, that is the whole grammar |
+
+Enumerating English is what round 4 was right to stop. An array is closed
+grammar, and the fix needs no new vocabulary: the field context belongs to the
+array rather than to any one element, so it is established **once**, by the
+existing field-name gate applied to the `[` instead of to the scheme, and every
+element inherits it. `{"authorization":["Bearer abcdef","Bearer ghijkl"]}` loses
+both credentials; `{"authorization":["Basic xyz","Bearer abcdef"]}` loses the one
+that is a bearer, whatever position it sits in.
+
+Because the gate is the same one, this cannot loosen the rule — a bracket is
+never sufficient on its own. `Title: ["Bearer of the seal", "Bearer of bad
+news"]`, `Chapter 3: ["Bearer of the Oath"]`, `The authorization ceremony:
+["Bearer of the seal"]` and `header: ["Bearer of the seal"]` all reach a label
+that is not a field name and stay prose, and each is asserted. An array left
+unterminated by a truncated log runs to the end of the string: the fail-closed
+direction, and the deliberate opposite of how `shared/storyTextBlocks.ts` treats
+an unterminated comment, because there the cost is losing a story from the word
+count and here it is over-redacting inside text already labelled an
+authorization value.
+
+Round 4's bound on the exposure was accurate and is why this is a repair rather
+than an incident: the credential is `abcdef`, a shape #315's contract makes
+unconfigurable, and `{"authorization":["Bearer xai-secret-key-123"]}` was
+redacted on shape alone throughout. The *structured* form still never reaches
+this function — `SENSITIVE_KEY_PATTERNS` blanks the key wholesale, array value
+included — so this is only ever an already-stringified payload.
+
+**Membership is a forward-only cursor rather than a scan, and that is not
+incidental.** One array and one credential per element is exactly what a
+serialized header dump looks like, and testing every recorded span per scheme
+keyword is quadratic on it — measured at 953ms against 584ms for 20,000 elements
+before the cursor replaced the scan. Both shapes are held to a time.
+
+**Mutation result: 6 applied, 4 killed, 2 equivalent.** Killed: dropping the
+array clause, opening a span on any bracket without the gate, abandoning an
+unterminated array, and collapsing a span's end onto its start. The two
+survivors are reported as survivors because they are unfalsifiable rather than
+untested — restarting the span scan past a recorded span, and the `<=` the
+cursor advances on, produce identical output on every input, and differ only on
+a stopwatch at sizes far above a log line. They are kept as cheap insurance and
+the test says so rather than implying coverage it does not have.
+
+Validation: `npm run test:all` exits 0 (79 chained scripts), `scripts/recovery/preflight.sh
+--skip-status` exits 0.
 
 ## 2026-08-28 UTC - `API_KEYS` accepted any non-empty string as a credential
 
