@@ -107,12 +107,25 @@ function redactBearerTokens(value: string): string {
 const BEARER_CREDENTIAL_INTRODUCERS = new Set([':', '=']);
 
 /**
- * The shortest run that is taken for a credential on its length alone.
- * Deliberately the same floor `redactApiKeys` uses next door, and well above
- * the short function words -- `of`, `led`, `must`, `and` -- that follow the
- * noun `bearer` in prose.
+ * The shortest *purely alphabetic* run that is taken for a credential on its
+ * length alone.
+ *
+ * Sixteen, and not a number of this module's own choosing: it is
+ * `API_KEY_MINIMUM_LENGTH`, the token-body floor `authenticateRequest` puts on
+ * a configured `API_KEYS` entry. Tying the two together is the point -- what
+ * the deployment will accept as a credential and what the logger will hide as
+ * one are then a single number rather than two that can drift apart. The test
+ * asserts they are equal. (It is duplicated rather than imported because this
+ * module is bundled into the browser app, which must not pull in server
+ * middleware.)
+ *
+ * An eight-character floor was tried first and was wrong: English has a great
+ * many eight-letter words, and the ones that follow the noun `bearer` are
+ * exactly the common ones -- `announced`, `delivered`, `whispered`,
+ * `returned`. At eight, `the bearer announced victory` still lost its verb,
+ * which is the defect this function exists to avoid.
  */
-const BEARER_CREDENTIAL_MIN_LENGTH = 8;
+const BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH = 16;
 
 /**
  * Is the scheme keyword introduced the way a header introduces it?
@@ -138,17 +151,27 @@ function isIntroducedAsCredential(value: string, index: number): boolean {
 /**
  * Does the run after the scheme look like a credential rather than a word?
  *
- * Two ways to qualify, either alone being enough: it is at least
- * {@link BEARER_CREDENTIAL_MIN_LENGTH} characters, or it carries a character
- * an English word cannot -- a digit, or one of the `._~+/=-` that RFC 6750's
- * `b64token` allows. A JWT, `xai-secret-key-123`, `a1b2c3` and `k+y/z=` each
- * qualify; `of`, `led`, `must` and `bad` each do not.
+ * Two ways to qualify, either alone being enough.
+ *
+ * **It carries a character an English word cannot** -- a digit, or one of the
+ * `._~+/=-` that RFC 6750's `b64token` allows. This is the arm that carries the
+ * general case, and length does not enter into it: `a1b2c3` and `k+y/z=` are
+ * credentials at six characters, and every provider token this app holds is
+ * caught here (`xai-...` and `sk_...` carry `-` or `_`; a Clerk session token
+ * is a JWT and carries `.`).
+ *
+ * **Or it is purely alphabetic and reaches
+ * {@link BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH}** -- the only shape the first
+ * arm cannot see, and the floor is the configured-key floor precisely so that
+ * an `API_KEYS` entry can never sit below it.
+ *
+ * `of`, `led`, `must`, `announced` and `whispered` qualify under neither.
  */
 function isCredentialShapedBearerToken(token: string): boolean {
-  if (token.length >= BEARER_CREDENTIAL_MIN_LENGTH) {
+  if (Array.from(token).some(char => !isAsciiLetter(char))) {
     return true;
   }
-  return Array.from(token).some(char => !isAsciiLetter(char));
+  return token.length >= BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH;
 }
 
 function redactApiKeys(value: string): string {

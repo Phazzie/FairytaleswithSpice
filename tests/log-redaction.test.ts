@@ -160,7 +160,15 @@ for (const sentence of [
   '(Bearer of the oath) stepped forward',
   '| Bearer of the seal | a row |',
   '[Bearer of the seal] stepped forward',
-  'context: The bearer of bad news'
+  'context: The bearer of bad news',
+  // Eight letters is not enough to make a word a credential. These are the
+  // verbs that actually follow the noun in story prose, and an eight-character
+  // floor destroyed every one of them.
+  'the bearer announced victory',
+  'the bearer delivered the news',
+  'the bearer whispered a warning',
+  'the bearer returned at dawn',
+  'the bearer answered plainly'
 ]) {
   const preserved = redactSensitiveLogData({ note: sentence }) as Record<string, string>;
   assert(
@@ -192,9 +200,9 @@ for (const line of [
 }
 
 // The boundary the two arms meet at, asserted in both directions so neither can
-// be widened without the suite noticing. `API_KEY_MINIMUM_LENGTH` characters of
-// credential is above the length arm's floor and is redacted on length alone,
-// with no introducer in sight; a bare word below that floor is not.
+// be widened without the suite noticing. A purely alphabetic run of
+// `API_KEY_MINIMUM_LENGTH` characters is redacted on length alone with no
+// introducer in sight; one character shorter is a word.
 const floorCredential = redactSensitiveLogData({
   note: `sent Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH)} upstream`
 }) as Record<string, string>;
@@ -202,10 +210,32 @@ assert(
   !floorCredential.note.includes('k'.repeat(API_KEY_MINIMUM_LENGTH)),
   'a configured-length key is redacted on its length alone, with no introducer present'
 );
+const belowFloor = redactSensitiveLogData({
+  note: `sent Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH - 1)} upstream`
+}) as Record<string, string>;
 assert(
-  API_KEY_MINIMUM_LENGTH > 8,
-  'the configured key floor must stay above the length arm, or a valid key could pass for a word'
+  belowFloor.note.includes('k'.repeat(API_KEY_MINIMUM_LENGTH - 1)),
+  'one character below the configured floor is a word, not a credential'
 );
+
+// The load-bearing tie: the redactor's alphabetic floor IS the floor
+// `authenticateRequest` puts on a configured entry. If someone lowers the auth
+// contract without lowering this, a configurable key becomes a value the logger
+// reads as prose. `shared/` cannot import server middleware (it is bundled into
+// the browser app), so the constant is duplicated and pinned here instead.
+assert(
+  API_KEY_MINIMUM_LENGTH === 16,
+  'the bearer redactor duplicates this floor as BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH; keep them equal'
+);
+// A single non-letter is enough at any length -- this is the arm that catches
+// every provider token, none of which is purely alphabetic.
+for (const shortButShaped of ['Bearer a1b2c3', 'Bearer k+y/z=', 'Bearer ab.cd']) {
+  const shaped = redactSensitiveLogData({ note: shortButShaped }) as Record<string, string>;
+  assert(
+    shaped.note.includes(REDACTED_SENSITIVE_TEXT),
+    `a short run carrying a non-letter is a credential at any length: ${shortButShaped}`
+  );
+}
 
 // A URL is usually written into a sentence, and the mark that closes the
 // sentence has no whitespace before it — so the run that redacted the URL took

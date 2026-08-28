@@ -14,8 +14,8 @@ march` logged as `a standard Bearer [REDACTED] the march`: the word destroyed,
 and `[REDACTED]` asserting a credential had been there when none was, on a line
 an operator is reading precisely because something went wrong.
 
-#313's repair tested the *shape* of the following run. Codex found the hole and
-it was real: `Authorization: Bearer abcdef` was a live credential in a
+The repair in #313 tested the *shape* of the following run. Codex found the hole
+and it was real: `Authorization: Bearer abcdef` was a live credential in a
 deployment that had configured `API_KEYS=abcdef`, and a shape check spared
 exactly that shape. #314 then recorded preceding context as a failed
 discriminator too, because the suite asserts `sent Bearer abc123def456 upstream`
@@ -75,15 +75,37 @@ above the length arm's floor and redacts on shape alone. Provider credentials
 shape too. That dependency is why this rides on the `API_KEYS` contract rather
 than landing beside it.
 
+**Review round 1 raised two findings that pushed the same knob in opposite
+directions.** Codex: an eight-character floor still destroys `the bearer
+announced victory`, because English has a great many eight-letter words and the
+ones following this noun are the common ones. Also Codex: do not widen the
+band in which a short alphabetic credential survives. Raising the floor fixes
+the first and worsens the second.
+
+They resolve by making the floor mean something instead of picking a number.
+The shape rule is now two clauses rather than one: a run carrying a character an
+English word cannot — a digit or one of `b64token`'s `._~+/=-` — is a credential
+at *any* length, which is the arm that catches every provider token this app
+holds (`xai-…`, `sk_…`, and a Clerk JWT all carry one); only a *purely
+alphabetic* run needs a length, and that length is `API_KEY_MINIMUM_LENGTH`
+itself. What a deployment may configure as a credential and what the logger
+hides as one are now one number, asserted equal by the suite. The widened band
+therefore contains no shape this app can actually produce — stated as the
+assumption it is, in the security guide, rather than as a proof.
+
+Codex's third premise was checked and does not hold: `warnAuthVerificationFailure`
+logs only `errorName`, never the Clerk token, and a Clerk session token is a JWT
+that the non-letter clause catches regardless.
+
 Validation: `npm run test:all` exits 0, `scripts/recovery/preflight.sh
---skip-status` exits 0. **Counterfactual mutations: 8 applied, 8 killed** —
+--skip-status` exits 0. **Counterfactual mutations: 9 applied, 9 killed** —
 dropping either arm, admitting sentence punctuation as an introducer, admitting
-the HTML/dialogue/bracket punctuation the self-review removed, letting a digit
-count as a word character, raising the length floor above the configured-key
-minimum, treating start-of-string as an introducer, and scanning back past
-punctuation to find a distant introducer. None is committed. The relationship
-between the two floors is asserted directly, so neither can be moved into a gap
-without the suite noticing.
+the HTML/dialogue/bracket punctuation the self-review removed, reverting the
+alphabetic floor to eight, raising it above the configured-key minimum, letting
+a digit count as a word character, treating start-of-string as an introducer,
+and scanning back past punctuation to find a distant introducer. None is
+committed. The equality of the two floors is asserted directly, so neither can
+be moved into a gap without the suite noticing.
 
 Not claimed: no evidence this was corrupting production logs; it is found by
 reading. The old behavior over-redacted, which is the safe direction — this
