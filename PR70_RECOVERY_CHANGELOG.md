@@ -41,6 +41,93 @@ Scope held, and what is not claimed:
 - **No evidence any of this happens in production output.** The Angular form sends both id fields from closed-set pickers and caps the no-go text, so reaching any of these needs a request the app does not make. Worth fixing because the form is not the enforcement point — the route is — and because two of the three are silent: a deleted boundary and a truncated one look identical to a caller.
 - **The merged bound is not a claim that 641 is the right amount of no-go text to send a model.** It is the sum of two caps this repository already publishes, which is the number that makes the prompt agree with the routes; whether either cap is well chosen is a separate question this slice does not open.
 - **`continuationBrief` is still unbounded** and is the remaining free-text field on this path: no route measures it, `STORY_BLUEPRINT_LIMITS` has no number for it, and it reaches the prompt as `userInput` composed with the engine's own hidden guidance. Bounding it means choosing a limit and publishing it at the form and both routes, which is a slice rather than a line in this one. Filed as a follow-up rather than fixed here.
+## 2026-08-28 UTC - The Block Splitter Calls the Scanner (the last reader on #296)
+
+Actions:
+
+- `shared/storyTextBlocks.ts` takes the *extent* of each tag from `shared/htmlTagScanner` instead of from its two patterns, which both ended a tag at the *first* `>` rather than at the first one outside a quoted attribute value. This was the fourth and last reader carrying that fault; #297 fixed the export tokenizer, #306 the two chapter-heading readers, and the entry above left this one open by name.
+- The two patterns stay, verbatim, as the reading for markup the scanner refuses and as the test for whether a tag names a block. Only the span moves. See the review round below for why that division is the whole of the change.
+- `BLOCK_LEVEL_TAG_NAMES` becomes a `Set` of names, with `h[1-6]` spelled out as six entries; the block pattern is now built from that set, so there is one list rather than two.
+- Extended `tests/story-text-blocks.test.ts` from 6 assertions to 61.
+
+The defects repaired, all three reader-visible:
+
+- **A block tag.** `<p title="a>b">Alpha.</p>` came back as the block `b">Alpha.` — the attribute remnant opening the paragraph.
+- **An inline tag.** `<p>He was <em title="x>y">certain</em> of it.</p>` welded `y">certain` into the middle of the sentence. This is the one that moves a number: the weld is a single token to anything that counts words or splits on `[.!?]\s`.
+- **A self-closing tag.** The truncation also took the `/`, so `<br data-x="1>2"/>` lost its paragraph break *and* left `2"/>Two.`
+
+Why this reader matters more than its three lines suggest: it is not an export path. It is what every quality scanner in the repository reads, so the same fragment reached `countStoryWords`, the last-paragraph cliffhanger scan, the scene sentence `imageService` builds a prompt from, the excerpt `continuityExtractor` carries into the next chapter's prompt, and the text `app.ts` copies to the clipboard.
+
+Decisions:
+
+- **`findWellFormedTagEnd`, not `tokenizeHtml`, and the difference is comments.** `tokenizeHtml` drops a comment whole, which is what a browser does and is strictly better than what this module does — but it still ends one only at `-->`, which is #307's row of #296 and unmerged. Adopting it today regresses `<h3>Visible <!--> Title</h3>` to `Visible`; the first draft of this change did exactly that and `tests/chapter-heading-reader.test.ts` caught it. Neither the scanner's well-formed reading nor either pattern has a comment rule, and a comment has no well-formed reading, so it falls to `<[^<>]*>` exactly as it always did and comment handling does not move. `<!-- note: a > b -->` still leaks `b -->` as a visible block, unchanged. Once #307 lands, this module can call `tokenizeHtml` and inherit the whole comment reading; this change is what makes that a one-line move.
+- **The known limitation is pinned by a test, not just noted.** The `b -->` leak has an assertion asserting it, so the day that behaviour changes it is a deliberate edit rather than an incidental one.
+- **No new pattern.** Same reasoning as the entry below: #295 and #302 produced six defects between them trying to spell this reading as a regex, three of them exponential and three deleting reader text.
+
+Self-review:
+
+- **Differential against `parse5`**, a real HTML parser, rather than against the patterns being replaced — the oracle error #302 recorded. Fragment-level: whole inputs of length 1..7 over `{< > / p a " space =}` in three carriers (bare, before a real `<em>`, after a tag with a quoted `>`): **2,471,640 inputs**. Two questions asked separately, because conflating them is what hid the first round's defects:
+  - **Correctness** — the characters that reach the reader, whitespace disregarded, against `parse5`. Old leaks or deletes on 1,044,104; new on 1,004,730; **new worse than old: 0**. So **39,374 inputs repaired** and none broken.
+  - **Structure** — same characters, different blocking. **0.** No boundary anywhere moves.
+- **Counterfactual mutations: 14 applied, 14 killed** — including one for each defect of the review round below.
+- **Linearity** at 200,000 → 400,000 characters, median of 7, over seventeen shapes. Worst ratio: **2.52×**, on plain `<p>Word.</p>` repetition, which is allocation-bound.
+- `npm run test:all` exits 0; `scripts/recovery/preflight.sh --skip-status` exits 0 (Angular typecheck, spec typecheck, API typecheck, build, function count 8/12).
+
+Review round 1 (Codex on `a04ed44`) — **three defects, two of them reported and one found while fixing them; and the first round's evidence was worth less than it looked**:
+
+- **P1, prose deleted.** `Alpha < Beta <em>Gamma</em>` → `Alpha Gamma`. `findTagEnd`'s compatibility fallback answers with the first `>` *anywhere* after the `<`, so a `<` the reader typed ran to the `>` of the next real tag and swallowed everything between. `<[^<>]*>` never matched there, because its character class stops at the next `<`. This is the same fault — deleting text a reader wrote — that #295 and #302 hit three times between them, arrived at from the opposite direction: not a greedy pattern, but a fallback used where it did not belong.
+- **P2, a break invented.** `One.</ p>Two.` split in two. HTML reads `</` followed by a space as a bogus comment and the block pattern agreed, since it allows whitespace only *before* the slash. `parseHtmlTag` skips whitespace after it and answers `p`.
+- **A third, found by fixing P2 and larger than either.** Deriving the name from the scanner is wrong in *both* directions. `\b` ends a name at any non-word character, so `<p">`, `<p=>` and `<p<>` were all block boundaries and became names like `p"` matching nothing: **894 welded paragraphs** across the fragment enumeration. Neither Codex comment named this; it surfaced because the harness was rebuilt after P1 and P2 showed the old one could not see them.
+- **The correction, and the shape it settles on:** *the scanner decides where the tag ends; the original patterns decide what it means.* The defect was only ever in the span. Classification was already right, and every attempt to re-derive it drifted. So `findWellFormedTagEnd` supplies the extent, the block pattern's own prefix supplies the name, and markup with no well-formed reading is handed to the two original expressions verbatim, in their original order.
+- **A quadratic introduced and removed.** Resuming one character past a rejected `<` — the P1 fix — meant `indexOf('>', tagStart)` ran per `<`, so `<<<<<…>` went 260ms at 200,000 characters to 994ms at 400,000. The last `>` is now found once, before the loop: 18ms and 39ms.
+- **Why the first round's numbers did not catch any of this.** 549,024 inputs, "0 worse", and every one of them wrong about the question. The harness varied only tag *interiors* — the inside of a well-formed tag — and neither a stray `<` in prose nor `</ p>` nor `<p">` can be written that way. It also scored against `parse5` with text nodes joined by a space, which fabricates a boundary neither implementation emits, so real disagreements read as agreement. **The blind spot moved from length (#306's) to carrier.** An enumeration is evidence about the shapes it can generate and nothing else, and the way to find that out is not to enumerate harder.
+- **Two mutations survived the second draft of the tests, for the same reason as the first round's one.** `<paragraph>` was asserted as `<p>One.</p><paragraph>Two.`, where the adjacent `<p>` supplies the break; and no assertion reached the block-pattern fallback at all. Both now stand alone. Three of the eleven test-masking failures in this issue's history have been an adjacent `<p>` hiding a missing boundary.
+
+Review round 2 (Codex on `eeef5bd`) — **one more, of the same family, and the enumeration was still missing an alphabet**:
+
+- **P1, a whole paragraph deleted.** `Alpha <\n\nBeta > Gamma` → `Alpha  Gamma`. Not a pattern defect and not a scanner defect: a **pipeline-order** defect. The original ran `<[^<>]*>` *after* the split, per block, so it could never reach across a blank line. Folding the boundary marking and the tag removal into one pass over the whole story — which reads as a simplification — hands that fallback a match from a `<` in one paragraph to a `>` in the next, and everything between is deleted.
+- **The fix restores the order rather than patching the pattern.** `markBlockBoundaries` runs over the whole story, because a block tag always could span a blank line, and leaves every non-block tag exactly where it is. `stripRemainingTags` then runs per block, after the split, because an inline one never could. Both share one walk; only what they do with a tag differs. The bound is a property of the pipeline's shape, not of either expression, which is why it disappeared the moment the shape changed.
+- **The alphabet was the blind spot this time.** Round 1's rebuilt harness enumerated `{< > / p a " space =}` and **contained no blank line**, so not one of its 2.47M inputs could express this defect. Round 1's blind spot was the carrier; this one was the alphabet. Third distinct blind spot in three rounds, and the pattern across them is that an enumeration proves nothing about a dimension it does not vary. Re-run with `\n\n` in the alphabet: **1,793,610 inputs, 0 worse, 0 boundaries moved, 502,279 repaired.**
+- **Counterfactual mutations 14 → 15**, the new one being the two passes merged into a single whole-string pass. All 15 killed.
+
+Cost, measured rather than assumed:
+
+- **Linear**, confirmed on sixteen shapes at 200,000 → 400,000 characters and by per-character cost across 200k → 6.4M on the worst of them, where new and old drift together (allocation, not algorithm).
+- **A real constant-factor slowdown**, though: a hand-written two-pass walk against two native regex replaces. On inline-tag-heavy synthetic input it is 5–8× the old cost. On realistic generator output — `<p>` paragraphs with `<em>`/`<strong>` and entities — it is about 1.8×: **0.53ms against 0.35ms at 5,000 words, 1.89ms against 1.06ms at 20,000**. These scanners run a few times per generation, not in a loop, so this is reported rather than optimised.
+
+Not claimed:
+
+- **No evidence this happens in production output.** The generator is not prompted to emit attributes on story markup at all, so a `>` inside one needs the model to volunteer both. Worth fixing because the corruption is silent and reaches measurements rather than because it has been observed — the same standing as the three rows before it.
+- **The residual disagreement with `parse5` is unchanged, not fixed.** New still leaks or deletes characters on 401,379 of the 1.79M blank-line fragments; the remainder is this module doing what it is documented to do — deleting the span between a `<` and a `>` in prose — and old does the same on every one of them and on 502,279 more.
+- **Three review rounds have each found a defect the round before called impossible.** Nothing here says the fourth would find none; what it says is that each round's evidence was scoped to shapes the previous round had thought of, and the current numbers are worth exactly the dimensions the enumeration varies: carrier, alphabet, and length.
+## 2026-08-28 UTC - The Export Tokenizer Ended a Comment Only at `-->` (the row #306 recorded and deferred)
+
+Actions:
+
+- Moved `findCommentEnd` out of `storyContentAnalysis.ts` into `shared/htmlTagScanner.ts`, beside the tag reading moved there by #306, and pointed `tokenizeHtml` at it. `storyContentAnalysis.ts` imports it back; its behaviour is unchanged, which `tests/chapter-heading-reader.test.ts` and `tests/story-content-analysis.test.ts` say by passing untouched.
+- Added a comment-terminator section to `tests/export-sanitizer.test.ts`: the four terminators through both export paths, a comment body that still may not leak whichever spelling closes it, an enumeration of every comment body of length 0..6 over `{- ! > < a}` against a WHATWG transcription, and linearity guards at 40,000 characters.
+
+The defect repaired:
+
+- `tokenizeHtml` searched for `-->` alone and `break`s when it finds none, so `stripStoryHtmlForExport('<p>Alpha.</p><!--><p>Beta.</p>')` returned `Alpha.` — **the rest of the story dropped from every export format**. HTML closes a comment in four places: `-->`, the abrupt closing of an empty comment (`<!-->` and `<!--->`, ending at that `>`), and the comment-end-bang `--!>`. Three of the four were read as a comment that never ends. `.txt`, `.pdf`, `.epub` and `.docx` all reach this through `ExportService.toPlainText`; `.html` reaches it through `sanitizeStoryHtmlForExport`.
+- This was found in the course of #306, recorded on #296 rather than repaired there — it would have widened a PR three review rounds deep into a different defect, and it wanted its own tests against the export corpora rather than tests written for chapter titles.
+
+Decisions:
+
+- **Moved, not respelled.** The defect *was* two readers in adjacent files disagreeing about where a comment ends: #306 gave the chapter reader all four terminators while the tokenizer it sits beside kept one. A second spelling is what opened the gap.
+- **`eof-in-comment` still takes the rest of the document.** A browser hides the remainder too, so there is no story after it to keep — the one reading where dropping the rest is correct. The pre-existing assertion saying so is kept and now has a plain-text companion.
+- **The four `<!--`-inside-a-comment states are not spelled out**, because each reconsumes in the comment-end state the `--` already reaches. That is a claim about the spec, so it is measured rather than argued: `<` and `!` are in the enumeration's alphabet and the two readings agree on all 19,531 bodies.
+
+Validation:
+
+- `npm run test:all` exits 0. API function typecheck clean under preflight's exact command; `story-generator/tsconfig.app.json` clean, which compiles `shared/` via `../shared/**/*.ts`; Vercel function count 8/12 unchanged; `git diff --check` clean.
+- **Six counterfactual mutations**, each confirmed failing a suite and reverted: each of the three terminator branches removed, the dash scan advanced past the pair rather than one character into it (which loses `--->`), the tokenizer's old `+3` offset kept, and the unterminated-comment stop removed.
+- Linearity measured rather than assumed, at 20,000 and 40,000 repeats on dashes, dash pairs, comment-end-bangs and nested comment opens: ratios at or below 2.1× for 2× input.
+
+Not claimed:
+
+- No evidence this is happening in production output. The generator is not prompted to emit comments at all. Worth fixing because the loss is silent and total — the document is well-formed and merely short, so nothing downstream can notice it.
+- `tokenizeHtml` still has no raw-text awareness, so a `<!--` written inside a `<script>` or `<textarea>` body is read as a comment where a browser reads it as text. `removeNonStoryHtml` drops those elements' contents by a separate skip mechanism, so this is unchanged by this slice and is not a new gap; it is left for the row of #296 that touches raw text.
 
 ## 2026-08-28 UTC - The Two Chapter-Heading Readers Call the Scanner (rows 1 and 2 of #296)
 
