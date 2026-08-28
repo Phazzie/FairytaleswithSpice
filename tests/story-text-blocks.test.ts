@@ -149,12 +149,52 @@ assert(
   'a slash inside an unquoted value should not split it into two attributes'
 );
 
+// Both inputs above answer the same whether the slash is read as part of the
+// value or the markup falls back, because the tag's own `>` is the first one
+// either way. An earlier quoted `>` is what separates the two readings: the
+// fallback stops inside it, and only a value that may contain the slash reads
+// the tag whole, which is what a browser does.
+assert(
+  readTag('<h3 x="a>b" c=d/e>Title</h3>') === '<h3 x="a>b" c=d/e>',
+  'a slash inside a value should be read, not surrendered to the fallback'
+);
+
 // The corresponding cost, taken deliberately: a slash that a browser *would*
 // treat as a separator no longer is one, so this markup has no reading here and
 // falls back — the same answer `[^>]*>` gives. Coverage, not correctness.
 assert(
   readTag('<h3 a="b>c"/>Title</h3>') === '<h3 a="b>',
   'a trailing self-closing slash is no longer a separator and should fall back'
+);
+
+// The same defect once more, reached through whitespace rather than a slash,
+// and the reason an assignment must reach a value rather than merely be allowed
+// one. A browser reads `b="c` as `a`'s unquoted value here — before-attribute-
+// value skips the space — and ends the tag at the first `>`, so `d">` is text a
+// reader sees. With an optional value, `a=` matched empty, the space became a
+// separator, `b="c>d"` was read as a second attribute, and `d">` disappeared.
+// No separator can be taken away to fix this one: the empty reading is what
+// carries it, so the empty reading is what gets pinned down.
+assert(
+  readTag('<h3 a= b="c>d">Title</h3>') === '<h3 a= b="c>',
+  'whitespace after a bare `=` must not resume the attribute loop past the tag end'
+);
+
+// HTML's one empty-value position, which the rule above keeps rather than
+// removes: before-attribute-value skips whitespace, and a `>` there ends the
+// tag. The earlier quoted `>` is what makes this discriminate — requiring a
+// value outright would lose the tag to the fallback and answer `<h3 x="a>`.
+assert(
+  readTag('<h3 x="a>b" c=>Title</h3>') === '<h3 x="a>b" c=>',
+  'an empty value directly before the tag end should still be read'
+);
+
+// The lookahead does its own whitespace skipping, because it is tried before
+// the `=` has consumed any — which is the ordering that keeps a long run from
+// being rescanned once per position it can give back.
+assert(
+  readTag('<h3 x="a>b" c= >Title</h3>') === '<h3 x="a>b" c= >',
+  'the empty-value lookahead should skip whitespace itself'
 );
 
 // The attribute loop must not backtrack exponentially. Two separate mistakes
@@ -189,10 +229,10 @@ assert(
 }
 
 // The third shape, and the fourth ambiguity of this kind: an attribute whose
-// value is missing. With whitespace permitted after the `=`, a value could
-// begin past the separator and consume the next attribute's name, so ` a= a=`
-// reads either as one attribute valued `a` or as two valueless ones — 2^n
-// partitions once the tag never closes. 32 repeats took 275ms, 36 took 2.0s.
+// value is missing. While the value was optional, ` a= a=` read either as one
+// attribute valued `a` or as two valueless ones — 2^n partitions once the tag
+// never closes. 32 repeats took 275ms, 36 took 2.0s. Requiring the value
+// leaves one reading, which is what lets the whitespace below stay legal.
 {
   const unclosedMissingValues = '<h3' + ' a='.repeat(32);
   const startedAt = Date.now();
@@ -201,16 +241,27 @@ assert(
   assert(elapsedMs < 250, `attributes with missing values should not be divisible exponentially, took ${elapsedMs}ms`);
 }
 
-// The narrow, deliberate cost of that disambiguation: whitespace between the
-// `=` and an opening quote leaves the markup with no reading here, so it takes
-// the fallback and answers as `[^>]*>` does.
+// And the quadratic that gating the empty value introduces if the lookahead is
+// written after the `=`'s whitespace rather than before it: the run gives a
+// character back, the lookahead rescans the rest of it, and the answer cannot
+// differ. 40,000 spaces took 761ms that way, quadrupling per doubling.
+{
+  const unclosedWhitespaceRun = '<h3 a=' + ' '.repeat(20000);
+  const startedAt = Date.now();
+  new RegExp(String.raw`<h3${TAG_ATTRIBUTES_PATTERN}`, 'i').test(unclosedWhitespaceRun);
+  const elapsedMs = Date.now() - startedAt;
+  assert(elapsedMs < 100, `a long whitespace run after \`=\` should be scanned once, took ${elapsedMs}ms`);
+}
+
+// Whitespace is legal on both sides of the `=`, which is how a browser reads
+// it — before-attribute-value skips it. This is readable only because the value
+// is required: while it was optional, disambiguating ` a= a=` meant refusing
+// the whitespace after the `=`, and this tag took the fallback instead.
 assert(
-  readTag('<h3 a = "b>c">Title</h3>') === '<h3 a = "b>',
-  'whitespace between `=` and an opening quote should take the fallback'
+  readTag('<h3 a = "b>c">Title</h3>') === '<h3 a = "b>c">',
+  'whitespace on either side of the `=` should be skipped, as a browser skips it'
 );
 
-// Whitespace *before* the `=` is still read, so the asymmetry is real and not
-// a blanket refusal of spacing around the assignment.
 assert(
   readTag('<h3 a ="b>c">Title</h3>') === '<h3 a ="b>c">',
   'whitespace before `=` should still be read'

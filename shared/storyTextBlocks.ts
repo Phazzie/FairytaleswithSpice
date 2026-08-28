@@ -191,21 +191,51 @@ const ATTRIBUTE_VALUE = String.raw`(?:"[^"<]*"|'[^'<]*'|[^ \t\n\f\r><"'][^ \t\n\
 // whose trailing slash is no longer a separator, both fall back.
 const ATTRIBUTE_SEPARATOR = TAG_WHITESPACE;
 
-// No whitespace is permitted between `=` and the value, and that asymmetry —
-// whitespace allowed *before* the `=` but not after — is the fourth ambiguity
-// removed from this pattern, all of the same kind.
+// The value is required, and that is the fourth ambiguity of this kind — the
+// last one, because unlike the three above it is not fixed by taking a
+// character away from one construct and giving it to another.
 //
-// With `WS*` on both sides, the value could begin past the separator and
-// consume the next attribute's name, so ` a= a=` reads either as one attribute
-// whose value is `a` or as two attributes with no values. A tag that never
-// closes then has 2^n partitions: 32 repeats took 275ms and 36 took 2.0s.
+// An *optional* value lets `a=` match nothing, which hands the rest of the tag
+// back to the separator rule. Whatever follows the bare `=` then reads as the
+// next attribute, and a quoted value there runs through the tag's own `>`:
 //
-// The cost is narrow and measured: `a = "b>c"` and `a= "b>c"` — whitespace
-// between the `=` and an opening quote — now have no reading here and take the
-// fallback. `a ="b>c"` is unaffected, because the whitespace before `=` is
-// still allowed. As always the fallback answers exactly as `[^>]*>` does.
+// ```
+// '<h3 a= b="c>d">Real Title</h3>'
+//   browser        →  'd">Real Title'   // `b="c` is `a`'s unquoted value
+//   optional value →  'Real Title'      // `d">` deleted; text a reader sees
+// ```
+//
+// This is the slash defect again, reached through whitespace, and the quoted-
+// run defect again in a third guise. It follows from the empty reading being
+// available anywhere rather than from any one character's role, so narrowing
+// the separator cannot reach it: forbidding whitespace after the `=` moves the
+// same loss onto `a= b="c>d">`, and forbidding both leaves the `>` itself.
+//
+// HTML admits an empty value in exactly one position — before-attribute-value
+// skips whitespace, and a `>` there is the missing-attribute-value error that
+// ends the tag — so that position is named, and no other. The lookahead cannot
+// overlap a real value, because a value may begin with neither whitespace nor
+// `>`, so it adds a reading and no way to backtrack.
+//
+// Requiring the value is also what lets whitespace stay legal on *both* sides
+// of the `=`, which is how a browser reads it: with an optional value ` a= a=`
+// had two readings — one attribute valued `a`, or two valueless ones — and 2^n
+// partitions once the tag never closes, 275ms at 32 repeats and 2.0s at 36.
+// With the value required there is one reading, so `a = "b>c"` is read whole
+// rather than surrendered to the fallback. That is 11,366 more tags read as a
+// browser reads them, across the corpus below, and none read worse.
+//
+// The empty reading is tried *first*, before any whitespace is consumed. The
+// branches are mutually exclusive, so the order cannot change an answer — but
+// written the other way the lookahead is retried at every position the
+// whitespace run can give back, each retry rescanning the rest of it: `a=`
+// followed by 40,000 spaces and no `>` took 761ms that way, quadrupling per
+// doubling. Tried once, at one position, it is linear.
+const ATTRIBUTE_ASSIGNMENT =
+  String.raw`(?:${TAG_WHITESPACE}*=(?:(?=${TAG_WHITESPACE}*>)|${TAG_WHITESPACE}*${ATTRIBUTE_VALUE}))`;
+
 export const TAG_ATTRIBUTES_PATTERN =
-  String.raw`(?:(?:${ATTRIBUTE_SEPARATOR}+${ATTRIBUTE_NAME}(?:${TAG_WHITESPACE}*=${ATTRIBUTE_VALUE}?)?)*${ATTRIBUTE_SEPARATOR}*>|[^>]*>)`;
+  String.raw`(?:(?:${ATTRIBUTE_SEPARATOR}+${ATTRIBUTE_NAME}${ATTRIBUTE_ASSIGNMENT}?)*${ATTRIBUTE_SEPARATOR}*>|[^>]*>)`;
 
 /**
  * Drop what is left of the markup once the block boundaries are marked.
