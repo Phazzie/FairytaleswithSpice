@@ -515,6 +515,74 @@ describe('App', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="story-lab-error-display"]')).not.toBeNull();
   });
 
+  // Before this, the creature/spice/heat-contract-detail/mood/length/batch
+  // controls were shown with the same weight as the fields that actually
+  // block generation, even though `FormValidationService.validateBlueprint`
+  // never fails on any of them (they all ship with defaults). This is the
+  // focused surface — logline, theme picker, adult-confirmation — the reader
+  // is actually asked to act on before generating.
+  it('shows a focused creation surface with only the fields required to generate', () => {
+    fixture.detectChanges();
+
+    const emptyState = fixture.nativeElement.querySelector('[data-testid="creation-empty-state"]') as HTMLElement | null;
+    expect(emptyState).not.toBeNull();
+    expect(emptyState?.querySelector('[data-testid="blueprint-logline"]')).not.toBeNull();
+    expect(emptyState?.querySelector('[data-testid="theme-chip"]')).not.toBeNull();
+    expect(emptyState?.querySelector('[data-testid="heat-contract-adult"]')).not.toBeNull();
+    expect(emptyState?.querySelector('[data-testid="creature-card"]')).toBeNull();
+    expect(emptyState?.querySelector('[data-testid="spice-card"]')).toBeNull();
+  });
+
+  // The creature/spice/heat-contract-detail/mood/length/batch controls all
+  // ship with valid defaults, so they are collapsed the same way
+  // `<details class="story-details">` already collapses the fully-optional
+  // name/world/special-request fields.
+  it('keeps the advanced controls collapsed until the reader asks for them', () => {
+    fixture.detectChanges();
+
+    const advanced = fixture.nativeElement.querySelector('[data-testid="advanced-controls"]') as HTMLElement | null;
+    const toggle = fixture.nativeElement.querySelector('[data-testid="advanced-controls-toggle"]') as HTMLButtonElement | null;
+
+    expect(advanced?.hidden).toBeTrue();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    expect(advanced?.querySelector('[data-testid="creature-card"]')).not.toBeNull();
+    expect(advanced?.querySelector('[data-testid="spice-card"]')).not.toBeNull();
+    expect(advanced?.querySelector('[data-testid="heat-tension-option"]')).not.toBeNull();
+    expect(advanced?.querySelector('[data-testid="blueprint-tone"]')).not.toBeNull();
+
+    toggle?.click();
+    fixture.detectChanges();
+
+    expect(advanced?.hidden).toBeFalse();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+
+    toggle?.click();
+    fixture.detectChanges();
+
+    expect(advanced?.hidden).toBeTrue();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  // Moving these controls behind a disclosure must not change what the form
+  // requires — `FormValidationService` is untouched by this, and the toggle
+  // is layout only.
+  it('still validates and generates using the collapsed advanced controls\' current values', () => {
+    stubRunningGenesisJob();
+    configureValidBlueprint('A vampire princess bound by forbidden vows.');
+    fixture.detectChanges();
+
+    component.startGenesis();
+
+    expect(storyService.createStoryLabJob).toHaveBeenCalled();
+    expect(storyService.createStoryLabJob.calls.mostRecent().args[0]).toEqual(jasmine.objectContaining({
+      kind: 'genesis',
+      blueprint: jasmine.objectContaining({
+        creature: 'vampire',
+        spicyLevel: 3
+      })
+    }));
+  });
+
   it('toggles theme selections', () => {
     expect(component.blueprint().themes.length).toBe(0);
 

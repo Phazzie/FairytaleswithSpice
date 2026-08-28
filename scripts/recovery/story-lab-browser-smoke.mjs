@@ -26,6 +26,7 @@ const smokeSelectors = Object.freeze({
   spiceCard: spicyLevel => `[data-testid="spice-card"][data-spice-level="${spicyLevel}"]`,
   wordBudget: '[data-testid="blueprint-word-budget"]',
   chapterBatchSize: '[data-testid="blueprint-chapter-batch-size"]',
+  advancedControlsToggle: '[data-testid="advanced-controls-toggle"]',
   logline: '[data-testid="blueprint-logline"]',
   protagonist: '[data-testid="blueprint-protagonist"]',
   antagonist: '[data-testid="blueprint-antagonist"]',
@@ -308,7 +309,7 @@ async function runSmoke() {
   let browser;
   let page;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true, executablePath: '/opt/pw-browsers/chromium' });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
@@ -340,6 +341,12 @@ async function runSmoke() {
     await expectHidden(page.locator(smokeSelectors.debugPanel));
 
     await page.locator(smokeSelectors.skinChoice(demoBlueprint.skin)).click();
+    // Creature/tone/spice/word-budget/batch-size now live behind the
+    // collapsed-by-default advanced-controls disclosure (see
+    // `app.html`'s `[data-testid="advanced-controls"]`) — they all ship
+    // with valid defaults, so opening it is exercised here rather than
+    // skipped, the way this script already opens `story-details` below.
+    await page.locator(smokeSelectors.advancedControlsToggle).click();
     await page.locator(smokeSelectors.creatureCard(demoBlueprint.creature)).click();
     await page.locator(smokeSelectors.tone).selectOption(demoBlueprint.tone);
     await page.locator(smokeSelectors.spiceCard(demoBlueprint.spicyLevel)).click();
