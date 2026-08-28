@@ -397,6 +397,29 @@ assert(
   'an unclosed self-closing dangerous container takes the rest with it, as a browser does'
 );
 
+// A raw-text element's contents are text, not markup, so it cannot nest. An
+// opener-shaped string inside one — `<script>const t = "<script/>";</script>` —
+// must not deepen the skip, or the closing tag only gets the depth back to one
+// and the rest of the story is swallowed. The closing side is unaffected:
+// `</script>` inside a string does end the element, here as in a browser.
+for (const container of ['script', 'style']) {
+  const html = `<${container}>const t = "<${container}/>";</${container}><p>Story survives.</p>`;
+  const text = stripStoryHtmlForExport(html);
+  assert(
+    text.includes('Story survives.'),
+    `an opener-shaped string inside <${container}> must not deepen the skip (got ${JSON.stringify(text)})`
+  );
+  assert(!text.includes('const t'), `the <${container}> body itself is still dropped`);
+}
+
+// The other side, and why that is a list rather than a blanket: containers that
+// really do nest must still be counted, or the inner close ends the outer skip
+// and the element's tail leaks.
+assert(
+  stripStoryHtmlForExport('<svg>a<svg>b</svg>c</svg><p>Story survives.</p>') === 'Story survives.',
+  'a genuinely nesting dropped container still counts its depth'
+);
+
 // A name that merely *starts* with a dangerous one is not that element. HTML
 // ends a tag name at whitespace, `/` or `>`, so `script!` is an ordinary unknown
 // element and its contents are story text. Classifying it as `script` sent the

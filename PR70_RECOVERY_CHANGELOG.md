@@ -97,6 +97,12 @@ Sixth review round (Codex, on `a0c42a8`) — two P2s, both real, and both showin
 
 - The 2 are the documented policy, not a containment failure: minimised, they are `<g -="><math=>stealPrivateStory`, where an unterminated quote makes the browser swallow everything and `main` block-skips only because its truncation misreads `math=` as `math`. By the browser's own reading `math=` is not a math element, so the text is not inside a dangerous container by anyone's account — it is text an unterminated quote would otherwise eat, which this module deliberately keeps. Changing it means matching the browser on unterminated quotes, which is precisely the trade Sourcery's open finding is about and is deferred to #296.
 
+Seventh review round (Codex, on `f5a9c65`) — one P2, real, and a regression from this slice's own security fix:
+
+- **A raw-text element's contents are text, so it cannot nest.** `<script>const t = "<script/>";</script>` counted the string as a nested opener, left the skip depth above zero, and swallowed the rest of the story. `main` was safe because its suffix reading called `<script/>` self-closing; the `closesItself` fix in `2467a86` correctly stopped honouring that slash and thereby turned an opener-shaped *string* into a depth increment. `NON_NESTING_DROPPED_TAGS` — `script`, `style`, `textarea`, `title` — now never deepen a skip. Only the opening side changes: `</script>` inside a string still ends the element, here as in a browser.
+- The list is deliberate rather than a blanket: `<svg>a<svg>b</svg>c</svg>` really is two elements, and treating it as one leaks the outer element's tail. Both directions are pinned.
+- Third finding in this PR of the form "the security fix removed an accident `main` was relying on". The first two were the `>` and the `/`; this is the third face of the same change, and it is the reason a containment fix needs its own adversarial pass rather than a spot check.
+
 ## 2026-08-28 UTC - Story Lab Multi-Chapter Batch Generation Vs. The 60-Second Function Budget
 
 Actions:

@@ -531,7 +531,12 @@ function removeNonStoryHtml(html: string): string[] {
     }
 
     if (skippedBlockTag) {
-      if (parsed.tagName === skippedBlockTag && !parsed.isClosing && !closesItself(parsed)) {
+      if (
+        parsed.tagName === skippedBlockTag
+        && !parsed.isClosing
+        && !closesItself(parsed)
+        && !NON_NESTING_DROPPED_TAGS.has(skippedBlockTag)
+      ) {
         skippedBlockDepth += 1;
       }
 
@@ -592,6 +597,24 @@ function sanitizeStoryTag(token: string): string {
  * the `/` and the block was skipped by accident.
  */
 const SELF_CLOSING_DROPPED_TAGS = new Set(['svg', 'math', 'embed']);
+
+/**
+ * The dropped elements whose contents are text rather than markup, so they
+ * cannot nest.
+ *
+ * `script` and `style` are HTML's raw-text elements and `textarea` and `title`
+ * its escapable-raw-text ones: everything between the tags is character data
+ * until the matching close, and a `<script/>` written *inside* a script is a
+ * string, not a tag. Counting it as one leaves the skip depth stuck above zero
+ * and the closing tag then only gets it back to one — so
+ * `<script>const t = "<script/>";</script>` swallows the rest of the story.
+ *
+ * The other dropped containers really can nest — `<svg><svg></svg></svg>` is two
+ * elements — which is why this is a list and not a blanket rule. Only the
+ * *opening* side is affected: `</script>` inside a string does end a script
+ * element, in this reader as in a browser.
+ */
+const NON_NESTING_DROPPED_TAGS = new Set(['script', 'style', 'textarea', 'title']);
 
 /** Whether this tag's trailing `/` actually closes it. */
 function closesItself(parsed: ParsedHtmlTag): boolean {
