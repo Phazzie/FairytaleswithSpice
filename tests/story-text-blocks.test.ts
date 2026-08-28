@@ -240,58 +240,43 @@ assert(
 // that this module leaked `b -->` as a visible block; it no longer does, and
 // three worse faults went with it.
 
-// A comment with no `>` in it was always dropped, and still is.
-assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- plain --><p>Beta.</p>')) ===
-    JSON.stringify(['Alpha.', 'Beta.']),
-  'an ordinary comment should still be dropped'
-);
+// Every one of these sits between the same two paragraphs and must leave both
+// of them alone and contribute nothing of its own, so they are one table rather
+// than one assertion apiece: what distinguishes them is the comment, and a table
+// puts the comments in a column where they can be read against each other.
+for (const [markup, expectation] of [
+  // Dropped before this change too, and still dropped.
+  ['<!-- plain -->', 'an ordinary comment should still be dropped'],
 
-// A `>` inside the body used to end the comment early and leak `b -->`.
-assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- note: a > b --><p>Beta.</p>')) ===
-    JSON.stringify(['Alpha.', 'Beta.']),
-  'a `>` inside a comment body should not leak the rest of the comment'
-);
+  // A `>` in the body used to end the comment early and leak `b -->`. This is
+  // the row #296 filed, and it was the least of the four.
+  ['<!-- note: a > b -->', 'a `>` inside a comment body should not leak the rest of the comment'],
 
-// A `<` inside the body used to leak the *opening* instead, as `<!-- note: a`.
-assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- note: a < b --><p>Beta.</p>')) ===
-    JSON.stringify(['Alpha.', 'Beta.']),
-  'a `<` inside a comment body should not leak the comment opening'
-);
+  // A `<` in the body used to leak the *opening* instead, as `<!-- note: a`.
+  ['<!-- note: a < b -->', 'a `<` inside a comment body should not leak the comment opening'],
 
-// The one that matters most: a commented-out paragraph was read as story prose.
-// `Hidden.` counted as a word, and the `<p>` inside the comment was taken as a
-// paragraph break — in the module every quality scanner in the repository reads.
-assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- <p>Hidden.</p> --><p>Beta.</p>')) ===
-    JSON.stringify(['Alpha.', 'Beta.']),
-  'a comment body should never be read as story prose'
-);
+  // The one that matters most: a commented-out paragraph was read as story
+  // prose. `Hidden.` counted as a word and the `<p>` inside the comment was
+  // taken as a paragraph break — in the module every quality scanner reads.
+  ['<!-- <p>Hidden.</p> -->', 'a comment body should never be read as story prose'],
 
-// A comment carrying a blank line used to split the story across it, moving
-// every measure that reads the last paragraph. This is why the drop cannot be
-// left to `replaceTag`: the boundary pass returns a non-boundary tag as text for
-// the second pass, and the split between the passes happens in between.
-assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- a\n\nb --><p>Beta.</p>')) ===
-    JSON.stringify(['Alpha.', 'Beta.']),
-  'a comment containing a blank line should not split the story'
-);
+  // A comment carrying a blank line used to split the story across it, moving
+  // every measure that reads the last paragraph. This is why the drop cannot be
+  // left to `replaceTag`: the boundary pass returns a non-boundary tag as text
+  // for the second pass, and the split between the passes happens in between.
+  ['<!-- a\n\nb -->', 'a comment containing a blank line should not split the story'],
 
-// All four spellings that close a comment, read from `shared/htmlTagScanner` so
-// that this module, the export sanitizer and the chapter reader agree.
-for (const [name, markup] of [
-  ['-->', '<!-- x -->'],
-  ['<!-->', '<!-->'],
-  ['<!--->', '<!--->'],
-  ['--!>', '<!-- x --!>']
+  // All four spellings that close a comment, read from `shared/htmlTagScanner`
+  // so that this module, the export sanitizer and the chapter reader agree.
+  ['<!-- x -->', '`-->` should close a comment'],
+  ['<!-->', '`<!-->` should close a comment'],
+  ['<!--->', '`<!--->` should close a comment'],
+  ['<!-- x --!>', '`--!>` should close a comment']
 ]) {
   assert(
     JSON.stringify(splitStoryIntoTextBlocks(`<p>Alpha.</p>${markup}<p>Beta.</p>`)) ===
       JSON.stringify(['Alpha.', 'Beta.']),
-    `${name} should close a comment`
+    expectation
   );
 }
 
@@ -313,17 +298,20 @@ assert(
 // `countStoryWords`, the cliffhanger scan, image prompts and the next chapter's
 // continuity excerpt, so silently losing the tail of a story costs more than the
 // `<!-- unterminated` that keeping it leaks.
-assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- unterminated <p>Beta.</p>')) ===
-    JSON.stringify(['Alpha.', '<!-- unterminated', 'Beta.']),
-  'an unterminated comment should not drop the story after it'
-);
-
-assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- unterminated > text')) ===
-    JSON.stringify(['Alpha.', 'text']),
-  'an unterminated comment with a later `>` should answer as it always did'
-);
+for (const [input, blocks, expectation] of [
+  [
+    '<p>Alpha.</p><!-- unterminated <p>Beta.</p>',
+    ['Alpha.', '<!-- unterminated', 'Beta.'],
+    'an unterminated comment should not drop the story after it'
+  ],
+  [
+    '<p>Alpha.</p><!-- unterminated > text',
+    ['Alpha.', 'text'],
+    'an unterminated comment with a later `>` should answer as it always did'
+  ]
+] as [string, string[], string][]) {
+  assert(JSON.stringify(splitStoryIntoTextBlocks(input)) === JSON.stringify(blocks), expectation);
+}
 
 // The search for a comment ending is run at most once per string, because once
 // one open has no ending no later one has either. Without that, `<!--<!--…>` is
