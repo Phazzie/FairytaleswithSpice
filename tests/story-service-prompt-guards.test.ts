@@ -2,7 +2,8 @@
 // Created: 2026-06-21 20:57 UTC
 
 import { StoryService } from '../api/_lib/services/storyService';
-import type { ChapterContinuationSeam, HeatContract, StoryGenerationSeam } from '../api/_lib/types/contracts';
+import type { ChapterContinuationSeam, StoryGenerationSeam } from '../api/_lib/types/contracts';
+import type { HeatContract } from '../api/_lib/story-lab/contracts';
 import { analyzeEmotionalTone } from '../api/_lib/services/storyContentAnalysis';
 import { withMergedContentBoundaries } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 import {
