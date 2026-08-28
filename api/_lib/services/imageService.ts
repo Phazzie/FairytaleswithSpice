@@ -85,6 +85,17 @@ const SUPPORTED_ASPECT_RATIOS = Object.keys(ASPECT_RATIO_SPECS) as SupportedAspe
 const SUPPORTED_STYLES: readonly ImageStyle[] = IMAGE_STYLES;
 
 /**
+ * The shortest story text a scene can be read out of.
+ *
+ * The number is unchanged and deliberately small — this is a floor against an
+ * empty or placeholder body, not a judgement about story length. It is named
+ * only because `validateImageInput` now measures a value it has established is
+ * a string, and the bare `10` beside that check read as though the length were
+ * the point of it.
+ */
+const MIN_IMAGE_CONTENT_LENGTH = 10;
+
+/**
  * Read the image URL out of a provider response, or refuse the response.
  *
  * `response.data.data[0].url` was read straight through. The provider can
@@ -534,12 +545,33 @@ export class ImageService {
    * failed, with `input.themes.map is not a function` as the user-facing
    * message. It is the request that is malformed and only the caller can fix
    * it, so the answer is `INVALID_INPUT` naming the field.
+   *
+   * `storyId` and `content` were the two fields that fix did not reach, and
+   * they were left checked for truthiness alone while every field beside them
+   * — `creature`, `themes`, `imagePrompt` — was given an explicit `typeof`.
+   * That gap is not cosmetic, because `length` is `undefined` on a number and
+   * `undefined < 10` is `false`: a body sending `content: 1234567890123`
+   * passed this check, passed the route's own guard (a truthiness test too, so
+   * neither layer caught what the other missed), and reached
+   * `stripStoryHtmlToText`, which threw `storyContent.replace is not a
+   * function` into the catch that answers `IMAGE_GENERATION_FAILED` — the
+   * image service reporting its own failure for a mistake only the caller can
+   * fix. A non-string `storyId` fared worse: nothing downstream calls a string
+   * method on it, so it was copied into the response envelope's `storyId`
+   * verbatim, and the caller was handed a success whose id contradicts the
+   * type the contract declares for it.
+   *
+   * Read as `unknown` for the reason `imagePrompt` below is: the contract types
+   * both as strings and the wire does not, and these checks are precisely about
+   * the values the type says cannot arrive.
    */
   private validateImageInput(input: ImageGenerationSeam['input']): { code: string; message: string } | null {
-    if (!input.storyId) {
-      return { code: 'INVALID_INPUT', message: 'Story ID is required' };
+    const storyId: unknown = input.storyId;
+    if (typeof storyId !== 'string' || storyId.trim().length === 0) {
+      return { code: 'INVALID_INPUT', message: 'Story ID is required and must be a non-empty string' };
     }
-    if (!input.content || input.content.length < 10) {
+    const content: unknown = input.content;
+    if (typeof content !== 'string' || content.length < MIN_IMAGE_CONTENT_LENGTH) {
       return { code: 'INVALID_INPUT', message: 'Story content is required and must be substantial' };
     }
     if (typeof input.creature !== 'string' || input.creature.trim().length === 0) {

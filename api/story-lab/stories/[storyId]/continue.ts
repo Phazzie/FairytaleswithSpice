@@ -202,8 +202,11 @@ export function createStoryLabContinuationHandler(continueStory: ContinueStoryLa
         }
       });
 
+      // The correlation id goes with the request, for the reason the genesis
+      // route beside it passes its own: without it the continuation's log lines
+      // answer to an id minted in the service, which the caller was never told.
       const payload: ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }> =
-        await continueStory(normalizedInput);
+        await continueStory(normalizedInput, { requestId });
 
       logInfo(`Story Lab continuation ${payload.success ? 'succeeded' : 'failed'}`, {
         requestId,
