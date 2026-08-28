@@ -4,6 +4,62 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-28 UTC - The three readers the whole-word sweep missed
+
+The sweep that moved this repository's keyword scans off substrings and off `\b`
+left three readers behind. Each is the same question — is this the word, or is it
+sitting inside a longer one — and each answered it the old way. All three are
+found by reading, and all three have a repro, a fix, and a counterfactual.
+
+Actions:
+
+- **`scoreActivationCandidates` (`shared/continuityActivation.ts`) matched substrings.** This is the scorer that orders which threads, artifacts, and warnings reach the continuation prompt, and the one the Story Lab's "Continuity Preview" panel reads to claim it is previewing that decision. `oath` was credited from `loathing`, `pact` from `impact`, `court` from `courtesy`. A `namesWholeWords` helper now pads both sides with a space before the `includes`, and `namesWord` allows the endings the same word can carry so the repair does not cost the scan the matches the substring form got right.
+- **Extracted the inflection set to `shared/wordInflections.ts`.** It was `WORD_INFLECTION_SUFFIXES` in `storyQualityHeuristics.ts`, written as a regex fragment. The activation scorer needs the same seven endings and cannot see that file — `shared/` sits below both trees — and needs them as a list rather than an alternation. One declaration, two shapes; the heuristics build their fragment from it and their call sites are untouched.
+- **`extractAgencyActions` (`storyQualityHeuristics.ts`) ended its verb on `\b`.** The name beside it in the same pattern had already been moved to Unicode lookarounds; the verb's closing boundary had not. Replaced with `(?![\p{L}\p{M}])`.
+- **`NARRATIVE_SHIFT_OPENING_PATTERN` (`storyContentAnalysis.ts`) was `\b`** while its own docblock said it applied "the same reading `wholeWordAlternationPattern` above already applies". It is now built from that helper's own source with `^` in front.
+- Extended `tests/whole-word-matching.test.ts` (agency actions, narrative openers) and `tests/continuity-activation.test.ts` (the substring collisions and the matches that must survive). No new suite: this is the family those two files already exist for.
+- Closed **#295** and **#294** on GitHub. Both were opened by this routine, both carry `[Do not merge — premise falsified]` in their own titles and recommend their own closure in their own bodies, both were conflicted against `main`, and #294's base branch (`claude/gallant-ritchie-pu3i4v`) no longer exists. #295's row — `splitStoryIntoTextBlocks`/`stripInlineTags` — is now #308's, which is the disposition #295 itself asked for.
+
+The three defects, measured before changing anything:
+
+- **Activation.** `scoreActivationCandidates(['Broken oath'], 'i want more about the loathing between them')` scored 1. `['Blood pact']` against a brief saying `impact` scored 1. Both now 0, while `['Broken oath']` against `honour the oath she made` still scores 1.
+- **Agency.** `<p>The lock broke and Mira only said touché.</p>` and `<p>The lock broke and Mira touched the seal.</p>` produced the *same* `character_consistency` output — `Agency actions: touched`, score 63. The first is now 58 with no agency signal; the second is unchanged at 63. `touché` is this repository's own standing example of the collision, asserted in `tests/whole-word-matching.test.ts` since the sweep.
+- **Narrative openers.** `Théâtre` typed in decomposed form (`The` plus a combining acute) opened a new display paragraph mid-sentence; the precomposed spelling of the same word did not. So the paragraph break a reader saw depended on how the model happened to encode one character. Both now read as one paragraph, and `Then the lights died.` still opens a beat.
+
+Decisions:
+
+- **The activation fix does not import the shared matcher, and that is deliberate.** `shared/` sits below both trees and imports neither, which is the whole reason `continuityActivation.ts` is there — both `continuationGuidance.ts` and `AppComponent` read it. `containsWholeWord` lives in `api/_lib/utils/`, so using it would mean moving it and `regexEscape` down a layer. That move was considered and declined as wider than the defect: `normalizeActivationText` already reduces both sides to letters and numbers separated by single spaces with no leading or trailing space, so padding with one space *is* the word boundary, exactly and provably, with nothing left for `\p{L}\p{N}\p{M}` lookarounds to exclude. The reading is the same; only the mechanism differs, and it rests on a guarantee this module makes itself.
+- **The agency boundary uses `[\p{L}\p{M}]`, not `wholeWordPattern`'s `[\p{L}\p{N}\p{M}]`,** to match the name's own lookaheads in that same pattern. The two are equivalent on this input because `normalizeProseForScanning` has already removed every digit.
+- **The comment that left the agency `\b` in place named the wrong half.** It said the verbs "are the lexicon's own ASCII words and keep the `\b` they were always written with" — but a boundary is a claim about the character *after* the word, not about the word. That is recorded in `LESSONS_LEARNED.md`.
+
+Self-review:
+
+- `npm run test:all` exits 0 (94 suites). `scripts/recovery/preflight.sh --skip-status` exits 0 — the `proving-grounds.css` budget warning is pre-existing and untouched here.
+- **Counterfactual mutations: 3 applied, 3 killed.** Restoring the bare `includes`, the agency `\b`, and the opener `\b` each fails the suite that covers it.
+- **One assertion of mine was wrong and the code was right.** I first asserted that `['Moonlit oath']` against `the moonlit oathkeeper waited` scores 0. It scores 1: the phrase is correctly not credited whole, but `moonlit` genuinely is in that brief and keeps its point. The assertion now says that, which is the behaviour worth pinning — the fix must remove the phrase score without removing the word score beside it.
+- **The first version of this fix was a plain whole-word test, and it was a regression.** Measuring it rather than reasoning about it is what caught it: `['Broken oath']` against `honour the oaths she made` went from 1 to **0**, because `oaths` is a match the substring reading got *right*. That is precisely the failure this repository already recorded — "a whole-word matcher with no inflection table passes the 'no false positives' half and quietly costs the scan its real signal" — and I had written a changelog and a plan section claiming the tradeoff was fine before running the case. Both were rewritten around the measurement. The inflection set is what makes the repair honest, and its being shared rather than a fourth copy is what keeps it that way.
+- A claim in `tests/whole-word-matching.test.ts` is corrected rather than left standing: its `storyQualityHeuristics` section said that scan "already read the boundary this way", which was true of the continuity scan it tested and false of `extractAgencyActions` one function away in the same file.
+- **A second-order effect of the opener fix, named rather than found later.** `NARRATIVE_SHIFT_OPENING_PATTERN` gains `u` alongside the `i` it always had, and `iu` together do Unicode case folding where `i` alone does not — so a line opening `ſtill` (the long s) now reads as the opener `still`. Same word, so it is the direction the test wants, and unreachable from anything the generator emits; recorded because it is a behaviour change rather than only a boundary fix.
+
+Review round 1 (Codex on `7319a58`) — **two P1s, both false negatives this slice introduced, both fixed:**
+
+- **The whole-candidate score did not allow the inflections the tokens did.** `Blood pact` against `Settle the blood pacts tonight` scored **8 under the substring reading and 2 after the first draft** — the six-point phrase score is most of the signal, and `selectScoredCourtroomThreads` keeps three entries, so that is a demotion out of the prompt and the preview rather than a rounding difference. The phrase now asks the same question the tokens do: a normalized phrase is its words with single spaces between them, so an ending on the phrase is an ending on its final word.
+- **The endings do not cover the consonant English doubles.** `plan` → `planed`, `plot` → `ploted`, `commit` → `commited` are spellings nobody writes, so a brief saying `planning`, `plotting` or `committed` scored the thread it names **0** where the substring reading scored 7. `inflectedWordForms` now also generates the doubled final consonant before the vowel-initial endings.
+
+Review round 2 (Codex on `616c98b`) — **one P1, the same family one letter further in:**
+
+- **A stem ending in `c` repeats as `k`, not as a second `c`.** The doubling rule added last round generated `panicced` and `paniccing`, which are not words and so match nothing, and `Panic` against `She panicked at dawn` scored **0** where the substring reading scored 7 — `mimic`/`mimicking` and `picnic`/`picnicked` likewise. `DOUBLED_CONSONANT_SPELLING` maps the final letter to what it is repeated as, so a second exception is a row rather than another branch.
+
+**Why this one is not the same kind of simplification as the doubling itself.** Applying doubling to the last character rather than to a stress-tested stem is deliberate and safe because it can only generate a form too *many* — `courtted` is inert. Spelling `panicced` is different in kind: it generates the wrong form *instead of* the right one, so it does not merely add a useless comparison, it loses the only spelling a brief would carry. That distinction is now in the docblock, because it is the line between the licence this function takes and the defect it produced.
+
+**Both are worse than the collisions this slice is for**, and that is the part worth recording. A false positive mis-ranks an item; a false negative sends it to the fallback and out of a three-entry list entirely — so the repair was failing in the direction its own argument says matters most. My own self-review pass an hour earlier found a false *positive* (`cove` for `cover`) and missed both of these, because it probed the direction the fix was designed for and not the direction it broke.
+
+Not claimed:
+
+- **No evidence any of the three happens in production output.** All three need input the generator is not known to emit: a brief containing a word that merely contains a thread's, `touché` in banter, or a decomposed accent. Worth fixing because all three are silent — a mis-ordered continuity list, a score that cannot tell a character who acted from one who made a joke, and a paragraph break that moves with the encoding.
+- **The heuristics' pattern form still covers only the appended endings.** A keyword in `storyQualityHeuristics` does not match its doubled-consonant inflection. That is pre-existing rather than introduced here, and closing it changes what those scans match, which is a separate slice.
+- **This does not argue the sweep is now complete.** These three were found by grepping for the shapes the sweep replaced; a reader that spells the same mistake some other way would not turn up that way.
+- **The activation repair narrows the collisions rather than ending them.** The allowance is "token plus one ending", and a few unrelated words are spelled exactly that way — `cove` + `r` is `cover`, `grove` + `r` is `grover` — so those still activate. Residual, not regression: the substring reading hit them too, along with `loathing`, `impact` and `courtesy` which it no longer does. Found by a self-review pass run because Sourcery was rate-limited and CodeRabbit skipped this PR, so no bot round would have found it; pinned by an assertion.
 ## 2026-08-28 UTC - The Heat Contract's No-Go List Reaching the Model
 
 Three findings on the seam between a Heat Contract and the prompt built from it. All three are one question — how much of what a reader said they do not want written actually reaches the model, and in what shape — and each has a repro, a fix, and a counterfactual.

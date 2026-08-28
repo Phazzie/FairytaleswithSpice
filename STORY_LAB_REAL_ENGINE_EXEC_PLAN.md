@@ -294,3 +294,111 @@ reaching any of it needs a request the app does not make. It is worth repairing
 because the form is not the enforcement point — the route is — and because two
 of the three are silent: a deleted boundary and a truncated one look identical
 to a caller.
+## Continuation continuity: the activation scorer matched substrings
+
+`buildContinuationGuidance` scores every unresolved thread, artifact,
+relationship, and continuity warning against the brief the reader wrote, orders
+them by that score, and puts the top few in front of the model. That scoring is
+`scoreActivationCandidates` in `shared/continuityActivation.ts`, which both this
+path and the Story Lab's "Continuity Preview" panel read so the panel describes
+the selection the run actually makes.
+
+It compared with `String.prototype.includes`, and the words a promise is named
+after are short. `oath` is inside `loathing`, `pact` inside `impact`, `court`
+inside `courtesy`. A brief asking for "the impact of her choice" scored a thread
+called `Blood pact` as though it had been named, and a brief mentioning
+`loathing` did the same for `Broken oath` — 1 point each, the same point a
+genuine mention earns. The whole-candidate score, worth six, was the same
+comparison asked of a phrase.
+
+The contract this seam now enforces: a candidate is activated by the brief only
+where the brief contains it as whole words. Both sides of the comparison already
+pass through `normalizeActivationText`, which leaves letters and numbers
+separated by single spaces with no leading or trailing space, so padding each
+side with one space makes the containment test exact — the same reading
+`containsWholeWord` applies with lookarounds, resting here on the normalizer's
+own guarantee instead. That matters because `shared/` sits below both trees and
+cannot import `api/_lib/utils/wholeWord`, which is the reason this module is in
+`shared/` in the first place.
+
+What is unchanged: the prompt shape, the request shape, and the model contract.
+The guidance still lists the same kinds of item under the same headings, still
+falls back to unresolved-story priority when nothing is activated, and still
+scores candidates additively rather than by their strongest. Only which items
+clear the bar changes — and only in the direction of dropping items the brief
+never named, which previously displaced items it did.
+
+The endings are kept, and that is not incidental. A whole-word matcher with no
+inflection table passes the "no false positives" half of this repair and quietly
+costs the scan its real signal — the lesson `continuationGuidance` recorded when
+it made the same move. The substring reading picked up `oaths` for `oath` and
+`pacts` for `pact` for free, and those are matches it got *right*; dropping them
+would trade one silent mis-ordering for another.
+
+`inflectedWordForms` in `shared/wordInflections.ts` generates the spellings a
+brief may really contain, and a candidate activates when the brief names any of
+them as whole words. It has two halves, and the first draft of this slice had
+only one:
+
+- **The endings appended.** `oath` → `oaths`, `pact` → `pacts`, `caress` →
+  `caressed`.
+- **The doubled final consonant**, before the endings that begin with a vowel.
+  `plan` → `planning`, `plot` → `plotting`, `commit` → `committed`. Appending
+  alone gives `planed`, `ploted` and `commited`, which nobody writes, so a brief
+  saying `planning` scored the thread it names **zero** — the exact failure this
+  repair exists to stop, arriving from the other direction. Doubling is applied
+  to the last character rather than to a stress-tested consonant-vowel-consonant
+  stem: the forms are only ever looked up, so a spelling English would not write
+  simply never occurs in a brief, and that avoids putting a syllable model in a
+  module that compares words.
+
+**The same allowance applies to the whole-candidate score, not only to the
+tokens.** A phrase is its words with single spaces between them, so an ending on
+the phrase is an ending on its final word: `Blood pact` is named whole by
+`settle the blood pacts tonight`. Restricting the six-point phrase score to the
+exact spelling cost most of the signal on a brief that names a thread in the
+plural — 8 points to 2 — and the courtroom keeps three entries, so that is a
+demotion out of the prompt and the preview, not a rounding difference.
+
+The set is now the one declaration for both readers: `storyQualityHeuristics.ts`
+builds its regex alternation from `WORD_INFLECTION_SUFFIX_PATTERN`, and this
+module reads the forms, because it matches by string comparison and cannot see
+that file. Note that the heuristics' pattern form covers only the appended
+endings — a keyword there still does not match its doubled-consonant inflection.
+That is pre-existing and untouched here; closing it means changing what those
+scans match, which is a separate slice.
+
+The collisions stay refused under that rule for a reason worth stating rather
+than testing for: `loathing` does not begin with `oath`, `impact` does not begin
+with `pact`, and `courtesy` begins with `court` but continues `esy`, which is not
+an ending a word keeps its meaning across. The endings that would re-open the
+family — `less`, which makes `nameless` out of `name`, and `ly`, which makes
+`secretly` out of `secret` — are absent from the shared set for exactly that
+reason, and are asserted absent.
+
+The one direction not covered: a candidate token of `oaths` is not matched by a
+brief saying `oath`. The substring reading did not do that either, so this is the
+behaviour it had rather than a narrowing of it.
+
+Residual, stated rather than left to be found: the allowance is "token plus one
+ending", and a few unrelated words are spelled exactly that way. `cove` + `r` is
+`cover`; `grove` + `r` is `grover`. Those still activate. It is coverage not yet
+bought rather than a regression — the substring reading hit them too, and it hit
+`loathing`, `impact` and `courtesy` besides — and it is pinned by an assertion so
+the day it changes it is deliberate. Buying it means dropping `r`/`rs` from the
+shared set, which would cost `lover` and `lovers` for `love`, the form this genre
+actually writes and the reason those endings are in the set. That trade belongs
+to whoever owns the shared set, across all of its readers, rather than to this
+slice.
+
+Validation: `tests/continuity-activation.test.ts`, in `test:all`. The three
+collisions are asserted as zeros, the matches the substring reading got right are
+asserted as unchanged (a phrase stated in full still scores whole and by each of
+its words; a brief that is nothing but the candidate still activates it at both
+ends of the string), and removing the boundary fails the suite.
+
+Non-claim: no evidence this was happening in production output. It needs a brief
+containing a word that merely contains one of the story's own. It is worth
+repairing because the failure is silent and doubly so — the panel that exists to
+show the reader this decision was reading the same scorer, so it agreed with the
+prompt about a selection both had wrong.

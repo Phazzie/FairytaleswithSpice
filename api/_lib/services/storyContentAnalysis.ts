@@ -1037,9 +1037,35 @@ const NARRATIVE_SHIFT_OPENERS = [
   'however',
   'still'
 ];
+/**
+ * The openers, as whole words, at the start of the line.
+ *
+ * The docblock above says this applies "the same reading
+ * `wholeWordAlternationPattern` above already applies … anchored at the start",
+ * and it did not: it was `\b`, which is defined against `[A-Za-z0-9_]` and so
+ * finds a boundary between an ASCII letter and an accented one. A line opening
+ * on a word this list is a prefix of matched whenever the letter that continued
+ * it carried an accent — `Théâtre` typed in decomposed form (`The` followed by a
+ * combining acute) opened on `the` and started a new paragraph in the middle of
+ * a sentence. The precomposed spelling of the same word did not, so the split a
+ * reader saw depended on how the model happened to encode one character.
+ *
+ * Built from the shared matcher's own source rather than respelling its class,
+ * so there is one answer to where a word ends. The `^` supplies the opening
+ * boundary the anchor already guarantees, which is why the pattern's leading
+ * lookbehind is redundant here and harmless — it is trivially true at index 0.
+ * `u` comes with the `\p{…}` classes; `i` is the flag this test always had, and
+ * the reason the shared helper cannot simply be used as it stands.
+ *
+ * One consequence of `u` worth naming rather than discovering: `iu` together do
+ * Unicode case folding where `i` alone does not, so a line opening `ſtill` (the
+ * long s) now reads as the opener `still`. That is the same word, so it is the
+ * direction this test wants, and it is reachable only from text the generator
+ * has no reason to emit — but it is a behaviour change, not just a boundary fix.
+ */
 const NARRATIVE_SHIFT_OPENING_PATTERN = new RegExp(
-  String.raw`^(?:${NARRATIVE_SHIFT_OPENERS.join('|')})\b`,
-  'i'
+  String.raw`^${wholeWordAlternationPattern(NARRATIVE_SHIFT_OPENERS).source}`,
+  'iu'
 );
 
 /**

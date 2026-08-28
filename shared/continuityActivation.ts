@@ -1,6 +1,7 @@
 // Created: 2026-08-27 UTC
 
 import type { PlotThreadStatus } from './storyStateVocabulary';
+import { inflectedWordForms } from './wordInflections';
 
 /**
  * How a continuation brief decides which continuity the next batch is shown.
@@ -109,6 +110,67 @@ export function normalizeActivationText(value: unknown): string {
 }
 
 /**
+ * Whether `source` names `phrase` as whole words rather than as a substring.
+ *
+ * `includes` was the reading here, and these needles are short: `oath` is
+ * inside `loathing`, `pact` inside `impact`, `court` inside `courtesy`, `vow`
+ * inside `vowel`, `name` inside `nameless`. That is the substring scan
+ * `extractThemesFromContent`, `extractSpicyLevelFromContent`, and
+ * `containsAny` in `continuationGuidance` were each moved off — this module was
+ * the one door left, and it is the one that orders the whole continuity
+ * selection, so a collision here does not merely mis-score an item: it puts a
+ * thread the brief never asked for in front of the model and leaves out the one
+ * it did, on both the prompt and the panel that claims to preview it.
+ *
+ * The boundary is `containsWholeWord`'s, arrived at without its lookarounds.
+ * Both sides of every comparison come through `normalizeActivationText` above,
+ * which leaves a string of nothing but letters and numbers separated by single
+ * spaces, with no leading or trailing space — every other character is already a
+ * separator by then. So padding both sides with one space makes an `includes`
+ * exact: ` oath ` occurs in ` honour the oath she made ` and not in ` she began
+ * loathing him `. Stating it that way rather than importing the shared matcher
+ * is what keeps this module below both trees, which is the whole reason it is
+ * here; the reading is the same one, resting on the normalizer's own guarantee
+ * instead of on `\p{L}\p{N}\p{M}` lookarounds that would have nothing left to
+ * exclude.
+ *
+ * It holds for a phrase as much as for a word, because a normalized phrase is
+ * its words with single spaces between them, which is exactly how they sit in a
+ * normalized source.
+ */
+function namesWholeWords(source: string, phrase: string): boolean {
+  return ` ${source} `.includes(` ${phrase} `);
+}
+
+/**
+ * Whether `source` names `token` as a whole word, allowing the endings the same
+ * word can carry.
+ *
+ * A whole-word matcher with no inflection table passes the "no false positives"
+ * half of this repair and quietly costs the scan its real signal, which is the
+ * lesson `continuationGuidance` recorded when it made the same move: the
+ * substring reading picked up `oaths` for `oath` and `pacts` for `pact` for
+ * free, and those are matches it got *right*. Dropping them would trade one
+ * silent mis-ordering for another.
+ *
+ * Only the endings are allowed, and only at the end — which is exactly the half
+ * of the substring reading that was sound. A brief's word has to *begin* with
+ * the token and finish it with one of the seven, so `oaths` and `pacts` are
+ * kept while every collision this repair is for is still refused: `loathing`
+ * does not begin with `oath`, `impact` does not begin with `pact`, and
+ * `courtesy` begins with `court` but continues `esy`, which is not an ending a
+ * word keeps its meaning across. The endings that would re-open the collisions —
+ * `less`, `ly` — are absent from the shared set for that reason.
+ *
+ * The reverse direction is deliberately not covered: a token of `oaths` is not
+ * matched by a brief saying `oath`. The substring reading did not do that
+ * either, so this is the behaviour it had, not a narrowing of it.
+ */
+function namesWord(source: string, wordOrPhrase: string): boolean {
+  return inflectedWordForms(wordOrPhrase).some(form => namesWholeWords(source, form));
+}
+
+/**
  * How strongly `candidates` — the several strings one thread, artifact,
  * relationship, or warning can be recognised by — are named by `source`, the
  * normalized continuation brief.
@@ -127,12 +189,12 @@ export function scoreActivationCandidates(candidates: readonly unknown[], source
   let score = 0;
 
   for (const candidate of normalizedCandidates) {
-    if (source.includes(candidate)) {
+    if (namesWord(source, candidate)) {
       score += ACTIVATION_WHOLE_CANDIDATE_SCORE;
     }
 
     for (const token of candidate.split(' ').filter(value => value.length >= ACTIVATION_TOKEN_MIN_LENGTH)) {
-      if (source.includes(token)) {
+      if (namesWord(source, token)) {
         score += 1;
       }
     }
