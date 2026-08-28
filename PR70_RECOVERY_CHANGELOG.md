@@ -345,6 +345,44 @@ Not taken unilaterally because it is a redesign of a security path, and the
 judgement that would pick it is the same judgement that has been wrong three
 rounds running.
 
+**Round 10 tested that reasoning within ten minutes and confirmed it.** The
+round-9 reply said "a sixth patch would move the boundary again, not remove the
+worst case". Codex then produced the sixth route:
+
+```
+{"authorization":["say \"hi","Bearer abcdef"]} and note=\"[the bearer announced victory]\"
+    -> ... and note=\"[the Bearer [REDACTED] victory]\"
+```
+
+Different from the round-9 fallback: here a wrong-depth scan reaches a **later
+real `]`** — the note's bracket — so it is a legitimate candidate under "only a
+reading that closed the array may win", and it then wins the longest-end
+comparison against the correct end. Six routes to a wrong array end are now on
+record, four of them found *after* a fix that was supposed to settle the
+question:
+
+| round | route | outcome |
+| --- | --- | --- |
+| 6 | `]` inside a sibling element | leak |
+| 7 | escaped quote desynchronises the scan | prose destroyed |
+| 8 | nesting depth beyond two readings | leak |
+| 9 | `\\` before a closing quote → end-of-string fallback | prose destroyed |
+| 9 | comma-joined values, no array at all | leak |
+| 10 | wrong-depth scan reaches a later real `]` | prose destroyed |
+
+Codex's suggested fix — select the end from the structurally consistent depth
+rather than the longest successful scan — is correct, and is deliberately not
+applied. It would be the third rewrite of the selection rule (first `]` → max →
+max-of-closed → structurally-consistent), and each earlier rewrite was also
+correct and was also followed by a new route.
+
+**What round 10 adds to the argument:** there is no "structurally consistent
+depth" available here, because this function is handed a *fragment* — a
+substring of a log line beginning at a `[` — and cannot know the depth it was
+serialized at. Every selection rule is therefore a heuristic over readings, and
+a heuristic over readings has a worst case that reaches past the array. A
+backward walk has no end to select and so cannot have that worst case.
+
 **Review round 8 found both halves of round 7's trade were wrong.** Codex
 returned two findings on the same function, in opposite directions:
 
