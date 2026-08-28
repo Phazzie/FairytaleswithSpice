@@ -336,7 +336,7 @@ async function assertEngineThreadsItsOwnStartTimeIntoStoryService(): Promise<voi
 
     const genesisResponse = await generateStoryLabGenesis(storyLabBlueprint, {
       serviceFactory: () => ({
-        generateStory: async (_input: unknown, requestStartedAtMs?: number) => {
+        generateStory: async (_input: unknown, _correlationId?: string, requestStartedAtMs?: number) => {
           capturedGenesisStart = requestStartedAtMs;
           return {
             success: false,
@@ -381,7 +381,7 @@ async function assertEngineThreadsItsOwnStartTimeIntoStoryService(): Promise<voi
         generateStory: async () => {
           throw new Error('generateStory should not be called by the continuation path');
         },
-        continueChapter: async (_input: unknown, requestStartedAtMs?: number) => {
+        continueChapter: async (_input: unknown, _correlationId?: string, requestStartedAtMs?: number) => {
           capturedContinuationStart = requestStartedAtMs;
           return {
             success: false,

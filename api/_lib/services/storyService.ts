@@ -30,7 +30,11 @@ import {
 import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService, hasIdentifiedCliffhangerType } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
-import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
+// `logger` itself is no longer imported: its only two uses here were the
+// `logger.generateRequestId()` calls that opened `generateStory` and
+// `continueChapter`, both of which now resolve the route's correlation id
+// instead. The named helpers below are the whole of this file's logging.
+import { logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 import { estimateReadTimeMinutes } from '../utils/readTime';
 import { getRemainingRequestBudgetMs, getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
 import { MIN_XAI_FALLBACK_TIMEOUT_MS, XaiTextClient, type XaiTextResponse } from './xaiTextClient';
@@ -235,10 +239,11 @@ export class StoryService {
    */
   async generateStory(
     input: StoryGenerationSeam['input'],
+    correlationId?: string,
     requestStartedAtMs: number = Date.now()
   ): Promise<ApiResponse<StoryGenerationSeam['output']>> {
     const startTime = requestStartedAtMs;
-    const requestId = logger.generateRequestId();
+    const requestId = this.resolveRequestId(correlationId);
     const requestedChapterCount = this.normalizeChapterCount(input.requestedChapterCount);
     const sanitizedInput: StoryGenerationSeam['input'] = {
       ...input,
@@ -493,10 +498,11 @@ export class StoryService {
   /** See `generateStory`'s note on `requestStartedAtMs`; `continueStoryLab` passes the same kind of engine-level timestamp here. */
   async continueChapter(
     input: ChapterContinuationSeam['input'],
+    correlationId?: string,
     requestStartedAtMs: number = Date.now()
   ): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
     const startTime = requestStartedAtMs;
-    const requestId = logger.generateRequestId();
+    const requestId = this.resolveRequestId(correlationId);
     const requestedChapterCount = this.normalizeChapterCount(input.requestedChapterCount);
     const sanitizedInput: ChapterContinuationSeam['input'] = {
       ...input,
@@ -1667,7 +1673,33 @@ ${renderBody()}`;
     return `chapter_${randomUUID()}`;
   }
 
-  private generateRequestId(): string {
-    return `req_${randomUUID()}`;
+  /**
+   * The id this generation is known by, in the envelope and in the log alike.
+   *
+   * Both entry points opened with `logger.generateRequestId()` unconditionally,
+   * so the id every line of the generation was filed under was minted here and
+   * existed nowhere the caller could see it. The Story Lab genesis and
+   * continuation routes settle a correlation id in `beginPostRoute` — the
+   * caller's `X-Request-ID` when it is usable, a minted one otherwise — echo it
+   * back as a response header, and stamp it into every line they write
+   * themselves. It stopped at the route. So a reader who quoted the id they were
+   * handed was quoting the one id that names none of the work: the prompt sizes,
+   * the provider call this app pays for, and the failure that made them ask.
+   *
+   * `ImageService` and `ExportService` each took the same argument for the same
+   * reason and left this service the only one of the three still minting its
+   * own. Taking it here makes the header, the envelope's `metadata.requestId`,
+   * the route's lines, and this service's lines all name one request. Minting
+   * one is kept for a caller that has none — a direct call in a test, or the
+   * engine's own paths — so the field is never empty.
+   *
+   * This replaces a private `generateRequestId()` that was byte-identical to
+   * `logger.generateRequestId()` and called from nowhere: both entry points went
+   * to the logger's copy, so the method beside them had no reader at all.
+   */
+  private resolveRequestId(correlationId?: string): string {
+    return correlationId && correlationId.trim()
+      ? correlationId.trim()
+      : `req_${randomUUID()}`;
   }
 }

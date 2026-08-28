@@ -88,7 +88,12 @@ export function createStoryLabGenesisHandler(generateGenesis: GenerateStoryLabGe
         }
       });
 
-      const payload: ApiResponse<StoryIterationPayload> = await generateGenesis(blueprint);
+      // The correlation id goes with the request. It is what this handler's own
+      // lines are stamped with and what the caller was echoed as `X-Request-ID`;
+      // passing it on is what makes the generation's own log lines — the prompt
+      // sizes, the provider call, the failure a reader would be asking about —
+      // answer to the same id, instead of to a second one minted in the service.
+      const payload: ApiResponse<StoryIterationPayload> = await generateGenesis(blueprint, { requestId });
 
       logInfo(`Story Lab genesis ${payload.success ? 'succeeded' : 'failed'}`, {
         requestId,
