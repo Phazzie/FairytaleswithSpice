@@ -321,7 +321,13 @@ for (const serialized of [
   // second -- both readings are taken and the later end wins.
   '{"authorization":["Digest realm=\\"tenant]\\"","Bearer abcdef","Bearer ghijkl"]}',
   'payload="{\\"authorization\\":[\\"Digest roles=[admin]\\",\\"Bearer abcdef\\",\\"Bearer ghijkl\\"]}"',
-  '{"authorization":["say \\"hi\\"","Bearer abcdef","Bearer ghijkl"]}'
+  '{"authorization":["say \\"hi\\"","Bearer abcdef","Bearer ghijkl"]}',
+  // Nesting goes deeper than two spellings. Embedding a payload in a string
+  // adds a backslash to every delimiter and more to every literal quote, so a
+  // depth-1 delimiter (`\"`) and a depth-2 one are different lengths, and a
+  // literal quote at depth 1 is spelled exactly like a depth-2 delimiter. The
+  // depth is read off the text rather than guessed.
+  'payload="{\\"authorization\\":[\\"Digest realm=\\\\\\"tenant]\\\\\\"\\",\\"Bearer abcdef\\",\\"Bearer ghijkl\\"]}"'
 ]) {
   const hidden = redactSensitiveLogData({ note: serialized }) as Record<string, string>;
   assert(
@@ -337,17 +343,26 @@ for (const serialized of [
 // string open across the `]`, and runs the span to the end of the log line --
 // which destroys the sentence that follows, the very defect this whole PR is
 // about.
-const afterArray = redactSensitiveLogData({
-  note: '{"authorization":["it\'s fine","Bearer abcdef"]} and the bearer announced victory'
-}) as Record<string, string>;
-assert(
-  afterArray.note.endsWith('} and the bearer announced victory'),
-  `prose after a credential array must survive: ${afterArray.note}`
-);
-assert(
-  !afterArray.note.includes('abcdef'),
-  `the credential inside that array must still be redacted: ${afterArray.note}`
-);
+// The same guard also pins the rule that only a reading which actually reached
+// a `]` may win. A reading run at the wrong nesting depth misreads a delimiter,
+// leaves a quote open and falls off the end of the string; letting that count as
+// "the later end" ran the span across the whole log line and rewrote the
+// sentence after it. An element ending in a literal quote is the shape that
+// exposes it.
+for (const note of [
+  '{"authorization":["it\'s fine","Bearer abcdef"]} and the bearer announced victory',
+  '{"authorization":["ends with a quote\\"","Bearer abcdef"]} and the bearer announced victory'
+]) {
+  const afterArray = redactSensitiveLogData({ note }) as Record<string, string>;
+  assert(
+    afterArray.note.endsWith('} and the bearer announced victory'),
+    `prose after a credential array must survive: ${afterArray.note}`
+  );
+  assert(
+    !afterArray.note.includes('abcdef'),
+    `the credential inside that array must still be redacted: ${afterArray.note}`
+  );
+}
 
 // An array left unterminated by a truncated log is read to the end of the
 // string rather than abandoned, which is the fail-closed direction for a

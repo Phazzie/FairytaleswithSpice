@@ -288,6 +288,46 @@ reading in both cases, and where both are wrong it over-covers rather than
 under-covers — which is the fail-closed direction actually argued for, this
 time by construction rather than by assertion.
 
+**Review round 8 found both halves of round 7's trade were wrong.** Codex
+returned two findings on the same function, in opposite directions:
+
+```
+payload="{\"authorization\":[\"Digest realm=\\\"tenant]\\\"\",\"Bearer abcdef\"]}"
+    -> both readings wrong; credential in the clear
+{"authorization":["ends with a quote\"","Bearer abcdef"]} and the bearer announced victory
+    -> `and the Bearer [REDACTED] victory` -- the prose destroyed
+```
+
+The second is the worse one and it is this PR's own defect, reintroduced by the
+fix for round 7. `Math.max` let a reading that never found a `]` — one that
+misread a delimiter, left a quote open and ran off the end of the string — beat
+a reading that found the right bracket. Round 7 called over-covering the
+fail-closed direction; it is not free, because over-covering is exactly how
+this module destroys prose.
+
+**The ambiguity has one dimension, so it is resolved rather than guessed at.**
+Each embedding of a payload in a string doubles a backslash run and adds one,
+so a delimiter carries 0, 1, 3, 7 … backslashes and never anything else, while
+a literal quote at depth 1 is spelled exactly like a depth-2 delimiter. Round 7
+hard-coded two readings and was beaten by a third. The depth is now read off
+the text: every `2^k - 1` run observed before a quote is tried, and **only a
+reading that actually reached a `]` may win**, the longest of those taking it.
+The end of the string is used only when no reading closed the array at all,
+which is the truncated-log case.
+
+**The scalability check earned its place.** The first version of this collected
+candidate depths by scanning to the end of the string per bracket — quadratic —
+and the guard added in round 5 failed at **63 seconds**. Bounding that scan at
+the first `]` (the array cannot end earlier under any reading, so every
+delimiter length that matters has been seen) brings the suite back to 1.6s,
+faster than before the round.
+
+**Mutation result for round 8: 6 applied, 6 killed.** Letting an unterminated
+reading win (round 7's behaviour), considering depth 0 only, treating any quote
+as a delimiter regardless of depth, letting a delimiter close a quote of a
+different kind, abandoning a truncated array, and removing the bound that keeps
+the candidate scan linear.
+
 **Mutation result for round 7: 4 applied, 4 killed.** Ignoring backslashes only
 (round 6), reading them as escapes only, taking the earlier end rather than the
 later, and an escape that consumes nothing. The first two are the load-bearing

@@ -257,55 +257,120 @@ function findCredentialArraySpans(value: string): Array<{ start: number; end: nu
  * what lets `"it's fine"` keep its apostrophe instead of ending the element on
  * it.
  *
- * **`\"` is genuinely ambiguous here, and one pass cannot resolve it.** In an
- * already-escaped payload (`payload="{\"authorization\":[\"Bearer x\"]}"`) the
- * `\"` pairs *are* the element delimiters. In a plain payload
- * (`["Digest realm=\"tenant]\""]`) the same two characters are a literal quote
- * *inside* an element. The two spellings are identical; only the nesting depth
- * of the serialization tells them apart, and that is not knowable from the
- * `[` onwards.
+ * **A quote's role is ambiguous, and the ambiguity has exactly one dimension.**
+ * Each time a payload is embedded in a string, every delimiter gains a
+ * backslash and every literal quote gains more, so at nesting depth 0 a
+ * delimiter is `"`, at depth 1 it is `\"`, at depth 2 it is `\\\"`. A literal
+ * quote *inside* an element at depth 1 is spelled `\\\"` too -- identical to a
+ * depth-2 delimiter. Nothing local to the `[` says which depth this is.
  *
- * So both readings are taken and **the later end wins**. Reading the backslash
- * as an escape is right for the plain payload; ignoring it is right for the
- * escaped one; and whichever reading is wrong for a given input ends its span
- * *early*, because a misread quote leaves the scan outside a string where it
- * should be inside, and a `]` then closes the array prematurely. Taking the
- * maximum therefore takes the correct reading in both, and where both are
- * wrong it over-covers rather than under-covers.
+ * So the depth is not guessed. Every backslash-run length that actually occurs
+ * before a quote in this region is tried as "the length a delimiter has here",
+ * and the scans are compared. The candidate set comes from the input, so it is
+ * small and it terminates -- unlike enumerating natural-language labels, which
+ * is why that was stopped and this is not.
  *
- * That last point is the correction this function needed: an earlier version
- * ignored backslashes only and claimed the residual failed safe by carrying a
- * string open too long. It does not. The failure runs the other way -- the span
- * ends early and the credential after it is logged in the clear -- which is a
- * leak, not over-redaction. The claim was wrong, so the ambiguity is resolved
- * here rather than tolerated.
+ * **Only a scan that found a real `]` may win.** A scan run at the wrong depth
+ * misreads a delimiter as content, leaves a quote open, and falls off the end
+ * of the string; treating that as "the later end" let a wrong reading beat a
+ * right one and ran the span across the rest of the log. That destroyed the
+ * prose after the array -- the defect this whole module exists to avoid,
+ * reintroduced by an earlier version of this function. Ends that reached a
+ * bracket are therefore preferred, and the longest of *those* wins; the end of
+ * the string is used only when no reading closed the array at all, which is the
+ * truncated-log case the caller's docblock describes.
  *
- * An array the log truncated never closes, so the scan runs off the end and the
- * span covers the remainder -- fail-closed, as the caller's docblock explains.
+ * The correction worth recording: an earlier version claimed this ambiguity
+ * failed safe by carrying a string open too long. It does not. A misread quote
+ * leaves the scan *outside* a string where it should be inside, so the span
+ * ends early and the credential after it is logged in the clear -- a leak. And
+ * the opposite error is not harmless either, as the prose damage above shows.
+ * Neither direction is free, which is why the depth is resolved rather than
+ * assumed.
  */
 function findArrayEnd(value: string, bracket: number): number {
-  return Math.max(
-    scanForArrayEnd(value, bracket, true),
-    scanForArrayEnd(value, bracket, false)
-  );
+  let closed = -1;
+
+  for (const delimiterBackslashes of delimiterDepthCandidates(value, bracket)) {
+    const end = scanForArrayEnd(value, bracket, delimiterBackslashes);
+    if (end < value.length && end > closed) {
+      closed = end;
+    }
+  }
+
+  return closed < 0 ? value.length : closed;
 }
 
-function scanForArrayEnd(value: string, bracket: number, backslashEscapes: boolean): number {
-  let openQuote = '';
+/**
+ * The backslash-run lengths worth trying as a delimiter's, taken from the text
+ * rather than assumed: every run that actually precedes a quote here, plus 0 so
+ * an unescaped payload is always considered.
+ *
+ * Two bounds keep this linear and small, and both are properties of escaping
+ * rather than arbitrary limits.
+ *
+ * **Only `2^k - 1` is a possible delimiter length.** Each embedding doubles a
+ * backslash run and adds one, so a delimiter carries 0, 1, 3, 7 … backslashes
+ * and nothing else. A run of 2 is a literal quote at some depth, never a
+ * delimiter, so trying it would only waste a scan.
+ *
+ * **The scan stops at the first `]`, quoting ignored.** The array cannot end
+ * before that bracket under any reading, so every delimiter length that could
+ * matter has already been seen. Reading to the end of the string instead made
+ * this quadratic -- one full-remainder pass per candidate bracket -- which the
+ * scalability check in `tests/log-redaction.test.ts` caught at 63 seconds.
+ */
+function delimiterDepthCandidates(value: string, bracket: number): Set<number> {
+  const candidates = new Set<number>([0]);
+  let run = 0;
 
   for (let cursor = bracket + 1; cursor < value.length; cursor += 1) {
     const char = value[cursor] ?? '';
-    if (backslashEscapes && char === '\\') {
-      cursor += 1; // whatever it guards is content, never a delimiter
+    if (char === '\\') {
+      run += 1;
       continue;
     }
+    if (isQuote(char) && isEmbeddingDepth(run)) {
+      candidates.add(run);
+    }
+    if (char === ']') {
+      break;
+    }
+    run = 0;
+  }
+
+  return candidates;
+}
+
+/** Is this a run length a delimiter can have -- 0, 1, 3, 7 …? */
+function isEmbeddingDepth(run: number): boolean {
+  return Number.isInteger(Math.log2(run + 1));
+}
+
+/**
+ * Scan for the array's `]`, treating a quote as a delimiter only when exactly
+ * `delimiterBackslashes` backslashes precede it. Any other quote is content.
+ */
+function scanForArrayEnd(value: string, bracket: number, delimiterBackslashes: number): number {
+  let openQuote = '';
+  let run = 0;
+
+  for (let cursor = bracket + 1; cursor < value.length; cursor += 1) {
+    const char = value[cursor] ?? '';
+    if (char === '\\') {
+      run += 1;
+      continue;
+    }
+    const isDelimiter = isQuote(char) && run === delimiterBackslashes;
+    run = 0;
+
     if (openQuote) {
-      if (char === openQuote) {
+      if (isDelimiter && char === openQuote) {
         openQuote = '';
       }
       continue;
     }
-    if (isQuote(char)) {
+    if (isDelimiter) {
       openQuote = char;
       continue;
     }
