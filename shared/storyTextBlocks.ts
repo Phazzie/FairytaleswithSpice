@@ -102,6 +102,45 @@ const BLOCK_BOUNDARY_PATTERN = new RegExp(
 );
 
 /**
+ * A tag's attributes and the `>` that closes the tag, starting just after the
+ * tag name.
+ *
+ * A tag does not end at the first `>` — it ends at the first `>` that is not
+ * inside a quoted attribute value. `[^>]*>` ends it at the first one:
+ *
+ * ```
+ * '<h3 data-x="a>b">Real Title</h3>'.match(/<h3[^>]*>(.*?)<\/h3>/i)[1]
+ *   →  'b">Real Title'      // the attribute remnant becomes the chapter title
+ * ```
+ *
+ * The shape is the unrolled loop: runs of ordinary characters separated by
+ * quoted runs. `[^>"'<]*` and the quote characters that begin each alternative
+ * are disjoint, and a quoted run is never empty, so the engine never has two
+ * ways to divide the same input and each position is decided once — the same
+ * reason `BLOCK_BOUNDARY_PATTERN` above is written the way it is.
+ *
+ * Two bounds keep a scan inside the markup it began in, and one fallback keeps
+ * the reader's words when there is no well-formed reading at all:
+ *
+ * - **A quoted run stops at `<`.** Without that bound an unterminated quote
+ *   searches forward until it finds a quote somewhere in the story text and
+ *   swallows every word in between.
+ * - **The unquoted runs stop at `<` too**, so a malformed tag ends where the
+ *   next one starts, which is what a reader sees.
+ * - **Markup with no well-formed reading falls back to `[^>]*>`**, the older
+ *   scan. So a tag whose quote never closes is read exactly as it was before,
+ *   and this pattern is never worse than the one it replaces — it either reads
+ *   the tag whole or answers identically.
+ *
+ * The bounds have a cost, and it is the documented one: a quoted value that
+ * itself contains a literal `<` has no well-formed reading here and takes the
+ * fallback, leaving the attribute remnant that the fallback always left. That
+ * is unchanged from `[^>]*>` rather than introduced by this pattern.
+ */
+export const TAG_ATTRIBUTES_PATTERN =
+  String.raw`(?:[^>"'<]*(?:(?:"[^"<]*"|'[^'<]*')[^>"'<]*)*>|[^>]*>)`;
+
+/**
  * Drop what is left of the markup once the block boundaries are marked.
  *
  * The character class excludes `<` as well as `>` so that a run of unmatched

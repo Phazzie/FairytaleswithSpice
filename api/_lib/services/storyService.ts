@@ -54,6 +54,7 @@ import {
   getCreatureDisplayName,
   getSpicyLabel,
   stripHtml,
+  stripLeadingChapterHeading,
   stripSpeakerTagsForDisplay
 } from './storyContentAnalysis';
 import {
@@ -1512,7 +1513,7 @@ Write 400-600 words for this chapter. Use HTML: <h3> for chapter title, <p> for 
 
   private renderChapterForAppend(chapter: Pick<Chapter, 'chapterNumber' | 'title' | 'content'>): string {
     const heading = `<h3>Chapter ${chapter.chapterNumber}: ${chapter.title}</h3>`;
-    const sanitizedContent = chapter.content.replace(/^\s*<h3[^>]*>.*?<\/h3>\s*/i, '').trim();
+    const sanitizedContent = stripLeadingChapterHeading(chapter.content);
 
     if (!sanitizedContent) {
       return heading;

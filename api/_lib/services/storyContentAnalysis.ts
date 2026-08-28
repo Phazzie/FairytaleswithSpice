@@ -12,7 +12,11 @@
 import { SpicyLevel, ThemeType } from '../types/contracts';
 import { readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import { readSpiceLevelPromptLabel } from '../../../shared/spiceLevelPromptLadder';
-import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
+import {
+  TAG_ATTRIBUTES_PATTERN,
+  splitStoryIntoTextBlocks,
+  stripStoryHtmlToText
+} from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
 import { wholeWordAlternationPattern, wholeWordPattern } from '../utils/wholeWord';
 
@@ -304,8 +308,24 @@ export function analyzeEmotionalTone(content: string): string {
   return tones.length > 0 ? tones.join(', ') : 'romantic with building tension';
 }
 
+/**
+ * Read the tag whole, so an attribute cannot become part of the chapter title.
+ *
+ * The heading this searches for is the one the generator was asked to emit, and
+ * `[^>]*>` ended it at the first `>` rather than at the tag's own. A `>` inside
+ * a quoted attribute value then left the remnant in group 1, and `stripHtml`
+ * could not remove it because there was no tag left in it to strip — so
+ * `b">Real Title` reached the reader as the title of the chapter. The same
+ * truncation left the rest of the real opening tag in `headingMatch[0]`, and
+ * therefore in the body that is sliced by removing it.
+ */
+const CHAPTER_HEADING_PATTERN = new RegExp(
+  String.raw`<h3${TAG_ATTRIBUTES_PATTERN}(.*?)<\/h3>`,
+  'i'
+);
+
 export function extractChapterTitleAndBody(content: string, chapterNumber: number): { title: string; body: string } {
-  const headingMatch = content.match(/<h3[^>]*>(.*?)<\/h3>/i);
+  const headingMatch = content.match(CHAPTER_HEADING_PATTERN);
   let title = headingMatch ? stripHtml(headingMatch[1]).trim() : '';
 
   if (title.toLowerCase().startsWith(`chapter ${chapterNumber}`)) {
@@ -319,6 +339,39 @@ export function extractChapterTitleAndBody(content: string, chapterNumber: numbe
   const body = headingMatch ? content.replace(headingMatch[0], '').trim() : content.trim();
 
   return { title, body };
+}
+
+/**
+ * Drop a chapter heading the generator already wrote, so a caller can write its
+ * own without the chapter carrying two.
+ *
+ * The second reading of a chapter heading in this repository, and it lives here
+ * beside the first rather than in `storyService`, where it was a second
+ * respelling of `<h3[^>]*>` and reachable only through a model call.
+ *
+ * That `[^>]*>` ended the opening tag at the first `>` rather than at the tag's
+ * own. The lazy `.*?<\/h3>` after it usually recovered — it ran on to the real
+ * `</h3>` and the heading was stripped anyway — so the truncation was invisible
+ * for most markup. It stops recovering the moment a newline falls between the
+ * truncation point and the `</h3>`, because `.` does not match a newline: the
+ * pattern then matches nothing at all and the heading survives untouched.
+ *
+ * ```
+ * stripLeadingChapterHeading('<h3 data-x="a>\nb">Chapter 1: T</h3><p>Body.</p>')
+ *   before : '<h3 data-x="a>\nb">Chapter 1: T</h3><p>Body.</p>'   // whole heading kept
+ *   now    : '<p>Body.</p>'
+ * ```
+ *
+ * Reading the tag whole puts the newline inside the attribute where it belongs,
+ * so there is nothing left for `.` to have to cross.
+ */
+const LEADING_CHAPTER_HEADING_PATTERN = new RegExp(
+  String.raw`^\s*<h3${TAG_ATTRIBUTES_PATTERN}.*?<\/h3>\s*`,
+  'i'
+);
+
+export function stripLeadingChapterHeading(content: string): string {
+  return content.replace(LEADING_CHAPTER_HEADING_PATTERN, '').trim();
 }
 
 /**

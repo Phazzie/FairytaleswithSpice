@@ -23,6 +23,7 @@ import {
   formatChapterContent,
   getCreatureDisplayName,
   getSpicyLabel,
+  stripLeadingChapterHeading,
   stripSpeakerTagsForDisplay
 } from '../api/_lib/services/storyContentAnalysis';
 import { VALIDATION_RULES } from '../api/_lib/types/contracts';
@@ -121,6 +122,94 @@ assert(
 {
   const { title } = extractChapterTitleAndBody('<p>No heading here.</p>', 5);
   assert(title === 'Untitled Chapter 5', `expected a fallback title, got ${JSON.stringify(title)}`);
+}
+
+// A heading ends at its own `>`, not at the first one. `<h3[^>]*>` ended it at
+// the first, so a `>` inside a quoted attribute value left the remnant in the
+// capture group — and `stripHtml` could not remove it, because there was no tag
+// left in it to strip. `b">Real Title` reached the reader as the chapter title.
+{
+  const { title, body } = extractChapterTitleAndBody(
+    '<h3 data-x="a>b">Chapter 4: Real Title</h3><p>Body.</p>',
+    4
+  );
+  assert(title === 'Real Title', `a '>' inside a quoted attribute must not become part of the title, got ${JSON.stringify(title)}`);
+  assert(body === '<p>Body.</p>', `the whole opening tag must leave the body, got ${JSON.stringify(body)}`);
+}
+
+// Single quotes delimit a value the same way double quotes do.
+{
+  const { title } = extractChapterTitleAndBody("<h3 data-x='a>b'>Chapter 4: Real Title</h3><p>Body.</p>", 4);
+  assert(title === 'Real Title', `a single-quoted value must be read the same way, got ${JSON.stringify(title)}`);
+}
+
+// The scan crosses every quoted run in the tag, not only the first.
+{
+  const { title } = extractChapterTitleAndBody('<h3 title="a>b" class="c>d">Chapter 4: Real Title</h3>', 4);
+  assert(title === 'Real Title', `a second quoted value carrying '>' must also be crossed, got ${JSON.stringify(title)}`);
+}
+
+// Markup with no well-formed reading falls back to the older first-`>` scan
+// rather than hunting forward for a closing quote in the story text. Without
+// the fallback an unterminated quote runs until it finds a quote in the prose
+// and takes every word in between.
+{
+  const { title } = extractChapterTitleAndBody('<h3 data-x="a>Chapter 4: Real Title</h3><p>Body.</p>', 4);
+  assert(title === 'Real Title', `an unterminated attribute quote must not consume prose, got ${JSON.stringify(title)}`);
+}
+
+// A quoted run stops at `<`, so it cannot reach into the next tag. This is the
+// documented cost of that bound: a value containing a literal `<` has no
+// well-formed reading and takes the fallback, leaving the remnant the fallback
+// always left. Pinned because it is unchanged from `[^>]*>`, not because it is
+// the answer a browser gives.
+{
+  const { title } = extractChapterTitleAndBody('<h3 data-x="a<b>c">Chapter 4: Real Title</h3>', 4);
+  assert(
+    title === 'c">Chapter 4: Real Title',
+    `a '<' inside a value is a known fallback case and must behave as it did before, got ${JSON.stringify(title)}`
+  );
+}
+
+// ==================== stripLeadingChapterHeading ====================
+// The second reading of a chapter heading. It was `renderChapterForAppend`'s
+// private `[^>]*>` in `storyService`, reachable only through a model call, and
+// had no test at all.
+
+{
+  const stripped = stripLeadingChapterHeading('<h3>Chapter 3: The Deeper Shadows</h3><p>The door creaked open.</p>');
+  assert(stripped === '<p>The door creaked open.</p>', `a plain heading should be stripped, got ${JSON.stringify(stripped)}`);
+}
+
+// Content that does not open with a heading is left alone.
+{
+  const stripped = stripLeadingChapterHeading('<p>No heading here.</p>');
+  assert(stripped === '<p>No heading here.</p>', `content without a leading heading must survive, got ${JSON.stringify(stripped)}`);
+}
+
+// The discriminating case, and the reason this is a defect rather than a
+// tidy-up. `[^>]*>` truncated the opening tag at the `>` inside the attribute;
+// the lazy `.*?<\/h3>` then had to cross a newline to reach the real `</h3>`,
+// which `.` cannot do. The pattern matched nothing, the heading was not
+// stripped, and the caller appended its own heading in front of this one — so
+// the chapter went out carrying two headings, the second of them raw markup.
+{
+  const stripped = stripLeadingChapterHeading('<h3 data-x="a>\nb">Chapter 1: T</h3><p>Body.</p>');
+  assert(stripped === '<p>Body.</p>', `a newline inside a quoted attribute must not defeat the strip, got ${JSON.stringify(stripped)}`);
+}
+
+// The same truncation without the newline: the lazy scan recovers on its own,
+// so this shape was already stripped correctly and must stay that way.
+{
+  const stripped = stripLeadingChapterHeading('<h3 data-x="a>b">Chapter 1: T</h3><p>Body.</p>');
+  assert(stripped === '<p>Body.</p>', `a single-line heading with '>' in an attribute must still strip, got ${JSON.stringify(stripped)}`);
+}
+
+// An unterminated quote takes the fallback rather than hunting forward for a
+// closing quote in the story text.
+{
+  const stripped = stripLeadingChapterHeading('<h3 data-x="a>Chapter 1: T</h3><p>Body.</p>');
+  assert(stripped === '<p>Body.</p>', `an unterminated attribute quote must not consume the body, got ${JSON.stringify(stripped)}`);
 }
 
 // ==================== createContextExcerpt ====================
