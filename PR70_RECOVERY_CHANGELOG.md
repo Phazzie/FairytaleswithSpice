@@ -63,6 +63,34 @@ Not claimed:
 - **No evidence this happens in production output.** The generator is not prompted to emit attributes on story markup at all, so a `>` inside one needs the model to volunteer both. Worth fixing because the corruption is silent and reaches measurements rather than because it has been observed — the same standing as the three rows before it.
 - **The residual disagreement with `parse5` is unchanged, not fixed.** New still leaks or deletes characters on 401,379 of the 1.79M blank-line fragments; the remainder is this module doing what it is documented to do — deleting the span between a `<` and a `>` in prose — and old does the same on every one of them and on 502,279 more.
 - **Three review rounds have each found a defect the round before called impossible.** Nothing here says the fourth would find none; what it says is that each round's evidence was scoped to shapes the previous round had thought of, and the current numbers are worth exactly the dimensions the enumeration varies: carrier, alphabet, and length.
+## 2026-08-28 UTC - The Export Tokenizer Ended a Comment Only at `-->` (the row #306 recorded and deferred)
+
+Actions:
+
+- Moved `findCommentEnd` out of `storyContentAnalysis.ts` into `shared/htmlTagScanner.ts`, beside the tag reading moved there by #306, and pointed `tokenizeHtml` at it. `storyContentAnalysis.ts` imports it back; its behaviour is unchanged, which `tests/chapter-heading-reader.test.ts` and `tests/story-content-analysis.test.ts` say by passing untouched.
+- Added a comment-terminator section to `tests/export-sanitizer.test.ts`: the four terminators through both export paths, a comment body that still may not leak whichever spelling closes it, an enumeration of every comment body of length 0..6 over `{- ! > < a}` against a WHATWG transcription, and linearity guards at 40,000 characters.
+
+The defect repaired:
+
+- `tokenizeHtml` searched for `-->` alone and `break`s when it finds none, so `stripStoryHtmlForExport('<p>Alpha.</p><!--><p>Beta.</p>')` returned `Alpha.` — **the rest of the story dropped from every export format**. HTML closes a comment in four places: `-->`, the abrupt closing of an empty comment (`<!-->` and `<!--->`, ending at that `>`), and the comment-end-bang `--!>`. Three of the four were read as a comment that never ends. `.txt`, `.pdf`, `.epub` and `.docx` all reach this through `ExportService.toPlainText`; `.html` reaches it through `sanitizeStoryHtmlForExport`.
+- This was found in the course of #306, recorded on #296 rather than repaired there — it would have widened a PR three review rounds deep into a different defect, and it wanted its own tests against the export corpora rather than tests written for chapter titles.
+
+Decisions:
+
+- **Moved, not respelled.** The defect *was* two readers in adjacent files disagreeing about where a comment ends: #306 gave the chapter reader all four terminators while the tokenizer it sits beside kept one. A second spelling is what opened the gap.
+- **`eof-in-comment` still takes the rest of the document.** A browser hides the remainder too, so there is no story after it to keep — the one reading where dropping the rest is correct. The pre-existing assertion saying so is kept and now has a plain-text companion.
+- **The four `<!--`-inside-a-comment states are not spelled out**, because each reconsumes in the comment-end state the `--` already reaches. That is a claim about the spec, so it is measured rather than argued: `<` and `!` are in the enumeration's alphabet and the two readings agree on all 19,531 bodies.
+
+Validation:
+
+- `npm run test:all` exits 0. API function typecheck clean under preflight's exact command; `story-generator/tsconfig.app.json` clean, which compiles `shared/` via `../shared/**/*.ts`; Vercel function count 8/12 unchanged; `git diff --check` clean.
+- **Six counterfactual mutations**, each confirmed failing a suite and reverted: each of the three terminator branches removed, the dash scan advanced past the pair rather than one character into it (which loses `--->`), the tokenizer's old `+3` offset kept, and the unterminated-comment stop removed.
+- Linearity measured rather than assumed, at 20,000 and 40,000 repeats on dashes, dash pairs, comment-end-bangs and nested comment opens: ratios at or below 2.1× for 2× input.
+
+Not claimed:
+
+- No evidence this is happening in production output. The generator is not prompted to emit comments at all. Worth fixing because the loss is silent and total — the document is well-formed and merely short, so nothing downstream can notice it.
+- `tokenizeHtml` still has no raw-text awareness, so a `<!--` written inside a `<script>` or `<textarea>` body is read as a comment where a browser reads it as text. `removeNonStoryHtml` drops those elements' contents by a separate skip mechanism, so this is unchanged by this slice and is not a new gap; it is left for the row of #296 that touches raw text.
 
 ## 2026-08-28 UTC - The Two Chapter-Heading Readers Call the Scanner (rows 1 and 2 of #296)
 

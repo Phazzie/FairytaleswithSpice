@@ -51,12 +51,15 @@ export function tokenizeHtml(value: string): string[] {
     // Comments are dropped whole: their body is markup, not story prose, so it
     // must never be scanned for tags or emitted as visible text.
     if (value.startsWith('<!--', tagStart)) {
-      const commentEnd = value.indexOf('-->', tagStart + 4);
+      const commentEnd = findCommentEnd(value, tagStart);
+      // Nothing closes it, so the rest of the content is inside the comment —
+      // which is what a browser shows too, so there is no story after it to
+      // keep. This is the one reading where dropping the remainder is right.
       if (commentEnd === -1) {
         break;
       }
 
-      index = commentEnd + 3;
+      index = commentEnd;
       continue;
     }
 
@@ -71,6 +74,65 @@ export function tokenizeHtml(value: string): string[] {
   }
 
   return tokens;
+}
+
+/**
+ * Where the comment opening at `tagStart` ends — the index just past it — or
+ * `-1` if nothing closes it.
+ *
+ * Three spellings close a comment, not one. `-->` is the ordinary terminator;
+ * `<!-->` and `<!--->` are HTML's *abrupt closing of an empty comment*, ending
+ * at that `>`; and `--!>` is the comment-end-bang state. Only an EOF reached
+ * with none of them seen leaves a comment genuinely unterminated, and there a
+ * browser really does hide the rest of the document.
+ *
+ * Searching for `-->` alone therefore read the other three as comments that
+ * never end, and `tokenizeHtml` abandons the scan at one of those — so
+ * `<p>Alpha.</p><!--><p>Beta.</p>` exported as `Alpha.`, dropping the rest of
+ * the story from **every** format. `stripStoryHtmlForExport` feeds
+ * `ExportService.toPlainText`, which `.txt`, `.pdf`, `.epub` and `.docx` all go
+ * through, and `sanitizeStoryHtmlForExport` carries the same reading into
+ * `.html`. The three spellings are what a browser ends a comment at, so
+ * everything after one is text a reader is shown and was silently losing.
+ *
+ * Moved here from `storyContentAnalysis.ts`, which had it for the chapter
+ * heading reader (#306) while the tokenizer beside it still read `-->` alone.
+ * One reader, for the same reason the tag reading is here: the two disagreeing
+ * about where a comment ends is exactly the defect this repairs.
+ */
+export function findCommentEnd(value: string, tagStart: number): number {
+  const bodyStart = tagStart + 4;
+
+  if (value[bodyStart] === '>') {
+    return bodyStart + 1;
+  }
+
+  if (value.startsWith('->', bodyStart)) {
+    return bodyStart + 2;
+  }
+
+  let index = bodyStart;
+
+  while (index < value.length) {
+    const dashes = value.indexOf('--', index);
+    if (dashes === -1) {
+      return -1;
+    }
+
+    if (value[dashes + 2] === '>') {
+      return dashes + 3;
+    }
+
+    if (value.startsWith('!>', dashes + 2)) {
+      return dashes + 4;
+    }
+
+    // One character on rather than past the pair: `--->` closes, and its `>`
+    // follows the *second* and third dash rather than the first two.
+    index = dashes + 1;
+  }
+
+  return -1;
 }
 
 /**
