@@ -1,0 +1,233 @@
+#!/usr/bin/env tsx
+// Created: 2026-08-28 UTC
+
+/**
+ * The chapter-generation loops never checked the invocation's own function
+ * budget before starting another chapter.
+ *
+ * `xaiConfig.ts` built `getRemainingRequestBudgetMs` against the 60-second
+ * ceiling Vercel kills a function at, and it was wired into exactly two
+ * places: `XaiTextClient`'s fast-profile retry and continuity extraction. The
+ * chapter loops in `generateChaptersForStory` (genesis) and `continueChapter`
+ * called the AI for up to three chapters with a fixed `EXTRA_BATCH_CHAPTER_TIMEOUT_MS`
+ * on every chapter after the first, whatever the invocation had already spent.
+ * If the first chapter needed its own fallback retry — realistic for a live
+ * provider — it alone could burn most of the 60-second window, and the loop
+ * started the next chapter anyway with a fresh timeout the platform would
+ * never let finish. That is not a catchable failure: a platform-level
+ * termination kills the process mid-await, so the job-completion path never
+ * runs and a durable job is left at `status: 'running'` forever.
+ *
+ * These tests drive a fake clock through `Date.now` so the "chapter 1 spent
+ * most of the budget" scenario does not require an actual 55-second wait, and
+ * assert that the loop now stops itself before a doomed chapter rather than
+ * attempting one.
+ */
+
+import assert from 'node:assert/strict';
+import { StoryService } from '../api/_lib/services/storyService';
+import { XaiTextClient, type XaiTextRequest, type XaiTextResponse } from '../api/_lib/services/xaiTextClient';
+
+function withFakeClock<T>(fn: (advance: (ms: number) => void) => Promise<T>): Promise<T> {
+  const originalDateNow = Date.now;
+  let fakeNow = 1_700_000_000_000;
+  Date.now = () => fakeNow;
+
+  const advance = (ms: number) => {
+    fakeNow += ms;
+  };
+
+  return fn(advance).finally(() => {
+    Date.now = originalDateNow;
+  });
+}
+
+function withEnv<T>(overrides: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> {
+  const originals = Object.fromEntries(Object.keys(overrides).map(name => [name, process.env[name]]));
+
+  for (const [name, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  }
+
+  return fn().finally(() => {
+    for (const [name, value] of Object.entries(originals)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  });
+}
+
+function storyInput(requestedChapterCount: 1 | 2 | 3) {
+  return {
+    creature: 'vampire' as const,
+    themes: ['forbidden_love'],
+    userInput: '',
+    spicyLevel: 3 as const,
+    wordCount: 700 as const,
+    requestedChapterCount
+  };
+}
+
+function continuationInput(requestedChapterCount: 1 | 2 | 3) {
+  return {
+    storyId: 'story_9f1c0e3a-2b44-4f2e-9c3d-6a7b8c9d0e1f',
+    currentChapterCount: 1,
+    existingContent: '<p>She opened the door.</p>',
+    maintainTone: true,
+    requestedChapterCount
+  };
+}
+
+async function assertGenesisSkipsChaptersItCannotFinish(): Promise<void> {
+  const originalGenerateText = XaiTextClient.prototype.generateText;
+  const capturedTimeouts: number[] = [];
+
+  await withEnv({
+    XAI_API_KEY: 'test-xai-key',
+    STORY_LAB_FUNCTION_BUDGET_MS: undefined,
+    FUNCTION_BUDGET_MS: undefined
+  }, () =>
+    withFakeClock(async advance => {
+      let calls = 0;
+      XaiTextClient.prototype.generateText = async function (request: XaiTextRequest): Promise<XaiTextResponse> {
+        calls += 1;
+        capturedTimeouts.push(request.timeoutMs);
+        if (calls === 1) {
+          // Chapter 1 needing its fallback retry is what actually burns the
+          // budget in production; advancing the fake clock stands in for that
+          // without a real 56-second wait.
+          advance(56000);
+        }
+        return { text: `Chapter ${calls}\n\nSomething happened.`, model: 'grok-4.3', latencyMs: 0 };
+      };
+
+      try {
+        const result = await new StoryService().generateStory(storyInput(3));
+
+        assert.equal(result.success, true, 'a batch with one working chapter should still succeed overall');
+        assert.equal(calls, 1, 'only the first chapter should have been attempted once its budget was gone');
+        assert.equal(result.data?.chapters?.length, 1, 'only the first chapter should be in the result');
+        assert.equal(
+          result.metadata.partialFailures?.length,
+          2,
+          `chapters 2 and 3 should be recorded as skipped (got ${JSON.stringify(result.metadata.partialFailures)})`
+        );
+        assert.deepEqual(
+          result.metadata.partialFailures?.map(failure => failure.chapterNumber),
+          [2, 3],
+          'the skipped failures should name exactly the chapters that were never attempted'
+        );
+        assert(
+          result.metadata.partialFailures?.every(failure => failure.message.toLowerCase().includes('skipped')),
+          'a chapter stopped for want of budget should say so, not report a generic failure'
+        );
+      } finally {
+        XaiTextClient.prototype.generateText = originalGenerateText;
+      }
+    })
+  );
+}
+
+async function assertContinuationSkipsChaptersItCannotFinish(): Promise<void> {
+  const originalGenerateText = XaiTextClient.prototype.generateText;
+
+  await withEnv({
+    XAI_API_KEY: 'test-xai-key',
+    STORY_LAB_FUNCTION_BUDGET_MS: undefined,
+    FUNCTION_BUDGET_MS: undefined
+  }, () =>
+    withFakeClock(async advance => {
+      let calls = 0;
+      XaiTextClient.prototype.generateText = async function (): Promise<XaiTextResponse> {
+        calls += 1;
+        if (calls === 1) {
+          advance(56000);
+        }
+        return { text: `Continuation ${calls}\n\nSomething else happened.`, model: 'grok-4.3', latencyMs: 0 };
+      };
+
+      try {
+        const result = await new StoryService().continueChapter(continuationInput(3));
+
+        assert.equal(result.success, true, 'a continuation batch with one working chapter should still succeed overall');
+        assert.equal(calls, 1, 'only the first continuation chapter should have been attempted');
+        assert.equal(result.data?.chapters?.length, 1, 'only the first continuation chapter should be in the result');
+        assert.deepEqual(
+          result.metadata.partialFailures?.map(failure => failure.chapterNumber),
+          [3, 4],
+          `the skipped continuation chapters keep numbering from where the batch left off (got ${JSON.stringify(result.metadata.partialFailures)})`
+        );
+      } finally {
+        XaiTextClient.prototype.generateText = originalGenerateText;
+      }
+    })
+  );
+}
+
+/**
+ * A chapter that still has room to run should have that room reflected in its
+ * own timeout rather than always spending the static
+ * `EXTRA_BATCH_CHAPTER_TIMEOUT_MS` ceiling, so a chapter given, say, 7 seconds
+ * of remaining budget is not handed a 9-second timeout the platform will cut
+ * off from underneath it.
+ */
+async function assertBatchChapterTimeoutIsCappedByRemainingBudget(): Promise<void> {
+  const originalGenerateText = XaiTextClient.prototype.generateText;
+  const capturedTimeouts: number[] = [];
+
+  await withEnv({
+    XAI_API_KEY: 'test-xai-key',
+    STORY_LAB_FUNCTION_BUDGET_MS: undefined,
+    FUNCTION_BUDGET_MS: undefined,
+    XAI_STORY_FAST_TIMEOUT_MS: undefined,
+    XAI_FAST_TIMEOUT_MS: undefined
+  }, () =>
+    withFakeClock(async advance => {
+      let calls = 0;
+      XaiTextClient.prototype.generateText = async function (request: XaiTextRequest): Promise<XaiTextResponse> {
+        calls += 1;
+        capturedTimeouts.push(request.timeoutMs);
+        if (calls === 1) {
+          // Leaves 60000 - 48000 - 5000 (reserve) = 7000ms of budget, less
+          // than the static 9000ms ceiling but well above the floor needed to
+          // attempt another chapter at all.
+          advance(48000);
+        }
+        return { text: `Chapter ${calls}\n\nSomething happened.`, model: 'grok-4.3', latencyMs: 0 };
+      };
+
+      try {
+        const result = await new StoryService().generateStory(storyInput(2));
+
+        assert.equal(result.success, true, 'both chapters should still fit inside the remaining budget');
+        assert.equal(calls, 2, 'the second chapter should still be attempted with a shortened timeout');
+        assert(
+          capturedTimeouts[1] > 0 && capturedTimeouts[1] <= 7000,
+          `the second chapter's timeout should be capped to the ~7000ms remaining budget (got ${capturedTimeouts[1]})`
+        );
+      } finally {
+        XaiTextClient.prototype.generateText = originalGenerateText;
+      }
+    })
+  );
+}
+
+async function main(): Promise<void> {
+  await assertGenesisSkipsChaptersItCannotFinish();
+  await assertContinuationSkipsChaptersItCannotFinish();
+  await assertBatchChapterTimeoutIsCappedByRemainingBudget();
+
+  console.log('Story service batch chapter budget tests passed');
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

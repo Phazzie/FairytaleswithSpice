@@ -32,8 +32,8 @@ import { CliffhangerService, hasIdentifiedCliffhangerType } from './cliffhangerS
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
 import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 import { estimateReadTimeMinutes } from '../utils/readTime';
-import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
-import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
+import { getRemainingRequestBudgetMs, getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
+import { MIN_XAI_FALLBACK_TIMEOUT_MS, XaiTextClient, type XaiTextResponse } from './xaiTextClient';
 import {
   analyzeEmotionalTone,
   countWords,
@@ -84,6 +84,13 @@ interface ChapterGenerationOptions {
   totalChapters: number;
   existingContent?: string;
   preferFastModel?: boolean;
+  /**
+   * What is left of the invocation's own window, for a batch chapter's timeout
+   * to fit inside rather than assume it has the full static allowance. Absent
+   * for the batch's first chapter, which always gets the full primary timeout
+   * this cap would otherwise shrink.
+   */
+  remainingBudgetMs?: number;
 }
 
 interface GeneratedChaptersResult {
@@ -271,7 +278,7 @@ export class StoryService {
         aggregatedHtml,
         aggregatedRawHtml,
         aiMetadata
-      } = await this.generateChaptersForStory(sanitizedInput, requestedChapterCount, tropeSelection, context);
+      } = await this.generateChaptersForStory(sanitizedInput, requestedChapterCount, tropeSelection, context, startTime);
 
       if (chapters.length === 0) {
         return {
@@ -376,7 +383,8 @@ export class StoryService {
     input: StoryGenerationSeam['input'],
     requestedChapterCount: number,
     tropeSelection: TropeSelection | undefined,
-    context: LogContext
+    context: LogContext,
+    requestStartedAtMs: number
   ): Promise<GeneratedChaptersResult> {
     const chapters: Chapter[] = [];
     const failedChapters: ChapterFailure[] = [];
@@ -385,6 +393,23 @@ export class StoryService {
     let aiMetadata: AiCallMetadata | undefined;
 
     for (let chapterNumber = 1; chapterNumber <= requestedChapterCount; chapterNumber++) {
+      // Only the batch's first chapter is exempt: it already runs on the full
+      // primary timeout and its own fallback retry, so there is nothing left
+      // to check the window against before it starts. Every chapter after it
+      // is optional relative to the invocation's own deadline — attempting one
+      // that cannot finish risks a platform SIGKILL neither this loop nor
+      // `runJobWork` above it can catch, rather than the ordinary chapter
+      // failure this ends with instead.
+      if (chapterNumber > 1 && !this.hasBudgetForAnotherChapter(requestStartedAtMs)) {
+        logWarn('Stopping chapter batch early: insufficient time remaining in the request budget', context, {
+          nextChapterNumber: chapterNumber,
+          requestedChapterCount,
+          remainingBudgetMs: getRemainingRequestBudgetMs(requestStartedAtMs)
+        });
+        failedChapters.push(...this.skippedChapterFailures(chapterNumber, requestedChapterCount));
+        break;
+      }
+
       try {
         const generatedText = await this.callGrokAI(
           input,
@@ -395,7 +420,8 @@ export class StoryService {
                 chapterNumber,
                 totalChapters: requestedChapterCount,
                 existingContent: aggregatedRawHtml,
-                preferFastModel: chapterNumber > 1
+                preferFastModel: chapterNumber > 1,
+                remainingBudgetMs: chapterNumber > 1 ? getRemainingRequestBudgetMs(requestStartedAtMs) : undefined
               }
             : undefined
         );
@@ -527,6 +553,22 @@ export class StoryService {
       for (let offset = 1; offset <= requestedChapterCount; offset++) {
         const chapterNumber = workingChapterCount + 1;
 
+        // See the matching check in `generateChaptersForStory`: only the
+        // batch's first chapter is exempt, and stopping here is what keeps a
+        // chapter that cannot finish from risking an uncatchable platform
+        // SIGKILL instead of the ordinary partial-failure this ends with.
+        if (offset > 1 && !this.hasBudgetForAnotherChapter(startTime)) {
+          logWarn('Stopping continuation batch early: insufficient time remaining in the request budget', context, {
+            nextChapterNumber: chapterNumber,
+            requestedChapterCount,
+            remainingBudgetMs: getRemainingRequestBudgetMs(startTime)
+          });
+          failedChapters.push(
+            ...this.skippedChapterFailures(chapterNumber, chapterNumber + (requestedChapterCount - offset))
+          );
+          break;
+        }
+
         try {
           const generatedText = await this.callGrokAIForContinuation(
             { ...sanitizedInput, currentChapterCount: workingChapterCount },
@@ -535,7 +577,8 @@ export class StoryService {
               chapterNumber,
               totalChapters: requestedChapterCount,
               existingContent: aggregatedRawHtml,
-              preferFastModel: offset > 1
+              preferFastModel: offset > 1,
+              remainingBudgetMs: offset > 1 ? getRemainingRequestBudgetMs(startTime) : undefined
             }
           );
           aiMetadata = this.mergeAiMetadata(aiMetadata, generatedText.aiMetadata);
@@ -677,6 +720,54 @@ export class StoryService {
     }
   }
 
+  /**
+   * A batch chapter's own timeout has to fit inside what the invocation
+   * actually has left, not just the static floor `EXTRA_BATCH_CHAPTER_TIMEOUT_MS`
+   * assumed was always available. `remainingBudgetMs` is undefined for the
+   * batch's first chapter (which is never budget-capped this way), so the
+   * static floor is the answer whenever there is nothing narrower to apply.
+   */
+  private resolveBatchChapterTimeoutMs(remainingBudgetMs: number | undefined): number {
+    const cappedByFastTimeout = Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS);
+
+    return remainingBudgetMs === undefined
+      ? cappedByFastTimeout
+      : Math.min(cappedByFastTimeout, remainingBudgetMs);
+  }
+
+  /**
+   * Whether the invocation has enough of its window left to start another
+   * batch chapter at all. Below this floor a call is not merely tight, it
+   * cannot finish before the platform kills the whole function — a
+   * termination `runJobWork`'s try/catch cannot see, since the process is
+   * gone mid-await rather than throwing. Reusing the fast-profile retry's own
+   * floor keeps this the one answer to "is there enough time left to start a
+   * fast-profile Grok call", asked from two different callers.
+   */
+  private hasBudgetForAnotherChapter(requestStartedAtMs: number): boolean {
+    return getRemainingRequestBudgetMs(requestStartedAtMs) >= MIN_XAI_FALLBACK_TIMEOUT_MS;
+  }
+
+  /**
+   * The failures for every chapter number from `fromChapterNumber` through
+   * `requestedChapterCount`, recorded as skipped rather than attempted. Used
+   * when the loop stops itself for want of budget instead of after a call
+   * actually failed, so a partial batch still accounts for every chapter the
+   * caller asked for.
+   */
+  private skippedChapterFailures(fromChapterNumber: number, requestedChapterCount: number): ChapterFailure[] {
+    const skipped: ChapterFailure[] = [];
+
+    for (let chapterNumber = fromChapterNumber; chapterNumber <= requestedChapterCount; chapterNumber++) {
+      skipped.push({
+        chapterNumber,
+        message: 'Skipped: insufficient time remaining in this request to safely generate this chapter'
+      });
+    }
+
+    return skipped;
+  }
+
   private async callGrokAI(
     input: StoryGenerationSeam['input'],
     context?: LogContext,
@@ -722,14 +813,14 @@ export class StoryService {
         temperature: 0.8,
         topP: 0.95,
         timeoutMs: chapterOptions?.preferFastModel
-          ? Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS)
+          ? this.resolveBatchChapterTimeoutMs(chapterOptions.remainingBudgetMs)
           : getXaiPrimaryTimeoutMs(),
         fallbackTimeoutMs: getXaiFastTimeoutMs(),
         modelPreference,
         allowFallback: !chapterOptions?.preferFastModel,
         context
       });
-      
+
       logPerformance('Grok API call', response.latencyMs, {
         ...context,
         promptTokens: response.usage?.inputTokens,
@@ -793,7 +884,7 @@ export class StoryService {
         temperature: 0.8,
         topP: 0.95,
         timeoutMs: chapterOptions?.preferFastModel
-          ? Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS)
+          ? this.resolveBatchChapterTimeoutMs(chapterOptions.remainingBudgetMs)
           : getXaiPrimaryTimeoutMs(),
         fallbackTimeoutMs: getXaiFastTimeoutMs(),
         modelPreference,
