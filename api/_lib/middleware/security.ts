@@ -25,6 +25,18 @@ export interface AuthResult {
   };
 }
 
+/** The environment variable the configured keys are read from. */
+const API_KEYS_ENVIRONMENT_VARIABLE = 'API_KEYS';
+
+/**
+ * The `endpoint` label every log entry about the key configuration carries.
+ *
+ * One declaration rather than a copy per call site: the four entries below are
+ * meant to be filterable as one group by an operator reading the log, which a
+ * typo in any one of them would silently break.
+ */
+const API_KEY_CONFIGURATION_LOG_ENDPOINT = 'authenticateRequest';
+
 /**
  * The shortest `API_KEYS` entry that may be used as a credential.
  *
@@ -34,8 +46,9 @@ export interface AuthResult {
  * key is the sole authentication for routes that spend real money on the xAI
  * API, so the floor is set where an API key's floor usually is rather than at
  * the weakest value that is still technically a secret: sixteen characters of
- * {@link API_KEY_CREDENTIAL_ALPHABET} is roughly ninety-five bits, and the
- * eight-character values a person actually types by hand are not.
+ * {@link API_KEY_CREDENTIAL_GRAMMAR}'s alphabet is roughly ninety-five bits, and
+ * the eight-character values a person actually types by hand are not. Measured
+ * on the token body — see {@link credentialBodyOf}, since padding is not secret.
  *
  * Exported so a test can assert the boundary against the contract instead of
  * against a copy of the number, and so anything else that needs to reason about
@@ -160,10 +173,11 @@ function partitionConfiguredApiKeys(entries: string[]): {
  * To enable authentication, set API_KEYS environment variable:
  * API_KEYS=sk-live-9f3c2a71b40e,sk-live-2d81ff60ac95
  *
- * Each entry must satisfy {@link API_KEY_MINIMUM_LENGTH} and
- * {@link API_KEY_CREDENTIAL_ALPHABET}; entries that do not are refused rather
- * than trusted. If every configured entry is refused the deployment fails
- * closed — it does not fall back to the unconfigured development mode.
+ * Each entry must satisfy {@link API_KEY_CREDENTIAL_GRAMMAR} and carry at least
+ * {@link API_KEY_MINIMUM_LENGTH} characters of token body; entries that do not
+ * are refused rather than trusted. If every configured entry is refused — or
+ * `API_KEYS` holds no entry at all while being set to something — the
+ * deployment fails closed rather than falling back to development mode.
  *
  * @param req - Request object
  * @returns Authentication result with user ID if successful
@@ -177,7 +191,7 @@ export async function authenticateRequest(req: AuthenticatedRequest): Promise<Au
   // mode" fallback reachable only by a caller that happened to send some key
   // anyway; the one request shape this module exists to let through when
   // unconfigured was the one shape it never actually let through.
-  const rawApiKeys = process.env['API_KEYS'];
+  const rawApiKeys = process.env[API_KEYS_ENVIRONMENT_VARIABLE];
   const configuredEntries = (rawApiKeys || '')
     .split(',')
     .map(k => k.trim())
@@ -296,8 +310,8 @@ function noteApiKeyConfiguration(
     // message names no value — the point is that there is none to name.
     logWarn(
       'No API keys are configured; every request is being served as the development user.',
-      { endpoint: 'authenticateRequest' },
-      { environmentVariable: 'API_KEYS' }
+      { endpoint: API_KEY_CONFIGURATION_LOG_ENDPOINT },
+      { environmentVariable: API_KEYS_ENVIRONMENT_VARIABLE }
     );
     return;
   }
@@ -311,8 +325,8 @@ function noteApiKeyConfiguration(
     logError(
       'API_KEYS is set but contains no key; all authenticated routes are refusing every request.',
       undefined,
-      { endpoint: 'authenticateRequest' },
-      { environmentVariable: 'API_KEYS', configuredCount: 0, usableCount: 0 }
+      { endpoint: API_KEY_CONFIGURATION_LOG_ENDPOINT },
+      { environmentVariable: API_KEYS_ENVIRONMENT_VARIABLE, configuredCount: 0, usableCount: 0 }
     );
     return;
   }
@@ -325,7 +339,7 @@ function noteApiKeyConfiguration(
   // in this module where a rejected entry could plausibly be written down, and a
   // rejected entry is still a value the operator believed was a credential.
   const metadata = {
-    environmentVariable: 'API_KEYS',
+    environmentVariable: API_KEYS_ENVIRONMENT_VARIABLE,
     configuredCount,
     usableCount,
     rejectedCount: rejections.length,
@@ -342,7 +356,7 @@ function noteApiKeyConfiguration(
     logError(
       'Every configured API key is unusable; all authenticated routes are refusing every request.',
       undefined,
-      { endpoint: 'authenticateRequest' },
+      { endpoint: API_KEY_CONFIGURATION_LOG_ENDPOINT },
       metadata
     );
     return;
@@ -350,7 +364,7 @@ function noteApiKeyConfiguration(
 
   logWarn(
     'Some configured API keys are unusable and cannot authenticate a request.',
-    { endpoint: 'authenticateRequest' },
+    { endpoint: API_KEY_CONFIGURATION_LOG_ENDPOINT },
     metadata
   );
 }
