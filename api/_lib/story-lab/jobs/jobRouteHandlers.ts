@@ -725,8 +725,14 @@ async function loadAuthenticatedContentBoundaries(
  * reader gate it never actually asked for. Only `noGoContent` — the free-text
  * field this is the profile-wide counterpart of — is touched, joined onto
  * whatever the request itself already carried rather than replacing it.
+ *
+ * Exported so the value the prompt is actually built from can be asserted on
+ * directly, the way `buildSceneDescriptionFromStory` is: the widest merge this
+ * produces is what the prompt's bound on that field is measured against, and
+ * reconstructing the join in a test would prove the bound against a string this
+ * function does not build.
  */
-function withMergedContentBoundaries(
+export function withMergedContentBoundaries(
   heatContract: HeatContract,
   contentBoundaries: string | undefined
 ): HeatContract {

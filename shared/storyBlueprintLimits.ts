@@ -180,6 +180,39 @@ export const STORY_LAB_PROFILE_LIMITS = {
 export type StoryLabProfileLimits = typeof STORY_LAB_PROFILE_LIMITS;
 
 /**
+ * The widest a no-go list can honestly be by the time a prompt reads it.
+ *
+ * The two caps above bound two *sources*, and `withMergedContentBoundaries` on
+ * the job route puts both of them in one field: it joins a reader's
+ * profile-wide `contentBoundaries` onto the request's own `noGoContent` with a
+ * newline, so the value that reaches the prompt is legitimately as wide as both
+ * caps and the separator between them.
+ *
+ * Measuring the merged field against one source's cap is not a tighter bound —
+ * it is a silent deletion of the second source. A request whose own no-go list
+ * already fills `maxNoGoContentLength` merges to 641 characters, of which a
+ * 320-character cut keeps the request's half and **none** of the profile's: the
+ * reader's standing boundaries are dropped in full, at the last step before the
+ * model, having survived every check before it.
+ *
+ * Which is the outcome `describeOversizedStoryLabProfileField` refuses to allow
+ * at the route it guards, in as many words — that field is "refused rather than
+ * truncated", because `noGoContent` and `contentBoundaries` "say what a reader
+ * does not want written; a silently shortened list of those is a shortened set
+ * of constraints, and the reader would have no way to see that the end of
+ * theirs had been dropped." Truncating the merge is that same shortening, one
+ * seam later and past the point where anything could report it.
+ *
+ * Derived rather than chosen, so it cannot drift from the two caps it is the
+ * sum of: each source at its own limit, plus the one newline the merge writes
+ * between them.
+ */
+export const STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH =
+  STORY_LAB_PROFILE_LIMITS.maxNoGoContentLength
+  + 1
+  + STORY_LAB_PROFILE_LIMITS.maxContentBoundariesLength;
+
+/**
  * The size limits an image generation request has to satisfy.
  *
  * `imagePrompt` is the last free-text field in this repository that reaches a
