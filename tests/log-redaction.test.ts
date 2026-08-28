@@ -312,7 +312,16 @@ for (const serialized of [
   // apostrophe inside a double-quoted element does not end it, and a
   // single-quoted serialization is read the same way as a double-quoted one.
   '{"authorization":["it\'s fine","Bearer abcdef","Bearer ghijkl"]}',
-  "{'authorization': ['Digest roles=[admin]', 'Bearer abcdef', 'Bearer ghijkl']}"
+  "{'authorization': ['Digest roles=[admin]', 'Bearer abcdef', 'Bearer ghijkl']}",
+  // `\"` is the same two characters in two serializations that need opposite
+  // readings, and the pair below is the proof. In the first it is a literal
+  // quote *inside* an element, so the `]` after it is content; in the second it
+  // is the element delimiter itself, so the `]` after it closes the array.
+  // Reading the backslash one way leaks the first, the other way leaks the
+  // second -- both readings are taken and the later end wins.
+  '{"authorization":["Digest realm=\\"tenant]\\"","Bearer abcdef","Bearer ghijkl"]}',
+  'payload="{\\"authorization\\":[\\"Digest roles=[admin]\\",\\"Bearer abcdef\\",\\"Bearer ghijkl\\"]}"',
+  '{"authorization":["say \\"hi\\"","Bearer abcdef","Bearer ghijkl"]}'
 ]) {
   const hidden = redactSensitiveLogData({ note: serialized }) as Record<string, string>;
   assert(

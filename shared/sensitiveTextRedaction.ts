@@ -255,26 +255,50 @@ function findCredentialArraySpans(value: string): Array<{ start: number; end: nu
  *
  * A quote is closed only by **the same character that opened it**, which is
  * what lets `"it's fine"` keep its apostrophe instead of ending the element on
- * it. Backslashes are deliberately *not* read as escapes: in the already-escaped
- * payload of round 3 (`payload="{\"authorization\":[\"Bearer x\"]}"`) the `\"`
- * pairs *are* the element delimiters, so treating the backslash as an escape
- * would leave the scan permanently outside a string there.
+ * it.
  *
- * The residual that trade leaves, stated rather than implied: an element
- * carrying a genuinely escaped quote (`"say \"hi\""`) desynchronises the
- * tracking, since this cannot tell that spelling from the escaped-payload one.
- * The scan re-synchronises on the next quote, and the failure is normally to
- * carry a string open too long, which extends the span and over-redacts. That
- * is the fail-closed direction, and it is why the ambiguity is tolerable.
+ * **`\"` is genuinely ambiguous here, and one pass cannot resolve it.** In an
+ * already-escaped payload (`payload="{\"authorization\":[\"Bearer x\"]}"`) the
+ * `\"` pairs *are* the element delimiters. In a plain payload
+ * (`["Digest realm=\"tenant]\""]`) the same two characters are a literal quote
+ * *inside* an element. The two spellings are identical; only the nesting depth
+ * of the serialization tells them apart, and that is not knowable from the
+ * `[` onwards.
+ *
+ * So both readings are taken and **the later end wins**. Reading the backslash
+ * as an escape is right for the plain payload; ignoring it is right for the
+ * escaped one; and whichever reading is wrong for a given input ends its span
+ * *early*, because a misread quote leaves the scan outside a string where it
+ * should be inside, and a `]` then closes the array prematurely. Taking the
+ * maximum therefore takes the correct reading in both, and where both are
+ * wrong it over-covers rather than under-covers.
+ *
+ * That last point is the correction this function needed: an earlier version
+ * ignored backslashes only and claimed the residual failed safe by carrying a
+ * string open too long. It does not. The failure runs the other way -- the span
+ * ends early and the credential after it is logged in the clear -- which is a
+ * leak, not over-redaction. The claim was wrong, so the ambiguity is resolved
+ * here rather than tolerated.
  *
  * An array the log truncated never closes, so the scan runs off the end and the
  * span covers the remainder -- fail-closed, as the caller's docblock explains.
  */
 function findArrayEnd(value: string, bracket: number): number {
+  return Math.max(
+    scanForArrayEnd(value, bracket, true),
+    scanForArrayEnd(value, bracket, false)
+  );
+}
+
+function scanForArrayEnd(value: string, bracket: number, backslashEscapes: boolean): number {
   let openQuote = '';
 
   for (let cursor = bracket + 1; cursor < value.length; cursor += 1) {
     const char = value[cursor] ?? '';
+    if (backslashEscapes && char === '\\') {
+      cursor += 1; // whatever it guards is content, never a delimiter
+      continue;
+    }
     if (openQuote) {
       if (char === openQuote) {
         openQuote = '';

@@ -247,14 +247,53 @@ token and forgetting the text around it. The array now ends at the first `]`
 with no quote open, and a quote is closed only by **the character that opened
 it**, so `"it's fine"` keeps its apostrophe instead of ending there.
 
-Backslashes are deliberately not read as escapes, because round 3's escaped
-payload uses `\"` pairs *as* the delimiters — treating them as escapes would
-leave the scan permanently outside a string there. The residual is recorded
-rather than implied: an element carrying a genuinely escaped quote
-desynchronises the tracking, since the two spellings are indistinguishable
-here. The scan re-synchronises on the next quote, and the failure carries a
-string open too long, which extends the span and over-redacts — fail-closed,
-which is why the ambiguity is tolerable.
+Backslashes were not read as escapes, because round 3's escaped payload uses
+`\"` pairs *as* the delimiters. The residual was recorded as tolerable on the
+grounds that a desynchronised scan carries a string open too long, extending
+the span and over-redacting — fail-closed. **That claim was wrong, and round 7
+below disproves it rather than refining it.**
+
+**Review round 7 falsified round 6's fail-closed claim, which is the finding
+rather than the leak.** Codex produced a plain payload carrying an escaped
+quote:
+
+```
+{"authorization":["Digest realm=\"tenant]\"","Bearer abcdef"]}
+    -> unchanged; the credential logged in the clear
+```
+
+Round 6 had said the escaped-quote ambiguity fails safe by holding a string
+open too long. It does the opposite: the misread quote leaves the scan
+*outside* a string where it should be inside, so the `]` in `tenant]` closes
+the array early and everything after it falls outside the span. That is a
+leak, not over-redaction, and the reasoning was wrong in the one direction
+that matters for a redactor.
+
+**Why the obvious fix would have regressed round 3.** `\"` is the same two
+characters in two serializations needing opposite readings, and only the
+nesting depth distinguishes them — which is unknowable from the `[` onwards:
+
+| input | `\"` means | correct reading |
+| --- | --- | --- |
+| `["Digest realm=\"tenant]\""]` | literal quote inside an element | escape-aware |
+| `payload="{\"authorization\":[\"Bearer x\"]}"` | the element delimiter | ignore backslashes |
+
+Reading backslashes as escapes fixes the first and breaks
+`payload="{\"authorization\":[\"Digest roles=[admin]\",\"Bearer x\"]}"`, which
+works today. So both readings are taken and **the later end wins**. The
+asymmetry that makes this sound: whichever reading is wrong for a given input
+ends its span *early*, because a misread quote leaves the scan outside a string
+rather than inside one. Taking the maximum therefore selects the correct
+reading in both cases, and where both are wrong it over-covers rather than
+under-covers — which is the fail-closed direction actually argued for, this
+time by construction rather than by assertion.
+
+**Mutation result for round 7: 4 applied, 4 killed.** Ignoring backslashes only
+(round 6), reading them as escapes only, taking the earlier end rather than the
+later, and an escape that consumes nothing. The first two are the load-bearing
+pair: each single reading is killed by the serialization the *other* one
+handles, which is the evidence that both are needed rather than one being a
+better guess.
 
 **Mutation result for round 6: 4 applied, 4 killed.** Reverting to the first
 `]`, removing quote tracking, letting any quote close any other, and abandoning
