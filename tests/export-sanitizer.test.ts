@@ -143,6 +143,121 @@ assert(
   'an unterminated comment should swallow the rest of the document rather than leaking it'
 );
 
+// ==================== TAG BOUNDARIES ====================
+// A tag ends at the first `>` that is not inside a quoted attribute value.
+// Reading it as the first `>` full stop split the tag mid-attribute and read the
+// remainder as prose, so `<p class="a>b">Hello.</p>` exported as `b">Hello.` —
+// through `stripStoryHtmlForExport`, which `.txt`, `.pdf`, `.epub` and `.docx`
+// all reach via `ExportService.toPlainText`, and through the `.html` export
+// beside it.
+const quotedAttributeSamples: Array<{ label: string; html: string; text: string; markup: string }> = [
+  {
+    label: 'double-quoted value',
+    html: '<p class="a>b">Hello.</p>',
+    text: 'Hello.',
+    markup: '<p>Hello.</p>'
+  },
+  {
+    label: 'single-quoted value',
+    html: "<p class='a>b'>She turned.</p>",
+    text: 'She turned.',
+    markup: '<p>She turned.</p>'
+  },
+  {
+    label: 'a heading, whose text becomes a chapter title',
+    html: '<h3 data-chapter="1>2">Real Title</h3>',
+    text: 'Real Title',
+    markup: '<h3>Real Title</h3>'
+  },
+  {
+    label: 'a value that is prose in its own right',
+    html: '<p title="Ash > Ember">The door opened.</p>',
+    text: 'The door opened.',
+    markup: '<p>The door opened.</p>'
+  }
+];
+
+for (const sample of quotedAttributeSamples) {
+  const text = stripStoryHtmlForExport(sample.html);
+  assert(
+    text === sample.text,
+    `a \`>\` inside a ${sample.label} should not end the tag (got ${JSON.stringify(text)})`
+  );
+
+  const markup = sanitizeStoryHtmlForExport(sample.html);
+  assert(
+    markup === sample.markup,
+    `the HTML export should not carry an attribute fragment into the story (got ${JSON.stringify(markup)})`
+  );
+}
+
+// The costly half of the same defect, because it is silent rather than visible.
+// Losing the tag's trailing `/` makes a dropped element look like a block that
+// opens and never closes, and `removeNonStoryHtml` then skips every token after
+// it — so a single `<svg data-x="1>2"/>` deleted the rest of the story from
+// every export.
+const truncatedSelfClosing = '<p>Before.</p><svg data-x="1>2"/><p>After.</p>';
+assert(
+  stripStoryHtmlForExport(truncatedSelfClosing) === 'Before.\nAfter.',
+  `a self-closing dropped tag must not swallow the story after it (got ${JSON.stringify(stripStoryHtmlForExport(truncatedSelfClosing))})`
+);
+assert(
+  sanitizeStoryHtmlForExport(truncatedSelfClosing) === '<p>Before.</p><p>After.</p>',
+  'the HTML export should keep the story after a self-closing dropped tag too'
+);
+
+// Reading a quoted value is only safe while the quote is real. Prose is what
+// this runs on, and a malformed attribute whose quote never closes must not go
+// looking for its partner in the story: `<p class='unterminated>` finds the
+// apostrophe of `It's` and deletes the words between them. Keeping the reader's
+// words matters more than removing the fragment, so markup with no well-formed
+// reading falls back to the older first-`>` scan.
+const unterminatedDouble = '<p class="unterminated>It\'s dangerous here.</p>';
+assert(
+  stripStoryHtmlForExport(unterminatedDouble) === "It's dangerous here.",
+  `an unterminated attribute quote must not consume prose (got ${JSON.stringify(stripStoryHtmlForExport(unterminatedDouble))})`
+);
+// Stated on prose that also carries a later `>`, which is what makes the
+// apostrophe reachable: without the follow-set rule the run closes at the `'` of
+// `It's`, the scan then finds the `>` after `dangerous`, and the whole span
+// becomes part of the tag — `It's dangerous` is deleted from the story.
+const unterminatedSingle = "<p class='unterminated>It's dangerous > here.</p>";
+assert(
+  stripStoryHtmlForExport(unterminatedSingle) === "It's dangerous > here.",
+  `an apostrophe in the prose must not close a malformed attribute (got ${JSON.stringify(stripStoryHtmlForExport(unterminatedSingle))})`
+);
+
+// The other limit that keeps a malformed quote inside its own tag: a quoted run
+// stops at `<`, because that is where the next tag starts. Without it the run
+// above reaches the `title="x"` of the *following* paragraph, closes there, and
+// swallows `Alpha.` along with the markup between them.
+const runAcrossTags = '<p class="unterminated>Alpha.</p><p title="x">Beta.</p>';
+assert(
+  stripStoryHtmlForExport(runAcrossTags) === 'Alpha.\nBeta.',
+  `a quoted run must not reach into the next tag (got ${JSON.stringify(stripStoryHtmlForExport(runAcrossTags))})`
+);
+
+// A stray `<` in the prose is where the scan stops looking for a well-formed
+// end, for the same reason: the tag it would otherwise run to belongs to
+// different markup, and everything between them is the reader's words. This
+// module already loses the span between a literal `<` and the next `>` — that is
+// unchanged from before this fix, and both readings drop `< Beta` here — but the
+// scan must not carry on past `Epsilon.` and take that with it.
+const strayAngleBracket = '<p>Alpha < Beta "gamma>delta" Epsilon.</p>';
+assert(
+  stripStoryHtmlForExport(strayAngleBracket).endsWith('Epsilon.'),
+  `a stray \`<\` must not delete the prose after the next tag (got ${JSON.stringify(stripStoryHtmlForExport(strayAngleBracket))})`
+);
+
+// The dropped-tag lists are read from the tag name, which sits before any
+// attribute, so the truncation never let a dangerous element through. Asserted
+// so the boundary change above is on the record as not having moved it.
+assert(
+  !stripStoryHtmlForExport('<script foo="a>b">stealPrivateStory()</script><p>Story survives.</p>')
+    .includes('stealPrivateStory'),
+  'a script carrying a quoted `>` must still be dropped with its contents'
+);
+
 // ==================== BLOCK BOUNDARIES ====================
 // A tag outside the allowed set is replaced with nothing, so a block-level one
 // welded the words on either side of it: `<h4>The Vault</h4><div>She opened the

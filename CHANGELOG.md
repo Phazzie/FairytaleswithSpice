@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 The export tokenizer ended a tag at the first `>` rather than at the tag's own (August 28, 2026)
+
+- A tag does not end at the first `>` — it ends at the first `>` that is not inside
+  a quoted attribute value. `tokenizeHtml` in `exportSanitizer.ts` used
+  `indexOf('>')`, so `<p class="a>b">Hello.</p>` was split mid-attribute and the
+  remainder read as prose: the plain-text export answered `b">Hello.`.
+- Both exported readers share that tokenizer, so the fragment reached every
+  format. `stripStoryHtmlForExport` feeds `ExportService.toPlainText`, which
+  `.txt`, `.pdf`, `.epub` and `.docx` all go through; `sanitizeStoryHtmlForExport`
+  carried it into `.html`.
+- The costlier half was silent. The truncation also takes the trailing `/` of a
+  self-closing tag, so `<svg data-x="1>2"/>` parsed as a plain opening tag and put
+  `removeNonStoryHtml` into block-skipping for an element that never closes —
+  every word after it was dropped from the export. `<p>Before.</p><svg
+  data-x="1>2"/><p>After.</p>` exported as `Before.` alone.
+- `findTagEnd` now scans past quoted attribute values. Two limits keep it inside
+  the markup it began in — a quoted run stops at `<`, and an attribute value's
+  closing quote must be followed by whitespace, `/` or `>` — and markup with no
+  well-formed reading falls back to the older first-`>` scan. Without the second,
+  `<p class='unterminated>` finds its partner in the apostrophe of `It's` and
+  deletes the reader's words; keeping prose matters more than removing a fragment.
+- Closes the `exportSanitizer.ts` row of #296. The two `]*>` readers in
+  `storyContentAnalysis.ts` and `storyService.ts` are separate rows and are not
+  fixed here.
+
+#### Validation
+
+- `npm run test:all` exits `0` across every registered suite. Tests extend
+  `tests/export-sanitizer.test.ts`, so `test:all` gains no entries.
+- Vercel API function typecheck clean under preflight's exact command;
+  `check-vercel-function-count.sh` 8/12, unchanged; `git diff --check` clean.
+- Differential fuzzing against `origin/main`'s implementation: **0 differences**
+  over 200,000 inputs with no `>` inside a quoted value, 0 over 100,000 with
+  unterminated quotes, and 0 over 100,000 with a `<` inside a value. On 232,895
+  inputs that do carry such a `>`, the fixed reader answered exactly what both
+  readers already answer for the same markup written without it — 0 disagreements.
+- Five semantic counterfactuals run and reverted; none is committed. Two of them
+  passed against the first draft of the tests, which means those assertions were
+  not pinning their claims, and both were replaced by ones that do.
+
 ### 🐛 The `.pdf` export was the only one that showed a title's markup to the reader (August 27, 2026)
 
 - `generatePDFContent` receives the story body already through

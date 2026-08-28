@@ -4,6 +4,28 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-08-28 UTC - The Export Tokenizer's Tag Boundary (the `exportSanitizer.ts` row of #296)
+
+Actions:
+
+- Replaced `tokenizeHtml`'s `indexOf('>')` tag boundary with `findTagEnd`, which scans past quoted attribute values. A tag ends at the first `>` that is not inside one; reading it as the first `>` full stop split `<p class="a>b">Hello.</p>` mid-attribute and read `b">Hello.` as prose. Both exported readers share this tokenizer, so the fragment reached all five formats — `.txt`, `.pdf`, `.epub` and `.docx` through `stripStoryHtmlForExport` → `ExportService.toPlainText`, and `.html` through `sanitizeStoryHtmlForExport`.
+- The silent half mattered more than the visible one. The truncation also takes the trailing `/` of a self-closing tag, so `<svg data-x="1>2"/>` was parsed as a plain opening tag and `removeNonStoryHtml` began block-skipping for an element that never closes. `<p>Before.</p><svg data-x="1>2"/><p>After.</p>` exported as `Before.` — the rest of the story dropped with no fragment to show for it.
+- Extended `tests/export-sanitizer.test.ts` with a `TAG BOUNDARIES` section. No new test files, so no new `test:all` entries.
+
+Decisions:
+
+- Two limits keep the scan inside the markup it began in, both pinned by counterfactuals rather than asserted: a quoted run stops at `<`, and an attribute value's closing quote must be followed by whitespace, `/` or `>`. Without the second, `<p class='unterminated>It's dangerous > here.</p>` finds the malformed attribute's partner in the apostrophe of `It's` and deletes `It's dangerous`. Deleting prose the reader wrote is worse than the fragment this change exists to remove, so markup with no well-formed reading falls back to the older first-`>` scan and is tokenized exactly as before.
+- Kept the `<` break in `findTagEnd` after measuring both directions. It costs a fragment on `<p <em title="a>b">` (doubly-malformed markup), and it pays on `<p>Alpha < Beta "gamma>delta" Epsilon.</p>`, where removing it deletes `Epsilon.` outright. Preferring the reader's words over a cleaner string is the module's existing principle, so the break stays and the case that pays is asserted.
+- Did not export a shared pattern from `shared/storyTextBlocks.ts`. #296 suggests reusing `tagAttributesPattern`, but that is a regex added by the unmerged #295 and this reader is a hand-written character scanner, not a pattern — the reading is reimplemented in the tokenizer's own idiom, including the follow-set rule #296 flags as the one a reimplementation is most likely to miss.
+
+Self-review:
+
+- Five semantic counterfactuals run and reverted; none is committed. **Two passed against the first draft of the tests** — the follow-set and the quoted-run `<` bound — which means those assertions were not discriminating, because the fallback rescued the mutated reading on the inputs I had chosen. Both were replaced by inputs that do discriminate (`It's dangerous > here.` and a run reaching into the next tag's `title="x"`).
+- Differential fuzzing against `origin/main`'s implementation, copied verbatim: 0 differences over 200,000 inputs with no `>` inside a quoted value, 0 over 100,000 with unterminated quotes, 0 over 100,000 with a `<` inside a value. The strong statement is the twin comparison — over 232,895 inputs carrying such a `>`, the fixed reader answered exactly what both readers already answer for the same markup written without it, with 0 disagreements.
+- A first fuzz harness reported implausible numbers because its LCG (`seed % n` on a power-of-two modulus) has degenerate low bits, so the four-way attribute-kind choice was periodic. Replaced with xorshift and re-run; the corrected numbers are the ones above.
+- Non-claim: the dropped-tag lists are read from the tag name, which sits before any attribute, so the truncation never let a dangerous element through. Asserted so the boundary change is on the record as not having moved the sanitizer's security boundary.
+- `npm run test:all` exits 0; API function typecheck clean under preflight's exact command; function count 8/12 unchanged; `git diff --check` clean.
+
 ## 2026-08-27 UTC - A Title Only Four Exports Agree On (rebase of the 2026-08-26 three-quick-wins slice)
 
 Actions:

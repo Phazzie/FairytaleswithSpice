@@ -592,7 +592,7 @@ function tokenizeHtml(value: string): string[] {
       continue;
     }
 
-    const tagEnd = value.indexOf('>', tagStart + 1);
+    const tagEnd = findTagEnd(value, tagStart);
     if (tagEnd === -1) {
       tokens.push(value.slice(tagStart));
       break;
@@ -603,6 +603,105 @@ function tokenizeHtml(value: string): string[] {
   }
 
   return tokens;
+}
+
+/**
+ * Where the tag opening at `tagStart` ends.
+ *
+ * A tag does not end at the first `>` — it ends at the first `>` that is not
+ * inside a quoted attribute value. Reading `<p class="a>b">Hello.</p>` with the
+ * first `>` splits the tag mid-attribute, and the remainder (`b">Hello.`) is
+ * then read as prose. That fragment reaches every export: `stripStoryHtmlForExport`
+ * feeds `ExportService.toPlainText`, which `.txt`, `.pdf`, `.epub` and `.docx`
+ * all go through, and `sanitizeStoryHtmlForExport` carries it into `.html`.
+ *
+ * The truncation also costs the trailing `/` of a self-closing tag, which is
+ * worse than a visible fragment because it is silent: `<svg data-x="1>2"/>`
+ * parsed as a plain opening tag puts `removeNonStoryHtml` into block-skipping
+ * for an element that never closes, and every word after it is dropped from the
+ * export.
+ *
+ * Prose is what this runs on, so widening what a match may cross is the risk to
+ * weigh against the fragment. Two limits keep the scan inside the markup it
+ * began in, and a fallback keeps malformed markup reading exactly as it did
+ * before:
+ *
+ * 1. A quoted run stops at `<`, which is where the next tag starts.
+ * 2. An attribute value's closing quote must be followed by whitespace, `/` or
+ *    `>` — HTML's own syntax, never a word character. Without this,
+ *    `<p class='unterminated>It's dangerous > here.</p>` finds the malformed
+ *    attribute's partner in the apostrophe of `It's`, runs on to the `>` after
+ *    `dangerous`, and deletes the words between them. Losing prose the reader
+ *    wrote is worse than the fragment this function exists to remove.
+ *
+ * Where neither reading applies the caller falls back to the older first-`>`
+ * scan, so markup with no well-formed reading is tokenized exactly as before.
+ *
+ * Returns `-1` when no `>` closes the tag at all.
+ */
+function findTagEnd(value: string, tagStart: number): number {
+  let index = tagStart + 1;
+
+  while (index < value.length) {
+    const character = value[index];
+
+    if (character === '>') {
+      return index;
+    }
+
+    // The next tag starts here, so this one has no well-formed end.
+    if (character === '<') {
+      break;
+    }
+
+    if (character === '"' || character === "'") {
+      const valueEnd = findAttributeValueEnd(value, index);
+      if (valueEnd === -1) {
+        break;
+      }
+
+      index = valueEnd + 1;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  // No well-formed reading: answer exactly as the older scan did.
+  return value.indexOf('>', tagStart + 1);
+}
+
+/**
+ * Where the quoted attribute value opening at `quoteStart` closes, or `-1`.
+ *
+ * Bounded at `<` and at the follow-set described on `findTagEnd`, which are the
+ * two rules that stop an unterminated quote reaching across the story text after
+ * it.
+ */
+function findAttributeValueEnd(value: string, quoteStart: number): number {
+  const quote = value[quoteStart];
+  let index = quoteStart + 1;
+
+  while (index < value.length) {
+    const character = value[index];
+
+    if (character === '<') {
+      return -1;
+    }
+
+    if (character === quote && mayEndAttributeValue(value[index + 1])) {
+      return index;
+    }
+
+    index += 1;
+  }
+
+  return -1;
+}
+
+/** What may follow an attribute value's closing quote. Never a word character. */
+function mayEndAttributeValue(character: string | undefined): boolean {
+  return character === undefined || isWhitespace(character) || character === '/' || character === '>';
 }
 
 function parseHtmlTag(token: string): ParsedHtmlTag | null {
