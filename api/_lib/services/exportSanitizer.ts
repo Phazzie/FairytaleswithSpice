@@ -560,15 +560,11 @@ function replaceXmlForbiddenCharacters(value: string): string {
  */
 function removeNonStoryHtml(html: string): string[] {
   const kept: string[] = [];
-  let skippedBlockTag: string | null = null;
-  let skippedBlockDepth = 0;
-  // How many integration points are open inside the foreign element being
-  // skipped. Inside one, HTML tags are ordinary content and do not break out.
-  let integrationPointDepth = 0;
+  const skip: SkipState = { tag: null, depth: 0, integrationPointDepth: 0 };
 
   for (const token of tokenizeHtml(html)) {
     if (!token.startsWith('<') || !token.endsWith('>')) {
-      if (!skippedBlockTag) {
+      if (!skip.tag) {
         kept.push(token);
       }
       continue;
@@ -579,57 +575,14 @@ function removeNonStoryHtml(html: string): string[] {
       continue;
     }
 
-    if (skippedBlockTag) {
-      if (integrationPointDepth === 0 && breaksOutOfForeignContent(skippedBlockTag, parsed)) {
-        skippedBlockTag = null;
-        skippedBlockDepth = 0;
-        // Fall through: this tag is HTML, and is read as if the foreign
-        // element had been closed before it.
-      } else {
-        if (isIntegrationPoint(skippedBlockTag, parsed)) {
-          if (parsed.isClosing) {
-            // Never below zero: a stray closing tag must not leave the count
-            // negative, where a later opener would read as depth 0 and let a
-            // breakout fire inside the element it had just entered.
-            integrationPointDepth = Math.max(0, integrationPointDepth - 1);
-          } else if (!parsed.isSelfClosing) {
-            // A self-closing `<desc/>` opens nothing, so counting it would hold
-            // the skip open for the rest of the container.
-            integrationPointDepth += 1;
-          }
-        }
-
-        if (
-          parsed.tagName === skippedBlockTag
-          && !parsed.isClosing
-          && !closesItself(parsed)
-          && !NON_NESTING_DROPPED_TAGS.has(skippedBlockTag)
-        ) {
-          skippedBlockDepth += 1;
-        }
-
-        if (parsed.tagName === skippedBlockTag && parsed.isClosing) {
-          skippedBlockDepth -= 1;
-          if (skippedBlockDepth <= 0) {
-            skippedBlockTag = null;
-            integrationPointDepth = 0;
-          }
-        }
-
-        continue;
-      }
+    // A tag met inside a skip is consumed by it, unless it is the HTML tag that
+    // ends the skip — which is then read below as if the element had closed.
+    if (skip.tag && advanceSkip(skip, parsed)) {
+      continue;
     }
 
     if (DROPPED_TAGS.has(parsed.tagName)) {
-      if (!parsed.isClosing && DROPPED_BLOCK_TAGS.has(parsed.tagName) && !closesItself(parsed)) {
-        skippedBlockTag = parsed.tagName;
-        skippedBlockDepth = 1;
-        // `integrationPointDepth` is already 0 here and is not reset again: a
-        // skip ends either on its own closing tag, which resets it, or on a
-        // breakout, which can only fire at 0. A reset here would be a guard no
-        // test could fail.
-      }
-
+      openSkipIfBlock(skip, parsed);
       continue;
     }
 
@@ -637,6 +590,91 @@ function removeNonStoryHtml(html: string): string[] {
   }
 
   return kept;
+}
+
+/**
+ * The element currently being skipped, and how deep the reader is inside it.
+ *
+ * `integrationPointDepth` counts the integration points open within a foreign
+ * element. Inside one, HTML tags are ordinary content and do not break out.
+ */
+interface SkipState {
+  tag: string | null;
+  depth: number;
+  integrationPointDepth: number;
+}
+
+/**
+ * Advance the skip past one tag.
+ *
+ * Returns whether the skip consumed the tag. `false` means the skip has just
+ * ended on this tag and the caller should read it as HTML — which happens only
+ * on a foreign-content breakout, since a closing tag ends the skip *after*
+ * itself and is consumed.
+ */
+function advanceSkip(skip: SkipState, parsed: ParsedHtmlTag): boolean {
+  const skippedBlockTag = skip.tag as string;
+
+  if (skip.integrationPointDepth === 0 && breaksOutOfForeignContent(skippedBlockTag, parsed)) {
+    skip.tag = null;
+    skip.depth = 0;
+    return false;
+  }
+
+  countIntegrationPoint(skip, skippedBlockTag, parsed);
+  countSkippedBlock(skip, skippedBlockTag, parsed);
+  return true;
+}
+
+/** Track entry to and exit from an integration point of the skipped element. */
+function countIntegrationPoint(skip: SkipState, skippedBlockTag: string, parsed: ParsedHtmlTag): void {
+  if (!isIntegrationPoint(skippedBlockTag, parsed)) {
+    return;
+  }
+
+  if (parsed.isClosing) {
+    // Never below zero: a stray closing tag must not leave the count negative,
+    // where a later opener would read as depth 0 and let a breakout fire inside
+    // the element it had just entered.
+    skip.integrationPointDepth = Math.max(0, skip.integrationPointDepth - 1);
+  } else if (!parsed.isSelfClosing) {
+    // A self-closing `<desc/>` opens nothing, so counting it would hold the
+    // skip open for the rest of the container.
+    skip.integrationPointDepth += 1;
+  }
+}
+
+/** Track nesting of the skipped element itself, ending the skip when it closes. */
+function countSkippedBlock(skip: SkipState, skippedBlockTag: string, parsed: ParsedHtmlTag): void {
+  if (parsed.tagName !== skippedBlockTag) {
+    return;
+  }
+
+  if (parsed.isClosing) {
+    skip.depth -= 1;
+    if (skip.depth <= 0) {
+      skip.tag = null;
+      skip.integrationPointDepth = 0;
+    }
+    return;
+  }
+
+  if (!closesItself(parsed) && !NON_NESTING_DROPPED_TAGS.has(skippedBlockTag)) {
+    skip.depth += 1;
+  }
+}
+
+/** Begin skipping a dropped element that takes its contents with it. */
+function openSkipIfBlock(skip: SkipState, parsed: ParsedHtmlTag): void {
+  if (parsed.isClosing || !DROPPED_BLOCK_TAGS.has(parsed.tagName) || closesItself(parsed)) {
+    return;
+  }
+
+  skip.tag = parsed.tagName;
+  skip.depth = 1;
+  // `integrationPointDepth` is already 0 here and is not reset again: a skip
+  // ends either on its own closing tag, which resets it, or on a breakout,
+  // which can only fire at 0. A reset here would be a guard no test could fail.
 }
 
 function sanitizeStoryTag(token: string): string {
