@@ -38,6 +38,17 @@ export interface ContinuityExtractionInput {
   blueprint?: StoryGenerationSeam['input'];
   useAi: boolean;
   timeoutMs?: number;
+  /**
+   * The route's correlation id, for the provider call below.
+   *
+   * This is the *second* paid provider call a successful Story Lab generation
+   * makes, after the chapters themselves. `XaiTextClient` logs every call's
+   * start, latency, and failure through `request.context`, and this one passed
+   * none — so a generation whose chapters were correlated correctly still had
+   * its continuity call, and the timeout or provider error that most often
+   * degrades a batch, recorded under no request at all.
+   */
+  requestId?: string;
 }
 
 interface ContinuityExtractionResult {
@@ -92,7 +103,18 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
       topP: 0.9,
       timeoutMs,
       modelPreference: 'fast',
-      allowFallback: false
+      allowFallback: false,
+      // Named as its own endpoint rather than the route's: this call is made
+      // from inside a generation, and a reader following one correlation id
+      // through the log should be able to tell the continuity call apart from
+      // the chapter calls that precede it.
+      context: input.requestId
+        ? {
+            requestId: input.requestId,
+            endpoint: 'story-lab/continuity-extraction',
+            method: 'POST'
+          }
+        : undefined
     });
 
     const aiShape = parseContinuityJson(response.text);

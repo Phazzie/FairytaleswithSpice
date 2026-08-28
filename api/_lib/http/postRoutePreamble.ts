@@ -2,7 +2,7 @@
 
 import { applyCorsPolicy } from './corsPolicy';
 import { sendMethodNotAllowed } from './methodNotAllowed';
-import { readRequestCorrelationId } from './requestCorrelationId';
+import { settleRequestCorrelationId } from './requestCorrelationId';
 import {
   ApiRateLimitConfig,
   enforceApiAccessControl
@@ -52,12 +52,12 @@ export async function beginPostRoute(
   endpoint: string,
   rateLimit: ApiRateLimitConfig
 ): Promise<PostRouteStart | null> {
-  // Accept the caller's correlation id when it is one, otherwise mint it: the
-  // value is echoed below and stamped into every log line the request writes.
-  const requestId = readRequestCorrelationId(req);
-
-  // Set request ID in response header for client tracking.
-  res.setHeader('X-Request-ID', requestId);
+  // Accept the caller's correlation id when it is one, otherwise mint it, and
+  // echo it: the value is stamped into every log line the request writes. The
+  // read and the echo live together in `settleRequestCorrelationId` because
+  // routes that serve more than `POST` need that pair without the method rules
+  // below — see its docblock.
+  const requestId = settleRequestCorrelationId(req, res);
 
   const cors = applyCorsPolicy(req, res, {
     methods: POST_ROUTE_METHODS,

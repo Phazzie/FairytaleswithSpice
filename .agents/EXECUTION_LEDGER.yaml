@@ -1,0 +1,153 @@
+# Created: 2026-08-19 08:46 EDT
+schema_version: 1
+program: fairytaleswithspice-production-completion
+repository: Phazzie/FairytaleswithSpice
+base_branch: main
+control_standard: .agents/SUBAGENT_TICKET_STANDARD.md
+ticket_template: .agents/TICKET_TEMPLATE.md
+last_updated: "2026-08-19T08:52:00-04:00"
+
+allowed_statuses:
+  - DRAFT
+  - READY
+  - IN_PROGRESS
+  - BLOCKED
+  - NEEDS_SPLIT
+  - REVIEW
+  - DONE
+  - SUPERSEDED
+
+coordination_rules:
+  isolated_branch_or_worktree_per_implementation_ticket: true
+  overlapping_write_whitelists_allowed: false
+  subagents_may_merge: false
+  integration_checks_required_after_merge_batches: true
+  stale_ready_tickets_must_be_revalidated: true
+
+tasks:
+  - id: BOOTSTRAP-SCOUT-001
+    title: Map tracked dependency directories
+    parent_epic: bootstrap-subagent-controls
+    type: DISCOVERY
+    risk: LOW
+    status: DONE
+    base_branch: main
+    base_sha: c52d8b7da1441e5308d253299de49742e2298a48
+    branch: null
+    worktree: null
+    owner: coordinator-read-only-scout
+    prerequisites: []
+    blocked_by: []
+    write_whitelist: []
+    commit_sha: null
+    pull_request: null
+    acceptance:
+      - id: AC1
+        result: PASS
+        evidence: One tracked root node_modules tree was identified at Git tree SHA 5de7fa9eb4ab1b79411e32001f9411cb9e9c795d.
+      - id: AC2
+        result: PASS
+        evidence: No tracked story-generator/node_modules tree exists on the base SHA.
+      - id: AC3
+        result: PASS
+        evidence: Root and story-generator manifests and lockfiles exist; root .gitignore already ignores node_modules/.
+    validation:
+      - command: Inspect recursive main tree at e78beca405bb5bb16da0a8ff97339d8fd2003f08.
+        result: PASS
+      - command: Inspect root node_modules tree at 5de7fa9eb4ab1b79411e32001f9411cb9e9c795d.
+        result: PASS
+      - command: Inspect story-generator tree at 61513a7417f2d306ad87b2c12204248c24638a99.
+        result: PASS
+    follow_ups:
+      - BOOTSTRAP-IMPLEMENT-001
+
+  - id: BOOTSTRAP-IMPLEMENT-001
+    title: Remove tracked root dependency directory
+    parent_epic: bootstrap-subagent-controls
+    type: IMPLEMENTATION
+    risk: LOW
+    status: DONE
+    base_branch: main
+    base_sha: c52d8b7da1441e5308d253299de49742e2298a48
+    branch: bootstrap/remove-tracked-node-modules
+    worktree: null
+    owner: scoped-implementation-experiment
+    prerequisites:
+      - BOOTSTRAP-SCOUT-001
+    blocked_by: []
+    write_whitelist:
+      - node_modules/** (deletion only)
+    commit_sha: 58f9db72a39a4ebac8b3246fcd33508cbbac4a9e
+    pull_request: 199
+    acceptance:
+      - id: AC1
+        result: PASS
+        evidence: The complete root node_modules tree is absent from the proposed head tree.
+      - id: AC2
+        result: PASS
+        evidence: Root package.json and package-lock.json are unchanged.
+      - id: AC3
+        result: PASS
+        evidence: story-generator/package.json and story-generator/package-lock.json are unchanged.
+      - id: AC4
+        result: PASS
+        evidence: PR 199 contains 503 removed files, 0 additions, and 107958 deletions, all under node_modules/.
+      - id: AC5
+        result: PASS
+        evidence: .gitignore remains unchanged and already ignores node_modules/.
+    validation:
+      - command: Compare c52d8b7da1441e5308d253299de49742e2298a48..58f9db72a39a4ebac8b3246fcd33508cbbac4a9e.
+        result: PASS
+      - command: Review changed paths and statuses.
+        result: PASS
+      - command: Verify manifests, lockfiles, source, CI, deployment configuration, and .gitignore are absent from the diff.
+        result: PASS
+      - command: Recovery CI run 417 — clean installs, recovery preflight, and Vercel configuration validation.
+        result: PASS
+      - command: Vercel preview status.
+        result: PASS
+      - command: CodeRabbit status.
+        result: PASS
+    follow_ups:
+      - BOOTSTRAP-REVIEW-001
+
+  - id: BOOTSTRAP-REVIEW-001
+    title: Review tracked dependency removal for scope compliance
+    parent_epic: bootstrap-subagent-controls
+    type: REVIEW
+    risk: LOW
+    status: DONE
+    base_branch: main
+    base_sha: c52d8b7da1441e5308d253299de49742e2298a48
+    branch: bootstrap/remove-tracked-node-modules
+    worktree: null
+    owner: adversarial-scope-review
+    prerequisites:
+      - BOOTSTRAP-IMPLEMENT-001
+    blocked_by: []
+    write_whitelist: []
+    commit_sha: 58f9db72a39a4ebac8b3246fcd33508cbbac4a9e
+    pull_request: 199
+    acceptance:
+      - id: AC1
+        result: PASS
+        evidence: No changed path exists outside node_modules/ in the base-to-head comparison.
+      - id: AC2
+        result: PASS
+        evidence: No manifest, lockfile, source, test, CI, deployment, or documentation file changed.
+      - id: AC3
+        result: PASS
+        evidence: The proposed head removes the root dependency tree without altering the existing ignore rule.
+    validation:
+      - command: Independent base-to-head changed-path review.
+        result: PASS
+      - command: PR 199 file-stat review.
+        result: PASS
+      - command: Recovery CI run 417.
+        result: PASS
+    verdict: APPROVE
+    follow_ups: []
+
+next_ready_batch:
+  generated: false
+  reason: Do not generate the next implementation batch until the control-layer PR and bootstrap cleanup PR are reviewed and the resulting main SHA is known.

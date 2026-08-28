@@ -30,10 +30,14 @@ import {
 import { selectRandomAuthorStyles } from '../config/authorStyles';
 import { CliffhangerService, hasIdentifiedCliffhangerType } from './cliffhangerService';
 import { TropeSelection, TropeSubversionService } from './tropeSubversionService';
-import { logger, logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
+// `logger` itself is no longer imported: its only two uses here were the
+// `logger.generateRequestId()` calls that opened `generateStory` and
+// `continueChapter`, both of which now resolve the route's correlation id
+// instead. The named helpers below are the whole of this file's logging.
+import { logError, logWarn, logApiError, logInfo, logPerformance, LogContext } from '../utils/logger';
 import { estimateReadTimeMinutes } from '../utils/readTime';
-import { getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
-import { XaiTextClient, type XaiTextResponse } from './xaiTextClient';
+import { getRemainingRequestBudgetMs, getXaiFastTimeoutMs, getXaiPrimaryTimeoutMs, type XaiReasoningEffort } from '../config/xaiConfig';
+import { MIN_XAI_FALLBACK_TIMEOUT_MS, XaiTextClient, type XaiTextResponse } from './xaiTextClient';
 import {
   analyzeEmotionalTone,
   countWords,
@@ -219,9 +223,27 @@ export class StoryService {
     });
   }
 
-  async generateStory(input: StoryGenerationSeam['input']): Promise<ApiResponse<StoryGenerationSeam['output']>> {
-    const startTime = Date.now();
-    const requestId = logger.generateRequestId();
+  /**
+   * `requestStartedAtMs` defaults to "now" for any caller with nothing earlier
+   * to give it, but the Story Lab job routes reach this well after the
+   * invocation actually began — job-store creation, an owner lookup, and
+   * content-boundary loading all run first (see `jobRouteHandlers.ts`). The
+   * Story Lab engine (`generateStoryLabGenesis`) already captures its own
+   * `requestStartedAtMs` ahead of those, the same one it feeds continuity
+   * extraction's budget, and passes it through here so the chapter loop below
+   * measures against that earlier point instead of resetting the clock. The
+   * gap between the true Vercel invocation start and the engine's own
+   * timestamp — the job-store work in `jobRouteHandlers.ts` — is not closed by
+   * this; see the PR discussion for why threading it further is a larger,
+   * separate change.
+   */
+  async generateStory(
+    input: StoryGenerationSeam['input'],
+    correlationId?: string,
+    requestStartedAtMs: number = Date.now()
+  ): Promise<ApiResponse<StoryGenerationSeam['output']>> {
+    const startTime = requestStartedAtMs;
+    const requestId = this.resolveRequestId(correlationId);
     const requestedChapterCount = this.normalizeChapterCount(input.requestedChapterCount);
     const sanitizedInput: StoryGenerationSeam['input'] = {
       ...input,
@@ -271,7 +293,7 @@ export class StoryService {
         aggregatedHtml,
         aggregatedRawHtml,
         aiMetadata
-      } = await this.generateChaptersForStory(sanitizedInput, requestedChapterCount, tropeSelection, context);
+      } = await this.generateChaptersForStory(sanitizedInput, requestedChapterCount, tropeSelection, context, startTime);
 
       if (chapters.length === 0) {
         return {
@@ -376,7 +398,8 @@ export class StoryService {
     input: StoryGenerationSeam['input'],
     requestedChapterCount: number,
     tropeSelection: TropeSelection | undefined,
-    context: LogContext
+    context: LogContext,
+    requestStartedAtMs: number
   ): Promise<GeneratedChaptersResult> {
     const chapters: Chapter[] = [];
     const failedChapters: ChapterFailure[] = [];
@@ -385,9 +408,27 @@ export class StoryService {
     let aiMetadata: AiCallMetadata | undefined;
 
     for (let chapterNumber = 1; chapterNumber <= requestedChapterCount; chapterNumber++) {
+      // Only the batch's first chapter is exempt: it already runs on the full
+      // primary timeout and its own fallback retry, so there is nothing left
+      // to check the window against before it starts. Every chapter after it
+      // is optional relative to the invocation's own deadline — attempting one
+      // that cannot finish risks a platform SIGKILL neither this loop nor
+      // `runJobWork` above it can catch, rather than the ordinary chapter
+      // failure this ends with instead.
+      if (chapterNumber > 1 && !this.hasBudgetForAnotherChapter(requestStartedAtMs)) {
+        logWarn('Stopping chapter batch early: insufficient time remaining in the request budget', context, {
+          nextChapterNumber: chapterNumber,
+          requestedChapterCount,
+          remainingBudgetMs: getRemainingRequestBudgetMs(requestStartedAtMs)
+        });
+        failedChapters.push(...this.skippedChapterFailures(chapterNumber, requestedChapterCount));
+        break;
+      }
+
       try {
         const generatedText = await this.callGrokAI(
           input,
+          requestStartedAtMs,
           context,
           tropeSelection,
           requestedChapterCount > 1
@@ -454,9 +495,14 @@ export class StoryService {
     };
   }
 
-  async continueChapter(input: ChapterContinuationSeam['input']): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
-    const startTime = Date.now();
-    const requestId = logger.generateRequestId();
+  /** See `generateStory`'s note on `requestStartedAtMs`; `continueStoryLab` passes the same kind of engine-level timestamp here. */
+  async continueChapter(
+    input: ChapterContinuationSeam['input'],
+    correlationId?: string,
+    requestStartedAtMs: number = Date.now()
+  ): Promise<ApiResponse<ChapterContinuationSeam['output']>> {
+    const startTime = requestStartedAtMs;
+    const requestId = this.resolveRequestId(correlationId);
     const requestedChapterCount = this.normalizeChapterCount(input.requestedChapterCount);
     const sanitizedInput: ChapterContinuationSeam['input'] = {
       ...input,
@@ -527,9 +573,26 @@ export class StoryService {
       for (let offset = 1; offset <= requestedChapterCount; offset++) {
         const chapterNumber = workingChapterCount + 1;
 
+        // See the matching check in `generateChaptersForStory`: only the
+        // batch's first chapter is exempt, and stopping here is what keeps a
+        // chapter that cannot finish from risking an uncatchable platform
+        // SIGKILL instead of the ordinary partial-failure this ends with.
+        if (offset > 1 && !this.hasBudgetForAnotherChapter(startTime)) {
+          logWarn('Stopping continuation batch early: insufficient time remaining in the request budget', context, {
+            nextChapterNumber: chapterNumber,
+            requestedChapterCount,
+            remainingBudgetMs: getRemainingRequestBudgetMs(startTime)
+          });
+          failedChapters.push(
+            ...this.skippedChapterFailures(chapterNumber, chapterNumber + (requestedChapterCount - offset))
+          );
+          break;
+        }
+
         try {
           const generatedText = await this.callGrokAIForContinuation(
             { ...sanitizedInput, currentChapterCount: workingChapterCount },
+            startTime,
             context,
             {
               chapterNumber,
@@ -677,8 +740,51 @@ export class StoryService {
     }
   }
 
+  /**
+   * A batch chapter's own timeout has to fit inside what the invocation
+   * actually has left, not just the static floor `EXTRA_BATCH_CHAPTER_TIMEOUT_MS`
+   * assumed was always available.
+   */
+  private resolveBatchChapterTimeoutMs(remainingBudgetMs: number): number {
+    return Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS, remainingBudgetMs);
+  }
+
+  /**
+   * Whether the invocation has enough of its window left to start another
+   * batch chapter at all. Below this floor a call is not merely tight, it
+   * cannot finish before the platform kills the whole function — a
+   * termination `runJobWork`'s try/catch cannot see, since the process is
+   * gone mid-await rather than throwing. Reusing the fast-profile retry's own
+   * floor keeps this the one answer to "is there enough time left to start a
+   * fast-profile Grok call", asked from two different callers.
+   */
+  private hasBudgetForAnotherChapter(requestStartedAtMs: number): boolean {
+    return getRemainingRequestBudgetMs(requestStartedAtMs) >= MIN_XAI_FALLBACK_TIMEOUT_MS;
+  }
+
+  /**
+   * The failures for every chapter number from `fromChapterNumber` through
+   * `requestedChapterCount`, recorded as skipped rather than attempted. Used
+   * when the loop stops itself for want of budget instead of after a call
+   * actually failed, so a partial batch still accounts for every chapter the
+   * caller asked for.
+   */
+  private skippedChapterFailures(fromChapterNumber: number, requestedChapterCount: number): ChapterFailure[] {
+    const skipped: ChapterFailure[] = [];
+
+    for (let chapterNumber = fromChapterNumber; chapterNumber <= requestedChapterCount; chapterNumber++) {
+      skipped.push({
+        chapterNumber,
+        message: 'Skipped: insufficient time remaining in this request to safely generate this chapter'
+      });
+    }
+
+    return skipped;
+  }
+
   private async callGrokAI(
     input: StoryGenerationSeam['input'],
+    requestStartedAtMs: number,
     context?: LogContext,
     tropeSelection?: TropeSelection,
     chapterOptions?: ChapterGenerationOptions
@@ -699,6 +805,19 @@ export class StoryService {
           ? this.generateMockInitialChapter(input, chapterOptions.chapterNumber, targetWordCount)
           : this.generateMockStory(input, tropeSelection)
       };
+    }
+
+    // Not just the batch chapters: this call's own primary attempt is exposed
+    // to the same platform SIGKILL if enough of the invocation's window is
+    // already gone by the time it starts — a slow validation/setup step ahead
+    // of it, or a deployment configuring a smaller `STORY_LAB_FUNCTION_BUDGET_MS`,
+    // both leave less than `getXaiPrimaryTimeoutMs()` actually safe to spend.
+    // Refusing here, the same way `xaiTextClient` refuses a fallback retry it
+    // has no room for, keeps a doomed call from ever reaching axios with a
+    // timeout of `0` — which axios reads as "no timeout" rather than "expired".
+    const remainingBudgetMs = getRemainingRequestBudgetMs(requestStartedAtMs);
+    if (remainingBudgetMs < MIN_XAI_FALLBACK_TIMEOUT_MS) {
+      throw new Error('Insufficient time remaining in the request budget to safely generate this chapter');
     }
 
     const systemPrompt = this.buildSystemPrompt(input, tropeSelection, chapterOptions);
@@ -722,14 +841,17 @@ export class StoryService {
         temperature: 0.8,
         topP: 0.95,
         timeoutMs: chapterOptions?.preferFastModel
-          ? Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS)
-          : getXaiPrimaryTimeoutMs(),
-        fallbackTimeoutMs: getXaiFastTimeoutMs(),
+          ? this.resolveBatchChapterTimeoutMs(remainingBudgetMs)
+          : Math.min(getXaiPrimaryTimeoutMs(), remainingBudgetMs),
+        fallbackTimeoutMs: chapterOptions?.preferFastModel
+          ? getXaiFastTimeoutMs()
+          : Math.min(getXaiFastTimeoutMs(), remainingBudgetMs),
         modelPreference,
         allowFallback: !chapterOptions?.preferFastModel,
+        requestStartedAtMs,
         context
       });
-      
+
       logPerformance('Grok API call', response.latencyMs, {
         ...context,
         promptTokens: response.usage?.inputTokens,
@@ -760,6 +882,7 @@ export class StoryService {
 
   private async callGrokAIForContinuation(
     input: ChapterContinuationSeam['input'],
+    requestStartedAtMs: number,
     context?: LogContext,
     chapterOptions?: ChapterGenerationOptions
   ): Promise<GeneratedTextResult> {
@@ -772,6 +895,15 @@ export class StoryService {
       return {
         content: this.generateMockChapter(input, chapterOptions?.chapterNumber)
       };
+    }
+
+    // See the matching check in `callGrokAI`: this call's own primary attempt
+    // is exposed to the same platform SIGKILL as a batch chapter's, and a
+    // refusal here keeps a doomed call from reaching axios with a timeout of
+    // `0` — which axios reads as "no timeout" rather than "expired".
+    const remainingBudgetMs = getRemainingRequestBudgetMs(requestStartedAtMs);
+    if (remainingBudgetMs < MIN_XAI_FALLBACK_TIMEOUT_MS) {
+      throw new Error('Insufficient time remaining in the request budget to safely generate this chapter');
     }
 
     const chapterNumber = chapterOptions?.chapterNumber ?? input.currentChapterCount + 1;
@@ -793,14 +925,17 @@ export class StoryService {
         temperature: 0.8,
         topP: 0.95,
         timeoutMs: chapterOptions?.preferFastModel
-          ? Math.min(getXaiFastTimeoutMs(), EXTRA_BATCH_CHAPTER_TIMEOUT_MS)
-          : getXaiPrimaryTimeoutMs(),
-        fallbackTimeoutMs: getXaiFastTimeoutMs(),
+          ? this.resolveBatchChapterTimeoutMs(remainingBudgetMs)
+          : Math.min(getXaiPrimaryTimeoutMs(), remainingBudgetMs),
+        fallbackTimeoutMs: chapterOptions?.preferFastModel
+          ? getXaiFastTimeoutMs()
+          : Math.min(getXaiFastTimeoutMs(), remainingBudgetMs),
         modelPreference,
         allowFallback: !chapterOptions?.preferFastModel,
+        requestStartedAtMs,
         context
       });
-      
+
       logPerformance('Grok API continuation call', response.latencyMs, {
         ...context,
         promptTokens: response.usage?.inputTokens,
@@ -1540,7 +1675,33 @@ ${renderBody()}`;
     return `chapter_${randomUUID()}`;
   }
 
-  private generateRequestId(): string {
-    return `req_${randomUUID()}`;
+  /**
+   * The id this generation is known by, in the envelope and in the log alike.
+   *
+   * Both entry points opened with `logger.generateRequestId()` unconditionally,
+   * so the id every line of the generation was filed under was minted here and
+   * existed nowhere the caller could see it. The Story Lab genesis and
+   * continuation routes settle a correlation id in `beginPostRoute` — the
+   * caller's `X-Request-ID` when it is usable, a minted one otherwise — echo it
+   * back as a response header, and stamp it into every line they write
+   * themselves. It stopped at the route. So a reader who quoted the id they were
+   * handed was quoting the one id that names none of the work: the prompt sizes,
+   * the provider call this app pays for, and the failure that made them ask.
+   *
+   * `ImageService` and `ExportService` each took the same argument for the same
+   * reason and left this service the only one of the three still minting its
+   * own. Taking it here makes the header, the envelope's `metadata.requestId`,
+   * the route's lines, and this service's lines all name one request. Minting
+   * one is kept for a caller that has none — a direct call in a test, or the
+   * engine's own paths — so the field is never empty.
+   *
+   * This replaces a private `generateRequestId()` that was byte-identical to
+   * `logger.generateRequestId()` and called from nowhere: both entry points went
+   * to the logger's copy, so the method beside them had no reader at all.
+   */
+  private resolveRequestId(correlationId?: string): string {
+    return correlationId && correlationId.trim()
+      ? correlationId.trim()
+      : `req_${randomUUID()}`;
   }
 }

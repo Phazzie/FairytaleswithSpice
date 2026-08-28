@@ -92,13 +92,41 @@ const CONTINUITY_PROMISE_PATTERN = wordFormAlternationPattern([
   'oath', 'vow', 'bargain', 'debt', 'secret'
 ]);
 
+/**
+ * The shortest part of a theme id that can be the theme rather than a joint
+ * between its words.
+ *
+ * A theme arrives as an id — `forbidden_love`, `enemies_to_lovers` — and is
+ * split on its separators, so the filter here exists to drop the connective the
+ * split exposes: the `to` in `enemies_to_lovers`, which appears in every story
+ * ever written and would report a theme echo for all of them. Every connective
+ * in either vocabulary the seams accept is two letters, which is the same
+ * observation `SHORTEST_MEANINGFUL_MODIFIER` below is written on.
+ *
+ * The floor was one letter higher than that, and one of the eighteen classic
+ * themes is exactly three letters. `sin` was therefore filtered out of its own
+ * word list, and `[].some(…)` is `false`, so the theme could never be echoed
+ * however plainly a chapter carried it: a story of sin, sinners, and damnation
+ * scored `Few configured story anchors were detected` and lost the twelve
+ * points a matched theme is worth — on the one dimension that exists to say the
+ * story kept the promise its configuration made. It is the same shape as the
+ * six themes `extractThemesFromContent` could not report before they were given
+ * keywords: a member of the closed set that the scan reading it cannot reach.
+ *
+ * Not claimed: this is a floor on length, not a stop-word list. A caller-sent
+ * theme phrase containing a three-letter function word (`cat and mouse`) can
+ * now echo on that word. Neither vocabulary the app itself sends — the eighteen
+ * classic themes or the twelve Story Lab seeds — contains one.
+ */
+const SHORTEST_MEANINGFUL_THEME_WORD = 3;
+
 function scoreContinuity(storyText: string, configuration: StoryQualityHeuristicInput['configuration']): DimensionDraft {
   const signals: string[] = [];
   if (configuration.creature && containsWordForm(storyText, configuration.creature.toLowerCase())) {
     signals.push(`Creature appears: ${configuration.creature}`);
   }
   for (const theme of configuration.themes) {
-    const themeWords = theme.split(/[_\s-]+/).filter(word => word.length > 3);
+    const themeWords = theme.split(/[_\s-]+/).filter(word => word.length >= SHORTEST_MEANINGFUL_THEME_WORD);
     if (themeWords.some(word => containsWordForm(storyText, word.toLowerCase()))) {
       signals.push(`Theme echo appears: ${theme}`);
     }
@@ -120,16 +148,92 @@ function scoreContinuity(storyText: string, configuration: StoryQualityHeuristic
 const UNRESOLVED_HOOK_WORD_PATTERN = wordFormAlternationPattern([
   'choose', 'secret', 'reveal', 'blood', 'price', 'door', 'name', 'truth'
 ]);
+/**
+ * The words that say an ending is *announcing* itself as a cliffhanger, as
+ * opposed to being one.
+ *
+ * Both of the entries this replaces named ordinary narrative vocabulary, and
+ * between them they inverted the signal:
+ *
+ * - **`cliff` could not match `cliffhanger`.** `wordFormAlternationPattern`
+ *   accepts an inflection, not a compound, and `hanger` is not one of
+ *   `WORD_INFLECTION_SUFFIXES` — so the boundary at the end of the alternation
+ *   rejected `cliffhanger` outright. The only thing the entry ever matched was
+ *   the rock face, in a genre that writes coastlines: a chapter closing on
+ *   `they stood on the cliff` was reported as using explicit cliffhanger
+ *   language, and a chapter that used the actual word was not.
+ * - **`continued` is one of the commonest verbs in narrative prose.** `he
+ *   continued down the hall` scored the signal in full, and the entry was
+ *   redundant besides: the phrase `to be continued` beside it already contains
+ *   it, so the bare verb bought nothing the idiom did not already cover.
+ *
+ * The dimension is advisory but not free — the signal is worth sixteen points
+ * of `cliffhanger_quality`, which is one seventh of the `overallScore` the
+ * Proving Grounds compares two prompt variants by. This is the same class of
+ * defect as `anger` inside `danger` in `EMOTION_FAMILIES` above, arriving
+ * through a lexicon entry rather than through a substring match: a word that
+ * means something else, credited as the signal.
+ */
 const EXPLICIT_CLIFFHANGER_PATTERN = wordFormAlternationPattern([
-  'cliff', 'continued', 'to be continued'
+  'cliffhanger', 'to be continued'
 ]);
 
+/**
+ * Known limit: a label the markup tore in half is not recognised.
+ *
+ * `splitStoryIntoTextBlocks` treats `<br>` as a block boundary — it has to, or
+ * the words on either side weld into a single token — so `<p>To be<br>continued
+ * </p>` arrives as the two blocks `To be` and `continued`, and the final-block
+ * test above sees only the second. That ending scores nothing.
+ *
+ * This PR carried a reconstruction that joined the trailing blocks to put such a
+ * label back together, and it was withdrawn after four review findings against
+ * it — three of them false positives. The last is the one that settles it:
+ * `<p>She wanted to be</p><p>continued through the next trial.</p>` is two
+ * ordinary paragraphs of prose, and joining them *synthesises* the label out of
+ * words that were never a label. That is the same defect the `continued` entry
+ * was removed for, arriving by a different route, and it is worse than the gap
+ * it was added to close.
+ *
+ * It cannot be fixed at this level. The join is only ever safe across a `<br>`,
+ * and by the time the blocks reach here the splitter has erased which boundary
+ * was which — a `<p>` break and a `<br>` break are the same `\n\n`. Recovering
+ * that means giving `splitStoryIntoTextBlocks` a notion of boundary provenance,
+ * which every scanner in the repository reads and which is a change of its own.
+ *
+ * So the gap stands, deliberately: a `<br>`-split label is a **missed** signal,
+ * which is the direction an advisory scan should err in. A synthesised one is a
+ * score too high on prose that announces nothing, which is what this dimension
+ * was being repaired for in the first place.
+ */
+
+/**
+ * Score the ending, reading the final paragraph the way every other dimension
+ * here reads its text.
+ *
+ * The paragraph arrives straight from `splitStoryIntoTextBlocks`, whose blocks
+ * keep whatever whitespace the generator wrote inside them — so this was the one
+ * dimension of the seven scanning text that had never been through
+ * `collapseWhitespace`, and the inconsistency was inside the function: the
+ * fallback for a story with no blocks at all *is* the collapsed text, and the
+ * branch that runs on every real story was not.
+ *
+ * What that costs is the multi-word entry. `to be continued` is escaped
+ * literally, single spaces and all, so an ending the generator wrapped between
+ * the words — `To be\ncontinued` — was invisible to the pattern named for it.
+ * It is the same failure `CLIFFHANGER_HOOK_PATTERNS` collapses its scanned
+ * paragraphs for, and the same one `extractPlotThreads`'s
+ * `UNRESOLVED_QUESTION_PATTERN` names. It was masked until now by the `continued`
+ * entry removed above, which matched either way for the wrong reason.
+ *
+ * All three tests read the final block. A label a `<br>` broke across blocks is
+ * not recognised — see the note on `EXPLICIT_CLIFFHANGER_PATTERN` for why that
+ * gap is left open rather than closed by joining blocks.
+ */
 function scoreCliffhangerQuality(storyText: string, paragraphs: string[]): DimensionDraft {
-  let finalParagraph = storyText;
-  for (const paragraph of paragraphs) {
-    finalParagraph = paragraph;
-  }
-  finalParagraph = finalParagraph.toLowerCase();
+  const finalParagraph = collapseWhitespace(
+    paragraphs.length ? paragraphs[paragraphs.length - 1] : storyText
+  ).toLowerCase();
   const signals: string[] = [];
   if (/[?!]\s*$/.test(finalParagraph)) {
     signals.push('Ending closes on a question or exclamation.');

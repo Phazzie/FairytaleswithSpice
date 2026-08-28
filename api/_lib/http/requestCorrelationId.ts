@@ -16,8 +16,21 @@ export const MAX_REQUEST_CORRELATION_ID_LENGTH = 128;
  */
 const REQUEST_CORRELATION_ID_PATTERN = /^[A-Za-z0-9._:+=/-]+$/;
 
+/**
+ * The header the settled id is echoed back on, named once.
+ *
+ * `corsPolicy` lists the same name twice — once as a request header a caller
+ * may send, once as a response header a browser is allowed to read back — and
+ * a route that spelled it a fourth time could disagree with all three.
+ */
+export const REQUEST_CORRELATION_ID_HEADER = 'X-Request-ID';
+
 interface RequestWithHeaders {
   headers?: Record<string, string | string[] | undefined>;
+}
+
+interface ResponseWithHeaders {
+  setHeader(name: string, value: string): void;
 }
 
 /**
@@ -62,4 +75,62 @@ export function readRequestCorrelationId(req: RequestWithHeaders | undefined): s
   }
 
   return `req_${randomUUID()}`;
+}
+
+/**
+ * Settle this request's correlation id and echo it to the caller.
+ *
+ * Reading the id and writing it back are one step, not two: an id that is not
+ * echoed names nothing the caller can quote, and a header written from a value
+ * read anywhere but here is a header that does not obey the rules above. This
+ * was the opening pair of lines inside `beginPostRoute` and reachable only
+ * through it, which made a correlation id something a route could have *only*
+ * by also adopting POST-only method dispatch — so `/api/story-lab/jobs` and
+ * `/api/story-lab/account`, which each serve more than `POST`, had no id at
+ * all. Splitting the id out of the method rules is what lets those two settle
+ * one without pretending to be paid POST routes.
+ *
+ * Call it before anything else the route does, including its CORS branch, so
+ * that a preflight answer carries the id too and every line the request writes
+ * — the method refusal included — can be stamped with it.
+ *
+ * *Settled* is the whole word: the id is written back onto the request as well
+ * as out to the caller, so that anything downstream reading it again resolves
+ * the same value instead of minting a second one. Not every reader is handed
+ * the id as an argument, and one already re-reads —
+ * `clerkAuthPort.warnAuthVerificationFailure` calls `readRequestCorrelationId`
+ * on the request it was given, which is the *only* line an auth failure on the
+ * account route or the jobs route's durable path writes. Without the write-back
+ * that line mints its own `req_<uuid>` whenever the caller supplied no usable
+ * id — the common case, since no client here sends one — so the header a caller
+ * was told to quote named the one diagnostic they would come back asking about
+ * and could not find. A supplied id was never affected: both reads return the
+ * same trimmed value. Only the minted case drifted, which is the case that is
+ * impossible to notice from the outside.
+ *
+ * The value written back is the settled one, so a re-read cannot re-trim, or
+ * re-length-check, or replace the id a second time by a different draw.
+ */
+export function settleRequestCorrelationId(
+  req: RequestWithHeaders | undefined,
+  res: ResponseWithHeaders
+): string {
+  const requestId = readRequestCorrelationId(req);
+
+  if (req) {
+    // Mutated in place rather than replaced: a derived request built earlier
+    // from the same headers object — `withEventStreamAuth` on the jobs route
+    // builds one — would keep pointing at the old copy if this rebound the
+    // property. Created only when there is no headers object at all, which is
+    // exactly the request that got a minted id and so the one whose downstream
+    // readers most need to find it.
+    if (req.headers) {
+      req.headers['x-request-id'] = requestId;
+    } else {
+      req.headers = { 'x-request-id': requestId };
+    }
+  }
+
+  res.setHeader(REQUEST_CORRELATION_ID_HEADER, requestId);
+  return requestId;
 }
