@@ -439,6 +439,51 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
+**Review round 18: redacting a credential and consuming it are two questions,
+and only the first was being asked.** Codex, P1, on the round-17 head:
+`a...............` is one letter and fifteen stops — a sixteen-character body
+`API_KEY_CREDENTIAL_GRAMMAR` accepts, so a deployment can configure it — and it
+was logged as `Bearer [REDACTED]...............`, fifteen of the key's sixteen
+characters printed beside their own redaction. Reproduced before changing
+anything:
+
+```text
+request failed with Bearer a...............  -> Bearer [REDACTED]...............
+Authorization: Bearer a...............       -> Bearer [REDACTED]...............
+request failed with Bearer kkkkkkkkkkkkkkk.  -> Bearer [REDACTED].
+request failed with Bearer kkkkkkkkkkkkk...  -> Bearer [REDACTED]...
+```
+
+Rounds 13, 14 and 16 each fixed a way the trailing-stop trim decided *whether*
+to redact. None of them touched how much of the run the redaction then
+consumed, and `index = body === '' ? cursor : tokenEnd` handed the stops back
+whenever any word survived the trim — so the guarantee round 14 stated held for
+the decision and failed at the write. The all-marks case round 16 closed was
+this defect with the body emptied; this is the same defect with one character
+left in it.
+
+**The floor now answers both questions.** At or above `API_KEY_MINIMUM_LENGTH`
+the whole run is consumed, stops included: that is exactly the band in which a
+run could be a configured credential, and nothing distinguishes its trailing `.`
+from a full stop, so the sentence loses a mark rather than the log keeping a
+key. Below the floor the stops stay the sentence's — `sent Bearer abc123def456.
+Then it failed` keeps its stop, unchanged — and nothing handed back there could
+have been configured, since Note 6's contract puts every entry at or above the
+floor. The empty-body guard stays: a run of nothing but marks has no word to
+punctuate at any length, and trimming it would leave `index` where it started
+and never terminate.
+
+**The existing at-floor test asserted the wrong half.** It checked
+`hidden.note.includes('[REDACTED]')`, which passes while the run is only
+partly consumed — so the suite that was written to pin this guarantee could not
+see it break. It now asserts the whole line, and the four shapes above are
+pinned directly.
+
+Counterfactual mutations: 4 applied, 4 killed — reverting to the old
+consumption rule; consuming the whole run unconditionally; measuring the
+consumption floor on the body rather than the run; and dropping the empty-body
+guard.
+
 **Review round 17: the comma finding had a third spelling, and it was the one
 with no delimiter to key on.** Codex, P2: `Authorization: Bearer abcdef, Bearer
 ghijkl` redacts only the first credential and prints the second in the clear.

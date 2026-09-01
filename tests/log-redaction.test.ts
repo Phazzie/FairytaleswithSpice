@@ -395,9 +395,32 @@ for (const atFloor of [
   const hidden = redactSensitiveLogData({
     note: `request failed with Bearer ${atFloor}`
   }) as Record<string, string>;
+  // Asserted on the whole line rather than on the marker being present. The
+  // weaker `includes` form passed while the redaction consumed only part of the
+  // run and printed the rest beside its own `[REDACTED]` -- `a...............`
+  // is a value `authenticateRequest` accepts, and fifteen of its sixteen
+  // characters were reaching the log. Redacting a credential and consuming it
+  // are two questions, and only this form asks the second.
   assert(
-    hidden.note.includes(REDACTED_SENSITIVE_TEXT),
-    `every run at the configured floor is a credential, whatever its shape: ${atFloor} -> ${hidden.note}`
+    hidden.note === `request failed with Bearer ${REDACTED_SENSITIVE_TEXT}`,
+    `a run at the floor is redacted *and* consumed, whatever its shape: ${atFloor} -> ${hidden.note}`
+  );
+}
+
+// The same defect stated as the reviewer found it: a minimally recoverable
+// accepted key, one credential character and fifteen stops. The stops are what
+// carry it to the floor, so they are the credential's rather than the
+// sentence's, and a header context must not hand them back either.
+for (const line of [
+  `request failed with Bearer a${'.'.repeat(API_KEY_MINIMUM_LENGTH - 1)}`,
+  `Authorization: Bearer a${'.'.repeat(API_KEY_MINIMUM_LENGTH - 1)}`,
+  `request failed with Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH - 1)}.`,
+  `request failed with Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH - 3)}...`
+]) {
+  const hidden = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    !/\.$/.test(hidden.note),
+    `a stop that carries a run to the floor is the credential's, not the sentence's: ${line} -> ${hidden.note}`
   );
 }
 

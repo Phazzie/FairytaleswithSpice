@@ -66,6 +66,7 @@ function redactBearerTokens(value: string): string {
     // module's own defect one character further along.
     const tokenEnd = endBeforeSentenceStops(value, tokenStart, cursor);
     const body = stripBalancedEmphasis(value.slice(tokenStart, tokenEnd));
+    const runLength = cursor - tokenStart;
 
     // A standalone `bearer` is the scheme keyword *and* an ordinary English
     // noun, so the word alone does not settle which one this is. Only redact
@@ -74,7 +75,7 @@ function redactBearerTokens(value: string): string {
     if (
       !isIntroducedAsCredential(value, found) &&
       !credentialArrays.contains(found) &&
-      !isCredentialShapedBearerToken(body, cursor - tokenStart)
+      !isCredentialShapedBearerToken(body, runLength)
     ) {
       redacted += value.slice(found, cursor);
       index = cursor;
@@ -82,11 +83,31 @@ function redactBearerTokens(value: string): string {
     }
 
     redacted += `Bearer ${REDACTED_SENSITIVE_TEXT}`;
-    // The marks are given back to the sentence only when a word came before
-    // them. A run that is *nothing but* marks has no word to punctuate, so they
-    // are the run rather than punctuation after it, and handing them back would
-    // print the credential beside its own redaction.
-    index = body === '' ? cursor : tokenEnd;
+    // How much of the run the redaction consumed, which is a second question
+    // from whether to redact at all -- and asking only the first is how a
+    // credential got printed beside its own `[REDACTED]`.
+    //
+    // **At or above the floor the whole run is consumed, stops included.**
+    // `API_KEY_CREDENTIAL_GRAMMAR` counts `.` inside a token body, so
+    // `a...............` is a sixteen-character value `authenticateRequest`
+    // accepts -- and handing its trailing stops back to the sentence printed
+    // fifteen of its sixteen characters. The floor is exactly the line at which
+    // a run *could* be a configured credential, so above it a trailing stop is
+    // one of the credential's characters and there is no way to tell it from
+    // punctuation. Fail closed: the sentence loses a mark rather than the log
+    // keeping a key.
+    //
+    // **Below the floor the stops are the sentence's**, which is what keeps
+    // `sent Bearer abc123def456. Then it failed` from losing the mark that ends
+    // it. Nothing is given back that a deployment could have configured: Note
+    // 6's contract puts every `API_KEYS` entry at or above the floor, so a run
+    // short enough to reach this branch is in the same residual band the guide
+    // already documents.
+    //
+    // A run that is *nothing but* marks has no word to punctuate at any length,
+    // so its marks are the run rather than punctuation after it -- and trimming
+    // them would leave `index` where it started and never terminate.
+    index = body === '' || runLength >= BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH ? cursor : tokenEnd;
   }
 
   return redacted;
