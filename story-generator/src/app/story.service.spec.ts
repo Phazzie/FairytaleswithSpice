@@ -297,11 +297,11 @@ describe('StoryService', () => {
     expect(req.request.method).toBe('GET');
     req.flush({ success: true, data: runningJob });
 
-    expect(errorLogging.logInfo).toHaveBeenCalledWith(
-      'Polling Story Lab job status',
-      'StoryService.getStoryLabJobStatus',
-      { statusPath: payload.paths.statusPath }
-    );
+    // Deliberately no `logInfo` call here — this method is polled on a fixed
+    // interval, and `ErrorLoggingService` keeps one shared, capped buffer
+    // that also backs the Error Display panel. A per-poll info entry would
+    // flood it and evict genuine errors.
+    expect(errorLogging.logInfo).not.toHaveBeenCalled();
   });
 
   it('logs http errors from job status polling through the error logger', () => {
