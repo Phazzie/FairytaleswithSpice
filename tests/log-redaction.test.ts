@@ -876,7 +876,17 @@ for (const [label, note] of [
   redactSensitiveLogData({ note });
   const elapsed = Date.now() - startedAt;
 
-  assert(elapsed < 4_000, `${label}: 20,000 arrays took ${elapsed}ms — the array pass is not linear`);
+  // Ten seconds, not four. This is a wall clock inside a correctness suite, so
+  // the number has to separate the thing it is for from the thing it is not:
+  // the quadratic regressions it exists to catch measured 25s and 63s, while
+  // the linear implementation measures 335ms and 687ms. Anywhere in that gap
+  // catches them; the higher end also survives a loaded shared runner, where a
+  // four-second bound would fail `npm run test:all` for a reason having nothing
+  // to do with the change under test. Raised on review for exactly that.
+  assert(
+    elapsed < 10_000,
+    `${label}: 20,000 arrays took ${elapsed}ms — the array pass is not linear`
+  );
 }
 
 // A URL is usually written into a sentence, and the mark that closes the

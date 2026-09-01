@@ -85,7 +85,7 @@ is story content — the suite two screens up feeds it `htmlContent` — so ever
 one of those sits immediately before an ordinary capitalized noun in the inputs
 this app really produces:
 
-```
+```text
 <p>Bearer of the seal walked in</p>   -> <p>Bearer [REDACTED] the seal walked in</p>
 "Bearer of the seal," he said         -> "Bearer [REDACTED] the seal," he said
 (Bearer of the oath) stepped forward  -> (Bearer [REDACTED] the oath) stepped forward
@@ -154,7 +154,7 @@ reaches the label `said` and is left alone.
 regressions from the old unconditional redaction, and both in text carrying
 explicit authorization context, so neither is the accepted residual:
 
-```
+```text
 Invalid Authorization header: Bearer abcdef        the label's last word is `header`
 payload="{\"authorization\":\"Bearer abcdef\"}"    the walk stopped at the escape `\`
 ```
@@ -273,7 +273,7 @@ the grounds that a credential cannot contain one. True, and beside the point —
 the *credential* cannot, but a **sibling element** is under no such obligation,
 and `Digest roles=[admin]` is a real header value:
 
-```
+```text
 {"authorization":["Digest roles=[admin]","Bearer abcdef"]}
     -> span closed inside element one; the credential emitted in the clear
 {"authorization":["Bearer abcdef","Digest roles=[admin]","Bearer ghijkl"]}
@@ -295,7 +295,7 @@ below disproves it rather than refining it.**
 rather than the leak.** Codex produced a plain payload carrying an escaped
 quote:
 
-```
+```text
 {"authorization":["Digest realm=\"tenant]\"","Bearer abcdef"]}
     -> unchanged; the credential logged in the clear
 ```
@@ -332,7 +332,7 @@ Codex returned three findings. The third is fixed here; the first two are
 
 **Fixed — a slash joins an English word exactly as a hyphen does.**
 
-```
+```text
 the bearer and/or recipient must sign        -> the Bearer [REDACTED] recipient must sign
 the bearer his/her representative appointed  -> the Bearer [REDACTED] representative appointed
 ```
@@ -348,7 +348,7 @@ the Note 7 residual and bounded the same way. Mutations: 2 applied, 2 killed.
 **Not fixed — the two findings inside the credential-array scanner**, which is
 where the fifth round of defects in one function has now landed:
 
-```
+```text
 {"authorization":"Bearer abcdef, Bearer ghijkl"}
     -> `ghijkl` in the clear; the walk stops at the comma inside one quoted value
 {"authorization":["path=C:\\","Bearer abcdef"]} and the bearer announced victory
@@ -387,7 +387,7 @@ rounds running.
 round-9 reply said "a sixth patch would move the boundary again, not remove the
 worst case". Codex then produced the sixth route:
 
-```
+```text
 {"authorization":["say \"hi","Bearer abcdef"]} and note=\"[the bearer announced victory]\"
     -> ... and note=\"[the Bearer [REDACTED] victory]\"
 ```
@@ -445,6 +445,60 @@ rather than only the prose it was added for: each joiner spared below the floor,
 and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
+
+**Review round 22: the quality gate this entry claimed was at parity had been
+failing since round 17, and I had been measuring against the wrong baseline.**
+CodeRabbit, four findings on `22a42b8`, all four taken.
+
+**The SonarCloud gate is failing, in this PR's own two functions.** The PR
+comment shows only "Quality Gate passed · 2 New issues", and `sonarcloud.io` is
+unreachable from where this session runs, so the two issues had gone unread
+across five commits. I inferred from the count holding at exactly 2 that they
+were stable findings elsewhere in the diff. **That inference was wrong**, and
+CodeRabbit surfaced the check output that settles it:
+
+```text
+shared/sensitiveTextRedaction.ts:20   Cognitive Complexity 20 > 15   redactBearerTokens
+shared/sensitiveTextRedaction.ts:386  Cognitive Complexity 21 > 15   findBareCredentialListEnd
+```
+
+Both are functions this slice changed, and `findBareCredentialListEnd` is one it
+created, so the failure is this slice's. The count held at 2 because both landed
+together in round 17 — the constancy that made them look pre-existing is
+explained by them being introduced together, not by them being someone else's.
+
+Fixed by extraction rather than by rearrangement, so the shape of the reasoning
+survives: `readBearerRunAfter` returns the four numbers one scan produces
+(`cursor`, `tokenEnd`, `body`, `runLength`), which also puts in one place the
+separation that rounds 14 and 18 both got wrong — shape is asked of the body,
+length of the whole run. `readBareCredentialEntry` returns one entry's
+`credentialEnd` and `entryEnd` separately, which is exactly the distinction
+rounds 20 and 21 kept collapsing: an entry can exist without carrying a
+credential. The refactor is behaviour-preserving by **differential test** rather
+than by assertion alone: 40,000 random compositions of scheme keywords,
+separators, quotes, escapes and prose, compared against the round-21
+implementation, **0 mismatches**. All five previously-killed mutations are still
+killed against the extracted form.
+
+**MD040, and the baseline mistake behind it.** Eight fenced blocks in this entry
+carry no language. Every "markdown lint at parity" claim in rounds 17–21 was
+measured by stashing the *working tree* — which compares a commit against the
+one before it, not against the branch point. Against `origin/claude/gallant-
+ritchie-1cyjde` the file has 0 MD040 and this branch had 8, every one of them
+added by this entry. The parity claim was true of each step and false of the
+slice, which is the more embarrassing way to be wrong: the number was checked
+every round and the thing it was checked against was not. Now `text` on all
+eight, and measured against the branch point: every rule at parity except MD013,
+which gains this slice's prose.
+
+**Two smaller ones, both taken.** The guide said the structured form "never
+reaches this function at all"; `redactValue` does receive the value and returns
+`[REDACTED]` at the `authorization` key before traversing it, so the wording is
+now what the code does. And the linearity budget was a 4-second wall clock
+inside the correctness suite — raised to 10s, which still separates the 335ms
+and 687ms linear measurements from the 25s and 63s quadratic regressions it
+exists to catch, without failing `npm run test:all` on a loaded shared runner
+for a reason unrelated to the change under test.
 
 **Review round 21: an entry can be empty without being *nothing*, and the
 mutation that was supposed to prove the bound did not.** CodeRabbit, P2, on
@@ -932,7 +986,7 @@ so it is a bounded leak in a malformed line and never prose destruction.
 **Review round 8 found both halves of round 7's trade were wrong.** Codex
 returned two findings on the same function, in opposite directions:
 
-```
+```text
 payload="{\"authorization\":[\"Digest realm=\\\"tenant]\\\"\",\"Bearer abcdef\"]}"
     -> both readings wrong; credential in the clear
 {"authorization":["ends with a quote\"","Bearer abcdef"]} and the bearer announced victory

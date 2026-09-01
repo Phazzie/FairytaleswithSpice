@@ -42,49 +42,29 @@ function redactBearerTokens(value: string): string {
       continue;
     }
 
-    let cursor = found + marker.length;
-    const whitespaceStart = cursor;
-    while (cursor < value.length && isWhitespace(value[cursor] ?? '')) {
-      cursor += 1;
-    }
+    const run = readBearerRunAfter(value, found);
 
-    if (cursor === whitespaceStart) {
-      redacted += value.slice(found, cursor);
-      index = cursor;
-      continue;
-    }
-
-    const tokenStart = cursor;
-    while (cursor < value.length && isBearerTokenChar(value[cursor] ?? '')) {
-      cursor += 1;
-    }
-
-    // The full stop that ends the sentence belongs to the sentence, not to the
-    // run -- and `.` is a `b64token` character, so the scan above swallowed it.
-    // `the bearer returned.` was read as the credential-shaped `returned.` and
-    // lost both the word and the mark that ended the line, which is this
-    // module's own defect one character further along.
-    // The scheme with nothing after it is a credential that was *missing*, not
-    // one that is being hidden. `Authorization: Bearer ` and
-    // `{"authorization":"Bearer "}` are what a failed request logs when no key
-    // was sent at all, and both arms below fire on the context alone -- so the
-    // line came out as `Bearer [REDACTED]`, telling an operator debugging a
-    // missing credential that a secret had been supplied and withheld from
-    // them. That is this module's own defect in its other direction: asserting
-    // a credential where there was none.
+    // Nothing the scheme could be introducing: either it is not followed by
+    // whitespace at all (`bearer=`, which is a different grammar), or the
+    // whitespace is followed by no token. The second is a credential that was
+    // *missing* rather than one being hidden -- `Authorization: Bearer ` is what
+    // a failed request logs when no key was sent, and both arms below fire on
+    // context alone, so without this the line was rewritten to
+    // `Bearer [REDACTED]`, telling an operator a secret had been supplied and
+    // withheld from them. That is this module's own defect in its other
+    // direction: asserting a credential where there was none.
     //
     // Checked before the arms rather than inside them, because the arms answer
     // "is this a credential position", and this asks the prior question of
     // whether there is anything here to be one.
-    if (cursor === tokenStart) {
-      redacted += value.slice(found, cursor);
-      index = cursor;
+    if (!run) {
+      const schemeEnd = skipWhitespaceForward(value, found + marker.length);
+      redacted += value.slice(found, schemeEnd);
+      index = schemeEnd;
       continue;
     }
 
-    const tokenEnd = endBeforeSentenceStops(value, tokenStart, cursor);
-    const body = stripBalancedEmphasis(value.slice(tokenStart, tokenEnd));
-    const runLength = cursor - tokenStart;
+    const { cursor, tokenEnd, body, runLength } = run;
 
     // A standalone `bearer` is the scheme keyword *and* an ordinary English
     // noun, so the word alone does not settle which one this is. Only redact
@@ -129,6 +109,57 @@ function redactBearerTokens(value: string): string {
   }
 
   return redacted;
+}
+
+/**
+ * The run the scheme keyword at `found` introduces, or `null` when it
+ * introduces nothing.
+ *
+ * Four numbers come out of one scan, and keeping them together is what stops
+ * them being asked separately and answered inconsistently -- which is how a
+ * credential came to be printed beside its own `[REDACTED]`:
+ *
+ * - `cursor` -- the end of the whole run, punctuation included.
+ * - `tokenEnd` -- the end with a trailing run of dots removed. The full stop
+ *   that ends a sentence belongs to the sentence, not to the run, and `.` is a
+ *   `b64token` character so the scan swallows it: `the bearer returned.` was
+ *   read as the credential-shaped `returned.` and lost both the word and the
+ *   mark that ended the line.
+ * - `body` -- `tokenEnd`'s text with one balanced pair of Markdown emphasis
+ *   marks removed. This is what the *shape* question is asked of.
+ * - `runLength` -- the whole run's length. This is what the *length* question is
+ *   asked of, and measuring it on the body instead let padding supply the
+ *   entropy the floor exists to require.
+ *
+ * `null` means the keyword is not followed by whitespace at all, or is followed
+ * by whitespace and then no token -- a credential that is *missing* rather than
+ * one to hide.
+ */
+function readBearerRunAfter(
+  value: string,
+  found: number
+): { cursor: number; tokenEnd: number; body: string; runLength: number } | null {
+  const afterScheme = found + BEARER_SCHEME.length;
+  const tokenStart = skipWhitespaceForward(value, afterScheme);
+  if (tokenStart === afterScheme) {
+    return null;
+  }
+
+  let cursor = tokenStart;
+  while (cursor < value.length && isBearerTokenChar(value[cursor] ?? '')) {
+    cursor += 1;
+  }
+  if (cursor === tokenStart) {
+    return null;
+  }
+
+  const tokenEnd = endBeforeSentenceStops(value, tokenStart, cursor);
+  return {
+    cursor,
+    tokenEnd,
+    body: stripBalancedEmphasis(value.slice(tokenStart, tokenEnd)),
+    runLength: cursor - tokenStart
+  };
 }
 
 /**
@@ -389,57 +420,70 @@ function findBareCredentialListEnd(value: string, from: number): number | null {
   let crossedComma = false;
 
   for (;;) {
-    if (!startsWithIgnoreCase(value, BEARER_SCHEME, cursor) || !hasBearerBoundaryBefore(value, cursor)) {
+    const entry = readBareCredentialEntry(value, cursor);
+    if (!entry) {
       return crossedComma ? end : null;
     }
-
-    // The scheme has to be a word of its own here too: `Bearertoken` is one
-    // word, and reading it as the scheme would end the chain on a token that
-    // was never separated from it.
-    const afterScheme = cursor + BEARER_SCHEME.length;
-    const tokenStart = skipWhitespaceForward(value, afterScheme);
-    if (tokenStart === afterScheme) {
-      return crossedComma ? end : null;
+    if (entry.credentialEnd !== null) {
+      end = entry.credentialEnd;
     }
 
-    cursor = tokenStart;
-    while (cursor < value.length && isBearerTokenChar(value[cursor] ?? '')) {
-      cursor += 1;
-    }
-
-    // **An entry may be empty without ending the list.**
-    // `Authorization: Bearer , Bearer abcdef` is a list whose *first* credential
-    // is missing, which is a shape a failed request really logs -- and treating
-    // the empty entry as the end of the chain abandoned the list before any span
-    // was recorded, so the credential after it stayed in the clear. The list
-    // ends where the repetition stops, and an empty entry has not stopped it.
-    //
-    // The span still ends at the last entry that *had* a credential, so nothing
-    // is extended over prose by an empty entry at the tail.
-    if (cursor > tokenStart) {
-      end = cursor;
-    } else {
-      // An entry with no *token* in it may still have characters: a quoted
-      // empty value (`Bearer ""`), or a stray mark a serializer left behind
-      // (`Bearer !`). Neither is a credential, and neither is the end of the
-      // list -- the comma after them is what continues it, and stopping on
-      // them left every later credential in the clear.
-      //
-      // Bounded by what it refuses to cross: a token character, which is what
-      // every word and every credential is made of, and the `,` that separates
-      // entries. So this can only ever skip punctuation and the whitespace
-      // between it, never a word -- `Authorization: Bearer "the bearer
-      // announced victory"` stops on the `t` and opens no span.
-      cursor = skipNonCredentialPadding(value, cursor);
-    }
-
-    const comma = skipWhitespaceForward(value, cursor);
+    const comma = skipWhitespaceForward(value, entry.entryEnd);
     if (value[comma] !== ',') {
       return crossedComma ? end : null;
     }
     crossedComma = true;
     cursor = skipWhitespaceForward(value, comma + 1);
   }
+}
+
+/**
+ * One `Bearer <token>` entry read at `from`, or `null` if there is no entry
+ * there at all.
+ *
+ * `credentialEnd` is where the entry's credential ends, or `null` when the
+ * entry carried none -- which is not the same as there being no entry.
+ * **An entry may be empty without ending the list.**
+ * `Authorization: Bearer , Bearer abcdef` is a list whose *first* credential is
+ * missing, a shape a failed request really logs, and reading the empty entry as
+ * the end of the chain abandoned the list before any span was recorded, leaving
+ * the credential after it in the clear. Separating the two ends is what lets the
+ * caller keep the span at the last entry that *had* a credential while still
+ * walking past the ones that did not.
+ *
+ * `entryEnd` is where the caller resumes looking for the comma.
+ */
+function readBareCredentialEntry(
+  value: string,
+  from: number
+): { credentialEnd: number | null; entryEnd: number } | null {
+  if (!startsWithIgnoreCase(value, BEARER_SCHEME, from) || !hasBearerBoundaryBefore(value, from)) {
+    return null;
+  }
+
+  // The scheme has to be a word of its own here too: `Bearertoken` is one word,
+  // and reading it as the scheme would end the chain on a token that was never
+  // separated from it.
+  const afterScheme = from + BEARER_SCHEME.length;
+  const tokenStart = skipWhitespaceForward(value, afterScheme);
+  if (tokenStart === afterScheme) {
+    return null;
+  }
+
+  let cursor = tokenStart;
+  while (cursor < value.length && isBearerTokenChar(value[cursor] ?? '')) {
+    cursor += 1;
+  }
+  if (cursor > tokenStart) {
+    return { credentialEnd: cursor, entryEnd: cursor };
+  }
+
+  // An entry with no *token* in it may still have characters: a quoted empty
+  // value (`Bearer ""`), or a stray mark a serializer left behind (`Bearer !`).
+  // Neither is a credential, and neither is the end of the list -- the comma
+  // after them is what continues it, and stopping on them left every later
+  // credential in the clear.
+  return { credentialEnd: null, entryEnd: skipNonCredentialPadding(value, cursor) };
 }
 
 function skipWhitespaceForward(value: string, from: number): number {
