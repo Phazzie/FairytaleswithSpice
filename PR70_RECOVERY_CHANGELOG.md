@@ -4,6 +4,78 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-01 UTC - 35 advisories cleared inside the ranges already declared, after Dependabot's grouped PR turned out not to install
+
+Dependabot PR #318 bundles 21 `npm_and_yarn` updates across both package roots, and its Vercel deployment fails. The reason is in the lockfile it wrote, not in the deployment: it swept `@angular/*` from 20.3.x to **22.1.4** — two majors — into a group whose stated purpose is security patches, and the result is not internally consistent.
+
+```text
+$ npm ci   # in story-generator, at PR #318's head e506b0f
+npm error code ERESOLVE
+npm error While resolving: @angular/build@22.1.6
+npm error Found: typescript@5.9.3
+npm error   dev typescript@"~5.9.2" from the root project
+npm error Could not resolve dependency:
+npm error peer typescript@">=6.0 <6.1" from @angular/build@22.1.6
+```
+
+Angular 22's builder requires TypeScript 6, and the PR left `typescript` at `~5.9.2`. It also left `@angular/cli` at `^20.3.26` while moving `@angular/build`, `@angular/core` and `@angular/compiler-cli` to 22.x. So the install step fails before any build runs, and **every advisory in that PR is blocked behind an accidental framework upgrade** — including a critical one.
+
+`AGENTS.md` already states the rule this violates (line 218): *"Major framework upgrades should be separate from patch/minor tooling updates."* This slice takes the patch/minor half.
+
+The load-bearing finding: **none of the advisories actually needed a major bump.** Angular backported the fixes to the 20.3.x line, and both `package.json` files declare caret ranges (`^20.3.22`, `^20.3.26`) that already admit those patches. The lockfiles were simply pinned behind them.
+
+Actions:
+
+- `npm audit fix` at the repo root — `axios` 1.16.1 → **1.20.0**, `form-data` → 4.0.6. Two high-severity advisories in **production** dependencies (`form-data` CRLF injection GHSA-hmw2-7cc7-3qxx; ten axios advisories including prototype-pollution gadgets that alter request construction and a `NO_PROXY` bypass). Root: **2 high → 0**.
+- `npm audit fix` then `npm update` in `story-generator` — resolves `@angular/*` to 20.3.30 / 20.3.35 and lifts `tar`, `undici`, `ws`, `engine.io`, `socket.io-parser`, `brace-expansion`, `body-parser`, `postcss`, `esbuild`, `piscina`, `vite`, `@babel/core` to patched versions. `story-generator`: **33 (1 critical, 27 high, 2 moderate, 3 low) → 0**. The critical is `tar` GHSA-vmf3-w455-68vh (file smuggling via a PAX size override on GNU long-name headers).
+- The two `@angular/compiler` XSS advisories (GHSA-58w9-8g37-x9v5 two-way-binding sanitization bypass, GHSA-jj27-h5hq-8x99 i18n event-handler XSS) are fixed in 20.3.27; `npm audit fix` would not take them on its own because it computes the remediation as a major bump. `npm update` reaches them inside the declared caret range instead.
+
+**Neither `package.json` is modified.** The remediation itself is confined to the two lockfiles; the only other file in the slice is this changelog entry. That is the difference from #318, which had to edit both manifests to reach the same advisories the declared ranges already covered.
+
+Equivalence check against #318, run rather than asserted — for every non-Angular package #318 moves, this branch resolves to **the same version or higher**, none lower:
+
+```text
+axios              #318=1.18.0   here=1.20.0     tar               #318=7.5.22   here=7.5.22
+form-data          #318=4.0.6    here=4.0.6      undici            #318=6.28.0   here=6.28.0
+@hono/node-server  #318=1.19.17  here=2.1.1      ws                #318=8.21.3   here=8.21.3
+body-parser        #318=2.3.0    here=2.3.0      engine.io         #318=6.6.9    here=6.6.9
+brace-expansion    #318=1.1.18   here=1.1.18     socket.io-parser  #318=4.2.7    here=4.2.7
+hono               #318=4.13.5   here=4.13.5     fast-uri          #318=3.1.6    here=3.1.6
+ip-address         #318=10.7.0   here=10.7.0
+```
+
+Two entries there correct claims made earlier in this entry's own first draft, so they are stated rather than quietly adjusted:
+
+- **`axios` resolves to 1.20.0, not 1.18.0.** `npm audit fix` took the highest release inside the existing `^1.16.1`, which is *above* what #318 pinned. The manifest range is unchanged either way; the earlier "→ 1.18.0" was copied from #318's table instead of read out of the resulting lockfile.
+- **Four transitives cross a major boundary**, so "no major bumps" is too strong and the accurate statement is *no manifest changed and every resolution sits inside a range something already declared*. `npm update` cannot violate a declared range, and these are the four: `@hono/node-server` 1.19.14 → 2.1.1, under `@modelcontextprotocol/sdk`, whose declared range is the union `^1.19.9 || ^2.0.5` and therefore admits both majors; `@types/send` 0.17.5 → 1.2.1; and `entities` 6.0.1 → 7.0.1 / 8.0.0 nested under `htmlparser2` and `parse5`. All four are deep transitives, none is a direct dependency of either package root, and the 211 Angular specs and full suite pass with them in place.
+
+Self-review:
+
+- Non-claim: this does not upgrade Angular, and it does not close #318. The 20 → 22 upgrade is real work — a TypeScript 6 bump, a CLI bump, and whatever Angular 22 breaks — and it belongs in its own slice with its own proof. This slice deliberately leaves that decision alone rather than bundling it with a critical `tar` fix.
+- Non-claim: no evidence any of these advisories was reachable in this app's actual usage. This is remediation by advisory, not by exploitability analysis. `tar`, `ws`, `undici`, `engine.io` and `socket.io-parser` are all build/toolchain transitives here; `axios` and `form-data` are the two that ship.
+- Disclosed regression, not fixed: this update grows the initial bundle **499.07 kB → 502.29 kB**, which crosses the `maximumWarning: "500kB"` budget in `angular.json` and adds one build warning that `main` does not have. `maximumError` is `1MB`, so the build still succeeds and the deployment is unaffected. The budget is deliberately **not** raised here — silencing a size signal to make a dependency bump look clean is the wrong trade, and 3.22 kB of framework patch is exactly the kind of drift the warning exists to surface. Flagged for the owner rather than absorbed.
+- **The 3.22 kB is the Angular runtime, and that is measured rather than assumed.** The first draft asserted it, which was fair to challenge on review: the lockfile also moves output-affecting build inputs — `@angular/build` 20.3.26 → 20.3.35, `@babel/core` 7.28.3 → 7.29.7, `esbuild` 0.28.0 → 0.28.1, `vite` 7.3.2 → 7.3.6. Two builds off this branch's head rule every one of them out, each holding the Angular runtime at 20.3.30 and reverting one group of build inputs:
+
+  | build | `@angular/build` | esbuild / vite / `@babel/core` | initial total |
+  | --- | --- | --- | --- |
+  | `main` baseline | 20.3.26 | 0.28.0 / 7.3.2 / 7.28.3 | 499.07 kB |
+  | branch head | 20.3.35 | 0.28.1 / 7.3.6 / 7.29.7 | **502.29 kB** |
+  | builder reverted | **20.3.26** | 0.28.1 / 7.3.6 / 7.29.7 | **502.29 kB** |
+  | bundler chain reverted (npm `overrides`) | 20.3.35 | **0.28.0 / 7.3.2 / 7.28.3** | **502.29 kB** |
+
+  Reverting either group changes the figure by zero bytes, so no build input accounts for the growth and the only variable left is the Angular runtime, 20.3.22 → 20.3.30. The `overrides` block used for the last row is a scratch-worktree measurement device and is **not** committed.
+
+- The pre-existing `proving-grounds.css` budget warning (12.16 kB against a 12 kB warning / 15 kB error) is unchanged, and is the same one recorded against #315 and #316.
+
+Validation:
+
+- `npm ci` from a clean tree — exit 0 in both package roots. This is the exact step that fails on #318.
+- `npm run build` — exit 0; `build:vercel-index` produced the fallback index.
+- `npm run test:all` — exit 0, zero `not ok` lines across the suite.
+- `ng test --watch=false --browsers=ChromeHeadlessNoSandbox` — **211 of 211 SUCCESS** under Angular 20.3.30. Run explicitly because this slice moves the framework, and `test:all` does not cover the Angular specs (that gap is PR #317's subject).
+- `scripts/recovery/preflight.sh --skip-status` — exit 0.
+- Environment note, per the stale-check rule: `preflight.sh` and `ng test` both fail with `No binary for ChromeHeadless browser on your platform` unless `CHROME_BIN` is exported. Not a repo defect and not changed here; both runs above were made with `CHROME_BIN` set to a local Chromium.
+
 ## 2026-09-01 UTC - API rate limiting moved off a per-process Map, opt-in Postgres store added (PR #320)
 
 `checkRateLimit` (`api/_lib/middleware/security.ts`) is a module-level `Map` — the app's actual and only cost/abuse control in front of every paid xAI/Grok route (story generation, continuation, image, export, every Story Lab genesis/continuation/create/evaluate route). Its own comment already said why that's wrong here: "For multi-instance deployments (e.g., horizontal scaling, serverless, load-balanced setups), replace with a distributed cache like Redis." This app ships as Vercel serverless functions, so every cold-started or concurrently-warm instance got its own empty map — a caller's effective budget scaled with however many instances happened to be running, with zero cross-instance coordination.
