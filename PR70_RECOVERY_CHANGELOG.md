@@ -114,6 +114,121 @@ Review round 1 (Codex on `97f7d28`) — **five findings, all five valid, all fiv
 - **P2: the token floor counted marks.** Correct and precise: `مِنْ` is two letters wearing two marks, measures four, and cleared the floor. Fixed by counting word characters. **This one also falsified a number in my own PR description** — I had claimed `मेरी कहानी` went from 0 to 1, which was true only because marks were being counted as word length. With the floor fixed it is 0 either way, and the honest measurement is the longer label above. The claim was corrected rather than quietly dropped.
 - **P2: the orphaned mark attached to the next word.** `❤️pact` normalized to an invisible variation selector followed by `pact` and scored 0 against a brief saying `pact` — a regression the repair itself introduced, and one my own `❤️ pact` test missed by having a space in it. Fixed by stripping the marks at the front of each part.
 
+## 2026-08-28 UTC - The block splitter read a comment's body as story prose
+
+The last open row of #296. `shared/storyTextBlocks.ts` had a reading for
+tags — #308 moved it onto `shared/htmlTagScanner` — and no reading at all for
+comments.
+A comment is not a tag, so `findWellFormedTagEnd` refused it and `<[^<>]*>`
+answered: a pattern that ends at the first `>` and cannot cross a `<`, neither of
+which a comment body is obliged to avoid.
+
+This is the module every quality scanner in the repository reads —
+`countStoryWords`, the last-paragraph cliffhanger scan, the scene sentence an
+image prompt is built from, the excerpt carried into the next chapter's
+continuity prompt, and the text the app copies to the clipboard.
+
+Actions:
+
+- **`rewriteTags` now reads a comment with `findCommentEnd`** and drops it whole,
+  before `replaceTag` is consulted. That is `shared/htmlTagScanner`'s function, so
+  the four spellings that close a comment — `-->`, `<!-->`, `<!--->` and `--!>` —
+  are read here exactly as the export sanitizer and the chapter-heading reader
+  read them. One reading rather than three, which is the point of the row.
+- Extended `tests/story-text-blocks.test.ts`. No new suite: this is the file that
+  already covers this module, and it previously asserted the leak as intended
+  behaviour. That assertion is replaced rather than deleted.
+
+The four defects, measured against `main` before changing anything:
+
+- **A comment's body was read as story prose.**
+  `<p>Alpha.</p><!-- <p>Hidden.</p> --><p>Beta.</p>` came back as the five blocks
+  `Alpha.`, `<!--`, `Hidden.`, `-->`, `Beta.` — a commented-out paragraph counted
+  as words, and the `<p>` inside the comment taken as a paragraph break. This is
+  the one that matters: it is text an author deliberately hid reaching every
+  measure in the repository.
+- **A comment containing a blank line split the story.** `<!-- a\n\nb -->` became
+  the blocks `<!-- a` and `b -->`, moving every measure that reads the last
+  paragraph.
+- `<!-- note: a > b -->` leaked `b -->` as a visible block. This is the row #296
+  filed, and it was the least of the four.
+- `<!-- note: a < b -->` leaked the *opening*, `<!-- note: a`, instead.
+
+Decisions:
+
+- **A comment is dropped in `rewriteTags` rather than through `replaceTag`, and
+  that is load-bearing.** The boundary pass returns a non-boundary tag *as text*
+  for the second pass to remove, and the split between the two passes happens in
+  between — so a comment carrying a blank line would be split by the pass
+  boundary before anything could remove it. A tag can wait; a comment cannot.
+- **An unterminated comment is left exactly as `main` has it, which is a
+  deliberate divergence from `tokenizeHtml`.** `tokenizeHtml` abandons the scan
+  and drops the remainder of the input, and that is right for an export, because
+  a browser hides that text too. It is the wrong trade here: this module is not a
+  rendering path, and silently losing the tail of a story from the word count and
+  the next chapter's continuity excerpt costs more than the `<!-- unterminated`
+  that keeping it leaks. The module's stated policy on markup it cannot read is
+  already to keep the reader's words rather than guess. So `findCommentEnd`
+  answering `-1` falls through to the patterns, and every input with no comment
+  ending answers as it did before. **This is the one judgement call in the change
+  and the place to push back on it.**
+
+Self-review:
+
+- **The first draft was quadratic, and it was caught by measuring rather than by
+  reading.** Every unterminated comment open re-scanned to the end of the input
+  for a terminator that was not there, so `<!--<!--<!--…>` cost **505ms at 5,000
+  repeats, 1,980ms at 10,000 and 8,132ms at 20,000** — 8 seconds on an 80KB
+  story, against 7ms on `main`. The search is now run at most once per string:
+  once one open has no ending, no later one has either, because a `<!--` at `q`
+  carries its own `--` at `q + 2`, which any earlier failed search beginning at
+  `p + 4 <= q` already passed over and rejected. Re-measured at **5.3ms / 5.4ms /
+  7.1ms**, flat and matching `main`. That invariant is also checked directly
+  against `findCommentEnd` across every harness input — 382 later-open pairs
+  after a failed search, 0 violations — rather than inferred from the outputs.
+  This is the same fault the `lastGreaterThan` hoist above it exists for, and the
+  same family as the three backtracking blowups #295 and #302 withdrew over.
+- **`main` was worse than #296 recorded, in a way the issue never listed.** The
+  issue tracked only the `b -->` leak. The commented-out-paragraph case and the
+  blank-line split are both worse and neither was on the running list; both were
+  found by running the reader rather than by reading it.
+- **The regression #308 warned about does not occur.** #308 declined to adopt
+  `tokenizeHtml` because `<h3>Visible <!--> Title</h3>` would have gone down to
+  `Visible` — true while a comment ended only at `-->` and `<!-->` read as one
+  that never ends. #307 gave `findCommentEnd` all four spellings, so the heading
+  keeps its words, and that case is asserted.
+- Differential harness against `origin/main`'s implementation and Chromium
+  (`innerHTML`, then `innerText` on a rendered node), scored on two disjoint
+  vocabularies so a leaked comment fragment can never count as recovered prose:
+  - **8,000 inputs with no comment present: 0 differences.** The change is a
+    byte-for-byte no-op wherever a comment is absent.
+  - **256 inputs carrying hidden words and markup in a comment body:** comment
+    words leaked into the output **296 → 0**, markup leaked **216 → 0**.
+  - **19,607 inputs enumerating comment-terminator states** over
+    `{- ! > < a space newline}` to length 5: 26 outputs differ from `main`, every
+    one of them removing a leak. The remaining leaks in that corpus are the
+    unterminated comments the decision above deliberately preserves.
+  - **0 inputs, across all three corpora, where the branch loses a prose word
+    `main` kept.** That is the metric #302's history says to score on, and it is
+    scored on whole words drawn from a vocabulary disjoint from the comment
+    bodies'.
+- `npm run test:all` exits 0.
+
+Not claimed:
+
+- **No evidence this happens in production output.** The generator is not known
+  to emit comments at all, let alone ones carrying `<`, `>`, or a blank line.
+  Worth fixing because the failures are silent and reader-visible in the measures
+  rather than because they are common — which is the same argument, and the same
+  honest limit, as every other row of #296.
+- **This does not make the module a browser.** It reads a comment's *extent* the
+  way HTML does; it still diverges deliberately on unterminated markup, and the
+  `<`-in-attribute-value limit recorded on #296 is untouched in both directions.
+- **The linearity bound in the test is a shape check, not a benchmark.** It
+  asserts that 4× the input costs well under 10× the time, which excludes n²
+  while leaving headroom for a slow or contended CI machine.
+
+
 ## 2026-08-28 UTC - The three readers the whole-word sweep missed
 
 The sweep that moved this repository's keyword scans off substrings and off `\b`
