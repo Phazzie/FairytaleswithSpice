@@ -4,7 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subscription, map } from 'rxjs';
+import { Subscription, map, switchMap, timeout, timer } from 'rxjs';
 import {
   createBrowserHtmlDownloadHost,
   dataUriToBlob,
@@ -428,6 +428,26 @@ type JobStatusPanelState = {
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 
+/** How often a non-terminal Story Lab job is re-checked at its `statusPath`. */
+const STORY_LAB_JOB_POLL_INTERVAL_MS = 2500;
+
+/**
+ * How long a job may stay non-terminal before the reader is told it failed
+ * rather than watching a progress bar with nothing behind it forever.
+ */
+const STORY_LAB_JOB_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * How long a single status request may take before it's treated as failed.
+ *
+ * `STORY_LAB_JOB_POLL_TIMEOUT_MS` only bounds the poll loop between requests
+ * — the recursive check that enforces it runs from inside each request's
+ * `next` callback, so a request that never completes or errors would never
+ * hand control back to it, leaving the job "running" forever regardless of
+ * the overall cap. This bounds each request on its own.
+ */
+const STORY_LAB_JOB_STATUS_REQUEST_TIMEOUT_MS = 15 * 1000;
+
 /**
  * The copy that told genesis and continuation apart in what used to be three
  * pairs of near-identical methods (`handle{Genesis,Continuation}JobSnapshot`,
@@ -446,6 +466,7 @@ const JOB_KIND_COPY: Record<
     defaultFailedMessage: string;
     cancelledMessage: string;
     streamErrorMessage: string;
+    pollTimeoutMessage: string;
     failedNotificationTitle: string;
   }
 > = {
@@ -457,6 +478,7 @@ const JOB_KIND_COPY: Record<
     defaultFailedMessage: 'Story generation failed. Please try again in a moment.',
     cancelledMessage: 'Story generation was cancelled before it finished.',
     streamErrorMessage: 'Story generation updates stopped. Please try again in a moment.',
+    pollTimeoutMessage: 'Story generation is taking longer than expected. Please try again in a moment.',
     failedNotificationTitle: 'Generation failed'
   },
   continuation: {
@@ -467,6 +489,7 @@ const JOB_KIND_COPY: Record<
     defaultFailedMessage: 'Continuation failed. Your existing chapters are still available.',
     cancelledMessage: 'Continuation was cancelled before it finished.',
     streamErrorMessage: 'Continuation updates stopped. Your existing chapters are still available.',
+    pollTimeoutMessage: 'Continuation is taking longer than expected. Your existing chapters are still available.',
     failedNotificationTitle: 'Continuation failed'
   }
 };
@@ -1313,13 +1336,25 @@ export class App implements OnDestroy {
           return;
         }
 
-        this.handleJobSnapshot(
+        const finished = this.handleJobSnapshot(
           'genesis',
           response.data.job,
+          response.data.paths.statusPath,
           batchId,
           blueprint.chapterBatchSize,
           response.data.durability.warning
         );
+
+        if (!finished) {
+          this.watchJobUntilTerminal<StoryIterationPayload>(
+            'genesis',
+            response.data.paths.statusPath,
+            batchId,
+            blueprint.chapterBatchSize,
+            response.data.durability.warning,
+            Date.now()
+          );
+        }
       },
       error: error => {
         this.jobCreationSubscription = null;
@@ -1387,13 +1422,25 @@ export class App implements OnDestroy {
           return;
         }
 
-        this.handleJobSnapshot(
+        const finished = this.handleJobSnapshot(
           'continuation',
           response.data.job,
+          response.data.paths.statusPath,
           batchId,
           request.chapterBatchSize,
           response.data.durability.warning
         );
+
+        if (!finished) {
+          this.watchJobUntilTerminal<ContinuationJobResult>(
+            'continuation',
+            response.data.paths.statusPath,
+            batchId,
+            request.chapterBatchSize,
+            response.data.durability.warning,
+            Date.now()
+          );
+        }
       },
       error: error => {
         this.jobCreationSubscription = null;
@@ -2144,13 +2191,14 @@ export class App implements OnDestroy {
   private handleJobSnapshot<T extends StoryIterationPayload>(
     kind: StoryLabGenerationJobKind,
     job: StoryLabJob<T>,
+    statusPath: string,
     batchId: string,
     batchSize: ChapterBatchSize,
     durabilityWarning?: string
   ): boolean {
     const copy = JOB_KIND_COPY[kind];
     this.updateProgressFromJob(job);
-    this.updateJobStatusFromJob(job, durabilityWarning);
+    this.updateJobStatusFromJob(job, statusPath, durabilityWarning);
 
     if (job.status === 'completed') {
       // `hasRenderableIterationPayload` rather than a bare `!job.result`:
@@ -2190,17 +2238,93 @@ export class App implements OnDestroy {
     }
 
     // A terminal status without a branch above must not read as "still
-    // running". Returning `false` here is what keeps the progress timer turning
-    // and the batch queued: nothing else in this component ever revisits the
-    // job, because the stream that would have delivered the next snapshot has
-    // already closed on the same status. See `STORY_LAB_TERMINAL_JOB_STATUSES`
-    // for the three places this set is read and why none of them may guess.
+    // running". See `STORY_LAB_TERMINAL_JOB_STATUSES` for the three places this
+    // set is read and why none of them may guess.
     if (isTerminalStoryLabJobStatus(job.status)) {
       this.failJob(kind, batchId, copy.defaultFailedMessage);
       return true;
     }
 
+    // `false` means "not finished yet" — both call sites (`startGenesis`,
+    // `continueSaga`) and the poll loop's own recursive call in
+    // `watchJobUntilTerminal` use this to decide whether to keep watching the
+    // job at its `statusPath`. It used to be discarded at every call site,
+    // which is exactly what let a non-terminal job go unwatched forever.
     return false;
+  }
+
+  /**
+   * Re-checks a Story Lab job that `handleJobSnapshot` reported as not yet
+   * terminal, on a fixed interval, until it finishes or the poll times out.
+   *
+   * The backend always finishes genesis/continuation work synchronously
+   * inside the job-creation request today, so a caller of this method
+   * currently only fires once in a rare race (a request that outlives the
+   * function's execution budget) rather than routinely. But the creation
+   * response's own `paths.statusPath` exists for exactly this case, and a
+   * durable/queued job runner — the documented next step for Story Lab —
+   * would hand back a non-terminal job on its very first response. Without
+   * this, that job's progress bar would freeze forever with nothing watching
+   * it: `jobEventSubscription` existed, was "cleaned up" on every terminal
+   * path, and was never once assigned.
+   */
+  private watchJobUntilTerminal<T extends StoryIterationPayload>(
+    kind: StoryLabGenerationJobKind,
+    statusPath: string,
+    batchId: string,
+    batchSize: ChapterBatchSize,
+    durabilityWarning: string | undefined,
+    pollStartedAt: number
+  ) {
+    if (Date.now() - pollStartedAt >= STORY_LAB_JOB_POLL_TIMEOUT_MS) {
+      this.failJob(kind, batchId, JOB_KIND_COPY[kind].pollTimeoutMessage);
+      return;
+    }
+
+    this.jobEventSubscription = timer(STORY_LAB_JOB_POLL_INTERVAL_MS).pipe(
+      switchMap(() => this.storyService.getStoryLabJobStatus<T>(statusPath).pipe(
+        timeout(STORY_LAB_JOB_STATUS_REQUEST_TIMEOUT_MS)
+      ))
+    ).subscribe({
+      next: response => {
+        if (!response.success || !response.data) {
+          this.failJob(kind, batchId, this.formatApiError(response.error, JOB_KIND_COPY[kind].streamErrorMessage));
+          return;
+        }
+
+        const finished = this.handleJobSnapshot(kind, response.data.job, statusPath, batchId, batchSize, durabilityWarning);
+        if (!finished) {
+          this.watchJobUntilTerminal<T>(kind, statusPath, batchId, batchSize, durabilityWarning, pollStartedAt);
+        }
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.watchJobUntilTerminal');
+
+        if (this.isDefinitiveJobPollError(error)) {
+          this.failJob(kind, batchId, this.formatHttpError(error, JOB_KIND_COPY[kind].streamErrorMessage));
+          return;
+        }
+
+        // A dropped connection, a 5xx, or a request that hit
+        // `STORY_LAB_JOB_STATUS_REQUEST_TIMEOUT_MS` doesn't mean the job
+        // itself failed — only that this one check-in didn't land. Keep
+        // watching within the overall poll timeout rather than ending a job
+        // that may still finish; that timeout is re-checked on this same
+        // call and is what backstops a status endpoint that is genuinely
+        // down for the whole window.
+        this.watchJobUntilTerminal<T>(kind, statusPath, batchId, batchSize, durabilityWarning, pollStartedAt);
+      }
+    });
+  }
+
+  /**
+   * Whether a status-poll failure means the job itself is unreachable going
+   * forward (auth lost, the job id no longer resolves) rather than a blip in
+   * reaching the backend for this one check-in.
+   */
+  private isDefinitiveJobPollError(error: unknown): boolean {
+    const status = (error as { status?: number } | null | undefined)?.status;
+    return status === 400 || status === 401 || status === 403 || status === 404;
   }
 
   private updateProgressFromJob(job: StoryLabJob<unknown>) {
@@ -2311,7 +2435,7 @@ export class App implements OnDestroy {
     });
   }
 
-  private updateJobStatusFromJob(job: StoryLabJob<unknown>, durabilityWarning?: string) {
+  private updateJobStatusFromJob(job: StoryLabJob<unknown>, statusPath: string, durabilityWarning?: string) {
     // `job.kind` is the wire's four-member `StoryLabJobKind`; the panel speaks
     // only the two this client creates. The narrowing is correct because the
     // route refuses the deferred kinds outright, so no `export` or `audio` job
@@ -2329,7 +2453,7 @@ export class App implements OnDestroy {
       progressPercent,
       stage,
       jobId: this.formatShortJobId(job.jobId),
-      statusPath: current.visible ? current.statusPath : undefined,
+      statusPath,
       startedAt: job.createdAt,
       durabilityWarning: durabilityWarning ?? current.durabilityWarning
     });
