@@ -10,7 +10,7 @@ export function redactSensitiveTextTokens(value: string): string {
 
 function redactBearerTokens(value: string): string {
   const marker = 'bearer';
-  const credentialArrays = new CredentialArrayCursor(findCredentialArraySpans(value));
+  const credentialArrays = new CredentialArrayCursor(findCredentialValueSpans(value));
   let redacted = '';
   let index = 0;
 
@@ -176,9 +176,23 @@ function isIntroducedAsCredential(value: string, index: number): boolean {
     return false;
   }
 
+  return readCredentialFieldBefore(value, separator) !== null;
+}
+
+/**
+ * The authorization field name that owns this `:` or `=`, or `null` if the
+ * separator belongs to a label rather than to a header.
+ *
+ * The start index is returned as well as the verdict because the *escaping
+ * depth* of the whole serialization is read off this name -- see
+ * {@link delimiterBackslashesBefore}. The name and the value it introduces were
+ * written by the same serializer, so whatever wraps the name is the spelling a
+ * delimiter has in this text.
+ */
+function readCredentialFieldBefore(value: string, separator: number): { start: number } | null {
   const label = readFieldNameBefore(value, separator - 1);
   if (isCredentialFieldName(label.name)) {
-    return true;
+    return { start: label.start };
   }
 
   // A human-readable label ends in the noun: `Invalid Authorization header:
@@ -186,64 +200,161 @@ function isIntroducedAsCredential(value: string, index: number): boolean {
   // before `header` rather than the label's last word. Exactly one word of
   // lookback, and only past this suffix -- an unbounded scan would match `The
   // authorization ceremony: Bearer of the seal`, which is prose.
-  return BEARER_CREDENTIAL_FIELD_SUFFIXES.has(label.name)
-    && isCredentialFieldName(readFieldNameBefore(value, label.start - 1).name);
+  if (!BEARER_CREDENTIAL_FIELD_SUFFIXES.has(label.name)) {
+    return null;
+  }
+  const field = readFieldNameBefore(value, label.start - 1);
+  return isCredentialFieldName(field.name) ? { start: field.start } : null;
 }
 
 /**
- * The spans of every array whose *field* is an authorization field:
- * `{"authorization":["Bearer abcdef","Bearer ghijkl"]}`.
+ * The spans of every *value* whose field is an authorization field:
+ * `{"authorization":["Bearer abcdef","Bearer ghijkl"]}` and
+ * `{"authorization":"Bearer abcdef, Bearer ghijkl"}`.
  *
  * A repeated header is a `string[]` in this repository's own request contracts,
- * so this is a shape a serialized error really carries. Element two defeats
- * {@link isIntroducedAsCredential} on its own: the walk back from the scheme
- * reaches the `,` between elements rather than the field's `:`, and element one
- * reaches the `[`. The field context belongs to the whole array, so it is
- * established once here and applied to every element, rather than each element
- * trying to walk back to a field name past the elements before it.
+ * and a joined one is a comma-separated string, so both are shapes a serialized
+ * error really carries. Either defeats {@link isIntroducedAsCredential} from the
+ * second credential onwards: the walk back from the scheme reaches the `,`
+ * between elements or values rather than the field's `:`, and the first element
+ * reaches the `[`. The field context belongs to the whole value, so it is
+ * established once here and applied to everything inside it, rather than each
+ * credential trying to walk back to a field name past the ones before it.
  *
- * **This is not a third entry in a suffix set.** An array is closed grammar --
- * `[`, `,`, `]` and nothing else -- where a human-readable label is open-ended
- * English, which is why that enumeration was stopped and this one is not.
+ * **This is not a third entry in a suffix set.** A serialized value is closed
+ * grammar -- a bracket or a quote, and its matching partner -- where a
+ * human-readable label is open-ended English, which is why that enumeration was
+ * stopped and this one is not.
  *
- * The gate is the same one, applied to the `[` instead of to the scheme, so
- * this cannot loosen the rule: `Title: ["Bearer of the seal"]` reaches the
- * label `title`, matches no field name, and stays prose.
+ * The gate is the same one, applied to the field's separator instead of to the
+ * scheme, so this cannot loosen the rule: `Title: ["Bearer of the seal"]`
+ * reaches the label `title`, matches no field name, and stays prose.
  *
- * The span ends at the first `]` **that is not inside a quoted element** (see
- * {@link findArrayEnd}). Ending at the first `]` full stop was wrong for the
- * reason the rest of this module keeps being wrong: the credential cannot
- * contain a `]`, since it is not a `b64token` character, but a *sibling
- * element* is under no such obligation. `{"authorization":["Digest
- * roles=[admin]","Bearer abcdef"]}` closed the span inside element one and
- * emitted the credential in element two in the clear.
+ * **Driven by the separator rather than by the opener, and that is what makes
+ * it linear.** Testing every `[` cost one backward walk per bracket; testing
+ * every quote as well -- which the joined-value shape needs -- would have cost
+ * one per quote, and a run of quotes or of whitespace would then be quadratic.
+ * A separator is not padding, so the walk back from one stops at or before the
+ * previous separator and the walk forward stops at or before the next: the
+ * regions are disjoint and the whole pass is one sweep.
  *
- * Skipping a `[` already inside a span keeps this linear on input like
- * `[[[[[...`, since that bracket's own span would be contained in the one
- * already recorded.
+ * Skipping a separator that is already inside a recorded span keeps the spans
+ * disjoint and in ascending order, which is what {@link CredentialArrayCursor}
+ * relies on.
  *
- * An array left unterminated by a truncated log runs to the end of the string,
- * which is the fail-closed reading and the opposite of what `shared/
+ * A value left unterminated by a truncated log runs to the end of the string,
+ * which is the fail-closed reading and the deliberate opposite of what `shared/
  * storyTextBlocks.ts` does with an unterminated comment. The two differ because
  * the trades differ: there, dropping the tail loses a story from the word
  * count; here, keeping it only over-redacts inside text the writer labelled an
  * authorization value.
  */
-function findCredentialArraySpans(value: string): Array<{ start: number; end: number }> {
+function findCredentialValueSpans(value: string): Array<{ start: number; end: number }> {
   const spans: Array<{ start: number; end: number }> = [];
-  let bracket = value.indexOf('[');
+  let recordedEnd = -1;
 
-  while (bracket >= 0) {
-    if (isIntroducedAsCredential(value, bracket)) {
-      const end = findArrayEnd(value, bracket);
-      spans.push({ start: bracket, end });
-      bracket = value.indexOf('[', end + 1);
+  for (let separator = 0; separator < value.length; separator += 1) {
+    if (separator <= recordedEnd || !BEARER_CREDENTIAL_INTRODUCERS.has(value[separator] ?? '')) {
       continue;
     }
-    bracket = value.indexOf('[', bracket + 1);
+    const field = readCredentialFieldBefore(value, separator);
+    if (!field) {
+      continue;
+    }
+
+    const delimiterBackslashes = delimiterBackslashesBefore(value, field.start);
+    const opener = findValueOpener(value, separator + 1, delimiterBackslashes);
+    if (!opener) {
+      continue;
+    }
+
+    const end = opener.isArray
+      ? findArrayEnd(value, opener.index, delimiterBackslashes)
+      : findQuotedValueEnd(value, opener.index, delimiterBackslashes);
+    spans.push({ start: opener.index, end });
+    recordedEnd = end;
   }
 
   return spans;
+}
+
+/**
+ * How many backslashes a delimiting quote carries in this text, read off the
+ * field name rather than guessed at the value.
+ *
+ * **This is the whole repair, and the reason the readings no longer have to be
+ * compared.** Each time a payload is embedded in a string, every delimiter
+ * gains a backslash and every literal quote gains more, so at depth 0 a
+ * delimiter is `"`, at depth 1 it is `\"`, at depth 2 it is `\\\"` -- and a
+ * literal quote *inside* an element at depth 1 is spelled `\\\"` too, which is
+ * identical to a depth-2 delimiter. Nothing inside the value says which depth
+ * it is, so five rounds of review found five ways for a scan that guessed to
+ * end in the wrong place: twice a credential in the clear, three times the
+ * prose after the value destroyed.
+ *
+ * The depth was never actually unknowable, only unavailable where it was being
+ * looked for. The field name and the value it introduces were written by the
+ * same serializer at the same depth, and the field name is *already* being read
+ * -- so the quote wrapping it answers the question outright. `"authorization":`
+ * is depth 0, `\"authorization\":` is depth 1, `\\\"authorization\\\":` is
+ * depth 2, and an unquoted `Authorization:` is depth 0 because nothing has been
+ * escaped at all.
+ *
+ * One reading follows from one fact about the text, so there is no candidate
+ * set, no comparison, and no "longest end wins" rule to be wrong about.
+ */
+function delimiterBackslashesBefore(value: string, fieldStart: number): number {
+  const quote = fieldStart - 1;
+  if (quote < 0 || !isQuote(value[quote] ?? '')) {
+    return 0;
+  }
+
+  let run = 0;
+  let cursor = quote - 1;
+  while (cursor >= 0 && value[cursor] === '\\') {
+    run += 1;
+    cursor -= 1;
+  }
+  return run;
+}
+
+/**
+ * The `[` or the opening quote of the value this separator introduces, or
+ * `null` when the value is neither -- `Authorization: Bearer abcdef` is a bare
+ * credential, and {@link isIntroducedAsCredential} already reads it.
+ *
+ * Whitespace between the separator and the value belongs to the serialization.
+ * Backslashes are counted rather than skipped, because they are how the opening
+ * quote spells itself at depth: at depth 1 the value opens `\"`, and a quote
+ * carrying the wrong number of them is not this serialization's delimiter.
+ */
+function findValueOpener(
+  value: string,
+  from: number,
+  delimiterBackslashes: number
+): { index: number; isArray: boolean } | null {
+  let run = 0;
+
+  for (let cursor = from; cursor < value.length; cursor += 1) {
+    const char = value[cursor] ?? '';
+    if (char === '\\') {
+      run += 1;
+      continue;
+    }
+    if (isWhitespace(char)) {
+      run = 0;
+      continue;
+    }
+    if (char === '[') {
+      return { index: cursor, isArray: true };
+    }
+    if (isQuote(char) && isDelimiterQuote(run, delimiterBackslashes)) {
+      return { index: cursor, isArray: false };
+    }
+    return null;
+  }
+
+  return null;
 }
 
 /**
@@ -255,103 +366,14 @@ function findCredentialArraySpans(value: string): Array<{ start: number; end: nu
  *
  * A quote is closed only by **the same character that opened it**, which is
  * what lets `"it's fine"` keep its apostrophe instead of ending the element on
- * it.
+ * it. Which quotes delimit at all is settled before the scan starts, by
+ * {@link delimiterBackslashesBefore}, so this is a single pass with nothing to
+ * choose between.
  *
- * **A quote's role is ambiguous, and the ambiguity has exactly one dimension.**
- * Each time a payload is embedded in a string, every delimiter gains a
- * backslash and every literal quote gains more, so at nesting depth 0 a
- * delimiter is `"`, at depth 1 it is `\"`, at depth 2 it is `\\\"`. A literal
- * quote *inside* an element at depth 1 is spelled `\\\"` too -- identical to a
- * depth-2 delimiter. Nothing local to the `[` says which depth this is.
- *
- * So the depth is not guessed. Every backslash-run length that actually occurs
- * before a quote in this region is tried as "the length a delimiter has here",
- * and the scans are compared. The candidate set comes from the input, so it is
- * small and it terminates -- unlike enumerating natural-language labels, which
- * is why that was stopped and this is not.
- *
- * **Only a scan that found a real `]` may win.** A scan run at the wrong depth
- * misreads a delimiter as content, leaves a quote open, and falls off the end
- * of the string; treating that as "the later end" let a wrong reading beat a
- * right one and ran the span across the rest of the log. That destroyed the
- * prose after the array -- the defect this whole module exists to avoid,
- * reintroduced by an earlier version of this function. Ends that reached a
- * bracket are therefore preferred, and the longest of *those* wins; the end of
- * the string is used only when no reading closed the array at all, which is the
- * truncated-log case the caller's docblock describes.
- *
- * The correction worth recording: an earlier version claimed this ambiguity
- * failed safe by carrying a string open too long. It does not. A misread quote
- * leaves the scan *outside* a string where it should be inside, so the span
- * ends early and the credential after it is logged in the clear -- a leak. And
- * the opposite error is not harmless either, as the prose damage above shows.
- * Neither direction is free, which is why the depth is resolved rather than
- * assumed.
+ * No `]` at all means a log truncated mid-array, and the span runs to the end
+ * of the string -- the fail-closed direction the caller's docblock describes.
  */
-function findArrayEnd(value: string, bracket: number): number {
-  let closed = -1;
-
-  for (const delimiterBackslashes of delimiterDepthCandidates(value, bracket)) {
-    const end = scanForArrayEnd(value, bracket, delimiterBackslashes);
-    if (end < value.length && end > closed) {
-      closed = end;
-    }
-  }
-
-  return closed < 0 ? value.length : closed;
-}
-
-/**
- * The backslash-run lengths worth trying as a delimiter's, taken from the text
- * rather than assumed: every run that actually precedes a quote here, plus 0 so
- * an unescaped payload is always considered.
- *
- * Two bounds keep this linear and small, and both are properties of escaping
- * rather than arbitrary limits.
- *
- * **Only `2^k - 1` is a possible delimiter length.** Each embedding doubles a
- * backslash run and adds one, so a delimiter carries 0, 1, 3, 7 … backslashes
- * and nothing else. A run of 2 is a literal quote at some depth, never a
- * delimiter, so trying it would only waste a scan.
- *
- * **The scan stops at the first `]`, quoting ignored.** The array cannot end
- * before that bracket under any reading, so every delimiter length that could
- * matter has already been seen. Reading to the end of the string instead made
- * this quadratic -- one full-remainder pass per candidate bracket -- which the
- * scalability check in `tests/log-redaction.test.ts` caught at 63 seconds.
- */
-function delimiterDepthCandidates(value: string, bracket: number): Set<number> {
-  const candidates = new Set<number>([0]);
-  let run = 0;
-
-  for (let cursor = bracket + 1; cursor < value.length; cursor += 1) {
-    const char = value[cursor] ?? '';
-    if (char === '\\') {
-      run += 1;
-      continue;
-    }
-    if (isQuote(char) && isEmbeddingDepth(run)) {
-      candidates.add(run);
-    }
-    if (char === ']') {
-      break;
-    }
-    run = 0;
-  }
-
-  return candidates;
-}
-
-/** Is this a run length a delimiter can have -- 0, 1, 3, 7 …? */
-function isEmbeddingDepth(run: number): boolean {
-  return Number.isInteger(Math.log2(run + 1));
-}
-
-/**
- * Scan for the array's `]`, treating a quote as a delimiter only when exactly
- * `delimiterBackslashes` backslashes precede it. Any other quote is content.
- */
-function scanForArrayEnd(value: string, bracket: number, delimiterBackslashes: number): number {
+function findArrayEnd(value: string, bracket: number, delimiterBackslashes: number): number {
   let openQuote = '';
   let run = 0;
 
@@ -361,7 +383,7 @@ function scanForArrayEnd(value: string, bracket: number, delimiterBackslashes: n
       run += 1;
       continue;
     }
-    const isDelimiter = isQuote(char) && run === delimiterBackslashes;
+    const isDelimiter = isQuote(char) && isDelimiterQuote(run, delimiterBackslashes);
     run = 0;
 
     if (openQuote) {
@@ -383,10 +405,60 @@ function scanForArrayEnd(value: string, bracket: number, delimiterBackslashes: n
 }
 
 /**
+ * Where does the string value opened at `quote` close? At the next delimiting
+ * quote of the same character, and at the end of the string if the log was
+ * truncated before one arrived.
+ *
+ * This is the shape the comma finding is about:
+ * `{"authorization":"Bearer abcdef, Bearer ghijkl"}` is one value holding two
+ * credentials, and the walk back from the second reaches the comma rather than
+ * the field. The span carries the field context across it.
+ */
+function findQuotedValueEnd(value: string, quote: number, delimiterBackslashes: number): number {
+  const opener = value[quote] ?? '';
+  let run = 0;
+
+  for (let cursor = quote + 1; cursor < value.length; cursor += 1) {
+    const char = value[cursor] ?? '';
+    if (char === '\\') {
+      run += 1;
+      continue;
+    }
+    const isDelimiter = char === opener && isDelimiterQuote(run, delimiterBackslashes);
+    run = 0;
+    if (isDelimiter) {
+      return cursor;
+    }
+  }
+
+  return value.length;
+}
+
+/**
+ * Is a quote carrying `run` backslashes a delimiter, where a delimiter carries
+ * `delimiterBackslashes` of them?
+ *
+ * Not equality, because a literal backslash immediately before a closing quote
+ * adds to the run: at depth 0, `"path=C:\\"` ends in two backslashes and a
+ * delimiter, and reading that quote as content left the element open, ran the
+ * span to the end of the log and destroyed the sentence after it.
+ *
+ * One literal backslash occupies `delimiterBackslashes + 1` positions -- it is
+ * escaped exactly as often as a delimiting quote is, plus the one that escapes
+ * it -- so a delimiter is any run congruent to `delimiterBackslashes` modulo
+ * twice that. At depth 0 that reads: an even run ends in a delimiter, an odd
+ * one in an escaped quote. At depth 1: `\"` delimits, `\\\"` is a literal
+ * quote, `\\\\\"` is a literal backslash and then a delimiter.
+ */
+function isDelimiterQuote(run: number, delimiterBackslashes: number): boolean {
+  return run % (2 * (delimiterBackslashes + 1)) === delimiterBackslashes;
+}
+
+/**
  * Is this index inside one of the spans, given that the caller asks about
  * ascending indices?
  *
- * The spans are disjoint and in order -- {@link findCredentialArraySpans}
+ * The spans are disjoint and in order -- {@link findCredentialValueSpans}
  * restarts past each one it records, which is what earns both properties -- and
  * the scheme keywords are visited left to right, so the search is a cursor that
  * only moves forward rather than a scan of the whole list per keyword. Scanning

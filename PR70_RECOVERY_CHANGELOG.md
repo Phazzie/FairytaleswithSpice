@@ -408,6 +408,86 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
+**The escaping depth was never unknowable — only unavailable where the scanner
+was looking for it.** Rounds 5–10 held that the array scanner had to guess,
+because it was handed a *fragment* beginning at a `[` and nothing inside a
+value says what depth it was serialized at. That was true of the fragment and
+false of the function's actual inputs: the scanner had already walked back to
+the **field name** to decide the array was an authorization value at all, and
+the field name and the value it introduces were written by the same serializer
+at the same depth. The quote wrapping the name answers the question outright —
+`"authorization":` is depth 0, `\"authorization\":` is depth 1,
+`\\\"authorization\\\":` is depth 2, and an unquoted `Authorization:` is depth
+0 because nothing has been escaped.
+
+So the candidate set, the six scans, the "only a reading that closed may win"
+rule and the longest-end comparison are **gone**, and with them every route
+that reached a wrong end. One fact about the text now settles one reading.
+Measured on the recorded reproductions, all six routes:
+
+```text
+r6  ["Digest roles=[admin]","Bearer abcdef","Bearer ghijkl"]      both redacted
+r7  ["Digest realm=\"tenant]\"", ...]                             both redacted
+r8  depth-2 payload with a literal quote at depth 1               both redacted
+r9a ["path=C:\\","Bearer abcdef"] and the bearer announced …      prose intact
+r9b {"authorization":"Bearer abcdef, Bearer ghijkl"}              both redacted
+r10 ["say \"hi", …] and note=\"[the bearer announced victory]\"   prose intact
+```
+
+Two supporting changes fall out of it rather than being added to it.
+
+**A delimiter is not an equality test on the backslash count.** One literal
+backslash occupies `delimiter + 1` positions — it is escaped as often as a
+delimiting quote is, plus the one escaping it — so a delimiter is any run
+congruent to the delimiter's count modulo twice it. At depth 0 that reads: an
+even run ends in a delimiter, an odd one in an escaped quote. This is exactly
+round 9's `path=C:\\`, which an equality test read as content, and it now falls
+out of the rule instead of needing a case.
+
+**The span is over the whole value, not only over an array**, which is what
+answers round 9's comma finding — the one the forward-span design could not
+reach at all. `{"authorization":"Bearer abcdef, Bearer ghijkl"}` is one value
+holding two credentials, and the walk back from the second reaches the comma
+rather than the field. An array and a quoted string are now the same rule.
+The cost is stated in `SECURITY_IMPLEMENTATION_GUIDE.md` Note 7 and asserted:
+inside a value labelled with a credential field name, prose after `bearer` is
+redacted — `token: "the bearer announced victory"` loses `announced` — which is
+the trade the array form has always made, now made for both. Unquoted values,
+story fields and non-credential labels are untouched, and that is asserted too.
+
+**Driven by the separator rather than by the opener, which is what keeps it
+linear.** Testing every quote as an opener would be quadratic on a run of
+quotes or of whitespace — a shape story content really produces. A separator is
+not padding, so the walk back from one stops at or before the previous
+separator and the walk forward at or before the next: the regions are disjoint
+and the pass is one sweep. Measured against the previous implementation on the
+same shapes: labelled bracket run 239 → 335ms, credential per element 559 →
+687ms, quoted value run 1389 → **569ms**, story prose 735 → **397ms**, and
+200,000-character runs of quotes, whitespace and backslashes at 123–194ms.
+
+**Counterfactual mutations: 10 applied, 8 killed, 2 reported rather than
+counted.** Killed: depth pinned to 0; any quote opening a value; a delimiter by
+equality; an array read as a quoted value; an unterminated value abandoned
+instead of running to the end; the value end ignoring depth; dropping the
+quoted-value span entirely; dropping the skip past a recorded span (caught by
+the scalability check at 25 seconds, not by an output assertion). Surviving and
+**not** claimed as coverage: reading the depth off the label rather than the
+field name in the `header`-suffix path — provably equivalent, since a label must
+be preceded by a field name and so is never adjacent to the quote; and not
+resetting the backslash run across whitespace in the opener walk, which needs a
+backslash separated from the quote it would escape, a shape no serializer
+writes.
+
+**What is not fixed, and is unchanged by this.** A nested array
+(`{"authorization":[["Bearer a"],["Bearer b"]]}`) still ends at the inner `]`
+and leaks the second, exactly as before — not a header shape, and not a
+regression. The multiword-label gap from round 4 stands. Under the
+`header`-suffix path the depth reads 0 regardless, because the field name is a
+word rather than a quoted key; that costs an early end rather than a long one,
+so it is a bounded leak in a malformed line and never prose destruction.
+
+`npm run test:all` exits 0.
+
 **Review round 8 found both halves of round 7's trade were wrong.** Codex
 returned two findings on the same function, in opposite directions:
 

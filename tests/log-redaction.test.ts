@@ -377,9 +377,20 @@ for (const serialized of [
 // "the later end" ran the span across the whole log line and rewrote the
 // sentence after it. An element ending in a literal quote is the shape that
 // exposes it.
+// The last two are the routes that stopped the readings being compared at all.
+// An element ending in a literal backslash puts two backslashes before the
+// closing quote, and a scan that demanded exactly the delimiter's count read
+// that quote as content, left the element open and ran off the end of the
+// string. A literal quote inside an earlier element desynchronised a
+// wrong-depth scan far enough to reach the *note's* bracket, which is a real
+// `]` and so beat the array's own end in a longest-end comparison. Neither is
+// reachable now: the delimiter's spelling is read off the field name before the
+// scan starts, so there is one reading and nothing to compare.
 for (const note of [
   '{"authorization":["it\'s fine","Bearer abcdef"]} and the bearer announced victory',
-  '{"authorization":["ends with a quote\\"","Bearer abcdef"]} and the bearer announced victory'
+  '{"authorization":["ends with a quote\\"","Bearer abcdef"]} and the bearer announced victory',
+  '{"authorization":["path=C:\\\\","Bearer abcdef"]} and the bearer announced victory',
+  '{"authorization":["say \\"hi","Bearer abcdef"]} and the bearer announced victory'
 ]) {
   const afterArray = redactSensitiveLogData({ note }) as Record<string, string>;
   assert(
@@ -403,6 +414,113 @@ assert(
   !truncated.note.includes('abcdef'),
   'a credential inside an unterminated header array is still redacted'
 );
+
+// A later real `]` is the shape that made "the longest end that closed wins"
+// wrong rather than merely lucky. The note after the array holds a genuine
+// bracket, so a scan desynchronised inside the array could reach it and win the
+// comparison, and the sentence between the two was rewritten. The bracket in
+// the note is not an authorization value -- the field before it is `note` --
+// so nothing here is a credential array except the first one.
+const laterBracket = redactSensitiveLogData({
+  note: '{"authorization":["say \\"hi","Bearer abcdef"]} and note=\\"[the bearer announced victory]\\"'
+}) as Record<string, string>;
+assert(
+  laterBracket.note.endsWith('and note=\\"[the bearer announced victory]\\"'),
+  `prose holding a bracket of its own must survive an array before it: ${laterBracket.note}`
+);
+assert(
+  !laterBracket.note.includes('abcdef'),
+  `the credential inside that array must still be redacted: ${laterBracket.note}`
+);
+
+// A quote whose backslashes do not match the field name's is not this
+// serialization's delimiter, and treating it as one is how a value span could
+// still reach past its value: nothing closes it, so it runs to the end of the
+// line and takes the sentence after it. The field name says depth 0 here and
+// the value is written at depth 1, which is a malformed line rather than a
+// serialization -- so no span is opened, the credential is still caught by the
+// header arm walking back past the escape, and the prose is left alone.
+for (const mismatched of [
+  'authorization: \\"Bearer abcdef\\" and the bearer announced victory',
+  '{"authorization":\\"Bearer abcdef\\"} and the bearer announced victory'
+]) {
+  const hidden = redactSensitiveLogData({ note: mismatched }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef'),
+    `a credential in a mismatched-depth value is still redacted: ${hidden.note}`
+  );
+  assert(
+    hidden.note.endsWith('and the bearer announced victory'),
+    `a mismatched-depth quote may not open a span that swallows the line: ${hidden.note}`
+  );
+}
+
+// A repeated header does not have to be an array to arrive as one value: joined
+// with commas into a single string is the other serialization, and the walk
+// back from the second credential reaches the comma rather than the field. The
+// field context belongs to the value, so it carries across everything inside
+// the quotes -- an array and a string are the same rule, not two.
+for (const joined of [
+  '{"authorization":"Bearer abcdef, Bearer ghijkl"}',
+  '{"authorization":"Basic xyz, Bearer abcdef, Bearer ghijkl"}',
+  // A literal quote inside the value does not end it, for the same reason it
+  // does not end an array element: at depth 0 a delimiter carries an even
+  // number of backslashes and this one carries an odd number. Ending the value
+  // on it drops everything after, and the credential after it is logged clear.
+  '{"authorization":"Bearer abcdef, say \\"hi\\", Bearer ghijkl"}',
+  'payload="{\\"authorization\\":\\"Bearer abcdef, Bearer ghijkl\\"}"',
+  "{'authorization': 'Bearer abcdef, Bearer ghijkl'}"
+]) {
+  const hidden = redactSensitiveLogData({ note: joined }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef') && !hidden.note.includes('ghijkl'),
+    `every credential in a comma-joined header value must be redacted: ${joined} -> ${hidden.note}`
+  );
+}
+
+// What that costs, asserted rather than left implied. Inside a value the writer
+// labelled with an authorization field name, `bearer` is header data and the
+// word after it is redacted wherever it sits -- exactly as it already was
+// inside an array. The cost is bounded by the same gate the rest of this arm
+// uses: the field name must be a credential field, and the value must actually
+// be serialized as one. A story field is untouched, and so is an unquoted value
+// that only a label precedes.
+const insideLabelledValue = redactSensitiveLogData({
+  note: 'token: "the bearer announced victory"'
+}) as Record<string, string>;
+assert(
+  !insideLabelledValue.note.includes('announced'),
+  `prose inside a labelled credential value is treated as header data: ${insideLabelledValue.note}`
+);
+for (const spared of [
+  'token: the bearer announced victory',
+  '{"storyText":"the bearer announced victory"}',
+  '{"note":"the bearer announced victory"}',
+  'Title: "the bearer announced victory"',
+  'He said: "Bearer of the seal" and the bearer announced victory'
+]) {
+  const untouched = redactSensitiveLogData({ note: spared }) as Record<string, string>;
+  assert(
+    untouched.note === spared,
+    `the value span may not reach story prose: ${spared} -> ${untouched.note}`
+  );
+}
+
+// The delimiter's spelling is read off the field name, so the same array at
+// three nesting depths is read three ways without anything being guessed. The
+// depth-2 line is the one that used to need a candidate set: a literal quote at
+// depth 1 and a delimiter at depth 2 are the same three backslashes.
+for (const [depth, serialized] of [
+  [0, '{"authorization":["Bearer abcdef","Bearer ghijkl"]}'],
+  [1, 'payload="{\\"authorization\\":[\\"Bearer abcdef\\",\\"Bearer ghijkl\\"]}"'],
+  [2, 'outer="payload=\\"{\\\\\\"authorization\\\\\\":[\\\\\\"Bearer abcdef\\\\\\",\\\\\\"Bearer ghijkl\\\\\\"]}\\""']
+] as const) {
+  const hidden = redactSensitiveLogData({ note: serialized }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef') && !hidden.note.includes('ghijkl'),
+    `an array at depth ${depth} is read from its field name: ${serialized} -> ${hidden.note}`
+  );
+}
 
 // Reading the arrays costs a pass of its own, so the shapes that pass is worst
 // on are held to a time: a bracket per field name, and a credential per array.
