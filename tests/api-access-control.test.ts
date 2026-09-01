@@ -418,6 +418,44 @@ async function testUnconfiguredPostgresRateLimitStoreFailsClosed(): Promise<void
   });
 }
 
+/**
+ * A store can report itself configured and still fail per-request — a
+ * dropped Postgres connection, a query error. Copilot flagged that
+ * `enforceApiAccessControl` did not catch `store.consume()` throwing, so the
+ * exception would bubble past this function as an unhandled rejection and
+ * the route would answer a generic 500 instead of the deliberate 503 this
+ * guard exists to give. Driven with a store whose `isConfigured()` returns
+ * `true` but whose `consume()` throws, to isolate this path from the
+ * "never configured" one above.
+ */
+async function testRateLimitStoreConsumeFailureFailsClosed(): Promise<void> {
+  const failingStore: RateLimitStore = {
+    mode: 'postgres',
+    durable: true,
+    isConfigured: () => true,
+    consume: () => {
+      throw new Error('connection reset');
+    }
+  };
+
+  await withApiKeys(['sk-live-real-key'], async () => {
+    const res = new FakeResponse();
+    await enforceApiAccessControl(
+      { method: 'POST', headers: { 'x-api-key': 'sk-live-real-key' }, body: {} },
+      res,
+      'story/generate',
+      RATE_LIMITS.STORY_GENERATION,
+      failingStore
+    );
+
+    assert(res.statusCode === 503, `a consume() failure should answer 503, got ${res.statusCode}`);
+    assert(
+      errorCode(res) === 'RATE_LIMIT_STORE_UNAVAILABLE',
+      `a consume() failure should report RATE_LIMIT_STORE_UNAVAILABLE, got ${errorCode(res)}`
+    );
+  });
+}
+
 async function main(): Promise<void> {
   await testMissingKeyIsRejected();
   await testWrongKeyIsRejected();
@@ -429,6 +467,7 @@ async function main(): Promise<void> {
   await testUnconfiguredDeploymentStillRateLimitsTheSharedBucket();
   await testEventStreamRoutesAcceptTheQueryParameterKey();
   await testUnconfiguredPostgresRateLimitStoreFailsClosed();
+  await testRateLimitStoreConsumeFailureFailsClosed();
 
   console.log('API access control route tests passed');
 }

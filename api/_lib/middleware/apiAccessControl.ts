@@ -21,6 +21,7 @@
 import { authenticateRequest } from './security';
 import { createRateLimitStoreConfig } from './rateLimitStoreConfig';
 import type { RateLimitStore } from './rateLimitStorePort';
+import { logError } from '../utils/logger';
 
 /**
  * Looser than `security.ts`'s own `AuthenticatedRequest`: every route handler
@@ -90,23 +91,31 @@ export async function enforceApiAccessControl(
     // matches `resolveJobStoreOrRespond` in `jobRouteHandlers.ts`: a paid
     // route with no working budget enforcement must refuse the request, not
     // silently let it through unthrottled.
-    res.status(503).json({
-      success: false,
-      error: {
-        code: 'RATE_LIMIT_STORE_UNAVAILABLE',
-        message: 'Rate limiting is misconfigured for this deployment.'
-      }
-    });
+    respondRateLimitStoreUnavailable(res);
     return { allowed: false };
   }
 
   const userId = auth.userId as string;
-  const rateLimit = await store.consume({
-    userId,
-    endpoint,
-    maxRequests: limits.maxRequests,
-    windowMs: limits.windowMs
-  });
+  let rateLimit;
+  try {
+    rateLimit = await store.consume({
+      userId,
+      endpoint,
+      maxRequests: limits.maxRequests,
+      windowMs: limits.windowMs
+    });
+  } catch (error) {
+    // A configured store can still fail per-request (a dropped Postgres
+    // connection, a query error) — `PostgresRateLimitStore` already logs the
+    // underlying error before throwing, so this only needs to turn "the
+    // store just failed" into the same fail-closed response as "the store
+    // was never configured." Without this, the exception would bubble past
+    // this function as an unhandled rejection and the route would answer a
+    // generic 500 instead of the deliberate 503 this guard exists to give.
+    logError('Rate limit store failed to answer consume()', error, { endpoint });
+    respondRateLimitStoreUnavailable(res);
+    return { allowed: false };
+  }
 
   // `X-RateLimit-Limit` is what makes `X-RateLimit-Remaining` a fraction rather
   // than a bare number. The three headers are one family and always have been —
@@ -165,6 +174,16 @@ export async function enforceApiAccessControl(
   }
 
   return { allowed: true, userId };
+}
+
+function respondRateLimitStoreUnavailable(res: ApiAccessControlResponse): void {
+  res.status(503).json({
+    success: false,
+    error: {
+      code: 'RATE_LIMIT_STORE_UNAVAILABLE',
+      message: 'Rate limiting is misconfigured for this deployment.'
+    }
+  });
 }
 
 /**

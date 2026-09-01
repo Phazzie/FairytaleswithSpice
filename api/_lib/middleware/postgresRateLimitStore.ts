@@ -20,6 +20,7 @@
 
 import type { StoryLabCloudQueryExecutor } from '../story-lab/storage/storyLabCloudStorageConfig';
 import type { RateLimitConsumeInput, RateLimitConsumeResult, RateLimitStore } from './rateLimitStorePort';
+import { logError } from '../utils/logger';
 
 export interface PostgresRateLimitStoreOptions {
   databaseUrl?: string;
@@ -115,7 +116,14 @@ class PostgresRateLimitStore implements RateLimitStore {
       ]);
       row = result.rows[0];
     } catch (error) {
-      throw new RateLimitStoreError('RATE_LIMIT_STORE_FAILED', `Rate limit upsert failed: ${describeError(error)}`);
+      // The driver/connection error is logged through the redacting logger
+      // rather than folded into the thrown message: a Postgres connection
+      // error can embed the connection string itself (host, credentials),
+      // and `RateLimitStoreError.message` is not guaranteed to stay off a
+      // response the way this module's own callers keep it today — the next
+      // caller of `consume()` should not have to know that to stay safe.
+      logError('Rate limit upsert failed', error, { endpoint: input.endpoint });
+      throw new RateLimitStoreError('RATE_LIMIT_STORE_FAILED', 'Rate limit upsert failed.');
     }
 
     if (!row) {
@@ -158,8 +166,4 @@ class PostgresRateLimitStore implements RateLimitStore {
   private getNow(): number {
     return this.options.now?.() ?? Date.now();
   }
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
