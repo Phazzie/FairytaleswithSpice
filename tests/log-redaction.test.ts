@@ -207,6 +207,14 @@ for (const sentence of [
   // `b64token` characters, so a balanced pair around an ordinary word made it
   // carry marks no English word carries. Only balanced pairs: `_abcdef` and
   // `sk_live_abcdef` are still credentials, asserted below.
+  // A value that has already closed is not padding around the next one. A
+  // non-empty value stops the lookback on its own characters -- `authorization:
+  // "abc" Bearer of the seal` was always prose -- and an empty one now stops it
+  // too, instead of letting the walk read through to the separator behind it.
+  'authorization: "" Bearer of the seal',
+  "authorization: '' Bearer of the seal",
+  'authorization: "" the bearer announced victory',
+  'authorization: "abc" Bearer of the seal',
   'the bearer _returned_ to court',
   'the bearer __of__ the seal',
   'the bearer ~~returned~~ at dawn',
@@ -313,6 +321,34 @@ for (const [line, expected] of [
   assert(
     stopped.note === expected,
     `sentence punctuation is the sentence's, the rest of the run is the credential's: ${line} -> ${stopped.note}`
+  );
+}
+
+// Stopping the lookback at a closed empty value costs exactly one band, and it
+// is the band the residual already names: a credential written after one, short
+// and alphabetic enough to have no shape, is no longer reached by the header
+// arm. Asserted in both directions so the trade is visible rather than implied
+// -- anything with a shape is still caught there, at any length.
+const afterClosedEmptyValue = redactSensitiveLogData({
+  note: 'Authorization: "" Bearer abcdef'
+}) as Record<string, string>;
+assert(
+  afterClosedEmptyValue.note.includes('abcdef'),
+  `a closed empty value ends the header context: ${afterClosedEmptyValue.note}`
+);
+for (const stillCaught of [
+  'Authorization: "" Bearer abc123def456',
+  'Authorization: "" Bearer xai-secret-key-123',
+  `Authorization: "" Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH)}`,
+  // Two *different* quotes side by side are a value quoted inside another, not
+  // a closed empty one -- so the header arm must still reach through them.
+  `authorization: "'Bearer abcdef'"`,
+  `authorization: '"Bearer abcdef"'`
+]) {
+  const hidden = redactSensitiveLogData({ note: stillCaught }) as Record<string, string>;
+  assert(
+    hidden.note.includes(REDACTED_SENSITIVE_TEXT),
+    `the shape arm still reaches past a closed empty value: ${stillCaught} -> ${hidden.note}`
   );
 }
 

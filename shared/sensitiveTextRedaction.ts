@@ -522,9 +522,27 @@ function readFieldNameBefore(value: string, from: number): { name: string; start
  */
 function skipBackOverSeparatorPadding(value: string, from: number): number {
   let cursor = from;
-  while (cursor >= 0 && isSeparatorPadding(value[cursor] ?? '')) {
+  let skipped = '';
+
+  while (cursor >= 0) {
+    const char = value[cursor] ?? '';
+    if (!isSeparatorPadding(char)) {
+      break;
+    }
+    // Two quotes of the same character side by side are a value that has
+    // already closed, not padding around the next one. Without this the walk
+    // reads straight through an empty value to the separator behind it, and
+    // `authorization: "" Bearer of the seal` loses its `of` -- while
+    // `authorization: "abc" Bearer of the seal` does not, because a non-empty
+    // value stops the walk on its own characters. The two spellings of a
+    // completed value now stop it alike.
+    if (isQuote(char) && char === skipped) {
+      break;
+    }
+    skipped = char;
     cursor -= 1;
   }
+
   return cursor;
 }
 

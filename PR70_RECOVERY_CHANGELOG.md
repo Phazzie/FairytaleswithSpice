@@ -408,6 +408,40 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
+**Review round 15: an empty value was being read as padding.** Codex: the walk
+back from the scheme skips whitespace, quotes and escaping backslashes as
+serialization, and two quotes side by side are all three of those — so it read
+straight through a closed empty value to the separator behind it:
+
+```text
+authorization: "" Bearer of the seal     -> authorization: "" Bearer [REDACTED] the seal
+authorization: "abc" Bearer of the seal  -> unchanged
+```
+
+The second line is why this is an inconsistency rather than a new case. A
+non-empty value already stops the walk, on its own characters; only the empty
+spelling let it through. The walk now stops at two quotes of the *same*
+character, so both spellings of a closed value stop it alike. Two *different*
+quotes side by side are a value quoted inside another —
+`authorization: "'Bearer abcdef'"` — and are still read through, asserted.
+
+Reproduced identically on `2420d67`, so pre-existing rather than introduced by
+this session's work.
+
+**The cost, stated because it runs toward under-redaction.** A credential
+written after a closed empty value, short and alphabetic enough to have no
+shape, is no longer reached by the header arm:
+`Authorization: "" Bearer abcdef` keeps `abcdef`. That is exactly the residual
+band Note 7 already records — a value #315's contract makes unconfigurable — and
+anything carrying a shape is still caught there at any length, asserted on
+`abc123def456`, `xai-secret-key-123` and a run at the floor.
+
+Mutations: 3 applied, 2 killed — dropping the stop, and stopping on any repeated
+padding character (which breaks the depth-2 array). The third, stopping on any
+two adjacent quotes rather than two identical ones, **survives and is reported
+rather than counted**: the value-span arm covers `"'Bearer abcdef'"` on its own,
+so no input distinguishes the two readings.
+
 **Review round 14: the round-13 fix had traded a prose defect for a leak, and
 the fix for that is a stronger guarantee than the arm had before.** Codex, at
 P1: `API_KEY_CREDENTIAL_GRAMMAR` counts `.` inside a token body, so
