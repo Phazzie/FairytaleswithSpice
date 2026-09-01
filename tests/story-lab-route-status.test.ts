@@ -4,6 +4,7 @@
 import genesisHandler, { createStoryLabGenesisHandler } from '../api/story-lab/stories';
 import continuationHandler, { createStoryLabContinuationHandler } from '../api/story-lab/stories/[storyId]/continue';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
+import { withMemoryRateLimitStore } from './helpers/withMemoryRateLimitStore';
 import { getStoryLabResponseStatus } from '../api/_lib/story-lab/routeStatus';
 
 interface FakeRequest {
@@ -459,7 +460,7 @@ async function main(): Promise<void> {
   console.log('Story Lab route status tests passed');
 }
 
-main().catch(error => {
+withMemoryRateLimitStore(main).catch(error => {
   console.error(error);
   process.exit(1);
 });

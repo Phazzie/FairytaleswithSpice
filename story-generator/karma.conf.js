@@ -34,6 +34,11 @@ module.exports = function (config) {
         { type: 'lcov' },
         { type: 'clover' }
       ],
+      // `@angular/build:karma` does not enforce this legacy karma-coverage
+      // `check` gate (it exits 0 regardless of the numbers below), and actual
+      // coverage is currently well under 85% on branches. Left declared for
+      // the html/lcov reports it still produces; making it actually gate CI
+      // is separate, larger work than wiring the suite itself into CI.
       check: {
         global: {
           statements: 85,

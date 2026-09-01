@@ -36,5 +36,9 @@ assert(schema.includes('story_lab_job_events_job_sequence_idx'), 'schema should 
 assert(schema.includes('story_lab_job_events_owner_job_idx'), 'schema should index owner-scoped event stream lookups');
 assert(schema.includes('unique (job_id, owner_user_id)'), 'jobs should support owner-consistent event foreign keys');
 assert(schema.includes('foreign key (job_id, owner_user_id)'), 'job events should enforce owner consistency with parent jobs');
+assert(schema.includes('create table if not exists rate_limit_buckets'), 'schema should create rate_limit_buckets');
+assert(schema.includes('primary key (user_id, endpoint)'), 'rate limit buckets should be keyed by user and endpoint');
+assert(schema.includes('window_start timestamptz not null'), 'rate limit buckets should track the current window start');
+assert(schema.includes('count integer not null default 0'), 'rate limit buckets should track a request count');
 
 console.log('Story Lab cloud schema tests passed');

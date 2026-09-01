@@ -34,6 +34,7 @@ class FakeReadinessExecutor implements StoryLabCloudQueryExecutor {
 async function main() {
   await testReadyDatabaseReportsReady();
   await testMissingTableOrIndexReportsNotReady();
+  await testMissingRateLimitBucketsTableReportsNotReady();
   await testDatabaseErrorsFailClosedWithoutLeakingProviderDetails();
 
   console.log('Story Lab cloud DB readiness tests passed');
@@ -46,7 +47,8 @@ async function testReadyDatabaseReportsReady() {
       story_lab_profiles: 'public.story_lab_profiles',
       story_projects: 'public.story_projects',
       story_lab_jobs: 'public.story_lab_jobs',
-      story_lab_job_events: 'public.story_lab_job_events'
+      story_lab_job_events: 'public.story_lab_job_events',
+      rate_limit_buckets: 'public.rate_limit_buckets'
     }
   ]);
   executor.enqueueRows([
@@ -104,6 +106,41 @@ async function testMissingTableOrIndexReportsNotReady() {
     !result.missing.includes('story_lab_job_events_job_sequence_idx'),
     'present job event sequence index should not be reported missing'
   );
+}
+
+/**
+ * A database migrated under the pre-rate-limiting schema has every table and
+ * index this check looked for before `rate_limit_buckets` existed — without
+ * this case, that database would report `ready: true` right up until
+ * `RATE_LIMIT_STORE=postgres` is turned on and every guarded request starts
+ * failing on the missing relation.
+ */
+async function testMissingRateLimitBucketsTableReportsNotReady() {
+  const executor = new FakeReadinessExecutor();
+  executor.enqueueRows([
+    {
+      story_lab_profiles: 'public.story_lab_profiles',
+      story_projects: 'public.story_projects',
+      story_lab_jobs: 'public.story_lab_jobs',
+      story_lab_job_events: 'public.story_lab_job_events',
+      rate_limit_buckets: null
+    }
+  ]);
+  executor.enqueueRows([
+    { indexname: 'story_projects_owner_updated_idx' },
+    { indexname: 'story_projects_owner_story_idx' },
+    { indexname: 'story_lab_jobs_owner_updated_idx' },
+    { indexname: 'story_lab_jobs_owner_idempotency_idx' },
+    { indexname: 'story_lab_job_events_job_sequence_idx' },
+    { indexname: 'story_lab_job_events_owner_job_idx' }
+  ]);
+
+  const result = await checkStoryLabCloudDatabaseReadiness(executor, {
+    now: () => '2026-06-08T11:10:00.000Z'
+  });
+
+  assert(!result.ready, 'a database missing rate_limit_buckets should not report ready');
+  assert(result.missing.includes('rate_limit_buckets'), 'the missing rate limit table should be named');
 }
 
 async function testDatabaseErrorsFailClosedWithoutLeakingProviderDetails() {

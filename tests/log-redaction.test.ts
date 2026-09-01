@@ -173,6 +173,35 @@ for (const testCase of punctuated) {
   );
 }
 
+// A Postgres/Neon connection string carries its credentials in the URL
+// itself (`postgres://user:pass@host/db`), unlike an http(s) URL where a
+// token is usually a separate header or query parameter. A driver/connection
+// error logged from `postgresRateLimitStore.ts` (or any of the other
+// Postgres-backed Story Lab stores) can embed this string verbatim, so the
+// scheme has to be recognized the same way `https://`/`http://` already are.
+const postgresConnectionStrings: Array<{ note: string; expected: string }> = [
+  {
+    note: 'connection failed for postgres://alice:s3cret@db.example.com:5432/story_lab',
+    expected: 'connection failed for [REDACTED]'
+  },
+  {
+    note: 'connection failed for postgresql://alice:s3cret@db.example.com:5432/story_lab',
+    expected: 'connection failed for [REDACTED]'
+  }
+];
+
+for (const testCase of postgresConnectionStrings) {
+  const redactedNote = (redactSensitiveLogData({ note: testCase.note }) as Record<string, string>).note;
+  assert(
+    redactedNote === testCase.expected,
+    `a Postgres connection string should be redacted whole (got ${JSON.stringify(redactedNote)})`
+  );
+  assert(
+    !redactedNote.includes('s3cret') && !redactedNote.includes('alice'),
+    `a Postgres connection string's credentials must not survive redaction (got ${JSON.stringify(redactedNote)})`
+  );
+}
+
 const cyclic: Record<string, unknown> = { model: 'grok-4' };
 cyclic['self'] = cyclic;
 const redactedCycle = redactSensitiveLogData(cyclic) as Record<string, any>;
