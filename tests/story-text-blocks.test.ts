@@ -333,8 +333,11 @@ for (const [input, blocks, expectation] of [
 
   // Quadratic would be ~16x for a 4x input. Linear is ~4x; the bound leaves
   // generous headroom for a slow or contended machine without admitting n².
+  // Non-strict, so a measurement landing exactly on the bound passes: `small`
+  // is floored at 0.5ms, so `small * 10` can be the exact value 5, which is a
+  // figure a timing can land on rather than merely approach.
   assert(
-    large < small * 10,
+    large <= small * 10,
     `repeated comment opens should scale linearly, not quadratically (5,000: ${small.toFixed(1)}ms, 20,000: ${large.toFixed(1)}ms)`
   );
 }
