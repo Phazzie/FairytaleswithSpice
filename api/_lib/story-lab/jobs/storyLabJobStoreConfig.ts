@@ -8,6 +8,15 @@ import {
 } from './postgresStoryLabJobStore';
 import { createNeonStoryLabQueryExecutor } from '../storage/neonStoryLabExecutor';
 import type { StoryLabCloudQueryExecutor } from '../storage/storyLabCloudStorageConfig';
+import {
+  normalizeDurableStoreMode,
+  resolveDurableStoreDatabaseUrl,
+  resolveDurableStoreExecutor,
+  resolveDurableStoreMode
+} from '../storage/durableStoreEnvResolution';
+
+const STORY_LAB_JOB_STORE_ENV_VAR = 'STORY_LAB_JOB_STORE';
+const DEFAULT_STORY_LAB_JOB_STORE_MODE = 'non_durable_memory';
 
 export type StoryLabJobStoreConfigMode = StoryLabJobStorageMode | 'unsupported';
 export type StoryLabJobStoreConfigErrorCode = 'STORY_LAB_JOB_STORE_UNSUPPORTED_MODE';
@@ -37,8 +46,11 @@ export interface StoryLabJobStoreConfig {
 export function createStoryLabJobStoreConfig(
   options: StoryLabJobStoreConfigOptions = {}
 ): StoryLabJobStoreConfig {
-  const requestedMode = resolveRawJobStoreMode(options);
-  const normalizedMode = normalizeMode(requestedMode);
+  const requestedMode = resolveDurableStoreMode(STORY_LAB_JOB_STORE_ENV_VAR, DEFAULT_STORY_LAB_JOB_STORE_MODE, {
+    modeOverride: options.jobStoreMode,
+    env: options.env
+  });
+  const normalizedMode = normalizeDurableStoreMode(requestedMode);
 
   if (normalizedMode === 'non_durable_memory' || normalizedMode === 'memory') {
     const store = options.nonDurableStore ?? nonDurableStoryLabJobStore;
@@ -55,8 +67,10 @@ export function createStoryLabJobStoreConfig(
   }
 
   if (normalizedMode === 'postgres') {
-    const databaseUrl = resolveDatabaseUrl(options);
-    const executor = databaseUrl ? resolveExecutor(databaseUrl, options) : undefined;
+    const databaseUrl = resolveDurableStoreDatabaseUrl(options);
+    const executor = databaseUrl
+      ? resolveDurableStoreExecutor(databaseUrl, options.executor, options.createExecutor, createNeonStoryLabQueryExecutor)
+      : undefined;
     const store = createPostgresStoryLabJobStore({
       databaseUrl,
       executor,
@@ -80,7 +94,7 @@ export function createStoryLabJobStoreConfig(
   return {
     requestedMode,
     mode: 'unsupported',
-    databaseUrlConfigured: Boolean(resolveDatabaseUrl(options)),
+    databaseUrlConfigured: Boolean(resolveDurableStoreDatabaseUrl(options)),
     executorConfigured: false,
     store: null,
     errorCode: 'STORY_LAB_JOB_STORE_UNSUPPORTED_MODE',
@@ -88,48 +102,4 @@ export function createStoryLabJobStoreConfig(
       return false;
     }
   };
-}
-
-function resolveRawJobStoreMode(options: StoryLabJobStoreConfigOptions): string {
-  const normalizeRawMode = (value: string) => value.trim();
-  if (options.jobStoreMode !== undefined) {
-    return normalizeRawMode(options.jobStoreMode);
-  }
-
-  if (options.env) {
-    return normalizeRawMode(options.env['STORY_LAB_JOB_STORE'] ?? 'non_durable_memory');
-  }
-
-  return normalizeRawMode(process.env['STORY_LAB_JOB_STORE'] ?? 'non_durable_memory');
-}
-
-function normalizeMode(value: string): string {
-  return value.trim().toLowerCase().replace(/-/g, '_');
-}
-
-function resolveDatabaseUrl(options: StoryLabJobStoreConfigOptions): string {
-  if (options.databaseUrl !== undefined) {
-    return options.databaseUrl.trim();
-  }
-
-  if (options.env) {
-    return (options.env['DATABASE_URL'] ?? '').trim();
-  }
-
-  return (process.env['DATABASE_URL'] ?? '').trim();
-}
-
-function resolveExecutor(
-  databaseUrl: string,
-  options: StoryLabJobStoreConfigOptions
-): StoryLabCloudQueryExecutor | undefined {
-  if (options.executor) {
-    return options.executor;
-  }
-
-  try {
-    return options.createExecutor?.(databaseUrl) ?? createNeonStoryLabQueryExecutor(databaseUrl);
-  } catch {
-    return undefined;
-  }
 }

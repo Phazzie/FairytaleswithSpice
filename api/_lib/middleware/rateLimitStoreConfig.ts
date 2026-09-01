@@ -6,15 +6,28 @@
 // than something this PR does unilaterally. `RATE_LIMIT_STORE` unset or
 // `memory` keeps today's in-memory behavior exactly as it is; `postgres`
 // opts a deployment into the shared counter once `DATABASE_URL` is set.
+//
+// The env-resolution mechanics themselves (mode env var, `DATABASE_URL`,
+// executor construction) are shared with that file via
+// `durableStoreEnvResolution.ts` rather than duplicated — see that module.
 
 import { InMemoryRateLimitStore } from './inMemoryRateLimitStore';
 import { createPostgresRateLimitStore } from './postgresRateLimitStore';
 import { createNeonStoryLabQueryExecutor } from '../story-lab/storage/neonStoryLabExecutor';
 import type { StoryLabCloudQueryExecutor } from '../story-lab/storage/storyLabCloudStorageConfig';
+import {
+  normalizeDurableStoreMode,
+  resolveDurableStoreDatabaseUrl,
+  resolveDurableStoreExecutor,
+  resolveDurableStoreMode
+} from '../story-lab/storage/durableStoreEnvResolution';
 import type { RateLimitStorageMode, RateLimitStore } from './rateLimitStorePort';
 
 export type RateLimitStoreConfigMode = RateLimitStorageMode | 'unsupported';
 export type RateLimitStoreConfigErrorCode = 'RATE_LIMIT_STORE_UNSUPPORTED_MODE';
+
+const RATE_LIMIT_STORE_ENV_VAR = 'RATE_LIMIT_STORE';
+const DEFAULT_RATE_LIMIT_STORE_MODE = 'memory';
 
 export interface RateLimitStoreConfigOptions {
   rateLimitStoreMode?: string;
@@ -39,8 +52,11 @@ export interface RateLimitStoreConfig {
 const sharedInMemoryRateLimitStore = new InMemoryRateLimitStore();
 
 export function createRateLimitStoreConfig(options: RateLimitStoreConfigOptions = {}): RateLimitStoreConfig {
-  const requestedMode = resolveRawMode(options);
-  const normalizedMode = normalizeMode(requestedMode);
+  const requestedMode = resolveDurableStoreMode(RATE_LIMIT_STORE_ENV_VAR, DEFAULT_RATE_LIMIT_STORE_MODE, {
+    modeOverride: options.rateLimitStoreMode,
+    env: options.env
+  });
+  const normalizedMode = normalizeDurableStoreMode(requestedMode);
 
   if (normalizedMode === 'memory') {
     const store = options.memoryStore ?? sharedInMemoryRateLimitStore;
@@ -57,8 +73,10 @@ export function createRateLimitStoreConfig(options: RateLimitStoreConfigOptions 
   }
 
   if (normalizedMode === 'postgres') {
-    const databaseUrl = resolveDatabaseUrl(options);
-    const executor = databaseUrl ? resolveExecutor(databaseUrl, options) : undefined;
+    const databaseUrl = resolveDurableStoreDatabaseUrl(options);
+    const executor = databaseUrl
+      ? resolveDurableStoreExecutor(databaseUrl, options.executor, options.createExecutor, createNeonStoryLabQueryExecutor)
+      : undefined;
     const store = createPostgresRateLimitStore({ databaseUrl, executor, now: options.now });
 
     return {
@@ -76,7 +94,7 @@ export function createRateLimitStoreConfig(options: RateLimitStoreConfigOptions 
   return {
     requestedMode,
     mode: 'unsupported',
-    databaseUrlConfigured: Boolean(resolveDatabaseUrl(options)),
+    databaseUrlConfigured: Boolean(resolveDurableStoreDatabaseUrl(options)),
     executorConfigured: false,
     store: null,
     errorCode: 'RATE_LIMIT_STORE_UNSUPPORTED_MODE',
@@ -84,48 +102,4 @@ export function createRateLimitStoreConfig(options: RateLimitStoreConfigOptions 
       return false;
     }
   };
-}
-
-function resolveRawMode(options: RateLimitStoreConfigOptions): string {
-  const normalizeRawMode = (value: string) => value.trim();
-  if (options.rateLimitStoreMode !== undefined) {
-    return normalizeRawMode(options.rateLimitStoreMode);
-  }
-
-  if (options.env) {
-    return normalizeRawMode(options.env['RATE_LIMIT_STORE'] ?? 'memory');
-  }
-
-  return normalizeRawMode(process.env['RATE_LIMIT_STORE'] ?? 'memory');
-}
-
-function normalizeMode(value: string): string {
-  return value.trim().toLowerCase().replace(/-/g, '_');
-}
-
-function resolveDatabaseUrl(options: RateLimitStoreConfigOptions): string {
-  if (options.databaseUrl !== undefined) {
-    return options.databaseUrl.trim();
-  }
-
-  if (options.env) {
-    return (options.env['DATABASE_URL'] ?? '').trim();
-  }
-
-  return (process.env['DATABASE_URL'] ?? '').trim();
-}
-
-function resolveExecutor(
-  databaseUrl: string,
-  options: RateLimitStoreConfigOptions
-): StoryLabCloudQueryExecutor | undefined {
-  if (options.executor) {
-    return options.executor;
-  }
-
-  try {
-    return options.createExecutor?.(databaseUrl) ?? createNeonStoryLabQueryExecutor(databaseUrl);
-  } catch {
-    return undefined;
-  }
 }
