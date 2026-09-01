@@ -818,22 +818,31 @@ nothing said so.
 Actions:
 
 - **Added a credential contract to `api/_lib/middleware/security.ts`.** A
-  configured entry is usable only if it is at least `API_KEY_MINIMUM_LENGTH`
-  (16) characters drawn from RFC 6750's `b64token` alphabet
-  (`A-Z a-z 0-9 . _ ~ + / = -`). Sixteen is where an API key's floor usually
-  sits, and it is well above the eight-character values a person types by hand;
-  the alphabet rule is well-formedness rather than entropy, catching the entry
-  that kept its shell quoting or its trailing newline — which could never have
-  authenticated anything, and until now failed as an unexplained 401. It has one
-  real behaviour change in it: a passphrase-style entry with an interior space
-  worked through `X-API-Key` and is now refused. That is intended — a space ends
-  the credential in the `Authorization: Bearer` scheme, so such a value was only
-  ever half a key, working on one documented transport and silently failing on
-  the other.
+  configured entry is usable only if it matches RFC 6750's `b64token`
+  *grammar* — a body drawn from `A-Z a-z 0-9 . _ ~ + / -`, followed only by
+  trailing `=` padding — and its body, excluding that padding, is at least
+  `API_KEY_MINIMUM_LENGTH` (16) characters. Sixteen is where an API key's floor
+  usually sits, and it is well above the eight-character values a person types
+  by hand; the grammar rule is well-formedness rather than entropy, catching
+  the entry that kept its shell quoting — which could never have authenticated
+  anything, and until now failed as an unexplained 401. Whitespace *around* an
+  entry belongs to the comma-separated list rather than to the entry and is
+  stripped before the grammar sees it, so a value carrying a trailing newline
+  is the same credential as the value without one; a newline *inside* an entry
+  is part of that entry and is refused.
+- **One real behaviour change beyond the weak-key refusal.** A passphrase-style
+  entry with an interior space worked through `X-API-Key` and is now refused.
+  That is intended — a space ends the credential in the
+  `Authorization: Bearer` scheme, so such a value was only ever half a key,
+  working on one documented transport and silently failing on the other.
 - **Split "unconfigured" from "misconfigured", which is the point of the slice.**
-  The development-mode fallback now keys on *no entries configured at all*. A
-  deployment that configured entries and had every one of them refused fails
-  closed: 401 `API_KEY_CONFIGURATION_INVALID`, never `development_user`. The
+  The development-mode fallback now keys on *nothing having been written at
+  all* — the variable absent, or the empty string `API_KEYS=` produces in a
+  `.env` file. Everything else fails closed with 401
+  `API_KEY_CONFIGURATION_INVALID`, never `development_user`: a deployment that
+  configured entries and had every one of them refused, and equally one whose
+  value holds no entry at all (`" "` from a secret substitution that produced
+  nothing, or `","`). The
   plausible way to write this rule — drop the unusable entries and let the
   existing `length === 0` check take over — routes a typo in `API_KEYS` straight
   into an app with no authentication at all, which is strictly worse than the
@@ -859,18 +868,22 @@ Actions:
 Validation:
 
 - `npm run test:all` exits 0 (79 chained scripts).
-- **Counterfactual mutations: 5 applied, 5 killed.** Removing the length rule;
-  removing the alphabet rule; letting rejected entries still match a presented
-  key; making an entirely unusable configuration fall into development mode; and
-  putting the configured value into the rejection report's metadata — each fails
+- **Counterfactual mutations: 8 applied, 8 killed** across the slice — five for
+  the work above, three more for the review repairs recorded below. Removing the
+  length rule; removing the grammar rule; letting rejected entries still match a
+  presented key; making an entirely unusable configuration fall into development
+  mode; putting the configured value into the rejection report's metadata;
+  flattening the grammar back to a plain alphabet class; measuring the minimum
+  over padding; and reading a blank-but-present `API_KEYS` as unset — each fails
   `tests/api-key-auth.test.ts`. None is committed.
 - No new suite; these belong to the file that already proves this surface.
 
 Not claimed: this is a change to what a deployment may configure, not evidence
 that any deployment had configured a weak key. It is a **breaking configuration
-change** — a deployment running on a short key today will start refusing
-requests, loudly and with a named error code, which is the intended direction of
-failure for an auth contract.
+change** — a deployment running on a short key today, or with `API_KEYS` set to
+whitespace or bare separators, will start refusing requests, loudly and with a
+named error code, which is the intended direction of failure for an auth
+contract.
 
 Review round 1 (Codex and CodeRabbit on `f8ee3c7`) — **four findings, all
 valid, all fixed.** Two of them defeated the contract's own stated rationale,
@@ -905,10 +918,10 @@ and my self-review pass had disclosed one of the four while defending it:
   wrong, not the code. Corrected and pinned with an assertion, alongside one
   showing a newline *inside* an entry is still refused.
 
-Three further counterfactual mutations for the repairs, all killed: flattening
-the grammar back to a plain alphabet class; measuring the minimum over padding;
-and reading a blank-but-present `API_KEYS` as unset. Total for the slice: 8
-applied, 8 killed, none committed.
+Three of the eight counterfactual mutations listed under Validation above belong
+to these repairs: flattening the grammar back to a plain alphabet class,
+measuring the minimum over padding, and reading a blank-but-present `API_KEYS`
+as unset. All three killed.
 
 Deliberately not in this slice: the readability half of #314. Making
 `redactBearerTokens` spare the ordinary word after `bearer` is still not sound,
