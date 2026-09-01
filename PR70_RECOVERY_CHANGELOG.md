@@ -47,18 +47,23 @@ nothing said so.
 Actions:
 
 - **Added a credential contract to `api/_lib/middleware/security.ts`.** A
-  configured entry is usable only if it is at least `API_KEY_MINIMUM_LENGTH`
-  (16) characters drawn from RFC 6750's `b64token` alphabet
-  (`A-Z a-z 0-9 . _ ~ + / = -`). Sixteen is where an API key's floor usually
-  sits, and it is well above the eight-character values a person types by hand;
-  the alphabet rule is well-formedness rather than entropy, catching the entry
-  that kept its shell quoting or its trailing newline — which could never have
-  authenticated anything, and until now failed as an unexplained 401. It has one
-  real behaviour change in it: a passphrase-style entry with an interior space
-  worked through `X-API-Key` and is now refused. That is intended — a space ends
-  the credential in the `Authorization: Bearer` scheme, so such a value was only
-  ever half a key, working on one documented transport and silently failing on
-  the other.
+  configured entry is usable only if it matches RFC 6750's `b64token`
+  *grammar* — a body drawn from `A-Z a-z 0-9 . _ ~ + / -`, followed only by
+  trailing `=` padding — and its body, excluding that padding, is at least
+  `API_KEY_MINIMUM_LENGTH` (16) characters. Sixteen is where an API key's floor
+  usually sits, and it is well above the eight-character values a person types
+  by hand; the grammar rule is well-formedness rather than entropy, catching
+  the entry that kept its shell quoting — which could never have authenticated
+  anything, and until now failed as an unexplained 401. Whitespace *around* an
+  entry belongs to the comma-separated list rather than to the entry and is
+  stripped before the grammar sees it, so a value carrying a trailing newline
+  is the same credential as the value without one; a newline *inside* an entry
+  is part of that entry and is refused.
+- **One real behaviour change beyond the weak-key refusal.** A passphrase-style
+  entry with an interior space worked through `X-API-Key` and is now refused.
+  That is intended — a space ends the credential in the
+  `Authorization: Bearer` scheme, so such a value was only ever half a key,
+  working on one documented transport and silently failing on the other.
 - **Split "unconfigured" from "misconfigured", which is the point of the slice.**
   The development-mode fallback now keys on *no entries configured at all*. A
   deployment that configured entries and had every one of them refused fails
