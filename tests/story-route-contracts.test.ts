@@ -29,6 +29,7 @@
 import { FILE_SIZE } from '../api/_lib/constants';
 import { logger } from '../api/_lib/utils/logger';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
+import { withMemoryRateLimitStore } from './helpers/withMemoryRateLimitStore';
 import { StoryService } from '../api/_lib/services/storyService';
 import exportHandler from '../api/export/save';
 import imageGenerateHandler from '../api/image/generate';
@@ -805,15 +806,17 @@ async function verifyExportTypeChecksItsOptionalDescriptiveFields(): Promise<voi
 }
 
 async function main(): Promise<void> {
-  await verifyContinueDoesNotLogProseStoryIds();
-  await verifyMalformedBodiesAreClientErrors();
-  await verifyStoryLabRoutesRejectMalformedBodies();
-  await verifyRejectedBodiesDoNotLogCallerFieldNames();
-  await verifyRejectedStoryInputDoesNotRepeatCallerText();
-  await verifyImageRequestLineNeitherRepeatsNorBlanksItsParameters();
-  await verifyExportMeasuresItsSizeCapInBytes();
-  await verifyExportBoundsItsTitleAsWellAsItsContent();
-  await verifyExportTypeChecksItsOptionalDescriptiveFields();
+  await withMemoryRateLimitStore(async () => {
+    await verifyContinueDoesNotLogProseStoryIds();
+    await verifyMalformedBodiesAreClientErrors();
+    await verifyStoryLabRoutesRejectMalformedBodies();
+    await verifyRejectedBodiesDoNotLogCallerFieldNames();
+    await verifyRejectedStoryInputDoesNotRepeatCallerText();
+    await verifyImageRequestLineNeitherRepeatsNorBlanksItsParameters();
+    await verifyExportMeasuresItsSizeCapInBytes();
+    await verifyExportBoundsItsTitleAsWellAsItsContent();
+    await verifyExportTypeChecksItsOptionalDescriptiveFields();
+  });
 
   console.log('Story route contract tests passed');
 }
