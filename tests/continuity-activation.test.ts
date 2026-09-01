@@ -66,6 +66,116 @@ assert(
   'an apostrophe should separate rather than delete the letters around it'
 );
 
+// A combining mark is not a letter, so keeping only `\p{L}\p{N}` read every one
+// of them as a separator and cut the word apart at each: `मेरी कहानी` came back
+// as `म र कह न`. Both sides shatter alike, so nothing looked broken — but every
+// fragment is now below ACTIVATION_TOKEN_MIN_LENGTH, which silently costs these
+// scripts the per-word score entirely.
+assert(
+  normalizeActivationText('मेरी कहानी') === 'मेरी कहानी',
+  'a Devanagari label should keep its vowel marks rather than being cut apart at them'
+);
+assert(
+  normalizeActivationText('เรื่องของฉัน') === 'เรื่องของฉัน',
+  'a Thai label should keep its vowel and tone marks'
+);
+
+// The marks are kept either way, so keeping them is not enough on its own: `é`
+// and `e` + U+0301 are different strings, and a brief typed one way would never
+// match a label stored the other. This is the docblock's own `José` example.
+assert(
+  normalizeActivationText('José'.normalize('NFD')) === normalizeActivationText('José'.normalize('NFC')),
+  'the same name typed decomposed or precomposed should normalize to one string'
+);
+assert(
+  scoreActivationCandidates(
+    ['José'.normalize('NFC') + ' pact'],
+    normalizeActivationText('José'.normalize('NFD') + ' made a pact')
+  ) === scoreActivationCandidates(
+    ['José'.normalize('NFC') + ' pact'],
+    normalizeActivationText('José'.normalize('NFC') + ' made a pact')
+  ),
+  'a brief should activate a candidate the same whichever spelling of a name it was typed in'
+);
+
+// Retaining marks is right for a mark attached to a letter and wrong for one
+// left on its own: the variation selector after an emoji is `\p{M}`, and on its
+// own it would become an invisible word in the comparison.
+assert(
+  normalizeActivationText('❤️ pact') === 'pact',
+  'a mark with no letter beside it is not a word and should be dropped'
+);
+
+// The same orphan with no space after it is the case a whole-part test misses:
+// the heart becomes a space, its variation selector survives and attaches to
+// the *next* word, and the part then does contain a letter. Retaining marks
+// without this made `❤️pact` invisible to a brief saying `pact` — a regression
+// the repair introduced, in the most literal sense of invisible.
+assert(
+  normalizeActivationText('❤️pact') === 'pact',
+  `an orphaned mark must not attach to the following word, got ${JSON.stringify(normalizeActivationText('❤️pact'))}`
+);
+assert(
+  scoreActivationCandidates(['❤️pact'], normalizeActivationText('settle the pact tonight'))
+    === scoreActivationCandidates(['pact'], normalizeActivationText('settle the pact tonight')),
+  'a candidate written with an emoji in front of it should score as the word it contains'
+);
+// A mark in the middle of a part belongs to the character before it and stays.
+assert(
+  normalizeActivationText('मेरी कहानी') === 'मेरी कहानी',
+  'stripping orphans must not strip the marks that hold a word together'
+);
+
+// ---- The token floor counts word, not length ----
+// `ACTIVATION_TOKEN_MIN_LENGTH` is a claim about how much *word* a token has to
+// be, and `.length` was the same thing only while marks were dropped. The
+// Arabic preposition `مِنْ` is two letters wearing two marks: it measures four
+// and would clear a floor built to exclude exactly this kind of word — `the`,
+// `and`, `of` — which is how the ordering the floor protects gets flattened.
+const arabicStopword = 'مِنْ';
+assert(arabicStopword.length >= ACTIVATION_TOKEN_MIN_LENGTH, 'the premise: this stopword measures four by length');
+assert(
+  scoreActivationCandidates([arabicStopword], normalizeActivationText(`العهد ${arabicStopword} المكسور`))
+    === ACTIVATION_WHOLE_CANDIDATE_SCORE,
+  'a two-letter stopword wearing marks must not earn a token point on top of the whole-candidate match'
+);
+// And a real content word still does.
+assert(
+  scoreActivationCandidates(['विश्वासघात की प्रतिज्ञा'], normalizeActivationText('विश्वासघात के बारे में')) === 1,
+  'a brief naming one word of a Devanagari label should score that word'
+);
+
+// ---- The invariant the two steps above establish ----
+// The replacement leaves only letters, numbers, marks and spaces; the split
+// consumes the spaces; the orphan strip removes every leading mark. So every
+// part that survives begins with a letter or a number — which is what lets the
+// normalizer drop empty parts rather than re-test each one for a word. Asserted
+// as a property across the adversarial inputs, because a filter that restates
+// it cannot fail, and weakening either step is what actually breaks it.
+for (const adversarial of [
+  '❤️pact', '❤️ pact', '🗝️', '❤️🗝️', 'a❤️b', 'मेरी कहानी', 'เรื่องของฉัน', 'العهد المكسور',
+  "José's pact", '  The  Moonlit   Oath. ', '', '   ', '···', 'Клятва Миры', '美咲の契約'
+]) {
+  const normalized = normalizeActivationText(adversarial);
+  for (const part of normalized.split(' ').filter(Boolean)) {
+    assert(
+      /[\p{L}\p{N}]/u.test(part),
+      `every part of a normalized string must hold a letter or a number; ${JSON.stringify(adversarial)} produced the part ${JSON.stringify(part)}`
+    );
+    assert(
+      !/^\p{M}/u.test(part),
+      `no part may begin with a mark; ${JSON.stringify(adversarial)} produced ${JSON.stringify(part)}`
+    );
+  }
+}
+
+// Every part an ASCII input produces already holds a letter or a number, so the
+// scoring these fixes reach is unchanged for text that never needed them.
+assert(
+  normalizeActivationText('  The  Moonlit   Oath. ') === 'the moonlit oath',
+  'ASCII text normalizes exactly as it did before marks were retained'
+);
+
 // ==================== Scoring ====================
 
 const brief = normalizeActivationText('Pay off the moonlit oath before the reef court sits again.');
