@@ -11,6 +11,7 @@ import {
   ApiResponse,
   CloudStoryProjectDeleteReceipt,
   StoryIterationPayload,
+  StoryLabJob,
   StoryLabJobCreationResponse,
   StoryStateSnapshot,
   StorySummary,
@@ -286,6 +287,7 @@ describe('App', () => {
       'beginStory',
       'continueStory',
       'createStoryLabJob',
+      'getStoryLabJobStatus',
       'listCloudStoryProjects',
       'saveCloudStoryProject',
       'loadCloudStoryProject',
@@ -1326,6 +1328,152 @@ describe('App', () => {
     expect(queueText).toContain('Genesis');
     expect(queueText).toContain('In Progress');
     expect(queueText).toContain('0 of 1 chapter');
+  });
+
+  // These three cover the "still running" branch of `handleJobSnapshot`: it
+  // returns `false` specifically so the caller keeps watching the job, but
+  // until now both callers discarded that return value and nothing in the
+  // component ever polled `getStoryLabJobStatus` again. `jobEventSubscription`
+  // existed for exactly this and was permanently `null`.
+  describe('watching a Story Lab job that is not yet terminal', () => {
+    const statusPath = '/api/story-lab/jobs/job_123e4567-e89b-12d3-a456-426614174000';
+    // Kept in sync with `STORY_LAB_JOB_POLL_INTERVAL_MS` / `STORY_LAB_JOB_POLL_TIMEOUT_MS` in app.ts.
+    const POLL_INTERVAL_MS = 2500;
+    const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+    function completedGenesisPayload(): StoryIterationPayload {
+      return {
+        summary: createSummary(),
+        batch: {
+          chapters: [createChapter()],
+          totalWordCount: 900,
+          suggestedNextPrompts: []
+        },
+        state: createState(),
+        telemetry: {
+          engine: 'gpt',
+          totalLatencyMs: 1800,
+          averageChapterLatencyMs: 1800,
+          tokensConsumed: 900,
+          retryCount: 0
+        }
+      };
+    }
+
+    function runningJobSnapshot(overrides: Partial<StoryLabJob<StoryIterationPayload>> = {}): StoryLabJob<StoryIterationPayload> {
+      return {
+        jobId: 'job_123e4567-e89b-12d3-a456-426614174000',
+        kind: 'genesis',
+        status: 'running',
+        currentStep: 'generating_story',
+        progressPercent: 60,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...overrides
+      };
+    }
+
+    it('re-checks the job at its statusPath and applies the result once polling reaches a completed snapshot', fakeAsync(() => {
+      const completedJob = createGenesisJobResponse(completedGenesisPayload()).job;
+      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: completedJob }));
+
+      startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
+
+      expect(storyService.getStoryLabJobStatus).not.toHaveBeenCalled();
+      expect(component.isGenerating()).toBeTrue();
+
+      tick(POLL_INTERVAL_MS);
+
+      expect(storyService.getStoryLabJobStatus).toHaveBeenCalledWith(statusPath);
+      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(1);
+      expect(component.isGenerating()).toBeFalse();
+      expect(component.workbench().chapterHistory.length).toBe(1);
+      expect(component.jobStatusPanel().visible).toBeFalse();
+
+      // Terminal now — no further polling.
+      tick(POLL_TIMEOUT_MS);
+      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(1);
+    }));
+
+    it('keeps re-checking on every non-terminal snapshot until the job finishes', fakeAsync(() => {
+      const completedJob = createGenesisJobResponse(completedGenesisPayload()).job;
+      storyService.getStoryLabJobStatus.and.returnValues(
+        of({ success: true, data: runningJobSnapshot({ progressPercent: 65 }) }),
+        of({ success: true, data: runningJobSnapshot({ progressPercent: 80 }) }),
+        of({ success: true, data: completedJob })
+      );
+
+      startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
+
+      tick(POLL_INTERVAL_MS);
+      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(1);
+      expect(component.isGenerating()).toBeTrue();
+      expect(component.generationProgress().percent).toBe(65);
+
+      tick(POLL_INTERVAL_MS);
+      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(2);
+      expect(component.generationProgress().percent).toBe(80);
+
+      tick(POLL_INTERVAL_MS);
+      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(3);
+      expect(component.isGenerating()).toBeFalse();
+    }));
+
+    it('fails the job and stops polling once the poll timeout elapses', fakeAsync(() => {
+      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: runningJobSnapshot() }));
+
+      startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
+
+      tick(POLL_TIMEOUT_MS);
+
+      expect(component.isGenerating()).toBeFalse();
+      expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+
+      const callsAtTimeout = storyService.getStoryLabJobStatus.calls.count();
+      tick(POLL_INTERVAL_MS * 4);
+      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(callsAtTimeout);
+    }));
+
+    it('stops polling once the component is destroyed', fakeAsync(() => {
+      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: runningJobSnapshot() }));
+
+      startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
+      tick(POLL_INTERVAL_MS);
+      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(1);
+
+      // `ngOnDestroy` calls `closeJobSubscriptions()`, which must actually
+      // unsubscribe a live poll — not silently no-op the way it did while
+      // `jobEventSubscription` was declared but never assigned to anything.
+      fixture.destroy();
+      storyService.getStoryLabJobStatus.calls.reset();
+      tick(POLL_INTERVAL_MS * 4);
+      expect(storyService.getStoryLabJobStatus).not.toHaveBeenCalled();
+    }));
+
+    it('also polls a running continuation job at its own statusPath until it completes', fakeAsync(() => {
+      const genesisPayload = seedWorkbenchForContinuation();
+      const runningContinuationJob = createContinuationJobResponse(undefined, {
+        status: 'running',
+        currentStep: 'continuing_story',
+        progressPercent: 40
+      });
+      storyService.createStoryLabJob.and.returnValue(of({ success: true, data: runningContinuationJob }));
+
+      const continuationPayload = createContinuationPayload(genesisPayload);
+      const completedJob = createContinuationJobResponse(continuationPayload).job;
+      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: completedJob }));
+
+      component.continueSaga('Focus on the betrayal arc.');
+
+      expect(storyService.getStoryLabJobStatus).not.toHaveBeenCalled();
+      expect(component.isGenerating()).toBeTrue();
+
+      tick(POLL_INTERVAL_MS);
+
+      expect(storyService.getStoryLabJobStatus).toHaveBeenCalledWith(runningContinuationJob.paths.statusPath);
+      expect(component.isGenerating()).toBeFalse();
+      expect(component.workbench().chapterHistory.length).toBe(2);
+    }));
   });
 
   it('formats unknown batch statuses defensively', () => {

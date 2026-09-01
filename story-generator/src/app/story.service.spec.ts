@@ -283,6 +283,43 @@ describe('StoryService', () => {
     );
   });
 
+  it('polls a Story Lab job status at its statusPath', () => {
+    const payload = createJobResponse<StoryIterationPayload>('job_polling-target');
+    const runningJob = { ...payload.job, status: 'running' as const, progressPercent: 40 };
+
+    service.getStoryLabJobStatus<StoryIterationPayload>(payload.paths.statusPath).subscribe(response => {
+      expect(response.success).toBeTrue();
+      expect(response.data?.status).toBe('running');
+      expect(response.data?.progressPercent).toBe(40);
+    });
+
+    const req = httpMock.expectOne(payload.paths.statusPath);
+    expect(req.request.method).toBe('GET');
+    req.flush({ success: true, data: runningJob });
+
+    expect(errorLogging.logInfo).toHaveBeenCalledWith(
+      'Polling Story Lab job status',
+      'StoryService.getStoryLabJobStatus',
+      { statusPath: payload.paths.statusPath }
+    );
+  });
+
+  it('logs http errors from job status polling through the error logger', () => {
+    const statusPath = '/api/story-lab/jobs/job_polling-target';
+
+    service.getStoryLabJobStatus(statusPath).subscribe({
+      next: () => fail('Expected error to be thrown'),
+      error: error => {
+        expect(error.status).toBe(503);
+      }
+    });
+
+    const req = httpMock.expectOne(statusPath);
+    req.flush('Service unavailable', { status: 503, statusText: 'Service Unavailable' });
+
+    expect(errorLogging.logError).toHaveBeenCalled();
+  });
+
   it('gets and updates the Story Lab account profile', () => {
     const profile = createProfile();
 

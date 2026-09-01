@@ -14,6 +14,7 @@ import {
   StoryGenerationSeam,
   StoryIterationPayload,
   StoryContinuationSeam,
+  StoryLabJob,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
   StoryLabUserProfile
@@ -94,6 +95,23 @@ export class StoryService {
     return this.http
       .post<ApiResponse<StoryLabJobCreationResponse<TResult>>>(`${this.apiUrl}/jobs`, request)
       .pipe(catchError(error => this.handleHttpError(error, 'createStoryLabJob')));
+  }
+
+  /**
+   * Read a Story Lab job's latest snapshot from the `statusPath` its creation
+   * response returned. Used to keep watching a job that hasn't reached a
+   * terminal status yet.
+   */
+  getStoryLabJobStatus<TResult = StoryIterationPayload>(
+    statusPath: string
+  ): Observable<ApiResponse<StoryLabJob<TResult>>> {
+    this.errorLogging.logInfo('Polling Story Lab job status', 'StoryService.getStoryLabJobStatus', {
+      statusPath
+    });
+
+    return this.http
+      .get<ApiResponse<StoryLabJob<TResult>>>(statusPath)
+      .pipe(catchError(error => this.handleHttpError(error, 'getStoryLabJobStatus')));
   }
 
   /**
