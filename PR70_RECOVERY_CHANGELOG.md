@@ -439,6 +439,53 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
+**Review round 19: two P2s, both pre-existing, both the same shape as defects
+this entry already records — one direction further out.** Reproduced before
+changing anything, and both reproduce identically on `74594ff`, this branch's
+head before the round-17 work, so neither is a regression from it.
+
+**The scheme with no credential after it was rewritten as a hidden one.**
+
+```text
+Authorization: Bearer                  -> Authorization: Bearer [REDACTED]
+{"authorization":"Bearer "}            -> {"authorization":"Bearer [REDACTED]"}
+Invalid Authorization header: Bearer\n -> Invalid Authorization header: Bearer [REDACTED]
+```
+
+Both arms fire on context alone, and an empty run reached them, so a failed
+request that sent *no key at all* logged as though one had been supplied and
+withheld. That is this entry's own defect in its other direction — `[REDACTED]`
+asserting a credential where there was none — and it is the thing the opening
+paragraph objects to about the original behaviour. The empty run now returns
+before either arm is consulted, because the arms answer "is this a credential
+position" and this asks the prior question of whether anything is there to be
+one. An empty array element does not cost its neighbour its redaction, asserted.
+
+**The closed-empty-value fix was live at depth 0 only.** An earlier round
+stopped the lookback at `authorization: "" Bearer of the seal`. It compared each
+quote against the character immediately before it — which is only how an empty
+value is spelled when nothing has been escaped. Embedded in a string the same
+value is `\"\"`, at depth 2 `\\\"\\\"`, and the pair is still there with its
+escaping between it:
+
+```text
+{"message":"authorization: \"\" Bearer of the seal"}
+  -> ... Bearer [REDACTED] the seal
+```
+
+So the fix held for the shape a test was written against and for no shape a real
+log carries. Backslashes belong to the quotes they escape and no longer separate
+the pair; whitespace still does. Three depths asserted.
+
+Counterfactual mutations: 5 applied, 4 killed, 1 reported. Killed: removing the
+no-token guard; placing it after the arms so context still wins; reverting the
+lookback to adjacency; letting backslashes reset the pairing. Reported rather
+than counted — making whitespace *not* reset the pairing survives, because it
+changes only whether a value holding just spaces (`authorization: " " Bearer of
+the seal`) reads as closed. That is unchanged from before this round in both
+directions, it is over-redaction rather than a leak, and taking it would widen
+the reported finding, so it is recorded rather than taken.
+
 **Review round 18: redacting a credential and consuming it are two questions,
 and only the first was being asked.** Codex, P1, on the round-17 head:
 `a...............` is one letter and fifteen stops — a sixteen-character body

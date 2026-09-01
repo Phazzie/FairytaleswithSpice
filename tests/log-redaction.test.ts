@@ -220,6 +220,15 @@ for (const sentence of [
   "authorization: '' Bearer of the seal",
   'authorization: "" the bearer announced victory',
   'authorization: "abc" Bearer of the seal',
+  // The same closed empty value once the diagnostic is embedded in a string,
+  // which is the shape this module is actually handed. The pair is still there
+  // with its escaping between it -- `\\"\\"` at depth 1, `\\\\\\"\\\\\\"` at
+  // depth 2 -- and comparing each quote against the character immediately
+  // before it saw only padding and walked through to the separator behind. The
+  // depth-0 fix was live in no serialized log until this.
+  '{"message":"authorization: \\"\\" Bearer of the seal"}',
+  '{"message":"authorization: \\\\\\"\\\\\\" Bearer of the seal"}',
+  'payload="{\\"authorization\\":\\"\\" Bearer of the seal}"',
   'the bearer _returned_ to court',
   'the bearer __of__ the seal',
   'the bearer ~~returned~~ at dawn',
@@ -643,6 +652,39 @@ for (const joined of [
     `every credential in a comma-joined header value must be redacted: ${joined} -> ${hidden.note}`
   );
 }
+
+// The scheme with nothing after it is a credential that was *missing*, not one
+// being hidden. `Authorization: Bearer ` is what a failed request logs when no
+// key was sent at all, and both arms fire on the context alone -- so the line
+// came out as `Bearer [REDACTED]`, telling an operator debugging a missing
+// credential that a secret had been supplied and withheld from them. This
+// module's own defect in its other direction: asserting a credential where
+// there was none. The header arm, a serialized value and an array element each
+// reach it, so each is pinned.
+for (const empty of [
+  'Authorization: Bearer ',
+  'Invalid Authorization header: Bearer\n',
+  '{"authorization":"Bearer "}',
+  "{'authorization': 'Bearer '}",
+  'Authorization=Bearer ',
+  'the bearer '
+]) {
+  const hidden = redactSensitiveLogData({ note: empty }) as Record<string, string>;
+  assert(
+    hidden.note === empty,
+    `a scheme with no credential after it is not a redacted credential: ${JSON.stringify(empty)} -> ${JSON.stringify(hidden.note)}`
+  );
+}
+
+// And an empty element does not cost the array the credential beside it: the
+// no-token path returns before the arms, it does not disable them.
+const mixedArray = redactSensitiveLogData({
+  note: '{"authorization":["Bearer ","Bearer abcdef"]}'
+}) as Record<string, string>;
+assert(
+  mixedArray.note === `{"authorization":["Bearer ","Bearer ${REDACTED_SENSITIVE_TEXT}"]}`,
+  `an empty scheme is preserved and its neighbour still redacted: ${mixedArray.note}`
+);
 
 // The same list with nothing serializing it. `Bearer a, Bearer b` is the form
 // RFC 7230 gives a repeated header on the wire, and a diagnostic quotes it back

@@ -64,6 +64,24 @@ function redactBearerTokens(value: string): string {
     // `the bearer returned.` was read as the credential-shaped `returned.` and
     // lost both the word and the mark that ended the line, which is this
     // module's own defect one character further along.
+    // The scheme with nothing after it is a credential that was *missing*, not
+    // one that is being hidden. `Authorization: Bearer ` and
+    // `{"authorization":"Bearer "}` are what a failed request logs when no key
+    // was sent at all, and both arms below fire on the context alone -- so the
+    // line came out as `Bearer [REDACTED]`, telling an operator debugging a
+    // missing credential that a secret had been supplied and withheld from
+    // them. That is this module's own defect in its other direction: asserting
+    // a credential where there was none.
+    //
+    // Checked before the arms rather than inside them, because the arms answer
+    // "is this a credential position", and this asks the prior question of
+    // whether there is anything here to be one.
+    if (cursor === tokenStart) {
+      redacted += value.slice(found, cursor);
+      index = cursor;
+      continue;
+    }
+
     const tokenEnd = endBeforeSentenceStops(value, tokenStart, cursor);
     const body = stripBalancedEmphasis(value.slice(tokenStart, tokenEnd));
     const runLength = cursor - tokenStart;
@@ -646,24 +664,43 @@ function readFieldNameBefore(value: string, from: number): { name: string; start
  */
 function skipBackOverSeparatorPadding(value: string, from: number): number {
   let cursor = from;
-  let skipped = '';
+  let closedBy = '';
+  let onlyBackslashesSince = false;
 
   while (cursor >= 0) {
     const char = value[cursor] ?? '';
     if (!isSeparatorPadding(char)) {
       break;
     }
-    // Two quotes of the same character side by side are a value that has
-    // already closed, not padding around the next one. Without this the walk
-    // reads straight through an empty value to the separator behind it, and
+
+    // Two quotes of the same character are a value that has already closed, not
+    // padding around the next one. Without this the walk reads straight through
+    // an empty value to the separator behind it, and
     // `authorization: "" Bearer of the seal` loses its `of` -- while
     // `authorization: "abc" Bearer of the seal` does not, because a non-empty
-    // value stops the walk on its own characters. The two spellings of a
-    // completed value now stop it alike.
-    if (isQuote(char) && char === skipped) {
-      break;
+    // value stops the walk on its own characters.
+    //
+    // **Separated by backslashes, not necessarily adjacent.** An earlier
+    // revision compared each quote against the character immediately before it,
+    // which is only how an empty value is spelled at depth 0. Once the
+    // diagnostic is embedded in a string the same value is `\"\"`, and at depth
+    // 2 `\\\"\\\"` -- the pair is still there, with the escaping between it. The
+    // adjacency test read those as ordinary padding and walked through, so the
+    // defect fixed at depth 0 was still live in every serialized log, which is
+    // the shape this module is actually handed. Backslashes belong to the
+    // quotes they escape, so they do not separate the pair; whitespace does,
+    // and resets the pairing.
+    if (isQuote(char)) {
+      if (char === closedBy && onlyBackslashesSince) {
+        break;
+      }
+      closedBy = char;
+      onlyBackslashesSince = true;
+    } else if (char !== '\\') {
+      closedBy = '';
+      onlyBackslashesSince = false;
     }
-    skipped = char;
+
     cursor -= 1;
   }
 
