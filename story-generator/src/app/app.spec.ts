@@ -1,7 +1,7 @@
 import { ComponentFixture, DeferBlockState, fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
-import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
+import { BehaviorSubject, NEVER, of, Subject, throwError } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
@@ -1419,7 +1419,7 @@ describe('App', () => {
       expect(component.isGenerating()).toBeFalse();
     }));
 
-    it('fails the job and stops polling once the poll timeout elapses', fakeAsync(() => {
+    it('fails the job with a dedicated message once the overall poll timeout elapses', fakeAsync(() => {
       storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: runningJobSnapshot() }));
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
@@ -1428,10 +1428,34 @@ describe('App', () => {
 
       expect(component.isGenerating()).toBeFalse();
       expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+      // Distinct from the per-request/stream error message below — a reader
+      // hitting the 5-minute cap should be told it took too long, not that
+      // "updates stopped".
+      expect(component.statusMessage()).toContain('taking longer than expected');
 
       const callsAtTimeout = storyService.getStoryLabJobStatus.calls.count();
       tick(POLL_INTERVAL_MS * 4);
       expect(storyService.getStoryLabJobStatus.calls.count()).toBe(callsAtTimeout);
+    }));
+
+    it('fails the job if a single status request hangs, without waiting for the overall poll timeout', fakeAsync(() => {
+      // A request that never completes or errors — the bug Sourcery's review
+      // caught: the overall poll timeout is only re-checked from inside a
+      // request's `next` callback, so a hung request bypassed it entirely
+      // and left the job "running" forever.
+      storyService.getStoryLabJobStatus.and.returnValue(NEVER);
+
+      startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
+      tick(POLL_INTERVAL_MS);
+      expect(storyService.getStoryLabJobStatus).toHaveBeenCalled();
+      expect(component.isGenerating()).toBeTrue();
+
+      // Well under the 5-minute overall poll timeout.
+      tick(15 * 1000);
+
+      expect(component.isGenerating()).toBeFalse();
+      expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+      expect(component.statusMessage()).toContain('updates stopped');
     }));
 
     it('stops polling once the component is destroyed', fakeAsync(() => {

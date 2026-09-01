@@ -4,7 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subscription, map, switchMap, timer } from 'rxjs';
+import { Subscription, map, switchMap, timeout, timer } from 'rxjs';
 import {
   createBrowserHtmlDownloadHost,
   dataUriToBlob,
@@ -438,6 +438,17 @@ const STORY_LAB_JOB_POLL_INTERVAL_MS = 2500;
 const STORY_LAB_JOB_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
+ * How long a single status request may take before it's treated as failed.
+ *
+ * `STORY_LAB_JOB_POLL_TIMEOUT_MS` only bounds the poll loop between requests
+ * — the recursive check that enforces it runs from inside each request's
+ * `next` callback, so a request that never completes or errors would never
+ * hand control back to it, leaving the job "running" forever regardless of
+ * the overall cap. This bounds each request on its own.
+ */
+const STORY_LAB_JOB_STATUS_REQUEST_TIMEOUT_MS = 15 * 1000;
+
+/**
  * The copy that told genesis and continuation apart in what used to be three
  * pairs of near-identical methods (`handle{Genesis,Continuation}JobSnapshot`,
  * `open{Genesis,Continuation}JobEventStream`, `fail{Genesis,Continuation}Job`).
@@ -455,6 +466,7 @@ const JOB_KIND_COPY: Record<
     defaultFailedMessage: string;
     cancelledMessage: string;
     streamErrorMessage: string;
+    pollTimeoutMessage: string;
     failedNotificationTitle: string;
   }
 > = {
@@ -466,6 +478,7 @@ const JOB_KIND_COPY: Record<
     defaultFailedMessage: 'Story generation failed. Please try again in a moment.',
     cancelledMessage: 'Story generation was cancelled before it finished.',
     streamErrorMessage: 'Story generation updates stopped. Please try again in a moment.',
+    pollTimeoutMessage: 'Story generation is taking longer than expected. Please try again in a moment.',
     failedNotificationTitle: 'Generation failed'
   },
   continuation: {
@@ -476,6 +489,7 @@ const JOB_KIND_COPY: Record<
     defaultFailedMessage: 'Continuation failed. Your existing chapters are still available.',
     cancelledMessage: 'Continuation was cancelled before it finished.',
     streamErrorMessage: 'Continuation updates stopped. Your existing chapters are still available.',
+    pollTimeoutMessage: 'Continuation is taking longer than expected. Your existing chapters are still available.',
     failedNotificationTitle: 'Continuation failed'
   }
 };
@@ -2263,12 +2277,14 @@ export class App implements OnDestroy {
     pollStartedAt: number
   ) {
     if (Date.now() - pollStartedAt >= STORY_LAB_JOB_POLL_TIMEOUT_MS) {
-      this.failJob(kind, batchId, JOB_KIND_COPY[kind].streamErrorMessage);
+      this.failJob(kind, batchId, JOB_KIND_COPY[kind].pollTimeoutMessage);
       return;
     }
 
     this.jobEventSubscription = timer(STORY_LAB_JOB_POLL_INTERVAL_MS).pipe(
-      switchMap(() => this.storyService.getStoryLabJobStatus<T>(statusPath))
+      switchMap(() => this.storyService.getStoryLabJobStatus<T>(statusPath).pipe(
+        timeout(STORY_LAB_JOB_STATUS_REQUEST_TIMEOUT_MS)
+      ))
     ).subscribe({
       next: response => {
         if (!response.success || !response.data) {
