@@ -18,7 +18,8 @@ import continuationHandler from '../api/story-lab/stories/[storyId]/continue';
 import jobsHandler from '../api/story-lab/jobs';
 import { handleStreamStoryLabJobEvents } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
-import { rateLimitResetSeconds, retryAfterSeconds } from '../api/_lib/middleware/apiAccessControl';
+import { enforceApiAccessControl, rateLimitResetSeconds, retryAfterSeconds } from '../api/_lib/middleware/apiAccessControl';
+import type { RateLimitStore } from '../api/_lib/middleware/rateLimitStorePort';
 import { RATE_LIMITS } from '../api/_lib/constants';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -381,6 +382,42 @@ async function testEventStreamRoutesAcceptTheQueryParameterKey(): Promise<void> 
   });
 }
 
+/**
+ * `RATE_LIMIT_STORE=postgres` with a missing/unconfigured `DATABASE_URL` must
+ * fail closed (503) rather than silently letting a paid route through
+ * unthrottled — the same posture `resolveJobStoreOrRespond` in
+ * `jobRouteHandlers.ts` takes for an unconfigured durable job store. Driven
+ * directly against `enforceApiAccessControl` with an injected unconfigured
+ * store, so this does not depend on any particular route's wiring.
+ */
+async function testUnconfiguredPostgresRateLimitStoreFailsClosed(): Promise<void> {
+  const unconfiguredStore: RateLimitStore = {
+    mode: 'postgres',
+    durable: true,
+    isConfigured: () => false,
+    consume: () => {
+      throw new Error('an unconfigured store should never be asked to consume');
+    }
+  };
+
+  await withApiKeys(['sk-live-real-key'], async () => {
+    const res = new FakeResponse();
+    await enforceApiAccessControl(
+      { method: 'POST', headers: { 'x-api-key': 'sk-live-real-key' }, body: {} },
+      res,
+      'story/generate',
+      RATE_LIMITS.STORY_GENERATION,
+      unconfiguredStore
+    );
+
+    assert(res.statusCode === 503, `an unconfigured rate limit store should answer 503, got ${res.statusCode}`);
+    assert(
+      errorCode(res) === 'RATE_LIMIT_STORE_UNAVAILABLE',
+      `an unconfigured rate limit store should report RATE_LIMIT_STORE_UNAVAILABLE, got ${errorCode(res)}`
+    );
+  });
+}
+
 async function main(): Promise<void> {
   await testMissingKeyIsRejected();
   await testWrongKeyIsRejected();
@@ -391,6 +428,7 @@ async function main(): Promise<void> {
   await testUnconfiguredDeploymentStillServesRequestsWithNoKey();
   await testUnconfiguredDeploymentStillRateLimitsTheSharedBucket();
   await testEventStreamRoutesAcceptTheQueryParameterKey();
+  await testUnconfiguredPostgresRateLimitStoreFailsClosed();
 
   console.log('API access control route tests passed');
 }

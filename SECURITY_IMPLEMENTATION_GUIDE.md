@@ -150,16 +150,19 @@ fetch('/api/story/generate', {
 
 ### 4. Rate Limiting
 
-**Location:** `api/_lib/middleware/security.ts` (`checkRateLimit`), applied through the same `enforceApiAccessControl` guard as authentication.
+**Location:** `api/_lib/middleware/rateLimitStorePort.ts` (the `RateLimitStore` seam), applied through the same `enforceApiAccessControl` guard as authentication.
 
 **Features:**
 - Per-user, per-endpoint rate limiting
 - Configurable limits and time windows
-- In-memory storage (easily replaceable with Redis for production)
-- Automatic cleanup of expired entries
+- Two interchangeable stores behind one `RateLimitStore` port:
+  - `InMemoryRateLimitStore` (`api/_lib/middleware/inMemoryRateLimitStore.ts`, wrapping `checkRateLimit` in `security.ts`) — process-local, the default (`RATE_LIMIT_STORE` unset or `memory`). Correct for a single instance; **not** correct once more than one instance of this app is warm at once, since each instance starts with its own empty counter.
+  - `PostgresRateLimitStore` (`api/_lib/middleware/postgresRateLimitStore.ts`) — a shared counter in the same Postgres/Neon database the durable Story Lab stores already use, selected with `RATE_LIMIT_STORE=postgres` once `DATABASE_URL` is set. One atomic `INSERT ... ON CONFLICT ... DO UPDATE` per request; see the file for why that single statement is safe under concurrent instances without an explicit lock.
+  - Selected by `api/_lib/middleware/rateLimitStoreConfig.ts`, mirroring how `storyLabJobStoreConfig.ts` selects the Story Lab job store. The production default stays `memory` in this revision — flipping it to `postgres` is a separate, deliberately gated step, the same convention `STORY_LAB_JOB_STORE` follows.
+- Automatic cleanup of expired entries (in-memory store only; the Postgres store's rows are small, keyed by `(user_id, endpoint)`, and simply get overwritten on the next window)
 - Returns remaining quota and reset time
 - Applies even when `API_KEYS` is unset: every unauthenticated caller
-  collapses onto the same `development_user` id, so `checkRateLimit` still
+  collapses onto the same `development_user` id, so the configured store still
   gives them one *shared* budget per endpoint rather than unlimited access
 
 **Setup:**
@@ -167,8 +170,9 @@ fetch('/api/story/generate', {
 `enforceApiAccessControl` (see the Authentication section above) already
 authenticates the request and checks its rate limit together, sets the
 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers,
-and answers `429` (with `Retry-After`) when the budget is spent — a handler does
-not call `checkRateLimit` directly.
+and answers `429` (with `Retry-After`) when the budget is spent, or `503`
+if a deployment has opted into `RATE_LIMIT_STORE=postgres` without a working
+`DATABASE_URL` — a handler never calls a rate-limit store directly.
 
 `X-RateLimit-Reset` carries a **UTC epoch in seconds**, which is the form every
 client that knows the header name reads it in. `checkRateLimit` works in
@@ -190,35 +194,21 @@ RATE_LIMITS = {
 }
 ```
 
-**Production Upgrade (Redis):**
-```typescript
-import Redis from 'ioredis';
-const redis = new Redis(process.env.REDIS_URL);
+**Multi-Instance Deployments (implemented, opt-in):**
 
-export async function checkRateLimitRedis(
-  userId: string,
-  endpoint: string,
-  maxRequests: number,
-  windowMs: number
-) {
-  const key = `ratelimit:${userId}:${endpoint}`;
-  const count = await redis.incr(key);
-  
-  if (count === 1) {
-    await redis.pexpire(key, windowMs);
-  }
-  
-  return {
-    allowed: count <= maxRequests,
-    remaining: Math.max(0, maxRequests - count),
-    resetTime: Date.now() + windowMs
-  };
-}
-```
+Set `RATE_LIMIT_STORE=postgres` and `DATABASE_URL` to move rate limiting off
+the process-local `Map` and onto the shared `rate_limit_buckets` table
+(`storyLabCloudSchema.sql`), applied the same way the other durable Story Lab
+tables are (`scripts/recovery/apply-story-lab-cloud-schema.ts`). No new
+infrastructure (e.g. Redis) is required — it reuses the Postgres/Neon
+connection this app already provisions for durable jobs, profiles, and
+projects. See `api/_lib/middleware/postgresRateLimitStore.ts` for the store
+itself.
 
 **Testing:**
-- 7 comprehensive tests in `security.spec.ts`
-- Tests cover: within limit, exceed limit, multiple users, multiple endpoints, time window reset
+- `tests/rate-limit-store.test.ts` — `InMemoryRateLimitStore` (unchanged `checkRateLimit` behavior through the port) and `PostgresRateLimitStore` (SQL wiring, window reset/increment/deny transitions, unconfigured fail-closed)
+- `tests/rate-limit-store-config.test.ts` — mode selection (`memory` default, explicit `postgres`, unknown mode fails closed), mirroring `tests/story-lab-job-store-config.test.ts`
+- `tests/api-access-control.test.ts` — route wiring, including the `503` when `RATE_LIMIT_STORE=postgres` is misconfigured
 
 ## 🚀 Deployment Checklist
 
@@ -229,7 +219,7 @@ Before deploying to production:
 - [x] Test rate limiting with automated requests — `tests/api-access-control.test.ts`
 - [ ] Update frontend to send an API key once `API_KEYS` is configured (it currently sends none, which relies on the fail-open path)
 - [ ] Configure CORS to whitelist only production domains
-- [ ] Consider upgrading rate limiting to Redis for distributed systems
+- [ ] For multi-instance deployments, set `RATE_LIMIT_STORE=postgres` (with `DATABASE_URL`) so the rate-limit budget is shared across instances instead of per-process
 - [ ] Monitor failed authentication attempts
 - [ ] Set up alerts for rate limit violations
 - [ ] Document API key management process for users
@@ -252,7 +242,7 @@ Before deploying to production:
 
 1. **Development Mode**: When `API_KEYS` is not set, authentication allows all requests for development convenience — this now applies to a request that sends no key at all, not only to one that happens to send some key anyway (the fix in this revision; see `authenticateRequest` in `security.ts`). Always set `API_KEYS` in production if you want the key check enforced.
 
-2. **Rate Limiting Storage**: Current implementation uses in-memory storage suitable for single-instance deployments. For production with multiple instances, upgrade to Redis. It applies regardless of whether `API_KEYS` is set — an unconfigured deployment's unauthenticated callers still share one budget per endpoint.
+2. **Rate Limiting Storage**: The default (`RATE_LIMIT_STORE` unset or `memory`) is in-memory storage, suitable for single-instance deployments only. For production with multiple instances, set `RATE_LIMIT_STORE=postgres` (with `DATABASE_URL` configured) — no Redis needed, it shares the Postgres/Neon connection this app already uses for durable Story Lab storage. It applies regardless of whether `API_KEYS` is set — an unconfigured deployment's unauthenticated callers still share one budget per endpoint.
 
 3. **Input Sanitization**: Sanitization is applied at the service layer, providing defense-in-depth even if API handlers are bypassed.
 
@@ -264,7 +254,11 @@ Before deploying to production:
 
 - Security Primitives: `api/_lib/middleware/security.ts`
 - Access Control Guard (auth + rate limit, wired into every route): `api/_lib/middleware/apiAccessControl.ts`
+- Rate Limit Store Port: `api/_lib/middleware/rateLimitStorePort.ts`
+- Rate Limit Store Selection: `api/_lib/middleware/rateLimitStoreConfig.ts`
+- Postgres Rate Limit Store: `api/_lib/middleware/postgresRateLimitStore.ts`
 - Primitive Tests: `tests/api-key-auth.test.ts`
+- Rate Limit Store Tests: `tests/rate-limit-store.test.ts`, `tests/rate-limit-store-config.test.ts`
 - Route Wiring Tests: `tests/api-access-control.test.ts`
 - Input Validation: `api/_lib/services/storyService.ts` (lines 1150-1227)
 - Rate Limit Constants: `api/_lib/constants.ts`
@@ -276,4 +270,4 @@ Before deploying to production:
 2. Set up monitoring for security events
 3. Consider implementing request logging for audit trails
 4. Plan for API key rotation strategy
-5. Consider upgrading rate limiting to Redis for multi-instance deployments
+5. Validate `RATE_LIMIT_STORE=postgres` against a live database, then consider flipping the deployment's default away from `memory` (a separate, gated step — see `STORY_LAB_JOB_STORE`'s own rollout for the precedent)

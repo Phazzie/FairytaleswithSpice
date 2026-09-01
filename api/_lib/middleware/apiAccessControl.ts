@@ -1,6 +1,6 @@
 /**
- * Wire `authenticateRequest` + `checkRateLimit` (`./security.ts`) into a route
- * handler.
+ * Wire `authenticateRequest` (`./security.ts`) and a `RateLimitStore`
+ * (`./rateLimitStorePort.ts`) into a route handler.
  *
  * Both primitives were fully built, tested in isolation, and documented in
  * `SECURITY_IMPLEMENTATION_GUIDE.md` — but had zero callers anywhere in the
@@ -9,9 +9,18 @@
  * such route makes, right after its CORS/method checks and before it does any
  * paid work, so the two primitives stay in one place instead of nine
  * near-identical copies of the guide's documented pattern.
+ *
+ * Rate limiting itself is resolved through `rateLimitStoreConfig.ts` rather
+ * than calling `checkRateLimit` directly, so a deployment can opt into a
+ * Postgres-backed store (`RATE_LIMIT_STORE=postgres`) that survives across
+ * this app's multiple serverless instances — the in-memory default a bare
+ * `checkRateLimit` call would have kept is process-local and cannot enforce a
+ * shared budget once more than one instance is warm at once.
  */
 
-import { authenticateRequest, checkRateLimit } from './security';
+import { authenticateRequest } from './security';
+import { createRateLimitStoreConfig } from './rateLimitStoreConfig';
+import type { RateLimitStore } from './rateLimitStorePort';
 
 /**
  * Looser than `security.ts`'s own `AuthenticatedRequest`: every route handler
@@ -42,16 +51,23 @@ export type ApiAccessControlResult =
   | { allowed: false };
 
 /**
- * Authenticate the request and check its rate limit, writing a 401 or 429
- * response and returning `{ allowed: false }` if either check fails. A caller
- * that receives `{ allowed: false }` has already had its response sent and
- * must return without doing any further work.
+ * Authenticate the request and check its rate limit, writing a 401, 429, or
+ * 503 response and returning `{ allowed: false }` if any check fails. A
+ * caller that receives `{ allowed: false }` has already had its response
+ * sent and must return without doing any further work.
+ *
+ * `rateLimitStore` is normally left unset — the configured store
+ * (`RATE_LIMIT_STORE`, default in-memory) is resolved fresh per call, the
+ * same way `createStoryLabJobStoreConfig()` is resolved fresh per job-route
+ * request. Route handlers never need to pass it; it exists so tests can
+ * inject a store without mutating process env or module singletons.
  */
 export async function enforceApiAccessControl(
   req: ApiAccessControlRequest,
   res: ApiAccessControlResponse,
   endpoint: string,
-  limits: ApiRateLimitConfig
+  limits: ApiRateLimitConfig,
+  rateLimitStore?: RateLimitStore
 ): Promise<ApiAccessControlResult> {
   const auth = await authenticateRequest({
     method: req.method ?? 'GET',
@@ -66,8 +82,31 @@ export async function enforceApiAccessControl(
     return { allowed: false };
   }
 
+  const store = rateLimitStore ?? createRateLimitStoreConfig().store;
+  if (!store || !store.isConfigured()) {
+    // Only reachable when a deployment explicitly opts into
+    // `RATE_LIMIT_STORE=postgres` and misconfigures `DATABASE_URL` — the
+    // default `memory` mode is always configured. Failing closed here
+    // matches `resolveJobStoreOrRespond` in `jobRouteHandlers.ts`: a paid
+    // route with no working budget enforcement must refuse the request, not
+    // silently let it through unthrottled.
+    res.status(503).json({
+      success: false,
+      error: {
+        code: 'RATE_LIMIT_STORE_UNAVAILABLE',
+        message: 'Rate limiting is misconfigured for this deployment.'
+      }
+    });
+    return { allowed: false };
+  }
+
   const userId = auth.userId as string;
-  const rateLimit = checkRateLimit(userId, endpoint, limits.maxRequests, limits.windowMs);
+  const rateLimit = await store.consume({
+    userId,
+    endpoint,
+    maxRequests: limits.maxRequests,
+    windowMs: limits.windowMs
+  });
 
   // `X-RateLimit-Limit` is what makes `X-RateLimit-Remaining` a fraction rather
   // than a bare number. The three headers are one family and always have been —
