@@ -9,27 +9,13 @@
 // than silently falling back, and an unknown mode fails closed rather than
 // pretending to be supported.
 
-import type { StoryLabCloudQueryExecutor } from '../api/_lib/story-lab/storage/storyLabCloudStorageConfig';
 import { createRateLimitStoreConfig } from '../api/_lib/middleware/rateLimitStoreConfig';
 import { isRateLimitStoreError } from '../api/_lib/middleware/postgresRateLimitStore';
+import { RecordingQueryExecutor } from './helpers/recordingQueryExecutor';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
-  }
-}
-
-class FakeRateLimitExecutor implements StoryLabCloudQueryExecutor {
-  readonly queries: Array<{ sql: string; params: readonly unknown[] }> = [];
-  private readonly queuedRows: unknown[][] = [];
-
-  enqueueRows(rows: unknown[]): void {
-    this.queuedRows.push(rows);
-  }
-
-  async query<T = unknown>(sql: string, params: readonly unknown[]): Promise<{ rows: T[] }> {
-    this.queries.push({ sql, params });
-    return { rows: (this.queuedRows.shift() ?? []) as T[] };
   }
 }
 
@@ -149,7 +135,7 @@ async function testPostgresConfigRequiresDatabaseAndExecutor() {
 }
 
 async function testPostgresConfigBuildsDurableStoreWhenExplicitlyConfigured() {
-  const executor = new FakeRateLimitExecutor();
+  const executor = new RecordingQueryExecutor();
   executor.enqueueRows([{ window_start: '2026-09-01T00:00:00.000Z', count: 1 }]);
   const config = createRateLimitStoreConfig({
     env: { RATE_LIMIT_STORE: 'postgres', DATABASE_URL: 'postgres://rate-limits.example/db' },

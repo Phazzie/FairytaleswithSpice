@@ -14,6 +14,7 @@
 import { InMemoryRateLimitStore } from '../api/_lib/middleware/inMemoryRateLimitStore';
 import { createPostgresRateLimitStore, isRateLimitStoreError } from '../api/_lib/middleware/postgresRateLimitStore';
 import type { StoryLabCloudQueryExecutor } from '../api/_lib/story-lab/storage/storyLabCloudStorageConfig';
+import { RecordingQueryExecutor } from './helpers/recordingQueryExecutor';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -85,22 +86,8 @@ async function testPostgresStoreFailsClosedWithoutConfiguration() {
   }
 }
 
-class RecordingExecutor implements StoryLabCloudQueryExecutor {
-  readonly queries: Array<{ sql: string; params: readonly unknown[] }> = [];
-  private readonly queuedRows: unknown[][] = [];
-
-  enqueueRows(rows: unknown[]): void {
-    this.queuedRows.push(rows);
-  }
-
-  async query<T = unknown>(sql: string, params: readonly unknown[]): Promise<{ rows: T[] }> {
-    this.queries.push({ sql, params });
-    return { rows: (this.queuedRows.shift() ?? []) as T[] };
-  }
-}
-
 async function testPostgresStoreSendsExpectedUpsertParams() {
-  const executor = new RecordingExecutor();
+  const executor = new RecordingQueryExecutor();
   executor.enqueueRows([{ window_start: '2026-09-01T12:00:00.000Z', count: 1 }]);
   const store = createPostgresRateLimitStore({
     databaseUrl: 'postgres://rate-limits.example/db',
@@ -158,7 +145,7 @@ async function testPostgresStoreWrapsQueryFailures() {
 }
 
 async function testPostgresStoreThrowsWhenNoRowReturned() {
-  const executor = new RecordingExecutor();
+  const executor = new RecordingQueryExecutor();
   executor.enqueueRows([]);
   const store = createPostgresRateLimitStore({
     databaseUrl: 'postgres://rate-limits.example/db',
