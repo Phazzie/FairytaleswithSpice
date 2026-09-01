@@ -69,6 +69,51 @@ Not claimed:
 
 - No evidence this path is reachable in production today — see the "masked today" note above. This is a currently-dead-in-production but fully-built and now-correct capability, the same category as the `paths`/`statusPath` seam it completes.
 
+## 2026-08-28 UTC - Two cuts that took more than they were cutting
+
+Two readers each removed something the caller still had: a whole word, and the
+marks that hold a word together. Neither fails loudly, both are found by
+reading, and each has a measurement before the change, a fix, and a
+counterfactual. A third repair in the same batch — the redactor taking the word
+after a standalone `bearer` — was withdrawn under review and is now **#314**;
+the reasoning is in Review round 1 below, and it is the interesting part of this
+entry.
+
+Actions:
+
+- **`textExcerpt.ts` backed up past a word the cut had not broken.** `capAtWordBoundary`, `capAtWordBoundaryWithinCodeUnits`, and `tailAtWordBoundary` all backed up to the nearest whitespace unconditionally, without asking whether the cut had landed inside a word. A cut that falls exactly where a word ends has broken nothing, so the back-up threw away an intact word for no reason. The three now read the character the cut stopped before (or, for the tail, the one it started after) and give back only what was really broken. The loop that returns a genuinely broken word is unchanged and still right; what was missing was the question of whether anything had been broken.
+- **`normalizeActivationText` (`shared/continuityActivation.ts`) read every combining mark as a separator.** The #310 entry below moved this module's *matching* to whole words and left its *normalizer* keeping only `\p{L}\p{N}`. A mark is not a letter, so the class cut each word apart at every vowel sign. The retained class now includes `\p{M}` and the input is `NFC`-normalized first, which is the pairing `shared/storyDownloadFilename.ts` already states at length.
+- **Two consequences of retaining marks, both found by review rather than by me, both repaired here.** An orphaned mark — one whose base character the replacement removed, an emoji's variation selector being the case — attached itself to the *following* word, so `❤️pact` stopped matching a brief saying `pact`. And `ACTIVATION_TOKEN_MIN_LENGTH` was measured with `.length`, which counts marks, so a two-letter Arabic stopword wearing two marks cleared a floor built to exclude exactly that. Each part now drops the marks at its front, and the floor counts word characters.
+- Extended `tests/text-excerpt.test.ts` and `tests/continuity-activation.test.ts`. No new suite: both defects belong to a family those two files already exist for.
+- Recorded the continuation change in `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md`, which the documentation map requires and which the first draft of this slice did not do. That plan stated the seam's contract as "the normalizer leaves letters and numbers separated by single spaces" — the sentence the whole-word repair's exactness rests on — so leaving it unamended would have left the active control document contradicting the code.
+
+The defects, measured before changing anything:
+
+- **Excerpts.** `capAtWordBoundary('alpha beta gamma', 10)` answered `'alpha'` — the cut fell exactly where `beta` ends, so `beta` was whole and was discarded anyway. `tailAtWordBoundary('alpha beta gamma', 10)` answered `'gamma'` for the same reason from the other side. Both now keep the word. The readers are `generateNextChapterHint` (shown to the reader as what happens next), `createContextExcerpt` (`PREVIOUS CHAPTER EXCERPT` in the continuation prompt), the continuity prompt's per-chapter cut, and the scene sentence an image prompt is built from.
+- **Activation, measured against `main` on realistic labels.** A Devanagari label `विश्वासघात की प्रतिज्ञा` normalized to `व श व सघ त क प रत ज ञ`, and a brief naming one of its words scored **0**; it now scores 1. `José pact` against a brief typed in decomposed form scored 1 where the same brief typed precomposed scored 2 — the same name, two answers depending on how it happened to be encoded; both now score 2. The ASCII control is unchanged at 8.
+- **What the activation fix does *not* buy, stated because the first draft of this entry claimed it did.** A Thai label is no longer corrupted, but its score does not improve: Thai is written without spaces between words, so a brief naming one word of `สัญญาของฉัน` still does not match it as a whole word. That is word segmentation, which this repair does not attempt. And a short Devanagari word such as `कहानी` — three base characters — sits below the token floor and scores nothing, exactly as a three-letter ASCII word does.
+
+Decisions:
+
+- **`\p{M}` and `NFC` are both needed, and neither alone.** Devanagari, Thai, and Arabic marks do not compose away under `NFC`, so retaining them is what keeps those words whole; and the marks are kept either way, so `é` and `e` + U+0301 stay two strings until `NFC` makes them one. Same argument `storyDownloadFilename.ts` makes, applied to the reader that was left out of it.
+- **The excerpt fix is a boundary check, not a rewrite of the back-up.** What was missing was the question of whether anything had been broken.
+- **The token floor is a claim about how much *word* a token is, not how long it is.** That was the same thing only while marks were dropped, and the repair is what made the distinction load-bearing. Stating it that way is what keeps the floor doing its job — excluding `the`, `and`, `of` — in a script where a two-letter word can measure four.
+
+Self-review:
+
+- `npm run test:all` exits 0 (79 chained scripts, 82 distinct test files) before and after. `scripts/recovery/preflight.sh --skip-status` exits 0; the `proving-grounds.css` budget warning is pre-existing and untouched.
+- **Counterfactual mutations: 8 applied, 7 killed, and the survivor changed the code.** Reverting the excerpt cap boundary, the excerpt tail boundary, the retained `\p{M}`, the `NFC` normalize, the orphaned-mark strip, the word-character count, or the class the orphan strip matches each fails the suite that covers it. The eighth — weakening the part filter from "holds a letter or a number" to "is non-empty" — **survived, and it was right to.** Once each part drops its leading marks, a non-empty part provably begins with a letter or a number, because the replacement leaves only letters, numbers, marks and spaces and the split consumes the spaces. So the filter was restating an invariant the two steps above already establish, and a test of it could not fail. The filter is now the plain emptiness check, the invariant is asserted as a property across the adversarial inputs where weakening either step really does break it, and the docblock says which step earns it. A surviving mutant is a finding about the code, not a gap in the tests to paper over.
+- **The astral case is asserted rather than assumed.** `capAtWordBoundaryWithinCodeUnits` reads a single code unit to recognise whitespace, which is sound because whitespace is one unit wide in UTF-16 — but the character *after* a cut may be half of a surrogate pair, and half a character is not a word boundary. `('alpha beta🗝 gamma', 10)` must still answer `'alpha'`, and the test says so.
+- **One claim in the activation docblock was true only for the scripts that did not need it.** It said matching on the Unicode properties "keeps those words whole" — which held for Cyrillic and Han and not for any script written with combining marks.
+
+Review round 1 (Codex on `97f7d28`) — **five findings, all five valid, all five acted on. One of them withdrew a third of the slice.**
+
+- **P1: the bearer repair weakened a fail-closed security property, and it is withdrawn rather than argued down.** The change made the redactor take the run after a standalone `bearer` only when it was eight characters or carried a non-letter, which spared `a standard bearer led the march`. Codex pointed out that `authenticateRequest` accepts **any** non-empty `API_KEYS` value, so a deployment configuring `abcdef` has a live six-letter credential that the new rule leaves in the clear on the error paths the redactor exists for. Verified end to end: with `API_KEYS=abcdef`, the middleware authenticates `Authorization: Bearer abcdef` and the branch logged it verbatim. I looked for a rule that is both prose-preserving and fail-closed and could not find one — the scheme keyword is the only signal, and prose uses it the same way a header does. For a redactor, fail-closed wins, so the whole change and its tests are reverted to `main` and the prose defect is **#314**, with the trade-off written down so the next attempt starts from it rather than rediscovering it.
+- **P1: the slice crossed independent risk areas.** A privacy/redaction change and two story-generation changes shared one revert boundary, which the publication discipline says to split. Withdrawing the redaction change resolves this as well; what remains is two repairs to the text a continuation prompt is built from.
+- **P1: the execution plan was left stale.** `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md` still described the normalizer's output as letters and numbers only. Recorded, above.
+- **P2: the token floor counted marks.** Correct and precise: `مِنْ` is two letters wearing two marks, measures four, and cleared the floor. Fixed by counting word characters. **This one also falsified a number in my own PR description** — I had claimed `मेरी कहानी` went from 0 to 1, which was true only because marks were being counted as word length. With the floor fixed it is 0 either way, and the honest measurement is the longer label above. The claim was corrected rather than quietly dropped.
+- **P2: the orphaned mark attached to the next word.** `❤️pact` normalized to an invisible variation selector followed by `pact` and scored 0 against a brief saying `pact` — a regression the repair itself introduced, and one my own `❤️ pact` test missed by having a space in it. Fixed by stripping the marks at the front of each part.
+
 ## 2026-08-28 UTC - The block splitter read a comment's body as story prose
 
 The last open row of #296. `shared/storyTextBlocks.ts` had a reading for
@@ -182,6 +227,7 @@ Not claimed:
 - **The linearity bound in the test is a shape check, not a benchmark.** It
   asserts that 4× the input costs well under 10× the time, which excludes n²
   while leaving headroom for a slow or contended CI machine.
+
 
 ## 2026-08-28 UTC - The three readers the whole-word sweep missed
 
