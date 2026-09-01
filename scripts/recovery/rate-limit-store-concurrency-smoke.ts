@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { createPostgresRateLimitStore } from '../../api/_lib/middleware/postgresRateLimitStore';
 import { createNeonStoryLabQueryExecutor } from '../../api/_lib/story-lab/storage/neonStoryLabExecutor';
 import { applyStoryLabCloudSchema } from '../../api/_lib/story-lab/storage/storyLabCloudSchemaMigration';
+import { logError } from '../../api/_lib/utils/logger';
 
 const MAX_REQUESTS = 5;
 const WINDOW_MS = 15 * 60 * 1000;
@@ -80,6 +81,13 @@ async function main(): Promise<void> {
 }
 
 main().catch(error => {
-  console.error('Rate limit store concurrency smoke failed with an unexpected error.', error);
+  // Schema application, the cleanup delete, and executor construction can all
+  // fail with a raw Neon/Postgres driver error, which can embed
+  // `DATABASE_URL` itself (credentials included). Routed through `logError`
+  // — the same redacting path `PostgresRateLimitStore` uses — rather than a
+  // bare `console.error(error)`, since this script's output is exactly the
+  // kind of thing that gets captured as CI log output or pasted as
+  // deployment evidence.
+  logError('Rate limit store concurrency smoke failed with an unexpected error.', error);
   process.exit(1);
 });
