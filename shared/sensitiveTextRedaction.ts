@@ -4,12 +4,21 @@ export const REDACTED_SENSITIVE_TEXT = '[REDACTED]';
 
 const API_KEY_PREFIXES = ['xai-', 'xai_', 'sk-', 'sk_', 'api-', 'api_'];
 
+/**
+ * The RFC 6750 scheme keyword, held once because two passes now look for it:
+ * the main rewrite below, and {@link findBareCredentialListEnd}, which reads
+ * the same keyword forward to find where a comma-joined list stops repeating.
+ * Two spellings of one keyword is how the two passes would come to disagree
+ * about what a credential looks like.
+ */
+const BEARER_SCHEME = 'bearer';
+
 export function redactSensitiveTextTokens(value: string): string {
   return redactUrls(redactEmailAddresses(redactApiKeys(redactBearerTokens(value))));
 }
 
 function redactBearerTokens(value: string): string {
-  const marker = 'bearer';
+  const marker = BEARER_SCHEME;
   const credentialArrays = new CredentialArrayCursor(findCredentialValueSpans(value));
   let redacted = '';
   let index = 0;
@@ -215,8 +224,9 @@ function readCredentialFieldBefore(value: string, separator: number): { start: n
 
 /**
  * The spans of every *value* whose field is an authorization field:
- * `{"authorization":["Bearer abcdef","Bearer ghijkl"]}` and
- * `{"authorization":"Bearer abcdef, Bearer ghijkl"}`.
+ * `{"authorization":["Bearer abcdef","Bearer ghijkl"]}`,
+ * `{"authorization":"Bearer abcdef, Bearer ghijkl"}` and the unserialized
+ * `Authorization: Bearer abcdef, Bearer ghijkl`.
  *
  * A repeated header is a `string[]` in this repository's own request contracts,
  * and a joined one is a comma-separated string, so both are shapes a serialized
@@ -227,10 +237,21 @@ function readCredentialFieldBefore(value: string, separator: number): { start: n
  * established once here and applied to everything inside it, rather than each
  * credential trying to walk back to a field name past the ones before it.
  *
+ * **The comma defeats that walk whether or not anything serialized the value.**
+ * `Authorization: Bearer abcdef, Bearer ghijkl` is the form RFC 7230 gives a
+ * repeated header on the wire, and it is what a provider's error text quotes
+ * back; a diagnostic carries it with no quotes and no brackets around it at
+ * all. Keying the span on the *opener* left that shape with its first
+ * credential hidden and every later one in the clear, which is the leak this
+ * arm exists to close, so a bare value gets a span too -- see
+ * {@link findBareCredentialListEnd} for what ends it.
+ *
  * **This is not a third entry in a suffix set.** A serialized value is closed
  * grammar -- a bracket or a quote, and its matching partner -- where a
  * human-readable label is open-ended English, which is why that enumeration was
- * stopped and this one is not.
+ * stopped and this one is not. A bare list is closed grammar for the same
+ * reason: it ends where `, Bearer <token>` stops repeating, not where English
+ * stops.
  *
  * The gate is the same one, applied to the field's separator instead of to the
  * scheme, so this cannot loosen the rule: `Title: ["Bearer of the seal"]`
@@ -271,6 +292,16 @@ function findCredentialValueSpans(value: string): Array<{ start: number; end: nu
     const delimiterBackslashes = delimiterBackslashesBefore(value, field.start);
     const opener = findValueOpener(value, separator + 1, delimiterBackslashes);
     if (!opener) {
+      // Nothing serialized this value, so there is no delimiter to end a span
+      // at -- the credential list is its own closing grammar.
+      const bareEnd = findBareCredentialListEnd(value, separator + 1);
+      if (bareEnd === null) {
+        continue;
+      }
+      // The separator, not the first credential: `contains` asks whether an
+      // index is strictly inside a span, and the first `bearer` has to be.
+      spans.push({ start: separator, end: bareEnd });
+      recordedEnd = bareEnd;
       continue;
     }
 
@@ -282,6 +313,80 @@ function findCredentialValueSpans(value: string): Array<{ start: number; end: nu
   }
 
   return spans;
+}
+
+/**
+ * Where does a *bare* comma-joined credential list end -- the `ghijkl` of
+ * `Authorization: Bearer abcdef, Bearer ghijkl` -- or `null` when the separator
+ * introduces no such list?
+ *
+ * **The end is where the list stops repeating, and that is the whole rule.**
+ * The chain is `Bearer <token>` and it continues only across a `,` that is
+ * followed by the scheme keyword again. Nothing else extends it: not a comma
+ * with prose after it, not the end of the line. So
+ * `Authorization: Bearer abcdef, and the bearer returned` ends at `abcdef`, and
+ * `returned` is prose the caller never sees a span for.
+ *
+ * **Why not "to the end of the line".** That is the reading a header seems to
+ * invite, and it is the one that reintroduces this module's original defect:
+ * a provider's error text puts a sentence after the credential far more often
+ * than it puts a second credential, and every such sentence would lose the word
+ * after any `bearer` in it. The repetition is the only part of a bare value
+ * that is grammar rather than English, so it is the only part used.
+ *
+ * **A single credential yields `null` rather than a span**, because a span over
+ * it would carry nothing: {@link isIntroducedAsCredential} already reads the
+ * first credential by walking back to this same field name. The span exists
+ * only to reach the ones whose walk back is blocked by a comma, so it is
+ * recorded only once a comma has actually been crossed.
+ *
+ * Linear for the same reason the caller is: the walk stops at the token that
+ * ends the chain, and the caller records that end so no separator inside it is
+ * examined again.
+ */
+function findBareCredentialListEnd(value: string, from: number): number | null {
+  let cursor = skipWhitespaceForward(value, from);
+  let end: number | null = null;
+  let crossedComma = false;
+
+  for (;;) {
+    if (!startsWithIgnoreCase(value, BEARER_SCHEME, cursor) || !hasBearerBoundaryBefore(value, cursor)) {
+      return crossedComma ? end : null;
+    }
+
+    // The scheme has to be a word of its own here too: `Bearertoken` is one
+    // word, and reading it as the scheme would end the chain on a token that
+    // was never separated from it.
+    const afterScheme = cursor + BEARER_SCHEME.length;
+    const tokenStart = skipWhitespaceForward(value, afterScheme);
+    if (tokenStart === afterScheme) {
+      return crossedComma ? end : null;
+    }
+
+    cursor = tokenStart;
+    while (cursor < value.length && isBearerTokenChar(value[cursor] ?? '')) {
+      cursor += 1;
+    }
+    if (cursor === tokenStart) {
+      return crossedComma ? end : null;
+    }
+    end = cursor;
+
+    const comma = skipWhitespaceForward(value, cursor);
+    if (value[comma] !== ',') {
+      return crossedComma ? end : null;
+    }
+    crossedComma = true;
+    cursor = skipWhitespaceForward(value, comma + 1);
+  }
+}
+
+function skipWhitespaceForward(value: string, from: number): number {
+  let cursor = from;
+  while (cursor < value.length && isWhitespace(value[cursor] ?? '')) {
+    cursor += 1;
+  }
+  return cursor;
 }
 
 /**
@@ -327,7 +432,9 @@ function delimiterBackslashesBefore(value: string, fieldStart: number): number {
 /**
  * The `[` or the opening quote of the value this separator introduces, or
  * `null` when the value is neither -- `Authorization: Bearer abcdef` is a bare
- * credential, and {@link isIntroducedAsCredential} already reads it.
+ * credential, and {@link isIntroducedAsCredential} already reads it. A `null`
+ * here is not the end of the caller's work: a bare value may still be a
+ * comma-joined *list*, whose later entries that backward walk cannot reach.
  *
  * Whitespace between the separator and the value belongs to the serialization.
  * Backslashes are counted rather than skipped, because they are how the opening

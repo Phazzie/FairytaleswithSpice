@@ -439,6 +439,58 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
+**Review round 17: the comma finding had a third spelling, and it was the one
+with no delimiter to key on.** Codex, P2: `Authorization: Bearer abcdef, Bearer
+ghijkl` redacts only the first credential and prints the second in the clear.
+Reproduced before changing anything:
+
+```text
+Authorization: Bearer abcdef, Bearer ghijkl
+  -> Authorization: Bearer [REDACTED], Bearer ghijkl
+Invalid Authorization header: Bearer abcdef, Bearer ghijkl
+  -> Invalid Authorization header: Bearer [REDACTED], Bearer ghijkl
+{"authorization":"Bearer abcdef, Bearer ghijkl"}
+  -> both redacted
+```
+
+The quoted and array forms were fixed by giving the *value* a span, and the
+span was keyed on the opener that starts it — a `[` or a delimiting quote.
+A header written on the wire has neither. So the shape RFC 7230 actually
+defines for a repeated header, and the one a provider's error text quotes back,
+was the only one of the three still losing everything after its first comma:
+the walk back from the second credential reaches the `,` exactly as it does in
+the other two, and there was no span to catch it.
+
+**What ends a bare list is the repetition, and that is the whole rule.** The
+chain is `Bearer <token>` and it continues only across a `,` followed by the
+scheme keyword again. The reading a header seems to invite — run to the end of
+the line — is the one that puts this entry's original defect back, because a
+provider follows a credential with a sentence far more often than with a second
+credential. So `Authorization: Bearer abcdef, and the bearer returned` ends at
+`abcdef` and keeps its sentence, and that mutation is killed. A single
+credential yields no span at all: the backward walk already reaches it, so a
+span over it would carry nothing.
+
+Also a residual, found while verifying rather than reported: a bare list that
+opens on a *different* registered scheme is not a chain, so `Authorization:
+Basic xyz, Bearer abcdef` keeps `abcdef` where the quoted form redacts it.
+Recorded in the security guide rather than fixed — closing it means admitting
+the other IANA schemes as chain members, which is a closed registry rather than
+the open-ended English this module refuses to enumerate, but it is a widening of
+the reported defect and the owner's call. Bounded by Note 6's contract like the
+rest of the residual: the leaked run has to be short and word-shaped.
+
+Counterfactual mutations: 6 applied, 3 killed, 3 reported. Killed: removing the
+bare-value branch; extending a crossed comma to the end of the line; dropping
+the credential-field gate for bare values. Reported rather than counted —
+recording a span for a single entry, and starting the span at the first
+credential rather than at the separator, are both no-ops because the first
+credential is already reached by the backward walk; and dropping the
+scheme-keyword check inside the chain has only a contrived witness, since the
+words that would have to line up after the comma (`<six letters> bearer`) are
+not prose anyone writes. The check is kept because the rule, not the test, is
+what bounds the span.
+
 **Review round 16: the guarantee round 14 stated was not yet true, and Codex
 found the hole in it.** The claim was "every run of `API_KEY_MINIMUM_LENGTH`
 characters or more is redacted, whatever its shape". A run of *nothing but*

@@ -621,6 +621,73 @@ for (const joined of [
   );
 }
 
+// The same list with nothing serializing it. `Bearer a, Bearer b` is the form
+// RFC 7230 gives a repeated header on the wire, and a diagnostic quotes it back
+// with no quotes and no brackets around it -- so keying the span on a `[` or a
+// `"` hid the first credential and printed every later one in the clear. The
+// comma defeats the walk back from the second credential whether or not a
+// serializer was involved, so the span does not depend on one.
+for (const bare of [
+  'Authorization: Bearer abcdef, Bearer ghijkl',
+  'Invalid Authorization header: Bearer abcdef, Bearer ghijkl',
+  'Authorization=Bearer abcdef,Bearer ghijkl',
+  // The scheme keyword is matched case-insensitively at every position in the
+  // chain, not only at the first.
+  'token: Bearer abcdef, bearer ghijkl',
+  // A third entry is reached by the same repetition as the second.
+  'Authorization: Bearer abcdef, Bearer ghijkl, Bearer mnopqr'
+]) {
+  const hidden = redactSensitiveLogData({ note: bare }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef') && !hidden.note.includes('ghijkl'),
+    `every credential in a bare comma-joined header must be redacted: ${bare} -> ${hidden.note}`
+  );
+}
+
+const threeBare = redactSensitiveLogData({
+  note: 'Authorization: Bearer abcdef, Bearer ghijkl, Bearer mnopqr'
+}) as Record<string, string>;
+assert(
+  !threeBare.note.includes('mnopqr'),
+  `the chain does not stop at the second entry: ${threeBare.note}`
+);
+
+// What ends a bare list, asserted rather than left to the reader: the
+// repetition, and only the repetition. A comma with prose after it is a
+// sentence, and reading the value to the end of the line instead would put this
+// module's original defect back -- a provider's error text follows a credential
+// with a sentence far more often than with a second credential.
+for (const [line, survivor] of [
+  ['Authorization: Bearer abcdef, and the bearer returned', 'and the bearer returned'],
+  ['Authorization: Bearer abcdef, then the bearer announced victory', 'announced victory'],
+  ['Authorization: Bearer abcdef. The bearer returned to court', 'returned to court']
+] as const) {
+  const hidden = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef'),
+    `the credential that opens a bare list is still redacted: ${line} -> ${hidden.note}`
+  );
+  assert(
+    hidden.note.includes(survivor),
+    `a bare list ends where it stops repeating, not at the end of the line: ${line} -> ${hidden.note}`
+  );
+}
+
+// And the gate is unchanged: a bare list is only ever read as one when a
+// credential field name introduces it. A label that is merely English keeps its
+// prose, comma-joined or not.
+for (const spared of [
+  'The authorization ceremony: Bearer of the seal, Bearer of the oath',
+  'Chapter 3: Bearer of the Oath, Bearer of the Seal',
+  'header: Bearer of the seal, Bearer of the oath'
+]) {
+  const hidden = redactSensitiveLogData({ note: spared }) as Record<string, string>;
+  assert(
+    hidden.note === spared,
+    `a label that is not a credential field opens no bare list: ${spared} -> ${hidden.note}`
+  );
+}
+
 // What that costs, asserted rather than left implied. Inside a value the writer
 // labelled with an authorization field name, `bearer` is header data and the
 // word after it is redacted wherever it sits -- exactly as it already was
