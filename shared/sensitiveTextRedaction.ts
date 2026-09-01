@@ -70,7 +70,10 @@ function redactBearerTokens(value: string): string {
     if (
       !isIntroducedAsCredential(value, found) &&
       !credentialArrays.contains(found) &&
-      !isCredentialShapedBearerToken(value.slice(tokenStart, tokenEnd))
+      !isCredentialShapedBearerToken(
+        stripBalancedEmphasis(value.slice(tokenStart, tokenEnd)),
+        cursor - tokenStart
+      )
     ) {
       redacted += value.slice(found, cursor);
       index = cursor;
@@ -549,19 +552,75 @@ function isFieldNameChar(char: string): boolean {
  * caught here (`xai-...` and `sk_...` carry `-` or `_`; a Clerk session token
  * is a JWT and carries `.`).
  *
- * **Or it is purely alphabetic and reaches
- * {@link BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH}** -- the only shape the first
- * arm cannot see, and the floor is the configured-key floor precisely so that
- * an `API_KEYS` entry can never sit below it.
+ * **Or the run reaches {@link BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH}** -- the
+ * only shape the first arm cannot see, and the floor is the configured-key
+ * floor precisely so that an `API_KEYS` entry can never sit below it.
  *
  * `of`, `led`, `must`, `announced` and `whispered` qualify under neither.
+ *
+ * **The shape is read off the word `body`; the length is measured on the whole
+ * `run`, and the difference is load-bearing.** The marks the body drops --
+ * a trailing full stop, a balanced pair of Markdown emphasis delimiters -- are
+ * punctuation for the *shape* question and still characters for the *length*
+ * one, because `API_KEY_CREDENTIAL_GRAMMAR` counts `.` and `_` inside a token
+ * body. Dropping them from the length too would have spared
+ * `Bearer abcdefghijklmno.` -- fifteen letters and a stop, a sixteen-character
+ * body that `authenticateRequest` accepts -- which is a configured credential in
+ * the clear. Measuring the run instead gives the arm one flat guarantee that no
+ * trimming can reach past: **every run of
+ * {@link BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH} characters or more is
+ * redacted, whatever its shape.**
  */
-function isCredentialShapedBearerToken(token: string): boolean {
-  if (!isWordLikeRun(token)) {
+function isCredentialShapedBearerToken(body: string, runLength: number): boolean {
+  if (!isWordLikeRun(body)) {
     return true;
   }
-  return token.length >= BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH;
+  return runLength >= BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH;
 }
+
+/**
+ * The word inside a pair of Markdown emphasis delimiters, if that is what this
+ * run is.
+ *
+ * `_` and `~` are `b64token` characters, so `the bearer _returned_ to court`
+ * read `_returned_` as a run carrying marks no English word carries, and
+ * destroyed it -- along with `__of__` and `~~returned~~`. This module is handed
+ * story content and Markdown is how that content spells emphasis, so these are
+ * ordinary prose reaching the logger, not credentials.
+ *
+ * **Balanced, and only balanced.** The same run of the same mark on both ends,
+ * which is what emphasis is and what a credential is not: `_abcdef` keeps its
+ * leading underscore and stays a credential, as `-abcdef` does, and
+ * `sk_live_abcdef` carries its underscores *inside* and is untouched here. A
+ * stripped body that still holds a mark -- `_a_b_` -> `a_b` -- fails the word
+ * test anyway.
+ *
+ * This cannot spare a credential: {@link isCredentialShapedBearerToken}
+ * measures length on the untrimmed run, so a wrapped run long enough to be a
+ * configured key is redacted on the floor regardless.
+ */
+function stripBalancedEmphasis(run: string): string {
+  for (const mark of MARKDOWN_EMPHASIS_MARKS) {
+    let lead = 0;
+    while (lead < run.length && run[lead] === mark) {
+      lead += 1;
+    }
+    if (lead === 0) {
+      continue;
+    }
+    let trail = 0;
+    while (trail < run.length && run[run.length - 1 - trail] === mark) {
+      trail += 1;
+    }
+    if (lead === trail && lead + trail < run.length) {
+      return run.slice(lead, run.length - trail);
+    }
+  }
+  return run;
+}
+
+/** The `b64token` characters Markdown also uses to wrap an emphasized word. */
+const MARKDOWN_EMPHASIS_MARKS = ['_', '~'];
 
 /**
  * Could this run be an English word rather than a credential?

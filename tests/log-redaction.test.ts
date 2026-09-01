@@ -203,6 +203,15 @@ for (const sentence of [
   'the bearer of bad news...',
   // Nothing but sentence punctuation after the keyword is not a run at all.
   'Authorization: Bearer ...',
+  // Markdown is how story content spells emphasis, and `_` and `~` are
+  // `b64token` characters, so a balanced pair around an ordinary word made it
+  // carry marks no English word carries. Only balanced pairs: `_abcdef` and
+  // `sk_live_abcdef` are still credentials, asserted below.
+  'the bearer _returned_ to court',
+  'the bearer __of__ the seal',
+  'the bearer ~~returned~~ at dawn',
+  'the bearer _re-entered_ the chamber',
+  'the bearer _returned_.',
   // A separator is not a header. These are a story title, a chapter heading
   // this app generates, and ordinary structured prose -- each puts `:` or `=`
   // immediately before the noun, and each was destroyed until the field name
@@ -307,6 +316,30 @@ for (const [line, expected] of [
   );
 }
 
+// The one guarantee no trimming may reach past, and the reason the shape is
+// read off the trimmed body while the length is measured on the whole run.
+// `API_KEY_CREDENTIAL_GRAMMAR` counts `.`, `_` and `~` inside a token body, so
+// a run of `API_KEY_MINIMUM_LENGTH` characters is a value `authenticateRequest`
+// can accept whatever those characters are -- `abcdefghijklmno.` is fifteen
+// letters and a stop, and it is a configured credential. Trimming the marks out
+// of the *length* as well as the shape logged exactly that in the clear.
+for (const atFloor of [
+  `${'k'.repeat(API_KEY_MINIMUM_LENGTH - 1)}.`,
+  `_${'k'.repeat(API_KEY_MINIMUM_LENGTH - 2)}_`,
+  `~${'k'.repeat(API_KEY_MINIMUM_LENGTH - 2)}~`,
+  `${'k'.repeat(API_KEY_MINIMUM_LENGTH - 3)}...`,
+  'k'.repeat(API_KEY_MINIMUM_LENGTH)
+]) {
+  assert(atFloor.length === API_KEY_MINIMUM_LENGTH, `test setup: ${atFloor} is not at the floor`);
+  const hidden = redactSensitiveLogData({
+    note: `request failed with Bearer ${atFloor}`
+  }) as Record<string, string>;
+  assert(
+    hidden.note.includes(REDACTED_SENSITIVE_TEXT),
+    `every run at the configured floor is a credential, whatever its shape: ${atFloor} -> ${hidden.note}`
+  );
+}
+
 // The joiners take the floor with them, and that is the whole cost of sparing
 // `re-entered` and `and/or`. A run joined by one interior hyphen or slash is
 // word-shaped, so it is preserved below the floor exactly as a plain-letters
@@ -351,7 +384,15 @@ for (const shortButShaped of [
   'Bearer a1b2c3', 'Bearer k+y/z=', 'Bearer ab.cd',
   'Bearer xai-secret-key-123', 'Bearer sk_live_abcdef',
   'Bearer -abcdef', 'Bearer ab--cd', 'Bearer abcdef-',
-  'Bearer /abcdef', 'Bearer ab//cd', 'Bearer abcdef/'
+  'Bearer /abcdef', 'Bearer ab//cd', 'Bearer abcdef/',
+  // Only a *balanced* pair of emphasis marks is Markdown. One end alone is a
+  // leading mark exactly as `-abcdef` is, and a provider token wears its
+  // underscores on the inside.
+  'Bearer _abcdef', 'Bearer abcdef_', 'Bearer ~abcdef', 'Bearer sk_live_abcdef', 'Bearer _a_b_',
+  // And only the marks Markdown actually uses for inline emphasis. A hyphen
+  // wraps nothing in Markdown -- it opens a list or rules a line -- so a run
+  // wearing one at each end is a credential, not an emphasized word.
+  'Bearer -abcdef-'
 ]) {
   const shaped = redactSensitiveLogData({ note: shortButShaped }) as Record<string, string>;
   assert(

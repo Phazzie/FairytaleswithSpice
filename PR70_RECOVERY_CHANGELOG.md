@@ -408,6 +408,74 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
+**Review round 14: the round-13 fix had traded a prose defect for a leak, and
+the fix for that is a stronger guarantee than the arm had before.** Codex, at
+P1: `API_KEY_CREDENTIAL_GRAMMAR` counts `.` inside a token body, so
+`abcdefghijklmno.` — fifteen letters and a stop — is a sixteen-character body
+`authenticateRequest` accepts. Round 13 trimmed the stop before classifying, so
+that value was preserved:
+
+```text
+request failed with Bearer abcdefghijklmno.   -> unchanged; a configured key in the clear
+```
+
+Verified against `security.ts` rather than taken on the reading: the grammar is
+`/^[A-Za-z0-9._~+/-]+=*$/` and the floor is measured on the body with only
+trailing `=` padding excluded, so the premise holds exactly.
+
+The repair separates the two questions the run was being asked at once. **Shape
+is asked of the word body**; **length is measured on the whole run.** A mark
+prose puts around a word is punctuation for the shape question and still a
+character for the length one. That gives the arm one flat guarantee it did not
+have before round 13 either: **every run of `API_KEY_MINIMUM_LENGTH` characters
+or more is redacted, whatever its shape**, so no configured credential can
+survive the arm and the residual is exactly the band below the floor.
+
+**Round 14 also found the same class in Markdown, and that one is pre-existing.**
+`_` and `~` are `b64token` characters, so a balanced pair around a word made it
+carry marks no English word carries:
+
+```text
+the bearer _returned_ to court   -> the Bearer [REDACTED] to court
+the bearer __of__ the seal       -> the Bearer [REDACTED] the seal
+the bearer ~~returned~~ at dawn  -> the Bearer [REDACTED] at dawn
+```
+
+Reproduced on `2420d67`, this PR's head before this session, so it predates the
+depth and sentence-stop work. One balanced pair of the same mark is stripped for
+the shape question only. Balanced is the whole rule: `_abcdef` keeps its leading
+underscore and stays a credential as `-abcdef` does, `sk_live_abcdef` wears its
+underscores inside, and `-abcdef-` is not emphasis because Markdown does not
+emphasize with hyphens — asserted, and the mutation that adds `-` to the marks
+is killed by it.
+
+Mutations: 5 applied, 5 killed — measuring the floor on the trimmed body,
+dropping the emphasis strip, stripping unbalanced marks, adding `-` to the
+marks, and dropping `~`.
+
+**Not fixed, with the reason measured rather than argued.** Codex's third
+finding is that a story value spelling out an auth label is read as a field:
+
+```text
+{"story":"The authorization: [the bearer returned] was ceremonial"}
+    -> ... [the Bearer [REDACTED]] was ceremonial
+```
+
+Also reproduced on `2420d67` — pre-existing. The suggested fix is to refuse a
+separator that sits inside another quoted value, and that reverses the direction
+that matters. Measured on the current code:
+
+```text
+{"debug":"{\"authorization\":\"Bearer abcdef\"}"}          -> redacted today
+{"message":"upstream said Authorization: Bearer abcdef"}  -> redacted today
+```
+
+A credential nested inside a *non-credential* field is the commonest shape a
+real error log takes, and enclosing-context tracking refuses exactly those. The
+gap costs one word of over-redaction inside prose that spells out an
+authorization label; closing it costs credentials in the clear. Recorded in Note
+7 as a known gap instead.
+
 **Review round 13: the defect survived one character past where the repair was
 looking.** Codex, reviewing the depth-rule commit, found that `.` is a
 `b64token` character, so the scan that reads the run after the keyword took the
