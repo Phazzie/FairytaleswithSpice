@@ -10,7 +10,10 @@ import {
   toLoggableThemes
 } from '../api/_lib/utils/loggableRequestParameters';
 import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
-import { REDACTED_SENSITIVE_TEXT } from '../shared/sensitiveTextRedaction';
+import {
+  BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH,
+  REDACTED_SENSITIVE_TEXT
+} from '../shared/sensitiveTextRedaction';
 import { API_KEY_MINIMUM_LENGTH } from '../api/_lib/middleware/security';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -330,8 +333,13 @@ for (const joined of ['abc/def', 'abc-def']) {
 // contract without lowering this, a configurable key becomes a value the logger
 // reads as prose. `shared/` cannot import server middleware (it is bundled into
 // the browser app), so the constant is duplicated and pinned here instead.
+//
+// Asserted as an equality between the two constants rather than against a
+// literal 16: the invariant is that they are the same number, not that the
+// number is that one. A literal would also fail on a deliberate coordinated
+// change, which is the one case here that is not a defect.
 assert(
-  API_KEY_MINIMUM_LENGTH === 16,
+  BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH === API_KEY_MINIMUM_LENGTH,
   'the bearer redactor duplicates this floor as BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH; keep them equal'
 );
 // A single non-letter is enough at any length -- this is the arm that catches

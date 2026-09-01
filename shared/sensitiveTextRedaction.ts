@@ -134,7 +134,7 @@ const BEARER_CREDENTIAL_INTRODUCERS = new Set([':', '=']);
  * `returned`. At eight, `the bearer announced victory` still lost its verb,
  * which is the defect this function exists to avoid.
  */
-const BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH = 16;
+export const BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH = 16;
 
 /**
  * The field names that make a `:` or `=` an authorization header rather than a
