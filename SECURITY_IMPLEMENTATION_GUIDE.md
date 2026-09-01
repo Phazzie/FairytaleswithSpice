@@ -84,11 +84,21 @@ private validateStoryInput(input: StoryGenerationSeam['input']): any {
   `b64token` grammar — a body of `A-Z a-z 0-9 . _ ~ + / -` followed only by
   optional trailing `=` padding — and its body, excluding that padding, must be
   at least 16 characters (`API_KEY_MINIMUM_LENGTH`). An entry that does not
-  qualify is refused rather than trusted, so a placeholder, a truncated paste,
-  or a value that kept its shell quoting cannot become a live credential for a
-  paid route. Padding is measured out of the length deliberately: it is a
-  base64 length artefact, not secret, and counting it would let
-  `a===============` clear a sixteen-character floor
+  qualify is refused rather than trusted, so a *short* placeholder (`test`,
+  `changeme`), a truncated paste, or a value that kept its shell quoting cannot
+  become a live credential for a paid route. Padding is measured out of the
+  length deliberately: it is a base64 length artefact, not secret, and counting
+  it would let `a===============` clear a sixteen-character floor
+- **The floor is a length rule, not an entropy one, and does not make a key
+  unguessable.** A placeholder that is long enough still qualifies:
+  `changemechangeme` and sixteen repeated characters both authenticate, and
+  `tests/api-key-auth.test.ts` asserts the latter does so the boundary is
+  pinned rather than implied. Nothing here inspects a value for structure —
+  no dictionary, no repetition or entropy estimate — so the contract refuses
+  what is *malformed or too short*, and the operator remains responsible for
+  the value being secret. This is why the setup step below says to generate
+  keys rather than type them (`openssl rand -hex 24`), which is the only
+  measure that actually closes this gap
 - Whitespace *around* an entry belongs to the comma-separated list rather than
   to the entry (`key-one, key-two`), so it is stripped before the entry is
   validated. A newline *inside* an entry is part of the entry and is refused
