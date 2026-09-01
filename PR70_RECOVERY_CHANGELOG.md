@@ -4,6 +4,36 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-01 UTC - Story Lab jobs that come back non-terminal are now watched instead of abandoned (PR #319)
+
+`AppComponent.handleJobSnapshot` returns `false` specifically to mean "this job isn't finished, keep watching it," but both call sites (`startGenesis`, `continueSaga`) discarded that boolean, and `jobEventSubscription` was declared and "cleaned up" in every terminal branch without ever being assigned. The backend already implements `GET /api/story-lab/jobs/:jobId` (tested, `jobRouteHandlers.ts`) and hands back `paths.statusPath` on every job-creation response for exactly this case; nothing in the frontend called it. Masked today because `runJobWork` finishes synchronously inside the POST handler, so the client only ever sees a terminal snapshot — but a durable/queued job runner (the documented next step in `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`) would hand back `running`/`queued` on its first response, and the progress bar would have frozen forever with nothing watching it.
+
+Actions:
+
+- Added `StoryService.getStoryLabJobStatus()`, GETing the `paths.statusPath` a job creation response returns.
+- Added `AppComponent.watchJobUntilTerminal`: when `handleJobSnapshot` reports a job isn't finished, polls its status on a 2.5s interval, feeding each snapshot back through `handleJobSnapshot`, until it reaches a terminal status or a 5-minute overall timeout fails it with a dedicated message.
+- Wired `response.data.paths.statusPath` into `JobStatusPanelState.statusPath`, which previously only ever copied itself and was therefore always `undefined`.
+
+Review round 1 (Sourcery + Copilot on the initial commit) — two real findings, both fixed:
+
+- **The 5-minute overall timeout didn't bound a single in-flight request.** The check only re-runs from inside a request's own `next` callback, so a status GET that never completed or errored bypassed it entirely. Each request is now wrapped in an RxJS `timeout()` (15s) so a stalled one fails on its own.
+- **A per-poll `logInfo` call would flood `ErrorLoggingService`'s shared, capped (100-entry) buffer** — the same buffer backing the Error Display panel — evicting real errors under a multi-minute poll. Removed; failures still go through `handleHttpError`/`logError`.
+
+Review round 2 (Codex on `2772926`) — one P1, confirmed and fixed:
+
+- **The GET route's response envelope was mistyped.** `StoryLabJobStore.getJob()` returns `StoryLabJobCreationResponse<T>` (`{ job, paths, durability }`) — the same envelope `createStoryLabJob` returns — not a bare `StoryLabJob`. `getStoryLabJobStatus`'s declared return type said otherwise, so `watchJobUntilTerminal` would have read `job.status`/`job.currentStep` off the wrong object and thrown inside `humanizeIdentifier` on the very first poll. Fixed the service's return type to match `createStoryLabJob`'s and unwrapped `response.data.job` in the caller. Verified against `jobStorePort.ts` before changing anything, since the original code compiled cleanly — the mismatch was between the declared type and the actual backend contract, not something either config would catch.
+
+Also acted on, same round (P2, not blocking but a real robustness gap): a transient status-poll failure (dropped connection, 5xx, the new 15s per-request timeout) was ending the job immediately via `failJob`, even though the background job itself might still finish. `watchJobUntilTerminal`'s error handler now only fails immediately on a definitive response (400/401/403/404 — the job id no longer resolves, or auth is gone); anything else is treated as one missed check-in and retried, backstopped by the same overall 5-minute timeout.
+
+Self-review:
+
+- `npx tsc --noEmit` on both `tsconfig.app.json` and `tsconfig.spec.json` — clean.
+- `ng test --watch=false --browsers=ChromeHeadlessNoSandbox` — 211/211 passing, including regression tests added for each finding above (a hung request retried rather than failing immediately; a definitive 404 failing without retry; a transient error recovered from; the envelope-unwrap fix itself, since every polling test now stubs the real `{ job, paths, durability }` shape rather than a bare job).
+- **The type-check passing on the original (buggy) code is the lesson worth naming.** `getStoryLabJobStatus`'s generic return type was internally consistent with itself and with `handleJobSnapshot`'s signature — nothing in the file disagreed with itself, so `tsc` had nothing to catch. The bug was that the declared type didn't match what the backend actually sends, which only a cross-check against `jobStorePort.ts` (or a runtime request) could catch. My own first-draft tests reproduced the same mistake for the same reason: I stubbed `getStoryLabJobStatus` to return a bare job because that's what the (wrong) service signature said to expect, so they passed against the bug rather than proving anything about the real contract.
+
+Not claimed:
+
+- No evidence this path is reachable in production today — see the "masked today" note above. This is a currently-dead-in-production but fully-built and now-correct capability, the same category as the `paths`/`statusPath` seam it completes.
 ## 2026-08-28 UTC - The three readers the whole-word sweep missed
 
 The sweep that moved this repository's keyword scans off substrings and off `\b`
