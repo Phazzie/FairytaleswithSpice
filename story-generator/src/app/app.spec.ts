@@ -1373,9 +1373,26 @@ describe('App', () => {
       };
     }
 
+    // `getStoryLabJobStatus` answers with the same envelope shape job
+    // creation does (`{ job, paths, durability }`), not a bare job.
+    function jobStatusResponse<T>(job: StoryLabJob<T>): StoryLabJobCreationResponse<T> {
+      return {
+        job,
+        paths: {
+          statusPath: `/api/story-lab/jobs/${job.jobId}`,
+          eventsPath: `/api/story-lab/jobs/${job.jobId}/events`
+        },
+        durability: {
+          mode: 'non_durable_memory',
+          durable: false,
+          warning: 'Jobs are held in memory for this deployment.'
+        }
+      };
+    }
+
     it('re-checks the job at its statusPath and applies the result once polling reaches a completed snapshot', fakeAsync(() => {
       const completedJob = createGenesisJobResponse(completedGenesisPayload()).job;
-      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: completedJob }));
+      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: jobStatusResponse(completedJob) }));
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
 
@@ -1398,9 +1415,9 @@ describe('App', () => {
     it('keeps re-checking on every non-terminal snapshot until the job finishes', fakeAsync(() => {
       const completedJob = createGenesisJobResponse(completedGenesisPayload()).job;
       storyService.getStoryLabJobStatus.and.returnValues(
-        of({ success: true, data: runningJobSnapshot({ progressPercent: 65 }) }),
-        of({ success: true, data: runningJobSnapshot({ progressPercent: 80 }) }),
-        of({ success: true, data: completedJob })
+        of({ success: true, data: jobStatusResponse(runningJobSnapshot({ progressPercent: 65 })) }),
+        of({ success: true, data: jobStatusResponse(runningJobSnapshot({ progressPercent: 80 })) }),
+        of({ success: true, data: jobStatusResponse(completedJob) })
       );
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
@@ -1420,7 +1437,7 @@ describe('App', () => {
     }));
 
     it('fails the job with a dedicated message once the overall poll timeout elapses', fakeAsync(() => {
-      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: runningJobSnapshot() }));
+      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: jobStatusResponse(runningJobSnapshot()) }));
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
 
@@ -1438,11 +1455,11 @@ describe('App', () => {
       expect(storyService.getStoryLabJobStatus.calls.count()).toBe(callsAtTimeout);
     }));
 
-    it('fails the job if a single status request hangs, without waiting for the overall poll timeout', fakeAsync(() => {
+    it('does not wait forever on a single status request that hangs, and keeps trying rather than failing immediately', fakeAsync(() => {
       // A request that never completes or errors — the bug Sourcery's review
       // caught: the overall poll timeout is only re-checked from inside a
       // request's `next` callback, so a hung request bypassed it entirely
-      // and left the job "running" forever.
+      // and left the job "running" forever with nothing to time it out.
       storyService.getStoryLabJobStatus.and.returnValue(NEVER);
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
@@ -1450,16 +1467,53 @@ describe('App', () => {
       expect(storyService.getStoryLabJobStatus).toHaveBeenCalled();
       expect(component.isGenerating()).toBeTrue();
 
-      // Well under the 5-minute overall poll timeout.
+      // Past the 15s per-request timeout, well under the 5-minute overall
+      // one — a single hung request is a transient failure, not proof the
+      // job died, so it's retried rather than ending the job here.
       tick(15 * 1000);
+      expect(component.isGenerating()).toBeTrue();
+
+      // Only the overall poll timeout — repeated hangs for the full 5
+      // minutes — actually ends it, with the dedicated timeout message.
+      tick(POLL_TIMEOUT_MS);
+      expect(component.isGenerating()).toBeFalse();
+      expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+      expect(component.statusMessage()).toContain('taking longer than expected');
+    }));
+
+    it('fails the job immediately on a definitive error like 404, without retrying', fakeAsync(() => {
+      storyService.getStoryLabJobStatus.and.returnValue(throwError(() => ({ status: 404 })));
+
+      startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
+      tick(POLL_INTERVAL_MS);
 
       expect(component.isGenerating()).toBeFalse();
       expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
-      expect(component.statusMessage()).toContain('updates stopped');
+
+      const callsAfterFailure = storyService.getStoryLabJobStatus.calls.count();
+      tick(POLL_INTERVAL_MS * 4);
+      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(callsAfterFailure);
+    }));
+
+    it('keeps polling through a transient error (e.g. a dropped connection) rather than failing the job', fakeAsync(() => {
+      const completedJob = createGenesisJobResponse(completedGenesisPayload()).job;
+      storyService.getStoryLabJobStatus.and.returnValues(
+        throwError(() => ({ status: 0 })),
+        of({ success: true, data: jobStatusResponse(completedJob) })
+      );
+
+      startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
+      tick(POLL_INTERVAL_MS);
+      expect(component.isGenerating()).toBeTrue();
+      expect(component.activeBatchQueue().at(-1)?.status).not.toBe('failed');
+
+      tick(POLL_INTERVAL_MS);
+      expect(component.isGenerating()).toBeFalse();
+      expect(component.workbench().chapterHistory.length).toBe(1);
     }));
 
     it('stops polling once the component is destroyed', fakeAsync(() => {
-      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: runningJobSnapshot() }));
+      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: jobStatusResponse(runningJobSnapshot()) }));
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
       tick(POLL_INTERVAL_MS);
@@ -1485,7 +1539,7 @@ describe('App', () => {
 
       const continuationPayload = createContinuationPayload(genesisPayload);
       const completedJob = createContinuationJobResponse(continuationPayload).job;
-      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: completedJob }));
+      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: jobStatusResponse(completedJob) }));
 
       component.continueSaga('Focus on the betrayal arc.');
 

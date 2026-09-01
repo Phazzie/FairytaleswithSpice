@@ -2292,16 +2292,39 @@ export class App implements OnDestroy {
           return;
         }
 
-        const finished = this.handleJobSnapshot(kind, response.data, statusPath, batchId, batchSize, durabilityWarning);
+        const finished = this.handleJobSnapshot(kind, response.data.job, statusPath, batchId, batchSize, durabilityWarning);
         if (!finished) {
           this.watchJobUntilTerminal<T>(kind, statusPath, batchId, batchSize, durabilityWarning, pollStartedAt);
         }
       },
       error: error => {
         this.errorLogging.logError(error, 'App.watchJobUntilTerminal');
-        this.failJob(kind, batchId, this.formatHttpError(error, JOB_KIND_COPY[kind].streamErrorMessage));
+
+        if (this.isDefinitiveJobPollError(error)) {
+          this.failJob(kind, batchId, this.formatHttpError(error, JOB_KIND_COPY[kind].streamErrorMessage));
+          return;
+        }
+
+        // A dropped connection, a 5xx, or a request that hit
+        // `STORY_LAB_JOB_STATUS_REQUEST_TIMEOUT_MS` doesn't mean the job
+        // itself failed — only that this one check-in didn't land. Keep
+        // watching within the overall poll timeout rather than ending a job
+        // that may still finish; that timeout is re-checked on this same
+        // call and is what backstops a status endpoint that is genuinely
+        // down for the whole window.
+        this.watchJobUntilTerminal<T>(kind, statusPath, batchId, batchSize, durabilityWarning, pollStartedAt);
       }
     });
+  }
+
+  /**
+   * Whether a status-poll failure means the job itself is unreachable going
+   * forward (auth lost, the job id no longer resolves) rather than a blip in
+   * reaching the backend for this one check-in.
+   */
+  private isDefinitiveJobPollError(error: unknown): boolean {
+    const status = (error as { status?: number } | null | undefined)?.status;
+    return status === 400 || status === 401 || status === 403 || status === 404;
   }
 
   private updateProgressFromJob(job: StoryLabJob<unknown>) {

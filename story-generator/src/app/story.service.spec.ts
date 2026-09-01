@@ -285,17 +285,19 @@ describe('StoryService', () => {
 
   it('polls a Story Lab job status at its statusPath', () => {
     const payload = createJobResponse<StoryIterationPayload>('job_polling-target');
-    const runningJob = { ...payload.job, status: 'running' as const, progressPercent: 40 };
+    // The route answers with the same envelope job creation does
+    // (`{ job, paths, durability }`), not a bare job.
+    const runningResponse = { ...payload, job: { ...payload.job, status: 'running' as const, progressPercent: 40 } };
 
     service.getStoryLabJobStatus<StoryIterationPayload>(payload.paths.statusPath).subscribe(response => {
       expect(response.success).toBeTrue();
-      expect(response.data?.status).toBe('running');
-      expect(response.data?.progressPercent).toBe(40);
+      expect(response.data?.job.status).toBe('running');
+      expect(response.data?.job.progressPercent).toBe(40);
     });
 
     const req = httpMock.expectOne(payload.paths.statusPath);
     expect(req.request.method).toBe('GET');
-    req.flush({ success: true, data: runningJob });
+    req.flush({ success: true, data: runningResponse });
 
     // Deliberately no `logInfo` call here — this method is polled on a fixed
     // interval, and `ErrorLoggingService` keeps one shared, capped buffer

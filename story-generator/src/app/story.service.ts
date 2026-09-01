@@ -14,7 +14,6 @@ import {
   StoryGenerationSeam,
   StoryIterationPayload,
   StoryContinuationSeam,
-  StoryLabJob,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
   StoryLabUserProfile
@@ -102,6 +101,11 @@ export class StoryService {
    * response returned. Used to keep watching a job that hasn't reached a
    * terminal status yet.
    *
+   * The route answers with the same envelope shape `createStoryLabJob` does
+   * (`{ job, paths, durability }`, from `StoryLabJobStore.getJob`) rather
+   * than a bare job — the response type here has to match that, not the
+   * `StoryLabJob` the caller ultimately wants.
+   *
    * No `logInfo` here, unlike this service's other methods: this is called
    * on every poll tick (as often as every few seconds for up to several
    * minutes), and `ErrorLoggingService` keeps a single shared, capped
@@ -110,9 +114,9 @@ export class StoryService {
    */
   getStoryLabJobStatus<TResult = StoryIterationPayload>(
     statusPath: string
-  ): Observable<ApiResponse<StoryLabJob<TResult>>> {
+  ): Observable<ApiResponse<StoryLabJobCreationResponse<TResult>>> {
     return this.http
-      .get<ApiResponse<StoryLabJob<TResult>>>(statusPath)
+      .get<ApiResponse<StoryLabJobCreationResponse<TResult>>>(statusPath)
       .pipe(catchError(error => this.handleHttpError(error, 'getStoryLabJobStatus')));
   }
 
