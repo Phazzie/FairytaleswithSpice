@@ -271,6 +271,27 @@ assert(
   'one character below the configured floor is a word, not a credential'
 );
 
+// The joiners take the floor with them, and that is the whole cost of sparing
+// `re-entered` and `and/or`. A run joined by one interior hyphen or slash is
+// word-shaped, so it is preserved below the floor exactly as a plain-letters
+// run is -- the residual `SECURITY_IMPLEMENTATION_GUIDE.md` Note 7 records, in
+// the two spellings it now records it in. Pinned in both directions so the
+// documented rule and the code cannot drift: the same run reaching the floor is
+// a credential again, which is what keeps a configured entry out of the band.
+for (const joined of ['abc/def', 'abc-def']) {
+  const spared = redactSensitiveLogData({ note: `sent Bearer ${joined} upstream` }) as Record<string, string>;
+  assert(
+    spared.note.includes(joined),
+    `a run joined by one interior joiner is a word below the floor: ${joined} -> ${spared.note}`
+  );
+  const atFloor = `${joined}/${'k'.repeat(API_KEY_MINIMUM_LENGTH - joined.length - 1)}`;
+  const hidden = redactSensitiveLogData({ note: `sent Bearer ${atFloor} upstream` }) as Record<string, string>;
+  assert(
+    atFloor.length === API_KEY_MINIMUM_LENGTH && !hidden.note.includes(atFloor),
+    `the same shape at the configured floor is a credential again: ${atFloor} -> ${hidden.note}`
+  );
+}
+
 // The load-bearing tie: the redactor's alphabetic floor IS the floor
 // `authenticateRequest` puts on a configured entry. If someone lowers the auth
 // contract without lowering this, a configurable key becomes a value the logger

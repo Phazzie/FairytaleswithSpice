@@ -383,6 +383,31 @@ serialized at. Every selection rule is therefore a heuristic over readings, and
 a heuristic over readings has a worst case that reaches past the array. A
 backward walk has no end to select and so cannot have that worst case.
 
+**Review round 11: the security guide was describing the rule the code had
+before round 9.** Codex found that Note 7 still listed `/` among the characters
+that settle a run as credential-shaped, while `isWordLikeRun` had accepted an
+interior single slash since round 9. Verified rather than taken on the reading:
+
+```text
+sent Bearer abc/def upstream     -> unchanged; the guide said this was redacted
+Authorization: Bearer abc/def    -> Authorization: Bearer [REDACTED]
+```
+
+The code is right and the document was stale, so the document moved. An
+operator reading Note 7 would have concluded that a slash-joined value below the
+floor was hidden, which is the failure mode that matters in a security guide:
+not a wrong redaction but a wrong belief about one. Note 7 now states both
+joiners, why each is there, and the residual in the two spellings it actually
+has — `sent Bearer abc/def upstream` alongside `sent Bearer abc-def upstream` —
+with the bound unchanged, since Note 6's contract keeps a configured entry out
+of that band and every provider token is caught on shape.
+
+`tests/log-redaction.test.ts` now pins the documented rule in both directions
+rather than only the prose it was added for: each joiner spared below the floor,
+and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
+the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
+fails the suite.
+
 **Review round 8 found both halves of round 7's trade were wrong.** Codex
 returned two findings on the same function, in opposite directions:
 
