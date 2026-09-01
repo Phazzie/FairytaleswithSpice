@@ -4,6 +4,40 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-01 UTC - API rate limiting moved off a per-process Map, opt-in Postgres store added (PR #320)
+
+`checkRateLimit` (`api/_lib/middleware/security.ts`) is a module-level `Map` — the app's actual and only cost/abuse control in front of every paid xAI/Grok route (story generation, continuation, image, export, every Story Lab genesis/continuation/create/evaluate route). Its own comment already said why that's wrong here: "For multi-instance deployments (e.g., horizontal scaling, serverless, load-balanced setups), replace with a distributed cache like Redis." This app ships as Vercel serverless functions, so every cold-started or concurrently-warm instance got its own empty map — a caller's effective budget scaled with however many instances happened to be running, with zero cross-instance coordination.
+
+Actions:
+
+- Added a `RateLimitStore` port (`rateLimitStorePort.ts`), mirroring `StoryLabJobStore`.
+- Extracted today's `Map` logic unchanged into `InMemoryRateLimitStore`, wrapping `checkRateLimit` — stays the default (`RATE_LIMIT_STORE` unset/`memory`), so current behavior is unchanged.
+- Added `PostgresRateLimitStore`, reusing the same `createNeonStoryLabQueryExecutor` already shared by the job/profile/project stores, backed by one new table (`rate_limit_buckets`, PK `(user_id, endpoint)`) with a single atomic `INSERT ... ON CONFLICT ... DO UPDATE` upsert per request.
+- Added `rateLimitStoreConfig.ts`, mirroring `storyLabJobStoreConfig.ts`: `RATE_LIMIT_STORE=postgres|memory` env switch, default `memory`. **The production default is unchanged in this PR** — following this repo's own convention for flipping a durable-store default only after live-DB validation (see `STORY_LAB_JOB_STORE`'s rollout history in this same log).
+- Extended `storyLabCloudSchema.sql` with the new table (picked up automatically by the existing schema-apply script/statement splitter) and `storyLabCloudDatabaseReadiness.ts` with the new required table, so a database migrated under the old schema correctly reports not-ready instead of silently passing until `RATE_LIMIT_STORE=postgres` makes every guarded request fail on the missing relation.
+- `apiAccessControl.ts`: swapped the free `checkRateLimit()` call for `store.consume()` against the configured (injectable) store, with a `503 RATE_LIMIT_STORE_UNAVAILABLE` fail-closed response — both for an unconfigured store and for a per-request `consume()` failure (a dropped Postgres connection) — mirroring how `resolveJobStoreOrRespond` fails closed for an unconfigured durable job store.
+- Extended `shared/sensitiveTextRedaction.ts`'s `URL_SCHEMES` to recognize `postgres://`/`postgresql://` alongside `http(s)://`: a Neon/Postgres connection string embeds its credentials in the URL itself, and the redactor this repo's whole logging pipeline depends on (`logger.ts`) had never needed to catch that scheme before this PR gave it a reason to log a database driver error.
+- Updated `SECURITY_IMPLEMENTATION_GUIDE.md`'s "use a distributed cache like Redis" TODOs to describe the implemented answer and the rollout gate.
+
+Review rounds (Copilot + Codex across three pushes), all fixed:
+
+- **`store.consume()` could throw uncaught** (Copilot, and independently Codex on the pre-fix commit) — a dropped Postgres connection would have bubbled past `enforceApiAccessControl` as an unhandled rejection, answering a generic 500 instead of the intended 503. Now caught and mapped to the same fail-closed response.
+- **The wrapped error embedded raw `error.message`** (Copilot) — a Postgres connection error can carry the connection string itself. Now logged through `logError` (redacted) and thrown with a generic message; this is also what surfaced the `URL_SCHEMES` gap above (Codex, next round): the redactor didn't actually cover `postgres://` yet, so the raw message would have kept the credentials past the fix that was supposed to remove them.
+- **`rate_limit_buckets` was missing from database readiness checks** (Codex) — fixed as described above.
+- **Route-driven tests read `RATE_LIMIT_STORE` from ambient `process.env`** (Codex) — `tests/api-access-control.test.ts` now pins `RATE_LIMIT_STORE=memory` for its own run so an ambient `postgres` setting can't fail its assertions or mutate a real database.
+- **The cross-instance "shared budget" unit test only proved the algorithm in a JS simulation, never the real `CONSUME_SQL`** (Codex) — added `scripts/recovery/rate-limit-store-concurrency-smoke.ts` (`DATABASE_URL`-gated, not part of `test:all`, mirroring `story-lab-cloud-db-smoke.ts`): two independent `PostgresRateLimitStore` instances fire genuinely concurrent `consume()` calls at one live-Postgres bucket and the shared budget is asserted to hold.
+- **SonarCloud duplication gate** — the two new rate-limit test files had copy-pasted an identical fake query-executor class; extracted to `tests/helpers/recordingQueryExecutor.ts`.
+
+Self-review:
+
+- Good: opt-in rollout (not flipping the production default) matches this repo's own precedent instead of unilaterally changing production behavior in a "worst to best" slice.
+- Non-claim: this PR does not itself validate `PostgresRateLimitStore` against a live database in CI (none is available here) — that is exactly what the new concurrency smoke script and `story-lab-cloud-db-smoke.ts`-style scripts are for once a deployment has `DATABASE_URL`.
+
+Validation:
+
+- `npm run test:all` — full suite green after each push.
+- `tests/rate-limit-store.test.ts`, `tests/rate-limit-store-config.test.ts` (new), `tests/api-access-control.test.ts`, `tests/story-lab-cloud-db-readiness.test.ts`, `tests/story-lab-cloud-schema.test.ts`, `tests/log-redaction.test.ts` (all extended) passing.
+
 ## 2026-09-01 UTC - Story Lab jobs that come back non-terminal are now watched instead of abandoned (PR #319)
 
 `AppComponent.handleJobSnapshot` returns `false` specifically to mean "this job isn't finished, keep watching it," but both call sites (`startGenesis`, `continueSaga`) discarded that boolean, and `jobEventSubscription` was declared and "cleaned up" in every terminal branch without ever being assigned. The backend already implements `GET /api/story-lab/jobs/:jobId` (tested, `jobRouteHandlers.ts`) and hands back `paths.statusPath` on every job-creation response for exactly this case; nothing in the frontend called it. Masked today because `runJobWork` finishes synchronously inside the POST handler, so the client only ever sees a terminal snapshot — but a durable/queued job runner (the documented next step in `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`) would hand back `running`/`queued` on its first response, and the progress bar would have frozen forever with nothing watching it.

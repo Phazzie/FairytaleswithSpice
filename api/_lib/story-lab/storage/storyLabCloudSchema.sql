@@ -80,6 +80,15 @@ create unique index if not exists story_lab_job_events_job_sequence_idx
 create index if not exists story_lab_job_events_owner_job_idx
   on story_lab_job_events (owner_user_id, job_id, sequence_number);
 
+create table if not exists rate_limit_buckets (
+  user_id text not null,
+  endpoint text not null,
+  window_start timestamptz not null,
+  count integer not null default 0,
+  updated_at timestamptz not null,
+  primary key (user_id, endpoint)
+);
+
 comment on table story_lab_profiles is
   'Private Story Lab user profiles keyed by provider user id. Editable profile fields must not be used for authorization.';
 
@@ -91,3 +100,6 @@ comment on table story_lab_jobs is
 
 comment on table story_lab_job_events is
   'Ordered public Story Lab job event snapshots for resumable status/event streams.';
+
+comment on table rate_limit_buckets is
+  'Shared fixed-window rate limit counters, keyed by (user_id, endpoint). Used by PostgresRateLimitStore when RATE_LIMIT_STORE=postgres, so the budget is enforced across every instance of this app rather than per-process.';

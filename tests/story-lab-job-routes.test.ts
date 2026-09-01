@@ -96,7 +96,13 @@ const originalEnv = {
   STORY_LAB_FORCE_MOCK: process.env['STORY_LAB_FORCE_MOCK'],
   XAI_API_KEY: process.env['XAI_API_KEY'],
   STORY_LAB_JOB_STORE: process.env['STORY_LAB_JOB_STORE'],
-  DATABASE_URL: process.env['DATABASE_URL']
+  DATABASE_URL: process.env['DATABASE_URL'],
+  // Every job-route test drives `jobHandler`, which goes through
+  // `enforceApiAccessControl`'s default rate-limit store resolution — pinned
+  // to memory the same way `STORY_LAB_JOB_STORE` is pinned to non-durable
+  // above, so an ambient `RATE_LIMIT_STORE=postgres` can't turn "should
+  // succeed" assertions into unexpected 503s.
+  RATE_LIMIT_STORE: process.env['RATE_LIMIT_STORE']
 };
 const owner: AuthUser = {
   userId: 'user_job_owner',
@@ -166,6 +172,7 @@ function setMockRuntime(): void {
   delete process.env['XAI_API_KEY'];
   delete process.env['STORY_LAB_JOB_STORE'];
   delete process.env['DATABASE_URL'];
+  delete process.env['RATE_LIMIT_STORE'];
 }
 
 function setProductionMissingProviderRuntime(): void {
@@ -175,6 +182,7 @@ function setProductionMissingProviderRuntime(): void {
   delete process.env['XAI_API_KEY'];
   delete process.env['STORY_LAB_JOB_STORE'];
   delete process.env['DATABASE_URL'];
+  delete process.env['RATE_LIMIT_STORE'];
 }
 
 function restoreEnv(): void {
