@@ -418,6 +418,19 @@ function findBareCredentialListEnd(value: string, from: number): number | null {
     // is extended over prose by an empty entry at the tail.
     if (cursor > tokenStart) {
       end = cursor;
+    } else {
+      // An entry with no *token* in it may still have characters: a quoted
+      // empty value (`Bearer ""`), or a stray mark a serializer left behind
+      // (`Bearer !`). Neither is a credential, and neither is the end of the
+      // list -- the comma after them is what continues it, and stopping on
+      // them left every later credential in the clear.
+      //
+      // Bounded by what it refuses to cross: a token character, which is what
+      // every word and every credential is made of, and the `,` that separates
+      // entries. So this can only ever skip punctuation and the whitespace
+      // between it, never a word -- `Authorization: Bearer "the bearer
+      // announced victory"` stops on the `t` and opens no span.
+      cursor = skipNonCredentialPadding(value, cursor);
     }
 
     const comma = skipWhitespaceForward(value, cursor);
@@ -432,6 +445,27 @@ function findBareCredentialListEnd(value: string, from: number): number | null {
 function skipWhitespaceForward(value: string, from: number): number {
   let cursor = from;
   while (cursor < value.length && isWhitespace(value[cursor] ?? '')) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+/**
+ * Past the characters an entry with no credential in it can be made of, and no
+ * further: it stops on a token character or on the `,` that ends the entry.
+ *
+ * A word and a credential are both runs of token characters, so refusing to
+ * cross one is what keeps this from reaching into prose. Everything it does
+ * cross -- quotes, stray marks, and the whitespace between them -- is a thing a
+ * serializer leaves where a credential was meant to be.
+ */
+function skipNonCredentialPadding(value: string, from: number): number {
+  let cursor = from;
+  while (cursor < value.length) {
+    const char = value[cursor] ?? '';
+    if (char === ',' || isBearerTokenChar(char)) {
+      break;
+    }
     cursor += 1;
   }
   return cursor;

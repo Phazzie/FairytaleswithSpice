@@ -692,9 +692,42 @@ for (const [line, expected] of [
     'Authorization: Bearer abcdef, Bearer , Bearer ghijkl',
     `Authorization: Bearer ${REDACTED_SENSITIVE_TEXT}, Bearer , Bearer ${REDACTED_SENSITIVE_TEXT}`
   ],
+  // An entry with no *token* in it may still have characters — a quoted empty
+  // value, or a stray mark a serializer left where a credential belonged. The
+  // first fix here continued the list only across `Bearer` followed directly by
+  // a comma, so these stopped the scan one character earlier and every later
+  // credential stayed in the clear.
+  ['Authorization: Bearer "", Bearer abcdef', `Authorization: Bearer "", Bearer ${REDACTED_SENSITIVE_TEXT}`],
+  ["Authorization: Bearer '', Bearer abcdef", `Authorization: Bearer '', Bearer ${REDACTED_SENSITIVE_TEXT}`],
+  ['Authorization: Bearer !, Bearer abcdef', `Authorization: Bearer !, Bearer ${REDACTED_SENSITIVE_TEXT}`],
+  ['Authorization: Bearer " ", Bearer abcdef', `Authorization: Bearer " ", Bearer ${REDACTED_SENSITIVE_TEXT}`],
   // The span still ends at the last entry that carried a credential, so an
   // empty entry at the tail extends nothing over the prose after it.
-  ['Authorization: Bearer , and the bearer returned', 'Authorization: Bearer , and the bearer returned']
+  ['Authorization: Bearer , and the bearer returned', 'Authorization: Bearer , and the bearer returned'],
+  ['Authorization: Bearer "", and the bearer returned', 'Authorization: Bearer "", and the bearer returned'],
+  [
+    'Authorization: Bearer "", Bearer abcdef, and the bearer returned',
+    `Authorization: Bearer "", Bearer ${REDACTED_SENSITIVE_TEXT}, and the bearer returned`
+  ],
+  // What bounds the skip: it refuses to cross a token character, and a word is
+  // made of those. So a quoted *sentence* after the scheme opens no list.
+  [
+    'Authorization: Bearer "the bearer announced victory"',
+    'Authorization: Bearer "the bearer announced victory"'
+  ],
+  // The case that actually pins that bound. Without a comma later in the line
+  // the scan runs out of string and stops for the wrong reason, so an unbounded
+  // skip passes the line above too. With a comma, an unbounded skip crosses the
+  // whole quoted sentence, opens a span over it, and destroys `announced` —
+  // this module's original defect, reached through the newest code path.
+  [
+    'Authorization: Bearer "the bearer announced victory", Bearer abcdef',
+    'Authorization: Bearer "the bearer announced victory", Bearer abcdef'
+  ],
+  [
+    'Authorization: Bearer "the bearer returned", and the bearer announced victory',
+    'Authorization: Bearer "the bearer returned", and the bearer announced victory'
+  ]
 ] as const) {
   const hidden = redactSensitiveLogData({ note: line }) as Record<string, string>;
   assert(

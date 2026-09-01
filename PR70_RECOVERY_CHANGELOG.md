@@ -446,6 +446,53 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
+**Review round 21: an entry can be empty without being *nothing*, and the
+mutation that was supposed to prove the bound did not.** CodeRabbit, P2, on
+`22a42b8` — requested manually because Codex exhausted its review budget mid-PR
+and the head had no adversarial reader:
+
+```text
+Authorization: Bearer "", Bearer abcdef  -> abcdef in the clear
+Authorization: Bearer !,  Bearer abcdef  -> abcdef in the clear
+```
+
+Round 20 continued the list only across `Bearer` followed *directly* by a
+comma. An entry can hold characters without holding a token — a quoted empty
+value, or a stray mark a serializer left where a credential belonged — and those
+stopped the scan one character before the comma. The third spelling of the same
+family in three rounds, and the second time the fix was narrower than the rule
+it was implementing.
+
+An entry with no token now skips to the comma, and what bounds that skip is what
+it refuses to cross: a **token character**, which is what every word and every
+credential is made of. So it can only ever pass punctuation and the whitespace
+between it — `Authorization: Bearer "the bearer announced victory"` stops on the
+`t` and opens no span.
+
+**The mutation that was supposed to prove that bound survived, and the reason is
+worth recording.** Removing the token-character guard — making the skip
+unbounded — passed the suite, because the only assertion for it had no comma
+later in the line, so the unbounded scan ran out of string and stopped for the
+wrong reason. A test that passes for a reason other than the one it is named
+for is not coverage. The pinning case needs the comma:
+
+```text
+Authorization: Bearer "the bearer announced victory", Bearer abcdef
+```
+
+Unbounded, that crosses the quoted sentence, opens a span over it and destroys
+`announced` — this entry's original defect, reached through its newest code
+path. Asserted now, and the mutation is killed.
+
+Counterfactual mutations: 4 applied, 3 killed, 1 reported. Killed: removing the
+skip; letting it cross token characters; letting it cross commas. Reported —
+applying the skip even when the entry *did* carry a token survives. It differs
+only on malformed input (a non-token run directly after a real credential) and
+there it redacts more rather than less, which is the safe direction; the
+narrower form is kept because it is the rule that can be stated, and the
+mutation is recorded rather than pinned by an assertion for a shape whose
+redaction is not clearly right.
+
 **Review round 20: an empty entry ended a list it should only have paused, and
 this entry was labelled as though it had shipped.**
 
