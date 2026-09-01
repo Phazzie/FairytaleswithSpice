@@ -676,6 +676,33 @@ for (const empty of [
   );
 }
 
+// An empty entry does not end a bare list either. `Authorization: Bearer ,
+// Bearer abcdef` is a list whose *first* credential is missing — a shape a
+// failed request really logs — and reading the empty entry as the end of the
+// chain abandoned the list before any span was recorded, leaving the credential
+// after it in the clear. The list ends where the repetition stops, and an empty
+// entry has not stopped it.
+for (const [line, expected] of [
+  ['Authorization: Bearer , Bearer abcdef', `Authorization: Bearer , Bearer ${REDACTED_SENSITIVE_TEXT}`],
+  [
+    'Authorization: Bearer , Bearer abcdef, Bearer ghijkl',
+    `Authorization: Bearer , Bearer ${REDACTED_SENSITIVE_TEXT}, Bearer ${REDACTED_SENSITIVE_TEXT}`
+  ],
+  [
+    'Authorization: Bearer abcdef, Bearer , Bearer ghijkl',
+    `Authorization: Bearer ${REDACTED_SENSITIVE_TEXT}, Bearer , Bearer ${REDACTED_SENSITIVE_TEXT}`
+  ],
+  // The span still ends at the last entry that carried a credential, so an
+  // empty entry at the tail extends nothing over the prose after it.
+  ['Authorization: Bearer , and the bearer returned', 'Authorization: Bearer , and the bearer returned']
+] as const) {
+  const hidden = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    hidden.note === expected,
+    `an empty entry does not end a bare credential list: ${line} -> ${hidden.note}`
+  );
+}
+
 // And an empty element does not cost the array the credential beside it: the
 // no-token path returns before the arms, it does not disable them.
 const mixedArray = redactSensitiveLogData({

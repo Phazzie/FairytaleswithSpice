@@ -406,10 +406,19 @@ function findBareCredentialListEnd(value: string, from: number): number | null {
     while (cursor < value.length && isBearerTokenChar(value[cursor] ?? '')) {
       cursor += 1;
     }
-    if (cursor === tokenStart) {
-      return crossedComma ? end : null;
+
+    // **An entry may be empty without ending the list.**
+    // `Authorization: Bearer , Bearer abcdef` is a list whose *first* credential
+    // is missing, which is a shape a failed request really logs -- and treating
+    // the empty entry as the end of the chain abandoned the list before any span
+    // was recorded, so the credential after it stayed in the clear. The list
+    // ends where the repetition stops, and an empty entry has not stopped it.
+    //
+    // The span still ends at the last entry that *had* a credential, so nothing
+    // is extended over prose by an empty entry at the tail.
+    if (cursor > tokenStart) {
+      end = cursor;
     }
-    end = cursor;
 
     const comma = skipWhitespaceForward(value, cursor);
     if (value[comma] !== ',') {

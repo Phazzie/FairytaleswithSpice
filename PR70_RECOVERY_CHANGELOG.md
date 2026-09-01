@@ -35,7 +35,14 @@ Not claimed:
 
 - No evidence this path is reachable in production today — see the "masked today" note above. This is a currently-dead-in-production but fully-built and now-correct capability, the same category as the `paths`/`statusPath` seam it completes.
 
-## 2026-08-28 UTC - `redactBearerTokens` took the word after any standalone `bearer`
+## 2026-08-28 UTC - `redactBearerTokens` took the word after any standalone `bearer` — `In review` (PR #316, not merged)
+
+**Status: `In review`.** Every behaviour this entry describes lives on
+`claude/gallant-ritchie-mrleo7` and on no merged branch. `AGENTS.md` Publication
+Discipline makes "merged to `main`" the only meaning of `Done`, and this entry
+was reading as done — present tense throughout, and "closes #314" — while the PR
+was still taking review rounds. Relabel this to `Done` only when #316 merges,
+and note that #316 is stacked on #315, so it cannot merge before that one does.
 
 Closes the second and last direction #314 records, and the one #313 wrote,
 reviewed and withdrew. `hasBearerBoundaryBefore` settled whether `bearer` was a
@@ -438,6 +445,51 @@ rather than only the prose it was added for: each joiner spared below the floor,
 and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
+
+**Review round 20: an empty entry ended a list it should only have paused, and
+this entry was labelled as though it had shipped.**
+
+Codex, P2: `Authorization: Bearer , Bearer abcdef` leaves `abcdef` in the clear.
+Round 19 taught the reader that an empty run is a *missing* credential; round 17
+taught it that a bare list continues across a comma. Neither knew about the
+other, so the empty first entry returned before any span was recorded and took
+the rest of the list with it. Measured against `74594ff` the credential leaked
+there too, so it is not a regression — but round 17 is the fix that was supposed
+to cover it, and it did not:
+
+```text
+74594ff:  Authorization: Bearer , Bearer abcdef -> Bearer [REDACTED], Bearer abcdef
+67a125f:  Authorization: Bearer , Bearer abcdef -> Bearer , Bearer abcdef
+now:      Authorization: Bearer , Bearer abcdef -> Bearer , Bearer [REDACTED]
+```
+
+The `[REDACTED]` on the first line is the false one round 19 removed; the
+credential on the second is the one that should never have been there. An empty
+entry no longer ends the chain, and the span still ends at the last entry that
+*carried* a credential, so an empty entry at the tail extends nothing over the
+prose after it — `Authorization: Bearer , and the bearer returned` is asserted
+unchanged.
+
+Codex, P1, on this entry rather than on the code: it described the repair in the
+present tense and said it closes #314, with no `In review` label, while the work
+sits on an open PR. `AGENTS.md` Publication Discipline makes "merged to `main`"
+the only meaning of `Done`, and a recovery log that overstates publication is
+exactly what that rule exists to prevent — the same P1 this file already records
+taking once, at the 2026-06 plan-progress entry. The heading now carries
+`In review` (PR #316, not merged) and says what has to happen before it changes.
+
+**Also reported and deliberately not taken: a third finding, a pre-existing leak
+in the depth inference.** `{"message":"Invalid Authorization header: \"Bearer
+abcdef, Bearer ghijkl\""}` leaves `ghijkl` in the clear. The descriptive-label
+path reads the depth off a field name that is *prose* rather than a serialized
+key, so it infers depth 0 while the value's own quotes are escaped at depth 1,
+and `findValueOpener` then refuses the opener. It reproduces identically on
+`74594ff`. Fixing it means inferring the delimiter depth from the value's opening
+quote instead of from the field name — which is precisely the "guess at the
+value" this file's depth rule was written to replace after six rounds found six
+wrong readings. That is a change to the most defect-prone machinery here, on a
+defect this slice did not introduce, so it is recorded for the owner with its
+reproduction rather than patched in a twentieth round.
 
 **Review round 19: two P2s, both pre-existing, both the same shape as defects
 this entry already records — one direction further out.** Reproduced before
