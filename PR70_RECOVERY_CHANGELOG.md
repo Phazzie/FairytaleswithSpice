@@ -186,6 +186,57 @@ to these repairs: flattening the grammar back to a plain alphabet class,
 measuring the minimum over padding, and reading a blank-but-present `API_KEYS`
 as unset. All three killed.
 
+Review round 2 (Codex on `94c5599` and `8d90184`) — two findings, one taken in
+code and one declined, both on the owner's instruction to decide rather than
+escalate further:
+
+- **Taken: a key can satisfy the length floor by repeating one character.**
+  `kkkkkkkkkkkkkkkk` is sixteen characters of the grammar's alphabet carrying
+  one character of information, and it authenticated. Added
+  `API_KEY_MINIMUM_DISTINCT_CHARACTERS` (5), measured on the token body like the
+  length floor and for the same reason — padding is not secret, so it must not
+  supply the variety either. Reported as its own rejection reason, because "too
+  short" would be false for that value and would send the operator to lengthen a
+  key that is already long enough.
+
+  Five is where the rule provably cannot refuse a correctly generated key. The
+  worst case a correct operator can reach is an entry at exactly the minimum
+  length drawn from hex, the smallest alphabet the guide names; there the
+  false-refusal rate is bounded by C(16,4)·(4/16)^16 ≈ 4 × 10⁻⁷, and for the
+  48-character `openssl rand -hex 24` the guide actually recommends it did not
+  occur once in 200,000 trials. A rule that refuses a generated key would be
+  worse than the hole it closes, so the margin is the point rather than the
+  strictness.
+
+  **The residual is written down and asserted rather than implied.** The rule
+  refuses degenerate *repetition*, not a weak *choice*: `changemechangeme`
+  carries seven distinct characters and still authenticates, and the suite
+  asserts that it does. Raising the floor to catch it would refuse a legitimate
+  sixteen-character hex key about two percent of the time, and a word list is
+  unbounded. Describing the contract as rejecting placeholders when it rejects
+  only repetition would be the same overclaim review already corrected once in
+  this entry's documentation. Closing the rest means *issuing* credentials
+  instead of validating operator-chosen ones — #321.
+
+- **Declined: failing closed on `API_KEYS=""`.** It does not close the class it
+  appears to close — an unset `API_KEYS` reaches development mode identically,
+  and the app's own frontend has never sent a key, so a production deployment
+  runs on that fallback today. Closing the empty string would therefore break
+  every `.env` that spells an absent variable as `API_KEYS=` while leaving the
+  actual fail-open path exactly where it was. The change that closes it is
+  gating development mode on the environment rather than on the spelling of the
+  variable, and that is a migration (issue a key, ship it to the frontend), not
+  a one-word fix. Recorded on #321 with the trivial-key residual, since
+  requiring issued credentials settles both.
+
+Four counterfactual mutations for this round, all killed: removing the variety
+rule; raising the floor to eight, where it starts refusing real hex keys;
+measuring variety over the whole entry so padding can supply it; and the
+existing fixtures, which had to stop being `'k'.repeat(16)` — that value is now
+refused, so a length test written on it would have passed for the wrong reason
+and the padding test's "a genuine base64 token still authenticates" case would
+have failed while the behaviour it names was still correct.
+
 Deliberately not in this slice: the readability half of #314. Making
 `redactBearerTokens` spare the ordinary word after `bearer` is still not sound,
 because a bearer token in a log line may be a *provider* credential (xAI,

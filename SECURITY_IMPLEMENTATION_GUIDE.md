@@ -83,21 +83,32 @@ private validateStoryInput(input: StoryGenerationSeam['input']): any {
 - A credential contract on each configured entry: it must match RFC 6750's
   `b64token` grammar — a body of `A-Z a-z 0-9 . _ ~ + / -` followed only by
   optional trailing `=` padding — and its body, excluding that padding, must be
-  at least 16 characters (`API_KEY_MINIMUM_LENGTH`). An entry that does not
-  qualify is refused rather than trusted, so a *short* placeholder (`test`,
-  `changeme`), a truncated paste, or a value that kept its shell quoting cannot
-  become a live credential for a paid route. Padding is measured out of the
-  length deliberately: it is a base64 length artefact, not secret, and counting
-  it would let `a===============` clear a sixteen-character floor
-- **The floor is a length rule, not an entropy one, and does not make a key
-  unguessable.** A placeholder that is long enough still qualifies:
-  `changemechangeme` and sixteen repeated characters both authenticate, and
-  `tests/api-key-auth.test.ts` asserts the latter does so the boundary is
-  pinned rather than implied. Nothing here inspects a value for structure —
-  no dictionary, no repetition or entropy estimate — so the contract refuses
-  what is *malformed or too short*, and the operator remains responsible for
-  the value being secret. This is why the setup step below says to generate
-  keys rather than type them (`openssl rand -hex 24`), which is the only
+  at least 16 characters (`API_KEY_MINIMUM_LENGTH`), drawn from at least 5
+  different characters (`API_KEY_MINIMUM_DISTINCT_CHARACTERS`). An entry that
+  does not qualify is refused rather than trusted, so a *short* placeholder
+  (`test`, `changeme`), a truncated paste, a value that kept its shell quoting,
+  or a *degenerate* one (`kkkkkkkkkkkkkkkk`) cannot become a live credential for
+  a paid route. Padding is measured out of both the length and the variety
+  deliberately: it is a base64 length artefact, not secret, and counting it
+  would let `a===============` clear a sixteen-character floor
+- **The three rules are well-formedness, size and variety. None of them is an
+  entropy test, and a key that clears all three can still be a bad one.** The
+  variety rule refuses degenerate *repetition*; it does not refuse a weak
+  *choice*. `changemechangeme` carries seven distinct characters and
+  **authenticates**, and `tests/api-key-auth.test.ts` asserts that it does, so
+  the residual is pinned rather than implied. Catching it would need a word
+  list — unbounded, and it cannot be made to terminate — or a floor high enough
+  to start refusing genuinely generated keys: at eight distinct characters a
+  legitimate sixteen-character hex key is refused about two percent of the
+  time. Five is set where it provably cannot refuse a key from the generator
+  this guide recommends (for a 16-character hex key the false-refusal rate is
+  bounded by ≈ 4 × 10⁻⁷; for the 48-character `openssl rand -hex 24` it is far
+  smaller). So the contract refuses what is *malformed, too short, or
+  degenerate*, and the operator remains responsible for the value being secret.
+  Closing the rest means **issuing** credentials rather than validating
+  operator-chosen ones — see issue #321. This is why the setup step below says
+  to generate keys rather than type them (`openssl rand -hex 24`), which is the
+  only
   measure that actually closes this gap
 - Whitespace *around* an entry belongs to the comma-separated list rather than
   to the entry (`key-one, key-two`), so it is stripped before the entry is
@@ -131,8 +142,9 @@ private validateStoryInput(input: StoryGenerationSeam['input']): any {
 **Setup:**
 
 1. Set environment variable. Each comma-separated entry must match the
-   `b64token` grammar and carry at least 16 characters of token body (padding
-   excluded); generate them, do not type them (`openssl rand -hex 24`). Entries
+   `b64token` grammar, carry at least 16 characters of token body (padding
+   excluded), and draw that body from at least 5 different characters;
+   generate them, do not type them (`openssl rand -hex 24`). Entries
    that fail the contract are refused, and a deployment whose entries *all*
    fail — or which sets `API_KEYS` to something holding no entry — refuses
    every request:
@@ -286,7 +298,7 @@ Before deploying to production:
 
 1. **Development Mode**: When `API_KEYS` is not set, authentication allows all requests for development convenience — this now applies to a request that sends no key at all, not only to one that happens to send some key anyway (the fix in this revision; see `authenticateRequest` in `security.ts`). Always set `API_KEYS` in production if you want the key check enforced. Note that "not set" means *no usable entry was configured at all*: a value that is set but entirely unusable is a misconfiguration, and reaches the fail-closed branch instead (Note 6).
 
-6. **Rejected `API_KEYS` entries.** An entry whose token body is shorter than `API_KEY_MINIMUM_LENGTH` (16) or which does not match the `b64token` grammar (`A-Z a-z 0-9 . _ ~ + / -`, then optional trailing `=` padding) cannot authenticate a request. If some entries qualify, the deployment runs on those and logs a warning naming how many were refused and why. If none qualify, every request is refused with 401 `API_KEY_CONFIGURATION_INVALID` and an error is logged. Both reports count the rejected entries rather than printing them: a refused entry is still whatever the operator believed was a credential, and the logger's own redaction does not recognise an arbitrary short string as one.
+6. **Rejected `API_KEYS` entries.** An entry cannot authenticate a request if its token body is shorter than `API_KEY_MINIMUM_LENGTH` (16), if it does not match the `b64token` grammar (`A-Z a-z 0-9 . _ ~ + / -`, then optional trailing `=` padding), or if that body draws on fewer than `API_KEY_MINIMUM_DISTINCT_CHARACTERS` (5) different characters. The three reasons are counted separately in the log, because "too short" would be false for `kkkkkkkkkkkkkkkk` and would send the operator to lengthen a key that is already long enough. If some entries qualify, the deployment runs on those and logs a warning naming how many were refused and why. If none qualify, every request is refused with 401 `API_KEY_CONFIGURATION_INVALID` and an error is logged. Both reports count the rejected entries rather than printing them: a refused entry is still whatever the operator believed was a credential, and the logger's own redaction does not recognise an arbitrary short string as one.
 
 2. **Rate Limiting Storage**: The default (`RATE_LIMIT_STORE` unset or `memory`) is in-memory storage, suitable for single-instance deployments only. For production with multiple instances, set `RATE_LIMIT_STORE=postgres` (with `DATABASE_URL` configured) — no Redis needed, it shares the Postgres/Neon connection this app already uses for durable Story Lab storage. It applies regardless of whether `API_KEYS` is set — an unconfigured deployment's unauthenticated callers still share one budget per endpoint.
 
