@@ -50,7 +50,14 @@ function redactBearerTokens(value: string): string {
       cursor += 1;
     }
 
-    if (cursor === tokenStart) {
+    // The full stop that ends the sentence belongs to the sentence, not to the
+    // run -- and `.` is a `b64token` character, so the scan above swallowed it.
+    // `the bearer returned.` was read as the credential-shaped `returned.` and
+    // lost both the word and the mark that ended the line, which is this
+    // module's own defect one character further along.
+    const tokenEnd = endBeforeSentenceStops(value, tokenStart, cursor);
+
+    if (tokenEnd === tokenStart) {
       redacted += value.slice(found, cursor);
       index = cursor;
       continue;
@@ -63,7 +70,7 @@ function redactBearerTokens(value: string): string {
     if (
       !isIntroducedAsCredential(value, found) &&
       !credentialArrays.contains(found) &&
-      !isCredentialShapedBearerToken(value.slice(tokenStart, cursor))
+      !isCredentialShapedBearerToken(value.slice(tokenStart, tokenEnd))
     ) {
       redacted += value.slice(found, cursor);
       index = cursor;
@@ -71,7 +78,7 @@ function redactBearerTokens(value: string): string {
     }
 
     redacted += `Bearer ${REDACTED_SENSITIVE_TEXT}`;
-    index = cursor;
+    index = tokenEnd;
   }
 
   return redacted;
@@ -605,6 +612,40 @@ function isWordLikeRun(token: string): boolean {
 /** The marks that join two halves of one English word: `well-known`, `and/or`. */
 function isWordJoiner(char: string): boolean {
   return char === '-' || char === '/';
+}
+
+/**
+ * Where the run really ends, once the marks that end the *sentence* are given
+ * back to it.
+ *
+ * `.` is a `b64token` character, so the token scan takes it, and every ordinary
+ * sentence ending in the word after the noun was then credential-shaped on that
+ * one character: `the bearer returned.` lost `returned` *and* the full stop,
+ * leaving a log line ending mid-air. It is the defect this arm exists to avoid,
+ * surviving one character past where the repair was looking.
+ *
+ * **Only `.`, and only trailing.** The other `b64token` marks are not sentence
+ * punctuation and a credential really can end in them -- `abcdef/`, `abcdef-`
+ * and base64's `=` padding are all asserted as credentials, so stripping those
+ * would weaken the shape arm rather than sharpen it. An interior dot is
+ * untouched, which is what keeps `ab.cd` and a JWT's three parts credentials.
+ *
+ * This cannot expose credential material: what is given back is a run of dots,
+ * which carries nothing. It does widen the residual by one shape -- a
+ * word-shaped run under the floor is preserved whether or not a full stop
+ * follows it, so `Bearer secret.` keeps `secret` exactly as `Bearer secret`
+ * does. That is the residual in `SECURITY_IMPLEMENTATION_GUIDE.md` Note 7, not
+ * a new gap, and it is bounded the same way.
+ *
+ * The same trade the URL pass already makes one function down, where a comma or
+ * a full stop after a link belongs to the sentence rather than to the link.
+ */
+function endBeforeSentenceStops(value: string, tokenStart: number, tokenEnd: number): number {
+  let cursor = tokenEnd;
+  while (cursor > tokenStart && value[cursor - 1] === '.') {
+    cursor -= 1;
+  }
+  return cursor;
 }
 
 function redactApiKeys(value: string): string {

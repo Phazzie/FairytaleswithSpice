@@ -408,6 +408,36 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
+**Review round 13: the defect survived one character past where the repair was
+looking.** Codex, reviewing the depth-rule commit, found that `.` is a
+`b64token` character, so the scan that reads the run after the keyword took the
+full stop with it and every ordinary sentence ending on the word after the noun
+was credential-shaped on that one character. Reproduced, and worse than
+reported — the line loses its ending as well as its word:
+
+```text
+the bearer returned.                     -> the Bearer [REDACTED]
+the bearer of.                           -> the Bearer [REDACTED]
+sent Bearer abc123def456. Then it failed -> sent Bearer [REDACTED] Then it failed
+```
+
+The third line is the same mark being eaten from the other side: the credential
+was correctly hidden and the sentence still lost its full stop, which is the
+trade `redactUrls` already makes correctly one function down.
+
+A trailing run of dots is now given back to the sentence before the run is
+classified, and back to the log line after it. Only `.`, and only trailing: an
+interior dot is what makes `ab.cd` and a JWT's three parts credentials at any
+length, and `abcdef/`, `abcdef-` and base64's `=` padding are credentials that
+really do end in a `b64token` mark, all asserted. Nothing credential-bearing is
+handed back, because what is handed back is a run of dots. The residual widens
+by exactly one shape — `Bearer secret.` keeps `secret` just as `Bearer secret`
+does — which is the residual Note 7 already records, not a new gap.
+
+Mutations: 4 applied, 4 killed — dropping the trim, trimming every trailing
+non-alphanumeric (which loses `abcdef/`), leaving the stop inside the
+redaction, and classifying a run that is nothing but stops.
+
 **The escaping depth was never unknowable — only unavailable where the scanner
 was looking for it.** Rounds 5–10 held that the array scanner had to guess,
 because it was handed a *fragment* beginning at a `[` and nothing inside a

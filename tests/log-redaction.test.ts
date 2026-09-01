@@ -188,6 +188,18 @@ for (const sentence of [
   'the bearer and/or recipient must sign',
   'the bearer his/her representative appointed',
   'the bearer either/or clause applies',
+  // The full stop that ends the sentence belongs to the sentence. `.` is a
+  // `b64token` character, so the token scan took it and every ordinary sentence
+  // ending on the word after the noun was credential-shaped on that one
+  // character -- losing the word *and* the mark that ended the line.
+  'the bearer returned.',
+  'the bearer of.',
+  'the bearer announced.',
+  'the bearer re-entered.',
+  'the bearer of the seal walked in. The bearer left.',
+  'the bearer of bad news...',
+  // Nothing but sentence punctuation after the keyword is not a run at all.
+  'Authorization: Bearer ...',
   // A separator is not a header. These are a story title, a chapter heading
   // this app generates, and ordinary structured prose -- each puts `:` or `=`
   // immediately before the noun, and each was destroyed until the field name
@@ -270,6 +282,27 @@ assert(
   belowFloor.note.includes('k'.repeat(API_KEY_MINIMUM_LENGTH - 1)),
   'one character below the configured floor is a word, not a credential'
 );
+
+// Giving the full stop back to the sentence must not give any of the credential
+// back with it, and it must not cost the credential its punctuation either --
+// the same trade the URL pass makes further down, where a comma after a link
+// belongs to the sentence. Only a *trailing* dot is sentence punctuation: an
+// interior one is what makes `ab.cd` and a JWT's three parts credentials at any
+// length, and the other `b64token` marks are not sentence punctuation at all.
+for (const [line, expected] of [
+  ['sent Bearer abc123def456. Then it failed', 'sent Bearer [REDACTED]. Then it failed'],
+  ['Authorization: Bearer abcdef.', 'Authorization: Bearer [REDACTED].'],
+  ['Bearer ab.cd', 'Bearer [REDACTED]'],
+  ['Bearer eyJhbGciOiJIUzI1NiJ9.eyJhIjoxfQ.sig', 'Bearer [REDACTED]'],
+  ['Bearer abcdef/', 'Bearer [REDACTED]'],
+  ['Bearer abcdef-', 'Bearer [REDACTED]']
+] as const) {
+  const stopped = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    stopped.note === expected,
+    `sentence punctuation is the sentence's, the rest of the run is the credential's: ${line} -> ${stopped.note}`
+  );
+}
 
 // The joiners take the floor with them, and that is the whole cost of sparing
 // `re-entered` and `and/or`. A run joined by one interior hyphen or slash is
