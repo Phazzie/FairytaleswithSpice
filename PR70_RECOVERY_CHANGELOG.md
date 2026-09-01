@@ -446,16 +446,27 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
-**Review round 22: the quality gate this entry claimed was at parity had been
-failing since round 17, and I had been measuring against the wrong baseline.**
-CodeRabbit, four findings on `22a42b8`, all four taken.
+**Review round 22: two code smells this slice introduced had gone unread for
+five commits, and the lint parity claimed every round was measured against the
+wrong baseline.** CodeRabbit, four findings on `22a42b8`, all four taken.
 
-**The SonarCloud gate is failing, in this PR's own two functions.** The PR
-comment shows only "Quality Gate passed · 2 New issues", and `sonarcloud.io` is
-unreachable from where this session runs, so the two issues had gone unread
-across five commits. I inferred from the count holding at exactly 2 that they
-were stable findings elsewhere in the diff. **That inference was wrong**, and
-CodeRabbit surfaced the check output that settles it:
+**A correction inside this entry, made before it was ever accurate.** Its first
+draft said "the SonarCloud gate is failing". It is not, and it never was —
+CodeRabbit raised the merge risk on that basis, then retracted it on being
+asked: SonarQube reports **Quality Gate passed** throughout, and the two items
+are open `typescript:S3776` findings — `CRITICAL` `CODE_SMELL`, not gate
+failures and not security hotspots. Both readings of that badge were wrong in
+opposite directions: mine treated the passing gate as evidence the findings were
+someone else's, and the review's treated the findings as evidence the gate was
+red. The accurate statement is the narrow one: **the gate passes, and this slice
+added two open critical code smells to changed code.**
+
+**Two open cognitive-complexity findings, in this slice's own two functions.**
+The PR comment shows only "Quality Gate passed · 2 New issues", and
+`sonarcloud.io` is unreachable from where this session runs, so the two issues
+had gone unread across five commits. I inferred from the count holding at
+exactly 2 that they were stable findings elsewhere in the diff. **That inference
+was wrong**, and CodeRabbit surfaced the check output that settles it:
 
 ```text
 shared/sensitiveTextRedaction.ts:20   Cognitive Complexity 20 > 15   redactBearerTokens
