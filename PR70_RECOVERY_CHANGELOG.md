@@ -30,7 +30,7 @@ Actions:
 - `npm audit fix` then `npm update` in `story-generator` — resolves `@angular/*` to 20.3.30 / 20.3.35 and lifts `tar`, `undici`, `ws`, `engine.io`, `socket.io-parser`, `brace-expansion`, `body-parser`, `postcss`, `esbuild`, `piscina`, `vite`, `@babel/core` to patched versions. `story-generator`: **33 (1 critical, 27 high, 2 moderate, 3 low) → 0**. The critical is `tar` GHSA-vmf3-w455-68vh (file smuggling via a PAX size override on GNU long-name headers).
 - The two `@angular/compiler` XSS advisories (GHSA-58w9-8g37-x9v5 two-way-binding sanitization bypass, GHSA-jj27-h5hq-8x99 i18n event-handler XSS) are fixed in 20.3.27; `npm audit fix` would not take them on its own because it computes the remediation as a major bump. `npm update` reaches them inside the declared caret range instead.
 
-**Neither `package.json` is modified.** The whole change is two lockfiles. That is the difference from #318, which had to edit both manifests to reach the same advisories the declared ranges already covered.
+**Neither `package.json` is modified.** The remediation itself is confined to the two lockfiles; the only other file in the slice is this changelog entry. That is the difference from #318, which had to edit both manifests to reach the same advisories the declared ranges already covered.
 
 Equivalence check against #318, run rather than asserted — for every non-Angular package #318 moves, this branch resolves to **the same version or higher**, none lower:
 
@@ -53,7 +53,18 @@ Self-review:
 
 - Non-claim: this does not upgrade Angular, and it does not close #318. The 20 → 22 upgrade is real work — a TypeScript 6 bump, a CLI bump, and whatever Angular 22 breaks — and it belongs in its own slice with its own proof. This slice deliberately leaves that decision alone rather than bundling it with a critical `tar` fix.
 - Non-claim: no evidence any of these advisories was reachable in this app's actual usage. This is remediation by advisory, not by exploitability analysis. `tar`, `ws`, `undici`, `engine.io` and `socket.io-parser` are all build/toolchain transitives here; `axios` and `form-data` are the two that ship.
-- Disclosed regression, not fixed: the patched Angular grows the initial bundle **499.07 kB → 502.29 kB**, which crosses the `maximumWarning: "500kB"` budget in `angular.json` and adds one build warning that `main` does not have. `maximumError` is `1MB`, so the build still succeeds and the deployment is unaffected. The budget is deliberately **not** raised here — silencing a size signal to make a dependency bump look clean is the wrong trade, and 3.22 kB of framework patch is exactly the kind of drift the warning exists to surface. Flagged for the owner rather than absorbed.
+- Disclosed regression, not fixed: this update grows the initial bundle **499.07 kB → 502.29 kB**, which crosses the `maximumWarning: "500kB"` budget in `angular.json` and adds one build warning that `main` does not have. `maximumError` is `1MB`, so the build still succeeds and the deployment is unaffected. The budget is deliberately **not** raised here — silencing a size signal to make a dependency bump look clean is the wrong trade, and 3.22 kB of framework patch is exactly the kind of drift the warning exists to surface. Flagged for the owner rather than absorbed.
+- **The 3.22 kB is the Angular runtime, and that is measured rather than assumed.** The first draft asserted it, which was fair to challenge on review: the lockfile also moves output-affecting build inputs — `@angular/build` 20.3.26 → 20.3.35, `@babel/core` 7.28.3 → 7.29.7, `esbuild` 0.28.0 → 0.28.1, `vite` 7.3.2 → 7.3.6. Two builds off this branch's head rule every one of them out, each holding the Angular runtime at 20.3.30 and reverting one group of build inputs:
+
+  | build | `@angular/build` | esbuild / vite / `@babel/core` | initial total |
+  | --- | --- | --- | --- |
+  | `main` baseline | 20.3.26 | 0.28.0 / 7.3.2 / 7.28.3 | 499.07 kB |
+  | branch head | 20.3.35 | 0.28.1 / 7.3.6 / 7.29.7 | **502.29 kB** |
+  | builder reverted | **20.3.26** | 0.28.1 / 7.3.6 / 7.29.7 | **502.29 kB** |
+  | bundler chain reverted (npm `overrides`) | 20.3.35 | **0.28.0 / 7.3.2 / 7.28.3** | **502.29 kB** |
+
+  Reverting either group changes the figure by zero bytes, so no build input accounts for the growth and the only variable left is the Angular runtime, 20.3.22 → 20.3.30. The `overrides` block used for the last row is a scratch-worktree measurement device and is **not** committed.
+
 - The pre-existing `proving-grounds.css` budget warning (12.16 kB against a 12 kB warning / 15 kB error) is unchanged, and is the same one recorded against #315 and #316.
 
 Validation:
