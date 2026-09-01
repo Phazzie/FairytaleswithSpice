@@ -21,6 +21,7 @@ import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { enforceApiAccessControl, rateLimitResetSeconds, retryAfterSeconds } from '../api/_lib/middleware/apiAccessControl';
 import type { RateLimitStore } from '../api/_lib/middleware/rateLimitStorePort';
 import { RATE_LIMITS } from '../api/_lib/constants';
+import { withMemoryRateLimitStore } from './helpers/withMemoryRateLimitStore';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -454,33 +455,6 @@ async function testRateLimitStoreConsumeFailureFailsClosed(): Promise<void> {
       `a consume() failure should report RATE_LIMIT_STORE_UNAVAILABLE, got ${errorCode(res)}`
     );
   });
-}
-
-/**
- * Every route-driven test in this file exercises `enforceApiAccessControl`'s
- * default store resolution (no store is injected), which reads
- * `RATE_LIMIT_STORE`/`DATABASE_URL` straight from `process.env`. Without
- * pinning it here, a runner with `RATE_LIMIT_STORE=postgres` set ambiently
- * would make every route call resolve a Postgres store instead: with no
- * `DATABASE_URL` that store answers 503 and every "should not be rejected"
- * assertion below fails; with one configured, this file would perform real
- * upserts against it, leaving buckets that can make a later run fail before
- * its expected limit. `resetRateLimitsForTests()` only ever clears the
- * in-memory map, so it can't protect against either case on its own — the
- * mode itself has to be pinned.
- */
-async function withMemoryRateLimitStore(fn: () => Promise<void>): Promise<void> {
-  const previous = process.env['RATE_LIMIT_STORE'];
-  process.env['RATE_LIMIT_STORE'] = 'memory';
-  try {
-    await fn();
-  } finally {
-    if (previous === undefined) {
-      delete process.env['RATE_LIMIT_STORE'];
-    } else {
-      process.env['RATE_LIMIT_STORE'] = previous;
-    }
-  }
 }
 
 async function main(): Promise<void> {

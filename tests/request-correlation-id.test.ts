@@ -6,6 +6,7 @@ import {
   readRequestCorrelationId
 } from '../api/_lib/http/requestCorrelationId';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
+import { withMemoryRateLimitStore } from './helpers/withMemoryRateLimitStore';
 import { createStoryLabAccountRouteHandler } from '../api/_lib/story-lab/account/accountRouteHandlers';
 import { createClerkAuthPort } from '../api/_lib/story-lab/auth/clerkAuthPort';
 import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
@@ -150,50 +151,52 @@ assert(
 // under that name. They are driven through their own 405 branch, which is the
 // shortest path that still reaches the echo.
 async function main(): Promise<void> {
-  const routes: Array<{ path: string; handler: (req: any, res: any) => unknown }> = [
-    { path: '/api/image/generate', handler: imageGenerateHandler },
-    { path: '/api/export/save', handler: exportSaveHandler },
-    // `/api/story-lab/stories` and `/api/story-lab/stories/:storyId/continue` are
-    // the routes real traffic takes (`/api/story/generate` and
-    // `/api/story/continue`, the legacy pair this file used to drive here, were
-    // never reachable from the app and have been deleted). Both now open with
-    // the same `beginPostRoute` the other paid routes do, so they echo and
-    // bound the correlation id the same way.
-    { path: '/api/story-lab/stories', handler: storyLabGenesisHandler },
-    { path: '/api/story-lab/stories/:storyId/continue', handler: storyLabContinuationHandler }
-  ];
+  await withMemoryRateLimitStore(async () => {
+    const routes: Array<{ path: string; handler: (req: any, res: any) => unknown }> = [
+      { path: '/api/image/generate', handler: imageGenerateHandler },
+      { path: '/api/export/save', handler: exportSaveHandler },
+      // `/api/story-lab/stories` and `/api/story-lab/stories/:storyId/continue` are
+      // the routes real traffic takes (`/api/story/generate` and
+      // `/api/story/continue`, the legacy pair this file used to drive here, were
+      // never reachable from the app and have been deleted). Both now open with
+      // the same `beginPostRoute` the other paid routes do, so they echo and
+      // bound the correlation id the same way.
+      { path: '/api/story-lab/stories', handler: storyLabGenesisHandler },
+      { path: '/api/story-lab/stories/:storyId/continue', handler: storyLabContinuationHandler }
+    ];
 
-  for (const route of routes) {
-    const honouredResponse = new FakeResponse();
-    await route.handler(
-      { method: 'GET', headers: { 'x-request-id': 'trace-123' } },
-      honouredResponse
-    );
-    assert(
-      honouredResponse.headers['X-Request-ID'] === 'trace-123',
-      `${route.path} should echo a real correlation id back to the caller`
-    );
+    for (const route of routes) {
+      const honouredResponse = new FakeResponse();
+      await route.handler(
+        { method: 'GET', headers: { 'x-request-id': 'trace-123' } },
+        honouredResponse
+      );
+      assert(
+        honouredResponse.headers['X-Request-ID'] === 'trace-123',
+        `${route.path} should echo a real correlation id back to the caller`
+      );
 
-    const replacedResponse = new FakeResponse();
-    await route.handler(
-      { method: 'GET', headers: { 'x-request-id': 'x'.repeat(4096) } },
-      replacedResponse
-    );
-    assert(
-      GENERATED_ID_PATTERN.test(replacedResponse.headers['X-Request-ID'] ?? ''),
-      `${route.path} should not echo an unbounded correlation id, got ${
-        (replacedResponse.headers['X-Request-ID'] ?? '').length
-      } characters`
-    );
-  }
+      const replacedResponse = new FakeResponse();
+      await route.handler(
+        { method: 'GET', headers: { 'x-request-id': 'x'.repeat(4096) } },
+        replacedResponse
+      );
+      assert(
+        GENERATED_ID_PATTERN.test(replacedResponse.headers['X-Request-ID'] ?? ''),
+        `${route.path} should not echo an unbounded correlation id, got ${
+          (replacedResponse.headers['X-Request-ID'] ?? '').length
+        } characters`
+      );
+    }
 
-  await testTheEnvelopeReportsTheIdTheHeaderCarries();
-  await testTheStoryLabRoutesHandTheirIdToTheGeneration();
-  await testTheStoryServiceHonoursTheIdItIsGiven();
-  await testTheContinuityCallCarriesTheSameId();
-  await testTheRoutesThatServeMoreThanPostEchoItToo();
-  await testTheJobsRouteLogsUnderTheIdItEchoed();
-  await testTheAuthPortWarnsUnderTheIdTheRouteEchoed();
+    await testTheEnvelopeReportsTheIdTheHeaderCarries();
+    await testTheStoryLabRoutesHandTheirIdToTheGeneration();
+    await testTheStoryServiceHonoursTheIdItIsGiven();
+    await testTheContinuityCallCarriesTheSameId();
+    await testTheRoutesThatServeMoreThanPostEchoItToo();
+    await testTheJobsRouteLogsUnderTheIdItEchoed();
+    await testTheAuthPortWarnsUnderTheIdTheRouteEchoed();
+  });
 
   console.log('Request correlation id tests passed');
 }

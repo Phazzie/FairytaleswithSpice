@@ -97,6 +97,7 @@
     "smoke:grok-multi-agent": "tsx tests/grok-multi-agent-smoke.test.ts",
     "smoke:story-lab-ui": "node scripts/recovery/story-lab-browser-smoke.mjs",
     "smoke:story-lab-live-provider": "tsx scripts/recovery/story-lab-live-provider-smoke.mjs",
+    "smoke:rate-limit-store-concurrency": "tsx scripts/recovery/rate-limit-store-concurrency-smoke.ts",
     "test:text-excerpt": "tsx tests/text-excerpt.test.ts",
     "test:html-document-download": "tsx tests/html-document-download.test.ts"
   },

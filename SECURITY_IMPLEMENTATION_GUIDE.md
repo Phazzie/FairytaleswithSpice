@@ -205,10 +205,19 @@ connection this app already provisions for durable jobs, profiles, and
 projects. See `api/_lib/middleware/postgresRateLimitStore.ts` for the store
 itself.
 
+Before enabling `RATE_LIMIT_STORE=postgres` in a real deployment, run
+`DATABASE_URL=... npm run smoke:rate-limit-store-concurrency` against that
+database. Unlike the unit tests below (which drive the algorithm through a
+JavaScript simulation of Postgres), this fires genuinely concurrent
+`consume()` calls from two independent store instances at the real database
+and proves the shared budget holds — the actual claim this feature exists to
+make.
+
 **Testing:**
 - `tests/rate-limit-store.test.ts` — `InMemoryRateLimitStore` (unchanged `checkRateLimit` behavior through the port) and `PostgresRateLimitStore` (SQL wiring, window reset/increment/deny transitions, unconfigured fail-closed)
 - `tests/rate-limit-store-config.test.ts` — mode selection (`memory` default, explicit `postgres`, unknown mode fails closed), mirroring `tests/story-lab-job-store-config.test.ts`
 - `tests/api-access-control.test.ts` — route wiring, including the `503` when `RATE_LIMIT_STORE=postgres` is misconfigured
+- `npm run smoke:rate-limit-store-concurrency` (`DATABASE_URL`-gated, not part of `test:all`) — the real-Postgres concurrency proof described above
 
 ## 🚀 Deployment Checklist
 
