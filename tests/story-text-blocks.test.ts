@@ -327,15 +327,28 @@ for (const [input, blocks, expectation] of [
     return Number(process.hrtime.bigint() - start) / 1e6;
   };
 
-  elapsed(build(2000)); // warm up, so the first timing is not the compile
-  const small = Math.max(elapsed(build(5000)), 0.5);
-  const large = elapsed(build(20000));
+  // Best of three readings rather than one. Noise in a timing is one-sided — a
+  // GC pause or a descheduled slice can only make a run look slower, never
+  // faster — so the fastest of several is the reading least contaminated by
+  // whatever else the machine was doing. This is the part that keeps the check
+  // off a flake.
+  const fastest = (repeats: number) => {
+    const input = build(repeats);
+    return Math.min(elapsed(input), elapsed(input), elapsed(input));
+  };
 
-  // Quadratic would be ~16x for a 4x input. Linear is ~4x; the bound leaves
-  // generous headroom for a slow or contended machine without admitting n².
-  // Non-strict, so a measurement landing exactly on the bound passes: `small`
-  // is floored at 0.5ms, so `small * 10` can be the exact value 5, which is a
-  // figure a timing can land on rather than merely approach.
+  fastest(2000); // warm up, so the first timing is not the compile
+  const small = Math.max(fastest(5000), 0.5);
+  const large = fastest(20000);
+
+  // Quadratic would be ~16x for a 4x input. Linear is ~4x, so 10x leaves a 2.5x
+  // margin for a slow or contended machine without admitting n².
+  //
+  // Non-strict, so a measurement landing exactly on the bound passes. That is
+  // reachable rather than theoretical: `small` is floored at 0.5ms, making
+  // `small * 10` the exact value 5, and `elapsed` returns a whole number of
+  // nanoseconds divided by 1e6 — a discrete ladder a timing can land on rather
+  // than merely approach.
   assert(
     large <= small * 10,
     `repeated comment opens should scale linearly, not quadratically (5,000: ${small.toFixed(1)}ms, 20,000: ${large.toFixed(1)}ms)`
