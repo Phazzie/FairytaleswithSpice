@@ -56,12 +56,7 @@ function redactBearerTokens(value: string): string {
     // lost both the word and the mark that ended the line, which is this
     // module's own defect one character further along.
     const tokenEnd = endBeforeSentenceStops(value, tokenStart, cursor);
-
-    if (tokenEnd === tokenStart) {
-      redacted += value.slice(found, cursor);
-      index = cursor;
-      continue;
-    }
+    const body = stripBalancedEmphasis(value.slice(tokenStart, tokenEnd));
 
     // A standalone `bearer` is the scheme keyword *and* an ordinary English
     // noun, so the word alone does not settle which one this is. Only redact
@@ -70,10 +65,7 @@ function redactBearerTokens(value: string): string {
     if (
       !isIntroducedAsCredential(value, found) &&
       !credentialArrays.contains(found) &&
-      !isCredentialShapedBearerToken(
-        stripBalancedEmphasis(value.slice(tokenStart, tokenEnd)),
-        cursor - tokenStart
-      )
+      !isCredentialShapedBearerToken(body, cursor - tokenStart)
     ) {
       redacted += value.slice(found, cursor);
       index = cursor;
@@ -81,7 +73,11 @@ function redactBearerTokens(value: string): string {
     }
 
     redacted += `Bearer ${REDACTED_SENSITIVE_TEXT}`;
-    index = tokenEnd;
+    // The marks are given back to the sentence only when a word came before
+    // them. A run that is *nothing but* marks has no word to punctuate, so they
+    // are the run rather than punctuation after it, and handing them back would
+    // print the credential beside its own redaction.
+    index = body === '' ? cursor : tokenEnd;
   }
 
   return redacted;
@@ -590,7 +586,13 @@ function isFieldNameChar(char: string): boolean {
  * redacted, whatever its shape.**
  */
 function isCredentialShapedBearerToken(body: string, runLength: number): boolean {
-  if (!isWordLikeRun(body)) {
+  // A run that is nothing but the marks prose puts *around* words has no word
+  // to take a shape from, so only its length speaks. Reading it as shaped would
+  // destroy an ellipsis after the noun; reading it as prose -- which an earlier
+  // revision did, by returning before either arm was asked -- logged sixteen
+  // periods in the clear, and `API_KEY_CREDENTIAL_GRAMMAR` accepts exactly that
+  // as a configured key.
+  if (body !== '' && !isWordLikeRun(body)) {
     return true;
   }
   return runLength >= BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH;

@@ -408,6 +408,41 @@ and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
 the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
 fails the suite.
 
+**Review round 16: the guarantee round 14 stated was not yet true, and Codex
+found the hole in it.** The claim was "every run of `API_KEY_MINIMUM_LENGTH`
+characters or more is redacted, whatever its shape". A run of *nothing but*
+marks never reached either arm: round 13's early return fired the moment
+trimming emptied the body, before the header check and before the floor. And
+sixteen periods is a key `API_KEY_CREDENTIAL_GRAMMAR` accepts:
+
+```text
+Authorization: Bearer ................        -> unchanged, in a header context
+request failed with Bearer ................   -> unchanged
+```
+
+Verified the same way as round 14's P1, against the grammar rather than the
+reading: `/^[A-Za-z0-9._~+/-]+=*$/` matches sixteen periods and
+`credentialBodyOf` counts all sixteen.
+
+Two corrections, both of them the same idea one step further than round 14 took
+it. **A run with no word in it has no shape**, so only its length speaks: an
+ellipsis after the noun is prose, and a run at the floor is a credential.
+Reading it as *shaped* would have destroyed `the bearer ... walked away`;
+returning early read it as prose, which is what leaked. **And when such a run is
+redacted, the marks are consumed rather than handed back**, because handing back
+the marks of a run that is only marks prints the credential beside its own
+`[REDACTED]`. The marks are punctuation only when a word came before them.
+
+`Authorization: Bearer ...` is redacted now, and the assertion that used to
+claim it was prose is gone. That assertion was the defect's own claim written
+down as a test, which is the part worth recording: the suite agreed with the
+code because both came from the same mistaken sentence.
+
+Mutations: 3 applied, 3 killed — treating an all-marks run as shaped (destroys
+the ellipsis), handing the marks back after redacting (prints the key beside
+`[REDACTED]`), and always consuming them (loses the sentence's full stop after
+a real credential).
+
 **Review round 15: an empty value was being read as padding.** Codex: the walk
 back from the scheme skips whitespace, quotes and escaping backslashes as
 serialization, and two quotes side by side are all three of those — so it read

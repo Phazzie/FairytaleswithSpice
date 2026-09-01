@@ -201,8 +201,13 @@ for (const sentence of [
   'the bearer re-entered.',
   'the bearer of the seal walked in. The bearer left.',
   'the bearer of bad news...',
-  // Nothing but sentence punctuation after the keyword is not a run at all.
-  'Authorization: Bearer ...',
+  // A run that is nothing but marks has no word to take a shape from, so only
+  // its length speaks: an ellipsis after the noun is prose. The line that used
+  // to sit here asserted `Authorization: Bearer ...` was prose too, and that
+  // claim was the hole -- sixteen periods is a key `API_KEY_CREDENTIAL_GRAMMAR`
+  // accepts, and it was logged in the clear. Both directions are pinned below.
+  'the bearer ... walked away',
+  'the bearer .. hesitated',
   // Markdown is how story content spells emphasis, and `_` and `~` are
   // `b64token` characters, so a balanced pair around an ordinary word made it
   // carry marks no English word carries. Only balanced pairs: `_abcdef` and
@@ -324,6 +329,20 @@ for (const [line, expected] of [
   );
 }
 
+// The header arm reaches a run of marks too, and the redaction must consume it
+// rather than hand it back as punctuation -- printing the marks beside their own
+// `[REDACTED]` would put the credential back on the line it was removed from.
+for (const marked of [
+  `Authorization: Bearer ${'.'.repeat(API_KEY_MINIMUM_LENGTH)}`,
+  'Authorization: Bearer ...'
+]) {
+  const hidden = redactSensitiveLogData({ note: marked }) as Record<string, string>;
+  assert(
+    hidden.note === `Authorization: Bearer ${REDACTED_SENSITIVE_TEXT}`,
+    `a run of marks in a header is consumed by its redaction: ${marked} -> ${hidden.note}`
+  );
+}
+
 // Stopping the lookback at a closed empty value costs exactly one band, and it
 // is the band the residual already names: a credential written after one, short
 // and alphabetic enough to have no shape, is no longer reached by the header
@@ -364,7 +383,13 @@ for (const atFloor of [
   `_${'k'.repeat(API_KEY_MINIMUM_LENGTH - 2)}_`,
   `~${'k'.repeat(API_KEY_MINIMUM_LENGTH - 2)}~`,
   `${'k'.repeat(API_KEY_MINIMUM_LENGTH - 3)}...`,
-  'k'.repeat(API_KEY_MINIMUM_LENGTH)
+  'k'.repeat(API_KEY_MINIMUM_LENGTH),
+  // "Whatever its shape" includes having no shape at all. A run of periods is
+  // a key the grammar accepts, and the revision that returned early on an
+  // emptied body logged it in the clear -- in a header context as well as bare.
+  '.'.repeat(API_KEY_MINIMUM_LENGTH),
+  '~'.repeat(API_KEY_MINIMUM_LENGTH),
+  '_'.repeat(API_KEY_MINIMUM_LENGTH)
 ]) {
   assert(atFloor.length === API_KEY_MINIMUM_LENGTH, `test setup: ${atFloor} is not at the floor`);
   const hidden = redactSensitiveLogData({
