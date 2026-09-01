@@ -26,11 +26,28 @@ The load-bearing finding: **none of the advisories actually needed a major bump.
 
 Actions:
 
-- `npm audit fix` at the repo root — `axios` 1.16.1 → 1.18.0, `form-data` → 4.0.6. Two high-severity advisories in **production** dependencies (`form-data` CRLF injection GHSA-hmw2-7cc7-3qxx; ten axios advisories including prototype-pollution gadgets that alter request construction and a `NO_PROXY` bypass). Root: **2 high → 0**.
+- `npm audit fix` at the repo root — `axios` 1.16.1 → **1.20.0**, `form-data` → 4.0.6. Two high-severity advisories in **production** dependencies (`form-data` CRLF injection GHSA-hmw2-7cc7-3qxx; ten axios advisories including prototype-pollution gadgets that alter request construction and a `NO_PROXY` bypass). Root: **2 high → 0**.
 - `npm audit fix` then `npm update` in `story-generator` — resolves `@angular/*` to 20.3.30 / 20.3.35 and lifts `tar`, `undici`, `ws`, `engine.io`, `socket.io-parser`, `brace-expansion`, `body-parser`, `postcss`, `esbuild`, `piscina`, `vite`, `@babel/core` to patched versions. `story-generator`: **33 (1 critical, 27 high, 2 moderate, 3 low) → 0**. The critical is `tar` GHSA-vmf3-w455-68vh (file smuggling via a PAX size override on GNU long-name headers).
 - The two `@angular/compiler` XSS advisories (GHSA-58w9-8g37-x9v5 two-way-binding sanitization bypass, GHSA-jj27-h5hq-8x99 i18n event-handler XSS) are fixed in 20.3.27; `npm audit fix` would not take them on its own because it computes the remediation as a major bump. `npm update` reaches them inside the declared caret range instead.
 
 **Neither `package.json` is modified.** The whole change is two lockfiles. That is the difference from #318, which had to edit both manifests to reach the same advisories the declared ranges already covered.
+
+Equivalence check against #318, run rather than asserted — for every non-Angular package #318 moves, this branch resolves to **the same version or higher**, none lower:
+
+```text
+axios              #318=1.18.0   here=1.20.0     tar               #318=7.5.22   here=7.5.22
+form-data          #318=4.0.6    here=4.0.6      undici            #318=6.28.0   here=6.28.0
+@hono/node-server  #318=1.19.17  here=2.1.1      ws                #318=8.21.3   here=8.21.3
+body-parser        #318=2.3.0    here=2.3.0      engine.io         #318=6.6.9    here=6.6.9
+brace-expansion    #318=1.1.18   here=1.1.18     socket.io-parser  #318=4.2.7    here=4.2.7
+hono               #318=4.13.5   here=4.13.5     fast-uri          #318=3.1.6    here=3.1.6
+ip-address         #318=10.7.0   here=10.7.0
+```
+
+Two entries there correct claims made earlier in this entry's own first draft, so they are stated rather than quietly adjusted:
+
+- **`axios` resolves to 1.20.0, not 1.18.0.** `npm audit fix` took the highest release inside the existing `^1.16.1`, which is *above* what #318 pinned. The manifest range is unchanged either way; the earlier "→ 1.18.0" was copied from #318's table instead of read out of the resulting lockfile.
+- **Four transitives cross a major boundary**, so "no major bumps" is too strong and the accurate statement is *no manifest changed and every resolution sits inside a range something already declared*. `npm update` cannot violate a declared range, and these are the four: `@hono/node-server` 1.19.14 → 2.1.1, under `@modelcontextprotocol/sdk`, whose declared range is the union `^1.19.9 || ^2.0.5` and therefore admits both majors; `@types/send` 0.17.5 → 1.2.1; and `entities` 6.0.1 → 7.0.1 / 8.0.0 nested under `htmlparser2` and `parse5`. All four are deep transitives, none is a direct dependency of either package root, and the 211 Angular specs and full suite pass with them in place.
 
 Self-review:
 
