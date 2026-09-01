@@ -30,8 +30,9 @@ Default checks:
   2. git diff --check.
   3. Angular app/spec and Vercel API type checks.
   4. Root npm test suite.
-  5. Angular production build through Node 20.
-  6. Root build output verification.
+  5. Angular unit test suite (ng test / karma, headless Chrome).
+  6. Angular production build through Node 20.
+  7. Root build output verification.
 USAGE
 }
 
@@ -114,6 +115,15 @@ fi
 if [[ ${RUN_TESTS} -eq 1 ]]; then
   step "Running root test suite"
   npm test
+
+  # `npm test` above only runs the ~90 backend `tests/*.test.ts` scripts. The
+  # Angular app has its own suite of 201 karma/jasmine specs that nothing else
+  # in this script, `recovery-ci.yml`, or either `package.json` ever executes
+  # (the type-check step below only compiles them) — so run it explicitly.
+  step "Running Angular unit test suite"
+  cd "${STORY_GENERATOR_DIR}"
+  npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox
+  cd "${REPO_ROOT}"
 fi
 
 if [[ ${RUN_BUILD} -eq 1 ]]; then
