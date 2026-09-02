@@ -493,11 +493,11 @@
             type="button"
             class="ghost compact"
             data-testid="generate-audio"
-            aria-label="Narrate this chapter"
+            aria-label="Preview this chapter's opening as narrated audio"
             (click)="generateChapterAudio()"
             [disabled]="isGeneratingAudio() || !selectedChapter()"
           >
-            {{ isGeneratingAudio() ? 'Narrating…' : 'Listen to Chapter' }}
+            {{ isGeneratingAudio() ? 'Narrating…' : 'Preview Narration' }}
           </button>
         </div>
       </header>
@@ -545,6 +545,8 @@
         </div>
 
         <div class="chapter-audio-panel" data-testid="chapter-audio-panel">
+          <p class="field-hint">Narrates the chapter's opening, not the full chapter.</p>
+
           <p class="field-error" data-testid="chapter-audio-error" *ngIf="audioGenerationError()">
             {{ audioGenerationError() }}
           </p>

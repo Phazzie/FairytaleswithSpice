@@ -80,6 +80,18 @@ function testHtmlParagraphBreaksStaySeparateSegments(): void {
   assert(!segments[0].text.includes('Blood'), 'the two paragraphs should not be welded together');
 }
 
+// A block is not guaranteed to carry exactly one speaker. An anchored pattern
+// would leave a second tag sitting in the first speaker's text, read aloud as
+// literal words instead of switching the voice.
+function testMultipleSpeakerTagsWithinOneBlockAreSplit(): void {
+  const segments = parseAudioSegments('<p>[Narrator]: She turned. [Mira]: "Stop."</p>');
+
+  assert(segments.length === 2, `one block with two tags should be two segments (got ${segments.length})`);
+  assert(segments[0].speaker === 'Narrator' && segments[0].text === 'She turned.', `first segment should be Narrator's alone (got ${JSON.stringify(segments[0])})`);
+  assert(segments[1].speaker === 'Mira' && segments[1].text === 'Stop.', `second segment should be Mira's, tag stripped (got ${JSON.stringify(segments[1])})`);
+  assert(!segments[0].text.includes('[Mira]'), 'the second tag should not leak into the first segment\'s spoken text');
+}
+
 // Two calls with the same content should resolve the same speaker to the same
 // mock voice id, and two different speakers to two different ids — otherwise
 // a caller cannot tell from the response which lines shared a voice.
@@ -147,20 +159,20 @@ async function testMockNarrationProducesAValidWavFile(): Promise<void> {
 // response is refused up front, before any synthesis call, rather than risking
 // a serverless response-size limit or a slow request for little benefit.
 async function testOverlongContentIsRefusedBeforeSynthesis(): Promise<void> {
-  // ~130s at the default speed and words-per-minute this service assumes —
-  // comfortably past the 120s cap.
+  // ~200s at the default speed and words-per-minute this service assumes —
+  // comfortably past the 180s cap.
   const tooLong = await new AudioService().convertToAudio(createInput({
-    content: '<p>[Narrator]: ' + 'word '.repeat(325) + '</p>'
+    content: '<p>[Narrator]: ' + 'word '.repeat(500) + '</p>'
   }));
 
   assert(!tooLong.success, 'content estimated past the duration cap should be refused');
   assert(tooLong.error?.code === 'INVALID_INPUT', `an overlong request is a caller error (got ${tooLong.error?.code})`);
   assert(/too long/i.test(tooLong.error?.message ?? ''), `the message should say why (got ${tooLong.error?.message})`);
 
-  // The same word count comfortably narrates at the default speed — the cap is
-  // read from the estimate, not from a flat word ceiling.
+  // Comfortably under the cap at the default speed — the cap is read from
+  // the estimate, not from a flat word ceiling.
   const shortEnough = await new AudioService().convertToAudio(createInput({
-    content: '<p>[Narrator]: ' + 'word '.repeat(250) + '</p>'
+    content: '<p>[Narrator]: ' + 'word '.repeat(400) + '</p>'
   }));
   assert(shortEnough.success, 'content safely under the cap should still narrate');
 }
@@ -198,6 +210,39 @@ async function testMalformedInputIsRejectedAsCallerError(): Promise<void> {
 
   const noNarratableText = await new AudioService().convertToAudio(createInput({ content: '           ' }));
   assert(!noNarratableText.success, 'whitespace-only content should be refused');
+
+  const oversizedContent = await new AudioService().convertToAudio(createInput({ content: 'x'.repeat(25_000) }));
+  assert(oversizedContent.error?.code === 'INVALID_INPUT', `content past the raw-length cap should be refused before parsing (got ${oversizedContent.error?.code})`);
+
+  // Request bodies are untyped JSON at runtime: a `voice` that is not a
+  // string must not reach `.trim()` inside voice resolution and surface as an
+  // uncaught TypeError reported as a 500-style AUDIO_GENERATION_FAILED.
+  const numericVoice = await new AudioService().convertToAudio(
+    createInput({ voice: 42 as unknown as AudioConversionSeam['input']['voice'] })
+  );
+  assert(numericVoice.error?.code === 'INVALID_INPUT', `a non-string voice is a caller error, not a crash (got ${numericVoice.error?.code})`);
+
+  const blankVoice = await new AudioService().convertToAudio(createInput({ voice: '   ' }));
+  assert(blankVoice.error?.code === 'INVALID_INPUT', 'a blank voice override is a caller error');
+}
+
+// A real API key with no voice configured anywhere (no override, no
+// per-character or narrator/default env var) must fail with a clear
+// configuration message, not by handing ElevenLabs a fabricated mock voice
+// id and reporting whatever error that produces as a generic outage.
+async function testRealModeRequiresAConfiguredVoice(): Promise<void> {
+  process.env['ELEVENLABS_API_KEY'] = 'test-key-not-a-real-credential';
+  try {
+    const result = await new AudioService().convertToAudio(createInput({
+      content: '<p>[Narrator]: Only the narrator speaks here.</p>'
+    }));
+
+    assert(!result.success, 'an unconfigured real-mode voice should fail rather than call the provider with a mock id');
+    assert(result.error?.code === 'AUDIO_GENERATION_FAILED', `got ${result.error?.code}`);
+    assert(/no elevenlabs voice is configured/i.test(result.error?.message ?? ''), `the message should name the real problem (got ${result.error?.message})`);
+  } finally {
+    delete process.env['ELEVENLABS_API_KEY'];
+  }
 }
 
 async function testTheRequestIdReachesTheEnvelope(): Promise<void> {
@@ -209,6 +254,7 @@ async function main(): Promise<void> {
   testSpeakerTagsAreParsedIntoOrderedSegments();
   testUntaggedTextIsNarration();
   testHtmlParagraphBreaksStaySeparateSegments();
+  testMultipleSpeakerTagsWithinOneBlockAreSplit();
   await testMockVoiceResolutionIsDeterministicAndDistinctPerSpeaker();
   await testPerCharacterVoiceEnvVarOverridesTheMockFallback();
   await testCallerVoiceOverrideAppliesToEverySegment();
@@ -216,6 +262,7 @@ async function main(): Promise<void> {
   await testOverlongContentIsRefusedBeforeSynthesis();
   await testSpeedScalesTheEstimatedDuration();
   await testMalformedInputIsRejectedAsCallerError();
+  await testRealModeRequiresAConfiguredVoice();
   await testTheRequestIdReachesTheEnvelope();
 
   assert(AUDIO_FORMATS.length === 1 && AUDIO_FORMATS[0] === 'wav', 'this seam should still support exactly one format: wav');

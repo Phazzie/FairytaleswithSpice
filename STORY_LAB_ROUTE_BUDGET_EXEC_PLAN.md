@@ -296,3 +296,14 @@ Function-count script interface:
 - Output after this work: `Vercel function count check: 9/12`.
 
 No new npm packages, Vercel settings, environment variables, auth providers, storage providers, or external services are required.
+
+## Update (2026-09-02): this plan's inventory is historical, not current
+
+This plan completed at `9/12` by retiring `api/image/generate.ts`. That route was
+later reinstated (`***WORST TO BEST*** Story Export/Download` and subsequent
+work wired real image generation back in), and the "***WORST TO BEST*** Multi-Voice
+Audio Narration" change added `api/audio/convert.ts`, bringing the count to `9/12`
+again but with a different composition than this plan describes. `scripts/recovery/check-vercel-function-count.sh`'s
+`EXPECTED_FUNCTIONS` allow-list is the current source of truth for what is
+actually deployed; treat the numbers above as the historical record of this
+plan's own change rather than today's inventory.

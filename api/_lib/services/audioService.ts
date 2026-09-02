@@ -19,11 +19,17 @@ import { logApiError, logError } from '../utils/logger';
 import { toLoggableStoryId } from '../utils/loggableRequestParameters';
 
 /**
- * The PCM sample rate requested from ElevenLabs (`output_format=pcm_16000`)
+ * The PCM sample rate requested from ElevenLabs (`output_format=pcm_8000`)
  * and written into every WAV header this service produces, mock or real, so
- * one buffer format serves both paths.
+ * one buffer format serves both paths. 8kHz rather than a higher rate for the
+ * reason `MAX_ESTIMATED_DURATION_SECONDS` explains: this is telephone-quality
+ * audio, not hi-fi, and it is what keeps a useful narration length inside a
+ * single inline response. 16-bit linear PCM (not a compressed encoding like
+ * μ-law) is kept for universal `<audio>` playback support — halving the byte
+ * rate again by dropping to 8-bit would risk browsers that do not decode
+ * compressed WAV, which is a worse failure than a shorter cap.
  */
-const SAMPLE_RATE = 16000;
+const SAMPLE_RATE = 8000;
 const BYTES_PER_SAMPLE = 2; // 16-bit PCM
 const CHANNELS = 1;
 
@@ -41,6 +47,23 @@ const MAX_SPEED = 2.0;
 const MIN_AUDIO_CONTENT_LENGTH = 10;
 
 /**
+ * The longest raw `content` this route will even attempt to parse.
+ *
+ * Checked before `parseAudioSegments` runs, not after: without it, a caller
+ * could send an arbitrarily large body and pay for the paragraph split and
+ * per-block regex scan on all of it before `MAX_ESTIMATED_DURATION_SECONDS`
+ * below ever gets a chance to refuse the request. Generous relative to any
+ * chapter this app actually generates (the largest `WORD_COUNTS` rung is
+ * 1500 words, well under 20,000 characters of HTML), so it is a backstop
+ * against a pathological or malicious body rather than a limit a real
+ * chapter is expected to reach.
+ */
+const MAX_AUDIO_CONTENT_LENGTH = 20_000;
+
+/** The longest `voice` override this route accepts — a provider voice id, not caller prose. */
+const MAX_VOICE_LENGTH = 200;
+
+/**
  * Average spoken pace, used to size the mock provider's silence (see
  * `synthesizeMockSegment`) and to estimate a request's narration length
  * before any synthesis runs (see `MAX_ESTIMATED_DURATION_SECONDS`).
@@ -53,31 +76,47 @@ const NARRATION_WORDS_PER_MINUTE = 150;
  * The output is a `data:` URI carrying the whole WAV file inline in the JSON
  * envelope, not a stream or a stored file — deliberately, per
  * `AudioConversionSeam`'s docblock, to avoid new storage infrastructure. At
- * this module's fixed `SAMPLE_RATE`/`BYTES_PER_SAMPLE`, that is 32,000 bytes
- * of raw PCM per second before base64 (~1.33x larger again), so an
- * unbounded chapter risks exceeding a serverless platform's response-size
- * limit, or simply taking a long time to synthesize and transfer for very
- * little benefit over narrating a shorter excerpt. Two minutes of audio is
- * under 5MB of base64 even at this uncompressed rate, and is checked against
- * the *slowest* allowed `speed` — the case that takes the longest to say the
- * same words — so a request that would exceed it is refused before any
- * synthesis call is made, with the estimate that decided so in the message.
+ * this module's fixed `SAMPLE_RATE`/`BYTES_PER_SAMPLE`, that is 16,000 bytes
+ * of raw PCM per second before base64 (~1.33x larger again) — so three
+ * minutes is a little under 4MB of base64, chosen to stay under common
+ * serverless response-size limits with headroom for the surrounding JSON.
+ * Checked against the *slowest* allowed `speed` — the case that takes the
+ * longest to say the same words — so a request that would exceed it is
+ * refused before any synthesis call is made, with the estimate that decided
+ * so in the message.
  *
- * Narrating a full multi-hundred-word chapter in one request, or returning a
- * stored file's URL instead of an inline `data:` URI so the cap can be
- * lifted, is real follow-up work, not a decision this change makes by
+ * This bounds the feature to an excerpt rather than guaranteeing a whole
+ * chapter: at the default speed that is ~450 words, and this app's shortest
+ * `WORD_COUNTS` rung alone is 600. The frontend's "Listen to Chapter"
+ * control and the README are worded around that — an excerpt, not a promise
+ * this seam cannot keep — for the same reason this whole feature exists:
+ * README:3 promised "multi-voice audio narration" with nothing behind it.
+ * Narrating a full chapter needs either a stored file served by URL instead
+ * of an inline `data:` URI, or real compression (MP3/Opus) instead of linear
+ * PCM; both are real follow-up work, not a decision this change makes by
  * omission.
  */
-const MAX_ESTIMATED_DURATION_SECONDS = 120;
+const MAX_ESTIMATED_DURATION_SECONDS = 180;
 
 /**
  * The same speaker-tag shape `extractCharacterNames` in `storyContentAnalysis`
  * already matches: `[Name]:`, `[Name, voice: …]:`, `[Name, emotion: …]:`. Kept
- * as its own pattern rather than imported, because that function throws the
- * match away after reading the name and this one needs the tag's full length
- * to find where the spoken text starts.
+ * as its own pattern rather than imported, because that function throws every
+ * match away after reading the name and this one needs each tag's position
+ * and length to cut the block at every speaker change, not just the first.
+ * Global rather than anchored: `PRODUCTION_AUDIO_AND_VOICE_BLOCK` describes
+ * one speaker tag opening a paragraph, but nothing enforces that a model
+ * output actually keeps to it, and a paragraph carrying two lines of
+ * dialogue — `[Narrator]: She turned. [Mira]: "Stop."` — has a second tag
+ * that an anchored pattern would leave sitting in the Narrator's spoken text,
+ * read aloud as literal words instead of switching the voice.
  */
-const SPEAKER_TAG_PATTERN = /^\[([^\],]+)(?:,\s*[^\]]+)?\]:\s*/;
+const SPEAKER_TAG_PATTERN = /\[([^\],]+)(?:,\s*[^\]]+)?\]:\s*/g;
+
+/** A segment's text, quotes and surrounding whitespace trimmed off. `''` for a run that was only whitespace. */
+function cleanSpokenText(raw: string): string {
+  return raw.trim().replace(/^"([\s\S]*)"$/, '$1').trim();
+}
 
 export interface AudioSegment {
   speaker: string;
@@ -89,21 +128,37 @@ export interface AudioSegment {
  *
  * Reads `splitStoryIntoTextBlocks` rather than the raw string the way every
  * other scan of this content does, so a paragraph break naive tag-stripping
- * would weld is still a paragraph break here. A block with no leading speaker
- * tag is narration, read as `Narrator` — the same default the story prompt's
- * own `AUDIO FORMAT` instructions describe.
+ * would weld is still a paragraph break here. Within each block, every
+ * speaker tag — not just a leading one — starts a new segment; text before
+ * the first tag in a block (or a block with no tag at all) is narration,
+ * read as `Narrator` — the same default the story prompt's own
+ * `AUDIO FORMAT` instructions describe.
  */
 export function parseAudioSegments(content: string): AudioSegment[] {
-  return splitStoryIntoTextBlocks(content)
-    .map(block => {
-      const match = block.match(SPEAKER_TAG_PATTERN);
-      const speaker = match ? match[1].trim() : NARRATOR_SPEAKER;
-      const spoken = match ? block.slice(match[0].length) : block;
-      const text = spoken.trim().replace(/^"([\s\S]*)"$/, '$1').trim();
+  const segments: AudioSegment[] = [];
 
-      return { speaker, text };
-    })
-    .filter(segment => segment.text.length > 0);
+  for (const block of splitStoryIntoTextBlocks(content)) {
+    let speaker = NARRATOR_SPEAKER;
+    let cursor = 0;
+    SPEAKER_TAG_PATTERN.lastIndex = 0;
+
+    for (let match = SPEAKER_TAG_PATTERN.exec(block); match !== null; match = SPEAKER_TAG_PATTERN.exec(block)) {
+      const text = cleanSpokenText(block.slice(cursor, match.index));
+      if (text) {
+        segments.push({ speaker, text });
+      }
+
+      speaker = match[1].trim();
+      cursor = match.index + match[0].length;
+    }
+
+    const text = cleanSpokenText(block.slice(cursor));
+    if (text) {
+      segments.push({ speaker, text });
+    }
+  }
+
+  return segments;
 }
 
 /** `Lord Damien` → `ELEVENLABS_VOICE_LORD_DAMIEN`, the per-character override README:387 already documents the shape of. */
@@ -115,6 +170,20 @@ function speakerEnvKey(speaker: string): string {
 /** A voice id with no external dependency: stable per speaker, distinct across speakers, needing no configuration. */
 function mockVoiceId(speaker: string): string {
   return `mock_voice_${createHash('sha256').update(speaker).digest('hex').slice(0, 12)}`;
+}
+
+/**
+ * ElevenLabs' documented range for `voice_settings.speed`, which is narrower
+ * than this seam's own `MIN_SPEED`/`MAX_SPEED`. Verify against ElevenLabs'
+ * current API reference before relying on this exact bound in production —
+ * providers revise these ranges, and this repository has no network access
+ * to confirm it live.
+ */
+const ELEVENLABS_MIN_SPEED = 0.7;
+const ELEVENLABS_MAX_SPEED = 1.2;
+
+function clampToElevenLabsSpeedRange(speed: number): number {
+  return Math.min(ELEVENLABS_MAX_SPEED, Math.max(ELEVENLABS_MIN_SPEED, speed));
 }
 
 /**
@@ -227,11 +296,28 @@ export class AudioService {
     speed: number,
     requestId: string
   ): Promise<{ pcm: Buffer; voicesUsed: string[] }> {
+    const isMockMode = !this.elevenLabsApiKey;
     const voicesUsed: string[] = [];
     const buffers: Buffer[] = [];
 
     for (const segment of segments) {
-      const voiceId = this.resolveVoiceId(segment.speaker, voiceOverride);
+      const configuredVoiceId = this.resolveConfiguredVoiceId(segment.speaker, voiceOverride);
+
+      // A mock id is only ever a stand-in for "no configuration was found" —
+      // it is never a real ElevenLabs voice. Handing one to the real API on a
+      // request that only forgot to configure a voice would have ElevenLabs
+      // reject it, which `synthesizeSegment`'s catch below reports as "AI
+      // audio narration service temporarily unavailable" — the wrong answer
+      // for what is a configuration gap, not a provider outage.
+      if (!isMockMode && !configuredVoiceId) {
+        throw new CallerFacingAudioError(
+          `No ElevenLabs voice is configured for "${segment.speaker}". Set ELEVENLABS_VOICE_DEFAULT `
+            + '(or ELEVENLABS_VOICE_NARRATOR, or a per-character ELEVENLABS_VOICE_<NAME> override) '
+            + 'before narrating with a real API key.'
+        );
+      }
+
+      const voiceId = configuredVoiceId ?? mockVoiceId(segment.speaker);
       if (!voicesUsed.includes(voiceId)) {
         voicesUsed.push(voiceId);
       }
@@ -243,17 +329,20 @@ export class AudioService {
   }
 
   /**
-   * Resolve a segment's speaker to a voice id.
+   * Resolve a segment's speaker to a voice id actually backed by
+   * configuration, or `null` when none is.
    *
    * Order: the caller's `voice` override, applied to every segment alike; a
    * per-character environment variable named after the speaker (README's own
    * `ELEVENLABS_VOICE_<NAME>` convention, generalized from the creature/gender
    * examples it gave to the character names the tags actually carry); a
-   * narrator-or-default fallback variable; and, failing all three, a
-   * deterministic mock id so a request with none of this configured still
-   * resolves instead of throwing.
+   * narrator-or-default fallback variable. `null` rather than a mock id here:
+   * the caller (`synthesizeSegments`) decides what an unresolved voice means —
+   * a fallback to the mock provider's deterministic id in mock mode, or a
+   * refusal in real mode, where sending that same id to ElevenLabs would only
+   * fail less clearly.
    */
-  private resolveVoiceId(speaker: string, voiceOverride: string | undefined): string {
+  private resolveConfiguredVoiceId(speaker: string, voiceOverride: string | undefined): string | null {
     if (voiceOverride && voiceOverride.trim()) {
       return voiceOverride.trim();
     }
@@ -269,7 +358,7 @@ export class AudioService {
       return fallback.trim();
     }
 
-    return mockVoiceId(speaker);
+    return null;
   }
 
   private async synthesizeSegment(
@@ -288,7 +377,18 @@ export class AudioService {
         {
           text: segment.text,
           model_id: 'eleven_multilingual_v2',
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            // ElevenLabs' own documented range for this setting is narrower
+            // than this seam's `MIN_SPEED`/`MAX_SPEED` (0.5-2.0); clamped
+            // here so a caller's extreme value is still forwarded as the
+            // closest the provider accepts rather than rejected as a
+            // malformed request on a field this route already validated.
+            // The mock path (`synthesizeMockSegment`) honours the full range,
+            // since its "speed" is only ever a duration estimate.
+            speed: clampToElevenLabsSpeedRange(speed)
+          }
         },
         {
           headers: {
@@ -334,6 +434,22 @@ export class AudioService {
     const content: unknown = input.content;
     if (typeof content !== 'string' || content.length < MIN_AUDIO_CONTENT_LENGTH) {
       return { code: 'INVALID_INPUT', message: 'Chapter content is required and must be substantial' };
+    }
+    if (content.length > MAX_AUDIO_CONTENT_LENGTH) {
+      return {
+        code: 'INVALID_INPUT',
+        message: `Content must be ${MAX_AUDIO_CONTENT_LENGTH} characters or fewer`
+      };
+    }
+
+    const voice: unknown = input.voice;
+    if (voice !== undefined) {
+      if (typeof voice !== 'string' || voice.trim().length === 0) {
+        return { code: 'INVALID_INPUT', message: 'voice must be a non-empty string when provided' };
+      }
+      if (voice.length > MAX_VOICE_LENGTH) {
+        return { code: 'INVALID_INPUT', message: `voice must be ${MAX_VOICE_LENGTH} characters or fewer` };
+      }
     }
 
     const speed: unknown = input.speed;
@@ -404,7 +520,7 @@ function estimateDurationSeconds(pcmByteLength: number): number {
 /**
  * A standard 44-byte PCM WAV header in front of `pcm`, at this module's fixed
  * mono 16-bit `SAMPLE_RATE`. Both the mock path and the real ElevenLabs path
- * (`output_format=pcm_16000`) hand this the same shape of buffer, so one
+ * (`output_format=pcm_8000`) hand this the same shape of buffer, so one
  * writer serves either.
  */
 function buildWavBuffer(pcm: Buffer): Buffer {

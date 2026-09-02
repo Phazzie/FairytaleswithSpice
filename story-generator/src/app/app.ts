@@ -1864,12 +1864,16 @@ export class App implements OnDestroy {
 
     // `rawContent` carries the `[Character, voice: …]:`/`[Narrator]:` tags the
     // narration pipeline reads; `htmlContent` is what a chapter falls back to
-    // when a saved project predates that field.
+    // when a saved project predates that field. `buildNarrationExcerpt` caps
+    // it well under `AudioService`'s response-size ceiling — this app's
+    // shortest chapter (600 words) is already past what that ceiling allows
+    // in one inline response, so sending the whole chapter would refuse every
+    // request with a length error instead of narrating an opening excerpt.
     this.storyService
       .convertChapterToAudio({
         storyId: story.storyId,
         chapterId: chapter.chapterId,
-        content: chapter.rawContent ?? chapter.htmlContent
+        content: this.buildNarrationExcerpt(chapter.rawContent ?? chapter.htmlContent)
       })
       .subscribe({
         next: response => {
@@ -1891,6 +1895,37 @@ export class App implements OnDestroy {
           this.notificationService.error('Audio generation failed', message);
         }
       });
+  }
+
+  /**
+   * The opening of a chapter, cut on whole `<p>` blocks, short enough for
+   * `AudioService` to narrate in one inline response.
+   *
+   * `AudioService.MAX_ESTIMATED_DURATION_SECONDS` (180s at the default speed
+   * this app always requests) allows roughly 450 words; 400 keeps margin
+   * without this frontend estimate needing to match the backend's word-count
+   * formula exactly. At least one paragraph is always kept, even one alone
+   * past the budget, so a chapter opening on an unusually long first
+   * paragraph still narrates something rather than nothing.
+   */
+  private buildNarrationExcerpt(rawContent: string): string {
+    const NARRATION_EXCERPT_MAX_WORDS = 400;
+    const paragraphs = rawContent.split(/(?<=<\/p>)/i).filter(paragraph => paragraph.trim().length > 0);
+
+    const kept: string[] = [];
+    let wordCount = 0;
+
+    for (const paragraph of paragraphs) {
+      const words = paragraph.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+      if (kept.length > 0 && wordCount + words > NARRATION_EXCERPT_MAX_WORDS) {
+        break;
+      }
+
+      kept.push(paragraph);
+      wordCount += words;
+    }
+
+    return kept.join('').trim() || rawContent;
   }
 
   saveActiveProject() {
