@@ -1869,11 +1869,14 @@ export class App implements OnDestroy {
     // shortest chapter (600 words) is already past what that ceiling allows
     // in one inline response, so sending the whole chapter would refuse every
     // request with a length error instead of narrating an opening excerpt.
+    const narrationSource =
+      chapter.rawContent && chapter.rawContent.trim().length > 0 ? chapter.rawContent : chapter.htmlContent;
+
     this.storyService
       .convertChapterToAudio({
         storyId: story.storyId,
         chapterId: chapter.chapterId,
-        content: this.buildNarrationExcerpt(chapter.rawContent ?? chapter.htmlContent)
+        content: this.buildNarrationExcerpt(narrationSource)
       })
       .subscribe({
         next: response => {
@@ -1935,7 +1938,7 @@ export class App implements OnDestroy {
         // preserved: `parseAudioSegments` on the backend reads either shape,
         // and truncating at a word boundary in the plain-text reading is what
         // avoids re-balancing whatever markup this cuts through.
-        return plainWords.slice(0, NARRATION_EXCERPT_MAX_WORDS).join(' ');
+        return this.truncateWithoutSplittingASpeakerTag(plainWords, NARRATION_EXCERPT_MAX_WORDS);
       }
 
       kept.push(paragraph);
@@ -1943,6 +1946,26 @@ export class App implements OnDestroy {
     }
 
     return kept.join('').trim() || rawContent;
+  }
+
+  /**
+   * A word-boundary slice can still stop mid speaker-tag — e.g. after
+   * `[Lord` inside `[Lord Damien, voice: velvet-smoke]:` — leaving a bracket
+   * fragment that `AudioService`'s tag pattern won't recognize, so it gets
+   * narrated as spoken text in the preceding speaker's voice instead of
+   * being read as a tag. If the slice's last `[` has no matching `]:` after
+   * it, drop everything from that `[` onward.
+   */
+  private truncateWithoutSplittingASpeakerTag(words: string[], maxWords: number): string {
+    const slice = words.slice(0, maxWords).join(' ');
+    const lastOpenBracket = slice.lastIndexOf('[');
+    const lastClosedTag = slice.lastIndexOf(']:');
+
+    if (lastOpenBracket === -1 || lastOpenBracket < lastClosedTag) {
+      return slice;
+    }
+
+    return slice.slice(0, lastOpenBracket).trim();
   }
 
   saveActiveProject() {

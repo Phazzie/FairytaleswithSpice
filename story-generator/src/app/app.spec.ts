@@ -860,6 +860,74 @@ describe('App', () => {
     expect(component.audioGenerationError()).toBe('AI audio narration service temporarily unavailable');
   });
 
+  // `storyLabEngine` deliberately preserves an empty `rawContent` as a
+  // supported chapter state; narrating from it with `??` used to select that
+  // empty string over the visible `htmlContent` and refuse the request as
+  // missing content instead of narrating the chapter the reader can see.
+  it('narrates from htmlContent when rawContent is blank', () => {
+    seedWorkbenchForContinuation({
+      batch: {
+        chapters: [createChapter({ rawContent: '', htmlContent: '<p>She opened the door.</p>' })],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      }
+    });
+    storyService.convertChapterToAudio.and.returnValue(of({
+      success: true,
+      data: {
+        audioId: 'audio-1',
+        storyId: 'story-123',
+        audioUrl: 'data:audio/wav;base64,UklGRg==',
+        format: 'wav',
+        duration: 1,
+        voiceUsed: ['mock_voice_abc123'],
+        generatedAt: new Date()
+      }
+    }));
+
+    component.generateChapterAudio();
+
+    expect(storyService.convertChapterToAudio).toHaveBeenCalledWith(jasmine.objectContaining({
+      content: '<p>She opened the door.</p>'
+    }));
+  });
+
+  // A word-boundary slice can still land inside a multiword speaker tag —
+  // `[Lord Damien, voice: velvet-smoke]:` split after `[Lord` used to reach
+  // the backend as an unrecognizable bracket fragment, spoken aloud in the
+  // preceding speaker's voice instead of read as a tag.
+  it('drops a speaker tag split by the excerpt boundary instead of sending the fragment', () => {
+    const filler = new Array(397).fill('filler').join(' ');
+    const tail = new Array(60).fill('more').join(' ');
+    const rawContent = `${filler} [Lord Damien, voice: velvet-smoke]: "Stop," she said. ${tail}`;
+
+    seedWorkbenchForContinuation({
+      batch: {
+        chapters: [createChapter({ rawContent, htmlContent: rawContent })],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      }
+    });
+    storyService.convertChapterToAudio.and.returnValue(of({
+      success: true,
+      data: {
+        audioId: 'audio-1',
+        storyId: 'story-123',
+        audioUrl: 'data:audio/wav;base64,UklGRg==',
+        format: 'wav',
+        duration: 1,
+        voiceUsed: ['mock_voice_abc123'],
+        generatedAt: new Date()
+      }
+    }));
+
+    component.generateChapterAudio();
+
+    const sentContent = (storyService.convertChapterToAudio.calls.mostRecent().args[0] as { content: string }).content;
+    expect(sentContent).not.toContain('[');
+    expect(sentContent.trim().split(/\s+/)).toEqual(new Array(397).fill('filler'));
+  });
+
   // The picker used to restate the export format list by hand and had lost
   // `html` — the one format the export route renders that no reader could then
   // ask for.
