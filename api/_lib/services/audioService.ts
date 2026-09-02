@@ -43,6 +43,25 @@ const DEFAULT_SPEED = 1.0;
 const MIN_SPEED = 0.5;
 const MAX_SPEED = 2.0;
 
+/**
+ * The wall-clock budget this service gives itself for every ElevenLabs call
+ * combined, out of the 60s `vercel.json` gives the whole function.
+ *
+ * A single `synthesizeSegment` call can wait up to `ELEVENLABS_REQUEST_TIMEOUT_MS`
+ * on its own, and an excerpt can carry several segments — so awaiting them one
+ * at a time, unbounded, could let one slow call and one more segment run past
+ * the function's own deadline and be killed by the platform mid-response,
+ * which answers with nothing this route's own error envelope produced.
+ * Checked before starting each new segment, so a request already past this
+ * budget fails with a clear, retryable message instead of a platform timeout.
+ * The gap to 60s is headroom for request parsing, validation, and building
+ * the response after the last segment completes.
+ */
+const SYNTHESIS_DEADLINE_MS = 45_000;
+
+/** How long one ElevenLabs call may take before this service gives up on it. Well under `SYNTHESIS_DEADLINE_MS` so at least a few segments can fail fast and still leave room for the next. */
+const ELEVENLABS_REQUEST_TIMEOUT_MS = 20_000;
+
 /** The shortest content a chapter can be narrated from. Mirrors `ImageService`'s floor for the same reason. */
 const MIN_AUDIO_CONTENT_LENGTH = 10;
 
@@ -197,14 +216,26 @@ function clampToElevenLabsSpeedRange(speed: number): number {
  * `AudioConversionSeam.errors.AUDIO_GENERATION_FAILED` declares the field;
  * this is what actually populates it, rather than leaving every response
  * `undefined` regardless of which failure produced it.
+ *
+ * `logSafeMessage` exists because `message` is caller-facing prose that can
+ * legitimately quote a speaker name straight out of the story's own content —
+ * the "no voice configured for X" error names `X` on purpose, for the same
+ * reason `ExportService`'s caller-facing errors are worded for a reader. But
+ * `convertToAudio`'s catch block logs the error it caught, and
+ * `redactSensitiveLogData` only strips known secret shapes (keys, emails,
+ * URLs) — a character name is prose to it, not a token, so it would reach the
+ * server log unredacted. `logSafeMessage` is what that log call reads
+ * instead, defaulting to `message` for a throw with nothing to redact.
  */
 class CallerFacingAudioError extends Error {
   readonly retryable: boolean;
+  readonly logSafeMessage: string;
 
-  constructor(message: string, retryable: boolean) {
+  constructor(message: string, retryable: boolean, logSafeMessage: string = message) {
     super(message);
     this.name = 'CallerFacingAudioError';
     this.retryable = retryable;
+    this.logSafeMessage = logSafeMessage;
   }
 }
 
@@ -244,7 +275,15 @@ export class AudioService {
       }
 
       const speed = input.speed ?? DEFAULT_SPEED;
-      const estimatedSeconds = estimateNarrationSeconds(segments, speed);
+      // The estimate has to reflect what synthesis will actually do with
+      // `speed`, not what the caller asked for: in real mode, `synthesizeSegment`
+      // clamps it into ElevenLabs' narrower range before the provider ever sees
+      // it, and a caller-requested speed above that range reads as faster (so
+      // shorter) than the narration ElevenLabs will actually produce — a gap
+      // that would let an oversized request slip past this check on the
+      // strength of a speed the provider never honours.
+      const effectiveSpeedForEstimate = this.elevenLabsApiKey ? clampToElevenLabsSpeedRange(speed) : speed;
+      const estimatedSeconds = estimateNarrationSeconds(segments, effectiveSpeedForEstimate);
       if (estimatedSeconds > MAX_ESTIMATED_DURATION_SECONDS) {
         return {
           success: false,
@@ -259,7 +298,7 @@ export class AudioService {
       }
 
       const format = input.format ?? DEFAULT_FORMAT;
-      const { pcm, voicesUsed } = await this.synthesizeSegments(segments, input.voice, speed, correlationId);
+      const { pcm, voicesUsed } = await this.synthesizeSegments(segments, input.voice, speed, correlationId, startTime);
       const wavBuffer = buildWavBuffer(pcm);
 
       const output: AudioConversionSeam['output'] = {
@@ -281,8 +320,16 @@ export class AudioService {
       // Through the logger rather than the console, for the reason
       // `ImageService.generateImage`'s catch does: an axios error can carry
       // `config.headers['xi-api-key']`, and `logError` redacts what it keeps
-      // rather than printing whatever the thrown value happens to hold.
-      logError('Audio generation failed', error, {
+      // rather than printing whatever the thrown value happens to hold. That
+      // redaction is token-shaped (keys, emails, URLs); it would not catch a
+      // character name interpolated into `CallerFacingAudioError.message`, so
+      // a `logSafeMessage` version of the error — with the caller-facing
+      // detail intact but the untrusted speaker name generalized away — is
+      // what actually reaches the log for that one.
+      const errorForLogging = error instanceof CallerFacingAudioError
+        ? new Error(error.logSafeMessage)
+        : error;
+      logError('Audio generation failed', errorForLogging, {
         requestId: correlationId,
         endpoint: '/api/audio/convert',
         method: 'POST'
@@ -311,18 +358,39 @@ export class AudioService {
     }
   }
 
-  /** Synthesize every segment in order and concatenate the PCM, so the narration reads in the order the chapter does. */
+  /**
+   * Synthesize every segment in order and concatenate the PCM, so the
+   * narration reads in the order the chapter does.
+   *
+   * `startTime` is `convertToAudio`'s own clock, not a fresh one taken here —
+   * the deadline is against the whole request's wall-clock budget
+   * (`SYNTHESIS_DEADLINE_MS`), which includes validation and parsing that ran
+   * before this method was ever called.
+   */
   private async synthesizeSegments(
     segments: AudioSegment[],
     voiceOverride: string | undefined,
     speed: number,
-    requestId: string
+    requestId: string,
+    startTime: number
   ): Promise<{ pcm: Buffer; voicesUsed: string[] }> {
     const isMockMode = !this.elevenLabsApiKey;
     const voicesUsed: string[] = [];
     const buffers: Buffer[] = [];
 
     for (const segment of segments) {
+      // Checked before starting each segment rather than only once: a
+      // multi-segment excerpt in real mode can have already spent most of the
+      // budget on earlier segments, and starting one more call this route
+      // cannot finish within the function's own deadline would just trade a
+      // clear, retryable error for a platform-level kill mid-response.
+      if (!isMockMode && Date.now() - startTime > SYNTHESIS_DEADLINE_MS) {
+        throw new CallerFacingAudioError(
+          'Audio narration is taking too long to generate. Please try again.',
+          true
+        );
+      }
+
       const configuredVoiceId = this.resolveConfiguredVoiceId(segment.speaker, voiceOverride);
 
       // A mock id is only ever a stand-in for "no configuration was found" —
@@ -334,11 +402,15 @@ export class AudioService {
       if (!isMockMode && !configuredVoiceId) {
         // Not retryable: the request will fail identically until an operator
         // sets a voice, which is not something the caller's next attempt can fix.
+        // `segment.speaker` is untrusted story content, not caller metadata —
+        // it belongs in the response returned to the request's own caller,
+        // not in the server log; see `logSafeMessage`.
         throw new CallerFacingAudioError(
           `No ElevenLabs voice is configured for "${segment.speaker}". Set ELEVENLABS_VOICE_DEFAULT `
             + '(or ELEVENLABS_VOICE_NARRATOR, or a per-character ELEVENLABS_VOICE_<NAME> override) '
             + 'before narrating with a real API key.',
-          false
+          false,
+          'No ElevenLabs voice is configured for one of this chapter\'s speakers.'
         );
       }
 
@@ -360,12 +432,15 @@ export class AudioService {
    * Order: the caller's `voice` override, applied to every segment alike; a
    * per-character environment variable named after the speaker (README's own
    * `ELEVENLABS_VOICE_<NAME>` convention, generalized from the creature/gender
-   * examples it gave to the character names the tags actually carry); a
-   * narrator-or-default fallback variable. `null` rather than a mock id here:
-   * the caller (`synthesizeSegments`) decides what an unresolved voice means —
-   * a fallback to the mock provider's deterministic id in mock mode, or a
-   * refusal in real mode, where sending that same id to ElevenLabs would only
-   * fail less clearly.
+   * examples it gave to the character names the tags actually carry); for the
+   * narrator specifically, `ELEVENLABS_VOICE_NARRATOR`; and finally
+   * `ELEVENLABS_VOICE_DEFAULT` for anyone still unresolved, narrator included —
+   * an operator who sets only `ELEVENLABS_VOICE_DEFAULT` (this seam's smallest
+   * documented setup) still narrates every speaker, not just named characters.
+   * `null` rather than a mock id here: the caller (`synthesizeSegments`)
+   * decides what an unresolved voice means — a fallback to the mock
+   * provider's deterministic id in mock mode, or a refusal in real mode,
+   * where sending that same id to ElevenLabs would only fail less clearly.
    */
   private resolveConfiguredVoiceId(speaker: string, voiceOverride: string | undefined): string | null {
     if (voiceOverride && voiceOverride.trim()) {
@@ -377,10 +452,16 @@ export class AudioService {
       return perCharacter.trim();
     }
 
-    const fallbackKey = speaker === NARRATOR_SPEAKER ? 'ELEVENLABS_VOICE_NARRATOR' : 'ELEVENLABS_VOICE_DEFAULT';
-    const fallback = process.env[fallbackKey];
-    if (fallback && fallback.trim()) {
-      return fallback.trim();
+    if (speaker === NARRATOR_SPEAKER) {
+      const narratorVoice = process.env['ELEVENLABS_VOICE_NARRATOR'];
+      if (narratorVoice && narratorVoice.trim()) {
+        return narratorVoice.trim();
+      }
+    }
+
+    const defaultVoice = process.env['ELEVENLABS_VOICE_DEFAULT'];
+    if (defaultVoice && defaultVoice.trim()) {
+      return defaultVoice.trim();
     }
 
     return null;
@@ -423,7 +504,7 @@ export class AudioService {
           },
           params: { output_format: `pcm_${SAMPLE_RATE}` },
           responseType: 'arraybuffer',
-          timeout: 60000
+          timeout: ELEVENLABS_REQUEST_TIMEOUT_MS
         }
       );
 

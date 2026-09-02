@@ -1904,9 +1904,11 @@ export class App implements OnDestroy {
    * `AudioService.MAX_ESTIMATED_DURATION_SECONDS` (180s at the default speed
    * this app always requests) allows roughly 450 words; 400 keeps margin
    * without this frontend estimate needing to match the backend's word-count
-   * formula exactly. At least one paragraph is always kept, even one alone
-   * past the budget, so a chapter opening on an unusually long first
-   * paragraph still narrates something rather than nothing.
+   * formula exactly. A single paragraph alone past the budget — including
+   * `rawContent` that is plain text with no `<p>` breaks at all, which reads
+   * here as one paragraph — is truncated at a word boundary rather than kept
+   * whole: sending it intact regardless of size was exactly the kind of
+   * silent overpromise this feature exists to stop making.
    */
   private buildNarrationExcerpt(rawContent: string): string {
     const NARRATION_EXCERPT_MAX_WORDS = 400;
@@ -1919,6 +1921,17 @@ export class App implements OnDestroy {
       const words = paragraph.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
       if (kept.length > 0 && wordCount + words > NARRATION_EXCERPT_MAX_WORDS) {
         break;
+      }
+
+      if (kept.length === 0 && words > NARRATION_EXCERPT_MAX_WORDS) {
+        // The one block by itself is already oversized — including a
+        // plain-text chapter with no `<p>` breaks, which is this whole
+        // string read as a single "paragraph". Tags are stripped rather than
+        // preserved: `parseAudioSegments` on the backend reads either shape,
+        // and truncating markup safely at a word boundary is what the plain
+        // word-list already lets this do without re-balancing open tags.
+        const plainWords = paragraph.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean);
+        return plainWords.slice(0, NARRATION_EXCERPT_MAX_WORDS).join(' ');
       }
 
       kept.push(paragraph);

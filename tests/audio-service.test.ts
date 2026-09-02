@@ -123,6 +123,58 @@ async function testPerCharacterVoiceEnvVarOverridesTheMockFallback(): Promise<vo
   }
 }
 
+// `ELEVENLABS_VOICE_DEFAULT` alone — this seam's smallest documented setup —
+// has to cover the Narrator too, not just named characters.
+// `resolveConfiguredVoiceId` runs identically in mock and real mode (only the
+// "unconfigured in real mode" throw is mode-specific), so this exercises the
+// same fallback bug without an API key or a network call: `voiceUsed` reports
+// whatever the resolver actually picked either way.
+async function testDefaultVoiceEnvVarAloneCoversTheNarrator(): Promise<void> {
+  process.env['ELEVENLABS_VOICE_DEFAULT'] = 'operator_default_voice';
+  try {
+    const result = await new AudioService().convertToAudio(createInput({
+      content: '<p>[Narrator]: Only the narrator speaks here.</p>'
+    }));
+    assert(result.success, `ELEVENLABS_VOICE_DEFAULT alone should resolve the narrator (got ${JSON.stringify(result.error)})`);
+    const voices = (result.data as AudioConversionSeam['output']).voiceUsed;
+    assert(voices.includes('operator_default_voice'), `the default voice should be used for the narrator (got ${JSON.stringify(voices)})`);
+  } finally {
+    delete process.env['ELEVENLABS_VOICE_DEFAULT'];
+  }
+}
+
+// In real mode, ElevenLabs only ever receives a speed clamped into its own
+// narrower range — so the pre-synthesis length estimate has to use that
+// clamped value too, or a caller requesting a fast speed the provider won't
+// honor could slip an oversized request past the cap on the strength of an
+// estimate synthesis will never actually produce.
+async function testDurationEstimateUsesTheProvidersEffectiveSpeedInRealMode(): Promise<void> {
+  process.env['ELEVENLABS_API_KEY'] = 'test-key-not-a-real-credential';
+  try {
+    // 600 words at the caller's requested speed (2.0) estimates ~120s — under
+    // the cap — but ElevenLabs clamps to 1.2, where the same words take ~200s,
+    // over it. This must be refused for exceeding the cap, not accepted and
+    // then produce an oversized response (or a shorter one than promised).
+    const result = await new AudioService().convertToAudio(createInput({
+      content: '<p>[Narrator]: ' + 'word '.repeat(600) + '</p>',
+      speed: 2.0
+    }));
+    assert(!result.success, 'a request only short enough at an unhonoured speed should be refused');
+    assert(result.error?.code === 'INVALID_INPUT', `got ${result.error?.code}`);
+
+    // The same content and speed in mock mode is fine: the mock path honours
+    // the caller's raw speed in full, with nothing to clamp.
+    delete process.env['ELEVENLABS_API_KEY'];
+    const mockResult = await new AudioService().convertToAudio(createInput({
+      content: '<p>[Narrator]: ' + 'word '.repeat(600) + '</p>',
+      speed: 2.0
+    }));
+    assert(mockResult.success, 'the same request should narrate fine in mock mode, where speed is not clamped');
+  } finally {
+    delete process.env['ELEVENLABS_API_KEY'];
+  }
+}
+
 // The caller's `voice` override, when sent, applies to every segment — even
 // the ones that would otherwise resolve to different voices.
 async function testCallerVoiceOverrideAppliesToEverySegment(): Promise<void> {
@@ -282,6 +334,8 @@ async function main(): Promise<void> {
   await testSpeedScalesTheEstimatedDuration();
   await testMalformedInputIsRejectedAsCallerError();
   await testRealModeRequiresAConfiguredVoice();
+  await testDefaultVoiceEnvVarAloneCoversTheNarrator();
+  await testDurationEstimateUsesTheProvidersEffectiveSpeedInRealMode();
   await testTheRequestIdReachesTheEnvelope();
 
   assert(AUDIO_FORMATS.length === 1 && AUDIO_FORMATS[0] === 'wav', 'this seam should still support exactly one format: wav');
