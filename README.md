@@ -382,7 +382,7 @@ Content-Type: application/json
 3. Update story generation prompts
 
 ### **Custom Voices**
-`AudioService` resolves each speaker tag to a voice in this order: the caller's `voice` override, a per-character variable named after the speaker, a narrator/default fallback, and finally a deterministic id with no external dependency. Set environment variables to configure real ElevenLabs voices:
+`AudioService` resolves each speaker tag to a voice in this order: the caller's `voice` override, a per-character variable named after the speaker, then a narrator/default fallback (`ELEVENLABS_VOICE_NARRATOR`/`ELEVENLABS_VOICE_DEFAULT`). The deterministic id after that is a **mock-mode-only** fallback — it is never a real ElevenLabs voice, so with `ELEVENLABS_API_KEY` set, a speaker that reaches it instead fails the request with a configuration error naming the speaker. A production deployment needs at least `ELEVENLABS_VOICE_DEFAULT` set, or every speaker mapped individually. Set environment variables to configure real ElevenLabs voices:
 ```env
 ELEVENLABS_VOICE_LORD_DAMIEN=your_voice_id
 ELEVENLABS_VOICE_NARRATOR=your_voice_id

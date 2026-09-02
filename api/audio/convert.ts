@@ -15,6 +15,14 @@ import {
 } from '../_lib/utils/loggableRequestParameters';
 
 export default async function handler(req: any, res: any) {
+  // Taken before `beginPostRoute`, not inside `AudioService.convertToAudio`:
+  // that preamble can itself take real time (a `RATE_LIMIT_STORE=postgres`
+  // lookup), and Vercel's 60-second `maxDuration` clock is already running
+  // during it. Starting the synthesis deadline's own clock only once this
+  // handler reaches the service call would let that preamble time go
+  // uncounted against the platform's actual deadline.
+  const invocationStartTime = Date.now();
+
   // Correlation id, `X-Request-ID`, CORS, method, and access control, in the
   // one place every paid POST route states them. `null` means the response
   // has already been written and there is nothing left for this handler to do.
@@ -64,7 +72,7 @@ export default async function handler(req: any, res: any) {
     });
 
     const audioService = new AudioService();
-    const result = await audioService.convertToAudio(input, requestId);
+    const result = await audioService.convertToAudio(input, requestId, invocationStartTime);
 
     logInfo(`Audio generation ${result.success ? 'succeeded' : 'failed'}`, {
       requestId,

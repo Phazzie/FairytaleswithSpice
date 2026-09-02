@@ -363,9 +363,19 @@ export class AudioService {
 
   async convertToAudio(
     input: AudioConversionSeam['input'],
-    requestId?: string
+    requestId?: string,
+    invocationStartTime?: number
   ): Promise<ApiResponse<AudioConversionSeam['output']>> {
-    const startTime = Date.now();
+    // Defaults to now for direct callers (tests, and any future caller with
+    // no invocation clock of its own), but the route handler passes its own
+    // timestamp taken *before* `beginPostRoute`. Without that, a slow
+    // rate-limit store lookup (`RATE_LIMIT_STORE=postgres`) runs entirely
+    // before this method is even called, so `SYNTHESIS_DEADLINE_MS` would
+    // budget as if the request had its full 45 seconds left when Vercel's own
+    // 60-second `maxDuration` clock had already been running for some of it —
+    // letting the platform kill the invocation past its own deadline instead
+    // of this route answering with its own retryable error.
+    const startTime = invocationStartTime ?? Date.now();
     const correlationId = this.resolveRequestId(requestId);
 
     try {
@@ -716,15 +726,19 @@ export class AudioService {
         );
       }
 
-      // Not every provider failure means the same retry advice: an invalid
-      // API key or an invalid configured voice id will fail identically on
-      // every attempt until an operator fixes the configuration, while a
-      // rate limit or a provider-side outage might clear on its own.
-      // `isRetryableElevenLabsError` is what tells the two apart instead of
-      // this route promising a retry can fix a permanent misconfiguration.
+      // Not every provider failure means the same retry advice, and the
+      // message has to agree with `retryable` rather than contradict it: an
+      // invalid API key or an invalid configured voice id will fail
+      // identically on every attempt until an operator fixes the
+      // configuration — telling the reader that's "temporary" invites a
+      // retry that can only fail the same way again. A rate limit or a
+      // provider-side outage, by contrast, might genuinely clear on its own.
+      const retryable = isRetryableElevenLabsError(error);
       throw new CallerFacingAudioError(
-        'AI audio narration service temporarily unavailable',
-        isRetryableElevenLabsError(error)
+        retryable
+          ? 'AI audio narration service temporarily unavailable'
+          : 'AI audio narration failed due to a configuration or request problem. Check the provider API key and configured voice IDs.',
+        retryable
       );
     }
   }

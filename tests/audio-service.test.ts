@@ -399,6 +399,28 @@ async function testTheRequestIdReachesTheEnvelope(): Promise<void> {
   assert(result.metadata?.requestId === 'audio-req-fixed-id', 'a caller-supplied request id should reach the envelope unchanged');
 }
 
+// The route handler passes its own invocation timestamp — taken before the
+// `beginPostRoute` preamble, which can itself spend real time on a slow
+// rate-limit store lookup — so the synthesis deadline counts against the
+// same clock Vercel's `maxDuration` does, not a fresh one started only once
+// this method is reached.
+async function testInvocationStartTimeCountsPreambleTimeAgainstTheDeadline(): Promise<void> {
+  process.env['ELEVENLABS_API_KEY'] = 'test-key-not-a-real-credential';
+  process.env['ELEVENLABS_VOICE_DEFAULT'] = 'test-voice-id-not-real';
+  try {
+    const invocationStartTime = Date.now() - 1_000_000; // far enough in the past that no budget remains, regardless of the exact deadline constant
+    const result = await new AudioService().convertToAudio(createInput(), undefined, invocationStartTime);
+
+    assert(!result.success, 'a request whose invocation clock already exhausted the deadline should refuse rather than call the provider');
+    assert(result.error?.code === 'AUDIO_GENERATION_FAILED', `got ${result.error?.code}`);
+    assert(/taking too long/i.test(result.error?.message ?? ''), `the message should say why (got ${result.error?.message})`);
+    assert((result.error as { retryable?: unknown }).retryable === true, 'a deadline-exceeded failure should be retryable');
+  } finally {
+    delete process.env['ELEVENLABS_API_KEY'];
+    delete process.env['ELEVENLABS_VOICE_DEFAULT'];
+  }
+}
+
 async function main(): Promise<void> {
   testSpeakerTagsAreParsedIntoOrderedSegments();
   testUntaggedTextIsNarration();
@@ -419,6 +441,7 @@ async function main(): Promise<void> {
   await testConsecutiveSameSpeakerParagraphsAreCoalescedForTheSegmentCap();
   testRetryabilityClassificationForProviderErrors();
   await testTheRequestIdReachesTheEnvelope();
+  await testInvocationStartTimeCountsPreambleTimeAgainstTheDeadline();
 
   assert(AUDIO_FORMATS.length === 1 && AUDIO_FORMATS[0] === 'wav', 'this seam should still support exactly one format: wav');
 
