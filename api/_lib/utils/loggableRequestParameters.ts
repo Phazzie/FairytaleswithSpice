@@ -2,7 +2,7 @@
 
 import { CREATURE_ARCHETYPES } from '../../../shared/creatureVocabulary';
 import { STORY_LAB_THEME_SEED_IDS } from '../../../shared/storyLabThemeSeeds';
-import { EXPORT_FORMATS, VALIDATION_RULES } from '../types/contracts';
+import { AUDIO_FORMATS, EXPORT_FORMATS, VALIDATION_RULES } from '../types/contracts';
 
 /**
  * The theme ids a log line may repeat, which is both vocabularies the seams
@@ -113,6 +113,13 @@ export function toLoggableExportFormat(format: unknown): string {
     : UNRECOGNIZED_PARAMETER;
 }
 
+/** Log an audio format only when it is one. See `toLoggableExportFormat` above for why. */
+export function toLoggableAudioFormat(format: unknown): string {
+  return typeof format === 'string' && (AUDIO_FORMATS as readonly string[]).includes(format)
+    ? format
+    : UNRECOGNIZED_PARAMETER;
+}
+
 /**
  * The shape of an identifier this repository would have minted.
  *
@@ -196,6 +203,15 @@ export const EXPORT_REQUEST_FIELDS: readonly string[] = [
   'includeChapters',
   'creature',
   'themes'
+];
+
+/** `AudioConversionSeam['input']`, for `/api/audio/convert`'s refusal line. */
+export const AUDIO_CONVERSION_REQUEST_FIELDS: readonly string[] = [
+  'storyId',
+  'chapterId',
+  'content',
+  'speed',
+  'format'
 ];
 
 export interface LoggableFieldNames {

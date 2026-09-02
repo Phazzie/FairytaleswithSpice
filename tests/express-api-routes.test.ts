@@ -24,6 +24,7 @@ const EXPECTED_ROUTE_PATHS = [
   '/api/health',
   '/api/export/save',
   '/api/image/generate',
+  '/api/audio/convert',
   '/api/story-lab/stories',
   '/api/story-lab/stories/:storyId/continue',
   '/api/story-lab/evaluate',
@@ -75,6 +76,7 @@ assert.equal(registeredHandlers.size, EXPECTED_ROUTE_PATHS.length);
  */
 const CLIENT_REQUEST_PATHS = [
   '/api/image/generate',
+  '/api/audio/convert',
   '/api/story-lab/stories',
   '/api/story-lab/stories/story_abc/continue',
   '/api/story-lab/jobs',

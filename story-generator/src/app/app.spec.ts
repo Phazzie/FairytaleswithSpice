@@ -9,6 +9,7 @@ import { NotificationService } from './notification.service';
 import { OBJECT_URL_REVOKE_DELAY_MS } from '../../../shared/htmlDocumentDownload';
 import {
   ApiResponse,
+  AudioConversionSeam,
   CloudStoryProjectDeleteReceipt,
   StoryIterationPayload,
   StoryLabJob,
@@ -293,6 +294,7 @@ describe('App', () => {
       'loadCloudStoryProject',
       'deleteCloudStoryProject',
       'generateImage',
+      'convertChapterToAudio',
       'exportStory'
     ]);
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
@@ -768,6 +770,68 @@ describe('App', () => {
     fixture.detectChanges();
 
     expect(component.imageGenerationError()).toBe('Themes are required and must be a non-empty array');
+  });
+
+  it('narrates and plays back audio for the selected chapter', () => {
+    const payload = seedWorkbenchForContinuation();
+    const chapter = payload.batch.chapters[0];
+    const audio: AudioConversionSeam['output'] = {
+      audioId: 'audio-1',
+      storyId: payload.summary.storyId,
+      audioUrl: 'data:audio/wav;base64,UklGRg==',
+      format: 'wav',
+      duration: 4.2,
+      voiceUsed: ['mock_voice_abc123'],
+      generatedAt: new Date()
+    };
+    storyService.convertChapterToAudio.and.returnValue(of({ success: true, data: audio }));
+    fixture.detectChanges();
+
+    const narrateButton = fixture.nativeElement.querySelector('[data-testid="generate-audio"]') as HTMLButtonElement;
+    narrateButton.click();
+    fixture.detectChanges();
+
+    expect(storyService.convertChapterToAudio).toHaveBeenCalledWith(jasmine.objectContaining({
+      storyId: payload.summary.storyId,
+      chapterId: chapter.chapterId
+    }));
+    expect(component.isGeneratingAudio()).toBeFalse();
+
+    const player = fixture.nativeElement.querySelector('[data-testid="chapter-audio-player"]') as HTMLAudioElement | null;
+    expect(player?.src).toBe(audio.audioUrl);
+  });
+
+  it('shows an error instead of a player when narration fails', () => {
+    seedWorkbenchForContinuation();
+    storyService.convertChapterToAudio.and.returnValue(of({
+      success: false,
+      error: { code: 'AUDIO_GENERATION_FAILED', message: 'AI audio narration service temporarily unavailable', retryable: true }
+    }));
+    fixture.detectChanges();
+
+    const narrateButton = fixture.nativeElement.querySelector('[data-testid="generate-audio"]') as HTMLButtonElement;
+    narrateButton.click();
+    fixture.detectChanges();
+
+    const errorText = fixture.nativeElement.querySelector('[data-testid="chapter-audio-error"]') as HTMLElement | null;
+    const player = fixture.nativeElement.querySelector('[data-testid="chapter-audio-player"]') as HTMLAudioElement | null;
+    expect(errorText?.textContent?.trim()).toBe('AI audio narration service temporarily unavailable');
+    expect(player).toBeNull();
+  });
+
+  it('disables the narrate button while a request is in flight', () => {
+    seedWorkbenchForContinuation();
+    const pending = new Subject<ApiResponse<AudioConversionSeam['output']>>();
+    storyService.convertChapterToAudio.and.returnValue(pending.asObservable());
+    fixture.detectChanges();
+
+    const narrateButton = fixture.nativeElement.querySelector('[data-testid="generate-audio"]') as HTMLButtonElement;
+    narrateButton.click();
+    fixture.detectChanges();
+
+    expect(component.isGeneratingAudio()).toBeTrue();
+    expect(narrateButton.disabled).toBeTrue();
+    expect(narrateButton.textContent?.trim()).toBe('Narrating…');
   });
 
   // The picker used to restate the export format list by hand and had lost

@@ -488,6 +488,84 @@ export interface ImageGenerationSeam {
   };
 }
 
+/**
+ * The audio container formats `/api/audio/convert` can answer with.
+ *
+ * One format for this seam's first version, and it is WAV rather than the
+ * MP3 the stale README example named: `AudioService` requests raw PCM from
+ * ElevenLabs (`output_format=pcm_16000`) and wraps it in a WAV header it
+ * writes itself, and builds the same container for its own mock narration
+ * when no `ELEVENLABS_API_KEY` is configured — one code path either way,
+ * producing a file this repository can decode and duration-check without an
+ * MP3 encoder dependency. Read the way `IMAGE_STYLES` and `EXPORT_FORMATS`
+ * are: a closed list, so a caller asking for a format this pipeline does not
+ * produce gets `UNSUPPORTED_FORMAT` rather than an envelope that silently
+ * ships something else. Widening this to MP3 is real future work, not a
+ * decision this change makes by omission.
+ */
+export const AUDIO_FORMATS = ['wav'] as const;
+export type AudioFormat = typeof AUDIO_FORMATS[number];
+
+/**
+ * SEAM 6: Chapter → Audio Narration.
+ *
+ * The README has documented this contract's request shape since before this
+ * interface existed — `POST /api/audio/convert` with `storyId`, `content`,
+ * `voice`, `speed`, `format` — while `api/audio/`, `audioService.ts`, and every
+ * piece of the pipeline it describes were absent from the repository. The data
+ * model already carried the other half of that promise: `Chapter.hasAudio`,
+ * `audioUrl`, and `audioDuration` in this file, and `Chapter.rawContent` kept
+ * specifically "with speaker tags for audio" — fields every production call
+ * site sets to `false`/`undefined` because nothing could ever set them
+ * otherwise. `AudioService` is what makes `rawContent` (the `[Character, voice:
+ * …]`/`[Narrator]:` tags `PRODUCTION_AUDIO_AND_VOICE_BLOCK` already instructs
+ * the model to emit) resolve to a real answer here instead of a promise the
+ * data model made on the app's behalf.
+ *
+ * `voice` names a caller override for every segment without a per-character
+ * mapping configured; see `AudioService` for how a segment's speaker resolves
+ * to an ElevenLabs voice id, and the mock fallback used with no
+ * `ELEVENLABS_API_KEY` — the same `storyService.ts` fallback shape, not a
+ * second mocking convention.
+ */
+export interface AudioConversionSeam {
+  seamName: "Chapter → Audio Narration";
+  description: "Converts speaker-tagged chapter text into narrated audio using ElevenLabs.";
+
+  input: {
+    storyId: string;
+    chapterId?: string;
+    content: string; // Speaker-tagged text: `[Character, voice: …]: "…"` / `[Narrator]: …`
+    voice?: string; // Overrides the resolved voice for every segment when set
+    speed?: number; // Playback speed multiplier
+    format?: AudioFormat; // Defaults to 'wav'
+  };
+
+  output: {
+    audioId: string;
+    storyId: string;
+    audioUrl: string; // `data:` URI carrying the synthesized audio
+    format: AudioFormat;
+    duration: number; // Estimated seconds
+    voiceUsed: string[]; // Distinct voice ids the narration actually used, in first-use order
+    generatedAt: Date;
+  };
+
+  errors: {
+    AUDIO_GENERATION_FAILED: {
+      code: "AUDIO_GENERATION_FAILED";
+      message: string;
+      retryable: boolean;
+    };
+    UNSUPPORTED_FORMAT: {
+      code: "UNSUPPORTED_FORMAT";
+      message: string;
+      requestedFormat: string;
+      supportedFormats: AudioFormat[];
+    };
+  };
+}
+
 // ==================== VALIDATION RULES ====================
 export const VALIDATION_RULES = {
   userInput: {

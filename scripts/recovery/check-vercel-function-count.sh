@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 EXPECTED_FUNCTIONS=(
+  "api/audio/convert.ts"
   "api/export/save.ts"
   "api/health.ts"
   "api/image/generate.ts"

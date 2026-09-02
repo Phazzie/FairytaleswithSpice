@@ -92,6 +92,13 @@ export { EXPORT_FORMATS } from '../../../api/_lib/types/contracts';
 export type { ImageStyle, ImageGenerationSeam } from '../../../api/_lib/types/contracts';
 export { IMAGE_STYLES } from '../../../api/_lib/types/contracts';
 
+// `AudioFormat` and `AudioConversionSeam` for the same reason: the narration
+// pipeline runs entirely in `api/_lib`, so this is the one definition rather
+// than a second copy that could drift the way `ExportFormat` and
+// `ImageGenerationSeam` above already had.
+export type { AudioFormat, AudioConversionSeam } from '../../../api/_lib/types/contracts';
+export { AUDIO_FORMATS } from '../../../api/_lib/types/contracts';
+
 export const NARRATIVE_TONES = [
   'romance',
   'dark_romance',

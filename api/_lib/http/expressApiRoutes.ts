@@ -5,6 +5,7 @@ import { readRequestCorrelationId } from './requestCorrelationId';
 import healthHandler from '../../health';
 import exportSaveHandler from '../../export/save';
 import imageGenerateHandler from '../../image/generate';
+import audioConvertHandler from '../../audio/convert';
 import storyLabEvaluateHandler from '../../story-lab/evaluate';
 import { createStoryLabGenesisHandler } from '../../story-lab/stories';
 import { createStoryLabContinuationHandler } from '../../story-lab/stories/[storyId]/continue';
@@ -86,6 +87,7 @@ export const API_ROUTES: readonly ApiRouteDefinition[] = [
   { path: '/api/health', handler: healthHandler },
   { path: '/api/export/save', handler: exportSaveHandler },
   { path: '/api/image/generate', handler: imageGenerateHandler },
+  { path: '/api/audio/convert', handler: audioConvertHandler },
   { path: '/api/story-lab/stories', handler: storyLabGenesisHandler },
   {
     path: '/api/story-lab/stories/:storyId/continue',

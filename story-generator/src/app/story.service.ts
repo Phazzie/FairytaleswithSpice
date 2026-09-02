@@ -4,6 +4,7 @@ import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import {
   ApiResponse,
+  AudioConversionSeam,
   CloudStoryProjectDeleteReceipt,
   CloudStoryProjectList,
   CloudStoryProjectLoadResult,
@@ -212,6 +213,19 @@ export class StoryService {
     return this.http
       .post<ApiResponse<ImageGenerationSeam['output']>>('/api/image/generate', input)
       .pipe(catchError(error => this.handleHttpError(error, 'generateImage')));
+  }
+
+  /**
+   * Narrate a story chapter's speaker-tagged text into audio.
+   */
+  convertChapterToAudio(input: AudioConversionSeam['input']): Observable<ApiResponse<AudioConversionSeam['output']>> {
+    this.errorLogging.logInfo('Requesting chapter narration', 'StoryService.convertChapterToAudio', {
+      storyId: input.storyId
+    });
+
+    return this.http
+      .post<ApiResponse<AudioConversionSeam['output']>>('/api/audio/convert', input)
+      .pipe(catchError(error => this.handleHttpError(error, 'convertChapterToAudio')));
   }
 
   exportStory(input: SaveExportSeam['input']): Observable<ApiResponse<SaveExportSeam['output']>> {

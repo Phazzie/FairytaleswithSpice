@@ -24,6 +24,7 @@ import { buildStoryHtmlDocument } from './story-html-exporter';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { CREATURE_ARCHETYPES, readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import {
+  AudioConversionSeam,
   BatchProgressState,
   CHAPTER_BATCH_SIZES,
   ChapterBatchSize,
@@ -715,6 +716,16 @@ export class App implements OnDestroy {
    */
   readonly imageGenerationError = computed(() => {
     const failure = this.chapterImageFailure();
+    return failure && failure.chapterId === this.selectedChapter()?.chapterId ? failure.message : null;
+  });
+
+  readonly isGeneratingAudio = signal(false);
+  readonly generatedChapterAudio = signal<{ chapterId: string; audio: AudioConversionSeam['output'] } | null>(null);
+  readonly chapterAudioFailure = signal<{ chapterId: string; message: string } | null>(null);
+
+  /** The audio failure to show under the chapter currently open. See `imageGenerationError` for why this is scoped. */
+  readonly audioGenerationError = computed(() => {
+    const failure = this.chapterAudioFailure();
     return failure && failure.chapterId === this.selectedChapter()?.chapterId ? failure.message : null;
   });
   // Read from the contract rather than restated here: this list had lost
@@ -1836,6 +1847,48 @@ export class App implements OnDestroy {
           const message = this.formatHttpError(error, 'Image generation failed. Please try again.');
           this.chapterImageFailure.set({ chapterId: chapter.chapterId, message });
           this.notificationService.error('Image generation failed', message);
+        }
+      });
+  }
+
+  generateChapterAudio() {
+    const chapter = this.selectedChapter();
+    const story = this.workbench().story;
+
+    if (!chapter || !story || this.isGeneratingAudio()) {
+      return;
+    }
+
+    this.isGeneratingAudio.set(true);
+    this.chapterAudioFailure.set(null);
+
+    // `rawContent` carries the `[Character, voice: …]:`/`[Narrator]:` tags the
+    // narration pipeline reads; `htmlContent` is what a chapter falls back to
+    // when a saved project predates that field.
+    this.storyService
+      .convertChapterToAudio({
+        storyId: story.storyId,
+        chapterId: chapter.chapterId,
+        content: chapter.rawContent ?? chapter.htmlContent
+      })
+      .subscribe({
+        next: response => {
+          this.isGeneratingAudio.set(false);
+
+          if (response.success) {
+            this.generatedChapterAudio.set({ chapterId: chapter.chapterId, audio: response.data });
+            this.notificationService.success('Narration ready', 'Your chapter narration is ready to play.');
+          } else {
+            const message = response.error?.message ?? 'Audio generation failed.';
+            this.chapterAudioFailure.set({ chapterId: chapter.chapterId, message });
+            this.notificationService.error('Audio generation failed', message);
+          }
+        },
+        error: error => {
+          this.isGeneratingAudio.set(false);
+          const message = this.formatHttpError(error, 'Audio generation failed. Please try again.');
+          this.chapterAudioFailure.set({ chapterId: chapter.chapterId, message });
+          this.notificationService.error('Audio generation failed', message);
         }
       });
   }
