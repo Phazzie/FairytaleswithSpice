@@ -2,6 +2,8 @@
 // Created: 2026-08-24 13:58 UTC
 
 import {
+  API_KEY_MINIMUM_DISTINCT_CHARACTERS,
+  API_KEY_MINIMUM_LENGTH,
   authenticateRequest,
   resetApiKeyConfigurationWarningForTests
 } from '../api/_lib/middleware/security';
@@ -11,6 +13,22 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+/**
+ * A token body of `length` characters that is varied enough to clear
+ * {@link API_KEY_MINIMUM_DISTINCT_CHARACTERS}, so a test about *length* or
+ * *padding* is not silently also a test about variety.
+ *
+ * The fixtures here used to be `'k'.repeat(n)`, which the variety rule now
+ * refuses. Keeping them would have made the length boundary pass for the wrong
+ * reason — and the padding test's "a genuine base64 token still authenticates"
+ * case would have started failing while the behaviour it names was still
+ * correct. One rule per assertion is the point.
+ */
+function variedBody(length: number): string {
+  const alphabet = 'abcdefgh';
+  return Array.from({ length }, (_, index) => alphabet[index % alphabet.length]).join('');
 }
 
 const LIVE_KEY = 'sk-live-supersecret-value';
@@ -67,8 +85,8 @@ async function testTheUnconfiguredWarningIsWrittenOncePerConfiguration(): Promis
     );
 
     // A configured deployment has nothing to warn about.
-    process.env['API_KEYS'] = 'key-one';
-    await authenticateRequest({ method: 'POST', headers: { 'x-api-key': 'key-one' }, body: {} });
+    process.env['API_KEYS'] = 'sk-test-first-key-value';
+    await authenticateRequest({ method: 'POST', headers: { 'x-api-key': 'sk-test-first-key-value' }, body: {} });
     assert(
       countUnconfiguredWarnings() === 1,
       'a configured deployment should add no warning of its own'
@@ -94,47 +112,366 @@ function countUnconfiguredWarnings(): number {
     .length;
 }
 
+/**
+ * Drive one request against one `API_KEYS` configuration.
+ *
+ * The warning state is process-wide and gated on the raw `API_KEYS` value, so
+ * each case resets it: otherwise a configuration that happens to repeat an
+ * earlier one would log nothing and the log assertions below would be reading
+ * the previous case's entries.
+ */
+async function authenticateWith(configuredKeys: string, presentedKey: string) {
+  const previous = process.env['API_KEYS'];
+  process.env['API_KEYS'] = configuredKeys;
+  resetApiKeyConfigurationWarningForTests();
+  logger.clearLogs();
+
+  try {
+    return await authenticateRequest({
+      method: 'POST',
+      headers: { 'x-api-key': presentedKey },
+      body: {}
+    });
+  } finally {
+    if (previous === undefined) {
+      delete process.env['API_KEYS'];
+    } else {
+      process.env['API_KEYS'] = previous;
+    }
+    resetApiKeyConfigurationWarningForTests();
+  }
+}
+
+/**
+ * An `API_KEYS` entry has to look like a credential to be used as one.
+ *
+ * Every entry used to be trusted on the single condition that it was non-empty,
+ * so `abcdef`, `test`, and the four characters left behind by an unfinished
+ * paste were live credentials for routes that spend real money — and the
+ * deployment could not tell, because nothing refused them and nothing said so.
+ *
+ * The defect each case kills is named in its message. The one that matters most
+ * is the third: the plausible way to write this rule is to drop unusable entries
+ * and let the existing `length === 0` check take over, which routes a
+ * misconfiguration straight into development mode and serves every caller as
+ * `development_user`. That is strictly worse than the hole being closed, so it
+ * is asserted directly rather than left to follow from the others.
+ */
+async function testTheConfiguredKeyContract(): Promise<void> {
+  const usable = 'sk-test-first-key-value';
+  const tooShort = 'abcdef';
+
+  const short = await authenticateWith(tooShort, tooShort);
+  assert(
+    !short.authenticated,
+    'a configured key below the minimum length should not authenticate'
+  );
+
+  // Entries are comma-split and trimmed, so what survives to here with a space
+  // or a quote in it came from a shell that kept the quoting, not a generator.
+  const malformed = 'a key with spaces that is long enough';
+  const outsideAlphabet = await authenticateWith(malformed, malformed);
+  assert(
+    !outsideAlphabet.authenticated,
+    'a configured key outside the credential alphabet should not authenticate'
+  );
+
+  // The one that must never regress: a configuration that is entirely unusable
+  // is a *refusal*, not an absence. Reaching the development-mode branch here
+  // would turn one typo in `API_KEYS` into an app with no authentication at all.
+  assert(
+    short.error?.code === 'API_KEY_CONFIGURATION_INVALID',
+    `an unusable configuration should be reported as misconfigured, got ${short.error?.code}`
+  );
+  assert(
+    short.userId !== 'development_user',
+    'an unusable configuration must not fall back to unconfigured development mode'
+  );
+  const noKeyPresented = await authenticateWith(tooShort, '');
+  assert(
+    !noKeyPresented.authenticated && noKeyPresented.userId !== 'development_user',
+    'an unusable configuration should refuse a request that presents no key at all'
+  );
+
+  // A rejected entry must not take its usable neighbours down with it.
+  const alongside = await authenticateWith(`${tooShort},${usable}`, usable);
+  assert(
+    alongside.authenticated,
+    'a usable key should still authenticate when configured alongside a rejected one'
+  );
+  const rejectedNeighbour = await authenticateWith(`${tooShort},${usable}`, tooShort);
+  assert(
+    !rejectedNeighbour.authenticated,
+    'a rejected key should not authenticate even when a usable key is configured beside it'
+  );
+
+  // The boundary, asserted against the contract rather than a copy of the number.
+  const atMinimum = variedBody(API_KEY_MINIMUM_LENGTH);
+  const belowMinimum = variedBody(API_KEY_MINIMUM_LENGTH - 1);
+  assert(
+    (await authenticateWith(atMinimum, atMinimum)).authenticated,
+    `a key of exactly ${API_KEY_MINIMUM_LENGTH} characters should authenticate`
+  );
+  assert(
+    !(await authenticateWith(belowMinimum, belowMinimum)).authenticated,
+    `a key one character below ${API_KEY_MINIMUM_LENGTH} should not authenticate`
+  );
+}
+
+/**
+ * `=` is base64 padding, and padding is not secret.
+ *
+ * Both halves of this were live holes found in review. A flat character class
+ * accepted `=` anywhere, so `================` — sixteen characters of pure
+ * padding and no credential whatsoever — satisfied both the alphabet and the
+ * length floor and authenticated. And measuring the floor over the whole string
+ * let padding stand in for the entropy the floor exists to require, so
+ * `a===============` cleared a sixteen-character minimum carrying one character
+ * of key. The grammar now demands a token body before any padding, and the
+ * length is measured on that body.
+ */
+async function testPaddingCannotStandInForCredential(): Promise<void> {
+  const allPadding = '='.repeat(API_KEY_MINIMUM_LENGTH);
+  assert(
+    !(await authenticateWith(allPadding, allPadding)).authenticated,
+    'a value of nothing but padding should not authenticate'
+  );
+
+  const oneCharacterAndPadding = `a${'='.repeat(API_KEY_MINIMUM_LENGTH - 1)}`;
+  assert(
+    !(await authenticateWith(oneCharacterAndPadding, oneCharacterAndPadding)).authenticated,
+    'padding should not count toward the minimum length'
+  );
+
+  const leadingPadding = `=${variedBody(API_KEY_MINIMUM_LENGTH)}`;
+  assert(
+    !(await authenticateWith(leadingPadding, leadingPadding)).authenticated,
+    'padding is only ever trailing, so a leading `=` is not a well-formed token'
+  );
+
+  // A real base64 token carries at most two padding characters, and stays valid.
+  const paddedRealToken = `${variedBody(API_KEY_MINIMUM_LENGTH)}==`;
+  assert(
+    (await authenticateWith(paddedRealToken, paddedRealToken)).authenticated,
+    'a genuine base64 token with trailing padding should still authenticate'
+  );
+}
+
+/**
+ * A key can clear the length floor by repeating one character sixteen times.
+ *
+ * `kkkkkkkkkkkkkkkk` is sixteen characters of the grammar's alphabet carrying
+ * one character of information, and before this rule it authenticated — the
+ * floor satisfied rather than met. The variety rule refuses that family.
+ *
+ * **Both directions matter, and the second is the one that could break a real
+ * deployment.** A rule that refuses a generated key is worse than the hole it
+ * closes, so the accepting half asserts against the generator the setup docs
+ * actually name (`openssl rand -hex 24`) and against the shortest key the
+ * contract allows, drawn from the smallest alphabet those docs name.
+ *
+ * The residual is asserted too, deliberately: `changemechangeme` carries seven
+ * distinct characters and **authenticates**. Pinning that keeps the contract's
+ * documentation honest — the rule refuses degenerate repetition, not weak
+ * choices, and the next reader should find that written down as a test rather
+ * than discover it. See #321.
+ */
+async function testDegenerateKeysAreRefused(): Promise<void> {
+  const degenerate = [
+    'k'.repeat(API_KEY_MINIMUM_LENGTH),
+    '0'.repeat(API_KEY_MINIMUM_LENGTH),
+    'ab'.repeat(API_KEY_MINIMUM_LENGTH),
+    'aaaabbbbccccdddd'
+  ];
+
+  for (const entry of degenerate) {
+    const result = await authenticateWith(entry, entry);
+    assert(
+      !result.authenticated,
+      `a key drawn from fewer than ${API_KEY_MINIMUM_DISTINCT_CHARACTERS} distinct characters should not authenticate (${entry})`
+    );
+    assert(
+      result.error?.code === 'API_KEY_CONFIGURATION_INVALID',
+      'a configuration holding only degenerate keys should fail closed, not report a bad request key'
+    );
+  }
+
+  // The boundary itself, against the contract rather than a copy of the number.
+  const atDistinctMinimum =
+    'abcde' + 'a'.repeat(API_KEY_MINIMUM_LENGTH - API_KEY_MINIMUM_DISTINCT_CHARACTERS);
+  assert(
+    new Set(atDistinctMinimum).size === API_KEY_MINIMUM_DISTINCT_CHARACTERS,
+    'the boundary fixture should sit exactly on the distinct-character floor'
+  );
+  assert(
+    (await authenticateWith(atDistinctMinimum, atDistinctMinimum)).authenticated,
+    `a key with exactly ${API_KEY_MINIMUM_DISTINCT_CHARACTERS} distinct characters should authenticate`
+  );
+
+  const belowDistinctMinimum =
+    'abcd' + 'a'.repeat(API_KEY_MINIMUM_LENGTH - (API_KEY_MINIMUM_DISTINCT_CHARACTERS - 1));
+  assert(
+    !(await authenticateWith(belowDistinctMinimum, belowDistinctMinimum)).authenticated,
+    `a key one distinct character below ${API_KEY_MINIMUM_DISTINCT_CHARACTERS} should not authenticate`
+  );
+
+  // Variety is measured on the body, like the length floor, and for the same
+  // reason: padding is not secret, so it must not supply the variety either.
+  // This body carries four distinct characters and the padding would make five.
+  const paddingInflatedVariety = `${'abcd' + 'a'.repeat(API_KEY_MINIMUM_LENGTH - 4)}==`;
+  assert(
+    new Set(paddingInflatedVariety).size === API_KEY_MINIMUM_DISTINCT_CHARACTERS,
+    'the fixture should clear the floor only when padding is counted'
+  );
+  assert(
+    !(await authenticateWith(paddingInflatedVariety, paddingInflatedVariety)).authenticated,
+    'padding must not count toward the distinct-character floor'
+  );
+
+  // Keys a correct operator actually produces must survive the rule.
+  const generated = [
+    // `openssl rand -hex 24`, which SECURITY_IMPLEMENTATION_GUIDE.md recommends.
+    '9f3c2a71b40e2d81ff60ac957b1e4460a3d95c82f1704bd6',
+    // The shortest key the contract allows, over the smallest alphabet it names.
+    '0f3c2a71b40e2d81',
+    'sk-live-real-key',
+    LIVE_KEY
+  ];
+
+  for (const entry of generated) {
+    assert(
+      (await authenticateWith(entry, entry)).authenticated,
+      `a generated key must not be refused by the variety rule (${entry})`
+    );
+  }
+
+  // The residual, pinned rather than implied: variety is not entropy.
+  const dictionaryPlaceholder = 'changemechangeme';
+  assert(
+    (await authenticateWith(dictionaryPlaceholder, dictionaryPlaceholder)).authenticated,
+    'the variety rule refuses repetition, not weak choices — this is the documented residual (#321)'
+  );
+}
+
+/**
+ * `API_KEYS` set to something that holds no key is a misconfiguration, not an
+ * absence.
+ *
+ * A secret substitution that silently produces whitespace is the exact case
+ * where reading the value as "unset" is worst: the operator asked for
+ * authentication, the deploy pipeline gave them nothing, and treating that as
+ * development mode would serve every caller as `development_user`. The empty
+ * string is the one spelling that still counts as absent, because `API_KEYS=`
+ * is how a `.env` file writes an unset variable and the deployment docs have
+ * always described it that way.
+ */
+async function testABlankConfigurationFailsClosed(): Promise<void> {
+  for (const blank of [' ', '   ', ',', ' , ', ',,,']) {
+    const result = await authenticateWith(blank, 'anything');
+    assert(
+      !result.authenticated,
+      `API_KEYS=${JSON.stringify(blank)} holds no key and should refuse every request`
+    );
+    assert(
+      result.userId !== 'development_user',
+      `API_KEYS=${JSON.stringify(blank)} must not be read as an unset variable`
+    );
+  }
+
+  const emptyString = await authenticateWith('', 'anything');
+  assert(
+    emptyString.authenticated && emptyString.userId === 'development_user',
+    'API_KEYS="" is how a .env file spells unset and should stay in development mode'
+  );
+}
+
+/**
+ * Whitespace around an entry belongs to the comma-separated list, not to the
+ * entry, so it is stripped before the grammar sees it.
+ *
+ * Pinned because the grammar's docblock claims it, and because the first draft
+ * of that docblock claimed the opposite — that a value configured with a
+ * trailing newline was refused. It is not: it is the same credential as the
+ * value without one, which is also how `readHeader` reads a presented key.
+ */
+async function testSeparatorWhitespaceIsNotPartOfTheEntry(): Promise<void> {
+  const key = 'sk-test-first-key-value';
+  assert(
+    (await authenticateWith(`${key}\n`, key)).authenticated,
+    'a trailing newline is separator whitespace and should not change the credential'
+  );
+  assert(
+    !(await authenticateWith(`sk-test-first\nkey-value`, 'sk-test-first\nkey-value')).authenticated,
+    'a newline inside an entry is part of the entry and should be refused'
+  );
+}
+
+/**
+ * A rejected entry is still whatever the operator believed was a credential —
+ * quite possibly a real one that is merely too short. The report that it was
+ * refused must therefore count entries rather than name them, or the hardening
+ * would write secrets into the log as the price of refusing them.
+ */
+async function testRejectedKeysAreNeverWrittenToTheLog(): Promise<void> {
+  const secretButTooShort = 'hunter2';
+  const usable = 'sk-test-first-key-value';
+
+  for (const configuration of [secretButTooShort, `${secretButTooShort},${usable}`]) {
+    await authenticateWith(configuration, usable);
+
+    const written = JSON.stringify(logger.getRecentLogs(200));
+    assert(
+      !written.includes(secretButTooShort),
+      `a rejected key value must not reach the log (configuration: ${configuration.length} chars)`
+    );
+    assert(
+      written.includes('unusable'),
+      'a rejected key should still be reported, by count'
+    );
+  }
+}
+
 async function main(): Promise<void> {
-  process.env['API_KEYS'] = 'key-one, key-two ,key-three';
+  process.env['API_KEYS'] = 'sk-test-first-key-value, sk-test-second-key-value ,sk-test-third-key-value';
 
   const spacedKey = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'key-two' },
+    headers: { 'x-api-key': 'sk-test-second-key-value' },
     body: {}
   });
   assert(spacedKey.authenticated, 'keys configured with surrounding spaces should still authenticate');
 
   const lastKey = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'key-three' },
+    headers: { 'x-api-key': 'sk-test-third-key-value' },
     body: {}
   });
   assert(lastKey.authenticated, 'every configured key should authenticate');
 
   const bearer = await authenticateRequest({
     method: 'POST',
-    headers: { authorization: 'Bearer key-one' },
+    headers: { authorization: 'Bearer sk-test-first-key-value' },
     body: {}
   });
   assert(bearer.authenticated, 'a Bearer authorization header should authenticate');
 
   const lowercaseBearer = await authenticateRequest({
     method: 'POST',
-    headers: { authorization: 'bearer key-one' },
+    headers: { authorization: 'bearer sk-test-first-key-value' },
     body: {}
   });
   assert(lowercaseBearer.authenticated, 'the Bearer scheme should be matched case-insensitively');
 
   const tabSeparatedBearer = await authenticateRequest({
     method: 'POST',
-    headers: { authorization: 'Bearer\tkey-one' },
+    headers: { authorization: 'Bearer\tsk-test-first-key-value' },
     body: {}
   });
   assert(tabSeparatedBearer.authenticated, 'any whitespace may separate the scheme from the credentials');
 
   const bearerLookalike = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'bearerkey-one' },
+    headers: { 'x-api-key': 'bearersk-test-first-key-value' },
     body: {}
   });
   assert(!bearerLookalike.authenticated, 'a key merely starting with "bearer" should not have a prefix stripped');
@@ -161,14 +498,14 @@ async function main(): Promise<void> {
 
   const repeatedHeader = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': ['key-one', 'key-two'] },
+    headers: { 'x-api-key': ['sk-test-first-key-value', 'sk-test-second-key-value'] },
     body: {}
   });
   assert(repeatedHeader.authenticated, 'a repeated header delivered as an array should authenticate');
 
   const embeddedBearer = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'not Bearer key-one' },
+    headers: { 'x-api-key': 'not Bearer sk-test-first-key-value' },
     body: {}
   });
   assert(!embeddedBearer.authenticated, 'the Bearer prefix should only be stripped from the start of the value');
@@ -176,7 +513,7 @@ async function main(): Promise<void> {
 
   const canonicalCaseApiKeyHeader = await authenticateRequest({
     method: 'POST',
-    headers: { 'X-API-Key': 'key-one' },
+    headers: { 'X-API-Key': 'sk-test-first-key-value' },
     body: {}
   });
   assert(
@@ -186,7 +523,7 @@ async function main(): Promise<void> {
 
   const canonicalCaseAuthorizationHeader = await authenticateRequest({
     method: 'POST',
-    headers: { Authorization: 'Bearer key-three' },
+    headers: { Authorization: 'Bearer sk-test-third-key-value' },
     body: {}
   });
   assert(
@@ -196,7 +533,7 @@ async function main(): Promise<void> {
 
   const wrongKey = await authenticateRequest({
     method: 'POST',
-    headers: { 'x-api-key': 'key-onex' },
+    headers: { 'x-api-key': 'sk-test-first-key-valuex' },
     body: {}
   });
   assert(!wrongKey.authenticated, 'a key that is not configured should be rejected');
@@ -243,6 +580,12 @@ async function main(): Promise<void> {
   assert(unconfigured.authenticated, 'requests should still pass through when no keys are configured');
 
   await testTheUnconfiguredWarningIsWrittenOncePerConfiguration();
+  await testTheConfiguredKeyContract();
+  await testPaddingCannotStandInForCredential();
+  await testDegenerateKeysAreRefused();
+  await testABlankConfigurationFailsClosed();
+  await testSeparatorWhitespaceIsNotPartOfTheEntry();
+  await testRejectedKeysAreNeverWrittenToTheLog();
 
   console.log('API key auth tests passed');
 }

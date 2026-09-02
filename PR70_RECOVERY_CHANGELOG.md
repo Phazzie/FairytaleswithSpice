@@ -69,6 +69,181 @@ Not claimed:
 
 - No evidence this path is reachable in production today — see the "masked today" note above. This is a currently-dead-in-production but fully-built and now-correct capability, the same category as the `paths`/`statusPath` seam it completes.
 
+## 2026-08-28 UTC - `API_KEYS` accepted any non-empty string as a credential
+
+Closes the first of the two directions #314 records. `authenticateRequest` built
+`validKeys` by splitting `API_KEYS` on commas and keeping anything non-empty —
+no length rule, no alphabet rule — so `abcdef`, `test`, `changeme`, and the four
+characters left behind by an unfinished paste were all live credentials for
+every route that spends real money on the xAI API. Nothing refused them and
+nothing said so.
+
+Actions:
+
+- **Added a credential contract to `api/_lib/middleware/security.ts`.** A
+  configured entry is usable only if it matches RFC 6750's `b64token`
+  *grammar* — a body drawn from `A-Z a-z 0-9 . _ ~ + / -`, followed only by
+  trailing `=` padding — and its body, excluding that padding, is at least
+  `API_KEY_MINIMUM_LENGTH` (16) characters. Sixteen is where an API key's floor
+  usually sits, and it is well above the eight-character values a person types
+  by hand; the grammar rule is well-formedness rather than entropy, catching
+  the entry that kept its shell quoting — which could never have authenticated
+  anything, and until now failed as an unexplained 401. Whitespace *around* an
+  entry belongs to the comma-separated list rather than to the entry and is
+  stripped before the grammar sees it, so a value carrying a trailing newline
+  is the same credential as the value without one; a newline *inside* an entry
+  is part of that entry and is refused.
+- **One real behaviour change beyond the weak-key refusal.** A passphrase-style
+  entry with an interior space worked through `X-API-Key` and is now refused.
+  That is intended — a space ends the credential in the
+  `Authorization: Bearer` scheme, so such a value was only ever half a key,
+  working on one documented transport and silently failing on the other.
+- **Split "unconfigured" from "misconfigured", which is the point of the slice.**
+  The development-mode fallback now keys on *nothing having been written at
+  all* — the variable absent, or the empty string `API_KEYS=` produces in a
+  `.env` file. Everything else fails closed with 401
+  `API_KEY_CONFIGURATION_INVALID`, never `development_user`: a deployment that
+  configured entries and had every one of them refused, and equally one whose
+  value holds no entry at all (`" "` from a secret substitution that produced
+  nothing, or `","`). The
+  plausible way to write this rule — drop the unusable entries and let the
+  existing `length === 0` check take over — routes a typo in `API_KEYS` straight
+  into an app with no authentication at all, which is strictly worse than the
+  hole being closed.
+- **The rejection report counts entries rather than naming them.** A refused
+  entry is still whatever the operator believed was a credential, quite possibly
+  a real one that is merely too short, and the logger's own redaction does not
+  recognise an arbitrary short string as a secret. Partial rejection warns;
+  total rejection logs an error, because nothing is being served. Both reuse the
+  existing once-per-configuration gate, so neither repeats at request rate.
+- **Updated `SECURITY_IMPLEMENTATION_GUIDE.md`**, which is the active setup doc
+  and whose `API_KEYS=key1,key2,key3` example would now fail closed if an
+  operator copied it. Same for the example in `authenticateRequest`'s own
+  docblock. `SECURITY_FIXES_QUICK_REFERENCE.md` is historical prescriptive
+  content against an old `api/lib/` path and is deliberately untouched; its
+  example values happen to satisfy the contract already.
+- **Existing fixtures in `tests/api-key-auth.test.ts` had to become
+  credential-shaped.** `key-one`/`key-two`/`key-three` are 7-9 characters — they
+  were standing in for credentials and are exactly what the contract now
+  refuses. `tests/api-access-control.test.ts` needed no change: its
+  `sk-live-real-key` fixture is 16 characters exactly.
+
+Validation:
+
+- `npm run test:all` exits 0 (79 chained scripts).
+- **Counterfactual mutations: 8 applied, 8 killed** across the slice — five for
+  the work above, three more for the review repairs recorded below. Removing the
+  length rule; removing the grammar rule; letting rejected entries still match a
+  presented key; making an entirely unusable configuration fall into development
+  mode; putting the configured value into the rejection report's metadata;
+  flattening the grammar back to a plain alphabet class; measuring the minimum
+  over padding; and reading a blank-but-present `API_KEYS` as unset — each fails
+  `tests/api-key-auth.test.ts`. None is committed.
+- No new suite; these belong to the file that already proves this surface.
+
+Not claimed: this is a change to what a deployment may configure, not evidence
+that any deployment had configured a weak key. It is a **breaking configuration
+change** — a deployment running on a short key today, or with `API_KEYS` set to
+whitespace or bare separators, will start refusing requests, loudly and with a
+named error code, which is the intended direction of failure for an auth
+contract.
+
+Review round 1 (Codex and CodeRabbit on `f8ee3c7`) — **four findings, all
+valid, all fixed.** Two of them defeated the contract's own stated rationale,
+and my self-review pass had disclosed one of the four while defending it:
+
+- **`================` authenticated.** Sixteen characters of pure base64
+  padding satisfied a flat `[A-Za-z0-9._~+/=-]` class *and* the sixteen-character
+  floor while carrying no credential at all. `=` is padding and padding is only
+  ever trailing, after at least one character of real token, so the rule is now
+  RFC 6750's actual `b64token` **grammar** rather than its alphabet:
+  `/^[A-Za-z0-9._~+/-]+=*$/`.
+- **`a===============` authenticated.** The same defect from the other side:
+  measuring the floor over the whole string let padding stand in for the entropy
+  the floor exists to require. The length is now measured on the token body with
+  trailing padding removed. A genuine base64 token carries at most two padding
+  characters and is unaffected.
+- **`API_KEYS=" "` and `API_KEYS=","` served every caller as `development_user`.**
+  My self-review had named this and argued for keeping it, on the grounds that
+  `API_KEYS=""` is how a `.env` file spells "unset" and failing closed on it
+  would turn a blank template variable into an outage. Both reviewers pushed
+  back and they are right — the distinction I needed was *absent* versus
+  *present-but-empty of keys*, which is available and which I did not take.
+  Only `undefined` and `''` are now read as unconfigured; anything with content
+  in it that yields no entry fails closed. A secret substitution that silently
+  produces whitespace is precisely the case where reading it as "unset" is
+  worst.
+- **The grammar docblock claimed something false.** It said an entry carrying a
+  trailing newline was refused. It is not: entries are trimmed first, because
+  `key-one, key-two` is the ordinary way to write a comma-separated list, so
+  whitespace around an entry belongs to the *list*. That is correct behaviour
+  and matches how `readHeader` reads a presented key — the documentation was
+  wrong, not the code. Corrected and pinned with an assertion, alongside one
+  showing a newline *inside* an entry is still refused.
+
+Three of the eight counterfactual mutations listed under Validation above belong
+to these repairs: flattening the grammar back to a plain alphabet class,
+measuring the minimum over padding, and reading a blank-but-present `API_KEYS`
+as unset. All three killed.
+
+Review round 2 (Codex on `94c5599` and `8d90184`) — two findings, one taken in
+code and one declined, both on the owner's instruction to decide rather than
+escalate further:
+
+- **Taken: a key can satisfy the length floor by repeating one character.**
+  `kkkkkkkkkkkkkkkk` is sixteen characters of the grammar's alphabet carrying
+  one character of information, and it authenticated. Added
+  `API_KEY_MINIMUM_DISTINCT_CHARACTERS` (5), measured on the token body like the
+  length floor and for the same reason — padding is not secret, so it must not
+  supply the variety either. Reported as its own rejection reason, because "too
+  short" would be false for that value and would send the operator to lengthen a
+  key that is already long enough.
+
+  Five is where the rule provably cannot refuse a correctly generated key. The
+  worst case a correct operator can reach is an entry at exactly the minimum
+  length drawn from hex, the smallest alphabet the guide names; there the
+  false-refusal rate is bounded by C(16,4)·(4/16)^16 ≈ 4 × 10⁻⁷, and for the
+  48-character `openssl rand -hex 24` the guide actually recommends it did not
+  occur once in 200,000 trials. A rule that refuses a generated key would be
+  worse than the hole it closes, so the margin is the point rather than the
+  strictness.
+
+  **The residual is written down and asserted rather than implied.** The rule
+  refuses degenerate *repetition*, not a weak *choice*: `changemechangeme`
+  carries seven distinct characters and still authenticates, and the suite
+  asserts that it does. Raising the floor to catch it would refuse a legitimate
+  sixteen-character hex key about two percent of the time, and a word list is
+  unbounded. Describing the contract as rejecting placeholders when it rejects
+  only repetition would be the same overclaim review already corrected once in
+  this entry's documentation. Closing the rest means *issuing* credentials
+  instead of validating operator-chosen ones — #321.
+
+- **Declined: failing closed on `API_KEYS=""`.** It does not close the class it
+  appears to close — an unset `API_KEYS` reaches development mode identically,
+  and the app's own frontend has never sent a key, so a production deployment
+  runs on that fallback today. Closing the empty string would therefore break
+  every `.env` that spells an absent variable as `API_KEYS=` while leaving the
+  actual fail-open path exactly where it was. The change that closes it is
+  gating development mode on the environment rather than on the spelling of the
+  variable, and that is a migration (issue a key, ship it to the frontend), not
+  a one-word fix. Recorded on #321 with the trivial-key residual, since
+  requiring issued credentials settles both.
+
+Four counterfactual mutations for this round, all killed: removing the variety
+rule; raising the floor to eight, where it starts refusing real hex keys;
+measuring variety over the whole entry so padding can supply it; and the
+existing fixtures, which had to stop being `'k'.repeat(16)` — that value is now
+refused, so a length test written on it would have passed for the wrong reason
+and the padding test's "a genuine base64 token still authenticates" case would
+have failed while the behaviour it names was still correct.
+
+Deliberately not in this slice: the readability half of #314. Making
+`redactBearerTokens` spare the ordinary word after `bearer` is still not sound,
+because a bearer token in a log line may be a *provider* credential (xAI,
+ElevenLabs, Clerk) that `API_KEYS` says nothing about, so a contract covering
+this app's own keys does not license a shape check over every bearer token. #314
+stays open with that narrowed.
+
 ## 2026-08-28 UTC - Two cuts that took more than they were cutting
 
 Two readers each removed something the caller still had: a whole word, and the
@@ -227,7 +402,6 @@ Not claimed:
 - **The linearity bound in the test is a shape check, not a benchmark.** It
   asserts that 4× the input costs well under 10× the time, which excludes n²
   while leaving headroom for a slow or contended CI machine.
-
 
 ## 2026-08-28 UTC - The three readers the whole-word sweep missed
 
