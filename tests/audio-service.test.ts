@@ -159,13 +159,15 @@ async function testDefaultVoiceEnvVarAloneCoversTheNarrator(): Promise<void> {
 async function testDurationEstimateUsesTheProvidersEffectiveSpeedInRealMode(): Promise<void> {
   process.env['ELEVENLABS_API_KEY'] = 'test-key-not-a-real-credential';
   try {
-    // 600 words at the caller's requested speed (2.0) estimates ~120s — under
-    // the cap — but ElevenLabs clamps to 1.2, where the same words take ~200s,
-    // over it. This must be refused for exceeding the cap, not accepted and
-    // then produce an oversized response (or a shorter one than promised).
+    // 600 words at the caller's requested speed (1.5, this seam's own
+    // ceiling — see `VALIDATION_RULES.audioSpeed`) estimates ~160s — under
+    // the cap — but ElevenLabs clamps anything above 1.2 down to 1.2, where
+    // the same words take ~200s, over it. This must be refused for exceeding
+    // the cap, not accepted and then produce an oversized response (or a
+    // shorter one than promised).
     const result = await new AudioService().convertToAudio(createInput({
       content: '<p>[Narrator]: ' + 'word '.repeat(600) + '</p>',
-      speed: 2.0
+      speed: 1.5
     }));
     assert(!result.success, 'a request only short enough at an unhonoured speed should be refused');
     assert(result.error?.code === 'INVALID_INPUT', `got ${result.error?.code}`);
@@ -175,7 +177,7 @@ async function testDurationEstimateUsesTheProvidersEffectiveSpeedInRealMode(): P
     delete process.env['ELEVENLABS_API_KEY'];
     const mockResult = await new AudioService().convertToAudio(createInput({
       content: '<p>[Narrator]: ' + 'word '.repeat(600) + '</p>',
-      speed: 2.0
+      speed: 1.5
     }));
     assert(mockResult.success, 'the same request should narrate fine in mock mode, where speed is not clamped');
   } finally {
@@ -269,6 +271,13 @@ async function testMalformedInputIsRejectedAsCallerError(): Promise<void> {
 
   const speedTooHigh = await new AudioService().convertToAudio(createInput({ speed: 10 }));
   assert(speedTooHigh.error?.code === 'INVALID_INPUT', 'a speed outside the supported range is a caller error');
+
+  // The service's own ceiling must match `VALIDATION_RULES.audioSpeed.max`
+  // (1.5) — a value this route accepted but the shared contract rejected
+  // would leave a client validating against that rule out of sync with what
+  // this endpoint actually enforces.
+  const speedAboveContractCeiling = await new AudioService().convertToAudio(createInput({ speed: 1.6 }));
+  assert(speedAboveContractCeiling.error?.code === 'INVALID_INPUT', `a speed above the contract's ceiling should be a caller error (got ${speedAboveContractCeiling.error?.code})`);
 
   const unsupportedFormat = await new AudioService().convertToAudio(
     createInput({ format: 'flac' as AudioConversionSeam['input']['format'] })

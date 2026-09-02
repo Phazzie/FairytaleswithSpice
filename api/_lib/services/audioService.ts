@@ -13,7 +13,7 @@
 
 import axios from 'axios';
 import { randomUUID, createHash } from 'node:crypto';
-import { ApiResponse, AUDIO_FORMATS, AudioConversionSeam, AudioFormat } from '../types/contracts';
+import { ApiResponse, AUDIO_FORMATS, AudioConversionSeam, AudioFormat, VALIDATION_RULES } from '../types/contracts';
 import { splitStoryIntoTextBlocks } from '../../../shared/storyTextBlocks';
 import { logApiError, logError } from '../utils/logger';
 import { toLoggableStoryId } from '../utils/loggableRequestParameters';
@@ -40,8 +40,13 @@ const AUDIO_MIME_TYPES: Record<AudioFormat, string> = {
 const NARRATOR_SPEAKER = 'Narrator';
 export const DEFAULT_FORMAT: AudioFormat = 'wav';
 const DEFAULT_SPEED = 1.0;
-const MIN_SPEED = 0.5;
-const MAX_SPEED = 2.0;
+// Read from `VALIDATION_RULES.audioSpeed` rather than restated as separate
+// literals: that rule is the one published bound for this field, and a
+// client validating against it must agree with what this route actually
+// enforces, or a request one side accepts the other rejects on the same
+// field they're both supposed to describe identically.
+const MIN_SPEED = VALIDATION_RULES.audioSpeed.min;
+const MAX_SPEED = VALIDATION_RULES.audioSpeed.max;
 
 /**
  * The wall-clock budget this service gives itself for every ElevenLabs call
@@ -679,7 +684,7 @@ export class AudioService {
             stability: 0.5,
             similarity_boost: 0.75,
             // ElevenLabs' own documented range for this setting is narrower
-            // than this seam's `MIN_SPEED`/`MAX_SPEED` (0.5-2.0); clamped
+            // than this seam's `MIN_SPEED`/`MAX_SPEED`; clamped
             // here so a caller's extreme value is still forwarded as the
             // closest the provider accepts rather than rejected as a
             // malformed request on a field this route already validated.
@@ -711,8 +716,23 @@ export class AudioService {
         }
       );
 
-      return Buffer.from(response.data as ArrayBuffer);
+      const pcm = Buffer.from(response.data as ArrayBuffer);
+
+      // A `200` alone doesn't mean usable audio: an empty body, a truncated
+      // transfer, or a byte count that doesn't divide evenly into 16-bit
+      // samples would otherwise be wrapped in a WAV header and returned as a
+      // success — a silent or unplayable player reported as "Narration
+      // ready" instead of the provider failure it actually is.
+      if (pcm.length === 0 || pcm.length % BYTES_PER_SAMPLE !== 0) {
+        throw new CallerFacingAudioError('AI audio narration service temporarily unavailable', true);
+      }
+
+      return pcm;
     } catch (error: any) {
+      if (error instanceof CallerFacingAudioError) {
+        throw error;
+      }
+
       logApiError('ElevenLabs Audio API', error, {
         requestId,
         endpoint: '/api/audio/convert',
