@@ -2360,6 +2360,26 @@ describe('App', () => {
     expect(restoredAcceptedButton?.disabled).toBeTrue();
   });
 
+  it('does not leak memory-card state into a new App instance with nothing saved to restore', () => {
+    // Simulates navigating away (e.g. to /proving-grounds) and back with no
+    // saved project: Angular destroys this `App` and constructs a new one,
+    // and `restoreLatestProject()` finds nothing to hydrate over it. Memory
+    // cards must not survive that — MemoryCardService is provided on `App`
+    // itself precisely so a fresh component gets a fresh service instance
+    // instead of inheriting a root singleton's leftover state.
+    seedMaraMemoryCardWorkbench();
+    clickFirstMemoryCardDraftAction('pin-memory-card-draft');
+    clickFirstMemoryCardDraftAction('accept-memory-card-draft');
+    expect(component.acceptedMemoryCards().length).toBe(1);
+    expect(component.pinnedMemoryCardDraftCount()).toBeGreaterThan(0);
+
+    const freshFixture = TestBed.createComponent(App);
+    freshFixture.detectChanges();
+
+    expect(freshFixture.componentInstance.acceptedMemoryCards()).toEqual([]);
+    expect(freshFixture.componentInstance.pinnedMemoryCardDraftCount()).toBe(0);
+  });
+
   it('normalizes malformed saved memory metadata before hydrating browser-local projects', () => {
     seedMaraMemoryCardWorkbench();
     component.saveActiveProject();
