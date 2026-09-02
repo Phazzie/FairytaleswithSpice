@@ -1,3 +1,5 @@
+// Created: 2026-09-02 13:00 UTC
+
 import { TestBed } from '@angular/core/testing';
 import { MemoryCardService } from './memory-card.service';
 import { CharacterProfile, ContinuityPanelViewModel, LoreArtifact, PlotThread, StoryMemoryCard } from './contracts';
@@ -57,7 +59,7 @@ describe('MemoryCardService', () => {
   });
 
   describe('deriveDrafts', () => {
-    it('derives one draft per character, thread, and artifact, marked unpinned and unaccepted by default', () => {
+    it('derives one draft per category (first character, thread, and artifact), marked unpinned and unaccepted by default', () => {
       const drafts = service.deriveDrafts(createContinuityPanel({
         characters: [createCharacter()],
         activeThreads: [createThread()],
