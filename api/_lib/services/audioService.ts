@@ -52,15 +52,22 @@ const MAX_SPEED = 2.0;
  * at a time, unbounded, could let one slow call and one more segment run past
  * the function's own deadline and be killed by the platform mid-response,
  * which answers with nothing this route's own error envelope produced.
- * Checked before starting each new segment, so a request already past this
- * budget fails with a clear, retryable message instead of a platform timeout.
- * The gap to 60s is headroom for request parsing, validation, and building
- * the response after the last segment completes.
+ * Computed fresh before starting each new segment as *what's left* of this
+ * budget, not just checked once, so a request already past it fails with a
+ * clear, retryable message instead of a platform timeout — and the segment
+ * still allowed to start is given only its actual remaining share of the
+ * budget as its own timeout, not a flat per-call ceiling that could itself
+ * run past the deadline if started late enough. The gap to 60s is headroom
+ * for request parsing, validation, and building the response after the
+ * last segment completes.
  */
 const SYNTHESIS_DEADLINE_MS = 45_000;
 
 /** How long one ElevenLabs call may take before this service gives up on it. Well under `SYNTHESIS_DEADLINE_MS` so at least a few segments can fail fast and still leave room for the next. */
 const ELEVENLABS_REQUEST_TIMEOUT_MS = 20_000;
+
+/** Below this much remaining budget, starting one more real segment isn't worth it — refuse instead of all-but-guaranteeing a mid-call timeout. */
+const MIN_VIABLE_CALL_MS = 3_000;
 
 /** The shortest content a chapter can be narrated from. Mirrors `ImageService`'s floor for the same reason. */
 const MIN_AUDIO_CONTENT_LENGTH = 10;
@@ -248,6 +255,11 @@ export class AudioService {
     this.elevenLabsApiUrl = 'https://api.elevenlabs.io/v1/text-to-speech';
   }
 
+  /** See `StoryService.isProductionRuntime`/`storyLabEngine.isProductionRuntime`: the same check, for the same reason. */
+  private isProductionRuntime(): boolean {
+    return process.env['NODE_ENV'] === 'production' || process.env['VERCEL_ENV'] === 'production';
+  }
+
   async convertToAudio(
     input: AudioConversionSeam['input'],
     requestId?: string
@@ -256,6 +268,25 @@ export class AudioService {
     const correlationId = this.resolveRequestId(requestId);
 
     try {
+      // `StoryService`/`storyLabEngine` established this repo's rule for a
+      // missing provider key — `STORY_LAB_CHARMED_MVP_EXEC_PLAN.md`: "stop
+      // production-capable routes from silently returning mock prose when
+      // [the provider key] is missing" — and this route was the one place
+      // still doing exactly that: a production deployment with no
+      // `ELEVENLABS_API_KEY` answered every "Preview Narration" click with
+      // minutes of silent WAV reported as `success: true`, "Narration ready."
+      // Checked once, up front, the same as the other two services check it.
+      if (!this.elevenLabsApiKey && this.isProductionRuntime()) {
+        return {
+          success: false,
+          error: {
+            code: 'AI_UNAVAILABLE',
+            message: 'ElevenLabs is not configured for this deployment. Set ELEVENLABS_API_KEY before narrating chapters.'
+          },
+          metadata: { requestId: correlationId, processingTime: Date.now() - startTime }
+        };
+      }
+
       const validationError = this.validateAudioInput(input);
       if (validationError) {
         return {
@@ -379,12 +410,16 @@ export class AudioService {
     const buffers: Buffer[] = [];
 
     for (const segment of segments) {
-      // Checked before starting each segment rather than only once: a
+      // Computed before starting each segment rather than checked once: a
       // multi-segment excerpt in real mode can have already spent most of the
-      // budget on earlier segments, and starting one more call this route
-      // cannot finish within the function's own deadline would just trade a
-      // clear, retryable error for a platform-level kill mid-response.
-      if (!isMockMode && Date.now() - startTime > SYNTHESIS_DEADLINE_MS) {
+      // budget on earlier segments, and this is also what decides *that*
+      // call's own timeout below — a segment starting late in the budget must
+      // not still be allowed the full `ELEVENLABS_REQUEST_TIMEOUT_MS`, or it
+      // can run past the function's own deadline on its own and be killed by
+      // the platform mid-response instead of answering this route's own
+      // retryable error.
+      const remainingBudgetMs = SYNTHESIS_DEADLINE_MS - (Date.now() - startTime);
+      if (!isMockMode && remainingBudgetMs < MIN_VIABLE_CALL_MS) {
         throw new CallerFacingAudioError(
           'Audio narration is taking too long to generate. Please try again.',
           true
@@ -419,7 +454,14 @@ export class AudioService {
         voicesUsed.push(voiceId);
       }
 
-      buffers.push(await this.synthesizeSegment(segment, voiceId, speed, requestId));
+      // Never longer than this segment's own share of what's left of the
+      // budget, even in mock mode: `remainingBudgetMs` can be negative there
+      // (the deadline check above is skipped for it), and `Math.min` with a
+      // negative bound would ask axios for a negative timeout — harmless for
+      // the mock path, which never reaches `axios.post`, but not a value
+      // worth passing regardless.
+      const segmentTimeoutMs = Math.max(0, Math.min(ELEVENLABS_REQUEST_TIMEOUT_MS, remainingBudgetMs));
+      buffers.push(await this.synthesizeSegment(segment, voiceId, speed, requestId, segmentTimeoutMs));
     }
 
     return { pcm: Buffer.concat(buffers), voicesUsed };
@@ -471,7 +513,8 @@ export class AudioService {
     segment: AudioSegment,
     voiceId: string,
     speed: number,
-    requestId: string
+    requestId: string,
+    timeoutMs: number
   ): Promise<Buffer> {
     if (!this.elevenLabsApiKey) {
       return synthesizeMockSegment(segment.text, speed);
@@ -504,7 +547,11 @@ export class AudioService {
           },
           params: { output_format: `pcm_${SAMPLE_RATE}` },
           responseType: 'arraybuffer',
-          timeout: ELEVENLABS_REQUEST_TIMEOUT_MS
+          // The caller's share of what's left of `SYNTHESIS_DEADLINE_MS`, not
+          // a flat `ELEVENLABS_REQUEST_TIMEOUT_MS` — a segment starting late
+          // in the budget must not still be allowed the full per-call
+          // ceiling. See `synthesizeSegments`.
+          timeout: timeoutMs
         }
       );
 

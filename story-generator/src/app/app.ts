@@ -1918,24 +1918,28 @@ export class App implements OnDestroy {
     let wordCount = 0;
 
     for (const paragraph of paragraphs) {
-      const words = paragraph.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
-      if (kept.length > 0 && wordCount + words > NARRATION_EXCERPT_MAX_WORDS) {
+      // `stripStoryHtmlToText` rather than a bare `<[^>]+>` strip: the naive
+      // pattern ends a tag at the first `>`, including one inside a quoted
+      // attribute value (`<p title="a>b">`), and leaks the fragment after it
+      // as spoken text. The shared scanner is what every other reader of this
+      // markup already uses for the same reason.
+      const plainWords = stripStoryHtmlToText(paragraph).split(/\s+/).filter(Boolean);
+      if (kept.length > 0 && wordCount + plainWords.length > NARRATION_EXCERPT_MAX_WORDS) {
         break;
       }
 
-      if (kept.length === 0 && words > NARRATION_EXCERPT_MAX_WORDS) {
+      if (kept.length === 0 && plainWords.length > NARRATION_EXCERPT_MAX_WORDS) {
         // The one block by itself is already oversized — including a
         // plain-text chapter with no `<p>` breaks, which is this whole
-        // string read as a single "paragraph". Tags are stripped rather than
+        // string read as a single "paragraph". Tags are dropped rather than
         // preserved: `parseAudioSegments` on the backend reads either shape,
-        // and truncating markup safely at a word boundary is what the plain
-        // word-list already lets this do without re-balancing open tags.
-        const plainWords = paragraph.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean);
+        // and truncating at a word boundary in the plain-text reading is what
+        // avoids re-balancing whatever markup this cuts through.
         return plainWords.slice(0, NARRATION_EXCERPT_MAX_WORDS).join(' ');
       }
 
       kept.push(paragraph);
-      wordCount += words;
+      wordCount += plainWords.length;
     }
 
     return kept.join('').trim() || rawContent;
@@ -2809,20 +2813,32 @@ export class App implements OnDestroy {
     this.jobDrivenProgress = false;
   }
 
+  /**
+   * `AI_UNAVAILABLE` and "temporarily unavailable" are answered by three
+   * services now — story/continuation (Grok), image generation, and audio
+   * narration — and every one of them already writes its own specific,
+   * caller-facing sentence for exactly this case: see `StoryService`'s
+   * `missingProviderResponse` ("Set XAI_API_KEY…"), `ImageService`'s
+   * `CallerFacingImageError`, and `AudioService`'s `CallerFacingAudioError`.
+   * This used to override all three with a hardcoded "Grok is temporarily
+   * unavailable" / "…missing its Grok configuration" — correct for the
+   * service this method was first written for, and wrong for the other two,
+   * telling an image or audio failure's reader that the wrong system is down.
+   * Passing the message through is what the "AI story engine" branch already
+   * did anywhere its own detail mattered more than a fixed sentence — the
+   * `timeout` rewording stays Grok-specific because story/continuation is
+   * still the only caller of this method whose fallback names a timeout.
+   */
   private formatApiError(error: { code?: string; message?: string; details?: unknown } | undefined, fallback: string): string {
     const code = error?.code ?? '';
     const message = error?.message ?? fallback;
 
     if (code === 'AI_UNAVAILABLE') {
-      return 'The AI story engine is unavailable because this deployment is missing its Grok configuration.';
+      return message;
     }
 
     if (code.includes('TIMEOUT') || message.toLowerCase().includes('timeout')) {
       return 'Grok took too long to finish this story. Try a shorter chapter or try again in a minute.';
-    }
-
-    if (message.toLowerCase().includes('temporarily unavailable') || message.toLowerCase().includes('provider')) {
-      return 'Grok is temporarily unavailable. Try again in a minute.';
     }
 
     return message;

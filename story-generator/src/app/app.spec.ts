@@ -834,6 +834,32 @@ describe('App', () => {
     expect(narrateButton.textContent?.trim()).toBe('Narrating…');
   });
 
+  // `/api/audio/convert` answers `AUDIO_GENERATION_FAILED` as a real HTTP
+  // status, not a `200` with `success: false`, so a provider failure arrives
+  // on the error channel — the same shape the export test above covers.
+  // `formatApiError` used to rewrite any "temporarily unavailable" message
+  // into "Grok is temporarily unavailable", telling the reader the wrong
+  // service had failed; it must now pass this seam's own message through.
+  it('reports the audio service\'s own failure rather than blaming Grok', () => {
+    seedWorkbenchForContinuation();
+    storyService.convertChapterToAudio.and.returnValue(throwError(() => ({
+      status: 500,
+      error: {
+        success: false,
+        error: {
+          code: 'AUDIO_GENERATION_FAILED',
+          message: 'AI audio narration service temporarily unavailable',
+          retryable: true
+        }
+      }
+    })));
+
+    component.generateChapterAudio();
+
+    expect(component.isGeneratingAudio()).toBeFalse();
+    expect(component.audioGenerationError()).toBe('AI audio narration service temporarily unavailable');
+  });
+
   // The picker used to restate the export format list by hand and had lost
   // `html` — the one format the export route renders that no reader could then
   // ask for.
@@ -2677,7 +2703,7 @@ describe('App', () => {
 
     component.startGenesis();
 
-    expect(component.statusMessage()).toContain('missing its Grok configuration');
+    expect(component.statusMessage()).toContain('not configured for this deployment');
     expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
   });
 
@@ -2836,7 +2862,7 @@ describe('App', () => {
     expect(storyService.continueStory).not.toHaveBeenCalled();
     expect(component.workbench().chapterHistory).toEqual(genesisPayload.batch.chapters);
     expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
-    expect(component.statusMessage()).toContain('missing its Grok configuration');
+    expect(component.statusMessage()).toContain('not configured for this deployment');
   });
 
   it('keeps existing chapters when a completed continuation job has a malformed story payload', () => {

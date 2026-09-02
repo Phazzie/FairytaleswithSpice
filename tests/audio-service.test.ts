@@ -15,6 +15,12 @@ delete process.env['ELEVENLABS_API_KEY'];
 delete process.env['ELEVENLABS_VOICE_NARRATOR'];
 delete process.env['ELEVENLABS_VOICE_DEFAULT'];
 delete process.env['ELEVENLABS_VOICE_LORD_DAMIEN'];
+// `isProductionRuntime()` reads these from ambient `process.env`, the same
+// gap `tests/api-access-control.test.ts` pins `RATE_LIMIT_STORE` against —
+// an ambient `NODE_ENV=production` in whatever runs this suite would turn
+// every mock-mode assertion below into an `AI_UNAVAILABLE` failure instead.
+delete process.env['NODE_ENV'];
+delete process.env['VERCEL_ENV'];
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -290,6 +296,22 @@ async function testMalformedInputIsRejectedAsCallerError(): Promise<void> {
   assert(blankVoice.error?.code === 'INVALID_INPUT', 'a blank voice override is a caller error');
 }
 
+// A production deployment with no ElevenLabs key must refuse rather than
+// silently narrate several minutes of mock silence as `success: true`,
+// "Narration ready" — the same "no silent mock in production" rule
+// `StoryService`/`storyLabEngine` already enforce for their own provider.
+async function testProductionWithNoKeyFailsClosedInsteadOfMocking(): Promise<void> {
+  process.env['NODE_ENV'] = 'production';
+  try {
+    const result = await new AudioService().convertToAudio(createInput());
+    assert(!result.success, 'production with no ElevenLabs key should refuse, not mock');
+    assert(result.error?.code === 'AI_UNAVAILABLE', `got ${result.error?.code}`);
+    assert(/ELEVENLABS_API_KEY/.test(result.error?.message ?? ''), `the message should name what to set (got ${result.error?.message})`);
+  } finally {
+    delete process.env['NODE_ENV'];
+  }
+}
+
 // A real API key with no voice configured anywhere (no override, no
 // per-character or narrator/default env var) must fail with a clear
 // configuration message, not by handing ElevenLabs a fabricated mock voice
@@ -333,6 +355,7 @@ async function main(): Promise<void> {
   await testOverlongContentIsRefusedBeforeSynthesis();
   await testSpeedScalesTheEstimatedDuration();
   await testMalformedInputIsRejectedAsCallerError();
+  await testProductionWithNoKeyFailsClosedInsteadOfMocking();
   await testRealModeRequiresAConfiguredVoice();
   await testDefaultVoiceEnvVarAloneCoversTheNarrator();
   await testDurationEstimateUsesTheProvidersEffectiveSpeedInRealMode();
