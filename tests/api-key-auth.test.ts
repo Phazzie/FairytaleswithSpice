@@ -2,6 +2,7 @@
 // Created: 2026-08-24 13:58 UTC
 
 import {
+  API_KEY_MINIMUM_DISTINCT_CHARACTERS,
   API_KEY_MINIMUM_LENGTH,
   authenticateRequest,
   resetApiKeyConfigurationWarningForTests
@@ -12,6 +13,22 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+/**
+ * A token body of `length` characters that is varied enough to clear
+ * {@link API_KEY_MINIMUM_DISTINCT_CHARACTERS}, so a test about *length* or
+ * *padding* is not silently also a test about variety.
+ *
+ * The fixtures here used to be `'k'.repeat(n)`, which the variety rule now
+ * refuses. Keeping them would have made the length boundary pass for the wrong
+ * reason — and the padding test's "a genuine base64 token still authenticates"
+ * case would have started failing while the behaviour it names was still
+ * correct. One rule per assertion is the point.
+ */
+function variedBody(length: number): string {
+  const alphabet = 'abcdefgh';
+  return Array.from({ length }, (_, index) => alphabet[index % alphabet.length]).join('');
 }
 
 const LIVE_KEY = 'sk-live-supersecret-value';
@@ -189,8 +206,8 @@ async function testTheConfiguredKeyContract(): Promise<void> {
   );
 
   // The boundary, asserted against the contract rather than a copy of the number.
-  const atMinimum = 'k'.repeat(API_KEY_MINIMUM_LENGTH);
-  const belowMinimum = 'k'.repeat(API_KEY_MINIMUM_LENGTH - 1);
+  const atMinimum = variedBody(API_KEY_MINIMUM_LENGTH);
+  const belowMinimum = variedBody(API_KEY_MINIMUM_LENGTH - 1);
   assert(
     (await authenticateWith(atMinimum, atMinimum)).authenticated,
     `a key of exactly ${API_KEY_MINIMUM_LENGTH} characters should authenticate`
@@ -226,17 +243,113 @@ async function testPaddingCannotStandInForCredential(): Promise<void> {
     'padding should not count toward the minimum length'
   );
 
-  const leadingPadding = `=${'k'.repeat(API_KEY_MINIMUM_LENGTH)}`;
+  const leadingPadding = `=${variedBody(API_KEY_MINIMUM_LENGTH)}`;
   assert(
     !(await authenticateWith(leadingPadding, leadingPadding)).authenticated,
     'padding is only ever trailing, so a leading `=` is not a well-formed token'
   );
 
   // A real base64 token carries at most two padding characters, and stays valid.
-  const paddedRealToken = `${'k'.repeat(API_KEY_MINIMUM_LENGTH)}==`;
+  const paddedRealToken = `${variedBody(API_KEY_MINIMUM_LENGTH)}==`;
   assert(
     (await authenticateWith(paddedRealToken, paddedRealToken)).authenticated,
     'a genuine base64 token with trailing padding should still authenticate'
+  );
+}
+
+/**
+ * A key can clear the length floor by repeating one character sixteen times.
+ *
+ * `kkkkkkkkkkkkkkkk` is sixteen characters of the grammar's alphabet carrying
+ * one character of information, and before this rule it authenticated — the
+ * floor satisfied rather than met. The variety rule refuses that family.
+ *
+ * **Both directions matter, and the second is the one that could break a real
+ * deployment.** A rule that refuses a generated key is worse than the hole it
+ * closes, so the accepting half asserts against the generator the setup docs
+ * actually name (`openssl rand -hex 24`) and against the shortest key the
+ * contract allows, drawn from the smallest alphabet those docs name.
+ *
+ * The residual is asserted too, deliberately: `changemechangeme` carries seven
+ * distinct characters and **authenticates**. Pinning that keeps the contract's
+ * documentation honest — the rule refuses degenerate repetition, not weak
+ * choices, and the next reader should find that written down as a test rather
+ * than discover it. See #321.
+ */
+async function testDegenerateKeysAreRefused(): Promise<void> {
+  const degenerate = [
+    'k'.repeat(API_KEY_MINIMUM_LENGTH),
+    '0'.repeat(API_KEY_MINIMUM_LENGTH),
+    'ab'.repeat(API_KEY_MINIMUM_LENGTH),
+    'aaaabbbbccccdddd'
+  ];
+
+  for (const entry of degenerate) {
+    const result = await authenticateWith(entry, entry);
+    assert(
+      !result.authenticated,
+      `a key drawn from fewer than ${API_KEY_MINIMUM_DISTINCT_CHARACTERS} distinct characters should not authenticate (${entry})`
+    );
+    assert(
+      result.error?.code === 'API_KEY_CONFIGURATION_INVALID',
+      'a configuration holding only degenerate keys should fail closed, not report a bad request key'
+    );
+  }
+
+  // The boundary itself, against the contract rather than a copy of the number.
+  const atDistinctMinimum =
+    'abcde' + 'a'.repeat(API_KEY_MINIMUM_LENGTH - API_KEY_MINIMUM_DISTINCT_CHARACTERS);
+  assert(
+    new Set(atDistinctMinimum).size === API_KEY_MINIMUM_DISTINCT_CHARACTERS,
+    'the boundary fixture should sit exactly on the distinct-character floor'
+  );
+  assert(
+    (await authenticateWith(atDistinctMinimum, atDistinctMinimum)).authenticated,
+    `a key with exactly ${API_KEY_MINIMUM_DISTINCT_CHARACTERS} distinct characters should authenticate`
+  );
+
+  const belowDistinctMinimum =
+    'abcd' + 'a'.repeat(API_KEY_MINIMUM_LENGTH - (API_KEY_MINIMUM_DISTINCT_CHARACTERS - 1));
+  assert(
+    !(await authenticateWith(belowDistinctMinimum, belowDistinctMinimum)).authenticated,
+    `a key one distinct character below ${API_KEY_MINIMUM_DISTINCT_CHARACTERS} should not authenticate`
+  );
+
+  // Variety is measured on the body, like the length floor, and for the same
+  // reason: padding is not secret, so it must not supply the variety either.
+  // This body carries four distinct characters and the padding would make five.
+  const paddingInflatedVariety = `${'abcd' + 'a'.repeat(API_KEY_MINIMUM_LENGTH - 4)}==`;
+  assert(
+    new Set(paddingInflatedVariety).size === API_KEY_MINIMUM_DISTINCT_CHARACTERS,
+    'the fixture should clear the floor only when padding is counted'
+  );
+  assert(
+    !(await authenticateWith(paddingInflatedVariety, paddingInflatedVariety)).authenticated,
+    'padding must not count toward the distinct-character floor'
+  );
+
+  // Keys a correct operator actually produces must survive the rule.
+  const generated = [
+    // `openssl rand -hex 24`, which SECURITY_IMPLEMENTATION_GUIDE.md recommends.
+    '9f3c2a71b40e2d81ff60ac957b1e4460a3d95c82f1704bd6',
+    // The shortest key the contract allows, over the smallest alphabet it names.
+    '0f3c2a71b40e2d81',
+    'sk-live-real-key',
+    LIVE_KEY
+  ];
+
+  for (const entry of generated) {
+    assert(
+      (await authenticateWith(entry, entry)).authenticated,
+      `a generated key must not be refused by the variety rule (${entry})`
+    );
+  }
+
+  // The residual, pinned rather than implied: variety is not entropy.
+  const dictionaryPlaceholder = 'changemechangeme';
+  assert(
+    (await authenticateWith(dictionaryPlaceholder, dictionaryPlaceholder)).authenticated,
+    'the variety rule refuses repetition, not weak choices — this is the documented residual (#321)'
   );
 }
 
@@ -469,6 +582,7 @@ async function main(): Promise<void> {
   await testTheUnconfiguredWarningIsWrittenOncePerConfiguration();
   await testTheConfiguredKeyContract();
   await testPaddingCannotStandInForCredential();
+  await testDegenerateKeysAreRefused();
   await testABlankConfigurationFailsClosed();
   await testSeparatorWhitespaceIsNotPartOfTheEntry();
   await testRejectedKeysAreNeverWrittenToTheLog();

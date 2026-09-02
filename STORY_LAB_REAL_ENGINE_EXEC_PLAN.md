@@ -402,3 +402,68 @@ containing a word that merely contains one of the story's own. It is worth
 repairing because the failure is silent and doubly so — the panel that exists to
 show the reader this decision was reading the same scorer, so it agreed with the
 prompt about a selection both had wrong.
+
+## Continuation continuity: the normalizer read every combining mark as a separator
+
+The section above states this seam's contract as "both sides of the comparison
+already pass through `normalizeActivationText`, which leaves letters and numbers
+separated by single spaces". That sentence was the whole of the guarantee the
+whole-word repair rests on — padding each side with one space makes the
+containment test exact only if nothing but letters, numbers and single spaces is
+left — and it was true of the code and wrong about words.
+
+A combining mark is neither a letter nor a number, so the class deleted every
+one of them and cut apart the word each belonged to. A Devanagari label
+normalized to its consonants with the vowel signs replaced by spaces; the same
+happened to Thai, to Arabic vowel points, and to any Latin name typed in
+decomposed form. Both sides of the comparison shatter identically, so the
+whole-candidate match still fired and nothing looked broken — what was lost is
+the per-word score beneath it, because the fragments are shorter than
+`ACTIVATION_TOKEN_MIN_LENGTH`. A brief naming one word of a thread's label, the
+ordinary case that score exists for, scored zero for those scripts and the
+courtroom ordered by story position instead.
+
+The contract as it now reads: the normalizer leaves letters, numbers **and the
+marks that belong to them** separated by single spaces, with no leading or
+trailing space, and canonically composed. The space-padding guarantee is
+unchanged — a mark is never a space, so it can never split a part — and the
+whole-word reading above still rests on it exactly as stated.
+
+Three things follow, and each is a rule rather than a special case:
+
+- **`NFC` first.** The marks are retained either way, but `é` and `e` + U+0301
+  are different strings, so a brief typed one way would not match a label stored
+  the other. Composing first makes the two spellings one. Marks that do not
+  compose away — most of Devanagari, Thai, and Arabic — are what retaining
+  `\p{M}` is for. Neither alone is enough. The order matches
+  `buildStoryDownloadFilenameStem` in `shared/storyDownloadFilename.ts`, which
+  made this same repair for the download filename, so the two normalizers cannot
+  disagree about a name they might both see.
+- **A mark belongs to the character before it.** Where that character is itself
+  removed — an emoji's variation selector is the case — the mark is orphaned,
+  and an orphan at the front of a part is dropped. Without this, `❤️pact`
+  normalizes to an invisible selector followed by `pact` and stops matching a
+  brief that plainly says `pact`.
+- **The token floor counts word characters, not `.length`.** The floor is a
+  claim about how much word a token has to be before it carries signal. Counting
+  marks lets a two-letter stopword wearing two marks clear a floor built to
+  exclude precisely that, which is how the ordering the floor protects gets
+  flattened.
+
+What is unchanged: the prompt shape, the request shape, the model contract, and
+every score for text that was already ASCII, which has no marks to retain, no
+orphans to strip, and the same count either way.
+
+Validation: `tests/continuity-activation.test.ts`, in `test:all`. Devanagari and
+Thai labels are asserted to survive whole; the decomposed and precomposed
+spellings of one name are asserted to score the same; the orphaned mark is
+asserted to score as the word it precedes; the marked stopword is asserted not
+to earn a token point while a real content word does; and the ASCII case is
+asserted unchanged. Reverting the retained `\p{M}`, the `NFC`, the orphan strip,
+or the word-character count each fails the suite.
+
+Non-claim: no evidence this was happening in production output. It needs a story
+whose thread labels are written outside Latin script, or a name typed in
+decomposed form. It is worth repairing for the reason the section above gives —
+the failure is silent, and the panel that previews this decision to the reader
+reads the same scorer.

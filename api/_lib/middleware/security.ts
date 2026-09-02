@@ -60,6 +60,39 @@ const API_KEY_CONFIGURATION_LOG_ENDPOINT = 'authenticateRequest';
 export const API_KEY_MINIMUM_LENGTH = 16;
 
 /**
+ * How many *different* characters an entry's token body must contain.
+ *
+ * The length floor above is a claim about how much secret a value carries, and
+ * `kkkkkkkkkkkkkkkk` defeats it while satisfying it: sixteen characters of the
+ * grammar's alphabet carrying one character of information. Length and alphabet
+ * do not establish entropy, which is the gap this closes.
+ *
+ * Five is chosen so the rule cannot refuse a key from the generator the setup
+ * docs actually recommend. Against the *worst* case a correct operator can
+ * reach — an entry at exactly {@link API_KEY_MINIMUM_LENGTH}, drawn from hex,
+ * the smallest alphabet those docs name — the probability of fewer than five
+ * distinct characters is bounded by C(16,4)·(4/16)^16 ≈ 4·10⁻⁷. For the value
+ * the docs tell operators to generate (`openssl rand -hex 24`, 48 characters)
+ * it is far smaller still, and it is zero for every fixture in this repository.
+ * A rule that refuses a generated key is worse than the hole it closes, so the
+ * margin is the point rather than the strictness.
+ *
+ * **This deliberately does not catch every weak key, and must not be described
+ * as if it did.** It refuses degenerate *repetition*; it does not refuse a
+ * dictionary placeholder. `changemechangeme` carries seven distinct characters
+ * and is accepted. Catching that would need a word list, which is unbounded and
+ * cannot be made to terminate, or a threshold high enough to start refusing
+ * real hex keys — the floor would have to reach eight, where a legitimate
+ * sixteen-character hex key is refused about two percent of the time. Claiming
+ * the contract rejects placeholders when it rejects only repetition is exactly
+ * the overclaim review already corrected once in this file's documentation, so
+ * the residual is written down instead: see #321, where requiring *issued*
+ * credentials rather than validating operator-chosen ones is the change that
+ * would actually close it.
+ */
+export const API_KEY_MINIMUM_DISTINCT_CHARACTERS = 5;
+
+/**
  * The shape an `API_KEYS` entry may take: RFC 6750's `b64token` grammar, which
  * is what a bearer credential is allowed to look like on the wire.
  *
@@ -121,7 +154,14 @@ function isUnsetApiKeysValue(rawApiKeys: string | undefined): boolean {
 }
 
 /** Why one configured entry cannot be used. Counted, never logged with values. */
-type ApiKeyRejection = 'below-minimum-length' | 'outside-credential-grammar';
+type ApiKeyRejection =
+  | 'below-minimum-length'
+  | 'outside-credential-grammar'
+  | 'below-minimum-distinct-characters';
+
+function distinctCharacterCount(body: string): number {
+  return new Set(body).size;
+}
 
 function rejectionFor(entry: string): ApiKeyRejection | undefined {
   // Grammar first: the length below is measured on the token body, which only
@@ -129,8 +169,17 @@ function rejectionFor(entry: string): ApiKeyRejection | undefined {
   if (!API_KEY_CREDENTIAL_GRAMMAR.test(entry)) {
     return 'outside-credential-grammar';
   }
-  if (credentialBodyOf(entry).length < API_KEY_MINIMUM_LENGTH) {
+  const body = credentialBodyOf(entry);
+  if (body.length < API_KEY_MINIMUM_LENGTH) {
     return 'below-minimum-length';
+  }
+  // Length last, variety after it, and both on the body: a value can clear the
+  // floor by repeating one character sixteen times, which is the floor being
+  // satisfied rather than met. Reported as its own reason because "too short"
+  // would be false and would send the operator to lengthen a key that is
+  // already long enough.
+  if (distinctCharacterCount(body) < API_KEY_MINIMUM_DISTINCT_CHARACTERS) {
+    return 'below-minimum-distinct-characters';
   }
   return undefined;
 }
@@ -173,11 +222,18 @@ function partitionConfiguredApiKeys(entries: string[]): {
  * To enable authentication, set API_KEYS environment variable:
  * API_KEYS=sk-live-9f3c2a71b40e,sk-live-2d81ff60ac95
  *
- * Each entry must satisfy {@link API_KEY_CREDENTIAL_GRAMMAR} and carry at least
- * {@link API_KEY_MINIMUM_LENGTH} characters of token body; entries that do not
- * are refused rather than trusted. If every configured entry is refused — or
- * `API_KEYS` holds no entry at all while being set to something — the
- * deployment fails closed rather than falling back to development mode.
+ * Each entry must satisfy {@link API_KEY_CREDENTIAL_GRAMMAR}, carry at least
+ * {@link API_KEY_MINIMUM_LENGTH} characters of token body, and draw that body
+ * from at least {@link API_KEY_MINIMUM_DISTINCT_CHARACTERS} different
+ * characters; entries that do not are refused rather than trusted. If every
+ * configured entry is refused — or `API_KEYS` holds no entry at all while being
+ * set to something — the deployment fails closed rather than falling back to
+ * development mode.
+ *
+ * The three rules are well-formedness, size, and variety. None of them is an
+ * entropy test, and together they still accept a value an operator chose badly
+ * — `changemechangeme` clears all three. What refuses that is issuing keys
+ * rather than validating them, which is #321 and is not this function's job.
  *
  * @param req - Request object
  * @returns Authentication result with user ID if successful
@@ -345,7 +401,11 @@ function noteApiKeyConfiguration(
     rejectedCount: rejections.length,
     belowMinimumLength: rejections.filter(reason => reason === 'below-minimum-length').length,
     outsideCredentialGrammar: rejections.filter(reason => reason === 'outside-credential-grammar').length,
-    minimumLength: API_KEY_MINIMUM_LENGTH
+    belowMinimumDistinctCharacters: rejections.filter(
+      reason => reason === 'below-minimum-distinct-characters'
+    ).length,
+    minimumLength: API_KEY_MINIMUM_LENGTH,
+    minimumDistinctCharacters: API_KEY_MINIMUM_DISTINCT_CHARACTERS
   };
 
   if (usableCount === 0) {

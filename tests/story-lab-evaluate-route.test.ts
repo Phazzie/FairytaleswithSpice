@@ -3,6 +3,7 @@
 
 import handler, { parseEvaluation } from '../api/story-lab/evaluate';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
+import { withMemoryRateLimitStore } from './helpers/withMemoryRateLimitStore';
 import { stripMarkdownJsonFence } from '../api/_lib/utils/modelJsonPayload';
 import { STORY_EVALUATION_LIMITS } from '../shared/storyBlueprintLimits';
 
@@ -390,7 +391,7 @@ async function main(): Promise<void> {
   console.log('Story Lab evaluate route tests passed');
 }
 
-main().catch(error => {
+withMemoryRateLimitStore(main).catch(error => {
   console.error(error);
   process.exit(1);
 });

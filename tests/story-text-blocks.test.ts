@@ -232,25 +232,115 @@ assert(
   'table cells should each be their own block'
 );
 
-// --- comments: unchanged, and deliberately so ---
+// --- #296, the last row: a comment is read by `findCommentEnd` ---
 //
-// `findTagEnd` is called rather than `tokenizeHtml` precisely so that comment
-// handling does not move in this change. A comment still ends at its first `>`,
-// so this one still leaks `b -->` as a visible block. That is #296's remaining
-// row and #307's fix; pinning it here means the day this module moves to
-// `tokenizeHtml` the change is deliberate rather than incidental.
+// A comment is not a tag, so the scanner refuses it and `<[^<>]*>` used to
+// answer — a pattern that ends at the first `>` and cannot cross a `<`, neither
+// of which a comment body is obliged to avoid. The block above used to assert
+// that this module leaked `b -->` as a visible block; it no longer does, and
+// three worse faults went with it.
+
+// Every one of these sits between the same two paragraphs and must leave both
+// of them alone and contribute nothing of its own, so they are one table rather
+// than one assertion apiece: what distinguishes them is the comment, and a table
+// puts the comments in a column where they can be read against each other.
+for (const [markup, expectation] of [
+  // Dropped before this change too, and still dropped.
+  ['<!-- plain -->', 'an ordinary comment should still be dropped'],
+
+  // A `>` in the body used to end the comment early and leak `b -->`. This is
+  // the row #296 filed, and it was the least of the four.
+  ['<!-- note: a > b -->', 'a `>` inside a comment body should not leak the rest of the comment'],
+
+  // A `<` in the body used to leak the *opening* instead, as `<!-- note: a`.
+  ['<!-- note: a < b -->', 'a `<` inside a comment body should not leak the comment opening'],
+
+  // The one that matters most: a commented-out paragraph was read as story
+  // prose. `Hidden.` counted as a word and the `<p>` inside the comment was
+  // taken as a paragraph break — in the module every quality scanner reads.
+  ['<!-- <p>Hidden.</p> -->', 'a comment body should never be read as story prose'],
+
+  // A comment carrying a blank line used to split the story across it, moving
+  // every measure that reads the last paragraph. This is why the drop cannot be
+  // left to `replaceTag`: the boundary pass returns a non-boundary tag as text
+  // for the second pass, and the split between the passes happens in between.
+  ['<!-- a\n\nb -->', 'a comment containing a blank line should not split the story'],
+
+  // All four spellings that close a comment, read from `shared/htmlTagScanner`
+  // so that this module, the export sanitizer and the chapter reader agree.
+  ['<!-- x -->', '`-->` should close a comment'],
+  ['<!-->', '`<!-->` should close a comment'],
+  ['<!--->', '`<!--->` should close a comment'],
+  ['<!-- x --!>', '`--!>` should close a comment']
+]) {
+  assert(
+    JSON.stringify(splitStoryIntoTextBlocks(`<p>Alpha.</p>${markup}<p>Beta.</p>`)) ===
+      JSON.stringify(['Alpha.', 'Beta.']),
+    expectation
+  );
+}
+
+// `<h3>Visible <!--> Title</h3>` is the regression the previous revision warned
+// that adopting `tokenizeHtml` would cause, back when a comment ended only at
+// `-->` and `<!-->` read as one that never ends. #307 gave `findCommentEnd` all
+// four spellings, so the heading keeps its words.
 assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- note: a > b --><p>Beta.</p>')) ===
-    JSON.stringify(['Alpha.', 'b -->', 'Beta.']),
-  'comment handling should be unchanged by the tag-boundary fix'
+  JSON.stringify(splitStoryIntoTextBlocks('<h3>Visible <!--> Title</h3>')) ===
+    JSON.stringify(['Visible  Title']),
+  'an empty comment inside a heading should not swallow the heading'
 );
 
-// A comment with no `>` in it is still dropped whole, as it always was.
-assert(
-  JSON.stringify(splitStoryIntoTextBlocks('<p>Alpha.</p><!-- plain --><p>Beta.</p>')) ===
-    JSON.stringify(['Alpha.', 'Beta.']),
-  'an ordinary comment should still be dropped'
-);
+// --- an unterminated comment is left exactly as it was ---
+//
+// The one policy decision here, and a deliberate divergence from `tokenizeHtml`,
+// which abandons the scan and drops the remainder. That is right for an export,
+// because a browser hides that text too. It is wrong here: this module feeds
+// `countStoryWords`, the cliffhanger scan, image prompts and the next chapter's
+// continuity excerpt, so silently losing the tail of a story costs more than the
+// `<!-- unterminated` that keeping it leaks.
+for (const [input, blocks, expectation] of [
+  [
+    '<p>Alpha.</p><!-- unterminated <p>Beta.</p>',
+    ['Alpha.', '<!-- unterminated', 'Beta.'],
+    'an unterminated comment should not drop the story after it'
+  ],
+  [
+    '<p>Alpha.</p><!-- unterminated > text',
+    ['Alpha.', 'text'],
+    'an unterminated comment with a later `>` should answer as it always did'
+  ]
+] as [string, string[], string][]) {
+  assert(JSON.stringify(splitStoryIntoTextBlocks(input)) === JSON.stringify(blocks), expectation);
+}
+
+// The search for a comment ending is run at most once per string, because once
+// one open has no ending no later one has either. Without that, `<!--<!--…>` is
+// quadratic — every open re-scans to the end of the input for a terminator that
+// is not there, which measured 8.1s at 20,000 repeats against 7ms before the
+// change. Bounded rather than timed against a constant, so the assertion is
+// about the shape of the growth rather than about how fast this machine is.
+{
+  const build = (repeats: number) => '<!--'.repeat(repeats) + 'x>';
+  const elapsed = (input: string) => {
+    const start = process.hrtime.bigint();
+    splitStoryIntoTextBlocks(input);
+    return Number(process.hrtime.bigint() - start) / 1e6;
+  };
+
+  elapsed(build(2000)); // warm up, so the first timing is not the compile
+  const small = Math.max(elapsed(build(5000)), 0.5);
+  const large = elapsed(build(20000));
+
+  // Quadratic would be ~16x for a 4x input. Linear is ~4x; the bound leaves
+  // generous headroom for a slow or contended machine without admitting n².
+  // Non-strict, so a measurement landing exactly on the bound passes: `small`
+  // is floored at 0.5ms, so `small * 10` can be the exact value 5, which is a
+  // figure a timing can land on rather than merely approach.
+  assert(
+    large <= small * 10,
+    `repeated comment opens should scale linearly, not quadratically (5,000: ${small.toFixed(1)}ms, 20,000: ${large.toFixed(1)}ms)`
+  );
+}
 
 // --- the downstream measure this defect actually corrupted ---
 //

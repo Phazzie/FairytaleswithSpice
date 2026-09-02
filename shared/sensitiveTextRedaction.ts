@@ -1148,7 +1148,16 @@ function isApiKeyTokenChar(char: string): boolean {
   return isAsciiLetterOrDigit(char) || char === '_' || char === '-';
 }
 
-const URL_SCHEMES = ['https://', 'http://'];
+/**
+ * `postgres://`/`postgresql://` joined the list alongside `http(s)://` once a
+ * logged error could be a database driver/connection failure
+ * (`postgresRateLimitStore.ts` and the other Postgres-backed Story Lab
+ * stores): a Neon/Postgres connection string embeds its credentials in the
+ * URL itself (`postgres://user:pass@host/db`), so a raw driver error handed
+ * to this redactor unchanged would put them straight into the log line this
+ * function exists to protect.
+ */
+const URL_SCHEMES = ['https://', 'http://', 'postgres://', 'postgresql://'];
 /**
  * Punctuation that ends the sentence a URL was written into rather than the
  * URL itself. A run of it is handed back to the surrounding prose.

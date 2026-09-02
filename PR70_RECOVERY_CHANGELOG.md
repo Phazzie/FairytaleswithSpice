@@ -4,6 +4,40 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-01 UTC - API rate limiting moved off a per-process Map, opt-in Postgres store added (PR #320)
+
+`checkRateLimit` (`api/_lib/middleware/security.ts`) is a module-level `Map` — the app's actual and only cost/abuse control in front of every paid xAI/Grok route (story generation, continuation, image, export, every Story Lab genesis/continuation/create/evaluate route). Its own comment already said why that's wrong here: "For multi-instance deployments (e.g., horizontal scaling, serverless, load-balanced setups), replace with a distributed cache like Redis." This app ships as Vercel serverless functions, so every cold-started or concurrently-warm instance got its own empty map — a caller's effective budget scaled with however many instances happened to be running, with zero cross-instance coordination.
+
+Actions:
+
+- Added a `RateLimitStore` port (`rateLimitStorePort.ts`), mirroring `StoryLabJobStore`.
+- Extracted today's `Map` logic unchanged into `InMemoryRateLimitStore`, wrapping `checkRateLimit` — stays the default (`RATE_LIMIT_STORE` unset/`memory`), so current behavior is unchanged.
+- Added `PostgresRateLimitStore`, reusing the same `createNeonStoryLabQueryExecutor` already shared by the job/profile/project stores, backed by one new table (`rate_limit_buckets`, PK `(user_id, endpoint)`) with a single atomic `INSERT ... ON CONFLICT ... DO UPDATE` upsert per request.
+- Added `rateLimitStoreConfig.ts`, mirroring `storyLabJobStoreConfig.ts`: `RATE_LIMIT_STORE=postgres|memory` env switch, default `memory`. **The production default is unchanged in this PR** — following this repo's own convention for flipping a durable-store default only after live-DB validation (see `STORY_LAB_JOB_STORE`'s rollout history in this same log).
+- Extended `storyLabCloudSchema.sql` with the new table (picked up automatically by the existing schema-apply script/statement splitter) and `storyLabCloudDatabaseReadiness.ts` with the new required table, so a database migrated under the old schema correctly reports not-ready instead of silently passing until `RATE_LIMIT_STORE=postgres` makes every guarded request fail on the missing relation.
+- `apiAccessControl.ts`: swapped the free `checkRateLimit()` call for `store.consume()` against the configured (injectable) store, with a `503 RATE_LIMIT_STORE_UNAVAILABLE` fail-closed response — both for an unconfigured store and for a per-request `consume()` failure (a dropped Postgres connection) — mirroring how `resolveJobStoreOrRespond` fails closed for an unconfigured durable job store.
+- Extended `shared/sensitiveTextRedaction.ts`'s `URL_SCHEMES` to recognize `postgres://`/`postgresql://` alongside `http(s)://`: a Neon/Postgres connection string embeds its credentials in the URL itself, and the redactor this repo's whole logging pipeline depends on (`logger.ts`) had never needed to catch that scheme before this PR gave it a reason to log a database driver error.
+- Updated `SECURITY_IMPLEMENTATION_GUIDE.md`'s "use a distributed cache like Redis" TODOs to describe the implemented answer and the rollout gate.
+
+Review rounds (Copilot + Codex across three pushes), all fixed:
+
+- **`store.consume()` could throw uncaught** (Copilot, and independently Codex on the pre-fix commit) — a dropped Postgres connection would have bubbled past `enforceApiAccessControl` as an unhandled rejection, answering a generic 500 instead of the intended 503. Now caught and mapped to the same fail-closed response.
+- **The wrapped error embedded raw `error.message`** (Copilot) — a Postgres connection error can carry the connection string itself. Now logged through `logError` (redacted) and thrown with a generic message; this is also what surfaced the `URL_SCHEMES` gap above (Codex, next round): the redactor didn't actually cover `postgres://` yet, so the raw message would have kept the credentials past the fix that was supposed to remove them.
+- **`rate_limit_buckets` was missing from database readiness checks** (Codex) — fixed as described above.
+- **Route-driven tests read `RATE_LIMIT_STORE` from ambient `process.env`** (Codex) — `tests/api-access-control.test.ts` now pins `RATE_LIMIT_STORE=memory` for its own run so an ambient `postgres` setting can't fail its assertions or mutate a real database.
+- **The cross-instance "shared budget" unit test only proved the algorithm in a JS simulation, never the real `CONSUME_SQL`** (Codex) — added `scripts/recovery/rate-limit-store-concurrency-smoke.ts` (`DATABASE_URL`-gated, not part of `test:all`, mirroring `story-lab-cloud-db-smoke.ts`): two independent `PostgresRateLimitStore` instances fire genuinely concurrent `consume()` calls at one live-Postgres bucket and the shared budget is asserted to hold.
+- **SonarCloud duplication gate** — the two new rate-limit test files had copy-pasted an identical fake query-executor class; extracted to `tests/helpers/recordingQueryExecutor.ts`.
+
+Self-review:
+
+- Good: opt-in rollout (not flipping the production default) matches this repo's own precedent instead of unilaterally changing production behavior in a "worst to best" slice.
+- Non-claim: this PR does not itself validate `PostgresRateLimitStore` against a live database in CI (none is available here) — that is exactly what the new concurrency smoke script and `story-lab-cloud-db-smoke.ts`-style scripts are for once a deployment has `DATABASE_URL`.
+
+Validation:
+
+- `npm run test:all` — full suite green after each push.
+- `tests/rate-limit-store.test.ts`, `tests/rate-limit-store-config.test.ts` (new), `tests/api-access-control.test.ts`, `tests/story-lab-cloud-db-readiness.test.ts`, `tests/story-lab-cloud-schema.test.ts`, `tests/log-redaction.test.ts` (all extended) passing.
+
 ## 2026-09-01 UTC - Story Lab jobs that come back non-terminal are now watched instead of abandoned (PR #319)
 
 `AppComponent.handleJobSnapshot` returns `false` specifically to mean "this job isn't finished, keep watching it," but both call sites (`startGenesis`, `continueSaga`) discarded that boolean, and `jobEventSubscription` was declared and "cleaned up" in every terminal branch without ever being assigned. The backend already implements `GET /api/story-lab/jobs/:jobId` (tested, `jobRouteHandlers.ts`) and hands back `paths.statusPath` on every job-creation response for exactly this case; nothing in the frontend called it. Masked today because `runJobWork` finishes synchronously inside the POST handler, so the client only ever sees a terminal snapshot — but a durable/queued job runner (the documented next step in `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`) would hand back `running`/`queued` on its first response, and the progress bar would have frozen forever with nothing watching it.
@@ -1179,12 +1213,222 @@ to these repairs: flattening the grammar back to a plain alphabet class,
 measuring the minimum over padding, and reading a blank-but-present `API_KEYS`
 as unset. All three killed.
 
+Review round 2 (Codex on `94c5599` and `8d90184`) — two findings, one taken in
+code and one declined, both on the owner's instruction to decide rather than
+escalate further:
+
+- **Taken: a key can satisfy the length floor by repeating one character.**
+  `kkkkkkkkkkkkkkkk` is sixteen characters of the grammar's alphabet carrying
+  one character of information, and it authenticated. Added
+  `API_KEY_MINIMUM_DISTINCT_CHARACTERS` (5), measured on the token body like the
+  length floor and for the same reason — padding is not secret, so it must not
+  supply the variety either. Reported as its own rejection reason, because "too
+  short" would be false for that value and would send the operator to lengthen a
+  key that is already long enough.
+
+  Five is where the rule provably cannot refuse a correctly generated key. The
+  worst case a correct operator can reach is an entry at exactly the minimum
+  length drawn from hex, the smallest alphabet the guide names; there the
+  false-refusal rate is bounded by C(16,4)·(4/16)^16 ≈ 4 × 10⁻⁷, and for the
+  48-character `openssl rand -hex 24` the guide actually recommends it did not
+  occur once in 200,000 trials. A rule that refuses a generated key would be
+  worse than the hole it closes, so the margin is the point rather than the
+  strictness.
+
+  **The residual is written down and asserted rather than implied.** The rule
+  refuses degenerate *repetition*, not a weak *choice*: `changemechangeme`
+  carries seven distinct characters and still authenticates, and the suite
+  asserts that it does. Raising the floor to catch it would refuse a legitimate
+  sixteen-character hex key about two percent of the time, and a word list is
+  unbounded. Describing the contract as rejecting placeholders when it rejects
+  only repetition would be the same overclaim review already corrected once in
+  this entry's documentation. Closing the rest means *issuing* credentials
+  instead of validating operator-chosen ones — #321.
+
+- **Declined: failing closed on `API_KEYS=""`.** It does not close the class it
+  appears to close — an unset `API_KEYS` reaches development mode identically,
+  and the app's own frontend has never sent a key, so a production deployment
+  runs on that fallback today. Closing the empty string would therefore break
+  every `.env` that spells an absent variable as `API_KEYS=` while leaving the
+  actual fail-open path exactly where it was. The change that closes it is
+  gating development mode on the environment rather than on the spelling of the
+  variable, and that is a migration (issue a key, ship it to the frontend), not
+  a one-word fix. Recorded on #321 with the trivial-key residual, since
+  requiring issued credentials settles both.
+
+Four counterfactual mutations for this round, all killed: removing the variety
+rule; raising the floor to eight, where it starts refusing real hex keys;
+measuring variety over the whole entry so padding can supply it; and the
+existing fixtures, which had to stop being `'k'.repeat(16)` — that value is now
+refused, so a length test written on it would have passed for the wrong reason
+and the padding test's "a genuine base64 token still authenticates" case would
+have failed while the behaviour it names was still correct.
+
 Deliberately not in this slice: the readability half of #314. Making
 `redactBearerTokens` spare the ordinary word after `bearer` is still not sound,
 because a bearer token in a log line may be a *provider* credential (xAI,
 ElevenLabs, Clerk) that `API_KEYS` says nothing about, so a contract covering
 this app's own keys does not license a shape check over every bearer token. #314
 stays open with that narrowed.
+
+## 2026-08-28 UTC - Two cuts that took more than they were cutting
+
+Two readers each removed something the caller still had: a whole word, and the
+marks that hold a word together. Neither fails loudly, both are found by
+reading, and each has a measurement before the change, a fix, and a
+counterfactual. A third repair in the same batch — the redactor taking the word
+after a standalone `bearer` — was withdrawn under review and is now **#314**;
+the reasoning is in Review round 1 below, and it is the interesting part of this
+entry.
+
+Actions:
+
+- **`textExcerpt.ts` backed up past a word the cut had not broken.** `capAtWordBoundary`, `capAtWordBoundaryWithinCodeUnits`, and `tailAtWordBoundary` all backed up to the nearest whitespace unconditionally, without asking whether the cut had landed inside a word. A cut that falls exactly where a word ends has broken nothing, so the back-up threw away an intact word for no reason. The three now read the character the cut stopped before (or, for the tail, the one it started after) and give back only what was really broken. The loop that returns a genuinely broken word is unchanged and still right; what was missing was the question of whether anything had been broken.
+- **`normalizeActivationText` (`shared/continuityActivation.ts`) read every combining mark as a separator.** The #310 entry below moved this module's *matching* to whole words and left its *normalizer* keeping only `\p{L}\p{N}`. A mark is not a letter, so the class cut each word apart at every vowel sign. The retained class now includes `\p{M}` and the input is `NFC`-normalized first, which is the pairing `shared/storyDownloadFilename.ts` already states at length.
+- **Two consequences of retaining marks, both found by review rather than by me, both repaired here.** An orphaned mark — one whose base character the replacement removed, an emoji's variation selector being the case — attached itself to the *following* word, so `❤️pact` stopped matching a brief saying `pact`. And `ACTIVATION_TOKEN_MIN_LENGTH` was measured with `.length`, which counts marks, so a two-letter Arabic stopword wearing two marks cleared a floor built to exclude exactly that. Each part now drops the marks at its front, and the floor counts word characters.
+- Extended `tests/text-excerpt.test.ts` and `tests/continuity-activation.test.ts`. No new suite: both defects belong to a family those two files already exist for.
+- Recorded the continuation change in `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md`, which the documentation map requires and which the first draft of this slice did not do. That plan stated the seam's contract as "the normalizer leaves letters and numbers separated by single spaces" — the sentence the whole-word repair's exactness rests on — so leaving it unamended would have left the active control document contradicting the code.
+
+The defects, measured before changing anything:
+
+- **Excerpts.** `capAtWordBoundary('alpha beta gamma', 10)` answered `'alpha'` — the cut fell exactly where `beta` ends, so `beta` was whole and was discarded anyway. `tailAtWordBoundary('alpha beta gamma', 10)` answered `'gamma'` for the same reason from the other side. Both now keep the word. The readers are `generateNextChapterHint` (shown to the reader as what happens next), `createContextExcerpt` (`PREVIOUS CHAPTER EXCERPT` in the continuation prompt), the continuity prompt's per-chapter cut, and the scene sentence an image prompt is built from.
+- **Activation, measured against `main` on realistic labels.** A Devanagari label `विश्वासघात की प्रतिज्ञा` normalized to `व श व सघ त क प रत ज ञ`, and a brief naming one of its words scored **0**; it now scores 1. `José pact` against a brief typed in decomposed form scored 1 where the same brief typed precomposed scored 2 — the same name, two answers depending on how it happened to be encoded; both now score 2. The ASCII control is unchanged at 8.
+- **What the activation fix does *not* buy, stated because the first draft of this entry claimed it did.** A Thai label is no longer corrupted, but its score does not improve: Thai is written without spaces between words, so a brief naming one word of `สัญญาของฉัน` still does not match it as a whole word. That is word segmentation, which this repair does not attempt. And a short Devanagari word such as `कहानी` — three base characters — sits below the token floor and scores nothing, exactly as a three-letter ASCII word does.
+
+Decisions:
+
+- **`\p{M}` and `NFC` are both needed, and neither alone.** Devanagari, Thai, and Arabic marks do not compose away under `NFC`, so retaining them is what keeps those words whole; and the marks are kept either way, so `é` and `e` + U+0301 stay two strings until `NFC` makes them one. Same argument `storyDownloadFilename.ts` makes, applied to the reader that was left out of it.
+- **The excerpt fix is a boundary check, not a rewrite of the back-up.** What was missing was the question of whether anything had been broken.
+- **The token floor is a claim about how much *word* a token is, not how long it is.** That was the same thing only while marks were dropped, and the repair is what made the distinction load-bearing. Stating it that way is what keeps the floor doing its job — excluding `the`, `and`, `of` — in a script where a two-letter word can measure four.
+
+Self-review:
+
+- `npm run test:all` exits 0 (79 chained scripts, 82 distinct test files) before and after. `scripts/recovery/preflight.sh --skip-status` exits 0; the `proving-grounds.css` budget warning is pre-existing and untouched.
+- **Counterfactual mutations: 8 applied, 7 killed, and the survivor changed the code.** Reverting the excerpt cap boundary, the excerpt tail boundary, the retained `\p{M}`, the `NFC` normalize, the orphaned-mark strip, the word-character count, or the class the orphan strip matches each fails the suite that covers it. The eighth — weakening the part filter from "holds a letter or a number" to "is non-empty" — **survived, and it was right to.** Once each part drops its leading marks, a non-empty part provably begins with a letter or a number, because the replacement leaves only letters, numbers, marks and spaces and the split consumes the spaces. So the filter was restating an invariant the two steps above already establish, and a test of it could not fail. The filter is now the plain emptiness check, the invariant is asserted as a property across the adversarial inputs where weakening either step really does break it, and the docblock says which step earns it. A surviving mutant is a finding about the code, not a gap in the tests to paper over.
+- **The astral case is asserted rather than assumed.** `capAtWordBoundaryWithinCodeUnits` reads a single code unit to recognise whitespace, which is sound because whitespace is one unit wide in UTF-16 — but the character *after* a cut may be half of a surrogate pair, and half a character is not a word boundary. `('alpha beta🗝 gamma', 10)` must still answer `'alpha'`, and the test says so.
+- **One claim in the activation docblock was true only for the scripts that did not need it.** It said matching on the Unicode properties "keeps those words whole" — which held for Cyrillic and Han and not for any script written with combining marks.
+
+Review round 1 (Codex on `97f7d28`) — **five findings, all five valid, all five acted on. One of them withdrew a third of the slice.**
+
+- **P1: the bearer repair weakened a fail-closed security property, and it is withdrawn rather than argued down.** The change made the redactor take the run after a standalone `bearer` only when it was eight characters or carried a non-letter, which spared `a standard bearer led the march`. Codex pointed out that `authenticateRequest` accepts **any** non-empty `API_KEYS` value, so a deployment configuring `abcdef` has a live six-letter credential that the new rule leaves in the clear on the error paths the redactor exists for. Verified end to end: with `API_KEYS=abcdef`, the middleware authenticates `Authorization: Bearer abcdef` and the branch logged it verbatim. I looked for a rule that is both prose-preserving and fail-closed and could not find one — the scheme keyword is the only signal, and prose uses it the same way a header does. For a redactor, fail-closed wins, so the whole change and its tests are reverted to `main` and the prose defect is **#314**, with the trade-off written down so the next attempt starts from it rather than rediscovering it.
+- **P1: the slice crossed independent risk areas.** A privacy/redaction change and two story-generation changes shared one revert boundary, which the publication discipline says to split. Withdrawing the redaction change resolves this as well; what remains is two repairs to the text a continuation prompt is built from.
+- **P1: the execution plan was left stale.** `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md` still described the normalizer's output as letters and numbers only. Recorded, above.
+- **P2: the token floor counted marks.** Correct and precise: `مِنْ` is two letters wearing two marks, measures four, and cleared the floor. Fixed by counting word characters. **This one also falsified a number in my own PR description** — I had claimed `मेरी कहानी` went from 0 to 1, which was true only because marks were being counted as word length. With the floor fixed it is 0 either way, and the honest measurement is the longer label above. The claim was corrected rather than quietly dropped.
+- **P2: the orphaned mark attached to the next word.** `❤️pact` normalized to an invisible variation selector followed by `pact` and scored 0 against a brief saying `pact` — a regression the repair itself introduced, and one my own `❤️ pact` test missed by having a space in it. Fixed by stripping the marks at the front of each part.
+
+## 2026-08-28 UTC - The block splitter read a comment's body as story prose
+
+The last open row of #296. `shared/storyTextBlocks.ts` had a reading for
+tags — #308 moved it onto `shared/htmlTagScanner` — and no reading at all for
+comments.
+A comment is not a tag, so `findWellFormedTagEnd` refused it and `<[^<>]*>`
+answered: a pattern that ends at the first `>` and cannot cross a `<`, neither of
+which a comment body is obliged to avoid.
+
+This is the module every quality scanner in the repository reads —
+`countStoryWords`, the last-paragraph cliffhanger scan, the scene sentence an
+image prompt is built from, the excerpt carried into the next chapter's
+continuity prompt, and the text the app copies to the clipboard.
+
+Actions:
+
+- **`rewriteTags` now reads a comment with `findCommentEnd`** and drops it whole,
+  before `replaceTag` is consulted. That is `shared/htmlTagScanner`'s function, so
+  the four spellings that close a comment — `-->`, `<!-->`, `<!--->` and `--!>` —
+  are read here exactly as the export sanitizer and the chapter-heading reader
+  read them. One reading rather than three, which is the point of the row.
+- Extended `tests/story-text-blocks.test.ts`. No new suite: this is the file that
+  already covers this module, and it previously asserted the leak as intended
+  behaviour. That assertion is replaced rather than deleted.
+
+The four defects, measured against `main` before changing anything:
+
+- **A comment's body was read as story prose.**
+  `<p>Alpha.</p><!-- <p>Hidden.</p> --><p>Beta.</p>` came back as the five blocks
+  `Alpha.`, `<!--`, `Hidden.`, `-->`, `Beta.` — a commented-out paragraph counted
+  as words, and the `<p>` inside the comment taken as a paragraph break. This is
+  the one that matters: it is text an author deliberately hid reaching every
+  measure in the repository.
+- **A comment containing a blank line split the story.** `<!-- a\n\nb -->` became
+  the blocks `<!-- a` and `b -->`, moving every measure that reads the last
+  paragraph.
+- `<!-- note: a > b -->` leaked `b -->` as a visible block. This is the row #296
+  filed, and it was the least of the four.
+- `<!-- note: a < b -->` leaked the *opening*, `<!-- note: a`, instead.
+
+Decisions:
+
+- **A comment is dropped in `rewriteTags` rather than through `replaceTag`, and
+  that is load-bearing.** The boundary pass returns a non-boundary tag *as text*
+  for the second pass to remove, and the split between the two passes happens in
+  between — so a comment carrying a blank line would be split by the pass
+  boundary before anything could remove it. A tag can wait; a comment cannot.
+- **An unterminated comment is left exactly as `main` has it, which is a
+  deliberate divergence from `tokenizeHtml`.** `tokenizeHtml` abandons the scan
+  and drops the remainder of the input, and that is right for an export, because
+  a browser hides that text too. It is the wrong trade here: this module is not a
+  rendering path, and silently losing the tail of a story from the word count and
+  the next chapter's continuity excerpt costs more than the `<!-- unterminated`
+  that keeping it leaks. The module's stated policy on markup it cannot read is
+  already to keep the reader's words rather than guess. So `findCommentEnd`
+  answering `-1` falls through to the patterns, and every input with no comment
+  ending answers as it did before. **This is the one judgement call in the change
+  and the place to push back on it.**
+
+Self-review:
+
+- **The first draft was quadratic, and it was caught by measuring rather than by
+  reading.** Every unterminated comment open re-scanned to the end of the input
+  for a terminator that was not there, so `<!--<!--<!--…>` cost **505ms at 5,000
+  repeats, 1,980ms at 10,000 and 8,132ms at 20,000** — 8 seconds on an 80KB
+  story, against 7ms on `main`. The search is now run at most once per string:
+  once one open has no ending, no later one has either, because a `<!--` at `q`
+  carries its own `--` at `q + 2`, which any earlier failed search beginning at
+  `p + 4 <= q` already passed over and rejected. Re-measured at **5.3ms / 5.4ms /
+  7.1ms**, flat and matching `main`. That invariant is also checked directly
+  against `findCommentEnd` across every harness input — 382 later-open pairs
+  after a failed search, 0 violations — rather than inferred from the outputs.
+  This is the same fault the `lastGreaterThan` hoist above it exists for, and the
+  same family as the three backtracking blowups #295 and #302 withdrew over.
+- **`main` was worse than #296 recorded, in a way the issue never listed.** The
+  issue tracked only the `b -->` leak. The commented-out-paragraph case and the
+  blank-line split are both worse and neither was on the running list; both were
+  found by running the reader rather than by reading it.
+- **The regression #308 warned about does not occur.** #308 declined to adopt
+  `tokenizeHtml` because `<h3>Visible <!--> Title</h3>` would have gone down to
+  `Visible` — true while a comment ended only at `-->` and `<!-->` read as one
+  that never ends. #307 gave `findCommentEnd` all four spellings, so the heading
+  keeps its words, and that case is asserted.
+- Differential harness against `origin/main`'s implementation and Chromium
+  (`innerHTML`, then `innerText` on a rendered node), scored on two disjoint
+  vocabularies so a leaked comment fragment can never count as recovered prose:
+  - **8,000 inputs with no comment present: 0 differences.** The change is a
+    byte-for-byte no-op wherever a comment is absent.
+  - **256 inputs carrying hidden words and markup in a comment body:** comment
+    words leaked into the output **296 → 0**, markup leaked **216 → 0**.
+  - **19,607 inputs enumerating comment-terminator states** over
+    `{- ! > < a space newline}` to length 5: 26 outputs differ from `main`, every
+    one of them removing a leak. The remaining leaks in that corpus are the
+    unterminated comments the decision above deliberately preserves.
+  - **0 inputs, across all three corpora, where the branch loses a prose word
+    `main` kept.** That is the metric #302's history says to score on, and it is
+    scored on whole words drawn from a vocabulary disjoint from the comment
+    bodies'.
+- `npm run test:all` exits 0.
+
+Not claimed:
+
+- **No evidence this happens in production output.** The generator is not known
+  to emit comments at all, let alone ones carrying `<`, `>`, or a blank line.
+  Worth fixing because the failures are silent and reader-visible in the measures
+  rather than because they are common — which is the same argument, and the same
+  honest limit, as every other row of #296.
+- **This does not make the module a browser.** It reads a comment's *extent* the
+  way HTML does; it still diverges deliberately on unterminated markup, and the
+  `<`-in-attribute-value limit recorded on #296 is untouched in both directions.
+- **The linearity bound in the test is a shape check, not a benchmark.** It
+  asserts that 4× the input costs well under 10× the time, which excludes n²
+  while leaving headroom for a slow or contended CI machine.
 
 ## 2026-08-28 UTC - The three readers the whole-word sweep missed
 

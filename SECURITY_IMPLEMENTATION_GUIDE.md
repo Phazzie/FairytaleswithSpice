@@ -83,21 +83,32 @@ private validateStoryInput(input: StoryGenerationSeam['input']): any {
 - A credential contract on each configured entry: it must match RFC 6750's
   `b64token` grammar — a body of `A-Z a-z 0-9 . _ ~ + / -` followed only by
   optional trailing `=` padding — and its body, excluding that padding, must be
-  at least 16 characters (`API_KEY_MINIMUM_LENGTH`). An entry that does not
-  qualify is refused rather than trusted, so a *short* placeholder (`test`,
-  `changeme`), a truncated paste, or a value that kept its shell quoting cannot
-  become a live credential for a paid route. Padding is measured out of the
-  length deliberately: it is a base64 length artefact, not secret, and counting
-  it would let `a===============` clear a sixteen-character floor
-- **The floor is a length rule, not an entropy one, and does not make a key
-  unguessable.** A placeholder that is long enough still qualifies:
-  `changemechangeme` and sixteen repeated characters both authenticate, and
-  `tests/api-key-auth.test.ts` asserts the latter does so the boundary is
-  pinned rather than implied. Nothing here inspects a value for structure —
-  no dictionary, no repetition or entropy estimate — so the contract refuses
-  what is *malformed or too short*, and the operator remains responsible for
-  the value being secret. This is why the setup step below says to generate
-  keys rather than type them (`openssl rand -hex 24`), which is the only
+  at least 16 characters (`API_KEY_MINIMUM_LENGTH`), drawn from at least 5
+  different characters (`API_KEY_MINIMUM_DISTINCT_CHARACTERS`). An entry that
+  does not qualify is refused rather than trusted, so a *short* placeholder
+  (`test`, `changeme`), a truncated paste, a value that kept its shell quoting,
+  or a *degenerate* one (`kkkkkkkkkkkkkkkk`) cannot become a live credential for
+  a paid route. Padding is measured out of both the length and the variety
+  deliberately: it is a base64 length artefact, not secret, and counting it
+  would let `a===============` clear a sixteen-character floor
+- **The three rules are well-formedness, size and variety. None of them is an
+  entropy test, and a key that clears all three can still be a bad one.** The
+  variety rule refuses degenerate *repetition*; it does not refuse a weak
+  *choice*. `changemechangeme` carries seven distinct characters and
+  **authenticates**, and `tests/api-key-auth.test.ts` asserts that it does, so
+  the residual is pinned rather than implied. Catching it would need a word
+  list — unbounded, and it cannot be made to terminate — or a floor high enough
+  to start refusing genuinely generated keys: at eight distinct characters a
+  legitimate sixteen-character hex key is refused about two percent of the
+  time. Five is set where it provably cannot refuse a key from the generator
+  this guide recommends (for a 16-character hex key the false-refusal rate is
+  bounded by ≈ 4 × 10⁻⁷; for the 48-character `openssl rand -hex 24` it is far
+  smaller). So the contract refuses what is *malformed, too short, or
+  degenerate*, and the operator remains responsible for the value being secret.
+  Closing the rest means **issuing** credentials rather than validating
+  operator-chosen ones — see issue #321. This is why the setup step below says
+  to generate keys rather than type them (`openssl rand -hex 24`), which is the
+  only
   measure that actually closes this gap
 - Whitespace *around* an entry belongs to the comma-separated list rather than
   to the entry (`key-one, key-two`), so it is stripped before the entry is
@@ -131,8 +142,9 @@ private validateStoryInput(input: StoryGenerationSeam['input']): any {
 **Setup:**
 
 1. Set environment variable. Each comma-separated entry must match the
-   `b64token` grammar and carry at least 16 characters of token body (padding
-   excluded); generate them, do not type them (`openssl rand -hex 24`). Entries
+   `b64token` grammar, carry at least 16 characters of token body (padding
+   excluded), and draw that body from at least 5 different characters;
+   generate them, do not type them (`openssl rand -hex 24`). Entries
    that fail the contract are refused, and a deployment whose entries *all*
    fail — or which sets `API_KEYS` to something holding no entry — refuses
    every request:
@@ -185,16 +197,19 @@ fetch('/api/story/generate', {
 
 ### 4. Rate Limiting
 
-**Location:** `api/_lib/middleware/security.ts` (`checkRateLimit`), applied through the same `enforceApiAccessControl` guard as authentication.
+**Location:** `api/_lib/middleware/rateLimitStorePort.ts` (the `RateLimitStore` seam), applied through the same `enforceApiAccessControl` guard as authentication.
 
 **Features:**
 - Per-user, per-endpoint rate limiting
 - Configurable limits and time windows
-- In-memory storage (easily replaceable with Redis for production)
-- Automatic cleanup of expired entries
+- Two interchangeable stores behind one `RateLimitStore` port:
+  - `InMemoryRateLimitStore` (`api/_lib/middleware/inMemoryRateLimitStore.ts`, wrapping `checkRateLimit` in `security.ts`) — process-local, the default (`RATE_LIMIT_STORE` unset or `memory`). Correct for a single instance; **not** correct once more than one instance of this app is warm at once, since each instance starts with its own empty counter.
+  - `PostgresRateLimitStore` (`api/_lib/middleware/postgresRateLimitStore.ts`) — a shared counter in the same Postgres/Neon database the durable Story Lab stores already use, selected with `RATE_LIMIT_STORE=postgres` once `DATABASE_URL` is set. One atomic `INSERT ... ON CONFLICT ... DO UPDATE` per request; see the file for why that single statement is safe under concurrent instances without an explicit lock.
+  - Selected by `api/_lib/middleware/rateLimitStoreConfig.ts`, mirroring how `storyLabJobStoreConfig.ts` selects the Story Lab job store. The production default stays `memory` in this revision — flipping it to `postgres` is a separate, deliberately gated step, the same convention `STORY_LAB_JOB_STORE` follows.
+- Automatic cleanup of expired entries (in-memory store only; the Postgres store's rows are small, keyed by `(user_id, endpoint)`, and simply get overwritten on the next window)
 - Returns remaining quota and reset time
 - Applies even when `API_KEYS` is unset: every unauthenticated caller
-  collapses onto the same `development_user` id, so `checkRateLimit` still
+  collapses onto the same `development_user` id, so the configured store still
   gives them one *shared* budget per endpoint rather than unlimited access
 
 **Setup:**
@@ -202,8 +217,9 @@ fetch('/api/story/generate', {
 `enforceApiAccessControl` (see the Authentication section above) already
 authenticates the request and checks its rate limit together, sets the
 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers,
-and answers `429` (with `Retry-After`) when the budget is spent — a handler does
-not call `checkRateLimit` directly.
+and answers `429` (with `Retry-After`) when the budget is spent, or `503`
+if a deployment has opted into `RATE_LIMIT_STORE=postgres` without a working
+`DATABASE_URL` — a handler never calls a rate-limit store directly.
 
 `X-RateLimit-Reset` carries a **UTC epoch in seconds**, which is the form every
 client that knows the header name reads it in. `checkRateLimit` works in
@@ -225,35 +241,30 @@ RATE_LIMITS = {
 }
 ```
 
-**Production Upgrade (Redis):**
-```typescript
-import Redis from 'ioredis';
-const redis = new Redis(process.env.REDIS_URL);
+**Multi-Instance Deployments (implemented, opt-in):**
 
-export async function checkRateLimitRedis(
-  userId: string,
-  endpoint: string,
-  maxRequests: number,
-  windowMs: number
-) {
-  const key = `ratelimit:${userId}:${endpoint}`;
-  const count = await redis.incr(key);
-  
-  if (count === 1) {
-    await redis.pexpire(key, windowMs);
-  }
-  
-  return {
-    allowed: count <= maxRequests,
-    remaining: Math.max(0, maxRequests - count),
-    resetTime: Date.now() + windowMs
-  };
-}
-```
+Set `RATE_LIMIT_STORE=postgres` and `DATABASE_URL` to move rate limiting off
+the process-local `Map` and onto the shared `rate_limit_buckets` table
+(`storyLabCloudSchema.sql`), applied the same way the other durable Story Lab
+tables are (`scripts/recovery/apply-story-lab-cloud-schema.ts`). No new
+infrastructure (e.g. Redis) is required — it reuses the Postgres/Neon
+connection this app already provisions for durable jobs, profiles, and
+projects. See `api/_lib/middleware/postgresRateLimitStore.ts` for the store
+itself.
+
+Before enabling `RATE_LIMIT_STORE=postgres` in a real deployment, run
+`DATABASE_URL=... npm run smoke:rate-limit-store-concurrency` against that
+database. Unlike the unit tests below (which drive the algorithm through a
+JavaScript simulation of Postgres), this fires genuinely concurrent
+`consume()` calls from two independent store instances at the real database
+and proves the shared budget holds — the actual claim this feature exists to
+make.
 
 **Testing:**
-- 7 comprehensive tests in `security.spec.ts`
-- Tests cover: within limit, exceed limit, multiple users, multiple endpoints, time window reset
+- `tests/rate-limit-store.test.ts` — `InMemoryRateLimitStore` (unchanged `checkRateLimit` behavior through the port) and `PostgresRateLimitStore` (SQL wiring, window reset/increment/deny transitions, unconfigured fail-closed)
+- `tests/rate-limit-store-config.test.ts` — mode selection (`memory` default, explicit `postgres`, unknown mode fails closed), mirroring `tests/story-lab-job-store-config.test.ts`
+- `tests/api-access-control.test.ts` — route wiring, including the `503` when `RATE_LIMIT_STORE=postgres` is misconfigured
+- `npm run smoke:rate-limit-store-concurrency` (`DATABASE_URL`-gated, not part of `test:all`) — the real-Postgres concurrency proof described above
 
 ## 🚀 Deployment Checklist
 
@@ -264,7 +275,7 @@ Before deploying to production:
 - [x] Test rate limiting with automated requests — `tests/api-access-control.test.ts`
 - [ ] Update frontend to send an API key once `API_KEYS` is configured (it currently sends none, which relies on the fail-open path)
 - [ ] Configure CORS to whitelist only production domains
-- [ ] Consider upgrading rate limiting to Redis for distributed systems
+- [ ] For multi-instance deployments, set `RATE_LIMIT_STORE=postgres` (with `DATABASE_URL`) so the rate-limit budget is shared across instances instead of per-process
 - [ ] Monitor failed authentication attempts
 - [ ] Set up alerts for rate limit violations
 - [ ] Document API key management process for users
@@ -288,9 +299,9 @@ Before deploying to production:
 
 1. **Development Mode**: When `API_KEYS` is not set, authentication allows all requests for development convenience — this now applies to a request that sends no key at all, not only to one that happens to send some key anyway (the fix in this revision; see `authenticateRequest` in `security.ts`). Always set `API_KEYS` in production if you want the key check enforced. Note that "not set" means *no usable entry was configured at all*: a value that is set but entirely unusable is a misconfiguration, and reaches the fail-closed branch instead (Note 6).
 
-6. **Rejected `API_KEYS` entries.** An entry whose token body is shorter than `API_KEY_MINIMUM_LENGTH` (16) or which does not match the `b64token` grammar (`A-Z a-z 0-9 . _ ~ + / -`, then optional trailing `=` padding) cannot authenticate a request. If some entries qualify, the deployment runs on those and logs a warning naming how many were refused and why. If none qualify, every request is refused with 401 `API_KEY_CONFIGURATION_INVALID` and an error is logged. Both reports count the rejected entries rather than printing them: a refused entry is still whatever the operator believed was a credential, and the logger's own redaction does not recognise an arbitrary short string as one.
+6. **Rejected `API_KEYS` entries.** An entry cannot authenticate a request if its token body is shorter than `API_KEY_MINIMUM_LENGTH` (16), if it does not match the `b64token` grammar (`A-Z a-z 0-9 . _ ~ + / -`, then optional trailing `=` padding), or if that body draws on fewer than `API_KEY_MINIMUM_DISTINCT_CHARACTERS` (5) different characters. The three reasons are counted separately in the log, because "too short" would be false for `kkkkkkkkkkkkkkkk` and would send the operator to lengthen a key that is already long enough. If some entries qualify, the deployment runs on those and logs a warning naming how many were refused and why. If none qualify, every request is refused with 401 `API_KEY_CONFIGURATION_INVALID` and an error is logged. Both reports count the rejected entries rather than printing them: a refused entry is still whatever the operator believed was a credential, and the logger's own redaction does not recognise an arbitrary short string as one.
 
-2. **Rate Limiting Storage**: Current implementation uses in-memory storage suitable for single-instance deployments. For production with multiple instances, upgrade to Redis. It applies regardless of whether `API_KEYS` is set — an unconfigured deployment's unauthenticated callers still share one budget per endpoint.
+2. **Rate Limiting Storage**: The default (`RATE_LIMIT_STORE` unset or `memory`) is in-memory storage, suitable for single-instance deployments only. For production with multiple instances, set `RATE_LIMIT_STORE=postgres` (with `DATABASE_URL` configured) — no Redis needed, it shares the Postgres/Neon connection this app already uses for durable Story Lab storage. It applies regardless of whether `API_KEYS` is set — an unconfigured deployment's unauthenticated callers still share one budget per endpoint.
 
 3. **Input Sanitization**: Sanitization is applied at the service layer, providing defense-in-depth even if API handlers are bypassed.
 
@@ -336,7 +347,11 @@ Before deploying to production:
 
 - Security Primitives: `api/_lib/middleware/security.ts`
 - Access Control Guard (auth + rate limit, wired into every route): `api/_lib/middleware/apiAccessControl.ts`
+- Rate Limit Store Port: `api/_lib/middleware/rateLimitStorePort.ts`
+- Rate Limit Store Selection: `api/_lib/middleware/rateLimitStoreConfig.ts`
+- Postgres Rate Limit Store: `api/_lib/middleware/postgresRateLimitStore.ts`
 - Primitive Tests: `tests/api-key-auth.test.ts`
+- Rate Limit Store Tests: `tests/rate-limit-store.test.ts`, `tests/rate-limit-store-config.test.ts`
 - Route Wiring Tests: `tests/api-access-control.test.ts`
 - Input Validation: `api/_lib/services/storyService.ts` (lines 1150-1227)
 - Rate Limit Constants: `api/_lib/constants.ts`
@@ -348,4 +363,4 @@ Before deploying to production:
 2. Set up monitoring for security events
 3. Consider implementing request logging for audit trails
 4. Plan for API key rotation strategy
-5. Consider upgrading rate limiting to Redis for multi-instance deployments
+5. Validate `RATE_LIMIT_STORE=postgres` against a live database, then consider flipping the deployment's default away from `memory` (a separate, gated step — see `STORY_LAB_JOB_STORE`'s own rollout for the precedent)
