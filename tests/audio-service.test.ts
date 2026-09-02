@@ -358,12 +358,27 @@ async function testTooManySpeakerSegmentsIsRejected(): Promise<void> {
   assert(withinCap.success, 'content at exactly the segment cap should still narrate');
 }
 
+// `MAX_AUDIO_SEGMENTS` bounds provider calls, not paragraphs: many short
+// consecutive narration paragraphs — ordinary prose, not an adversarial
+// shape — used to be counted one segment per paragraph and wrongly refused
+// as "too many speaker changes" even though every one of them is Narrator.
+async function testConsecutiveSameSpeakerParagraphsAreCoalescedForTheSegmentCap(): Promise<void> {
+  const manyNarratorParagraphs = Array.from(
+    { length: MAX_AUDIO_SEGMENTS * 2 },
+    (_, index) => `<p>[Narrator]: word${index}.</p>`
+  ).join('');
+
+  const result = await new AudioService().convertToAudio(createInput({ content: manyNarratorParagraphs }));
+  assert(result.success, `many same-speaker paragraphs should coalesce under the segment cap, not be refused (got ${JSON.stringify(result.error)})`);
+}
+
 // A permanent provider failure (bad credentials, an invalid voice id, a
 // rejected payload) will reproduce identically on every retry; only a
 // response-less failure (timeout, dropped connection), a rate limit, or a
 // provider-side outage is worth a caller retrying.
 function testRetryabilityClassificationForProviderErrors(): void {
   assert(isRetryableElevenLabsError({}) === true, 'a response-less failure (timeout/network error) should be retryable');
+  assert(isRetryableElevenLabsError({ response: { status: 408 } }) === true, 'an explicit request timeout should be retryable');
   assert(isRetryableElevenLabsError({ response: { status: 429 } }) === true, 'a rate limit should be retryable');
   assert(isRetryableElevenLabsError({ response: { status: 500 } }) === true, 'a provider 5xx should be retryable');
   assert(isRetryableElevenLabsError({ response: { status: 503 } }) === true, 'a provider 503 should be retryable');
@@ -394,6 +409,7 @@ async function main(): Promise<void> {
   await testDefaultVoiceEnvVarAloneCoversTheNarrator();
   await testDurationEstimateUsesTheProvidersEffectiveSpeedInRealMode();
   await testTooManySpeakerSegmentsIsRejected();
+  await testConsecutiveSameSpeakerParagraphsAreCoalescedForTheSegmentCap();
   testRetryabilityClassificationForProviderErrors();
   await testTheRequestIdReachesTheEnvelope();
 

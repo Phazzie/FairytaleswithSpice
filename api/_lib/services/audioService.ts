@@ -220,6 +220,37 @@ export function parseAudioSegments(content: string): AudioSegment[] {
   return segments;
 }
 
+/**
+ * Merge consecutive same-speaker segments into one.
+ *
+ * `parseAudioSegments` deliberately keeps every paragraph as its own segment
+ * — `testHtmlParagraphBreaksStaySeparateSegments` pins that, so a reader of
+ * its output can see the source's paragraph structure. But synthesis and
+ * `MAX_AUDIO_SEGMENTS` care about something else: how many separate provider
+ * calls this request needs. Nothing in `synthesizeSegments` inserts a pause
+ * between segments — their PCM is concatenated directly — so several
+ * consecutive narration paragraphs sent as one call produce indistinguishable
+ * audio from sending them as several, at a fraction of the provider calls and
+ * without a plain multi-paragraph excerpt (all one speaker, well under the
+ * word/duration limits) tripping a cap meant for actual speaker changes.
+ * Applied after parsing rather than folded into it, so `parseAudioSegments`
+ * itself still answers what the source structure is.
+ */
+function coalesceAdjacentSameSpeakerSegments(segments: AudioSegment[]): AudioSegment[] {
+  const coalesced: AudioSegment[] = [];
+
+  for (const segment of segments) {
+    const previous = coalesced[coalesced.length - 1];
+    if (previous && previous.speaker === segment.speaker) {
+      previous.text = `${previous.text} ${segment.text}`;
+    } else {
+      coalesced.push({ ...segment });
+    }
+  }
+
+  return coalesced;
+}
+
 /** `Lord Damien` → `ELEVENLABS_VOICE_LORD_DAMIEN`, the per-character override README:387 already documents the shape of. */
 function speakerEnvKey(speaker: string): string {
   const normalized = speaker.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -256,18 +287,18 @@ function isContentTooLargeError(error: any): boolean {
  * changes something.
  *
  * No response at all — a timeout, a dropped connection — is treated as
- * transient, the same as a `5xx` or a `429` rate limit: none of those say
- * anything about the request itself being wrong. Any other response status
- * (an invalid API key, an invalid configured voice id, a rejected payload)
- * means the *request* is what's wrong, and retrying it verbatim can only
- * fail the same way again.
+ * transient, the same as a `5xx`, a `429` rate limit, or an explicit `408`
+ * request timeout: none of those say anything about the request itself being
+ * wrong. Any other response status (an invalid API key, an invalid
+ * configured voice id, a rejected payload) means the *request* is what's
+ * wrong, and retrying it verbatim can only fail the same way again.
  */
 export function isRetryableElevenLabsError(error: any): boolean {
   const status = error?.response?.status;
   if (status === undefined) {
     return true;
   }
-  return status === 429 || status >= 500;
+  return status === 408 || status === 429 || status >= 500;
 }
 
 /**
@@ -354,7 +385,7 @@ export class AudioService {
         };
       }
 
-      const segments = parseAudioSegments(input.content);
+      const segments = coalesceAdjacentSameSpeakerSegments(parseAudioSegments(input.content));
       if (segments.length === 0) {
         return {
           success: false,
