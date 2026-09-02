@@ -9,6 +9,7 @@ import { NotificationService } from './notification.service';
 import { OBJECT_URL_REVOKE_DELAY_MS } from '../../../shared/htmlDocumentDownload';
 import {
   ApiResponse,
+  AudioConversionSeam,
   CloudStoryProjectDeleteReceipt,
   StoryIterationPayload,
   StoryLabJob,
@@ -293,6 +294,7 @@ describe('App', () => {
       'loadCloudStoryProject',
       'deleteCloudStoryProject',
       'generateImage',
+      'convertChapterToAudio',
       'exportStory'
     ]);
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
@@ -768,6 +770,197 @@ describe('App', () => {
     fixture.detectChanges();
 
     expect(component.imageGenerationError()).toBe('Themes are required and must be a non-empty array');
+  });
+
+  it('narrates and plays back audio for the selected chapter', () => {
+    const payload = seedWorkbenchForContinuation();
+    const chapter = payload.batch.chapters[0];
+    const audio: AudioConversionSeam['output'] = {
+      audioId: 'audio-1',
+      storyId: payload.summary.storyId,
+      audioUrl: 'data:audio/wav;base64,UklGRg==',
+      format: 'wav',
+      duration: 4.2,
+      voiceUsed: ['mock_voice_abc123'],
+      generatedAt: new Date()
+    };
+    storyService.convertChapterToAudio.and.returnValue(of({ success: true, data: audio }));
+    fixture.detectChanges();
+
+    const narrateButton = fixture.nativeElement.querySelector('[data-testid="generate-audio"]') as HTMLButtonElement;
+    narrateButton.click();
+    fixture.detectChanges();
+
+    expect(storyService.convertChapterToAudio).toHaveBeenCalledWith(jasmine.objectContaining({
+      storyId: payload.summary.storyId,
+      chapterId: chapter.chapterId
+    }));
+    expect(component.isGeneratingAudio()).toBeFalse();
+
+    const player = fixture.nativeElement.querySelector('[data-testid="chapter-audio-player"]') as HTMLAudioElement | null;
+    expect(player?.src).toBe(audio.audioUrl);
+  });
+
+  // A retry used to leave a prior success's player on screen underneath a
+  // new failure message, where it read as this attempt's result rather than
+  // a stale leftover from before.
+  it('clears a previous player when a retry fails', () => {
+    seedWorkbenchForContinuation();
+    const audio: AudioConversionSeam['output'] = {
+      audioId: 'audio-1',
+      storyId: 'story-123',
+      audioUrl: 'data:audio/wav;base64,UklGRg==',
+      format: 'wav',
+      duration: 4.2,
+      voiceUsed: ['mock_voice_abc123'],
+      generatedAt: new Date()
+    };
+    storyService.convertChapterToAudio.and.returnValue(of({ success: true, data: audio }));
+    fixture.detectChanges();
+
+    const narrateButton = fixture.nativeElement.querySelector('[data-testid="generate-audio"]') as HTMLButtonElement;
+    narrateButton.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="chapter-audio-player"]')).not.toBeNull();
+
+    storyService.convertChapterToAudio.and.returnValue(of({
+      success: false,
+      error: { code: 'AUDIO_GENERATION_FAILED', message: 'AI audio narration service temporarily unavailable', retryable: true }
+    }));
+    narrateButton.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="chapter-audio-player"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="chapter-audio-error"]')?.textContent?.trim())
+      .toBe('AI audio narration service temporarily unavailable');
+  });
+
+  it('shows an error instead of a player when narration fails', () => {
+    seedWorkbenchForContinuation();
+    storyService.convertChapterToAudio.and.returnValue(of({
+      success: false,
+      error: { code: 'AUDIO_GENERATION_FAILED', message: 'AI audio narration service temporarily unavailable', retryable: true }
+    }));
+    fixture.detectChanges();
+
+    const narrateButton = fixture.nativeElement.querySelector('[data-testid="generate-audio"]') as HTMLButtonElement;
+    narrateButton.click();
+    fixture.detectChanges();
+
+    const errorText = fixture.nativeElement.querySelector('[data-testid="chapter-audio-error"]') as HTMLElement | null;
+    const player = fixture.nativeElement.querySelector('[data-testid="chapter-audio-player"]') as HTMLAudioElement | null;
+    expect(errorText?.textContent?.trim()).toBe('AI audio narration service temporarily unavailable');
+    expect(player).toBeNull();
+  });
+
+  it('disables the narrate button while a request is in flight', () => {
+    seedWorkbenchForContinuation();
+    const pending = new Subject<ApiResponse<AudioConversionSeam['output']>>();
+    storyService.convertChapterToAudio.and.returnValue(pending.asObservable());
+    fixture.detectChanges();
+
+    const narrateButton = fixture.nativeElement.querySelector('[data-testid="generate-audio"]') as HTMLButtonElement;
+    narrateButton.click();
+    fixture.detectChanges();
+
+    expect(component.isGeneratingAudio()).toBeTrue();
+    expect(narrateButton.disabled).toBeTrue();
+    expect(narrateButton.textContent?.trim()).toBe('Narrating…');
+  });
+
+  // `/api/audio/convert` answers `AUDIO_GENERATION_FAILED` as a real HTTP
+  // status, not a `200` with `success: false`, so a provider failure arrives
+  // on the error channel — the same shape the export test above covers.
+  // `formatApiError` used to rewrite any "temporarily unavailable" message
+  // into "Grok is temporarily unavailable", telling the reader the wrong
+  // service had failed; it must now pass this seam's own message through.
+  it('reports the audio service\'s own failure rather than blaming Grok', () => {
+    seedWorkbenchForContinuation();
+    storyService.convertChapterToAudio.and.returnValue(throwError(() => ({
+      status: 500,
+      error: {
+        success: false,
+        error: {
+          code: 'AUDIO_GENERATION_FAILED',
+          message: 'AI audio narration service temporarily unavailable',
+          retryable: true
+        }
+      }
+    })));
+
+    component.generateChapterAudio();
+
+    expect(component.isGeneratingAudio()).toBeFalse();
+    expect(component.audioGenerationError()).toBe('AI audio narration service temporarily unavailable');
+  });
+
+  // `storyLabEngine` deliberately preserves an empty `rawContent` as a
+  // supported chapter state; narrating from it with `??` used to select that
+  // empty string over the visible `htmlContent` and refuse the request as
+  // missing content instead of narrating the chapter the reader can see.
+  it('narrates from htmlContent when rawContent is blank', () => {
+    seedWorkbenchForContinuation({
+      batch: {
+        chapters: [createChapter({ rawContent: '', htmlContent: '<p>She opened the door.</p>' })],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      }
+    });
+    storyService.convertChapterToAudio.and.returnValue(of({
+      success: true,
+      data: {
+        audioId: 'audio-1',
+        storyId: 'story-123',
+        audioUrl: 'data:audio/wav;base64,UklGRg==',
+        format: 'wav',
+        duration: 1,
+        voiceUsed: ['mock_voice_abc123'],
+        generatedAt: new Date()
+      }
+    }));
+
+    component.generateChapterAudio();
+
+    expect(storyService.convertChapterToAudio).toHaveBeenCalledWith(jasmine.objectContaining({
+      content: '<p>She opened the door.</p>'
+    }));
+  });
+
+  // A word-boundary slice can still land inside a multiword speaker tag —
+  // `[Lord Damien, voice: velvet-smoke]:` split after `[Lord` used to reach
+  // the backend as an unrecognizable bracket fragment, spoken aloud in the
+  // preceding speaker's voice instead of read as a tag.
+  it('drops a speaker tag split by the excerpt boundary instead of sending the fragment', () => {
+    const filler = new Array(397).fill('filler').join(' ');
+    const tail = new Array(60).fill('more').join(' ');
+    const rawContent = `${filler} [Lord Damien, voice: velvet-smoke]: "Stop," she said. ${tail}`;
+
+    seedWorkbenchForContinuation({
+      batch: {
+        chapters: [createChapter({ rawContent, htmlContent: rawContent })],
+        totalWordCount: 900,
+        suggestedNextPrompts: []
+      }
+    });
+    storyService.convertChapterToAudio.and.returnValue(of({
+      success: true,
+      data: {
+        audioId: 'audio-1',
+        storyId: 'story-123',
+        audioUrl: 'data:audio/wav;base64,UklGRg==',
+        format: 'wav',
+        duration: 1,
+        voiceUsed: ['mock_voice_abc123'],
+        generatedAt: new Date()
+      }
+    }));
+
+    component.generateChapterAudio();
+
+    const sentContent = (storyService.convertChapterToAudio.calls.mostRecent().args[0] as { content: string }).content;
+    expect(sentContent).not.toContain('[');
+    expect(sentContent.trim().split(/\s+/)).toEqual(new Array(397).fill('filler'));
   });
 
   // The picker used to restate the export format list by hand and had lost
@@ -2613,7 +2806,7 @@ describe('App', () => {
 
     component.startGenesis();
 
-    expect(component.statusMessage()).toContain('missing its Grok configuration');
+    expect(component.statusMessage()).toContain('not configured for this deployment');
     expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
   });
 
@@ -2772,7 +2965,7 @@ describe('App', () => {
     expect(storyService.continueStory).not.toHaveBeenCalled();
     expect(component.workbench().chapterHistory).toEqual(genesisPayload.batch.chapters);
     expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
-    expect(component.statusMessage()).toContain('missing its Grok configuration');
+    expect(component.statusMessage()).toContain('not configured for this deployment');
   });
 
   it('keeps existing chapters when a completed continuation job has a malformed story payload', () => {

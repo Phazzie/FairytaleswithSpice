@@ -55,6 +55,10 @@ export const RATE_LIMITS = {
     maxRequests: 10,
     windowMs: 15 * 60 * 1000    // 15 minutes — same tier as story generation
   },
+  AUDIO_CONVERSION: {
+    maxRequests: 10,
+    windowMs: 15 * 60 * 1000    // 15 minutes — same tier as image generation
+  },
   EXPORT: {
     maxRequests: 20,
     windowMs: 15 * 60 * 1000    // 15 minutes

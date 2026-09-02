@@ -24,6 +24,7 @@ import { buildStoryHtmlDocument } from './story-html-exporter';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { CREATURE_ARCHETYPES, readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import {
+  AudioConversionSeam,
   BatchProgressState,
   CHAPTER_BATCH_SIZES,
   ChapterBatchSize,
@@ -715,6 +716,16 @@ export class App implements OnDestroy {
    */
   readonly imageGenerationError = computed(() => {
     const failure = this.chapterImageFailure();
+    return failure && failure.chapterId === this.selectedChapter()?.chapterId ? failure.message : null;
+  });
+
+  readonly isGeneratingAudio = signal(false);
+  readonly generatedChapterAudio = signal<{ chapterId: string; audio: AudioConversionSeam['output'] } | null>(null);
+  readonly chapterAudioFailure = signal<{ chapterId: string; message: string } | null>(null);
+
+  /** The audio failure to show under the chapter currently open. See `imageGenerationError` for why this is scoped. */
+  readonly audioGenerationError = computed(() => {
+    const failure = this.chapterAudioFailure();
     return failure && failure.chapterId === this.selectedChapter()?.chapterId ? failure.message : null;
   });
   // Read from the contract rather than restated here: this list had lost
@@ -1840,6 +1851,127 @@ export class App implements OnDestroy {
       });
   }
 
+  generateChapterAudio() {
+    const chapter = this.selectedChapter();
+    const story = this.workbench().story;
+
+    if (!chapter || !story || this.isGeneratingAudio()) {
+      return;
+    }
+
+    this.isGeneratingAudio.set(true);
+    this.chapterAudioFailure.set(null);
+    // Cleared here, not only set on success: without this, a retry that fails
+    // after an earlier success left that stale player on screen underneath
+    // the new failure message, where it reads as this attempt's result.
+    this.generatedChapterAudio.set(null);
+
+    // `rawContent` carries the `[Character, voice: …]:`/`[Narrator]:` tags the
+    // narration pipeline reads; `htmlContent` is what a chapter falls back to
+    // when a saved project predates that field. `buildNarrationExcerpt` caps
+    // it well under `AudioService`'s response-size ceiling — this app's
+    // shortest chapter (600 words) is already past what that ceiling allows
+    // in one inline response, so sending the whole chapter would refuse every
+    // request with a length error instead of narrating an opening excerpt.
+    const narrationSource =
+      chapter.rawContent && chapter.rawContent.trim().length > 0 ? chapter.rawContent : chapter.htmlContent;
+
+    this.storyService
+      .convertChapterToAudio({
+        storyId: story.storyId,
+        chapterId: chapter.chapterId,
+        content: this.buildNarrationExcerpt(narrationSource)
+      })
+      .subscribe({
+        next: response => {
+          this.isGeneratingAudio.set(false);
+
+          if (response.success) {
+            this.generatedChapterAudio.set({ chapterId: chapter.chapterId, audio: response.data });
+            this.notificationService.success('Narration ready', 'Your chapter narration is ready to play.');
+          } else {
+            const message = response.error?.message ?? 'Audio generation failed.';
+            this.chapterAudioFailure.set({ chapterId: chapter.chapterId, message });
+            this.notificationService.error('Audio generation failed', message);
+          }
+        },
+        error: error => {
+          this.isGeneratingAudio.set(false);
+          const message = this.formatHttpError(error, 'Audio generation failed. Please try again.');
+          this.chapterAudioFailure.set({ chapterId: chapter.chapterId, message });
+          this.notificationService.error('Audio generation failed', message);
+        }
+      });
+  }
+
+  /**
+   * The opening of a chapter, cut on whole `<p>` blocks, short enough for
+   * `AudioService` to narrate in one inline response.
+   *
+   * `AudioService.MAX_ESTIMATED_DURATION_SECONDS` (180s at the default speed
+   * this app always requests) allows roughly 450 words; 400 keeps margin
+   * without this frontend estimate needing to match the backend's word-count
+   * formula exactly. A single paragraph alone past the budget — including
+   * `rawContent` that is plain text with no `<p>` breaks at all, which reads
+   * here as one paragraph — is truncated at a word boundary rather than kept
+   * whole: sending it intact regardless of size was exactly the kind of
+   * silent overpromise this feature exists to stop making.
+   */
+  private buildNarrationExcerpt(rawContent: string): string {
+    const NARRATION_EXCERPT_MAX_WORDS = 400;
+    const paragraphs = rawContent.split(/(?<=<\/p>)/i).filter(paragraph => paragraph.trim().length > 0);
+
+    const kept: string[] = [];
+    let wordCount = 0;
+
+    for (const paragraph of paragraphs) {
+      // `stripStoryHtmlToText` rather than a bare `<[^>]+>` strip: the naive
+      // pattern ends a tag at the first `>`, including one inside a quoted
+      // attribute value (`<p title="a>b">`), and leaks the fragment after it
+      // as spoken text. The shared scanner is what every other reader of this
+      // markup already uses for the same reason.
+      const plainWords = stripStoryHtmlToText(paragraph).split(/\s+/).filter(Boolean);
+      if (kept.length > 0 && wordCount + plainWords.length > NARRATION_EXCERPT_MAX_WORDS) {
+        break;
+      }
+
+      if (kept.length === 0 && plainWords.length > NARRATION_EXCERPT_MAX_WORDS) {
+        // The one block by itself is already oversized — including a
+        // plain-text chapter with no `<p>` breaks, which is this whole
+        // string read as a single "paragraph". Tags are dropped rather than
+        // preserved: `parseAudioSegments` on the backend reads either shape,
+        // and truncating at a word boundary in the plain-text reading is what
+        // avoids re-balancing whatever markup this cuts through.
+        return this.truncateWithoutSplittingASpeakerTag(plainWords, NARRATION_EXCERPT_MAX_WORDS);
+      }
+
+      kept.push(paragraph);
+      wordCount += plainWords.length;
+    }
+
+    return kept.join('').trim() || rawContent;
+  }
+
+  /**
+   * A word-boundary slice can still stop mid speaker-tag — e.g. after
+   * `[Lord` inside `[Lord Damien, voice: velvet-smoke]:` — leaving a bracket
+   * fragment that `AudioService`'s tag pattern won't recognize, so it gets
+   * narrated as spoken text in the preceding speaker's voice instead of
+   * being read as a tag. If the slice's last `[` has no matching `]:` after
+   * it, drop everything from that `[` onward.
+   */
+  private truncateWithoutSplittingASpeakerTag(words: string[], maxWords: number): string {
+    const slice = words.slice(0, maxWords).join(' ');
+    const lastOpenBracket = slice.lastIndexOf('[');
+    const lastClosedTag = slice.lastIndexOf(']:');
+
+    if (lastOpenBracket === -1 || lastOpenBracket < lastClosedTag) {
+      return slice;
+    }
+
+    return slice.slice(0, lastOpenBracket).trim();
+  }
+
   saveActiveProject() {
     const savedProjectId = this.persistSession(this.workbench());
     if (savedProjectId) {
@@ -2708,20 +2840,32 @@ export class App implements OnDestroy {
     this.jobDrivenProgress = false;
   }
 
+  /**
+   * `AI_UNAVAILABLE` and "temporarily unavailable" are answered by three
+   * services now — story/continuation (Grok), image generation, and audio
+   * narration — and every one of them already writes its own specific,
+   * caller-facing sentence for exactly this case: see `StoryService`'s
+   * `missingProviderResponse` ("Set XAI_API_KEY…"), `ImageService`'s
+   * `CallerFacingImageError`, and `AudioService`'s `CallerFacingAudioError`.
+   * This used to override all three with a hardcoded "Grok is temporarily
+   * unavailable" / "…missing its Grok configuration" — correct for the
+   * service this method was first written for, and wrong for the other two,
+   * telling an image or audio failure's reader that the wrong system is down.
+   * Passing the message through is what the "AI story engine" branch already
+   * did anywhere its own detail mattered more than a fixed sentence — the
+   * `timeout` rewording stays Grok-specific because story/continuation is
+   * still the only caller of this method whose fallback names a timeout.
+   */
   private formatApiError(error: { code?: string; message?: string; details?: unknown } | undefined, fallback: string): string {
     const code = error?.code ?? '';
     const message = error?.message ?? fallback;
 
     if (code === 'AI_UNAVAILABLE') {
-      return 'The AI story engine is unavailable because this deployment is missing its Grok configuration.';
+      return message;
     }
 
     if (code.includes('TIMEOUT') || message.toLowerCase().includes('timeout')) {
       return 'Grok took too long to finish this story. Try a shorter chapter or try again in a minute.';
-    }
-
-    if (message.toLowerCase().includes('temporarily unavailable') || message.toLowerCase().includes('provider')) {
-      return 'Grok is temporarily unavailable. Try again in a minute.';
     }
 
     return message;

@@ -4,6 +4,43 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-02 UTC - Multi-Voice Audio Narration shipped, audio un-deferred by explicit repo-owner ask (PR #323)
+
+`README.md` marketed "multi-voice audio narration" as a flagship feature — a "90+ Emotion System," ElevenLabs integration, a documented `POST /api/audio/convert` contract — with zero code behind it: no `api/audio/`, no `audioService.ts`, zero `ElevenLabs` references anywhere in the repo. `Chapter.hasAudio`/`audioUrl`/`audioDuration` were permanently `false`/`undefined` at every call site, even though the story prompt already emits `[Character, voice: ...]` speaker tags into `rawContent` for a pipeline that was never built to consume them.
+
+A "worst-to-best" routine run built the feature and opened PR #323 before checking this file's Audio Scope section (then: "Audio is deferred for this recovery... Do not expand, wire up, or prioritize audio unless explicitly asked"). Codex's third review round caught the conflict. Rather than unilaterally shipping it or discarding the (already reviewed, CI-green) work, that session paused before merging and escalated a ship/don't-ship call to `#claude-routines` and the repo owner directly. The repo owner approved shipping it.
+
+Actions:
+
+- Added `AudioConversionSeam` to `api/_lib/types/contracts.ts` (input: `storyId`, `chapterId?`, `content`, `voice?`, `speed?`, `format?`; output: `audioId`, `audioUrl`, `format`, `duration`, `voiceUsed`), re-exported through the frontend `contracts.ts`.
+- Added `api/_lib/services/audioService.ts`: `parseAudioSegments` reuses `shared/storyTextBlocks`'s `splitStoryIntoTextBlocks`; voice resolution is caller `voice` override → per-character `ELEVENLABS_VOICE_<NAME>` env var → `ELEVENLABS_VOICE_NARRATOR`/`_DEFAULT` → a deterministic mock id. Real ElevenLabs requests raw PCM (`output_format=pcm_16000`) wrapped in a hand-written 44-byte RIFF/WAVE header; mock mode produces genuinely valid, decodable, duration-accurate silent WAV from the same writer.
+- Added `api/audio/convert.ts` (new Vercel function, `beginPostRoute` preamble, its own `RATE_LIMITS.AUDIO_CONVERSION` tier), registered in `expressApiRoutes.ts` and the Vercel function budget (8/12 → 9/12).
+- Added a "Preview Narration" control next to "Generate Image" in `app.html`/`app.ts`, calling the new endpoint through `story.service.ts`, with loading/error states and native `<audio>` playback.
+- Tests: `tests/audio-service.test.ts`, 3 new `app.spec.ts` cases, `express-api-routes.test.ts` and the Vercel function-count script updated.
+- Rewrote `README.md`'s audio section to describe what actually ships instead of the unbuilt "90+ Emotion System" language.
+- Updated `AGENTS.md`'s Audio Scope section and API Routes table to reflect the un-deferral and the new route.
+
+Review rounds (Copilot + Codex across four pushes), all fixed or explicitly answered:
+
+- **Response-size risk** (Copilot, then Codex found the first mitigation — a duration cap — still insufficient): even the app's shortest chapter could produce a multi-MB inline JSON response. Reframed as an opening-excerpt preview (frontend sends ~400 words, "Preview Narration" wording, README updated) with bounded word/segment/duration/byte limits, rather than promising full-chapter narration this delivery mechanism can't safely carry. Full-chapter narration needs stored/URL-delivered audio or real compression — recorded as explicit deferred scope in `AGENTS.md`, not silently dropped.
+- **P1: no changelog entry for the slice** (Codex) — this entry.
+- **P1: `AGENTS.md`'s Audio Scope contradicted the new route** (Codex) — resolved by the repo-owner decision and the `AGENTS.md` rewrite above.
+- **P2: narration state isn't chapter-keyed** (Codex) — real, but matches the pre-existing `generatedChapterImage` pattern (same single-slot, overwritten-on-each-generation shape); not a regression this PR introduces, left as-is.
+- **P2: narration requests carry no `X-API-Key`/bearer header** (Codex) — real, but a pre-existing, app-wide gap (every paid route's frontend call has the same gap; no HTTP interceptor exists anywhere in the Angular app); not something this PR introduces or should fix in isolation.
+
+Self-review:
+
+- Good: held the line on not unilaterally overriding documented repo governance, even with the feature fully built and reviewed — got an explicit human decision before merging.
+- Non-claim: full-chapter narration is not shipped; only an opening-excerpt preview is. The Story Lab job system's `'audio'` kind remains unsupported.
+
+Validation:
+
+- `npm run test:all` (including new `test:audio-service`) — passing.
+- `npx tsc --noEmit` on both `tsconfig.app.json` and `tsconfig.spec.json` — clean.
+- `ng build --configuration production` — within bundle budget.
+- `ng test` (217 Karma specs) — all passing.
+- `scripts/recovery/check-vercel-function-count.sh` — `9/12`.
+
 ## 2026-09-01 UTC - API rate limiting moved off a per-process Map, opt-in Postgres store added (PR #320)
 
 `checkRateLimit` (`api/_lib/middleware/security.ts`) is a module-level `Map` — the app's actual and only cost/abuse control in front of every paid xAI/Grok route (story generation, continuation, image, export, every Story Lab genesis/continuation/create/evaluate route). Its own comment already said why that's wrong here: "For multi-instance deployments (e.g., horizontal scaling, serverless, load-balanced setups), replace with a distributed cache like Redis." This app ships as Vercel serverless functions, so every cold-started or concurrently-warm instance got its own empty map — a caller's effective budget scaled with however many instances happened to be running, with zero cross-instance coordination.

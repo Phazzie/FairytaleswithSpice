@@ -21,12 +21,12 @@
 - **Chapter Continuation**: Extend stories with seamless chapter additions
 - **Customizable Length**: 700, 900, or 1200 word options
 
-### 🎭 **Advanced Multi-Voice Audio**
-- **Character-Specific Voices**: Unique voices for each creature type and gender
-- **Speaker Tag Recognition**: Automatically detects `[Character]:` dialogue patterns
-- **90+ Emotion System**: Maps emotional states to voice parameters
-- **Seamless Audio Merging**: Combines multiple speakers into flowing narration
-- **Professional Quality**: ElevenLabs integration for premium text-to-speech
+### 🎭 **Multi-Voice Audio Narration (Preview)**
+- **Speaker Tag Recognition**: Reads the `[Character]:` / `[Character, voice: …]:` / `[Narrator]:` tags the story generator already writes into every chapter
+- **Character-Specific Voices**: Set an `ELEVENLABS_VOICE_<CHARACTER_NAME>` variable per character, with narrator/default fallbacks — see **Custom Voices** below
+- **Seamless Audio Merging**: Concatenates every speaker's line into one continuous narration, in the order the excerpt reads
+- **ElevenLabs Integration, With a Dev/Test Mock Fallback**: Real text-to-speech behind `ELEVENLABS_API_KEY`; without one, a deterministic silent narration of the same length in development and tests, so the feature is fully testable offline. A production deployment with no key answers `AI_UNAVAILABLE` instead — it never narrates silence and calls it a success.
+- **Narrates an opening excerpt, not the whole chapter**: the response is one inline audio file, capped at ~3 minutes of narration so it fits safely in a single API response — this app's shortest chapter (600 words) is already longer than that. Narrating a full chapter needs stored, URL-delivered audio instead, which is real follow-up work.
 
 ### 📤 **Professional Export Options**
 - **Multiple Formats**: PDF, EPUB, DOCX, HTML, and TXT
@@ -358,17 +358,19 @@ Content-Type: application/json
 
 {
   "storyId": "story_123",
-  "content": "Story content with [Speaker]: dialogue",
-  "voice": "female",
+  "chapterId": "chapter_1",
+  "content": "<p>[Narrator]: The candles guttered.</p><p>[Lord Damien, voice: velvet-smoke]: \"Come closer.\"</p>",
   "speed": 1.0,
-  "format": "mp3"
+  "format": "wav"
 }
 ```
+`voice` is optional and, when sent, overrides every segment's resolved voice — see **Custom Voices** below for the per-character default. With no `ELEVENLABS_API_KEY` configured, the route answers a deterministic silent narration of the same length instead of calling ElevenLabs, so the feature works fully offline **in development and tests**. A production deployment (`NODE_ENV`/`VERCEL_ENV` = `production`) with no key instead answers every request with `AI_UNAVAILABLE` — the same fail-closed rule this repo applies to story and image generation — rather than silently narrating minutes of silence and reporting success.
+
+`content` must estimate to 3 minutes of narration or less (about 450 words at the default speed) — the response is one inline `data:` URI, not a stream or a stored file, and a longer request is refused with `INVALID_INPUT` before any synthesis runs. The frontend's "Preview Narration" control sends the chapter's opening rather than the whole thing for this reason.
 
 ### **Image Generation Status**
 
-The Vercel `/api/image/generate` route is retired to preserve Story Lab function budget.
-Image service code may remain available for local tooling or a later route-budgeted feature plan.
+`/api/image/generate` is live and counted against the Story Lab's tracked Vercel function budget (see `scripts/recovery/check-vercel-function-count.sh`), alongside `/api/audio/convert` added for narration.
 
 [View complete API documentation](./DIGITAL_OCEAN_DEPLOYMENT.md#api-endpoints)
 
@@ -377,14 +379,14 @@ Image service code may remain available for local tooling or a later route-budge
 ### **Adding New Creatures**
 1. Update `CreatureType` in contracts.ts
 2. Add creature to themes array in app.ts
-3. Add voice mappings in audioService.ts
-4. Update story generation prompts
+3. Update story generation prompts
 
 ### **Custom Voices**
-Set environment variables for character-specific voices:
+`AudioService` resolves each speaker tag to a voice in this order: the caller's `voice` override, a per-character variable named after the speaker, then a narrator/default fallback (`ELEVENLABS_VOICE_NARRATOR`/`ELEVENLABS_VOICE_DEFAULT`). The deterministic id after that is a **mock-mode-only** fallback — it is never a real ElevenLabs voice, so with `ELEVENLABS_API_KEY` set, a speaker that reaches it instead fails the request with a configuration error naming the speaker. A production deployment needs at least `ELEVENLABS_VOICE_DEFAULT` set, or every speaker mapped individually. Set environment variables to configure real ElevenLabs voices:
 ```env
-ELEVENLABS_VOICE_VAMPIRE_MALE=your_voice_id
-ELEVENLABS_VOICE_FAIRY_FEMALE=your_voice_id
+ELEVENLABS_VOICE_LORD_DAMIEN=your_voice_id
+ELEVENLABS_VOICE_NARRATOR=your_voice_id
+ELEVENLABS_VOICE_DEFAULT=your_voice_id
 ```
 
 ### **New Export Formats**

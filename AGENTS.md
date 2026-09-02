@@ -1,6 +1,6 @@
 # AGENTS.md - Fairytales with Spice
 
-Last updated: 2026-07-16 03:52 EDT
+Last updated: 2026-09-02 00:32 EDT
 
 This file is read automatically by AI coding agents. It is the repo-level operating guide for current Story Lab platform work, recovery work, and autonomous sessions.
 
@@ -417,6 +417,7 @@ Current Vercel-facing route families include:
 | `/api/story-lab/jobs` | Create a non-durable Story Lab job scaffold |
 | `/api/story-lab/jobs/:jobId` | Read a non-durable Story Lab job snapshot |
 | `/api/story-lab/jobs/:jobId/events` | Replay non-durable Story Lab job snapshots as SSE |
+| `/api/audio/convert` | Classic per-chapter narration preview (WAV, opening excerpt only) — see Audio Scope below |
 
 SSE must remain SSE. Do not convert `/api/story/stream` to WebSocket or polling unless explicitly requested.
 
@@ -426,9 +427,16 @@ Story Lab job routes are currently process-local and explicitly non-durable. The
 
 ## Audio Scope
 
-Audio is deferred for this recovery.
+Audio narration was explicitly un-deferred on 2026-09-02. A "worst-to-best" routine run built the classic per-chapter narration preview in PR #323, then paused before merging when Codex's review caught the conflict with this section's prior "deferred for this recovery" wording, and escalated a ship/don't-ship call to `#claude-routines` and the repo owner directly. The repo owner approved shipping it.
 
-Some legacy audio files/routes may still exist in the repo or old PRs. Do not expand, wire up, or prioritize audio unless explicitly asked. When closing audio PRs, mine story-generation-relevant ideas first:
+What is now live: `POST /api/audio/convert` (`api/audio/convert.ts`, `api/_lib/services/audioService.ts`) — WAV-only, opening-excerpt preview (bounded word/segment/duration/byte limits so a single inline JSON response stays serverless-safe; full-chapter narration was scoped down to this during review because it does not fit that response shape). ElevenLabs-or-mock voice synthesis keyed off the `[Character, voice: ...]` speaker tags the story prompt already emits into `Chapter.rawContent`, resolved via caller override → per-character `ELEVENLABS_VOICE_<NAME>` env var → `ELEVENLABS_VOICE_NARRATOR`/`_DEFAULT` → a deterministic mock id. A "Preview Narration" control lives next to "Generate Image" in the classic chapter view. See `PR70_RECOVERY_CHANGELOG.md`'s PR #323 entry for full detail and review history.
+
+What is still deferred — do not expand, wire up, or prioritize either without an explicit ask:
+
+- Full-chapter (non-excerpt) narration. Needs stored/URL-delivered audio or real audio compression; this delivery mechanism has neither.
+- The Story Lab job system's `'audio'` `StoryLabJobKind` (`contracts.ts`). Still rejected with `UNSUPPORTED_JOB_KIND` until later platform gates land — separate, larger work from the classic path PR #323 shipped.
+
+Some legacy audio files/routes may still exist in the repo or old PRs beyond what PR #323 shipped. When closing an audio PR that isn't an explicit ask, mine story-generation-relevant ideas first:
 
 - speaker tag formats
 - emotion taxonomy

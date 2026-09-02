@@ -276,6 +276,22 @@
   margin-top: 10px;
 }
 
+.chapter-audio-panel {
+  margin-top: 12px;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.chapter-audio-player {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .section-heading h2,
 .story-header h2 {
   font-family: var(--serif);
