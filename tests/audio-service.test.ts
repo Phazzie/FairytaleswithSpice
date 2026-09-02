@@ -207,6 +207,18 @@ async function testMalformedInputIsRejectedAsCallerError(): Promise<void> {
     createInput({ format: 'flac' as AudioConversionSeam['input']['format'] })
   );
   assert(unsupportedFormat.error?.code === 'UNSUPPORTED_FORMAT', `an unsupported format should be refused by name (got ${unsupportedFormat.error?.code})`);
+  assert(
+    typeof (unsupportedFormat.error as { requestedFormat?: unknown }).requestedFormat === 'string',
+    'requestedFormat should be a string the caller can render'
+  );
+
+  // A non-string format must not reach `requestedFormat` verbatim — the
+  // contract types that field as a string, and `format as string` on a
+  // number would have written the number straight into it.
+  const numericFormat = await new AudioService().convertToAudio(
+    createInput({ format: 42 as unknown as AudioConversionSeam['input']['format'] })
+  );
+  assert(numericFormat.error?.code === 'INVALID_INPUT', `a non-string format is a caller error (got ${numericFormat.error?.code})`);
 
   const noNarratableText = await new AudioService().convertToAudio(createInput({ content: '           ' }));
   assert(!noNarratableText.success, 'whitespace-only content should be refused');
@@ -240,6 +252,13 @@ async function testRealModeRequiresAConfiguredVoice(): Promise<void> {
     assert(!result.success, 'an unconfigured real-mode voice should fail rather than call the provider with a mock id');
     assert(result.error?.code === 'AUDIO_GENERATION_FAILED', `got ${result.error?.code}`);
     assert(/no elevenlabs voice is configured/i.test(result.error?.message ?? ''), `the message should name the real problem (got ${result.error?.message})`);
+    // A missing voice configuration fails identically on every retry, unlike
+    // a provider outage — `AudioConversionSeam.errors.AUDIO_GENERATION_FAILED`
+    // declares `retryable` for exactly this distinction.
+    assert(
+      (result.error as { retryable?: unknown }).retryable === false,
+      `a configuration error should be reported as not retryable (got ${(result.error as { retryable?: unknown }).retryable})`
+    );
   } finally {
     delete process.env['ELEVENLABS_API_KEY'];
   }

@@ -190,11 +190,21 @@ function clampToElevenLabsSpeedRange(speed: number): number {
  * A failure whose message was written to be read by the caller. See
  * `ImageService`'s `CallerFacingImageError` for why this distinction is
  * marked on the throw rather than assumed by the catch block that forwards it.
+ *
+ * `retryable` travels with it because the two throw sites mean different
+ * things by "failed": a missing voice configuration will fail identically on
+ * every retry until an operator fixes it, while a provider outage might not.
+ * `AudioConversionSeam.errors.AUDIO_GENERATION_FAILED` declares the field;
+ * this is what actually populates it, rather than leaving every response
+ * `undefined` regardless of which failure produced it.
  */
 class CallerFacingAudioError extends Error {
-  constructor(message: string) {
+  readonly retryable: boolean;
+
+  constructor(message: string, retryable: boolean) {
     super(message);
     this.name = 'CallerFacingAudioError';
+    this.retryable = retryable;
   }
 }
 
@@ -278,12 +288,24 @@ export class AudioService {
         method: 'POST'
       }, { storyId: toLoggableStoryId(input.storyId) });
 
+      // Built separately from the object literal below so `retryable` is not
+      // an excess property against `ApiErrorPayload`'s declared shape — the
+      // same reason `validateAudioInput`'s wider return type exists for
+      // `UNSUPPORTED_FORMAT`'s extra fields. `AudioConversionSeam`'s own
+      // `errors.AUDIO_GENERATION_FAILED` is the type this actually answers to.
+      const failure: { code: string; message: string; retryable: boolean } = {
+        code: 'AUDIO_GENERATION_FAILED',
+        message: error instanceof CallerFacingAudioError ? error.message : 'Failed to generate audio',
+        // An error this catch did not throw itself (and therefore did not
+        // mark) is treated as not retryable, the same as the generic message
+        // beside it — an unanticipated bug is not something the caller's
+        // retry fixes either.
+        retryable: error instanceof CallerFacingAudioError ? error.retryable : false
+      };
+
       return {
         success: false,
-        error: {
-          code: 'AUDIO_GENERATION_FAILED',
-          message: error instanceof CallerFacingAudioError ? error.message : 'Failed to generate audio'
-        },
+        error: failure,
         metadata: { requestId: correlationId, processingTime: Date.now() - startTime }
       };
     }
@@ -310,10 +332,13 @@ export class AudioService {
       // audio narration service temporarily unavailable" — the wrong answer
       // for what is a configuration gap, not a provider outage.
       if (!isMockMode && !configuredVoiceId) {
+        // Not retryable: the request will fail identically until an operator
+        // sets a voice, which is not something the caller's next attempt can fix.
         throw new CallerFacingAudioError(
           `No ElevenLabs voice is configured for "${segment.speaker}". Set ELEVENLABS_VOICE_DEFAULT `
             + '(or ELEVENLABS_VOICE_NARRATOR, or a per-character ELEVENLABS_VOICE_<NAME> override) '
-            + 'before narrating with a real API key.'
+            + 'before narrating with a real API key.',
+          false
         );
       }
 
@@ -409,7 +434,10 @@ export class AudioService {
         endpoint: '/api/audio/convert',
         method: 'POST'
       });
-      throw new CallerFacingAudioError('AI audio narration service temporarily unavailable');
+      // Retryable: this is the provider call failing, the transient case
+      // `CallerFacingAudioError`'s docblock contrasts with the configuration
+      // error above.
+      throw new CallerFacingAudioError('AI audio narration service temporarily unavailable', true);
     }
   }
 
@@ -457,18 +485,28 @@ export class AudioService {
       return { code: 'INVALID_INPUT', message: `speed must be a number between ${MIN_SPEED} and ${MAX_SPEED}` };
     }
 
+    // Read as `unknown` and checked for `string` before it is ever placed in
+    // `requestedFormat` below: the contract types that field as a string, and
+    // a caller sending `{"format": 42}` or `{"format": null}` is not one —
+    // `format as string` would have written the number or `null` straight
+    // into a field a client reads expecting text.
     const format: unknown = input.format;
-    if (format !== undefined && !(AUDIO_FORMATS as readonly string[]).includes(format as string)) {
-      return {
-        code: 'UNSUPPORTED_FORMAT',
-        message: `Unsupported audio format. Supported formats: ${AUDIO_FORMATS.join(', ')}`,
-        // The contract's `errors.UNSUPPORTED_FORMAT` names these, and
-        // `ExportService.validateExportInput`'s `FORMAT_NOT_SUPPORTED` already
-        // includes them for the same reason: a client can render "wav" rather
-        // than parse it back out of the message string.
-        requestedFormat: format as string,
-        supportedFormats: AUDIO_FORMATS
-      };
+    if (format !== undefined) {
+      if (typeof format !== 'string') {
+        return { code: 'INVALID_INPUT', message: 'format must be a string when provided' };
+      }
+      if (!(AUDIO_FORMATS as readonly string[]).includes(format)) {
+        return {
+          code: 'UNSUPPORTED_FORMAT',
+          message: `Unsupported audio format. Supported formats: ${AUDIO_FORMATS.join(', ')}`,
+          // The contract's `errors.UNSUPPORTED_FORMAT` names these, and
+          // `ExportService.validateExportInput`'s `FORMAT_NOT_SUPPORTED` already
+          // includes them for the same reason: a client can render "wav" rather
+          // than parse it back out of the message string.
+          requestedFormat: format,
+          supportedFormats: AUDIO_FORMATS
+        };
+      }
     }
 
     return null;
