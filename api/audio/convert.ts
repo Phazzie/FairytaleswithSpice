@@ -4,7 +4,7 @@ import { getApiResponseStatus } from '../_lib/http/apiResponseStatus';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { beginPostRoute } from '../_lib/http/postRoutePreamble';
 import { RATE_LIMITS } from '../_lib/constants';
-import { AudioService } from '../_lib/services/audioService';
+import { AudioService, DEFAULT_FORMAT } from '../_lib/services/audioService';
 import { AudioConversionSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
 import {
@@ -54,7 +54,12 @@ export default async function handler(req: any, res: any) {
       method: 'POST',
       requestParameters: {
         storyId: toLoggableStoryId(input.storyId),
-        format: toLoggableAudioFormat(input.format)
+        // `input.format` is optional on the wire — `AudioService` defaults it
+        // to `DEFAULT_FORMAT` for every normal request that omits it, so
+        // logging the raw (usually `undefined`) value would record the
+        // standard path as `[UNRECOGNIZED]`, indistinguishable from a
+        // genuinely unsupported format during incident diagnosis.
+        format: toLoggableAudioFormat(input.format ?? DEFAULT_FORMAT)
       }
     });
 

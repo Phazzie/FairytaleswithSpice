@@ -38,7 +38,7 @@ const AUDIO_MIME_TYPES: Record<AudioFormat, string> = {
 };
 
 const NARRATOR_SPEAKER = 'Narrator';
-const DEFAULT_FORMAT: AudioFormat = 'wav';
+export const DEFAULT_FORMAT: AudioFormat = 'wav';
 const DEFAULT_SPEED = 1.0;
 const MIN_SPEED = 0.5;
 const MAX_SPEED = 2.0;
@@ -88,6 +88,18 @@ const MAX_AUDIO_CONTENT_LENGTH = 20_000;
 
 /** The longest `voice` override this route accepts — a provider voice id, not caller prose. */
 const MAX_VOICE_LENGTH = 200;
+
+/**
+ * The longest `storyId` this route accepts. Real ids are `story_<uuid>`
+ * (~42 characters); generous headroom above that for whatever a caller's own
+ * id scheme uses, without leaving the field unbounded. Unbounded mattered
+ * here specifically because `storyId` is echoed verbatim into a successful
+ * response alongside up to `MAX_PCM_BYTES` of base64 audio: a caller-supplied
+ * multi-megabyte id would pass the truthiness check that used to be the only
+ * one, and could push a response that synthesis already paid for past the
+ * inline-response budget this service otherwise carefully bounds.
+ */
+const MAX_STORY_ID_LENGTH = 200;
 
 /**
  * Average spoken pace, used to size the mock provider's silence (see
@@ -733,6 +745,9 @@ export class AudioService {
     const storyId: unknown = input.storyId;
     if (typeof storyId !== 'string' || storyId.trim().length === 0) {
       return { code: 'INVALID_INPUT', message: 'Story ID is required and must be a non-empty string' };
+    }
+    if (storyId.length > MAX_STORY_ID_LENGTH) {
+      return { code: 'INVALID_INPUT', message: `storyId must be ${MAX_STORY_ID_LENGTH} characters or fewer` };
     }
 
     const content: unknown = input.content;

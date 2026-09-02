@@ -257,6 +257,13 @@ async function testMalformedInputIsRejectedAsCallerError(): Promise<void> {
   const missingStoryId = await new AudioService().convertToAudio(createInput({ storyId: '' }));
   assert(missingStoryId.error?.code === 'INVALID_INPUT', 'an empty storyId is a caller error');
 
+  // Real ids are `story_<uuid>` (~42 characters). An unbounded storyId is
+  // echoed verbatim into a successful response alongside the synthesized
+  // audio, so a multi-megabyte one could push an otherwise-compliant
+  // response past the inline-response budget after synthesis already ran.
+  const oversizedStoryId = await new AudioService().convertToAudio(createInput({ storyId: 'x'.repeat(1000) }));
+  assert(oversizedStoryId.error?.code === 'INVALID_INPUT', `an oversized storyId is a caller error (got ${oversizedStoryId.error?.code})`);
+
   const tooShort = await new AudioService().convertToAudio(createInput({ content: 'hi' }));
   assert(tooShort.error?.code === 'INVALID_INPUT', 'content shorter than the floor is a caller error');
 
