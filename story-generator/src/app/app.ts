@@ -22,6 +22,7 @@ import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { isVocabularyMember } from '../../../shared/storyStateVocabulary';
 import { buildStoryHtmlDocument } from './story-html-exporter';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
+import { AcceptedMemoryCardEditDraft, MemoryCardDraftItem, MemoryCardService } from './memory-card.service';
 import { CREATURE_ARCHETYPES, readCreatureDisplayName } from '../../../shared/creatureVocabulary';
 import {
   AudioConversionSeam,
@@ -291,22 +292,6 @@ type ContinuityPreviewSelection<T> = {
   matched: boolean;
 };
 
-type MemoryCardDraftItem = {
-  id: string;
-  label: string;
-  title: string;
-  detail: string;
-  triggerLabel: string;
-  pinned: boolean;
-  accepted: boolean;
-};
-
-type AcceptedMemoryCardEditDraft = {
-  title: string;
-  detail: string;
-  triggerLabel: string;
-};
-
 type GenerationProgressState = {
   active: boolean;
   percent: number;
@@ -508,6 +493,7 @@ export class App implements OnDestroy {
   private readonly formValidation = inject(FormValidationService);
   private readonly notificationService = inject(NotificationService);
   private readonly workspaceStorage = inject(StoryWorkspaceStorageService);
+  private readonly memoryCardService = inject(MemoryCardService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly route = inject(ActivatedRoute);
   private batchIdSequence = 0;
@@ -668,14 +654,14 @@ export class App implements OnDestroy {
     'ending-bet': 'revelation'
   });
   readonly directorRoomDecisions = signal<Record<string, DirectorRoomNoteStatus>>({});
-  readonly pinnedMemoryCardDraftIds = signal<Set<string>>(new Set());
-  readonly acceptedMemoryCards = signal<StoryMemoryCard[]>([]);
-  readonly editingAcceptedMemoryCardId = signal<string | null>(null);
-  readonly acceptedMemoryCardEditDraft = signal<AcceptedMemoryCardEditDraft>({
-    title: '',
-    detail: '',
-    triggerLabel: ''
-  });
+  // Memory-card state (pinned drafts, accepted cards, the in-progress edit)
+  // lives in `MemoryCardService` — see `memoryCardDrafts` below for why the
+  // derivation still happens here. These are aliases (not copies) onto the
+  // service's own signals, kept under their original names so the template
+  // didn't need to change.
+  readonly acceptedMemoryCards = this.memoryCardService.acceptedMemoryCards;
+  readonly editingAcceptedMemoryCardId = this.memoryCardService.editingAcceptedMemoryCardId;
+  readonly acceptedMemoryCardEditDraft = this.memoryCardService.acceptedMemoryCardEditDraft;
   readonly isGenerating = signal(false);
   /**
    * Whether the creature/spice/heat-contract-detail/mood/length/batch-size
@@ -865,78 +851,21 @@ export class App implements OnDestroy {
     ].filter(item => item.title || item.detail);
   });
 
-  readonly memoryCardDrafts = computed<MemoryCardDraftItem[]>(() => {
-    const continuity = this.continuityPanel();
-    const pinnedDraftIds = this.pinnedMemoryCardDraftIds();
-    const acceptedCardIds = new Set(this.acceptedMemoryCards().map(card => card.id));
-    const characterDrafts = continuity.characters.slice(0, 1).map(character => ({
-      id: `memory-card-character-${character.id}`,
-      label: 'Character card',
-      title: character.displayName,
-      detail: character.currentGoal || character.summary || character.externalConflict,
-      triggerLabel: this.buildMemoryCardTriggerLabel(character.displayName),
-      pinned: pinnedDraftIds.has(`memory-card-character-${character.id}`),
-      accepted: acceptedCardIds.has(`memory-card-character-${character.id}`)
-    }));
-    const threadDrafts = continuity.activeThreads.slice(0, 1).map(thread => ({
-      id: `memory-card-thread-${thread.id}`,
-      label: 'Promise card',
-      title: thread.label,
-      detail: thread.description,
-      triggerLabel: this.buildMemoryCardTriggerLabel(thread.label),
-      pinned: pinnedDraftIds.has(`memory-card-thread-${thread.id}`),
-      accepted: acceptedCardIds.has(`memory-card-thread-${thread.id}`)
-    }));
-    const artifactDrafts = continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
-      id: `memory-card-artifact-${artifact.id}`,
-      label: 'World card',
-      title: artifact.name,
-      detail: artifact.significance,
-      triggerLabel: this.buildMemoryCardTriggerLabel(artifact.name),
-      pinned: pinnedDraftIds.has(`memory-card-artifact-${artifact.id}`),
-      accepted: acceptedCardIds.has(`memory-card-artifact-${artifact.id}`)
-    }));
-
-    return [...characterDrafts, ...threadDrafts, ...artifactDrafts].filter(item => item.title && item.detail);
-  });
+  // Derivation stays here (rather than moving wholesale into the service)
+  // because it depends on `continuityPanel`, which is itself derived from
+  // workbench/session state the service has no business knowing about; the
+  // service takes the view model as a parameter instead of reaching for it.
+  readonly memoryCardDrafts = computed<MemoryCardDraftItem[]>(() =>
+    this.memoryCardService.deriveDrafts(this.continuityPanel())
+  );
 
   readonly pinnedMemoryCardDraftCount = computed(() =>
     this.memoryCardDrafts().filter(draft => draft.pinned).length
   );
 
-  readonly acceptedMemoryContinuationSummary = computed(() => {
-    const cards = this.acceptedMemoryCards();
-    if (!cards.length) {
-      return '';
-    }
-
-    const noun = cards.length === 1 ? 'card' : 'cards';
-    const visibleTitles = cards.slice(0, 2).map(card => card.title);
-    const hiddenCount = cards.length - visibleTitles.length;
-    const titleSummary = hiddenCount > 0
-      ? `${visibleTitles.join(', ')} +${hiddenCount}`
-      : visibleTitles.join(', ');
-    return `${cards.length} accepted memory ${noun} will be included: ${titleSummary}.`;
-  });
-
-  private buildMemoryCardTriggerLabel(title: string): string {
-    const alias = this.extractMemoryCardTriggerAlias(title);
-    return alias ? `Trigger: ${title}, ${alias}` : `Trigger: ${title}`;
-  }
-
-  private extractMemoryCardTriggerAlias(title: string): string | null {
-    const trimmedTitle = title.trim();
-    const words = trimmedTitle
-      .split(/\s+/)
-      .map(word => word.replace(/[^\p{L}\p{N}']+/gu, ''))
-      .filter(Boolean);
-    if (words.length < 2) {
-      return null;
-    }
-
-    const alias = words.pop()?.toLowerCase() ?? '';
-    return alias === trimmedTitle.toLowerCase() ? null : alias;
-  }
+  readonly acceptedMemoryContinuationSummary = computed(() =>
+    this.memoryCardService.deriveAcceptedContinuationSummary()
+  );
 
   /**
    * How long a thread or artifact is expected to matter, named for the reader.
@@ -1512,132 +1441,42 @@ export class App implements OnDestroy {
   }
 
   pinMemoryCardDraft(draftId: string) {
-    let draftPinned = false;
-    this.pinnedMemoryCardDraftIds.update(current => {
-      const next = new Set(current);
-      if (next.has(draftId)) {
-        next.delete(draftId);
-      } else {
-        next.add(draftId);
-        draftPinned = true;
-      }
-
-      return next;
-    });
-    this.statusMessage.set(draftPinned
-      ? 'Memory card draft pinned for this session.'
-      : 'Memory card draft unpinned for this session.'
-    );
+    this.statusMessage.set(this.memoryCardService.pinDraft(draftId));
   }
 
   acceptMemoryCardDraft(draftId: string) {
-    const draft = this.memoryCardDrafts().find(item => item.id === draftId);
-    if (!draft) {
-      return;
+    const message = this.memoryCardService.acceptDraft(draftId, this.memoryCardDrafts());
+    if (message) {
+      this.statusMessage.set(message);
     }
-
-    this.acceptedMemoryCards.update(current => {
-      if (current.some(card => card.id === draft.id)) {
-        return current;
-      }
-
-      return [
-        ...current,
-        {
-          id: draft.id,
-          label: draft.label,
-          title: draft.title,
-          detail: draft.detail,
-          triggerLabel: draft.triggerLabel,
-          acceptedAt: new Date().toISOString()
-        }
-      ];
-    });
-    this.statusMessage.set('Memory card accepted into this story.');
   }
 
   editAcceptedMemoryCard(card: StoryMemoryCard) {
-    this.editingAcceptedMemoryCardId.set(card.id);
-    this.acceptedMemoryCardEditDraft.set({
-      title: card.title,
-      detail: card.detail,
-      triggerLabel: card.triggerLabel
-    });
+    this.memoryCardService.beginEdit(card);
   }
 
   updateAcceptedMemoryCardEditDraft(field: keyof AcceptedMemoryCardEditDraft, value: string) {
-    this.acceptedMemoryCardEditDraft.update(current => ({
-      ...current,
-      [field]: value
-    }));
+    this.memoryCardService.updateEditDraft(field, value);
   }
 
   saveAcceptedMemoryCardEdit() {
-    const cardId = this.editingAcceptedMemoryCardId();
-    if (!cardId) {
-      return;
+    const message = this.memoryCardService.saveEdit();
+    if (message) {
+      this.statusMessage.set(message);
     }
-
-    const draft = this.acceptedMemoryCardEditDraft();
-    const title = draft.title.trim();
-    const detail = draft.detail.trim();
-    const triggerLabel = draft.triggerLabel.trim() || this.buildMemoryCardTriggerLabel(title);
-    if (!title || !detail) {
-      this.statusMessage.set('Accepted memory cards need a title and detail.');
-      return;
-    }
-
-    this.acceptedMemoryCards.update(current => current.map(card => card.id === cardId
-      ? {
-          ...card,
-          title,
-          detail,
-          triggerLabel
-        }
-      : card
-    ));
-    this.cancelAcceptedMemoryCardEdit();
-    this.statusMessage.set('Accepted memory card updated.');
   }
 
   cancelAcceptedMemoryCardEdit() {
-    this.editingAcceptedMemoryCardId.set(null);
-    this.acceptedMemoryCardEditDraft.set({
-      title: '',
-      detail: '',
-      triggerLabel: ''
-    });
+    this.memoryCardService.cancelEdit();
   }
 
   moveAcceptedMemoryCard(cardId: string, direction: -1 | 1) {
-    this.acceptedMemoryCards.update(current => {
-      const currentIndex = current.findIndex(card => card.id === cardId);
-      const nextIndex = currentIndex + direction;
-      if (currentIndex === -1 || nextIndex < 0 || nextIndex >= current.length) {
-        return current;
-      }
-
-      const next = [...current];
-      [next[currentIndex], next[nextIndex]] = [next[nextIndex], next[currentIndex]];
-      return next;
-    });
+    this.memoryCardService.moveAccepted(cardId, direction);
     this.statusMessage.set('Accepted memory card order updated.');
   }
 
   deleteAcceptedMemoryCard(cardId: string) {
-    this.acceptedMemoryCards.update(current => current.filter(card => card.id !== cardId));
-    this.pinnedMemoryCardDraftIds.update(current => {
-      if (!current.has(cardId)) {
-        return current;
-      }
-
-      const next = new Set(current);
-      next.delete(cardId);
-      return next;
-    });
-    if (this.editingAcceptedMemoryCardId() === cardId) {
-      this.cancelAcceptedMemoryCardEdit();
-    }
+    this.memoryCardService.deleteAccepted(cardId);
     this.statusMessage.set('Accepted memory card removed.');
   }
 
@@ -1657,9 +1496,7 @@ export class App implements OnDestroy {
   }
 
   resetWorkbench() {
-    this.pinnedMemoryCardDraftIds.set(new Set());
-    this.acceptedMemoryCards.set([]);
-    this.cancelAcceptedMemoryCardEdit();
+    this.memoryCardService.reset();
     this.workbench.set({
       story: null,
       state: null,
@@ -2292,9 +2129,7 @@ export class App implements OnDestroy {
     };
 
     if (isNewStory) {
-      this.pinnedMemoryCardDraftIds.set(new Set());
-      this.acceptedMemoryCards.set([]);
-      this.cancelAcceptedMemoryCardEdit();
+      this.memoryCardService.reset();
     }
 
     const savedProjectId = this.persistSession(nextSession);
@@ -2735,37 +2570,9 @@ export class App implements OnDestroy {
       batchQueue: [],
       savedProjectId: project.id
     });
-    this.pinnedMemoryCardDraftIds.set(new Set(this.normalizePinnedMemoryCardDraftIds(project.pinnedMemoryCardDraftIds)));
-    this.acceptedMemoryCards.set(this.normalizeAcceptedMemoryCards(project.acceptedMemoryCards));
-    this.cancelAcceptedMemoryCardEdit();
+    this.memoryCardService.hydrate(project.pinnedMemoryCardDraftIds, project.acceptedMemoryCards);
     this.selectedChapterId.set(project.chapters[project.chapters.length - 1]?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
-  }
-
-  private normalizePinnedMemoryCardDraftIds(ids: unknown): string[] {
-    return Array.isArray(ids)
-      ? ids.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-      : [];
-  }
-
-  private normalizeAcceptedMemoryCards(cards: unknown): StoryMemoryCard[] {
-    if (!Array.isArray(cards)) {
-      return [];
-    }
-
-    return cards.filter((card): card is StoryMemoryCard => {
-      if (!card || typeof card !== 'object') {
-        return false;
-      }
-
-      const candidate = card as Partial<StoryMemoryCard>;
-      return typeof candidate.id === 'string'
-        && typeof candidate.label === 'string'
-        && typeof candidate.title === 'string'
-        && typeof candidate.detail === 'string'
-        && typeof candidate.triggerLabel === 'string'
-        && typeof candidate.acceptedAt === 'string';
-    });
   }
 
   private findSavedProjectByStoryId(storyId: string): SavedStoryProject | null {
@@ -2943,8 +2750,7 @@ export class App implements OnDestroy {
     const now = new Date().toISOString();
     const currentProjectId = session.savedProjectId ?? session.story.storyId;
     const existingProject = this.workspaceStorage.loadProject(currentProjectId);
-    const pinnedMemoryCardDraftIds = Array.from(this.pinnedMemoryCardDraftIds());
-    const acceptedMemoryCards = this.acceptedMemoryCards().map(card => ({ ...card }));
+    const { pinnedMemoryCardDraftIds, acceptedMemoryCards } = this.memoryCardService.snapshot();
 
     return {
       id: currentProjectId,
@@ -3077,7 +2883,7 @@ export class App implements OnDestroy {
 
   private withStoryMemoryCardBriefs(brief?: string): string | undefined {
     const trimmedBrief = brief?.trim();
-    const acceptedCards = this.acceptedMemoryCards();
+    const acceptedCards = this.memoryCardService.acceptedMemoryCards();
     const acceptedCardIds = new Set(acceptedCards.map(card => card.id));
     const pinnedDrafts = this.memoryCardDrafts().filter(draft => draft.pinned && !acceptedCardIds.has(draft.id));
     if (!acceptedCards.length && !pinnedDrafts.length) {
@@ -3086,18 +2892,14 @@ export class App implements OnDestroy {
 
     const memoryBrief = [
       ...(acceptedCards.length
-        ? ['Accepted Memory Cards:', ...acceptedCards.map(card => this.formatMemoryCardBrief(card))]
+        ? ['Accepted Memory Cards:', ...acceptedCards.map(card => this.memoryCardService.formatBrief(card))]
         : []),
       ...(pinnedDrafts.length
-        ? ['Pinned Memory Cards:', ...pinnedDrafts.map(draft => this.formatMemoryCardBrief(draft))]
+        ? ['Pinned Memory Cards:', ...pinnedDrafts.map(draft => this.memoryCardService.formatBrief(draft))]
         : [])
     ].join('\n');
 
     return trimmedBrief ? `${trimmedBrief}\n\n${memoryBrief}` : memoryBrief;
-  }
-
-  private formatMemoryCardBrief(card: Pick<StoryMemoryCard, 'label' | 'title' | 'detail' | 'triggerLabel'>): string {
-    return `- ${card.label}: ${card.title}. ${card.detail} ${card.triggerLabel}.`;
   }
 
   toggleChapterGroup(groupId: number) {
