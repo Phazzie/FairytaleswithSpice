@@ -1,3 +1,5 @@
+// Created: 2026-09-02 UTC
+//
 // ==================== AUDIO NARRATION SERVICE ====================
 // Implements SEAM 6: Chapter → Audio Narration.
 //
@@ -38,8 +40,35 @@ const MAX_SPEED = 2.0;
 /** The shortest content a chapter can be narrated from. Mirrors `ImageService`'s floor for the same reason. */
 const MIN_AUDIO_CONTENT_LENGTH = 10;
 
-/** Average spoken pace, used only to size the mock provider's silence — see `synthesizeMockSegment`. */
-const MOCK_WORDS_PER_MINUTE = 150;
+/**
+ * Average spoken pace, used to size the mock provider's silence (see
+ * `synthesizeMockSegment`) and to estimate a request's narration length
+ * before any synthesis runs (see `MAX_ESTIMATED_DURATION_SECONDS`).
+ */
+const NARRATION_WORDS_PER_MINUTE = 150;
+
+/**
+ * The longest narration this route will produce in one response.
+ *
+ * The output is a `data:` URI carrying the whole WAV file inline in the JSON
+ * envelope, not a stream or a stored file — deliberately, per
+ * `AudioConversionSeam`'s docblock, to avoid new storage infrastructure. At
+ * this module's fixed `SAMPLE_RATE`/`BYTES_PER_SAMPLE`, that is 32,000 bytes
+ * of raw PCM per second before base64 (~1.33x larger again), so an
+ * unbounded chapter risks exceeding a serverless platform's response-size
+ * limit, or simply taking a long time to synthesize and transfer for very
+ * little benefit over narrating a shorter excerpt. Two minutes of audio is
+ * under 5MB of base64 even at this uncompressed rate, and is checked against
+ * the *slowest* allowed `speed` — the case that takes the longest to say the
+ * same words — so a request that would exceed it is refused before any
+ * synthesis call is made, with the estimate that decided so in the message.
+ *
+ * Narrating a full multi-hundred-word chapter in one request, or returning a
+ * stored file's URL instead of an inline `data:` URI so the cap can be
+ * lifted, is real follow-up work, not a decision this change makes by
+ * omission.
+ */
+const MAX_ESTIMATED_DURATION_SECONDS = 120;
 
 /**
  * The same speaker-tag shape `extractCharacterNames` in `storyContentAnalysis`
@@ -135,8 +164,22 @@ export class AudioService {
         };
       }
 
-      const format = input.format ?? DEFAULT_FORMAT;
       const speed = input.speed ?? DEFAULT_SPEED;
+      const estimatedSeconds = estimateNarrationSeconds(segments, speed);
+      if (estimatedSeconds > MAX_ESTIMATED_DURATION_SECONDS) {
+        return {
+          success: false,
+          error: {
+            code: 'INVALID_INPUT',
+            message: `This content is too long to narrate in one request `
+              + `(~${Math.round(estimatedSeconds)}s estimated, ${MAX_ESTIMATED_DURATION_SECONDS}s max). `
+              + 'Narrate a shorter excerpt.'
+          },
+          metadata: { requestId: correlationId, processingTime: Date.now() - startTime }
+        };
+      }
+
+      const format = input.format ?? DEFAULT_FORMAT;
       const { pcm, voicesUsed } = await this.synthesizeSegments(segments, input.voice, speed, correlationId);
       const wavBuffer = buildWavBuffer(pcm);
 
@@ -280,7 +323,9 @@ export class AudioService {
    * same reason: the contract types these as strings and numbers, and the
    * wire does not.
    */
-  private validateAudioInput(input: AudioConversionSeam['input']): { code: string; message: string } | null {
+  private validateAudioInput(
+    input: AudioConversionSeam['input']
+  ): { code: string; message: string; requestedFormat?: string; supportedFormats?: readonly string[] } | null {
     const storyId: unknown = input.storyId;
     if (typeof storyId !== 'string' || storyId.trim().length === 0) {
       return { code: 'INVALID_INPUT', message: 'Story ID is required and must be a non-empty string' };
@@ -300,7 +345,13 @@ export class AudioService {
     if (format !== undefined && !(AUDIO_FORMATS as readonly string[]).includes(format as string)) {
       return {
         code: 'UNSUPPORTED_FORMAT',
-        message: `Unsupported audio format. Supported formats: ${AUDIO_FORMATS.join(', ')}`
+        message: `Unsupported audio format. Supported formats: ${AUDIO_FORMATS.join(', ')}`,
+        // The contract's `errors.UNSUPPORTED_FORMAT` names these, and
+        // `ExportService.validateExportInput`'s `FORMAT_NOT_SUPPORTED` already
+        // includes them for the same reason: a client can render "wav" rather
+        // than parse it back out of the message string.
+        requestedFormat: format as string,
+        supportedFormats: AUDIO_FORMATS
       };
     }
 
@@ -318,14 +369,29 @@ export class AudioService {
 }
 
 /**
+ * How long one segment's text takes to read aloud, at `NARRATION_WORDS_PER_MINUTE`
+ * and the given `speed`. Floor of 0.3s keeps an empty-sounding segment from
+ * vanishing at very low `speed`. Shared by the pre-synthesis length check
+ * (`MAX_ESTIMATED_DURATION_SECONDS`) and the mock provider's silence, so the
+ * two never quote different paces for the same text.
+ */
+function estimateSegmentSeconds(text: string, speed: number): number {
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(0.3, ((wordCount / NARRATION_WORDS_PER_MINUTE) * 60) / speed);
+}
+
+/** The whole request's estimated narration length — every segment, at the one `speed` they all share. */
+function estimateNarrationSeconds(segments: AudioSegment[], speed: number): number {
+  return segments.reduce((total, segment) => total + estimateSegmentSeconds(segment.text, speed), 0);
+}
+
+/**
  * Silent PCM for the mock provider, sized to roughly how long the real line
  * would take ElevenLabs to read — so a chapter of ten short lines of dialogue
- * does not report the same duration as one long monologue. Floor of 0.3s
- * keeps an empty-sounding segment from vanishing at very low `speed`.
+ * does not report the same duration as one long monologue.
  */
 function synthesizeMockSegment(text: string, speed: number): Buffer {
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  const seconds = Math.max(0.3, ((wordCount / MOCK_WORDS_PER_MINUTE) * 60) / speed);
+  const seconds = estimateSegmentSeconds(text, speed);
   const sampleCount = Math.round(seconds * SAMPLE_RATE);
 
   return Buffer.alloc(sampleCount * BYTES_PER_SAMPLE);

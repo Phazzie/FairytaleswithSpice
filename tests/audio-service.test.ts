@@ -142,6 +142,29 @@ async function testMockNarrationProducesAValidWavFile(): Promise<void> {
   );
 }
 
+// The response is a `data:` URI carrying the whole file inline, not a stream
+// or a stored file — so a chapter long enough to produce a many-megabyte
+// response is refused up front, before any synthesis call, rather than risking
+// a serverless response-size limit or a slow request for little benefit.
+async function testOverlongContentIsRefusedBeforeSynthesis(): Promise<void> {
+  // ~130s at the default speed and words-per-minute this service assumes —
+  // comfortably past the 120s cap.
+  const tooLong = await new AudioService().convertToAudio(createInput({
+    content: '<p>[Narrator]: ' + 'word '.repeat(325) + '</p>'
+  }));
+
+  assert(!tooLong.success, 'content estimated past the duration cap should be refused');
+  assert(tooLong.error?.code === 'INVALID_INPUT', `an overlong request is a caller error (got ${tooLong.error?.code})`);
+  assert(/too long/i.test(tooLong.error?.message ?? ''), `the message should say why (got ${tooLong.error?.message})`);
+
+  // The same word count comfortably narrates at the default speed — the cap is
+  // read from the estimate, not from a flat word ceiling.
+  const shortEnough = await new AudioService().convertToAudio(createInput({
+    content: '<p>[Narrator]: ' + 'word '.repeat(250) + '</p>'
+  }));
+  assert(shortEnough.success, 'content safely under the cap should still narrate');
+}
+
 // `speed` scales the mock narration's estimated duration; a slower reading
 // should take longer, matching what a real narration at that speed would.
 async function testSpeedScalesTheEstimatedDuration(): Promise<void> {
@@ -190,6 +213,7 @@ async function main(): Promise<void> {
   await testPerCharacterVoiceEnvVarOverridesTheMockFallback();
   await testCallerVoiceOverrideAppliesToEverySegment();
   await testMockNarrationProducesAValidWavFile();
+  await testOverlongContentIsRefusedBeforeSynthesis();
   await testSpeedScalesTheEstimatedDuration();
   await testMalformedInputIsRejectedAsCallerError();
   await testTheRequestIdReachesTheEnvelope();

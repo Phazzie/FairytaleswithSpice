@@ -210,6 +210,7 @@ export const AUDIO_CONVERSION_REQUEST_FIELDS: readonly string[] = [
   'storyId',
   'chapterId',
   'content',
+  'voice',
   'speed',
   'format'
 ];
