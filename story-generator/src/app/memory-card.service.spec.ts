@@ -54,7 +54,7 @@ describe('MemoryCardService', () => {
   let service: MemoryCardService;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({ providers: [MemoryCardService] });
     service = TestBed.inject(MemoryCardService);
   });
 

@@ -484,6 +484,10 @@ const JOB_KIND_COPY: Record<
   selector: 'app-story-lab',
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink, NotificationsComponent, DebugPanel, ErrorDisplayComponent],
+  // Component-scoped rather than root-provided — see MemoryCardService's
+  // own doc comment for why a root singleton would leak memory-card state
+  // across navigations away from and back to this component.
+  providers: [MemoryCardService],
   templateUrl: './app.html',
   styleUrls: ['./app.css', './app-reader-library.css']
 })

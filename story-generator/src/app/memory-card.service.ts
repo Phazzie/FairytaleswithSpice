@@ -33,8 +33,16 @@ const EMPTY_ACCEPTED_MEMORY_CARD_EDIT_DRAFT: AcceptedMemoryCardEditDraft = {
  * pure logic, and is deliberately unaware of `App`'s other concerns —
  * `deriveDrafts`/`deriveAcceptedContinuationSummary` take the continuity
  * view model as a parameter instead of reaching back into the component.
+ *
+ * Provided in `App`'s own `providers` array, not `root`: the signals here
+ * used to be plain `App` instance fields, freshly initialized every time
+ * Angular constructs a new `App` (e.g. navigating to `/proving-grounds` and
+ * back). A root-provided singleton would survive that destroy/recreate
+ * instead, leaking one story's pinned/accepted memory cards into the next
+ * whenever `restoreLatestProject()` finds no saved project to hydrate over
+ * it.
  */
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class MemoryCardService {
   readonly pinnedMemoryCardDraftIds = signal<Set<string>>(new Set());
   readonly acceptedMemoryCards = signal<StoryMemoryCard[]>([]);
