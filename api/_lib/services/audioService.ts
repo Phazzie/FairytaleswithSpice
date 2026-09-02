@@ -125,6 +125,39 @@ const NARRATION_WORDS_PER_MINUTE = 150;
 const MAX_ESTIMATED_DURATION_SECONDS = 180;
 
 /**
+ * The actual PCM byte ceiling backing `MAX_ESTIMATED_DURATION_SECONDS`, at
+ * this module's fixed `SAMPLE_RATE`/`BYTES_PER_SAMPLE`/`CHANNELS`.
+ *
+ * The word-count estimate above is only ever a prediction: ElevenLabs, not
+ * this service, decides how many PCM bytes a line actually takes (long words,
+ * dramatic pauses, and phoneme timing all vary independently of word count),
+ * so a request the estimate cleared could still come back with more audio
+ * than the response budget allows. This is the real ceiling checked against
+ * what the provider actually returns — after every segment in
+ * `synthesizeSegments` (bytes accumulate across a multi-segment excerpt, not
+ * just per call) and as an `axios` `maxContentLength` on each request in
+ * `synthesizeSegment` (so one unexpectedly verbose segment is aborted while
+ * streaming rather than fully buffered into memory first).
+ */
+const MAX_PCM_BYTES = MAX_ESTIMATED_DURATION_SECONDS * SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS;
+
+/**
+ * The most speaker-tag segments one request will synthesize.
+ *
+ * `MAX_AUDIO_CONTENT_LENGTH` bounds total characters but not how many tags
+ * they're split across — `[A]: a` repeated hundreds of times fits comfortably
+ * under that character limit while still being hundreds of separate paid
+ * ElevenLabs calls, each one sequential (`synthesizeSegments` awaits them in
+ * order). `SYNTHESIS_DEADLINE_MS` eventually cuts that off by wall time, but
+ * only after however many calls fit in the budget already went out — this
+ * catches the shape before any of them do. Generous relative to what a real
+ * ~400-word excerpt produces (a real script rarely changes speaker more than
+ * once every few sentences), so it bounds the adversarial shape rather than a
+ * excerpt this feature is meant to narrate.
+ */
+export const MAX_AUDIO_SEGMENTS = 40;
+
+/**
  * The same speaker-tag shape `extractCharacterNames` in `storyContentAnalysis`
  * already matches: `[Name]:`, `[Name, voice: …]:`, `[Name, emotion: …]:`. Kept
  * as its own pattern rather than imported, because that function throws every
@@ -210,6 +243,31 @@ const ELEVENLABS_MAX_SPEED = 1.2;
 
 function clampToElevenLabsSpeedRange(speed: number): number {
   return Math.min(ELEVENLABS_MAX_SPEED, Math.max(ELEVENLABS_MIN_SPEED, speed));
+}
+
+/** Whether `axios` aborted an ElevenLabs response for exceeding `maxContentLength`/`maxBodyLength`. */
+function isContentTooLargeError(error: any): boolean {
+  return error?.code === 'ERR_FR_MAX_CONTENT_LENGTH_EXCEEDED' || /max(?:ContentLength|BodyLength)/i.test(error?.message ?? '');
+}
+
+/**
+ * Whether an ElevenLabs call failing is worth a caller retrying, versus a
+ * permanent failure that will reproduce identically until an operator
+ * changes something.
+ *
+ * No response at all — a timeout, a dropped connection — is treated as
+ * transient, the same as a `5xx` or a `429` rate limit: none of those say
+ * anything about the request itself being wrong. Any other response status
+ * (an invalid API key, an invalid configured voice id, a rejected payload)
+ * means the *request* is what's wrong, and retrying it verbatim can only
+ * fail the same way again.
+ */
+export function isRetryableElevenLabsError(error: any): boolean {
+  const status = error?.response?.status;
+  if (status === undefined) {
+    return true;
+  }
+  return status === 429 || status >= 500;
 }
 
 /**
@@ -301,6 +359,17 @@ export class AudioService {
         return {
           success: false,
           error: { code: 'INVALID_INPUT', message: 'No narratable text was found in the supplied content' },
+          metadata: { requestId: correlationId, processingTime: Date.now() - startTime }
+        };
+      }
+      if (segments.length > MAX_AUDIO_SEGMENTS) {
+        return {
+          success: false,
+          error: {
+            code: 'INVALID_INPUT',
+            message: `This content changes speaker too many times to narrate in one request `
+              + `(${segments.length} segments, ${MAX_AUDIO_SEGMENTS} max). Narrate a shorter excerpt.`
+          },
           metadata: { requestId: correlationId, processingTime: Date.now() - startTime }
         };
       }
@@ -406,26 +475,15 @@ export class AudioService {
     startTime: number
   ): Promise<{ pcm: Buffer; voicesUsed: string[] }> {
     const isMockMode = !this.elevenLabsApiKey;
-    const voicesUsed: string[] = [];
-    const buffers: Buffer[] = [];
 
-    for (const segment of segments) {
-      // Computed before starting each segment rather than checked once: a
-      // multi-segment excerpt in real mode can have already spent most of the
-      // budget on earlier segments, and this is also what decides *that*
-      // call's own timeout below — a segment starting late in the budget must
-      // not still be allowed the full `ELEVENLABS_REQUEST_TIMEOUT_MS`, or it
-      // can run past the function's own deadline on its own and be killed by
-      // the platform mid-response instead of answering this route's own
-      // retryable error.
-      const remainingBudgetMs = SYNTHESIS_DEADLINE_MS - (Date.now() - startTime);
-      if (!isMockMode && remainingBudgetMs < MIN_VIABLE_CALL_MS) {
-        throw new CallerFacingAudioError(
-          'Audio narration is taking too long to generate. Please try again.',
-          true
-        );
-      }
-
+    // Resolved for every segment before the first paid call goes out, rather
+    // than inside the loop below: a chapter whose narrator speaks before an
+    // unmapped character used to synthesize the narrator's line, pay for it,
+    // and only then discover the character has no configured voice — a
+    // configuration failure should be free and immediate, not something that
+    // shows up after a real ElevenLabs charge for a result this request is
+    // about to discard anyway.
+    const resolvedSegments = segments.map(segment => {
       const configuredVoiceId = this.resolveConfiguredVoiceId(segment.speaker, voiceOverride);
 
       // A mock id is only ever a stand-in for "no configuration was found" —
@@ -449,7 +507,30 @@ export class AudioService {
         );
       }
 
-      const voiceId = configuredVoiceId ?? mockVoiceId(segment.speaker);
+      return { segment, voiceId: configuredVoiceId ?? mockVoiceId(segment.speaker) };
+    });
+
+    const voicesUsed: string[] = [];
+    const buffers: Buffer[] = [];
+    let totalPcmBytes = 0;
+
+    for (const { segment, voiceId } of resolvedSegments) {
+      // Computed before starting each segment rather than checked once: a
+      // multi-segment excerpt in real mode can have already spent most of the
+      // budget on earlier segments, and this is also what decides *that*
+      // call's own timeout below — a segment starting late in the budget must
+      // not still be allowed the full `ELEVENLABS_REQUEST_TIMEOUT_MS`, or it
+      // can run past the function's own deadline on its own and be killed by
+      // the platform mid-response instead of answering this route's own
+      // retryable error.
+      const remainingBudgetMs = SYNTHESIS_DEADLINE_MS - (Date.now() - startTime);
+      if (!isMockMode && remainingBudgetMs < MIN_VIABLE_CALL_MS) {
+        throw new CallerFacingAudioError(
+          'Audio narration is taking too long to generate. Please try again.',
+          true
+        );
+      }
+
       if (!voicesUsed.includes(voiceId)) {
         voicesUsed.push(voiceId);
       }
@@ -461,7 +542,22 @@ export class AudioService {
       // the mock path, which never reaches `axios.post`, but not a value
       // worth passing regardless.
       const segmentTimeoutMs = Math.max(0, Math.min(ELEVENLABS_REQUEST_TIMEOUT_MS, remainingBudgetMs));
-      buffers.push(await this.synthesizeSegment(segment, voiceId, speed, requestId, segmentTimeoutMs));
+      const buffer = await this.synthesizeSegment(segment, voiceId, speed, requestId, segmentTimeoutMs);
+
+      // Checked cumulatively, not just per call: the word-count estimate that
+      // cleared this request before synthesis started is a prediction, and
+      // several segments each individually under the ceiling can still sum
+      // past it. `synthesizeSegment`'s own `maxContentLength` catches one
+      // segment alone ballooning; this catches the excerpt as a whole.
+      totalPcmBytes += buffer.length;
+      if (totalPcmBytes > MAX_PCM_BYTES) {
+        throw new CallerFacingAudioError(
+          'This chapter produced more narration than fits in one response. Narrate a shorter excerpt.',
+          false
+        );
+      }
+
+      buffers.push(buffer);
     }
 
     return { pcm: Buffer.concat(buffers), voicesUsed };
@@ -551,7 +647,14 @@ export class AudioService {
           // a flat `ELEVENLABS_REQUEST_TIMEOUT_MS` — a segment starting late
           // in the budget must not still be allowed the full per-call
           // ceiling. See `synthesizeSegments`.
-          timeout: timeoutMs
+          timeout: timeoutMs,
+          // Aborts the download mid-stream rather than buffering an
+          // unexpectedly large response fully into memory first — one
+          // segment alone should never legitimately need the whole request's
+          // byte budget. `synthesizeSegments`' own running total is what
+          // catches several segments summing past it instead.
+          maxContentLength: MAX_PCM_BYTES,
+          maxBodyLength: MAX_PCM_BYTES
         }
       );
 
@@ -562,10 +665,24 @@ export class AudioService {
         endpoint: '/api/audio/convert',
         method: 'POST'
       });
-      // Retryable: this is the provider call failing, the transient case
-      // `CallerFacingAudioError`'s docblock contrasts with the configuration
-      // error above.
-      throw new CallerFacingAudioError('AI audio narration service temporarily unavailable', true);
+
+      if (isContentTooLargeError(error)) {
+        throw new CallerFacingAudioError(
+          'This chapter produced more narration than fits in one response. Narrate a shorter excerpt.',
+          false
+        );
+      }
+
+      // Not every provider failure means the same retry advice: an invalid
+      // API key or an invalid configured voice id will fail identically on
+      // every attempt until an operator fixes the configuration, while a
+      // rate limit or a provider-side outage might clear on its own.
+      // `isRetryableElevenLabsError` is what tells the two apart instead of
+      // this route promising a retry can fix a permanent misconfiguration.
+      throw new CallerFacingAudioError(
+        'AI audio narration service temporarily unavailable',
+        isRetryableElevenLabsError(error)
+      );
     }
   }
 

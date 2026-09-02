@@ -3,6 +3,8 @@
 
 import {
   AudioService,
+  isRetryableElevenLabsError,
+  MAX_AUDIO_SEGMENTS,
   parseAudioSegments
 } from '../api/_lib/services/audioService';
 import { AUDIO_FORMATS, AudioConversionSeam } from '../api/_lib/types/contracts';
@@ -338,6 +340,38 @@ async function testRealModeRequiresAConfiguredVoice(): Promise<void> {
   }
 }
 
+// A character budget alone doesn't bound how many times a chapter changes
+// speaker — `[A]: a ` repeated hundreds of times fits comfortably under
+// `MAX_AUDIO_CONTENT_LENGTH` while still being that many sequential paid
+// ElevenLabs calls if this weren't refused first.
+async function testTooManySpeakerSegmentsIsRejected(): Promise<void> {
+  const segmentTags = (count: number) =>
+    Array.from({ length: count }, (_, index) => `[Speaker${index}]: line`).join(' ');
+
+  const result = await new AudioService().convertToAudio(createInput({ content: segmentTags(MAX_AUDIO_SEGMENTS + 1) }));
+
+  assert(!result.success, 'content with more speaker segments than the cap should be refused');
+  assert(result.error?.code === 'INVALID_INPUT', `too many segments is a caller error (got ${result.error?.code})`);
+  assert(/too many times/i.test(result.error?.message ?? ''), `the message should say why (got ${result.error?.message})`);
+
+  const withinCap = await new AudioService().convertToAudio(createInput({ content: segmentTags(MAX_AUDIO_SEGMENTS) }));
+  assert(withinCap.success, 'content at exactly the segment cap should still narrate');
+}
+
+// A permanent provider failure (bad credentials, an invalid voice id, a
+// rejected payload) will reproduce identically on every retry; only a
+// response-less failure (timeout, dropped connection), a rate limit, or a
+// provider-side outage is worth a caller retrying.
+function testRetryabilityClassificationForProviderErrors(): void {
+  assert(isRetryableElevenLabsError({}) === true, 'a response-less failure (timeout/network error) should be retryable');
+  assert(isRetryableElevenLabsError({ response: { status: 429 } }) === true, 'a rate limit should be retryable');
+  assert(isRetryableElevenLabsError({ response: { status: 500 } }) === true, 'a provider 5xx should be retryable');
+  assert(isRetryableElevenLabsError({ response: { status: 503 } }) === true, 'a provider 503 should be retryable');
+  assert(isRetryableElevenLabsError({ response: { status: 401 } }) === false, 'an invalid API key should not be retryable');
+  assert(isRetryableElevenLabsError({ response: { status: 400 } }) === false, 'a rejected payload should not be retryable');
+  assert(isRetryableElevenLabsError({ response: { status: 422 } }) === false, 'an invalid voice id should not be retryable');
+}
+
 async function testTheRequestIdReachesTheEnvelope(): Promise<void> {
   const result = await new AudioService().convertToAudio(createInput(), 'audio-req-fixed-id');
   assert(result.metadata?.requestId === 'audio-req-fixed-id', 'a caller-supplied request id should reach the envelope unchanged');
@@ -359,6 +393,8 @@ async function main(): Promise<void> {
   await testRealModeRequiresAConfiguredVoice();
   await testDefaultVoiceEnvVarAloneCoversTheNarrator();
   await testDurationEstimateUsesTheProvidersEffectiveSpeedInRealMode();
+  await testTooManySpeakerSegmentsIsRejected();
+  testRetryabilityClassificationForProviderErrors();
   await testTheRequestIdReachesTheEnvelope();
 
   assert(AUDIO_FORMATS.length === 1 && AUDIO_FORMATS[0] === 'wav', 'this seam should still support exactly one format: wav');

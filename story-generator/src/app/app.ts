@@ -1861,6 +1861,10 @@ export class App implements OnDestroy {
 
     this.isGeneratingAudio.set(true);
     this.chapterAudioFailure.set(null);
+    // Cleared here, not only set on success: without this, a retry that fails
+    // after an earlier success left that stale player on screen underneath
+    // the new failure message, where it reads as this attempt's result.
+    this.generatedChapterAudio.set(null);
 
     // `rawContent` carries the `[Character, voice: …]:`/`[Narrator]:` tags the
     // narration pipeline reads; `htmlContent` is what a chapter falls back to

@@ -25,7 +25,7 @@
 - **Speaker Tag Recognition**: Reads the `[Character]:` / `[Character, voice: …]:` / `[Narrator]:` tags the story generator already writes into every chapter
 - **Character-Specific Voices**: Set an `ELEVENLABS_VOICE_<CHARACTER_NAME>` variable per character, with narrator/default fallbacks — see **Custom Voices** below
 - **Seamless Audio Merging**: Concatenates every speaker's line into one continuous narration, in the order the excerpt reads
-- **ElevenLabs Integration, With a Mock Fallback**: Real text-to-speech behind `ELEVENLABS_API_KEY`; without one, a deterministic silent narration of the same length so the feature is fully testable offline
+- **ElevenLabs Integration, With a Dev/Test Mock Fallback**: Real text-to-speech behind `ELEVENLABS_API_KEY`; without one, a deterministic silent narration of the same length in development and tests, so the feature is fully testable offline. A production deployment with no key answers `AI_UNAVAILABLE` instead — it never narrates silence and calls it a success.
 - **Narrates an opening excerpt, not the whole chapter**: the response is one inline audio file, capped at ~3 minutes of narration so it fits safely in a single API response — this app's shortest chapter (600 words) is already longer than that. Narrating a full chapter needs stored, URL-delivered audio instead, which is real follow-up work.
 
 ### 📤 **Professional Export Options**
@@ -364,7 +364,7 @@ Content-Type: application/json
   "format": "wav"
 }
 ```
-`voice` is optional and, when sent, overrides every segment's resolved voice — see **Custom Voices** below for the per-character default. With no `ELEVENLABS_API_KEY` configured, the route answers a deterministic silent narration of the same length instead of calling ElevenLabs, so the feature works fully offline.
+`voice` is optional and, when sent, overrides every segment's resolved voice — see **Custom Voices** below for the per-character default. With no `ELEVENLABS_API_KEY` configured, the route answers a deterministic silent narration of the same length instead of calling ElevenLabs, so the feature works fully offline **in development and tests**. A production deployment (`NODE_ENV`/`VERCEL_ENV` = `production`) with no key instead answers every request with `AI_UNAVAILABLE` — the same fail-closed rule this repo applies to story and image generation — rather than silently narrating minutes of silence and reporting success.
 
 `content` must estimate to 3 minutes of narration or less (about 450 words at the default speed) — the response is one inline `data:` URI, not a stream or a stored file, and a longer request is refused with `INVALID_INPUT` before any synthesis runs. The frontend's "Preview Narration" control sends the chapter's opening rather than the whole thing for this reason.
 

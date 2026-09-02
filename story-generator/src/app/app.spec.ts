@@ -801,6 +801,41 @@ describe('App', () => {
     expect(player?.src).toBe(audio.audioUrl);
   });
 
+  // A retry used to leave a prior success's player on screen underneath a
+  // new failure message, where it read as this attempt's result rather than
+  // a stale leftover from before.
+  it('clears a previous player when a retry fails', () => {
+    seedWorkbenchForContinuation();
+    const audio: AudioConversionSeam['output'] = {
+      audioId: 'audio-1',
+      storyId: 'story-123',
+      audioUrl: 'data:audio/wav;base64,UklGRg==',
+      format: 'wav',
+      duration: 4.2,
+      voiceUsed: ['mock_voice_abc123'],
+      generatedAt: new Date()
+    };
+    storyService.convertChapterToAudio.and.returnValue(of({ success: true, data: audio }));
+    fixture.detectChanges();
+
+    const narrateButton = fixture.nativeElement.querySelector('[data-testid="generate-audio"]') as HTMLButtonElement;
+    narrateButton.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="chapter-audio-player"]')).not.toBeNull();
+
+    storyService.convertChapterToAudio.and.returnValue(of({
+      success: false,
+      error: { code: 'AUDIO_GENERATION_FAILED', message: 'AI audio narration service temporarily unavailable', retryable: true }
+    }));
+    narrateButton.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="chapter-audio-player"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="chapter-audio-error"]')?.textContent?.trim())
+      .toBe('AI audio narration service temporarily unavailable');
+  });
+
   it('shows an error instead of a player when narration fails', () => {
     seedWorkbenchForContinuation();
     storyService.convertChapterToAudio.and.returnValue(of({
