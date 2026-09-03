@@ -24,7 +24,7 @@ This checklist is current after PR #118, the consolidated account-route change s
 - `StoryProjectStore` exists with non-durable memory and injected Postgres scaffolds.
 - Story Lab profile, cloud-library, and preference contract types exist.
 - Configured auth selection fails closed unless a supported provider is configured.
-- A Clerk-shaped auth adapter scaffold exists, but it still requires an injected verifier and is not a live sign-in flow.
+- A Clerk-shaped auth adapter scaffold exists. The production singleton now wires a real `@clerk/backend` verifier and fails closed at startup if misconfigured (Phase 6) - the browser side of a signed-in flow is still not live; see Phase 6's non-claims.
 - Profile stores exist for non-durable memory and injected Postgres execution.
 - Cloud schema, guarded migration/readiness helpers, guarded cloud storage config, and Neon executor scaffolding exist.
 - One consolidated account route exists for profile and project operations behind injectable auth/profile/project stores.
@@ -38,12 +38,15 @@ This checklist is current after PR #118, the consolidated account-route change s
 
 Not live yet:
 
-- production auth provider wiring;
-- signed-in browser flow;
+- signed-in browser flow proven against a real Clerk instance (the redirect/cookie wiring is unit- and DI-tested, and manually proven to fail closed / resolve the right provider at real server startup - see Phase 6 - but never exercised against live Clerk credentials, which this environment does not have);
 - private user profiles in durable storage;
 - cloud project save/list/load/delete proven against a live durable database;
 - database provisioning or executed migrations;
 - durable jobs.
+
+Live as of Phase 6 (still credential-gated where noted):
+
+- production auth provider wiring - the singleton now resolves a real verifier from `CLERK_SECRET_KEY` and fails fast at startup if `STORY_LAB_AUTH_PROVIDER=clerk` is set without one; proven against the compiled server artifact (not just `tsx`), including a semantic-counterfactual run that confirmed removing `CLERK_SECRET_KEY` crashes startup with the intended message.
 
 ## Operating Rules
 
@@ -359,6 +362,61 @@ Validation on 2026-06-21:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`: passed.
 - `npm run build`: passed with existing Angular bundle and CSS budget warnings.
+
+### Phase 6: Production Provider Wiring And Hosted Sign-In Redirect
+
+Goal: turn the Clerk-shaped auth adapter scaffold into a real, fail-closed production verifier, and give the browser an actual (if unproven-live) way to reach it, without installing a provider SDK on the frontend.
+
+Status:
+
+- Wired `@clerk/backend`'s `verifyToken` into the production `configuredAuthPort` singleton via a new `clerkSessionVerifier.ts` (`clerkAuthPort.ts` itself untouched). `CLERK_SECRET_KEY` set + `STORY_LAB_AUTH_PROVIDER=clerk` selects it; missing the key fails fast at module load instead of shipping a route that silently 401s.
+- Added `CLERK_AUTHORIZED_PARTIES` (optional, `azp`-claim allow-list) so a session token minted for a different app on the same Clerk instance is rejected rather than accepted.
+- Considered and rejected `@clerk/clerk-js` for the frontend: installing it pulled in ~350 extra packages (Web3 wallet adapters, Stripe.js) unrelated to this app. Instead, `AuthService` fetches a hosted Clerk Account Portal URL from a new `/api/health` `auth` field (`accountPortalUrl`, resolved by `accountPortalConfig.ts`) and redirects the browser there to sign in/out - zero new frontend runtime dependencies.
+- Added an `accountCredentialsInterceptor` that attaches `withCredentials: true` to `/api/story-lab/account/*` requests only, so the `__session` cookie Clerk's hosted portal sets rides along.
+- `showCloudAccountSetupStatus()`/the "Connect account"/"Sign out" action now calls through to `AuthService` when Clerk is configured; the exact original "not configured yet" message is unchanged when it isn't. Off by default: `app.spec.ts`'s full existing suite passes unmodified against an `AuthService` double mirroring today's unconfigured default.
+- **Does not implement Clerk's cross-origin handshake protocol or bundle its JS SDK.** The redirect-and-cookie approach above only results in a session cookie this app's own origin can read when `CLERK_ACCOUNT_PORTAL_URL` is configured as a subdomain of this app's own registrable domain (Clerk's documented "Account Portal on your own domain" setup) - not Clerk's default `*.accounts.dev` sandbox domain, and not an unrelated domain. Documented prominently in README and in `auth.service.ts`'s own doc comment rather than solved in code, per this plan's "do not install provider SDKs... unless the slice explicitly justifies the dependency" rule and because verifying a from-scratch handshake implementation without live Clerk credentials would be exactly the kind of unproven claim this plan exists to prevent.
+
+Expected files:
+
+- `api/_lib/story-lab/auth/clerkSessionVerifier.ts`
+- `api/_lib/story-lab/auth/configuredAuthPort.ts`
+- `api/_lib/story-lab/auth/accountPortalConfig.ts`
+- `api/health.ts`
+- `api/_lib/types/contracts.ts` (`StoryLabAccountAuthConfig`, `HealthCheckPayload`)
+- `story-generator/src/app/auth.service.ts`
+- `story-generator/src/app/account-credentials.interceptor.ts`
+- `story-generator/src/app/app.ts`, `app.config.ts`, `contracts.ts`
+- `story-generator/src/server.ts` (`dotenv/config` - see Validation)
+- focused tests under `tests/` and `story-generator/src/app/*.spec.ts`
+
+Validation:
+
+- `npm run test:clerk-session-verifier`
+- `npm run test:account-portal-auth-config`
+- `npm run test:story-lab-configured-auth`
+- `npm run test:story-lab-clerk-auth`
+- `npm run test:story-lab-account-routes`
+- `ng test` (full karma suite)
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.spec.json --noEmit`
+- `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`
+- `npm run build` (production `ng build` + Vercel index)
+- `scripts/recovery/check-vercel-function-count.sh`
+- Manual, credential-safe process-level proof (not automatable in this suite): built the real `server.mjs` artifact and ran it against three `.env` states - (a) `STORY_LAB_AUTH_PROVIDER=clerk` with no `CLERK_SECRET_KEY`: confirmed the process crashes at startup with the intended fail-fast message; (b) all three Clerk vars set with a fake secret key: confirmed `/api/health` reports the configured provider/portal URL and an unauthenticated `/api/story-lab/account/profile` request returns the Clerk-specific "session token is required" message, not the deny-by-default one; (c) same, with a bogus bearer token: confirmed a clean 401 rather than a crash. This exercise itself caught and fixed a real bug: an earlier version loaded `dotenv` via a plain function call placed first in `server.ts`, which - per ES module evaluation order - still ran after every import's own module-scope code, including the auth singleton's env read. Fixed by switching to the side-effecting `import 'dotenv/config'` as the literal first import.
+
+Acceptance:
+
+- `STORY_LAB_AUTH_PROVIDER=clerk` without `CLERK_SECRET_KEY` fails fast, proven against the compiled server, not just `tsx`;
+- a valid secret key selects the Clerk provider and a request without a token gets the Clerk-specific error, not deny-by-default;
+- `CLERK_AUTHORIZED_PARTIES`, when set, rejects a token whose `azp` isn't in the list (DI-proven, not live-proven);
+- no new frontend runtime dependency;
+- unconfigured (default) behavior is byte-for-byte unchanged - full existing frontend suite passes without modification to its assertions;
+- README and `.env.example` state the subdomain requirement and the `DATABASE_URL`/schema gap plainly rather than implying "set three vars and cloud sync works."
+
+Non-claims for this phase:
+
+- no live sign-in proven against a real Clerk instance;
+- no claim that a portal on an unrelated domain (including Clerk's own sandbox domain) works without further handshake-protocol work;
+- no cloud project storage claim - `DATABASE_URL` and the cloud schema remain separate, unmet prerequisites for signed-in save/load/list/delete, tracked in `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`.
 
 ## Research Notes
 

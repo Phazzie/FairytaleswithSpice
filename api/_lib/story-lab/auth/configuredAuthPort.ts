@@ -4,6 +4,7 @@ import type { AuthPort } from './authPort';
 import { AuthError, createDenyByDefaultAuthPort } from './authPort';
 import { createClerkAuthPort, type ClerkAuthPortOptions } from './clerkAuthPort';
 import { createClerkSessionVerifier } from './clerkSessionVerifier';
+import { logWarn } from '../../utils/logger';
 
 export type StoryLabAuthProviderName = 'none' | 'clerk';
 
@@ -99,9 +100,36 @@ export function resolveProductionClerkAuthPortOptions(
     );
   }
 
+  const authorizedParties = resolveAuthorizedParties(env);
+  if (authorizedParties.length === 0) {
+    // Not fail-fast: a single-app Clerk instance works without this. But
+    // left unset, a session token minted for *any* party on the same Clerk
+    // instance is accepted here, which stops being safe the moment that
+    // instance is shared across more than one app or environment.
+    logWarn(
+      'Clerk auth is configured without CLERK_AUTHORIZED_PARTIES - session tokens are accepted regardless of which app/origin minted them.',
+      { endpoint: 'configuredAuthPort.resolveProductionClerkAuthPortOptions' }
+    );
+  }
+
   return {
-    verifySessionToken: createClerkSessionVerifier({ secretKey, verifyTokenFn: deps.verifyTokenFn })
+    verifySessionToken: createClerkSessionVerifier({
+      secretKey,
+      authorizedParties: authorizedParties.length > 0 ? authorizedParties : undefined,
+      verifyTokenFn: deps.verifyTokenFn
+    })
   };
+}
+
+function resolveAuthorizedParties(env: Record<string, string | undefined>): string[] {
+  const raw = env['CLERK_AUTHORIZED_PARTIES'];
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split(',')
+    .map(party => party.trim())
+    .filter(party => party.length > 0);
 }
 
 export const configuredAuthPort = createConfiguredAuthPort({

@@ -645,6 +645,32 @@ export const VALIDATION_RULES = {
 } as const;
 
 // ==================== UI STATE MANAGEMENT ====================
+// ==================== HEALTH / ACCOUNT AUTH CONFIG ====================
+/**
+ * What `/api/health` reports about Story Lab's cloud account auth - shared so
+ * the frontend and backend can't drift on this shape independently. Carries
+ * no secret: a hosted Account Portal URL is meant to be public, unlike
+ * `CLERK_SECRET_KEY`, which never appears in a response body.
+ */
+export interface StoryLabAccountAuthConfig {
+  provider: 'clerk' | 'none';
+  accountPortalUrl: string | null;
+}
+
+export interface HealthCheckPayload {
+  status: 'healthy';
+  timestamp: string;
+  version: string;
+  environment: string;
+  services: {
+    grok: 'configured' | 'mock';
+  };
+  cors: {
+    allowedOrigin: string | null;
+  };
+  auth: StoryLabAccountAuthConfig;
+}
+
 export interface UIState {
   isGenerating: boolean;
   isConvertingAudio: boolean;

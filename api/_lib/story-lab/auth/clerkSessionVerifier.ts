@@ -14,6 +14,15 @@ type VerifyTokenFn = typeof verifyToken;
 
 export interface ClerkSessionVerifierOptions {
   secretKey: string;
+  /**
+   * The `azp` (authorized party) values a session token must carry to be
+   * accepted - normally the app's own origin(s). Left unset, `@clerk/backend`
+   * accepts a valid token minted for *any* party on the same Clerk instance,
+   * which matters the moment that instance is shared across more than one
+   * app or environment. Optional rather than required so an otherwise-valid
+   * single-app Clerk setup isn't forced to configure it before this ships.
+   */
+  authorizedParties?: string[];
   verifyTokenFn?: VerifyTokenFn;
 }
 
@@ -28,9 +37,10 @@ export function createClerkSessionVerifier(
 ): (token: string) => Promise<VerifiedClerkSession | null> {
   const verify = options.verifyTokenFn ?? verifyToken;
   const secretKey = options.secretKey;
+  const authorizedParties = options.authorizedParties;
 
   return async function verifySessionToken(token: string): Promise<VerifiedClerkSession | null> {
-    const result = await verify(token, { secretKey });
+    const result = await verify(token, { secretKey, authorizedParties });
     if (!result?.['data']) {
       return null;
     }

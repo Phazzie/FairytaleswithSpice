@@ -104,6 +104,22 @@ describe('AuthService', () => {
     expect(service.isConfigured()).toBe(false);
   });
 
+  it('retries the health check on the next initialize() call after a transient failure', async () => {
+    const first = service.initialize();
+    httpMock.expectOne('/api/health').flush('boom', { status: 500, statusText: 'Server Error' });
+    await first;
+    expect(service.isConfigured()).toBe(false);
+
+    const second = service.initialize();
+    httpMock.expectOne('/api/health').flush({
+      success: true,
+      data: { auth: { provider: 'clerk', accountPortalUrl: 'https://accounts.example.com' } }
+    });
+    await second;
+
+    expect(service.isConfigured()).toBe(true);
+  });
+
   it('signIn redirects to the hosted sign-in URL with a redirect_url back to the current page', async () => {
     const initializePromise = service.initialize();
     httpMock.expectOne('/api/health').flush({

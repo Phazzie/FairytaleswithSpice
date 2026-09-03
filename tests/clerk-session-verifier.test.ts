@@ -20,10 +20,14 @@ async function main() {
   await testVerifierRejectsWhenClerkReportsErrors();
   await testVerifierPropagatesThrownErrors();
   await testVerifierPassesSecretKeyThrough();
+  await testVerifierPassesAuthorizedPartiesThrough();
+  await testVerifierRejectsTokenFromUnapprovedParty();
   await testResolveProductionOptionsSkipsNonClerkProvider();
   await testResolveProductionOptionsFailsFastWithoutSecretKey();
   await testResolveProductionOptionsFailsFastOnBlankSecretKey();
   await testResolveProductionOptionsWiresRealVerifierWhenConfigured();
+  await testResolveProductionOptionsParsesAuthorizedParties();
+  await testResolveProductionOptionsOmitsAuthorizedPartiesWhenUnset();
 
   console.log('Clerk session verifier tests passed');
 }
@@ -112,6 +116,47 @@ async function testVerifierPassesSecretKeyThrough() {
   );
 }
 
+async function testVerifierPassesAuthorizedPartiesThrough() {
+  const seenOptions: unknown[] = [];
+  const verify = createClerkSessionVerifier({
+    secretKey: 'sk_test_unused',
+    authorizedParties: ['https://app.example.com'],
+    verifyTokenFn: async (_token, options) => {
+      seenOptions.push(options);
+      return { data: { sub: 'user_seen' } } as any;
+    }
+  });
+
+  await verify('a-session-token');
+  assert(
+    JSON.stringify((seenOptions[0] as { authorizedParties?: string[] })?.authorizedParties) ===
+      JSON.stringify(['https://app.example.com']),
+    'verifier should pass its configured authorizedParties to @clerk/backend on every call'
+  );
+}
+
+async function testVerifierRejectsTokenFromUnapprovedParty() {
+  // Mimics @clerk/backend's own assertAuthorizedPartiesClaim behavior (an
+  // azp outside the allow-list resolves to `{ errors: [...] }`, not a thrown
+  // exception) - proving this file's wiring surfaces that rejection as `null`
+  // rather than a signature/subject check alone.
+  const verify = createClerkSessionVerifier({
+    secretKey: 'sk_test_unused',
+    authorizedParties: ['https://app.example.com'],
+    verifyTokenFn: async (_token, options) => {
+      const allowed = (options as { authorizedParties?: string[] }).authorizedParties ?? [];
+      const tokenAzp = 'https://attacker.example.com';
+      if (allowed.length > 0 && !allowed.includes(tokenAzp)) {
+        return { errors: [new Error('Invalid JWT Authorized party claim')] } as any;
+      }
+      return { data: { sub: 'user_from_other_party' } } as any;
+    }
+  });
+
+  const session = await verify('a-correctly-signed-token-from-another-party');
+  assert(session === null, 'a correctly signed token from an unapproved party should be rejected');
+}
+
 async function testResolveProductionOptionsSkipsNonClerkProvider() {
   const options = resolveProductionClerkAuthPortOptions({});
   assert(options === undefined, 'unset provider should not wire any Clerk options');
@@ -160,6 +205,48 @@ async function testResolveProductionOptionsWiresRealVerifierWhenConfigured() {
   const session = await options!.verifySessionToken!('token', {});
   assert(session?.userId === 'user_wired', 'the wired verifier should resolve real sessions');
   assert(seenSecretKeys[0] === 'sk_test_live', 'the wired verifier should use the configured secret key');
+}
+
+async function testResolveProductionOptionsParsesAuthorizedParties() {
+  const seenAuthorizedParties: unknown[] = [];
+  const options = resolveProductionClerkAuthPortOptions(
+    {
+      STORY_LAB_AUTH_PROVIDER: 'clerk',
+      CLERK_SECRET_KEY: 'sk_test_live',
+      CLERK_AUTHORIZED_PARTIES: ' https://app.example.com , https://admin.example.com ,,'
+    },
+    {
+      verifyTokenFn: async (_token, verifyOptions) => {
+        seenAuthorizedParties.push((verifyOptions as { authorizedParties?: string[] }).authorizedParties);
+        return { data: { sub: 'user_wired' } } as any;
+      }
+    }
+  );
+
+  await options!.verifySessionToken!('token', {});
+  assert(
+    JSON.stringify(seenAuthorizedParties[0]) === JSON.stringify(['https://app.example.com', 'https://admin.example.com']),
+    'CLERK_AUTHORIZED_PARTIES should be parsed as a trimmed, comma-separated list with blanks dropped'
+  );
+}
+
+async function testResolveProductionOptionsOmitsAuthorizedPartiesWhenUnset() {
+  const seenAuthorizedParties: unknown[] = [];
+  const options = resolveProductionClerkAuthPortOptions(
+    { STORY_LAB_AUTH_PROVIDER: 'clerk', CLERK_SECRET_KEY: 'sk_test_live' },
+    {
+      verifyTokenFn: async (_token, verifyOptions) => {
+        seenAuthorizedParties.push((verifyOptions as { authorizedParties?: string[] }).authorizedParties);
+        return { data: { sub: 'user_wired' } } as any;
+      }
+    }
+  );
+
+  await options!.verifySessionToken!('token', {});
+  assert(
+    seenAuthorizedParties[0] === undefined,
+    'an unset CLERK_AUTHORIZED_PARTIES should pass undefined through, matching @clerk/backend\'s own no-restriction default'
+  );
 }
 
 main().catch(error => {

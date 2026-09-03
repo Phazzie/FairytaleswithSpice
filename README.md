@@ -189,10 +189,12 @@ npm run lint         # Code quality checks
 
 **API Development (now integrated with frontend)**
 ```bash
-# Build and run locally (all-in-one Express server)
-cd story-generator
-npm run build
-PORT=3000 node dist/story-generator/server/server.mjs
+# Build and run locally (all-in-one Express server).
+# Run from the repo root, not story-generator/ — the server loads the root
+# .env relative to its own compiled location either way, but this also keeps
+# dotenv's own default (process.cwd()) pointed at the same file.
+cd story-generator && npm run build && cd ..
+PORT=3000 node story-generator/dist/story-generator/server/server.mjs
 
 # Or use Docker for local development
 docker compose up --build
@@ -239,12 +241,19 @@ Story Lab's cloud library (save/sync stories to an account instead of just this 
 STORY_LAB_AUTH_PROVIDER=clerk
 CLERK_SECRET_KEY=your_clerk_secret_key_here
 CLERK_ACCOUNT_PORTAL_URL=https://accounts.your-clerk-app.example.com
+# Recommended once the above works: restrict which app(s) a session token is
+# accepted from. Comma-separated origins; see "Custom Voices"-style env docs
+# in .env.example for the full list.
+CLERK_AUTHORIZED_PARTIES=https://your-app.example.com
 ```
 
 - `CLERK_SECRET_KEY` (backend-only, never sent to the browser) verifies the session on every `/api/story-lab/account/*` request. Setting `STORY_LAB_AUTH_PROVIDER=clerk` without it fails fast at startup instead of shipping a route that silently 401s forever.
-- `CLERK_ACCOUNT_PORTAL_URL` is your Clerk instance's hosted [Account Portal](https://clerk.com/docs/guides/customizing-clerk/account-portal) base URL. It is **not** a secret — the frontend reads it from `/api/health` and redirects the browser there to sign in/out.
+- `CLERK_ACCOUNT_PORTAL_URL` is your Clerk instance's hosted [Account Portal](https://clerk.com/docs/guides/customizing-clerk/account-portal) base URL, and **must be a subdomain of this app's own registrable domain** (Clerk's "Account Portal on your own domain" setup, e.g. `accounts.your-app.com` for an app at `your-app.com`). It is **not** a secret — the frontend reads it from `/api/health` and redirects the browser there to sign in/out. Clerk's default sandbox domain (`*.accounts.dev`) is a **different** registrable domain, so a session it sets is not visible to this app's own origin — sign-in will appear to succeed but the app will never see a session. This repo does not implement Clerk's cross-origin handshake protocol (`authenticateRequest`) or bundle its JS SDK, either of which would be required to support a portal on an unrelated domain.
+- `CLERK_AUTHORIZED_PARTIES` restricts accepted session tokens to the listed origin(s) (`azp` claim). Optional, but recommended the moment the same Clerk instance could ever be shared across more than one app or environment — left unset, a valid token from *any* app on that instance is accepted here.
 - There is no Clerk SDK bundled into the frontend: the browser is redirected to Clerk's hosted pages, which set a `__session` cookie the backend already reads. This keeps the frontend bundle free of Clerk's Web3-wallet and Stripe.js dependencies, which the vanilla `@clerk/clerk-js` package would otherwise pull in.
 - With none of this set, "Connect account" tells the reader sign-in isn't configured yet and local browser saves keep working exactly as before.
+- This enables *authentication* only. The cloud project/profile storage behind it also needs `DATABASE_URL` (a Postgres connection string) and its schema applied from `api/_lib/story-lab/storage/storyLabCloudSchema.sql` — see `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`. Without a configured, migrated database, a signed-in user's project operations return a storage-unconfigured error even though sign-in itself works.
+- **Not yet verified against a live Clerk instance** (no live credentials in this environment) — see `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`'s "Live Signed-In Durability Proof" section for the exact remaining proof steps before this is a live-cloud-sync claim, not just a wiring one.
 
 ## 🔐 Security & Privacy
 

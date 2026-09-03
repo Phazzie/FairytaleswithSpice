@@ -1151,7 +1151,7 @@ export class App implements OnDestroy {
   readonly cloudAccountActionLabel = computed(() => {
     switch (this.cloudLibrarySyncState().mode) {
       case 'cloud_synced':
-        return 'Profile';
+        return this.authService.isConfigured() ? 'Sign out' : 'Profile';
       case 'sync_failed':
         return 'Account status';
       case 'local_only':
@@ -1954,6 +1954,11 @@ export class App implements OnDestroy {
     }
 
     if (this.cloudLibrarySyncState().mode === 'cloud_synced') {
+      if (this.authService.isConfigured()) {
+        this.authService.signOut();
+        return;
+      }
+
       this.cloudLibrarySyncState.update(state => ({
         ...state,
         message: state.message ?? 'Account is connected.'

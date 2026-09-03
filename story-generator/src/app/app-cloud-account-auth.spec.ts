@@ -127,4 +127,22 @@ describe('App cloud account sign-in (Clerk configured)', () => {
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
     expect(fullText).not.toContain('Sign-in setup is not configured yet.');
   });
+
+  it('offers sign-out, not just an info toast, once connected', async () => {
+    await createFixture(of({ success: true, data: emptyCloudProjectList() }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const accountAction = panel?.querySelector('[data-testid="cloud-account-action"]') as HTMLButtonElement | null;
+
+    expect(accountAction?.textContent?.trim()).toBe('Sign out');
+
+    accountAction?.click();
+    fixture.detectChanges();
+
+    expect(authService.signOut).toHaveBeenCalledTimes(1);
+  });
 });

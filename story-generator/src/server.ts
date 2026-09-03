@@ -1,3 +1,22 @@
+// Must be this exact side-effecting import, first in the file - not a
+// `config()` *call* placed first, however early it looks. ES module imports
+// evaluate their whole dependency graph, in source order, before this file's
+// *own* body runs a single statement: a `config()` call written as this
+// file's own top-level code - even above the other imports - still executes
+// after every one of those imports (including `expressApiRoutes` down to
+// `configuredAuthPort.ts`) has already finished evaluating, which is one
+// module-load too late for the `process.env` reads they do at their own
+// module scope. `import 'dotenv/config'` runs `config()` as part of *its*
+// module evaluation instead, which - as the first import - completes before
+// the second one starts. (Confirmed the hard way: a `config()` call placed
+// exactly like that left every module-scope env read seeing an empty
+// `process.env`, while a request-time read in the same file saw the loaded
+// values - the two only agreed once this became a bare `dotenv/config` import.)
+//
+// Relies on `dotenv/config`'s default `.env` lookup (`process.cwd()`), so the
+// documented local-run command runs from the repo root, not story-generator/.
+import 'dotenv/config';
+
 import {
   AngularNodeAppEngine,
   createNodeRequestHandler,

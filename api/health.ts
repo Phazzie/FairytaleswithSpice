@@ -1,4 +1,4 @@
-import type { ApiResponse } from './_lib/types/contracts';
+import type { ApiResponse, HealthCheckPayload } from './_lib/types/contracts';
 import { applyCorsPolicy } from './_lib/http/corsPolicy';
 import { sendMethodNotAllowed } from './_lib/http/methodNotAllowed';
 import { resolveAccountPortalAuthConfig } from './_lib/story-lab/auth/accountPortalConfig';
@@ -6,22 +6,7 @@ import { resolveAccountPortalAuthConfig } from './_lib/story-lab/auth/accountPor
 /** What this route serves, for CORS and for `Allow` alike. */
 const HEALTH_ROUTE_METHODS = ['GET', 'OPTIONS'];
 
-type HealthPayload = {
-  status: 'healthy';
-  timestamp: string;
-  version: string;
-  environment: string;
-  services: {
-    grok: 'configured' | 'mock';
-  };
-  cors: {
-    allowedOrigin: string | null;
-  };
-  auth: {
-    provider: 'clerk' | 'none';
-    accountPortalUrl: string | null;
-  };
-};
+type HealthPayload = HealthCheckPayload;
 
 export default async function handler(req: any, res: any) {
   const cors = applyCorsPolicy(req, res, {

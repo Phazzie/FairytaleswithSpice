@@ -4,16 +4,7 @@ import { Injectable, PLATFORM_ID, inject, signal } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import type { ApiResponse } from './contracts';
-
-interface HealthAuthConfig {
-  provider: 'clerk' | 'none';
-  accountPortalUrl: string | null;
-}
-
-interface HealthResponsePayload {
-  auth?: HealthAuthConfig;
-}
+import type { ApiResponse, HealthCheckPayload } from './contracts';
 
 /**
  * Reads whether Story Lab's cloud account sign-in is actually reachable, and
@@ -24,8 +15,19 @@ interface HealthResponsePayload {
  * dependencies, none of which this app uses). Instead this leans on
  * `clerkAuthPort.ts` already reading a `__session` cookie and
  * `accountRouteHandlers.ts` already answering account routes with CORS
- * `credentials: true`: a plain redirect to the hosted portal, and a cookie,
- * is the whole client-side surface a session needs.
+ * `credentials: true`.
+ *
+ * IMPORTANT, unverified against a live Clerk instance (no live credentials in
+ * this environment - see `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`):
+ * a plain redirect to the hosted portal only results in a cookie this app's
+ * own origin can read when `CLERK_ACCOUNT_PORTAL_URL` is configured as a
+ * subdomain of this app's own registrable domain (Clerk's documented "Account
+ * Portal on your own domain" setup) - the portal's `Set-Cookie` then carries a
+ * parent-domain `Domain=` attribute both origins share. Clerk's default
+ * `*.accounts.dev` sandbox domain, or any portal domain unrelated to this
+ * app's, does **not** share cookies this way; that case needs Clerk's
+ * handshake protocol (`authenticateRequest`/the JS SDK), which this file does
+ * not implement.
  *
  * `initialize()` is a no-op everywhere except a real browser tab - during SSR
  * there is no cookie-bearing browser to redirect and no reason to fetch
@@ -59,7 +61,7 @@ export class AuthService {
   private async loadAuthConfig(): Promise<void> {
     try {
       const response = await firstValueFrom(
-        this.http.get<ApiResponse<HealthResponsePayload> | HealthResponsePayload>('/api/health')
+        this.http.get<ApiResponse<HealthCheckPayload> | HealthCheckPayload>('/api/health')
       );
       const payload = 'success' in response ? response.data : response;
       const auth = payload?.auth;
@@ -69,9 +71,13 @@ export class AuthService {
         this.isConfigured.set(true);
       }
     } catch {
-      // Leaves isConfigured false, same as an explicitly unconfigured
-      // deployment - a health-check failure should not surface as a
-      // cloud-account error the reader can't act on.
+      // A transient failure (cold start, dropped connection) should not wedge
+      // every later "Connect account" click behind the one bad attempt -
+      // clear the cache so the next `initialize()` call retries instead of
+      // replaying this same failed result forever. Deliberately not clearing
+      // it on *success* (undefined vs. cleared is the caching signal): a
+      // resolved, unconfigured result is still a cached, honest answer.
+      this.initializePromise = null;
     }
   }
 
