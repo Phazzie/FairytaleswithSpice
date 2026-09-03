@@ -29,6 +29,15 @@ import type { ApiResponse, HealthCheckPayload } from './contracts';
  * handshake protocol (`authenticateRequest`/the JS SDK), which this file does
  * not implement.
  *
+ * Also unimplemented for the same reason: session token *refresh*. Clerk's
+ * session JWTs are short-lived by design, normally kept fresh by the browser
+ * SDK polling in the background - with no SDK here, an expired session isn't
+ * silently renewed. `App`'s `cloudAccountAuthenticated` signal already
+ * degrades that gracefully (a 401 demotes the UI back to "Connect account"
+ * rather than a stuck or spoofed signed-in state), but the reader has to
+ * revisit the hosted portal to continue, not stay signed in unattended for a
+ * normal session.
+ *
  * `initialize()` is a no-op everywhere except a real browser tab - during SSR
  * there is no cookie-bearing browser to redirect and no reason to fetch
  * `/api/health` for a config only a click handler needs.

@@ -419,7 +419,8 @@ Non-claims for this phase:
 
 - no live sign-in proven against a real Clerk instance;
 - no claim that a portal on an unrelated domain (including Clerk's own sandbox domain) works without further handshake-protocol work;
-- no cloud project storage claim - `DATABASE_URL` and the cloud schema remain separate, unmet prerequisites for signed-in save/load/list/delete, tracked in `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`.
+- no cloud project storage claim - `DATABASE_URL` and the cloud schema remain separate, unmet prerequisites for signed-in save/load/list/delete, tracked in `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`;
+- no session token refresh - Clerk's short-lived session JWTs are normally renewed silently by the browser SDK this design deliberately omits (see "No Clerk JS SDK" above), so a signed-in reader's session expires and every account request 401s until they re-visit the hosted portal. The app is proven to degrade gracefully when that happens (falls back to "Connect account", not a stuck or spoofed state - `app-cloud-account-auth.spec.ts`), but staying signed in unattended for a normal session is not claimed. A fix needs either the rejected SDK or a hand-rolled Clerk handshake this repo has no live credentials to verify.
 
 ## Research Notes
 
