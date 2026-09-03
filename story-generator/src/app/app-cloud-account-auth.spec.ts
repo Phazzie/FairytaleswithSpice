@@ -63,6 +63,36 @@ describe('App cloud account sign-in (Clerk configured)', () => {
   }
 
   /**
+   * What an upstream gateway/proxy failure (a 502) - or any other request
+   * that never reached `accountRouteHandlers.ts`'s own handler - looks like:
+   * a non-2xx status with no JSON body carrying this route's envelope shape.
+   * A real account-route answer, success or failure, always carries one.
+   */
+  function gatewayFailureListResponse(): Observable<ApiResponse<CloudStoryProjectList>> {
+    return throwError(() => new HttpErrorResponse({
+      status: 502,
+      error: 'Bad Gateway'
+    }));
+  }
+
+  /**
+   * `handleStoryLabAccountRouteWithContext` answers this *before*
+   * `requireAccountUser` runs at all (see `accountRouteHandlers.ts`), so
+   * unlike every other code this route can answer with, it carries the
+   * route's own envelope shape but proves nothing about whether this
+   * session is signed in.
+   */
+  function accountRouteNotFoundListResponse(): Observable<ApiResponse<CloudStoryProjectList>> {
+    return throwError(() => new HttpErrorResponse({
+      status: 404,
+      error: {
+        success: false,
+        error: { code: 'ACCOUNT_ROUTE_NOT_FOUND', message: 'Story Lab account route was not found.' }
+      }
+    }));
+  }
+
+  /**
    * The constructor kicks off `authService.initialize().then(...)`, which
    * (with an already-resolved spy promise) drains as a microtask before this
    * `it` block's own body starts running - so a spy return value has to be
@@ -195,6 +225,29 @@ describe('App cloud account sign-in (Clerk configured)', () => {
 
     expect(authService.signOut).toHaveBeenCalledTimes(1);
     expect(authService.signIn).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a gateway failure with no account-route envelope as proof of authentication', async () => {
+    // Status alone can't tell a real account-route 5xx apart from a 502 that
+    // never reached the handler - only the envelope can. Without a status
+    // this bare, unparsed as a body was previously read as "not 401, so
+    // authenticated," which would have shown "Sign out" for a browser that
+    // was never signed in.
+    await createFixture(gatewayFailureListResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.cloudAccountAuthenticated()).toBe(false);
+  });
+
+  it('does not treat ACCOUNT_ROUTE_NOT_FOUND as proof of authentication', async () => {
+    // This code is real - it's this route's own envelope - but it's
+    // answered before the auth gate runs, so it can't prove the gate passed.
+    await createFixture(accountRouteNotFoundListResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.cloudAccountAuthenticated()).toBe(false);
   });
 
   it('retries auth initialization on a second click after a transient startup failure', async () => {

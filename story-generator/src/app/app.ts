@@ -1930,14 +1930,20 @@ export class App implements OnDestroy {
         this.errorLogging.logError(error, 'App.refreshCloudLibrary');
         // `StoryService.handleHttpError` rethrows every non-2xx response, so
         // this is where a real 401 or a real storage 5xx actually lands, not
-        // the `next` branch above. A real HTTP status (any status, including
-        // 5xx) means the request reached the account route and passed its
-        // auth gate before failing - only 401 specifically means this
-        // session isn't signed in. Status 0 (no response at all - offline,
-        // CORS, timeout) proves nothing either way, so it's left alone
-        // rather than guessed at.
-        if (typeof error?.status === 'number' && error.status > 0) {
-          this.cloudAccountAuthenticated.set(error.status !== 401);
+        // the `next` branch above. Status alone isn't proof, though: a
+        // gateway/proxy failure (a 502) or a request that never reached the
+        // handler at all never carries this route's own JSON envelope, and
+        // neither does `ACCOUNT_ROUTE_NOT_FOUND` - that one *is* this route's
+        // envelope, but `handleStoryLabAccountRouteWithContext` answers it
+        // before the auth gate runs, so it says nothing about this session
+        // either. Every other code this route can answer with - including a
+        // real `UNAUTHORIZED` - is decided only after the auth gate has run,
+        // so reading the envelope's own `error.code` (mirroring the `next`
+        // branch's `response.error?.code` check above) and treating anything
+        // but those two as "passed the gate" is what actually proves it.
+        const accountRouteErrorCode = error?.error?.error?.code;
+        if (typeof accountRouteErrorCode === 'string' && accountRouteErrorCode !== 'ACCOUNT_ROUTE_NOT_FOUND') {
+          this.cloudAccountAuthenticated.set(accountRouteErrorCode !== 'UNAUTHORIZED');
         }
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',

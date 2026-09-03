@@ -64,9 +64,12 @@ Live as of Phase 6 (still credential-gated where noted):
 - Goal: prove live signed-in save/list/load/delete behavior against durable storage before any cloud claims; this code remains scaffolded/fail-closed until a real signed-in run with durable DB credentials is completed.
 - Required env names only (set in the signed-in runtime; never paste values in docs):
   - `STORY_LAB_AUTH_PROVIDER=clerk`
+  - `CLERK_SECRET_KEY=<clerk_secret_key>` - required as of Phase 6: without it, `configuredAuthPort.ts` fails fast at startup rather than selecting Clerk, so nothing past step 1 below is reachable.
+  - `CLERK_ACCOUNT_PORTAL_URL=<clerk_account_portal_url>` - required as of Phase 6 for the *browser* to reach sign-in at all (`AuthService.isConfigured()` needs it from `/api/health`); must be a subdomain of this app's own registrable domain, not Clerk's default sandbox domain, or the session cookie won't be visible here (see Phase 6 Status).
   - `DATABASE_URL=<postgres_host>`
+- Configuration order: `CLERK_SECRET_KEY` has to be set before the process will start at all with `STORY_LAB_AUTH_PROVIDER=clerk`; `CLERK_ACCOUNT_PORTAL_URL` has to be set before the browser will offer sign-in; `DATABASE_URL` (+ schema, step 2 below) is independent of both and only gates storage.
 - Proof sequence:
-  1. Configure `STORY_LAB_AUTH_PROVIDER` + `DATABASE_URL` and confirm route config is loaded with a non-deny auth/provider path.
+  1. Configure `STORY_LAB_AUTH_PROVIDER`, `CLERK_SECRET_KEY`, `CLERK_ACCOUNT_PORTAL_URL`, and `DATABASE_URL`, and confirm route config is loaded with a non-deny auth/provider path.
   2. Provision the durable database and apply `storyLabCloudSchema.sql` against the same `DATABASE_URL`.
   3. Run cloud database readiness check and verify required tables/indexes are present.
   4. Sign in as **user A** and call:
@@ -386,7 +389,7 @@ Expected files:
 - `story-generator/src/app/auth.service.ts`
 - `story-generator/src/app/account-credentials.interceptor.ts`
 - `story-generator/src/app/app.ts`, `app.config.ts`, `contracts.ts`
-- `story-generator/src/server.ts` (`dotenv/config` - see Validation)
+- `story-generator/src/server.ts`, `story-generator/src/load-root-env.ts` (repo-root `.env` loader, cwd-independent - see Validation)
 - focused tests under `tests/` and `story-generator/src/app/*.spec.ts`
 
 Validation:
@@ -401,7 +404,7 @@ Validation:
 - `npx -p node@20 node ./node_modules/typescript/bin/tsc -p story-generator/tsconfig.app.json --noEmit`
 - `npm run build` (production `ng build` + Vercel index)
 - `scripts/recovery/check-vercel-function-count.sh`
-- Manual, credential-safe process-level proof (not automatable in this suite): built the real `server.mjs` artifact and ran it against three `.env` states - (a) `STORY_LAB_AUTH_PROVIDER=clerk` with no `CLERK_SECRET_KEY`: confirmed the process crashes at startup with the intended fail-fast message; (b) all three Clerk vars set with a fake secret key: confirmed `/api/health` reports the configured provider/portal URL and an unauthenticated `/api/story-lab/account/profile` request returns the Clerk-specific "session token is required" message, not the deny-by-default one; (c) same, with a bogus bearer token: confirmed a clean 401 rather than a crash. This exercise itself caught and fixed a real bug: an earlier version loaded `dotenv` via a plain function call placed first in `server.ts`, which - per ES module evaluation order - still ran after every import's own module-scope code, including the auth singleton's env read. Fixed by switching to the side-effecting `import 'dotenv/config'` as the literal first import.
+- Manual, credential-safe process-level proof (not automatable in this suite): built the real `server.mjs` artifact and ran it against three `.env` states - (a) `STORY_LAB_AUTH_PROVIDER=clerk` with no `CLERK_SECRET_KEY`: confirmed the process crashes at startup with the intended fail-fast message; (b) all three Clerk vars set with a fake secret key: confirmed `/api/health` reports the configured provider/portal URL and an unauthenticated `/api/story-lab/account/profile` request returns the Clerk-specific "session token is required" message, not the deny-by-default one; (c) same, with a bogus bearer token: confirmed a clean 401 rather than a crash. This exercise caught and fixed two real bugs in the env-loading approach itself, in turn: an earlier version loaded `dotenv` via a plain function call placed first in `server.ts`, which - per ES module evaluation order - still ran after every import's own module-scope code, including the auth singleton's env read; fixed by switching to the side-effecting `import 'dotenv/config'` as the literal first import. That still resolved `.env` relative to `process.cwd()`, though, which review then caught: `story-generator/package.json`'s own `start:prod`/`serve:ssr:*` scripts run with `story-generator/` as cwd, not the repo root, so that default would silently look for (and not find) `story-generator/.env` when launched that way. Fixed by replacing it with `load-root-env.ts`, which resolves the repo-root `.env` path from its own compiled location (`import.meta.url`) instead - cwd-independent - and re-verified both the pass and fail-fast cases with `story-generator/` as the working directory, matching that exact launch path.
 
 Acceptance:
 
