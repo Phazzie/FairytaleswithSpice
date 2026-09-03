@@ -41,7 +41,18 @@ export interface CorsPolicyResult {
 }
 
 const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:4200'];
-const ORIGIN_ENV_KEYS = ['STORY_LAB_ALLOWED_ORIGINS', 'ALLOWED_ORIGINS', 'FRONTEND_URL'] as const;
+/**
+ * Exported so `clerkSessionVerifier.ts` can tell whether a caller has
+ * actually configured an origin allowlist, distinct from `parseAllowedOrigins`
+ * having fallen back to its own local-development default — a distinction
+ * that matters there and not here: `resolveAllowedOrigin` trusting the
+ * localhost default when nothing is configured is the correct CORS answer
+ * for a bare local-dev checkout, but `authorizedParties` trusting it on a
+ * Vercel deployment that has a platform origin already (and therefore isn't
+ * that bare local-dev case) would let a local-dev-issued token be replayed
+ * against production account routes if the same Clerk instance serves both.
+ */
+export const ORIGIN_ENV_KEYS = ['STORY_LAB_ALLOWED_ORIGINS', 'ALLOWED_ORIGINS', 'FRONTEND_URL'] as const;
 /**
  * The response headers a cross-origin caller is allowed to read.
  *

@@ -1,7 +1,7 @@
 // Created: 2026-09-02 20:40 EDT
 
 import { verifyToken as clerkVerifyToken } from '@clerk/backend';
-import { parseAllowedOrigins } from '../../http/corsPolicy';
+import { ORIGIN_ENV_KEYS, parseAllowedOrigins } from '../../http/corsPolicy';
 import type { AuthRequestLike } from './authPort';
 import type { ClerkAuthPortOptions, VerifiedClerkSession } from './clerkAuthPort';
 
@@ -66,7 +66,22 @@ function resolvePlatformOrigins(env: Record<string, string | undefined>): string
  * never got created.
  */
 export function computeClerkAuthorizedParties(env: Record<string, string | undefined>): string[] {
-  return Array.from(new Set([...parseAllowedOrigins(env), ...resolvePlatformOrigins(env)]));
+  const platformOrigins = resolvePlatformOrigins(env);
+  // `parseAllowedOrigins` falls back to its own `http://localhost:4200`
+  // default only when none of `ORIGIN_ENV_KEYS` is set — the right CORS
+  // answer for a bare local-dev checkout, where `resolveAllowedOrigin`
+  // trusting it is what makes the app's own local page work at all. That
+  // default has no business in `authorizedParties` once a platform origin
+  // exists, though: a platform origin being present is itself proof this
+  // deployment isn't the local-dev case the default exists for, and if the
+  // same Clerk instance also serves local development, trusting `azp:
+  // http://localhost:4200` here would let a token issued for local dev be
+  // replayed against this (production) deployment's account routes.
+  const hasExplicitOriginConfig = ORIGIN_ENV_KEYS.some(key => Boolean(env[key]?.trim()));
+  const configuredOrigins = hasExplicitOriginConfig || platformOrigins.length === 0
+    ? parseAllowedOrigins(env)
+    : [];
+  return Array.from(new Set([...configuredOrigins, ...platformOrigins]));
 }
 
 /**

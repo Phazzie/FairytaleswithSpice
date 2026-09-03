@@ -27,6 +27,7 @@ async function main() {
   await testVerifierDefaultsAuthorizedPartiesWhenNoOriginEnvSet();
   await testVerifierIncludesThePlatformAssignedDeploymentUrl();
   await testVerifierIncludesTheStableProductionUrl();
+  await testVerifierExcludesTheLocalDevDefaultOnAVercelOnlyConfig();
   await testVerifierDoesNotDuplicateAnOriginAlreadyInTheStaticList();
   await testVerifierIgnoresAForgedForwardedHostHeader();
 
@@ -257,6 +258,35 @@ async function testVerifierIncludesTheStableProductionUrl() {
   assert(
     authorizedParties.includes('https://fairytaleswith-spice.vercel.app'),
     `authorizedParties should include the stable VERCEL_PROJECT_PRODUCTION_URL, got ${JSON.stringify(authorizedParties)}`
+  );
+}
+
+// `parseAllowedOrigins` falls back to its own `http://localhost:4200`
+// default when no origin env var is set — the right CORS answer for a bare
+// local-dev checkout. On a Vercel deployment relying purely on platform
+// origins (no explicit `STORY_LAB_ALLOWED_ORIGINS`/`ALLOWED_ORIGINS`/
+// `FRONTEND_URL`), that default has no business in `authorizedParties`: a
+// platform origin being present is itself proof this isn't the local-dev
+// case the default exists for, and if the same Clerk instance also serves
+// local development, trusting it here would let a local-dev-issued token be
+// replayed against this deployment's account routes.
+async function testVerifierExcludesTheLocalDevDefaultOnAVercelOnlyConfig() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    {
+      CLERK_SECRET_KEY: 'sk_test_secret',
+      VERCEL_URL: 'fairytaleswith-spice-abc123.vercel.app',
+      VERCEL_PROJECT_PRODUCTION_URL: 'fairytaleswith-spice.vercel.app'
+    },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+
+  const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
+  assert(
+    !authorizedParties.includes('http://localhost:4200'),
+    `a Vercel-only config must not carry the local-dev default into authorizedParties, got ${JSON.stringify(authorizedParties)}`
   );
 }
 

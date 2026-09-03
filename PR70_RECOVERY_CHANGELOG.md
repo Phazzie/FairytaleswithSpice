@@ -4,6 +4,15 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Clerk auth hardening round 8: local-dev default no longer leaks into production, LESSONS_LEARNED.md re-synced (PR #328)
+
+Codex's review of the production-origin push (c513330) found one more real gap plus this round's own doc-lag instance.
+
+- **`parseAllowedOrigins`'s local-development default leaked into production `authorizedParties`.** On a Vercel deployment relying purely on platform-injected origins — no explicit `STORY_LAB_ALLOWED_ORIGINS`/`ALLOWED_ORIGINS`/`FRONTEND_URL` set — `parseAllowedOrigins(env)` still fell back to its own `['http://localhost:4200']` default (the correct CORS answer for a bare local-dev checkout), and `computeClerkAuthorizedParties` unioned it in alongside the real platform origins. If the same Clerk instance served both local development and this production deployment, a token issued for local dev (`azp: http://localhost:4200`) would verify against production account routes too. Fixed by exporting `ORIGIN_ENV_KEYS` from `corsPolicy.ts` and having `computeClerkAuthorizedParties` suppress `parseAllowedOrigins`'s result whenever none of those keys is actually set *and* a platform origin exists — a platform origin being present is itself proof this isn't the local-dev case the default exists for. The pure local-dev case (no platform origin either) is unaffected; the localhost default still applies there, same as before. Added `testVerifierExcludesTheLocalDevDefaultOnAVercelOnlyConfig`, the negative test requested.
+- **`LESSONS_LEARNED.md` had drifted from the changelog's own round count and finding attribution** the same way the two exec plan docs did two rounds ago — Codex caught this exact staleness pattern for the third time this PR. Reworded both of that file's PR #328 entries to point at this changelog's numbered entries instead of restating a count or a specific round's attribution.
+
+Validation: `npm run test:all` (backend, all green, including the new negative test), `tsc --noEmit` on both app and spec configs, full karma suite headless (274/274), `ng build` — all confirmed clean before push.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 7: stable production origin included, plans re-synced (PR #328)
 
 Codex's review of the account-switch fix (8ddc9e7) found one more real gap plus a now-recurring doc-lag pattern.
