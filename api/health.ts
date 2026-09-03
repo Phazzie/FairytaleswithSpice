@@ -1,6 +1,7 @@
 import type { ApiResponse } from './_lib/types/contracts';
 import { applyCorsPolicy } from './_lib/http/corsPolicy';
 import { sendMethodNotAllowed } from './_lib/http/methodNotAllowed';
+import { resolveAccountPortalAuthConfig } from './_lib/story-lab/auth/accountPortalConfig';
 
 /** What this route serves, for CORS and for `Allow` alike. */
 const HEALTH_ROUTE_METHODS = ['GET', 'OPTIONS'];
@@ -15,6 +16,10 @@ type HealthPayload = {
   };
   cors: {
     allowedOrigin: string | null;
+  };
+  auth: {
+    provider: 'clerk' | 'none';
+    accountPortalUrl: string | null;
   };
 };
 
@@ -47,7 +52,8 @@ export default async function handler(req: any, res: any) {
         // STORY_LAB_ALLOWED_ORIGINS and ALLOWED_ORIGINS, so a deployment
         // configured through either of those was told the wrong origin here.
         allowedOrigin: cors.allowedOrigin
-      }
+      },
+      auth: resolveAccountPortalAuthConfig()
     };
     
     res.status(200).json({

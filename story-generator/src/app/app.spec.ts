@@ -5,6 +5,7 @@ import { BehaviorSubject, NEVER, of, Subject, throwError } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
+import { AuthService } from './auth.service';
 import { NotificationService } from './notification.service';
 import { OBJECT_URL_REVOKE_DELAY_MS } from '../../../shared/htmlDocumentDownload';
 import {
@@ -304,11 +305,28 @@ describe('App', () => {
     ]);
     errorLoggingSpy.getErrors.and.returnValue(of([]));
 
+    // Every deployment today ships without Clerk configured - this mirrors
+    // that default exactly (`initialize` resolves, `isConfigured` stays
+    // false) so the whole existing suite keeps exercising the unconfigured
+    // path unchanged. The configured (Clerk sign-in) path has its own spec
+    // file, `app-cloud-account-auth.spec.ts`, with its own `AuthService` double.
+    const authServiceSpy = jasmine.createSpyObj<AuthService>('AuthService', [
+      'initialize',
+      'isConfigured',
+      'signIn',
+      'signOut'
+    ]);
+    authServiceSpy.initialize.and.returnValue(Promise.resolve());
+    authServiceSpy.isConfigured.and.returnValue(false);
+    authServiceSpy.signIn.and.returnValue(Promise.resolve());
+    authServiceSpy.signOut.and.returnValue(Promise.resolve());
+
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
       providers: [
         { provide: StoryService, useValue: storyServiceSpy },
         { provide: ErrorLoggingService, useValue: errorLoggingSpy },
+        { provide: AuthService, useValue: authServiceSpy },
         { provide: ActivatedRoute, useValue: { queryParamMap: queryParamMap$.asObservable() } }
       ]
     }).compileComponents();

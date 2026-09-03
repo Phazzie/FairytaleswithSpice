@@ -21,6 +21,7 @@ import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { isVocabularyMember } from '../../../shared/storyStateVocabulary';
 import { buildStoryHtmlDocument } from './story-html-exporter';
+import { AuthService } from './auth.service';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { AcceptedMemoryCardEditDraft, MemoryCardDraftItem, MemoryCardService } from './memory-card.service';
 import { CREATURE_ARCHETYPES, readCreatureDisplayName } from '../../../shared/creatureVocabulary';
@@ -493,6 +494,7 @@ const JOB_KIND_COPY: Record<
 })
 export class App implements OnDestroy {
   private readonly storyService = inject(StoryService);
+  private readonly authService = inject(AuthService);
   private readonly errorLogging = inject(ErrorLoggingService);
   private readonly formValidation = inject(FormValidationService);
   private readonly notificationService = inject(NotificationService);
@@ -1188,6 +1190,17 @@ export class App implements OnDestroy {
   constructor() {
     this.restoreSkin();
     this.restoreLatestProject();
+
+    // A configured Clerk deployment may have just redirected back from a
+    // hosted sign-in - re-checking the cloud library here is what makes that
+    // session visible without the reader having to click anything. An
+    // unconfigured deployment resolves `isConfigured()` false and this never
+    // fires, so today's local-only behavior is unchanged by default.
+    this.authService.initialize().then(() => {
+      if (this.authService.isConfigured()) {
+        this.refreshCloudLibrary();
+      }
+    });
   }
 
   ngOnDestroy() {
@@ -1946,6 +1959,16 @@ export class App implements OnDestroy {
         message: state.message ?? 'Account is connected.'
       }));
       this.notificationService.info('Account connected', 'Cloud sync is available.');
+      return;
+    }
+
+    // `initialize()` was already kicked off from the constructor, so this
+    // reads whatever it has resolved to by now rather than awaiting it again
+    // - a click in the narrow window before that first `/api/health` answer
+    // lands just sees the same "not configured yet" message a genuinely
+    // unconfigured deployment shows, which is honest either way.
+    if (this.authService.isConfigured()) {
+      this.authService.signIn();
       return;
     }
 

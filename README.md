@@ -65,7 +65,7 @@ cd story-generator && npm install && cd ..
 ```
 
 ### 3. Environment Setup
-Create a `.env` file in the root directory:
+Copy `.env.example` to `.env` in the root directory and fill in what you need:
 ```env
 # Optional: AI Story Generation (uses mocks if not provided)
 XAI_API_KEY=your_grok_api_key_here
@@ -76,6 +76,7 @@ ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 # Development settings
 NODE_ENV=development
 ```
+See `.env.example` for the full list, including Story Lab's optional [cloud account sign-in](#cloud-account-sign-in) variables.
 
 ### 4. Run in Development Mode
 ```bash
@@ -229,6 +230,21 @@ Access with `Ctrl+Shift+D` or click the debug button:
 - **Error Log Viewer**: Real-time error monitoring
 - **Service Status**: Current API key configuration
 - **Test Suite Runner**: Execute integration tests
+
+### **Cloud Account Sign-In**
+
+Story Lab's cloud library (save/sync stories to an account instead of just this browser) is **off by default** — every deployment works exactly as it always has until you opt in. To enable it:
+
+```env
+STORY_LAB_AUTH_PROVIDER=clerk
+CLERK_SECRET_KEY=your_clerk_secret_key_here
+CLERK_ACCOUNT_PORTAL_URL=https://accounts.your-clerk-app.example.com
+```
+
+- `CLERK_SECRET_KEY` (backend-only, never sent to the browser) verifies the session on every `/api/story-lab/account/*` request. Setting `STORY_LAB_AUTH_PROVIDER=clerk` without it fails fast at startup instead of shipping a route that silently 401s forever.
+- `CLERK_ACCOUNT_PORTAL_URL` is your Clerk instance's hosted [Account Portal](https://clerk.com/docs/guides/customizing-clerk/account-portal) base URL. It is **not** a secret — the frontend reads it from `/api/health` and redirects the browser there to sign in/out.
+- There is no Clerk SDK bundled into the frontend: the browser is redirected to Clerk's hosted pages, which set a `__session` cookie the backend already reads. This keeps the frontend bundle free of Clerk's Web3-wallet and Stripe.js dependencies, which the vanilla `@clerk/clerk-js` package would otherwise pull in.
+- With none of this set, "Connect account" tells the reader sign-in isn't configured yet and local browser saves keep working exactly as before.
 
 ## 🔐 Security & Privacy
 
