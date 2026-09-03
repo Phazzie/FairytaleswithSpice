@@ -405,6 +405,22 @@ export interface CloudLibrarySyncState {
   message?: string;
 }
 
+/**
+ * What the frontend is allowed to assume about signing in, from the one place
+ * that actually knows: the deployment's own environment.
+ *
+ * `provider: 'clerk'` is a promise the backend can keep, not just a provider
+ * name — the route behind this only reports it when `CLERK_SECRET_KEY` is
+ * set as well as the publishable key, so a half-configured deployment (a
+ * publishable key with no secret key, or vice versa) reads as `'none'`
+ * rather than showing a sign-in button that is guaranteed to fail the moment
+ * it is used.
+ */
+export interface StoryLabAuthConfig {
+  provider: 'clerk' | 'none';
+  publishableKey?: string;
+}
+
 export type CloudStoryProjectStorageMode = 'cloud_postgres' | 'non_durable_memory';
 
 export interface CloudStoryProjectListItem {

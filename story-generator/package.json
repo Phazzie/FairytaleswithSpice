@@ -29,6 +29,7 @@
   },
   "private": true,
   "dependencies": {
+    "@clerk/clerk-js": "^6.31.0",
     "@angular/common": "^20.3.22",
     "@angular/compiler": "^20.3.22",
     "@angular/core": "^20.3.22",

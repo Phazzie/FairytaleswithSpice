@@ -55,6 +55,35 @@ FRONTEND_URL=https://fairytaleswithspice.vercel.app
 NODE_ENV=production
 ```
 
+### Optional: Story Lab cloud accounts
+
+Cloud account sync (`/api/story-lab/account/*`) is deny-by-default and stays
+fully inert — the frontend's "Cloud account" panel shows its existing
+"not configured" message — until all three of these are set:
+
+```bash
+# Selects the auth provider. Unset or "none"/"disabled" keeps every account
+# route fail-closed (the default today).
+STORY_LAB_AUTH_PROVIDER=clerk
+
+# Backend session verification (api/_lib/story-lab/auth/clerkSessionVerifier.ts).
+# Without this, requests are rejected even if the provider above is "clerk".
+CLERK_SECRET_KEY=sk_your_clerk_secret_key
+
+# Read by the frontend via GET /api/story-lab/account/auth-config so it knows
+# which publishable key to load Clerk's client with. Without this, the route
+# reports provider: 'none' even if the two variables above are set — see
+# `resolveStoryLabAuthConfig` in accountRouteHandlers.ts.
+CLERK_PUBLISHABLE_KEY=pk_your_clerk_publishable_key
+```
+
+All three are required together: `/api/story-lab/account/auth-config` only
+reports `provider: 'clerk'` (and only then does the frontend show a working
+"Connect account" button) once it can confirm both the frontend has a
+publishable key to load Clerk with and the backend has a secret key to
+verify what Clerk hands it back — any one missing leaves the account surface
+exactly as inert as it is with none of them set.
+
 ## 🔗 API Endpoints
 
 ### Health Check

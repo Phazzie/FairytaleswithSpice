@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, SecurityContext, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, SecurityContext, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
@@ -71,6 +71,7 @@ import {
   isTerminalStoryLabJobStatus
 } from './contracts';
 import { StoryService } from './story.service';
+import { AuthService } from './auth.service';
 import { StoryWorkspaceStorageService } from './story-workspace-storage.service';
 import { ErrorLoggingService } from './error-logging';
 import { DebugPanel } from './debug-panel/debug-panel';
@@ -493,6 +494,7 @@ const JOB_KIND_COPY: Record<
 })
 export class App implements OnDestroy {
   private readonly storyService = inject(StoryService);
+  private readonly authService = inject(AuthService);
   private readonly errorLogging = inject(ErrorLoggingService);
   private readonly formValidation = inject(FormValidationService);
   private readonly notificationService = inject(NotificationService);
@@ -1158,6 +1160,11 @@ export class App implements OnDestroy {
     }
   });
   readonly canUseCloudLibrary = computed(() => this.cloudLibrarySyncState().mode === 'cloud_synced');
+  // `cloud_synced` is only reachable after an authenticated `/account/projects`
+  // call succeeds, so it already implies a real Clerk session — but the
+  // template still needs its own signal to decide whether a sign-out control
+  // has anything to do, since `AuthService` itself is private to this class.
+  readonly isCloudAccountSignedIn = computed(() => this.authService.isSignedIn());
   readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
     const chapters = this.workbench().chapterHistory;
     if (!chapters.length) {
@@ -1188,6 +1195,22 @@ export class App implements OnDestroy {
   constructor() {
     this.restoreSkin();
     this.restoreLatestProject();
+
+    // Fire-and-forget: `initialize()` is idempotent, and every deployment
+    // that has not configured Clerk resolves this to a no-op after the one
+    // `auth-config` request. The effect below is what actually reacts to a
+    // sign-in once it happens.
+    void this.authService.initialize();
+
+    // `signIn()` opens Clerk's own modal; there is no promise that resolves
+    // when the reader finishes it. This is what notices the session actually
+    // landing and moves `cloudLibrarySyncState` out of `cloud_unavailable`
+    // the same way a manual "Check cloud" click already does.
+    effect(() => {
+      if (this.authService.isSignedIn()) {
+        this.refreshCloudLibrary();
+      }
+    });
   }
 
   ngOnDestroy() {
@@ -1949,11 +1972,40 @@ export class App implements OnDestroy {
       return;
     }
 
+    // Only reachable once `/account/auth-config` has actually reported a
+    // usable Clerk provider — see `resolveStoryLabAuthConfig` on the backend
+    // for what "usable" requires. Every deployment that has not configured
+    // that falls straight to the message below, unchanged from before this
+    // existed.
+    if (this.authService.isConfigured()) {
+      void this.authService.signIn();
+      return;
+    }
+
     this.cloudLibrarySyncState.set({
       mode: 'cloud_unavailable',
       message: 'Sign-in setup is not configured yet. Local browser saves are still available.'
     });
     this.notificationService.info('Account setup pending', 'Sign-in setup is not configured yet.');
+  }
+
+  /**
+   * Ends the signed-in Clerk session. Before this existed there was no code
+   * path back out of `cloud_synced` short of clearing cookies by hand — a
+   * real gap on a shared device, since the next person to open the app would
+   * keep the previous reader's authenticated cloud library.
+   */
+  async signOutOfCloudAccount(): Promise<void> {
+    if (!this.isCloudAccountSignedIn()) {
+      return;
+    }
+
+    await this.authService.signOut();
+    this.cloudLibrarySyncState.set({
+      mode: 'cloud_unavailable',
+      message: 'Signed out. Local browser saves are still available.'
+    });
+    this.notificationService.info('Signed out', 'Cloud sync is now disconnected on this device.');
   }
 
   saveActiveProjectToCloud() {

@@ -15,6 +15,7 @@ import {
   StoryGenerationSeam,
   StoryIterationPayload,
   StoryContinuationSeam,
+  StoryLabAuthConfig,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
   StoryLabUserProfile
@@ -143,6 +144,17 @@ export class StoryService {
     return this.http
       .put<ApiResponse<StoryLabUserProfile>>(`${this.apiUrl}/account/profile`, { profile })
       .pipe(catchError(error => this.handleHttpError(error, 'updateStoryLabProfile')));
+  }
+
+  /**
+   * Whether this deployment has cloud accounts configured, and what the
+   * frontend needs to actually sign in — unauthenticated, so it can be
+   * called before there is anything to authenticate with.
+   */
+  getStoryLabAuthConfig(): Observable<ApiResponse<StoryLabAuthConfig>> {
+    return this.http
+      .get<ApiResponse<StoryLabAuthConfig>>(`${this.apiUrl}/account/auth-config`)
+      .pipe(catchError(error => this.handleHttpError(error, 'getStoryLabAuthConfig')));
   }
 
   /**
