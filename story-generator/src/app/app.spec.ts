@@ -3554,6 +3554,63 @@ describe('App cloud account sign-in wiring', () => {
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
   });
 
+  // Before this was fixed, `cancelInFlightCloudLibraryRequest()` ran only
+  // *after* `await this.authService.signOut()` resolved. `client.signOut()`
+  // is a network call — while it was still pending, a load already in flight
+  // could complete and run its callback with nothing yet having cancelled
+  // it, hydrating the previous account's full story into the UI even though
+  // sign-out was already underway. This uses a deliberately-still-pending
+  // Clerk sign-out to prove cancellation now happens before that await, not
+  // after: the stale response arrives while `signOutOfCloudAccount()` is
+  // still suspended on Clerk, and must still be discarded.
+  it('cancels an in-flight cloud request before awaiting a slow Clerk sign-out', async () => {
+    const { component, storyServiceSpy, signOut } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_slow_sign_out' }
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
+    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
+    component.loadCloudProject('previous-account-project');
+    let resolveClerkSignOut!: () => void;
+    signOut.and.returnValue(new Promise<void>(resolve => { resolveClerkSignOut = resolve; }));
+
+    const signOutPromise = component.signOutOfCloudAccount();
+    // `signOutOfCloudAccount()` has run synchronously up to its first
+    // `await` by this point — including the cancellation, if it now happens
+    // before that `await` as intended — while Clerk's own `signOut()` is
+    // still unresolved.
+    const project: SavedStoryProject = {
+      id: 'previous-account-project',
+      storyId: 'story-previous-account',
+      title: 'Should not load',
+      synopsis: 'Belongs to the account that just signed out.',
+      blueprint: component.blueprint(),
+      summary: createSummary({ title: 'Should not load' }),
+      state: createState(),
+      chapters: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    };
+    loadSubject.next({
+      success: true,
+      data: {
+        ownerUserId: 'previous-account',
+        storageMode: 'cloud_postgres',
+        projectId: project.id,
+        storyId: project.storyId,
+        project,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      }
+    });
+    resolveClerkSignOut();
+    await signOutPromise;
+
+    expect(component.workbench().story?.title).not.toBe('Should not load');
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+  });
+
   // Before this was fixed, a rejected `client.signOut()` was swallowed and
   // the local token cleared regardless, so the app would announce "signed
   // out" on a shared device even though Clerk's own session could still be

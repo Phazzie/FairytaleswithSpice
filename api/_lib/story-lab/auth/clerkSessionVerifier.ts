@@ -48,6 +48,19 @@ function resolvePlatformOrigins(env: Record<string, string | undefined>): string
 }
 
 /**
+ * The origins Clerk's `authorizedParties` should trust: the configured
+ * frontend allowlist plus this deployment's own platform-assigned URL(s).
+ * Exported so `resolveStoryLabAuthConfig` (the `GET /account/auth-config`
+ * handler) can report `provider: 'none'` in the same case this file fails
+ * closed in — otherwise a caller sees a working-looking Clerk sign-in button
+ * whose every subsequent request 401s, because the backend verifier itself
+ * never got created.
+ */
+export function computeClerkAuthorizedParties(env: Record<string, string | undefined>): string[] {
+  return Array.from(new Set([...parseAllowedOrigins(env), ...resolvePlatformOrigins(env)]));
+}
+
+/**
  * Builds the real `verifySessionToken` `configuredAuthPort` needs, or `undefined`
  * when `CLERK_SECRET_KEY` is not set.
  *
@@ -74,9 +87,7 @@ export function createClerkSessionVerifierFromEnv(
   // Clerk session under the same instance) is rejected rather than accepted
   // on signature validity alone. Computed once, from trusted sources only —
   // see `resolvePlatformOrigins` for why a request header is not one of them.
-  const authorizedParties = Array.from(
-    new Set([...parseAllowedOrigins(env), ...resolvePlatformOrigins(env)])
-  );
+  const authorizedParties = computeClerkAuthorizedParties(env);
 
   // `parseAllowedOrigins` only falls back to its own default when the origin
   // env var is unset entirely; an explicit but entirely-invalid value (every

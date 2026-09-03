@@ -2048,6 +2048,15 @@ export class App implements OnDestroy {
       return;
     }
 
+    // Cancelled before the `await` below, not after: `client.signOut()` is a
+    // network call, and a save/load/delete/refresh that was in flight when
+    // sign-out started could otherwise complete *during* that wait and still
+    // run its callback — hydrating or re-adding the previous account's data
+    // even though nothing has awaited yet to race against. The user already
+    // asked to sign out at this point, so cancelling here is correct even on
+    // the (rare) path below where Clerk's own sign-out call then fails.
+    this.cancelInFlightCloudLibraryRequest();
+
     // `AuthService.signOut()` deliberately does not clear its own session
     // state on failure — Clerk's session is the source of truth, and a
     // rejected call means it may still be active. Announcing "signed out"
@@ -2065,11 +2074,7 @@ export class App implements OnDestroy {
     // the actual fix: before this, the account panel moved off
     // `cloud_synced` but the previous account's project titles and metadata
     // stayed rendered in the list underneath it — a real privacy gap on a
-    // shared device. Cancelling any in-flight `refreshCloudLibrary()` call
-    // is the other half: without it, a response authenticated just before
-    // this sign-out could still arrive afterward and silently repopulate
-    // `cloudProjects` with the account that just signed out.
-    this.cancelInFlightCloudLibraryRequest();
+    // shared device.
     this.cloudProjects.set([]);
     this.cloudLibrarySyncState.set({
       mode: 'cloud_unavailable',

@@ -4,6 +4,15 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Clerk auth hardening round 4: auth-config/verifier split closed, sign-out cancellation reordered (PR #328)
+
+Codex's review of round 3 (dd0c3e5) found two more real gaps, both fresh evidence surfaced only after the prior fix landed.
+
+- **`resolveStoryLabAuthConfig()` and the verifier's own fail-closed check could disagree.** Round 3 made `createClerkSessionVerifierFromEnv` return `undefined` when no trusted origin survives parsing, but `GET /account/auth-config` still reported `provider: 'clerk'` from the provider/publishable-key/secret-key env vars alone — so a deployment hitting that exact misconfiguration showed a working-looking Clerk sign-in button whose every subsequent request would 401, since the backend verifier itself was never created. Fixed by extracting the shared origin computation into an exported `computeClerkAuthorizedParties(env)` in `clerkSessionVerifier.ts` and having `resolveStoryLabAuthConfig` require it non-empty too, so the two checks can't drift apart. Added `testAuthConfigStaysNoneWhenNoTrustedOriginSurvivesParsing`.
+- **`signOutOfCloudAccount()` cancelled the in-flight cloud-library subscription only *after* `await this.authService.signOut()` resolved.** `client.signOut()` is a network call; while it was pending, a save/load/delete/refresh already in flight could complete and run its callback with nothing yet cancelled — the same stale-response race round 2 closed for the already-settled case, still open for the in-flight-during-sign-out case. Fixed by moving the cancellation above the `await`, so it happens synchronously the moment sign-out is requested rather than after Clerk confirms it. Added `cancels an in-flight cloud request before awaiting a slow Clerk sign-out` in `app.spec.ts`, using a deliberately-unresolved fake Clerk `signOut()` to prove a stale response arriving mid-await is still discarded.
+
+Validation: `npm run test:all`, `tsc --noEmit` on both app and spec configs, `ng build`, full karma suite headless (272/272) — all confirmed clean before push.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 3: fail closed on an all-invalid origin config (PR #328)
 
 Codex's review of round 2 (8425a45) found one more real gap: `parseAllowedOrigins(env)` only falls back to its own default allowlist when the origin env var is unset entirely — an explicit but entirely-invalid value (every entry rejected by `normalizeOrigin`, e.g. `STORY_LAB_ALLOWED_ORIGINS=*`) parses to `[]` instead. Combined with no `VERCEL_URL`/`VERCEL_BRANCH_URL` available either, `authorizedParties` would end up `[]` — and `@clerk/backend`'s `verifyToken` treats an empty `authorizedParties` as "no restriction configured," skipping the `azp` check entirely and accepting a validly-signed token from any origin. A misconfiguration this codebase's own review process would not have caught by testing only the "no env var set" default case, since that path was already covered and correct.

@@ -101,6 +101,7 @@ async function main() {
   await testAuthConfigReportsClerkOnlyWhenFullyConfigured();
   await testAuthConfigStaysNoneWhenSecretKeyMissing();
   await testAuthConfigStaysNoneWhenPublishableKeyMissing();
+  await testAuthConfigStaysNoneWhenNoTrustedOriginSurvivesParsing();
   await testAuthConfigRouteRejectsNonGetMethods();
   await testAuthConfigDoesNotRequireAuthentication();
 
@@ -749,6 +750,32 @@ async function testAuthConfigStaysNoneWhenPublishableKeyMissing() {
   assert(
     (response.body as any).data.provider === 'none',
     'a secret key without a publishable key must not report provider: clerk — the frontend has nothing to load Clerk with'
+  );
+}
+
+// `createClerkSessionVerifierFromEnv` fails closed (returns `undefined`,
+// leaving the deployment unconfigured) when every configured origin is
+// invalid and no platform URL is available — see
+// `tests/story-lab-clerk-session-verifier.test.ts`. Before this was fixed,
+// `resolveStoryLabAuthConfig` didn't share that check: it reported
+// `provider: 'clerk'` from the provider/key env vars alone, so the frontend
+// would show a working-looking sign-in button whose every subsequent
+// request 401s, because the backend verifier itself never got created.
+async function testAuthConfigStaysNoneWhenNoTrustedOriginSurvivesParsing() {
+  const handler = createStoryLabAccountRouteHandler({
+    env: {
+      STORY_LAB_AUTH_PROVIDER: 'clerk',
+      CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+      STORY_LAB_ALLOWED_ORIGINS: '*'
+    }
+  });
+  const response = new FakeResponse();
+  await handler(createRequest('GET', 'auth-config'), response);
+
+  assert(
+    (response.body as any).data.provider === 'none',
+    'a deployment whose origin config parses to no trusted origins must not report provider: clerk — the backend verifier fails closed and would 401 every session'
   );
 }
 
