@@ -112,7 +112,7 @@
   "dependencies": {
     "@clerk/backend": "^3.17.1",
     "@neondatabase/serverless": "^1.1.0",
-    "axios": "^1.16.1",
+    "axios": "^1.18.0",
     "dotenv": "^17.2.2"
   }
 }
