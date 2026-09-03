@@ -3266,8 +3266,15 @@ describe('App cloud account sign-in wiring', () => {
       async signOut() {
         await signOut?.();
       },
-      addListener(listener: () => void) {
+      // Reproduces the real `@clerk/clerk-js` client's documented behavior:
+      // an immediate first call to `listener` upon registration unless
+      // `options.skipInitialEmit` is `true` — see the matching comment in
+      // `auth.service.spec.ts`'s fake for why this matters.
+      addListener(listener: () => void, options?: { skipInitialEmit?: boolean }) {
         client.listeners.push(listener);
+        if (!options?.skipInitialEmit) {
+          listener();
+        }
         return () => {
           client.listeners = client.listeners.filter(item => item !== listener);
         };

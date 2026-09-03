@@ -37,8 +37,16 @@ function createFakeClerkClient(): FakeClerkClient {
         throw client.signOutError;
       }
     },
-    addListener(listener: () => void) {
+    // Reproduces the real `@clerk/clerk-js` client's documented behavior: an
+    // immediate first call to `listener` upon registration unless
+    // `options.skipInitialEmit` is `true` — without this, a fake that never
+    // emits initially could not have caught the regression where
+    // `AuthService` forgot to pass that option (see the round-14 finding).
+    addListener(listener: () => void, options?: { skipInitialEmit?: boolean }) {
       client.listeners.push(listener);
+      if (!options?.skipInitialEmit) {
+        listener();
+      }
       return () => {
         client.listeners = client.listeners.filter(item => item !== listener);
       };
@@ -105,6 +113,13 @@ describe('AuthService', () => {
     expect(service.isConfigured()).toBeTrue();
     expect(service.isSignedIn()).toBeTrue();
     expect(service.sessionToken()).toBe('initial-session-token');
+    // The real Clerk client invokes `addListener`'s callback immediately
+    // upon registration unless `skipInitialEmit` is passed — before this was
+    // fixed, that immediate call started a *tagged* refresh whose generation
+    // the following untagged `refreshSessionToken()` call always superseded,
+    // so `identityTransitionPending()` never cleared and every real
+    // deployment finished initialization with it permanently stuck true.
+    expect(service.identityTransitionPending()).toBeFalse();
   });
 
   it('is idempotent: a second initialize() call issues no second request and reuses the same client', async () => {

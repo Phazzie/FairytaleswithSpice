@@ -17,7 +17,13 @@ export interface ClerkClient {
   load(): Promise<void>;
   openSignIn(): void;
   signOut(): Promise<void>;
-  addListener(listener: () => void): () => void;
+  /**
+   * The real `@clerk/clerk-js` client invokes `listener` immediately upon
+   * registration — an "initial emission" — unless `options.skipInitialEmit`
+   * is `true`; a fake used in tests must reproduce that or it cannot catch a
+   * regression in code that forgets to pass it.
+   */
+  addListener(listener: () => void, options?: { skipInitialEmit?: boolean }): () => void;
   readonly session: { getToken(): Promise<string | null> } | null | undefined;
 }
 
@@ -255,11 +261,24 @@ export class AuthService {
       // inside `refreshSessionToken()` once its `await session.getToken()`
       // resolves — see `sessionEpoch`'s own comment for why that gap
       // matters to callers outside this service.
-      this.client.addListener(() => {
-        this.identityTransitionPendingState.set(true);
-        this.sessionEpochState.update(epoch => epoch + 1);
-        void this.refreshSessionToken(true);
-      });
+      // `skipInitialEmit: true` because the explicit `refreshSessionToken()`
+      // call right below already handles the initial load — without this,
+      // Clerk's own immediate first emission (its documented default
+      // behavior on registration) would start a *tagged* refresh, and the
+      // untagged `refreshSessionToken()` call below would start a second,
+      // later one whose higher generation permanently prevents the tagged
+      // call from ever clearing `identityTransitionPendingState` once it
+      // settles — every real deployment would finish initialization with
+      // `identityTransitionPending()` stuck true forever, silently blocking
+      // all four of `App`'s cloud-library methods.
+      this.client.addListener(
+        () => {
+          this.identityTransitionPendingState.set(true);
+          this.sessionEpochState.update(epoch => epoch + 1);
+          void this.refreshSessionToken(true);
+        },
+        { skipInitialEmit: true }
+      );
       await this.refreshSessionToken();
       this.clientReadyState.set(true);
     } catch (error) {
