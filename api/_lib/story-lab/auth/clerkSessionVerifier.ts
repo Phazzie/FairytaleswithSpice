@@ -78,6 +78,19 @@ export function createClerkSessionVerifierFromEnv(
     new Set([...parseAllowedOrigins(env), ...resolvePlatformOrigins(env)])
   );
 
+  // `parseAllowedOrigins` only falls back to its own default when the origin
+  // env var is unset entirely; an explicit but entirely-invalid value (every
+  // entry rejected by `normalizeOrigin` — `STORY_LAB_ALLOWED_ORIGINS=*`, say)
+  // parses to `[]` instead. Combined with no platform URL available either,
+  // `authorizedParties` would end up `[]` — and Clerk's `verifyToken` treats
+  // an empty `authorizedParties` as "no restriction configured", skipping the
+  // `azp` check entirely and accepting a valid token from any origin. Fail
+  // closed instead: the same `undefined` (auth not configured) `clerkAuthPort`
+  // already fails closed on when `CLERK_SECRET_KEY` is unset.
+  if (authorizedParties.length === 0) {
+    return undefined;
+  }
+
   return async function verifySessionToken(
     token: string,
     _req: AuthRequestLike

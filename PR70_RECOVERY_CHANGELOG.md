@@ -4,6 +4,16 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Clerk auth hardening round 3: fail closed on an all-invalid origin config (PR #328)
+
+Codex's review of round 2 (8425a45) found one more real gap: `parseAllowedOrigins(env)` only falls back to its own default allowlist when the origin env var is unset entirely — an explicit but entirely-invalid value (every entry rejected by `normalizeOrigin`, e.g. `STORY_LAB_ALLOWED_ORIGINS=*`) parses to `[]` instead. Combined with no `VERCEL_URL`/`VERCEL_BRANCH_URL` available either, `authorizedParties` would end up `[]` — and `@clerk/backend`'s `verifyToken` treats an empty `authorizedParties` as "no restriction configured," skipping the `azp` check entirely and accepting a validly-signed token from any origin. A misconfiguration this codebase's own review process would not have caught by testing only the "no env var set" default case, since that path was already covered and correct.
+
+Fixed by failing closed: `createClerkSessionVerifierFromEnv` now returns `undefined` (the same "not configured" path `CLERK_SECRET_KEY` being unset already takes) when `authorizedParties` computes to empty, rather than handing `verifyToken` an unchecked allowlist. Added `testFailsClosedWhenNoAuthorizedOriginSurvivesParsing`, proving `STORY_LAB_ALLOWED_ORIGINS=*` with no platform URL leaves the verifier unconfigured instead of silently unchecked.
+
+Also updated `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` and `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` per AGENTS.md's documentation map, both flagged by this same Codex round as omitting this hardening.
+
+Validation: `npm run test:all` (backend, all green, including the new fail-closed test), `tsc --noEmit` on both app and spec configs, `ng build`, full karma suite headless — all confirmed clean before push.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 2: trusted-origin source corrected, save/load/delete races closed (PR #328)
 
 Codex's review of the round-1 push above (6834557) found the round-1 origin-scoping fix had itself introduced a real vulnerability, plus one more stale-response race the round-1 fix missed.

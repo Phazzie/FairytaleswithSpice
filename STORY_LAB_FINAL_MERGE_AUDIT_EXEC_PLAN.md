@@ -110,6 +110,7 @@ Optional work must not weaken required tests, spend the final Vercel route slot 
 - Mixed Angular-major dependency PRs are not quick merge candidates. Split root dependency work from Angular-major-upgrade work, and do not combine dependency resolution with coverage tooling.
 - At the 2026-07-03 audit, the parent checkout still had four parked untracked artifacts that were intentionally local-only: `SPARK_TRIAL_TASKS.md`, `STORY_LAB_REVIEW_MISTAKES_2026-06-09.md`, `STORY_QUALITY_EVALS_PLAN.md`, and `tests/grok-smoke.test.ts`.
 - 2026-07-11 refresh: current `main` and this scope-refresh branch have no tracked or untracked local artifacts, so the stale local-artifact queue should not be treated as current work.
+- As of 2026-09-03, PR #328 went through five Codex review rounds; every round but the first landed its comment(s) on a still-open PR rather than after merge, and each was replied to with the fixing commit and resolved before the next round started. See `PR70_RECOVERY_CHANGELOG.md`'s 2026-09-03 entries for the finding-by-finding disposition, consistent with this file's "every new completion PR has its own late-thread audit" requirement.
 
 ## Decision Log
 

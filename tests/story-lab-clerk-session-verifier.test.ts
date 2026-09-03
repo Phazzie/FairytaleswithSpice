@@ -17,6 +17,7 @@ function assert(condition: unknown, message: string): asserts condition {
 async function main() {
   await testMissingSecretKeyStaysUnconfigured();
   await testBlankSecretKeyStaysUnconfigured();
+  await testFailsClosedWhenNoAuthorizedOriginSurvivesParsing();
   await testVerifierPassesTokenAndTrimmedSecretKey();
   await testVerifierReturnsNullOnErrorsShapeWithoutThrowing();
   await testVerifierReturnsNullWhenDataHasNoSubject();
@@ -59,6 +60,25 @@ async function testMissingSecretKeyStaysUnconfigured() {
 async function testBlankSecretKeyStaysUnconfigured() {
   const verifier = createClerkSessionVerifierFromEnv({ CLERK_SECRET_KEY: '   ' });
   assert(verifier === undefined, 'a blank CLERK_SECRET_KEY should leave the Clerk verifier unconfigured');
+}
+
+// `parseAllowedOrigins` only falls back to its own default when the origin
+// env var is unset entirely — an explicit but entirely-invalid value (every
+// entry rejected by `normalizeOrigin`) parses to `[]` instead. Combined with
+// no platform URL available either, `authorizedParties` would end up `[]`,
+// and Clerk's `verifyToken` treats an empty `authorizedParties` as "no
+// restriction configured" — skipping the `azp` check and accepting a valid
+// token from any origin. This proves that misconfiguration fails closed
+// (verifier unconfigured) instead of silently becoming unchecked.
+async function testFailsClosedWhenNoAuthorizedOriginSurvivesParsing() {
+  const verifier = createClerkSessionVerifierFromEnv({
+    CLERK_SECRET_KEY: 'sk_test_secret',
+    STORY_LAB_ALLOWED_ORIGINS: '*'
+  });
+  assert(
+    verifier === undefined,
+    'a deployment whose origin config parses to no trusted origins at all should stay unconfigured, not verify tokens unchecked'
+  );
 }
 
 async function testVerifierPassesTokenAndTrimmedSecretKey() {
