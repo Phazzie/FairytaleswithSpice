@@ -3355,6 +3355,20 @@ describe('App cloud account sign-in wiring', () => {
     };
   }
 
+  // Shared by the five stale-load-request tests below: each needs a
+  // signed-in, cloud-synced account with a `loadCloudProject()` call already
+  // in flight before it drives whatever race it's actually testing.
+  function beginPendingCloudLoadRequest(
+    component: App,
+    storyServiceSpy: jasmine.SpyObj<StoryService>
+  ): Subject<ApiResponse<CloudStoryProjectLoadResult>> {
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
+    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
+    component.loadCloudProject('previous-account-project');
+    return loadSubject;
+  }
+
   afterEach(() => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SKIN_STORAGE_KEY);
@@ -3505,10 +3519,7 @@ describe('App cloud account sign-in wiring', () => {
       success: true,
       data: { provider: 'clerk', publishableKey: 'pk_test_stale_load_response' }
     });
-    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
-    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
-    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
-    component.loadCloudProject('previous-account-project');
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
 
     await component.signOutOfCloudAccount();
 
@@ -3575,10 +3586,7 @@ describe('App cloud account sign-in wiring', () => {
       success: true,
       data: { provider: 'clerk', publishableKey: 'pk_test_slow_sign_out' }
     });
-    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
-    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
-    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
-    component.loadCloudProject('previous-account-project');
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
     let resolveClerkSignOut!: () => void;
     signOut.and.returnValue(new Promise<void>(resolve => { resolveClerkSignOut = resolve; }));
 
@@ -3649,10 +3657,7 @@ describe('App cloud account sign-in wiring', () => {
       success: true,
       data: { provider: 'clerk', publishableKey: 'pk_test_live_identity_guard' }
     });
-    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
-    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
-    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
-    component.loadCloudProject('previous-account-project');
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
 
     await TestBed.inject(AuthService).signOut();
 
@@ -3701,10 +3706,7 @@ describe('App cloud account sign-in wiring', () => {
       success: true,
       data: { provider: 'clerk', publishableKey: 'pk_test_destroy_cancel' }
     });
-    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
-    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
-    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
-    component.loadCloudProject('previous-account-project');
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
     expect(loadSubject.observed).toBeTrue();
 
     component.ngOnDestroy();
@@ -3742,10 +3744,7 @@ describe('App cloud account sign-in wiring', () => {
     // `accountChanged` branch requires — a fresh sign-in (`wasSignedIn`
     // still false) is not itself an account switch.
     sync(true, 'user_original_account');
-    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
-    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
-    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
-    component.loadCloudProject('previous-account-project');
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
     expect(component.isCloudLibraryBusy()).toBeTrue();
     const refreshCallsBeforeSwitch = storyServiceSpy.listCloudStoryProjects.calls.count();
 

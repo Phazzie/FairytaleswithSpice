@@ -4,6 +4,12 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - CI fix: third SonarCloud duplication gate on PR #328 (not a Codex finding)
+
+SonarCloud's Quality Gate failed again on `2b42e83` (the round-10 push): `4.2% Duplication on New Code`, still over the `≤3%` requirement — the round-8/9/10 test additions had grown five separate test blocks (`discards a cloud-load response that arrives after sign-out`, `cancels an in-flight cloud request before awaiting a slow Clerk sign-out`, `discards a cloud response whose identity no longer matches the live signed-in state, independent of the constructor effect`, `cancels an in-flight cloud-library request on destroy`, `discards a stale request and refreshes when the active account changes without a sign-out`) that each repeated the same four-line setup: put the component into `cloud_synced`, wire a controllable `Subject` as the `loadCloudStoryProject` response, and start a `loadCloudProject('previous-account-project')` call in flight. Extracted a shared `beginPendingCloudLoadRequest(component, storyServiceSpy)` helper in `app.spec.ts` that does the four-line setup and returns the `Subject`, and switched all five call sites to it.
+
+Validation: `tsc --noEmit` on both app and spec configs, full karma suite headless (278/278, confirmed stable across two runs), `ng build`, `npm run test:all` (backend, unaffected but re-run for safety) — all confirmed clean before push.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 10: four more findings, the deepest yet (PR #328)
 
 Codex's review of the round-9 push (edadf0a) found four more issues — two of them going a layer deeper than every prior round's fixes.
