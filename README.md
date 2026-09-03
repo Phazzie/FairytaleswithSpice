@@ -44,7 +44,7 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 20.x or higher
+- Node.js 20.9.0 or higher (the `@clerk/backend` dependency requires it; older 20.x releases will fail to install)
 - npm or yarn package manager
 - (Optional) ElevenLabs API key for audio features
 - (Optional) Grok/XAI API key for AI story generation
@@ -65,7 +65,7 @@ cd story-generator && npm install && cd ..
 ```
 
 ### 3. Environment Setup
-Create a `.env` file in the root directory:
+Copy `.env.example` to `.env` in the root directory and fill in what you need:
 ```env
 # Optional: AI Story Generation (uses mocks if not provided)
 XAI_API_KEY=your_grok_api_key_here
@@ -76,6 +76,7 @@ ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 # Development settings
 NODE_ENV=development
 ```
+See `.env.example` for the full list, including Story Lab's optional [cloud account sign-in](#cloud-account-sign-in) variables.
 
 ### 4. Run in Development Mode
 ```bash
@@ -188,7 +189,11 @@ npm run lint         # Code quality checks
 
 **API Development (now integrated with frontend)**
 ```bash
-# Build and run locally (all-in-one Express server)
+# Build and run locally (all-in-one Express server).
+# The root .env is found from the server's own compiled location, not the
+# working directory you launch it from — this works the same whether you
+# run it from the repo root or from story-generator/ (e.g. via `npm run
+# start:prod` there).
 cd story-generator
 npm run build
 PORT=3000 node dist/story-generator/server/server.mjs
@@ -229,6 +234,29 @@ Access with `Ctrl+Shift+D` or click the debug button:
 - **Error Log Viewer**: Real-time error monitoring
 - **Service Status**: Current API key configuration
 - **Test Suite Runner**: Execute integration tests
+
+### **Cloud Account Sign-In**
+
+Story Lab's cloud library (save/sync stories to an account instead of just this browser) is **off by default** — every deployment works exactly as it always has until you opt in. To enable it:
+
+```env
+STORY_LAB_AUTH_PROVIDER=clerk
+CLERK_SECRET_KEY=your_clerk_secret_key_here
+CLERK_ACCOUNT_PORTAL_URL=https://accounts.your-clerk-app.example.com
+# Recommended once the above works: restrict which app(s) a session token is
+# accepted from. Comma-separated origins; see "Custom Voices"-style env docs
+# in .env.example for the full list.
+CLERK_AUTHORIZED_PARTIES=https://your-app.example.com
+```
+
+- `CLERK_SECRET_KEY` (backend-only, never sent to the browser) verifies the session on every `/api/story-lab/account/*` request. Setting `STORY_LAB_AUTH_PROVIDER=clerk` without it fails fast at startup instead of shipping a route that silently 401s forever.
+- `CLERK_ACCOUNT_PORTAL_URL` is your Clerk instance's hosted [Account Portal](https://clerk.com/docs/guides/customizing-clerk/account-portal) base URL, and **must be a subdomain of this app's own registrable domain** (Clerk's "Account Portal on your own domain" setup, e.g. `accounts.your-app.com` for an app at `your-app.com`). It is **not** a secret — the frontend reads it from `/api/health` and redirects the browser there to sign in/out. Clerk's default sandbox domain (`*.accounts.dev`) is a **different** registrable domain, so a session it sets is not visible to this app's own origin — sign-in will appear to succeed but the app will never see a session. This repo does not implement Clerk's cross-origin handshake protocol (`authenticateRequest`) or bundle its JS SDK, either of which would be required to support a portal on an unrelated domain.
+- `CLERK_AUTHORIZED_PARTIES` restricts accepted session tokens to the listed origin(s) (`azp` claim). Optional, but recommended the moment the same Clerk instance could ever be shared across more than one app or environment — left unset, a valid token from *any* app on that instance is accepted here.
+- There is no Clerk SDK bundled into the frontend: the browser is redirected to Clerk's hosted pages, which set a `__session` cookie the backend already reads. This keeps the frontend bundle free of Clerk's Web3-wallet and Stripe.js dependencies, which the vanilla `@clerk/clerk-js` package would otherwise pull in.
+- With none of this set, "Connect account" tells the reader sign-in isn't configured yet and local browser saves keep working exactly as before.
+- This enables *authentication* only. The cloud project/profile storage behind it also needs `DATABASE_URL` (a Postgres connection string) and its schema applied from `api/_lib/story-lab/storage/storyLabCloudSchema.sql` — see `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`. Without a configured, migrated database, a signed-in user's project operations return a storage-unconfigured error even though sign-in itself works.
+- **Not yet verified against a live Clerk instance** (no live credentials in this environment) — see `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`'s "Live Signed-In Durability Proof" section for the exact remaining proof steps before this is a live-cloud-sync claim, not just a wiring one.
+- **No session token refresh.** Clerk session JWTs are short-lived by design and normally renewed silently by Clerk's browser SDK, which this repo deliberately doesn't bundle (see above). Without it, the session this app can see expires and every subsequent `/api/story-lab/account/*` request 401s — the app degrades gracefully to "Connect account" rather than a stuck or spoofed signed-in state (that degradation is proven; see `app-cloud-account-auth.spec.ts`), but the reader has to re-visit the hosted portal to continue, not stay signed in for a normal session unattended. A silent refresh needs either the SDK this design rejected or a hand-rolled Clerk handshake this repo can't verify without live credentials.
 
 ## 🔐 Security & Privacy
 

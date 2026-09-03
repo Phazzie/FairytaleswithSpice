@@ -70,7 +70,7 @@ Current outcome:
 - The unpublished auth/profile/cloud-library/durable-owner stack has been split, reviewed, followed up, and merged through PR #151.
 - Later review-cleanup work has been merged through PR #179.
 - The repo has clear scaffolds for auth provider selection, profile/project stores, cloud schema/readiness, account routes, Angular cloud library UI, and owner-scoped job storage.
-- The repo does not yet have a production signed-in Story Lab flow, a live durable database migration, durable cloud sync proof, or crash-safe job proof.
+- The repo does not yet have a production signed-in Story Lab flow, a live durable database migration, durable cloud sync proof, or crash-safe job proof. Update as of PR #325: the production auth provider verifier itself is now wired and fails closed (see Slice 5's first sub-item) - the remaining gaps in this line (live browser sign-in proof, database migration, durable cloud sync proof) are unchanged.
 - The repo does not yet have root/API coverage diagnostics or a canonical risk-to-test matrix; a percentage alone is not the completion target.
 
 Self-critique so far:
@@ -235,7 +235,7 @@ Scope:
 
 Sub-checklist:
 
-- [ ] Configure the production auth provider verifier without accepting unsigned or locally forged identities.
+- [x] Configure the production auth provider verifier without accepting unsigned or locally forged identities. Done via PR #325: `configuredAuthPort.ts`'s production singleton now wires a real `@clerk/backend` `verifyToken` call (cryptographic signature verification, not a locally-trusted claim), fails fast at startup if `STORY_LAB_AUTH_PROVIDER=clerk` is set without `CLERK_SECRET_KEY`, and supports `CLERK_AUTHORIZED_PARTIES` to reject a validly-signed token from an unapproved app. Proven against the compiled server artifact, not just `tsx` - see `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`'s Phase 6. **Not** proven against a live Clerk instance (no live credentials in this environment) - the remaining sub-items below (env-var scoping, database, live browser proof) are still open, and this slice is not otherwise claimed done.
 - [ ] Confirm auth provider environment variables are present only in the right deployment environments.
 - [ ] Provision the durable database and set `DATABASE_URL` in the target environment.
 - [ ] Run schema migration against the target database.

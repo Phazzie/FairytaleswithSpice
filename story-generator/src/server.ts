@@ -1,3 +1,27 @@
+// Must be this exact side-effecting import, first in the file - not a
+// `config()` *call* placed first, however early it looks. ES module imports
+// evaluate their whole dependency graph, in source order, before this file's
+// *own* body runs a single statement: a `config()` call written as this
+// file's own top-level code - even above the other imports - still executes
+// after every one of those imports (including `expressApiRoutes` down to
+// `configuredAuthPort.ts`) has already finished evaluating, which is one
+// module-load too late for the `process.env` reads they do at their own
+// module scope. Importing `load-root-env` (which itself calls `config()` at
+// its own module scope) runs that call as part of *its* module evaluation
+// instead, which - as the first import - completes before the second one
+// starts. (Confirmed the hard way: a `config()` call placed exactly like
+// that left every module-scope env read seeing an empty `process.env`,
+// while a request-time read in the same file saw the loaded values - the
+// two only agreed once this became a real side-effecting import.)
+//
+// Not a bare `dotenv/config` import: that resolves `.env` relative to
+// `process.cwd()`, which is `story-generator/` (not the repo root) when
+// launched via this package's own `start:prod`/`serve:ssr:*` scripts.
+// `load-root-env` finds the repo root from its own compiled location
+// instead, so it works regardless of which directory the process launched
+// from.
+import './load-root-env';
+
 import {
   AngularNodeAppEngine,
   createNodeRequestHandler,

@@ -21,6 +21,7 @@ import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { isVocabularyMember } from '../../../shared/storyStateVocabulary';
 import { buildStoryHtmlDocument } from './story-html-exporter';
+import { AuthService } from './auth.service';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { AcceptedMemoryCardEditDraft, MemoryCardDraftItem, MemoryCardService } from './memory-card.service';
 import { CREATURE_ARCHETYPES, readCreatureDisplayName } from '../../../shared/creatureVocabulary';
@@ -493,6 +494,7 @@ const JOB_KIND_COPY: Record<
 })
 export class App implements OnDestroy {
   private readonly storyService = inject(StoryService);
+  private readonly authService = inject(AuthService);
   private readonly errorLogging = inject(ErrorLoggingService);
   private readonly formValidation = inject(FormValidationService);
   private readonly notificationService = inject(NotificationService);
@@ -733,6 +735,12 @@ export class App implements OnDestroy {
     mode: 'cloud_unavailable',
     message: 'Account sync is not connected yet.'
   });
+  // `cloudLibrarySyncState` answers "can I use the cloud library right now"
+  // (auth *and* storage both working) - this answers the narrower "does the
+  // account route currently accept my session," which storage trouble alone
+  // must not flip false. Without the split, a signed-in reader hitting a
+  // storage outage saw "Connect account" instead of a way to sign out.
+  readonly cloudAccountAuthenticated = signal(false);
   readonly isCloudLibraryBusy = signal(false);
   readonly generationProgress = signal<GenerationProgressState>({
     active: false,
@@ -1136,6 +1144,16 @@ export class App implements OnDestroy {
     return 'Account sync is not connected yet.';
   });
   readonly cloudAccountStatusLabel = computed(() => {
+    // Mirrors `cloudAccountActionLabel`: whether this session is signed in is
+    // a narrower question than whether cloud storage happens to be working,
+    // and a reader who's genuinely authenticated but hitting a storage outage
+    // must still read as "Connected" here - the outage itself is reported by
+    // `cloudLibraryStatusMessage`, not by demoting this label back to
+    // "Not connected".
+    if (this.authService.isConfigured() && this.cloudAccountAuthenticated()) {
+      return 'Connected';
+    }
+
     switch (this.cloudLibrarySyncState().mode) {
       case 'cloud_synced':
         return 'Connected';
@@ -1147,6 +1165,15 @@ export class App implements OnDestroy {
     }
   });
   readonly cloudAccountActionLabel = computed(() => {
+    // Checked ahead of the library-state switch below: whether the account
+    // route currently accepts this session is a narrower question than
+    // whether cloud storage happens to be working too, and a reader who's
+    // genuinely signed in but hitting a storage outage still needs "Sign
+    // out" to be the offered action, not "Connect account" again.
+    if (this.authService.isConfigured() && this.cloudAccountAuthenticated()) {
+      return 'Sign out';
+    }
+
     switch (this.cloudLibrarySyncState().mode) {
       case 'cloud_synced':
         return 'Profile';
@@ -1188,6 +1215,17 @@ export class App implements OnDestroy {
   constructor() {
     this.restoreSkin();
     this.restoreLatestProject();
+
+    // A configured Clerk deployment may have just redirected back from a
+    // hosted sign-in - re-checking the cloud library here is what makes that
+    // session visible without the reader having to click anything. An
+    // unconfigured deployment resolves `isConfigured()` false and this never
+    // fires, so today's local-only behavior is unchanged by default.
+    this.authService.initialize().then(() => {
+      if (this.authService.isConfigured()) {
+        this.refreshCloudLibrary();
+      }
+    });
   }
 
   ngOnDestroy() {
@@ -1854,6 +1892,38 @@ export class App implements OnDestroy {
     this.workspaceSaveStatus.set('Saved story removed from this browser.');
   }
 
+  /**
+   * Reaching any *other* error means the account route's auth gate let the
+   * request through - only an explicit UNAUTHORIZED means this browser isn't
+   * (or is no longer) signed in. Shared by every cloud account operation's
+   * `next` failure branch, not just the library listing, so an expired
+   * session surfaces the same way regardless of which action noticed it.
+   */
+  private applyAccountAuthSignalFromResponseError(errorCode: string | undefined) {
+    this.cloudAccountAuthenticated.set(errorCode !== 'UNAUTHORIZED');
+  }
+
+  /**
+   * `StoryService.handleHttpError` rethrows every non-2xx response, so this
+   * is where a real 401 or a real storage 5xx actually lands, not the `next`
+   * branch above. Status alone isn't proof, though: a gateway/proxy failure
+   * (a 502) or a request that never reached the handler at all never carries
+   * this route's own JSON envelope, and neither does `ACCOUNT_ROUTE_NOT_FOUND`
+   * - that one *is* this route's envelope, but `handleStoryLabAccountRouteWithContext`
+   * answers it before the auth gate runs, so it says nothing about this
+   * session either. Every other code this route can answer with - including
+   * a real `UNAUTHORIZED` - is decided only after the auth gate has run, so
+   * reading the envelope's own `error.code` and treating anything but those
+   * two as "passed the gate" is what actually proves it. Shared by every
+   * cloud account operation's `error` branch.
+   */
+  private applyAccountAuthSignalFromHttpError(error: unknown) {
+    const accountRouteErrorCode = (error as { error?: { error?: { code?: unknown } } })?.error?.error?.code;
+    if (typeof accountRouteErrorCode === 'string' && accountRouteErrorCode !== 'ACCOUNT_ROUTE_NOT_FOUND') {
+      this.cloudAccountAuthenticated.set(accountRouteErrorCode !== 'UNAUTHORIZED');
+    }
+  }
+
   refreshCloudLibrary() {
     if (this.isCloudLibraryBusy()) {
       return;
@@ -1863,6 +1933,7 @@ export class App implements OnDestroy {
     this.storyService.listCloudStoryProjects().subscribe({
       next: response => {
         if (!response.success || !response.data) {
+          this.applyAccountAuthSignalFromResponseError(response.error?.code);
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
             message: this.formatApiError(response.error, 'Cloud library is unavailable.')
@@ -1870,6 +1941,7 @@ export class App implements OnDestroy {
           return;
         }
 
+        this.cloudAccountAuthenticated.set(true);
         this.cloudProjects.set(response.data.projects);
         // The listing is capped, so "12 cloud projects loaded" is only the
         // whole story while the reader has twelve. `totalProjectCount` is what
@@ -1895,6 +1967,7 @@ export class App implements OnDestroy {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.refreshCloudLibrary');
+        this.applyAccountAuthSignalFromHttpError(error);
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
           message: this.formatHttpError(error, 'Cloud library is unavailable until account sync is configured.')
@@ -1935,8 +2008,17 @@ export class App implements OnDestroy {
       : `${loadedCount} ${noun}`;
   }
 
-  showCloudAccountSetupStatus() {
+  async showCloudAccountSetupStatus() {
     if (this.isCloudLibraryBusy()) {
+      return;
+    }
+
+    // Sign-out is gated on `cloudAccountAuthenticated`, not on
+    // `cloudLibrarySyncState` being `cloud_synced` - a reader who's genuinely
+    // signed in but hitting a cloud-storage outage must still see a way to
+    // sign out, not "Connect account" again.
+    if (this.authService.isConfigured() && this.cloudAccountAuthenticated()) {
+      this.authService.signOut();
       return;
     }
 
@@ -1946,6 +2028,17 @@ export class App implements OnDestroy {
         message: state.message ?? 'Account is connected.'
       }));
       this.notificationService.info('Account connected', 'Cloud sync is available.');
+      return;
+    }
+
+    // Awaited (not just read) so a transient `/api/health` failure at
+    // startup gets one more chance here, on the reader's own click, instead
+    // of leaving `isConfigured()` stuck false until a full page reload -
+    // `initialize()` is cheap to call again: it only re-fetches when its
+    // cached promise was cleared after a prior failure.
+    await this.authService.initialize();
+    if (this.authService.isConfigured()) {
+      this.authService.signIn();
       return;
     }
 
@@ -1980,6 +2073,7 @@ export class App implements OnDestroy {
     this.storyService.saveCloudStoryProject(project).subscribe({
       next: response => {
         if (!response.success || !response.data) {
+          this.applyAccountAuthSignalFromResponseError(response.error?.code);
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
             message: this.formatApiError(response.error, 'Cloud save failed.')
@@ -1993,6 +2087,7 @@ export class App implements OnDestroy {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.saveActiveProjectToCloud');
+        this.applyAccountAuthSignalFromHttpError(error);
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
           message: this.formatHttpError(error, 'Cloud save is unavailable until account sync is configured.')
@@ -2019,6 +2114,7 @@ export class App implements OnDestroy {
     this.storyService.loadCloudStoryProject(projectId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
+          this.applyAccountAuthSignalFromResponseError(response.error?.code);
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
             message: this.formatApiError(response.error, 'Cloud story could not be loaded.')
@@ -2042,6 +2138,7 @@ export class App implements OnDestroy {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.loadCloudProject');
+        this.applyAccountAuthSignalFromHttpError(error);
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
           message: this.formatHttpError(error, 'Cloud story could not be loaded.')
@@ -2068,6 +2165,7 @@ export class App implements OnDestroy {
     this.storyService.deleteCloudStoryProject(projectId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
+          this.applyAccountAuthSignalFromResponseError(response.error?.code);
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
             message: this.formatApiError(response.error, 'Cloud delete failed.')
@@ -2093,6 +2191,7 @@ export class App implements OnDestroy {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.deleteCloudProject');
+        this.applyAccountAuthSignalFromHttpError(error);
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
           message: this.formatHttpError(error, 'Cloud delete failed.')

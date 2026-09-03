@@ -598,7 +598,12 @@ export interface StreamingProgressChunk {
 // not arrive, was reading a field its type said did not exist. The two
 // interfaces were also not assignable to each other, so nothing would have
 // reported the drift.
-export type { ApiErrorPayload, ApiResponseMetadata } from '../../../api/_lib/types/contracts';
+export type {
+  ApiErrorPayload,
+  ApiResponseMetadata,
+  HealthCheckPayload,
+  StoryLabAccountAuthConfig
+} from '../../../api/_lib/types/contracts';
 import type { ApiResponse as BackendApiResponse } from '../../../api/_lib/types/contracts';
 
 export type ApiResponse<T> = BackendApiResponse<T>;
