@@ -214,6 +214,45 @@ describe('AuthService', () => {
     expect(service.sessionToken()).toBeNull();
   });
 
+  // Before this was fixed, a superseded refresh returned whatever
+  // `sessionTokenState()` currently held — which, while a *newer* overlapping
+  // refresh was itself still in flight, could be neither the old nor the new
+  // token. A caller (an interceptor attaching this as a bearer) could then
+  // send a request with a wrong credential. This proves the earlier call
+  // instead defers to the later, authoritative call's own settled result.
+  it('an earlier overlapping refresh returns the later refresh\'s own result rather than a stale snapshot', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_concurrent_refresh' });
+    await initPromise;
+
+    let resolveFirstGetToken!: (token: string | null) => void;
+    let resolveSecondGetToken!: (token: string | null) => void;
+    let getTokenCalls = 0;
+    fakeClient.session!.getToken = () => {
+      getTokenCalls += 1;
+      if (getTokenCalls === 1) {
+        return new Promise<string | null>(resolve => { resolveFirstGetToken = resolve; });
+      }
+      return new Promise<string | null>(resolve => { resolveSecondGetToken = resolve; });
+    };
+
+    const firstRefresh = service.getRequestToken();
+    const secondRefresh = service.getRequestToken();
+
+    // The later call settles first, with the actually-current token...
+    resolveSecondGetToken('token-for-current-account');
+    // ...then the earlier call settles late, with what it happened to fetch
+    // before it was superseded.
+    resolveFirstGetToken('token-fetched-before-being-superseded');
+
+    const [firstResult, secondResult] = await Promise.all([firstRefresh, secondRefresh]);
+
+    expect(secondResult).toBe('token-for-current-account');
+    expect(firstResult).toBe('token-for-current-account');
+    expect(service.sessionToken()).toBe('token-for-current-account');
+  });
+
   // The publishable key with no secret key case, and vice versa, are proven
   // server-side in `story-lab-account-routes.test.ts` — this only proves the
   // frontend actually honors whatever `provider` the route reports, rather

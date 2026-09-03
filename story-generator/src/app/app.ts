@@ -245,6 +245,13 @@ type NarrativeDialViewModel = NarrativeDial & {
 
 type SelectedNarrativeDialOptions = Record<NarrativeDialId, string>;
 
+/** See `App.captureCloudRequestIdentity`'s own comment. */
+type CloudRequestIdentity = {
+  signedIn: boolean;
+  accountId: string | null;
+  sessionEpoch: number;
+};
+
 type VillainPressureId = 'antagonist' | 'environment' | 'secret' | 'deadline' | 'inner-desire';
 
 type VillainPressureOption = NarrativeDialOption & {
@@ -1280,6 +1287,12 @@ export class App implements OnDestroy {
   ngOnDestroy() {
     this.closeJobSubscriptions();
     this.stopProgress();
+    // A cloud list/save/load/delete request can still be in flight when the
+    // reader navigates away (to `/proving-grounds`, say). Angular does not
+    // unsubscribe a manually-created RxJS subscription on component
+    // destruction, so without this its response would still arrive and its
+    // callback could mutate or persist the now-destroyed workbench.
+    this.cancelInFlightCloudLibraryRequest();
   }
 
   updateBlueprint<K extends keyof BlueprintForm>(field: K, value: BlueprintForm[K]) {
@@ -2032,14 +2045,28 @@ export class App implements OnDestroy {
    * the instant it's read, regardless of when any effect depending on it
    * next runs, so comparing against a live read inside each callback closes
    * the window cancellation alone cannot.
+   *
+   * `sessionEpoch` closes a narrower, related gap: `isSignedIn`/`accountId`
+   * do not themselves update until `AuthService`'s `refreshSessionToken()`
+   * finishes awaiting Clerk, so a response arriving in the window between a
+   * session-change event firing and that `await` resolving would still
+   * compare equal against the *outgoing* identity. `sessionEpoch` advances
+   * synchronously the instant such an event is announced — see its own
+   * comment on `AuthService` — closing that window too.
    */
-  private captureCloudRequestIdentity(): { signedIn: boolean; accountId: string | null } {
-    return { signedIn: this.authService.isSignedIn(), accountId: this.authService.accountId() };
+  private captureCloudRequestIdentity(): CloudRequestIdentity {
+    return {
+      signedIn: this.authService.isSignedIn(),
+      accountId: this.authService.accountId(),
+      sessionEpoch: this.authService.sessionEpoch()
+    };
   }
 
-  private isStaleCloudResponse(requestIdentity: { signedIn: boolean; accountId: string | null }): boolean {
+  private isStaleCloudResponse(requestIdentity: CloudRequestIdentity): boolean {
     const current = this.captureCloudRequestIdentity();
-    return current.signedIn !== requestIdentity.signedIn || current.accountId !== requestIdentity.accountId;
+    return current.signedIn !== requestIdentity.signedIn
+      || current.accountId !== requestIdentity.accountId
+      || current.sessionEpoch !== requestIdentity.sessionEpoch;
   }
 
   /**
@@ -2050,7 +2077,7 @@ export class App implements OnDestroy {
    * into all twelve of those callbacks.
    */
   private guardStaleCloudResponse<T>(
-    requestIdentity: { signedIn: boolean; accountId: string | null },
+    requestIdentity: CloudRequestIdentity,
     handler: (value: T) => void
   ): (value: T) => void {
     return value => {
@@ -2065,7 +2092,7 @@ export class App implements OnDestroy {
   // `guardStaleCloudResponse` for `complete`: a `(value: unknown) => void`
   // wrapper is not assignable to RxJS's `complete: () => void`.
   private guardStaleCloudComplete(
-    requestIdentity: { signedIn: boolean; accountId: string | null },
+    requestIdentity: CloudRequestIdentity,
     handler: () => void
   ): () => void {
     return () => {

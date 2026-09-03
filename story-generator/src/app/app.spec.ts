@@ -3690,6 +3690,28 @@ describe('App cloud account sign-in wiring', () => {
     expect(signOut).not.toHaveBeenCalled();
   });
 
+  // Before this was fixed, `ngOnDestroy()` closed only the job subscriptions
+  // and the progress timer — a cloud list/save/load/delete request still in
+  // flight when the reader navigated away (to `/proving-grounds`, say)
+  // stayed subscribed. Angular does not unsubscribe a manually-created RxJS
+  // subscription on component destruction, so that response could still
+  // arrive and its callback mutate or persist the now-destroyed workbench.
+  it('cancels an in-flight cloud-library request on destroy', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_destroy_cancel' }
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
+    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
+    component.loadCloudProject('previous-account-project');
+    expect(loadSubject.observed).toBeTrue();
+
+    component.ngOnDestroy();
+
+    expect(loadSubject.observed).toBeFalse();
+  });
+
   // A multi-session Clerk client can replace one signed-in account with
   // another without an intermediate signed-out state — an account switch in
   // another tab, say. `isSignedIn()` stays `true` throughout that swap, so

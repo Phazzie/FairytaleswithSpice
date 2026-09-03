@@ -88,10 +88,35 @@ export class AuthService {
   // start — see that method's own comment for why a request-scoped counter,
   // not a session-scoped one, is what closes this race.
   private sessionRefreshGeneration = 0;
+  // The generation `signOut()` last invalidated, so a superseded refresh can
+  // tell *why* it was superseded — see `refreshSessionToken`'s own comment.
+  private signOutGeneration = 0;
+  // The most recently started `refreshSessionToken()` call's own promise, so
+  // a superseded-by-an-ordinary-refresh call can defer to it — see
+  // `refreshSessionToken`'s own comment.
+  private latestRefreshPromise: Promise<string | null> | null = null;
+  private readonly sessionEpochState = signal(0);
 
   readonly isConfigured = computed(() => this.authConfigState()?.provider === 'clerk');
   readonly sessionToken = computed(() => this.sessionTokenState());
   readonly isSignedIn = computed(() => this.sessionTokenState() !== null);
+  /**
+   * Advances synchronously — before any `await` — on every event that might
+   * change which account is signed in: a Clerk session-change listener
+   * firing, or an explicit `signOut()`. `isSignedIn`/`accountId` do not
+   * update until `refreshSessionToken()`'s `await session.getToken()`
+   * resolves, so a caller (`App`'s cloud-library request guards) that only
+   * compared those two against a live read had a real window, between the
+   * event firing and that `await` resolving, where they still read as the
+   * *outgoing* identity — a stale response arriving in exactly that window
+   * would pass the comparison. Comparing this instead closes that window:
+   * it changes the instant the event is known, not once its consequences
+   * are known. Deliberately coarser than `accountId` — it also advances on
+   * an ordinary same-account token refresh, not only an actual identity
+   * change, trading a rare needlessly-discarded in-flight response for
+   * never risking one account's data landing under another.
+   */
+  readonly sessionEpoch = computed(() => this.sessionEpochState());
   /**
    * `null` when signed out; otherwise the signed-in account's identity,
    * stable across an ordinary token refresh (a new token string, same `sub`)
@@ -149,6 +174,8 @@ export class AuthService {
     // `null` this line is about to set — resurrecting the session sign-out
     // just ended.
     this.sessionRefreshGeneration++;
+    this.signOutGeneration = this.sessionRefreshGeneration;
+    this.sessionEpochState.update(epoch => epoch + 1);
     this.sessionTokenState.set(null);
   }
 
@@ -199,7 +226,12 @@ export class AuthService {
       // Clerk fires this on every session change — sign-in, sign-out, token
       // refresh — so this is the one place `sessionTokenState` needs to be
       // kept current rather than only being set once after `load()`.
+      // `sessionEpochState` is bumped here, synchronously, rather than only
+      // inside `refreshSessionToken()` once its `await session.getToken()`
+      // resolves — see `sessionEpoch`'s own comment for why that gap
+      // matters to callers outside this service.
       this.client.addListener(() => {
+        this.sessionEpochState.update(epoch => epoch + 1);
         void this.refreshSessionToken();
       });
       await this.refreshSessionToken();
@@ -221,27 +253,54 @@ export class AuthService {
    * awaiting `getToken()`, say, or a rapid account switch) can resolve out
    * of order, and only the call that started *last* is allowed to write —
    * an earlier one resolving after it must not overwrite a result that is
-   * already known to be newer. `sessionTokenState()` (the current, more
-   * authoritative value) is returned instead of the fetched-but-discarded
-   * token in that case; whatever superseded this call — `signOut()`'s
-   * `null`, or a newer refresh's real token — already set it correctly.
+   * already known to be newer.
+   *
+   * A superseded call cannot just return `sessionTokenState()` at that
+   * point, though: if it was superseded by another *refresh* that has not
+   * itself resolved yet, the signal may still hold an even-older value (or
+   * the previous account's), and a caller — an interceptor attaching this
+   * as a bearer token — would send that wrong credential. `signOutGeneration`
+   * and `latestRefreshPromise` exist to answer *why* this call was
+   * superseded and respond accordingly: a `signOut()` invalidation is
+   * answered with `null` (the session really did end and no cached value is
+   * safe), while an ordinary overlapping refresh is answered by awaiting and
+   * returning that refresh's own settled result — never a snapshot that
+   * might belong to neither the old nor the new state.
    */
   private async refreshSessionToken(): Promise<string | null> {
     const requestGeneration = ++this.sessionRefreshGeneration;
+    const refreshPromise = this.fetchAndApplySessionToken(requestGeneration);
+    this.latestRefreshPromise = refreshPromise;
+    return refreshPromise;
+  }
+
+  private async fetchAndApplySessionToken(requestGeneration: number): Promise<string | null> {
     try {
       const token = (await this.client?.session?.getToken()) ?? null;
       if (requestGeneration !== this.sessionRefreshGeneration) {
-        return this.sessionTokenState();
+        return this.resolveSupersededRefresh(requestGeneration);
       }
       this.sessionTokenState.set(token);
       return token;
     } catch (error) {
       if (requestGeneration !== this.sessionRefreshGeneration) {
-        return this.sessionTokenState();
+        return this.resolveSupersededRefresh(requestGeneration);
       }
       this.errorLogging.logError(error, 'AuthService.refreshSessionToken');
       this.sessionTokenState.set(null);
       return null;
     }
+  }
+
+  private resolveSupersededRefresh(requestGeneration: number): Promise<string | null> | string | null {
+    if (this.signOutGeneration >= requestGeneration) {
+      return null;
+    }
+    // `this.latestRefreshPromise` is expected to already point at the
+    // refresh that superseded this one: whichever call incremented
+    // `sessionRefreshGeneration` past `requestGeneration` also assigned its
+    // own promise to `latestRefreshPromise` synchronously, before this check
+    // could run. The live signal is a fallback only, not the expected path.
+    return this.latestRefreshPromise ?? this.sessionTokenState();
   }
 }
