@@ -33,7 +33,8 @@ const EXPECTED_ROUTE_PATHS = [
   '/api/story-lab/jobs/:jobId',
   '/api/story-lab/account/profile',
   '/api/story-lab/account/projects/:projectId',
-  '/api/story-lab/account/projects'
+  '/api/story-lab/account/projects',
+  '/api/story-lab/account/auth-config'
 ];
 
 const registeredPaths: string[] = [];
@@ -85,6 +86,7 @@ const CLIENT_REQUEST_PATHS = [
   '/api/story-lab/account/profile',
   '/api/story-lab/account/projects',
   '/api/story-lab/account/projects/project-1',
+  '/api/story-lab/account/auth-config',
   '/api/story-lab/evaluate',
   '/api/health'
 ];
@@ -142,6 +144,7 @@ assert.deepEqual(queryFor('/api/story-lab/jobs/job_abc'), { jobId: 'job_abc' });
 assert.deepEqual(queryFor('/api/story-lab/jobs/job_abc/events'), { jobId: 'job_abc', events: '1' });
 assert.deepEqual(queryFor('/api/story-lab/account/profile'), { resource: 'profile' });
 assert.deepEqual(queryFor('/api/story-lab/account/projects'), { resource: 'projects' });
+assert.deepEqual(queryFor('/api/story-lab/account/auth-config'), { resource: 'auth-config' });
 assert.deepEqual(
   queryFor('/api/story-lab/account/projects/project-1'),
   { resource: 'project', projectId: 'project-1' }

@@ -26,6 +26,10 @@
       "destination": "/api/story-lab/account?resource=projects"
     },
     {
+      "source": "/api/story-lab/account/auth-config",
+      "destination": "/api/story-lab/account?resource=auth-config"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }

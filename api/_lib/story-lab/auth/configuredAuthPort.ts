@@ -3,6 +3,7 @@
 import type { AuthPort } from './authPort';
 import { AuthError, createDenyByDefaultAuthPort } from './authPort';
 import { createClerkAuthPort, type ClerkAuthPortOptions } from './clerkAuthPort';
+import { createClerkSessionVerifierFromEnv } from './clerkSessionVerifier';
 
 export type StoryLabAuthProviderName = 'none' | 'clerk';
 
@@ -66,4 +67,14 @@ function createUnsupportedAuthProviderPort(providerName: string): AuthPort {
   };
 }
 
-export const configuredAuthPort = createConfiguredAuthPort({ env: process.env });
+// This is what closes the loop `clerkAuthPort.ts` was built to serve: the
+// only production call site of `createConfiguredAuthPort`, and the one place
+// a `clerk` verifier can reach it. Before this line existed, `options.clerk`
+// was `undefined` here no matter what `STORY_LAB_AUTH_PROVIDER` said, so the
+// "Clerk provider" was unreachable in every deployment — see
+// `createClerkSessionVerifierFromEnv` for why an unset `CLERK_SECRET_KEY`
+// still resolves to that same unreachable state rather than a crash.
+export const configuredAuthPort = createConfiguredAuthPort({
+  env: process.env,
+  clerk: { verifySessionToken: createClerkSessionVerifierFromEnv(process.env) }
+});

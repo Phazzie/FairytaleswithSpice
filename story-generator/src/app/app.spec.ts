@@ -4,6 +4,7 @@ import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
 import { BehaviorSubject, NEVER, of, Subject, throwError } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
+import { AuthService, CLERK_CLIENT_FACTORY, ClerkClient } from './auth.service';
 import { ErrorLoggingService } from './error-logging';
 import { NotificationService } from './notification.service';
 import { OBJECT_URL_REVOKE_DELAY_MS } from '../../../shared/htmlDocumentDownload';
@@ -289,6 +290,7 @@ describe('App', () => {
       'continueStory',
       'createStoryLabJob',
       'getStoryLabJobStatus',
+      'getStoryLabAuthConfig',
       'listCloudStoryProjects',
       'saveCloudStoryProject',
       'loadCloudStoryProject',
@@ -297,6 +299,11 @@ describe('App', () => {
       'convertChapterToAudio',
       'exportStory'
     ]);
+    // Every test here constructs `App`, and `App`'s constructor now calls
+    // `AuthService.initialize()` unconditionally — this is what that resolves
+    // to unless a test overrides it, matching every real deployment that has
+    // not configured Clerk.
+    storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of({ success: true, data: { provider: 'none' } }));
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
       'logInfo',
       'logError',
@@ -3226,3 +3233,106 @@ describe('App', () => {
     expect(notificationService.notifications()[0]?.message).toBe('Could not reach the export service.');
   });
 });
+
+// A sibling top-level suite, deliberately not nested inside `describe('App', ...)`
+// above: that suite's `beforeEach` already calls `TestBed.configureTestingModule`
+// and pins `getStoryLabAuthConfig` to `{ provider: 'none' }` for every one of its
+// tests, and `App`'s constructor reads that response once, synchronously, on
+// construction — there is no hook to swap it in after the fact, and nesting here
+// would instantiate `TestBed` twice for the same test.
+describe('App cloud account sign-in wiring', () => {
+  function createFakeClerkClient(openSignIn: jasmine.Spy): ClerkClient {
+    return {
+      async load() {},
+      openSignIn,
+      async signOut() {},
+      addListener: () => () => {},
+      session: { getToken: async () => 'fake-session-token' }
+    };
+  }
+
+  async function createAppWithAuthConfig(config: ApiResponse<{ provider: 'clerk' | 'none'; publishableKey?: string }>) {
+    const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
+      'getStoryLabAuthConfig',
+      'listCloudStoryProjects'
+    ]);
+    storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of(config as any));
+    // A signed-in session — the `provider: 'clerk'` case below reaches this —
+    // makes `App`'s constructor effect call `refreshCloudLibrary()`, the same
+    // way a manual "Check cloud" click would. Stubbed rather than left
+    // uncalled so that effect does not throw on a missing spy method.
+    storyServiceSpy.listCloudStoryProjects.and.returnValue(of({
+      success: true,
+      data: {
+        ownerUserId: 'user-test',
+        storageMode: 'non_durable_memory',
+        projects: [],
+        totalProjectCount: 0
+      }
+    }));
+    const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
+      'logInfo',
+      'logError',
+      'getErrors'
+    ]);
+    errorLoggingSpy.getErrors.and.returnValue(of([]));
+    const openSignIn = jasmine.createSpy('openSignIn');
+    const clientFactory = jasmine.createSpy('clerkClientFactory')
+      .and.returnValue(Promise.resolve(createFakeClerkClient(openSignIn)));
+
+    await TestBed.configureTestingModule({
+      imports: [App, HttpClientTestingModule],
+      providers: [
+        { provide: StoryService, useValue: storyServiceSpy },
+        { provide: ErrorLoggingService, useValue: errorLoggingSpy },
+        { provide: ActivatedRoute, useValue: { queryParamMap: new BehaviorSubject<ParamMap>(convertToParamMap({})) } },
+        { provide: CLERK_CLIENT_FACTORY, useValue: clientFactory }
+      ]
+    }).compileComponents();
+
+    const localFixture = TestBed.createComponent(App);
+    // Deterministic settle, rather than guessing how many microtask turns the
+    // constructor's fire-and-forget `initialize()` chain needs: this is the
+    // same idempotent promise it is already running, so awaiting it here
+    // waits for exactly that chain and nothing else.
+    await TestBed.inject(AuthService).initialize();
+    return { fixture: localFixture, component: localFixture.componentInstance, openSignIn };
+  }
+
+  afterEach(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(SKIN_STORAGE_KEY);
+  });
+
+  it('opens Clerk sign-in instead of the static message once the deployment reports it is configured', async () => {
+    const { component, openSignIn } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_app_wiring' }
+    });
+
+    component.showCloudAccountSetupStatus();
+    // `signIn()` is `void`-called from `showCloudAccountSetupStatus()` and
+    // itself awaits `initialize()` before opening the modal — already
+    // settled at this point, but still one more microtask turn to unwind.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(openSignIn).toHaveBeenCalled();
+  });
+
+  it('keeps the unconfigured message when the deployment reports no provider', async () => {
+    const { component, openSignIn } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'none' }
+    });
+
+    component.showCloudAccountSetupStatus();
+
+    expect(openSignIn).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toBe(
+      'Sign-in setup is not configured yet. Local browser saves are still available.'
+    );
+  });
+});
+

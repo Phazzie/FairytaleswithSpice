@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, SecurityContext, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, SecurityContext, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
@@ -71,6 +71,7 @@ import {
   isTerminalStoryLabJobStatus
 } from './contracts';
 import { StoryService } from './story.service';
+import { AuthService } from './auth.service';
 import { StoryWorkspaceStorageService } from './story-workspace-storage.service';
 import { ErrorLoggingService } from './error-logging';
 import { DebugPanel } from './debug-panel/debug-panel';
@@ -493,6 +494,7 @@ const JOB_KIND_COPY: Record<
 })
 export class App implements OnDestroy {
   private readonly storyService = inject(StoryService);
+  private readonly authService = inject(AuthService);
   private readonly errorLogging = inject(ErrorLoggingService);
   private readonly formValidation = inject(FormValidationService);
   private readonly notificationService = inject(NotificationService);
@@ -1188,6 +1190,22 @@ export class App implements OnDestroy {
   constructor() {
     this.restoreSkin();
     this.restoreLatestProject();
+
+    // Fire-and-forget: `initialize()` is idempotent, and every deployment
+    // that has not configured Clerk resolves this to a no-op after the one
+    // `auth-config` request. The effect below is what actually reacts to a
+    // sign-in once it happens.
+    void this.authService.initialize();
+
+    // `signIn()` opens Clerk's own modal; there is no promise that resolves
+    // when the reader finishes it. This is what notices the session actually
+    // landing and moves `cloudLibrarySyncState` out of `cloud_unavailable`
+    // the same way a manual "Check cloud" click already does.
+    effect(() => {
+      if (this.authService.isSignedIn()) {
+        this.refreshCloudLibrary();
+      }
+    });
   }
 
   ngOnDestroy() {
@@ -1946,6 +1964,16 @@ export class App implements OnDestroy {
         message: state.message ?? 'Account is connected.'
       }));
       this.notificationService.info('Account connected', 'Cloud sync is available.');
+      return;
+    }
+
+    // Only reachable once `/account/auth-config` has actually reported a
+    // usable Clerk provider — see `resolveStoryLabAuthConfig` on the backend
+    // for what "usable" requires. Every deployment that has not configured
+    // that falls straight to the message below, unchanged from before this
+    // existed.
+    if (this.authService.isConfigured()) {
+      void this.authService.signIn();
       return;
     }
 

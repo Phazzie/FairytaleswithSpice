@@ -423,6 +423,21 @@ describe('StoryService', () => {
     });
   });
 
+  it('fetches the Story Lab auth config', () => {
+    const service = TestBed.inject(StoryService);
+    const httpMock = TestBed.inject(HttpTestingController);
+
+    service.getStoryLabAuthConfig().subscribe(response => {
+      expect(response.success).toBeTrue();
+      expect(response.data?.provider).toBe('clerk');
+      expect(response.data?.publishableKey).toBe('pk_test_example');
+    });
+
+    const req = httpMock.expectOne('/api/story-lab/account/auth-config');
+    expect(req.request.method).toBe('GET');
+    req.flush({ success: true, data: { provider: 'clerk', publishableKey: 'pk_test_example' } });
+  });
+
   it('logs http errors through the error logger', () => {
     const input = createGenesisInput();
 

@@ -125,6 +125,11 @@ export const API_ROUTES: readonly ApiRouteDefinition[] = [
     path: '/api/story-lab/account/projects',
     handler: handleStoryLabAccountRoute,
     query: () => ({ resource: 'projects' })
+  },
+  {
+    path: '/api/story-lab/account/auth-config',
+    handler: handleStoryLabAccountRoute,
+    query: () => ({ resource: 'auth-config' })
   }
 ];
 
