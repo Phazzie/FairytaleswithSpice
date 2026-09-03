@@ -139,6 +139,35 @@ describe('AuthService', () => {
     expect(service.isSignedIn()).toBeFalse();
   });
 
+  // `sessionEpoch` alone does not gate a request that starts inside the
+  // window between the listener firing and its own refresh settling — see
+  // `identityTransitionPending`'s own comment. This proves the flag itself
+  // behaves as that gate needs: true the instant the listener fires (before
+  // any `await`), false again only once the listener's own refresh settles.
+  it('marks an identity transition pending the instant the session-change listener fires, until its own refresh settles', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_identity_transition_pending' });
+    await initPromise;
+    expect(service.identityTransitionPending()).toBeFalse();
+
+    let resolveGetToken!: (token: string | null) => void;
+    fakeClient.session!.getToken = () => new Promise<string | null>(resolve => {
+      resolveGetToken = resolve;
+    });
+
+    fakeClient.fireSessionChange('account-b-token');
+
+    expect(service.identityTransitionPending()).toBeTrue();
+
+    resolveGetToken('account-b-token');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.identityTransitionPending()).toBeFalse();
+    expect(service.sessionToken()).toBe('account-b-token');
+  });
+
   it('signIn() initializes first, then opens the Clerk sign-in UI', async () => {
     const service = TestBed.inject(AuthService);
     const signInPromise = service.signIn();

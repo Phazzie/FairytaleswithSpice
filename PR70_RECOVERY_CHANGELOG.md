@@ -4,6 +4,15 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Clerk auth hardening round 12: block new requests during a pending identity transition, and a likely fourth SonarCloud duplication source (PR #328)
+
+Codex's review of the round-11 push (`77f4086`, the request-token fix landed the same round as the `beginPendingCloudLoadRequest` dedup) found one more issue, deeper than round 11's own fix:
+
+- **A new save/load/delete could start inside the identity-transition window and still get the wrong account's token.** Round 11 closed the case where a request *already awaiting* Clerk got superseded mid-flight. It did not close a narrower but more direct case: `sessionEpoch` advances *synchronously* when the session-change listener fires, before `sessionTokenState`/`accountId` (and the UI still showing the outgoing account) have caught up — so a save that starts *after* the epoch bump but *before* the listener's own refresh settles captures the already-advanced epoch, is never flagged as stale by the epoch comparison, and its interceptor can still fetch the *incoming* account's fresh token to send with the *outgoing* account's already-built payload. No response-level guard can undo a write that already landed on the server. Fixed by adding `AuthService.identityTransitionPending`, set synchronously the instant the listener fires and cleared only once its own refresh settles (tracked by request generation, so a rapid double account-switch doesn't clear it early), and gating all four of `App`'s cloud-library methods on it alongside the existing `isCloudLibraryBusy` check. Added an `AuthService`-level test proving the flag's own timing, and an `App`-level test enhancing the fake Clerk client with a real `addListener`/`fireSessionChange` so a save attempted mid-transition can be proven never to reach `StoryService` at all, then proceeds normally once the transition settles.
+- While in `app.ts` for this, also extracted `reportCloudLibraryError` (mode/error/logger-context/fallback-message) out of the four near-identical `error` handler bodies: SonarCloud's duplication gate stayed red at the same 3.7% across the round-11 dedup push, which removed a genuine 5-way test duplicate but apparently netted out against new round-11 code — normalizing literals (as SonarCloud's duplication detector does) made these four handlers, identical but for a mode value and two message strings, a stronger duplicate candidate than the test blocks were. Not yet confirmed against a fresh SonarCloud run.
+
+Validation: `tsc --noEmit` on both app and spec configs, full karma suite headless (283/283, confirmed stable across two runs), `ng build`, `npm run test:all` (backend, unaffected but re-run for safety) — all confirmed clean before push.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 11: cross-account token substitution and a permanently-stuck busy lock (PR #328)
 
 Codex's review of the round-10 push (`b86925c`) found two more issues:

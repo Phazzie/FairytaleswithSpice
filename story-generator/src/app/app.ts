@@ -1954,8 +1954,35 @@ export class App implements OnDestroy {
     this.workspaceSaveStatus.set('Saved story removed from this browser.');
   }
 
+  /**
+   * Gates every cloud-library request against a Clerk identity transition
+   * still in flight, not just against another cloud-library request already
+   * running: `authService.identityTransitionPending()` is true for the brief
+   * window between a session-change listener firing and its own token
+   * refresh settling, during which `sessionEpoch` has already advanced but
+   * `sessionTokenState`/`accountId` have not — see that signal's own comment
+   * on `AuthService` for why a request that starts in exactly that window is
+   * dangerous rather than merely stale.
+   */
+  private isCloudLibraryRequestBlocked(): boolean {
+    return this.isCloudLibraryBusy() || this.authService.identityTransitionPending();
+  }
+
+  private reportCloudLibraryError(
+    mode: CloudLibrarySyncState['mode'],
+    error: unknown,
+    loggerContext: string,
+    fallbackMessage: string
+  ): void {
+    this.errorLogging.logError(error, loggerContext);
+    this.cloudLibrarySyncState.set({
+      mode,
+      message: this.formatHttpError(error, fallbackMessage)
+    });
+  }
+
   refreshCloudLibrary() {
-    if (this.isCloudLibraryBusy()) {
+    if (this.isCloudLibraryRequestBlocked()) {
       return;
     }
 
@@ -1995,11 +2022,12 @@ export class App implements OnDestroy {
         });
       }),
       error: this.guardStaleCloudError(requestIdentity, error => {
-        this.errorLogging.logError(error, 'App.refreshCloudLibrary');
-        this.cloudLibrarySyncState.set({
-          mode: 'cloud_unavailable',
-          message: this.formatHttpError(error, 'Cloud library is unavailable until account sync is configured.')
-        });
+        this.reportCloudLibraryError(
+          'cloud_unavailable',
+          error,
+          'App.refreshCloudLibrary',
+          'Cloud library is unavailable until account sync is configured.'
+        );
       }),
       complete: () => {
         this.isCloudLibraryBusy.set(false);
@@ -2239,7 +2267,7 @@ export class App implements OnDestroy {
   }
 
   saveActiveProjectToCloud() {
-    if (this.isCloudLibraryBusy()) {
+    if (this.isCloudLibraryRequestBlocked()) {
       return;
     }
 
@@ -2275,11 +2303,12 @@ export class App implements OnDestroy {
         this.notificationService.success('Cloud save requested', project.title);
       }),
       error: this.guardStaleCloudError(requestIdentity, error => {
-        this.errorLogging.logError(error, 'App.saveActiveProjectToCloud');
-        this.cloudLibrarySyncState.set({
-          mode: 'cloud_unavailable',
-          message: this.formatHttpError(error, 'Cloud save is unavailable until account sync is configured.')
-        });
+        this.reportCloudLibraryError(
+          'cloud_unavailable',
+          error,
+          'App.saveActiveProjectToCloud',
+          'Cloud save is unavailable until account sync is configured.'
+        );
       }),
       complete: () => {
         this.isCloudLibraryBusy.set(false);
@@ -2295,7 +2324,7 @@ export class App implements OnDestroy {
   }
 
   loadCloudProject(projectId: string) {
-    if (this.isCloudLibraryBusy()) {
+    if (this.isCloudLibraryRequestBlocked()) {
       return;
     }
 
@@ -2331,11 +2360,7 @@ export class App implements OnDestroy {
         }
       }),
       error: this.guardStaleCloudError(requestIdentity, error => {
-        this.errorLogging.logError(error, 'App.loadCloudProject');
-        this.cloudLibrarySyncState.set({
-          mode: 'sync_failed',
-          message: this.formatHttpError(error, 'Cloud story could not be loaded.')
-        });
+        this.reportCloudLibraryError('sync_failed', error, 'App.loadCloudProject', 'Cloud story could not be loaded.');
       }),
       complete: () => {
         this.isCloudLibraryBusy.set(false);
@@ -2349,7 +2374,7 @@ export class App implements OnDestroy {
   }
 
   deleteCloudProject(projectId: string) {
-    if (this.isCloudLibraryBusy()) {
+    if (this.isCloudLibraryRequestBlocked()) {
       return;
     }
 
@@ -2387,11 +2412,7 @@ export class App implements OnDestroy {
         }
       }),
       error: this.guardStaleCloudError(requestIdentity, error => {
-        this.errorLogging.logError(error, 'App.deleteCloudProject');
-        this.cloudLibrarySyncState.set({
-          mode: 'sync_failed',
-          message: this.formatHttpError(error, 'Cloud delete failed.')
-        });
+        this.reportCloudLibraryError('sync_failed', error, 'App.deleteCloudProject', 'Cloud delete failed.');
       }),
       complete: () => {
         this.isCloudLibraryBusy.set(false);

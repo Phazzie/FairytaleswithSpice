@@ -93,6 +93,7 @@ export class AuthService {
   // see `refreshSessionToken`'s own comment.
   private latestRefreshPromise: Promise<string | null> | null = null;
   private readonly sessionEpochState = signal(0);
+  private readonly identityTransitionPendingState = signal(false);
 
   readonly isConfigured = computed(() => this.authConfigState()?.provider === 'clerk');
   readonly sessionToken = computed(() => this.sessionTokenState());
@@ -114,6 +115,21 @@ export class AuthService {
    * never risking one account's data landing under another.
    */
   readonly sessionEpoch = computed(() => this.sessionEpochState());
+  /**
+   * True from the instant a Clerk session-change listener fires until its
+   * own token refresh settles. `sessionEpoch` alone does not close this
+   * window for a *new* request that starts inside it: the epoch has already
+   * advanced by the time such a request captures it, so it reads as the
+   * current identity rather than a stale one, even though `sessionTokenState`
+   * (and the `accountId`/`isSignedIn` derived from it) has not actually
+   * caught up yet — the account still displayed is the outgoing one. A save
+   * built from that still-outgoing data could have its interceptor attach
+   * the *incoming* account's fresh token, persisting the old account's data
+   * under the new one with no response-level guard able to undo the write.
+   * `App`'s cloud-library methods refuse to start while this is true, rather
+   * than only discarding what a request that already started returns.
+   */
+  readonly identityTransitionPending = computed(() => this.identityTransitionPendingState());
   /**
    * `null` when signed out; otherwise the signed-in account's identity,
    * stable across an ordinary token refresh (a new token string, same `sub`)
@@ -229,8 +245,9 @@ export class AuthService {
       // resolves — see `sessionEpoch`'s own comment for why that gap
       // matters to callers outside this service.
       this.client.addListener(() => {
+        this.identityTransitionPendingState.set(true);
         this.sessionEpochState.update(epoch => epoch + 1);
-        void this.refreshSessionToken();
+        void this.refreshSessionToken(true);
       });
       await this.refreshSessionToken();
     } catch (error) {
@@ -273,11 +290,28 @@ export class AuthService {
    * ordinary same-identity refresh whose own settled result is safe to
    * return instead of a stale snapshot.
    */
-  private async refreshSessionToken(): Promise<string | null> {
+  /**
+   * `clearsIdentityTransitionOnSettle` is only ever passed `true` by the
+   * session-change listener's own call — the one that set
+   * `identityTransitionPendingState` in the first place. It clears that flag
+   * once this call settles, but only if this call's own generation is still
+   * the latest by then: a second listener firing before the first settles
+   * (a rapid double account switch) starts its own tagged call, and only
+   * that later call's settling should clear the flag — the earlier one
+   * settling first must leave it pending.
+   */
+  private async refreshSessionToken(clearsIdentityTransitionOnSettle = false): Promise<string | null> {
     const requestGeneration = ++this.sessionRefreshGeneration;
     const requestEpoch = this.sessionEpochState();
     const refreshPromise = this.fetchAndApplySessionToken(requestGeneration, requestEpoch);
     this.latestRefreshPromise = refreshPromise;
+    if (clearsIdentityTransitionOnSettle) {
+      void refreshPromise.finally(() => {
+        if (requestGeneration === this.sessionRefreshGeneration) {
+          this.identityTransitionPendingState.set(false);
+        }
+      });
+    }
     return refreshPromise;
   }
 

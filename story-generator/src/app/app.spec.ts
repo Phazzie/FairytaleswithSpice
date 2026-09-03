@@ -3251,16 +3251,34 @@ describe('App', () => {
 // construction — there is no hook to swap it in after the fact, and nesting here
 // would instantiate `TestBed` twice for the same test.
 describe('App cloud account sign-in wiring', () => {
-  function createFakeClerkClient(openSignIn: jasmine.Spy, signOut?: jasmine.Spy): ClerkClient {
-    return {
+  interface FakeClerkClient extends ClerkClient {
+    listeners: Array<() => void>;
+    tokenValue: string;
+    fireSessionChange(token: string): void;
+  }
+
+  function createFakeClerkClient(openSignIn: jasmine.Spy, signOut?: jasmine.Spy): FakeClerkClient {
+    const client: FakeClerkClient = {
+      listeners: [],
+      tokenValue: 'fake-session-token',
       async load() {},
       openSignIn,
       async signOut() {
         await signOut?.();
       },
-      addListener: () => () => {},
-      session: { getToken: async () => 'fake-session-token' }
+      addListener(listener: () => void) {
+        client.listeners.push(listener);
+        return () => {
+          client.listeners = client.listeners.filter(item => item !== listener);
+        };
+      },
+      session: { getToken: async () => client.tokenValue },
+      fireSessionChange(token: string) {
+        client.tokenValue = token;
+        client.listeners.forEach(listener => listener());
+      }
     };
+    return client;
   }
 
   async function createAppWithAuthConfig(config: ApiResponse<{ provider: 'clerk' | 'none'; publishableKey?: string }>) {
@@ -3293,8 +3311,9 @@ describe('App cloud account sign-in wiring', () => {
     errorLoggingSpy.getErrors.and.returnValue(of([]));
     const openSignIn = jasmine.createSpy('openSignIn');
     const signOut = jasmine.createSpy('signOut');
+    const clerkClient = createFakeClerkClient(openSignIn, signOut);
     const clientFactory = jasmine.createSpy('clerkClientFactory')
-      .and.returnValue(Promise.resolve(createFakeClerkClient(openSignIn, signOut)));
+      .and.returnValue(Promise.resolve(clerkClient));
 
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
@@ -3317,7 +3336,8 @@ describe('App cloud account sign-in wiring', () => {
       component: localFixture.componentInstance,
       openSignIn,
       signOut,
-      storyServiceSpy
+      storyServiceSpy,
+      clerkClient
     };
   }
 
@@ -3798,6 +3818,56 @@ describe('App cloud account sign-in wiring', () => {
     // still be discarded rather than hydrating the incoming account's view.
     loadSubject.next(createStalePreviousAccountLoadResponse(component));
     expect(component.workbench().story?.title).not.toBe('Should not load');
+  });
+
+  // `sessionEpoch` alone does not close this window: it has already advanced
+  // by the time a request starting inside it captures it, so the epoch-based
+  // guard on the *response* does not stop the *request* from ever going out.
+  // A save built from account A's still-displayed story, started in that
+  // window, could have its interceptor attach account B's fresh token —
+  // persisting A's data under B with no response-level guard able to undo
+  // the write. This proves the request itself never starts: `saveCloudStoryProject`
+  // is not called while `identityTransitionPending()` is true, and proceeds
+  // normally once the transition settles.
+  it('blocks a save started while a listener-driven identity transition is still pending, then allows it once settled', async () => {
+    const { component, storyServiceSpy, clerkClient } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_identity_transition_blocks_save' }
+    });
+    component.workbench.set({
+      story: createSummary({ title: 'Pending Transition Pact' }),
+      state: createState(),
+      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      activeBatchSize: 1
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    storyServiceSpy.saveCloudStoryProject.and.returnValue(of({
+      success: true,
+      data: {
+        projectId: 'p1',
+        storyId: 's1',
+        savedAt: '2026-06-08T08:38:00.000Z',
+        syncState: { mode: 'cloud_synced', lastSyncedAt: '2026-06-08T08:38:00.000Z' }
+      }
+    }));
+
+    let resolveGetToken!: (token: string | null) => void;
+    clerkClient.session!.getToken = () => new Promise<string | null>(resolve => {
+      resolveGetToken = resolve;
+    });
+    clerkClient.fireSessionChange('account-b-token');
+    expect(TestBed.inject(AuthService).identityTransitionPending()).toBeTrue();
+
+    component.saveActiveProjectToCloud();
+    expect(storyServiceSpy.saveCloudStoryProject).not.toHaveBeenCalled();
+
+    resolveGetToken('account-b-token');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(TestBed.inject(AuthService).identityTransitionPending()).toBeFalse();
+
+    component.saveActiveProjectToCloud();
+    expect(storyServiceSpy.saveCloudStoryProject).toHaveBeenCalled();
   });
 });
 
