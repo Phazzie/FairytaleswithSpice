@@ -3660,5 +3660,55 @@ describe('App cloud account sign-in wiring', () => {
 
     expect(signOut).not.toHaveBeenCalled();
   });
+
+  // A multi-session Clerk client can replace one signed-in account with
+  // another without an intermediate signed-out state — an account switch in
+  // another tab, say. `isSignedIn()` stays `true` throughout that swap, so
+  // the constructor effect had to start tracking `accountId()` too: before
+  // this was fixed, the effect would never notice the swap at all, leaving
+  // the outgoing account's in-flight request both uncancelled and its stale
+  // response (once it arrived) free to populate data under the incoming
+  // account.
+  //
+  // Exercised by calling `syncCloudLibraryWithAuthState` — the method the
+  // constructor effect forwards `isSignedIn()`/`accountId()` into — rather
+  // than by driving the effect itself through a second signal change: this
+  // codebase's TestBed setup does not reliably rerun a constructor effect a
+  // second time (see that method's own comment, and the sign-out tests
+  // above, for why `fixture.detectChanges()`/`TestBed.flushEffects()` are
+  // not options here). What's under test is the *logic* this finding was
+  // about; that the effect itself forwards both signals is a two-line,
+  // read-not-computed wiring visible entirely at the call site above.
+  it('discards a stale request and refreshes when the active account changes without a sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_account_switch' }
+    });
+    const sync = (component as unknown as {
+      syncCloudLibraryWithAuthState(signedIn: boolean, accountId: string | null): void;
+    }).syncCloudLibraryWithAuthState.bind(component);
+    // Establishes the "already signed in as one account" baseline the
+    // `accountChanged` branch requires — a fresh sign-in (`wasSignedIn`
+    // still false) is not itself an account switch.
+    sync(true, 'user_original_account');
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
+    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
+    component.loadCloudProject('previous-account-project');
+    expect(component.isCloudLibraryBusy()).toBeTrue();
+    const refreshCallsBeforeSwitch = storyServiceSpy.listCloudStoryProjects.calls.count();
+
+    // The account identity changing while still signed in — the swap this
+    // finding was about.
+    sync(true, 'user_incoming_account');
+
+    // The incoming account's library was refreshed.
+    expect(storyServiceSpy.listCloudStoryProjects.calls.count()).toBeGreaterThan(refreshCallsBeforeSwitch);
+
+    // The outgoing account's in-flight load, arriving after the switch, must
+    // still be discarded rather than hydrating the incoming account's view.
+    loadSubject.next(createStalePreviousAccountLoadResponse(component));
+    expect(component.workbench().story?.title).not.toBe('Should not load');
+  });
 });
 

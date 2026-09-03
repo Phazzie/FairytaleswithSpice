@@ -4,6 +4,14 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Clerk auth hardening round 6: account-switch-without-sign-out race closed (PR #328)
+
+Codex's review of the SonarCloud-fix push (74f488f) found one more real gap in the constructor effect's sign-in/sign-out tracking.
+
+- **A multi-session Clerk client can replace one signed-in account with another without an intermediate signed-out state** (an account switch in another tab, say). `App`'s constructor effect tracked only `isSignedIn()`, a boolean that does not change value across that swap — the effect would never rerun, so the outgoing account's in-flight cloud-library request was never cancelled and its eventual response could populate the incoming account's project list or workbench. Fixed by also tracking `AuthService.accountId()`, a new computed signal decoding the session token's `sub` claim client-side (never used for authorization — every account request is still independently verified server-side); `accountId()` only changes value on an actual identity change, not an ordinary token refresh, so this adds no spurious reruns. The effect's reaction logic was extracted into a directly-callable `syncCloudLibraryWithAuthState(signedIn, accountId)` method, both because it's now non-trivial enough to warrant a name and because this codebase's TestBed setup does not reliably rerun a constructor effect a second time (see the sign-out tests' own notes on why `fixture.detectChanges()`/`TestBed.flushEffects()` aren't options here) — tests call the method directly instead. Added `discards a stale request and refreshes when the active account changes without a sign-out`.
+
+Validation: `tsc --noEmit` on both app and spec configs, full karma suite headless (274/274), `ng build`, `npm run test:all` (backend, unaffected but re-run for safety) — all confirmed clean before push.
+
 ## 2026-09-03 UTC - CI fix: SonarCloud duplication gate on PR #328 (not a Codex finding)
 
 SonarCloud's Quality Gate failed on commit `42c10c2` — `7.7% Duplication on New Code` against a `≤3%` requirement — reported via the PR's `check_suite`/`status` events, not a Codex review comment. `app.spec.ts`'s `discards a cloud-load response that arrives after sign-out` and `cancels an in-flight cloud request before awaiting a slow Clerk sign-out` tests (added in two different rounds above) each independently built the same ~26-line `SavedStoryProject`/`CloudStoryProjectLoadResult` stale-response fixture, verbatim. Extracted `createStalePreviousAccountLoadResponse(component)`; both tests, plus the new `keeps cloud controls locked for the whole duration of a pending sign-out` test added in the same push, now share it.

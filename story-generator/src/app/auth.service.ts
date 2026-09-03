@@ -24,6 +24,30 @@ export interface ClerkClient {
 export type ClerkClientFactory = (publishableKey: string) => Promise<ClerkClient>;
 
 /**
+ * Reads the `sub` claim out of a session token's payload, without verifying
+ * its signature — this is only ever used client-side to notice *which*
+ * account a token belongs to, never to authorize anything; every account
+ * request is independently verified server-side by `clerkSessionVerifier.ts`
+ * regardless of what this returns. A JWT's middle segment is base64url, not
+ * base64 — `-`/`_` swapped in for `+`/`/`, padding stripped — so it is
+ * translated before `atob` rather than passed to it directly.
+ */
+function decodeSessionTokenSubject(token: string): string | null {
+  try {
+    const payloadSegment = token.split('.')[1];
+    if (!payloadSegment) {
+      return null;
+    }
+    const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+    const payload: unknown = JSON.parse(atob(base64));
+    const sub = (payload as { sub?: unknown } | null)?.sub;
+    return typeof sub === 'string' && sub.length > 0 ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * `@clerk/clerk-js` is only imported here, dynamically, and only once a
  * publishable key has actually come back from `/account/auth-config` — every
  * deployment that has not configured Clerk (every deployment today) never
@@ -64,6 +88,23 @@ export class AuthService {
   readonly isConfigured = computed(() => this.authConfigState()?.provider === 'clerk');
   readonly sessionToken = computed(() => this.sessionTokenState());
   readonly isSignedIn = computed(() => this.sessionTokenState() !== null);
+  /**
+   * `null` when signed out; otherwise the signed-in account's identity,
+   * stable across an ordinary token refresh (a new token string, same `sub`)
+   * and changed only by an actual sign-in/out or account switch. `App`'s
+   * constructor effect tracks this rather than `isSignedIn` alone: a
+   * multi-session Clerk client can replace one signed-in account with
+   * another without an intermediate signed-out state, and `isSignedIn`'s
+   * boolean value would not change across that swap, so an effect keyed on
+   * it alone would never notice account B has replaced account A. `computed`
+   * only marks dependents dirty when its own return value changes by `===`,
+   * so a refresh that keeps the same `sub` produces the same string here and
+   * intentionally does not retrigger anything downstream.
+   */
+  readonly accountId = computed(() => {
+    const token = this.sessionTokenState();
+    return token ? decodeSessionTokenSubject(token) : null;
+  });
 
   /**
    * Fetches the deployment's auth config and, only when it names a real

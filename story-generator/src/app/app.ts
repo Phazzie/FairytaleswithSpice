@@ -1220,24 +1220,61 @@ export class App implements OnDestroy {
     // would make them tracked dependencies of this same effect, so setting
     // either one (including this effect's own clearing writes, or a test
     // seeding `cloudProjects` directly) would immediately re-trigger it.
-    let wasSignedIn = false;
+    //
+    // `accountId()` is tracked alongside `isSignedIn()` for the case
+    // `isSignedIn()` alone misses entirely: a multi-session Clerk client can
+    // replace one signed-in account with another without an intermediate
+    // signed-out state (an account switch in another tab, say), and
+    // `isSignedIn()`'s boolean value would not change across that swap — an
+    // effect keyed on it alone would never rerun, so the outgoing account's
+    // in-flight request would never be cancelled and its eventual response
+    // could populate the incoming account's project list or workbench.
+    // `accountId()` only changes value (by `===`, `computed`'s own
+    // equality gate) on an actual identity change, not an ordinary token
+    // refresh, so this does not add spurious reruns.
+    //
+    // The reaction itself is a plain method, not inlined in the effect body:
+    // Angular's constructor effects only reliably rerun in this codebase's
+    // TestBed setup on their first execution — a second signal change does
+    // not reach them without `fixture.detectChanges()` (which hangs here
+    // rendering `App`'s full template for the first time) or
+    // `TestBed.flushEffects()` (which throws `NG0101` in this exact
+    // context, per the sign-out tests above). `syncCloudLibraryWithAuthState`
+    // is called directly by tests for that reason — the effect below only
+    // has to keep tracking `isSignedIn()`/`accountId()` and forwarding them.
     effect(() => {
-      if (this.authService.isSignedIn()) {
-        wasSignedIn = true;
-        this.refreshCloudLibrary();
-        return;
-      }
+      this.syncCloudLibraryWithAuthState(this.authService.isSignedIn(), this.authService.accountId());
+    });
+  }
 
-      if (wasSignedIn) {
-        wasSignedIn = false;
+  private wasSignedIn = false;
+  private previousAccountId: string | null = null;
+
+  private syncCloudLibraryWithAuthState(signedIn: boolean, accountId: string | null): void {
+    if (signedIn) {
+      const accountChanged = this.wasSignedIn && this.previousAccountId !== null && accountId !== null
+        && accountId !== this.previousAccountId;
+      this.wasSignedIn = true;
+      this.previousAccountId = accountId;
+
+      if (accountChanged) {
         this.cancelInFlightCloudLibraryRequest();
         this.cloudProjects.set([]);
-        this.cloudLibrarySyncState.set({
-          mode: 'cloud_unavailable',
-          message: 'Signed out. Local browser saves are still available.'
-        });
       }
-    });
+      this.refreshCloudLibrary();
+      return;
+    }
+
+    if (this.wasSignedIn) {
+      this.wasSignedIn = false;
+      this.previousAccountId = null;
+      this.cancelInFlightCloudLibraryRequest();
+      this.cloudProjects.set([]);
+      this.cloudLibrarySyncState.set({
+        mode: 'cloud_unavailable',
+        message: 'Signed out. Local browser saves are still available.'
+      });
+    }
   }
 
   ngOnDestroy() {
