@@ -4,6 +4,10 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Docs: re-sync the auth exec plan with round 11/12's supersession contract (PR #328)
+
+Codex flagged `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` line 28 as stale a fourth time: it still described round-10's `signOutGeneration`-based contract ("`null` if superseded by `signOut()`, or awaiting the newer refresh's own result otherwise") after round 11 replaced that with the epoch-based check (`null` whenever `sessionEpoch` moved, covering sign-out and an account switch alike) and round 12 added `identityTransitionPending`. Rewrote that paragraph to describe the current contract.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 12: block new requests during a pending identity transition, and a likely fourth SonarCloud duplication source (PR #328)
 
 Codex's review of the round-11 push (`77f4086`, the request-token fix landed the same round as the `beginPendingCloudLoadRequest` dedup) found one more issue, deeper than round 11's own fix:
