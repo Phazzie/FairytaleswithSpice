@@ -2057,6 +2057,20 @@ export class App implements OnDestroy {
     // the (rare) path below where Clerk's own sign-out call then fails.
     this.cancelInFlightCloudLibraryRequest();
 
+    // `cancelInFlightCloudLibraryRequest()` leaves `isCloudLibraryBusy` false
+    // (there is nothing in flight left to be busy with), which — before this
+    // — reopened every cloud control (including "Sign out" itself, and the
+    // template gates all of them on this same flag) for the whole remainder
+    // of this `await`. A load or save started in that window could complete
+    // before Clerk's sign-out did, hydrating or re-adding the outgoing
+    // account's data — the cleanup below only clears `cloudProjects`, not
+    // whatever a request begun after this point already wrote into the
+    // workbench. Re-locking here, before the `await`, closes that window:
+    // `saveActiveProjectToCloud`/`loadCloudProject`/`deleteCloudProject`/
+    // `refreshCloudLibrary` all bail immediately while this is true, and so
+    // does the template.
+    this.isCloudLibraryBusy.set(true);
+
     // `AuthService.signOut()` deliberately does not clear its own session
     // state on failure — Clerk's session is the source of truth, and a
     // rejected call means it may still be active. Announcing "signed out"
@@ -2067,6 +2081,10 @@ export class App implements OnDestroy {
     } catch (error) {
       this.errorLogging.logError(error, 'App.signOutOfCloudAccount');
       this.notificationService.error('Sign out failed', 'Could not sign out — the session may still be active.');
+      // Sign-out failed, so the account is (as far as this app can tell)
+      // still active — unlock cloud controls again rather than leaving them
+      // stuck disabled.
+      this.isCloudLibraryBusy.set(false);
       return;
     }
 
@@ -2080,6 +2098,7 @@ export class App implements OnDestroy {
       mode: 'cloud_unavailable',
       message: 'Signed out. Local browser saves are still available.'
     });
+    this.isCloudLibraryBusy.set(false);
     this.notificationService.info('Signed out', 'Cloud sync is now disconnected on this device.');
   }
 

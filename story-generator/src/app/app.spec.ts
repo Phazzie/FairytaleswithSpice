@@ -3611,6 +3611,43 @@ describe('App cloud account sign-in wiring', () => {
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
   });
 
+  // Cancelling the one request that was already in flight (the test above)
+  // isn't enough on its own: `cancelInFlightCloudLibraryRequest()` leaves
+  // `isCloudLibraryBusy` false, and before this was fixed that reopened
+  // every cloud control — including the template's own gating — for the
+  // whole rest of a slow Clerk sign-out. A *new* load started in that window
+  // could complete before sign-out did and hydrate the outgoing account's
+  // story, which the sign-out cleanup (clearing only `cloudProjects`/
+  // `cloudLibrarySyncState`) would never touch. This proves the controls
+  // stay locked (`isCloudLibraryBusy()` true, `loadCloudProject` a no-op)
+  // for the entire pending sign-out, not just up to the cancellation point.
+  it('keeps cloud controls locked for the whole duration of a pending sign-out', async () => {
+    const { component, storyServiceSpy, signOut } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_locked_during_sign_out' }
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    let resolveClerkSignOut!: () => void;
+    signOut.and.returnValue(new Promise<void>(resolve => { resolveClerkSignOut = resolve; }));
+
+    const signOutPromise = component.signOutOfCloudAccount();
+    // Synchronous up to this point, same as the test above: cancellation and
+    // the re-lock have already run, while Clerk's own `signOut()` is still
+    // unresolved.
+    expect(component.isCloudLibraryBusy()).toBeTrue();
+
+    component.loadCloudProject('previous-account-project');
+
+    expect(
+      storyServiceSpy.loadCloudStoryProject
+    ).not.toHaveBeenCalled();
+
+    resolveClerkSignOut();
+    await signOutPromise;
+
+    expect(component.isCloudLibraryBusy()).toBeFalse();
+  });
+
   // Before this was fixed, a rejected `client.signOut()` was swallowed and
   // the local token cleared regardless, so the app would announce "signed
   // out" on a shared device even though Clerk's own session could still be

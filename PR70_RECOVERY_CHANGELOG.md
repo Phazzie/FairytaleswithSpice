@@ -4,6 +4,15 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Clerk auth hardening round 5: cloud controls stay locked for the whole sign-out, lesson recorded (PR #328)
+
+Codex's review of round 4 (42c10c2) found one more real gap in the same area, plus a documentation gap.
+
+- **Cancelling the in-flight request wasn't enough — a *new* one could start during the same sign-out.** Round 4 moved `cancelInFlightCloudLibraryRequest()` above the `await this.authService.signOut()`, but that helper leaves `isCloudLibraryBusy` false, and every cloud control (save/load/delete/refresh, and the template's own button gating) is unlocked whenever that flag is false. During a slow Clerk sign-out, a reader could click "load" again in that window; if it completed before sign-out did, it would hydrate the outgoing account's story, and the sign-out cleanup (clearing only `cloudProjects`/`cloudLibrarySyncState`) would never touch it. Fixed by setting `isCloudLibraryBusy` back to `true` immediately after cancelling, before the `await`, and releasing it again once sign-out resolves (success) or fails — closing the control surface for the entire pending sign-out, not just up to the cancellation point. Added `keeps cloud controls locked for the whole duration of a pending sign-out`, proving `loadCloudProject()` is a no-op while sign-out is still pending.
+- **`LESSONS_LEARNED.md` didn't record the pattern behind this round's five findings.** Added a 2026-09-03 entry: verify a security-relevant option's *empty*-value behavior explicitly (this chain's round-5 fail-open bug came from Clerk treating empty `authorizedParties` as "unrestricted," the opposite of the intuitive reading), and extract a shared check when two places both decide "is this feature usable" rather than keeping parallel copies that can drift (this chain's round-4 auth-config/verifier split).
+
+Validation: `npm run test:all`, `tsc --noEmit` on both app and spec configs, `ng build`, full karma suite headless (273/273) — all confirmed clean before push.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 4: auth-config/verifier split closed, sign-out cancellation reordered (PR #328)
 
 Codex's review of round 3 (dd0c3e5) found two more real gaps, both fresh evidence surfaced only after the prior fix landed.
