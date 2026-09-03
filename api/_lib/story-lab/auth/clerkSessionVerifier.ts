@@ -1,7 +1,7 @@
 // Created: 2026-09-02 20:40 EDT
 
 import { verifyToken as clerkVerifyToken } from '@clerk/backend';
-import { parseAllowedOrigins } from '../../http/corsPolicy';
+import { getRequestTargetOrigin, parseAllowedOrigins } from '../../http/corsPolicy';
 import type { AuthRequestLike } from './authPort';
 import type { ClerkAuthPortOptions, VerifiedClerkSession } from './clerkAuthPort';
 
@@ -43,17 +43,29 @@ export function createClerkSessionVerifierFromEnv(
   }
 
   const verifyToken = dependencies.verifyToken ?? (clerkVerifyToken as ClerkVerifyTokenFn);
-  // The same allowlist `applyCorsPolicy` already trusts as this deployment's
-  // frontend origin(s) — passed as Clerk's `authorizedParties` so a token
-  // whose `azp` claim names a different origin (e.g. an untrusted sibling
-  // subdomain that can also obtain a Clerk session under the same instance)
-  // is rejected rather than accepted on signature validity alone.
-  const authorizedParties = parseAllowedOrigins(env);
+  // The same static allowlist `applyCorsPolicy` trusts as this deployment's
+  // configured frontend origin(s) — passed as Clerk's `authorizedParties` so
+  // a token whose `azp` claim names a different origin (e.g. an untrusted
+  // sibling subdomain that can also obtain a Clerk session under the same
+  // instance) is rejected rather than accepted on signature validity alone.
+  const staticAuthorizedParties = parseAllowedOrigins(env);
 
   return async function verifySessionToken(
     token: string,
-    _req: AuthRequestLike
+    req: AuthRequestLike
   ): Promise<VerifiedClerkSession | null> {
+    // `resolveAllowedOrigin` in corsPolicy.ts trusts a same-origin request
+    // (the frontend and API served from one dynamic host, e.g. a Vercel
+    // preview URL never listed in `STORY_LAB_ALLOWED_ORIGINS`) via
+    // `getRequestTargetOrigin`, not just the static list — a token issued by
+    // that same dynamic origin has to clear the same bar here, or every
+    // deployment whose origin isn't hardcoded into an env var would 401 its
+    // own legitimately signed-in users.
+    const requestTargetOrigin = getRequestTargetOrigin(req);
+    const authorizedParties = requestTargetOrigin && !staticAuthorizedParties.includes(requestTargetOrigin)
+      ? [...staticAuthorizedParties, requestTargetOrigin]
+      : staticAuthorizedParties;
+
     const result = await verifyToken(token, { secretKey, authorizedParties });
     if (result.errors || !result.data?.sub) {
       return null;

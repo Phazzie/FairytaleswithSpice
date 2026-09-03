@@ -250,7 +250,7 @@ function resolveAllowedOrigin(req: CorsRequestLike, options: CorsPolicyOptions):
  * by hand was never constrained by CORS to begin with — it is not a browser
  * enforcing the response.
  */
-function getRequestTargetOrigin(req: CorsRequestLike): string | null {
+export function getRequestTargetOrigin(req: CorsRequestLike): string | null {
   const host = firstForwardedValue(readRequestHeader(req, 'x-forwarded-host'))
     ?? readRequestHeader(req, 'host');
   if (!host) {

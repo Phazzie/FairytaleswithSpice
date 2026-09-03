@@ -3309,7 +3309,13 @@ describe('App cloud account sign-in wiring', () => {
     // same idempotent promise it is already running, so awaiting it here
     // waits for exactly that chain and nothing else.
     await TestBed.inject(AuthService).initialize();
-    return { fixture: localFixture, component: localFixture.componentInstance, openSignIn, signOut };
+    return {
+      fixture: localFixture,
+      component: localFixture.componentInstance,
+      openSignIn,
+      signOut,
+      storyServiceSpy
+    };
   }
 
   afterEach(() => {
@@ -3375,6 +3381,47 @@ describe('App cloud account sign-in wiring', () => {
     expect(component.cloudProjects()).toEqual([]);
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
     expect(component.cloudLibrarySyncState().message).toBe('Signed out. Local browser saves are still available.');
+  });
+
+  // Before this was fixed, a `listCloudStoryProjects` response authenticated
+  // just before sign-out could still arrive afterward, since nothing
+  // cancelled the in-flight request — silently repopulating `cloudProjects`
+  // with the account that just signed out, even though the panel already
+  // said "disconnected".
+  it('discards a cloud-library response that arrives after sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_response' }
+    });
+    const projectsSubject = new Subject<ApiResponse<CloudStoryProjectList>>();
+    storyServiceSpy.listCloudStoryProjects.and.returnValue(projectsSubject.asObservable());
+    component.refreshCloudLibrary();
+
+    await component.signOutOfCloudAccount();
+
+    // The stale response for the request that was in flight when sign-out
+    // happened, arriving late.
+    projectsSubject.next({
+      success: true,
+      data: {
+        ownerUserId: 'previous-account',
+        storageMode: 'non_durable_memory',
+        projects: [{
+          projectId: 'previous-account-project',
+          storyId: 'story-previous-account',
+          title: 'Should not reappear',
+          synopsis: 'Belongs to the account that just signed out.',
+          chapterCount: 1,
+          acceptedMemoryCardCount: 0,
+          createdAt: '2026-06-08T08:37:00.000Z',
+          updatedAt: '2026-06-08T08:38:00.000Z'
+        }],
+        totalProjectCount: 1
+      }
+    });
+
+    expect(component.cloudProjects()).toEqual([]);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
   });
 
   // Before this was fixed, a rejected `client.signOut()` was swallowed and

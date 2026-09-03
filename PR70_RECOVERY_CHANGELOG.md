@@ -4,6 +4,18 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Clerk auth hardening: origin-scoped tokens, confirmed sign-out, stale-response cancellation (PR #328)
+
+Codex's review of PR #326's own fix-up push (003969c) posted its findings within seconds of that PR merging, so they landed unaddressed. All three code-level findings were real:
+
+- **Token verification accepted any origin.** `clerkSessionVerifier.ts` called `verifyToken(token, { secretKey })` with no `authorizedParties`, so a correctly-signed token from an untrusted sibling subdomain under the same Clerk instance would verify. Fixed by passing the same trusted-origin allowlist `applyCorsPolicy` already uses (`parseAllowedOrigins(env)`), plus the current request's own dynamic target origin (`getRequestTargetOrigin`, now exported from `corsPolicy.ts`) — without the latter, a Vercel preview deployment (frontend+API on one dynamic host never listed in `STORY_LAB_ALLOWED_ORIGINS`) would 401 its own legitimately signed-in users the moment the static-only version of this fix landed.
+- **Sign-out failure was swallowed.** `AuthService.signOut()` caught a rejected `client.signOut()`, logged it, and cleared the local session token anyway — "signed out" could show while Clerk's session was still live. Now propagates the failure; `App.signOutOfCloudAccount()` only clears local state once Clerk confirms it, surfacing an error notification otherwise.
+- **Stale cloud-library responses could resurrect a signed-out account's data.** `refreshCloudLibrary()`'s HTTP subscription was never cancelled, so a response authenticated just before a sign-out (local or external — revocation, expiry, another tab) could still arrive afterward and repopulate `cloudProjects` with the previous account's project titles. Fixed: the subscription is now held (`cloudLibrarySubscription`) and unsubscribed on both the local sign-out path and the constructor effect's external-session-loss path before local state is cleared.
+
+Non-claim: this still does not prove sign-in against a live Clerk tenant — no credentials are available in this environment. All three fixes are proven with DI'd/mocked Clerk clients and a controllable `Subject` standing in for an in-flight HTTP response, not a real Clerk session or a real race under production load.
+
+Validation: `npm run test:all` (backend, all green, including new `authorizedParties`-with-request-origin coverage), `tsc --noEmit` on both app and spec configs (clean), `ng build` (clean), full karma suite headless (268/268, confirmed stable across repeated runs).
+
 ## 2026-09-03 UTC - Story Lab Cloud Account/Auth: real Clerk verifier wired end to end (PR #326)
 
 **Correction to this file's own line 880 (`redactBearerTokens`/API_KEYS entry)**: that entry described the Clerk auth port as "permanently inert even when `STORY_LAB_AUTH_PROVIDER=clerk` is set, because no real token verifier is ever wired into the production singleton." That was accurate when written; it is no longer accurate as of this PR. Flagging the correction here rather than editing that historical entry, per this file's own convention of correcting forward.

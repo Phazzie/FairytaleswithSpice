@@ -509,6 +509,7 @@ export class App implements OnDestroy {
   private jobDrivenProgress = false;
   private jobCreationSubscription: Subscription | null = null;
   private jobEventSubscription: Subscription | null = null;
+  private cloudLibrarySubscription: Subscription | null = null;
 
   readonly skinOptions: StorySkinOption[] = [
     { id: 'bookshop', label: 'Enchanted Bookshop', mood: 'Warm, nostalgic, whimsical' },
@@ -1229,6 +1230,7 @@ export class App implements OnDestroy {
 
       if (wasSignedIn) {
         wasSignedIn = false;
+        this.cancelInFlightCloudLibraryRequest();
         this.cloudProjects.set([]);
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
@@ -1908,7 +1910,7 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
-    this.storyService.listCloudStoryProjects().subscribe({
+    const cloudLibrarySubscription = this.storyService.listCloudStoryProjects().subscribe({
       next: response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
@@ -1953,6 +1955,22 @@ export class App implements OnDestroy {
         this.isCloudLibraryBusy.set(false);
       }
     });
+    // Held so a sign-out that lands while this request is still in flight
+    // (see the constructor's effect and `signOutOfCloudAccount()`) can
+    // unsubscribe it — cancelling the underlying HTTP request rather than
+    // letting a response authenticated under the old session arrive after
+    // sign-out and repopulate `cloudProjects` with the previous account's
+    // data.
+    this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
+  }
+
+  private cancelInFlightCloudLibraryRequest(): void {
+    if (!this.cloudLibrarySubscription) {
+      return;
+    }
+    this.cloudLibrarySubscription.unsubscribe();
+    this.cloudLibrarySubscription = null;
+    this.isCloudLibraryBusy.set(false);
   }
 
   /**
@@ -2044,7 +2062,11 @@ export class App implements OnDestroy {
     // the actual fix: before this, the account panel moved off
     // `cloud_synced` but the previous account's project titles and metadata
     // stayed rendered in the list underneath it — a real privacy gap on a
-    // shared device.
+    // shared device. Cancelling any in-flight `refreshCloudLibrary()` call
+    // is the other half: without it, a response authenticated just before
+    // this sign-out could still arrive afterward and silently repopulate
+    // `cloudProjects` with the account that just signed out.
+    this.cancelInFlightCloudLibraryRequest();
     this.cloudProjects.set([]);
     this.cloudLibrarySyncState.set({
       mode: 'cloud_unavailable',
