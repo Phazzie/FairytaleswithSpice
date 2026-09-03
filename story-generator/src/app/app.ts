@@ -1928,6 +1928,17 @@ export class App implements OnDestroy {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.refreshCloudLibrary');
+        // `StoryService.handleHttpError` rethrows every non-2xx response, so
+        // this is where a real 401 or a real storage 5xx actually lands, not
+        // the `next` branch above. A real HTTP status (any status, including
+        // 5xx) means the request reached the account route and passed its
+        // auth gate before failing - only 401 specifically means this
+        // session isn't signed in. Status 0 (no response at all - offline,
+        // CORS, timeout) proves nothing either way, so it's left alone
+        // rather than guessed at.
+        if (typeof error?.status === 'number' && error.status > 0) {
+          this.cloudAccountAuthenticated.set(error.status !== 401);
+        }
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
           message: this.formatHttpError(error, 'Cloud library is unavailable until account sync is configured.')

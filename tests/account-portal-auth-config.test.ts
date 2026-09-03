@@ -20,7 +20,12 @@ async function main() {
 }
 
 function testReportsNoneWithoutProvider() {
-  const config = resolveAccountPortalAuthConfig({});
+  // An explicit empty string, not `{}` - see the matching comment in
+  // clerk-session-verifier.test.ts: `resolveConfiguredAuthProviderName`
+  // falls through to the real ambient `process.env` when the passed env
+  // object doesn't have the key at all, so `{}` would leak whatever the
+  // test-running shell happens to have exported.
+  const config = resolveAccountPortalAuthConfig({ STORY_LAB_AUTH_PROVIDER: '' });
   assert(config.provider === 'none', 'unset provider should report "none"');
   assert(config.accountPortalUrl === null, 'unset provider should never report a portal URL');
 }
@@ -56,6 +61,7 @@ function testTrimsTrailingSlashesFromPortalUrl() {
 
 function testIgnoresPortalUrlForNonClerkProvider() {
   const config = resolveAccountPortalAuthConfig({
+    STORY_LAB_AUTH_PROVIDER: '',
     CLERK_ACCOUNT_PORTAL_URL: 'https://accounts.example.com'
   });
   assert(config.provider === 'none', 'a portal URL alone, without selecting clerk, should not enable it');

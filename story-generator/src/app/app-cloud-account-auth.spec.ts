@@ -1,7 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
@@ -29,18 +30,36 @@ describe('App cloud account sign-in (Clerk configured)', () => {
     };
   }
 
+  /**
+   * `StoryService.handleHttpError` rethrows every non-2xx response
+   * (`catchError(error => this.handleHttpError(...))` ends in `throwError`),
+   * and `accountRouteHandlers.ts`'s `sendJson` always answers with the real
+   * status code - so a `success: false` body only ever arrives through
+   * Angular's `error` callback with a real `HttpErrorResponse`, never
+   * through `next`. Building these as `throwError(() => new
+   * HttpErrorResponse(...))` instead of `of({ success: false, ... })`
+   * reproduces that real path; the earlier version of this file didn't, and
+   * silently exercised a branch of `App.refreshCloudLibrary` real traffic
+   * never reaches.
+   */
   function unauthorizedListResponse(): Observable<ApiResponse<CloudStoryProjectList>> {
-    return of({
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Account authentication is required.', retryable: false }
-    });
+    return throwError(() => new HttpErrorResponse({
+      status: 401,
+      error: {
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Account authentication is required.', retryable: false }
+      }
+    }));
   }
 
   function storageOutageListResponse(): Observable<ApiResponse<CloudStoryProjectList>> {
-    return of({
-      success: false,
-      error: { code: 'STORAGE_UNAVAILABLE', message: 'Cloud project storage is temporarily unavailable.', retryable: true }
-    });
+    return throwError(() => new HttpErrorResponse({
+      status: 503,
+      error: {
+        success: false,
+        error: { code: 'STORAGE_UNAVAILABLE', message: 'Cloud project storage is temporarily unavailable.', retryable: true }
+      }
+    }));
   }
 
   /**

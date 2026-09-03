@@ -158,7 +158,14 @@ async function testVerifierRejectsTokenFromUnapprovedParty() {
 }
 
 async function testResolveProductionOptionsSkipsNonClerkProvider() {
-  const options = resolveProductionClerkAuthPortOptions({});
+  // An empty string, not `{}`: `resolveConfiguredAuthProviderName`'s `env`
+  // lookup falls through to the *real* ambient `process.env` with `??` when
+  // the passed env object doesn't have the key at all (`undefined ??
+  // process.env[...]`), so `{}` here would silently pick up whatever
+  // STORY_LAB_AUTH_PROVIDER happens to be exported in the shell running this
+  // test - unrelated to what this test means to assert. An explicit empty
+  // string is a real (if empty) value, so the `??` chain stops here instead.
+  const options = resolveProductionClerkAuthPortOptions({ STORY_LAB_AUTH_PROVIDER: '' });
   assert(options === undefined, 'unset provider should not wire any Clerk options');
 
   const noneOptions = resolveProductionClerkAuthPortOptions({ STORY_LAB_AUTH_PROVIDER: 'none' });

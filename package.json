@@ -104,6 +104,9 @@
     "test:text-excerpt": "tsx tests/text-excerpt.test.ts",
     "test:html-document-download": "tsx tests/html-document-download.test.ts"
   },
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "devDependencies": {
     "@types/node": "^24.5.2",
     "playwright": "^1.60.0",

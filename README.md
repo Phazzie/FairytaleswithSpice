@@ -44,7 +44,7 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 20.x or higher
+- Node.js 20.9.0 or higher (the `@clerk/backend` dependency requires it; older 20.x releases will fail to install)
 - npm or yarn package manager
 - (Optional) ElevenLabs API key for audio features
 - (Optional) Grok/XAI API key for AI story generation
