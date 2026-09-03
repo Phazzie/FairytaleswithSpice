@@ -190,11 +190,13 @@ npm run lint         # Code quality checks
 **API Development (now integrated with frontend)**
 ```bash
 # Build and run locally (all-in-one Express server).
-# Run from the repo root, not story-generator/ — the server loads the root
-# .env relative to its own compiled location either way, but this also keeps
-# dotenv's own default (process.cwd()) pointed at the same file.
-cd story-generator && npm run build && cd ..
-PORT=3000 node story-generator/dist/story-generator/server/server.mjs
+# The root .env is found from the server's own compiled location, not the
+# working directory you launch it from — this works the same whether you
+# run it from the repo root or from story-generator/ (e.g. via `npm run
+# start:prod` there).
+cd story-generator
+npm run build
+PORT=3000 node dist/story-generator/server/server.mjs
 
 # Or use Docker for local development
 docker compose up --build

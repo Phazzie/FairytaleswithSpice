@@ -6,16 +6,21 @@
 // after every one of those imports (including `expressApiRoutes` down to
 // `configuredAuthPort.ts`) has already finished evaluating, which is one
 // module-load too late for the `process.env` reads they do at their own
-// module scope. `import 'dotenv/config'` runs `config()` as part of *its*
-// module evaluation instead, which - as the first import - completes before
-// the second one starts. (Confirmed the hard way: a `config()` call placed
-// exactly like that left every module-scope env read seeing an empty
-// `process.env`, while a request-time read in the same file saw the loaded
-// values - the two only agreed once this became a bare `dotenv/config` import.)
+// module scope. Importing `load-root-env` (which itself calls `config()` at
+// its own module scope) runs that call as part of *its* module evaluation
+// instead, which - as the first import - completes before the second one
+// starts. (Confirmed the hard way: a `config()` call placed exactly like
+// that left every module-scope env read seeing an empty `process.env`,
+// while a request-time read in the same file saw the loaded values - the
+// two only agreed once this became a real side-effecting import.)
 //
-// Relies on `dotenv/config`'s default `.env` lookup (`process.cwd()`), so the
-// documented local-run command runs from the repo root, not story-generator/.
-import 'dotenv/config';
+// Not a bare `dotenv/config` import: that resolves `.env` relative to
+// `process.cwd()`, which is `story-generator/` (not the repo root) when
+// launched via this package's own `start:prod`/`serve:ssr:*` scripts.
+// `load-root-env` finds the repo root from its own compiled location
+// instead, so it works regardless of which directory the process launched
+// from.
+import './load-root-env';
 
 import {
   AngularNodeAppEngine,
