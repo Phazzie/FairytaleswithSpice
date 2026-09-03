@@ -1205,10 +1205,35 @@ export class App implements OnDestroy {
     // `signIn()` opens Clerk's own modal; there is no promise that resolves
     // when the reader finishes it. This is what notices the session actually
     // landing and moves `cloudLibrarySyncState` out of `cloud_unavailable`
-    // the same way a manual "Check cloud" click already does.
+    // the same way a manual "Check cloud" click already does. The other
+    // branch is what a local sign-out click alone did not cover: Clerk can
+    // also end a session out from under the app — revocation, expiry,
+    // another tab signing out — and without this, `cloudProjects` kept
+    // rendering the previous account's project titles and metadata after
+    // the account panel had already moved off `cloud_synced`, a real
+    // privacy gap on a shared device.
+    //
+    // `wasSignedIn` (a plain closure variable, not a signal) is what makes
+    // this a true→false *transition* check rather than a standing
+    // condition: reading `cloudProjects`/`cloudLibrarySyncState` here too
+    // would make them tracked dependencies of this same effect, so setting
+    // either one (including this effect's own clearing writes, or a test
+    // seeding `cloudProjects` directly) would immediately re-trigger it.
+    let wasSignedIn = false;
     effect(() => {
       if (this.authService.isSignedIn()) {
+        wasSignedIn = true;
         this.refreshCloudLibrary();
+        return;
+      }
+
+      if (wasSignedIn) {
+        wasSignedIn = false;
+        this.cloudProjects.set([]);
+        this.cloudLibrarySyncState.set({
+          mode: 'cloud_unavailable',
+          message: 'Signed out. Local browser saves are still available.'
+        });
       }
     });
   }
@@ -1958,7 +1983,7 @@ export class App implements OnDestroy {
       : `${loadedCount} ${noun}`;
   }
 
-  showCloudAccountSetupStatus() {
+  async showCloudAccountSetupStatus(): Promise<void> {
     if (this.isCloudLibraryBusy()) {
       return;
     }
@@ -1972,21 +1997,23 @@ export class App implements OnDestroy {
       return;
     }
 
-    // Only reachable once `/account/auth-config` has actually reported a
-    // usable Clerk provider — see `resolveStoryLabAuthConfig` on the backend
-    // for what "usable" requires. Every deployment that has not configured
-    // that falls straight to the message below, unchanged from before this
-    // existed.
-    if (this.authService.isConfigured()) {
-      void this.authService.signIn();
-      return;
+    // Always attempts sign-in rather than gating on the cached
+    // `isConfigured()` read: `signIn()` awaits `initialize()` first, which
+    // retries a prior transient auth-config/client-load failure (see
+    // `AuthService.loadConfigAndClient`) instead of replaying it — without
+    // this, a deployment that IS configured but hit one bad request would
+    // show "not configured" forever with no way to retry short of a reload.
+    // A genuinely unconfigured deployment still ends here with no client
+    // loaded, so `openSignIn()` no-ops and the message below still shows,
+    // just after the round trip resolves instead of synchronously.
+    await this.authService.signIn();
+    if (!this.authService.isConfigured()) {
+      this.cloudLibrarySyncState.set({
+        mode: 'cloud_unavailable',
+        message: 'Sign-in setup is not configured yet. Local browser saves are still available.'
+      });
+      this.notificationService.info('Account setup pending', 'Sign-in setup is not configured yet.');
     }
-
-    this.cloudLibrarySyncState.set({
-      mode: 'cloud_unavailable',
-      message: 'Sign-in setup is not configured yet. Local browser saves are still available.'
-    });
-    this.notificationService.info('Account setup pending', 'Sign-in setup is not configured yet.');
   }
 
   /**
@@ -2000,7 +2027,25 @@ export class App implements OnDestroy {
       return;
     }
 
-    await this.authService.signOut();
+    // `AuthService.signOut()` deliberately does not clear its own session
+    // state on failure — Clerk's session is the source of truth, and a
+    // rejected call means it may still be active. Announcing "signed out"
+    // regardless would be unsafe on a shared device, so this only clears
+    // local state and reports success once Clerk has actually confirmed it.
+    try {
+      await this.authService.signOut();
+    } catch (error) {
+      this.errorLogging.logError(error, 'App.signOutOfCloudAccount');
+      this.notificationService.error('Sign out failed', 'Could not sign out — the session may still be active.');
+      return;
+    }
+
+    // Clearing `cloudProjects` here, not just `cloudLibrarySyncState`, is
+    // the actual fix: before this, the account panel moved off
+    // `cloud_synced` but the previous account's project titles and metadata
+    // stayed rendered in the list underneath it — a real privacy gap on a
+    // shared device.
+    this.cloudProjects.set([]);
     this.cloudLibrarySyncState.set({
       mode: 'cloud_unavailable',
       message: 'Signed out. Local browser saves are still available.'

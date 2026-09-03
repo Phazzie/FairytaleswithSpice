@@ -9,6 +9,7 @@ interface FakeClerkClient extends ClerkClient {
   loadCalls: number;
   openSignInCalls: number;
   signOutCalls: number;
+  signOutError: Error | null;
   tokenValue: string | null;
   fireSessionChange(token: string | null): void;
 }
@@ -19,6 +20,7 @@ function createFakeClerkClient(): FakeClerkClient {
     loadCalls: 0,
     openSignInCalls: 0,
     signOutCalls: 0,
+    signOutError: null,
     tokenValue: 'initial-session-token',
     session: {
       getToken: async () => client.tokenValue
@@ -31,6 +33,9 @@ function createFakeClerkClient(): FakeClerkClient {
     },
     async signOut() {
       client.signOutCalls += 1;
+      if (client.signOutError) {
+        throw client.signOutError;
+      }
     },
     addListener(listener: () => void) {
       client.listeners.push(listener);
@@ -160,6 +165,24 @@ describe('AuthService', () => {
 
     expect(fakeClient.signOutCalls).toBe(1);
     expect(service.isSignedIn()).toBeFalse();
+  });
+
+  // Before this was fixed, a rejected `client.signOut()` was caught, logged,
+  // and the local token cleared anyway — so `AuthService` would report
+  // `isSignedIn() === false` even though Clerk's own session could still be
+  // active. On a shared device that is a real reader shown "signed out"
+  // while the next person retains the account on reload.
+  it('signOut() propagates a Clerk client failure rather than clearing the local session anyway', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_sign_out_failure' });
+    await initPromise;
+    expect(service.isSignedIn()).toBeTrue();
+
+    fakeClient.signOutError = new Error('clerk sign-out failed');
+
+    await expectAsync(service.signOut()).toBeRejectedWithError('clerk sign-out failed');
+    expect(service.isSignedIn()).toBeTrue();
   });
 
   // The publishable key with no secret key case, and vice versa, are proven

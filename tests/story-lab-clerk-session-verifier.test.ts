@@ -22,18 +22,23 @@ async function main() {
   await testVerifierReturnsNullWhenDataHasNoSubject();
   await testVerifierReadsStringEmailClaimOnly();
   await testVerifierWiresIntoClerkAuthPortEndToEnd();
+  await testVerifierPassesAuthorizedPartiesFromAllowedOrigins();
+  await testVerifierDefaultsAuthorizedPartiesWhenNoOriginEnvSet();
 
   console.log('Story Lab Clerk session verifier tests passed');
 }
 
 function fakeVerifyToken(
   impl: ClerkVerifyTokenFn
-): { verifyToken: ClerkVerifyTokenFn; calls: Array<{ token: string; secretKey: string }> } {
-  const calls: Array<{ token: string; secretKey: string }> = [];
+): {
+  verifyToken: ClerkVerifyTokenFn;
+  calls: Array<{ token: string; secretKey: string; authorizedParties?: string[] }>;
+} {
+  const calls: Array<{ token: string; secretKey: string; authorizedParties?: string[] }> = [];
   return {
     calls,
     verifyToken: async (token, options) => {
-      calls.push({ token, secretKey: options.secretKey });
+      calls.push({ token, secretKey: options.secretKey, authorizedParties: options.authorizedParties });
       return impl(token, options);
     }
   };
@@ -154,6 +159,46 @@ async function testVerifierWiresIntoClerkAuthPortEndToEnd() {
   } catch (error) {
     assert(isAuthError(error), 'a rejected session should surface as an AuthError, not an unhandled result');
   }
+}
+
+// Verifying with `secretKey` alone accepts any correctly signed token from
+// this Clerk instance, including one issued to an untrusted sibling origin
+// under the same parent domain that can also obtain a Clerk session — a
+// session token exposed there could be replayed against this deployment's
+// account routes. `authorizedParties` closes that: it must be exactly the
+// same trusted-origin allowlist `applyCorsPolicy` already uses, so a token's
+// `azp` claim naming any other origin is rejected.
+async function testVerifierPassesAuthorizedPartiesFromAllowedOrigins() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret', STORY_LAB_ALLOWED_ORIGINS: 'https://app.example.com' },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+  assert(fake.calls.length === 1, 'the verifier should call verifyToken exactly once');
+  assert(
+    JSON.stringify(fake.calls[0].authorizedParties) === JSON.stringify(['https://app.example.com']),
+    `authorizedParties should be exactly the configured allowed origins, got ${JSON.stringify(fake.calls[0].authorizedParties)}`
+  );
+}
+
+// A deployment with no origin env var set at all still gets the same
+// default allowlist `applyCorsPolicy` falls back to, rather than an empty
+// (and therefore unchecked, per Clerk's own `assertAuthorizedPartiesClaim`)
+// authorizedParties list.
+async function testVerifierDefaultsAuthorizedPartiesWhenNoOriginEnvSet() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret' },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+  assert(
+    Array.isArray(fake.calls[0].authorizedParties) && fake.calls[0].authorizedParties!.length > 0,
+    'authorizedParties should default to the CORS policy default allowed origins, not an empty list'
+  );
 }
 
 main().catch(error => {

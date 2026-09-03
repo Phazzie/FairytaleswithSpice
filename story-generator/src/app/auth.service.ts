@@ -83,16 +83,20 @@ export class AuthService {
     this.client?.openSignIn();
   }
 
+  /**
+   * Ends the Clerk session. Deliberately does not swallow a failed
+   * `client.signOut()` call: Clerk's own session state is the source of
+   * truth for whether a reader is actually signed out, and clearing the
+   * local token regardless would report "signed out" on a shared device
+   * even when the underlying session survives and is restored on reload.
+   * Callers that want to announce success must wait for this to resolve.
+   */
   async signOut(): Promise<void> {
     if (!this.client) {
       return;
     }
 
-    try {
-      await this.client.signOut();
-    } catch (error) {
-      this.errorLogging.logError(error, 'AuthService.signOut');
-    }
+    await this.client.signOut();
     this.sessionTokenState.set(null);
   }
 

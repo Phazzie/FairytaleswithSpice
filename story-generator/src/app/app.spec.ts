@@ -1007,7 +1007,7 @@ describe('App', () => {
     expect(fullText).toContain('Saved here');
   });
 
-  it('shows an honest account setup action before sign-in is configured', () => {
+  it('shows an honest account setup action before sign-in is configured', async () => {
     fixture.detectChanges();
 
     const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
@@ -1016,6 +1016,12 @@ describe('App', () => {
     expect(accountAction?.textContent?.trim()).toBe('Connect account');
 
     accountAction?.click();
+    // `showCloudAccountSetupStatus()` now awaits `AuthService.signIn()`
+    // (which itself awaits `initialize()`) before deciding the deployment
+    // is unconfigured, so the message lands a couple of microtask turns
+    // after the click rather than synchronously with it.
+    await Promise.resolve();
+    await Promise.resolve();
     fixture.detectChanges();
 
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
@@ -1025,7 +1031,7 @@ describe('App', () => {
     expect(fullText).toContain('Saved here');
   });
 
-  it('blocks cloud save until the account is connected', () => {
+  it('blocks cloud save until the account is connected', async () => {
     seedWorkbenchForContinuation();
     storyService.saveCloudStoryProject.and.returnValue(of({
       success: false,
@@ -1044,6 +1050,8 @@ describe('App', () => {
     expect(saveButton?.disabled).toBeTrue();
 
     component.saveActiveProjectToCloud();
+    await Promise.resolve();
+    await Promise.resolve();
     fixture.detectChanges();
 
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
@@ -1052,7 +1060,7 @@ describe('App', () => {
     expect(fullText).toContain('Sign-in setup is not configured yet.');
   });
 
-  it('blocks cloud load and delete until the account is connected', () => {
+  it('blocks cloud load and delete until the account is connected', async () => {
     component.cloudProjects.set([{
       projectId: 'project-cloud',
       storyId: 'story-cloud',
@@ -1089,6 +1097,8 @@ describe('App', () => {
 
     component.loadCloudProject('project-cloud');
     component.deleteCloudProject('project-cloud');
+    await Promise.resolve();
+    await Promise.resolve();
     fixture.detectChanges();
 
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
@@ -3313,12 +3323,7 @@ describe('App cloud account sign-in wiring', () => {
       data: { provider: 'clerk', publishableKey: 'pk_test_app_wiring' }
     });
 
-    component.showCloudAccountSetupStatus();
-    // `signIn()` is `void`-called from `showCloudAccountSetupStatus()` and
-    // itself awaits `initialize()` before opening the modal — already
-    // settled at this point, but still one more microtask turn to unwind.
-    await Promise.resolve();
-    await Promise.resolve();
+    await component.showCloudAccountSetupStatus();
 
     expect(openSignIn).toHaveBeenCalled();
   });
@@ -3329,7 +3334,7 @@ describe('App cloud account sign-in wiring', () => {
       data: { provider: 'none' }
     });
 
-    component.showCloudAccountSetupStatus();
+    await component.showCloudAccountSetupStatus();
 
     expect(openSignIn).not.toHaveBeenCalled();
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
@@ -3342,19 +3347,52 @@ describe('App cloud account sign-in wiring', () => {
   // signed-in session short of clearing cookies by hand — a real gap on a
   // shared device, since the next reader would keep the previous one's
   // authenticated cloud library.
-  it('signs out of the Clerk session and returns cloud state to unavailable', async () => {
+  it('signs out of the Clerk session and clears cloud projects and sync state', async () => {
     const { component, signOut } = await createAppWithAuthConfig({
       success: true,
       data: { provider: 'clerk', publishableKey: 'pk_test_sign_out_wiring' }
     });
     expect(component.isCloudAccountSignedIn()).toBeTrue();
+    component.cloudProjects.set([{
+      projectId: 'project-cloud',
+      storyId: 'story-cloud',
+      title: 'Cloud Chapel',
+      synopsis: 'A cloud-synced oath.',
+      chapterCount: 2,
+      acceptedMemoryCardCount: 0,
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    }]);
 
     await component.signOutOfCloudAccount();
 
     expect(signOut).toHaveBeenCalled();
     expect(component.isCloudAccountSignedIn()).toBeFalse();
+    // Clearing `cloudProjects`, not just `cloudLibrarySyncState`, is the
+    // actual fix: before this, the account panel moved off `cloud_synced`
+    // but the previous account's project titles and metadata stayed
+    // rendered underneath it — a real privacy gap on a shared device.
+    expect(component.cloudProjects()).toEqual([]);
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
     expect(component.cloudLibrarySyncState().message).toBe('Signed out. Local browser saves are still available.');
+  });
+
+  // Before this was fixed, a rejected `client.signOut()` was swallowed and
+  // the local token cleared regardless, so the app would announce "signed
+  // out" on a shared device even though Clerk's own session could still be
+  // active and would be restored on the next reload.
+  it('does not announce success or clear local session state when Clerk sign-out fails', async () => {
+    const { component, signOut } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_sign_out_failure' }
+    });
+    signOut.and.rejectWith(new Error('clerk sign-out failed'));
+    expect(component.isCloudAccountSignedIn()).toBeTrue();
+
+    await component.signOutOfCloudAccount();
+
+    expect(signOut).toHaveBeenCalled();
+    expect(component.isCloudAccountSignedIn()).toBeTrue();
   });
 
   it('does nothing when asked to sign out while already signed out', async () => {

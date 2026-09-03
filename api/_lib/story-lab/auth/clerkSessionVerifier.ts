@@ -1,6 +1,7 @@
 // Created: 2026-09-02 20:40 EDT
 
 import { verifyToken as clerkVerifyToken } from '@clerk/backend';
+import { parseAllowedOrigins } from '../../http/corsPolicy';
 import type { AuthRequestLike } from './authPort';
 import type { ClerkAuthPortOptions, VerifiedClerkSession } from './clerkAuthPort';
 
@@ -15,7 +16,7 @@ import type { ClerkAuthPortOptions, VerifiedClerkSession } from './clerkAuthPort
  */
 export type ClerkVerifyTokenFn = (
   token: string,
-  options: { secretKey: string }
+  options: { secretKey: string; authorizedParties?: string[] }
 ) => Promise<{ data?: { sub: string; [claim: string]: unknown }; errors?: unknown[] }>;
 
 export interface ClerkSessionVerifierDependencies {
@@ -42,12 +43,18 @@ export function createClerkSessionVerifierFromEnv(
   }
 
   const verifyToken = dependencies.verifyToken ?? (clerkVerifyToken as ClerkVerifyTokenFn);
+  // The same allowlist `applyCorsPolicy` already trusts as this deployment's
+  // frontend origin(s) — passed as Clerk's `authorizedParties` so a token
+  // whose `azp` claim names a different origin (e.g. an untrusted sibling
+  // subdomain that can also obtain a Clerk session under the same instance)
+  // is rejected rather than accepted on signature validity alone.
+  const authorizedParties = parseAllowedOrigins(env);
 
   return async function verifySessionToken(
     token: string,
     _req: AuthRequestLike
   ): Promise<VerifiedClerkSession | null> {
-    const result = await verifyToken(token, { secretKey });
+    const result = await verifyToken(token, { secretKey, authorizedParties });
     if (result.errors || !result.data?.sub) {
       return null;
     }
