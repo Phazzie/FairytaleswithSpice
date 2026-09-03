@@ -36,6 +36,13 @@ describe('App cloud account sign-in (Clerk configured)', () => {
     });
   }
 
+  function storageOutageListResponse(): Observable<ApiResponse<CloudStoryProjectList>> {
+    return of({
+      success: false,
+      error: { code: 'STORAGE_UNAVAILABLE', message: 'Cloud project storage is temporarily unavailable.', retryable: true }
+    });
+  }
+
   /**
    * The constructor kicks off `authService.initialize().then(...)`, which
    * (with an already-resolved spy promise) drains as a microtask before this
@@ -121,6 +128,7 @@ describe('App cloud account sign-in (Clerk configured)', () => {
     const accountAction = panel?.querySelector('[data-testid="cloud-account-action"]') as HTMLButtonElement | null;
 
     accountAction?.click();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     expect(authService.signIn).toHaveBeenCalledTimes(1);
@@ -141,8 +149,104 @@ describe('App cloud account sign-in (Clerk configured)', () => {
     expect(accountAction?.textContent?.trim()).toBe('Sign out');
 
     accountAction?.click();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     expect(authService.signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('still offers sign-out when authenticated but cloud storage is having an outage', async () => {
+    // The account route's auth gate accepted the session (this is not an
+    // UNAUTHORIZED response) - only the storage layer behind it failed.
+    await createFixture(storageOutageListResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.cloudLibrarySyncState().mode).not.toBe('cloud_synced');
+    expect(component.cloudAccountAuthenticated()).toBe(true);
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const accountAction = panel?.querySelector('[data-testid="cloud-account-action"]') as HTMLButtonElement | null;
+
+    expect(accountAction?.textContent?.trim()).toBe('Sign out');
+
+    accountAction?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(authService.signOut).toHaveBeenCalledTimes(1);
+    expect(authService.signIn).not.toHaveBeenCalled();
+  });
+
+  it('retries auth initialization on a second click after a transient startup failure', async () => {
+    const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
+      'beginStory',
+      'continueStory',
+      'createStoryLabJob',
+      'getStoryLabJobStatus',
+      'listCloudStoryProjects',
+      'saveCloudStoryProject',
+      'loadCloudStoryProject',
+      'deleteCloudStoryProject',
+      'generateImage',
+      'convertChapterToAudio',
+      'exportStory'
+    ]);
+    storyServiceSpy.listCloudStoryProjects.and.returnValue(of({ success: true, data: emptyCloudProjectList() }));
+
+    const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
+      'logInfo',
+      'logError',
+      'getErrors'
+    ]);
+    errorLoggingSpy.getErrors.and.returnValue(of([]));
+
+    // First call (from the constructor) simulates the transient failure
+    // AuthService itself already handles (clears its cached promise, stays
+    // unconfigured) - this test is about the *click handler* actually
+    // calling `initialize()` again rather than only reading a stale
+    // `isConfigured()`.
+    let initializeCalls = 0;
+    const authServiceSpy = jasmine.createSpyObj<AuthService>('AuthService', [
+      'initialize',
+      'isConfigured',
+      'signIn',
+      'signOut'
+    ]);
+    authServiceSpy.initialize.and.callFake(() => {
+      initializeCalls += 1;
+      return Promise.resolve();
+    });
+    (authServiceSpy.isConfigured.and as jasmine.SpyAnd<() => boolean>).callFake(() => initializeCalls >= 2);
+    authServiceSpy.signIn.and.returnValue(Promise.resolve());
+    authServiceSpy.signOut.and.returnValue(Promise.resolve());
+
+    await TestBed.configureTestingModule({
+      imports: [App, HttpClientTestingModule],
+      providers: [
+        { provide: StoryService, useValue: storyServiceSpy },
+        { provide: ErrorLoggingService, useValue: errorLoggingSpy },
+        { provide: AuthService, useValue: authServiceSpy },
+        { provide: ActivatedRoute, useValue: { queryParamMap: of(convertToParamMap({})) } }
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(App);
+    component = fixture.componentInstance;
+    authService = TestBed.inject(AuthService) as jasmine.SpyObj<AuthService>;
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(authService.isConfigured()).toBe(false);
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const accountAction = panel?.querySelector('[data-testid="cloud-account-action"]') as HTMLButtonElement | null;
+
+    accountAction?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(initializeCalls).toBeGreaterThanOrEqual(2);
+    expect(authService.signIn).toHaveBeenCalledTimes(1);
   });
 });

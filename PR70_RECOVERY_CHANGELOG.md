@@ -4,6 +4,39 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Production Clerk provider wiring and hosted sign-in redirect (PR #325)
+
+The Clerk-shaped auth adapter scaffold (`clerkAuthPort.ts`, `configuredAuthPort.ts`) had existed since Phase 1 but was never reachable in production: `configuredAuthPort.ts`'s one production call site never passed `clerk` options, so `requireUser()` unconditionally threw even with `STORY_LAB_AUTH_PROVIDER=clerk` set, and the frontend had no code path to obtain a session token at all. A "worst-to-best" routine run picked this up (an unclaimed plan from a prior run's two unexecuted Slack posts) and wired it end to end. Full detail lives in `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md`'s new Phase 6; this entry is the changelog pointer per this file's own required-update rule.
+
+Actions:
+
+- Added `api/_lib/story-lab/auth/clerkSessionVerifier.ts` wrapping `@clerk/backend`'s `verifyToken` into the `verifySessionToken` shape `clerkAuthPort.ts` already expects; that file itself is untouched.
+- `configuredAuthPort.ts`'s production singleton now resolves a real verifier from `CLERK_SECRET_KEY`, plus optional `CLERK_AUTHORIZED_PARTIES` (`azp`-claim allow-list, with a startup warning when Clerk is selected without it). Fails fast at module load if `STORY_LAB_AUTH_PROVIDER=clerk` is set without a secret key.
+- Considered and rejected `@clerk/clerk-js` for the frontend after installing it revealed ~350 extra transitive packages (Web3 wallet adapters, Stripe.js) unrelated to this app. Instead added `AuthService`, which fetches a hosted Clerk Account Portal URL from a new `/api/health` `auth` field and redirects the browser there to sign in/out — zero new frontend runtime dependencies. Added `accountCredentialsInterceptor` (`withCredentials` on `/api/story-lab/account/*` only) so the `__session` cookie rides along.
+- Moved the new `/api/health` auth payload into shared seam contracts (`api/_lib/types/contracts.ts`, re-exported through the Angular `contracts.ts`) after review caught it declared independently on both sides.
+- Wired `showCloudAccountSetupStatus()`/the account-panel action to `AuthService.signIn()`/`signOut()` when Clerk is configured; unchanged (byte-for-byte) when it isn't — the full pre-existing `app.spec.ts` suite passes unmodified against an `AuthService` double mirroring the unconfigured default.
+- New `.env.example` (didn't exist before) and a README "Cloud Account Sign-In" section, including that `CLERK_ACCOUNT_PORTAL_URL` must be a subdomain of this app's own domain (not Clerk's default sandbox domain) for the session cookie to be visible here, and that `DATABASE_URL` + the cloud schema are separate, still-unmet prerequisites for storage itself.
+- Codex review (2 rounds) caught real issues past what the unit tests alone did: a missing `authorizedParties` restriction (fixed, with a negative test); the `/api/health` payload duplication above (fixed); `AuthService.initialize()` caching a failed health check forever (fixed, but the first fix was incomplete — see Self-review); no UI path to sign out (fixed); local dev's documented `.env` never actually loading (fixed, and caught a second real bug in the fix itself — see Self-review). One finding (claiming `verifyToken` returns the bare payload rather than `{ data }`) was checked against the installed `@clerk/backend@3.17.1` source and found incorrect; replied on the PR thread with the exact source lines instead of changing already-correct code.
+
+Self-review:
+
+- Correction, caught by Codex round 2: fixing "`initialize()` caches a failed health check forever" by clearing the cached promise in `loadAuthConfig()`'s catch block was necessary but not sufficient — nothing then re-called `initialize()` from the click handler, so the retry path was unreachable from the UI. Still open as of this entry; see the PR thread for the fix in progress.
+- Correction, caught by Codex round 2: the sign-out affordance was gated on `cloudLibrarySyncState().mode === 'cloud_synced'`, which requires both a successful auth check *and* a successful cloud-storage listing — an authenticated user hitting a storage outage would see "Connect account" and get redirected back to sign-in instead of being able to sign out. Still open as of this entry.
+- Finding via empirical proof, not just reasoning: a first attempt at loading `dotenv` (a plain `config()` call placed textually first in `server.ts`) did not actually fix the "local `.env` never loads" bug. Building the real `server.mjs` and running it against a `.env` with only `STORY_LAB_AUTH_PROVIDER=clerk` set (no secret key) showed the process starting instead of crashing — proving ES module import-graph evaluation order (every import's own module-scope code runs before the importing file's own body, regardless of source position) made the fix a no-op for module-scope `process.env` reads. Fixed by switching to the side-effecting `import 'dotenv/config'` as the literal first import, then re-verified the same way. Recorded here per this plan's testing policy: "a mocked auth token cannot prove provider configuration" — this required proof against the compiled artifact, not `tsx`.
+- Non-claim: no live sign-in proven against a real Clerk instance (no live credentials in this environment); no cloud project storage claim (`DATABASE_URL`/schema remain separate prerequisites, tracked in `STORY_LAB_STORAGE_PORT_EXEC_PLAN.md`).
+
+Validation:
+
+- `npm run test:all`: passed.
+- `npm run test:clerk-session-verifier`, `npm run test:account-portal-auth-config`, `npm run test:story-lab-configured-auth`, `npm run test:story-lab-clerk-auth`, `npm run test:story-lab-account-routes`: passed.
+- `ng test` (full karma suite): 259/259 passed.
+- `npx tsc -p story-generator/tsconfig.app.json --noEmit`, `npx tsc -p story-generator/tsconfig.spec.json --noEmit`: passed.
+- API `tsc --noEmit` (the ad-hoc `find api ... | xargs tsc` invocation `slice-preflight.sh` uses): passed.
+- `npm run build` (production `ng build` + Vercel index): passed; pre-existing bundle-budget warning grew by ~2kB (was already 3.90kB over budget before this PR).
+- `scripts/recovery/check-vercel-function-count.sh`: passed at `9/12` (no new function - reused `/api/health`).
+- Manual process-level proof against the compiled `server.mjs` (see Self-review): fail-fast crash without `CLERK_SECRET_KEY`; correct Clerk-specific 401 (not deny-by-default) with a valid config and no/bogus token; `/api/health` reflecting loaded `.env` values.
+- CI on PR #325: `Validate Vercel recovery build` and both SonarCloud checks green; `mergeable_state: clean`.
+
 ## 2026-09-02 UTC - Multi-Voice Audio Narration shipped, audio un-deferred by explicit repo-owner ask (PR #323)
 
 `README.md` marketed "multi-voice audio narration" as a flagship feature — a "90+ Emotion System," ElevenLabs integration, a documented `POST /api/audio/convert` contract — with zero code behind it: no `api/audio/`, no `audioService.ts`, zero `ElevenLabs` references anywhere in the repo. `Chapter.hasAudio`/`audioUrl`/`audioDuration` were permanently `false`/`undefined` at every call site, even though the story prompt already emits `[Character, voice: ...]` speaker tags into `rawContent` for a pipeline that was never built to consume them.

@@ -735,6 +735,12 @@ export class App implements OnDestroy {
     mode: 'cloud_unavailable',
     message: 'Account sync is not connected yet.'
   });
+  // `cloudLibrarySyncState` answers "can I use the cloud library right now"
+  // (auth *and* storage both working) - this answers the narrower "does the
+  // account route currently accept my session," which storage trouble alone
+  // must not flip false. Without the split, a signed-in reader hitting a
+  // storage outage saw "Connect account" instead of a way to sign out.
+  readonly cloudAccountAuthenticated = signal(false);
   readonly isCloudLibraryBusy = signal(false);
   readonly generationProgress = signal<GenerationProgressState>({
     active: false,
@@ -1149,9 +1155,18 @@ export class App implements OnDestroy {
     }
   });
   readonly cloudAccountActionLabel = computed(() => {
+    // Checked ahead of the library-state switch below: whether the account
+    // route currently accepts this session is a narrower question than
+    // whether cloud storage happens to be working too, and a reader who's
+    // genuinely signed in but hitting a storage outage still needs "Sign
+    // out" to be the offered action, not "Connect account" again.
+    if (this.authService.isConfigured() && this.cloudAccountAuthenticated()) {
+      return 'Sign out';
+    }
+
     switch (this.cloudLibrarySyncState().mode) {
       case 'cloud_synced':
-        return this.authService.isConfigured() ? 'Sign out' : 'Profile';
+        return 'Profile';
       case 'sync_failed':
         return 'Account status';
       case 'local_only':
@@ -1876,6 +1891,10 @@ export class App implements OnDestroy {
     this.storyService.listCloudStoryProjects().subscribe({
       next: response => {
         if (!response.success || !response.data) {
+          // Reaching any *other* error means the account route's auth gate
+          // let the request through - only an explicit UNAUTHORIZED means
+          // this browser isn't (or is no longer) signed in.
+          this.cloudAccountAuthenticated.set(response.error?.code !== 'UNAUTHORIZED');
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
             message: this.formatApiError(response.error, 'Cloud library is unavailable.')
@@ -1883,6 +1902,7 @@ export class App implements OnDestroy {
           return;
         }
 
+        this.cloudAccountAuthenticated.set(true);
         this.cloudProjects.set(response.data.projects);
         // The listing is capped, so "12 cloud projects loaded" is only the
         // whole story while the reader has twelve. `totalProjectCount` is what
@@ -1948,17 +1968,21 @@ export class App implements OnDestroy {
       : `${loadedCount} ${noun}`;
   }
 
-  showCloudAccountSetupStatus() {
+  async showCloudAccountSetupStatus() {
     if (this.isCloudLibraryBusy()) {
       return;
     }
 
-    if (this.cloudLibrarySyncState().mode === 'cloud_synced') {
-      if (this.authService.isConfigured()) {
-        this.authService.signOut();
-        return;
-      }
+    // Sign-out is gated on `cloudAccountAuthenticated`, not on
+    // `cloudLibrarySyncState` being `cloud_synced` - a reader who's genuinely
+    // signed in but hitting a cloud-storage outage must still see a way to
+    // sign out, not "Connect account" again.
+    if (this.authService.isConfigured() && this.cloudAccountAuthenticated()) {
+      this.authService.signOut();
+      return;
+    }
 
+    if (this.cloudLibrarySyncState().mode === 'cloud_synced') {
       this.cloudLibrarySyncState.update(state => ({
         ...state,
         message: state.message ?? 'Account is connected.'
@@ -1967,11 +1991,12 @@ export class App implements OnDestroy {
       return;
     }
 
-    // `initialize()` was already kicked off from the constructor, so this
-    // reads whatever it has resolved to by now rather than awaiting it again
-    // - a click in the narrow window before that first `/api/health` answer
-    // lands just sees the same "not configured yet" message a genuinely
-    // unconfigured deployment shows, which is honest either way.
+    // Awaited (not just read) so a transient `/api/health` failure at
+    // startup gets one more chance here, on the reader's own click, instead
+    // of leaving `isConfigured()` stuck false until a full page reload -
+    // `initialize()` is cheap to call again: it only re-fetches when its
+    // cached promise was cleared after a prior failure.
+    await this.authService.initialize();
     if (this.authService.isConfigured()) {
       this.authService.signIn();
       return;

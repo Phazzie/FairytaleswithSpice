@@ -1018,7 +1018,7 @@ describe('App', () => {
     expect(fullText).toContain('Saved here');
   });
 
-  it('shows an honest account setup action before sign-in is configured', () => {
+  it('shows an honest account setup action before sign-in is configured', fakeAsync(() => {
     fixture.detectChanges();
 
     const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
@@ -1027,6 +1027,7 @@ describe('App', () => {
     expect(accountAction?.textContent?.trim()).toBe('Connect account');
 
     accountAction?.click();
+    tick();
     fixture.detectChanges();
 
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
@@ -1034,9 +1035,9 @@ describe('App', () => {
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
     expect(fullText).toContain('Sign-in setup is not configured yet.');
     expect(fullText).toContain('Saved here');
-  });
+  }));
 
-  it('blocks cloud save until the account is connected', () => {
+  it('blocks cloud save until the account is connected', fakeAsync(() => {
     seedWorkbenchForContinuation();
     storyService.saveCloudStoryProject.and.returnValue(of({
       success: false,
@@ -1055,15 +1056,16 @@ describe('App', () => {
     expect(saveButton?.disabled).toBeTrue();
 
     component.saveActiveProjectToCloud();
+    tick();
     fixture.detectChanges();
 
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
     expect(storyService.saveCloudStoryProject).not.toHaveBeenCalled();
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
     expect(fullText).toContain('Sign-in setup is not configured yet.');
-  });
+  }));
 
-  it('blocks cloud load and delete until the account is connected', () => {
+  it('blocks cloud load and delete until the account is connected', fakeAsync(() => {
     component.cloudProjects.set([{
       projectId: 'project-cloud',
       storyId: 'story-cloud',
@@ -1100,6 +1102,7 @@ describe('App', () => {
 
     component.loadCloudProject('project-cloud');
     component.deleteCloudProject('project-cloud');
+    tick();
     fixture.detectChanges();
 
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
@@ -1107,7 +1110,7 @@ describe('App', () => {
     expect(storyService.deleteCloudStoryProject).not.toHaveBeenCalled();
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
     expect(fullText).toContain('Sign-in setup is not configured yet.');
-  });
+  }));
 
   it('refreshes visible cloud projects through the account service', () => {
     const cloudList: CloudStoryProjectList = {
