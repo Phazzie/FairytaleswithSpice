@@ -4,6 +4,12 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - CI fix: second SonarCloud duplication gate on PR #328 (not a Codex finding)
+
+SonarCloud's Quality Gate failed on `edadf0a`: `4.5% Duplication on New Code` against the `≤3%` requirement — the round-9 push added the same three-line `if (this.isStaleCloudResponse(requestIdentity)) { return; }` guard inline at the top of all twelve `next`/`error`/`complete` callbacks across `refreshCloudLibrary`/`saveActiveProjectToCloud`/`loadCloudProject`/`deleteCloudProject`. Extracted `guardStaleCloudResponse` (wraps a `next`/`error` handler) and `guardStaleCloudComplete` (a separate zero-argument overload, since a `(value: unknown) => void` wrapper is not assignable to RxJS's `complete: () => void`) so the check happens once per call site instead of being repeated inline twelve times.
+
+Validation: `tsc --noEmit` on both app and spec configs, full karma suite headless (276/276), `ng build` — all confirmed clean before push.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 9: two deeper session-race findings closed (PR #328)
 
 Codex's review of the localhost-default fix (8832e72) found two architectural races the prior six rounds of stale-response fixes hadn't reached, both in the same family but structurally different from what came before.

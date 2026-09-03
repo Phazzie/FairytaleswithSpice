@@ -1949,10 +1949,7 @@ export class App implements OnDestroy {
     this.isCloudLibraryBusy.set(true);
     const requestIdentity = this.captureCloudRequestIdentity();
     const cloudLibrarySubscription = this.storyService.listCloudStoryProjects().subscribe({
-      next: response => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      next: this.guardStaleCloudResponse(requestIdentity, response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -1983,24 +1980,18 @@ export class App implements OnDestroy {
           lastSyncedAt: new Date().toISOString(),
           message: `${loaded} loaded.`
         });
-      },
-      error: error => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      }),
+      error: this.guardStaleCloudResponse(requestIdentity, error => {
         this.errorLogging.logError(error, 'App.refreshCloudLibrary');
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
           message: this.formatHttpError(error, 'Cloud library is unavailable until account sync is configured.')
         });
         this.isCloudLibraryBusy.set(false);
-      },
-      complete: () => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      }),
+      complete: this.guardStaleCloudComplete(requestIdentity, () => {
         this.isCloudLibraryBusy.set(false);
-      }
+      })
     });
     // Held so a sign-out that lands while this request is still in flight
     // (see the constructor's effect and `signOutOfCloudAccount()`) can
@@ -2049,6 +2040,40 @@ export class App implements OnDestroy {
   private isStaleCloudResponse(requestIdentity: { signedIn: boolean; accountId: string | null }): boolean {
     const current = this.captureCloudRequestIdentity();
     return current.signedIn !== requestIdentity.signedIn || current.accountId !== requestIdentity.accountId;
+  }
+
+  /**
+   * Wraps a `next`/`error`/`complete` handler so the identity check above
+   * happens once, at the call site each of `refreshCloudLibrary`/
+   * `saveActiveProjectToCloud`/`loadCloudProject`/`deleteCloudProject`
+   * already needs it, rather than as a repeated three-line guard inlined
+   * into all twelve of those callbacks.
+   */
+  private guardStaleCloudResponse<T>(
+    requestIdentity: { signedIn: boolean; accountId: string | null },
+    handler: (value: T) => void
+  ): (value: T) => void {
+    return value => {
+      if (this.isStaleCloudResponse(requestIdentity)) {
+        return;
+      }
+      handler(value);
+    };
+  }
+
+  // A separate zero-argument overload rather than reusing
+  // `guardStaleCloudResponse` for `complete`: a `(value: unknown) => void`
+  // wrapper is not assignable to RxJS's `complete: () => void`.
+  private guardStaleCloudComplete(
+    requestIdentity: { signedIn: boolean; accountId: string | null },
+    handler: () => void
+  ): () => void {
+    return () => {
+      if (this.isStaleCloudResponse(requestIdentity)) {
+        return;
+      }
+      handler();
+    };
   }
 
   /**
@@ -2200,10 +2225,7 @@ export class App implements OnDestroy {
     this.isCloudLibraryBusy.set(true);
     const requestIdentity = this.captureCloudRequestIdentity();
     const cloudLibrarySubscription = this.storyService.saveCloudStoryProject(project).subscribe({
-      next: response => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      next: this.guardStaleCloudResponse(requestIdentity, response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -2215,24 +2237,18 @@ export class App implements OnDestroy {
         this.upsertCloudProject(project, response.data.projectId);
         this.cloudLibrarySyncState.set(response.data.syncState);
         this.notificationService.success('Cloud save requested', project.title);
-      },
-      error: error => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      }),
+      error: this.guardStaleCloudResponse(requestIdentity, error => {
         this.errorLogging.logError(error, 'App.saveActiveProjectToCloud');
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
           message: this.formatHttpError(error, 'Cloud save is unavailable until account sync is configured.')
         });
         this.isCloudLibraryBusy.set(false);
-      },
-      complete: () => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      }),
+      complete: this.guardStaleCloudComplete(requestIdentity, () => {
         this.isCloudLibraryBusy.set(false);
-      }
+      })
     });
     // `isCloudLibraryBusy` gates save/load/delete/refresh against each other,
     // so at most one of these subscriptions is ever in flight — the same
@@ -2256,10 +2272,7 @@ export class App implements OnDestroy {
     this.isCloudLibraryBusy.set(true);
     const requestIdentity = this.captureCloudRequestIdentity();
     const cloudLibrarySubscription = this.storyService.loadCloudStoryProject(projectId).subscribe({
-      next: response => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      next: this.guardStaleCloudResponse(requestIdentity, response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -2281,24 +2294,18 @@ export class App implements OnDestroy {
             message: `Loaded "${response.data.project.title}" from cloud.`
           });
         }
-      },
-      error: error => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      }),
+      error: this.guardStaleCloudResponse(requestIdentity, error => {
         this.errorLogging.logError(error, 'App.loadCloudProject');
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
           message: this.formatHttpError(error, 'Cloud story could not be loaded.')
         });
         this.isCloudLibraryBusy.set(false);
-      },
-      complete: () => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      }),
+      complete: this.guardStaleCloudComplete(requestIdentity, () => {
         this.isCloudLibraryBusy.set(false);
-      }
+      })
     });
     // See the matching comment in `saveActiveProjectToCloud`: a load that
     // resolves after sign-out could otherwise hydrate the previous account's
@@ -2320,10 +2327,7 @@ export class App implements OnDestroy {
     this.isCloudLibraryBusy.set(true);
     const requestIdentity = this.captureCloudRequestIdentity();
     const cloudLibrarySubscription = this.storyService.deleteCloudStoryProject(projectId).subscribe({
-      next: response => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      next: this.guardStaleCloudResponse(requestIdentity, response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -2347,24 +2351,18 @@ export class App implements OnDestroy {
             message: response.data.deleted ? 'Cloud story deleted.' : 'Cloud story was already absent.'
           });
         }
-      },
-      error: error => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      }),
+      error: this.guardStaleCloudResponse(requestIdentity, error => {
         this.errorLogging.logError(error, 'App.deleteCloudProject');
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
           message: this.formatHttpError(error, 'Cloud delete failed.')
         });
         this.isCloudLibraryBusy.set(false);
-      },
-      complete: () => {
-        if (this.isStaleCloudResponse(requestIdentity)) {
-          return;
-        }
+      }),
+      complete: this.guardStaleCloudComplete(requestIdentity, () => {
         this.isCloudLibraryBusy.set(false);
-      }
+      })
     });
     // See the matching comment in `saveActiveProjectToCloud`.
     this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
