@@ -2188,9 +2188,12 @@ export class App implements OnDestroy {
     // `AuthService.loadConfigAndClient`) instead of replaying it — without
     // this, a deployment that IS configured but hit one bad request would
     // show "not configured" forever with no way to retry short of a reload.
-    // A genuinely unconfigured deployment still ends here with no client
-    // loaded, so `openSignIn()` no-ops and the message below still shows,
-    // just after the round trip resolves instead of synchronously.
+    // A genuinely unconfigured deployment, and one whose Clerk client failed
+    // to actually load (the script blocked, a network error) even though the
+    // deployment reports `provider: 'clerk'`, both still end here with
+    // `isConfigured()` false — see that computed's own comment — so
+    // `openSignIn()` no-ops and the message below shows either way, just
+    // after the round trip resolves instead of synchronously.
     await this.authService.signIn();
     if (!this.authService.isConfigured()) {
       this.cloudLibrarySyncState.set({

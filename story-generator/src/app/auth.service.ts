@@ -94,8 +94,19 @@ export class AuthService {
   private latestRefreshPromise: Promise<string | null> | null = null;
   private readonly sessionEpochState = signal(0);
   private readonly identityTransitionPendingState = signal(false);
+  // True only once `loadConfigAndClient()` has actually finished loading a
+  // Clerk client — never just because the deployment *reports* `provider:
+  // 'clerk'`. Without this, `isConfigured` stayed true after a client-load
+  // failure (the script blocked, a network error) because `authConfigState`
+  // is set from the auth-config response before the client load is even
+  // attempted: `showCloudAccountSetupStatus()`'s retry path would then never
+  // see `isConfigured()` go false, so "Connect account" silently did nothing
+  // on every retry after that first failure instead of surfacing an error.
+  private readonly clientReadyState = signal(false);
 
-  readonly isConfigured = computed(() => this.authConfigState()?.provider === 'clerk');
+  readonly isConfigured = computed(
+    () => this.authConfigState()?.provider === 'clerk' && this.clientReadyState()
+  );
   readonly sessionToken = computed(() => this.sessionTokenState());
   readonly isSignedIn = computed(() => this.sessionTokenState() !== null);
   /**
@@ -250,9 +261,11 @@ export class AuthService {
         void this.refreshSessionToken(true);
       });
       await this.refreshSessionToken();
+      this.clientReadyState.set(true);
     } catch (error) {
       this.errorLogging.logError(error, 'AuthService.loadConfigAndClient');
       this.client = null;
+      this.clientReadyState.set(false);
       // Same reasoning as the auth-config catch above: a Clerk client that
       // failed to load (script blocked, network error) should be retried on
       // the next sign-in attempt, not treated as a permanent unconfigured

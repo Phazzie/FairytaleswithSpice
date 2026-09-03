@@ -369,9 +369,12 @@ describe('AuthService', () => {
       data: { provider: 'clerk', publishableKey: 'pk_test_client_retry' }
     });
     await firstInit;
-    // `isConfigured()` reflects what the backend reported, independent of
-    // whether the client itself loaded — the failed load instead shows up
-    // as no session and `signIn()` never reaching `openSignIn()`.
+    // `isConfigured()` requires the client to have actually loaded, not just
+    // that the backend reported `provider: 'clerk'` — before this was fixed,
+    // it stayed true here even though the client failed, so a caller gating
+    // a retry on it (`App.showCloudAccountSetupStatus()`) never saw it go
+    // false and could not tell a real failure from a working deployment.
+    expect(service.isConfigured()).toBeFalse();
     expect(service.isSignedIn()).toBeFalse();
     expect(fakeClient.openSignInCalls).toBe(0);
 
@@ -384,6 +387,7 @@ describe('AuthService', () => {
     await retrySignIn;
 
     expect(fakeClient.openSignInCalls).toBe(1);
+    expect(service.isConfigured()).toBeTrue();
   });
 
   it('getRequestToken() returns null when no Clerk client is loaded', async () => {

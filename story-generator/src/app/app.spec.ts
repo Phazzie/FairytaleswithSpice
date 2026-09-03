@@ -3281,7 +3281,10 @@ describe('App cloud account sign-in wiring', () => {
     return client;
   }
 
-  async function createAppWithAuthConfig(config: ApiResponse<{ provider: 'clerk' | 'none'; publishableKey?: string }>) {
+  async function createAppWithAuthConfig(
+    config: ApiResponse<{ provider: 'clerk' | 'none'; publishableKey?: string }>,
+    clientLoadError?: Error
+  ) {
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'getStoryLabAuthConfig',
       'listCloudStoryProjects',
@@ -3313,7 +3316,7 @@ describe('App cloud account sign-in wiring', () => {
     const signOut = jasmine.createSpy('signOut');
     const clerkClient = createFakeClerkClient(openSignIn, signOut);
     const clientFactory = jasmine.createSpy('clerkClientFactory')
-      .and.returnValue(Promise.resolve(clerkClient));
+      .and.returnValue(clientLoadError ? Promise.reject(clientLoadError) : Promise.resolve(clerkClient));
 
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
@@ -3410,6 +3413,30 @@ describe('App cloud account sign-in wiring', () => {
       success: true,
       data: { provider: 'none' }
     });
+
+    await component.showCloudAccountSetupStatus();
+
+    expect(openSignIn).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toBe(
+      'Sign-in setup is not configured yet. Local browser saves are still available.'
+    );
+  });
+
+  // Before this was fixed, `AuthService.isConfigured()` stayed true here
+  // because it only reflected the auth-config response reporting `provider:
+  // 'clerk'`, not whether the Clerk client itself ever actually loaded. A
+  // deployment whose script was blocked or hit a network error would leave
+  // this method returning without ever showing the message below, so
+  // "Connect account" silently did nothing on every retry.
+  it('shows the setup-pending message, not a silent no-op, when the Clerk client itself fails to load', async () => {
+    const { component, openSignIn } = await createAppWithAuthConfig(
+      {
+        success: true,
+        data: { provider: 'clerk', publishableKey: 'pk_test_client_load_failure' }
+      },
+      new Error('script blocked')
+    );
 
     await component.showCloudAccountSetupStatus();
 
