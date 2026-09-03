@@ -4,6 +4,12 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - CI fix: SonarCloud duplication gate on PR #328 (not a Codex finding)
+
+SonarCloud's Quality Gate failed on commit `42c10c2` — `7.7% Duplication on New Code` against a `≤3%` requirement — reported via the PR's `check_suite`/`status` events, not a Codex review comment. `app.spec.ts`'s `discards a cloud-load response that arrives after sign-out` and `cancels an in-flight cloud request before awaiting a slow Clerk sign-out` tests (added in two different rounds above) each independently built the same ~26-line `SavedStoryProject`/`CloudStoryProjectLoadResult` stale-response fixture, verbatim. Extracted `createStalePreviousAccountLoadResponse(component)`; both tests, plus the new `keeps cloud controls locked for the whole duration of a pending sign-out` test added in the same push, now share it.
+
+Validation: `tsc --noEmit` on the spec config, full karma suite headless (273/273), `ng build` — all clean before push. (SonarCloud's own re-analysis of the pushed commit is the actual gate; this entry records the fix made in response, not confirmation the gate now passes — that is checked live before merge.)
+
 ## 2026-09-03 UTC - Clerk auth hardening round 5: cloud controls stay locked for the whole sign-out, lesson recorded (PR #328)
 
 Codex's review of round 4 (42c10c2) found one more real gap in the same area, plus a documentation gap.

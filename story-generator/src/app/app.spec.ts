@@ -3321,6 +3321,40 @@ describe('App cloud account sign-in wiring', () => {
     };
   }
 
+  // Shared by the two stale-load-response tests below: both need a
+  // `CloudStoryProjectLoadResult` for an account that has just signed out,
+  // and differ only in when the response arrives relative to sign-out.
+  function createStalePreviousAccountLoadResponse(component: App): ApiResponse<CloudStoryProjectLoadResult> {
+    const project: SavedStoryProject = {
+      id: 'previous-account-project',
+      storyId: 'story-previous-account',
+      title: 'Should not load',
+      synopsis: 'Belongs to the account that just signed out.',
+      blueprint: component.blueprint(),
+      summary: createSummary({ title: 'Should not load' }),
+      state: createState(),
+      chapters: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    };
+    return {
+      success: true,
+      data: {
+        ownerUserId: 'previous-account',
+        // `cloud_postgres` rather than `non_durable_memory`: a processed
+        // response would flip `cloudLibrarySyncState` to `cloud_synced`, so
+        // callers asserting on that mode actually distinguish "discarded"
+        // from "processed" instead of matching either outcome.
+        storageMode: 'cloud_postgres',
+        projectId: project.id,
+        storyId: project.storyId,
+        project,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      }
+    };
+  }
+
   afterEach(() => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SKIN_STORAGE_KEY);
@@ -3478,34 +3512,7 @@ describe('App cloud account sign-in wiring', () => {
 
     await component.signOutOfCloudAccount();
 
-    const project: SavedStoryProject = {
-      id: 'previous-account-project',
-      storyId: 'story-previous-account',
-      title: 'Should not load',
-      synopsis: 'Belongs to the account that just signed out.',
-      blueprint: component.blueprint(),
-      summary: createSummary({ title: 'Should not load' }),
-      state: createState(),
-      chapters: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
-      createdAt: '2026-06-08T08:37:00.000Z',
-      updatedAt: '2026-06-08T08:38:00.000Z'
-    };
-    loadSubject.next({
-      success: true,
-      // `cloud_postgres` rather than `non_durable_memory`: a processed
-      // response would flip `cloudLibrarySyncState` to `cloud_synced`, so
-      // the mode assertion below actually distinguishes "discarded" from
-      // "processed" instead of matching either outcome.
-      data: {
-        ownerUserId: 'previous-account',
-        storageMode: 'cloud_postgres',
-        projectId: project.id,
-        storyId: project.storyId,
-        project,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt
-      }
-    });
+    loadSubject.next(createStalePreviousAccountLoadResponse(component));
 
     expect(component.workbench().story?.title).not.toBe('Should not load');
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
@@ -3580,30 +3587,7 @@ describe('App cloud account sign-in wiring', () => {
     // `await` by this point — including the cancellation, if it now happens
     // before that `await` as intended — while Clerk's own `signOut()` is
     // still unresolved.
-    const project: SavedStoryProject = {
-      id: 'previous-account-project',
-      storyId: 'story-previous-account',
-      title: 'Should not load',
-      synopsis: 'Belongs to the account that just signed out.',
-      blueprint: component.blueprint(),
-      summary: createSummary({ title: 'Should not load' }),
-      state: createState(),
-      chapters: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
-      createdAt: '2026-06-08T08:37:00.000Z',
-      updatedAt: '2026-06-08T08:38:00.000Z'
-    };
-    loadSubject.next({
-      success: true,
-      data: {
-        ownerUserId: 'previous-account',
-        storageMode: 'cloud_postgres',
-        projectId: project.id,
-        storyId: project.storyId,
-        project,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt
-      }
-    });
+    loadSubject.next(createStalePreviousAccountLoadResponse(component));
     resolveClerkSignOut();
     await signOutPromise;
 
