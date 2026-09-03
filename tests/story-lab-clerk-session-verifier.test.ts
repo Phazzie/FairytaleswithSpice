@@ -24,8 +24,9 @@ async function main() {
   await testVerifierWiresIntoClerkAuthPortEndToEnd();
   await testVerifierPassesAuthorizedPartiesFromAllowedOrigins();
   await testVerifierDefaultsAuthorizedPartiesWhenNoOriginEnvSet();
-  await testVerifierIncludesTheRequestsOwnTargetOriginAsAnAuthorizedParty();
+  await testVerifierIncludesThePlatformAssignedDeploymentUrl();
   await testVerifierDoesNotDuplicateAnOriginAlreadyInTheStaticList();
+  await testVerifierIgnoresAForgedForwardedHostHeader();
 
   console.log('Story Lab Clerk session verifier tests passed');
 }
@@ -185,23 +186,22 @@ async function testVerifierPassesAuthorizedPartiesFromAllowedOrigins() {
   );
 }
 
-// `resolveAllowedOrigin` in corsPolicy.ts trusts a same-origin request (the
-// frontend and API served from one dynamic host — a Vercel preview URL, say
-// — never listed in any origin env var) via `getRequestTargetOrigin`, not
-// just the static allowlist. `authorizedParties` has to trust that same
-// dynamic origin too, or a deployment whose origin isn't hardcoded into an
-// env var would 401 its own legitimately signed-in users the moment this
-// PR's static-only allowlist landed.
-async function testVerifierIncludesTheRequestsOwnTargetOriginAsAnAuthorizedParty() {
+// A Vercel preview deployment gets a fresh URL nobody hardcoded into
+// `STORY_LAB_ALLOWED_ORIGINS`. Vercel itself injects `VERCEL_URL` into that
+// deployment's own runtime environment — a caller cannot set it — so it is
+// safe to trust as an additional authorized party, unlike a request header.
+async function testVerifierIncludesThePlatformAssignedDeploymentUrl() {
   const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
   const verifier = createClerkSessionVerifierFromEnv(
-    { CLERK_SECRET_KEY: 'sk_test_secret', STORY_LAB_ALLOWED_ORIGINS: 'https://app.example.com' },
+    {
+      CLERK_SECRET_KEY: 'sk_test_secret',
+      STORY_LAB_ALLOWED_ORIGINS: 'https://app.example.com',
+      VERCEL_URL: 'my-branch-preview.vercel.app'
+    },
     { verifyToken: fake.verifyToken }
   );
 
-  await verifier!('session-token-value', {
-    headers: { 'x-forwarded-host': 'my-branch-preview.vercel.app', 'x-forwarded-proto': 'https' }
-  });
+  await verifier!('session-token-value', {});
 
   const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
   assert(
@@ -210,15 +210,40 @@ async function testVerifierIncludesTheRequestsOwnTargetOriginAsAnAuthorizedParty
   );
   assert(
     authorizedParties.includes('https://my-branch-preview.vercel.app'),
-    `authorizedParties should include the request's own dynamic target origin, got ${JSON.stringify(authorizedParties)}`
+    `authorizedParties should include the platform-assigned VERCEL_URL, got ${JSON.stringify(authorizedParties)}`
   );
 }
 
-// The static list and the request's own origin can legitimately name the
-// same deployment (a production origin that is both configured in an env
-// var and the one the request actually arrived on) — this proves that case
-// doesn't produce a duplicate entry.
+// The static list and the platform-assigned URL can legitimately name the
+// same deployment — this proves that case doesn't produce a duplicate entry.
 async function testVerifierDoesNotDuplicateAnOriginAlreadyInTheStaticList() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    {
+      CLERK_SECRET_KEY: 'sk_test_secret',
+      STORY_LAB_ALLOWED_ORIGINS: 'https://app.example.com',
+      VERCEL_URL: 'app.example.com'
+    },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+
+  const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
+  assert(
+    JSON.stringify(authorizedParties) === JSON.stringify(['https://app.example.com']),
+    `an origin already in the static list should not be duplicated, got ${JSON.stringify(authorizedParties)}`
+  );
+}
+
+// The earlier version of this fix derived an authorized party from
+// `X-Forwarded-Host` — safe for CORS (a browser-only restriction a
+// non-browser caller was never bound by anyway) but not for
+// `authorizedParties`, the actual boundary deciding which origins a token
+// may claim. A caller holding a valid token from an untrusted sibling origin
+// could simply set that header to its own `azp` and pass. This proves a
+// forged forwarded-host header is never consulted at all.
+async function testVerifierIgnoresAForgedForwardedHostHeader() {
   const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
   const verifier = createClerkSessionVerifierFromEnv(
     { CLERK_SECRET_KEY: 'sk_test_secret', STORY_LAB_ALLOWED_ORIGINS: 'https://app.example.com' },
@@ -226,13 +251,17 @@ async function testVerifierDoesNotDuplicateAnOriginAlreadyInTheStaticList() {
   );
 
   await verifier!('session-token-value', {
-    headers: { host: 'app.example.com', 'x-forwarded-proto': 'https' }
+    headers: { 'x-forwarded-host': 'attacker-controlled-sibling.example.com', 'x-forwarded-proto': 'https' }
   });
 
   const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
   assert(
+    !authorizedParties.some(origin => origin.includes('attacker-controlled-sibling.example.com')),
+    `a caller-supplied forwarded-host header must never become an authorized party, got ${JSON.stringify(authorizedParties)}`
+  );
+  assert(
     JSON.stringify(authorizedParties) === JSON.stringify(['https://app.example.com']),
-    `an origin already in the static list should not be duplicated, got ${JSON.stringify(authorizedParties)}`
+    `authorizedParties should be unaffected by request headers entirely, got ${JSON.stringify(authorizedParties)}`
   );
 }
 

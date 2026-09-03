@@ -1960,7 +1960,10 @@ export class App implements OnDestroy {
     // unsubscribe it — cancelling the underlying HTTP request rather than
     // letting a response authenticated under the old session arrive after
     // sign-out and repopulate `cloudProjects` with the previous account's
-    // data.
+    // data. `save`/`load`/`deleteCloudProject` hold their own in-flight
+    // subscription in this same field — `isCloudLibraryBusy` already gates
+    // all four cloud-library requests against each other, so at most one is
+    // ever in flight and one field is enough to cancel whichever it is.
     this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
   }
 
@@ -2096,7 +2099,7 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
-    this.storyService.saveCloudStoryProject(project).subscribe({
+    const cloudLibrarySubscription = this.storyService.saveCloudStoryProject(project).subscribe({
       next: response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
@@ -2122,6 +2125,13 @@ export class App implements OnDestroy {
         this.isCloudLibraryBusy.set(false);
       }
     });
+    // `isCloudLibraryBusy` gates save/load/delete/refresh against each other,
+    // so at most one of these subscriptions is ever in flight — the same
+    // field `refreshCloudLibrary` holds its subscription in is safe to reuse
+    // here. Without this, a save that was still in flight when the account
+    // signed out could resolve afterward and silently re-add the previous
+    // account's project to the (now cleared) list.
+    this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
   }
 
   loadCloudProject(projectId: string) {
@@ -2135,7 +2145,7 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
-    this.storyService.loadCloudStoryProject(projectId).subscribe({
+    const cloudLibrarySubscription = this.storyService.loadCloudStoryProject(projectId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
@@ -2171,6 +2181,11 @@ export class App implements OnDestroy {
         this.isCloudLibraryBusy.set(false);
       }
     });
+    // See the matching comment in `saveActiveProjectToCloud`: a load that
+    // resolves after sign-out could otherwise hydrate the previous account's
+    // full story into the UI after it has already cleared its signed-in
+    // state.
+    this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
   }
 
   deleteCloudProject(projectId: string) {
@@ -2184,7 +2199,7 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
-    this.storyService.deleteCloudStoryProject(projectId).subscribe({
+    const cloudLibrarySubscription = this.storyService.deleteCloudStoryProject(projectId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
@@ -2222,6 +2237,8 @@ export class App implements OnDestroy {
         this.isCloudLibraryBusy.set(false);
       }
     });
+    // See the matching comment in `saveActiveProjectToCloud`.
+    this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
   }
 
   private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize, batchId?: string) {

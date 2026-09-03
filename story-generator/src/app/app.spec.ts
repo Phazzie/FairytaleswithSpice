@@ -3266,7 +3266,10 @@ describe('App cloud account sign-in wiring', () => {
   async function createAppWithAuthConfig(config: ApiResponse<{ provider: 'clerk' | 'none'; publishableKey?: string }>) {
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'getStoryLabAuthConfig',
-      'listCloudStoryProjects'
+      'listCloudStoryProjects',
+      'saveCloudStoryProject',
+      'loadCloudStoryProject',
+      'deleteCloudStoryProject'
     ]);
     storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of(config as any));
     // A signed-in session — the `provider: 'clerk'` case below reaches this —
@@ -3417,6 +3420,133 @@ describe('App cloud account sign-in wiring', () => {
           updatedAt: '2026-06-08T08:38:00.000Z'
         }],
         totalProjectCount: 1
+      }
+    });
+
+    expect(component.cloudProjects()).toEqual([]);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+  });
+
+  // Same stale-response race as the listing above, but for a save that was
+  // still in flight when the account signed out — before this was fixed, a
+  // late save response would call `upsertCloudProject` and silently re-add
+  // the previous account's project to the (now cleared) list.
+  it('discards a cloud-save response that arrives after sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_save_response' }
+    });
+    component.workbench.set({
+      story: createSummary({ title: 'Stale Save Pact' }),
+      state: createState(),
+      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      activeBatchSize: 1
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const saveSubject = new Subject<ApiResponse<CloudStoryProjectSaveReceipt>>();
+    storyServiceSpy.saveCloudStoryProject.and.returnValue(saveSubject.asObservable());
+    component.saveActiveProjectToCloud();
+
+    await component.signOutOfCloudAccount();
+
+    saveSubject.next({
+      success: true,
+      data: {
+        projectId: 'previous-account-project',
+        storyId: 'story-previous-account',
+        savedAt: '2026-06-08T08:38:00.000Z',
+        syncState: { mode: 'cloud_synced', lastSyncedAt: '2026-06-08T08:38:00.000Z' }
+      }
+    });
+
+    expect(component.cloudProjects()).toEqual([]);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+  });
+
+  // Same stale-response race, but for a load — before this was fixed, a late
+  // load response would hydrate the previous account's full story into the
+  // UI after it had already cleared its signed-in state.
+  it('discards a cloud-load response that arrives after sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_load_response' }
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
+    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
+    component.loadCloudProject('previous-account-project');
+
+    await component.signOutOfCloudAccount();
+
+    const project: SavedStoryProject = {
+      id: 'previous-account-project',
+      storyId: 'story-previous-account',
+      title: 'Should not load',
+      synopsis: 'Belongs to the account that just signed out.',
+      blueprint: component.blueprint(),
+      summary: createSummary({ title: 'Should not load' }),
+      state: createState(),
+      chapters: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    };
+    loadSubject.next({
+      success: true,
+      // `cloud_postgres` rather than `non_durable_memory`: a processed
+      // response would flip `cloudLibrarySyncState` to `cloud_synced`, so
+      // the mode assertion below actually distinguishes "discarded" from
+      // "processed" instead of matching either outcome.
+      data: {
+        ownerUserId: 'previous-account',
+        storageMode: 'cloud_postgres',
+        projectId: project.id,
+        storyId: project.storyId,
+        project,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      }
+    });
+
+    expect(component.workbench().story?.title).not.toBe('Should not load');
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+  });
+
+  // Same stale-response race, but for a delete — a late delete response
+  // completing after sign-out must not touch the (now cleared) project list
+  // or overwrite the signed-out sync state.
+  it('discards a cloud-delete response that arrives after sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_delete_response' }
+    });
+    component.cloudProjects.set([{
+      projectId: 'previous-account-project',
+      storyId: 'story-previous-account',
+      title: 'Should stay put',
+      synopsis: 'Belongs to the account that just signed out.',
+      chapterCount: 1,
+      acceptedMemoryCardCount: 0,
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    }]);
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const deleteSubject = new Subject<ApiResponse<CloudStoryProjectDeleteReceipt>>();
+    storyServiceSpy.deleteCloudStoryProject.and.returnValue(deleteSubject.asObservable());
+    component.deleteCloudProject('previous-account-project');
+
+    await component.signOutOfCloudAccount();
+
+    deleteSubject.next({
+      success: true,
+      // `cloud_postgres` rather than `non_durable_memory`: a processed
+      // response would flip `cloudLibrarySyncState` to `cloud_synced`, so
+      // the mode assertion below actually distinguishes "discarded" from
+      // "processed" instead of matching either outcome.
+      data: {
+        ownerUserId: 'previous-account',
+        storageMode: 'cloud_postgres',
+        projectId: 'previous-account-project',
+        deleted: true
       }
     });
 
