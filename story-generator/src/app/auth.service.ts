@@ -96,6 +96,23 @@ export class AuthService {
     this.sessionTokenState.set(null);
   }
 
+  /**
+   * Fetches a fresh bearer token for one outgoing account request, rather
+   * than reading the cached `sessionToken` signal. The listener wired in
+   * `loadConfigAndClient` only fires on session *change* events — sign-in,
+   * sign-out, an explicit refresh — not on ordinary JWT expiry between them,
+   * and `session.getToken()` is what performs Clerk's own silent refresh.
+   * Without this, a browser tab left open past the token's lifetime would
+   * keep sending an expired bearer to every account request until the next
+   * session-change event happened to land.
+   */
+  async getRequestToken(): Promise<string | null> {
+    if (!this.client) {
+      return null;
+    }
+    return this.refreshSessionToken();
+  }
+
   private async loadConfigAndClient(): Promise<void> {
     let config: StoryLabAuthConfig;
     try {
@@ -106,6 +123,12 @@ export class AuthService {
       config = response.data;
     } catch (error) {
       this.errorLogging.logError(error, 'AuthService.loadConfigAndClient');
+      // A transient failure (network blip, backend cold start) must not wedge
+      // `initialize()` into permanently returning this same failed, cached
+      // promise — clearing it lets the next `initialize()`/`signIn()` call
+      // actually retry the auth-config request instead of replaying today's
+      // failure forever.
+      this.initPromise = null;
       return;
     }
 
@@ -127,16 +150,23 @@ export class AuthService {
     } catch (error) {
       this.errorLogging.logError(error, 'AuthService.loadConfigAndClient');
       this.client = null;
+      // Same reasoning as the auth-config catch above: a Clerk client that
+      // failed to load (script blocked, network error) should be retried on
+      // the next sign-in attempt, not treated as a permanent unconfigured
+      // state indistinguishable from `provider: 'none'`.
+      this.initPromise = null;
     }
   }
 
-  private async refreshSessionToken(): Promise<void> {
+  private async refreshSessionToken(): Promise<string | null> {
     try {
       const token = (await this.client?.session?.getToken()) ?? null;
       this.sessionTokenState.set(token);
+      return token;
     } catch (error) {
       this.errorLogging.logError(error, 'AuthService.refreshSessionToken');
       this.sessionTokenState.set(null);
+      return null;
     }
   }
 }

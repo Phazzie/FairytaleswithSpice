@@ -4,6 +4,33 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Story Lab Cloud Account/Auth: real Clerk verifier wired end to end (PR #326)
+
+**Correction to this file's own line 880 (`redactBearerTokens`/API_KEYS entry)**: that entry described the Clerk auth port as "permanently inert even when `STORY_LAB_AUTH_PROVIDER=clerk` is set, because no real token verifier is ever wired into the production singleton." That was accurate when written; it is no longer accurate as of this PR. Flagging the correction here rather than editing that historical entry, per this file's own convention of correcting forward.
+
+A "worst-to-best" routine run picked up an unclaimed plan (posted to `#claude-routines` twice over ~24h without a critique reply) and closed the gap: `configuredAuthPort.ts`'s production singleton never passed a `clerk` option, so `requireUser()` unconditionally threw "not configured" regardless of `STORY_LAB_AUTH_PROVIDER`, and the frontend had zero code path to ever obtain a session token in the first place — both halves of the feature were stubs.
+
+Actions:
+
+- `api/_lib/story-lab/auth/clerkSessionVerifier.ts` (new): `createClerkSessionVerifierFromEnv` wraps `@clerk/backend`'s `verifyToken`, wired into the production `configuredAuthPort` singleton; returns `undefined` (same fail-closed path as today) when `CLERK_SECRET_KEY` is unset.
+- New unauthenticated `GET /api/story-lab/account/auth-config` resource, reporting `provider: 'clerk'` only when a provider, publishable key, and secret key are all present together.
+- `story-generator/src/app/auth.service.ts` + `auth.interceptor.ts` (new): lazy-loads `@clerk/clerk-js` only once a publishable key comes back, tracks the session token, attaches it to authenticated account requests.
+- `app.ts` wired so "Connect account" opens real sign-in once configured, and the cloud library auto-refreshes on sign-in.
+- New deps: `@clerk/backend` (root), `@clerk/clerk-js` (frontend, dynamic-imported only).
+- Tests: `tests/story-lab-clerk-session-verifier.test.ts`, extended `tests/story-lab-account-routes.test.ts`, `auth.service.spec.ts`, `auth.interceptor.spec.ts`, `app.spec.ts` wiring specs.
+
+Review follow-up (Codex, four P1s and one P2, all addressed same-session before merge):
+
+- **P1: the interceptor read a cached session-token signal instead of fetching fresh per request** — Clerk's session listener only updates that signal on sign-in/out/refresh *events*, not on ordinary JWT expiry between them, so a long-open tab would keep sending an expired bearer to every account request until the next event. Fixed: `AuthService.getRequestToken()` calls `session.getToken()` (Clerk's own silent-refresh path) fresh on every protected request; the interceptor now awaits it instead of reading the signal.
+- **P1: no sign-out path existed** — once `cloud_synced`, the UI only ever showed an "Account connected" toast; nothing called `AuthService.signOut()`, so a shared device retained the previous reader's authenticated cloud library indefinitely. Fixed: added a `signOutOfCloudAccount()` method and a conditionally-shown "Sign out" control next to the existing account action button.
+- **P1: `StoryLabAuthConfig` defined in the frontend contract and re-exported into `api/_lib/story-lab/contracts.ts`, not `api/_lib/types/contracts.ts`** — evaluated and not changed: `api/_lib/types/contracts.ts` is the *classic*-generator contract file and carries no Story Lab types at all; every other Story Lab type (`StoryMemoryCard`, `SavedStoryProject`, `CloudLibrarySyncState`, and 40+ others) already follows the exact pattern this finding flagged, defined in `story-generator/src/app/contracts.ts` and re-exported through `api/_lib/story-lab/contracts.ts`. Adding `StoryLabAuthConfig` there is consistent with, not a deviation from, the established Story Lab contract-sharing convention — this is not a defect this PR introduced.
+- **P1: this file and `STORY_LAB_AUTH_PROFILE_CLOUD_LIBRARY_EXEC_PLAN.md` still described the Clerk provider as inert** — fixed: this entry, and that plan's "Current Reality On Main"/"Not live yet" sections updated to describe what is now wired versus what still lacks live-tenant proof.
+- **P2: a transient `auth-config`/Clerk-client-load failure permanently cached the failed `initialize()` promise, so a configured deployment stayed reported as unconfigured for the rest of the page lifetime even after connectivity recovered** — fixed: both failure paths in `AuthService.loadConfigAndClient` now clear the cached `initPromise`, so the next `initialize()`/`signIn()` call actually retries.
+
+Non-claim: this PR does not prove sign-in against a live Clerk tenant — there are no Clerk credentials in this environment. The verifier, `auth-config` route, and frontend flow are proven with DI'd/mocked Clerk clients (backend and frontend), not a real Clerk account.
+
+Validation: `npm run test:all` (backend, all green), `tsc --noEmit` on both `tsconfig.app.json` and `tsconfig.spec.json` (clean), `ng build` (clean), full karma suite headless (all green, including the new specs above).
+
 ## 2026-09-02 UTC - Multi-Voice Audio Narration shipped, audio un-deferred by explicit repo-owner ask (PR #323)
 
 `README.md` marketed "multi-voice audio narration" as a flagship feature — a "90+ Emotion System," ElevenLabs integration, a documented `POST /api/audio/convert` contract — with zero code behind it: no `api/audio/`, no `audioService.ts`, zero `ElevenLabs` references anywhere in the repo. `Chapter.hasAudio`/`audioUrl`/`audioDuration` were permanently `false`/`undefined` at every call site, even though the story prompt already emits `[Character, voice: ...]` speaker tags into `rawContent` for a pipeline that was never built to consume them.

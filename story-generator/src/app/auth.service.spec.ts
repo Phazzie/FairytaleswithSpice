@@ -187,4 +187,74 @@ describe('AuthService', () => {
     expect(clientFactorySpy).not.toHaveBeenCalled();
     expect(service.isConfigured()).toBeFalse();
   });
+
+  // A transient auth-config failure (network blip, cold start) must not wedge
+  // `initialize()` into replaying that same failed, cached promise forever —
+  // this is what would catch a regression back to caching the failure itself.
+  it('retries the auth-config request on the next initialize() call after a transient failure', async () => {
+    const service = TestBed.inject(AuthService);
+    const firstInit = service.initialize();
+    httpMock.expectOne(AUTH_CONFIG_URL).flush('boom', { status: 500, statusText: 'Server Error' });
+    await firstInit;
+
+    const retryPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_retry' });
+    await retryPromise;
+
+    expect(clientFactorySpy).toHaveBeenCalledOnceWith('pk_test_retry');
+    expect(service.isConfigured()).toBeTrue();
+  });
+
+  // Same reasoning, for the Clerk client itself failing to load (blocked
+  // script, network error) rather than the auth-config request.
+  it('retries loading the Clerk client on the next signIn() after a transient client-load failure', async () => {
+    clientFactorySpy.and.rejectWith(new Error('script blocked'));
+    const service = TestBed.inject(AuthService);
+    const firstInit = service.initialize();
+    httpMock.expectOne(AUTH_CONFIG_URL).flush({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_client_retry' }
+    });
+    await firstInit;
+    // `isConfigured()` reflects what the backend reported, independent of
+    // whether the client itself loaded — the failed load instead shows up
+    // as no session and `signIn()` never reaching `openSignIn()`.
+    expect(service.isSignedIn()).toBeFalse();
+    expect(fakeClient.openSignInCalls).toBe(0);
+
+    clientFactorySpy.and.callFake(async () => fakeClient);
+    const retrySignIn = service.signIn();
+    httpMock.expectOne(AUTH_CONFIG_URL).flush({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_client_retry' }
+    });
+    await retrySignIn;
+
+    expect(fakeClient.openSignInCalls).toBe(1);
+  });
+
+  it('getRequestToken() returns null when no Clerk client is loaded', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'none' });
+    await initPromise;
+
+    expect(await service.getRequestToken()).toBeNull();
+  });
+
+  // The interceptor calls this per request specifically because the cached
+  // `sessionToken` signal only updates on session *change* events — this
+  // proves `getRequestToken()` re-asks Clerk rather than replaying the
+  // signal's last value.
+  it('getRequestToken() fetches a fresh token from Clerk rather than the cached signal', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_fresh_token' });
+    await initPromise;
+    expect(service.sessionToken()).toBe('initial-session-token');
+
+    fakeClient.tokenValue = 'rotated-without-listener-event';
+    expect(await service.getRequestToken()).toBe('rotated-without-listener-event');
+    expect(service.sessionToken()).toBe('rotated-without-listener-event');
+  });
 });

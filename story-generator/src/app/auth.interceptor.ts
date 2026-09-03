@@ -2,6 +2,8 @@
 
 import { HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
+import { from } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 
 /**
@@ -18,16 +20,20 @@ const ACCOUNT_AUTH_ROUTE_PATTERN = /\/api\/story-lab\/account\/(profile|projects
  * code path that could ever attach `Authorization` — the backend verifier
  * being wired up would not have mattered, because nothing on the frontend
  * would ever send it a token to verify.
+ *
+ * Fetches the token fresh through `getRequestToken()` for each request
+ * rather than reading the cached `sessionToken` signal: Clerk's session
+ * listener only updates that signal on sign-in/out/refresh *events*, not on
+ * ordinary JWT expiry between them, so a stale cached read would keep
+ * attaching an expired bearer to every request until the next event.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   if (!ACCOUNT_AUTH_ROUTE_PATTERN.test(req.url)) {
     return next(req);
   }
 
-  const token = inject(AuthService).sessionToken();
-  if (!token) {
-    return next(req);
-  }
-
-  return next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }));
+  const authService = inject(AuthService);
+  return from(authService.getRequestToken()).pipe(
+    switchMap(token => next(token ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : req))
+  );
 };

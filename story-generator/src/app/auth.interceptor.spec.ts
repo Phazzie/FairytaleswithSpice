@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { authInterceptor } from './auth.interceptor';
@@ -7,11 +7,11 @@ import { AuthService } from './auth.service';
 describe('authInterceptor', () => {
   let httpMock: HttpTestingController;
   let http: HttpClient;
-  let authServiceSpy: jasmine.SpyObj<Pick<AuthService, 'sessionToken'>>;
+  let authServiceSpy: jasmine.SpyObj<Pick<AuthService, 'getRequestToken'>>;
 
   beforeEach(() => {
-    authServiceSpy = jasmine.createSpyObj<Pick<AuthService, 'sessionToken'>>('AuthService', ['sessionToken']);
-    authServiceSpy.sessionToken.and.returnValue(null);
+    authServiceSpy = jasmine.createSpyObj<Pick<AuthService, 'getRequestToken'>>('AuthService', ['getRequestToken']);
+    authServiceSpy.getRequestToken.and.resolveTo(null);
 
     TestBed.configureTestingModule({
       providers: [
@@ -29,39 +29,61 @@ describe('authInterceptor', () => {
     httpMock.verify();
   });
 
-  it('attaches the session token to account profile requests when signed in', () => {
-    authServiceSpy.sessionToken.and.returnValue('signed-in-session-token');
+  it('attaches the session token to account profile requests when signed in', fakeAsync(() => {
+    authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
 
     http.get('/api/story-lab/account/profile').subscribe();
+    tick();
 
     const req = httpMock.expectOne('/api/story-lab/account/profile');
     expect(req.request.headers.get('Authorization')).toBe('Bearer signed-in-session-token');
     req.flush({ success: true });
-  });
+  }));
 
-  it('attaches the session token to cloud project requests', () => {
-    authServiceSpy.sessionToken.and.returnValue('signed-in-session-token');
+  it('attaches the session token to cloud project requests', fakeAsync(() => {
+    authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
 
     http.get('/api/story-lab/account/projects/project-1').subscribe();
+    tick();
 
     const req = httpMock.expectOne('/api/story-lab/account/projects/project-1');
     expect(req.request.headers.get('Authorization')).toBe('Bearer signed-in-session-token');
     req.flush({ success: true });
-  });
+  }));
 
-  it('does not attach a header when there is no session', () => {
+  it('does not attach a header when there is no session', fakeAsync(() => {
     http.get('/api/story-lab/account/profile').subscribe();
+    tick();
 
     const req = httpMock.expectOne('/api/story-lab/account/profile');
     expect(req.request.headers.has('Authorization')).toBeFalse();
     req.flush({ success: true });
-  });
+  }));
+
+  // The interceptor must fetch a fresh token per request rather than reading
+  // a cached one — this is what would catch a regression back to a
+  // signal-read that never expires a stale bearer.
+  it('asks for a fresh token on every protected request rather than caching one', fakeAsync(() => {
+    authServiceSpy.getRequestToken.and.resolveTo('token-one');
+    http.get('/api/story-lab/account/profile').subscribe();
+    tick();
+    httpMock.expectOne('/api/story-lab/account/profile').flush({ success: true });
+
+    authServiceSpy.getRequestToken.and.resolveTo('token-two');
+    http.get('/api/story-lab/account/profile').subscribe();
+    tick();
+    const secondReq = httpMock.expectOne('/api/story-lab/account/profile');
+    expect(secondReq.request.headers.get('Authorization')).toBe('Bearer token-two');
+    secondReq.flush({ success: true });
+
+    expect(authServiceSpy.getRequestToken).toHaveBeenCalledTimes(2);
+  }));
 
   // `auth-config` is the one account resource that has to work with no
   // session at all — this is what would catch a broadened route pattern
   // accidentally starting to require what this resource cannot have yet.
   it('does not attach a header to the auth-config request even when signed in', () => {
-    authServiceSpy.sessionToken.and.returnValue('signed-in-session-token');
+    authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
 
     http.get('/api/story-lab/account/auth-config').subscribe();
 
@@ -71,7 +93,7 @@ describe('authInterceptor', () => {
   });
 
   it('leaves requests outside the Story Lab account surface untouched', () => {
-    authServiceSpy.sessionToken.and.returnValue('signed-in-session-token');
+    authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
 
     http.get('/api/story-lab/stories').subscribe();
 

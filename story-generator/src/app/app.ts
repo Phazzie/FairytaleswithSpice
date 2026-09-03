@@ -1160,6 +1160,11 @@ export class App implements OnDestroy {
     }
   });
   readonly canUseCloudLibrary = computed(() => this.cloudLibrarySyncState().mode === 'cloud_synced');
+  // `cloud_synced` is only reachable after an authenticated `/account/projects`
+  // call succeeds, so it already implies a real Clerk session — but the
+  // template still needs its own signal to decide whether a sign-out control
+  // has anything to do, since `AuthService` itself is private to this class.
+  readonly isCloudAccountSignedIn = computed(() => this.authService.isSignedIn());
   readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
     const chapters = this.workbench().chapterHistory;
     if (!chapters.length) {
@@ -1982,6 +1987,25 @@ export class App implements OnDestroy {
       message: 'Sign-in setup is not configured yet. Local browser saves are still available.'
     });
     this.notificationService.info('Account setup pending', 'Sign-in setup is not configured yet.');
+  }
+
+  /**
+   * Ends the signed-in Clerk session. Before this existed there was no code
+   * path back out of `cloud_synced` short of clearing cookies by hand — a
+   * real gap on a shared device, since the next person to open the app would
+   * keep the previous reader's authenticated cloud library.
+   */
+  async signOutOfCloudAccount(): Promise<void> {
+    if (!this.isCloudAccountSignedIn()) {
+      return;
+    }
+
+    await this.authService.signOut();
+    this.cloudLibrarySyncState.set({
+      mode: 'cloud_unavailable',
+      message: 'Signed out. Local browser saves are still available.'
+    });
+    this.notificationService.info('Signed out', 'Cloud sync is now disconnected on this device.');
   }
 
   saveActiveProjectToCloud() {

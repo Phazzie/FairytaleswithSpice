@@ -17,14 +17,14 @@ The desired user-visible outcome is:
 
 ## Current Reality On Main
 
-This checklist is current after PR #118, the consolidated account-route change set, and the Angular cloud-library UI change set.
+This checklist is current after PR #118, the consolidated account-route change set, the Angular cloud-library UI change set, and the "Story Lab Cloud Account/Auth" worst-to-best PR that wired a real Clerk provider end to end.
 
 - `AuthPort` exists and is deny-by-default.
 - `authorizeProjectAccess` exists.
 - `StoryProjectStore` exists with non-durable memory and injected Postgres scaffolds.
 - Story Lab profile, cloud-library, and preference contract types exist.
 - Configured auth selection fails closed unless a supported provider is configured.
-- A Clerk-shaped auth adapter scaffold exists, but it still requires an injected verifier and is not a live sign-in flow.
+- The Clerk auth adapter has a real verifier wired into the production `configuredAuthPort` singleton (`@clerk/backend`'s `verifyToken`, gated on `CLERK_SECRET_KEY`), and the Angular app has a live sign-in flow: an unauthenticated `GET /account/auth-config` endpoint reports whether a deployment has a provider, publishable key, and secret key all configured together; `AuthService` lazy-loads `@clerk/clerk-js` only when it does, and `authInterceptor` attaches a freshly-fetched bearer token to authenticated account requests. Deploying this against a real Clerk tenant with `STORY_LAB_AUTH_PROVIDER=clerk`, `CLERK_PUBLISHABLE_KEY`, and `CLERK_SECRET_KEY` set has not been proven end to end against a live Clerk tenant in this environment (no credentials available here) — that live-provider proof is still open.
 - Profile stores exist for non-durable memory and injected Postgres execution.
 - Cloud schema, guarded migration/readiness helpers, guarded cloud storage config, and Neon executor scaffolding exist.
 - One consolidated account route exists for profile and project operations behind injectable auth/profile/project stores.
@@ -38,8 +38,7 @@ This checklist is current after PR #118, the consolidated account-route change s
 
 Not live yet:
 
-- production auth provider wiring;
-- signed-in browser flow;
+- end-to-end sign-in proof against a real Clerk tenant (the verifier and frontend flow are wired and tested with mocked/DI'd Clerk clients, but no live Clerk credentials are available in this environment to prove it against a real tenant);
 - private user profiles in durable storage;
 - cloud project save/list/load/delete proven against a live durable database;
 - database provisioning or executed migrations;

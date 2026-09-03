@@ -3241,11 +3241,13 @@ describe('App', () => {
 // construction — there is no hook to swap it in after the fact, and nesting here
 // would instantiate `TestBed` twice for the same test.
 describe('App cloud account sign-in wiring', () => {
-  function createFakeClerkClient(openSignIn: jasmine.Spy): ClerkClient {
+  function createFakeClerkClient(openSignIn: jasmine.Spy, signOut?: jasmine.Spy): ClerkClient {
     return {
       async load() {},
       openSignIn,
-      async signOut() {},
+      async signOut() {
+        await signOut?.();
+      },
       addListener: () => () => {},
       session: { getToken: async () => 'fake-session-token' }
     };
@@ -3277,8 +3279,9 @@ describe('App cloud account sign-in wiring', () => {
     ]);
     errorLoggingSpy.getErrors.and.returnValue(of([]));
     const openSignIn = jasmine.createSpy('openSignIn');
+    const signOut = jasmine.createSpy('signOut');
     const clientFactory = jasmine.createSpy('clerkClientFactory')
-      .and.returnValue(Promise.resolve(createFakeClerkClient(openSignIn)));
+      .and.returnValue(Promise.resolve(createFakeClerkClient(openSignIn, signOut)));
 
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
@@ -3296,7 +3299,7 @@ describe('App cloud account sign-in wiring', () => {
     // same idempotent promise it is already running, so awaiting it here
     // waits for exactly that chain and nothing else.
     await TestBed.inject(AuthService).initialize();
-    return { fixture: localFixture, component: localFixture.componentInstance, openSignIn };
+    return { fixture: localFixture, component: localFixture.componentInstance, openSignIn, signOut };
   }
 
   afterEach(() => {
@@ -3333,6 +3336,36 @@ describe('App cloud account sign-in wiring', () => {
     expect(component.cloudLibrarySyncState().message).toBe(
       'Sign-in setup is not configured yet. Local browser saves are still available.'
     );
+  });
+
+  // Before `signOutOfCloudAccount()` existed there was no path back out of a
+  // signed-in session short of clearing cookies by hand — a real gap on a
+  // shared device, since the next reader would keep the previous one's
+  // authenticated cloud library.
+  it('signs out of the Clerk session and returns cloud state to unavailable', async () => {
+    const { component, signOut } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_sign_out_wiring' }
+    });
+    expect(component.isCloudAccountSignedIn()).toBeTrue();
+
+    await component.signOutOfCloudAccount();
+
+    expect(signOut).toHaveBeenCalled();
+    expect(component.isCloudAccountSignedIn()).toBeFalse();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toBe('Signed out. Local browser saves are still available.');
+  });
+
+  it('does nothing when asked to sign out while already signed out', async () => {
+    const { component, signOut } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'none' }
+    });
+
+    await component.signOutOfCloudAccount();
+
+    expect(signOut).not.toHaveBeenCalled();
   });
 });
 
