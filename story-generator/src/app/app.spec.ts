@@ -3666,6 +3666,45 @@ describe('App cloud account sign-in wiring', () => {
     expect(component.workbench().story?.title).not.toBe('Should not load');
   });
 
+  // Before this was fixed, a stale `error`/`complete` was discarded the same
+  // way a stale `next` payload is — but unlike `next`, nothing else ever
+  // clears `isCloudLibraryBusy` for that request: dropping the callback
+  // entirely left every cloud control disabled permanently, since no later
+  // callback exists to release it. This proves the busy lock still releases
+  // on a stale `error`, while the error's own state-mutating side effects
+  // (logging, `cloudLibrarySyncState`) stay discarded.
+  it('releases the busy lock on a stale error response, without applying its error state', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_error_releases_lock' }
+    });
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
+
+    await TestBed.inject(AuthService).signOut();
+    const syncStateAfterSignOut = component.cloudLibrarySyncState();
+
+    loadSubject.error(new Error('stale request failed'));
+
+    expect(component.isCloudLibraryBusy()).toBeFalse();
+    expect(component.cloudLibrarySyncState()).toEqual(syncStateAfterSignOut);
+  });
+
+  // Same fix, but for a stale `complete` with no `next`/`error` before it —
+  // the shape an aborted or empty response takes.
+  it('releases the busy lock on a stale completion', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_complete_releases_lock' }
+    });
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
+
+    await TestBed.inject(AuthService).signOut();
+
+    loadSubject.complete();
+
+    expect(component.isCloudLibraryBusy()).toBeFalse();
+  });
+
   // Before this was fixed, a rejected `client.signOut()` was swallowed and
   // the local token cleared regardless, so the app would announce "signed
   // out" on a shared device even though Clerk's own session could still be

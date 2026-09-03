@@ -1994,17 +1994,16 @@ export class App implements OnDestroy {
           message: `${loaded} loaded.`
         });
       }),
-      error: this.guardStaleCloudResponse(requestIdentity, error => {
+      error: this.guardStaleCloudError(requestIdentity, error => {
         this.errorLogging.logError(error, 'App.refreshCloudLibrary');
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
           message: this.formatHttpError(error, 'Cloud library is unavailable until account sync is configured.')
         });
-        this.isCloudLibraryBusy.set(false);
       }),
-      complete: this.guardStaleCloudComplete(requestIdentity, () => {
+      complete: () => {
         this.isCloudLibraryBusy.set(false);
-      })
+      }
     });
     // Held so a sign-out that lands while this request is still in flight
     // (see the constructor's effect and `signOutOfCloudAccount()`) can
@@ -2070,11 +2069,13 @@ export class App implements OnDestroy {
   }
 
   /**
-   * Wraps a `next`/`error`/`complete` handler so the identity check above
-   * happens once, at the call site each of `refreshCloudLibrary`/
-   * `saveActiveProjectToCloud`/`loadCloudProject`/`deleteCloudProject`
-   * already needs it, rather than as a repeated three-line guard inlined
-   * into all twelve of those callbacks.
+   * Wraps a `next` handler so the identity check above happens once, at the
+   * call site each of `refreshCloudLibrary`/`saveActiveProjectToCloud`/
+   * `loadCloudProject`/`deleteCloudProject` already needs it, rather than as
+   * a repeated three-line guard inlined into each of those callbacks. A
+   * stale `next` payload is dropped entirely — it belongs to a request no
+   * longer representing the live signed-in state, so applying it would
+   * repopulate the UI with the wrong account's data.
    */
   private guardStaleCloudResponse<T>(
     requestIdentity: CloudRequestIdentity,
@@ -2088,18 +2089,26 @@ export class App implements OnDestroy {
     };
   }
 
-  // A separate zero-argument overload rather than reusing
-  // `guardStaleCloudResponse` for `complete`: a `(value: unknown) => void`
-  // wrapper is not assignable to RxJS's `complete: () => void`.
-  private guardStaleCloudComplete(
+  /**
+   * Wraps an `error` handler the same way, except the busy lock always
+   * releases even when the response is stale: `isCloudLibraryBusy` is set
+   * once, at the start of each request, and only `error`/`complete` ever
+   * clear it, so a stale `error` that skipped clearing it — the same way a
+   * stale `next` payload is dropped — would leave every cloud control
+   * disabled permanently, since no later callback exists to release it. The
+   * error's own state-mutating side effects (logging, `cloudLibrarySyncState`)
+   * still only apply when the response isn't stale.
+   */
+  private guardStaleCloudError<T>(
     requestIdentity: CloudRequestIdentity,
-    handler: () => void
-  ): () => void {
-    return () => {
+    handler: (value: T) => void
+  ): (value: T) => void {
+    return value => {
+      this.isCloudLibraryBusy.set(false);
       if (this.isStaleCloudResponse(requestIdentity)) {
         return;
       }
-      handler();
+      handler(value);
     };
   }
 
@@ -2265,17 +2274,16 @@ export class App implements OnDestroy {
         this.cloudLibrarySyncState.set(response.data.syncState);
         this.notificationService.success('Cloud save requested', project.title);
       }),
-      error: this.guardStaleCloudResponse(requestIdentity, error => {
+      error: this.guardStaleCloudError(requestIdentity, error => {
         this.errorLogging.logError(error, 'App.saveActiveProjectToCloud');
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
           message: this.formatHttpError(error, 'Cloud save is unavailable until account sync is configured.')
         });
-        this.isCloudLibraryBusy.set(false);
       }),
-      complete: this.guardStaleCloudComplete(requestIdentity, () => {
+      complete: () => {
         this.isCloudLibraryBusy.set(false);
-      })
+      }
     });
     // `isCloudLibraryBusy` gates save/load/delete/refresh against each other,
     // so at most one of these subscriptions is ever in flight — the same
@@ -2322,17 +2330,16 @@ export class App implements OnDestroy {
           });
         }
       }),
-      error: this.guardStaleCloudResponse(requestIdentity, error => {
+      error: this.guardStaleCloudError(requestIdentity, error => {
         this.errorLogging.logError(error, 'App.loadCloudProject');
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
           message: this.formatHttpError(error, 'Cloud story could not be loaded.')
         });
-        this.isCloudLibraryBusy.set(false);
       }),
-      complete: this.guardStaleCloudComplete(requestIdentity, () => {
+      complete: () => {
         this.isCloudLibraryBusy.set(false);
-      })
+      }
     });
     // See the matching comment in `saveActiveProjectToCloud`: a load that
     // resolves after sign-out could otherwise hydrate the previous account's
@@ -2379,17 +2386,16 @@ export class App implements OnDestroy {
           });
         }
       }),
-      error: this.guardStaleCloudResponse(requestIdentity, error => {
+      error: this.guardStaleCloudError(requestIdentity, error => {
         this.errorLogging.logError(error, 'App.deleteCloudProject');
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
           message: this.formatHttpError(error, 'Cloud delete failed.')
         });
-        this.isCloudLibraryBusy.set(false);
       }),
-      complete: this.guardStaleCloudComplete(requestIdentity, () => {
+      complete: () => {
         this.isCloudLibraryBusy.set(false);
-      })
+      }
     });
     // See the matching comment in `saveActiveProjectToCloud`.
     this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;

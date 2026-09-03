@@ -253,6 +253,39 @@ describe('AuthService', () => {
     expect(service.sessionToken()).toBe('token-for-current-account');
   });
 
+  // Unlike the overlapping-refresh test above, the second call here is a
+  // real account switch (`fireSessionChange`, which bumps `sessionEpoch`),
+  // not another same-identity `getRequestToken()` call. Before this was
+  // fixed, the earlier call deferred to the newer call's result the same
+  // way regardless of identity, so a caller that had already built a
+  // request for the old account (a cloud save's payload, say) could end up
+  // sending it authenticated as the new account.
+  it('rejects an earlier request rather than authenticating it with a newer account\'s token when the account switches mid-flight', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_cross_account_switch' });
+    await initPromise;
+
+    let resolveFirstGetToken!: (token: string | null) => void;
+    let getTokenCalls = 0;
+    fakeClient.session!.getToken = () => {
+      getTokenCalls += 1;
+      if (getTokenCalls === 1) {
+        return new Promise<string | null>(resolve => { resolveFirstGetToken = resolve; });
+      }
+      return Promise.resolve('token-for-account-b');
+    };
+
+    const firstRequest = service.getRequestToken();
+    fakeClient.fireSessionChange('token-for-account-b');
+
+    resolveFirstGetToken('token-for-account-a');
+    const firstResult = await firstRequest;
+
+    expect(firstResult).toBeNull();
+    expect(service.sessionToken()).toBe('token-for-account-b');
+  });
+
   // The publishable key with no secret key case, and vice versa, are proven
   // server-side in `story-lab-account-routes.test.ts` — this only proves the
   // frontend actually honors whatever `provider` the route reports, rather
