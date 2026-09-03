@@ -1947,8 +1947,12 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
+    const requestIdentity = this.captureCloudRequestIdentity();
     const cloudLibrarySubscription = this.storyService.listCloudStoryProjects().subscribe({
       next: response => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -1981,6 +1985,9 @@ export class App implements OnDestroy {
         });
       },
       error: error => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         this.errorLogging.logError(error, 'App.refreshCloudLibrary');
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
@@ -1989,6 +1996,9 @@ export class App implements OnDestroy {
         this.isCloudLibraryBusy.set(false);
       },
       complete: () => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         this.isCloudLibraryBusy.set(false);
       }
     });
@@ -2011,6 +2021,34 @@ export class App implements OnDestroy {
     this.cloudLibrarySubscription.unsubscribe();
     this.cloudLibrarySubscription = null;
     this.isCloudLibraryBusy.set(false);
+  }
+
+  /**
+   * The signed-in identity a cloud-library request was made for, snapshotted
+   * at the moment it starts, so its response callbacks can tell — no matter
+   * when they run — whether they still belong to the account currently
+   * signed in.
+   *
+   * Cancelling the subscription (`cancelInFlightCloudLibraryRequest`, called
+   * from `signOutOfCloudAccount()` and the constructor effect) is not
+   * sufficient on its own: Angular's constructor `effect()` is scheduled
+   * asynchronously, so an external session change (Clerk revoking a session,
+   * or a multi-session account switch in another tab) can leave a real
+   * window where an already-in-flight response's callback runs *before* the
+   * effect gets a chance to cancel it — cancelling afterward stops nothing
+   * that already ran. Reading `authService.isSignedIn()`/`accountId()` here
+   * is not subject to that same delay: a signal's current value is correct
+   * the instant it's read, regardless of when any effect depending on it
+   * next runs, so comparing against a live read inside each callback closes
+   * the window cancellation alone cannot.
+   */
+  private captureCloudRequestIdentity(): { signedIn: boolean; accountId: string | null } {
+    return { signedIn: this.authService.isSignedIn(), accountId: this.authService.accountId() };
+  }
+
+  private isStaleCloudResponse(requestIdentity: { signedIn: boolean; accountId: string | null }): boolean {
+    const current = this.captureCloudRequestIdentity();
+    return current.signedIn !== requestIdentity.signedIn || current.accountId !== requestIdentity.accountId;
   }
 
   /**
@@ -2160,8 +2198,12 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
+    const requestIdentity = this.captureCloudRequestIdentity();
     const cloudLibrarySubscription = this.storyService.saveCloudStoryProject(project).subscribe({
       next: response => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -2175,6 +2217,9 @@ export class App implements OnDestroy {
         this.notificationService.success('Cloud save requested', project.title);
       },
       error: error => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         this.errorLogging.logError(error, 'App.saveActiveProjectToCloud');
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
@@ -2183,6 +2228,9 @@ export class App implements OnDestroy {
         this.isCloudLibraryBusy.set(false);
       },
       complete: () => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         this.isCloudLibraryBusy.set(false);
       }
     });
@@ -2206,8 +2254,12 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
+    const requestIdentity = this.captureCloudRequestIdentity();
     const cloudLibrarySubscription = this.storyService.loadCloudStoryProject(projectId).subscribe({
       next: response => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -2231,6 +2283,9 @@ export class App implements OnDestroy {
         }
       },
       error: error => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         this.errorLogging.logError(error, 'App.loadCloudProject');
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
@@ -2239,6 +2294,9 @@ export class App implements OnDestroy {
         this.isCloudLibraryBusy.set(false);
       },
       complete: () => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         this.isCloudLibraryBusy.set(false);
       }
     });
@@ -2260,8 +2318,12 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
+    const requestIdentity = this.captureCloudRequestIdentity();
     const cloudLibrarySubscription = this.storyService.deleteCloudStoryProject(projectId).subscribe({
       next: response => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -2287,6 +2349,9 @@ export class App implements OnDestroy {
         }
       },
       error: error => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         this.errorLogging.logError(error, 'App.deleteCloudProject');
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
@@ -2295,6 +2360,9 @@ export class App implements OnDestroy {
         this.isCloudLibraryBusy.set(false);
       },
       complete: () => {
+        if (this.isStaleCloudResponse(requestIdentity)) {
+          return;
+        }
         this.isCloudLibraryBusy.set(false);
       }
     });

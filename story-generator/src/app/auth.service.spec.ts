@@ -185,6 +185,35 @@ describe('AuthService', () => {
     expect(service.isSignedIn()).toBeTrue();
   });
 
+  // Before this was fixed, a `refreshSessionToken()` call already awaiting
+  // `session.getToken()` when `signOut()` completed could resolve afterward
+  // and unconditionally overwrite the `null` `signOut()` had just set —
+  // resurrecting the very session sign-out ended. This holds `getToken()`
+  // open with a controlled promise to prove that stale resolution is
+  // discarded rather than applied.
+  it('discards a session refresh that was already in flight when sign-out lands', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_stale_refresh' });
+    await initPromise;
+    expect(service.isSignedIn()).toBeTrue();
+
+    let resolvePendingGetToken!: (token: string | null) => void;
+    fakeClient.session!.getToken = () => new Promise<string | null>(resolve => {
+      resolvePendingGetToken = resolve;
+    });
+    const pendingRefresh = service.getRequestToken();
+
+    await service.signOut();
+    expect(service.isSignedIn()).toBeFalse();
+
+    resolvePendingGetToken('token-fetched-before-sign-out');
+    await pendingRefresh;
+
+    expect(service.isSignedIn()).toBeFalse();
+    expect(service.sessionToken()).toBeNull();
+  });
+
   // The publishable key with no secret key case, and vice versa, are proven
   // server-side in `story-lab-account-routes.test.ts` — this only proves the
   // frontend actually honors whatever `provider` the route reports, rather

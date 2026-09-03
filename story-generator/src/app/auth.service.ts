@@ -84,6 +84,10 @@ export class AuthService {
   private readonly sessionTokenState = signal<string | null>(null);
   private client: ClerkClient | null = null;
   private initPromise: Promise<void> | null = null;
+  // Bumped by `signOut()` and by every `refreshSessionToken()` call's own
+  // start — see that method's own comment for why a request-scoped counter,
+  // not a session-scoped one, is what closes this race.
+  private sessionRefreshGeneration = 0;
 
   readonly isConfigured = computed(() => this.authConfigState()?.provider === 'clerk');
   readonly sessionToken = computed(() => this.sessionTokenState());
@@ -138,6 +142,13 @@ export class AuthService {
     }
 
     await this.client.signOut();
+    // Invalidates any `refreshSessionToken()` call already in flight when
+    // sign-out started — without this, that older call's `await
+    // session.getToken()` could resolve *after* the line below, with a
+    // token fetched before sign-out, and unconditionally overwrite the
+    // `null` this line is about to set — resurrecting the session sign-out
+    // just ended.
+    this.sessionRefreshGeneration++;
     this.sessionTokenState.set(null);
   }
 
@@ -203,12 +214,31 @@ export class AuthService {
     }
   }
 
+  /**
+   * `requestGeneration` is captured fresh on every call, not read from a
+   * single session-scoped flag: two overlapping calls (a session-change
+   * listener firing while an interceptor's `getRequestToken()` is already
+   * awaiting `getToken()`, say, or a rapid account switch) can resolve out
+   * of order, and only the call that started *last* is allowed to write —
+   * an earlier one resolving after it must not overwrite a result that is
+   * already known to be newer. `sessionTokenState()` (the current, more
+   * authoritative value) is returned instead of the fetched-but-discarded
+   * token in that case; whatever superseded this call — `signOut()`'s
+   * `null`, or a newer refresh's real token — already set it correctly.
+   */
   private async refreshSessionToken(): Promise<string | null> {
+    const requestGeneration = ++this.sessionRefreshGeneration;
     try {
       const token = (await this.client?.session?.getToken()) ?? null;
+      if (requestGeneration !== this.sessionRefreshGeneration) {
+        return this.sessionTokenState();
+      }
       this.sessionTokenState.set(token);
       return token;
     } catch (error) {
+      if (requestGeneration !== this.sessionRefreshGeneration) {
+        return this.sessionTokenState();
+      }
       this.errorLogging.logError(error, 'AuthService.refreshSessionToken');
       this.sessionTokenState.set(null);
       return null;

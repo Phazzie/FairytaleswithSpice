@@ -3632,6 +3632,35 @@ describe('App cloud account sign-in wiring', () => {
     expect(component.isCloudLibraryBusy()).toBeFalse();
   });
 
+  // Cancelling the subscription (the tests above) is not a complete fix on
+  // its own: Angular's constructor `effect()` is scheduled asynchronously,
+  // so an external session change (Clerk revoking a session, or an account
+  // switch in another tab) can leave a real window where an already-queued
+  // response's callback runs *before* the effect ever gets to cancel it —
+  // cancelling afterward stops nothing that already ran. This proves the
+  // response is still discarded in exactly that ordering: the live
+  // `AuthService` signal is changed directly, without going through
+  // `signOutOfCloudAccount()` or the constructor effect at all, so nothing
+  // in this test path has cancelled anything by the time the stale response
+  // arrives — only the live-identity comparison inside the response
+  // callback itself can be what discards it.
+  it('discards a cloud response whose identity no longer matches the live signed-in state, independent of the constructor effect', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_live_identity_guard' }
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
+    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
+    component.loadCloudProject('previous-account-project');
+
+    await TestBed.inject(AuthService).signOut();
+
+    loadSubject.next(createStalePreviousAccountLoadResponse(component));
+
+    expect(component.workbench().story?.title).not.toBe('Should not load');
+  });
+
   // Before this was fixed, a rejected `client.signOut()` was swallowed and
   // the local token cleared regardless, so the app would announce "signed
   // out" on a shared device even though Clerk's own session could still be
