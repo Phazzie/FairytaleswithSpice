@@ -26,6 +26,7 @@ async function main() {
   await testVerifierPassesAuthorizedPartiesFromAllowedOrigins();
   await testVerifierDefaultsAuthorizedPartiesWhenNoOriginEnvSet();
   await testVerifierIncludesThePlatformAssignedDeploymentUrl();
+  await testVerifierIncludesTheStableProductionUrl();
   await testVerifierDoesNotDuplicateAnOriginAlreadyInTheStaticList();
   await testVerifierIgnoresAForgedForwardedHostHeader();
 
@@ -231,6 +232,31 @@ async function testVerifierIncludesThePlatformAssignedDeploymentUrl() {
   assert(
     authorizedParties.includes('https://my-branch-preview.vercel.app'),
     `authorizedParties should include the platform-assigned VERCEL_URL, got ${JSON.stringify(authorizedParties)}`
+  );
+}
+
+// `VERCEL_URL` is this specific deployment's own generated URL, fresh every
+// deploy — not the stable production domain a reader actually visits.
+// `VERCEL_PROJECT_PRODUCTION_URL` is that stable domain, platform-assigned
+// and just as untrustable-from-a-request as the other two, so it belongs in
+// `authorizedParties` for the same reason.
+async function testVerifierIncludesTheStableProductionUrl() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    {
+      CLERK_SECRET_KEY: 'sk_test_secret',
+      VERCEL_URL: 'fairytaleswith-spice-abc123.vercel.app',
+      VERCEL_PROJECT_PRODUCTION_URL: 'fairytaleswith-spice.vercel.app'
+    },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+
+  const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
+  assert(
+    authorizedParties.includes('https://fairytaleswith-spice.vercel.app'),
+    `authorizedParties should include the stable VERCEL_PROJECT_PRODUCTION_URL, got ${JSON.stringify(authorizedParties)}`
   );
 }
 

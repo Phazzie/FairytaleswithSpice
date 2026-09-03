@@ -41,7 +41,16 @@ export interface ClerkSessionVerifierDependencies {
  * anything in the request, so a caller cannot influence them.
  */
 function resolvePlatformOrigins(env: Record<string, string | undefined>): string[] {
-  return [env['VERCEL_URL'], env['VERCEL_BRANCH_URL']]
+  // `VERCEL_URL` is this specific deployment's own generated URL — a fresh
+  // one every deploy — and `VERCEL_BRANCH_URL` the current branch's stable
+  // preview URL. Neither is the production domain: `VERCEL_PROJECT_PRODUCTION_URL`
+  // is the platform-assigned stable domain production traffic actually
+  // arrives on, distinct from and not derivable from the other two. Omitting
+  // it meant a reader opening the app through that production URL — the
+  // normal way, on any deployment that hasn't also set `FRONTEND_URL`/
+  // `STORY_LAB_ALLOWED_ORIGINS` to match it — got a token whose `azp` names
+  // an origin absent from `authorizedParties`, 401ing every account request.
+  return [env['VERCEL_URL'], env['VERCEL_BRANCH_URL'], env['VERCEL_PROJECT_PRODUCTION_URL']]
     .map(host => host?.trim())
     .filter((host): host is string => Boolean(host))
     .map(host => `https://${host}`);

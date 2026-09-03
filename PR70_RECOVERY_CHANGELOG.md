@@ -4,6 +4,15 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-03 UTC - Clerk auth hardening round 7: stable production origin included, plans re-synced (PR #328)
+
+Codex's review of the account-switch fix (8ddc9e7) found one more real gap plus a now-recurring doc-lag pattern.
+
+- **`resolvePlatformOrigins` omitted `VERCEL_PROJECT_PRODUCTION_URL`.** `VERCEL_URL` is this specific deployment's own generated URL (fresh every deploy) and `VERCEL_BRANCH_URL` the current branch's preview URL — neither is the platform's stable production domain, which `VERCEL_PROJECT_PRODUCTION_URL` names and which does not change between deploys. A reader opening the app through that production URL on any deployment that hadn't separately set `FRONTEND_URL`/`STORY_LAB_ALLOWED_ORIGINS` to match it got a token whose `azp` was absent from `authorizedParties`, 401ing every account request. Fixed by adding it alongside the other two platform-injected variables. Added `testVerifierIncludesTheStableProductionUrl`.
+- **The active exec plans kept stating a stale round count.** This is the second round in a row Codex has had to flag this — the fix each time was updating the two plan files with the current count, which the very next round then made stale again. Rather than keep chasing an exact number in three separate files, `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` and `STORY_LAB_FINAL_MERGE_AUDIT_EXEC_PLAN.md` now point to this changelog's own round-by-round entries as the source of truth for the count, rather than repeating a number that goes stale on the next round.
+
+Validation: `npm run test:all` (backend, all green, including the new production-URL test), `tsc --noEmit` on both app and spec configs, `ng build`, full karma suite headless — all confirmed clean before push.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 6: account-switch-without-sign-out race closed (PR #328)
 
 Codex's review of the SonarCloud-fix push (74f488f) found one more real gap in the constructor effect's sign-in/sign-out tracking.
