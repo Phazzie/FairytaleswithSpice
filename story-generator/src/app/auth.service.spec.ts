@@ -9,6 +9,7 @@ interface FakeClerkClient extends ClerkClient {
   loadCalls: number;
   openSignInCalls: number;
   signOutCalls: number;
+  signOutError: Error | null;
   tokenValue: string | null;
   fireSessionChange(token: string | null): void;
 }
@@ -19,6 +20,7 @@ function createFakeClerkClient(): FakeClerkClient {
     loadCalls: 0,
     openSignInCalls: 0,
     signOutCalls: 0,
+    signOutError: null,
     tokenValue: 'initial-session-token',
     session: {
       getToken: async () => client.tokenValue
@@ -31,9 +33,20 @@ function createFakeClerkClient(): FakeClerkClient {
     },
     async signOut() {
       client.signOutCalls += 1;
+      if (client.signOutError) {
+        throw client.signOutError;
+      }
     },
-    addListener(listener: () => void) {
+    // Reproduces the real `@clerk/clerk-js` client's documented behavior: an
+    // immediate first call to `listener` upon registration unless
+    // `options.skipInitialEmit` is `true` — without this, a fake that never
+    // emits initially could not have caught the regression where
+    // `AuthService` forgot to pass that option (see the round-14 finding).
+    addListener(listener: () => void, options?: { skipInitialEmit?: boolean }) {
       client.listeners.push(listener);
+      if (!options?.skipInitialEmit) {
+        listener();
+      }
       return () => {
         client.listeners = client.listeners.filter(item => item !== listener);
       };
@@ -100,6 +113,13 @@ describe('AuthService', () => {
     expect(service.isConfigured()).toBeTrue();
     expect(service.isSignedIn()).toBeTrue();
     expect(service.sessionToken()).toBe('initial-session-token');
+    // The real Clerk client invokes `addListener`'s callback immediately
+    // upon registration unless `skipInitialEmit` is passed — before this was
+    // fixed, that immediate call started a *tagged* refresh whose generation
+    // the following untagged `refreshSessionToken()` call always superseded,
+    // so `identityTransitionPending()` never cleared and every real
+    // deployment finished initialization with it permanently stuck true.
+    expect(service.identityTransitionPending()).toBeFalse();
   });
 
   it('is idempotent: a second initialize() call issues no second request and reuses the same client', async () => {
@@ -134,6 +154,35 @@ describe('AuthService', () => {
     expect(service.isSignedIn()).toBeFalse();
   });
 
+  // `sessionEpoch` alone does not gate a request that starts inside the
+  // window between the listener firing and its own refresh settling — see
+  // `identityTransitionPending`'s own comment. This proves the flag itself
+  // behaves as that gate needs: true the instant the listener fires (before
+  // any `await`), false again only once the listener's own refresh settles.
+  it('marks an identity transition pending the instant the session-change listener fires, until its own refresh settles', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_identity_transition_pending' });
+    await initPromise;
+    expect(service.identityTransitionPending()).toBeFalse();
+
+    let resolveGetToken!: (token: string | null) => void;
+    fakeClient.session!.getToken = () => new Promise<string | null>(resolve => {
+      resolveGetToken = resolve;
+    });
+
+    fakeClient.fireSessionChange('account-b-token');
+
+    expect(service.identityTransitionPending()).toBeTrue();
+
+    resolveGetToken('account-b-token');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.identityTransitionPending()).toBeFalse();
+    expect(service.sessionToken()).toBe('account-b-token');
+  });
+
   it('signIn() initializes first, then opens the Clerk sign-in UI', async () => {
     const service = TestBed.inject(AuthService);
     const signInPromise = service.signIn();
@@ -160,6 +209,125 @@ describe('AuthService', () => {
 
     expect(fakeClient.signOutCalls).toBe(1);
     expect(service.isSignedIn()).toBeFalse();
+  });
+
+  // Before this was fixed, a rejected `client.signOut()` was caught, logged,
+  // and the local token cleared anyway — so `AuthService` would report
+  // `isSignedIn() === false` even though Clerk's own session could still be
+  // active. On a shared device that is a real reader shown "signed out"
+  // while the next person retains the account on reload.
+  it('signOut() propagates a Clerk client failure rather than clearing the local session anyway', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_sign_out_failure' });
+    await initPromise;
+    expect(service.isSignedIn()).toBeTrue();
+
+    fakeClient.signOutError = new Error('clerk sign-out failed');
+
+    await expectAsync(service.signOut()).toBeRejectedWithError('clerk sign-out failed');
+    expect(service.isSignedIn()).toBeTrue();
+  });
+
+  // Before this was fixed, a `refreshSessionToken()` call already awaiting
+  // `session.getToken()` when `signOut()` completed could resolve afterward
+  // and unconditionally overwrite the `null` `signOut()` had just set —
+  // resurrecting the very session sign-out ended. This holds `getToken()`
+  // open with a controlled promise to prove that stale resolution is
+  // discarded rather than applied.
+  it('discards a session refresh that was already in flight when sign-out lands', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_stale_refresh' });
+    await initPromise;
+    expect(service.isSignedIn()).toBeTrue();
+
+    let resolvePendingGetToken!: (token: string | null) => void;
+    fakeClient.session!.getToken = () => new Promise<string | null>(resolve => {
+      resolvePendingGetToken = resolve;
+    });
+    const pendingRefresh = service.getRequestToken();
+
+    await service.signOut();
+    expect(service.isSignedIn()).toBeFalse();
+
+    resolvePendingGetToken('token-fetched-before-sign-out');
+    await pendingRefresh;
+
+    expect(service.isSignedIn()).toBeFalse();
+    expect(service.sessionToken()).toBeNull();
+  });
+
+  // Before this was fixed, a superseded refresh returned whatever
+  // `sessionTokenState()` currently held — which, while a *newer* overlapping
+  // refresh was itself still in flight, could be neither the old nor the new
+  // token. A caller (an interceptor attaching this as a bearer) could then
+  // send a request with a wrong credential. This proves the earlier call
+  // instead defers to the later, authoritative call's own settled result.
+  it('an earlier overlapping refresh returns the later refresh\'s own result rather than a stale snapshot', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_concurrent_refresh' });
+    await initPromise;
+
+    let resolveFirstGetToken!: (token: string | null) => void;
+    let resolveSecondGetToken!: (token: string | null) => void;
+    let getTokenCalls = 0;
+    fakeClient.session!.getToken = () => {
+      getTokenCalls += 1;
+      if (getTokenCalls === 1) {
+        return new Promise<string | null>(resolve => { resolveFirstGetToken = resolve; });
+      }
+      return new Promise<string | null>(resolve => { resolveSecondGetToken = resolve; });
+    };
+
+    const firstRefresh = service.getRequestToken();
+    const secondRefresh = service.getRequestToken();
+
+    // The later call settles first, with the actually-current token...
+    resolveSecondGetToken('token-for-current-account');
+    // ...then the earlier call settles late, with what it happened to fetch
+    // before it was superseded.
+    resolveFirstGetToken('token-fetched-before-being-superseded');
+
+    const [firstResult, secondResult] = await Promise.all([firstRefresh, secondRefresh]);
+
+    expect(secondResult).toBe('token-for-current-account');
+    expect(firstResult).toBe('token-for-current-account');
+    expect(service.sessionToken()).toBe('token-for-current-account');
+  });
+
+  // Unlike the overlapping-refresh test above, the second call here is a
+  // real account switch (`fireSessionChange`, which bumps `sessionEpoch`),
+  // not another same-identity `getRequestToken()` call. Before this was
+  // fixed, the earlier call deferred to the newer call's result the same
+  // way regardless of identity, so a caller that had already built a
+  // request for the old account (a cloud save's payload, say) could end up
+  // sending it authenticated as the new account.
+  it('rejects an earlier request rather than authenticating it with a newer account\'s token when the account switches mid-flight', async () => {
+    const service = TestBed.inject(AuthService);
+    const initPromise = service.initialize();
+    flushAuthConfig({ provider: 'clerk', publishableKey: 'pk_test_cross_account_switch' });
+    await initPromise;
+
+    let resolveFirstGetToken!: (token: string | null) => void;
+    let getTokenCalls = 0;
+    fakeClient.session!.getToken = () => {
+      getTokenCalls += 1;
+      if (getTokenCalls === 1) {
+        return new Promise<string | null>(resolve => { resolveFirstGetToken = resolve; });
+      }
+      return Promise.resolve('token-for-account-b');
+    };
+
+    const firstRequest = service.getRequestToken();
+    fakeClient.fireSessionChange('token-for-account-b');
+
+    resolveFirstGetToken('token-for-account-a');
+    const firstResult = await firstRequest;
+
+    expect(firstResult).toBeNull();
+    expect(service.sessionToken()).toBe('token-for-account-b');
   });
 
   // The publishable key with no secret key case, and vice versa, are proven
@@ -216,9 +384,12 @@ describe('AuthService', () => {
       data: { provider: 'clerk', publishableKey: 'pk_test_client_retry' }
     });
     await firstInit;
-    // `isConfigured()` reflects what the backend reported, independent of
-    // whether the client itself loaded — the failed load instead shows up
-    // as no session and `signIn()` never reaching `openSignIn()`.
+    // `isConfigured()` requires the client to have actually loaded, not just
+    // that the backend reported `provider: 'clerk'` — before this was fixed,
+    // it stayed true here even though the client failed, so a caller gating
+    // a retry on it (`App.showCloudAccountSetupStatus()`) never saw it go
+    // false and could not tell a real failure from a working deployment.
+    expect(service.isConfigured()).toBeFalse();
     expect(service.isSignedIn()).toBeFalse();
     expect(fakeClient.openSignInCalls).toBe(0);
 
@@ -231,6 +402,7 @@ describe('AuthService', () => {
     await retrySignIn;
 
     expect(fakeClient.openSignInCalls).toBe(1);
+    expect(service.isConfigured()).toBeTrue();
   });
 
   it('getRequestToken() returns null when no Clerk client is loaded', async () => {

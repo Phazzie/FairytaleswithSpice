@@ -3,6 +3,7 @@
 import type { AuthPort, AuthUser } from '../auth/authPort';
 import { isAuthError } from '../auth/authPort';
 import { configuredAuthPort, resolveConfiguredAuthProviderName } from '../auth/configuredAuthPort';
+import { computeClerkAuthorizedParties } from '../auth/clerkSessionVerifier';
 import type {
   ApiResponse,
   CloudLibrarySyncState,
@@ -381,10 +382,15 @@ async function handleProjectRoute(
 /**
  * Reports `'clerk'` only when the whole chain a caller would need is present:
  * a provider actually selected, a publishable key the frontend can load
- * Clerk with, and a secret key the backend can verify a session against. Any
- * one of those missing reports `'none'` — the same inert state the frontend
- * already renders today — rather than a sign-in button pointed at a backend
- * that will 401 every session it is handed.
+ * Clerk with, a secret key the backend can verify a session against, and at
+ * least one trusted origin for `authorizedParties` to check tokens against.
+ * Any one of those missing reports `'none'` — the same inert state the
+ * frontend already renders today — rather than a sign-in button pointed at a
+ * backend whose verifier failed closed and will 401 every session it is
+ * handed. The last check mirrors `createClerkSessionVerifierFromEnv`'s own
+ * fail-closed condition exactly (same `computeClerkAuthorizedParties` call)
+ * so this can never drift into reporting `'clerk'` in the one case that
+ * verifier refuses to exist.
  */
 function handleAuthConfigRoute(context: StoryLabAccountRouteContext, req: RequestLike, res: ResponseLike): void {
   const method = normalizeMethod(req.method);
@@ -403,8 +409,9 @@ function resolveStoryLabAuthConfig(env: Record<string, string | undefined>): Sto
   const providerName = resolveConfiguredAuthProviderName({ env });
   const publishableKey = env['CLERK_PUBLISHABLE_KEY']?.trim();
   const hasSecretKey = Boolean(env['CLERK_SECRET_KEY']?.trim());
+  const hasTrustedOrigin = computeClerkAuthorizedParties(env).length > 0;
 
-  if (providerName === 'clerk' && publishableKey && hasSecretKey) {
+  if (providerName === 'clerk' && publishableKey && hasSecretKey && hasTrustedOrigin) {
     return { provider: 'clerk', publishableKey };
   }
 

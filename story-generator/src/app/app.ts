@@ -245,6 +245,13 @@ type NarrativeDialViewModel = NarrativeDial & {
 
 type SelectedNarrativeDialOptions = Record<NarrativeDialId, string>;
 
+/** See `App.captureCloudRequestIdentity`'s own comment. */
+type CloudRequestIdentity = {
+  signedIn: boolean;
+  accountId: string | null;
+  sessionEpoch: number;
+};
+
 type VillainPressureId = 'antagonist' | 'environment' | 'secret' | 'deadline' | 'inner-desire';
 
 type VillainPressureOption = NarrativeDialOption & {
@@ -509,6 +516,7 @@ export class App implements OnDestroy {
   private jobDrivenProgress = false;
   private jobCreationSubscription: Subscription | null = null;
   private jobEventSubscription: Subscription | null = null;
+  private cloudLibrarySubscription: Subscription | null = null;
 
   readonly skinOptions: StorySkinOption[] = [
     { id: 'bookshop', label: 'Enchanted Bookshop', mood: 'Warm, nostalgic, whimsical' },
@@ -1205,17 +1213,86 @@ export class App implements OnDestroy {
     // `signIn()` opens Clerk's own modal; there is no promise that resolves
     // when the reader finishes it. This is what notices the session actually
     // landing and moves `cloudLibrarySyncState` out of `cloud_unavailable`
-    // the same way a manual "Check cloud" click already does.
+    // the same way a manual "Check cloud" click already does. The other
+    // branch is what a local sign-out click alone did not cover: Clerk can
+    // also end a session out from under the app — revocation, expiry,
+    // another tab signing out — and without this, `cloudProjects` kept
+    // rendering the previous account's project titles and metadata after
+    // the account panel had already moved off `cloud_synced`, a real
+    // privacy gap on a shared device.
+    //
+    // `wasSignedIn` (a plain closure variable, not a signal) is what makes
+    // this a true→false *transition* check rather than a standing
+    // condition: reading `cloudProjects`/`cloudLibrarySyncState` here too
+    // would make them tracked dependencies of this same effect, so setting
+    // either one (including this effect's own clearing writes, or a test
+    // seeding `cloudProjects` directly) would immediately re-trigger it.
+    //
+    // `accountId()` is tracked alongside `isSignedIn()` for the case
+    // `isSignedIn()` alone misses entirely: a multi-session Clerk client can
+    // replace one signed-in account with another without an intermediate
+    // signed-out state (an account switch in another tab, say), and
+    // `isSignedIn()`'s boolean value would not change across that swap — an
+    // effect keyed on it alone would never rerun, so the outgoing account's
+    // in-flight request would never be cancelled and its eventual response
+    // could populate the incoming account's project list or workbench.
+    // `accountId()` only changes value (by `===`, `computed`'s own
+    // equality gate) on an actual identity change, not an ordinary token
+    // refresh, so this does not add spurious reruns.
+    //
+    // The reaction itself is a plain method, not inlined in the effect body:
+    // Angular's constructor effects only reliably rerun in this codebase's
+    // TestBed setup on their first execution — a second signal change does
+    // not reach them without `fixture.detectChanges()` (which hangs here
+    // rendering `App`'s full template for the first time) or
+    // `TestBed.flushEffects()` (which throws `NG0101` in this exact
+    // context, per the sign-out tests above). `syncCloudLibraryWithAuthState`
+    // is called directly by tests for that reason — the effect below only
+    // has to keep tracking `isSignedIn()`/`accountId()` and forwarding them.
     effect(() => {
-      if (this.authService.isSignedIn()) {
-        this.refreshCloudLibrary();
-      }
+      this.syncCloudLibraryWithAuthState(this.authService.isSignedIn(), this.authService.accountId());
     });
+  }
+
+  private wasSignedIn = false;
+  private previousAccountId: string | null = null;
+
+  private syncCloudLibraryWithAuthState(signedIn: boolean, accountId: string | null): void {
+    if (signedIn) {
+      const accountChanged = this.wasSignedIn && this.previousAccountId !== null && accountId !== null
+        && accountId !== this.previousAccountId;
+      this.wasSignedIn = true;
+      this.previousAccountId = accountId;
+
+      if (accountChanged) {
+        this.cancelInFlightCloudLibraryRequest();
+        this.cloudProjects.set([]);
+      }
+      this.refreshCloudLibrary();
+      return;
+    }
+
+    if (this.wasSignedIn) {
+      this.wasSignedIn = false;
+      this.previousAccountId = null;
+      this.cancelInFlightCloudLibraryRequest();
+      this.cloudProjects.set([]);
+      this.cloudLibrarySyncState.set({
+        mode: 'cloud_unavailable',
+        message: 'Signed out. Local browser saves are still available.'
+      });
+    }
   }
 
   ngOnDestroy() {
     this.closeJobSubscriptions();
     this.stopProgress();
+    // A cloud list/save/load/delete request can still be in flight when the
+    // reader navigates away (to `/proving-grounds`, say). Angular does not
+    // unsubscribe a manually-created RxJS subscription on component
+    // destruction, so without this its response would still arrive and its
+    // callback could mutate or persist the now-destroyed workbench.
+    this.cancelInFlightCloudLibraryRequest();
   }
 
   updateBlueprint<K extends keyof BlueprintForm>(field: K, value: BlueprintForm[K]) {
@@ -1877,14 +1954,42 @@ export class App implements OnDestroy {
     this.workspaceSaveStatus.set('Saved story removed from this browser.');
   }
 
+  /**
+   * Gates every cloud-library request against a Clerk identity transition
+   * still in flight, not just against another cloud-library request already
+   * running: `authService.identityTransitionPending()` is true for the brief
+   * window between a session-change listener firing and its own token
+   * refresh settling, during which `sessionEpoch` has already advanced but
+   * `sessionTokenState`/`accountId` have not — see that signal's own comment
+   * on `AuthService` for why a request that starts in exactly that window is
+   * dangerous rather than merely stale.
+   */
+  private isCloudLibraryRequestBlocked(): boolean {
+    return this.isCloudLibraryBusy() || this.authService.identityTransitionPending();
+  }
+
+  private reportCloudLibraryError(
+    mode: CloudLibrarySyncState['mode'],
+    error: unknown,
+    loggerContext: string,
+    fallbackMessage: string
+  ): void {
+    this.errorLogging.logError(error, loggerContext);
+    this.cloudLibrarySyncState.set({
+      mode,
+      message: this.formatHttpError(error, fallbackMessage)
+    });
+  }
+
   refreshCloudLibrary() {
-    if (this.isCloudLibraryBusy()) {
+    if (this.isCloudLibraryRequestBlocked()) {
       return;
     }
 
     this.isCloudLibraryBusy.set(true);
-    this.storyService.listCloudStoryProjects().subscribe({
-      next: response => {
+    const requestIdentity = this.captureCloudRequestIdentity();
+    const cloudLibrarySubscription = this.storyService.listCloudStoryProjects().subscribe({
+      next: this.guardStaleCloudResponse(requestIdentity, response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -1915,19 +2020,124 @@ export class App implements OnDestroy {
           lastSyncedAt: new Date().toISOString(),
           message: `${loaded} loaded.`
         });
-      },
-      error: error => {
-        this.errorLogging.logError(error, 'App.refreshCloudLibrary');
-        this.cloudLibrarySyncState.set({
-          mode: 'cloud_unavailable',
-          message: this.formatHttpError(error, 'Cloud library is unavailable until account sync is configured.')
-        });
-        this.isCloudLibraryBusy.set(false);
-      },
+      }),
+      error: this.guardStaleCloudError(requestIdentity, error => {
+        this.reportCloudLibraryError(
+          'cloud_unavailable',
+          error,
+          'App.refreshCloudLibrary',
+          'Cloud library is unavailable until account sync is configured.'
+        );
+      }),
       complete: () => {
         this.isCloudLibraryBusy.set(false);
       }
     });
+    // Held so a sign-out that lands while this request is still in flight
+    // (see the constructor's effect and `signOutOfCloudAccount()`) can
+    // unsubscribe it — cancelling the underlying HTTP request rather than
+    // letting a response authenticated under the old session arrive after
+    // sign-out and repopulate `cloudProjects` with the previous account's
+    // data. `save`/`load`/`deleteCloudProject` hold their own in-flight
+    // subscription in this same field — `isCloudLibraryBusy` already gates
+    // all four cloud-library requests against each other, so at most one is
+    // ever in flight and one field is enough to cancel whichever it is.
+    this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
+  }
+
+  private cancelInFlightCloudLibraryRequest(): void {
+    if (!this.cloudLibrarySubscription) {
+      return;
+    }
+    this.cloudLibrarySubscription.unsubscribe();
+    this.cloudLibrarySubscription = null;
+    this.isCloudLibraryBusy.set(false);
+  }
+
+  /**
+   * The signed-in identity a cloud-library request was made for, snapshotted
+   * at the moment it starts, so its response callbacks can tell — no matter
+   * when they run — whether they still belong to the account currently
+   * signed in.
+   *
+   * Cancelling the subscription (`cancelInFlightCloudLibraryRequest`, called
+   * from `signOutOfCloudAccount()` and the constructor effect) is not
+   * sufficient on its own: Angular's constructor `effect()` is scheduled
+   * asynchronously, so an external session change (Clerk revoking a session,
+   * or a multi-session account switch in another tab) can leave a real
+   * window where an already-in-flight response's callback runs *before* the
+   * effect gets a chance to cancel it — cancelling afterward stops nothing
+   * that already ran. Reading `authService.isSignedIn()`/`accountId()` here
+   * is not subject to that same delay: a signal's current value is correct
+   * the instant it's read, regardless of when any effect depending on it
+   * next runs, so comparing against a live read inside each callback closes
+   * the window cancellation alone cannot.
+   *
+   * `sessionEpoch` closes a narrower, related gap: `isSignedIn`/`accountId`
+   * do not themselves update until `AuthService`'s `refreshSessionToken()`
+   * finishes awaiting Clerk, so a response arriving in the window between a
+   * session-change event firing and that `await` resolving would still
+   * compare equal against the *outgoing* identity. `sessionEpoch` advances
+   * synchronously the instant such an event is announced — see its own
+   * comment on `AuthService` — closing that window too.
+   */
+  private captureCloudRequestIdentity(): CloudRequestIdentity {
+    return {
+      signedIn: this.authService.isSignedIn(),
+      accountId: this.authService.accountId(),
+      sessionEpoch: this.authService.sessionEpoch()
+    };
+  }
+
+  private isStaleCloudResponse(requestIdentity: CloudRequestIdentity): boolean {
+    const current = this.captureCloudRequestIdentity();
+    return current.signedIn !== requestIdentity.signedIn
+      || current.accountId !== requestIdentity.accountId
+      || current.sessionEpoch !== requestIdentity.sessionEpoch;
+  }
+
+  /**
+   * Wraps a `next` handler so the identity check above happens once, at the
+   * call site each of `refreshCloudLibrary`/`saveActiveProjectToCloud`/
+   * `loadCloudProject`/`deleteCloudProject` already needs it, rather than as
+   * a repeated three-line guard inlined into each of those callbacks. A
+   * stale `next` payload is dropped entirely — it belongs to a request no
+   * longer representing the live signed-in state, so applying it would
+   * repopulate the UI with the wrong account's data.
+   */
+  private guardStaleCloudResponse<T>(
+    requestIdentity: CloudRequestIdentity,
+    handler: (value: T) => void
+  ): (value: T) => void {
+    return value => {
+      if (this.isStaleCloudResponse(requestIdentity)) {
+        return;
+      }
+      handler(value);
+    };
+  }
+
+  /**
+   * Wraps an `error` handler the same way, except the busy lock always
+   * releases even when the response is stale: `isCloudLibraryBusy` is set
+   * once, at the start of each request, and only `error`/`complete` ever
+   * clear it, so a stale `error` that skipped clearing it — the same way a
+   * stale `next` payload is dropped — would leave every cloud control
+   * disabled permanently, since no later callback exists to release it. The
+   * error's own state-mutating side effects (logging, `cloudLibrarySyncState`)
+   * still only apply when the response isn't stale.
+   */
+  private guardStaleCloudError<T>(
+    requestIdentity: CloudRequestIdentity,
+    handler: (value: T) => void
+  ): (value: T) => void {
+    return value => {
+      this.isCloudLibraryBusy.set(false);
+      if (this.isStaleCloudResponse(requestIdentity)) {
+        return;
+      }
+      handler(value);
+    };
   }
 
   /**
@@ -1958,7 +2168,7 @@ export class App implements OnDestroy {
       : `${loadedCount} ${noun}`;
   }
 
-  showCloudAccountSetupStatus() {
+  async showCloudAccountSetupStatus(): Promise<void> {
     if (this.isCloudLibraryBusy()) {
       return;
     }
@@ -1972,21 +2182,26 @@ export class App implements OnDestroy {
       return;
     }
 
-    // Only reachable once `/account/auth-config` has actually reported a
-    // usable Clerk provider — see `resolveStoryLabAuthConfig` on the backend
-    // for what "usable" requires. Every deployment that has not configured
-    // that falls straight to the message below, unchanged from before this
-    // existed.
-    if (this.authService.isConfigured()) {
-      void this.authService.signIn();
-      return;
+    // Always attempts sign-in rather than gating on the cached
+    // `isConfigured()` read: `signIn()` awaits `initialize()` first, which
+    // retries a prior transient auth-config/client-load failure (see
+    // `AuthService.loadConfigAndClient`) instead of replaying it — without
+    // this, a deployment that IS configured but hit one bad request would
+    // show "not configured" forever with no way to retry short of a reload.
+    // A genuinely unconfigured deployment, and one whose Clerk client failed
+    // to actually load (the script blocked, a network error) even though the
+    // deployment reports `provider: 'clerk'`, both still end here with
+    // `isConfigured()` false — see that computed's own comment — so
+    // `openSignIn()` no-ops and the message below shows either way, just
+    // after the round trip resolves instead of synchronously.
+    await this.authService.signIn();
+    if (!this.authService.isConfigured()) {
+      this.cloudLibrarySyncState.set({
+        mode: 'cloud_unavailable',
+        message: 'Sign-in setup is not configured yet. Local browser saves are still available.'
+      });
+      this.notificationService.info('Account setup pending', 'Sign-in setup is not configured yet.');
     }
-
-    this.cloudLibrarySyncState.set({
-      mode: 'cloud_unavailable',
-      message: 'Sign-in setup is not configured yet. Local browser saves are still available.'
-    });
-    this.notificationService.info('Account setup pending', 'Sign-in setup is not configured yet.');
   }
 
   /**
@@ -2000,16 +2215,62 @@ export class App implements OnDestroy {
       return;
     }
 
-    await this.authService.signOut();
+    // Cancelled before the `await` below, not after: `client.signOut()` is a
+    // network call, and a save/load/delete/refresh that was in flight when
+    // sign-out started could otherwise complete *during* that wait and still
+    // run its callback — hydrating or re-adding the previous account's data
+    // even though nothing has awaited yet to race against. The user already
+    // asked to sign out at this point, so cancelling here is correct even on
+    // the (rare) path below where Clerk's own sign-out call then fails.
+    this.cancelInFlightCloudLibraryRequest();
+
+    // `cancelInFlightCloudLibraryRequest()` leaves `isCloudLibraryBusy` false
+    // (there is nothing in flight left to be busy with), which — before this
+    // — reopened every cloud control (including "Sign out" itself, and the
+    // template gates all of them on this same flag) for the whole remainder
+    // of this `await`. A load or save started in that window could complete
+    // before Clerk's sign-out did, hydrating or re-adding the outgoing
+    // account's data — the cleanup below only clears `cloudProjects`, not
+    // whatever a request begun after this point already wrote into the
+    // workbench. Re-locking here, before the `await`, closes that window:
+    // `saveActiveProjectToCloud`/`loadCloudProject`/`deleteCloudProject`/
+    // `refreshCloudLibrary` all bail immediately while this is true, and so
+    // does the template.
+    this.isCloudLibraryBusy.set(true);
+
+    // `AuthService.signOut()` deliberately does not clear its own session
+    // state on failure — Clerk's session is the source of truth, and a
+    // rejected call means it may still be active. Announcing "signed out"
+    // regardless would be unsafe on a shared device, so this only clears
+    // local state and reports success once Clerk has actually confirmed it.
+    try {
+      await this.authService.signOut();
+    } catch (error) {
+      this.errorLogging.logError(error, 'App.signOutOfCloudAccount');
+      this.notificationService.error('Sign out failed', 'Could not sign out — the session may still be active.');
+      // Sign-out failed, so the account is (as far as this app can tell)
+      // still active — unlock cloud controls again rather than leaving them
+      // stuck disabled.
+      this.isCloudLibraryBusy.set(false);
+      return;
+    }
+
+    // Clearing `cloudProjects` here, not just `cloudLibrarySyncState`, is
+    // the actual fix: before this, the account panel moved off
+    // `cloud_synced` but the previous account's project titles and metadata
+    // stayed rendered in the list underneath it — a real privacy gap on a
+    // shared device.
+    this.cloudProjects.set([]);
     this.cloudLibrarySyncState.set({
       mode: 'cloud_unavailable',
       message: 'Signed out. Local browser saves are still available.'
     });
+    this.isCloudLibraryBusy.set(false);
     this.notificationService.info('Signed out', 'Cloud sync is now disconnected on this device.');
   }
 
   saveActiveProjectToCloud() {
-    if (this.isCloudLibraryBusy()) {
+    if (this.isCloudLibraryRequestBlocked()) {
       return;
     }
 
@@ -2029,8 +2290,9 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
-    this.storyService.saveCloudStoryProject(project).subscribe({
-      next: response => {
+    const requestIdentity = this.captureCloudRequestIdentity();
+    const cloudLibrarySubscription = this.storyService.saveCloudStoryProject(project).subscribe({
+      next: this.guardStaleCloudResponse(requestIdentity, response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -2042,23 +2304,30 @@ export class App implements OnDestroy {
         this.upsertCloudProject(project, response.data.projectId);
         this.cloudLibrarySyncState.set(response.data.syncState);
         this.notificationService.success('Cloud save requested', project.title);
-      },
-      error: error => {
-        this.errorLogging.logError(error, 'App.saveActiveProjectToCloud');
-        this.cloudLibrarySyncState.set({
-          mode: 'cloud_unavailable',
-          message: this.formatHttpError(error, 'Cloud save is unavailable until account sync is configured.')
-        });
-        this.isCloudLibraryBusy.set(false);
-      },
+      }),
+      error: this.guardStaleCloudError(requestIdentity, error => {
+        this.reportCloudLibraryError(
+          'cloud_unavailable',
+          error,
+          'App.saveActiveProjectToCloud',
+          'Cloud save is unavailable until account sync is configured.'
+        );
+      }),
       complete: () => {
         this.isCloudLibraryBusy.set(false);
       }
     });
+    // `isCloudLibraryBusy` gates save/load/delete/refresh against each other,
+    // so at most one of these subscriptions is ever in flight — the same
+    // field `refreshCloudLibrary` holds its subscription in is safe to reuse
+    // here. Without this, a save that was still in flight when the account
+    // signed out could resolve afterward and silently re-add the previous
+    // account's project to the (now cleared) list.
+    this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
   }
 
   loadCloudProject(projectId: string) {
-    if (this.isCloudLibraryBusy()) {
+    if (this.isCloudLibraryRequestBlocked()) {
       return;
     }
 
@@ -2068,8 +2337,9 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
-    this.storyService.loadCloudStoryProject(projectId).subscribe({
-      next: response => {
+    const requestIdentity = this.captureCloudRequestIdentity();
+    const cloudLibrarySubscription = this.storyService.loadCloudStoryProject(projectId).subscribe({
+      next: this.guardStaleCloudResponse(requestIdentity, response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -2091,23 +2361,23 @@ export class App implements OnDestroy {
             message: `Loaded "${response.data.project.title}" from cloud.`
           });
         }
-      },
-      error: error => {
-        this.errorLogging.logError(error, 'App.loadCloudProject');
-        this.cloudLibrarySyncState.set({
-          mode: 'sync_failed',
-          message: this.formatHttpError(error, 'Cloud story could not be loaded.')
-        });
-        this.isCloudLibraryBusy.set(false);
-      },
+      }),
+      error: this.guardStaleCloudError(requestIdentity, error => {
+        this.reportCloudLibraryError('sync_failed', error, 'App.loadCloudProject', 'Cloud story could not be loaded.');
+      }),
       complete: () => {
         this.isCloudLibraryBusy.set(false);
       }
     });
+    // See the matching comment in `saveActiveProjectToCloud`: a load that
+    // resolves after sign-out could otherwise hydrate the previous account's
+    // full story into the UI after it has already cleared its signed-in
+    // state.
+    this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
   }
 
   deleteCloudProject(projectId: string) {
-    if (this.isCloudLibraryBusy()) {
+    if (this.isCloudLibraryRequestBlocked()) {
       return;
     }
 
@@ -2117,8 +2387,9 @@ export class App implements OnDestroy {
     }
 
     this.isCloudLibraryBusy.set(true);
-    this.storyService.deleteCloudStoryProject(projectId).subscribe({
-      next: response => {
+    const requestIdentity = this.captureCloudRequestIdentity();
+    const cloudLibrarySubscription = this.storyService.deleteCloudStoryProject(projectId).subscribe({
+      next: this.guardStaleCloudResponse(requestIdentity, response => {
         if (!response.success || !response.data) {
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
@@ -2142,19 +2413,16 @@ export class App implements OnDestroy {
             message: response.data.deleted ? 'Cloud story deleted.' : 'Cloud story was already absent.'
           });
         }
-      },
-      error: error => {
-        this.errorLogging.logError(error, 'App.deleteCloudProject');
-        this.cloudLibrarySyncState.set({
-          mode: 'sync_failed',
-          message: this.formatHttpError(error, 'Cloud delete failed.')
-        });
-        this.isCloudLibraryBusy.set(false);
-      },
+      }),
+      error: this.guardStaleCloudError(requestIdentity, error => {
+        this.reportCloudLibraryError('sync_failed', error, 'App.deleteCloudProject', 'Cloud delete failed.');
+      }),
       complete: () => {
         this.isCloudLibraryBusy.set(false);
       }
     });
+    // See the matching comment in `saveActiveProjectToCloud`.
+    this.cloudLibrarySubscription = cloudLibrarySubscription.closed ? null : cloudLibrarySubscription;
   }
 
   private applyIteration(payload: StoryIterationPayload, batchSize: ChapterBatchSize, batchId?: string) {

@@ -1007,7 +1007,7 @@ describe('App', () => {
     expect(fullText).toContain('Saved here');
   });
 
-  it('shows an honest account setup action before sign-in is configured', () => {
+  it('shows an honest account setup action before sign-in is configured', async () => {
     fixture.detectChanges();
 
     const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
@@ -1016,6 +1016,12 @@ describe('App', () => {
     expect(accountAction?.textContent?.trim()).toBe('Connect account');
 
     accountAction?.click();
+    // `showCloudAccountSetupStatus()` now awaits `AuthService.signIn()`
+    // (which itself awaits `initialize()`) before deciding the deployment
+    // is unconfigured, so the message lands a couple of microtask turns
+    // after the click rather than synchronously with it.
+    await Promise.resolve();
+    await Promise.resolve();
     fixture.detectChanges();
 
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
@@ -1025,7 +1031,7 @@ describe('App', () => {
     expect(fullText).toContain('Saved here');
   });
 
-  it('blocks cloud save until the account is connected', () => {
+  it('blocks cloud save until the account is connected', async () => {
     seedWorkbenchForContinuation();
     storyService.saveCloudStoryProject.and.returnValue(of({
       success: false,
@@ -1044,6 +1050,8 @@ describe('App', () => {
     expect(saveButton?.disabled).toBeTrue();
 
     component.saveActiveProjectToCloud();
+    await Promise.resolve();
+    await Promise.resolve();
     fixture.detectChanges();
 
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
@@ -1052,7 +1060,7 @@ describe('App', () => {
     expect(fullText).toContain('Sign-in setup is not configured yet.');
   });
 
-  it('blocks cloud load and delete until the account is connected', () => {
+  it('blocks cloud load and delete until the account is connected', async () => {
     component.cloudProjects.set([{
       projectId: 'project-cloud',
       storyId: 'story-cloud',
@@ -1089,6 +1097,8 @@ describe('App', () => {
 
     component.loadCloudProject('project-cloud');
     component.deleteCloudProject('project-cloud');
+    await Promise.resolve();
+    await Promise.resolve();
     fixture.detectChanges();
 
     const fullText = fixture.nativeElement.textContent.replace(/\s+/g, ' ').trim();
@@ -3241,22 +3251,53 @@ describe('App', () => {
 // construction — there is no hook to swap it in after the fact, and nesting here
 // would instantiate `TestBed` twice for the same test.
 describe('App cloud account sign-in wiring', () => {
-  function createFakeClerkClient(openSignIn: jasmine.Spy, signOut?: jasmine.Spy): ClerkClient {
-    return {
+  interface FakeClerkClient extends ClerkClient {
+    listeners: Array<() => void>;
+    tokenValue: string;
+    fireSessionChange(token: string): void;
+  }
+
+  function createFakeClerkClient(openSignIn: jasmine.Spy, signOut?: jasmine.Spy): FakeClerkClient {
+    const client: FakeClerkClient = {
+      listeners: [],
+      tokenValue: 'fake-session-token',
       async load() {},
       openSignIn,
       async signOut() {
         await signOut?.();
       },
-      addListener: () => () => {},
-      session: { getToken: async () => 'fake-session-token' }
+      // Reproduces the real `@clerk/clerk-js` client's documented behavior:
+      // an immediate first call to `listener` upon registration unless
+      // `options.skipInitialEmit` is `true` — see the matching comment in
+      // `auth.service.spec.ts`'s fake for why this matters.
+      addListener(listener: () => void, options?: { skipInitialEmit?: boolean }) {
+        client.listeners.push(listener);
+        if (!options?.skipInitialEmit) {
+          listener();
+        }
+        return () => {
+          client.listeners = client.listeners.filter(item => item !== listener);
+        };
+      },
+      session: { getToken: async () => client.tokenValue },
+      fireSessionChange(token: string) {
+        client.tokenValue = token;
+        client.listeners.forEach(listener => listener());
+      }
     };
+    return client;
   }
 
-  async function createAppWithAuthConfig(config: ApiResponse<{ provider: 'clerk' | 'none'; publishableKey?: string }>) {
+  async function createAppWithAuthConfig(
+    config: ApiResponse<{ provider: 'clerk' | 'none'; publishableKey?: string }>,
+    clientLoadError?: Error
+  ) {
     const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
       'getStoryLabAuthConfig',
-      'listCloudStoryProjects'
+      'listCloudStoryProjects',
+      'saveCloudStoryProject',
+      'loadCloudStoryProject',
+      'deleteCloudStoryProject'
     ]);
     storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of(config as any));
     // A signed-in session — the `provider: 'clerk'` case below reaches this —
@@ -3280,8 +3321,9 @@ describe('App cloud account sign-in wiring', () => {
     errorLoggingSpy.getErrors.and.returnValue(of([]));
     const openSignIn = jasmine.createSpy('openSignIn');
     const signOut = jasmine.createSpy('signOut');
+    const clerkClient = createFakeClerkClient(openSignIn, signOut);
     const clientFactory = jasmine.createSpy('clerkClientFactory')
-      .and.returnValue(Promise.resolve(createFakeClerkClient(openSignIn, signOut)));
+      .and.returnValue(clientLoadError ? Promise.reject(clientLoadError) : Promise.resolve(clerkClient));
 
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
@@ -3299,7 +3341,62 @@ describe('App cloud account sign-in wiring', () => {
     // same idempotent promise it is already running, so awaiting it here
     // waits for exactly that chain and nothing else.
     await TestBed.inject(AuthService).initialize();
-    return { fixture: localFixture, component: localFixture.componentInstance, openSignIn, signOut };
+    return {
+      fixture: localFixture,
+      component: localFixture.componentInstance,
+      openSignIn,
+      signOut,
+      storyServiceSpy,
+      clerkClient
+    };
+  }
+
+  // Shared by the two stale-load-response tests below: both need a
+  // `CloudStoryProjectLoadResult` for an account that has just signed out,
+  // and differ only in when the response arrives relative to sign-out.
+  function createStalePreviousAccountLoadResponse(component: App): ApiResponse<CloudStoryProjectLoadResult> {
+    const project: SavedStoryProject = {
+      id: 'previous-account-project',
+      storyId: 'story-previous-account',
+      title: 'Should not load',
+      synopsis: 'Belongs to the account that just signed out.',
+      blueprint: component.blueprint(),
+      summary: createSummary({ title: 'Should not load' }),
+      state: createState(),
+      chapters: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    };
+    return {
+      success: true,
+      data: {
+        ownerUserId: 'previous-account',
+        // `cloud_postgres` rather than `non_durable_memory`: a processed
+        // response would flip `cloudLibrarySyncState` to `cloud_synced`, so
+        // callers asserting on that mode actually distinguish "discarded"
+        // from "processed" instead of matching either outcome.
+        storageMode: 'cloud_postgres',
+        projectId: project.id,
+        storyId: project.storyId,
+        project,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt
+      }
+    };
+  }
+
+  // Shared by the five stale-load-request tests below: each needs a
+  // signed-in, cloud-synced account with a `loadCloudProject()` call already
+  // in flight before it drives whatever race it's actually testing.
+  function beginPendingCloudLoadRequest(
+    component: App,
+    storyServiceSpy: jasmine.SpyObj<StoryService>
+  ): Subject<ApiResponse<CloudStoryProjectLoadResult>> {
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const loadSubject = new Subject<ApiResponse<CloudStoryProjectLoadResult>>();
+    storyServiceSpy.loadCloudStoryProject.and.returnValue(loadSubject.asObservable());
+    component.loadCloudProject('previous-account-project');
+    return loadSubject;
   }
 
   afterEach(() => {
@@ -3313,12 +3410,7 @@ describe('App cloud account sign-in wiring', () => {
       data: { provider: 'clerk', publishableKey: 'pk_test_app_wiring' }
     });
 
-    component.showCloudAccountSetupStatus();
-    // `signIn()` is `void`-called from `showCloudAccountSetupStatus()` and
-    // itself awaits `initialize()` before opening the modal — already
-    // settled at this point, but still one more microtask turn to unwind.
-    await Promise.resolve();
-    await Promise.resolve();
+    await component.showCloudAccountSetupStatus();
 
     expect(openSignIn).toHaveBeenCalled();
   });
@@ -3329,7 +3421,31 @@ describe('App cloud account sign-in wiring', () => {
       data: { provider: 'none' }
     });
 
-    component.showCloudAccountSetupStatus();
+    await component.showCloudAccountSetupStatus();
+
+    expect(openSignIn).not.toHaveBeenCalled();
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+    expect(component.cloudLibrarySyncState().message).toBe(
+      'Sign-in setup is not configured yet. Local browser saves are still available.'
+    );
+  });
+
+  // Before this was fixed, `AuthService.isConfigured()` stayed true here
+  // because it only reflected the auth-config response reporting `provider:
+  // 'clerk'`, not whether the Clerk client itself ever actually loaded. A
+  // deployment whose script was blocked or hit a network error would leave
+  // this method returning without ever showing the message below, so
+  // "Connect account" silently did nothing on every retry.
+  it('shows the setup-pending message, not a silent no-op, when the Clerk client itself fails to load', async () => {
+    const { component, openSignIn } = await createAppWithAuthConfig(
+      {
+        success: true,
+        data: { provider: 'clerk', publishableKey: 'pk_test_client_load_failure' }
+      },
+      new Error('script blocked')
+    );
+
+    await component.showCloudAccountSetupStatus();
 
     expect(openSignIn).not.toHaveBeenCalled();
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
@@ -3342,19 +3458,323 @@ describe('App cloud account sign-in wiring', () => {
   // signed-in session short of clearing cookies by hand — a real gap on a
   // shared device, since the next reader would keep the previous one's
   // authenticated cloud library.
-  it('signs out of the Clerk session and returns cloud state to unavailable', async () => {
+  it('signs out of the Clerk session and clears cloud projects and sync state', async () => {
     const { component, signOut } = await createAppWithAuthConfig({
       success: true,
       data: { provider: 'clerk', publishableKey: 'pk_test_sign_out_wiring' }
     });
     expect(component.isCloudAccountSignedIn()).toBeTrue();
+    component.cloudProjects.set([{
+      projectId: 'project-cloud',
+      storyId: 'story-cloud',
+      title: 'Cloud Chapel',
+      synopsis: 'A cloud-synced oath.',
+      chapterCount: 2,
+      acceptedMemoryCardCount: 0,
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    }]);
 
     await component.signOutOfCloudAccount();
 
     expect(signOut).toHaveBeenCalled();
     expect(component.isCloudAccountSignedIn()).toBeFalse();
+    // Clearing `cloudProjects`, not just `cloudLibrarySyncState`, is the
+    // actual fix: before this, the account panel moved off `cloud_synced`
+    // but the previous account's project titles and metadata stayed
+    // rendered underneath it — a real privacy gap on a shared device.
+    expect(component.cloudProjects()).toEqual([]);
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
     expect(component.cloudLibrarySyncState().message).toBe('Signed out. Local browser saves are still available.');
+  });
+
+  // Before this was fixed, a `listCloudStoryProjects` response authenticated
+  // just before sign-out could still arrive afterward, since nothing
+  // cancelled the in-flight request — silently repopulating `cloudProjects`
+  // with the account that just signed out, even though the panel already
+  // said "disconnected".
+  it('discards a cloud-library response that arrives after sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_response' }
+    });
+    const projectsSubject = new Subject<ApiResponse<CloudStoryProjectList>>();
+    storyServiceSpy.listCloudStoryProjects.and.returnValue(projectsSubject.asObservable());
+    component.refreshCloudLibrary();
+
+    await component.signOutOfCloudAccount();
+
+    // The stale response for the request that was in flight when sign-out
+    // happened, arriving late.
+    projectsSubject.next({
+      success: true,
+      data: {
+        ownerUserId: 'previous-account',
+        storageMode: 'non_durable_memory',
+        projects: [{
+          projectId: 'previous-account-project',
+          storyId: 'story-previous-account',
+          title: 'Should not reappear',
+          synopsis: 'Belongs to the account that just signed out.',
+          chapterCount: 1,
+          acceptedMemoryCardCount: 0,
+          createdAt: '2026-06-08T08:37:00.000Z',
+          updatedAt: '2026-06-08T08:38:00.000Z'
+        }],
+        totalProjectCount: 1
+      }
+    });
+
+    expect(component.cloudProjects()).toEqual([]);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+  });
+
+  // Same stale-response race as the listing above, but for a save that was
+  // still in flight when the account signed out — before this was fixed, a
+  // late save response would call `upsertCloudProject` and silently re-add
+  // the previous account's project to the (now cleared) list.
+  it('discards a cloud-save response that arrives after sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_save_response' }
+    });
+    component.workbench.set({
+      story: createSummary({ title: 'Stale Save Pact' }),
+      state: createState(),
+      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      activeBatchSize: 1
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const saveSubject = new Subject<ApiResponse<CloudStoryProjectSaveReceipt>>();
+    storyServiceSpy.saveCloudStoryProject.and.returnValue(saveSubject.asObservable());
+    component.saveActiveProjectToCloud();
+
+    await component.signOutOfCloudAccount();
+
+    saveSubject.next({
+      success: true,
+      data: {
+        projectId: 'previous-account-project',
+        storyId: 'story-previous-account',
+        savedAt: '2026-06-08T08:38:00.000Z',
+        syncState: { mode: 'cloud_synced', lastSyncedAt: '2026-06-08T08:38:00.000Z' }
+      }
+    });
+
+    expect(component.cloudProjects()).toEqual([]);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+  });
+
+  // Same stale-response race, but for a load — before this was fixed, a late
+  // load response would hydrate the previous account's full story into the
+  // UI after it had already cleared its signed-in state.
+  it('discards a cloud-load response that arrives after sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_load_response' }
+    });
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
+
+    await component.signOutOfCloudAccount();
+
+    loadSubject.next(createStalePreviousAccountLoadResponse(component));
+
+    expect(component.workbench().story?.title).not.toBe('Should not load');
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+  });
+
+  // Same stale-response race, but for a delete — a late delete response
+  // completing after sign-out must not touch the (now cleared) project list
+  // or overwrite the signed-out sync state.
+  it('discards a cloud-delete response that arrives after sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_delete_response' }
+    });
+    component.cloudProjects.set([{
+      projectId: 'previous-account-project',
+      storyId: 'story-previous-account',
+      title: 'Should stay put',
+      synopsis: 'Belongs to the account that just signed out.',
+      chapterCount: 1,
+      acceptedMemoryCardCount: 0,
+      createdAt: '2026-06-08T08:37:00.000Z',
+      updatedAt: '2026-06-08T08:38:00.000Z'
+    }]);
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    const deleteSubject = new Subject<ApiResponse<CloudStoryProjectDeleteReceipt>>();
+    storyServiceSpy.deleteCloudStoryProject.and.returnValue(deleteSubject.asObservable());
+    component.deleteCloudProject('previous-account-project');
+
+    await component.signOutOfCloudAccount();
+
+    deleteSubject.next({
+      success: true,
+      // `cloud_postgres` rather than `non_durable_memory`: a processed
+      // response would flip `cloudLibrarySyncState` to `cloud_synced`, so
+      // the mode assertion below actually distinguishes "discarded" from
+      // "processed" instead of matching either outcome.
+      data: {
+        ownerUserId: 'previous-account',
+        storageMode: 'cloud_postgres',
+        projectId: 'previous-account-project',
+        deleted: true
+      }
+    });
+
+    expect(component.cloudProjects()).toEqual([]);
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+  });
+
+  // Before this was fixed, `cancelInFlightCloudLibraryRequest()` ran only
+  // *after* `await this.authService.signOut()` resolved. `client.signOut()`
+  // is a network call — while it was still pending, a load already in flight
+  // could complete and run its callback with nothing yet having cancelled
+  // it, hydrating the previous account's full story into the UI even though
+  // sign-out was already underway. This uses a deliberately-still-pending
+  // Clerk sign-out to prove cancellation now happens before that await, not
+  // after: the stale response arrives while `signOutOfCloudAccount()` is
+  // still suspended on Clerk, and must still be discarded.
+  it('cancels an in-flight cloud request before awaiting a slow Clerk sign-out', async () => {
+    const { component, storyServiceSpy, signOut } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_slow_sign_out' }
+    });
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
+    let resolveClerkSignOut!: () => void;
+    signOut.and.returnValue(new Promise<void>(resolve => { resolveClerkSignOut = resolve; }));
+
+    const signOutPromise = component.signOutOfCloudAccount();
+    // `signOutOfCloudAccount()` has run synchronously up to its first
+    // `await` by this point — including the cancellation, if it now happens
+    // before that `await` as intended — while Clerk's own `signOut()` is
+    // still unresolved.
+    loadSubject.next(createStalePreviousAccountLoadResponse(component));
+    resolveClerkSignOut();
+    await signOutPromise;
+
+    expect(component.workbench().story?.title).not.toBe('Should not load');
+    expect(component.cloudLibrarySyncState().mode).toBe('cloud_unavailable');
+  });
+
+  // Cancelling the one request that was already in flight (the test above)
+  // isn't enough on its own: `cancelInFlightCloudLibraryRequest()` leaves
+  // `isCloudLibraryBusy` false, and before this was fixed that reopened
+  // every cloud control — including the template's own gating — for the
+  // whole rest of a slow Clerk sign-out. A *new* load started in that window
+  // could complete before sign-out did and hydrate the outgoing account's
+  // story, which the sign-out cleanup (clearing only `cloudProjects`/
+  // `cloudLibrarySyncState`) would never touch. This proves the controls
+  // stay locked (`isCloudLibraryBusy()` true, `loadCloudProject` a no-op)
+  // for the entire pending sign-out, not just up to the cancellation point.
+  it('keeps cloud controls locked for the whole duration of a pending sign-out', async () => {
+    const { component, storyServiceSpy, signOut } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_locked_during_sign_out' }
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    let resolveClerkSignOut!: () => void;
+    signOut.and.returnValue(new Promise<void>(resolve => { resolveClerkSignOut = resolve; }));
+
+    const signOutPromise = component.signOutOfCloudAccount();
+    // Synchronous up to this point, same as the test above: cancellation and
+    // the re-lock have already run, while Clerk's own `signOut()` is still
+    // unresolved.
+    expect(component.isCloudLibraryBusy()).toBeTrue();
+
+    component.loadCloudProject('previous-account-project');
+
+    expect(
+      storyServiceSpy.loadCloudStoryProject
+    ).not.toHaveBeenCalled();
+
+    resolveClerkSignOut();
+    await signOutPromise;
+
+    expect(component.isCloudLibraryBusy()).toBeFalse();
+  });
+
+  // Cancelling the subscription (the tests above) is not a complete fix on
+  // its own: Angular's constructor `effect()` is scheduled asynchronously,
+  // so an external session change (Clerk revoking a session, or an account
+  // switch in another tab) can leave a real window where an already-queued
+  // response's callback runs *before* the effect ever gets to cancel it —
+  // cancelling afterward stops nothing that already ran. This proves the
+  // response is still discarded in exactly that ordering: the live
+  // `AuthService` signal is changed directly, without going through
+  // `signOutOfCloudAccount()` or the constructor effect at all, so nothing
+  // in this test path has cancelled anything by the time the stale response
+  // arrives — only the live-identity comparison inside the response
+  // callback itself can be what discards it.
+  it('discards a cloud response whose identity no longer matches the live signed-in state, independent of the constructor effect', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_live_identity_guard' }
+    });
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
+
+    await TestBed.inject(AuthService).signOut();
+
+    loadSubject.next(createStalePreviousAccountLoadResponse(component));
+
+    expect(component.workbench().story?.title).not.toBe('Should not load');
+  });
+
+  // Before this was fixed, a stale `error`/`complete` was discarded the same
+  // way a stale `next` payload is — but unlike `next`, nothing else ever
+  // clears `isCloudLibraryBusy` for that request: dropping the callback
+  // entirely left every cloud control disabled permanently, since no later
+  // callback exists to release it. This proves the busy lock still releases
+  // on a stale `error`, while the error's own state-mutating side effects
+  // (logging, `cloudLibrarySyncState`) stay discarded.
+  it('releases the busy lock on a stale error response, without applying its error state', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_error_releases_lock' }
+    });
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
+
+    await TestBed.inject(AuthService).signOut();
+    const syncStateAfterSignOut = component.cloudLibrarySyncState();
+
+    loadSubject.error(new Error('stale request failed'));
+
+    expect(component.isCloudLibraryBusy()).toBeFalse();
+    expect(component.cloudLibrarySyncState()).toEqual(syncStateAfterSignOut);
+  });
+
+  // Same fix, but for a stale `complete` with no `next`/`error` before it —
+  // the shape an aborted or empty response takes.
+  it('releases the busy lock on a stale completion', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_stale_complete_releases_lock' }
+    });
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
+
+    await TestBed.inject(AuthService).signOut();
+
+    loadSubject.complete();
+
+    expect(component.isCloudLibraryBusy()).toBeFalse();
+  });
+
+  // Before this was fixed, a rejected `client.signOut()` was swallowed and
+  // the local token cleared regardless, so the app would announce "signed
+  // out" on a shared device even though Clerk's own session could still be
+  // active and would be restored on the next reload.
+  it('does not announce success or clear local session state when Clerk sign-out fails', async () => {
+    const { component, signOut } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_sign_out_failure' }
+    });
+    signOut.and.rejectWith(new Error('clerk sign-out failed'));
+    expect(component.isCloudAccountSignedIn()).toBeTrue();
+
+    await component.signOutOfCloudAccount();
+
+    expect(signOut).toHaveBeenCalled();
+    expect(component.isCloudAccountSignedIn()).toBeTrue();
   });
 
   it('does nothing when asked to sign out while already signed out', async () => {
@@ -3366,6 +3786,122 @@ describe('App cloud account sign-in wiring', () => {
     await component.signOutOfCloudAccount();
 
     expect(signOut).not.toHaveBeenCalled();
+  });
+
+  // Before this was fixed, `ngOnDestroy()` closed only the job subscriptions
+  // and the progress timer — a cloud list/save/load/delete request still in
+  // flight when the reader navigated away (to `/proving-grounds`, say)
+  // stayed subscribed. Angular does not unsubscribe a manually-created RxJS
+  // subscription on component destruction, so that response could still
+  // arrive and its callback mutate or persist the now-destroyed workbench.
+  it('cancels an in-flight cloud-library request on destroy', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_destroy_cancel' }
+    });
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
+    expect(loadSubject.observed).toBeTrue();
+
+    component.ngOnDestroy();
+
+    expect(loadSubject.observed).toBeFalse();
+  });
+
+  // A multi-session Clerk client can replace one signed-in account with
+  // another without an intermediate signed-out state — an account switch in
+  // another tab, say. `isSignedIn()` stays `true` throughout that swap, so
+  // the constructor effect had to start tracking `accountId()` too: before
+  // this was fixed, the effect would never notice the swap at all, leaving
+  // the outgoing account's in-flight request both uncancelled and its stale
+  // response (once it arrived) free to populate data under the incoming
+  // account.
+  //
+  // Exercised by calling `syncCloudLibraryWithAuthState` — the method the
+  // constructor effect forwards `isSignedIn()`/`accountId()` into — rather
+  // than by driving the effect itself through a second signal change: this
+  // codebase's TestBed setup does not reliably rerun a constructor effect a
+  // second time (see that method's own comment, and the sign-out tests
+  // above, for why `fixture.detectChanges()`/`TestBed.flushEffects()` are
+  // not options here). What's under test is the *logic* this finding was
+  // about; that the effect itself forwards both signals is a two-line,
+  // read-not-computed wiring visible entirely at the call site above.
+  it('discards a stale request and refreshes when the active account changes without a sign-out', async () => {
+    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_account_switch' }
+    });
+    const sync = (component as unknown as {
+      syncCloudLibraryWithAuthState(signedIn: boolean, accountId: string | null): void;
+    }).syncCloudLibraryWithAuthState.bind(component);
+    // Establishes the "already signed in as one account" baseline the
+    // `accountChanged` branch requires — a fresh sign-in (`wasSignedIn`
+    // still false) is not itself an account switch.
+    sync(true, 'user_original_account');
+    const loadSubject = beginPendingCloudLoadRequest(component, storyServiceSpy);
+    expect(component.isCloudLibraryBusy()).toBeTrue();
+    const refreshCallsBeforeSwitch = storyServiceSpy.listCloudStoryProjects.calls.count();
+
+    // The account identity changing while still signed in — the swap this
+    // finding was about.
+    sync(true, 'user_incoming_account');
+
+    // The incoming account's library was refreshed.
+    expect(storyServiceSpy.listCloudStoryProjects.calls.count()).toBeGreaterThan(refreshCallsBeforeSwitch);
+
+    // The outgoing account's in-flight load, arriving after the switch, must
+    // still be discarded rather than hydrating the incoming account's view.
+    loadSubject.next(createStalePreviousAccountLoadResponse(component));
+    expect(component.workbench().story?.title).not.toBe('Should not load');
+  });
+
+  // `sessionEpoch` alone does not close this window: it has already advanced
+  // by the time a request starting inside it captures it, so the epoch-based
+  // guard on the *response* does not stop the *request* from ever going out.
+  // A save built from account A's still-displayed story, started in that
+  // window, could have its interceptor attach account B's fresh token —
+  // persisting A's data under B with no response-level guard able to undo
+  // the write. This proves the request itself never starts: `saveCloudStoryProject`
+  // is not called while `identityTransitionPending()` is true, and proceeds
+  // normally once the transition settles.
+  it('blocks a save started while a listener-driven identity transition is still pending, then allows it once settled', async () => {
+    const { component, storyServiceSpy, clerkClient } = await createAppWithAuthConfig({
+      success: true,
+      data: { provider: 'clerk', publishableKey: 'pk_test_identity_transition_blocks_save' }
+    });
+    component.workbench.set({
+      story: createSummary({ title: 'Pending Transition Pact' }),
+      state: createState(),
+      chapterHistory: [createChapter({ title: 'First Ember', htmlContent: '<p>Heat rose.</p>' })],
+      activeBatchSize: 1
+    });
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    storyServiceSpy.saveCloudStoryProject.and.returnValue(of({
+      success: true,
+      data: {
+        projectId: 'p1',
+        storyId: 's1',
+        savedAt: '2026-06-08T08:38:00.000Z',
+        syncState: { mode: 'cloud_synced', lastSyncedAt: '2026-06-08T08:38:00.000Z' }
+      }
+    }));
+
+    let resolveGetToken!: (token: string | null) => void;
+    clerkClient.session!.getToken = () => new Promise<string | null>(resolve => {
+      resolveGetToken = resolve;
+    });
+    clerkClient.fireSessionChange('account-b-token');
+    expect(TestBed.inject(AuthService).identityTransitionPending()).toBeTrue();
+
+    component.saveActiveProjectToCloud();
+    expect(storyServiceSpy.saveCloudStoryProject).not.toHaveBeenCalled();
+
+    resolveGetToken('account-b-token');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(TestBed.inject(AuthService).identityTransitionPending()).toBeFalse();
+
+    component.saveActiveProjectToCloud();
+    expect(storyServiceSpy.saveCloudStoryProject).toHaveBeenCalled();
   });
 });
 

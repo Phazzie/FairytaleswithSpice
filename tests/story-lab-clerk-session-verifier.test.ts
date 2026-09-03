@@ -17,23 +17,34 @@ function assert(condition: unknown, message: string): asserts condition {
 async function main() {
   await testMissingSecretKeyStaysUnconfigured();
   await testBlankSecretKeyStaysUnconfigured();
+  await testFailsClosedWhenNoAuthorizedOriginSurvivesParsing();
   await testVerifierPassesTokenAndTrimmedSecretKey();
   await testVerifierReturnsNullOnErrorsShapeWithoutThrowing();
   await testVerifierReturnsNullWhenDataHasNoSubject();
   await testVerifierReadsStringEmailClaimOnly();
   await testVerifierWiresIntoClerkAuthPortEndToEnd();
+  await testVerifierPassesAuthorizedPartiesFromAllowedOrigins();
+  await testVerifierDefaultsAuthorizedPartiesWhenNoOriginEnvSet();
+  await testVerifierIncludesThePlatformAssignedDeploymentUrl();
+  await testVerifierIncludesTheStableProductionUrl();
+  await testVerifierExcludesTheLocalDevDefaultOnAVercelOnlyConfig();
+  await testVerifierDoesNotDuplicateAnOriginAlreadyInTheStaticList();
+  await testVerifierIgnoresAForgedForwardedHostHeader();
 
   console.log('Story Lab Clerk session verifier tests passed');
 }
 
 function fakeVerifyToken(
   impl: ClerkVerifyTokenFn
-): { verifyToken: ClerkVerifyTokenFn; calls: Array<{ token: string; secretKey: string }> } {
-  const calls: Array<{ token: string; secretKey: string }> = [];
+): {
+  verifyToken: ClerkVerifyTokenFn;
+  calls: Array<{ token: string; secretKey: string; authorizedParties?: string[] }>;
+} {
+  const calls: Array<{ token: string; secretKey: string; authorizedParties?: string[] }> = [];
   return {
     calls,
     verifyToken: async (token, options) => {
-      calls.push({ token, secretKey: options.secretKey });
+      calls.push({ token, secretKey: options.secretKey, authorizedParties: options.authorizedParties });
       return impl(token, options);
     }
   };
@@ -51,6 +62,25 @@ async function testMissingSecretKeyStaysUnconfigured() {
 async function testBlankSecretKeyStaysUnconfigured() {
   const verifier = createClerkSessionVerifierFromEnv({ CLERK_SECRET_KEY: '   ' });
   assert(verifier === undefined, 'a blank CLERK_SECRET_KEY should leave the Clerk verifier unconfigured');
+}
+
+// `parseAllowedOrigins` only falls back to its own default when the origin
+// env var is unset entirely — an explicit but entirely-invalid value (every
+// entry rejected by `normalizeOrigin`) parses to `[]` instead. Combined with
+// no platform URL available either, `authorizedParties` would end up `[]`,
+// and Clerk's `verifyToken` treats an empty `authorizedParties` as "no
+// restriction configured" — skipping the `azp` check and accepting a valid
+// token from any origin. This proves that misconfiguration fails closed
+// (verifier unconfigured) instead of silently becoming unchecked.
+async function testFailsClosedWhenNoAuthorizedOriginSurvivesParsing() {
+  const verifier = createClerkSessionVerifierFromEnv({
+    CLERK_SECRET_KEY: 'sk_test_secret',
+    STORY_LAB_ALLOWED_ORIGINS: '*'
+  });
+  assert(
+    verifier === undefined,
+    'a deployment whose origin config parses to no trusted origins at all should stay unconfigured, not verify tokens unchecked'
+  );
 }
 
 async function testVerifierPassesTokenAndTrimmedSecretKey() {
@@ -154,6 +184,179 @@ async function testVerifierWiresIntoClerkAuthPortEndToEnd() {
   } catch (error) {
     assert(isAuthError(error), 'a rejected session should surface as an AuthError, not an unhandled result');
   }
+}
+
+// Verifying with `secretKey` alone accepts any correctly signed token from
+// this Clerk instance, including one issued to an untrusted sibling origin
+// under the same parent domain that can also obtain a Clerk session — a
+// session token exposed there could be replayed against this deployment's
+// account routes. `authorizedParties` closes that: it must be exactly the
+// same trusted-origin allowlist `applyCorsPolicy` already uses, so a token's
+// `azp` claim naming any other origin is rejected.
+async function testVerifierPassesAuthorizedPartiesFromAllowedOrigins() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret', STORY_LAB_ALLOWED_ORIGINS: 'https://app.example.com' },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+  assert(fake.calls.length === 1, 'the verifier should call verifyToken exactly once');
+  assert(
+    JSON.stringify(fake.calls[0].authorizedParties) === JSON.stringify(['https://app.example.com']),
+    `authorizedParties should be exactly the configured allowed origins, got ${JSON.stringify(fake.calls[0].authorizedParties)}`
+  );
+}
+
+// A Vercel preview deployment gets a fresh URL nobody hardcoded into
+// `STORY_LAB_ALLOWED_ORIGINS`. Vercel itself injects `VERCEL_URL` into that
+// deployment's own runtime environment — a caller cannot set it — so it is
+// safe to trust as an additional authorized party, unlike a request header.
+async function testVerifierIncludesThePlatformAssignedDeploymentUrl() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    {
+      CLERK_SECRET_KEY: 'sk_test_secret',
+      STORY_LAB_ALLOWED_ORIGINS: 'https://app.example.com',
+      VERCEL_URL: 'my-branch-preview.vercel.app'
+    },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+
+  const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
+  assert(
+    authorizedParties.includes('https://app.example.com'),
+    `authorizedParties should still include the configured static origin, got ${JSON.stringify(authorizedParties)}`
+  );
+  assert(
+    authorizedParties.includes('https://my-branch-preview.vercel.app'),
+    `authorizedParties should include the platform-assigned VERCEL_URL, got ${JSON.stringify(authorizedParties)}`
+  );
+}
+
+// `VERCEL_URL` is this specific deployment's own generated URL, fresh every
+// deploy — not the stable production domain a reader actually visits.
+// `VERCEL_PROJECT_PRODUCTION_URL` is that stable domain, platform-assigned
+// and just as untrustable-from-a-request as the other two, so it belongs in
+// `authorizedParties` for the same reason.
+async function testVerifierIncludesTheStableProductionUrl() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    {
+      CLERK_SECRET_KEY: 'sk_test_secret',
+      VERCEL_URL: 'fairytaleswith-spice-abc123.vercel.app',
+      VERCEL_PROJECT_PRODUCTION_URL: 'fairytaleswith-spice.vercel.app'
+    },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+
+  const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
+  assert(
+    authorizedParties.includes('https://fairytaleswith-spice.vercel.app'),
+    `authorizedParties should include the stable VERCEL_PROJECT_PRODUCTION_URL, got ${JSON.stringify(authorizedParties)}`
+  );
+}
+
+// `parseAllowedOrigins` falls back to its own `http://localhost:4200`
+// default when no origin env var is set — the right CORS answer for a bare
+// local-dev checkout. On a Vercel deployment relying purely on platform
+// origins (no explicit `STORY_LAB_ALLOWED_ORIGINS`/`ALLOWED_ORIGINS`/
+// `FRONTEND_URL`), that default has no business in `authorizedParties`: a
+// platform origin being present is itself proof this isn't the local-dev
+// case the default exists for, and if the same Clerk instance also serves
+// local development, trusting it here would let a local-dev-issued token be
+// replayed against this deployment's account routes.
+async function testVerifierExcludesTheLocalDevDefaultOnAVercelOnlyConfig() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    {
+      CLERK_SECRET_KEY: 'sk_test_secret',
+      VERCEL_URL: 'fairytaleswith-spice-abc123.vercel.app',
+      VERCEL_PROJECT_PRODUCTION_URL: 'fairytaleswith-spice.vercel.app'
+    },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+
+  const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
+  assert(
+    !authorizedParties.includes('http://localhost:4200'),
+    `a Vercel-only config must not carry the local-dev default into authorizedParties, got ${JSON.stringify(authorizedParties)}`
+  );
+}
+
+// The static list and the platform-assigned URL can legitimately name the
+// same deployment — this proves that case doesn't produce a duplicate entry.
+async function testVerifierDoesNotDuplicateAnOriginAlreadyInTheStaticList() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    {
+      CLERK_SECRET_KEY: 'sk_test_secret',
+      STORY_LAB_ALLOWED_ORIGINS: 'https://app.example.com',
+      VERCEL_URL: 'app.example.com'
+    },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+
+  const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
+  assert(
+    JSON.stringify(authorizedParties) === JSON.stringify(['https://app.example.com']),
+    `an origin already in the static list should not be duplicated, got ${JSON.stringify(authorizedParties)}`
+  );
+}
+
+// The earlier version of this fix derived an authorized party from
+// `X-Forwarded-Host` — safe for CORS (a browser-only restriction a
+// non-browser caller was never bound by anyway) but not for
+// `authorizedParties`, the actual boundary deciding which origins a token
+// may claim. A caller holding a valid token from an untrusted sibling origin
+// could simply set that header to its own `azp` and pass. This proves a
+// forged forwarded-host header is never consulted at all.
+async function testVerifierIgnoresAForgedForwardedHostHeader() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret', STORY_LAB_ALLOWED_ORIGINS: 'https://app.example.com' },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {
+    headers: { 'x-forwarded-host': 'attacker-controlled-sibling.example.com', 'x-forwarded-proto': 'https' }
+  });
+
+  const authorizedParties = fake.calls[0]?.authorizedParties ?? [];
+  assert(
+    !authorizedParties.some(origin => origin.includes('attacker-controlled-sibling.example.com')),
+    `a caller-supplied forwarded-host header must never become an authorized party, got ${JSON.stringify(authorizedParties)}`
+  );
+  assert(
+    JSON.stringify(authorizedParties) === JSON.stringify(['https://app.example.com']),
+    `authorizedParties should be unaffected by request headers entirely, got ${JSON.stringify(authorizedParties)}`
+  );
+}
+
+// A deployment with no origin env var set at all still gets the same
+// default allowlist `applyCorsPolicy` falls back to, rather than an empty
+// (and therefore unchecked, per Clerk's own `assertAuthorizedPartiesClaim`)
+// authorizedParties list.
+async function testVerifierDefaultsAuthorizedPartiesWhenNoOriginEnvSet() {
+  const fake = fakeVerifyToken(async () => ({ data: { sub: 'user_from_verify_token' } }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret' },
+    { verifyToken: fake.verifyToken }
+  );
+
+  await verifier!('session-token-value', {});
+  assert(
+    Array.isArray(fake.calls[0].authorizedParties) && fake.calls[0].authorizedParties!.length > 0,
+    'authorizedParties should default to the CORS policy default allowed origins, not an empty list'
+  );
 }
 
 main().catch(error => {
