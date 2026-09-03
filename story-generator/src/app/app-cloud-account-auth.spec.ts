@@ -76,6 +76,21 @@ describe('App cloud account sign-in (Clerk configured)', () => {
   }
 
   /**
+   * The account route's own UNAUTHORIZED envelope, reusable for any cloud
+   * operation's error path (`throwError`'s `Observable<never>` is assignable
+   * to whatever `ApiResponse<T>` the caller's spy expects).
+   */
+  function unauthorizedError(): Observable<never> {
+    return throwError(() => new HttpErrorResponse({
+      status: 401,
+      error: {
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Account authentication is required.', retryable: false }
+      }
+    }));
+  }
+
+  /**
    * `handleStoryLabAccountRouteWithContext` answers this *before*
    * `requireAccountUser` runs at all (see `accountRouteHandlers.ts`), so
    * unlike every other code this route can answer with, it carries the
@@ -227,6 +242,19 @@ describe('App cloud account sign-in (Clerk configured)', () => {
     expect(authService.signIn).not.toHaveBeenCalled();
   });
 
+  it('labels the account status Connected when authenticated but cloud storage is having an outage', async () => {
+    // `cloudAccountStatusLabel` used to derive purely from `cloudLibrarySyncState`,
+    // so a signed-in reader hitting a storage outage saw "Not connected" next
+    // to a "Sign out" action - a contradiction. It must agree with the
+    // action label and read the same auth signal.
+    await createFixture(storageOutageListResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.cloudAccountAuthenticated()).toBe(true);
+    expect(component.cloudAccountStatusLabel()).toBe('Connected');
+  });
+
   it('does not treat a gateway failure with no account-route envelope as proof of authentication', async () => {
     // Status alone can't tell a real account-route 5xx apart from a 502 that
     // never reached the handler - only the envelope can. Without a status
@@ -248,6 +276,35 @@ describe('App cloud account sign-in (Clerk configured)', () => {
     fixture.detectChanges();
 
     expect(component.cloudAccountAuthenticated()).toBe(false);
+  });
+
+  it('resets account authentication when a later cloud operation 401s after being connected', async () => {
+    // `cloudAccountAuthenticated` was only ever cleared by `refreshCloudLibrary`
+    // - a session that expired *after* the initial check (caught instead by
+    // save/load/delete's own error handling) left the signal stuck `true`,
+    // so the reader kept seeing "Sign out" while every actual operation
+    // silently 401d underneath them with no way back to sign-in.
+    await createFixture(of({ success: true, data: emptyCloudProjectList() }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.cloudAccountAuthenticated()).toBe(true);
+
+    storyService.deleteCloudStoryProject.and.returnValue(unauthorizedError());
+    component.deleteCloudProject('story-1');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.cloudAccountAuthenticated()).toBe(false);
+    // `deleteCloudProject`'s error path lands in `cloudLibrarySyncState`'s
+    // `sync_failed` mode, which reads as "Needs attention" - the point under
+    // test is only that the auth signal itself no longer overrides that with
+    // "Connected", not which of the non-authenticated labels applies.
+    expect(component.cloudAccountStatusLabel()).not.toBe('Connected');
+
+    const panel = fixture.nativeElement.querySelector('[data-testid="cloud-library-panel"]') as HTMLElement | null;
+    const accountAction = panel?.querySelector('[data-testid="cloud-account-action"]') as HTMLButtonElement | null;
+    expect(accountAction?.textContent?.trim()).not.toBe('Sign out');
   });
 
   it('retries auth initialization on a second click after a transient startup failure', async () => {

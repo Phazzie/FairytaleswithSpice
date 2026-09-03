@@ -412,7 +412,7 @@ Acceptance:
 - a valid secret key selects the Clerk provider and a request without a token gets the Clerk-specific error, not deny-by-default;
 - `CLERK_AUTHORIZED_PARTIES`, when set, rejects a token whose `azp` isn't in the list (DI-proven, not live-proven);
 - no new frontend runtime dependency;
-- unconfigured (default) behavior is byte-for-byte unchanged - full existing frontend suite passes without modification to its assertions;
+- unconfigured (default) *observable* behavior is unchanged - full existing frontend suite passes without modification to its assertions, and `showCloudAccountSetupStatus()`'s unconfigured message is byte-for-byte the original text. Runtime is not literally identical: the `App` constructor now always calls `AuthService.initialize()`, which issues one `/api/health` request on startup and exercises `/api/health`'s new auth-resolver/`@clerk/backend` import path even when unconfigured - this is a new network call and a new backend code path, not a no-op;
 - README and `.env.example` state the subdomain requirement and the `DATABASE_URL`/schema gap plainly rather than implying "set three vars and cloud sync works."
 
 Non-claims for this phase:

@@ -1144,6 +1144,16 @@ export class App implements OnDestroy {
     return 'Account sync is not connected yet.';
   });
   readonly cloudAccountStatusLabel = computed(() => {
+    // Mirrors `cloudAccountActionLabel`: whether this session is signed in is
+    // a narrower question than whether cloud storage happens to be working,
+    // and a reader who's genuinely authenticated but hitting a storage outage
+    // must still read as "Connected" here - the outage itself is reported by
+    // `cloudLibraryStatusMessage`, not by demoting this label back to
+    // "Not connected".
+    if (this.authService.isConfigured() && this.cloudAccountAuthenticated()) {
+      return 'Connected';
+    }
+
     switch (this.cloudLibrarySyncState().mode) {
       case 'cloud_synced':
         return 'Connected';
@@ -1882,6 +1892,38 @@ export class App implements OnDestroy {
     this.workspaceSaveStatus.set('Saved story removed from this browser.');
   }
 
+  /**
+   * Reaching any *other* error means the account route's auth gate let the
+   * request through - only an explicit UNAUTHORIZED means this browser isn't
+   * (or is no longer) signed in. Shared by every cloud account operation's
+   * `next` failure branch, not just the library listing, so an expired
+   * session surfaces the same way regardless of which action noticed it.
+   */
+  private applyAccountAuthSignalFromResponseError(errorCode: string | undefined) {
+    this.cloudAccountAuthenticated.set(errorCode !== 'UNAUTHORIZED');
+  }
+
+  /**
+   * `StoryService.handleHttpError` rethrows every non-2xx response, so this
+   * is where a real 401 or a real storage 5xx actually lands, not the `next`
+   * branch above. Status alone isn't proof, though: a gateway/proxy failure
+   * (a 502) or a request that never reached the handler at all never carries
+   * this route's own JSON envelope, and neither does `ACCOUNT_ROUTE_NOT_FOUND`
+   * - that one *is* this route's envelope, but `handleStoryLabAccountRouteWithContext`
+   * answers it before the auth gate runs, so it says nothing about this
+   * session either. Every other code this route can answer with - including
+   * a real `UNAUTHORIZED` - is decided only after the auth gate has run, so
+   * reading the envelope's own `error.code` and treating anything but those
+   * two as "passed the gate" is what actually proves it. Shared by every
+   * cloud account operation's `error` branch.
+   */
+  private applyAccountAuthSignalFromHttpError(error: unknown) {
+    const accountRouteErrorCode = (error as { error?: { error?: { code?: unknown } } })?.error?.error?.code;
+    if (typeof accountRouteErrorCode === 'string' && accountRouteErrorCode !== 'ACCOUNT_ROUTE_NOT_FOUND') {
+      this.cloudAccountAuthenticated.set(accountRouteErrorCode !== 'UNAUTHORIZED');
+    }
+  }
+
   refreshCloudLibrary() {
     if (this.isCloudLibraryBusy()) {
       return;
@@ -1891,10 +1933,7 @@ export class App implements OnDestroy {
     this.storyService.listCloudStoryProjects().subscribe({
       next: response => {
         if (!response.success || !response.data) {
-          // Reaching any *other* error means the account route's auth gate
-          // let the request through - only an explicit UNAUTHORIZED means
-          // this browser isn't (or is no longer) signed in.
-          this.cloudAccountAuthenticated.set(response.error?.code !== 'UNAUTHORIZED');
+          this.applyAccountAuthSignalFromResponseError(response.error?.code);
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
             message: this.formatApiError(response.error, 'Cloud library is unavailable.')
@@ -1928,23 +1967,7 @@ export class App implements OnDestroy {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.refreshCloudLibrary');
-        // `StoryService.handleHttpError` rethrows every non-2xx response, so
-        // this is where a real 401 or a real storage 5xx actually lands, not
-        // the `next` branch above. Status alone isn't proof, though: a
-        // gateway/proxy failure (a 502) or a request that never reached the
-        // handler at all never carries this route's own JSON envelope, and
-        // neither does `ACCOUNT_ROUTE_NOT_FOUND` - that one *is* this route's
-        // envelope, but `handleStoryLabAccountRouteWithContext` answers it
-        // before the auth gate runs, so it says nothing about this session
-        // either. Every other code this route can answer with - including a
-        // real `UNAUTHORIZED` - is decided only after the auth gate has run,
-        // so reading the envelope's own `error.code` (mirroring the `next`
-        // branch's `response.error?.code` check above) and treating anything
-        // but those two as "passed the gate" is what actually proves it.
-        const accountRouteErrorCode = error?.error?.error?.code;
-        if (typeof accountRouteErrorCode === 'string' && accountRouteErrorCode !== 'ACCOUNT_ROUTE_NOT_FOUND') {
-          this.cloudAccountAuthenticated.set(accountRouteErrorCode !== 'UNAUTHORIZED');
-        }
+        this.applyAccountAuthSignalFromHttpError(error);
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
           message: this.formatHttpError(error, 'Cloud library is unavailable until account sync is configured.')
@@ -2050,6 +2073,7 @@ export class App implements OnDestroy {
     this.storyService.saveCloudStoryProject(project).subscribe({
       next: response => {
         if (!response.success || !response.data) {
+          this.applyAccountAuthSignalFromResponseError(response.error?.code);
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
             message: this.formatApiError(response.error, 'Cloud save failed.')
@@ -2063,6 +2087,7 @@ export class App implements OnDestroy {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.saveActiveProjectToCloud');
+        this.applyAccountAuthSignalFromHttpError(error);
         this.cloudLibrarySyncState.set({
           mode: 'cloud_unavailable',
           message: this.formatHttpError(error, 'Cloud save is unavailable until account sync is configured.')
@@ -2089,6 +2114,7 @@ export class App implements OnDestroy {
     this.storyService.loadCloudStoryProject(projectId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
+          this.applyAccountAuthSignalFromResponseError(response.error?.code);
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
             message: this.formatApiError(response.error, 'Cloud story could not be loaded.')
@@ -2112,6 +2138,7 @@ export class App implements OnDestroy {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.loadCloudProject');
+        this.applyAccountAuthSignalFromHttpError(error);
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
           message: this.formatHttpError(error, 'Cloud story could not be loaded.')
@@ -2138,6 +2165,7 @@ export class App implements OnDestroy {
     this.storyService.deleteCloudStoryProject(projectId).subscribe({
       next: response => {
         if (!response.success || !response.data) {
+          this.applyAccountAuthSignalFromResponseError(response.error?.code);
           this.cloudLibrarySyncState.set({
             mode: 'sync_failed',
             message: this.formatApiError(response.error, 'Cloud delete failed.')
@@ -2163,6 +2191,7 @@ export class App implements OnDestroy {
       },
       error: error => {
         this.errorLogging.logError(error, 'App.deleteCloudProject');
+        this.applyAccountAuthSignalFromHttpError(error);
         this.cloudLibrarySyncState.set({
           mode: 'sync_failed',
           message: this.formatHttpError(error, 'Cloud delete failed.')
