@@ -97,6 +97,12 @@ async function main() {
   await testLibrarySortPreferenceOrdersTheProjectList();
   await testLibraryListingCapIsAppliedAfterTheReadersSort();
   await testProfileFreeTextIsMeasuredBeforeItIsStored();
+  await testAuthConfigReportsNoneWhenNothingConfigured();
+  await testAuthConfigReportsClerkOnlyWhenFullyConfigured();
+  await testAuthConfigStaysNoneWhenSecretKeyMissing();
+  await testAuthConfigStaysNoneWhenPublishableKeyMissing();
+  await testAuthConfigRouteRejectsNonGetMethods();
+  await testAuthConfigDoesNotRequireAuthentication();
 
   console.log('Story Lab account route tests passed');
 }
@@ -667,6 +673,94 @@ async function testInvalidRouteAndMethodResponses() {
   assert(
     projectMethodResponse.headers['Allow'] === 'GET, DELETE, OPTIONS',
     `project item 405 should send Allow: GET, DELETE, OPTIONS, got ${JSON.stringify(projectMethodResponse.headers['Allow'])}`
+  );
+}
+
+// `auth-config` is the one resource behind this route file a caller has to
+// reach *before* they can have a session — it is the answer to "is there
+// anything to sign in with" — so it must not sit behind `requireAccountUser`
+// like `profile`/`projects`/`project` do.
+async function testAuthConfigDoesNotRequireAuthentication() {
+  const response = new FakeResponse();
+  await accountHandler(createRequest('GET', 'auth-config'), response);
+
+  assert(response.statusCode === 200, 'auth-config should be reachable without a session, unlike every other resource here');
+  const body = response.body as any;
+  assert(body.success === true, 'auth-config should answer with a success envelope');
+  assert(body.data.provider === 'none', 'the default deployment (no Clerk env) should report provider: none');
+  assert(body.data.publishableKey === undefined, 'an unconfigured deployment should not report a publishable key');
+}
+
+async function testAuthConfigReportsNoneWhenNothingConfigured() {
+  const handler = createStoryLabAccountRouteHandler({ env: {} });
+  const response = new FakeResponse();
+  await handler(createRequest('GET', 'auth-config'), response);
+
+  assert(response.statusCode === 200, 'auth-config should always answer 200');
+  assert((response.body as any).data.provider === 'none', 'no auth env at all should report provider: none');
+}
+
+// `provider: 'clerk'` is a promise the frontend acts on — it shows a real
+// sign-in button. It should only be made when every piece the button needs is
+// actually present: a provider selection, a publishable key the browser can
+// load Clerk with, and a secret key the backend can verify sessions against.
+async function testAuthConfigReportsClerkOnlyWhenFullyConfigured() {
+  const handler = createStoryLabAccountRouteHandler({
+    env: {
+      STORY_LAB_AUTH_PROVIDER: 'clerk',
+      CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example'
+    }
+  });
+  const response = new FakeResponse();
+  await handler(createRequest('GET', 'auth-config'), response);
+
+  const body = response.body as any;
+  assert(body.data.provider === 'clerk', 'a fully configured Clerk deployment should report provider: clerk');
+  assert(body.data.publishableKey === 'pk_test_example', 'a fully configured Clerk deployment should report its publishable key');
+}
+
+async function testAuthConfigStaysNoneWhenSecretKeyMissing() {
+  const handler = createStoryLabAccountRouteHandler({
+    env: {
+      STORY_LAB_AUTH_PROVIDER: 'clerk',
+      CLERK_PUBLISHABLE_KEY: 'pk_test_example'
+    }
+  });
+  const response = new FakeResponse();
+  await handler(createRequest('GET', 'auth-config'), response);
+
+  assert(
+    (response.body as any).data.provider === 'none',
+    'a publishable key without a secret key must not report provider: clerk — the backend cannot verify anything a caller sends it'
+  );
+}
+
+async function testAuthConfigStaysNoneWhenPublishableKeyMissing() {
+  const handler = createStoryLabAccountRouteHandler({
+    env: {
+      STORY_LAB_AUTH_PROVIDER: 'clerk',
+      CLERK_SECRET_KEY: 'sk_test_example'
+    }
+  });
+  const response = new FakeResponse();
+  await handler(createRequest('GET', 'auth-config'), response);
+
+  assert(
+    (response.body as any).data.provider === 'none',
+    'a secret key without a publishable key must not report provider: clerk — the frontend has nothing to load Clerk with'
+  );
+}
+
+async function testAuthConfigRouteRejectsNonGetMethods() {
+  const handler = createStoryLabAccountRouteHandler({ env: {} });
+  const response = new FakeResponse();
+  await handler(createRequest('POST', 'auth-config'), response);
+
+  assert(response.statusCode === 405, 'auth-config should reject non-GET methods');
+  assert(
+    response.headers['Allow'] === 'GET, OPTIONS',
+    `auth-config 405 should send Allow: GET, OPTIONS, got ${JSON.stringify(response.headers['Allow'])}`
   );
 }
 

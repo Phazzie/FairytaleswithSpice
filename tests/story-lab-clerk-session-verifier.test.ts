@@ -1,0 +1,162 @@
+#!/usr/bin/env tsx
+// Created: 2026-09-02 20:40 EDT
+
+import { isAuthError } from '../api/_lib/story-lab/auth/authPort';
+import { createClerkAuthPort } from '../api/_lib/story-lab/auth/clerkAuthPort';
+import {
+  createClerkSessionVerifierFromEnv,
+  type ClerkVerifyTokenFn
+} from '../api/_lib/story-lab/auth/clerkSessionVerifier';
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+async function main() {
+  await testMissingSecretKeyStaysUnconfigured();
+  await testBlankSecretKeyStaysUnconfigured();
+  await testVerifierPassesTokenAndTrimmedSecretKey();
+  await testVerifierReturnsNullOnErrorsShapeWithoutThrowing();
+  await testVerifierReturnsNullWhenDataHasNoSubject();
+  await testVerifierReadsStringEmailClaimOnly();
+  await testVerifierWiresIntoClerkAuthPortEndToEnd();
+
+  console.log('Story Lab Clerk session verifier tests passed');
+}
+
+function fakeVerifyToken(
+  impl: ClerkVerifyTokenFn
+): { verifyToken: ClerkVerifyTokenFn; calls: Array<{ token: string; secretKey: string }> } {
+  const calls: Array<{ token: string; secretKey: string }> = [];
+  return {
+    calls,
+    verifyToken: async (token, options) => {
+      calls.push({ token, secretKey: options.secretKey });
+      return impl(token, options);
+    }
+  };
+}
+
+// The load-bearing case: every deployment that has not set `CLERK_SECRET_KEY`
+// — which is every deployment today — must keep getting `undefined` here, so
+// `configuredAuthPort`'s production singleton keeps falling back to
+// `createClerkAuthPort()`'s existing fail-closed "not configured" behavior.
+async function testMissingSecretKeyStaysUnconfigured() {
+  const verifier = createClerkSessionVerifierFromEnv({});
+  assert(verifier === undefined, 'a missing CLERK_SECRET_KEY should leave the Clerk verifier unconfigured');
+}
+
+async function testBlankSecretKeyStaysUnconfigured() {
+  const verifier = createClerkSessionVerifierFromEnv({ CLERK_SECRET_KEY: '   ' });
+  assert(verifier === undefined, 'a blank CLERK_SECRET_KEY should leave the Clerk verifier unconfigured');
+}
+
+async function testVerifierPassesTokenAndTrimmedSecretKey() {
+  const fake = fakeVerifyToken(async () => ({
+    data: { sub: 'user_from_verify_token' }
+  }));
+
+  const verifier = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: '  sk_test_secret  ' },
+    { verifyToken: fake.verifyToken }
+  );
+  assert(typeof verifier === 'function', 'a configured secret key should produce a verifier function');
+
+  const session = await verifier!('session-token-value', {});
+  assert(fake.calls.length === 1, 'the verifier should call verifyToken exactly once');
+  assert(fake.calls[0].token === 'session-token-value', 'the verifier should forward the session token unchanged');
+  assert(fake.calls[0].secretKey === 'sk_test_secret', 'the verifier should trim the configured secret key');
+  assert(session?.userId === 'user_from_verify_token', 'a verified token should resolve to its subject as userId');
+}
+
+// `@clerk/backend`'s `verifyToken` does not throw on an invalid or expired
+// token — it resolves to `{ errors: [...] }`. A verifier that assumed a throw
+// would read `data.sub` off that shape and crash, or worse, treat `undefined`
+// as a signed-in user.
+async function testVerifierReturnsNullOnErrorsShapeWithoutThrowing() {
+  const fake = fakeVerifyToken(async () => ({
+    errors: [new Error('token expired')]
+  }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret' },
+    { verifyToken: fake.verifyToken }
+  );
+
+  const session = await verifier!('expired-token', {});
+  assert(session === null, 'an errors-shaped verifyToken result should resolve to null, not throw');
+}
+
+async function testVerifierReturnsNullWhenDataHasNoSubject() {
+  const fake = fakeVerifyToken(async () => ({ data: undefined, errors: undefined } as any));
+  const verifier = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret' },
+    { verifyToken: fake.verifyToken }
+  );
+
+  const session = await verifier!('malformed-result-token', {});
+  assert(session === null, 'a verifyToken result with no data.sub should resolve to null');
+}
+
+async function testVerifierReadsStringEmailClaimOnly() {
+  const fake = fakeVerifyToken(async () => ({
+    data: { sub: 'user_with_email', email: 'reader@example.com' }
+  }));
+  const verifier = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret' },
+    { verifyToken: fake.verifyToken }
+  );
+  const session = await verifier!('token-with-email-claim', {});
+  assert(session?.email === 'reader@example.com', 'a string email claim should be carried through');
+
+  const fakeWithoutEmail = fakeVerifyToken(async () => ({
+    data: { sub: 'user_without_email', email: 42 }
+  }));
+  const verifierWithoutEmail = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret' },
+    { verifyToken: fakeWithoutEmail.verifyToken }
+  );
+  const sessionWithoutEmail = await verifierWithoutEmail!('token-without-email-claim', {});
+  assert(
+    sessionWithoutEmail?.email === undefined,
+    'a non-string email claim should be dropped rather than surfaced as-is'
+  );
+}
+
+async function testVerifierWiresIntoClerkAuthPortEndToEnd() {
+  const fake = fakeVerifyToken(async () => ({
+    data: { sub: 'user_end_to_end', email: 'end-to-end@example.com' }
+  }));
+  const verifySessionToken = createClerkSessionVerifierFromEnv(
+    { CLERK_SECRET_KEY: 'sk_test_secret' },
+    { verifyToken: fake.verifyToken }
+  );
+  const auth = createClerkAuthPort({ verifySessionToken });
+
+  const user = await auth.requireUser({
+    headers: { authorization: 'Bearer end-to-end-session-token' }
+  });
+  assert(user.userId === 'user_end_to_end', 'a real Clerk session should authenticate through the wired verifier');
+  assert(user.email === 'end-to-end@example.com', 'a real Clerk session should carry its email claim through');
+
+  const rejectedFake = fakeVerifyToken(async () => ({ errors: [new Error('bad token')] }));
+  const rejectedAuth = createClerkAuthPort({
+    verifySessionToken: createClerkSessionVerifierFromEnv(
+      { CLERK_SECRET_KEY: 'sk_test_secret' },
+      { verifyToken: rejectedFake.verifyToken }
+    )
+  });
+
+  try {
+    await rejectedAuth.requireUser({ headers: { authorization: 'Bearer rejected-session-token' } });
+    throw new Error('a rejected verifyToken result should fail requireUser');
+  } catch (error) {
+    assert(isAuthError(error), 'a rejected session should surface as an AuthError, not an unhandled result');
+  }
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

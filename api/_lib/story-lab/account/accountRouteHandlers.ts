@@ -2,7 +2,7 @@
 
 import type { AuthPort, AuthUser } from '../auth/authPort';
 import { isAuthError } from '../auth/authPort';
-import { configuredAuthPort } from '../auth/configuredAuthPort';
+import { configuredAuthPort, resolveConfiguredAuthProviderName } from '../auth/configuredAuthPort';
 import type {
   ApiResponse,
   CloudLibrarySyncState,
@@ -12,6 +12,7 @@ import type {
   CloudStoryProjectStorageMode,
   CloudStoryProjectSaveReceipt,
   SavedStoryProject,
+  StoryLabAuthConfig,
   StoryLabLibrarySort,
   StoryLabUserProfile,
   StoryMemoryCard
@@ -43,13 +44,14 @@ import {
  *
  * One CORS policy covers the whole file — a preflight is answered before the
  * path is even read — but `Allow` is the *target resource*'s list, and these
- * three resources do not serve the same methods. `OPTIONS` is on every one of
+ * four resources do not serve the same methods. `OPTIONS` is on every one of
  * them because `applyCorsPolicy` really does answer it for every path here.
  */
 const ACCOUNT_ROUTE_CORS_METHODS = ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'];
 const PROFILE_ROUTE_METHODS = ['GET', 'PUT', 'OPTIONS'];
 const PROJECT_COLLECTION_ROUTE_METHODS = ['GET', 'POST', 'OPTIONS'];
 const PROJECT_ITEM_ROUTE_METHODS = ['GET', 'DELETE', 'OPTIONS'];
+const AUTH_CONFIG_ROUTE_METHODS = ['GET', 'OPTIONS'];
 
 type RequestValue = string | string[] | undefined;
 
@@ -73,9 +75,10 @@ export interface StoryLabAccountRouteDependencies {
   profileStore?: StoryLabProfileStore;
   projectStore?: StoryProjectStore;
   now?: () => string;
+  env?: Record<string, string | undefined>;
 }
 
-type AccountResource = 'profile' | 'projects' | 'project';
+type AccountResource = 'profile' | 'projects' | 'project' | 'auth-config';
 
 interface AccountRouteTarget {
   resource: AccountResource;
@@ -87,6 +90,7 @@ interface StoryLabAccountRouteContext {
   profileStore: StoryLabProfileStore;
   projectStore: StoryProjectStore;
   now: () => string;
+  env: Record<string, string | undefined>;
 }
 
 const MAX_PROJECT_ID_LENGTH = 128;
@@ -101,7 +105,8 @@ export function createStoryLabAccountRouteHandler(
     authPort: dependencies.authPort ?? configuredAuthPort,
     profileStore: dependencies.profileStore ?? cloudStorage.profileStore,
     projectStore: dependencies.projectStore ?? cloudStorage.projectStore,
-    now
+    now,
+    env: dependencies.env ?? process.env
   };
 
   return async function storyLabAccountRouteHandler(req: RequestLike, res: ResponseLike): Promise<void> {
@@ -136,6 +141,16 @@ async function handleStoryLabAccountRouteWithContext(
   const target = readAccountRouteTarget(req);
   if (!target) {
     sendJson(res, 404, accountRouteNotFound());
+    return;
+  }
+
+  // Unlike every other resource here, this one exists to answer the question
+  // "is there anything to sign in with" — so it has to be readable *before*
+  // a caller can have a session to send. Gating it behind `requireAccountUser`
+  // like the rest of this file would make it as unreachable as the feature it
+  // reports on.
+  if (target.resource === 'auth-config') {
+    handleAuthConfigRoute(context, req, res);
     return;
   }
 
@@ -363,6 +378,39 @@ async function handleProjectRoute(
   sendMethodNotAllowed(res, PROJECT_ITEM_ROUTE_METHODS, 'Project item routes support GET and DELETE.');
 }
 
+/**
+ * Reports `'clerk'` only when the whole chain a caller would need is present:
+ * a provider actually selected, a publishable key the frontend can load
+ * Clerk with, and a secret key the backend can verify a session against. Any
+ * one of those missing reports `'none'` — the same inert state the frontend
+ * already renders today — rather than a sign-in button pointed at a backend
+ * that will 401 every session it is handed.
+ */
+function handleAuthConfigRoute(context: StoryLabAccountRouteContext, req: RequestLike, res: ResponseLike): void {
+  const method = normalizeMethod(req.method);
+  if (method !== 'GET') {
+    sendMethodNotAllowed(res, AUTH_CONFIG_ROUTE_METHODS, 'Auth config routes support GET.');
+    return;
+  }
+
+  sendJson(res, 200, {
+    success: true,
+    data: resolveStoryLabAuthConfig(context.env)
+  } satisfies ApiResponse<StoryLabAuthConfig>);
+}
+
+function resolveStoryLabAuthConfig(env: Record<string, string | undefined>): StoryLabAuthConfig {
+  const providerName = resolveConfiguredAuthProviderName({ env });
+  const publishableKey = env['CLERK_PUBLISHABLE_KEY']?.trim();
+  const hasSecretKey = Boolean(env['CLERK_SECRET_KEY']?.trim());
+
+  if (providerName === 'clerk' && publishableKey && hasSecretKey) {
+    return { provider: 'clerk', publishableKey };
+  }
+
+  return { provider: 'none' };
+}
+
 async function requireAccountUser(authPort: AuthPort, req: RequestLike, res: ResponseLike): Promise<AuthUser | null> {
   try {
     return await authPort.requireUser(req);
@@ -401,6 +449,10 @@ function readAccountRouteTarget(req: RequestLike): AccountRouteTarget | null {
     return { resource: 'projects' };
   }
 
+  if (resource === 'auth-config') {
+    return { resource: 'auth-config' };
+  }
+
   if (resource === 'project') {
     return {
       resource: 'project',
@@ -420,6 +472,10 @@ function readAccountRouteTargetFromUrl(url: string | undefined): AccountRouteTar
 
   if (pathname.endsWith('/api/story-lab/account/projects') || pathname.endsWith('/account/projects')) {
     return { resource: 'projects' };
+  }
+
+  if (pathname.endsWith('/api/story-lab/account/auth-config') || pathname.endsWith('/account/auth-config')) {
+    return { resource: 'auth-config' };
   }
 
   const projectId = readProjectIdFromUrl(url);

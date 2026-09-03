@@ -35,6 +35,7 @@ export type {
   StoryLabUserProfile,
   CloudLibrarySyncMode,
   CloudLibrarySyncState,
+  StoryLabAuthConfig,
   CloudStoryProjectStorageMode,
   CloudStoryProjectListItem,
   CloudStoryProjectList,
