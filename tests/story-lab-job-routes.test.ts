@@ -11,6 +11,7 @@ import type {
   StoryLabJobCreationResponse
 } from '../api/_lib/story-lab/contracts';
 import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
+import { createClerkAuthPort } from '../api/_lib/story-lab/auth/clerkAuthPort';
 import {
   generateStoryLabGenesis as realGenerateStoryLabGenesis,
   continueStoryLab as realContinueStoryLab
@@ -492,6 +493,79 @@ async function testDurableInjectedJobCreationReceivesOwnerContext(): Promise<voi
   assert(store.eventOwnerUserIds[0] === owner.userId, 'durable job events route should pass authenticated owner id');
 }
 
+/**
+ * The fake `createStaticAuthPort` above proves the events route *threads*
+ * ownership through once authenticated, but it ignores the request entirely
+ * — it cannot catch a regression in how that authentication actually
+ * happens. `StoryService.streamStoryLabJobEvents` reads the events route with
+ * `fetch`, not `EventSource`, specifically so it can send the real
+ * `x-story-lab-session` header (see that method's own comment on why
+ * `EventSource` — which cannot set headers — was rejected). This drives the
+ * events route through a real `clerkAuthPort` to prove that header path
+ * actually authenticates and scopes to the right owner, the same way the
+ * existing status/create routes already do.
+ */
+async function testDurableEventsRouteAuthenticatesViaSessionHeader(): Promise<void> {
+  setMockRuntime();
+  const store = new CapturingDurableJobStore();
+  const validSessionToken = 'clerk-jwt-for-owner';
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createClerkAuthPort({
+      verifySessionToken: async token => (token === validSessionToken ? { userId: owner.userId, email: owner.email } : null)
+    }),
+    createJobStoreConfig: () => createDurableJobStoreConfig(store)
+  });
+
+  const createResponse = new FakeResponse();
+  await handler(
+    { method: 'POST', body: createGenesisJobRequest(), query: {}, headers: { 'x-story-lab-session': validSessionToken } },
+    createResponse
+  );
+  assert(createResponse.statusCode === 200, 'job creation over the real Clerk header path should succeed');
+  const jobId = (createResponse.body as any).data.job.jobId as string;
+
+  resetRateLimitsForTests();
+  const noSessionToken = new FakeResponse();
+  await handler(
+    { method: 'GET', query: { jobId, events: '1' }, url: `/api/story-lab/jobs/${jobId}/events`, headers: {} },
+    noSessionToken
+  );
+  assert(noSessionToken.statusCode === 401, 'the durable events route with no session at all should require auth');
+
+  resetRateLimitsForTests();
+  const wrongSessionToken = new FakeResponse();
+  await handler(
+    {
+      method: 'GET',
+      query: { jobId, events: '1' },
+      url: `/api/story-lab/jobs/${jobId}/events`,
+      headers: { 'x-story-lab-session': 'not-the-right-token' }
+    },
+    wrongSessionToken
+  );
+  assert(wrongSessionToken.statusCode === 401, 'the durable events route with an invalid session header should be rejected');
+
+  resetRateLimitsForTests();
+  const validHeaderSessionToken = new FakeResponse();
+  await handler(
+    {
+      method: 'GET',
+      query: { jobId, events: '1' },
+      url: `/api/story-lab/jobs/${jobId}/events`,
+      headers: { 'x-story-lab-session': validSessionToken }
+    },
+    validHeaderSessionToken
+  );
+  assert(
+    validHeaderSessionToken.statusCode === 200,
+    `the durable events route should authenticate a real session header, got ${validHeaderSessionToken.statusCode}`
+  );
+  assert(
+    store.eventOwnerUserIds.at(-1) === owner.userId,
+    'the header-authenticated events read should scope to the real owner id'
+  );
+}
+
 async function testDurableInjectedJobCreateFailureUsesSanitizedEnvelope(): Promise<void> {
   setMockRuntime();
   const store = new CapturingDurableJobStore();
@@ -764,6 +838,7 @@ async function run(): Promise<void> {
   await testPostgresJobStoreWithoutRouteAuthFailsClosed();
   await testDurableInjectedJobStoreRequiresAuth();
   await testDurableInjectedJobCreationReceivesOwnerContext();
+  await testDurableEventsRouteAuthenticatesViaSessionHeader();
   await testDurableInjectedJobCreateFailureUsesSanitizedEnvelope();
   await testDurableInjectedJobUpdateFailureUsesSanitizedEnvelope();
   await testDurableInjectedJobFinishFailureUsesSanitizedEnvelope();

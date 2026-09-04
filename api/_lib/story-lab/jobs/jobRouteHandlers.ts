@@ -314,7 +314,10 @@ async function handleStreamStoryLabJobEventsWithContext(
 
   // `EventSource` cannot set custom headers, so this checks for the key
   // through `withEventStreamAuth`'s `apiKey` query-parameter fallback as well
-  // as the usual headers — see that helper for why.
+  // as the usual headers — see that helper for why. The frontend reader
+  // (`StoryService.streamStoryLabJobEvents`) uses `fetch`, not `EventSource`,
+  // specifically so it *can* set the real `X-Story-Lab-Session` header
+  // instead of needing a bridge for that one — see that method's own comment.
   const access = await enforceApiAccessControl(
     withEventStreamAuth(req),
     res,

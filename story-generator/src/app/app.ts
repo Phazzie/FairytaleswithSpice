@@ -4,7 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subscription, map, switchMap, timeout, timer } from 'rxjs';
+import { Subscription, map, timer } from 'rxjs';
 import {
   createBrowserHtmlDownloadHost,
   dataUriToBlob,
@@ -422,25 +422,17 @@ type JobStatusPanelState = {
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 
-/** How often a non-terminal Story Lab job is re-checked at its `statusPath`. */
-const STORY_LAB_JOB_POLL_INTERVAL_MS = 2500;
-
 /**
  * How long a job may stay non-terminal before the reader is told it failed
  * rather than watching a progress bar with nothing behind it forever.
+ *
+ * A watchdog on the whole watch, not on any single request: the job event
+ * stream (`StoryService.streamStoryLabJobEvents`) reconnects on its own, so
+ * there is no per-request timeout to bound the way the old poll loop bounded
+ * each status request — only "has this job reached a terminal snapshot
+ * within the overall budget."
  */
 const STORY_LAB_JOB_POLL_TIMEOUT_MS = 5 * 60 * 1000;
-
-/**
- * How long a single status request may take before it's treated as failed.
- *
- * `STORY_LAB_JOB_POLL_TIMEOUT_MS` only bounds the poll loop between requests
- * — the recursive check that enforces it runs from inside each request's
- * `next` callback, so a request that never completes or errors would never
- * hand control back to it, leaving the job "running" forever regardless of
- * the overall cap. This bounds each request on its own.
- */
-const STORY_LAB_JOB_STATUS_REQUEST_TIMEOUT_MS = 15 * 1000;
 
 /**
  * The copy that told genesis and continuation apart in what used to be three
@@ -1402,11 +1394,11 @@ export class App implements OnDestroy {
         if (!finished) {
           this.watchJobUntilTerminal<StoryIterationPayload>(
             'genesis',
+            response.data.paths.eventsPath,
             response.data.paths.statusPath,
             batchId,
             blueprint.chapterBatchSize,
-            response.data.durability.warning,
-            Date.now()
+            response.data.durability.warning
           );
         }
       },
@@ -1488,11 +1480,11 @@ export class App implements OnDestroy {
         if (!finished) {
           this.watchJobUntilTerminal<ContinuationJobResult>(
             'continuation',
+            response.data.paths.eventsPath,
             response.data.paths.statusPath,
             batchId,
             request.chapterBatchSize,
-            response.data.durability.warning,
-            Date.now()
+            response.data.durability.warning
           );
         }
       },
@@ -2567,77 +2559,62 @@ export class App implements OnDestroy {
   }
 
   /**
-   * Re-checks a Story Lab job that `handleJobSnapshot` reported as not yet
-   * terminal, on a fixed interval, until it finishes or the poll times out.
+   * Watches a Story Lab job that `handleJobSnapshot` reported as not yet
+   * terminal, over its event stream, until it finishes or the watch times
+   * out.
    *
    * The backend always finishes genesis/continuation work synchronously
    * inside the job-creation request today, so a caller of this method
    * currently only fires once in a rare race (a request that outlives the
    * function's execution budget) rather than routinely. But the creation
-   * response's own `paths.statusPath` exists for exactly this case, and a
+   * response's own `paths.eventsPath` exists for exactly this case, and a
    * durable/queued job runner — the documented next step for Story Lab —
    * would hand back a non-terminal job on its very first response. Without
    * this, that job's progress bar would freeze forever with nothing watching
    * it: `jobEventSubscription` existed, was "cleaned up" on every terminal
    * path, and was never once assigned.
+   *
+   * One subscription, not a recursive re-poll: `StoryService.streamStoryLabJobEvents`
+   * reconnects on its own for as long as the backend keeps closing the
+   * response by design (see that route), fetching a fresh session token
+   * before every attempt via the `getSessionToken` callback below — so there
+   * is nothing here to reschedule on each snapshot the way the retired poll
+   * loop had to. `handleJobSnapshot` already tears this subscription down on
+   * every terminal path (`closeJobEventSubscription`, directly or via
+   * `failJob`), so `next` below does not need to inspect its return value.
+   *
+   * The watchdog timer and the event-stream subscription are composed into
+   * one `Subscription` so that a single `closeJobEventSubscription()` call —
+   * on a terminal snapshot, a stream error, or `ngOnDestroy` — tears down
+   * both, the same way it tore down the one poll subscription before this.
    */
   private watchJobUntilTerminal<T extends StoryIterationPayload>(
     kind: StoryLabGenerationJobKind,
+    eventsPath: string,
     statusPath: string,
     batchId: string,
     batchSize: ChapterBatchSize,
-    durabilityWarning: string | undefined,
-    pollStartedAt: number
+    durabilityWarning: string | undefined
   ) {
-    if (Date.now() - pollStartedAt >= STORY_LAB_JOB_POLL_TIMEOUT_MS) {
+    const subscription = new Subscription();
+    this.jobEventSubscription = subscription;
+
+    subscription.add(timer(STORY_LAB_JOB_POLL_TIMEOUT_MS).subscribe(() => {
       this.failJob(kind, batchId, JOB_KIND_COPY[kind].pollTimeoutMessage);
-      return;
-    }
+    }));
 
-    this.jobEventSubscription = timer(STORY_LAB_JOB_POLL_INTERVAL_MS).pipe(
-      switchMap(() => this.storyService.getStoryLabJobStatus<T>(statusPath).pipe(
-        timeout(STORY_LAB_JOB_STATUS_REQUEST_TIMEOUT_MS)
-      ))
+    subscription.add(this.storyService.streamStoryLabJobEvents<T>(
+      eventsPath,
+      () => this.authService.getRequestToken()
     ).subscribe({
-      next: response => {
-        if (!response.success || !response.data) {
-          this.failJob(kind, batchId, this.formatApiError(response.error, JOB_KIND_COPY[kind].streamErrorMessage));
-          return;
-        }
-
-        const finished = this.handleJobSnapshot(kind, response.data.job, statusPath, batchId, batchSize, durabilityWarning);
-        if (!finished) {
-          this.watchJobUntilTerminal<T>(kind, statusPath, batchId, batchSize, durabilityWarning, pollStartedAt);
-        }
+      next: event => {
+        this.handleJobSnapshot(kind, event.job, statusPath, batchId, batchSize, durabilityWarning);
       },
       error: error => {
         this.errorLogging.logError(error, 'App.watchJobUntilTerminal');
-
-        if (this.isDefinitiveJobPollError(error)) {
-          this.failJob(kind, batchId, this.formatHttpError(error, JOB_KIND_COPY[kind].streamErrorMessage));
-          return;
-        }
-
-        // A dropped connection, a 5xx, or a request that hit
-        // `STORY_LAB_JOB_STATUS_REQUEST_TIMEOUT_MS` doesn't mean the job
-        // itself failed — only that this one check-in didn't land. Keep
-        // watching within the overall poll timeout rather than ending a job
-        // that may still finish; that timeout is re-checked on this same
-        // call and is what backstops a status endpoint that is genuinely
-        // down for the whole window.
-        this.watchJobUntilTerminal<T>(kind, statusPath, batchId, batchSize, durabilityWarning, pollStartedAt);
+        this.failJob(kind, batchId, JOB_KIND_COPY[kind].streamErrorMessage);
       }
-    });
-  }
-
-  /**
-   * Whether a status-poll failure means the job itself is unreachable going
-   * forward (auth lost, the job id no longer resolves) rather than a blip in
-   * reaching the backend for this one check-in.
-   */
-  private isDefinitiveJobPollError(error: unknown): boolean {
-    const status = (error as { status?: number } | null | undefined)?.status;
-    return status === 400 || status === 401 || status === 403 || status === 404;
+    }));
   }
 
   private updateProgressFromJob(job: StoryLabJob<unknown>) {
