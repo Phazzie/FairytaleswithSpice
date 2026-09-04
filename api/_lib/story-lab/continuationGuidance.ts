@@ -111,11 +111,7 @@ export function previewStoryLabContinuationGuidance(input: {
 
 export function withContinuationStrategyBrief(continuationBrief: string | undefined, storyState: StoryStateSnapshot): string | undefined {
   const trimmedBrief = continuationBrief?.trim();
-  const hiddenGuidance = joinGuidanceSectionsWithinBudget([
-    buildContinuityCourtroomBrief(storyState, trimmedBrief),
-    buildChapterEndingStressTestBrief(storyState, trimmedBrief),
-    buildClicheAlarmBrief(storyState, trimmedBrief)
-  ], CONTINUATION_HIDDEN_GUIDANCE_MAX_LENGTH);
+  const hiddenGuidance = buildContinuationHiddenGuidance(continuationBrief, storyState);
 
   return [
     trimmedBrief,
@@ -123,6 +119,29 @@ export function withContinuationStrategyBrief(continuationBrief: string | undefi
   ]
     .filter((line): line is string => Boolean(line))
     .join('\n\n') || undefined;
+}
+
+/**
+ * The Continuity Courtroom / stress-test / cliche-alarm guidance alone, without
+ * the reader's own brief folded in ahead of it.
+ *
+ * `withContinuationStrategyBrief` above still returns the two concatenated —
+ * `previewStoryLabContinuationGuidance` and every existing caller of it keep
+ * reading that combined string exactly as before. This is for the one caller
+ * that needs the two halves kept apart: `storyLabEngine.ts` hands the reader's
+ * own text to the model as `userInput` ("CREATIVE DIRECTION") and this hidden
+ * guidance separately, under its own heading, so a courtroom reminder about an
+ * open thread debt is no longer presented to the model as the reader's own
+ * optional color.
+ */
+export function buildContinuationHiddenGuidance(continuationBrief: string | undefined, storyState: StoryStateSnapshot): string | undefined {
+  const trimmedBrief = continuationBrief?.trim();
+
+  return joinGuidanceSectionsWithinBudget([
+    buildContinuityCourtroomBrief(storyState, trimmedBrief),
+    buildChapterEndingStressTestBrief(storyState, trimmedBrief),
+    buildClicheAlarmBrief(storyState, trimmedBrief)
+  ], CONTINUATION_HIDDEN_GUIDANCE_MAX_LENGTH);
 }
 
 function extractHiddenContinuationGuidance(providerBrief: string, originalBrief: string): string {
@@ -449,7 +468,14 @@ function isUnresolvedThread(thread: PlotThread): boolean {
   return thread.status !== 'resolved';
 }
 
-function getStateThreads(storyState: StoryStateSnapshot): PlotThread[] {
+// Exported for `storyLabEngine.ts`'s own read of `storyState.threads` when
+// building `continuityState` for the continuation seam — a request-supplied
+// `storyState` is only ever truthy-checked at the route boundary (never
+// schema-validated), so a caller sending `storyState` with `threads` or
+// `characters` missing entirely reaches here, and a bare `.threads.filter(...)`
+// would throw a 500 instead of the graceful behavior this app gives every
+// other malformed-but-present field.
+export function getStateThreads(storyState: StoryStateSnapshot): PlotThread[] {
   return Array.isArray((storyState as Partial<StoryStateSnapshot>).threads)
     ? (storyState as Partial<StoryStateSnapshot>).threads as PlotThread[]
     : [];
@@ -461,7 +487,7 @@ function getStateArtifacts(storyState: StoryStateSnapshot): LoreArtifact[] {
     : [];
 }
 
-function getStateCharacters(storyState: StoryStateSnapshot): CharacterProfile[] {
+export function getStateCharacters(storyState: StoryStateSnapshot): CharacterProfile[] {
   return Array.isArray((storyState as Partial<StoryStateSnapshot>).characters)
     ? (storyState as Partial<StoryStateSnapshot>).characters as CharacterProfile[]
     : [];

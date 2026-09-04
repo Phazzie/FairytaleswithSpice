@@ -24,10 +24,15 @@ import { isClassicStoryTheme } from '../../../shared/themeVocabulary';
 import { StoryService } from '../services/storyService';
 import { buildContinuationResponse, buildGenesisResponse } from './mockData';
 import { getTransientStorySnapshot, persistStoryIteration } from './stateStore';
-import { extractContinuity } from './continuityExtractor';
+import { extractContinuity, isNonEmptyString } from './continuityExtractor';
 import { getXaiReasoningEffort, getXaiStoryModel } from '../config/xaiConfig';
 import { getStoryLabContinuityTimeoutMs } from './continuityBudget';
-import { withContinuationStrategyBrief, stripStoryMemoryCardSections } from './continuationGuidance';
+import {
+  buildContinuationHiddenGuidance,
+  getStateCharacters,
+  getStateThreads,
+  stripStoryMemoryCardSections
+} from './continuationGuidance';
 import { buildChapterDelta, buildStateDelta, buildStateSnapshot } from './storyStateBuilder';
 import { collapseWhitespace } from '../utils/whitespace';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
@@ -377,12 +382,39 @@ export async function continueStoryLab(
   const service = options.serviceFactory?.() ?? new StoryService();
   const currentChapterCount = Math.max(...previousChapters.map(chapter => chapter.chapterNumber));
   const existingContent = previousChapters.map(chapter => chapter.rawContent || chapter.htmlContent).join('\n\n');
-  const continuationBrief = withContinuationStrategyBrief(input.continuationBrief, storyState);
+  // `.find()` over an initial-value-less `.reduce()`: the latter throws on an
+  // empty array, and nothing here lets a static reader see that the
+  // `previousChapters.length === 0` guard above already rules that out.
+  const latestChapter = previousChapters.find(chapter => chapter.chapterNumber === currentChapterCount)
+    ?? previousChapters[previousChapters.length - 1];
   const result = await service.continueChapter({
     storyId: input.storyId,
     currentChapterCount,
     existingContent,
-    userInput: continuationBrief,
+    userInput: input.continuationBrief?.trim() || undefined,
+    continuityGuidance: buildContinuationHiddenGuidance(input.continuationBrief, storyState),
+    continuityState: {
+      // `getStateCharacters`/`getStateThreads` read through the same
+      // Array.isArray guard `continuationGuidance.ts` already applies to
+      // this same `storyState` — a request-supplied snapshot is only ever
+      // truthy-checked at the route boundary, never schema-validated, so a
+      // caller sending one with `characters` or `threads` missing entirely
+      // must not throw here. `isNonEmptyString` covers the entry itself:
+      // an array that passes `Array.isArray` can still hold `{}` or similar,
+      // whose `displayName`/`description`/`label` is `undefined` rather than
+      // a string — reaching `buildContinuationPrompt`'s own string-only
+      // helpers with that would throw just as surely as the missing array did.
+      characterNames: getStateCharacters(storyState)
+        .map(character => character.displayName)
+        .filter(isNonEmptyString),
+      // "Open" the same way `continuationGuidance.ts`'s own unresolved-thread
+      // filter reads it: every status but `resolved` still owes the reader a payoff.
+      openThreads: getStateThreads(storyState)
+        .filter(thread => thread.status !== 'resolved')
+        .map(thread => thread.description || thread.label)
+        .filter(isNonEmptyString),
+      latestChapterExcerpt: latestChapter.rawContent || latestChapter.htmlContent
+    },
     maintainTone: true,
     tropeMetadata: existingSummary?.tropeMetadata,
     requestedChapterCount: input.chapterBatchSize,

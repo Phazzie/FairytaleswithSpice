@@ -16,7 +16,6 @@ import {
   createContextExcerpt,
   extractCharacterNames,
   extractChapterTitleAndBody,
-  extractLastChapterSummary,
   extractPlotThreads,
   extractSpicyLevelFromContent,
   extractThemesFromContent,
@@ -154,13 +153,6 @@ assert(getSpicyLabel(99) === 'Spicy', 'an out-of-range level should fall back to
 assert(
   formatChapterContent('<h3>Already formatted</h3><p>Stays as-is.</p>') === '<h3>Already formatted</h3><p>Stays as-is.</p>',
   'content that already carries HTML formatting should be left untouched'
-);
-
-// ==================== extractLastChapterSummary ====================
-
-assert(
-  extractLastChapterSummary('').length > 0,
-  'empty content should still return a non-empty fallback summary'
 );
 
 // ==================== analyzeEmotionalTone ====================

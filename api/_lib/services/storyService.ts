@@ -44,7 +44,6 @@ import {
   createContextExcerpt,
   extractCharacterNames,
   extractChapterTitleAndBody,
-  extractLastChapterSummary,
   extractPlotThreads,
   extractSpicyLevelFromContent,
   extractThemesFromContent,
@@ -163,6 +162,39 @@ const STORY_LAB_TONE_MAX_LENGTH = STORY_EVALUATION_LIMITS.maxConfigurationValueL
 const STORY_LAB_CHARACTER_NAME_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxCharacterNameLength;
 const STORY_LAB_WORLD_DETAILS_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxWorldDetailsLength;
 const STORY_LAB_NARRATIVE_DIRECTIVES_MAX_LENGTH = STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength;
+
+/**
+ * Bounds for the "CONTEXT FROM PREVIOUS CHAPTERS" block in
+ * `buildContinuationPrompt`, once `characterNames`/`activePlotThreads` merge
+ * state with the regex scan rather than picking one or the other. A story
+ * that has run long enough to grow dozens of characters or unresolved
+ * threads would otherwise have no bound on how much of that list reaches
+ * every future continuation prompt — the same shape of problem the
+ * Continuity Courtroom already bounds for its own hidden guidance, at a
+ * comparable magnitude (`CONTINUITY_COURTROOM_MAX_DETAIL_LENGTH` there is
+ * 180; this reuses the character-name field's own declared bound rather than
+ * inventing a second one).
+ */
+const CONTINUATION_STATE_MAX_CHARACTERS = 12;
+const CONTINUATION_STATE_MAX_CHARACTER_NAME_LENGTH = STORY_LAB_CHARACTER_NAME_MAX_LENGTH;
+const CONTINUATION_STATE_MAX_THREADS = 8;
+const CONTINUATION_STATE_MAX_THREAD_LENGTH = 180;
+
+/**
+ * Slots reserved, out of each cap above, for names/threads the prose scan
+ * finds that state does not already know about.
+ *
+ * `mergeUniqueStrings` puts state's own entries first and the prose scan's
+ * afterward, so a prefix cap alone starves the prose scan to zero whenever
+ * state is already at or past the cap — exactly the long-running,
+ * many-characters story where a stuck heuristic-extraction run (see
+ * `mergeUniqueStrings`'s own comment) most needs it. Reserving these slots
+ * caps state's own contribution to `maxEntries - reserved` first, so the
+ * merge always has room left for what the prose scan alone would have
+ * found.
+ */
+const CONTINUATION_STATE_RESERVED_CHARACTER_SLOTS = 3;
+const CONTINUATION_STATE_RESERVED_THREAD_SLOTS = 2;
 
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
@@ -1234,6 +1266,52 @@ AVOID: ${selectedStructure.avoid}`;
     return value.split('_').join(' ');
   }
 
+  /**
+   * `base`, capped to `maxEntries - reservedForAdditional` entries, then
+   * every entry of `additional` not already in the kept part of `base` —
+   * filled in until `maxEntries` total, order preserved within each source.
+   *
+   * A plain prefix cap over `[...base, ...additional]` starves `additional`
+   * to zero whenever `base` alone already reaches `maxEntries` — exactly the
+   * long-running, many-characters story where a stuck heuristic-extraction
+   * run (state never updated with what the prose scan alone would have
+   * found — see `buildContinuationPrompt`'s own comment on why `additional`
+   * is unioned in at all) most needs at least some of its findings to
+   * survive. Reserving slots up front guarantees they do, regardless of how
+   * large `base` is.
+   */
+  private mergeUniqueStrings(
+    base: readonly string[] | undefined,
+    additional: readonly string[],
+    maxEntries: number,
+    reservedForAdditional: number
+  ): string[] {
+    const cappedBase = (base ?? []).slice(0, Math.max(0, maxEntries - reservedForAdditional));
+    const merged = [...cappedBase];
+    const seen = new Set(merged);
+
+    for (const item of additional) {
+      if (merged.length >= maxEntries) {
+        break;
+      }
+      if (!seen.has(item)) {
+        seen.add(item);
+        merged.push(item);
+      }
+    }
+
+    return merged;
+  }
+
+  /**
+   * Each entry of `values` capped to `maxEntryLength` code units at a word
+   * boundary — the per-entry half of the bound `mergeUniqueStrings` applies
+   * to the list as a whole.
+   */
+  private capPromptStringLengths(values: readonly string[], maxEntryLength: number): string[] {
+    return values.map(value => capAtWordBoundaryWithinCodeUnits(value, maxEntryLength));
+  }
+
   private buildChapterUserPrompt(
     input: StoryGenerationSeam['input'],
     options: { chapterNumber: number; totalChapters: number; existingContent?: string }
@@ -1256,18 +1334,63 @@ ${contextExcerpt}${restLines.join('\n')}`;
     chapterNumber: number = input.currentChapterCount + 1,
     existingContentOverride?: string
   ): string {
-    // Extract intelligent context from previous chapters
     const existingContent = existingContentOverride || input.existingContent;
-    const characterNames = extractCharacterNames(existingContent);
-    const lastChapterSummary = extractLastChapterSummary(existingContent);
-    const activePlotThreads = extractPlotThreads(existingContent);
-    const emotionalTone = analyzeEmotionalTone(existingContent);
-    
+
+    // `continuityState` is the authoritative StoryStateSnapshot's own view of
+    // the story, computed once in `storyLabEngine.ts` from real character
+    // profiles and typed plot threads — accurate whenever continuity
+    // extraction actually ran that round. But extraction is sometimes
+    // skipped or falls back silently (no XAI_API_KEY, the request budget too
+    // low, a provider error) and then returns the *pre-extraction* state
+    // completely unchanged, nothing prose-derived merged in at all — see
+    // `continuityExtractor.ts`'s heuristic/catch branches, both of which
+    // hand back `input.currentState` as-is. When that happens for a run,
+    // state alone never grows to include a character or thread introduced
+    // in prose only, for the rest of that story. So the regex scans are
+    // always unioned onto the state's own list rather than run only as an
+    // absent-state fallback: they can only add a name or thread the text
+    // actually contains, never remove or override what state already knows.
+    const characterNames = this.capPromptStringLengths(
+      this.mergeUniqueStrings(
+        input.continuityState?.characterNames,
+        extractCharacterNames(existingContent),
+        CONTINUATION_STATE_MAX_CHARACTERS,
+        CONTINUATION_STATE_RESERVED_CHARACTER_SLOTS
+      ),
+      CONTINUATION_STATE_MAX_CHARACTER_NAME_LENGTH
+    );
+    const activePlotThreads = this.capPromptStringLengths(
+      this.mergeUniqueStrings(
+        input.continuityState?.openThreads,
+        extractPlotThreads(existingContent),
+        CONTINUATION_STATE_MAX_THREADS,
+        CONTINUATION_STATE_RESERVED_THREAD_SLOTS
+      ),
+      CONTINUATION_STATE_MAX_THREAD_LENGTH
+    );
+
+    // Mid-batch (chapter 2+ of a multi-chapter continuation),
+    // `existingContentOverride` has grown past `input.existingContent` with
+    // chapters generated earlier in this same batch call — chapters
+    // `continuityState.latestChapterExcerpt` (computed once, before the
+    // batch, in `storyLabEngine.ts`) knows nothing about. Using it for every
+    // chapter in the batch would tell chapter 3 the tone of the chapter
+    // before the batch even started, even if chapter 2 — generated moments
+    // earlier in this same call — changed register: recreating the exact
+    // contradiction this field exists to remove. So tone is read from the
+    // freshest text actually on hand: the override's own tail once one
+    // exists, `continuityState`'s excerpt only for the batch's first
+    // chapter, where the two are the same text anyway.
+    const isMidBatch = existingContentOverride !== undefined && existingContentOverride !== input.existingContent;
+    const latestChapterText = isMidBatch
+      ? createContextExcerpt(existingContentOverride)
+      : input.continuityState?.latestChapterExcerpt;
+    const emotionalTone = analyzeEmotionalTone(latestChapterText ?? existingContent);
+
     const prompt = `Continue this story as Chapter ${chapterNumber}.
 
 CONTEXT FROM PREVIOUS CHAPTERS:
 - Established Characters: ${characterNames.join(', ') || 'Continue developing existing characters'}
-- Last Chapter Summary: ${lastChapterSummary}
 - Active Plot Threads: ${activePlotThreads.join(', ') || 'Develop new complications'}
 - Emotional Tone: ${emotionalTone}
 
@@ -1289,6 +1412,7 @@ CLIFFHANGER VARIETY TARGETS:
 - End with the type that best fits this chapter, but avoid repeating the exact emotional shape of the prior ending.
 
 ${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+${input.continuityGuidance ? `CONTINUITY REQUIREMENTS (do not deviate):\n${input.continuityGuidance}` : ''}
 ${this.formatContinuationStoryLabContext(input.generationContext)}
 
 PREVIOUS CHAPTER(S) FOR CONTINUITY:

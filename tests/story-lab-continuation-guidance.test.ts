@@ -14,6 +14,7 @@
  */
 
 import {
+  buildContinuationHiddenGuidance,
   previewStoryLabContinuationGuidance,
   stripStoryMemoryCardSections,
   withContinuationStrategyBrief
@@ -392,6 +393,31 @@ function testUnknownRelationshipKindKeepsTheEdge(): void {
   );
 }
 
+/**
+ * `buildContinuationHiddenGuidance` exists so `storyLabEngine.ts` can keep the
+ * reader's own brief and the courtroom's hidden guidance as two separate
+ * fields on the continuation seam, instead of concatenating them into one
+ * string labeled "CREATIVE DIRECTION" — see `storyService.ts`'s
+ * `buildContinuationPrompt`. It must return exactly the hidden half of what
+ * `withContinuationStrategyBrief` already returns combined, for both a
+ * present and an absent brief.
+ */
+function testHiddenGuidanceIsTheNonBriefHalfOfTheStrategyBrief(): void {
+  const state = neutralState();
+  const brief = 'The formal debt and bargain must be repaid.';
+
+  const combined = withContinuationStrategyBrief(brief, state) ?? '';
+  const hiddenOnly = buildContinuationHiddenGuidance(brief, state) ?? '';
+
+  assert(combined.startsWith(brief), 'the combined brief should still lead with the reader\'s own text');
+  assert(combined.endsWith(hiddenOnly), `the hidden-only guidance should be exactly the combined brief's tail (got:\n${hiddenOnly}\nvs\n${combined})`);
+  assert(!hiddenOnly.includes(brief), 'the hidden-only guidance must not also carry the reader\'s own brief text');
+
+  const hiddenWithNoBrief = buildContinuationHiddenGuidance(undefined, state) ?? '';
+  const combinedWithNoBrief = withContinuationStrategyBrief(undefined, state) ?? '';
+  assert(hiddenWithNoBrief === combinedWithNoBrief, 'with no reader brief at all, the hidden-only guidance should equal the combined result');
+}
+
 function main(): void {
   testBriefMentioningThreadActivatesIt();
   testUnknownRelationshipKindKeepsTheEdge();
@@ -404,6 +430,7 @@ function main(): void {
   testNonLatinBriefStillActivatesThreads();
   testOverlongCourtroomDetailIsCutAtAWordBoundary();
   testOverlongCourtroomDetailKeepsCharactersWhole();
+  testHiddenGuidanceIsTheNonBriefHalfOfTheStrategyBrief();
 
   console.log('Story Lab continuation guidance tests passed');
 }

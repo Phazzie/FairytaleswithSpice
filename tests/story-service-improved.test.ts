@@ -12,7 +12,6 @@ import { StoryService } from '../api/_lib/services/storyService';
 import { StoryGenerationSeam, ChapterContinuationSeam, VALIDATION_RULES } from '../api/_lib/types/contracts';
 import {
   countWords,
-  extractLastChapterSummary,
   extractSpicyLevelFromContent,
   extractThemesFromContent,
   formatStoryContent,
@@ -617,29 +616,6 @@ const storyTextTests = {
     console.log(`   ✓ Stripped text: ${JSON.stringify(stripped)}`);
   }),
 
-  testLastChapterSummaryReadsTheEnding: test('Last Chapter Summary Reads The Ending', () => {
-    // Six paragraphs, so "the last three" is a strictly smaller set than "all".
-    const story = [
-      '<p>Paragraph one opens the chapter.</p>',
-      '<p>Paragraph two builds the tension.</p>',
-      '<p>Paragraph three turns the screw.</p>',
-      '<p>Paragraph four raises the stakes.</p>',
-      '<p>Paragraph five names the price.</p>',
-      '<p>Paragraph six leaves the door open.</p>'
-    ].join('');
-
-    const summary: string = extractLastChapterSummary(story);
-
-    if (!summary.includes('Paragraph six')) {
-      throw new Error(`Summary of the last chapter should reach its final paragraph: ${summary}`);
-    }
-    if (summary.includes('Paragraph one')) {
-      throw new Error(`Summary of the last three paragraphs should not start at the beginning: ${summary}`);
-    }
-
-    console.log(`   ✓ Summary: ${JSON.stringify(summary)}`);
-  }),
-
   testNextChapterHintIsTheClosingSentence: test('Next Chapter Hint Is The Closing Sentence', () => {
     const hint: string = generateNextChapterHint(HTML_CHAPTER);
 
@@ -651,39 +627,6 @@ const storyTextTests = {
     }
 
     console.log(`   ✓ Hint: ${JSON.stringify(hint)}`);
-  }),
-
-  testLastChapterSummaryOnlyMarksRealTruncation: test('Last Chapter Summary Only Marks Real Truncation', () => {
-    const summarize = (content: string) => extractLastChapterSummary(content);
-
-    // A short closing passage that the 150-word cut cannot reach, written the
-    // way generator HTML actually arrives: the paragraphs carry line breaks and
-    // indentation inside them. Joining the words on single spaces shortens the
-    // string without dropping any of them, which is what the length comparison
-    // read as a truncation.
-    const untruncated = summarize('<p>\n  She opened the door.\n</p>\n<p>\n  Blood pooled on the floor.\n</p>');
-    if (untruncated.endsWith('...')) {
-      throw new Error(`A summary that holds the whole passage must not be marked truncated: ${JSON.stringify(untruncated)}`);
-    }
-    if (!untruncated.includes('Blood pooled on the floor.')) {
-      throw new Error(`The summary should still carry the closing paragraph: ${JSON.stringify(untruncated)}`);
-    }
-
-    // Past 150 words the marker is the point: the continuation prompt has to
-    // know the passage it was handed stops early.
-    const longParagraph = `<p>${Array.from({ length: 200 }, (_, index) => `word${index}`).join(' ')}</p>`;
-    const truncated = summarize(longParagraph);
-    if (!truncated.endsWith('...')) {
-      throw new Error('A summary cut at the word limit must be marked truncated');
-    }
-    // The marker is appended to the last word rather than written as a word of
-    // its own, so the cut passage is still exactly 150 tokens long.
-    if (truncated.split(/\s+/).length !== 150) {
-      throw new Error(`Expected the summary cut to 150 words, got ${truncated.split(/\s+/).length} tokens`);
-    }
-
-    console.log(`   ✓ Untruncated summary: ${JSON.stringify(untruncated)}`);
-    console.log(`   ✓ Truncated summary ends with the marker`);
   }),
 
   testDisplayContentKeepsBlankLineParagraphs: test('Display Content Keeps Blank-Line Paragraphs', () => {

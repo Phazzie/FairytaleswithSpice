@@ -411,7 +411,13 @@ function arrayOfStrings(candidate: unknown, fallback: string[] | undefined): str
   return values.length || candidate.length === 0 ? values : fallback ?? [];
 }
 
-function isNonEmptyString(value: unknown): value is string {
+// Exported for `storyLabEngine.ts`'s own read of `storyState.characters`/
+// `.threads` when building `continuityState` for the continuation seam — a
+// request-supplied `storyState` is only ever truthy-checked at the route
+// boundary, never schema-validated, so an array that passes `Array.isArray`
+// can still hold an entry whose `displayName`/`description`/`label` is
+// missing, empty, or not a string at all.
+export function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 

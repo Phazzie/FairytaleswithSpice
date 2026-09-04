@@ -19,15 +19,12 @@ import {
   findWellFormedTagEnd,
   parseHtmlTag
 } from '../../../shared/htmlTagScanner';
-import { splitStoryIntoTextBlocks, stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
+import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
 import { wholeWordAlternationPattern, wholeWordPattern } from '../utils/wholeWord';
 
 /** The longest `nextChapterHint`, in code points. */
 export const NEXT_CHAPTER_HINT_MAX_LENGTH = 200;
-
-/** How much of the closing passage a continuation prompt is shown as "what just happened", in words. */
-export const SUMMARY_WORD_LIMIT = 150;
 
 /**
  * Reduce story markup to the text a reader sees.
@@ -72,37 +69,6 @@ export function extractCharacterNames(content: string): string[] {
 
   // Deduplicate and return
   return [...new Set(names)];
-}
-
-/**
- * Extract summary of last chapter/section
- */
-export function extractLastChapterSummary(content: string): string {
-  // Stories arrive as generator HTML, where a paragraph is a `<p>` element
-  // rather than a run of text between blank lines. Splitting the stripped
-  // text on blank lines therefore found exactly one paragraph — the whole
-  // story — and "the last three paragraphs, truncated to 150 words" became
-  // "the story's opening 150 words". That summary is what the continuation
-  // prompt is told just happened, so a chapter continued from the beginning.
-  const paragraphs = splitStoryIntoTextBlocks(content);
-
-  if (paragraphs.length === 0) return 'Story beginning';
-
-  // Get last 2-3 paragraphs as summary
-  const lastParagraphs = paragraphs.slice(-3).join(' ');
-
-  // Truncate to ~150 words
-  const words = lastParagraphs.split(/\s+/);
-  const summary = words.slice(0, SUMMARY_WORD_LIMIT).join(' ');
-
-  // Whether the cut happened is a question about the words, not about the
-  // lengths of two strings. Joining on single spaces is itself shortening —
-  // any line break or double space inside the paragraphs comes back as one
-  // character — so comparing lengths reported a truncation for a summary that
-  // holds the whole passage. The marker is what tells the continuation prompt
-  // that the chapter it is being handed stops mid-thought, and the model is
-  // then prompted to resume from a sentence that had in fact already ended.
-  return words.length > SUMMARY_WORD_LIMIT ? summary + '...' : summary;
 }
 
 /**
