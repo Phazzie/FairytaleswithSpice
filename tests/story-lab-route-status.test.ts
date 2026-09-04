@@ -8,7 +8,12 @@ import { withMemoryRateLimitStore } from './helpers/withMemoryRateLimitStore';
 import { getStoryLabResponseStatus } from '../api/_lib/story-lab/routeStatus';
 import type { AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
-import { createRejectingAuthPort, createStaticAuthPort, createStubProfileStore } from './helpers/storyLabAuthFixtures';
+import {
+  assertRefusedForUnhonorableContentBoundary,
+  createRejectingAuthPort,
+  createStaticAuthPort,
+  createStubProfileStore
+} from './helpers/storyLabAuthFixtures';
 
 interface FakeRequest {
   method: string;
@@ -573,14 +578,7 @@ async function main(): Promise<void> {
     const response = new FakeResponse();
     await handler(createRequest('POST', createContinuationBody()), response);
 
-    assert(
-      response.statusCode === 400,
-      `a signed-in caller with stored boundaries and no request heat contract should be refused, got ${response.statusCode}`
-    );
-    const body = response.body as { success?: boolean; error?: { code?: string } };
-    assert(body.success === false, 'the refusal should be an error payload');
-    assert(body.error?.code === 'INVALID_REQUEST', `the refusal should be a caller error, got ${JSON.stringify(body.error)}`);
-    assert(!engineCalled, 'the engine should never be called when the boundary cannot be honored');
+    assertRefusedForUnhonorableContentBoundary(response, engineCalled);
   }
 
   // Two shapes of "nothing to honor", both of which must proceed unchanged

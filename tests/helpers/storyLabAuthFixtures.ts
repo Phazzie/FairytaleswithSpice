@@ -73,3 +73,34 @@ export function createStubProfileStore(profile: StoryLabUserProfile | null): Sto
     }
   };
 }
+
+/**
+ * Asserts a continuation was refused because a signed-in caller's stored
+ * content boundaries had no Heat Contract to merge into —
+ * `resolveContinuationHeatContract`'s `{ ok: false }` case, surfaced
+ * identically by both the direct continuation route
+ * (`createStoryLabContinuationHandler`) and the job route
+ * (`createStoryLabJobsRouteHandler`). Shared so the two route tests that
+ * prove it don't carry two copies of the same four checks.
+ */
+export function assertRefusedForUnhonorableContentBoundary(
+  response: { statusCode: number; body: unknown },
+  engineCalled: boolean
+): void {
+  if (response.statusCode !== 400) {
+    throw new Error(
+      `a signed-in caller with stored boundaries and no request heat contract should be refused, got ${response.statusCode}`
+    );
+  }
+
+  const body = response.body as { success?: boolean; error?: { code?: string } };
+  if (body.success !== false) {
+    throw new Error('the refusal should be an error payload');
+  }
+  if (body.error?.code !== 'INVALID_REQUEST') {
+    throw new Error(`the refusal should be a caller error, got ${JSON.stringify(body.error)}`);
+  }
+  if (engineCalled) {
+    throw new Error('the engine should never be called when the boundary cannot be honored');
+  }
+}

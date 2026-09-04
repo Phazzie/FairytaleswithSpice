@@ -16,7 +16,12 @@ import {
   continueStoryLab as realContinueStoryLab
 } from '../api/_lib/story-lab/storyLabEngine';
 import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
-import { createRejectingAuthPort, createStaticAuthPort, createStubProfileStore } from './helpers/storyLabAuthFixtures';
+import {
+  assertRefusedForUnhonorableContentBoundary,
+  createRejectingAuthPort,
+  createStaticAuthPort,
+  createStubProfileStore
+} from './helpers/storyLabAuthFixtures';
 import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { NonDurableStoryLabJobStore, nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
@@ -725,14 +730,7 @@ async function testContinuationJobRefusesWhenBoundariesHaveNoHeatContractToJoin(
   const response = new FakeResponse();
   await handler(createRequest('POST', createContinuationJobRequest(undefined)), response);
 
-  assert(
-    response.statusCode === 400,
-    `a signed-in caller with stored boundaries and no request heat contract should be refused, got ${response.statusCode}`
-  );
-  const body = response.body as { success?: boolean; error?: { code?: string } };
-  assert(body.success === false, 'the refusal should be an error payload');
-  assert(body.error?.code === 'INVALID_REQUEST', `the refusal should be a caller error, got ${JSON.stringify(body.error)}`);
-  assert(!engineCalled, 'the engine should never be called when the boundary cannot be honored');
+  assertRefusedForUnhonorableContentBoundary(response, engineCalled);
 }
 
 /**
