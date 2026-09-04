@@ -312,18 +312,14 @@ async function handleStreamStoryLabJobEventsWithContext(
     return;
   }
 
-  // `EventSource` cannot set custom headers, so `withEventStreamAuth` bridges
-  // both the `apiKey` and (for a durable, owner-scoped job store)
-  // `sessionToken` query parameters into the headers a real request would
-  // have carried. Built once and reused for every check below — including
-  // `resolveJobStoreOrRespond`'s `authPort.requireUser` call, not just the
-  // access-control gate — because that auth check reads the *original* `req`
-  // otherwise, never seeing a session bridged only into a copy passed to
-  // `enforceApiAccessControl` alone.
-  const eventStreamReq: RequestLike = { ...req, headers: withEventStreamAuth(req).headers };
-
+  // `EventSource` cannot set custom headers, so this checks for the key
+  // through `withEventStreamAuth`'s `apiKey` query-parameter fallback as well
+  // as the usual headers — see that helper for why. The frontend reader
+  // (`StoryService.streamStoryLabJobEvents`) uses `fetch`, not `EventSource`,
+  // specifically so it *can* set the real `X-Story-Lab-Session` header
+  // instead of needing a bridge for that one — see that method's own comment.
   const access = await enforceApiAccessControl(
-    eventStreamReq,
+    withEventStreamAuth(req),
     res,
     'story-lab/jobs/events',
     // Not `STREAMING`: this route replays and closes, so a reader watching one
@@ -334,12 +330,12 @@ async function handleStreamStoryLabJobEventsWithContext(
     return;
   }
 
-  const jobId = readValidJobIdOrRespond(eventStreamReq, res);
+  const jobId = readValidJobIdOrRespond(req, res);
   if (!jobId) {
     return;
   }
 
-  const resolvedStore = await resolveJobStoreOrRespond(context, eventStreamReq, res, requestId);
+  const resolvedStore = await resolveJobStoreOrRespond(context, req, res, requestId);
   if (!resolvedStore) {
     return;
   }

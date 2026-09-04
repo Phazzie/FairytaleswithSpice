@@ -497,17 +497,15 @@ async function testDurableInjectedJobCreationReceivesOwnerContext(): Promise<voi
  * The fake `createStaticAuthPort` above proves the events route *threads*
  * ownership through once authenticated, but it ignores the request entirely
  * — it cannot catch a regression in how that authentication actually
- * happens. A real `EventSource` reconnecting against this route can only
- * ever carry `x-story-lab-session` header at all (`resolveJobStoreOrRespond`
- * calls `authPort.requireUser` on the same request `enforceApiAccessControl`
- * inspects) — a `sessionToken` that stayed inside `withEventStreamAuth`'s
- * merged copy for the access-control check alone, and never reached the
- * request `resolveJobStoreOrRespond` sees, would 401 every signed-in
- * reader's browser reconnect against a durable job store forever, even
- * though the identical `apiKey` query parameter kept working for
- * `enforceApiAccessControl` itself.
+ * happens. `StoryService.streamStoryLabJobEvents` reads the events route with
+ * `fetch`, not `EventSource`, specifically so it can send the real
+ * `x-story-lab-session` header (see that method's own comment on why
+ * `EventSource` — which cannot set headers — was rejected). This drives the
+ * events route through a real `clerkAuthPort` to prove that header path
+ * actually authenticates and scopes to the right owner, the same way the
+ * existing status/create routes already do.
  */
-async function testDurableEventsRouteAuthenticatesViaSessionTokenQueryParameter(): Promise<void> {
+async function testDurableEventsRouteAuthenticatesViaSessionHeader(): Promise<void> {
   setMockRuntime();
   const store = new CapturingDurableJobStore();
   const validSessionToken = 'clerk-jwt-for-owner';
@@ -526,47 +524,45 @@ async function testDurableEventsRouteAuthenticatesViaSessionTokenQueryParameter(
   assert(createResponse.statusCode === 200, 'job creation over the real Clerk header path should succeed');
   const jobId = (createResponse.body as any).data.job.jobId as string;
 
-  // No `x-story-lab-session` header at all here — only the query parameter a
-  // browser `EventSource` can actually send.
   resetRateLimitsForTests();
   const noSessionToken = new FakeResponse();
   await handler(
     { method: 'GET', query: { jobId, events: '1' }, url: `/api/story-lab/jobs/${jobId}/events`, headers: {} },
     noSessionToken
   );
-  assert(noSessionToken.statusCode === 401, 'the durable events route with no session at all should still require auth');
+  assert(noSessionToken.statusCode === 401, 'the durable events route with no session at all should require auth');
 
   resetRateLimitsForTests();
   const wrongSessionToken = new FakeResponse();
   await handler(
     {
       method: 'GET',
-      query: { jobId, events: '1', sessionToken: 'not-the-right-token' },
+      query: { jobId, events: '1' },
       url: `/api/story-lab/jobs/${jobId}/events`,
-      headers: {}
+      headers: { 'x-story-lab-session': 'not-the-right-token' }
     },
     wrongSessionToken
   );
-  assert(wrongSessionToken.statusCode === 401, 'the durable events route with an invalid query session token should be rejected');
+  assert(wrongSessionToken.statusCode === 401, 'the durable events route with an invalid session header should be rejected');
 
   resetRateLimitsForTests();
-  const validQuerySessionToken = new FakeResponse();
+  const validHeaderSessionToken = new FakeResponse();
   await handler(
     {
       method: 'GET',
-      query: { jobId, events: '1', sessionToken: validSessionToken },
+      query: { jobId, events: '1' },
       url: `/api/story-lab/jobs/${jobId}/events`,
-      headers: {}
+      headers: { 'x-story-lab-session': validSessionToken }
     },
-    validQuerySessionToken
+    validHeaderSessionToken
   );
   assert(
-    validQuerySessionToken.statusCode === 200,
-    `the durable events route should authenticate a browser EventSource via the sessionToken query parameter, got ${validQuerySessionToken.statusCode}`
+    validHeaderSessionToken.statusCode === 200,
+    `the durable events route should authenticate a real session header, got ${validHeaderSessionToken.statusCode}`
   );
   assert(
     store.eventOwnerUserIds.at(-1) === owner.userId,
-    'the query-parameter-authenticated events read should still scope to the real owner id'
+    'the header-authenticated events read should scope to the real owner id'
   );
 }
 
@@ -842,7 +838,7 @@ async function run(): Promise<void> {
   await testPostgresJobStoreWithoutRouteAuthFailsClosed();
   await testDurableInjectedJobStoreRequiresAuth();
   await testDurableInjectedJobCreationReceivesOwnerContext();
-  await testDurableEventsRouteAuthenticatesViaSessionTokenQueryParameter();
+  await testDurableEventsRouteAuthenticatesViaSessionHeader();
   await testDurableInjectedJobCreateFailureUsesSanitizedEnvelope();
   await testDurableInjectedJobUpdateFailureUsesSanitizedEnvelope();
   await testDurableInjectedJobFinishFailureUsesSanitizedEnvelope();

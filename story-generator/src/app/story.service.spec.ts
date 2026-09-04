@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { StoryService } from './story.service';
 import { ErrorLoggingService } from './error-logging';
@@ -16,11 +16,7 @@ import {
   StorySummary,
   StoryStateSnapshot
 } from './contracts';
-import {
-  MOCK_EVENT_SOURCE_READY_STATE,
-  createControllableMock,
-  withMockEventSource
-} from '../testing/event-source-mock';
+import { createFetchStreamMock, formatMockSseFrame } from '../testing/fetch-stream-mock';
 
 function createGenesisInput(): StoryGenerationSeam['input'] {
   return {
@@ -291,11 +287,14 @@ describe('StoryService', () => {
 
   describe('streamStoryLabJobEvents', () => {
     const eventsPath = '/api/story-lab/jobs/job_stream-target/events';
+    // Kept in sync with `STORY_LAB_JOB_EVENTS_RECONNECT_DELAY_MS` in story.service.ts.
+    const RECONNECT_DELAY_MS = 3000;
 
-    function createJobEvent(overrides: Partial<StoryLabJobEvent['job']> = {}): StoryLabJobEvent {
+    function createJobEvent(overrides: Partial<StoryLabJobEvent['job']> & { eventId?: string } = {}): StoryLabJobEvent {
       const now = new Date().toISOString();
+      const { eventId = 'event_1', ...jobOverrides } = overrides;
       return {
-        eventId: 'event_1',
+        eventId,
         type: 'snapshot',
         emittedAt: now,
         job: {
@@ -306,115 +305,190 @@ describe('StoryService', () => {
           progressPercent: 40,
           createdAt: now,
           updatedAt: now,
-          ...overrides
+          ...jobOverrides
         }
       };
     }
 
-    it('opens an EventSource at the eventsPath and emits parsed job events', () => {
-      const mock = createControllableMock();
+    it('sends the session token as a real header, not a URL query parameter', fakeAsync(() => {
+      const fetchMock = createFetchStreamMock();
+      const restore = fetchMock.install();
+      fetchMock.enqueueResponse(200, [formatMockSseFrame(createJobEvent())]);
 
-      withMockEventSource(mock.MockClass, () => {
-        const received: StoryLabJobEvent[] = [];
-        service.streamStoryLabJobEvents(eventsPath, null).subscribe(event => received.push(event));
+      const subscription = service.streamStoryLabJobEvents(eventsPath, async () => 'clerk-jwt-value').subscribe();
+      tick();
 
-        const jobEvent = createJobEvent();
-        mock.triggerMessage(jobEvent);
+      expect(fetchMock.calls.length).toBe(1);
+      expect(fetchMock.calls[0].url).toBe(eventsPath);
+      expect(fetchMock.calls[0].url).not.toContain('clerk-jwt-value');
+      expect(fetchMock.calls[0].headers['X-Story-Lab-Session']).toBe('clerk-jwt-value');
 
-        expect(received).toEqual([jobEvent]);
+      subscription.unsubscribe();
+      restore();
+    }));
+
+    it('omits the session header when the caller has no token', fakeAsync(() => {
+      const fetchMock = createFetchStreamMock();
+      const restore = fetchMock.install();
+      fetchMock.enqueueResponse(200, [formatMockSseFrame(createJobEvent())]);
+
+      const subscription = service.streamStoryLabJobEvents(eventsPath, async () => null).subscribe();
+      tick();
+
+      expect(fetchMock.calls[0].headers['X-Story-Lab-Session']).toBeUndefined();
+
+      subscription.unsubscribe();
+      restore();
+    }));
+
+    it('reconnects after the response ends cleanly, fetching a fresh token and skipping already-applied events', fakeAsync(() => {
+      const fetchMock = createFetchStreamMock();
+      const restore = fetchMock.install();
+      const firstEvent = createJobEvent({ eventId: 'event_1', progressPercent: 40 });
+      const secondEvent = createJobEvent({ eventId: 'event_2', progressPercent: 80 });
+      // The route replays the *entire* history on every connection — the
+      // second connection here replays event_1 again alongside the new
+      // event_2, exactly like a real reconnect against this design.
+      fetchMock.enqueueResponse(200, [formatMockSseFrame(firstEvent)]);
+      fetchMock.enqueueResponse(200, [formatMockSseFrame(firstEvent), formatMockSseFrame(secondEvent)]);
+
+      let tokenCalls = 0;
+      const received: StoryLabJobEvent[] = [];
+      const subscription = service.streamStoryLabJobEvents(eventsPath, async () => {
+        tokenCalls += 1;
+        return `token-${tokenCalls}`;
+      }).subscribe(event => received.push(event));
+
+      tick();
+      expect(fetchMock.calls.length).toBe(1);
+      expect(fetchMock.calls[0].headers['X-Story-Lab-Session']).toBe('token-1');
+      expect(received.map(event => event.eventId)).toEqual(['event_1']);
+
+      tick(RECONNECT_DELAY_MS);
+      expect(fetchMock.calls.length).toBe(2);
+      expect(fetchMock.calls[1].headers['X-Story-Lab-Session']).toBe('token-2');
+      // event_1 was already applied from the first connection's replay —
+      // only the genuinely new event_2 should reach the subscriber.
+      expect(received.map(event => event.eventId)).toEqual(['event_1', 'event_2']);
+
+      subscription.unsubscribe();
+      restore();
+    }));
+
+    it('ends the observable immediately on a definitive error status like 404, without reconnecting', fakeAsync(() => {
+      const fetchMock = createFetchStreamMock();
+      const restore = fetchMock.install();
+      fetchMock.enqueueResponse(404, []);
+
+      let capturedError: unknown;
+      service.streamStoryLabJobEvents(eventsPath, async () => null).subscribe({
+        next: () => fail('Expected no events after a definitive error status'),
+        error: error => { capturedError = error; }
       });
-    });
 
-    it('appends the session token as a query parameter when the caller has one', () => {
-      const mock = createControllableMock();
+      tick();
+      expect(capturedError).toBeInstanceOf(Error);
+      expect(fetchMock.calls.length).toBe(1);
 
-      withMockEventSource(mock.MockClass, () => {
-        const subscription = service.streamStoryLabJobEvents(eventsPath, 'clerk-jwt-value').subscribe();
-        expect(mock.lastUrl()).toBe(`${eventsPath}?sessionToken=clerk-jwt-value`);
-        subscription.unsubscribe();
+      tick(RECONNECT_DELAY_MS * 2);
+      expect(fetchMock.calls.length).toBe(1);
+
+      restore();
+    }));
+
+    it('retries after a transient status like 500 rather than ending the job', fakeAsync(() => {
+      const fetchMock = createFetchStreamMock();
+      const restore = fetchMock.install();
+      fetchMock.enqueueResponse(500, []);
+      fetchMock.enqueueResponse(200, [formatMockSseFrame(createJobEvent())]);
+
+      const received: StoryLabJobEvent[] = [];
+      let errored = false;
+      const subscription = service.streamStoryLabJobEvents(eventsPath, async () => null).subscribe({
+        next: event => received.push(event),
+        error: () => { errored = true; }
       });
-    });
 
-    it('does not add a query parameter when the caller has no session token', () => {
-      const mock = createControllableMock();
+      tick();
+      expect(errored).toBeFalse();
+      expect(received.length).toBe(0);
 
-      withMockEventSource(mock.MockClass, () => {
-        const subscription = service.streamStoryLabJobEvents(eventsPath, null).subscribe();
-        expect(mock.lastUrl()).toBe(eventsPath);
-        subscription.unsubscribe();
+      tick(RECONNECT_DELAY_MS);
+      expect(fetchMock.calls.length).toBe(2);
+      expect(received.length).toBe(1);
+
+      subscription.unsubscribe();
+      restore();
+    }));
+
+    it('retries after a network-level fetch failure rather than ending the job', fakeAsync(() => {
+      const fetchMock = createFetchStreamMock();
+      const restore = fetchMock.install();
+      fetchMock.enqueueNetworkError();
+      fetchMock.enqueueResponse(200, [formatMockSseFrame(createJobEvent())]);
+
+      const received: StoryLabJobEvent[] = [];
+      let errored = false;
+      const subscription = service.streamStoryLabJobEvents(eventsPath, async () => null).subscribe({
+        next: event => received.push(event),
+        error: () => { errored = true; }
       });
-    });
 
-    it('treats a reconnect-shaped disconnect as normal and keeps watching for the next replay', () => {
-      const mock = createControllableMock();
+      tick();
+      expect(errored).toBeFalse();
 
-      withMockEventSource(mock.MockClass, () => {
-        const received: StoryLabJobEvent[] = [];
-        let errored = false;
-        service.streamStoryLabJobEvents(eventsPath, null).subscribe({
-          next: event => received.push(event),
-          error: () => { errored = true; }
-        });
+      tick(RECONNECT_DELAY_MS);
+      expect(received.length).toBe(1);
 
-        // The route this pairs with replays and closes on every read, so the
-        // browser's own reconnect reports CONNECTING while it retries — not a
-        // failure.
-        mock.triggerError(MOCK_EVENT_SOURCE_READY_STATE.CONNECTING);
-        expect(errored).toBeFalse();
+      subscription.unsubscribe();
+      restore();
+    }));
 
-        const jobEvent = createJobEvent({ progressPercent: 65 });
-        mock.triggerMessage(jobEvent);
-        expect(received).toEqual([jobEvent]);
+    it('logs a fixed message for a malformed frame, never the parse error\'s own text, without ending the stream', fakeAsync(() => {
+      const fetchMock = createFetchStreamMock();
+      const restore = fetchMock.install();
+      fetchMock.enqueueResponse(200, [
+        'data: {not valid json\n\n',
+        formatMockSseFrame(createJobEvent({ progressPercent: 70 }))
+      ]);
+
+      const received: StoryLabJobEvent[] = [];
+      let errored = false;
+      const subscription = service.streamStoryLabJobEvents(eventsPath, async () => null).subscribe({
+        next: event => received.push(event),
+        error: () => { errored = true; }
       });
-    });
 
-    it('ends the observable when the stream closes terminally', () => {
-      const mock = createControllableMock();
+      tick();
 
-      withMockEventSource(mock.MockClass, () => {
-        let capturedError: unknown;
-        service.streamStoryLabJobEvents(eventsPath, null).subscribe({
-          next: () => fail('Expected no events after a terminal disconnect'),
-          error: error => { capturedError = error; }
-        });
+      expect(errored).toBeFalse();
+      expect(errorLogging.logError).toHaveBeenCalledTimes(1);
+      const [loggedError, context] = errorLogging.logError.calls.mostRecent().args;
+      expect(context).toBe('StoryService.streamStoryLabJobEvents');
+      expect((loggedError as Error).message).toBe('Story Lab job event frame failed to parse.');
+      expect((loggedError as Error).message).not.toContain('not valid json');
+      expect(received.length).toBe(1);
 
-        mock.triggerError(MOCK_EVENT_SOURCE_READY_STATE.CLOSED);
-        expect(capturedError).toBeInstanceOf(Error);
-      });
-    });
+      subscription.unsubscribe();
+      restore();
+    }));
 
-    it('closes the underlying EventSource when the subscriber unsubscribes', () => {
-      const mock = createControllableMock();
+    it('stops reconnecting once the subscriber unsubscribes', fakeAsync(() => {
+      const fetchMock = createFetchStreamMock();
+      const restore = fetchMock.install();
+      fetchMock.enqueueResponse(200, [formatMockSseFrame(createJobEvent())]);
 
-      withMockEventSource(mock.MockClass, () => {
-        const subscription = service.streamStoryLabJobEvents(eventsPath, null).subscribe();
-        expect(mock.closeHandlerCallCount()).toBe(0);
+      const subscription = service.streamStoryLabJobEvents(eventsPath, async () => null).subscribe();
+      tick();
+      expect(fetchMock.calls.length).toBe(1);
 
-        subscription.unsubscribe();
-        expect(mock.closeHandlerCallCount()).toBe(1);
-      });
-    });
+      subscription.unsubscribe();
 
-    it('logs a malformed frame through the error logger without ending the stream', () => {
-      const mock = createControllableMock();
+      tick(RECONNECT_DELAY_MS * 3);
+      expect(fetchMock.calls.length).toBe(1);
 
-      withMockEventSource(mock.MockClass, () => {
-        const received: StoryLabJobEvent[] = [];
-        let errored = false;
-        service.streamStoryLabJobEvents(eventsPath, null).subscribe({
-          next: event => received.push(event),
-          error: () => { errored = true; }
-        });
-
-        mock.triggerRawMessage('{not valid json');
-        expect(errorLogging.logError).toHaveBeenCalledWith(jasmine.any(Error), 'StoryService.streamStoryLabJobEvents');
-        expect(errored).toBeFalse();
-
-        const jobEvent = createJobEvent({ progressPercent: 70 });
-        mock.triggerMessage(jobEvent);
-        expect(received).toEqual([jobEvent]);
-      });
-    });
+      restore();
+    }));
   });
 
   it('gets and updates the Story Lab account profile', () => {

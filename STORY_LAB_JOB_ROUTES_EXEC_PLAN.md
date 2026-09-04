@@ -263,6 +263,15 @@ This branch intentionally leaves these pending:
 - export/audio job execution;
 - removal of legacy direct Story Lab generation routes.
 
+> **Status update (Worst-to-Best PR #336):** the "full progress UI" item above
+> is no longer entirely pending. `App.watchJobUntilTerminal` now consumes
+> `GET /api/story-lab/jobs/:jobId/events` directly (a reconnecting `fetch`
+> reader, not the `EventSource` approach originally sketched — see that PR
+> for why), replacing the polling loop that had grown up around
+> `getStoryLabJobStatus` (now removed) in this doc's absence. Owner-scoped job
+> storage, durable Workflow execution, account/auth integration, and
+> export/audio job execution are still pending, unchanged from this plan.
+
 ## Interfaces and Dependencies
 
 No new npm packages are required.

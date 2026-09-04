@@ -427,10 +427,10 @@ type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: n
  * rather than watching a progress bar with nothing behind it forever.
  *
  * A watchdog on the whole watch, not on any single request: the job event
- * stream (`StoryService.streamStoryLabJobEvents`) is one long-lived
- * `EventSource` that reconnects on its own, so there is no per-request
- * timeout to bound the way the old poll loop bounded each status request —
- * only "has this job reached a terminal snapshot within the overall budget."
+ * stream (`StoryService.streamStoryLabJobEvents`) reconnects on its own, so
+ * there is no per-request timeout to bound the way the old poll loop bounded
+ * each status request — only "has this job reached a terminal snapshot
+ * within the overall budget."
  */
 const STORY_LAB_JOB_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -2575,11 +2575,12 @@ export class App implements OnDestroy {
    * path, and was never once assigned.
    *
    * One subscription, not a recursive re-poll: `StoryService.streamStoryLabJobEvents`
-   * wraps a single `EventSource` that reconnects on its own for as long as
-   * the backend keeps closing the response by design (see that route), so
-   * there is nothing here to reschedule on each snapshot the way the retired
-   * poll loop had to. `handleJobSnapshot` already tears this subscription
-   * down on every terminal path (`closeJobEventSubscription`, directly or via
+   * reconnects on its own for as long as the backend keeps closing the
+   * response by design (see that route), fetching a fresh session token
+   * before every attempt via the `getSessionToken` callback below — so there
+   * is nothing here to reschedule on each snapshot the way the retired poll
+   * loop had to. `handleJobSnapshot` already tears this subscription down on
+   * every terminal path (`closeJobEventSubscription`, directly or via
    * `failJob`), so `next` below does not need to inspect its return value.
    *
    * The watchdog timer and the event-stream subscription are composed into
@@ -2602,26 +2603,18 @@ export class App implements OnDestroy {
       this.failJob(kind, batchId, JOB_KIND_COPY[kind].pollTimeoutMessage);
     }));
 
-    // `getRequestToken()` is async (a fresh Clerk token, not the cached
-    // signal — see its own doc comment), so the stream cannot open
-    // synchronously here. `subscription.closed` guards the case where the
-    // watchdog above, or `ngOnDestroy`, already fired while this was
-    // in flight.
-    void this.authService.getRequestToken().then(sessionToken => {
-      if (subscription.closed) {
-        return;
+    subscription.add(this.storyService.streamStoryLabJobEvents<T>(
+      eventsPath,
+      () => this.authService.getRequestToken()
+    ).subscribe({
+      next: event => {
+        this.handleJobSnapshot(kind, event.job, statusPath, batchId, batchSize, durabilityWarning);
+      },
+      error: error => {
+        this.errorLogging.logError(error, 'App.watchJobUntilTerminal');
+        this.failJob(kind, batchId, JOB_KIND_COPY[kind].streamErrorMessage);
       }
-
-      subscription.add(this.storyService.streamStoryLabJobEvents<T>(eventsPath, sessionToken).subscribe({
-        next: event => {
-          this.handleJobSnapshot(kind, event.job, statusPath, batchId, batchSize, durabilityWarning);
-        },
-        error: error => {
-          this.errorLogging.logError(error, 'App.watchJobUntilTerminal');
-          this.failJob(kind, batchId, JOB_KIND_COPY[kind].streamErrorMessage);
-        }
-      }));
-    });
+    }));
   }
 
   private updateProgressFromJob(job: StoryLabJob<unknown>) {

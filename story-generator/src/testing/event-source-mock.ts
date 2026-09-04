@@ -95,48 +95,25 @@ export function createMessageEmittingMock(messageData: any, delay = 10): any {
   };
 }
 
-/** The three `EventSource.readyState` values, spelled out for test callers. */
-export const MOCK_EVENT_SOURCE_READY_STATE = {
-  CONNECTING: 0,
-  OPEN: 1,
-  CLOSED: 2
-} as const;
-
 /**
- * Creates a mock that can be manually controlled, including its `readyState`
- * — which a caller needs to simulate the Story Lab job event stream's
- * "replay and close" design: the backend closes the response after every
- * replay, so a real `EventSource` moves to `CONNECTING` while it reconnects
- * on its own and only reaches `CLOSED` if it gives up. Code that reads
- * `readyState` off an `error` event (`classifyEventStreamError`) behaves
- * differently for those two cases, so a mock that always reports the same
- * `readyState` cannot exercise the distinction.
+ * Creates a mock that can be manually controlled
  */
 export function createControllableMock(): {
   MockClass: any;
   triggerMessage: (data: any) => void;
-  triggerRawMessage: (rawData: string) => void;
-  triggerError: (readyState?: number) => void;
-  closeHandlerCallCount: () => number;
-  lastUrl: () => string | undefined;
+  triggerError: () => void;
 } {
   let messageHandlers: any[] = [];
   let errorHandlers: any[] = [];
   let instance: any = null;
-  let closeCallCount = 0;
-  let capturedUrl: string | undefined;
 
   const MockClass = class MockEventSource {
-    onmessage: any;
     onerror: any;
-    readyState: number = MOCK_EVENT_SOURCE_READY_STATE.CONNECTING;
-
+    
     constructor(url: string) {
       instance = this;
-      capturedUrl = url;
-      this.readyState = MOCK_EVENT_SOURCE_READY_STATE.OPEN;
     }
-
+    
     addEventListener(event: string, handler: any) {
       if (event === 'message') {
         messageHandlers.push(handler);
@@ -144,56 +121,25 @@ export function createControllableMock(): {
         errorHandlers.push(handler);
       }
     }
-
-    close() {
-      closeCallCount += 1;
-      this.readyState = MOCK_EVENT_SOURCE_READY_STATE.CLOSED;
-    }
+    
+    close() {}
   };
 
   return {
     MockClass,
-    // Real `EventSource` supports both the `onmessage`/`onerror` IDL
-    // attributes and `addEventListener`; a real caller may use either, so
-    // this drives both.
     triggerMessage: (data: any) => {
-      const messageEvent = { data: JSON.stringify(data) };
-      if (instance && instance.onmessage) {
-        instance.onmessage(messageEvent);
-      }
       messageHandlers.forEach(handler => {
-        handler(messageEvent);
+        handler({ data: JSON.stringify(data) });
       });
     },
-    // Unlike `triggerMessage`, sends `rawData` as-is rather than through
-    // `JSON.stringify` — for exercising a caller's handling of a frame that
-    // fails to parse, which a real server would never intentionally send but
-    // a reader still has to survive.
-    triggerRawMessage: (rawData: string) => {
-      const messageEvent = { data: rawData };
-      if (instance && instance.onmessage) {
-        instance.onmessage(messageEvent);
-      }
-      messageHandlers.forEach(handler => {
-        handler(messageEvent);
-      });
-    },
-    // Defaults to the reconnect-shaped disconnect (`CONNECTING`) rather than
-    // a terminal one, since that is the common case this route's replay-and-
-    // close design produces on every successful read.
-    triggerError: (readyState: number = MOCK_EVENT_SOURCE_READY_STATE.CONNECTING) => {
-      if (instance) {
-        instance.readyState = readyState;
-      }
+    triggerError: () => {
       if (instance && instance.onerror) {
         instance.onerror(new Event('error'));
       }
       errorHandlers.forEach(handler => {
         handler(new Event('error'));
       });
-    },
-    closeHandlerCallCount: () => closeCallCount,
-    lastUrl: () => capturedUrl
+    }
   };
 }
 

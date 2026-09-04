@@ -1639,19 +1639,19 @@ describe('App', () => {
   // returns `false` specifically so the caller keeps watching the job. Job
   // watching moved from polling `getStoryLabJobStatus` on a fixed interval to
   // subscribing to `StoryService.streamStoryLabJobEvents` (a mocked
-  // Observable here — `story.service.spec.ts` drives the real `EventSource`
-  // wiring against `testing/event-source-mock.ts`), so there is no interval
-  // to `tick()` through any more: a single `tick()` flushes the microtask
-  // `AuthService.getRequestToken()` resolves through before the mocked
-  // stream is subscribed. Two cases from the retired poll loop have no
-  // analogue here and are not replaced 1:1:
+  // Observable here — `story.service.spec.ts` drives the real `fetch`-based
+  // reconnect/auth/dedup wiring against `testing/fetch-stream-mock.ts`), so
+  // there is no interval to `tick()` through: the mocked Observable is
+  // subscribed synchronously, in the same call stack as `startGenesis()`.
+  // Two cases from the retired poll loop have no analogue here and are not
+  // replaced 1:1:
   // - "a single request that hangs" doesn't apply to one persistent
   //   subscription the way it did to a poll loop's individual HTTP requests.
   // - "keeps polling through a transient error" is now the job event
-  //   stream's own concern — `story.service.spec.ts`'s
-  //   "treats a reconnect-shaped disconnect as normal" case covers the
-  //   `EventSource` `readyState` classification that keeps a benign
-  //   reconnect from ever reaching this component as an `error` at all.
+  //   stream's own concern — `story.service.spec.ts`'s transient-status and
+  //   network-error retry cases cover the reconnect logic that keeps a
+  //   benign disconnect from ever reaching this component as an `error` at
+  //   all.
   describe('watching a Story Lab job that is not yet terminal', () => {
     const eventsPath = '/api/story-lab/jobs/job_123e4567-e89b-12d3-a456-426614174000/events';
     const POLL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -1703,12 +1703,8 @@ describe('App', () => {
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
 
-      expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
-      expect(component.isGenerating()).toBeTrue();
-
-      tick();
-
-      expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(eventsPath, null);
+      expect(storyService.streamStoryLabJobEvents.calls.mostRecent().args[0]).toBe(eventsPath);
+      expect(storyService.streamStoryLabJobEvents.calls.mostRecent().args[1]).toEqual(jasmine.any(Function));
       expect(storyService.streamStoryLabJobEvents.calls.count()).toBe(1);
       expect(component.isGenerating()).toBeFalse();
       expect(component.workbench().chapterHistory.length).toBe(1);
@@ -1725,7 +1721,6 @@ describe('App', () => {
       storyService.streamStoryLabJobEvents.and.returnValue(events.asObservable());
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
-      tick();
       expect(storyService.streamStoryLabJobEvents.calls.count()).toBe(1);
 
       events.next(jobEvent(runningJobSnapshot({ progressPercent: 65 })));
@@ -1755,24 +1750,24 @@ describe('App', () => {
     }));
 
     it('fails the job immediately when the event stream ends in a terminal error', fakeAsync(() => {
-      // `classifyEventStreamError`'s reconnect-shaped disconnects never reach
-      // this Observable as an error at all (see `story.service.spec.ts`) —
-      // only a `readyState: CLOSED` disconnect does, via `subscriber.error`.
+      // A reconnect-shaped disconnect (a transient status, a network blip)
+      // never reaches this Observable as an error at all — retried
+      // internally by `StoryService.streamStoryLabJobEvents` instead (see
+      // `story.service.spec.ts`). Only a definitive failure does, via
+      // `subscriber.error`.
       storyService.streamStoryLabJobEvents.and.returnValue(throwError(() => new Error('Story Lab job event stream closed.')));
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
-      tick();
 
       expect(component.isGenerating()).toBeFalse();
       expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
     }));
 
-    it('stops watching the job stream once the component is destroyed', fakeAsync(() => {
+    it('stops watching the job stream once the component is destroyed', () => {
       const events = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
       storyService.streamStoryLabJobEvents.and.returnValue(events.asObservable());
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
-      tick();
       expect(storyService.streamStoryLabJobEvents).toHaveBeenCalled();
       expect(events.observed).toBeTrue();
 
@@ -1782,9 +1777,9 @@ describe('App', () => {
       // anything.
       fixture.destroy();
       expect(events.observed).toBeFalse();
-    }));
+    });
 
-    it('also streams a running continuation job\'s events at its own eventsPath until it completes', fakeAsync(() => {
+    it('also streams a running continuation job\'s events at its own eventsPath until it completes', () => {
       const genesisPayload = seedWorkbenchForContinuation();
       const runningContinuationJob = createContinuationJobResponse(undefined, {
         status: 'running',
@@ -1799,15 +1794,10 @@ describe('App', () => {
 
       component.continueSaga('Focus on the betrayal arc.');
 
-      expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
-      expect(component.isGenerating()).toBeTrue();
-
-      tick();
-
-      expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(runningContinuationJob.paths.eventsPath, null);
+      expect(storyService.streamStoryLabJobEvents.calls.mostRecent().args[0]).toBe(runningContinuationJob.paths.eventsPath);
       expect(component.isGenerating()).toBeFalse();
       expect(component.workbench().chapterHistory.length).toBe(2);
-    }));
+    });
   });
 
   it('formats unknown batch statuses defensively', () => {
