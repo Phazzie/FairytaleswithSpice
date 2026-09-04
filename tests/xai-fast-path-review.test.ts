@@ -122,8 +122,14 @@ async function assertContinuityFastTimeoutUsesConfiguredBudget(): Promise<void> 
     assert.equal(lowBudgetResult.receipt.source, 'heuristic', 'subsecond remaining budget should fall back to heuristic continuity extraction');
     assert.equal(
       lowBudgetResult.receipt.warning,
-      'AI continuity extraction skipped because the request budget was nearly exhausted.',
-      'subsecond remaining budget should explain the budget skip'
+      'AI continuity extraction skipped because the request budget was nearly exhausted — the character, thread, and artifact list did not update this batch.',
+      'subsecond remaining budget should explain the budget skip and that nothing was extracted'
+    );
+    assert.equal(lowBudgetResult.receipt.confidence, 0, 'a skipped extraction has no facts to be confident about');
+    assert.deepEqual(
+      lowBudgetResult.state,
+      continuityInput.currentState,
+      'a skipped extraction must leave characters/threads/artifacts exactly as they were, not silently drop or invent any'
     );
     assert.equal(boundaryBudgetResult.receipt.source, 'ai', '1000ms remaining budget should still use AI continuity extraction');
   } finally {
@@ -148,15 +154,79 @@ async function assertContinuityHeuristicWarningPriority(): Promise<void> {
 
   try {
     delete process.env['XAI_API_KEY'];
-    const result = await extractContinuity(buildContinuityInput(false));
+    const continuityInput = buildContinuityInput(false);
+    const result = await extractContinuity(continuityInput);
 
     assert.equal(result.receipt.source, 'heuristic', 'disabled AI continuity should use heuristic extraction');
     assert.equal(
       result.receipt.warning,
-      'AI continuity extraction disabled for this run.',
-      'explicitly disabled AI should take warning priority over a missing API key'
+      'AI continuity extraction disabled for this run — the character, thread, and artifact list did not update this batch.',
+      'explicitly disabled AI should take warning priority over a missing API key, and say nothing was extracted'
+    );
+    assert.equal(result.receipt.confidence, 0, 'a disabled extraction has no facts to be confident about');
+    assert.deepEqual(
+      result.state,
+      continuityInput.currentState,
+      'a disabled extraction must leave characters/threads/artifacts exactly as they were'
     );
   } finally {
+    if (originalApiKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalApiKey;
+    }
+  }
+}
+
+/**
+ * `extractContinuity`'s catch block used to fabricate a `confidence: 0.45`
+ * and call itself "fallback extraction" on a provider error, exactly like the
+ * skip branch above — but nothing in this repository had ever asserted that
+ * a provider failure actually leaves `characters`/`threads`/`artifacts`
+ * unchanged. It does; this proves it, and proves the warning says so.
+ */
+async function assertContinuityProviderErrorLeavesStateUnchanged(): Promise<void> {
+  const originalApiKey = process.env['XAI_API_KEY'];
+  const originalGenerateText = XaiTextClient.prototype.generateText;
+
+  try {
+    process.env['XAI_API_KEY'] = 'test-xai-key';
+    XaiTextClient.prototype.generateText = async function () {
+      throw new Error('simulated provider failure');
+    };
+
+    const continuityInput = buildContinuityInput(true);
+    const result = await extractContinuity(continuityInput);
+
+    assert.equal(result.receipt.source, 'mixed', 'a provider failure should be reported as a mixed/fallback receipt');
+    assert.equal(
+      result.receipt.warning,
+      'Grok continuity extraction failed for this batch — the character, thread, and artifact list did not update.',
+      'a provider failure should say plainly that nothing was extracted'
+    );
+    assert.equal(result.receipt.confidence, 0, 'a failed extraction has no facts to be confident about');
+    assert.deepEqual(
+      result.state.characters,
+      continuityInput.currentState.characters,
+      'a provider failure must leave the character list exactly as it was'
+    );
+    assert.deepEqual(
+      result.state.threads,
+      continuityInput.currentState.threads,
+      'a provider failure must leave the thread list exactly as it was'
+    );
+    assert.deepEqual(
+      result.state.artifacts,
+      continuityInput.currentState.artifacts,
+      'a provider failure must leave the artifact list exactly as it was'
+    );
+    assert(
+      result.state.continuityWarnings.includes(result.receipt.warning as string),
+      'the failure warning should be recorded on the story state too, not just the receipt'
+    );
+  } finally {
+    XaiTextClient.prototype.generateText = originalGenerateText;
+
     if (originalApiKey === undefined) {
       delete process.env['XAI_API_KEY'];
     } else {
@@ -621,6 +691,7 @@ function assertShippedTimeoutDefaultsLeaveRoomForTheRetry(): void {
 async function main(): Promise<void> {
   await assertContinuityFastTimeoutUsesConfiguredBudget();
   await assertContinuityHeuristicWarningPriority();
+  await assertContinuityProviderErrorLeavesStateUnchanged();
   assertReasoningConfig();
   await assertXaiClientPayloads();
   assertAiMetadataMerge();

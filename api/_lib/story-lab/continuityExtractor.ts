@@ -71,18 +71,26 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
   const timeoutMs = input.timeoutMs ?? getXaiFastTimeoutMs();
 
   if (!input.useAi || !client.hasApiKey() || timeoutMs < STORY_LAB_MIN_AI_CONTINUITY_TIMEOUT_MS) {
+    // There is no heuristic extraction path in this file — this branch is a
+    // pure passthrough of `input.currentState`, so the warning has to say
+    // that plainly rather than imply some lesser analysis ran. A model that
+    // ran and merged nothing new is a fact worth telling the reader who sees
+    // this string verbatim in `app.html`'s story-memory panel.
     const warning = !input.useAi
-      ? 'AI continuity extraction disabled for this run.'
+      ? 'AI continuity extraction disabled for this run — the character, thread, and artifact list did not update this batch.'
       : !client.hasApiKey()
-        ? 'Continuity is using local heuristic extraction because XAI_API_KEY is not configured.'
-        : 'AI continuity extraction skipped because the request budget was nearly exhausted.';
+        ? 'Continuity tracking is unavailable because XAI_API_KEY is not configured — the character, thread, and artifact list did not update this batch.'
+        : 'AI continuity extraction skipped because the request budget was nearly exhausted — the character, thread, and artifact list did not update this batch.';
 
     return {
       state: input.currentState,
       receipt: {
         source: 'heuristic',
         extractedAt: now,
-        confidence: 0.55,
+        // No facts were extracted, so there is nothing to be confident about
+        // — a nonzero value here previously implied a lesser-quality analysis
+        // had run when none had.
+        confidence: 0,
         warning
       }
     };
@@ -130,7 +138,12 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
       }
     };
   } catch (error) {
-    const warning = 'Continuity used fallback extraction for this batch because Grok continuity extraction was unavailable.';
+    // Same passthrough as the skip branch above, on a provider error instead
+    // of a skip: `characters`/`threads`/`artifacts` are unchanged, only
+    // `continuityWarnings` and `lastUpdatedAt` move. Say so rather than
+    // calling it "fallback extraction", which claims an analysis this catch
+    // block never performs.
+    const warning = 'Grok continuity extraction failed for this batch — the character, thread, and artifact list did not update.';
 
     return {
       state: {
@@ -144,7 +157,8 @@ export async function extractContinuity(input: ContinuityExtractionInput): Promi
       receipt: {
         source: 'mixed',
         extractedAt: now,
-        confidence: 0.45,
+        // No facts were extracted here either — see the skip branch above.
+        confidence: 0,
         warning
       }
     };
