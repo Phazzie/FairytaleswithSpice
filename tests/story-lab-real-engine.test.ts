@@ -791,9 +791,9 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     // `story-service-prompt-guards.test.ts` for that half of the contract.
     // Here it just has to be built correctly from the state this engine call
     // was given.
-    const expectedLatestChapter = payload.batch.chapters.reduce((latest, chapter) =>
-      chapter.chapterNumber > latest.chapterNumber ? chapter : latest
-    );
+    const expectedLatestChapterNumber = Math.max(...payload.batch.chapters.map(chapter => chapter.chapterNumber));
+    const expectedLatestChapter = payload.batch.chapters.find(chapter => chapter.chapterNumber === expectedLatestChapterNumber)
+      ?? payload.batch.chapters[payload.batch.chapters.length - 1];
     assert(
       JSON.stringify(capturedInput?.continuityState?.characterNames) === JSON.stringify(courtroomState.characters.map(character => character.displayName)),
       'continuityState character names should be the state\'s own roster, not a speaker-tag scan'

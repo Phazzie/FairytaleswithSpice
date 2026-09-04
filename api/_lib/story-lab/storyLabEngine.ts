@@ -377,9 +377,11 @@ export async function continueStoryLab(
   const service = options.serviceFactory?.() ?? new StoryService();
   const currentChapterCount = Math.max(...previousChapters.map(chapter => chapter.chapterNumber));
   const existingContent = previousChapters.map(chapter => chapter.rawContent || chapter.htmlContent).join('\n\n');
-  const latestChapter = previousChapters.reduce((latest, chapter) =>
-    chapter.chapterNumber > latest.chapterNumber ? chapter : latest
-  );
+  // `.find()` over an initial-value-less `.reduce()`: the latter throws on an
+  // empty array, and nothing here lets a static reader see that the
+  // `previousChapters.length === 0` guard above already rules that out.
+  const latestChapter = previousChapters.find(chapter => chapter.chapterNumber === currentChapterCount)
+    ?? previousChapters[previousChapters.length - 1];
   const result = await service.continueChapter({
     storyId: input.storyId,
     currentChapterCount,
