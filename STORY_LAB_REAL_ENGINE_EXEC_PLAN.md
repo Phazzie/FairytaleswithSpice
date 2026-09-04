@@ -294,6 +294,23 @@ reaching any of it needs a request the app does not make. It is worth repairing
 because the form is not the enforcement point — the route is — and because two
 of the three are silent: a deleted boundary and a truncated one look identical
 to a caller.
+
+Later follow-up (2026-09-04, PR #329): a third silent case in the same
+neighborhood, and a new refusal for it. Neither continuation route folded a
+signed-in reader's profile-wide `contentBoundaries` in at all outside the job
+route (see `PR70_RECOVERY_CHANGELOG.md`'s 2026-09-04 entries), and once fixed
+to do so, a continuation that supplies no `heatContract` at all has nothing for
+`withMergedContentBoundaries` to merge the boundary into — proceeding
+unchanged would mean it silently never reaches the model, same shape as the
+deleted/truncated cases above. Manufacturing a `heatContract` just to carry it
+was rejected for the same reason genesis-style refusal was already the
+"honest answer" argued above: `heatContractPolicyError` treats any *present*
+contract as needing `adultOnlyConfirmed: true`, so inventing one would reject
+a continuation that used to succeed. The route now refuses instead —
+`400 INVALID_REQUEST`, checked before a job is created — when a signed-in
+caller has stored boundaries and no contract to carry them; a caller with no
+stored boundaries, or any anonymous caller, is unaffected. See
+`api/_lib/story-lab/contentBoundaries.ts`'s `resolveContinuationHeatContract`.
 ## Continuation continuity: the activation scorer matched substrings
 
 `buildContinuationGuidance` scores every unresolved thread, artifact,

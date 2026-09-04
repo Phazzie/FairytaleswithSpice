@@ -82,6 +82,7 @@ This work must run on a new branch based on the current Story Lab branch. Do not
   - Current Story Lab genesis streaming still uses EventSource query fields until a POST job-creation route exists.
   - Export is safer, but server export is still mock storage and must not be described as durable Blob/email export.
   - The sanitizer is a conservative no-dependency guard, not a full HTML parser.
+- Later follow-up (2026-09-04, PR #329): the centralized CORS allow-list gained a new credential-bearing header. `auth.interceptor.ts` attaches a signed-in reader's Clerk session token to the Story Lab generation and job routes (genesis, continuation, job creation/status) as `X-Story-Lab-Session` rather than `Authorization` — those routes also run `enforceApiAccessControl`, which reads `Authorization: Bearer` as an `API_KEYS` candidate, so a Clerk JWT sent that way would be misread as an invalid key. Added to `corsPolicy.ts`'s `DEFAULT_HEADERS` (the same centralized list this plan's Step 1 introduced) with a preflight test (`tests/cors-policy.test.ts`) proving the default `Access-Control-Allow-Headers` includes it, and to both sensitive-key redaction lists (`api/_lib/utils/logger.ts`, `story-generator/src/app/error-logging.ts`) so it is protected the same way `Authorization` already is if ever logged. Route scope: `/api/story-lab/(stories|jobs)`, optional rather than gating (these routes call `getCurrentUser`, never `requireUser`, unless durable job storage is enabled) — an anonymous caller is served exactly as before either way.
 
 ## Context and Orientation
 

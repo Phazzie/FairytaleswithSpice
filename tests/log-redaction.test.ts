@@ -22,11 +22,16 @@ const prompt = 'Write a spicy supernatural chapter using the entire private blue
 const email = 'reader@example.com';
 const apiKey = 'xai-secret-key-123';
 const artifactUrl = 'https://blob.vercel-storage.com/story/export.html?token=private-token';
+// Carries a Clerk session token on the Story Lab generation/job routes
+// (auth.interceptor.ts) instead of Authorization, so it needs its own entry
+// in SENSITIVE_KEY_PATTERNS rather than reusing the `authorization` match.
+const clerkSessionToken = 'clerk-session-jwt-abc123';
 
 const redacted = redactSensitiveLogData({
   headers: {
     Authorization: `Bearer ${apiKey}`,
-    'x-api-key': apiKey
+    'x-api-key': apiKey,
+    'X-Story-Lab-Session': clerkSessionToken
   },
   email,
   prompt,
@@ -46,6 +51,7 @@ assert(!serialized.includes(storyText), 'story text should be redacted');
 assert(!serialized.includes(prompt), 'prompts should be redacted');
 assert(!serialized.includes(email), 'emails should be redacted');
 assert(!serialized.includes(apiKey), 'API keys and auth headers should be redacted');
+assert(!serialized.includes(clerkSessionToken), 'the dedicated Clerk session header should be redacted');
 assert(!serialized.includes(artifactUrl), 'artifact URLs should be redacted');
 assert(serialized.includes('grok-4'), 'safe operational metadata should be preserved');
 assert(serialized.includes('[REDACTED]'), 'redacted logs should use a clear placeholder');
