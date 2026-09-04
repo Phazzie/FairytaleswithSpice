@@ -17,7 +17,8 @@ import type {
 import type {
   ChapterContinuationSeam as ClassicContinuationSeam,
   CreatureType,
-  StoryGenerationSeam as ClassicGenerationSeam
+  StoryGenerationSeam as ClassicGenerationSeam,
+  ThemeType
 } from '../api/_lib/types/contracts';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -293,6 +294,44 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, () => {
 withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
   assert(shouldUseMockStoryLab(), 'explicit mock flag should override provider key');
 });
+
+/**
+ * A minimal successful `continueChapter` result, the shape several
+ * `continueStoryLab` tests below need from their `serviceFactory` stub and
+ * otherwise had no reason to differ on beyond the chapter's own title/text —
+ * SonarCloud's duplication gate flagged the two most similar copies as one
+ * new-code duplicate pair.
+ */
+function buildMockContinuationResult(title: string, content: string, rawContent: string, tropeMetadata?: string) {
+  return {
+    success: true as const,
+    data: {
+      chapterId: 'chapter-2',
+      chapterNumber: 2,
+      title,
+      content,
+      rawContent,
+      wordCount: 8,
+      cliffhangerEnding: true,
+      themesContinued: ['forbidden_love'] as ThemeType[],
+      spicyLevelMaintained: 3 as const,
+      appendedToStory: content,
+      tropeMetadata,
+      chapters: [{
+        chapterId: 'chapter-2',
+        chapterNumber: 2,
+        title,
+        content,
+        rawContent,
+        wordCount: 8,
+        generatedAt: new Date(),
+        hasAudio: false,
+        cliffhangerEnding: true
+      }],
+      totalWordCount: 8
+    }
+  };
+}
 
 (async () => {
   await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
@@ -948,34 +987,12 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
         },
         continueChapter: async input => {
           capturedInput = input;
-          return {
-            success: true,
-            data: {
-              chapterId: 'chapter-2',
-              chapterNumber: 2,
-              title: 'Partial Oath',
-              content: '<h3>Chapter 2: Partial Oath</h3><p>Mira protected the oath.</p>',
-              rawContent: '<p>[Mira]: "The oath remains."</p>',
-              wordCount: 8,
-              cliffhangerEnding: true,
-              themesContinued: ['forbidden_love'],
-              spicyLevelMaintained: 3,
-              appendedToStory: '<h3>Chapter 2: Partial Oath</h3><p>Mira protected the oath.</p>',
-              tropeMetadata: payload.summary.tropeMetadata,
-              chapters: [{
-                chapterId: 'chapter-2',
-                chapterNumber: 2,
-                title: 'Partial Oath',
-                content: '<h3>Chapter 2: Partial Oath</h3><p>Mira protected the oath.</p>',
-                rawContent: '<p>[Mira]: "The oath remains."</p>',
-                wordCount: 8,
-                generatedAt: new Date(),
-                hasAudio: false,
-                cliffhangerEnding: true
-              }],
-              totalWordCount: 8
-            }
-          };
+          return buildMockContinuationResult(
+            'Partial Oath',
+            '<h3>Chapter 2: Partial Oath</h3><p>Mira protected the oath.</p>',
+            '<p>[Mira]: "The oath remains."</p>',
+            payload.summary.tropeMetadata
+          );
         }
       })
     });
@@ -1026,34 +1043,12 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
         },
         continueChapter: async input => {
           capturedInput = input;
-          return {
-            success: true,
-            data: {
-              chapterId: 'chapter-2',
-              chapterNumber: 2,
-              title: 'Malformed Entry',
-              content: '<h3>Chapter 2: Malformed Entry</h3><p>The story continued.</p>',
-              rawContent: '<p>[Mira]: "It continued."</p>',
-              wordCount: 8,
-              cliffhangerEnding: true,
-              themesContinued: ['forbidden_love'],
-              spicyLevelMaintained: 3,
-              appendedToStory: '<h3>Chapter 2: Malformed Entry</h3><p>The story continued.</p>',
-              tropeMetadata: payload.summary.tropeMetadata,
-              chapters: [{
-                chapterId: 'chapter-2',
-                chapterNumber: 2,
-                title: 'Malformed Entry',
-                content: '<h3>Chapter 2: Malformed Entry</h3><p>The story continued.</p>',
-                rawContent: '<p>[Mira]: "It continued."</p>',
-                wordCount: 8,
-                generatedAt: new Date(),
-                hasAudio: false,
-                cliffhangerEnding: true
-              }],
-              totalWordCount: 8
-            }
-          };
+          return buildMockContinuationResult(
+            'Malformed Entry',
+            '<h3>Chapter 2: Malformed Entry</h3><p>The story continued.</p>',
+            '<p>[Mira]: "It continued."</p>',
+            payload.summary.tropeMetadata
+          );
         }
       })
     });
