@@ -2,23 +2,21 @@
 // Created: 2026-06-07 07:17 EDT
 
 import jobHandler from '../api/story-lab/jobs';
-import type { AuthPort, AuthUser } from '../api/_lib/story-lab/auth/authPort';
-import { AuthError } from '../api/_lib/story-lab/auth/authPort';
+import type { AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import type {
   HeatContract,
   StoryContinuationSeam,
   StoryGenerationSeam,
   StoryLabJobCreationRequest,
-  StoryLabJobCreationResponse,
-  StoryLabUserProfile
+  StoryLabJobCreationResponse
 } from '../api/_lib/story-lab/contracts';
 import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 import {
   generateStoryLabGenesis as realGenerateStoryLabGenesis,
   continueStoryLab as realContinueStoryLab
 } from '../api/_lib/story-lab/storyLabEngine';
-import type { StoryLabProfileStore } from '../api/_lib/story-lab/profile/storyLabProfileStore';
 import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
+import { createRejectingAuthPort, createStaticAuthPort, createStubProfileStore } from './helpers/storyLabAuthFixtures';
 import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { NonDurableStoryLabJobStore, nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
@@ -861,62 +859,6 @@ function createDurableJobStoreConfig(store: StoryLabJobStore): StoryLabJobStoreC
     store,
     isConfigured() {
       return store.isConfigured();
-    }
-  };
-}
-
-function createStaticAuthPort(user: AuthUser): AuthPort {
-  return {
-    async getCurrentUser() {
-      return user;
-    },
-    async requireUser() {
-      return user;
-    }
-  };
-}
-
-function createRejectingAuthPort(): AuthPort {
-  return {
-    async getCurrentUser() {
-      return null;
-    },
-    async requireUser() {
-      throw new AuthError('Account authentication is required.');
-    }
-  };
-}
-
-function createStubProfileStore(profile: StoryLabUserProfile | null): StoryLabProfileStore {
-  return {
-    mode: 'non_durable_memory',
-    durable: false,
-    isConfigured: () => true,
-    async saveProfile(user, savedProfile) {
-      return {
-        success: true,
-        data: {
-          userId: user.userId,
-          profile: savedProfile,
-          createdAt: savedProfile.createdAt,
-          updatedAt: savedProfile.updatedAt,
-          storageMode: 'non_durable_memory'
-        }
-      };
-    },
-    async loadProfile(user) {
-      return {
-        success: true,
-        data: profile
-          ? {
-              userId: user.userId,
-              profile,
-              createdAt: profile.createdAt,
-              updatedAt: profile.updatedAt,
-              storageMode: 'non_durable_memory'
-            }
-          : null
-      };
     }
   };
 }

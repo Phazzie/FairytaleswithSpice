@@ -6,11 +6,9 @@ import continuationHandler, { createStoryLabContinuationHandler } from '../api/s
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { withMemoryRateLimitStore } from './helpers/withMemoryRateLimitStore';
 import { getStoryLabResponseStatus } from '../api/_lib/story-lab/routeStatus';
-import type { AuthPort, AuthUser } from '../api/_lib/story-lab/auth/authPort';
-import { AuthError } from '../api/_lib/story-lab/auth/authPort';
-import type { StoryLabUserProfile } from '../api/_lib/story-lab/contracts';
-import type { StoryLabProfileStore } from '../api/_lib/story-lab/profile/storyLabProfileStore';
+import type { AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
+import { createRejectingAuthPort, createStaticAuthPort, createStubProfileStore } from './helpers/storyLabAuthFixtures';
 
 interface FakeRequest {
   method: string;
@@ -139,62 +137,6 @@ const owner: AuthUser = {
   userId: 'user_route_owner',
   email: 'owner@example.com'
 };
-
-function createStaticAuthPort(user: AuthUser): AuthPort {
-  return {
-    async getCurrentUser() {
-      return user;
-    },
-    async requireUser() {
-      return user;
-    }
-  };
-}
-
-function createRejectingAuthPort(): AuthPort {
-  return {
-    async getCurrentUser() {
-      return null;
-    },
-    async requireUser() {
-      throw new AuthError('Account authentication is required.');
-    }
-  };
-}
-
-function createStubProfileStore(profile: StoryLabUserProfile | null): StoryLabProfileStore {
-  return {
-    mode: 'non_durable_memory',
-    durable: false,
-    isConfigured: () => true,
-    async saveProfile(user, savedProfile) {
-      return {
-        success: true,
-        data: {
-          userId: user.userId,
-          profile: savedProfile,
-          createdAt: savedProfile.createdAt,
-          updatedAt: savedProfile.updatedAt,
-          storageMode: 'non_durable_memory'
-        }
-      };
-    },
-    async loadProfile(user) {
-      return {
-        success: true,
-        data: profile
-          ? {
-              userId: user.userId,
-              profile,
-              createdAt: profile.createdAt,
-              updatedAt: profile.updatedAt,
-              storageMode: 'non_durable_memory'
-            }
-          : null
-      };
-    }
-  };
-}
 
 function createContinuationBody() {
   const now = new Date().toISOString();
