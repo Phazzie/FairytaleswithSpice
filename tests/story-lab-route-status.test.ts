@@ -583,18 +583,26 @@ async function main(): Promise<void> {
     assert(!engineCalled, 'the engine should never be called when the boundary cannot be honored');
   }
 
-  // A stored `contentBoundaries` that is whitespace only is not a real
-  // restriction: the account profile normalizer preserves it and the `PUT`
-  // length check accepts it, but `withMergedContentBoundaries`'s
-  // `capNoGoSource` trims it to nothing. Refusing over it would disagree with
-  // every other reader of the same field.
-  {
+  // Two shapes of "nothing to honor", both of which must proceed unchanged
+  // rather than refuse: no stored boundary at all, and a stored boundary that
+  // is whitespace only. The account profile normalizer preserves a
+  // whitespace-only `contentBoundaries` and the `PUT` length check accepts
+  // it, but `withMergedContentBoundaries`'s `capNoGoSource` trims it to
+  // nothing — refusing over it would disagree with every other reader of the
+  // same field. Table-driven against a single assertion body: this is what
+  // would catch a `resolveContinuationHeatContract` regression that refused
+  // every Heat-Contract-free continuation from a signed-in caller regardless
+  // of whether they had anything to honor.
+  for (const [description, contentBoundaries] of [
+    ['no stored boundaries', undefined],
+    ['a whitespace-only stored boundary', '   \n\t  ']
+  ] as const) {
     let capturedHeatContract: unknown;
     let sawHeatContractField = false;
     const handler = createStoryLabContinuationHandler({
       authPort: createStaticAuthPort(owner),
       profileStore: createStubProfileStore(
-        createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: '   \n\t  ' } })
+        createDefaultStoryLabUserProfile(owner, contentBoundaries === undefined ? {} : { preferences: { contentBoundaries } })
       ),
       continueStory: async input => {
         sawHeatContractField = true;
@@ -606,40 +614,11 @@ async function main(): Promise<void> {
     const response = new FakeResponse();
     await handler(createRequest('POST', createContinuationBody()), response);
 
-    assert(response.statusCode === 200, `continuation with a whitespace-only stored boundary should still succeed, got ${response.statusCode}`);
+    assert(response.statusCode === 200, `continuation with ${description} should still succeed, got ${response.statusCode}`);
     assert(sawHeatContractField, 'the engine should have been called');
     assert(
       capturedHeatContract === undefined,
-      `a whitespace-only boundary is nothing to fold in, so no heat contract should be manufactured, got ${JSON.stringify(capturedHeatContract)}`
-    );
-  }
-
-  // The same shape, but no stored boundaries at all — nothing to refuse over,
-  // since there is nothing to honor either way. Catches a
-  // `resolveContinuationHeatContract` regression that refused every
-  // Heat-Contract-free continuation from a signed-in caller regardless of
-  // whether they had any boundary set.
-  {
-    let capturedHeatContract: unknown;
-    let sawHeatContractField = false;
-    const handler = createStoryLabContinuationHandler({
-      authPort: createStaticAuthPort(owner),
-      profileStore: createStubProfileStore(createDefaultStoryLabUserProfile(owner)),
-      continueStory: async input => {
-        sawHeatContractField = true;
-        capturedHeatContract = input.heatContract;
-        return { success: true, data: { continued: true } as never };
-      }
-    });
-
-    const response = new FakeResponse();
-    await handler(createRequest('POST', createContinuationBody()), response);
-
-    assert(response.statusCode === 200, `continuation with no stored boundaries should still succeed, got ${response.statusCode}`);
-    assert(sawHeatContractField, 'the engine should have been called');
-    assert(
-      capturedHeatContract === undefined,
-      `with nothing to fold in, no heat contract should be manufactured, got ${JSON.stringify(capturedHeatContract)}`
+      `with ${description}, no heat contract should be manufactured, got ${JSON.stringify(capturedHeatContract)}`
     );
   }
 
