@@ -989,6 +989,90 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     assert(!hiddenGuidance.includes('undefined'), 'partial continuity state should not inject undefined into hidden guidance');
   });
 
+  // A request-supplied `storyState` is only ever truthy-checked at the route
+  // boundary, never schema-validated — so an array that passes
+  // `Array.isArray` can still hold an entry with no `displayName` (a
+  // character) or no `label`/`description` (a thread). Reading `undefined`
+  // out of a malformed entry and into `continuityState` used to reach
+  // `buildContinuationPrompt`'s string-only helpers, which is exactly the
+  // shape of bug the missing-array guard above exists to prevent one level
+  // up — this proves it's closed for a malformed *entry* too, not just a
+  // missing array.
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
+    let capturedInput: ClassicContinuationSeam['input'] | undefined;
+    const malformedEntryState = {
+      ...payload.state,
+      characters: [
+        { id: 'malformed' } as unknown as StoryStateSnapshot['characters'][number],
+        ...payload.state.characters
+      ],
+      threads: [
+        { id: 'malformed-thread', status: 'active' } as unknown as StoryStateSnapshot['threads'][number],
+        ...payload.state.threads
+      ]
+    };
+
+    const response = await continueStoryLab({
+      storyId: payload.summary.storyId,
+      chapterBatchSize: 1,
+      storyState: malformedEntryState,
+      previouslyGeneratedChapters: payload.batch.chapters,
+      continuationBrief: undefined,
+      existingSummary: payload.summary
+    }, {
+      serviceFactory: () => ({
+        generateStory: async () => {
+          throw new Error('generateStory should not be called by malformed continuity entry test');
+        },
+        continueChapter: async input => {
+          capturedInput = input;
+          return {
+            success: true,
+            data: {
+              chapterId: 'chapter-2',
+              chapterNumber: 2,
+              title: 'Malformed Entry',
+              content: '<h3>Chapter 2: Malformed Entry</h3><p>The story continued.</p>',
+              rawContent: '<p>[Mira]: "It continued."</p>',
+              wordCount: 8,
+              cliffhangerEnding: true,
+              themesContinued: ['forbidden_love'],
+              spicyLevelMaintained: 3,
+              appendedToStory: '<h3>Chapter 2: Malformed Entry</h3><p>The story continued.</p>',
+              tropeMetadata: payload.summary.tropeMetadata,
+              chapters: [{
+                chapterId: 'chapter-2',
+                chapterNumber: 2,
+                title: 'Malformed Entry',
+                content: '<h3>Chapter 2: Malformed Entry</h3><p>The story continued.</p>',
+                rawContent: '<p>[Mira]: "It continued."</p>',
+                wordCount: 8,
+                generatedAt: new Date(),
+                hasAudio: false,
+                cliffhangerEnding: true
+              }],
+              totalWordCount: 8
+            }
+          };
+        }
+      })
+    });
+
+    assert(response.success, 'a malformed character/thread entry must not crash the continuation into a 500');
+    assert(
+      !capturedInput?.continuityState?.characterNames.some(name => name === undefined || name === ''),
+      'a character with no displayName must not reach continuityState as undefined or an empty string'
+    );
+    assert(
+      !capturedInput?.continuityState?.openThreads.some(thread => thread === undefined || thread === ''),
+      'a thread with no label or description must not reach continuityState as undefined or an empty string'
+    );
+    assert(
+      capturedInput?.continuityState?.characterNames.length === payload.state.characters.length,
+      'the well-formed characters alongside the malformed one should still all reach continuityState'
+    );
+  });
+
   // `previouslyGeneratedChapters` arrives in the request body and the routes
   // check only that it is an array. Both of the engine's readings of it are
   // `Math.max` over `chapter.chapterNumber`, which answers `NaN` for a single

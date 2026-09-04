@@ -24,7 +24,7 @@ import { isClassicStoryTheme } from '../../../shared/themeVocabulary';
 import { StoryService } from '../services/storyService';
 import { buildContinuationResponse, buildGenesisResponse } from './mockData';
 import { getTransientStorySnapshot, persistStoryIteration } from './stateStore';
-import { extractContinuity } from './continuityExtractor';
+import { extractContinuity, isNonEmptyString } from './continuityExtractor';
 import { getXaiReasoningEffort, getXaiStoryModel } from '../config/xaiConfig';
 import { getStoryLabContinuityTimeoutMs } from './continuityBudget';
 import {
@@ -399,13 +399,20 @@ export async function continueStoryLab(
       // this same `storyState` — a request-supplied snapshot is only ever
       // truthy-checked at the route boundary, never schema-validated, so a
       // caller sending one with `characters` or `threads` missing entirely
-      // must not throw here.
-      characterNames: getStateCharacters(storyState).map(character => character.displayName),
+      // must not throw here. `isNonEmptyString` covers the entry itself:
+      // an array that passes `Array.isArray` can still hold `{}` or similar,
+      // whose `displayName`/`description`/`label` is `undefined` rather than
+      // a string — reaching `buildContinuationPrompt`'s own string-only
+      // helpers with that would throw just as surely as the missing array did.
+      characterNames: getStateCharacters(storyState)
+        .map(character => character.displayName)
+        .filter(isNonEmptyString),
       // "Open" the same way `continuationGuidance.ts`'s own unresolved-thread
       // filter reads it: every status but `resolved` still owes the reader a payoff.
       openThreads: getStateThreads(storyState)
         .filter(thread => thread.status !== 'resolved')
-        .map(thread => thread.description || thread.label),
+        .map(thread => thread.description || thread.label)
+        .filter(isNonEmptyString),
       latestChapterExcerpt: latestChapter.rawContent || latestChapter.htmlContent
     },
     maintainTone: true,

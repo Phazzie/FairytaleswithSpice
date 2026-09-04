@@ -433,6 +433,25 @@ assert(activePlotThreadsLine, 'the active-plot-threads line should be present');
 assert(activePlotThreadsLine!.split(', ').length <= 8, `thread list should be capped, got ${activePlotThreadsLine!.split(', ').length} entries`);
 assert(!activePlotThreadsLine!.includes('x'.repeat(181)), 'each thread entry should be capped in length, not just the list count');
 
+// A plain prefix cap over `[...state, ...prose]` starves the prose scan to
+// zero whenever state alone already fills the cap — silently undoing the
+// merge above for exactly the story (long-running, many characters) where a
+// stuck heuristic-extraction run most needs a prose-only discovery to
+// survive. `CONTINUATION_STATE_RESERVED_CHARACTER_SLOTS`/`_THREAD_SLOTS`
+// guarantee it does not.
+const fullStateNoRoom = service.buildContinuationPrompt({
+  ...continuationBaseInput,
+  continuityState: {
+    characterNames: manyCharacterNames, // already 40, past the cap on its own
+    openThreads: ['The vow-binding song still needs resolving.'],
+    latestChapterExcerpt: '<p>A quiet supper by the window.</p>'
+  }
+} as ChapterContinuationSeam['input']);
+assert(
+  fullStateNoRoom.split('\n').find(line => line.startsWith('- Established Characters:'))?.includes('Rook'),
+  'a prose-only name must still reach the prompt even when the state list alone already fills the cap'
+);
+
 // The reader's own free-text brief and the Continuity Courtroom's hidden
 // guidance used to be concatenated into one string and labeled to the model
 // as the reader's own "CREATIVE DIRECTION" — so an authoritative, must-honor

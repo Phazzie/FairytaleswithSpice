@@ -180,6 +180,22 @@ const CONTINUATION_STATE_MAX_CHARACTER_NAME_LENGTH = STORY_LAB_CHARACTER_NAME_MA
 const CONTINUATION_STATE_MAX_THREADS = 8;
 const CONTINUATION_STATE_MAX_THREAD_LENGTH = 180;
 
+/**
+ * Slots reserved, out of each cap above, for names/threads the prose scan
+ * finds that state does not already know about.
+ *
+ * `mergeUniqueStrings` puts state's own entries first and the prose scan's
+ * afterward, so a prefix cap alone starves the prose scan to zero whenever
+ * state is already at or past the cap — exactly the long-running,
+ * many-characters story where a stuck heuristic-extraction run (see
+ * `mergeUniqueStrings`'s own comment) most needs it. Reserving these slots
+ * caps state's own contribution to `maxEntries - reserved` first, so the
+ * merge always has room left for what the prose scan alone would have
+ * found.
+ */
+const CONTINUATION_STATE_RESERVED_CHARACTER_SLOTS = 3;
+const CONTINUATION_STATE_RESERVED_THREAD_SLOTS = 2;
+
 export class StoryService {
   private readonly xaiClient = new XaiTextClient();
   private readonly cliffhangerService = new CliffhangerService();
@@ -1251,16 +1267,33 @@ AVOID: ${selectedStructure.avoid}`;
   }
 
   /**
-   * `base`, then every entry of `additional` not already in `base` — order
-   * preserved, nothing from `base` ever dropped or reordered. Used to add
-   * the prose scan's findings onto `continuityState`'s own list rather than
-   * picking one source over the other; see `buildContinuationPrompt`.
+   * `base`, capped to `maxEntries - reservedForAdditional` entries, then
+   * every entry of `additional` not already in the kept part of `base` —
+   * filled in until `maxEntries` total, order preserved within each source.
+   *
+   * A plain prefix cap over `[...base, ...additional]` starves `additional`
+   * to zero whenever `base` alone already reaches `maxEntries` — exactly the
+   * long-running, many-characters story where a stuck heuristic-extraction
+   * run (state never updated with what the prose scan alone would have
+   * found — see `buildContinuationPrompt`'s own comment on why `additional`
+   * is unioned in at all) most needs at least some of its findings to
+   * survive. Reserving slots up front guarantees they do, regardless of how
+   * large `base` is.
    */
-  private mergeUniqueStrings(base: readonly string[] | undefined, additional: readonly string[]): string[] {
-    const merged = [...(base ?? [])];
+  private mergeUniqueStrings(
+    base: readonly string[] | undefined,
+    additional: readonly string[],
+    maxEntries: number,
+    reservedForAdditional: number
+  ): string[] {
+    const cappedBase = (base ?? []).slice(0, Math.max(0, maxEntries - reservedForAdditional));
+    const merged = [...cappedBase];
     const seen = new Set(merged);
 
     for (const item of additional) {
+      if (merged.length >= maxEntries) {
+        break;
+      }
       if (!seen.has(item)) {
         seen.add(item);
         merged.push(item);
@@ -1271,16 +1304,12 @@ AVOID: ${selectedStructure.avoid}`;
   }
 
   /**
-   * `values`, capped to `maxEntries` items and each entry capped to
-   * `maxEntryLength` code units at a word boundary. Applied after
-   * `mergeUniqueStrings` so the bound holds regardless of how large either
-   * source list grows — see `CONTINUATION_STATE_MAX_CHARACTERS` and its
-   * siblings for why this list has no bound of its own otherwise.
+   * Each entry of `values` capped to `maxEntryLength` code units at a word
+   * boundary — the per-entry half of the bound `mergeUniqueStrings` applies
+   * to the list as a whole.
    */
-  private capPromptStringList(values: readonly string[], maxEntries: number, maxEntryLength: number): string[] {
-    return values
-      .slice(0, maxEntries)
-      .map(value => capAtWordBoundaryWithinCodeUnits(value, maxEntryLength));
+  private capPromptStringLengths(values: readonly string[], maxEntryLength: number): string[] {
+    return values.map(value => capAtWordBoundaryWithinCodeUnits(value, maxEntryLength));
   }
 
   private buildChapterUserPrompt(
@@ -1321,14 +1350,22 @@ ${contextExcerpt}${restLines.join('\n')}`;
     // always unioned onto the state's own list rather than run only as an
     // absent-state fallback: they can only add a name or thread the text
     // actually contains, never remove or override what state already knows.
-    const characterNames = this.capPromptStringList(
-      this.mergeUniqueStrings(input.continuityState?.characterNames, extractCharacterNames(existingContent)),
-      CONTINUATION_STATE_MAX_CHARACTERS,
+    const characterNames = this.capPromptStringLengths(
+      this.mergeUniqueStrings(
+        input.continuityState?.characterNames,
+        extractCharacterNames(existingContent),
+        CONTINUATION_STATE_MAX_CHARACTERS,
+        CONTINUATION_STATE_RESERVED_CHARACTER_SLOTS
+      ),
       CONTINUATION_STATE_MAX_CHARACTER_NAME_LENGTH
     );
-    const activePlotThreads = this.capPromptStringList(
-      this.mergeUniqueStrings(input.continuityState?.openThreads, extractPlotThreads(existingContent)),
-      CONTINUATION_STATE_MAX_THREADS,
+    const activePlotThreads = this.capPromptStringLengths(
+      this.mergeUniqueStrings(
+        input.continuityState?.openThreads,
+        extractPlotThreads(existingContent),
+        CONTINUATION_STATE_MAX_THREADS,
+        CONTINUATION_STATE_RESERVED_THREAD_SLOTS
+      ),
       CONTINUATION_STATE_MAX_THREAD_LENGTH
     );
 
