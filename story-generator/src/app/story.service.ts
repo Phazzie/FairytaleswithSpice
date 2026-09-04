@@ -18,9 +18,11 @@ import {
   StoryLabAuthConfig,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
+  StoryLabJobEvent,
   StoryLabUserProfile
 } from './contracts';
 import { ErrorLoggingService } from './error-logging';
+import { classifyEventStreamError } from '../../../shared/eventStreamRetry';
 
 /**
  * StoryService orchestrates all interactions with the backend story API.
@@ -99,27 +101,63 @@ export class StoryService {
   }
 
   /**
-   * Read a Story Lab job's latest snapshot from the `statusPath` its creation
-   * response returned. Used to keep watching a job that hasn't reached a
-   * terminal status yet.
+   * Watch a Story Lab job's events over the backend's replay-and-close SSE
+   * route at `eventsPath`, from its creation response's `paths.eventsPath`.
+   * Used to keep watching a job that hasn't reached a terminal status yet.
    *
-   * The route answers with the same envelope shape `createStoryLabJob` does
-   * (`{ job, paths, durability }`, from `StoryLabJobStore.getJob`) rather
-   * than a bare job — the response type here has to match that, not the
-   * `StoryLabJob` the caller ultimately wants.
+   * `handleStreamStoryLabJobEvents` replays every recorded event for the job
+   * and closes the response immediately — by design, not a bug — so the
+   * browser's native `EventSource` reconnecting every few seconds is what
+   * keeps this observable open across each of those closes.
+   * `classifyEventStreamError` is what tells that expected reconnect apart
+   * from a real terminal failure; only the latter ends the observable, via
+   * `subscriber.error` rather than `handleHttpError` — there is no HTTP
+   * response here for that to format.
    *
-   * No `logInfo` here, unlike this service's other methods: this is called
-   * on every poll tick (as often as every few seconds for up to several
-   * minutes), and `ErrorLoggingService` keeps a single shared, capped
-   * buffer — a per-poll info entry would flood it and evict genuine errors
-   * from the Error Display panel. Failures still go through `handleHttpError`.
+   * `EventSource` cannot set custom headers, so a caller with a signed-in
+   * session token passes it as `sessionToken`, appended to the URL — the
+   * same query-parameter bridge `withEventStreamAuth` already reads on the
+   * backend for `apiKey`. This method does not fetch that token itself: that
+   * would make `StoryService` depend on `AuthService`, which already depends
+   * on `StoryService` (`getStoryLabAuthConfig`), and a fresh token is what
+   * `AuthService.getRequestToken()` returns anyway — the caller already has
+   * it or can ask for it.
+   *
+   * No `logInfo` here, unlike this service's other methods: `ErrorLoggingService`
+   * keeps a single shared, capped buffer, and a reconnect-shaped disconnect —
+   * swallowed below, never reaching a subscriber — happens as often as every
+   * few seconds for up to several minutes. Logging that on every occurrence
+   * would flood the buffer and evict genuine errors from the Error Display
+   * panel; only a message that fails to parse or a terminal stream error goes
+   * through `errorLogging`.
    */
-  getStoryLabJobStatus<TResult = StoryIterationPayload>(
-    statusPath: string
-  ): Observable<ApiResponse<StoryLabJobCreationResponse<TResult>>> {
-    return this.http
-      .get<ApiResponse<StoryLabJobCreationResponse<TResult>>>(statusPath)
-      .pipe(catchError(error => this.handleHttpError(error, 'getStoryLabJobStatus')));
+  streamStoryLabJobEvents<TResult = StoryIterationPayload>(
+    eventsPath: string,
+    sessionToken: string | null
+  ): Observable<StoryLabJobEvent<TResult>> {
+    const url = sessionToken
+      ? `${eventsPath}${eventsPath.includes('?') ? '&' : '?'}sessionToken=${encodeURIComponent(sessionToken)}`
+      : eventsPath;
+
+    return new Observable<StoryLabJobEvent<TResult>>(subscriber => {
+      const source = new EventSource(url, { withCredentials: true });
+
+      source.onmessage = (message: MessageEvent<string>) => {
+        try {
+          subscriber.next(JSON.parse(message.data) as StoryLabJobEvent<TResult>);
+        } catch (error) {
+          this.errorLogging.logError(error, 'StoryService.streamStoryLabJobEvents');
+        }
+      };
+
+      source.onerror = () => {
+        if (classifyEventStreamError(source) === 'terminal') {
+          subscriber.error(new Error('Story Lab job event stream closed.'));
+        }
+      };
+
+      return () => source.close();
+    });
   }
 
   /**

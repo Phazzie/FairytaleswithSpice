@@ -224,29 +224,60 @@ export function rateLimitResetSeconds(resetTime: number): number {
 }
 
 /**
- * Read the API key for a request a browser `EventSource` made.
+ * Read the API key, and a signed-in caller's session token, for a request a
+ * browser `EventSource` made.
  *
  * `EventSource` cannot set custom headers — there is no way for a browser
- * stream reader to send `X-API-Key` or `Authorization`, so an SSE route
- * (`story-lab/jobs/:jobId/events`) can never satisfy `authenticateRequest`'s
- * header check once a deployment sets `API_KEYS`, no matter what the caller
- * does. This reads the same key from an `apiKey` query parameter instead, so
- * that route stays reachable from a real browser stream once authentication
- * is actually enforced, and falls back to whatever header the request
- * already carries (a non-browser client that can set one) when the query
- * parameter is absent.
+ * stream reader to send `X-API-Key` or the dedicated `X-Story-Lab-Session`
+ * header, so an SSE route (`story-lab/jobs/:jobId/events`) can never satisfy
+ * `authenticateRequest`'s header check once a deployment sets `API_KEYS`,
+ * and can never identify a signed-in owner once its job store is durable
+ * (`resolveJobStoreOrRespond` there calls `authPort.requireUser`, which reads
+ * this same dedicated header). This reads both from query parameters
+ * instead — `apiKey` and `sessionToken` — so the route stays reachable from
+ * a real browser stream on both counts, and falls back to whatever headers
+ * the request already carries (a non-browser client that can set them, or a
+ * `__session` cookie `clerkAuthPort` also accepts) when a parameter is
+ * absent. The caller must apply the *same* merged request to every check the
+ * route runs, including the auth one — a `sessionToken` bridged only into
+ * the access-control call and never seen past it would 401 every signed-in
+ * reader's reconnect against a durable job store forever.
  */
 export function withEventStreamAuth(req: {
   method?: string;
   headers?: any;
   query?: Record<string, string | string[] | undefined>;
 }): ApiAccessControlRequest {
-  const apiKeyParam = req.query?.['apiKey'];
-  const apiKey = Array.isArray(apiKeyParam) ? apiKeyParam[0] : apiKeyParam;
+  const apiKey = firstEventStreamQueryValue(req.query, 'apiKey');
+  const sessionToken = firstEventStreamQueryValue(req.query, 'sessionToken');
+
+  if (!apiKey && !sessionToken) {
+    return {
+      method: req.method ?? 'GET',
+      headers: req.headers,
+      body: undefined
+    };
+  }
+
+  const headers = { ...req.headers };
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+  if (sessionToken) {
+    headers['x-story-lab-session'] = sessionToken;
+  }
 
   return {
     method: req.method ?? 'GET',
-    headers: apiKey ? { ...req.headers, 'x-api-key': apiKey } : req.headers,
+    headers,
     body: undefined
   };
+}
+
+function firstEventStreamQueryValue(
+  query: Record<string, string | string[] | undefined> | undefined,
+  key: string
+): string | undefined {
+  const value = query?.[key];
+  return Array.isArray(value) ? value[0] : value;
 }

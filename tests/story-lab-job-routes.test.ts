@@ -11,6 +11,7 @@ import type {
   StoryLabJobCreationResponse
 } from '../api/_lib/story-lab/contracts';
 import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
+import { createClerkAuthPort } from '../api/_lib/story-lab/auth/clerkAuthPort';
 import {
   generateStoryLabGenesis as realGenerateStoryLabGenesis,
   continueStoryLab as realContinueStoryLab
@@ -492,6 +493,83 @@ async function testDurableInjectedJobCreationReceivesOwnerContext(): Promise<voi
   assert(store.eventOwnerUserIds[0] === owner.userId, 'durable job events route should pass authenticated owner id');
 }
 
+/**
+ * The fake `createStaticAuthPort` above proves the events route *threads*
+ * ownership through once authenticated, but it ignores the request entirely
+ * — it cannot catch a regression in how that authentication actually
+ * happens. A real `EventSource` reconnecting against this route can only
+ * ever carry `x-story-lab-session` header at all (`resolveJobStoreOrRespond`
+ * calls `authPort.requireUser` on the same request `enforceApiAccessControl`
+ * inspects) — a `sessionToken` that stayed inside `withEventStreamAuth`'s
+ * merged copy for the access-control check alone, and never reached the
+ * request `resolveJobStoreOrRespond` sees, would 401 every signed-in
+ * reader's browser reconnect against a durable job store forever, even
+ * though the identical `apiKey` query parameter kept working for
+ * `enforceApiAccessControl` itself.
+ */
+async function testDurableEventsRouteAuthenticatesViaSessionTokenQueryParameter(): Promise<void> {
+  setMockRuntime();
+  const store = new CapturingDurableJobStore();
+  const validSessionToken = 'clerk-jwt-for-owner';
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createClerkAuthPort({
+      verifySessionToken: async token => (token === validSessionToken ? { userId: owner.userId, email: owner.email } : null)
+    }),
+    createJobStoreConfig: () => createDurableJobStoreConfig(store)
+  });
+
+  const createResponse = new FakeResponse();
+  await handler(
+    { method: 'POST', body: createGenesisJobRequest(), query: {}, headers: { 'x-story-lab-session': validSessionToken } },
+    createResponse
+  );
+  assert(createResponse.statusCode === 200, 'job creation over the real Clerk header path should succeed');
+  const jobId = (createResponse.body as any).data.job.jobId as string;
+
+  // No `x-story-lab-session` header at all here — only the query parameter a
+  // browser `EventSource` can actually send.
+  resetRateLimitsForTests();
+  const noSessionToken = new FakeResponse();
+  await handler(
+    { method: 'GET', query: { jobId, events: '1' }, url: `/api/story-lab/jobs/${jobId}/events`, headers: {} },
+    noSessionToken
+  );
+  assert(noSessionToken.statusCode === 401, 'the durable events route with no session at all should still require auth');
+
+  resetRateLimitsForTests();
+  const wrongSessionToken = new FakeResponse();
+  await handler(
+    {
+      method: 'GET',
+      query: { jobId, events: '1', sessionToken: 'not-the-right-token' },
+      url: `/api/story-lab/jobs/${jobId}/events`,
+      headers: {}
+    },
+    wrongSessionToken
+  );
+  assert(wrongSessionToken.statusCode === 401, 'the durable events route with an invalid query session token should be rejected');
+
+  resetRateLimitsForTests();
+  const validQuerySessionToken = new FakeResponse();
+  await handler(
+    {
+      method: 'GET',
+      query: { jobId, events: '1', sessionToken: validSessionToken },
+      url: `/api/story-lab/jobs/${jobId}/events`,
+      headers: {}
+    },
+    validQuerySessionToken
+  );
+  assert(
+    validQuerySessionToken.statusCode === 200,
+    `the durable events route should authenticate a browser EventSource via the sessionToken query parameter, got ${validQuerySessionToken.statusCode}`
+  );
+  assert(
+    store.eventOwnerUserIds.at(-1) === owner.userId,
+    'the query-parameter-authenticated events read should still scope to the real owner id'
+  );
+}
+
 async function testDurableInjectedJobCreateFailureUsesSanitizedEnvelope(): Promise<void> {
   setMockRuntime();
   const store = new CapturingDurableJobStore();
@@ -764,6 +842,7 @@ async function run(): Promise<void> {
   await testPostgresJobStoreWithoutRouteAuthFailsClosed();
   await testDurableInjectedJobStoreRequiresAuth();
   await testDurableInjectedJobCreationReceivesOwnerContext();
+  await testDurableEventsRouteAuthenticatesViaSessionTokenQueryParameter();
   await testDurableInjectedJobCreateFailureUsesSanitizedEnvelope();
   await testDurableInjectedJobUpdateFailureUsesSanitizedEnvelope();
   await testDurableInjectedJobFinishFailureUsesSanitizedEnvelope();

@@ -15,6 +15,7 @@ import {
   StoryIterationPayload,
   StoryLabJob,
   StoryLabJobCreationResponse,
+  StoryLabJobEvent,
   StoryStateSnapshot,
   StorySummary,
   CloudStoryProjectList,
@@ -289,7 +290,7 @@ describe('App', () => {
       'beginStory',
       'continueStory',
       'createStoryLabJob',
-      'getStoryLabJobStatus',
+      'streamStoryLabJobEvents',
       'getStoryLabAuthConfig',
       'listCloudStoryProjects',
       'saveCloudStoryProject',
@@ -304,6 +305,12 @@ describe('App', () => {
     // to unless a test overrides it, matching every real deployment that has
     // not configured Clerk.
     storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of({ success: true, data: { provider: 'none' } }));
+    // A quiet default for any test that stubs a `running` job creation
+    // response without caring about the job-watching path itself — an
+    // observable that never emits keeps `watchJobUntilTerminal` harmlessly
+    // idle rather than throwing on `undefined.subscribe`. Tests below that do
+    // care override this per case.
+    storyServiceSpy.streamStoryLabJobEvents.and.returnValue(NEVER);
     const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
       'logInfo',
       'logError',
@@ -1628,15 +1635,25 @@ describe('App', () => {
     expect(queueText).toContain('0 of 1 chapter');
   });
 
-  // These three cover the "still running" branch of `handleJobSnapshot`: it
-  // returns `false` specifically so the caller keeps watching the job, but
-  // until now both callers discarded that return value and nothing in the
-  // component ever polled `getStoryLabJobStatus` again. `jobEventSubscription`
-  // existed for exactly this and was permanently `null`.
+  // These cover the "still running" branch of `handleJobSnapshot`: it
+  // returns `false` specifically so the caller keeps watching the job. Job
+  // watching moved from polling `getStoryLabJobStatus` on a fixed interval to
+  // subscribing to `StoryService.streamStoryLabJobEvents` (a mocked
+  // Observable here — `story.service.spec.ts` drives the real `EventSource`
+  // wiring against `testing/event-source-mock.ts`), so there is no interval
+  // to `tick()` through any more: a single `tick()` flushes the microtask
+  // `AuthService.getRequestToken()` resolves through before the mocked
+  // stream is subscribed. Two cases from the retired poll loop have no
+  // analogue here and are not replaced 1:1:
+  // - "a single request that hangs" doesn't apply to one persistent
+  //   subscription the way it did to a poll loop's individual HTTP requests.
+  // - "keeps polling through a transient error" is now the job event
+  //   stream's own concern — `story.service.spec.ts`'s
+  //   "treats a reconnect-shaped disconnect as normal" case covers the
+  //   `EventSource` `readyState` classification that keeps a benign
+  //   reconnect from ever reaching this component as an `error` at all.
   describe('watching a Story Lab job that is not yet terminal', () => {
-    const statusPath = '/api/story-lab/jobs/job_123e4567-e89b-12d3-a456-426614174000';
-    // Kept in sync with `STORY_LAB_JOB_POLL_INTERVAL_MS` / `STORY_LAB_JOB_POLL_TIMEOUT_MS` in app.ts.
-    const POLL_INTERVAL_MS = 2500;
+    const eventsPath = '/api/story-lab/jobs/job_123e4567-e89b-12d3-a456-426614174000/events';
     const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
     function completedGenesisPayload(): StoryIterationPayload {
@@ -1671,71 +1688,59 @@ describe('App', () => {
       };
     }
 
-    // `getStoryLabJobStatus` answers with the same envelope shape job
-    // creation does (`{ job, paths, durability }`), not a bare job.
-    function jobStatusResponse<T>(job: StoryLabJob<T>): StoryLabJobCreationResponse<T> {
+    function jobEvent<T>(job: StoryLabJob<T>): StoryLabJobEvent<T> {
       return {
-        job,
-        paths: {
-          statusPath: `/api/story-lab/jobs/${job.jobId}`,
-          eventsPath: `/api/story-lab/jobs/${job.jobId}/events`
-        },
-        durability: {
-          mode: 'non_durable_memory',
-          durable: false,
-          warning: 'Jobs are held in memory for this deployment.'
-        }
+        eventId: `event_${job.jobId}_${job.updatedAt}`,
+        type: 'snapshot',
+        emittedAt: job.updatedAt,
+        job
       };
     }
 
-    it('re-checks the job at its statusPath and applies the result once polling reaches a completed snapshot', fakeAsync(() => {
+    it('opens the job event stream at its eventsPath and applies a completed snapshot', fakeAsync(() => {
       const completedJob = createGenesisJobResponse(completedGenesisPayload()).job;
-      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: jobStatusResponse(completedJob) }));
+      storyService.streamStoryLabJobEvents.and.returnValue(of(jobEvent(completedJob)));
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
 
-      expect(storyService.getStoryLabJobStatus).not.toHaveBeenCalled();
+      expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
       expect(component.isGenerating()).toBeTrue();
 
-      tick(POLL_INTERVAL_MS);
+      tick();
 
-      expect(storyService.getStoryLabJobStatus).toHaveBeenCalledWith(statusPath);
-      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(1);
+      expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(eventsPath, null);
+      expect(storyService.streamStoryLabJobEvents.calls.count()).toBe(1);
       expect(component.isGenerating()).toBeFalse();
       expect(component.workbench().chapterHistory.length).toBe(1);
       expect(component.jobStatusPanel().visible).toBeFalse();
 
-      // Terminal now — no further polling.
+      // Terminal now — nothing re-opens the stream.
       tick(POLL_TIMEOUT_MS);
-      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(1);
+      expect(storyService.streamStoryLabJobEvents.calls.count()).toBe(1);
     }));
 
-    it('keeps re-checking on every non-terminal snapshot until the job finishes', fakeAsync(() => {
+    it('keeps applying every snapshot emitted on the stream until the job finishes', fakeAsync(() => {
       const completedJob = createGenesisJobResponse(completedGenesisPayload()).job;
-      storyService.getStoryLabJobStatus.and.returnValues(
-        of({ success: true, data: jobStatusResponse(runningJobSnapshot({ progressPercent: 65 })) }),
-        of({ success: true, data: jobStatusResponse(runningJobSnapshot({ progressPercent: 80 })) }),
-        of({ success: true, data: jobStatusResponse(completedJob) })
-      );
+      const events = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+      storyService.streamStoryLabJobEvents.and.returnValue(events.asObservable());
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
+      tick();
+      expect(storyService.streamStoryLabJobEvents.calls.count()).toBe(1);
 
-      tick(POLL_INTERVAL_MS);
-      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(1);
+      events.next(jobEvent(runningJobSnapshot({ progressPercent: 65 })));
       expect(component.isGenerating()).toBeTrue();
       expect(component.generationProgress().percent).toBe(65);
 
-      tick(POLL_INTERVAL_MS);
-      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(2);
+      events.next(jobEvent(runningJobSnapshot({ progressPercent: 80 })));
       expect(component.generationProgress().percent).toBe(80);
 
-      tick(POLL_INTERVAL_MS);
-      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(3);
+      events.next(jobEvent(completedJob));
       expect(component.isGenerating()).toBeFalse();
     }));
 
-    it('fails the job with a dedicated message once the overall poll timeout elapses', fakeAsync(() => {
-      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: jobStatusResponse(runningJobSnapshot()) }));
+    it('fails the job with a dedicated message once the overall watch timeout elapses', fakeAsync(() => {
+      storyService.streamStoryLabJobEvents.and.returnValue(NEVER);
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
 
@@ -1743,90 +1748,43 @@ describe('App', () => {
 
       expect(component.isGenerating()).toBeFalse();
       expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
-      // Distinct from the per-request/stream error message below — a reader
-      // hitting the 5-minute cap should be told it took too long, not that
-      // "updates stopped".
-      expect(component.statusMessage()).toContain('taking longer than expected');
-
-      const callsAtTimeout = storyService.getStoryLabJobStatus.calls.count();
-      tick(POLL_INTERVAL_MS * 4);
-      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(callsAtTimeout);
-    }));
-
-    it('does not wait forever on a single status request that hangs, and keeps trying rather than failing immediately', fakeAsync(() => {
-      // A request that never completes or errors — the bug Sourcery's review
-      // caught: the overall poll timeout is only re-checked from inside a
-      // request's `next` callback, so a hung request bypassed it entirely
-      // and left the job "running" forever with nothing to time it out.
-      storyService.getStoryLabJobStatus.and.returnValue(NEVER);
-
-      startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
-      tick(POLL_INTERVAL_MS);
-      expect(storyService.getStoryLabJobStatus).toHaveBeenCalled();
-      expect(component.isGenerating()).toBeTrue();
-
-      // Past the 15s per-request timeout, well under the 5-minute overall
-      // one — a single hung request is a transient failure, not proof the
-      // job died, so it's retried rather than ending the job here.
-      tick(15 * 1000);
-      expect(component.isGenerating()).toBeTrue();
-
-      // Only the overall poll timeout — repeated hangs for the full 5
-      // minutes — actually ends it, with the dedicated timeout message.
-      tick(POLL_TIMEOUT_MS);
-      expect(component.isGenerating()).toBeFalse();
-      expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
+      // Distinct from the stream-error message below — a reader hitting the
+      // 5-minute cap should be told it took too long, not that "updates
+      // stopped".
       expect(component.statusMessage()).toContain('taking longer than expected');
     }));
 
-    it('fails the job immediately on a definitive error like 404, without retrying', fakeAsync(() => {
-      storyService.getStoryLabJobStatus.and.returnValue(throwError(() => ({ status: 404 })));
+    it('fails the job immediately when the event stream ends in a terminal error', fakeAsync(() => {
+      // `classifyEventStreamError`'s reconnect-shaped disconnects never reach
+      // this Observable as an error at all (see `story.service.spec.ts`) —
+      // only a `readyState: CLOSED` disconnect does, via `subscriber.error`.
+      storyService.streamStoryLabJobEvents.and.returnValue(throwError(() => new Error('Story Lab job event stream closed.')));
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
-      tick(POLL_INTERVAL_MS);
+      tick();
 
       expect(component.isGenerating()).toBeFalse();
       expect(component.activeBatchQueue().at(-1)?.status).toBe('failed');
-
-      const callsAfterFailure = storyService.getStoryLabJobStatus.calls.count();
-      tick(POLL_INTERVAL_MS * 4);
-      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(callsAfterFailure);
     }));
 
-    it('keeps polling through a transient error (e.g. a dropped connection) rather than failing the job', fakeAsync(() => {
-      const completedJob = createGenesisJobResponse(completedGenesisPayload()).job;
-      storyService.getStoryLabJobStatus.and.returnValues(
-        throwError(() => ({ status: 0 })),
-        of({ success: true, data: jobStatusResponse(completedJob) })
-      );
+    it('stops watching the job stream once the component is destroyed', fakeAsync(() => {
+      const events = new Subject<StoryLabJobEvent<StoryIterationPayload>>();
+      storyService.streamStoryLabJobEvents.and.returnValue(events.asObservable());
 
       startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
-      tick(POLL_INTERVAL_MS);
-      expect(component.isGenerating()).toBeTrue();
-      expect(component.activeBatchQueue().at(-1)?.status).not.toBe('failed');
-
-      tick(POLL_INTERVAL_MS);
-      expect(component.isGenerating()).toBeFalse();
-      expect(component.workbench().chapterHistory.length).toBe(1);
-    }));
-
-    it('stops polling once the component is destroyed', fakeAsync(() => {
-      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: jobStatusResponse(runningJobSnapshot()) }));
-
-      startGenesisJobFlow('A siren archivist bargains with a moonlit duke.');
-      tick(POLL_INTERVAL_MS);
-      expect(storyService.getStoryLabJobStatus.calls.count()).toBe(1);
+      tick();
+      expect(storyService.streamStoryLabJobEvents).toHaveBeenCalled();
+      expect(events.observed).toBeTrue();
 
       // `ngOnDestroy` calls `closeJobSubscriptions()`, which must actually
-      // unsubscribe a live poll — not silently no-op the way it did while
-      // `jobEventSubscription` was declared but never assigned to anything.
+      // unsubscribe the live stream — not silently no-op the way it did
+      // while `jobEventSubscription` was declared but never assigned to
+      // anything.
       fixture.destroy();
-      storyService.getStoryLabJobStatus.calls.reset();
-      tick(POLL_INTERVAL_MS * 4);
-      expect(storyService.getStoryLabJobStatus).not.toHaveBeenCalled();
+      expect(events.observed).toBeFalse();
     }));
 
-    it('also polls a running continuation job at its own statusPath until it completes', fakeAsync(() => {
+    it('also streams a running continuation job\'s events at its own eventsPath until it completes', fakeAsync(() => {
       const genesisPayload = seedWorkbenchForContinuation();
       const runningContinuationJob = createContinuationJobResponse(undefined, {
         status: 'running',
@@ -1837,16 +1795,16 @@ describe('App', () => {
 
       const continuationPayload = createContinuationPayload(genesisPayload);
       const completedJob = createContinuationJobResponse(continuationPayload).job;
-      storyService.getStoryLabJobStatus.and.returnValue(of({ success: true, data: jobStatusResponse(completedJob) }));
+      storyService.streamStoryLabJobEvents.and.returnValue(of(jobEvent(completedJob)));
 
       component.continueSaga('Focus on the betrayal arc.');
 
-      expect(storyService.getStoryLabJobStatus).not.toHaveBeenCalled();
+      expect(storyService.streamStoryLabJobEvents).not.toHaveBeenCalled();
       expect(component.isGenerating()).toBeTrue();
 
-      tick(POLL_INTERVAL_MS);
+      tick();
 
-      expect(storyService.getStoryLabJobStatus).toHaveBeenCalledWith(runningContinuationJob.paths.statusPath);
+      expect(storyService.streamStoryLabJobEvents).toHaveBeenCalledWith(runningContinuationJob.paths.eventsPath, null);
       expect(component.isGenerating()).toBeFalse();
       expect(component.workbench().chapterHistory.length).toBe(2);
     }));

@@ -8,6 +8,7 @@ import {
   StoryContinuationSeam,
   StoryLabJobCreationRequest,
   StoryLabJobCreationResponse,
+  StoryLabJobEvent,
   StoryLabUserProfile,
   CloudStoryProjectList,
   CloudStoryProjectSaveReceipt,
@@ -15,6 +16,11 @@ import {
   StorySummary,
   StoryStateSnapshot
 } from './contracts';
+import {
+  MOCK_EVENT_SOURCE_READY_STATE,
+  createControllableMock,
+  withMockEventSource
+} from '../testing/event-source-mock';
 
 function createGenesisInput(): StoryGenerationSeam['input'] {
   return {
@@ -283,43 +289,132 @@ describe('StoryService', () => {
     );
   });
 
-  it('polls a Story Lab job status at its statusPath', () => {
-    const payload = createJobResponse<StoryIterationPayload>('job_polling-target');
-    // The route answers with the same envelope job creation does
-    // (`{ job, paths, durability }`), not a bare job.
-    const runningResponse = { ...payload, job: { ...payload.job, status: 'running' as const, progressPercent: 40 } };
+  describe('streamStoryLabJobEvents', () => {
+    const eventsPath = '/api/story-lab/jobs/job_stream-target/events';
 
-    service.getStoryLabJobStatus<StoryIterationPayload>(payload.paths.statusPath).subscribe(response => {
-      expect(response.success).toBeTrue();
-      expect(response.data?.job.status).toBe('running');
-      expect(response.data?.job.progressPercent).toBe(40);
+    function createJobEvent(overrides: Partial<StoryLabJobEvent['job']> = {}): StoryLabJobEvent {
+      const now = new Date().toISOString();
+      return {
+        eventId: 'event_1',
+        type: 'snapshot',
+        emittedAt: now,
+        job: {
+          jobId: 'job_stream-target',
+          kind: 'genesis',
+          status: 'running',
+          currentStep: 'generating_story',
+          progressPercent: 40,
+          createdAt: now,
+          updatedAt: now,
+          ...overrides
+        }
+      };
+    }
+
+    it('opens an EventSource at the eventsPath and emits parsed job events', () => {
+      const mock = createControllableMock();
+
+      withMockEventSource(mock.MockClass, () => {
+        const received: StoryLabJobEvent[] = [];
+        service.streamStoryLabJobEvents(eventsPath, null).subscribe(event => received.push(event));
+
+        const jobEvent = createJobEvent();
+        mock.triggerMessage(jobEvent);
+
+        expect(received).toEqual([jobEvent]);
+      });
     });
 
-    const req = httpMock.expectOne(payload.paths.statusPath);
-    expect(req.request.method).toBe('GET');
-    req.flush({ success: true, data: runningResponse });
+    it('appends the session token as a query parameter when the caller has one', () => {
+      const mock = createControllableMock();
 
-    // Deliberately no `logInfo` call here — this method is polled on a fixed
-    // interval, and `ErrorLoggingService` keeps one shared, capped buffer
-    // that also backs the Error Display panel. A per-poll info entry would
-    // flood it and evict genuine errors.
-    expect(errorLogging.logInfo).not.toHaveBeenCalled();
-  });
-
-  it('logs http errors from job status polling through the error logger', () => {
-    const statusPath = '/api/story-lab/jobs/job_polling-target';
-
-    service.getStoryLabJobStatus(statusPath).subscribe({
-      next: () => fail('Expected error to be thrown'),
-      error: error => {
-        expect(error.status).toBe(503);
-      }
+      withMockEventSource(mock.MockClass, () => {
+        const subscription = service.streamStoryLabJobEvents(eventsPath, 'clerk-jwt-value').subscribe();
+        expect(mock.lastUrl()).toBe(`${eventsPath}?sessionToken=clerk-jwt-value`);
+        subscription.unsubscribe();
+      });
     });
 
-    const req = httpMock.expectOne(statusPath);
-    req.flush('Service unavailable', { status: 503, statusText: 'Service Unavailable' });
+    it('does not add a query parameter when the caller has no session token', () => {
+      const mock = createControllableMock();
 
-    expect(errorLogging.logError).toHaveBeenCalled();
+      withMockEventSource(mock.MockClass, () => {
+        const subscription = service.streamStoryLabJobEvents(eventsPath, null).subscribe();
+        expect(mock.lastUrl()).toBe(eventsPath);
+        subscription.unsubscribe();
+      });
+    });
+
+    it('treats a reconnect-shaped disconnect as normal and keeps watching for the next replay', () => {
+      const mock = createControllableMock();
+
+      withMockEventSource(mock.MockClass, () => {
+        const received: StoryLabJobEvent[] = [];
+        let errored = false;
+        service.streamStoryLabJobEvents(eventsPath, null).subscribe({
+          next: event => received.push(event),
+          error: () => { errored = true; }
+        });
+
+        // The route this pairs with replays and closes on every read, so the
+        // browser's own reconnect reports CONNECTING while it retries — not a
+        // failure.
+        mock.triggerError(MOCK_EVENT_SOURCE_READY_STATE.CONNECTING);
+        expect(errored).toBeFalse();
+
+        const jobEvent = createJobEvent({ progressPercent: 65 });
+        mock.triggerMessage(jobEvent);
+        expect(received).toEqual([jobEvent]);
+      });
+    });
+
+    it('ends the observable when the stream closes terminally', () => {
+      const mock = createControllableMock();
+
+      withMockEventSource(mock.MockClass, () => {
+        let capturedError: unknown;
+        service.streamStoryLabJobEvents(eventsPath, null).subscribe({
+          next: () => fail('Expected no events after a terminal disconnect'),
+          error: error => { capturedError = error; }
+        });
+
+        mock.triggerError(MOCK_EVENT_SOURCE_READY_STATE.CLOSED);
+        expect(capturedError).toBeInstanceOf(Error);
+      });
+    });
+
+    it('closes the underlying EventSource when the subscriber unsubscribes', () => {
+      const mock = createControllableMock();
+
+      withMockEventSource(mock.MockClass, () => {
+        const subscription = service.streamStoryLabJobEvents(eventsPath, null).subscribe();
+        expect(mock.closeHandlerCallCount()).toBe(0);
+
+        subscription.unsubscribe();
+        expect(mock.closeHandlerCallCount()).toBe(1);
+      });
+    });
+
+    it('logs a malformed frame through the error logger without ending the stream', () => {
+      const mock = createControllableMock();
+
+      withMockEventSource(mock.MockClass, () => {
+        const received: StoryLabJobEvent[] = [];
+        let errored = false;
+        service.streamStoryLabJobEvents(eventsPath, null).subscribe({
+          next: event => received.push(event),
+          error: () => { errored = true; }
+        });
+
+        mock.triggerRawMessage('{not valid json');
+        expect(errorLogging.logError).toHaveBeenCalledWith(jasmine.any(Error), 'StoryService.streamStoryLabJobEvents');
+        expect(errored).toBeFalse();
+
+        const jobEvent = createJobEvent({ progressPercent: 70 });
+        mock.triggerMessage(jobEvent);
+        expect(received).toEqual([jobEvent]);
+      });
+    });
   });
 
   it('gets and updates the Story Lab account profile', () => {

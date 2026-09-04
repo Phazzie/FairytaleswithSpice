@@ -18,7 +18,7 @@ import continuationHandler from '../api/story-lab/stories/[storyId]/continue';
 import jobsHandler from '../api/story-lab/jobs';
 import { handleStreamStoryLabJobEvents } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
-import { enforceApiAccessControl, rateLimitResetSeconds, retryAfterSeconds } from '../api/_lib/middleware/apiAccessControl';
+import { enforceApiAccessControl, rateLimitResetSeconds, retryAfterSeconds, withEventStreamAuth } from '../api/_lib/middleware/apiAccessControl';
 import type { RateLimitStore } from '../api/_lib/middleware/rateLimitStorePort';
 import { RATE_LIMITS } from '../api/_lib/constants';
 import { withMemoryRateLimitStore } from './helpers/withMemoryRateLimitStore';
@@ -384,6 +384,48 @@ async function testEventStreamRoutesAcceptTheQueryParameterKey(): Promise<void> 
 }
 
 /**
+ * `EventSource` cannot set custom headers either for the dedicated
+ * `X-Story-Lab-Session` header a durable job store's owner-scoped auth reads
+ * (`clerkAuthPort.requireUser`) — the same constraint `apiKey` above works
+ * around. `withEventStreamAuth` bridges a `sessionToken` query parameter into
+ * that header the same way, and merges it alongside `apiKey` rather than
+ * replacing it, since a deployment can configure both `API_KEYS` and Clerk
+ * auth at once.
+ */
+function testEventStreamAuthBridgesSessionTokenQueryParameter(): void {
+  const noQueryParams = withEventStreamAuth({ method: 'GET', headers: { 'x-existing': 'kept' }, query: {} });
+  assert(noQueryParams.headers === undefined || noQueryParams.headers['x-existing'] === 'kept', 'no query params should leave existing headers untouched');
+  assert(!('x-story-lab-session' in (noQueryParams.headers ?? {})), 'no sessionToken param should not add the session header');
+
+  const sessionOnly = withEventStreamAuth({
+    method: 'GET',
+    headers: { 'x-existing': 'kept' },
+    query: { sessionToken: 'clerk-jwt-value' }
+  });
+  assert(sessionOnly.headers?.['x-story-lab-session'] === 'clerk-jwt-value', 'a sessionToken query param should be bridged into the x-story-lab-session header');
+  assert(sessionOnly.headers?.['x-existing'] === 'kept', 'bridging a session token should not drop other existing headers');
+  assert(!('x-api-key' in sessionOnly.headers), 'a sessionToken with no apiKey should not fabricate an x-api-key header');
+
+  const both = withEventStreamAuth({
+    method: 'GET',
+    headers: {},
+    query: { apiKey: 'sk-live-real-key', sessionToken: 'clerk-jwt-value' }
+  });
+  assert(both.headers?.['x-api-key'] === 'sk-live-real-key', 'apiKey and sessionToken should both bridge when both are present');
+  assert(both.headers?.['x-story-lab-session'] === 'clerk-jwt-value', 'apiKey and sessionToken should both bridge when both are present');
+
+  const arrayValued = withEventStreamAuth({
+    method: 'GET',
+    headers: {},
+    // Node/Vercel repeat a query key as an array when it appears more than
+    // once in the URL; the first occurrence wins rather than throwing or
+    // silently dropping the parameter.
+    query: { sessionToken: ['first-token', 'second-token'] }
+  });
+  assert(arrayValued.headers?.['x-story-lab-session'] === 'first-token', 'an array-valued sessionToken query param should use its first value');
+}
+
+/**
  * `RATE_LIMIT_STORE=postgres` with a missing/unconfigured `DATABASE_URL` must
  * fail closed (503) rather than silently letting a paid route through
  * unthrottled — the same posture `resolveJobStoreOrRespond` in
@@ -468,6 +510,7 @@ async function main(): Promise<void> {
     await testUnconfiguredDeploymentStillServesRequestsWithNoKey();
     await testUnconfiguredDeploymentStillRateLimitsTheSharedBucket();
     await testEventStreamRoutesAcceptTheQueryParameterKey();
+    testEventStreamAuthBridgesSessionTokenQueryParameter();
     await testUnconfiguredPostgresRateLimitStoreFailsClosed();
     await testRateLimitStoreConsumeFailureFailsClosed();
   });
