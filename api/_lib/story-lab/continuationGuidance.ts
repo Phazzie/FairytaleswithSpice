@@ -468,7 +468,14 @@ function isUnresolvedThread(thread: PlotThread): boolean {
   return thread.status !== 'resolved';
 }
 
-function getStateThreads(storyState: StoryStateSnapshot): PlotThread[] {
+// Exported for `storyLabEngine.ts`'s own read of `storyState.threads` when
+// building `continuityState` for the continuation seam — a request-supplied
+// `storyState` is only ever truthy-checked at the route boundary (never
+// schema-validated), so a caller sending `storyState` with `threads` or
+// `characters` missing entirely reaches here, and a bare `.threads.filter(...)`
+// would throw a 500 instead of the graceful behavior this app gives every
+// other malformed-but-present field.
+export function getStateThreads(storyState: StoryStateSnapshot): PlotThread[] {
   return Array.isArray((storyState as Partial<StoryStateSnapshot>).threads)
     ? (storyState as Partial<StoryStateSnapshot>).threads as PlotThread[]
     : [];
@@ -480,7 +487,7 @@ function getStateArtifacts(storyState: StoryStateSnapshot): LoreArtifact[] {
     : [];
 }
 
-function getStateCharacters(storyState: StoryStateSnapshot): CharacterProfile[] {
+export function getStateCharacters(storyState: StoryStateSnapshot): CharacterProfile[] {
   return Array.isArray((storyState as Partial<StoryStateSnapshot>).characters)
     ? (storyState as Partial<StoryStateSnapshot>).characters as CharacterProfile[]
     : [];

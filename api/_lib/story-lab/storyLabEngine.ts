@@ -27,7 +27,12 @@ import { getTransientStorySnapshot, persistStoryIteration } from './stateStore';
 import { extractContinuity } from './continuityExtractor';
 import { getXaiReasoningEffort, getXaiStoryModel } from '../config/xaiConfig';
 import { getStoryLabContinuityTimeoutMs } from './continuityBudget';
-import { buildContinuationHiddenGuidance, stripStoryMemoryCardSections } from './continuationGuidance';
+import {
+  buildContinuationHiddenGuidance,
+  getStateCharacters,
+  getStateThreads,
+  stripStoryMemoryCardSections
+} from './continuationGuidance';
 import { buildChapterDelta, buildStateDelta, buildStateSnapshot } from './storyStateBuilder';
 import { collapseWhitespace } from '../utils/whitespace';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
@@ -389,10 +394,16 @@ export async function continueStoryLab(
     userInput: input.continuationBrief?.trim() || undefined,
     continuityGuidance: buildContinuationHiddenGuidance(input.continuationBrief, storyState),
     continuityState: {
-      characterNames: storyState.characters.map(character => character.displayName),
+      // `getStateCharacters`/`getStateThreads` read through the same
+      // Array.isArray guard `continuationGuidance.ts` already applies to
+      // this same `storyState` — a request-supplied snapshot is only ever
+      // truthy-checked at the route boundary, never schema-validated, so a
+      // caller sending one with `characters` or `threads` missing entirely
+      // must not throw here.
+      characterNames: getStateCharacters(storyState).map(character => character.displayName),
       // "Open" the same way `continuationGuidance.ts`'s own unresolved-thread
       // filter reads it: every status but `resolved` still owes the reader a payoff.
-      openThreads: storyState.threads
+      openThreads: getStateThreads(storyState)
         .filter(thread => thread.status !== 'resolved')
         .map(thread => thread.description || thread.label),
       latestChapterExcerpt: latestChapter.rawContent || latestChapter.htmlContent

@@ -484,3 +484,67 @@ whose thread labels are written outside Latin script, or a name typed in
 decomposed form. It is worth repairing for the reason the section above gives —
 the failure is silent, and the panel that previews this decision to the reader
 reads the same scorer.
+
+## Continuation prompt: a second, cruder account of the story built beside the one that already exists
+
+`StoryService.continueChapter` has exactly one caller, `storyLabEngine.ts`, and
+that caller already refuses to call it without a full `StoryStateSnapshot` in
+hand. Despite that, `buildContinuationPrompt` threw the state away and rebuilt
+"who's in this story" and "what's still open" from raw chapter text with regex
+heuristics, on every continuation: a speaker-tag scan for characters, a
+five-keyword scan for plot threads, and an aggregate-history scan for emotional
+tone. All three sat in the same prompt as the Continuity Courtroom's real,
+state-driven guidance (open threads, character debts, continuity warnings,
+chapter-ending stress tests, cliché alarms) — built from that same
+`StoryStateSnapshot` a few lines earlier in `storyLabEngine.ts`, and handed to
+`continueChapter` as `userInput`, where it was labeled `CREATIVE DIRECTION:` as
+though it were the reader's own optional color rather than a must-honor
+requirement.
+
+The fix threads a narrow `continuityState` field across the seam
+(`characterNames`, `openThreads`, `latestChapterExcerpt`, all plain strings —
+not the whole `StoryStateSnapshot`, to keep the seam contract serializable) and
+a separate `continuityGuidance` field carrying the Courtroom's hidden guidance
+apart from the reader's own brief, under its own `CONTINUITY REQUIREMENTS (do
+not deviate):` heading. Three things followed once state was actually in the
+prompt-builder's hands, each caught in review rather than assumed:
+
+- **State and prose are merged, not either/or.** Continuity extraction is
+  sometimes skipped or falls back silently — no `XAI_API_KEY`, the request
+  budget too low, a provider error — and `continuityExtractor.ts` then returns
+  the *pre-extraction* state completely unchanged, nothing prose-derived
+  merged in. A run stuck on that path must not permanently lose the ability to
+  notice a character or thread introduced in prose alone, so the regex scans
+  are always unioned onto state's own list rather than run only when state is
+  absent.
+- **Tone has to stay fresh mid-batch.** A multi-chapter continuation call
+  generates chapter 2, 3, ... from a growing `existingContentOverride`, but
+  `continuityState` is computed once, before the whole batch. Reading its
+  `latestChapterExcerpt` for every chapter in the batch told chapter 3 the tone
+  of the chapter before the batch even started, even if chapter 2 — generated
+  moments earlier in the same call — changed register: exactly the
+  contradiction this field exists to remove. Tone now reads the override's own
+  tail once one exists (the batch's first chapter still reads the accurate
+  pre-batch excerpt, since its override and `input.existingContent` are the
+  same text).
+- **The merged list needed its own bound.** Nothing capped how many characters
+  or threads a long-running story could accumulate before they were joined
+  wholesale into every future prompt. Capped to the character-name field's own
+  80-character bound and 12 entries, and 180 characters / 8 entries for
+  threads — the same order of magnitude the Courtroom already bounds its own
+  hidden guidance to.
+
+A request-supplied `storyState` is also only ever truthy-checked at the route
+boundary, never schema-validated, so a caller sending one with `characters` or
+`threads` missing entirely used to throw a 500 out of a bare `.map()`/`.filter()`
+in `storyLabEngine.ts`. It now reads through the same `Array.isArray` guard
+`continuationGuidance.ts` already applies to this same `storyState`
+(`getStateCharacters`/`getStateThreads`, exported for exactly this reuse).
+
+Validation: `tests/story-service-prompt-guards.test.ts` (state-vs-prose merge,
+mid-batch tone freshness, the character/thread bound),
+`tests/story-lab-continuation-guidance.test.ts` (`buildContinuationHiddenGuidance`
+against `withContinuationStrategyBrief`'s existing combined behavior),
+`tests/story-lab-real-engine.test.ts` and `tests/story-quality-evals.test.ts`
+(engine wiring, `continuityState` built correctly from a real
+`StoryStateSnapshot`). All in `test:all`.

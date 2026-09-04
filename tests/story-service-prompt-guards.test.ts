@@ -22,7 +22,11 @@ const service = new StoryService() as unknown as {
   formatThemeContext(input: StoryGenerationSeam['input']): string;
   formatStoryLabContext(input: StoryGenerationSeam['input']): string;
   formatContinuationStoryLabContext(context: ChapterContinuationSeam['input']['generationContext']): string;
-  buildContinuationPrompt(input: ChapterContinuationSeam['input']): string;
+  buildContinuationPrompt(
+    input: ChapterContinuationSeam['input'],
+    chapterNumber?: number,
+    existingContentOverride?: string
+  ): string;
 };
 
 const longLabel = 'L'.repeat(120);
@@ -364,22 +368,70 @@ const withContinuityState = {
   }
 } as ChapterContinuationSeam['input'];
 
+// State and the prose scan are *merged*, not either/or: continuity
+// extraction sometimes returns the pre-extraction state completely
+// unchanged (no XAI_API_KEY, budget too low, a provider error — see
+// `continuityExtractor.ts`'s heuristic/catch branches), and a run stuck on
+// that path must not lose the ability to notice a character or thread a
+// chapter's own prose introduces. So a name state doesn't know about
+// ("Rook", only in `existingContent`'s speaker tag) still has to reach the
+// prompt alongside the names state does know about.
 const statePrompt = service.buildContinuationPrompt(withContinuityState);
-assert(statePrompt.includes('Established Characters: Mira, Lord Brine'), 'the authoritative character roster should drive the prompt over the speaker-tag regex scan');
-// `existingContent` still reaches the model verbatim as the "PREVIOUS
-// CHAPTER(S) FOR CONTINUITY" excerpt further down — only the "Established
-// Characters" *line* should stop being the regex-only speaker-tag scan.
-assert(!statePrompt.split('\n').some(line => line.startsWith('- Established Characters:') && line.includes('Rook')), 'the character line specifically should not fall back to the speaker-tag scan once state is available');
-assert(statePrompt.includes('Active Plot Threads: The vow-binding song still needs resolving.'), 'authoritative open threads should drive the prompt over the keyword scan');
+assert(statePrompt.includes('Established Characters: Mira, Lord Brine, Rook'), 'state-derived names should lead, with prose-only names merged in after them, not replaced');
+assert(statePrompt.includes('Active Plot Threads: The vow-binding song still needs resolving.'), 'authoritative open threads should still reach the prompt');
 assert(statePrompt.includes('Emotional Tone: romantic with building tension'), 'tone should read the latest-chapter excerpt from state, not the aggregate existingContent');
 assert(!statePrompt.includes('Last Chapter Summary'), 'the last-chapter summary line is gone: it only ever duplicated the excerpt already in the prompt');
 
 // Without `continuityState` — today, only direct `continueChapter` calls in
 // tests that predate this field — the regex scans stay the fallback rather
-// than a second, unused source of truth.
+// than a second, unused source of truth. Merging with `undefined` state is
+// just the prose scan on its own.
 const withoutContinuityState = service.buildContinuationPrompt(continuationBaseInput);
 assert(withoutContinuityState.includes('Established Characters: Rook'), 'without state, the speaker-tag fallback should still extract who is present');
 assert(withoutContinuityState.includes('Emotional Tone: intense'), 'without state, the tone fallback should still scan the full existingContent');
+
+// Mid-batch (chapter 2+ of one multi-chapter continuation call),
+// `existingContentOverride` grows past `input.existingContent` with chapters
+// generated earlier in the same batch — chapters `continuityState`, computed
+// once before the whole batch, knows nothing about. Tone must read the
+// override's own tail once one exists, not the stale pre-batch excerpt,
+// or a chapter that turned dark two chapters into the batch would still be
+// told the calm tone of the chapter before the batch started.
+const intenseOverride = `<p>${'filler '.repeat(200)}</p><p>He took control of the room and commanded obedience.</p>`;
+const midBatchPrompt = service.buildContinuationPrompt(withContinuityState, 2, intenseOverride);
+const midBatchToneLine = midBatchPrompt.split('\n').find(line => line.startsWith('- Emotional Tone:'));
+assert(midBatchToneLine?.includes('intense'), `mid-batch, tone should read the freshly generated override tail, not the stale pre-batch excerpt (got: ${midBatchToneLine})`);
+assert(midBatchToneLine !== '- Emotional Tone: romantic with building tension', 'the stale pre-batch tone must not carry into a later chapter of the same batch');
+
+// The batch's own *first* chapter passes `existingContentOverride` equal to
+// `input.existingContent` (see `storyService.ts`'s continuation loop, which
+// seeds `aggregatedRawHtml` from `sanitizedInput.existingContent`) — so that
+// case must still read the accurate, authoritative excerpt, not the override.
+const firstBatchChapterPrompt = service.buildContinuationPrompt(withContinuityState, 1, continuationBaseInput.existingContent);
+assert(firstBatchChapterPrompt.includes('Emotional Tone: romantic with building tension'), 'a batch\'s first chapter should still read the authoritative pre-batch excerpt, not treat itself as mid-batch');
+
+// A story that has grown many characters/threads must not blow the prompt
+// open: `CONTINUATION_STATE_MAX_CHARACTERS`/`_THREADS` in storyService.ts
+// bound the merged list the same way the Continuity Courtroom already
+// bounds its own hidden guidance.
+const manyCharacterNames = Array.from({ length: 40 }, (_item, index) => `Character${index}`);
+const manyThreads = Array.from({ length: 40 }, (_item, index) => `T${'x'.repeat(300)}${index}`);
+const boundedPrompt = service.buildContinuationPrompt({
+  ...continuationBaseInput,
+  existingContent: '<p>No speaker tags here.</p>',
+  continuityState: {
+    characterNames: manyCharacterNames,
+    openThreads: manyThreads,
+    latestChapterExcerpt: '<p>A quiet supper by the window.</p>'
+  }
+} as ChapterContinuationSeam['input']);
+const establishedCharactersLine = boundedPrompt.split('\n').find(line => line.startsWith('- Established Characters:'));
+const activePlotThreadsLine = boundedPrompt.split('\n').find(line => line.startsWith('- Active Plot Threads:'));
+assert(establishedCharactersLine, 'the established-characters line should be present');
+assert(establishedCharactersLine!.split(', ').length <= 12, `character list should be capped, got ${establishedCharactersLine!.split(', ').length} entries`);
+assert(activePlotThreadsLine, 'the active-plot-threads line should be present');
+assert(activePlotThreadsLine!.split(', ').length <= 8, `thread list should be capped, got ${activePlotThreadsLine!.split(', ').length} entries`);
+assert(!activePlotThreadsLine!.includes('x'.repeat(181)), 'each thread entry should be capped in length, not just the list count');
 
 // The reader's own free-text brief and the Continuity Courtroom's hidden
 // guidance used to be concatenated into one string and labeled to the model
