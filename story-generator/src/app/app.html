@@ -533,12 +533,11 @@
             {{ imageGenerationError() }}
           </p>
 
-          <ng-container *ngIf="generatedChapterImage() as generated">
+          <ng-container *ngIf="generatedChapterImages()[chapter.chapterId] as generated">
             <img
-              *ngIf="generated.chapterId === chapter.chapterId"
               class="chapter-image-preview"
               data-testid="chapter-image-preview"
-              [src]="generated.image.imageUrl"
+              [src]="generated.imageUrl"
               [alt]="'Generated illustration for ' + chapter.title"
             />
           </ng-container>

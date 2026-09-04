@@ -694,16 +694,26 @@ export class App implements OnDestroy {
   readonly imageStyles = IMAGE_STYLES;
   readonly selectedImageStyle = signal<ImageStyle>('artistic');
   readonly isGeneratingImage = signal(false);
-  readonly generatedChapterImage = signal<{ chapterId: string; image: ImageGenerationSeam['output'] } | null>(null);
+  /**
+   * Generated chapter illustrations this session, keyed by chapter id.
+   *
+   * A single `{ chapterId, image } | null` slot held only the most recently
+   * generated illustration: generating one for chapter 2 discarded chapter
+   * 1's, even though both chapters were still open in the same story. Keying
+   * by chapter id keeps every chapter's illustration independently, the way
+   * `chapterImageFailure` already keys failures — see `SavedStoryProject.chapterImages`
+   * for the matching fix to the save/load side of the same loss.
+   */
+  readonly generatedChapterImages = signal<Record<string, ImageGenerationSeam['output']>>({});
   readonly chapterImageFailure = signal<{ chapterId: string; message: string } | null>(null);
   /**
    * The image failure to show under the chapter currently open, if it is that
    * chapter's failure.
    *
    * The panel this renders in belongs to the selected chapter, and the image
-   * beside it has always known that: the `<img>` is drawn only when
-   * `generatedChapterImage().chapterId` matches the chapter on screen, so
-   * selecting another chapter puts the preview away. The error had no such
+   * beside it has always known that: the `<img>` is drawn only for the
+   * selected chapter's own entry in `generatedChapterImages`, so selecting
+   * another chapter puts a different (or no) preview up. The error had no such
    * check and nothing cleared it, so a refusal earned by Chapter 1 — "Themes
    * are required", "Invalid image style" — stayed pinned under Chapter 2,
    * Chapter 3, and every chapter generated afterwards, describing a request
@@ -1639,7 +1649,12 @@ export class App implements OnDestroy {
     }
 
     const { session, story } = exportable;
-    const html = buildStoryHtmlDocument(session.story!, session.chapterHistory, html => this.getSafeHtml(html));
+    const images = this.generatedChapterImages();
+    const chaptersWithImages = session.chapterHistory.map(chapter => ({
+      ...chapter,
+      imageUrl: images[chapter.chapterId]?.imageUrl
+    }));
+    const html = buildStoryHtmlDocument(session.story!, chaptersWithImages, html => this.getSafeHtml(html));
     downloadHtmlDocument(
       html,
       buildStoryDownloadFilename(story.title),
@@ -1684,6 +1699,13 @@ export class App implements OnDestroy {
       .exportStory({
         storyId: story.storyId,
         title: story.title,
+        // Deliberately built without `imageUrl` per chapter, unlike
+        // `downloadStory`'s own `buildStoryHtmlDocument` call: this content
+        // travels to `/api/export/save`, and `exportSanitizer.ts`'s
+        // `ALLOWED_STORY_TAGS` does not include `img` for any format this
+        // route serves — an `<img>` here would be silently dropped by the
+        // server, not rendered, so there is nothing this call gains by
+        // sending one.
         content: buildStoryHtmlDocument(session.story!, session.chapterHistory, html => this.getSafeHtml(html)),
         format,
         includeMetadata: true,
@@ -1769,7 +1791,7 @@ export class App implements OnDestroy {
           this.isGeneratingImage.set(false);
 
           if (response.success) {
-            this.generatedChapterImage.set({ chapterId: chapter.chapterId, image: response.data });
+            this.generatedChapterImages.update(current => ({ ...current, [chapter.chapterId]: response.data }));
             this.notificationService.success('Image generated', 'Your chapter illustration is ready.');
           } else {
             const message = response.error?.message ?? 'Image generation failed.';
@@ -2895,6 +2917,7 @@ export class App implements OnDestroy {
       savedProjectId: project.id
     });
     this.memoryCardService.hydrate(project.pinnedMemoryCardDraftIds, project.acceptedMemoryCards);
+    this.generatedChapterImages.set(project.chapterImages ?? {});
     this.selectedChapterId.set(project.chapters[project.chapters.length - 1]?.chapterId ?? null);
     this.collapsedChapterGroups.set(new Set());
   }
@@ -3089,6 +3112,7 @@ export class App implements OnDestroy {
       continuityExtraction: session.lastContinuityExtraction,
       pinnedMemoryCardDraftIds,
       acceptedMemoryCards,
+      chapterImages: this.generatedChapterImages(),
       createdAt: existingProject?.createdAt ?? session.story.createdAt ?? now,
       updatedAt: now
     };

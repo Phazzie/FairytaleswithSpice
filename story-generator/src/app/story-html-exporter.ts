@@ -25,6 +25,13 @@ export interface ExportableChapter {
   chapterNumber: number;
   title: string;
   htmlContent: string;
+  /**
+   * The generated illustration for this chapter, if one was still held in
+   * memory when the download was built. Embedded as-is: this document is a
+   * client-side download, not a payload the server-side export sanitizer
+   * ever sees, so there is no allowlist here to add `img` to.
+   */
+  imageUrl?: string;
 }
 
 export function escapeHtml(value: string): string {
@@ -63,7 +70,10 @@ export function buildStoryHtmlDocument(
   const chapterMarkup = chapters
     .map(chapter => {
       const body = sanitizeChapterHtml(chapter.htmlContent);
-      return `<section><h2>Chapter ${chapter.chapterNumber}: ${escapeHtml(chapter.title)}</h2>${body}</section>`;
+      const image = chapter.imageUrl
+        ? `<img class="chapter-illustration" src="${escapeHtml(chapter.imageUrl)}" alt="Illustration for Chapter ${chapter.chapterNumber}: ${escapeHtml(chapter.title)}">`
+        : '';
+      return `<section><h2>Chapter ${chapter.chapterNumber}: ${escapeHtml(chapter.title)}</h2>${image}${body}</section>`;
     })
     .join('\n');
 
@@ -75,6 +85,7 @@ export function buildStoryHtmlDocument(
 <style>
 body{font-family:Georgia,serif;line-height:1.65;max-width:760px;margin:40px auto;padding:0 20px;color:#251914;background:#fff8ee}
 h1,h2{line-height:1.15}hr{border:0;border-top:1px solid #d8c5aa;margin:28px 0}
+.chapter-illustration{max-width:100%;height:auto;display:block;margin:0 0 16px}
 </style>
 </head>
 <body>
