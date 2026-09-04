@@ -96,28 +96,29 @@ describe('authInterceptor', () => {
   // reach generation through the real browser client: the backend was ready
   // to fold them in (jobRouteHandlers.ts, and now stories.ts/continue.ts too)
   // but nothing on the frontend ever attached a token for it to read, so
-  // `getCurrentUser` always saw an anonymous caller on these two requests.
-  it('attaches the session token to the direct genesis request when signed in', fakeAsync(() => {
-    authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
+  // `getCurrentUser` always saw an anonymous caller on every one of these
+  // requests. `X-Story-Lab-Session`, not `Authorization`: every one of these
+  // routes also runs `enforceApiAccessControl`, which reads `Authorization:
+  // Bearer` as an `API_KEYS` candidate whenever a deployment configures one —
+  // sending the Clerk token there would misread it as an invalid key and
+  // break generation outright in that configuration.
+  for (const [description, url] of [
+    ['the direct genesis request', '/api/story-lab/stories'],
+    ['the direct continuation request', '/api/story-lab/stories/story-1/continue'],
+    ["the job creation request App.startGenesis()/continueSaga() actually send", '/api/story-lab/jobs']
+  ] as const) {
+    it(`attaches the session token to ${description} when signed in, on a dedicated header rather than Authorization`, fakeAsync(() => {
+      authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
 
-    http.post('/api/story-lab/stories', {}).subscribe();
-    tick();
+      http.post(url, {}).subscribe();
+      tick();
 
-    const req = httpMock.expectOne('/api/story-lab/stories');
-    expect(req.request.headers.get('Authorization')).toBe('Bearer signed-in-session-token');
-    req.flush({ success: true });
-  }));
-
-  it('attaches the session token to the direct continuation request when signed in', fakeAsync(() => {
-    authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
-
-    http.post('/api/story-lab/stories/story-1/continue', {}).subscribe();
-    tick();
-
-    const req = httpMock.expectOne('/api/story-lab/stories/story-1/continue');
-    expect(req.request.headers.get('Authorization')).toBe('Bearer signed-in-session-token');
-    req.flush({ success: true });
-  }));
+      const req = httpMock.expectOne(url);
+      expect(req.request.headers.get('X-Story-Lab-Session')).toBe('signed-in-session-token');
+      expect(req.request.headers.has('Authorization')).toBeFalse();
+      req.flush({ success: true });
+    }));
+  }
 
   // Generation never gates on auth the way the account routes do — a
   // signed-out caller is served exactly as before, with no header at all.
@@ -126,6 +127,7 @@ describe('authInterceptor', () => {
     tick();
 
     const req = httpMock.expectOne('/api/story-lab/stories');
+    expect(req.request.headers.has('X-Story-Lab-Session')).toBeFalse();
     expect(req.request.headers.has('Authorization')).toBeFalse();
     req.flush({ success: true });
   }));
@@ -133,9 +135,10 @@ describe('authInterceptor', () => {
   it('leaves requests outside the Story Lab account and generation surface untouched', () => {
     authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
 
-    http.post('/api/story-lab/jobs', {}).subscribe();
+    http.post('/api/audio/generate', {}).subscribe();
 
-    const req = httpMock.expectOne('/api/story-lab/jobs');
+    const req = httpMock.expectOne('/api/audio/generate');
+    expect(req.request.headers.has('X-Story-Lab-Session')).toBeFalse();
     expect(req.request.headers.has('Authorization')).toBeFalse();
     req.flush({ success: true });
   });

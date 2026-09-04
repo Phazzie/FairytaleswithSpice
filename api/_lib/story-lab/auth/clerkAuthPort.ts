@@ -9,6 +9,18 @@ export interface VerifiedClerkSession {
   email?: string;
 }
 
+/**
+ * Carries a Clerk session token on routes that also run `enforceApiAccessControl`
+ * (every paid Story Lab generation/job route) — `Authorization: Bearer` is
+ * unusable there, because `authenticateRequest` reads that same header as an
+ * `API_KEYS` candidate whenever a deployment configures one, and would answer
+ * a Clerk JWT with `INVALID_API_KEY` rather than ever reaching this port. The
+ * account routes (`accountRouteHandlers.ts`) never call `enforceApiAccessControl`,
+ * so they keep using `Authorization` — read below alongside this header,
+ * never both on the same request.
+ */
+const DEDICATED_SESSION_HEADER = 'x-story-lab-session';
+
 export interface ClerkAuthPortOptions {
   verifySessionToken?: (token: string, req: AuthRequestLike) => Promise<VerifiedClerkSession | null>;
 }
@@ -61,6 +73,11 @@ export function createClerkAuthPort(options: ClerkAuthPortOptions = {}): AuthPor
 }
 
 export function readClerkSessionToken(req: AuthRequestLike): string | null {
+  const dedicatedHeaderToken = readHeader(req, DEDICATED_SESSION_HEADER);
+  if (dedicatedHeaderToken) {
+    return dedicatedHeaderToken;
+  }
+
   const bearerToken = readBearerToken(req);
   if (bearerToken) {
     return bearerToken;

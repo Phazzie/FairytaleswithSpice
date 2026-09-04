@@ -153,7 +153,14 @@ export function resolveContinuationHeatContract(
   heatContract: HeatContract | undefined,
   contentBoundaries: string | undefined
 ): ContinuationHeatContractResolution {
-  if (!contentBoundaries) {
+  // Trimmed before the presence check, the same way `capNoGoSource` treats
+  // the field everywhere else it's read: a stored profile can carry a
+  // whitespace-only `contentBoundaries` (the normalizer preserves it, and the
+  // `PUT` length check accepts it), and `withMergedContentBoundaries` would
+  // fold that in as nothing. Refusing over a boundary that resolves to
+  // nothing would reject continuations this same module treats as unrestricted
+  // everywhere else.
+  if (!contentBoundaries?.trim()) {
     return { ok: true, heatContract };
   }
 

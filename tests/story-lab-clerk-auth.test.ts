@@ -17,6 +17,7 @@ function assert(condition: unknown, message: string): asserts condition {
 async function main() {
   await testClerkAuthFailsClosedWithoutVerifier();
   await testClerkAuthVerifiesBearerToken();
+  await testClerkAuthReadsDedicatedSessionHeaderBeforeAuthorization();
   await testClerkAuthReadsSessionCookie();
   await testClerkAuthIgnoresMalformedRuntimeHeaders();
   await testClerkAuthRejectsInvalidSessionWithoutLeakingToken();
@@ -63,6 +64,38 @@ async function testClerkAuthVerifiesBearerToken() {
   assert(seenTokens[0] === 'bearer-session-token', 'Clerk auth should verify the bearer token value');
   assert(user.userId === 'user_clerk_owner', 'Clerk auth should return verified user id');
   assert(user.email === 'owner@example.com', 'Clerk auth should return verified email when available');
+}
+
+// `X-Story-Lab-Session` carries the token on routes that also run
+// `enforceApiAccessControl` (`beginPostRoute`) — those read `Authorization:
+// Bearer` as an `API_KEYS` candidate whenever a deployment configures one, so
+// a Clerk JWT sent that way would be misread as an invalid key rather than
+// ever reaching this port. The interceptor sends this header there instead,
+// and still sends `Authorization` on the account routes, which never run
+// `enforceApiAccessControl`.
+async function testClerkAuthReadsDedicatedSessionHeaderBeforeAuthorization() {
+  assert(
+    readClerkSessionToken({ headers: { 'x-story-lab-session': 'dedicated-header-token' } }) === 'dedicated-header-token',
+    'Clerk auth should read the dedicated session header'
+  );
+
+  // Header lookups are case-insensitive elsewhere in this module (`readHeader`);
+  // this is what would catch a regression to a case-sensitive check on the
+  // new header specifically.
+  assert(
+    readClerkSessionToken({ headers: { 'X-Story-Lab-Session': 'case-insensitive-token' } }) === 'case-insensitive-token',
+    'the dedicated session header should be read case-insensitively'
+  );
+
+  assert(
+    readClerkSessionToken({
+      headers: {
+        'x-story-lab-session': 'dedicated-header-token',
+        authorization: 'Bearer bearer-token'
+      }
+    }) === 'dedicated-header-token',
+    'the dedicated session header should win over Authorization when both are present'
+  );
 }
 
 async function testClerkAuthReadsSessionCookie() {
