@@ -720,6 +720,94 @@ describe('App', () => {
     expect(preview?.src).toBe(image.imageUrl);
   });
 
+  it('keeps each chapter\'s generated image independent of the others', () => {
+    seedWorkbenchForContinuation({
+      batch: {
+        chapters: [
+          createChapter({ chapterId: 'chapter-1', chapterNumber: 1 }),
+          createChapter({ chapterId: 'chapter-2', chapterNumber: 2, title: 'Chapter Two' })
+        ],
+        totalWordCount: 1800,
+        suggestedNextPrompts: []
+      }
+    });
+
+    const imageOne: ImageGenerationSeam['output'] = {
+      imageId: 'img-1',
+      storyId: 'story-123',
+      imageUrl: 'https://images.example/chapter-one.png',
+      prompt: 'Chapter one scene',
+      style: 'dark',
+      aspectRatio: '16:9',
+      width: 1792,
+      height: 1024,
+      fileSize: 0,
+      generatedAt: new Date()
+    };
+    const imageTwo: ImageGenerationSeam['output'] = {
+      ...imageOne,
+      imageId: 'img-2',
+      imageUrl: 'https://images.example/chapter-two.png'
+    };
+
+    component.selectChapter('chapter-1');
+    storyService.generateImage.and.returnValue(of({ success: true, data: imageOne }));
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="generate-image"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    component.selectChapter('chapter-2');
+    storyService.generateImage.and.returnValue(of({ success: true, data: imageTwo }));
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-testid="generate-image"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement.querySelector('[data-testid="chapter-image-preview"]') as HTMLImageElement).src)
+      .toBe(imageTwo.imageUrl);
+
+    component.selectChapter('chapter-1');
+    fixture.detectChanges();
+
+    const chapterOnePreview = fixture.nativeElement.querySelector('[data-testid="chapter-image-preview"]') as HTMLImageElement | null;
+    expect(chapterOnePreview?.src).toBe(imageOne.imageUrl);
+  });
+
+  it('restores generated chapter images from a browser-local saved project', () => {
+    const payload = seedWorkbenchForContinuation();
+    const chapter = payload.batch.chapters[0];
+    const image: ImageGenerationSeam['output'] = {
+      imageId: 'img-1',
+      storyId: payload.summary.storyId,
+      imageUrl: 'https://images.example/restored-scene.png',
+      prompt: 'A gothic vampire scene',
+      style: 'dark',
+      aspectRatio: '16:9',
+      width: 1792,
+      height: 1024,
+      fileSize: 0,
+      generatedAt: new Date()
+    };
+    storyService.generateImage.and.returnValue(of({ success: true, data: image }));
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('[data-testid="generate-image"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('[data-testid="chapter-image-preview"]') as HTMLImageElement | null)?.src)
+      .toBe(image.imageUrl);
+
+    component.saveActiveProject();
+    component.resetWorkbench();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="chapter-image-preview"]')).toBeNull();
+
+    component.loadSavedProject(payload.summary.storyId);
+    component.selectChapter(chapter.chapterId);
+    fixture.detectChanges();
+
+    const restoredPreview = fixture.nativeElement.querySelector('[data-testid="chapter-image-preview"]') as HTMLImageElement | null;
+    expect(restoredPreview?.src).toBe(image.imageUrl);
+  });
+
   it('shows an error instead of an image when generation fails', () => {
     seedWorkbenchForContinuation();
     storyService.generateImage.and.returnValue(of({

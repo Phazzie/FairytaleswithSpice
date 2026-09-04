@@ -369,6 +369,15 @@ export interface SavedStoryProject {
   continuityExtraction?: ContinuityExtractionReceipt;
   pinnedMemoryCardDraftIds?: string[];
   acceptedMemoryCards?: StoryMemoryCard[];
+  /**
+   * Generated chapter illustrations, keyed by `GeneratedChapter.chapterId`.
+   *
+   * Without this field a save/load round trip silently dropped every
+   * illustration a reader had generated: `buildSavedProjectFromSession` never
+   * wrote them and `hydrateProjectState` never read them, so an image
+   * survived only until the next reload, cloud sync, or chapter switch.
+   */
+  chapterImages?: Record<string, BackendImageGenerationSeam['output']>;
   createdAt: string;
   updatedAt: string;
 }
@@ -615,7 +624,7 @@ export interface StreamingProgressChunk {
 // interfaces were also not assignable to each other, so nothing would have
 // reported the drift.
 export type { ApiErrorPayload, ApiResponseMetadata } from '../../../api/_lib/types/contracts';
-import type { ApiResponse as BackendApiResponse } from '../../../api/_lib/types/contracts';
+import type { ApiResponse as BackendApiResponse, ImageGenerationSeam as BackendImageGenerationSeam } from '../../../api/_lib/types/contracts';
 
 export type ApiResponse<T> = BackendApiResponse<T>;
 export type ApiEnvelope<T> = ApiResponse<T>;

@@ -474,7 +474,10 @@ export interface ImageGenerationSeam {
     aspectRatio: string;
     width: number;
     height: number;
-    fileSize: number; // in bytes
+    // Optional, unlike `SaveExportSeam.output.fileSize`: this service never
+    // downloads or measures the generated image, only the provider's URL for
+    // it, so there is no byte count to report. See `ImageService.generateImage`.
+    fileSize?: number;
     generatedAt: Date;
   };
 

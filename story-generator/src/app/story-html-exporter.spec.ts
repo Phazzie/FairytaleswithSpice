@@ -71,4 +71,47 @@ describe('buildStoryHtmlDocument', () => {
     expect(html).toContain('<h1>The Last Ember</h1>');
     expect(html.trimEnd().endsWith('</html>')).toBe(true);
   });
+
+  it('embeds a chapter\'s generated illustration ahead of its body', () => {
+    const chapters = [
+      {
+        chapterNumber: 1,
+        title: 'Kindling',
+        htmlContent: '<p>One.</p>',
+        imageUrl: 'https://images.example/kindling.png'
+      }
+    ];
+
+    const html = buildStoryHtmlDocument(story, chapters, html => html);
+
+    const imageIndex = html.indexOf('<img class="chapter-illustration" src="https://images.example/kindling.png"');
+    const bodyIndex = html.indexOf('<p>One.</p>');
+    expect(imageIndex).toBeGreaterThan(-1);
+    expect(bodyIndex).toBeGreaterThan(imageIndex);
+    expect(html).toContain('alt="Illustration for Chapter 1: Kindling"');
+  });
+
+  it('omits the illustration markup for a chapter with no generated image', () => {
+    const chapters = [{ chapterNumber: 1, title: 'Kindling', htmlContent: '<p>One.</p>' }];
+
+    const html = buildStoryHtmlDocument(story, chapters, html => html);
+
+    expect(html).not.toContain('<img');
+  });
+
+  it('escapes an illustration URL the same way it escapes other attributes', () => {
+    const chapters = [
+      {
+        chapterNumber: 1,
+        title: 'Kindling',
+        htmlContent: '<p>One.</p>',
+        imageUrl: 'https://images.example/a.png?x="><script>alert(1)</script>'
+      }
+    ];
+
+    const html = buildStoryHtmlDocument(story, chapters, html => html);
+
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&quot;&gt;&lt;script&gt;');
+  });
 });

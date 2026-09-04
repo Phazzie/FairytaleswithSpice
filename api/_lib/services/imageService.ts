@@ -272,7 +272,9 @@ export class ImageService {
         aspectRatio,
         width: dimensions.width,
         height: dimensions.height,
-        fileSize: 0, // Will be populated when we know the actual file
+        // No `fileSize`: this method never downloads the provider's image, so
+        // there is no byte count to report. The field used to be a hardcoded
+        // `0` here, which reads as a measured size rather than an absent one.
         generatedAt: new Date()
       };
 
