@@ -68,6 +68,50 @@ function buildContinuityInput(useAi = true) {
   };
 }
 
+type ContinuityInput = ReturnType<typeof buildContinuityInput>;
+type ContinuityResult = Awaited<ReturnType<typeof extractContinuity>>;
+
+async function withXaiApiKey<T>(value: string | undefined, fn: () => Promise<T>): Promise<T> {
+  const original = process.env['XAI_API_KEY'];
+
+  try {
+    if (value === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = value;
+    }
+
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = original;
+    }
+  }
+}
+
+/**
+ * The shared shape every skip/failure branch of `extractContinuity` has to
+ * satisfy: the given warning, zero confidence, and characters/threads/
+ * artifacts left exactly as they were. Every branch below has its own way of
+ * getting there (disabled AI, missing key, low budget, provider error), but
+ * once there they all make the same "nothing was extracted" promise — this
+ * is that promise checked in one place instead of re-typed per branch.
+ */
+function assertNoContinuityFactsExtracted(
+  result: ContinuityResult,
+  currentState: ContinuityInput['currentState'],
+  expectedWarning: string,
+  label: string
+): void {
+  assert.equal(result.receipt.warning, expectedWarning, `${label}: should explain that nothing was extracted`);
+  assert.equal(result.receipt.confidence, 0, `${label}: has no facts to be confident about`);
+  assert.deepEqual(result.state.characters, currentState.characters, `${label}: must leave the character list exactly as it was`);
+  assert.deepEqual(result.state.threads, currentState.threads, `${label}: must leave the thread list exactly as it was`);
+  assert.deepEqual(result.state.artifacts, currentState.artifacts, `${label}: must leave the artifact list exactly as it was`);
+}
+
 async function captureConsoleWarn<T>(fn: () => Promise<T>): Promise<{ result: T; calls: unknown[][] }> {
   const originalWarn = console.warn;
   const calls: unknown[][] = [];
@@ -120,16 +164,11 @@ async function assertContinuityFastTimeoutUsesConfiguredBudget(): Promise<void> 
     assert.equal(capturedTimeouts[2], 1000, 'exactly 1000ms remaining budget should still call xAI continuity extraction');
     assert.equal(capturedTimeouts.length, 3, 'subsecond remaining budget should skip the xAI continuity request while the 1000ms boundary still calls xAI');
     assert.equal(lowBudgetResult.receipt.source, 'heuristic', 'subsecond remaining budget should fall back to heuristic continuity extraction');
-    assert.equal(
-      lowBudgetResult.receipt.warning,
-      'AI continuity extraction skipped because the request budget was nearly exhausted — the character, thread, and artifact list did not update this batch.',
-      'subsecond remaining budget should explain the budget skip and that nothing was extracted'
-    );
-    assert.equal(lowBudgetResult.receipt.confidence, 0, 'a skipped extraction has no facts to be confident about');
-    assert.deepEqual(
-      lowBudgetResult.state,
+    assertNoContinuityFactsExtracted(
+      lowBudgetResult,
       continuityInput.currentState,
-      'a skipped extraction must leave characters/threads/artifacts exactly as they were, not silently drop or invent any'
+      'AI continuity extraction skipped because the request budget was nearly exhausted — the character, thread, and artifact list did not update this batch.',
+      'a budget-exhausted skip'
     );
     assert.equal(boundaryBudgetResult.receipt.source, 'ai', '1000ms remaining budget should still use AI continuity extraction');
   } finally {
@@ -150,32 +189,18 @@ async function assertContinuityFastTimeoutUsesConfiguredBudget(): Promise<void> 
 }
 
 async function assertContinuityHeuristicWarningPriority(): Promise<void> {
-  const originalApiKey = process.env['XAI_API_KEY'];
-
-  try {
-    delete process.env['XAI_API_KEY'];
+  await withXaiApiKey(undefined, async () => {
     const continuityInput = buildContinuityInput(false);
     const result = await extractContinuity(continuityInput);
 
     assert.equal(result.receipt.source, 'heuristic', 'disabled AI continuity should use heuristic extraction');
-    assert.equal(
-      result.receipt.warning,
-      'AI continuity extraction disabled for this run — the character, thread, and artifact list did not update this batch.',
-      'explicitly disabled AI should take warning priority over a missing API key, and say nothing was extracted'
-    );
-    assert.equal(result.receipt.confidence, 0, 'a disabled extraction has no facts to be confident about');
-    assert.deepEqual(
-      result.state,
+    assertNoContinuityFactsExtracted(
+      result,
       continuityInput.currentState,
-      'a disabled extraction must leave characters/threads/artifacts exactly as they were'
+      'AI continuity extraction disabled for this run — the character, thread, and artifact list did not update this batch.',
+      'an explicitly disabled run (which takes warning priority over a missing API key)'
     );
-  } finally {
-    if (originalApiKey === undefined) {
-      delete process.env['XAI_API_KEY'];
-    } else {
-      process.env['XAI_API_KEY'] = originalApiKey;
-    }
-  }
+  });
 }
 
 /**
@@ -187,88 +212,49 @@ async function assertContinuityHeuristicWarningPriority(): Promise<void> {
  * key at all, which is its own reachable state with its own warning text.
  */
 async function assertContinuityMissingApiKeySkipLeavesStateUnchanged(): Promise<void> {
-  const originalApiKey = process.env['XAI_API_KEY'];
-
-  try {
-    delete process.env['XAI_API_KEY'];
+  await withXaiApiKey(undefined, async () => {
     const continuityInput = buildContinuityInput(true);
     const result = await extractContinuity(continuityInput);
 
     assert.equal(result.receipt.source, 'heuristic', 'a missing API key should fall back to the heuristic receipt');
-    assert.equal(
-      result.receipt.warning,
-      'Continuity tracking is unavailable because XAI_API_KEY is not configured — the character, thread, and artifact list did not update this batch.',
-      'a missing API key should explain why extraction did not run and that nothing was extracted'
-    );
-    assert.equal(result.receipt.confidence, 0, 'a missing API key leaves no facts to be confident about');
-    assert.deepEqual(
-      result.state,
+    assertNoContinuityFactsExtracted(
+      result,
       continuityInput.currentState,
-      'a missing API key must leave characters/threads/artifacts exactly as they were'
+      'Continuity tracking is unavailable because XAI_API_KEY is not configured — the character, thread, and artifact list did not update this batch.',
+      'a missing API key'
     );
-  } finally {
-    if (originalApiKey === undefined) {
-      delete process.env['XAI_API_KEY'];
-    } else {
-      process.env['XAI_API_KEY'] = originalApiKey;
-    }
-  }
+  });
 }
 
 /**
  * `extractContinuity`'s catch block used to fabricate a `confidence: 0.45`
  * and call itself "fallback extraction" on a provider error, exactly like the
- * skip branch above — but nothing in this repository had ever asserted that
+ * skip branches above — but nothing in this repository had ever asserted that
  * a provider failure actually leaves `characters`/`threads`/`artifacts`
  * unchanged. It does; this proves it, and proves the warning says so.
  */
 async function assertContinuityProviderErrorLeavesStateUnchanged(): Promise<void> {
-  const originalApiKey = process.env['XAI_API_KEY'];
   const originalGenerateText = XaiTextClient.prototype.generateText;
 
   try {
-    process.env['XAI_API_KEY'] = 'test-xai-key';
     XaiTextClient.prototype.generateText = async function () {
       throw new Error('simulated provider failure');
     };
 
-    const continuityInput = buildContinuityInput(true);
-    const result = await extractContinuity(continuityInput);
+    await withXaiApiKey('test-xai-key', async () => {
+      const continuityInput = buildContinuityInput(true);
+      const result = await extractContinuity(continuityInput);
+      const expectedWarning = 'Grok continuity extraction failed for this batch — the character, thread, and artifact list did not update.';
 
-    assert.equal(result.receipt.source, 'mixed', 'a provider failure should be reported as a mixed/fallback receipt');
-    assert.equal(
-      result.receipt.warning,
-      'Grok continuity extraction failed for this batch — the character, thread, and artifact list did not update.',
-      'a provider failure should say plainly that nothing was extracted'
-    );
-    assert.equal(result.receipt.confidence, 0, 'a failed extraction has no facts to be confident about');
-    assert.deepEqual(
-      result.state.characters,
-      continuityInput.currentState.characters,
-      'a provider failure must leave the character list exactly as it was'
-    );
-    assert.deepEqual(
-      result.state.threads,
-      continuityInput.currentState.threads,
-      'a provider failure must leave the thread list exactly as it was'
-    );
-    assert.deepEqual(
-      result.state.artifacts,
-      continuityInput.currentState.artifacts,
-      'a provider failure must leave the artifact list exactly as it was'
-    );
-    assert(
-      result.state.continuityWarnings.includes(result.receipt.warning as string),
-      'the failure warning should be recorded on the story state too, not just the receipt'
-    );
+      assert.equal(result.receipt.source, 'mixed', 'a provider failure should be reported as a mixed/fallback receipt');
+      assertNoContinuityFactsExtracted(result, continuityInput.currentState, expectedWarning, 'a provider failure');
+      assert(
+        result.state.continuityWarnings.includes(expectedWarning),
+        'the failure warning should be recorded on the story state too, not just the receipt'
+      );
+    });
   } finally {
     XaiTextClient.prototype.generateText = originalGenerateText;
-
-    if (originalApiKey === undefined) {
-      delete process.env['XAI_API_KEY'];
-    } else {
-      process.env['XAI_API_KEY'] = originalApiKey;
-    }
   }
 }
 
