@@ -92,12 +92,50 @@ describe('authInterceptor', () => {
     req.flush({ success: true });
   });
 
-  it('leaves requests outside the Story Lab account surface untouched', () => {
+  // Before this, a signed-in reader's stored content boundaries could never
+  // reach generation through the real browser client: the backend was ready
+  // to fold them in (jobRouteHandlers.ts, and now stories.ts/continue.ts too)
+  // but nothing on the frontend ever attached a token for it to read, so
+  // `getCurrentUser` always saw an anonymous caller on these two requests.
+  it('attaches the session token to the direct genesis request when signed in', fakeAsync(() => {
     authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
 
-    http.get('/api/story-lab/stories').subscribe();
+    http.post('/api/story-lab/stories', {}).subscribe();
+    tick();
 
     const req = httpMock.expectOne('/api/story-lab/stories');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer signed-in-session-token');
+    req.flush({ success: true });
+  }));
+
+  it('attaches the session token to the direct continuation request when signed in', fakeAsync(() => {
+    authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
+
+    http.post('/api/story-lab/stories/story-1/continue', {}).subscribe();
+    tick();
+
+    const req = httpMock.expectOne('/api/story-lab/stories/story-1/continue');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer signed-in-session-token');
+    req.flush({ success: true });
+  }));
+
+  // Generation never gates on auth the way the account routes do — a
+  // signed-out caller is served exactly as before, with no header at all.
+  it('does not attach a header to a generation request with no session', fakeAsync(() => {
+    http.post('/api/story-lab/stories', {}).subscribe();
+    tick();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    expect(req.request.headers.has('Authorization')).toBeFalse();
+    req.flush({ success: true });
+  }));
+
+  it('leaves requests outside the Story Lab account and generation surface untouched', () => {
+    authServiceSpy.getRequestToken.and.resolveTo('signed-in-session-token');
+
+    http.post('/api/story-lab/jobs', {}).subscribe();
+
+    const req = httpMock.expectOne('/api/story-lab/jobs');
     expect(req.request.headers.has('Authorization')).toBeFalse();
     req.flush({ success: true });
   });

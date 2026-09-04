@@ -550,19 +550,50 @@ async function main(): Promise<void> {
     );
   }
 
-  // A continuation with no Heat Contract on the request must stay that way
-  // even when a profile has boundaries to offer: `heatContractPolicyError`
-  // treats any *present* contract as needing `adultOnlyConfirmed: true`, so
-  // manufacturing one here (to carry nothing but the boundary text) would
-  // reject a continuation that used to succeed.
+  // A signed-in caller with stored boundaries and no Heat Contract on the
+  // request is refused rather than served either of the two wrong answers:
+  // `heatContractPolicyError` treats any *present* contract as needing
+  // `adultOnlyConfirmed: true`, so manufacturing one just to carry the
+  // boundary text would reject a continuation that used to succeed — but
+  // proceeding unchanged would mean the boundary silently never reaches the
+  // model at all.
   {
-    let capturedHeatContract: unknown;
-    let sawHeatContractField = false;
+    let engineCalled = false;
     const handler = createStoryLabContinuationHandler({
       authPort: createStaticAuthPort(owner),
       profileStore: createStubProfileStore(
         createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: 'Keep the danger emotional.' } })
       ),
+      continueStory: async () => {
+        engineCalled = true;
+        return { success: true, data: { continued: true } as never };
+      }
+    });
+
+    const response = new FakeResponse();
+    await handler(createRequest('POST', createContinuationBody()), response);
+
+    assert(
+      response.statusCode === 400,
+      `a signed-in caller with stored boundaries and no request heat contract should be refused, got ${response.statusCode}`
+    );
+    const body = response.body as { success?: boolean; error?: { code?: string } };
+    assert(body.success === false, 'the refusal should be an error payload');
+    assert(body.error?.code === 'INVALID_REQUEST', `the refusal should be a caller error, got ${JSON.stringify(body.error)}`);
+    assert(!engineCalled, 'the engine should never be called when the boundary cannot be honored');
+  }
+
+  // The same shape, but no stored boundaries at all — nothing to refuse over,
+  // since there is nothing to honor either way. Catches a
+  // `resolveContinuationHeatContract` regression that refused every
+  // Heat-Contract-free continuation from a signed-in caller regardless of
+  // whether they had any boundary set.
+  {
+    let capturedHeatContract: unknown;
+    let sawHeatContractField = false;
+    const handler = createStoryLabContinuationHandler({
+      authPort: createStaticAuthPort(owner),
+      profileStore: createStubProfileStore(createDefaultStoryLabUserProfile(owner)),
       continueStory: async input => {
         sawHeatContractField = true;
         capturedHeatContract = input.heatContract;
@@ -573,11 +604,11 @@ async function main(): Promise<void> {
     const response = new FakeResponse();
     await handler(createRequest('POST', createContinuationBody()), response);
 
-    assert(response.statusCode === 200, `continuation with no request heat contract should still succeed, got ${response.statusCode}`);
+    assert(response.statusCode === 200, `continuation with no stored boundaries should still succeed, got ${response.statusCode}`);
     assert(sawHeatContractField, 'the engine should have been called');
     assert(
       capturedHeatContract === undefined,
-      `with no request heat contract, none should be manufactured just to carry a profile boundary, got ${JSON.stringify(capturedHeatContract)}`
+      `with nothing to fold in, no heat contract should be manufactured, got ${JSON.stringify(capturedHeatContract)}`
     );
   }
 

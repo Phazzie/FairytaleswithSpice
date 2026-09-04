@@ -117,6 +117,54 @@ export function withMergedContentBoundaries(
 }
 
 /**
+ * What a continuation's Heat Contract should be once a signed-in caller's
+ * content boundaries are known — `ok: false` when they cannot be honored.
+ */
+export type ContinuationHeatContractResolution =
+  | { ok: true; heatContract: HeatContract | undefined }
+  | { ok: false };
+
+/**
+ * Resolves a continuation's Heat Contract against a signed-in caller's
+ * content boundaries, refusing rather than silently dropping them.
+ *
+ * Never manufactures a contract: a continuation that supplied none stays
+ * that way when there is nothing to fold in, for the reason
+ * `withMergedContentBoundaries` never manufactures one either —
+ * `heatContractPolicyError` treats any *present* contract as needing
+ * `adultOnlyConfirmed: true`, so inventing one here would turn a
+ * continuation that used to succeed into one that fails a gate it never
+ * asked for.
+ *
+ * But a signed-in caller who *does* have stored boundaries and supplies *no*
+ * Heat Contract is a different case: `withMergedContentBoundaries` has
+ * nothing to merge them into, so proceeding unchanged would mean the
+ * boundary silently never reaches the model — indistinguishable, from the
+ * generated story, from a caller with no boundary set at all. That is the
+ * exact failure this module exists to close, one step further in: a reader's
+ * "no-go content" honored on some requests and not others, this time based on
+ * whether the caller happened to include a Heat Contract rather than which
+ * route served the request. Refusing is the fail-closed answer until a
+ * Heat-Contract-independent carrier for these boundaries exists — the reader
+ * can resupply the same continuation with a Heat Contract attached, which
+ * every continuation caller is already equipped to do.
+ */
+export function resolveContinuationHeatContract(
+  heatContract: HeatContract | undefined,
+  contentBoundaries: string | undefined
+): ContinuationHeatContractResolution {
+  if (!contentBoundaries) {
+    return { ok: true, heatContract };
+  }
+
+  if (!heatContract) {
+    return { ok: false };
+  }
+
+  return { ok: true, heatContract: withMergedContentBoundaries(heatContract, contentBoundaries) };
+}
+
+/**
  * One no-go source, trimmed and held to the cap published for it.
  *
  * Measured in UTF-16 code units and cut at a word boundary, which is how

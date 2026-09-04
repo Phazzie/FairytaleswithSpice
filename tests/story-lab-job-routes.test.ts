@@ -696,19 +696,57 @@ async function testContinuationJobFoldsContentBoundariesWhenHeatContractProvided
 }
 
 /**
- * A continuation that supplies no Heat Contract at all must stay that way even
- * when a profile has content boundaries to offer. `heatContractPolicyError`
- * treats any *present* contract as needing `adultOnlyConfirmed: true` — so
- * manufacturing one here (to carry nothing but the boundary text) would reject
- * a continuation that used to succeed, over a confirmation it never asked for.
+ * A continuation that supplies no Heat Contract at all cannot gain one just
+ * to carry a profile's content boundaries — `heatContractPolicyError` treats
+ * any *present* contract as needing `adultOnlyConfirmed: true`, so
+ * manufacturing one here would reject a continuation that used to succeed,
+ * over a confirmation it never asked for. But proceeding unchanged is not the
+ * answer either: a signed-in caller with stored boundaries and nothing for
+ * them to merge into would have those boundaries silently never reach the
+ * model. Refused instead, before the job is ever created.
  */
-async function testContinuationJobSkipsContentBoundariesWithNoRequestHeatContract(): Promise<void> {
+async function testContinuationJobRefusesWhenBoundariesHaveNoHeatContractToJoin(): Promise<void> {
   nonDurableStoryLabJobStore.reset();
   setMockRuntime();
 
   const profile = createDefaultStoryLabUserProfile(owner, {
     preferences: { contentBoundaries: 'Keep the danger emotional.' }
   });
+  let engineCalled = false;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore: createStubProfileStore(profile),
+    continueStory: async input => {
+      engineCalled = true;
+      return realContinueStoryLab(input);
+    }
+  });
+
+  const response = new FakeResponse();
+  await handler(createRequest('POST', createContinuationJobRequest(undefined)), response);
+
+  assert(
+    response.statusCode === 400,
+    `a signed-in caller with stored boundaries and no request heat contract should be refused, got ${response.statusCode}`
+  );
+  const body = response.body as { success?: boolean; error?: { code?: string } };
+  assert(body.success === false, 'the refusal should be an error payload');
+  assert(body.error?.code === 'INVALID_REQUEST', `the refusal should be a caller error, got ${JSON.stringify(body.error)}`);
+  assert(!engineCalled, 'the engine should never be called when the boundary cannot be honored');
+}
+
+/**
+ * The same signed-in caller, but with no stored content boundaries at all —
+ * a continuation with no Heat Contract has nothing to refuse over, since
+ * there is nothing to honor either way. This is what would catch a
+ * `resolveContinuationHeatContract` regression that refused every
+ * Heat-Contract-free continuation from a signed-in caller, boundaries or not.
+ */
+async function testContinuationJobProceedsWithNoHeatContractAndNoStoredBoundaries(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  const profile = createDefaultStoryLabUserProfile(owner);
   let capturedInput: StoryContinuationSeam['input'] | null = null;
   const handler = createStoryLabJobsRouteHandler({
     authPort: createStaticAuthPort(owner),
@@ -722,11 +760,8 @@ async function testContinuationJobSkipsContentBoundariesWithNoRequestHeatContrac
   const response = new FakeResponse();
   await handler(createRequest('POST', createContinuationJobRequest(undefined)), response);
 
-  assert(response.statusCode === 200, 'continuation job with no request heat contract should still succeed');
-  assert(
-    capturedInput!.heatContract === undefined,
-    'a continuation that supplied no heat contract must not gain one just because a profile has content boundaries'
-  );
+  assert(response.statusCode === 200, `continuation job with no stored boundaries should still succeed, got ${response.statusCode}`);
+  assert(capturedInput!.heatContract === undefined, 'no heat contract should be manufactured when there was nothing to fold in');
 }
 
 async function run(): Promise<void> {
@@ -751,7 +786,8 @@ async function run(): Promise<void> {
   await testGenesisJobFoldsAuthenticatedProfileContentBoundariesIntoHeatContract();
   await testGenesisJobLeavesHeatContractUnchangedWithNoAuthenticatedUser();
   await testContinuationJobFoldsContentBoundariesWhenHeatContractProvided();
-  await testContinuationJobSkipsContentBoundariesWithNoRequestHeatContract();
+  await testContinuationJobRefusesWhenBoundariesHaveNoHeatContractToJoin();
+  await testContinuationJobProceedsWithNoHeatContractAndNoStoredBoundaries();
 
   console.log('Story Lab job route tests passed');
 }

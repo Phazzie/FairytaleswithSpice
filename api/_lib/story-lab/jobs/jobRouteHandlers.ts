@@ -40,7 +40,7 @@ import {
 } from './storyLabJobStoreConfig';
 import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
 import type { StoryLabProfileStore } from '../profile/storyLabProfileStore';
-import { loadAuthenticatedContentBoundaries, withMergedContentBoundaries } from '../contentBoundaries';
+import { loadAuthenticatedContentBoundaries, resolveContinuationHeatContract, withMergedContentBoundaries } from '../contentBoundaries';
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 type JobResult = StoryIterationPayload | ContinuationJobResult;
@@ -481,6 +481,22 @@ async function createContinuationJob(
     return;
   }
 
+  // Resolved before the job exists, the same way the shape check above is:
+  // a signed-in caller with stored boundaries and no Heat Contract on the
+  // request cannot be honored by proceeding unchanged (nothing for the
+  // boundary to merge into) or by manufacturing a contract just to carry it
+  // (fails the adult-reader gate the caller never asked for), so it is
+  // refused as a caller error rather than started as a job doomed to finish
+  // having silently ignored the reader's own safety preference.
+  const contentBoundaries = await loadAuthenticatedContentBoundaries(context, req);
+  const heatContractResolution = resolveContinuationHeatContract(normalized.heatContract, contentBoundaries);
+  if (!heatContractResolution.ok) {
+    sendJson(res, 400, invalidRequest(
+      'This continuation must include a Heat Contract so your account\'s stored content boundaries can be honored.'
+    ));
+    return;
+  }
+
   const resolvedStore = await resolveJobStoreOrRespond(context, req, res, requestId);
   if (!resolvedStore) {
     return;
@@ -518,10 +534,7 @@ async function createContinuationJob(
     return;
   }
 
-  const contentBoundaries = await loadAuthenticatedContentBoundaries(context, req);
-  const continuationInput = contentBoundaries && normalized.heatContract
-    ? { ...normalized, heatContract: withMergedContentBoundaries(normalized.heatContract, contentBoundaries) }
-    : normalized;
+  const continuationInput = { ...normalized, heatContract: heatContractResolution.heatContract };
 
   const result = await runJobWork(
     () => context.continueStory(continuationInput),

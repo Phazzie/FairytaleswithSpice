@@ -13,7 +13,7 @@ import type { AuthPort } from '../../../_lib/story-lab/auth/authPort';
 import { configuredAuthPort } from '../../../_lib/story-lab/auth/configuredAuthPort';
 import type { StoryLabProfileStore } from '../../../_lib/story-lab/profile/storyLabProfileStore';
 import { createStoryLabCloudStorage } from '../../../_lib/story-lab/storage/storyLabCloudStorageConfig';
-import { loadAuthenticatedContentBoundaries, withMergedContentBoundaries } from '../../../_lib/story-lab/contentBoundaries';
+import { loadAuthenticatedContentBoundaries, resolveContinuationHeatContract } from '../../../_lib/story-lab/contentBoundaries';
 
 type ContinueStoryLab = typeof continueStoryLab;
 
@@ -233,15 +233,31 @@ export function createStoryLabContinuationHandler(
       // A signed-in caller's stored content boundaries, folded into the
       // continuation's Heat Contract the same way the Story Lab job route
       // already does — this is the direct continuation path the Proving
-      // Grounds UI actually calls, and it used to skip this entirely. Never
-      // manufactured when the request itself carries no Heat Contract:
-      // `heatContractPolicyError` treats any *present* contract as needing
-      // `adultOnlyConfirmed: true`, so inventing one here to carry nothing but
-      // the boundary text would reject a continuation that used to succeed.
+      // Grounds UI actually calls, and it used to skip this entirely.
       const contentBoundaries = await loadAuthenticatedContentBoundaries({ authPort, profileStore }, req);
-      const boundedInput = contentBoundaries && normalizedInput.heatContract
-        ? { ...normalizedInput, heatContract: withMergedContentBoundaries(normalizedInput.heatContract, contentBoundaries) }
-        : normalizedInput;
+      const resolution = resolveContinuationHeatContract(normalizedInput.heatContract, contentBoundaries);
+      if (!resolution.ok) {
+        // A signed-in caller with stored boundaries and no Heat Contract on
+        // the request: proceeding unchanged would mean those boundaries
+        // silently never reach the model, and manufacturing a contract just
+        // to carry them would fail the adult-reader gate the caller never
+        // asked for. Refused rather than either.
+        logWarn('Story Lab continuation request rejected', {
+          requestId,
+          endpoint: ENDPOINT,
+          method: 'POST'
+        }, { reason: 'content_boundaries_require_heat_contract', storyId: toLoggableStoryId(storyId) });
+
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'This continuation must include a Heat Contract so your account\'s stored content boundaries can be honored.'
+          }
+        });
+        return;
+      }
+      const boundedInput = { ...normalizedInput, heatContract: resolution.heatContract };
 
       // The correlation id goes with the request, for the reason the genesis
       // route beside it passes its own: without it the continuation's log lines
