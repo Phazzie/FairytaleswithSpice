@@ -13,6 +13,11 @@ const REDACTED = REDACTED_SENSITIVE_TEXT;
 const SENSITIVE_KEY_PATTERNS = [
   /authorization/i,
   /^x-api-key$/i,
+  // Carries a Clerk session token on the Story Lab generation/job routes
+  // (`auth.interceptor.ts`) — the same credential `authorization` already
+  // covers on the account routes, just under a different header name because
+  // those routes also read `authorization` as an `API_KEYS` candidate.
+  /^x-story-lab-session$/i,
   /api[_-]?key/i,
   /password/i,
   /^token$/i,

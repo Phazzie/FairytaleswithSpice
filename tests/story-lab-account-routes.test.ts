@@ -4,8 +4,9 @@
 import { readFileSync } from 'node:fs';
 import accountHandler from '../api/story-lab/account';
 import healthHandler from '../api/health';
-import type { AuthPort, AuthUser } from '../api/_lib/story-lab/auth/authPort';
+import type { AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import { createStoryLabAccountRouteHandler } from '../api/_lib/story-lab/account/accountRouteHandlers';
+import { createStaticAuthPort } from './helpers/storyLabAuthFixtures';
 import { createNonDurableInMemoryStoryLabProfileStore } from '../api/_lib/story-lab/profile/inMemoryStoryLabProfileStore';
 import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
 import { createNonDurableInMemoryStoryProjectStore } from '../api/_lib/story-lab/storage/inMemoryStoryProjectStore';
@@ -1198,17 +1199,6 @@ function createHandlerFor(
     projectStore,
     now: () => now
   });
-}
-
-function createStaticAuthPort(user: AuthUser): AuthPort {
-  return {
-    async getCurrentUser() {
-      return user;
-    },
-    async requireUser() {
-      return user;
-    }
-  };
 }
 
 function createLeakyProjectStore(): StoryProjectStore {

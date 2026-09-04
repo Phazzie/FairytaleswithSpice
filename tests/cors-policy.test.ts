@@ -359,4 +359,24 @@ assert(
   'every path that answers a preflight should carry the cache window'
 );
 
+// `auth.interceptor.ts` sends the Clerk session token on the Story Lab
+// generation/job routes as `X-Story-Lab-Session` rather than `Authorization`
+// (those routes' own `enforceApiAccessControl` reads `Authorization` as an
+// `API_KEYS` candidate). Missing from the default allow-list, a cross-origin
+// deployment's preflight would block the header before the browser ever
+// sent it, silently reproducing the anonymous-caller behavior the header
+// exists to fix. `beginPostRoute` and the job route both preflight through
+// this default list, so a request against either falsifies a regression here.
+const dedicatedHeaderResponse = new FakeResponse();
+applyCorsPolicy(request('OPTIONS', 'https://story.example.com'), dedicatedHeaderResponse, {
+  methods: ['POST', 'OPTIONS'],
+  credentials: true,
+  env
+});
+
+assert(
+  dedicatedHeaderResponse.headers['Access-Control-Allow-Headers']?.split(', ').includes('X-Story-Lab-Session'),
+  `the default preflight allow-list should include the dedicated session header, got ${JSON.stringify(dedicatedHeaderResponse.headers['Access-Control-Allow-Headers'])}`
+);
+
 console.log('CORS policy tests passed');

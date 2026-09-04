@@ -57,13 +57,19 @@ describe('ErrorLoggingService', () => {
     const email = 'reader@example.com';
     const apiKey = 'xai-secret-key-123';
     const artifactUrl = 'https://blob.vercel-storage.com/story/export.html?token=private-token';
+    // Carries a Clerk session token on the Story Lab generation/job routes
+    // (auth.interceptor.ts) instead of Authorization, so it needs its own
+    // entry in SENSITIVE_KEY_PATTERNS rather than reusing the Authorization
+    // match.
+    const clerkSessionToken = 'clerk-session-jwt-abc123';
 
     service.logError(
       {
         message: `${email} failed while generating ${storyText}`,
         url: artifactUrl,
         headers: {
-          Authorization: `Bearer ${apiKey}`
+          Authorization: `Bearer ${apiKey}`,
+          'X-Story-Lab-Session': clerkSessionToken
         },
         error: {
           prompt,
@@ -88,6 +94,7 @@ describe('ErrorLoggingService', () => {
     expect(serialized).not.toContain(email);
     expect(serialized).not.toContain(apiKey);
     expect(serialized).not.toContain(artifactUrl);
+    expect(serialized).not.toContain(clerkSessionToken);
     expect(serialized).toContain('[REDACTED]');
   });
 

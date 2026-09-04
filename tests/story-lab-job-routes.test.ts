@@ -2,23 +2,26 @@
 // Created: 2026-06-07 07:17 EDT
 
 import jobHandler from '../api/story-lab/jobs';
-import type { AuthPort, AuthUser } from '../api/_lib/story-lab/auth/authPort';
-import { AuthError } from '../api/_lib/story-lab/auth/authPort';
+import type { AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import type {
   HeatContract,
   StoryContinuationSeam,
   StoryGenerationSeam,
   StoryLabJobCreationRequest,
-  StoryLabJobCreationResponse,
-  StoryLabUserProfile
+  StoryLabJobCreationResponse
 } from '../api/_lib/story-lab/contracts';
 import { createStoryLabJobsRouteHandler } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
 import {
   generateStoryLabGenesis as realGenerateStoryLabGenesis,
   continueStoryLab as realContinueStoryLab
 } from '../api/_lib/story-lab/storyLabEngine';
-import type { StoryLabProfileStore } from '../api/_lib/story-lab/profile/storyLabProfileStore';
 import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
+import {
+  assertRefusedForUnhonorableContentBoundary,
+  createRejectingAuthPort,
+  createStaticAuthPort,
+  createStubProfileStore
+} from './helpers/storyLabAuthFixtures';
 import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { NonDurableStoryLabJobStore, nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
@@ -608,58 +611,48 @@ async function testThrownEngineFailureFinishesTheJob(): Promise<void> {
   assert(statusBody.data.job.status === 'failed', 'the stored job should read as failed, not running');
 }
 
-async function testGenesisJobFoldsAuthenticatedProfileContentBoundariesIntoHeatContract(): Promise<void> {
-  nonDurableStoryLabJobStore.reset();
-  setMockRuntime();
-
-  const profile = createDefaultStoryLabUserProfile(owner, {
-    preferences: { contentBoundaries: 'No humiliation.' }
-  });
-  let capturedInput: StoryGenerationSeam['input'] | null = null;
-  const handler = createStoryLabJobsRouteHandler({
-    authPort: createStaticAuthPort(owner),
-    profileStore: createStubProfileStore(profile),
-    generateGenesis: async input => {
-      capturedInput = input;
-      return realGenerateStoryLabGenesis(input);
+async function testGenesisJobContentBoundaryHandling(): Promise<void> {
+  for (const testCase of [
+    {
+      description: 'genesis job with a profile',
+      authPort: createStaticAuthPort(owner),
+      contentBoundaries: 'No humiliation.',
+      expectedNoGoContent: 'No coercion.\nNo humiliation.',
+      expectedMessage: "profile content boundaries should be appended to the request's own noGoContent"
+    },
+    {
+      description: 'genesis job with no authenticated user',
+      authPort: createRejectingAuthPort(),
+      contentBoundaries: 'Should never be read.',
+      expectedNoGoContent: 'No coercion.',
+      expectedMessage: "with no authenticated caller, the request's own noGoContent should reach the engine unchanged"
     }
-  });
+  ]) {
+    nonDurableStoryLabJobStore.reset();
+    setMockRuntime();
 
-  const response = new FakeResponse();
-  await handler(createRequest('POST', createGenesisJobRequest()), response);
+    let capturedInput: StoryGenerationSeam['input'] | null = null;
+    const handler = createStoryLabJobsRouteHandler({
+      authPort: testCase.authPort,
+      profileStore: createStubProfileStore(
+        createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: testCase.contentBoundaries } })
+      ),
+      generateGenesis: async input => {
+        capturedInput = input;
+        return realGenerateStoryLabGenesis(input);
+      }
+    });
 
-  assert(response.statusCode === 200, 'genesis job with a profile should still succeed');
-  assert(capturedInput !== null, 'the engine should have been called');
-  assert(
-    capturedInput!.heatContract.noGoContent === 'No coercion.\nNo humiliation.',
-    `profile content boundaries should be appended to the request's own noGoContent, got ${JSON.stringify(capturedInput!.heatContract.noGoContent)}`
-  );
-}
+    const response = new FakeResponse();
+    await handler(createRequest('POST', createGenesisJobRequest()), response);
 
-async function testGenesisJobLeavesHeatContractUnchangedWithNoAuthenticatedUser(): Promise<void> {
-  nonDurableStoryLabJobStore.reset();
-  setMockRuntime();
-
-  let capturedInput: StoryGenerationSeam['input'] | null = null;
-  const handler = createStoryLabJobsRouteHandler({
-    authPort: createRejectingAuthPort(),
-    profileStore: createStubProfileStore(
-      createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: 'Should never be read.' } })
-    ),
-    generateGenesis: async input => {
-      capturedInput = input;
-      return realGenerateStoryLabGenesis(input);
-    }
-  });
-
-  const response = new FakeResponse();
-  await handler(createRequest('POST', createGenesisJobRequest()), response);
-
-  assert(response.statusCode === 200, 'genesis job with no authenticated user should still succeed');
-  assert(
-    capturedInput!.heatContract.noGoContent === 'No coercion.',
-    'with no authenticated caller, the request heat contract should reach the engine unchanged'
-  );
+    assert(response.statusCode === 200, `${testCase.description} should still succeed`);
+    assert(capturedInput !== null, 'the engine should have been called');
+    assert(
+      capturedInput!.heatContract.noGoContent === testCase.expectedNoGoContent,
+      `${testCase.expectedMessage}, got ${JSON.stringify(capturedInput!.heatContract.noGoContent)}`
+    );
+  }
 }
 
 async function testContinuationJobFoldsContentBoundariesWhenHeatContractProvided(): Promise<void> {
@@ -698,19 +691,50 @@ async function testContinuationJobFoldsContentBoundariesWhenHeatContractProvided
 }
 
 /**
- * A continuation that supplies no Heat Contract at all must stay that way even
- * when a profile has content boundaries to offer. `heatContractPolicyError`
- * treats any *present* contract as needing `adultOnlyConfirmed: true` — so
- * manufacturing one here (to carry nothing but the boundary text) would reject
- * a continuation that used to succeed, over a confirmation it never asked for.
+ * A continuation that supplies no Heat Contract at all cannot gain one just
+ * to carry a profile's content boundaries — `heatContractPolicyError` treats
+ * any *present* contract as needing `adultOnlyConfirmed: true`, so
+ * manufacturing one here would reject a continuation that used to succeed,
+ * over a confirmation it never asked for. But proceeding unchanged is not the
+ * answer either: a signed-in caller with stored boundaries and nothing for
+ * them to merge into would have those boundaries silently never reach the
+ * model. Refused instead, before the job is ever created.
  */
-async function testContinuationJobSkipsContentBoundariesWithNoRequestHeatContract(): Promise<void> {
+async function testContinuationJobRefusesWhenBoundariesHaveNoHeatContractToJoin(): Promise<void> {
   nonDurableStoryLabJobStore.reset();
   setMockRuntime();
 
   const profile = createDefaultStoryLabUserProfile(owner, {
     preferences: { contentBoundaries: 'Keep the danger emotional.' }
   });
+  let engineCalled = false;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    profileStore: createStubProfileStore(profile),
+    continueStory: async input => {
+      engineCalled = true;
+      return realContinueStoryLab(input);
+    }
+  });
+
+  const response = new FakeResponse();
+  await handler(createRequest('POST', createContinuationJobRequest(undefined)), response);
+
+  assertRefusedForUnhonorableContentBoundary(response, engineCalled);
+}
+
+/**
+ * The same signed-in caller, but with no stored content boundaries at all —
+ * a continuation with no Heat Contract has nothing to refuse over, since
+ * there is nothing to honor either way. This is what would catch a
+ * `resolveContinuationHeatContract` regression that refused every
+ * Heat-Contract-free continuation from a signed-in caller, boundaries or not.
+ */
+async function testContinuationJobProceedsWithNoHeatContractAndNoStoredBoundaries(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  setMockRuntime();
+
+  const profile = createDefaultStoryLabUserProfile(owner);
   let capturedInput: StoryContinuationSeam['input'] | null = null;
   const handler = createStoryLabJobsRouteHandler({
     authPort: createStaticAuthPort(owner),
@@ -724,11 +748,8 @@ async function testContinuationJobSkipsContentBoundariesWithNoRequestHeatContrac
   const response = new FakeResponse();
   await handler(createRequest('POST', createContinuationJobRequest(undefined)), response);
 
-  assert(response.statusCode === 200, 'continuation job with no request heat contract should still succeed');
-  assert(
-    capturedInput!.heatContract === undefined,
-    'a continuation that supplied no heat contract must not gain one just because a profile has content boundaries'
-  );
+  assert(response.statusCode === 200, `continuation job with no stored boundaries should still succeed, got ${response.statusCode}`);
+  assert(capturedInput!.heatContract === undefined, 'no heat contract should be manufactured when there was nothing to fold in');
 }
 
 async function run(): Promise<void> {
@@ -750,10 +771,10 @@ async function run(): Promise<void> {
   testStoreEvictsOldestJobs();
   await testProductionMissingProviderCreatesFailedJob();
   await testThrownEngineFailureFinishesTheJob();
-  await testGenesisJobFoldsAuthenticatedProfileContentBoundariesIntoHeatContract();
-  await testGenesisJobLeavesHeatContractUnchangedWithNoAuthenticatedUser();
+  await testGenesisJobContentBoundaryHandling();
   await testContinuationJobFoldsContentBoundariesWhenHeatContractProvided();
-  await testContinuationJobSkipsContentBoundariesWithNoRequestHeatContract();
+  await testContinuationJobRefusesWhenBoundariesHaveNoHeatContractToJoin();
+  await testContinuationJobProceedsWithNoHeatContractAndNoStoredBoundaries();
 
   console.log('Story Lab job route tests passed');
 }
@@ -861,62 +882,6 @@ function createDurableJobStoreConfig(store: StoryLabJobStore): StoryLabJobStoreC
     store,
     isConfigured() {
       return store.isConfigured();
-    }
-  };
-}
-
-function createStaticAuthPort(user: AuthUser): AuthPort {
-  return {
-    async getCurrentUser() {
-      return user;
-    },
-    async requireUser() {
-      return user;
-    }
-  };
-}
-
-function createRejectingAuthPort(): AuthPort {
-  return {
-    async getCurrentUser() {
-      return null;
-    },
-    async requireUser() {
-      throw new AuthError('Account authentication is required.');
-    }
-  };
-}
-
-function createStubProfileStore(profile: StoryLabUserProfile | null): StoryLabProfileStore {
-  return {
-    mode: 'non_durable_memory',
-    durable: false,
-    isConfigured: () => true,
-    async saveProfile(user, savedProfile) {
-      return {
-        success: true,
-        data: {
-          userId: user.userId,
-          profile: savedProfile,
-          createdAt: savedProfile.createdAt,
-          updatedAt: savedProfile.updatedAt,
-          storageMode: 'non_durable_memory'
-        }
-      };
-    },
-    async loadProfile(user) {
-      return {
-        success: true,
-        data: profile
-          ? {
-              userId: user.userId,
-              profile,
-              createdAt: profile.createdAt,
-              updatedAt: profile.updatedAt,
-              storageMode: 'non_durable_memory'
-            }
-          : null
-      };
     }
   };
 }
