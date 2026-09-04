@@ -116,7 +116,14 @@ const DEFAULT_HEADERS = [
   'X-Api-Version',
   'X-CSRF-Token',
   'X-Request-ID',
-  'X-Requested-With'
+  'X-Requested-With',
+  // Carries a Clerk session token on the Story Lab generation/job routes
+  // (`auth.interceptor.ts`) instead of `Authorization`, which those routes'
+  // own `enforceApiAccessControl` reads as an `API_KEYS` candidate. Missing
+  // from this list, a cross-origin deployment's preflight would block the
+  // header before the browser ever sends it, silently reproducing the
+  // anonymous-caller behavior this header exists to fix.
+  'X-Story-Lab-Session'
 ];
 
 export function parseAllowedOrigins(env: NodeJS.ProcessEnv = process.env): string[] {

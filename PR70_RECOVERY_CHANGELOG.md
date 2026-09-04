@@ -29,6 +29,16 @@ Also two SonarCloud Quality Gate failures on new-code duplication, found and fix
 
 Validation: same suite as round 1, re-run clean after each push — `npx tsx tests/story-lab-clerk-auth.test.ts`, `npx tsx tests/story-lab-route-status.test.ts`, `npx tsx tests/story-lab-job-routes.test.ts`, `npx tsx tests/story-lab-account-routes.test.ts`, full `npm run test:all`, the `auth.interceptor.spec.ts` suite headless, and the full Angular karma suite headless (288/288).
 
+### Round 3: CORS for the dedicated header, two findings filed as follow-ups (PR #329)
+
+Codex's review of the round-2 push (`a132ac5`) found three more issues:
+
+- **P1, real — `X-Story-Lab-Session` (round 2's dedicated header) was missing from `corsPolicy.ts`'s `DEFAULT_HEADERS`.** Both `beginPostRoute` and the job route preflight through that shared list; a split-origin deployment's browser would block the header on `OPTIONS` before ever sending it on the real request, reproducing the anonymous-caller behavior the header exists to fix. Added `X-Story-Lab-Session` to `DEFAULT_HEADERS` with a doc comment, plus a preflight test in `tests/cors-policy.test.ts` asserting the default `Access-Control-Allow-Headers` list includes it.
+- **P1, real but pre-existing and out of scope — a deployment with both `API_KEYS` and Clerk configured still can't reach these routes from the browser.** `enforceApiAccessControl` requires an `X-API-Key`/`Authorization: Bearer <api-key>` whenever `API_KEYS` is set, and the frontend has never had any path that sends one — this predates #329 and isn't Clerk-specific: *every* caller, signed in or not, has always been unable to reach these paid routes in an `API_KEYS`-configured deployment. Round 2's dedicated header stops the Clerk token from being *misread* as an invalid key; it doesn't make the combined configuration work, which needs a product decision (exempt the browser client from `API_KEYS`? a build-time public key? teach access control to accept a verified Clerk session?). Filed as [#330](https://github.com/Phazzie/FairytaleswithSpice/issues/330) rather than expanded into this PR.
+- **P1, plausible but pre-existing and out of scope — `getRequestToken()` on generation requests can race Clerk's identity-transition cleanup.** The call itself already existed in this interceptor for the account routes before #329; this PR widens which requests can trigger it. `AuthService`'s transition/epoch/generation tracking is dense, already-hardened machinery (14+ dedicated "Clerk auth hardening round N" PRs, most recently #328) that a content-boundaries PR shouldn't modify without the context those rounds built up. Filed as [#331](https://github.com/Phazzie/FairytaleswithSpice/issues/331), shaped as its own hardening round with a suggested reproduction approach.
+
+Validation: same suite as rounds 1–2, plus `npx tsx tests/cors-policy.test.ts` — all re-run clean before push.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 14: the real Clerk client's initial listener emission was permanently wedging every deployment (PR #328)
 
 Codex's review of the round-13 push (`5f55b5d`) found three issues:
