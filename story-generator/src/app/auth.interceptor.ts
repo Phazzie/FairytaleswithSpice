@@ -37,6 +37,30 @@ const ACCOUNT_AUTH_ROUTE_PATTERN = /\/api\/story-lab\/account\/(profile|projects
 const GENERATION_ROUTE_PATTERN = /\/api\/story-lab\/(stories|jobs)(\/|\?|$)/;
 
 /**
+ * Whether `url` is a same-document-relative path — the only shape every real
+ * caller in this app ever sends (`StoryService.apiUrl` is the hardcoded
+ * relative `/api/story-lab`, never an absolute URL). Both route patterns
+ * above test only a path substring, with no anchor to the start of the
+ * string and no notion of origin — `ACCOUNT_AUTH_ROUTE_PATTERN.test(url)` is
+ * `true` for `https://attacker.example/api/story-lab/account/profile` just
+ * as much as for `/api/story-lab/account/profile`. Without this guard, a
+ * request to *any* absolute URL that happens to contain one of these paths
+ * as a substring — from a future bug, a compromised dependency, or injected
+ * script reusing this app's `HttpClient` — would have the signed-in reader's
+ * session token attached and sent wherever that URL points, and the
+ * attacker's own server can freely approve the CORS preflight that makes
+ * this fetchable. Rejecting every absolute and protocol-relative URL
+ * outright — rather than trying to compare against this app's own origin —
+ * needs no browser-only global, so it holds during server-side rendering
+ * too, where `window`/`location` do not exist (`authInterceptor` runs there
+ * as well: `app.config.server.ts` merges `app.config.ts`'s providers
+ * unchanged).
+ */
+function isRelativeApiPath(url: string): boolean {
+  return url.startsWith('/') && !url.startsWith('//');
+}
+
+/**
  * Attaches the signed-in Clerk session token to the Story Lab calls that can
  * use one. Before this existed, `StoryService`'s cloud methods had no code
  * path that could ever attach a session token — the backend verifier being
@@ -61,8 +85,9 @@ const GENERATION_ROUTE_PATTERN = /\/api\/story-lab\/(stories|jobs)(\/|\?|$)/;
  * this header first, so either channel reaches the same verification.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  const isAccountRoute = ACCOUNT_AUTH_ROUTE_PATTERN.test(req.url);
-  const isGenerationRoute = GENERATION_ROUTE_PATTERN.test(req.url);
+  const isEligiblePath = isRelativeApiPath(req.url);
+  const isAccountRoute = isEligiblePath && ACCOUNT_AUTH_ROUTE_PATTERN.test(req.url);
+  const isGenerationRoute = isEligiblePath && GENERATION_ROUTE_PATTERN.test(req.url);
   if (!isAccountRoute && !isGenerationRoute) {
     return next(req);
   }

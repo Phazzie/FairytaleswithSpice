@@ -136,6 +136,37 @@ describe('authInterceptor', () => {
       signedIn: true,
       expectedAuthorization: null,
       expectedSessionHeader: null
+    },
+    // Both route patterns test only a path substring, unanchored and with no
+    // notion of origin — matching just as readily against an absolute URL to
+    // any other origin as against this app's own relative path. Without the
+    // `isRelativeApiPath` guard, a request built against an attacker-hosted
+    // URL that merely contains one of these paths would still get the
+    // signed-in reader's session token attached, and an attacker's own
+    // server can freely approve the CORS preflight that makes it fetchable.
+    {
+      description: 'does not attach a header to an absolute cross-origin URL containing an account path',
+      method: 'get',
+      url: 'https://attacker.example/api/story-lab/account/profile',
+      signedIn: true,
+      expectedAuthorization: null,
+      expectedSessionHeader: null
+    },
+    {
+      description: 'does not attach a header to an absolute cross-origin URL containing a generation path',
+      method: 'post',
+      url: 'https://attacker.example/api/story-lab/stories',
+      signedIn: true,
+      expectedAuthorization: null,
+      expectedSessionHeader: null
+    },
+    {
+      description: 'does not attach a header to a protocol-relative URL containing a generation path',
+      method: 'post',
+      url: '//attacker.example/api/story-lab/stories',
+      signedIn: true,
+      expectedAuthorization: null,
+      expectedSessionHeader: null
     }
   ];
 

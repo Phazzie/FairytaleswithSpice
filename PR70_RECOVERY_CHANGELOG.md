@@ -39,6 +39,22 @@ Codex's review of the round-2 push (`a132ac5`) found three more issues:
 
 Validation: same suite as rounds 1–2, plus `npx tsx tests/cors-policy.test.ts` — all re-run clean before push.
 
+### Round 4: redaction, three more stale exec plans, and a cross-origin credential leak (PR #329)
+
+Codex's review of the round-3 push (`0d576f5`) found five more issues, all fixed:
+
+- **P1, real — `X-Story-Lab-Session` was not covered by either sensitive-key redaction list.** `api/_lib/utils/logger.ts`'s and `story-generator/src/app/error-logging.ts`'s `SENSITIVE_KEY_PATTERNS` recognized `Authorization`/`X-API-Key` but not this new header, so a token under it would survive `redactSensitiveLogData`/`ErrorLoggingService`'s redaction verbatim if ever logged. Added `/^x-story-lab-session$/i` to both, with a negative-redaction assertion added to each file's existing redaction test.
+- **P1, docs — three more active exec plans were now stale**, each updated with a dated follow-up: `STORY_LAB_PRIVACY_STREAMING_GATES_EXEC_PLAN.md` (the new CORS allow-list entry), `STORY_LAB_JOB_ROUTES_EXEC_PLAN.md` and `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md` (both record the same new continuation refusal, in their respective sections).
+- **P1, plausible but pre-existing and out of scope — generation requests sent before `AuthService.initialize()` settles silently drop the session token.** Same shape as round 3's `#331`: the `getRequestToken()` null-before-client-ready behavior already governed the account routes; this PR only widens exposure. Filed as [#332](https://github.com/Phazzie/FairytaleswithSpice/issues/332), paired with `#331`.
+
+Codex's review of that push (`373a783`, a SonarCloud duplication fix with no behavior change) then found a real, serious issue neither prior round caught:
+
+- **P1, security, real — both route patterns matched an unanchored path substring anywhere in `req.url`, with no notion of origin.** `ACCOUNT_AUTH_ROUTE_PATTERN.test(url)` and `GENERATION_ROUTE_PATTERN.test(url)` are `true` for `https://attacker.example/api/story-lab/account/profile` exactly as much as for the real relative path — this predates #329 for the account pattern (inherited from the original interceptor), and #329's own generation pattern shares the same flaw. A request built against any absolute URL containing one of these paths as a substring — from a future bug, a compromised dependency, or an injected script reusing this app's `HttpClient` — would have the signed-in reader's session token attached and sent wherever that URL points, with the attacker's own server free to approve the CORS preflight that makes it fetchable. Fixed by adding `isRelativeApiPath`, rejecting every absolute and protocol-relative URL outright before either pattern is tested — deliberately not a same-origin *comparison* (`location.origin`), since `authInterceptor` also runs during server-side rendering (`app.config.server.ts` merges `app.config.ts`'s providers unchanged), where no browser `window`/`location` exists. Added three negative tests: an absolute cross-origin URL containing an account path, one containing a generation path, and a protocol-relative (`//attacker.example/...`) URL — none attach either header even when signed in.
+
+Also two SonarCloud Quality Gate duplication failures, found and fixed before merge (neither from a Codex finding, continuing round 2's dedup work): the interceptor spec's repeated request/header-assertion shape across nine near-identical tests (5.5%, then still 4.9% after a first consolidation attempt) was collapsed into one `HEADER_CASES` table; a `story-lab-job-routes.test.ts`/`story-lab-route-status.test.ts` cross-file duplicate of the "refused for unhonorable boundary" assertion (4.8%) was extracted to `assertRefusedForUnhonorableContentBoundary` in the shared test-fixtures helper; and the two files' remaining un-consolidated genesis test pairs (4.6%) were each merged into a table-driven test, matching their continuation counterparts. The gate passed clean (0.0% duplication) on the push after that.
+
+Validation: same suite as rounds 1–3, plus `npx tsx tests/log-redaction.test.ts`, the `error-logging.spec.ts` suite, and — after the cross-origin fix — the `auth.interceptor.spec.ts` suite (13/13) and full Angular karma suite (291/291) headless.
+
 ## 2026-09-03 UTC - Clerk auth hardening round 14: the real Clerk client's initial listener emission was permanently wedging every deployment (PR #328)
 
 Codex's review of the round-13 push (`5f55b5d`) found three issues:
