@@ -6,6 +6,11 @@ import continuationHandler, { createStoryLabContinuationHandler } from '../api/s
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { withMemoryRateLimitStore } from './helpers/withMemoryRateLimitStore';
 import { getStoryLabResponseStatus } from '../api/_lib/story-lab/routeStatus';
+import type { AuthPort, AuthUser } from '../api/_lib/story-lab/auth/authPort';
+import { AuthError } from '../api/_lib/story-lab/auth/authPort';
+import type { StoryLabUserProfile } from '../api/_lib/story-lab/contracts';
+import type { StoryLabProfileStore } from '../api/_lib/story-lab/profile/storyLabProfileStore';
+import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
 
 interface FakeRequest {
   method: string;
@@ -126,6 +131,67 @@ function createBlueprint() {
       tensionMode: 'dangerous_proximity',
       intimacyBoundary: 'fade_to_black',
       noGoContent: ''
+    }
+  };
+}
+
+const owner: AuthUser = {
+  userId: 'user_route_owner',
+  email: 'owner@example.com'
+};
+
+function createStaticAuthPort(user: AuthUser): AuthPort {
+  return {
+    async getCurrentUser() {
+      return user;
+    },
+    async requireUser() {
+      return user;
+    }
+  };
+}
+
+function createRejectingAuthPort(): AuthPort {
+  return {
+    async getCurrentUser() {
+      return null;
+    },
+    async requireUser() {
+      throw new AuthError('Account authentication is required.');
+    }
+  };
+}
+
+function createStubProfileStore(profile: StoryLabUserProfile | null): StoryLabProfileStore {
+  return {
+    mode: 'non_durable_memory',
+    durable: false,
+    isConfigured: () => true,
+    async saveProfile(user, savedProfile) {
+      return {
+        success: true,
+        data: {
+          userId: user.userId,
+          profile: savedProfile,
+          createdAt: savedProfile.createdAt,
+          updatedAt: savedProfile.updatedAt,
+          storageMode: 'non_durable_memory'
+        }
+      };
+    },
+    async loadProfile(user) {
+      return {
+        success: true,
+        data: profile
+          ? {
+              userId: user.userId,
+              profile,
+              createdAt: profile.createdAt,
+              updatedAt: profile.updatedAt,
+              storageMode: 'non_durable_memory'
+            }
+          : null
+      };
     }
   };
 }
@@ -455,6 +521,122 @@ async function main(): Promise<void> {
       assert(response.statusCode === 200, `a body-only request should still be served, got ${response.statusCode}`);
       assert(seen.storyId === pathStoryId, `the body id should still be used, got ${seen.storyId}`);
     }
+  }
+
+  // ==================== content boundaries ====================
+  //
+  // The Story Lab job route already folds a signed-in reader's stored
+  // `contentBoundaries` preference into generation; these two direct routes —
+  // the ones the Proving Grounds UI actually calls — never did. Same fixture
+  // shape and same assertions as the job route's own tests
+  // (`tests/story-lab-job-routes.test.ts`), proving the shared
+  // `contentBoundaries` module reaches both seams identically.
+  {
+    let capturedNoGoContent: string | undefined;
+    const handler = createStoryLabGenesisHandler({
+      authPort: createStaticAuthPort(owner),
+      profileStore: createStubProfileStore(
+        createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: 'No humiliation.' } })
+      ),
+      generateGenesis: async input => {
+        capturedNoGoContent = input.heatContract.noGoContent;
+        return { success: true, data: { story: {} } as never };
+      }
+    });
+
+    const response = new FakeResponse();
+    await handler(createRequest('POST', createBlueprint()), response);
+
+    assert(response.statusCode === 200, `genesis with a profile should still succeed, got ${response.statusCode}`);
+    assert(
+      capturedNoGoContent === 'No humiliation.',
+      `profile content boundaries should reach the engine when the request's own noGoContent is empty, got ${JSON.stringify(capturedNoGoContent)}`
+    );
+  }
+
+  {
+    let capturedNoGoContent: string | undefined;
+    const handler = createStoryLabGenesisHandler({
+      authPort: createRejectingAuthPort(),
+      profileStore: createStubProfileStore(
+        createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: 'Should never be read.' } })
+      ),
+      generateGenesis: async input => {
+        capturedNoGoContent = input.heatContract.noGoContent;
+        return { success: true, data: { story: {} } as never };
+      }
+    });
+
+    const response = new FakeResponse();
+    await handler(createRequest('POST', createBlueprint()), response);
+
+    assert(response.statusCode === 200, `genesis with no authenticated user should still succeed, got ${response.statusCode}`);
+    assert(
+      capturedNoGoContent === '',
+      `with no authenticated caller, the request heat contract should reach the engine unchanged, got ${JSON.stringify(capturedNoGoContent)}`
+    );
+  }
+
+  {
+    let capturedNoGoContent: string | undefined;
+    const handler = createStoryLabContinuationHandler({
+      authPort: createStaticAuthPort(owner),
+      profileStore: createStubProfileStore(
+        createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: 'Keep the danger emotional.' } })
+      ),
+      continueStory: async input => {
+        capturedNoGoContent = input.heatContract?.noGoContent;
+        return { success: true, data: { continued: true } as never };
+      }
+    });
+
+    const response = new FakeResponse();
+    await handler(createRequest('POST', {
+      ...createContinuationBody(),
+      heatContract: {
+        adultOnlyConfirmed: true,
+        tensionMode: 'slow_burn',
+        intimacyBoundary: 'closed_door',
+        noGoContent: 'No permanent injury.'
+      }
+    }), response);
+
+    assert(response.statusCode === 200, `continuation with a profile should still succeed, got ${response.statusCode}`);
+    assert(
+      capturedNoGoContent === 'No permanent injury.\nKeep the danger emotional.',
+      `profile content boundaries should be appended to the continuation's own noGoContent, got ${JSON.stringify(capturedNoGoContent)}`
+    );
+  }
+
+  // A continuation with no Heat Contract on the request must stay that way
+  // even when a profile has boundaries to offer: `heatContractPolicyError`
+  // treats any *present* contract as needing `adultOnlyConfirmed: true`, so
+  // manufacturing one here (to carry nothing but the boundary text) would
+  // reject a continuation that used to succeed.
+  {
+    let capturedHeatContract: unknown;
+    let sawHeatContractField = false;
+    const handler = createStoryLabContinuationHandler({
+      authPort: createStaticAuthPort(owner),
+      profileStore: createStubProfileStore(
+        createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: 'Keep the danger emotional.' } })
+      ),
+      continueStory: async input => {
+        sawHeatContractField = true;
+        capturedHeatContract = input.heatContract;
+        return { success: true, data: { continued: true } as never };
+      }
+    });
+
+    const response = new FakeResponse();
+    await handler(createRequest('POST', createContinuationBody()), response);
+
+    assert(response.statusCode === 200, `continuation with no request heat contract should still succeed, got ${response.statusCode}`);
+    assert(sawHeatContractField, 'the engine should have been called');
+    assert(
+      capturedHeatContract === undefined,
+      `with no request heat contract, none should be manufactured just to carry a profile boundary, got ${JSON.stringify(capturedHeatContract)}`
+    );
   }
 
   console.log('Story Lab route status tests passed');

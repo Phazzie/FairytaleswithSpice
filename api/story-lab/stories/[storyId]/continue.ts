@@ -9,6 +9,11 @@ import { continueStoryLab } from '../../../_lib/story-lab/storyLabEngine';
 import { getTransientStorySnapshot } from '../../../_lib/story-lab/stateStore';
 import { logError, logInfo, logWarn } from '../../../_lib/utils/logger';
 import { toLoggableStoryId } from '../../../_lib/utils/loggableRequestParameters';
+import type { AuthPort } from '../../../_lib/story-lab/auth/authPort';
+import { configuredAuthPort } from '../../../_lib/story-lab/auth/configuredAuthPort';
+import type { StoryLabProfileStore } from '../../../_lib/story-lab/profile/storyLabProfileStore';
+import { createStoryLabCloudStorage } from '../../../_lib/story-lab/storage/storyLabCloudStorageConfig';
+import { loadAuthenticatedContentBoundaries, withMergedContentBoundaries } from '../../../_lib/story-lab/contentBoundaries';
 
 type ContinueStoryLab = typeof continueStoryLab;
 
@@ -21,6 +26,12 @@ const unexpectedStoryLabErrorResponse: ApiResponse<never> = {
     message: 'Story Lab request failed unexpectedly.'
   }
 };
+
+export interface StoryLabContinuationRouteDependencies {
+  continueStory?: ContinueStoryLab;
+  authPort?: AuthPort;
+  profileStore?: StoryLabProfileStore;
+}
 
 /**
  * The story this URL addresses.
@@ -66,7 +77,24 @@ function readBodyStoryId(value: unknown): string | null {
   return typeof value === 'string' ? value.trim() : null;
 }
 
-export function createStoryLabContinuationHandler(continueStory: ContinueStoryLab = continueStoryLab) {
+export function createStoryLabContinuationHandler(
+  continueStoryOrDependencies: ContinueStoryLab | StoryLabContinuationRouteDependencies = continueStoryLab
+) {
+  // `continueStory` alone used to be the whole dependency surface, and every
+  // existing caller — tests included — passes just that function. Accepting
+  // the dependencies object as an alternative, rather than replacing the
+  // parameter, is what keeps those call sites working unchanged while still
+  // letting this route fold a signed-in caller's content boundaries the same
+  // way the job route does.
+  const dependencies: StoryLabContinuationRouteDependencies =
+    typeof continueStoryOrDependencies === 'function'
+      ? { continueStory: continueStoryOrDependencies }
+      : continueStoryOrDependencies;
+
+  const continueStory = dependencies.continueStory ?? continueStoryLab;
+  const authPort = dependencies.authPort ?? configuredAuthPort;
+  const profileStore = dependencies.profileStore ?? createStoryLabCloudStorage().profileStore;
+
   return async function handler(req: any, res: any) {
     // Correlation id, `X-Request-ID`, CORS, method, and access control, in the
     // one place the other paid POST routes already state them.
@@ -202,11 +230,24 @@ export function createStoryLabContinuationHandler(continueStory: ContinueStoryLa
         }
       });
 
+      // A signed-in caller's stored content boundaries, folded into the
+      // continuation's Heat Contract the same way the Story Lab job route
+      // already does — this is the direct continuation path the Proving
+      // Grounds UI actually calls, and it used to skip this entirely. Never
+      // manufactured when the request itself carries no Heat Contract:
+      // `heatContractPolicyError` treats any *present* contract as needing
+      // `adultOnlyConfirmed: true`, so inventing one here to carry nothing but
+      // the boundary text would reject a continuation that used to succeed.
+      const contentBoundaries = await loadAuthenticatedContentBoundaries({ authPort, profileStore }, req);
+      const boundedInput = contentBoundaries && normalizedInput.heatContract
+        ? { ...normalizedInput, heatContract: withMergedContentBoundaries(normalizedInput.heatContract, contentBoundaries) }
+        : normalizedInput;
+
       // The correlation id goes with the request, for the reason the genesis
       // route beside it passes its own: without it the continuation's log lines
       // answer to an id minted in the service, which the caller was never told.
       const payload: ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }> =
-        await continueStory(normalizedInput, { requestId });
+        await continueStory(boundedInput, { requestId });
 
       logInfo(`Story Lab continuation ${payload.success ? 'succeeded' : 'failed'}`, {
         requestId,

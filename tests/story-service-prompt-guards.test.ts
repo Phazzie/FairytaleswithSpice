@@ -5,7 +5,7 @@ import { StoryService } from '../api/_lib/services/storyService';
 import type { ChapterContinuationSeam, StoryGenerationSeam } from '../api/_lib/types/contracts';
 import type { HeatContract } from '../api/_lib/story-lab/contracts';
 import { analyzeEmotionalTone } from '../api/_lib/services/storyContentAnalysis';
-import { withMergedContentBoundaries } from '../api/_lib/story-lab/jobs/jobRouteHandlers';
+import { withMergedContentBoundaries } from '../api/_lib/story-lab/contentBoundaries';
 import {
   STORY_BLUEPRINT_LIMITS,
   STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH,

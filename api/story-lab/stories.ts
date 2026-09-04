@@ -8,6 +8,11 @@ import { generateStoryLabGenesis } from '../_lib/story-lab/storyLabEngine';
 import { parseStoryLabBlueprintFromBody } from '../_lib/story-lab/validation/blueprintParser';
 import { logError, logInfo, logWarn } from '../_lib/utils/logger';
 import { toLoggableThemes } from '../_lib/utils/loggableRequestParameters';
+import type { AuthPort } from '../_lib/story-lab/auth/authPort';
+import { configuredAuthPort } from '../_lib/story-lab/auth/configuredAuthPort';
+import type { StoryLabProfileStore } from '../_lib/story-lab/profile/storyLabProfileStore';
+import { createStoryLabCloudStorage } from '../_lib/story-lab/storage/storyLabCloudStorageConfig';
+import { loadAuthenticatedContentBoundaries, withMergedContentBoundaries } from '../_lib/story-lab/contentBoundaries';
 
 type GenerateStoryLabGenesis = typeof generateStoryLabGenesis;
 
@@ -21,7 +26,30 @@ const unexpectedStoryLabErrorResponse: ApiResponse<never> = {
   }
 };
 
-export function createStoryLabGenesisHandler(generateGenesis: GenerateStoryLabGenesis = generateStoryLabGenesis) {
+export interface StoryLabGenesisRouteDependencies {
+  generateGenesis?: GenerateStoryLabGenesis;
+  authPort?: AuthPort;
+  profileStore?: StoryLabProfileStore;
+}
+
+export function createStoryLabGenesisHandler(
+  generateGenesisOrDependencies: GenerateStoryLabGenesis | StoryLabGenesisRouteDependencies = generateStoryLabGenesis
+) {
+  // `generateGenesis` alone used to be the whole dependency surface, and every
+  // existing caller — tests included — passes just that function. Accepting
+  // the dependencies object as an alternative, rather than replacing the
+  // parameter, is what keeps those call sites working unchanged while still
+  // letting this route fold a signed-in caller's content boundaries the same
+  // way the job route does.
+  const dependencies: StoryLabGenesisRouteDependencies =
+    typeof generateGenesisOrDependencies === 'function'
+      ? { generateGenesis: generateGenesisOrDependencies }
+      : generateGenesisOrDependencies;
+
+  const generateGenesis = dependencies.generateGenesis ?? generateStoryLabGenesis;
+  const authPort = dependencies.authPort ?? configuredAuthPort;
+  const profileStore = dependencies.profileStore ?? createStoryLabCloudStorage().profileStore;
+
   return async function handler(req: any, res: any) {
     // Correlation id, `X-Request-ID`, CORS, method, and access control, in the
     // one place the other paid POST routes already state them.
@@ -88,12 +116,21 @@ export function createStoryLabGenesisHandler(generateGenesis: GenerateStoryLabGe
         }
       });
 
+      // A signed-in caller's stored content boundaries, folded into the
+      // blueprint's Heat Contract the same way the Story Lab job route already
+      // does — this is the direct genesis path the Proving Grounds UI actually
+      // calls, and it used to skip this entirely.
+      const contentBoundaries = await loadAuthenticatedContentBoundaries({ authPort, profileStore }, req);
+      const genesisInput = contentBoundaries
+        ? { ...blueprint, heatContract: withMergedContentBoundaries(blueprint.heatContract, contentBoundaries) }
+        : blueprint;
+
       // The correlation id goes with the request. It is what this handler's own
       // lines are stamped with and what the caller was echoed as `X-Request-ID`;
       // passing it on is what makes the generation's own log lines — the prompt
       // sizes, the provider call, the failure a reader would be asking about —
       // answer to the same id, instead of to a second one minted in the service.
-      const payload: ApiResponse<StoryIterationPayload> = await generateGenesis(blueprint, { requestId });
+      const payload: ApiResponse<StoryIterationPayload> = await generateGenesis(genesisInput, { requestId });
 
       logInfo(`Story Lab genesis ${payload.success ? 'succeeded' : 'failed'}`, {
         requestId,
