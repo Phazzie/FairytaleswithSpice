@@ -27,7 +27,7 @@ import { getTransientStorySnapshot, persistStoryIteration } from './stateStore';
 import { extractContinuity } from './continuityExtractor';
 import { getXaiReasoningEffort, getXaiStoryModel } from '../config/xaiConfig';
 import { getStoryLabContinuityTimeoutMs } from './continuityBudget';
-import { withContinuationStrategyBrief, stripStoryMemoryCardSections } from './continuationGuidance';
+import { buildContinuationHiddenGuidance, stripStoryMemoryCardSections } from './continuationGuidance';
 import { buildChapterDelta, buildStateDelta, buildStateSnapshot } from './storyStateBuilder';
 import { collapseWhitespace } from '../utils/whitespace';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
@@ -377,12 +377,24 @@ export async function continueStoryLab(
   const service = options.serviceFactory?.() ?? new StoryService();
   const currentChapterCount = Math.max(...previousChapters.map(chapter => chapter.chapterNumber));
   const existingContent = previousChapters.map(chapter => chapter.rawContent || chapter.htmlContent).join('\n\n');
-  const continuationBrief = withContinuationStrategyBrief(input.continuationBrief, storyState);
+  const latestChapter = previousChapters.reduce((latest, chapter) =>
+    chapter.chapterNumber > latest.chapterNumber ? chapter : latest
+  );
   const result = await service.continueChapter({
     storyId: input.storyId,
     currentChapterCount,
     existingContent,
-    userInput: continuationBrief,
+    userInput: input.continuationBrief?.trim() || undefined,
+    continuityGuidance: buildContinuationHiddenGuidance(input.continuationBrief, storyState),
+    continuityState: {
+      characterNames: storyState.characters.map(character => character.displayName),
+      // "Open" the same way `continuationGuidance.ts`'s own unresolved-thread
+      // filter reads it: every status but `resolved` still owes the reader a payoff.
+      openThreads: storyState.threads
+        .filter(thread => thread.status !== 'resolved')
+        .map(thread => thread.description || thread.label),
+      latestChapterExcerpt: latestChapter.rawContent || latestChapter.htmlContent
+    },
     maintainTone: true,
     tropeMetadata: existingSummary?.tropeMetadata,
     requestedChapterCount: input.chapterBatchSize,

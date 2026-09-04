@@ -44,7 +44,6 @@ import {
   createContextExcerpt,
   extractCharacterNames,
   extractChapterTitleAndBody,
-  extractLastChapterSummary,
   extractPlotThreads,
   extractSpicyLevelFromContent,
   extractThemesFromContent,
@@ -1256,18 +1255,24 @@ ${contextExcerpt}${restLines.join('\n')}`;
     chapterNumber: number = input.currentChapterCount + 1,
     existingContentOverride?: string
   ): string {
-    // Extract intelligent context from previous chapters
     const existingContent = existingContentOverride || input.existingContent;
-    const characterNames = extractCharacterNames(existingContent);
-    const lastChapterSummary = extractLastChapterSummary(existingContent);
-    const activePlotThreads = extractPlotThreads(existingContent);
-    const emotionalTone = analyzeEmotionalTone(existingContent);
-    
+
+    // `continuityState` is the authoritative StoryStateSnapshot's own view of
+    // the story, computed once in `storyLabEngine.ts` from real character
+    // profiles and typed plot threads — every real continuation carries it.
+    // The regex scans below only run when it's absent, which today is just
+    // the tests that call `continueChapter` directly without going through
+    // the engine; they existed for every caller before this field did, and
+    // are kept as that fallback rather than as a second source of truth for
+    // a call that has state to hand.
+    const characterNames = input.continuityState?.characterNames ?? extractCharacterNames(existingContent);
+    const activePlotThreads = input.continuityState?.openThreads ?? extractPlotThreads(existingContent);
+    const emotionalTone = analyzeEmotionalTone(input.continuityState?.latestChapterExcerpt ?? existingContent);
+
     const prompt = `Continue this story as Chapter ${chapterNumber}.
 
 CONTEXT FROM PREVIOUS CHAPTERS:
 - Established Characters: ${characterNames.join(', ') || 'Continue developing existing characters'}
-- Last Chapter Summary: ${lastChapterSummary}
 - Active Plot Threads: ${activePlotThreads.join(', ') || 'Develop new complications'}
 - Emotional Tone: ${emotionalTone}
 
@@ -1289,6 +1294,7 @@ CLIFFHANGER VARIETY TARGETS:
 - End with the type that best fits this chapter, but avoid repeating the exact emotional shape of the prior ending.
 
 ${input.userInput ? `CREATIVE DIRECTION: ${input.userInput}` : ''}
+${input.continuityGuidance ? `CONTINUITY REQUIREMENTS (do not deviate):\n${input.continuityGuidance}` : ''}
 ${this.formatContinuationStoryLabContext(input.generationContext)}
 
 PREVIOUS CHAPTER(S) FOR CONTINUITY:

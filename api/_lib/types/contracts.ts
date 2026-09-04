@@ -315,7 +315,19 @@ export interface ChapterContinuationSeam {
     storyId: string;
     currentChapterCount: number;
     existingContent: string; // Full story HTML content
-    userInput?: string; // Optional continuation hints
+    userInput?: string; // The reader's own free-text continuation hint, if any
+    // The Continuity Courtroom's hidden guidance (open-thread debts, chapter-ending
+    // stress test, cliche alarm) — kept separate from `userInput` so the prompt can
+    // label it as a requirement rather than folding it into the reader's own words.
+    continuityGuidance?: string;
+    // The authoritative StoryStateSnapshot's view of "who's in this story" and
+    // "what's still open", handed down by storyLabEngine so the prompt doesn't have
+    // to re-derive a cruder version of the same answer from raw chapter text.
+    continuityState?: {
+      characterNames: string[];
+      openThreads: string[];
+      latestChapterExcerpt: string;
+    };
     maintainTone: boolean; // Keep same spicy level and themes
     tropeMetadata?: string; // Optional invisible generation metadata from original story
     // The same table the genesis seam above reads.

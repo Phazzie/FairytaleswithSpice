@@ -758,28 +758,60 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
     });
 
     assert(response.success, 'continuation with continuity courtroom anchors should succeed');
-    assert(capturedInput?.userInput?.includes('Let the court demand payment.'), 'original continuation brief should stay in service input');
-    assert(capturedInput?.userInput?.includes('Continuity Courtroom:'), 'service input should include the continuity courtroom anchor');
-    assert(capturedInput?.userInput?.includes('Pressure rising: Forbidden Love'), 'escalating threads should be named for payoff');
-    assert(capturedInput?.userInput?.includes('Open promise: Court Intrigue'), 'active threads should be named for payoff');
-    assert(capturedInput?.userInput?.includes('World clue: Vow-Binding Songs'), 'unresolved artifacts should be named for payoff');
-    assert(capturedInput?.userInput?.includes('Continuity note: Resolve the vow-binding song before changing courts.'), 'continuity warnings should be carried into the next chapter request');
-    assert(!capturedInput?.userInput?.includes('Settled Debt'), 'resolved threads should not be repeated as open courtroom debts');
-    assert(!capturedInput?.userInput?.includes('Paid Charm'), 'resolved artifacts should not be repeated as unresolved courtroom debts');
-    assert(capturedInput?.userInput?.includes('Chapter Ending Stress Test:'), 'service input should include the chapter ending stress-test anchor');
-    assert(capturedInput?.userInput?.includes('Endings: emotional reveal, danger escalation, secret exposed.'), 'ending stress test should keep the candidate set visible to the model');
-    assert(capturedInput?.userInput?.includes('Chosen: Secret exposed'), 'unresolved lore and debt language should choose the secret-exposed ending pressure');
-    assert(capturedInput?.userInput?.includes('Scene pressure mix: Secret + Setting;'), 'scene pressure mixer should reuse the ending anchor');
-    assert(capturedInput?.userInput?.includes('leave one sharper'), 'ending stress test should preserve serialized momentum');
-    assert(capturedInput?.userInput?.includes('Cliche Alarm:'), 'service input should include the cliche alarm anchor');
-    assert(capturedInput?.userInput?.includes('Avoid: formal demand with no personal cost.'), 'debt/payment continuation should avoid the obvious formal-demand scene');
-    assert(capturedInput?.userInput?.includes('Freshness: turn Forbidden Love'), 'cliche alarm should tie freshness to a concrete unresolved story thread');
-    assert(!capturedInput?.userInput?.includes('Subtext Receipt:'), 'subtext receipt should not add a fourth hidden anchor block');
+    // The reader's own brief stays on `userInput`; the courtroom/stress-test/
+    // cliche-alarm anchors are hidden guidance and now travel separately on
+    // `continuityGuidance`, so a mislabeled prompt can't present them to the
+    // model as the reader's own creative direction.
+    assert(capturedInput?.userInput === 'Let the court demand payment.', 'original continuation brief should stay in service input, on its own');
+    assert(!capturedInput?.userInput?.includes('Continuity Courtroom:'), 'hidden anchors should not leak into the reader brief field');
+    assert(capturedInput?.continuityGuidance?.includes('Continuity Courtroom:'), 'service input should include the continuity courtroom anchor');
+    assert(capturedInput?.continuityGuidance?.includes('Pressure rising: Forbidden Love'), 'escalating threads should be named for payoff');
+    assert(capturedInput?.continuityGuidance?.includes('Open promise: Court Intrigue'), 'active threads should be named for payoff');
+    assert(capturedInput?.continuityGuidance?.includes('World clue: Vow-Binding Songs'), 'unresolved artifacts should be named for payoff');
+    assert(capturedInput?.continuityGuidance?.includes('Continuity note: Resolve the vow-binding song before changing courts.'), 'continuity warnings should be carried into the next chapter request');
+    assert(!capturedInput?.continuityGuidance?.includes('Settled Debt'), 'resolved threads should not be repeated as open courtroom debts');
+    assert(!capturedInput?.continuityGuidance?.includes('Paid Charm'), 'resolved artifacts should not be repeated as unresolved courtroom debts');
+    assert(capturedInput?.continuityGuidance?.includes('Chapter Ending Stress Test:'), 'service input should include the chapter ending stress-test anchor');
+    assert(capturedInput?.continuityGuidance?.includes('Endings: emotional reveal, danger escalation, secret exposed.'), 'ending stress test should keep the candidate set visible to the model');
+    assert(capturedInput?.continuityGuidance?.includes('Chosen: Secret exposed'), 'unresolved lore and debt language should choose the secret-exposed ending pressure');
+    assert(capturedInput?.continuityGuidance?.includes('Scene pressure mix: Secret + Setting;'), 'scene pressure mixer should reuse the ending anchor');
+    assert(capturedInput?.continuityGuidance?.includes('leave one sharper'), 'ending stress test should preserve serialized momentum');
+    assert(capturedInput?.continuityGuidance?.includes('Cliche Alarm:'), 'service input should include the cliche alarm anchor');
+    assert(capturedInput?.continuityGuidance?.includes('Avoid: formal demand with no personal cost.'), 'debt/payment continuation should avoid the obvious formal-demand scene');
+    assert(capturedInput?.continuityGuidance?.includes('Freshness: turn Forbidden Love'), 'cliche alarm should tie freshness to a concrete unresolved story thread');
+    assert(!capturedInput?.continuityGuidance?.includes('Subtext Receipt:'), 'subtext receipt should not add a fourth hidden anchor block');
     assert(
-      capturedInput?.userInput?.includes('Subtext receipt: prove Mira and Lord Brine by behavior before explanation.'),
+      capturedInput?.continuityGuidance?.includes('Subtext receipt: prove Mira and Lord Brine by behavior before explanation.'),
       'subtext receipt should reach the real continuation seam as behavior-first guidance'
     );
-    assert((capturedInput?.userInput?.length ?? 0) <= 900, 'hidden continuation anchors should stay under the compactness budget');
+    assert((capturedInput?.continuityGuidance?.length ?? 0) <= 900, 'hidden continuation anchors should stay under the compactness budget');
+
+    // `continuityState` is the authoritative view `buildContinuationPrompt`
+    // now prefers over its own regex scans of raw chapter text — see
+    // `story-service-prompt-guards.test.ts` for that half of the contract.
+    // Here it just has to be built correctly from the state this engine call
+    // was given.
+    const expectedLatestChapter = payload.batch.chapters.reduce((latest, chapter) =>
+      chapter.chapterNumber > latest.chapterNumber ? chapter : latest
+    );
+    assert(
+      JSON.stringify(capturedInput?.continuityState?.characterNames) === JSON.stringify(courtroomState.characters.map(character => character.displayName)),
+      'continuityState character names should be the state\'s own roster, not a speaker-tag scan'
+    );
+    assert(
+      capturedInput?.continuityState?.openThreads?.includes('This bargain has already been paid.') === false,
+      'a resolved thread should not be reported as open'
+    );
+    assert(
+      courtroomState.threads
+        .filter(thread => thread.status !== 'resolved')
+        .every(thread => capturedInput?.continuityState?.openThreads?.includes(thread.description || thread.label)),
+      'every non-resolved thread should be reported as open'
+    );
+    assert(
+      capturedInput?.continuityState?.latestChapterExcerpt === (expectedLatestChapter.rawContent || expectedLatestChapter.htmlContent),
+      'the latest-chapter excerpt should come from the highest-numbered previously generated chapter'
+    );
   });
 
   await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: undefined, VERCEL_ENV: undefined }, async () => {
@@ -852,13 +884,13 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
       })
     });
 
-    const providerBrief = capturedInput?.userInput ?? '';
-    const hiddenGuidance = providerBrief.replace('Focus on the ninth mirror debt.', '').trim();
+    const hiddenGuidance = capturedInput?.continuityGuidance ?? '';
     assert(response.success, 'continuation with rich hidden guidance should succeed');
-    assert(providerBrief.includes('Continuity Courtroom:'), 'budgeted guidance should retain the courtroom heading');
-    assert(providerBrief.includes('Pressure rising: Ninth Mirror Debt'), 'activated long thread should remain selected first');
-    assert(providerBrief.includes('Chapter Ending Stress Test:'), 'budgeted guidance should retain ending strategy');
-    assert(providerBrief.includes('Cliche Alarm:'), 'budgeted guidance should retain freshness guidance');
+    assert(capturedInput?.userInput === 'Focus on the ninth mirror debt.', 'reader brief should stay separate from the hidden guidance budget');
+    assert(hiddenGuidance.includes('Continuity Courtroom:'), 'budgeted guidance should retain the courtroom heading');
+    assert(hiddenGuidance.includes('Pressure rising: Ninth Mirror Debt'), 'activated long thread should remain selected first');
+    assert(hiddenGuidance.includes('Chapter Ending Stress Test:'), 'budgeted guidance should retain ending strategy');
+    assert(hiddenGuidance.includes('Cliche Alarm:'), 'budgeted guidance should retain freshness guidance');
     assert(hiddenGuidance.length <= 860, 'assembled hidden guidance should stay inside its documented budget');
   });
 
@@ -948,12 +980,13 @@ withEnv({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: 'true' }, () => {
       })
     });
 
-    const providerBrief = capturedInput?.userInput ?? '';
+    const hiddenGuidance = capturedInput?.continuityGuidance ?? '';
     assert(response.success, 'partial continuity state should not break continuation guidance');
-    assert(providerBrief.includes('Partial Oath'), 'thread label should survive when description/devices are missing');
-    assert(providerBrief.includes('Mira and Lord Brine'), 'relationship pressure should tolerate missing optional notes');
-    assert(providerBrief.includes('Carry the partial oath forward.'), 'valid continuity warning should survive stale warning entries');
-    assert(!providerBrief.includes('undefined'), 'partial continuity state should not inject undefined into hidden guidance');
+    assert(capturedInput?.userInput === undefined, 'no reader brief was supplied, so userInput should stay empty rather than carry hidden guidance');
+    assert(hiddenGuidance.includes('Partial Oath'), 'thread label should survive when description/devices are missing');
+    assert(hiddenGuidance.includes('Mira and Lord Brine'), 'relationship pressure should tolerate missing optional notes');
+    assert(hiddenGuidance.includes('Carry the partial oath forward.'), 'valid continuity warning should survive stale warning entries');
+    assert(!hiddenGuidance.includes('undefined'), 'partial continuity state should not inject undefined into hidden guidance');
   });
 
   // `previouslyGeneratedChapters` arrives in the request body and the routes

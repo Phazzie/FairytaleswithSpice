@@ -22,6 +22,7 @@ const service = new StoryService() as unknown as {
   formatThemeContext(input: StoryGenerationSeam['input']): string;
   formatStoryLabContext(input: StoryGenerationSeam['input']): string;
   formatContinuationStoryLabContext(context: ChapterContinuationSeam['input']['generationContext']): string;
+  buildContinuationPrompt(input: ChapterContinuationSeam['input']): string;
 };
 
 const longLabel = 'L'.repeat(120);
@@ -337,5 +338,69 @@ assert(
   !analyzeEmotionalTone('<p>The predominant colour was red.</p>').includes('intense'),
   'a word that merely contains a keyword should still not match'
 );
+
+// The continuation prompt used to rebuild "who's in this story" and "what's
+// still open" from raw text with regex heuristics, on every chapter, even
+// though `storyLabEngine.ts` already has the authoritative StoryStateSnapshot
+// in hand and only ever fails to call `continueChapter` when it's missing.
+// `continuityState` carries that authoritative view across the seam; when
+// present, it should win over the regex scans of `existingContent`.
+const continuationBaseInput = {
+  storyId: 'story-continuity-state-test',
+  currentChapterCount: 1,
+  existingContent: '<p>[Rook]: "Stay back."</p><p>He was dominant in every way that counted.</p>',
+  maintainTone: true
+} as unknown as ChapterContinuationSeam['input'];
+
+const withContinuityState = {
+  ...continuationBaseInput,
+  continuityState: {
+    characterNames: ['Mira', 'Lord Brine'],
+    openThreads: ['The vow-binding song still needs resolving.'],
+    // Deliberately the calm fixture from the emotional-tone tests above,
+    // distinct from `existingContent`'s dominance scene, so a prompt built
+    // from `continuityState` is provably reading this and not the aggregate.
+    latestChapterExcerpt: '<p>A quiet supper by the window.</p>'
+  }
+} as ChapterContinuationSeam['input'];
+
+const statePrompt = service.buildContinuationPrompt(withContinuityState);
+assert(statePrompt.includes('Established Characters: Mira, Lord Brine'), 'the authoritative character roster should drive the prompt over the speaker-tag regex scan');
+assert(!statePrompt.includes('Rook'), 'the regex-only speaker tag from existingContent should not leak in once state is available');
+assert(statePrompt.includes('Active Plot Threads: The vow-binding song still needs resolving.'), 'authoritative open threads should drive the prompt over the keyword scan');
+assert(statePrompt.includes('Emotional Tone: romantic with building tension'), 'tone should read the latest-chapter excerpt from state, not the aggregate existingContent');
+assert(!statePrompt.includes('Last Chapter Summary'), 'the last-chapter summary line is gone: it only ever duplicated the excerpt already in the prompt');
+
+// Without `continuityState` — today, only direct `continueChapter` calls in
+// tests that predate this field — the regex scans stay the fallback rather
+// than a second, unused source of truth.
+const withoutContinuityState = service.buildContinuationPrompt(continuationBaseInput);
+assert(withoutContinuityState.includes('Established Characters: Rook'), 'without state, the speaker-tag fallback should still extract who is present');
+assert(withoutContinuityState.includes('Emotional Tone: intense'), 'without state, the tone fallback should still scan the full existingContent');
+
+// The reader's own free-text brief and the Continuity Courtroom's hidden
+// guidance used to be concatenated into one string and labeled to the model
+// as the reader's own "CREATIVE DIRECTION" — so an authoritative, must-honor
+// continuity requirement read to the model as the reader's optional color.
+// They now arrive as two separate fields and get two separate headings.
+const withBriefAndGuidance = {
+  ...continuationBaseInput,
+  userInput: 'Keep it playful.',
+  continuityGuidance: 'Continuity Courtroom:\n- Open promise: Vow-Binding Song'
+} as ChapterContinuationSeam['input'];
+
+const splitPrompt = service.buildContinuationPrompt(withBriefAndGuidance);
+assert(splitPrompt.includes('CREATIVE DIRECTION: Keep it playful.'), "the reader's own brief should still be labeled as creative direction");
+assert(splitPrompt.includes('CONTINUITY REQUIREMENTS (do not deviate):\nContinuity Courtroom:'), 'hidden guidance should get its own requirements heading');
+assert(!splitPrompt.includes('CREATIVE DIRECTION: Keep it playful.\nContinuity Courtroom:'), 'hidden guidance must not be concatenated onto the creative-direction line');
+
+const guidanceOnly = {
+  ...continuationBaseInput,
+  continuityGuidance: 'Continuity Courtroom:\n- Open promise: Vow-Binding Song'
+} as ChapterContinuationSeam['input'];
+
+const guidanceOnlyPrompt = service.buildContinuationPrompt(guidanceOnly);
+assert(!guidanceOnlyPrompt.includes('CREATIVE DIRECTION:'), 'no creative-direction heading should appear without a reader brief');
+assert(guidanceOnlyPrompt.includes('CONTINUITY REQUIREMENTS (do not deviate):'), 'the hidden-guidance heading should still appear on its own');
 
 console.log('Story service prompt guard tests passed');
