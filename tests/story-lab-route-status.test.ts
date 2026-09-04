@@ -478,35 +478,27 @@ async function main(): Promise<void> {
   // shape and same assertions as the job route's own tests
   // (`tests/story-lab-job-routes.test.ts`), proving the shared
   // `contentBoundaries` module reaches both seams identically.
-  {
-    let capturedNoGoContent: string | undefined;
-    const handler = createStoryLabGenesisHandler({
+  for (const testCase of [
+    {
+      description: 'genesis with a profile',
       authPort: createStaticAuthPort(owner),
-      profileStore: createStubProfileStore(
-        createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: 'No humiliation.' } })
-      ),
-      generateGenesis: async input => {
-        capturedNoGoContent = input.heatContract.noGoContent;
-        return { success: true, data: { story: {} } as never };
-      }
-    });
-
-    const response = new FakeResponse();
-    await handler(createRequest('POST', createBlueprint()), response);
-
-    assert(response.statusCode === 200, `genesis with a profile should still succeed, got ${response.statusCode}`);
-    assert(
-      capturedNoGoContent === 'No humiliation.',
-      `profile content boundaries should reach the engine when the request's own noGoContent is empty, got ${JSON.stringify(capturedNoGoContent)}`
-    );
-  }
-
-  {
+      contentBoundaries: 'No humiliation.',
+      expectedNoGoContent: 'No humiliation.',
+      expectedMessage: "profile content boundaries should reach the engine when the request's own noGoContent is empty"
+    },
+    {
+      description: 'genesis with no authenticated user',
+      authPort: createRejectingAuthPort(),
+      contentBoundaries: 'Should never be read.',
+      expectedNoGoContent: '',
+      expectedMessage: 'with no authenticated caller, the request heat contract should reach the engine unchanged'
+    }
+  ]) {
     let capturedNoGoContent: string | undefined;
     const handler = createStoryLabGenesisHandler({
-      authPort: createRejectingAuthPort(),
+      authPort: testCase.authPort,
       profileStore: createStubProfileStore(
-        createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: 'Should never be read.' } })
+        createDefaultStoryLabUserProfile(owner, { preferences: { contentBoundaries: testCase.contentBoundaries } })
       ),
       generateGenesis: async input => {
         capturedNoGoContent = input.heatContract.noGoContent;
@@ -517,10 +509,10 @@ async function main(): Promise<void> {
     const response = new FakeResponse();
     await handler(createRequest('POST', createBlueprint()), response);
 
-    assert(response.statusCode === 200, `genesis with no authenticated user should still succeed, got ${response.statusCode}`);
+    assert(response.statusCode === 200, `${testCase.description} should still succeed, got ${response.statusCode}`);
     assert(
-      capturedNoGoContent === '',
-      `with no authenticated caller, the request heat contract should reach the engine unchanged, got ${JSON.stringify(capturedNoGoContent)}`
+      capturedNoGoContent === testCase.expectedNoGoContent,
+      `${testCase.expectedMessage}, got ${JSON.stringify(capturedNoGoContent)}`
     );
   }
 
