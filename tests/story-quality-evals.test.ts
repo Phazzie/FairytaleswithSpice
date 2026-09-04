@@ -1271,7 +1271,10 @@ async function main(): Promise<void> {
     `continuation should receive previous chapter context. Received: ${continuationInput?.existingContent ?? 'none'}`
   );
   assert(continuationInput?.userInput?.includes('Lord Brine'), 'continuation brief should reach the story service.');
-  const hiddenGuidance = continuationInput?.userInput ?? '';
+  // The reader's own brief lives on `userInput`; the Continuity Courtroom's
+  // hidden guidance travels separately on `continuityGuidance` so it can't be
+  // mislabeled to the model as the reader's own creative direction.
+  const hiddenGuidance = continuationInput?.continuityGuidance ?? '';
   assert(hiddenGuidance.includes('Continuity Courtroom:'), 'continuation guidance should include continuity anchors.');
   assert(hiddenGuidance.includes('Chapter Ending Stress Test:'), 'continuation guidance should include ending pressure.');
   assert(hiddenGuidance.includes('Cliche Alarm:'), 'continuation guidance should include stale-path avoidance.');

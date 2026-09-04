@@ -366,7 +366,10 @@ const withContinuityState = {
 
 const statePrompt = service.buildContinuationPrompt(withContinuityState);
 assert(statePrompt.includes('Established Characters: Mira, Lord Brine'), 'the authoritative character roster should drive the prompt over the speaker-tag regex scan');
-assert(!statePrompt.includes('Rook'), 'the regex-only speaker tag from existingContent should not leak in once state is available');
+// `existingContent` still reaches the model verbatim as the "PREVIOUS
+// CHAPTER(S) FOR CONTINUITY" excerpt further down — only the "Established
+// Characters" *line* should stop being the regex-only speaker-tag scan.
+assert(!statePrompt.split('\n').some(line => line.startsWith('- Established Characters:') && line.includes('Rook')), 'the character line specifically should not fall back to the speaker-tag scan once state is available');
 assert(statePrompt.includes('Active Plot Threads: The vow-binding song still needs resolving.'), 'authoritative open threads should drive the prompt over the keyword scan');
 assert(statePrompt.includes('Emotional Tone: romantic with building tension'), 'tone should read the latest-chapter excerpt from state, not the aggregate existingContent');
 assert(!statePrompt.includes('Last Chapter Summary'), 'the last-chapter summary line is gone: it only ever duplicated the excerpt already in the prompt');
