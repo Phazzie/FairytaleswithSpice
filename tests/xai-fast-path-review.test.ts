@@ -179,6 +179,43 @@ async function assertContinuityHeuristicWarningPriority(): Promise<void> {
 }
 
 /**
+ * The missing-`XAI_API_KEY` skip branch is a third, distinct way into the
+ * same no-op passthrough as the two tests above — `!input.useAi` takes
+ * priority over it (covered above), and a low budget takes priority over it
+ * too (covered in `assertContinuityFastTimeoutUsesConfiguredBudget`), but
+ * nothing previously exercised useAi:true with a configured budget and no
+ * key at all, which is its own reachable state with its own warning text.
+ */
+async function assertContinuityMissingApiKeySkipLeavesStateUnchanged(): Promise<void> {
+  const originalApiKey = process.env['XAI_API_KEY'];
+
+  try {
+    delete process.env['XAI_API_KEY'];
+    const continuityInput = buildContinuityInput(true);
+    const result = await extractContinuity(continuityInput);
+
+    assert.equal(result.receipt.source, 'heuristic', 'a missing API key should fall back to the heuristic receipt');
+    assert.equal(
+      result.receipt.warning,
+      'Continuity tracking is unavailable because XAI_API_KEY is not configured — the character, thread, and artifact list did not update this batch.',
+      'a missing API key should explain why extraction did not run and that nothing was extracted'
+    );
+    assert.equal(result.receipt.confidence, 0, 'a missing API key leaves no facts to be confident about');
+    assert.deepEqual(
+      result.state,
+      continuityInput.currentState,
+      'a missing API key must leave characters/threads/artifacts exactly as they were'
+    );
+  } finally {
+    if (originalApiKey === undefined) {
+      delete process.env['XAI_API_KEY'];
+    } else {
+      process.env['XAI_API_KEY'] = originalApiKey;
+    }
+  }
+}
+
+/**
  * `extractContinuity`'s catch block used to fabricate a `confidence: 0.45`
  * and call itself "fallback extraction" on a provider error, exactly like the
  * skip branch above — but nothing in this repository had ever asserted that
@@ -691,6 +728,7 @@ function assertShippedTimeoutDefaultsLeaveRoomForTheRetry(): void {
 async function main(): Promise<void> {
   await assertContinuityFastTimeoutUsesConfiguredBudget();
   await assertContinuityHeuristicWarningPriority();
+  await assertContinuityMissingApiKeySkipLeavesStateUnchanged();
   await assertContinuityProviderErrorLeavesStateUnchanged();
   assertReasoningConfig();
   await assertXaiClientPayloads();
