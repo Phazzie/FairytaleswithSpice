@@ -24,7 +24,14 @@
 // default exports and mounts them directly (see that file's own comment on
 // why), making `apiErrorHandler`'s `logCritical` call a second, now-genuinely-
 // last-resort safety net there rather than the *only* one.
-import { logCritical } from '../utils/logger';
+//
+// Codex's re-review of the first cut of this file found two more issues:
+// a fire-and-forget `logCritical` here had the same "may never leave the
+// process" gap already fixed for the process-crash guard, and a mid-stream
+// escape (an SSE route that already sent headers) was logged but left the
+// connection open until the platform's own function timeout. Both are fixed
+// below.
+import { logCriticalAndFlush } from '../utils/logger';
 import { readRequestCorrelationId } from './requestCorrelationId';
 
 export type ApiRouteHandler = (req: any, res: any) => unknown;
@@ -34,11 +41,20 @@ function readRequestPath(req: any): string | undefined {
   return typeof path === 'string' ? path : undefined;
 }
 
+/**
+ * Answers the generic `500` (or, for a response already streaming, closes the
+ * connection instead — see below) synchronously, before the caller awaits the
+ * critical-alert flush. Keeps the failing request's own latency independent
+ * of however long alert delivery takes.
+ */
 function sendGenericFailureEnvelope(res: any): void {
   if (res?.headersSent) {
     // A route already streaming a response (Server-Sent Events, say) cannot
-    // be given a status and a body now; the alert above is all that can still
-    // happen here.
+    // be given a new status and body now. Leaving the connection open would
+    // strand the caller until the platform's own function timeout instead of
+    // observing that the stream has ended — closing it here is what actually
+    // signals that.
+    res.end?.();
     return;
   }
 
@@ -59,38 +75,50 @@ function sendGenericFailureEnvelope(res: any): void {
   }));
 }
 
-function handleEscapedFailure(req: any, res: any, error: unknown): void {
-  logCritical('Unhandled API route failure', error, {
+/**
+ * Sends the response first — so a caller waiting on this request is not held
+ * up by however long alert delivery takes — then awaits the flush before
+ * returning. A Vercel Node function stays alive until the promise its
+ * `export default` handler returns settles, regardless of whether a response
+ * was already sent; a fire-and-forget alert here has no such guarantee and
+ * may never leave the invocation before it is frozen or torn down.
+ */
+async function handleEscapedFailure(req: any, res: any, error: unknown): Promise<void> {
+  sendGenericFailureEnvelope(res);
+  await logCriticalAndFlush('Unhandled API route failure', error, {
     requestId: readRequestCorrelationId(req),
     endpoint: readRequestPath(req),
     method: typeof req?.method === 'string' ? req.method : undefined
   });
-  sendGenericFailureEnvelope(res);
 }
 
 /**
  * Wraps a Vercel/Express-compatible `(req, res)` route handler so that
  * anything escaping it — a synchronous throw or a rejected promise the
  * handler's own try/catch did not intercept — is logged at `critical`
- * severity (and thus reaches a configured alert webhook, in production)
- * before answering a generic `500`, instead of surfacing only as whatever
- * the hosting platform's own default crash handling does.
+ * severity (and thus reaches a configured alert webhook, in production, with
+ * its delivery awaited) before answering a generic `500`, instead of
+ * surfacing only as whatever the hosting platform's own default crash
+ * handling does.
  */
 export function withUnhandledRouteFailureLogging(handler: ApiRouteHandler): ApiRouteHandler {
-  return function wrappedHandler(req: any, res: any): unknown {
+  return async function wrappedHandler(req: any, res: any): Promise<unknown> {
     let result: unknown;
 
     try {
       result = handler(req, res);
     } catch (error) {
-      handleEscapedFailure(req, res, error);
+      await handleEscapedFailure(req, res, error);
       return undefined;
     }
 
     if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
-      return Promise.resolve(result as PromiseLike<unknown>).catch(error => {
-        handleEscapedFailure(req, res, error);
-      });
+      try {
+        return await (result as PromiseLike<unknown>);
+      } catch (error) {
+        await handleEscapedFailure(req, res, error);
+        return undefined;
+      }
     }
 
     return result;

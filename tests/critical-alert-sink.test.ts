@@ -247,6 +247,37 @@ async function testConsoleSinkAndWaitResolvesImmediately(): Promise<void> {
   });
 }
 
+// Finding #1 (P1, re-review): `api/story-lab/jobs.ts`'s SSE endpoint accepts
+// its `API_KEYS` credential as an `apiKey` query-parameter fallback (its
+// `EventSource` client cannot set custom headers). The redactor blanks a
+// recognized *key*, not an arbitrary token sitting inside a URL's query
+// string, so that credential could otherwise ride along into the webhook
+// payload verbatim via `context.endpoint`.
+function testFormatCriticalAlertTextStripsQueryStringFromEndpoint(): void {
+  const text = formatCriticalAlertText(sampleEntry({
+    context: { endpoint: '/api/story-lab/jobs?jobId=abc&apiKey=super-secret-token', requestId: 'req_1' }
+  }));
+
+  assert(text.includes('/api/story-lab/jobs'), 'the path itself should still be included');
+  assert(!text.includes('super-secret-token'), 'a credential riding in the query string must never reach the webhook');
+  assert(!text.includes('apiKey'), 'the query string should be stripped entirely, not just its value');
+}
+
+// Finding #2 (P2, re-review): `error.name` is an ordinary writable string —
+// nothing stops a dependency or handler from setting it to arbitrary text,
+// including text derived from user input. Only an identifier-shaped name is
+// forwarded; anything else is replaced with a generic label.
+function testFormatCriticalAlertTextSanitizesUnsafeErrorNames(): void {
+  const safe = formatCriticalAlertText(sampleEntry({ error: { name: 'ValidationError', message: 'x' } }));
+  assert(safe.includes('ValidationError'), 'an identifier-shaped error name should be forwarded as-is');
+
+  const unsafe = formatCriticalAlertText(sampleEntry({
+    error: { name: 'Once upon a time the reader typed: <script>alert(1)</script>', message: 'x' }
+  }));
+  assert(!unsafe.includes('Once upon a time'), 'an arbitrary error name must not reach the webhook verbatim');
+  assert(unsafe.includes('Error type: Error'), 'an unsafe error name should fall back to a generic label');
+}
+
 function testFormatCriticalAlertTextOmitsMissingFields(): void {
   const text = formatCriticalAlertText({
     timestamp: '2026-09-05T00:00:00.000Z',
@@ -305,6 +336,8 @@ async function main(): Promise<void> {
   await testWebhookSinkAndWaitResolvesAfterSuccessfulDelivery();
   await testWebhookSinkAndWaitResolvesEvenWhenDeliveryFails();
   await testConsoleSinkAndWaitResolvesImmediately();
+  testFormatCriticalAlertTextStripsQueryStringFromEndpoint();
+  testFormatCriticalAlertTextSanitizesUnsafeErrorNames();
   testFormatCriticalAlertTextOmitsMissingFields();
   await testDispatchCriticalAlertRoutesThroughTheResolvedSink();
   await testDispatchCriticalAlertAndWaitResolvesOnlyAfterDelivery();

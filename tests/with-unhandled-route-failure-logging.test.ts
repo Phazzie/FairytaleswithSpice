@@ -21,6 +21,7 @@ class FakeResponse {
   statusCode = 0;
   body: unknown = null;
   ended: string | undefined;
+  endCalls = 0;
 
   status(code: number): this {
     this.statusCode = code;
@@ -39,6 +40,7 @@ class FakeResponse {
   end(payload?: string): void {
     this.ended = payload;
     this.headersSent = true;
+    this.endCalls += 1;
   }
 }
 
@@ -52,7 +54,7 @@ async function testPassesThroughANormallyHandledRequest(): Promise<void> {
     r.status(200).json({ success: true });
   });
 
-  wrapped(createRequest(), res);
+  await wrapped(createRequest(), res);
 
   assert.equal(res.statusCode, 200, 'a handler that answers normally should be untouched');
   assert.deepEqual(res.body, { success: true });
@@ -65,7 +67,7 @@ async function testLogsAndAnswers500OnASynchronousThrow(): Promise<void> {
     throw new Error('bug before the handler\'s own try block');
   });
 
-  wrapped(createRequest(), res);
+  await wrapped(createRequest(), res);
 
   assert.equal(res.statusCode, 500, 'a synchronous throw should still answer 500');
   const body = res.body as { success: boolean; error: { code: string } };
@@ -108,6 +110,23 @@ async function testNeverWritesASecondResponseOnceHeadersAreSent(): Promise<void>
   assert.ok(critical, 'a failure after headers are sent should still be logged at critical severity');
 }
 
+// Leaving the connection open after a mid-stream escape would strand the
+// caller until the platform's own function timeout instead of observing that
+// the stream ended. Tracked separately from the "body unchanged" assertion
+// above via a response double that records whether `end()` was ever called.
+async function testClosesTheConnectionOnAMidStreamEscape(): Promise<void> {
+  logger.clearLogs();
+  const res = new FakeResponse();
+  const wrapped = withUnhandledRouteFailureLogging(async (_req, r) => {
+    r.json({ event: 'started' });
+    throw new Error('failed mid-stream');
+  });
+
+  await wrapped(createRequest(), res);
+
+  assert.equal(res.endCalls, 1, 'a mid-stream escape should close the connection exactly once');
+}
+
 async function testLoggedContextCarriesRequestMethodAndPath(): Promise<void> {
   logger.clearLogs();
   const res = new FakeResponse();
@@ -115,7 +134,7 @@ async function testLoggedContextCarriesRequestMethodAndPath(): Promise<void> {
     throw new Error('boom');
   });
 
-  wrapped(createRequest({ method: 'DELETE', url: '/api/story-lab/jobs?jobId=abc' }), res);
+  await wrapped(createRequest({ method: 'DELETE', url: '/api/story-lab/jobs?jobId=abc' }), res);
 
   const critical = logger.getRecentLogs(10, 'critical').find(entry => entry.message === 'Unhandled API route failure');
   assert.equal(critical?.context?.method, 'DELETE');
@@ -127,6 +146,7 @@ async function main(): Promise<void> {
   await testLogsAndAnswers500OnASynchronousThrow();
   await testLogsAndAnswers500OnARejectedPromise();
   await testNeverWritesASecondResponseOnceHeadersAreSent();
+  await testClosesTheConnectionOnAMidStreamEscape();
   await testLoggedContextCarriesRequestMethodAndPath();
 
   logger.clearLogs();

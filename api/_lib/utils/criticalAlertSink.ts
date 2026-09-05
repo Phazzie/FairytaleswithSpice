@@ -134,21 +134,62 @@ export class WebhookCriticalAlertSink implements CriticalAlertSink {
  * (`TypeError`, `RangeError`, this app's own error classes) is bounded,
  * operational, and safe to send; the message is not, so it is left out here
  * even though it is still printed locally by `outputToConsole` in `logger.ts`.
+ *
+ * `entry.context.endpoint` and `entry.error.name` get the same treatment via
+ * `sanitizeEndpointForAlert`/`sanitizeErrorNameForAlert` below — Codex's
+ * re-review of this same PR found both were still uncontrolled disclosure
+ * paths even after the message fix above.
  */
 export function formatCriticalAlertText(entry: LogEntry): string {
   const lines = [`🚨 *CRITICAL*: ${entry.message}`, `Time: ${entry.timestamp}`];
 
   if (entry.context?.endpoint) {
-    lines.push(`Endpoint: ${entry.context.endpoint}`);
+    lines.push(`Endpoint: ${sanitizeEndpointForAlert(entry.context.endpoint)}`);
   }
   if (entry.context?.requestId) {
     lines.push(`Request: ${entry.context.requestId}`);
   }
   if (entry.error?.name) {
-    lines.push(`Error type: ${entry.error.name}`);
+    lines.push(`Error type: ${sanitizeErrorNameForAlert(entry.error.name)}`);
   }
 
   return lines.join('\n');
+}
+
+/**
+ * `entry.context.endpoint` is a request path, and at least one route
+ * (`api/story-lab/jobs.ts`'s SSE endpoint, whose `EventSource` client cannot
+ * set custom headers) accepts its `API_KEYS` credential as an `apiKey` query
+ * parameter fallback — see `withEventStreamAuth`. `redactSensitiveLogData`
+ * blanks a *key* it recognizes; it does not inspect an arbitrary token
+ * sitting inside a URL's query string, so a caller's own credential could
+ * otherwise ride along into this webhook's payload verbatim whenever that
+ * route's escaped-failure path logged its own URL as the endpoint. Every
+ * `logCritical` call site is trusted to keep the *path* itself free of
+ * secrets (it names a route, not a resource id); only the query string —
+ * where a fallback credential like this one lives — is stripped, once, here,
+ * rather than trusting each caller to have done it already.
+ */
+function sanitizeEndpointForAlert(endpoint: string): string {
+  const queryIndex = endpoint.indexOf('?');
+  return queryIndex === -1 ? endpoint : endpoint.slice(0, queryIndex);
+}
+
+/**
+ * `Error.prototype.name` is an ordinary writable string property, not a
+ * closed set of built-in names: `extractErrorDetails` in `logger.ts` accepts
+ * whatever a thrown value's `name` happens to be, and nothing stops a
+ * dependency (or a handler constructing its own error) from setting it to
+ * arbitrary text — including text derived from user input. A short,
+ * identifier-shaped value (`TypeError`, `ValidationError`, this app's own
+ * error classes) is safe to forward; anything else is replaced with a
+ * generic label rather than risking the same disclosure this function
+ * already refuses for `error.message`.
+ */
+const SAFE_ERROR_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.]{0,63}$/;
+
+function sanitizeErrorNameForAlert(name: string): string {
+  return SAFE_ERROR_NAME_PATTERN.test(name) ? name : 'Error';
 }
 
 /**
