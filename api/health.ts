@@ -3,6 +3,7 @@ import { applyCorsPolicy } from './_lib/http/corsPolicy';
 import { sendMethodNotAllowed } from './_lib/http/methodNotAllowed';
 import { createRateLimitStoreConfig } from './_lib/middleware/rateLimitStoreConfig';
 import { createStoryLabJobStoreConfig } from './_lib/story-lab/jobs/storyLabJobStoreConfig';
+import { createCriticalAlertSinkConfig } from './_lib/utils/criticalAlertSink';
 import { logError } from './_lib/utils/logger';
 
 /** What this route serves, for CORS and for `Allow` alike. */
@@ -23,6 +24,7 @@ type HealthPayload = {
     grok: 'configured' | 'mock';
     rateLimitStore: DurableStoreHealth;
     storyLabJobStore: DurableStoreHealth;
+    criticalAlerting: DurableStoreHealth;
   };
   cors: {
     allowedOrigin: string | null;
@@ -64,6 +66,15 @@ export default async function handler(req: any, res: any) {
       mode: storyLabJobStoreConfig.mode,
       configured: storyLabJobStoreConfig.isConfigured()
     };
+    const criticalAlertSinkConfig = createCriticalAlertSinkConfig();
+    const criticalAlerting: DurableStoreHealth = {
+      mode: criticalAlertSinkConfig.mode,
+      configured: criticalAlertSinkConfig.configured
+    };
+    // Unlike the two durable stores above, there is no invalid state here to
+    // detect (console is always a valid, intentional default; a configured
+    // webhook URL always resolves), so this never contributes to `degraded` —
+    // it exists purely for operator visibility into which destination is live.
     const degraded = isDurableStoreDegraded(rateLimitStore) || isDurableStoreDegraded(storyLabJobStore);
 
     const health: HealthPayload = {
@@ -74,7 +85,8 @@ export default async function handler(req: any, res: any) {
       services: {
         grok: !!process.env['XAI_API_KEY'] ? 'configured' : 'mock',
         rateLimitStore,
-        storyLabJobStore
+        storyLabJobStore,
+        criticalAlerting
       },
       cors: {
         // Report what the CORS policy actually resolved for this request rather

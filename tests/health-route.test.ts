@@ -88,6 +88,7 @@ function dataOf(response: FakeResponse): {
     grok: string;
     rateLimitStore: { mode: string; configured: boolean };
     storyLabJobStore: { mode: string; configured: boolean };
+    criticalAlerting: { mode: string; configured: boolean };
   };
 } {
   return (response.body as { data: ReturnType<typeof dataOf> }).data;
@@ -100,6 +101,8 @@ async function main(): Promise<void> {
   await testDegradedOnUnsupportedJobStoreMode();
   await testDegradedOnUnreachablePostgresRateLimitStore();
   await testDegradedOnUnreachablePostgresJobStore();
+  await testCriticalAlertingDefaultsToConsole();
+  await testCriticalAlertingReportsWebhookModeWithoutDegradingHealth();
 
   console.log('Health route tests passed');
 }
@@ -166,6 +169,25 @@ async function testDegradedOnUnreachablePostgresJobStore(): Promise<void> {
   assert(data.status === 'degraded', 'an unreachable postgres job store should report degraded');
   assert(data.services.storyLabJobStore.mode === 'postgres', 'the requested postgres mode should be surfaced');
   assert(!data.services.storyLabJobStore.configured, 'a postgres store with no DATABASE_URL should not be configured');
+}
+
+async function testCriticalAlertingDefaultsToConsole(): Promise<void> {
+  const response = await get({ CRITICAL_ALERT_WEBHOOK_URL: undefined });
+
+  assert(response.statusCode === 200, 'an unconfigured critical alert destination should not affect health status');
+  const data = dataOf(response);
+  assert(data.services.criticalAlerting.mode === 'console', 'default critical alerting should report console mode');
+  assert(data.services.criticalAlerting.configured, 'console-mode critical alerting should report configured');
+}
+
+async function testCriticalAlertingReportsWebhookModeWithoutDegradingHealth(): Promise<void> {
+  const response = await get({ CRITICAL_ALERT_WEBHOOK_URL: 'https://hooks.example.com/alert' });
+
+  assert(response.statusCode === 200, 'a configured critical alert webhook should still answer 200');
+  const data = dataOf(response);
+  assert(data.status === 'healthy', 'a configured critical alert webhook is not itself a degraded state');
+  assert(data.services.criticalAlerting.mode === 'webhook', 'a configured webhook URL should report webhook mode');
+  assert(data.services.criticalAlerting.configured, 'a configured webhook URL should report configured');
 }
 
 main().catch(error => {

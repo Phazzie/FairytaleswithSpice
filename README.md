@@ -73,6 +73,11 @@ XAI_API_KEY=your_grok_api_key_here
 # Optional: Audio Generation (uses mocks if not provided)
 ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 
+# Optional: post `logCritical(...)` alerts (system failures, security issues)
+# to a webhook instead of console-only logging. Accepts any endpoint that
+# takes a Slack-incoming-webhook-shaped `{ text }` POST body, Slack included.
+CRITICAL_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
+
 # Development settings
 NODE_ENV=development
 ```
@@ -340,6 +345,11 @@ when the rate-limit store or Story Lab job store is misconfigured (an unsupporte
 mode value, or `postgres` mode with no reachable database). Falling back to the
 in-memory/non-durable default is not itself degraded — only an unreachable
 `postgres` mode or an invalid mode value is.
+
+`services.criticalAlerting` reports where `logCritical(...)` calls are actually
+delivered: `{ mode: "console" }` by default, or `{ mode: "webhook" }` once
+`CRITICAL_ALERT_WEBHOOK_URL` is set (see Environment Setup below). This never
+affects the overall `status` — it's for operator visibility only.
 
 ### **Story Generation**
 ```http

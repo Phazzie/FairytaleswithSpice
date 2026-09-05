@@ -16,6 +16,7 @@ import {
   REDACTED_SENSITIVE_TEXT,
   redactSensitiveTextTokens
 } from '../../../shared/sensitiveTextRedaction';
+import { dispatchCriticalAlert } from './criticalAlertSink';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'critical';
 
@@ -236,7 +237,11 @@ class Logger {
   }
 
   /**
-   * Log critical errors (system failures, data corruption, security issues)
+   * Log critical errors (system failures, data corruption, security issues).
+   * In production this also dispatches to whatever alert destination
+   * `createCriticalAlertSinkConfig` resolves — console-only by default, or a
+   * webhook when `CRITICAL_ALERT_WEBHOOK_URL` is configured (see
+   * `criticalAlertSink.ts`).
    */
   public critical(message: string, error?: any, context?: LogContext, metadata?: Record<string, any>): void {
     this.log('critical', message, context, error, metadata);
@@ -364,10 +369,11 @@ class Logger {
     // Console output with formatting
     this.outputToConsole(logEntry);
 
-    // In production, you could send to external logging service here
-    // e.g., Sentry, Datadog, CloudWatch, etc.
+    // In production, route critical entries to whatever alert destination is
+    // configured (see `criticalAlertSink.ts`) — a webhook when
+    // `CRITICAL_ALERT_WEBHOOK_URL` is set, console-only otherwise.
     if (!this.isDevelopment && level === 'critical') {
-      this.sendToExternalLogger(logEntry);
+      dispatchCriticalAlert(logEntry);
     }
   }
 
@@ -534,23 +540,6 @@ class Logger {
       default:
         return console.log;
     }
-  }
-
-  /**
-   * Send critical errors to external logging service
-   * (Placeholder - implement with Sentry, Datadog, etc.)
-   */
-  private sendToExternalLogger(entry: LogEntry): void {
-    // TODO: Implement external logging service integration
-    // Example services:
-    // - Sentry
-    // - Datadog
-    // - CloudWatch
-    // - LogRocket
-    // - Rollbar
-    
-    // For now, just ensure it's logged to console
-    console.error('🚨 CRITICAL ERROR - External logging placeholder:', entry);
   }
 }
 
