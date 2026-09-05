@@ -13,6 +13,7 @@ import { configuredAuthPort } from '../_lib/story-lab/auth/configuredAuthPort';
 import type { StoryLabProfileStore } from '../_lib/story-lab/profile/storyLabProfileStore';
 import { createStoryLabCloudStorage } from '../_lib/story-lab/storage/storyLabCloudStorageConfig';
 import { loadAuthenticatedContentBoundaries, withMergedContentBoundaries } from '../_lib/story-lab/contentBoundaries';
+import { withUnhandledRouteFailureLogging } from '../_lib/http/withUnhandledRouteFailureLogging';
 
 type GenerateStoryLabGenesis = typeof generateStoryLabGenesis;
 
@@ -153,4 +154,4 @@ export function createStoryLabGenesisHandler(
   };
 }
 
-export default createStoryLabGenesisHandler();
+export default withUnhandledRouteFailureLogging(createStoryLabGenesisHandler());

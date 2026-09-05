@@ -1,6 +1,6 @@
 // Created: 2026-08-28 07:00 UTC
 
-import { logCritical } from '../utils/logger';
+import { logCriticalAndFlush } from '../utils/logger';
 
 /**
  * Log a failure that reached neither a route nor `apiErrorHandler` — one
@@ -18,10 +18,16 @@ import { logCritical } from '../utils/logger';
  * Kept out of `server.ts` itself, and out of `expressApiRoutes.ts`, so a test
  * can import it without pulling in the Angular SSR engine that module
  * constructs at load time.
+ *
+ * Returns a promise the caller can await: `uncaughtException` calls
+ * `process.exit(1)` immediately afterward, and a fire-and-forget alert there
+ * has no guarantee of even starting before the process ends — Codex's review
+ * of the initial push on #339 caught exactly that gap. `logCriticalAndFlush`
+ * still never rejects, so awaiting this can never itself throw.
  */
-export function logUnhandledProcessFailure(
+export async function logUnhandledProcessFailure(
   kind: 'uncaughtException' | 'unhandledRejection',
   error: unknown
-): void {
-  logCritical(`Unhandled ${kind}`, error, { endpoint: 'process' });
+): Promise<void> {
+  await logCriticalAndFlush(`Unhandled ${kind}`, error, { endpoint: 'process' });
 }

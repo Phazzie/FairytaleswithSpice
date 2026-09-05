@@ -102,7 +102,9 @@ async function main(): Promise<void> {
   await testDegradedOnUnreachablePostgresRateLimitStore();
   await testDegradedOnUnreachablePostgresJobStore();
   await testCriticalAlertingDefaultsToConsole();
-  await testCriticalAlertingReportsWebhookModeWithoutDegradingHealth();
+  await testCriticalAlertingReportsWebhookModeInProductionWithoutDegradingHealth();
+  await testCriticalAlertingReportsConsoleOutsideProductionEvenWhenUrlConfigured();
+  await testCriticalAlertingDegradedOnMalformedWebhookUrl();
 
   console.log('Health route tests passed');
 }
@@ -180,14 +182,42 @@ async function testCriticalAlertingDefaultsToConsole(): Promise<void> {
   assert(data.services.criticalAlerting.configured, 'console-mode critical alerting should report configured');
 }
 
-async function testCriticalAlertingReportsWebhookModeWithoutDegradingHealth(): Promise<void> {
-  const response = await get({ CRITICAL_ALERT_WEBHOOK_URL: 'https://hooks.example.com/alert' });
+async function testCriticalAlertingReportsWebhookModeInProductionWithoutDegradingHealth(): Promise<void> {
+  const response = await get({ NODE_ENV: 'production', CRITICAL_ALERT_WEBHOOK_URL: 'https://hooks.example.com/alert' });
 
   assert(response.statusCode === 200, 'a configured critical alert webhook should still answer 200');
   const data = dataOf(response);
   assert(data.status === 'healthy', 'a configured critical alert webhook is not itself a degraded state');
-  assert(data.services.criticalAlerting.mode === 'webhook', 'a configured webhook URL should report webhook mode');
+  assert(data.services.criticalAlerting.mode === 'webhook', 'a configured webhook URL should report webhook mode in production');
   assert(data.services.criticalAlerting.configured, 'a configured webhook URL should report configured');
+}
+
+// `Logger.critical()` only ever dispatches beyond the console in production
+// (see `logger.ts`), so reporting `webhook` mode in any other environment —
+// including the README's own documented `NODE_ENV=development` setup — would
+// claim a destination nothing can actually reach yet.
+async function testCriticalAlertingReportsConsoleOutsideProductionEvenWhenUrlConfigured(): Promise<void> {
+  const response = await get({ NODE_ENV: 'development', CRITICAL_ALERT_WEBHOOK_URL: 'https://hooks.example.com/alert' });
+
+  assert(response.statusCode === 200, 'a valid webhook outside production should not affect health status');
+  const data = dataOf(response);
+  assert(
+    data.services.criticalAlerting.mode === 'console',
+    'a valid webhook URL outside production should report console mode, since dispatch never reaches it there'
+  );
+}
+
+// A malformed URL used to report `configured: true` while every delivery
+// attempt would fail — indistinguishable from working alerting until the
+// first real emergency.
+async function testCriticalAlertingDegradedOnMalformedWebhookUrl(): Promise<void> {
+  const response = await get({ NODE_ENV: 'production', CRITICAL_ALERT_WEBHOOK_URL: 'not-a-url' });
+
+  assert(response.statusCode === 503, 'a malformed critical alert webhook URL should answer 503');
+  const data = dataOf(response);
+  assert(data.status === 'degraded', 'a malformed critical alert webhook URL should report degraded');
+  assert(data.services.criticalAlerting.mode === 'webhook', 'the requested webhook mode should be surfaced verbatim');
+  assert(!data.services.criticalAlerting.configured, 'a malformed URL should not be configured');
 }
 
 main().catch(error => {

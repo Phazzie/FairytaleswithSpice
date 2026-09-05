@@ -7,6 +7,7 @@ import { RATE_LIMITS } from '../_lib/constants';
 import { AudioService, DEFAULT_FORMAT } from '../_lib/services/audioService';
 import { AudioConversionSeam } from '../_lib/types/contracts';
 import { logInfo, logError, logWarn } from '../_lib/utils/logger';
+import { withUnhandledRouteFailureLogging } from '../_lib/http/withUnhandledRouteFailureLogging';
 import {
   AUDIO_CONVERSION_REQUEST_FIELDS,
   toLoggableAudioFormat,
@@ -14,7 +15,7 @@ import {
   toLoggableStoryId
 } from '../_lib/utils/loggableRequestParameters';
 
-export default async function handler(req: any, res: any) {
+async function handler(req: any, res: any) {
   // Taken before `beginPostRoute`, not inside `AudioService.convertToAudio`:
   // that preamble can itself take real time (a `RATE_LIMIT_STORE=postgres`
   // lookup), and Vercel's 60-second `maxDuration` clock is already running
@@ -100,3 +101,5 @@ export default async function handler(req: any, res: any) {
     });
   }
 }
+
+export default withUnhandledRouteFailureLogging(handler);

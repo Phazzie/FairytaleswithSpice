@@ -1,4 +1,8 @@
 // Created: 2026-09-05 UTC
+// Revised: 2026-09-05 UTC — Codex review on PR #339 found four P1s and a P2
+// in the first cut of this module; all five are folded in below rather than
+// left as follow-ups, since each one directly undermines the point of the
+// fix (see the dated notes on each change for the finding it answers).
 //
 // `Logger.critical()`'s own doc comment says this tier is for "system
 // failures, data corruption, security issues" — and `ERROR_LOGGING_IMPROVEMENTS.md`
@@ -14,7 +18,9 @@
 // This gives `critical()` a real, pluggable destination. Unconfigured
 // deployments keep the exact prior console-only behavior (byte-for-byte);
 // setting `CRITICAL_ALERT_WEBHOOK_URL` posts a redacted summary to any
-// Slack-incoming-webhook-compatible endpoint. A full Sentry/Datadog SDK
+// Slack-incoming-webhook-compatible endpoint, but only once NODE_ENV is
+// actually `production` — the one environment `critical()` ever dispatches
+// beyond the console in (see `logger.ts`). A full Sentry/Datadog SDK
 // integration is a bigger, credentialed dependency this environment has no
 // way to verify end-to-end — flagged as a known follow-up rather than faked.
 //
@@ -32,11 +38,22 @@ const DEFAULT_WEBHOOK_TIMEOUT_MS = 3000;
 
 export interface CriticalAlertSink {
   /**
-   * Must never throw and must never leave a rejected promise for the caller
-   * to handle: a dead or misconfigured alert destination cannot be allowed to
-   * take down the crash guard reporting through it.
+   * Fire-and-forget entry point: must never throw and must never leave a
+   * rejected promise for the caller to handle, since most call sites (the
+   * API route crash guard, in particular) cannot afford to await delivery
+   * before answering the request.
    */
   send(entry: LogEntry): void;
+  /**
+   * The same delivery, awaited. For the one call site that must not let the
+   * process die before an alert has had a chance to leave it — the
+   * `uncaughtException` handler in `story-generator/src/server.ts`, which
+   * calls `process.exit(1)` right after logging (see `logCriticalAndFlush` in
+   * `logger.ts`). Still never throws: a delivery failure resolves the same as
+   * a success, after falling back to the console line `send` would have
+   * printed.
+   */
+  sendAndWait(entry: LogEntry): Promise<void>;
 }
 
 /**
@@ -47,6 +64,10 @@ export interface CriticalAlertSink {
 export class ConsoleCriticalAlertSink implements CriticalAlertSink {
   send(entry: LogEntry): void {
     console.error('🚨 CRITICAL ERROR (no external alert destination configured):', entry);
+  }
+
+  async sendAndWait(entry: LogEntry): Promise<void> {
+    this.send(entry);
   }
 }
 
@@ -79,21 +100,40 @@ export class WebhookCriticalAlertSink implements CriticalAlertSink {
   }
 
   send(entry: LogEntry): void {
-    const text = formatCriticalAlertText(entry);
     // Fire-and-forget: awaiting here would make every critical log call
     // async and change the signature every existing call site relies on. A
     // failed delivery falls back to the same console line the default sink
     // would have printed, so the entry is never silently lost either way.
-    void this.postFn(this.webhookUrl, { text }, this.timeoutMs).catch(() => {
+    void this.sendAndWait(entry);
+  }
+
+  async sendAndWait(entry: LogEntry): Promise<void> {
+    const text = formatCriticalAlertText(entry);
+    try {
+      // `this.timeoutMs` bounds the default `postFn`'s own axios call, so this
+      // await settles within that window even on an unreachable or slow host.
+      await this.postFn(this.webhookUrl, { text }, this.timeoutMs);
+    } catch {
       console.error('🚨 CRITICAL ERROR (webhook alert delivery failed; entry follows):', entry);
-    });
+    }
   }
 }
 
 /**
- * `entry` has already passed through the logger's own redaction (see
- * `logger.ts`'s `redactSensitiveLogData`) before this is ever called, so
- * nothing further needs to be stripped here — only formatted.
+ * `entry.message` is always one of this codebase's own log call sites (a
+ * fixed string such as `'Unhandled API route failure'`), never caller text.
+ * `entry.error.message`, in contrast, is whatever the thrown value's own
+ * `message` happened to be — and both crash guards this sink serves
+ * (`expressApiRoutes.ts`'s `apiErrorHandler`, `unhandledProcessFailureLogger.ts`)
+ * deliberately accept *any* error, including one that stringifies a piece of
+ * story prose, a user prompt, or a raw provider payload into its message.
+ * `redactSensitiveLogData` only strips recognizable credentials, emails, and
+ * URLs from that string — it does not remove arbitrary prose — so forwarding
+ * `entry.error.message` verbatim to a third-party webhook would be a new
+ * disclosure path that console-only logging never had. The error's name
+ * (`TypeError`, `RangeError`, this app's own error classes) is bounded,
+ * operational, and safe to send; the message is not, so it is left out here
+ * even though it is still printed locally by `outputToConsole` in `logger.ts`.
  */
 export function formatCriticalAlertText(entry: LogEntry): string {
   const lines = [`🚨 *CRITICAL*: ${entry.message}`, `Time: ${entry.timestamp}`];
@@ -104,11 +144,27 @@ export function formatCriticalAlertText(entry: LogEntry): string {
   if (entry.context?.requestId) {
     lines.push(`Request: ${entry.context.requestId}`);
   }
-  if (entry.error) {
-    lines.push(`Error: ${entry.error.name}: ${entry.error.message}`);
+  if (entry.error?.name) {
+    lines.push(`Error type: ${entry.error.name}`);
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Accepts only a well-formed `http(s)` URL. Anything else — whitespace,
+ * `not-a-url`, an `ftp:`/`mailto:` scheme, a bare hostname `new URL` cannot
+ * parse — would report `configured: true` on `/api/health` while every
+ * delivery attempt fails, making a deployment typo indistinguishable from
+ * working alerting until the first real emergency.
+ */
+function isValidHttpWebhookUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 export interface CriticalAlertSinkConfigOptions {
@@ -123,32 +179,63 @@ export interface CriticalAlertSinkConfig {
   sink: CriticalAlertSink;
 }
 
+function consoleOnlyConfig(): CriticalAlertSinkConfig {
+  return { mode: 'console', configured: true, sink: new ConsoleCriticalAlertSink() };
+}
+
 export function createCriticalAlertSinkConfig(options: CriticalAlertSinkConfigOptions = {}): CriticalAlertSinkConfig {
   const env = options.env ?? process.env;
   const webhookUrl = options.webhookUrl ?? env[CRITICAL_ALERT_WEBHOOK_URL_ENV_VAR];
 
-  if (webhookUrl) {
-    return {
-      mode: 'webhook',
-      configured: true,
-      sink: new WebhookCriticalAlertSink({ webhookUrl, postFn: options.postFn })
-    };
+  if (!webhookUrl) {
+    return consoleOnlyConfig();
+  }
+
+  if (!isValidHttpWebhookUrl(webhookUrl)) {
+    // Named the same way `rateLimitStoreConfig` reports a `postgres` mode it
+    // can't reach: `mode` says what was requested, `configured` says whether
+    // it actually works. Falls back to the console sink rather than a
+    // destination guaranteed to fail on every delivery.
+    return { mode: 'webhook', configured: false, sink: new ConsoleCriticalAlertSink() };
+  }
+
+  const isProductionEnvironment = (env['NODE_ENV'] ?? 'development') === 'production';
+  if (!isProductionEnvironment) {
+    // `Logger.critical()` only ever dispatches beyond the console when
+    // `NODE_ENV` is `production` (see `logger.ts`'s `log()`). Reporting
+    // `webhook` here for any other environment — including the README's own
+    // documented `NODE_ENV=development` local setup — would claim a
+    // destination that cannot actually receive anything right now, which is
+    // the same false-positive this field exists to prevent.
+    return consoleOnlyConfig();
   }
 
   return {
-    mode: 'console',
+    mode: 'webhook',
     configured: true,
-    sink: new ConsoleCriticalAlertSink()
+    sink: new WebhookCriticalAlertSink({ webhookUrl, postFn: options.postFn })
   };
 }
 
 /**
- * The one entry point `logger.ts` calls. Resolves a fresh config from the
- * live environment on every call — the same cheap, no-network-until-actually-
- * sending pattern `api/health.ts` already uses for the rate-limit and Story
- * Lab job stores — rather than caching a sink the process can never
- * reconfigure without a restart.
+ * The one entry point `logger.ts`'s `log()` calls for a fire-and-forget
+ * critical dispatch. Resolves a fresh config from the live environment on
+ * every call — the same cheap, no-network-until-actually-sending pattern
+ * `api/health.ts` already uses for the rate-limit and Story Lab job stores —
+ * rather than caching a sink the process can never reconfigure without a
+ * restart.
  */
 export function dispatchCriticalAlert(entry: LogEntry, options: CriticalAlertSinkConfigOptions = {}): void {
   createCriticalAlertSinkConfig(options).sink.send(entry);
+}
+
+/**
+ * The awaited counterpart, for `logger.ts`'s `criticalAndFlush` — used only
+ * by the process-crash guard in `story-generator/src/server.ts`, which must
+ * give delivery a bounded chance to leave the process before its
+ * `uncaughtException` handler calls `process.exit(1)`. A fire-and-forget
+ * `send()` there has no guarantee of even starting before the process ends.
+ */
+export async function dispatchCriticalAlertAndWait(entry: LogEntry, options: CriticalAlertSinkConfigOptions = {}): Promise<void> {
+  await createCriticalAlertSinkConfig(options).sink.sendAndWait(entry);
 }
