@@ -457,6 +457,101 @@ async function testRateLimitStoreConsumeFailureFailsClosed(): Promise<void> {
   });
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Clerk session as fallback when API_KEYS is configured
+// ---------------------------------------------------------------------------
+
+/**
+ * When `API_KEYS` is configured, `enforceApiAccessControl` tries the Clerk
+ * session path as a fallback when API key auth fails. A malformed Clerk token
+ * (e.g. a non-JWT test value) is caught and treated as a failed Clerk
+ * verification — the function falls through to 401 rather than crashing.
+ *
+ * Full integration of "valid Clerk session allows the request" requires a
+ * mock Clerk backend or a test-specific verifier; the critical contract
+ * proved here is that the Clerk path is entered without crashing on a bad
+ * token, and that `testNoCredentialsRejectedWhenApiKeysConfigured` proves
+ * the fail-closed behavior when neither credential is valid.
+ *
+ * See GitHub issue #330.
+ */
+async function testClerkSessionPathDoesNotCrashOnMalformedToken(): Promise<void> {
+  const previousClerkKey = process.env['CLERK_SECRET_KEY'];
+  const previousApiKeys = process.env['API_KEYS'];
+  resetRateLimitsForTests();
+
+  // Set Clerk secret so the Clerk path is entered, but use a non-JWT token
+  // so verification fails gracefully rather than crashing.
+  process.env['CLERK_SECRET_KEY'] = 'sk_test_clerk_for_testing_purposes_only';
+  process.env['API_KEYS'] = 'sk-test-api-key-16chars!!';
+
+  try {
+    const res = new FakeResponse();
+    await enforceApiAccessControl(
+      {
+        method: 'POST',
+        headers: { 'x-story-lab-session': 'not-a-jwt-token' },
+        body: {}
+      },
+      res,
+      'story-lab/stories',
+      RATE_LIMITS.STORY_LAB_GENESIS
+    );
+
+    // A malformed Clerk token must not crash the function. The Clerk
+    // verification throws, the try-catch catches it, and we get 401.
+    assert(
+      res.statusCode === 401,
+      `malformed Clerk token should produce 401, got ${res.statusCode}`
+    );
+  } finally {
+    if (previousClerkKey === undefined) {
+      delete process.env['CLERK_SECRET_KEY'];
+    } else {
+      process.env['CLERK_SECRET_KEY'] = previousClerkKey;
+    }
+    if (previousApiKeys === undefined) {
+      delete process.env['API_KEYS'];
+    } else {
+      process.env['API_KEYS'] = previousApiKeys;
+    }
+    resetRateLimitsForTests();
+  }
+}
+
+/**
+ * When `API_KEYS` is configured, a request with no API key and no Clerk session
+ * must still be rejected with 401 (fail closed).
+ */
+async function testNoCredentialsRejectedWhenApiKeysConfigured(): Promise<void> {
+  const previousApiKeys = process.env['API_KEYS'];
+  resetRateLimitsForTests();
+
+  process.env['API_KEYS'] = 'sk-test-api-key-16chars!!';
+
+  try {
+    for (const testCase of POST_JSON_CASES) {
+      const res = await testCase.call({});
+      assert(
+        res.statusCode === 401,
+        `${testCase.name} with no credentials should be rejected when API_KEYS is set, got ${res.statusCode}`
+      );
+    }
+  } finally {
+    if (previousApiKeys === undefined) {
+      delete process.env['API_KEYS'];
+    } else {
+      process.env['API_KEYS'] = previousApiKeys;
+    }
+    resetRateLimitsForTests();
+  }
+}
+
+
+
+
 async function main(): Promise<void> {
   await withMemoryRateLimitStore(async () => {
     await testMissingKeyIsRejected();
@@ -470,9 +565,12 @@ async function main(): Promise<void> {
     await testEventStreamRoutesAcceptTheQueryParameterKey();
     await testUnconfiguredPostgresRateLimitStoreFailsClosed();
     await testRateLimitStoreConsumeFailureFailsClosed();
+    await testClerkSessionPathDoesNotCrashOnMalformedToken();
+    await testNoCredentialsRejectedWhenApiKeysConfigured();
   });
 
   console.log('API access control route tests passed');
+
 }
 
 main().catch(error => {

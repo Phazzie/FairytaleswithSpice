@@ -19,7 +19,7 @@ export interface VerifiedClerkSession {
  * so they keep using `Authorization` — read below alongside this header,
  * never both on the same request.
  */
-const DEDICATED_SESSION_HEADER = 'x-story-lab-session';
+export const DEDICATED_SESSION_HEADER = 'x-story-lab-session';
 
 export interface ClerkAuthPortOptions {
   verifySessionToken?: (token: string, req: AuthRequestLike) => Promise<VerifiedClerkSession | null>;
