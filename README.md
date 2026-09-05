@@ -335,7 +335,11 @@ cd tests && npm run test:integration
 ```http
 GET /api/health
 ```
-Returns system status and service availability.
+Returns `200` with `status: "healthy"` normally, or `503` with `status: "degraded"`
+when the rate-limit store or Story Lab job store is misconfigured (an unsupported
+mode value, or `postgres` mode with no reachable database). Falling back to the
+in-memory/non-durable default is not itself degraded — only an unreachable
+`postgres` mode or an invalid mode value is.
 
 ### **Story Generation**
 ```http
