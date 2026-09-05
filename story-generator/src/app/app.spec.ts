@@ -5,6 +5,7 @@ import { BehaviorSubject, NEVER, of, Subject, throwError } from 'rxjs';
 import { App } from './app';
 import { StoryService } from './story.service';
 import { AuthService, CLERK_CLIENT_FACTORY, ClerkClient } from './auth.service';
+import { CloudLibraryService } from './cloud-library.service';
 import { ErrorLoggingService } from './error-logging';
 import { NotificationService } from './notification.service';
 import { OBJECT_URL_REVOKE_DELAY_MS } from '../../../shared/htmlDocumentDownload';
@@ -3380,6 +3381,11 @@ describe('App cloud account sign-in wiring', () => {
     return {
       fixture: localFixture,
       component: localFixture.componentInstance,
+      // `CloudLibraryService` is provided on `App` itself (see that
+      // service's own doc comment), not root — `TestBed.inject` would hand
+      // back an unrelated root-level instance, so callers that need the one
+      // this component actually uses go through its injector instead.
+      cloudLibraryService: localFixture.debugElement.injector.get(CloudLibraryService),
       openSignIn,
       signOut,
       storyServiceSpy,
@@ -3852,23 +3858,22 @@ describe('App cloud account sign-in wiring', () => {
   // response (once it arrived) free to populate data under the incoming
   // account.
   //
-  // Exercised by calling `syncCloudLibraryWithAuthState` — the method the
-  // constructor effect forwards `isSignedIn()`/`accountId()` into — rather
-  // than by driving the effect itself through a second signal change: this
-  // codebase's TestBed setup does not reliably rerun a constructor effect a
-  // second time (see that method's own comment, and the sign-out tests
-  // above, for why `fixture.detectChanges()`/`TestBed.flushEffects()` are
-  // not options here). What's under test is the *logic* this finding was
-  // about; that the effect itself forwards both signals is a two-line,
-  // read-not-computed wiring visible entirely at the call site above.
+  // Exercised by calling `CloudLibraryService.syncWithAuthState` directly —
+  // the method the constructor effect forwards `isSignedIn()`/`accountId()`
+  // into — rather than by driving the effect itself through a second signal
+  // change: this codebase's TestBed setup does not reliably rerun a
+  // constructor effect a second time (see that method's own comment, and
+  // the sign-out tests above, for why `fixture.detectChanges()`/
+  // `TestBed.flushEffects()` are not options here). What's under test is
+  // the *logic* this finding was about; that the effect itself forwards
+  // both signals is a two-line, read-not-computed wiring visible entirely
+  // at the call site in `App`'s constructor.
   it('discards a stale request and refreshes when the active account changes without a sign-out', async () => {
-    const { component, storyServiceSpy } = await createAppWithAuthConfig({
+    const { component, storyServiceSpy, cloudLibraryService } = await createAppWithAuthConfig({
       success: true,
       data: { provider: 'clerk', publishableKey: 'pk_test_account_switch' }
     });
-    const sync = (component as unknown as {
-      syncCloudLibraryWithAuthState(signedIn: boolean, accountId: string | null): void;
-    }).syncCloudLibraryWithAuthState.bind(component);
+    const sync = cloudLibraryService.syncWithAuthState.bind(cloudLibraryService);
     // Establishes the "already signed in as one account" baseline the
     // `accountChanged` branch requires — a fresh sign-in (`wasSignedIn`
     // still false) is not itself an account switch.
